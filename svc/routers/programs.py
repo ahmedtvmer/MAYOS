@@ -3,7 +3,7 @@
 import asyncio
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
 from service import analytics, programs as programs_service
@@ -16,7 +16,7 @@ from service.program_substitution import (
     undo_active_program_substitution,
 )
 from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
-from svc.llm import InferenceScope, run_inference_sync
+from svc.llm import InferenceScope, inference_turn, register_ai_analytics_background_tasks, run_inference_sync
 from svc.rate_limit import PROGRAM_MUTATE_LIMIT, limiter
 from svc.schemas import (
     ActiveProgramOut,
@@ -47,11 +47,14 @@ def _substitution_error_response(substitution: dict[str, Any]) -> JSONResponse:
 @router.post("/generate", response_model=ActiveProgramOut)
 async def generate_program(
     request: Request,
+    background_tasks: BackgroundTasks,
     body: ProgramGenerateIn,
     player: Annotated[Any, Depends(get_verified_player)],
     ledger: Annotated[Any, Depends(get_ledger)],
     db: Annotated[Any, Depends(get_db)],
 ):
+    register_ai_analytics_background_tasks(request, background_tasks)
+
     def _run():
         account_id = account_id_of(player)
         if not programs_service.player_controls_program(db, ledger, account_id):
@@ -66,6 +69,7 @@ async def generate_program(
                 rep_preference_override=body.rep_preference_override,
                 frequency_override=body.frequency_override,
                 client=analytics.client_context(request),
+                background_tasks=background_tasks,
             )
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -81,23 +85,50 @@ async def generate_program(
 @router.get("/active", response_model=ActiveProgramOut | None)
 async def read_active_program(
     request: Request,
+    background_tasks: BackgroundTasks,
     player: Annotated[Any, Depends(get_verified_player)],
     ledger: Annotated[Any, Depends(get_ledger)],
     db: Annotated[Any, Depends(get_db)],
 ):
+    register_ai_analytics_background_tasks(request, background_tasks)
+
     def _run():
         account_id = account_id_of(player)
         # Reads that return a saved program never call the model, so they are
         # attributed but not admitted; any synthesizing call is still metered.
-        program = run_inference_sync(
-            programs_service.ensure_active_program,
-            db,
-            str(player),
-            player_account_id=account_id,
-            ledger=ledger,
+        scope = InferenceScope(
+            account_id=account_id,
+            role="player",
+            purpose="program_active",
+            admit=False,
+            store=db,
             client=analytics.client_context(request),
-            scope=InferenceScope(account_id=account_id, role="player", purpose="program_active", admit=False, store=db),
         )
+        saved = ledger.get_active_program()
+        needs_generation = saved is None and bool(ledger.get_player_profile()) and programs_service.player_controls_program(
+            db, ledger, account_id
+        )
+        if needs_generation:
+            with inference_turn(scope, background_tasks=background_tasks):
+                program = run_inference_sync(
+                    programs_service.ensure_active_program,
+                    db,
+                    str(player),
+                    player_account_id=account_id,
+                    ledger=ledger,
+                    client=analytics.client_context(request),
+                    scope=scope,
+                )
+        else:
+            program = run_inference_sync(
+                programs_service.ensure_active_program,
+                db,
+                str(player),
+                player_account_id=account_id,
+                ledger=ledger,
+                client=analytics.client_context(request),
+                scope=scope,
+            )
         if program is None:
             return None
         result = {

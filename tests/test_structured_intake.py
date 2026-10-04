@@ -738,7 +738,7 @@ def test_legacy_routes_refused_while_structured_intake_active(api, monkeypatch):
 
     from service import onboarding as onboarding_service
 
-    def fake_start(db, ledger_id, player_account_id=None, ledger=None):
+    def fake_start(db, ledger_id, player_account_id=None, ledger=None, scope=None):
         return {
             "messages": [AIMessage(content="Q1?")],
             "trainee_id": ledger_id,

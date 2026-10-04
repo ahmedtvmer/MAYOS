@@ -12,6 +12,7 @@ from typing import Any
 from agent.progression_engine import set_e1rm
 from service import analytics as analytics_service
 from service import coach_analytics
+from service import analytics
 from service import training_status
 from service._base import ledger_scope
 from service.keyed_locks import KeyedLocks
@@ -50,6 +51,8 @@ class _ReviewReadContext:
     language: str
     account_id: str | None
     ledger_handle: Any | None
+    client: analytics.ClientContext
+    background_tasks: Any = None
 
 
 def resolve_display_language(account_id: str | None = None) -> str:
@@ -339,6 +342,21 @@ def _review_generation_request(context: _ReviewReadContext, row: dict[str, Any])
         language=context.language,
         coach_tone=profile.get("coach_tone") or DEFAULT_ASSISTANT_STYLE,
         custom_instructions=profile.get("custom_instructions") or "",
+        inference_scope=_checkpoint_inference_scope(context),
+    )
+
+
+def _checkpoint_inference_scope(context: _ReviewReadContext) -> Any:
+    from database.registry.model_usage import ALLOWANCE_EXEMPT_PURPOSE
+    from svc.llm import InferenceScope
+
+    return InferenceScope(
+        account_id=context.account_id,
+        role="player",
+        purpose=ALLOWANCE_EXEMPT_PURPOSE,
+        admit=False,
+        store=context.db,
+        client=context.client,
     )
 
 
@@ -347,17 +365,25 @@ def _generate_and_store_review_text(
 ) -> dict[str, Any] | None:
     from service import checkpoint_review_ai
 
+    from svc.llm import inference_turn
+    from service.model_limits import ModelLimitExceeded
+
     request = _review_generation_request(context, row)
-    try:
-        generated = checkpoint_review_ai.generate_review_text(request)
-    except Exception as exc:
-        # Provider failures vary by backend; review wording is optional so a failed turn uses its template.
-        logger.warning("Checkpoint review text generation failed (%s).", type(exc).__name__)
-        return fallback
-    if not generated:
-        return fallback
-    _store_review_text(context, generated)
-    return _latest_or_template(context, fallback)
+    with inference_turn(request.inference_scope, background_tasks=context.background_tasks) as turn:
+        try:
+            generated = checkpoint_review_ai.generate_review_text(request)
+        except ModelLimitExceeded:
+            turn.suppress_completion()
+            return fallback
+        except Exception as exc:
+            turn.mark_error()
+            # Provider failures vary by backend; review wording is optional so a failed turn uses its template.
+            logger.warning("Checkpoint review text generation failed (%s).", type(exc).__name__)
+            return fallback
+        if not generated:
+            return fallback
+        _store_review_text(context, generated)
+        return _latest_or_template(context, fallback)
 
 
 def _generate_review_after_claim(context: _ReviewReadContext) -> dict[str, Any] | None:
@@ -419,9 +445,11 @@ def read_checkpoint_review(
     account_id: str | None = None,
     opened_at: str | None = None,
     ledger: Any | None = None,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+    background_tasks: Any = None,
 ) -> dict[str, Any] | None:
     language = language or resolve_display_language(account_id)
-    context = _ReviewReadContext(db, ledger_id, checkpoint, language, account_id, ledger)
+    context = _ReviewReadContext(db, ledger_id, checkpoint, language, account_id, ledger, client, background_tasks)
     row = _get_review_row(context, opened_at)
     if row is None:
         return None

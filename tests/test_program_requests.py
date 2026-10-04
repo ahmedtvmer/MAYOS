@@ -583,6 +583,36 @@ def test_apply_write_failure_reverts_request_to_pending(api, monkeypatch):
     assert int(rows[0]) == 1
 
 
+def test_notify_failure_after_program_write_does_not_reopen_request(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, coach_account_id, _ = _assigned_player(api)
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+    created = _create(
+        client,
+        player_headers,
+        kind="split_change",
+        desired_weekly_frequency=3,
+    )
+    request_id = created.json()["request_id"]
+    _request_generation(db, monkeypatch)
+
+    def notify_failure(*_args, **_kwargs):
+        raise RuntimeError("notification store unavailable")
+
+    monkeypatch.setattr("service.program_requests._notify_player", notify_failure)
+    with pytest.raises(RuntimeError, match="notification store unavailable"):
+        program_requests_service.apply_request(
+            db, ProgramAnalyticsActor(coach_account_id, "coach"), assignment_id, request_id
+        )
+
+    assert db.get_program_request(request_id)["status"] == "applied"
+    db.switch_user("p1")
+    active = db.ledger.get_active_program()
+    assert active.version == 2
+    assert active.weekly_frequency == 3
+
+
 def test_apply_stale_request_after_new_publication(api, monkeypatch):
     client, db, _ = api
     coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)

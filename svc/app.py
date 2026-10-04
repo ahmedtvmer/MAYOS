@@ -7,6 +7,8 @@ import re
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exception_handlers import http_exception_handler as default_http_exception_handler
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
@@ -267,14 +269,29 @@ def create_app() -> FastAPI:
     app.state.admin_security = AdminSecurity()
     if partial_secret_configuration():
         logger.warning("Owner admin secrets are partially configured; /admin stays disabled.")
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     _register_model_metering()
     register_configured_sink()
+
+    @app.exception_handler(RateLimitExceeded)
+    async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+        response = _rate_limit_exceeded_handler(request, exc)
+        response.background = _ai_analytics_background_tasks(request)
+        return response
 
     @app.exception_handler(ModelLimitExceeded)
     async def model_limit_handler(request: Request, exc: ModelLimitExceeded):
         """One 429 shape for every per-account model limit refusal (ADR 038)."""
-        return JSONResponse(status_code=429, content={"detail": exc.detail})
+        return JSONResponse(
+            status_code=429,
+            content={"detail": exc.detail},
+            background=_ai_analytics_background_tasks(request),
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+        response = await default_http_exception_handler(request, exc)
+        response.background = _ai_analytics_background_tasks(request)
+        return response
 
     @app.exception_handler(AccountDeletedError)
     async def account_deleted_handler(request: Request, exc: AccountDeletedError):
@@ -284,7 +301,11 @@ def create_app() -> FastAPI:
         (the signature is verified before this is raised), so it reveals nothing
         to an unauthenticated caller.
         """
-        return JSONResponse(status_code=401, content={"error": "account_deleted"})
+        return JSONResponse(
+            status_code=401,
+            content={"error": "account_deleted"},
+            background=_ai_analytics_background_tasks(request),
+        )
 
     app.add_middleware(
         CORSMiddleware,
@@ -321,7 +342,11 @@ def create_app() -> FastAPI:
     @app.exception_handler(Exception)
     async def unhandled_handler(request: Request, exc: Exception):
         logger.exception("Unhandled error on %s %s", request.method, request.url.path)
-        return JSONResponse(status_code=502, content={"detail": "Request failed. Please try again."})
+        return JSONResponse(
+            status_code=502,
+            content={"detail": "Request failed. Please try again."},
+            background=_ai_analytics_background_tasks(request),
+        )
 
     app.include_router(auth.router)
     app.include_router(admin.router)
@@ -355,6 +380,10 @@ def create_app() -> FastAPI:
         return {"status": status, "details": details}
 
     return app
+
+
+def _ai_analytics_background_tasks(request: Request):
+    return getattr(request.state, "ai_analytics_background_tasks", None)
 
 
 def _apply_admin_security_headers(response) -> None:

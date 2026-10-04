@@ -396,9 +396,15 @@ def generate_program_draft_pipeline(
     *,
     inference_call: Callable[..., DynamicSplitPlan] | None = None,
     ledger: Any,
+    profile: dict[str, Any] | None = None,
 ) -> tuple[GeneratedProgramSchema, str]:
-    """Builds generated content without changing the active Program or profile."""
-    profile = _generation_profile(ledger)
+    """Builds generated content without changing the active Program or profile.
+
+    ``profile`` generates from an edited profile that is not saved yet; by
+    default the ledger's saved profile is used.
+    """
+    if profile is None:
+        profile = _generation_profile(ledger)
     weekly_frequency = _resolve_generation(profile, request)
     return _build_program(profile, request, weekly_frequency, ledger, inference_call=inference_call)
 

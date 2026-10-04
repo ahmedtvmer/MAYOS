@@ -648,6 +648,7 @@ class SchemaMixin:
                 CREATE TABLE IF NOT EXISTS model_usage (
                     id TEXT PRIMARY KEY,
                     account_id TEXT,
+                    turn_id TEXT,
                     role TEXT NOT NULL,
                     model TEXT NOT NULL,
                     purpose TEXT,
@@ -740,6 +741,7 @@ class SchemaMixin:
             self._ensure_roster_attendance_program_name()
             self._ensure_roster_attendance_stall_length()
             self._ensure_model_spend_alert_columns()
+            self._ensure_model_usage_turn_id_column()
             self._ensure_linked_sign_in_account_provider()
             self._ensure_coach_invites_revoked_at()
             self.catalog_conn.execute("DROP TRIGGER IF EXISTS first_touch_acquisition_no_update")
@@ -760,6 +762,15 @@ class SchemaMixin:
             )
             self._commit_catalog()
             self._account_schema_ready = True
+
+    def _ensure_model_usage_turn_id_column(self) -> None:
+        columns = self._table_columns(self.catalog_conn.cursor(), "model_usage")
+        if "turn_id" not in columns:
+            self.catalog_conn.execute("ALTER TABLE model_usage ADD COLUMN turn_id TEXT")
+        self.catalog_conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_model_usage_turn_account_created "
+            "ON model_usage(turn_id, account_id, created_at)"
+        )
 
     def _ensure_first_touch_referred_at_column(self) -> None:
         columns = self._table_columns(self.catalog_conn.cursor(), "first_touch_acquisition")

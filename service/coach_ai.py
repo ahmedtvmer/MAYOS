@@ -29,6 +29,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from core.effort import min_rir_label, rir_label
+from service import analytics
 from service import coach_history as coach_history_service
 from service import dashboard as dashboard_service
 from service import check_ins as check_ins_service
@@ -677,6 +678,9 @@ def ask(
     assignment_id: Any,
     question: str,
     history: list[dict[str, Any]] | None = None,
+    *,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+    background_tasks: Any = None,
 ) -> dict[str, Any] | None:
     """Answers one coach question for one assigned player; persists nothing.
 
@@ -689,15 +693,17 @@ def ask(
     if facts is None:
         return None
     messages = build_messages(render_context(facts), question, list(history or []))
-    from svc.llm import InferenceScope, run_inference_sync
+    from svc.llm import InferenceScope, inference_turn, run_inference_sync
 
-    answer = run_inference_sync(
-        _invoke_coach_model,
-        messages,
-        scope=InferenceScope(
-            account_id=coach_account_id, role="coach", purpose="coach_assistant", store=db
-        ),
+    scope = InferenceScope(
+        account_id=coach_account_id,
+        role="coach",
+        purpose="coach_assistant",
+        store=db,
+        client=client,
     )
+    with inference_turn(scope, background_tasks=background_tasks):
+        answer = run_inference_sync(_invoke_coach_model, messages, scope=scope)
     return {"answer": answer}
 
 

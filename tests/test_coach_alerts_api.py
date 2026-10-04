@@ -248,7 +248,7 @@ def _seed_training_profile(db, player_name="p1", **fields):
 
 
 def _stub_profile_rebuild(monkeypatch):
-    monkeypatch.setattr("service.profile.generate_program_pipeline", lambda **kwargs: (None, None))
+    monkeypatch.setattr("service.profile.generate_program_draft_pipeline", lambda _request, **kwargs: (None, None))
 
 
 def _profile_alerts(client, coach_headers, states=None):

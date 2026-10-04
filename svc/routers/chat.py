@@ -10,7 +10,7 @@ import queue
 import threading
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from fastapi.responses import StreamingResponse
 
 from agent.assistant_graph import stream_assistant_turn
@@ -18,9 +18,15 @@ from agent.prompts import DEFAULT_ASSISTANT_STYLE
 from service import analytics, programs as programs_service
 from service import chat as chat_service
 from service.program_analytics import ProgramAnalyticsActor
-from service.model_limits import admit_model_request
+from service.model_limits import ModelAdmissionContext, admit_model_request
 from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
-from svc.llm import InferenceScope, bound_stream
+from svc.llm import (
+    InferenceScope,
+    InferenceTurnState,
+    bound_stream,
+    inference_turn,
+    register_ai_analytics_background_tasks,
+)
 from svc.rate_limit import CHAT_LIMIT, limiter
 from svc.schemas import ChatMessageIn
 from utils.text_scrubber import PIPELINE_ERROR_RESPONSE
@@ -53,7 +59,10 @@ def _run_turn(
     content: str,
     out: "queue.Queue[tuple[str, Any]]",
     account_id: str,
-    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+    scope: InferenceScope,
+    turn: InferenceTurnState,
+    disconnected: threading.Event,
+    worker_done: threading.Event,
 ) -> None:
     """Executes the sync turn on a worker thread, bridging chunks into the queue.
 
@@ -69,47 +78,45 @@ def _run_turn(
     the same explicit ledger handle through the assistant graph's run config.
     """
     try:
-        with db.open_ledger(str(player)) as ledger:
-            profile = ledger.get_player_profile() or {}
-            history = chat_service.prepare_user_turn(db, content, ledger)
-            tail = chat_service.build_tail_messages(history)
-            state = chat_service.build_turn_state(
-                str(player),
-                tail,
-                coach_tone=profile.get("coach_tone", DEFAULT_ASSISTANT_STYLE),
-                custom_instructions=profile.get("custom_instructions", ""),
-                player_account_id=account_id,
-            )
-            for piece in bound_stream(
-                stream_assistant_turn,
-                state,
-                ledger=ledger,
-                store=db,
-                scope=InferenceScope(
-                    account_id=account_id, role="player", purpose="chat", admit=False, store=db
-                ),
-            ):
-                out.put(("token", piece))
-            chat_service.persist_assistant_message(ledger, state.get("response_content"))
-            change = state.get("program_change")
-            persisted = ledger.get_active_program() if change else None
-            if change and persisted is not None:
-                programs_service.record_program_change(
-                    ProgramAnalyticsActor(account_id, "player"),
-                    change,
-                    persisted,
-                    client=client,
+        with inference_turn(scope, state=turn, wait_for=worker_done):
+            with db.open_ledger(str(player)) as ledger:
+                profile = ledger.get_player_profile() or {}
+                history = chat_service.prepare_user_turn(db, content, ledger)
+                tail = chat_service.build_tail_messages(history)
+                state = chat_service.build_turn_state(
+                    str(player),
+                    tail,
+                    coach_tone=profile.get("coach_tone", DEFAULT_ASSISTANT_STYLE),
+                    custom_instructions=profile.get("custom_instructions", ""),
+                    player_account_id=account_id,
                 )
-        done_payload = {
-            "response_content": state.get("response_content") or "",
-            "program_updated": bool(state.get("program_updated")),
-        }
-        if state.get("request_suggestion") is not None:
-            done_payload["request_suggestion"] = state["request_suggestion"]
-        out.put(("done", done_payload))
+                for piece in bound_stream(stream_assistant_turn, state, ledger=ledger, store=db, scope=scope):
+                    out.put(("token", piece))
+                chat_service.persist_assistant_message(ledger, state.get("response_content"))
+                change = state.get("program_change")
+                persisted = ledger.get_active_program() if change else None
+                if change and persisted is not None:
+                    programs_service.record_program_change(
+                        ProgramAnalyticsActor(account_id, "player"),
+                        change,
+                        persisted,
+                        client=scope.client,
+                    )
+            if disconnected.is_set():
+                turn.mark_interrupted()
+            done_payload = {
+                "response_content": state.get("response_content") or "",
+                "program_updated": bool(state.get("program_updated")),
+            }
+            if state.get("request_suggestion") is not None:
+                done_payload["request_suggestion"] = state["request_suggestion"]
+            out.put(("done", done_payload))
     except Exception:
+        if disconnected.is_set():
+            turn.mark_interrupted()
         out.put(("error", {"detail": PIPELINE_ERROR_RESPONSE}))
     finally:
+        worker_done.set()
         out.put(("end", None))
 
 
@@ -117,36 +124,62 @@ def _run_turn(
 @limiter.limit(CHAT_LIMIT)
 async def post_message(
     request: Request,
+    background_tasks: BackgroundTasks,
     body: ChatMessageIn,
     player: Annotated[Any, Depends(get_verified_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
+    register_ai_analytics_background_tasks(request, background_tasks)
     account_id = account_id_of(player)
     # Refuse before the stream starts: the app-wide ModelLimitExceeded handler
     # returns a plain HTTP 429 with a JSON ``detail`` (surfaced verbatim by the
     # mobile client, ADR 036/038).
-    admit_model_request(account_id, guard=False, db=db)
+    client = analytics.client_context(request)
+    scope = InferenceScope(
+        account_id=account_id,
+        role="player",
+        purpose="chat",
+        admit=False,
+        store=db,
+        client=client,
+    )
+    admit_model_request(
+        account_id,
+        guard=False,
+        db=db,
+        context=ModelAdmissionContext(role="player", client=client, background_tasks=background_tasks),
+    )
+    turn = InferenceTurnState(scope)
 
     out: "queue.Queue[tuple[str, Any]]" = queue.Queue()
+    disconnected = threading.Event()
+    worker_done = threading.Event()
+    background_tasks.add_task(turn.emit_after, worker_done)
     worker = threading.Thread(
         target=_run_turn,
-        args=(db, player, body.content, out, account_id, analytics.client_context(request)),
+        args=(db, player, body.content, out, account_id, scope, turn, disconnected, worker_done),
         daemon=True,
     )
     worker.start()
 
     async def event_stream():
-        while True:
-            kind, payload = await asyncio.to_thread(out.get)
-            if kind == "end":
-                break
-            if await request.is_disconnected():
-                break
-            if kind == "token":
-                yield f"data: {json.dumps({'token': payload})}\n\n"
-            elif kind == "done":
-                yield f"data: {json.dumps({'done': True, **payload})}\n\n"
-            elif kind == "error":
-                yield f"event: error\ndata: {json.dumps(payload)}\n\n"
+        try:
+            while True:
+                kind, payload = await asyncio.to_thread(out.get)
+                if kind == "end":
+                    break
+                if await request.is_disconnected():
+                    disconnected.set()
+                    break
+                if kind == "token":
+                    yield f"data: {json.dumps({'token': payload})}\n\n"
+                elif kind == "done":
+                    yield f"data: {json.dumps({'done': True, **payload})}\n\n"
+                elif kind == "error":
+                    yield f"event: error\ndata: {json.dumps(payload)}\n\n"
+        finally:
+            if not worker_done.is_set():
+                disconnected.set()
+                turn.mark_interrupted()
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(event_stream(), media_type="text/event-stream", background=background_tasks)

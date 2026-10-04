@@ -2,6 +2,7 @@
 
 import re
 import sqlite3
+import threading
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -213,6 +214,15 @@ def _assert_authoritative_write_committed(
             == event_uuid
             for row in rows
         )
+    if (
+        event == "ai_request_completed"
+        and properties["use_case"] == "chat"
+        and properties["outcome"] == "ok"
+    ):
+        with db.open_ledger(account["ledger_id"]) as ledger:
+            assert not ledger.conn.in_transaction
+            history = ledger.get_chat_history()
+            assert history[-1]["role"] == "assistant"
 
 
 @pytest.fixture
@@ -366,9 +376,12 @@ def _install_analytics_program_generators(monkeypatch) -> None:
     def fake_coach_draft(_request, *, inference_call=None, ledger):
         return fake_program(ledger=ledger, persist_program=False)
 
+    def fake_profile_draft(_request, *, ledger, profile=None):
+        return fake_program(ledger=ledger, persist_program=False)
+
     monkeypatch.setattr("service.programs.generate_program_pipeline", fake_program)
     monkeypatch.setattr("service.coach_programs.generate_program_draft_pipeline", fake_coach_draft)
-    monkeypatch.setattr("service.profile.generate_program_pipeline", fake_program)
+    monkeypatch.setattr("service.profile.generate_program_draft_pipeline", fake_profile_draft)
     monkeypatch.setattr("service.program_requests.generate_program_pipeline", fake_program)
 
 
@@ -1215,7 +1228,7 @@ def test_program_and_request_events_follow_committed_api_operations(analytics_ap
     assert not db.catalog_conn.in_transaction
 
 
-def test_failed_program_generation_emits_no_event(analytics_api, monkeypatch):
+def test_failed_program_generation_emits_ai_error_without_program_event(analytics_api, monkeypatch):
     client, _, sink = analytics_api
     headers = _register(client, "analytics-program-failure")
 
@@ -1226,6 +1239,10 @@ def test_failed_program_generation_emits_no_event(analytics_api, monkeypatch):
     failed = client.post("/programs/generate", headers=headers, json={})
     assert failed.status_code == 400
     assert not [event for event in sink.events if event["event"] == "program_generated"]
+    completed = [event for event in sink.events if event["event"] == "ai_request_completed"]
+    assert len(completed) == 1
+    assert completed[0]["properties"]["outcome"] == "error"
+    assert completed[0]["properties"]["tokens"] == 0
 
 
 def test_active_program_lazy_synthesis_emits_once_with_synthesized_trigger(analytics_api, monkeypatch):
@@ -1297,6 +1314,188 @@ def test_chat_regeneration_and_swap_emit_once_through_http(analytics_api, monkey
         "program_exercise_swapped",
     ]
     assert program_events[0]["properties"]["trigger"] == "player_request"
+
+
+def test_chat_ai_usage_event_sums_metering_rows_once_after_stream_commit(analytics_api, monkeypatch):
+    client, db, sink = analytics_api
+    headers = _register(client, "analytics-ai-chat", client_header="web/4.2.0")
+    account = db.get_active_account_by_username("analytics-ai-chat")
+    metered = [
+        ("Qwen/Qwen3.5-9B", 120, 30, False),
+        ("Qwen/Qwen3.5-9B", 45, 12, True),
+    ]
+
+    def fake_turn(state, *, ledger, store, **_kwargs):
+        from utils.model_metering import record_usage
+
+        for model, input_tokens, output_tokens, estimated in metered:
+            record_usage(model, input_tokens, output_tokens, estimated)
+        state["response_content"] = "PRIVATE assistant response"
+        yield "PRIVATE assistant response"
+
+    monkeypatch.setattr("svc.routers.chat.stream_assistant_turn", fake_turn)
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "PRIVATE prompt"}
+    ) as response:
+        payload = response.read().decode()
+    assert response.status_code == 200
+    assert '"done": true' in payload
+
+    usage_event = next(event for event in sink.events if event["event"] == "ai_request_completed")
+    properties = usage_event["properties"]
+    rows = [
+        row
+        for row in db.summarize_model_usage("2000-01-01")
+        if row["account_id"] == account["account_id"]
+    ]
+    assert properties["input_tokens"] == sum(row["input_tokens"] for row in rows) == 165
+    assert properties["output_tokens"] == sum(row["output_tokens"] for row in rows) == 42
+    assert properties["tokens"] == sum(row["input_tokens"] + row["output_tokens"] for row in rows) == 207
+    assert properties["cost_usd"] == pytest.approx(sum(row["cost_usd"] for row in rows))
+    assert properties["estimated"] is True
+    assert properties["use_case"] == "chat"
+    assert properties["plan"] == "free"
+    assert properties["outcome"] == "ok"
+    assert properties["platform"] == "web"
+    assert not db.catalog_conn.in_transaction
+    assert "PRIVATE" not in repr(usage_event)
+    assert len([event for event in sink.events if event["event"] == "ai_request_completed"]) == 1
+
+
+def test_refused_chat_turn_emits_limit_event_without_completion(analytics_api, monkeypatch):
+    from service.model_limits import reset_model_limits
+
+    client, _db, sink = analytics_api
+    headers = _register(client, "analytics-ai-limited", client_header="android/1.8.0")
+    monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "1")
+    reset_model_limits()
+
+    def fake_turn(state, *, ledger, store, **_kwargs):
+        from utils.model_metering import record_usage
+
+        record_usage("Qwen/Qwen3.5-9B", 20, 5, False)
+        state["response_content"] = "safe"
+        yield "safe"
+
+    monkeypatch.setattr("svc.routers.chat.stream_assistant_turn", fake_turn)
+    with client.stream("POST", "/chat/messages", headers=headers, json={"content": "question"}) as response:
+        response.read()
+    refused = client.post("/chat/messages", headers=headers, json={"content": "another question"})
+    assert refused.status_code == 429
+
+    completed = [event for event in sink.events if event["event"] == "ai_request_completed"]
+    limited = [event for event in sink.events if event["event"] == "ai_request_limited"]
+    assert len(completed) == 1
+    assert len(limited) == 1
+    assert limited[0]["properties"]["limit"] == "requests_per_minute"
+    assert limited[0]["properties"]["plan"] == "free"
+    assert limited[0]["properties"]["platform"] == "android"
+    reset_model_limits()
+
+
+def test_raising_ai_analytics_sink_does_not_fail_chat(analytics_api, monkeypatch):
+    client, _db, sink = analytics_api
+    headers = _register(client, "analytics-ai-sink-failure")
+
+    def fake_turn(state, *, ledger, store, **_kwargs):
+        from utils.model_metering import record_usage
+
+        record_usage("Qwen/Qwen3.5-9B", 20, 5, False)
+        state["response_content"] = "safe response"
+        yield "safe response"
+
+    monkeypatch.setattr("svc.routers.chat.stream_assistant_turn", fake_turn)
+
+    def fail_capture(*_args, **_kwargs):
+        raise RuntimeError("analytics unavailable")
+
+    monkeypatch.setattr(sink, "capture", fail_capture)
+    with client.stream("POST", "/chat/messages", headers=headers, json={"content": "question"}) as response:
+        payload = response.read().decode()
+    assert response.status_code == 200
+    assert '"done": true' in payload
+
+
+def test_chat_provider_error_emits_one_error_turn_event(analytics_api, monkeypatch):
+    client, db, sink = analytics_api
+    headers = _register(client, "analytics-chat-provider-error")
+    account = db.get_active_account_by_username("analytics-chat-provider-error")
+    from utils.model_metering import record_usage
+    from utils.model_downloader import _local_model_id
+
+    def failing_turn(state, **_kwargs):
+        record_usage(_local_model_id("production"), 17, 4, False)
+        raise RuntimeError("provider unavailable")
+        yield state
+
+    monkeypatch.setattr("svc.routers.chat.stream_assistant_turn", failing_turn)
+    with client.stream("POST", "/chat/messages", headers=headers, json={"content": "PRIVATE prompt"}) as response:
+        payload = response.read().decode()
+
+    assert response.status_code == 200
+    assert "event: error" in payload
+    events = [event for event in sink.events if event["event"] == "ai_request_completed"]
+    assert len(events) == 1
+    event = events[0]
+    rows = db.model_usage_rows_for_turn(
+        db.catalog_conn.execute(
+            "SELECT turn_id FROM model_usage WHERE account_id = ? AND turn_id IS NOT NULL",
+            (account["account_id"],),
+        ).fetchone()[0],
+        account["account_id"],
+    )
+    properties = event["properties"]
+    assert properties["outcome"] == "error"
+    assert properties["tokens"] == sum(row["input_tokens"] + row["output_tokens"] for row in rows) == 21
+    assert properties["cost_usd"] == sum(row["cost_usd"] for row in rows)
+    assert "PRIVATE prompt" not in repr(event)
+
+
+def test_chat_disconnect_keeps_reply_and_emits_interrupted(analytics_api, monkeypatch):
+    client, db, sink = analytics_api
+    headers = _register(client, "analytics-chat-disconnect")
+    account = db.get_active_account_by_username("analytics-chat-disconnect")
+    from utils.model_metering import record_usage
+    from utils.model_downloader import _local_model_id
+
+    allow_second_chunk = threading.Event()
+    disconnect_seen = threading.Event()
+
+    def turn(state, **_kwargs):
+        record_usage(_local_model_id("production"), 23, 7, False)
+        yield "first chunk"
+        allow_second_chunk.wait(timeout=2)
+        state["response_content"] = "Persisted assistant reply"
+        yield "last chunk"
+        disconnect_seen.wait(timeout=2)
+
+    calls = 0
+
+    async def disconnected(_request):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            allow_second_chunk.set()
+            return False
+        disconnect_seen.set()
+        return True
+
+    monkeypatch.setattr("svc.routers.chat.stream_assistant_turn", turn)
+    monkeypatch.setattr("svc.routers.chat.Request.is_disconnected", disconnected)
+    with client.stream("POST", "/chat/messages", headers=headers, json={"content": "PRIVATE prompt"}) as response:
+        payload = response.read().decode()
+
+    assert response.status_code == 200
+    assert "first chunk" in payload
+    assert "last chunk" not in payload
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        assert ledger.get_chat_history()[-1]["content"] == "Persisted assistant reply"
+    events = [event for event in sink.events if event["event"] == "ai_request_completed"]
+    assert len(events) == 1
+    properties = events[0]["properties"]
+    assert properties["outcome"] == "interrupted"
+    assert properties["tokens"] == 30
+    assert "PRIVATE prompt" not in repr(events[0])
 
 
 def test_recording_sink_keeps_every_capture_call_and_coach_events_use_player_owner(recording_analytics):

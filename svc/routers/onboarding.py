@@ -13,7 +13,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from langchain_core.messages import AIMessage, HumanMessage
 
@@ -22,6 +22,7 @@ from service import intake as intake_service
 from service import onboarding as onboarding_service
 from service.program_analytics import ProgramAnalyticsActor
 from svc.dependencies import account_id_of, get_current_player, get_db, get_ledger, get_verified_player
+from svc.llm import InferenceScope, inference_turn, register_ai_analytics_background_tasks
 from svc.rate_limit import ONBOARDING_LIMIT, limiter
 from svc.schemas import (
     IntakeAnswerIn,
@@ -110,16 +111,25 @@ def _public_view(state: dict[str, Any], only_new: list | None = None) -> dict[st
     return {"intake_step": state.get("intake_step", 1), "is_complete": state.get("is_complete", False), "messages": texts}
 
 
-def _load_or_start(db: Any, ledger: Any, player: str, account_id: str | None) -> dict[str, Any]:
+def _load_or_start(
+    db: Any,
+    ledger: Any,
+    player: str,
+    account_id: str | None,
+    scope: InferenceScope | None = None,
+) -> dict[str, Any]:
     saved = ledger.load_onboarding_state()
     if saved is not None:
         return _deserialize(db, player, saved)
-    return onboarding_service.start_onboarding(db, player, player_account_id=account_id, ledger=ledger)
+    return onboarding_service.start_onboarding(
+        db, player, player_account_id=account_id, ledger=ledger, scope=scope
+    )
 
 
 @router.post("/start", response_model=OnboardingStartOut)
 async def start_onboarding(
     request: Request,
+    background_tasks: BackgroundTasks,
     player: Annotated[str, Depends(get_current_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
@@ -129,15 +139,26 @@ async def start_onboarding(
     saved state. Explicit reset stays on ``/onboarding/step`` with ``reset=true``.
     """
 
+    register_ai_analytics_background_tasks(request, background_tasks)
+    account_id = account_id_of(player)
+    scope = InferenceScope(
+        account_id=account_id,
+        role="player",
+        purpose="onboarding",
+        store=db,
+        client=analytics_service.client_context(request),
+    )
+
     def _run():
-        with db.open_ledger(str(player)) as ledger:
-            if intake_service.structured_intake_active(db, player, ledger=ledger):
-                raise intake_service.StructuredIntakeActive()
-            state = _load_or_start(db, ledger, player, account_id_of(player))
-            ledger.save_onboarding_state(_serialize(state))
-            if not state.get("is_complete"):
-                _record_onboarding_started(request, account_id_of(player), ledger)
-            return _public_view(state)
+        with inference_turn(scope, background_tasks=background_tasks):
+            with db.open_ledger(str(player)) as ledger:
+                if intake_service.structured_intake_active(db, player, ledger=ledger):
+                    raise intake_service.StructuredIntakeActive()
+                state = _load_or_start(db, ledger, player, account_id, scope)
+                ledger.save_onboarding_state(_serialize(state))
+                if not state.get("is_complete"):
+                    _record_onboarding_started(request, account_id, ledger)
+                return _public_view(state)
 
     try:
         return await asyncio.to_thread(_run)
@@ -149,29 +170,49 @@ async def start_onboarding(
 @limiter.limit(ONBOARDING_LIMIT)
 async def answer_step(
     request: Request,
+    background_tasks: BackgroundTasks,
     body: OnboardingStepIn,
     player: Annotated[str, Depends(get_current_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
+    register_ai_analytics_background_tasks(request, background_tasks)
+    account_id = account_id_of(player)
+    scope = InferenceScope(
+        account_id=account_id,
+        role="player",
+        purpose="onboarding",
+        store=db,
+        client=analytics_service.client_context(request),
+    )
+
     def _run():
-        with db.open_ledger(str(player)) as ledger:
-            if intake_service.structured_intake_active(db, player, ledger=ledger):
-                raise intake_service.StructuredIntakeActive()
-            account_id = account_id_of(player)
-            state = (
-                onboarding_service.start_onboarding(db, player, player_account_id=account_id, ledger=ledger)
-                if body.reset
-                else _load_or_start(db, ledger, player, account_id)
-            )
-            seen = len(state.get("messages", []))
-            if body.content:
-                state = onboarding_service.answer_intake(
-                    db, player, state, body.content, player_account_id=account_id, ledger=ledger
+        with inference_turn(scope, background_tasks=background_tasks):
+            with db.open_ledger(str(player)) as ledger:
+                if intake_service.structured_intake_active(db, player, ledger=ledger):
+                    raise intake_service.StructuredIntakeActive()
+                account_id = account_id_of(player)
+                state = (
+                    onboarding_service.start_onboarding(
+                        db, player, player_account_id=account_id, ledger=ledger, scope=scope
+                    )
+                    if body.reset
+                    else _load_or_start(db, ledger, player, account_id, scope)
                 )
-            ledger.save_onboarding_state(_serialize(state))
-            if not state.get("is_complete"):
-                _record_onboarding_started(request, account_id, ledger)
-            return _public_view(state, only_new=state.get("messages", [])[seen:])
+                seen = len(state.get("messages", []))
+                if body.content:
+                    state = onboarding_service.answer_intake(
+                        db,
+                        player,
+                        state,
+                        body.content,
+                        player_account_id=account_id,
+                        ledger=ledger,
+                        scope=scope,
+                    )
+                ledger.save_onboarding_state(_serialize(state))
+                if not state.get("is_complete"):
+                    _record_onboarding_started(request, account_id, ledger)
+                return _public_view(state, only_new=state.get("messages", [])[seen:])
 
     try:
         return await asyncio.to_thread(_run)
@@ -235,84 +276,113 @@ async def save_intake_answer(
 @limiter.limit(ONBOARDING_LIMIT)
 async def confirm_intake(
     request: Request,
+    background_tasks: BackgroundTasks,
     player: Annotated[Any, Depends(get_verified_player)],
     ledger: Annotated[Any, Depends(get_ledger)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Writes the confirmed profile and creates the first program exactly once (ADR 021)."""
 
+    register_ai_analytics_background_tasks(request, background_tasks)
+    account_id = account_id_of(player)
+    scope = InferenceScope(
+        account_id=account_id,
+        role="player",
+        purpose="onboarding_complete",
+        store=db,
+        client=analytics_service.client_context(request),
+    )
+
     def _run():
-        answers = ledger.load_intake_answers()
-        try:
-            result = intake_service.confirm_intake(
-                db,
-                str(player),
-                player_account_id=account_id_of(player),
-                ledger=ledger,
-                client=analytics_service.client_context(request),
-            )
-        except intake_service.IntakeDisclosureRequired as exc:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from None
-        except intake_service.IntakeValidationError as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
-        if result.get("status") != intake_service.STATUS_CONFIRMED:
-            return _OnboardingRouteOutcome(result)
-        _record_onboarding_started(request, account_id_of(player), ledger)
-        completion = onboarding_service.record_onboarding_completion(ledger, answers)
-        return _OnboardingRouteOutcome(result, completion)
+        with inference_turn(scope, background_tasks=background_tasks):
+            answers = ledger.load_intake_answers()
+            try:
+                result = intake_service.confirm_intake(
+                    db,
+                    str(player),
+                    player_account_id=account_id_of(player),
+                    ledger=ledger,
+                    client=analytics_service.client_context(request),
+                    scope=scope,
+                )
+            except intake_service.IntakeDisclosureRequired as exc:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from None
+            except intake_service.IntakeValidationError as exc:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+            if result.get("status") != intake_service.STATUS_CONFIRMED:
+                return _OnboardingRouteOutcome(result)
+            _record_onboarding_started(request, account_id_of(player), ledger)
+            completion = onboarding_service.record_onboarding_completion(ledger, answers)
+            return _OnboardingRouteOutcome(result, completion)
 
     try:
         outcome = await asyncio.to_thread(_run)
         _capture_onboarding_completed(request, account_id_of(player), outcome.completion)
         return outcome.response_body
     except intake_service.IntakeConfirmInProgress:
-        return JSONResponse(status_code=409, content={"error": "confirm_in_progress"})
+        return JSONResponse(status_code=409, content={"error": "confirm_in_progress"}, background=background_tasks)
 
 
 @router.post("/complete")
 async def complete_onboarding(
     request: Request,
+    background_tasks: BackgroundTasks,
     player: Annotated[str, Depends(get_current_player)],
     db: Annotated[Any, Depends(get_db)],
 ):
+    register_ai_analytics_background_tasks(request, background_tasks)
+    account_id = account_id_of(player)
+    scope = InferenceScope(
+        account_id=account_id,
+        role="player",
+        purpose="onboarding_complete",
+        store=db,
+        client=analytics_service.client_context(request),
+    )
+
     def _run():
-        with db.open_ledger(str(player)) as ledger:
-            account_id = account_id_of(player)
-            saved = ledger.load_onboarding_state()
-            state = (
-                _deserialize(db, player, saved)
-                if saved is not None
-                else onboarding_service.start_onboarding(db, player, player_account_id=account_id, ledger=ledger)
-            )
-            result = onboarding_service.complete_onboarding(
-                db,
-                player,
-                state,
-                player_account_id=account_id,
-                ledger=ledger,
-                emit_program_analytics=False,
-            )
-            answers = ledger.load_intake_answers()
-            ledger.clear_onboarding_state()
-            program = result["program"]
-            intake_service.record_legacy_completion(
-                db,
-                player,
-                program,
-                result.get("program_message"),
-                ledger=ledger,
-                actor=ProgramAnalyticsActor(account_id, "player"),
-                program_generated=result.get("program_generated", False),
-                client=analytics_service.client_context(request),
-            )
-            completed = (
-                {"program_name": None, "weekly_frequency": None, "program_message": result["program_message"]}
-                if program is None
-                else {"program_name": program.program_name, "weekly_frequency": program.weekly_frequency}
-            )
-            _record_onboarding_started(request, account_id, ledger)
-            completion = onboarding_service.record_onboarding_completion(ledger, answers, saved or state)
-        return _OnboardingRouteOutcome(completed, completion)
+        with inference_turn(scope, background_tasks=background_tasks):
+            with db.open_ledger(str(player)) as ledger:
+                account_id = account_id_of(player)
+                saved = ledger.load_onboarding_state()
+                state = (
+                    _deserialize(db, player, saved)
+                    if saved is not None
+                    else onboarding_service.start_onboarding(
+                        db, player, player_account_id=account_id, ledger=ledger, scope=scope
+                    )
+                )
+                result = onboarding_service.complete_onboarding(
+                    db,
+                    player,
+                    state,
+                    player_account_id=account_id,
+                    ledger=ledger,
+                    emit_program_analytics=False,
+                    client=scope.client,
+                    scope=scope,
+                )
+                answers = ledger.load_intake_answers()
+                ledger.clear_onboarding_state()
+                program = result["program"]
+                intake_service.record_legacy_completion(
+                    db,
+                    player,
+                    program,
+                    result.get("program_message"),
+                    ledger=ledger,
+                    actor=ProgramAnalyticsActor(account_id, "player"),
+                    program_generated=result.get("program_generated", False),
+                    client=analytics_service.client_context(request),
+                )
+                completed = (
+                    {"program_name": None, "weekly_frequency": None, "program_message": result["program_message"]}
+                    if program is None
+                    else {"program_name": program.program_name, "weekly_frequency": program.weekly_frequency}
+                )
+                _record_onboarding_started(request, account_id, ledger)
+                completion = onboarding_service.record_onboarding_completion(ledger, answers, saved or state)
+            return _OnboardingRouteOutcome(completed, completion)
 
     outcome = await asyncio.to_thread(_run)
     _capture_onboarding_completed(request, account_id_of(player), outcome.completion)

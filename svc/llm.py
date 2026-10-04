@@ -29,17 +29,25 @@ starts).
 
 import asyncio
 import contextlib
+import logging
 import os
 import threading
-from dataclasses import dataclass
+import time
+import uuid
+from contextvars import Token
+from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator
 
+from service.analytics import ClientContext, UNKNOWN_CLIENT
+from utils.model_metering import UsageContext
+
+logger = logging.getLogger(__name__)
 _INFERENCE_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
 class InferenceScope:
-    """The immutable account + role + purpose an inference is attributed to.
+    """The immutable attribution and admission input for inference calls.
 
     ``admit`` controls whether the entry point also enforces the per-account
     request/daily-token limit (``False`` for a route that already admitted).
@@ -53,6 +61,178 @@ class InferenceScope:
     purpose: str | None = None
     admit: bool = True
     store: Any = None
+    client: ClientContext = UNKNOWN_CLIENT
+
+
+@dataclass
+class InferenceTurnState:
+    """Mutable outcome and timing for one user turn, separate from attribution."""
+
+    scope: InferenceScope
+    turn_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    outcome: str = "ok"
+    finish_reason: str | None = None
+    latency_ms: int = 0
+    _emitted: bool = field(default=False, init=False, repr=False)
+    _completion_suppressed: bool = field(default=False, init=False, repr=False)
+    _ready: threading.Event = field(default_factory=threading.Event, init=False, repr=False)
+    _emit_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
+    _usage_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
+    _pending_limit_hits: list[str] = field(default_factory=list, init=False, repr=False)
+    _has_usage: bool = field(default=False, init=False, repr=False)
+    background_tasks: Any = field(default=None, repr=False)
+
+    def record_finish_reason(self, reason: str) -> None:
+        self.finish_reason = reason
+
+    def record_inference(self, outcome: str, latency_ms: int) -> None:
+        if outcome != "ok":
+            self.outcome = outcome
+        self.latency_ms = min(self.latency_ms + max(0, latency_ms), 31_557_600)
+
+    def mark_interrupted(self) -> None:
+        self.outcome = "interrupted"
+
+    def mark_error(self) -> None:
+        if self.outcome == "ok":
+            self.outcome = "error"
+
+    def record_usage(self, model: str, input_tokens: int, output_tokens: int, estimated: bool) -> None:
+        with self._usage_lock:
+            self._has_usage = True
+
+    @property
+    def has_usage(self) -> bool:
+        with self._usage_lock:
+            return self._has_usage
+
+    def defer_limit_hit(self, kind: str) -> None:
+        with self._usage_lock:
+            self._pending_limit_hits.append(kind)
+
+    def flush_limit_hits(self) -> None:
+        with self._usage_lock:
+            pending, self._pending_limit_hits = self._pending_limit_hits, []
+        if not self.scope.account_id or self.scope.store is None:
+            return
+        from service.ai_usage_analytics import AILimitContext, capture_ai_request_limited
+        from service.model_limits import record_model_limit_hit
+
+        for kind in pending:
+            hit_id = record_model_limit_hit(self.scope.store, self.scope.account_id, kind)
+            if hit_id is None:
+                continue
+            context = AILimitContext(
+                account_id=self.scope.account_id,
+                role=self.scope.role,
+                limit=kind,
+                hit_id=hit_id,
+                store=self.scope.store,
+                client=self.scope.client,
+            )
+            if self.background_tasks is not None:
+                self.background_tasks.add_task(capture_ai_request_limited, context)
+            else:
+                capture_ai_request_limited(context)
+
+    def suppress_completion(self) -> None:
+        self._completion_suppressed = True
+
+    def emit(self) -> None:
+        self._ready.wait()
+        with self._emit_lock:
+            if self._emitted:
+                return
+            self._emitted = True
+        if self._completion_suppressed:
+            return
+        try:
+            from service.ai_usage_analytics import AIRequestContext, capture_ai_request_completed
+
+            capture_ai_request_completed(
+                AIRequestContext(
+                    account_id=self.scope.account_id,
+                    turn_id=self.turn_id,
+                    role=self.scope.role,
+                    purpose=self.scope.purpose,
+                    store=self.scope.store,
+                    client=self.scope.client,
+                    latency_ms=self.latency_ms,
+                    outcome=self.outcome,
+                    finish_reason=self.finish_reason,
+                )
+            )
+        except Exception:
+            logger.exception("Could not emit AI usage analytics; inference result is unchanged.")
+
+    def emit_after(self, ready_event: threading.Event) -> None:
+        ready_event.wait()
+        self.emit()
+
+
+def register_ai_analytics_background_tasks(request: Any, background_tasks: Any) -> None:
+    """Keeps deferred inference capture attached when an endpoint raises."""
+    request.state.ai_analytics_background_tasks = background_tasks
+
+
+@contextlib.contextmanager
+def inference_turn(
+    scope: InferenceScope,
+    *,
+    background_tasks: Any = None,
+    state: InferenceTurnState | None = None,
+    wait_for: threading.Event | None = None,
+) -> Iterator[InferenceTurnState]:
+    """Wraps inference and its caller-owned write, then emits one metered event.
+
+    HTTP callers pass FastAPI background tasks so reads and capture happen after
+    the response. Streaming callers may provide a pre-registered ``state`` and
+    a completion event that the response background waits for.
+    """
+    turn = state or InferenceTurnState(scope)
+    if background_tasks is not None:
+        turn.background_tasks = background_tasks
+    from utils.model_metering import UsageContext, usage_context
+
+    turn_context = UsageContext(
+        account_id=scope.account_id,
+        role=scope.role,
+        purpose=scope.purpose,
+        store=scope.store,
+        turn_id=turn.turn_id,
+        turn_state=turn,
+        on_finish_reason=turn.record_finish_reason,
+        on_usage=turn.record_usage,
+        on_limit_hit=turn.defer_limit_hit,
+        background_tasks=turn.background_tasks,
+    )
+    try:
+        with usage_context(turn_context):
+            yield turn
+    except BaseException as exc:
+        from service.model_limits import ModelLimitExceeded
+
+        if isinstance(exc, ModelLimitExceeded):
+            if turn.has_usage:
+                turn.mark_error()
+            else:
+                turn.suppress_completion()
+        elif isinstance(exc, (asyncio.CancelledError, GeneratorExit, InterruptedError)):
+            turn.mark_interrupted()
+        else:
+            turn.mark_error()
+        raise
+    finally:
+        turn.flush_limit_hits()
+        turn._ready.set()
+        if wait_for is None:
+            if background_tasks is not None:
+                background_tasks.add_task(turn.emit)
+            else:
+                try:
+                    turn.emit()
+                except Exception:
+                    logger.exception("Could not emit AI usage analytics; inference result is unchanged.")
 
 
 def _max_concurrent() -> int:
@@ -136,15 +316,69 @@ def _usage_scope(scope: InferenceScope) -> Iterator[None]:
     The context stays set for the whole block, so every model call the turn makes
     is metered to the same account/role.
     """
-    from service.model_limits import admit_model_request, release_admission
+    from service.model_limits import release_admission
     from utils.model_metering import usage_context
+    from utils.model_metering import current_usage_context
 
-    token = admit_model_request(scope.account_id, db=scope.store) if scope.admit else None
+    active_context = current_usage_context()
+    turn = active_context.turn_state
+    token = _admit_scope(scope, turn)
+    turn_id = active_context.turn_id if turn is not None else None
     try:
-        with usage_context(scope.account_id, scope.role, scope.purpose, store=scope.store):
-            yield
+        with _track_inference_scope(turn):
+            with usage_context(_metering_context(scope, turn, turn_id)):
+                yield
     finally:
         release_admission(token)
+
+
+def _admit_scope(scope: InferenceScope, turn: InferenceTurnState | None) -> Token[str | None] | None:
+    from service.model_limits import ModelAdmissionContext, admit_model_request
+
+    if not scope.admit:
+        return None
+    context = ModelAdmissionContext(
+        role=scope.role,
+        client=scope.client,
+        background_tasks=turn.background_tasks if turn is not None else None,
+        defer_limit_hit=turn.defer_limit_hit if turn is not None else None,
+    )
+    return admit_model_request(scope.account_id, db=scope.store, context=context)
+
+
+def _metering_context(
+    scope: InferenceScope,
+    turn: InferenceTurnState | None,
+    turn_id: str | None,
+) -> UsageContext:
+    return UsageContext(
+        account_id=scope.account_id,
+        role=scope.role,
+        purpose=scope.purpose,
+        store=scope.store,
+        turn_id=turn_id,
+        turn_state=turn,
+        on_finish_reason=turn.record_finish_reason if turn is not None else None,
+        on_usage=turn.record_usage if turn is not None else None,
+        on_limit_hit=turn.defer_limit_hit if turn is not None else None,
+        background_tasks=turn.background_tasks if turn is not None else None,
+    )
+
+
+@contextlib.contextmanager
+def _track_inference_scope(turn: InferenceTurnState | None) -> Iterator[None]:
+    started = time.perf_counter()
+    outcome = "ok"
+    try:
+        yield
+    except BaseException as exc:
+        interrupted = (asyncio.CancelledError, GeneratorExit, InterruptedError)
+        outcome = "interrupted" if isinstance(exc, interrupted) else "error"
+        raise
+    finally:
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        if turn is not None:
+            turn.record_inference(outcome, elapsed_ms)
 
 
 @contextlib.contextmanager

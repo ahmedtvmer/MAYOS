@@ -85,7 +85,13 @@ def _graph_config(db: Any, ledger: Any) -> dict[str, Any]:
 
 
 def start_onboarding(
-    db: Any, ledger_id: str, player_account_id: str | None = None, ledger: Any | None = None
+    db: Any,
+    ledger_id: str,
+    player_account_id: str | None = None,
+    ledger: Any | None = None,
+    *,
+    scope: Any | None = None,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> dict[str, Any]:
     from agent.onboarding_graph import onboarding_graph
     from service._base import ledger_scope
@@ -94,13 +100,18 @@ def start_onboarding(
     clean_id = db._sanitize_username(ledger_id)
     with ledger_scope(db, ledger, clean_id) as handle:
         state = {"messages": [], "trainee_id": clean_id, "intake_step": 1, "is_complete": False, "profile_data": None}
+        inference_scope = scope or InferenceScope(
+            account_id=player_account_id,
+            role="player",
+            purpose="onboarding",
+            store=db,
+            client=client,
+        )
         return run_inference_sync(
             onboarding_graph.invoke,
             state,
             config=_graph_config(db, handle),
-            scope=InferenceScope(
-                account_id=player_account_id, role="player", purpose="onboarding", store=db
-            ),
+            scope=inference_scope,
         )
 
 
@@ -111,6 +122,9 @@ def answer_intake(
     user_input: str,
     player_account_id: str | None = None,
     ledger: Any | None = None,
+    *,
+    scope: Any | None = None,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> dict[str, Any]:
     from agent.onboarding_graph import onboarding_graph
     from service._base import ledger_scope
@@ -120,13 +134,18 @@ def answer_intake(
     with ledger_scope(db, ledger, clean_id) as handle:
         state["messages"].append(HumanMessage(content=user_input))
         state["trainee_id"] = clean_id
+        inference_scope = scope or InferenceScope(
+            account_id=player_account_id,
+            role="player",
+            purpose="onboarding",
+            store=db,
+            client=client,
+        )
         output = run_inference_sync(
             onboarding_graph.invoke,
             state,
             config=_graph_config(db, handle),
-            scope=InferenceScope(
-                account_id=player_account_id, role="player", purpose="onboarding", store=db
-            ),
+            scope=inference_scope,
         )
         state.update(output)
         return state
@@ -185,6 +204,7 @@ def complete_onboarding(
     *,
     client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
     emit_program_analytics: bool = True,
+    scope: Any | None = None,
 ) -> dict[str, Any]:
     from svc.llm import InferenceScope, run_inference_sync
 
@@ -193,6 +213,13 @@ def complete_onboarding(
     with ledger_scope(db, ledger, ledger_id) as ledger:
         # Keep duplicate completions out of the inference gate while they wait here.
         with _onboarding_lock(ledger.ledger_id):
+            inference_scope = scope or InferenceScope(
+                account_id=player_account_id,
+                role="player",
+                purpose="onboarding_complete",
+                store=db,
+                client=client,
+            )
             program, program_message, program_generated = run_inference_sync(
                 _resolve_onboarding_program,
                 db,
@@ -200,9 +227,7 @@ def complete_onboarding(
                 player_account_id,
                 client,
                 emit_program_analytics,
-                scope=InferenceScope(
-                    account_id=player_account_id, role="player", purpose="onboarding_complete", store=db
-                ),
+                scope=inference_scope,
             )
         if program is None:
             return {

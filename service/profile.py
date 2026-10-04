@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from agent.program_generator import generate_program_pipeline
+from agent.program_generator import ProgramGenerationRequest, generate_program_draft_pipeline
 from service._base import ledger_scope
 from service import analytics
 from service.profile_change_alerts import normalize_profile_value
@@ -34,6 +34,7 @@ def update_profile(
     ledger: Any | None = None,
     *,
     client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+    background_tasks: Any = None,
 ) -> dict[str, Any]:
     """Upserts the profile; rebuilds when program-shaping inputs change.
 
@@ -61,7 +62,6 @@ def update_profile(
             for key in PROFILE_REBUILD_FIELDS
         )
         updated = {**profile, **payload}
-        ledger.upsert_player_profile(updated)
         profile_change_alerts.record_profile_change(
             db,
             profile_change_alerts.ProfileChangeSnapshot(
@@ -75,19 +75,32 @@ def update_profile(
         program_blocked = False
         if rebuild_requested:
             if player_controls_program(db, ledger, player_account_id):
-                from svc.llm import InferenceScope, run_inference_sync
+                from svc.llm import InferenceScope, inference_turn, run_inference_sync
 
-                with ledger.ledger_transaction():
-                    ledger.upsert_player_profile(updated)
+                inference_scope = InferenceScope(
+                    account_id=player_account_id,
+                    role="player",
+                    purpose="profile_rebuild",
+                    store=db,
+                    client=client,
+                )
+                with inference_turn(inference_scope, background_tasks=background_tasks):
                     program, _ = run_inference_sync(
-                        generate_program_pipeline,
-                        rep_preference_override=updated.get("rep_preference", "balanced"),
-                        frequency_override=int(updated.get("weekly_frequency", 4)),
-                        ledger=ledger,
-                        scope=InferenceScope(
-                            account_id=player_account_id, role="player", purpose="profile_rebuild", store=db
+                        generate_program_draft_pipeline,
+                        ProgramGenerationRequest(
+                            rep_preference_override=updated.get("rep_preference", "balanced"),
+                            frequency_override=int(updated.get("weekly_frequency", 4)),
                         ),
+                        ledger=ledger,
+                        profile=updated,
+                        scope=inference_scope,
                     )
+                    # Keep the profile and generated Program atomic, after each
+                    # model call has been written to the catalog.
+                    with ledger.ledger_transaction():
+                        ledger.upsert_player_profile(updated)
+                        if program is not None:
+                            ledger.save_training_program(program.model_dump())
             else:
                 program_blocked = True
                 ledger.upsert_player_profile(updated)

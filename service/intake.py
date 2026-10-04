@@ -541,6 +541,7 @@ def confirm_intake(
     ledger: Any | None = None,
     *,
     client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+    scope: Any | None = None,
 ) -> dict[str, Any]:
     """Writes the confirmed profile and creates the first program, exactly once.
 
@@ -591,6 +592,8 @@ def confirm_intake(
                 player_account_id=player_account_id,
                 ledger=ledger,
                 emit_program_analytics=False,
+                client=client,
+                scope=scope,
             )
         except BaseException:
             ledger.release_intake_confirmation(datetime.now(UTC).isoformat())

@@ -21,6 +21,7 @@ from fastapi import Request
 
 from database.registry.accounts import FIRST_TOUCH_ACQUISITION_FIELDS
 from service import acquisition
+from utils.model_metering import FINISH_REASONS as AI_FINISH_REASONS
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,29 @@ def _bounded_int(maximum: int) -> PropertyType:
     )
 
 
+def _bounded_number(maximum: float) -> PropertyType:
+    return PropertyType(
+        lambda value: type(value) in {int, float} and 0 <= value <= maximum,
+        "a bounded nonnegative number",
+        maximum=int(maximum),
+    )
+
+
+def _model_list() -> PropertyType:
+    def is_model_list(value: Any) -> bool:
+        from utils.model_downloader import configured_model_ids
+
+        configured = configured_model_ids()
+        return (
+            isinstance(value, list)
+            and 1 <= len(value) <= 5
+            and all(isinstance(model, str) and (model == "other" or model in configured) for model in value)
+            and len(set(value)) == len(value)
+        )
+
+    return PropertyType(is_model_list, "a bounded list of configured model ids or other", maximum=5)
+
+
 def _version_label() -> PropertyType:
     return PropertyType(
         lambda value: isinstance(value, str) and _APP_VERSION.fullmatch(value) is not None,
@@ -191,6 +215,24 @@ _COACH_ALERT_KINDS = frozenset(
 _PROGRAM_REQUEST_KINDS = frozenset({"exercise_substitution", "split_change"})
 _PROGRAM_REQUEST_OUTCOMES = frozenset({"applied", "declined", "cancelled"})
 _PROGRAM_PROVENANCE = frozenset({"generated", "coach_published", "none"})
+AI_USE_CASES = frozenset(
+    {
+        "chat",
+        "onboarding",
+        "onboarding_complete",
+        "program_active",
+        "program_generate",
+        "profile_rebuild",
+        "coach_generate_draft",
+        "coach_program_request",
+        "coach_assistant",
+        "checkpoint_review",
+        "other",
+    }
+)
+AI_PLANS = frozenset({"free", "pro", "unknown"})
+AI_LIMITS = frozenset({"requests_per_minute", "daily_tokens"})
+AI_OUTCOMES = frozenset({"ok", "error", "interrupted"})
 WORKOUT_SYNC_FAILURE_REASONS = ("network", "server", "conflict", "rejected")
 _DIMENSION_VALUES: dict[str, frozenset[str]] = {
     "role": frozenset({"player", "coach", "unknown"}),
@@ -226,7 +268,7 @@ PROPERTY_TYPES: dict[str, PropertyType] = {
     "first_for_assignment": _boolean(),
     "is_coaching_action": _boolean(),
     "kind": _enum(_PROGRAM_REQUEST_KINDS),
-    "outcome": _enum(_PROGRAM_REQUEST_OUTCOMES),
+    "outcome": _enum(_PROGRAM_REQUEST_OUTCOMES | AI_OUTCOMES),
     "time_open_seconds": _bounded_int(31_557_600),
     "is_player": _boolean(),
     "is_coach": _boolean(),
@@ -252,6 +294,22 @@ PROPERTY_TYPES: dict[str, PropertyType] = {
         )
     ),
     "alert_kind": _enum(_COACH_ALERT_KINDS),
+    "use_case": _enum(AI_USE_CASES),
+    "plan": _enum(AI_PLANS),
+    "models": _model_list(),
+    "model_count": _bounded_int(5),
+    "input_tokens": _bounded_int(10_000_000),
+    "output_tokens": _bounded_int(10_000_000),
+    "tokens": _bounded_int(20_000_000),
+    "cost_usd": _bounded_number(100_000),
+    "estimated": _boolean(),
+    "latency_ms": _bounded_int(31_557_600),
+    "finish_reason": _enum(AI_FINISH_REASONS),
+    "turns_today": _bounded_int(1_000_000),
+    "requests_per_minute_limit": _bounded_int(1_000_000),
+    "tokens_today": _bounded_int(100_000_000),
+    "tokens_daily_limit": _bounded_int(100_000_000),
+    "limit": _enum(AI_LIMITS),
 }
 PROPERTY_TYPES.update({name: _acquisition_value(name) for name in FIRST_TOUCH_ACQUISITION_FIELDS})
 _COMMON_PROPERTIES = {name: PROPERTY_TYPES[name] for name in ("role", "platform", "app_version", "env")}
@@ -385,6 +443,31 @@ EVENT_CATALOGUE: dict[str, EventContract] = {
             "sync_failure_reason": PROPERTY_TYPES["sync_failure_reason"],
             "attempt": PROPERTY_TYPES["attempt"],
         },
+    ),
+    "ai_request_completed": EventContract(
+        "server",
+        {
+            **_COMMON_PROPERTIES,
+            "plan": PROPERTY_TYPES["plan"],
+            "use_case": PROPERTY_TYPES["use_case"],
+            "models": PROPERTY_TYPES["models"],
+            "model_count": PROPERTY_TYPES["model_count"],
+            "input_tokens": PROPERTY_TYPES["input_tokens"],
+            "output_tokens": PROPERTY_TYPES["output_tokens"],
+            "tokens": PROPERTY_TYPES["tokens"],
+            "cost_usd": PROPERTY_TYPES["cost_usd"],
+            "estimated": PROPERTY_TYPES["estimated"],
+            "latency_ms": PROPERTY_TYPES["latency_ms"],
+            "outcome": PROPERTY_TYPES["outcome"],
+            "finish_reason": PROPERTY_TYPES["finish_reason"],
+            "turns_today": PROPERTY_TYPES["turns_today"],
+            "requests_per_minute_limit": PROPERTY_TYPES["requests_per_minute_limit"],
+            "tokens_today": PROPERTY_TYPES["tokens_today"],
+            "tokens_daily_limit": PROPERTY_TYPES["tokens_daily_limit"],
+        },
+    ),
+    "ai_request_limited": EventContract(
+        "server", {**_COMMON_PROPERTIES, "plan": PROPERTY_TYPES["plan"], "limit": PROPERTY_TYPES["limit"]}
     ),
     "workout_started": EventContract("client", dict(_COMMON_PROPERTIES)),
     "workout_draft_discarded": EventContract("client", dict(_COMMON_PROPERTIES)),

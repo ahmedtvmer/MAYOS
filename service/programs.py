@@ -109,23 +109,32 @@ def generate_program_version(
     frequency_override: int | None = None,
     purpose: str = "program_generate",
     client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+    background_tasks: Any = None,
 ) -> Any:
     """Generates a new persisted version and reports it after the save commits."""
-    from svc.llm import InferenceScope, run_inference_sync
+    from svc.llm import InferenceScope, inference_turn, run_inference_sync
 
-    program, _ = run_inference_sync(
-        generate_program_pipeline,
-        user_split_override=user_split_override,
-        rep_preference_override=rep_preference_override,
-        frequency_override=frequency_override,
-        ledger=ledger,
-        scope=InferenceScope(account_id=actor.account_id, role=actor.role, purpose=purpose, store=db),
+    inference_scope = InferenceScope(
+        account_id=actor.account_id,
+        role=actor.role,
+        purpose=purpose,
+        store=db,
+        client=client,
     )
-    persisted = ledger.get_active_program()
-    if persisted is None:
-        raise RuntimeError("Generated program is missing from the player ledger after save.")
-    capture_program_generated(actor, trigger, persisted, client=client)
-    return program
+    with inference_turn(inference_scope, background_tasks=background_tasks):
+        program, _ = run_inference_sync(
+            generate_program_pipeline,
+            user_split_override=user_split_override,
+            rep_preference_override=rep_preference_override,
+            frequency_override=frequency_override,
+            ledger=ledger,
+            scope=inference_scope,
+        )
+        persisted = ledger.get_active_program()
+        if persisted is None:
+            raise RuntimeError("Generated program is missing from the player ledger after save.")
+        capture_program_generated(actor, trigger, persisted, client=client)
+        return program
 
 
 def record_program_change(

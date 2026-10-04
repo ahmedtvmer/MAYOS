@@ -9,6 +9,14 @@
       "kind": "method",
       "signature": "(self, alert_id: str, coach_account_id: str, now_iso: str) -> tuple[dict[str, typing.Any] | None, bool]"
     },
+    "active_assignment_summary": {
+      "kind": "method",
+      "signature": "(self, account_id: str) -> dict[str, int]"
+    },
+    "analytics_preference_allows": {
+      "kind": "method",
+      "signature": "(self, account_id: str) -> bool"
+    },
     "bump_account_session_epoch": {
       "kind": "method",
       "signature": "(self, account_id: str) -> int | None"
@@ -37,25 +45,21 @@
       "kind": "method",
       "signature": "(self, token_hash: str, now_iso: str) -> str | None"
     },
-    "invalidate_unused_reset_tokens": {
-      "kind": "method",
-      "signature": "(self, account_id: str, now_iso: str) -> int"
-    },
-    "is_recovery_email_verified": {
-      "kind": "method",
-      "signature": "(self, account_id: str) -> bool"
-    },
-    "mark_recovery_email_verified_if_matches": {
-      "kind": "method",
-      "signature": "(self, account_id: str, email: str) -> bool"
-    },
-    "is_recovery_email_pending": {
-      "kind": "method",
-      "signature": "(self, email: str) -> bool"
-    },
     "count_active_assignments_for_coach": {
       "kind": "method",
       "signature": "(self, coach_account_id: str) -> int"
+    },
+    "count_all_model_limit_hits": {
+      "kind": "method",
+      "signature": "(self, since_iso: str) -> dict[str, int]"
+    },
+    "count_model_limit_hits": {
+      "kind": "method",
+      "signature": "(self, account_id: str, since_iso: str) -> dict[str, int]"
+    },
+    "count_model_turns_for_account": {
+      "kind": "method",
+      "signature": "(self, account_id: str, since_iso: str) -> int"
     },
     "create_account": {
       "kind": "method",
@@ -76,6 +80,10 @@
     "create_check_in": {
       "kind": "method",
       "signature": "(self, check_in_id: str, assignment_id: str, coach_account_id: str, player_account_id: str, checked_in_on: str, channel: str, note: str | None, now_iso: str) -> dict[str, typing.Any]"
+    },
+    "create_coach_exercise": {
+      "kind": "method",
+      "signature": "(self, coach_account_id: str, fields: database.registry.coach_exercises.CoachExerciseCreate) -> dict[str, typing.Any]"
     },
     "create_coach_invite": {
       "kind": "method",
@@ -121,6 +129,18 @@
       "kind": "method",
       "signature": "(self, account_id: str) -> dict[str, typing.Any] | None"
     },
+    "get_account_by_email": {
+      "kind": "method",
+      "signature": "(self, email: str) -> str | None"
+    },
+    "get_account_by_ledger_id": {
+      "kind": "method",
+      "signature": "(self, ledger_id: str) -> dict[str, typing.Any] | None"
+    },
+    "get_account_email": {
+      "kind": "method",
+      "signature": "(self, account_id: str) -> str | None"
+    },
     "get_accounts_by_ids": {
       "kind": "method",
       "signature": "(self, account_ids: list[str]) -> list[dict[str, typing.Any]]"
@@ -128,10 +148,6 @@
     "get_active_account_by_username": {
       "kind": "method",
       "signature": "(self, username: str) -> dict[str, typing.Any] | None"
-    },
-    "get_account_by_ledger_id": {
-      "kind": "method",
-      "signature": "(self, ledger_id: str) -> dict[str, typing.Any] | None"
     },
     "get_active_assignment_for_coach": {
       "kind": "method",
@@ -161,6 +177,14 @@
       "kind": "method",
       "signature": "(self, coach_account_id: str) -> int | None"
     },
+    "get_coach_exercise": {
+      "kind": "method",
+      "signature": "(self, coach_account_id: str, exercise_id: str) -> dict[str, typing.Any] | None"
+    },
+    "get_coach_exercise_unscoped": {
+      "kind": "method",
+      "signature": "(self, exercise_id: str) -> dict[str, typing.Any] | None"
+    },
     "get_coach_profile": {
       "kind": "method",
       "signature": "(self, account_id: str) -> dict[str, typing.Any] | None"
@@ -177,9 +201,25 @@
       "kind": "method",
       "signature": "(self, exercise_id: str) -> dict[str, typing.Any] | None"
     },
+    "get_first_touch_acquisition": {
+      "kind": "method",
+      "signature": "(self, account_id: str) -> dict[str, str | None] | None"
+    },
+    "get_linked_sign_in_account_id": {
+      "kind": "method",
+      "signature": "(self, provider: str, subject: str) -> str | None"
+    },
+    "get_linked_sign_in_subject": {
+      "kind": "method",
+      "signature": "(self, account_id: str, provider: str) -> str | None"
+    },
     "get_model_spend_alert": {
       "kind": "method",
       "signature": "(self, period: str) -> dict[str, typing.Any] | None"
+    },
+    "get_pending_recovery_email": {
+      "kind": "method",
+      "signature": "(self, account_id: str) -> str | None"
     },
     "get_program_request": {
       "kind": "method",
@@ -189,21 +229,17 @@
       "kind": "method",
       "signature": "(self, coach_account_id: str) -> dict[str, dict[str, int]]"
     },
+    "get_roster_missed_streak": {
+      "kind": "method",
+      "signature": "(self, assignment_id: str) -> int"
+    },
     "get_roster_timezone": {
       "kind": "method",
       "signature": "(self, assignment_id: str) -> str | None"
     },
-    "get_account_by_email": {
+    "has_model_usage": {
       "kind": "method",
-      "signature": "(self, email: str) -> str | None"
-    },
-    "get_account_email": {
-      "kind": "method",
-      "signature": "(self, account_id: str) -> str | None"
-    },
-    "get_pending_recovery_email": {
-      "kind": "method",
-      "signature": "(self, account_id: str) -> str | None"
+      "signature": "(self) -> bool"
     },
     "initialize_and_seed": {
       "kind": "method",
@@ -212,6 +248,10 @@
     "insert_coach_alert": {
       "kind": "method",
       "signature": "(self, alert_id: str, assignment_id: str, coach_account_id: str, player_account_id: str, kind: str, dedupe_key: str, details: dict[str, typing.Any], now_iso: str) -> dict[str, typing.Any]"
+    },
+    "invalidate_unused_reset_tokens": {
+      "kind": "method",
+      "signature": "(self, account_id: str, now_iso: str) -> int"
     },
     "is_account_deleted": {
       "kind": "method",
@@ -225,13 +265,45 @@
       "kind": "method",
       "signature": "(self, assignment_id: str, session_id: str) -> bool"
     },
+    "is_recovery_email_pending": {
+      "kind": "method",
+      "signature": "(self, email: str) -> bool"
+    },
+    "is_recovery_email_verified": {
+      "kind": "method",
+      "signature": "(self, account_id: str) -> bool"
+    },
+    "is_stall_session_processed": {
+      "kind": "method",
+      "signature": "(self, assignment_id: str, session_id: str) -> bool"
+    },
+    "is_username_held": {
+      "kind": "method",
+      "signature": "(self, username: str, now_iso: str | None = None) -> bool"
+    },
+    "issue_new_account_coach_invite": {
+      "kind": "method",
+      "signature": "(self, token_hash: str, username: str, expires_at: str) -> bool"
+    },
     "latest_check_in_on": {
       "kind": "method",
       "signature": "(self, assignment_id: str) -> str | None"
     },
+    "ledger_exists": {
+      "kind": "method",
+      "signature": "(self, username: str) -> bool"
+    },
+    "link_sign_in": {
+      "kind": "method",
+      "signature": "(self, provider: str, subject: str, account_id: str, linked_at: str | None = None) -> None"
+    },
     "list_account_deletions": {
       "kind": "method",
       "signature": "(self) -> list[dict[str, typing.Any]]"
+    },
+    "list_accounts": {
+      "kind": "method",
+      "signature": "(self, *, include_deleted: bool = False) -> list[dict[str, typing.Any]]"
     },
     "list_active_assignments_for_coach": {
       "kind": "method",
@@ -253,6 +325,14 @@
       "kind": "method",
       "signature": "(self, coach_account_id: str, states: tuple[str, ...]) -> list[dict[str, typing.Any]]"
     },
+    "list_coach_invites": {
+      "kind": "method",
+      "signature": "(self, now_iso: str, recent_since_iso: str, account_id: str | None = None) -> list[dict[str, typing.Any]]"
+    },
+    "list_linked_sign_in_providers": {
+      "kind": "method",
+      "signature": "(self, account_id: str) -> list[str]"
+    },
     "list_plans": {
       "kind": "method",
       "signature": "(self, account_id: str) -> list[dict[str, typing.Any]]"
@@ -265,6 +345,10 @@
       "kind": "method",
       "signature": "(self, assignment_id: str) -> list[dict[str, typing.Any]]"
     },
+    "list_program_requests_for_coach": {
+      "kind": "method",
+      "signature": "(self, coach_account_id: str) -> list[dict[str, typing.Any]]"
+    },
     "list_program_requests_for_player": {
       "kind": "method",
       "signature": "(self, player_account_id: str) -> list[dict[str, typing.Any]]"
@@ -273,9 +357,9 @@
       "kind": "method",
       "signature": "(self, coach_account_id: str) -> dict[str, dict[str, typing.Any]]"
     },
-    "list_coach_invites": {
+    "list_roster_workout_basis": {
       "kind": "method",
-      "signature": "(self, now_iso: str, recent_since_iso: str, account_id: str | None = None) -> list[dict[str, typing.Any]]"
+      "signature": "(self, coach_account_id: str) -> dict[str, dict[str, typing.Any]]"
     },
     "mark_assignment_notices_read": {
       "kind": "method",
@@ -289,21 +373,37 @@
       "kind": "method",
       "signature": "(self, assignment_id: str, session_id: str, now_iso: str) -> None"
     },
+    "mark_recovery_email_verified_if_matches": {
+      "kind": "method",
+      "signature": "(self, account_id: str, email: str) -> bool"
+    },
+    "mark_stall_session_processed": {
+      "kind": "method",
+      "signature": "(self, assignment_id: str, session_id: str, now_iso: str) -> None"
+    },
+    "model_usage_rows_for_turn": {
+      "kind": "method",
+      "signature": "(self, turn_id: str, account_id: str) -> list[dict[str, typing.Any]]"
+    },
     "open_ledger": {
       "kind": "method",
       "signature": "(self, ledger_id: str) -> 'TrainingLedger'"
     },
-    "prune_assignment_invites": {
+    "pending_program_request_counts": {
       "kind": "method",
-      "signature": "(self, now_iso: str) -> int"
+      "signature": "(self, coach_account_id: str) -> dict[str, int]"
     },
-    "prune_coach_invites": {
+    "prune_assignment_invites": {
       "kind": "method",
       "signature": "(self, now_iso: str) -> int"
     },
     "prune_coach_analytics_daily_markers": {
       "kind": "method",
       "signature": "(self, before_utc_day: str) -> int"
+    },
+    "prune_coach_invites": {
+      "kind": "method",
+      "signature": "(self, now_iso: str) -> int"
     },
     "prune_expired_notice_claims": {
       "kind": "method",
@@ -321,9 +421,21 @@
       "kind": "method",
       "signature": "(self, account_id: str, ledger_id: str, deleted_at: str | None = None) -> None"
     },
+    "record_first_touch_acquisition_once": {
+      "kind": "method",
+      "signature": "(self, account_id: str, first_touch: dict[str, str | None]) -> None"
+    },
+    "record_first_touch_referring_coach_once": {
+      "kind": "method",
+      "signature": "(self, account_id: str, coach_account_id: str, referred_at: str) -> str | None"
+    },
+    "record_model_limit_hit": {
+      "kind": "method",
+      "signature": "(self, account_id: str, kind: Literal['rate', 'daily_tokens'], created_at: str | None = None) -> str"
+    },
     "record_model_usage": {
       "kind": "method",
-      "signature": "(self, account_id: str | None, role: str, model: str, input_tokens: int, output_tokens: int, cost_usd: float, estimated: bool, purpose: str | None = None, created_at: str | None = None) -> None"
+      "signature": "(self, account_id: str | None, role: str, model: str, input_tokens: int, output_tokens: int, cost_usd: float, estimated: bool, purpose: str | None = None, created_at: str | None = None, turn_id: str | None = None) -> None"
     },
     "redeem_assignment_invite": {
       "kind": "method",
@@ -332,6 +444,14 @@
     "redeem_coach_invite": {
       "kind": "method",
       "signature": "(self, token_hash: str, account_id: str, now_iso: str, default_capacity: int) -> dict[str, typing.Any] | None"
+    },
+    "register_account_with_coach_invite": {
+      "kind": "method",
+      "signature": "(self, token_hash: str, username: str, now_iso: str, default_capacity: int, display_language: str = 'en') -> dict[str, typing.Any] | None"
+    },
+    "remove_linked_sign_in": {
+      "kind": "method",
+      "signature": "(self, provider: str, subject: str) -> None"
     },
     "reopen_program_request": {
       "kind": "method",
@@ -345,10 +465,6 @@
       "kind": "method",
       "signature": "(self, alert_id: str, coach_account_id: str, now_iso: str, resolved_by: str) -> tuple[dict[str, typing.Any] | None, bool]"
     },
-    "revoke_coach_invite": {
-      "kind": "method",
-      "signature": "(self, token_hash: str, now_iso: str) -> dict[str, typing.Any] | None"
-    },
     "resolve_open_coach_alerts_for_assignment": {
       "kind": "method",
       "signature": "(self, assignment_id: str, now_iso: str, kind: str, except_dedupe_key: str | None = None) -> int"
@@ -361,17 +477,41 @@
       "kind": "method",
       "signature": "(self, request_id: str, status: str, response: str | None, resolved_by: str, now_iso: str) -> dict[str, typing.Any]"
     },
+    "revoke_coach_invite": {
+      "kind": "method",
+      "signature": "(self, token_hash: str, now_iso: str) -> dict[str, typing.Any] | None"
+    },
+    "search_coach_exercises": {
+      "kind": "method",
+      "signature": "(self, coach_account_id: str, query: str, limit: int = 10) -> list[dict[str, typing.Any]]"
+    },
     "search_similar_exercises": {
       "kind": "method",
       "signature": "(self, query_vector: list[float], limit: int = 5) -> list[dict[str, typing.Any]]"
+    },
+    "set_account_analytics_allowed": {
+      "kind": "method",
+      "signature": "(self, account_id: str, allowed: bool) -> bool | None"
+    },
+    "set_account_display_language": {
+      "kind": "method",
+      "signature": "(self, account_id: str, language: str) -> bool"
+    },
+    "set_account_email": {
+      "kind": "method",
+      "signature": "(self, account_id: str, email: str) -> None"
+    },
+    "set_account_last_seen_at": {
+      "kind": "method",
+      "signature": "(self, account_id: str, day: str) -> None"
     },
     "set_plan": {
       "kind": "method",
       "signature": "(self, account_id: str, capability: str, plan: str, status: str = 'active') -> None"
     },
-    "set_account_email": {
+    "set_roster_program_name": {
       "kind": "method",
-      "signature": "(self, account_id: str, email: str) -> None"
+      "signature": "(self, assignment_id: str, program_name: str | None) -> None"
     },
     "store_reset_token": {
       "kind": "method",
@@ -384,6 +524,10 @@
     "sum_model_tokens_for_account": {
       "kind": "method",
       "signature": "(self, account_id: str, start_iso: str, end_iso: str | None = None) -> int"
+    },
+    "summarize_model_limit_hits_by_account": {
+      "kind": "method",
+      "signature": "(self, since_iso: str) -> list[dict[str, typing.Any]]"
     },
     "summarize_model_usage": {
       "kind": "method",
@@ -404,142 +548,6 @@
     "upsert_roster_attendance": {
       "kind": "method",
       "signature": "(self, assignment_id: str, current_missed_streak: int | None = None, now_iso: str | None = None, timezone: str | None = None, last_workout_on: str | None = None, program_name: str | None = None, stall_length: int | None = None) -> None"
-    },
-    "ledger_exists": {
-      "kind": "method",
-      "signature": "(self, username: str) -> bool"
-    },
-    "list_program_requests_for_coach": {
-      "kind": "method",
-      "signature": "(self, coach_account_id: str) -> list[dict[str, typing.Any]]"
-    },
-    "pending_program_request_counts": {
-      "kind": "method",
-      "signature": "(self, coach_account_id: str) -> dict[str, int]"
-    },
-    "list_roster_workout_basis": {
-      "kind": "method",
-      "signature": "(self, coach_account_id: str) -> dict[str, dict[str, typing.Any]]"
-    },
-    "set_roster_program_name": {
-      "kind": "method",
-      "signature": "(self, assignment_id: str, program_name: str | None) -> None"
-    },
-    "get_linked_sign_in_account_id": {
-      "kind": "method",
-      "signature": "(self, provider: str, subject: str) -> str | None"
-    },
-    "get_linked_sign_in_subject": {
-      "kind": "method",
-      "signature": "(self, account_id: str, provider: str) -> str | None"
-    },
-    "link_sign_in": {
-      "kind": "method",
-      "signature": "(self, provider: str, subject: str, account_id: str, linked_at: str | None = None) -> None"
-    },
-    "list_linked_sign_in_providers": {
-      "kind": "method",
-      "signature": "(self, account_id: str) -> list[str]"
-    },
-    "remove_linked_sign_in": {
-      "kind": "method",
-      "signature": "(self, provider: str, subject: str) -> None"
-    },
-    "active_assignment_summary": {
-      "kind": "method",
-      "signature": "(self, account_id: str) -> dict[str, int]"
-    },
-    "count_model_limit_hits": {
-      "kind": "method",
-      "signature": "(self, account_id: str, since_iso: str) -> dict[str, int]"
-    },
-    "count_all_model_limit_hits": {
-      "kind": "method",
-      "signature": "(self, since_iso: str) -> dict[str, int]"
-    },
-    "summarize_model_limit_hits_by_account": {
-      "kind": "method",
-      "signature": "(self, since_iso: str) -> list[dict[str, typing.Any]]"
-    },
-    "has_model_usage": {
-      "kind": "method",
-      "signature": "(self) -> bool"
-    },
-    "list_accounts": {
-      "kind": "method",
-      "signature": "(self, *, include_deleted: bool = False) -> list[dict[str, typing.Any]]"
-    },
-    "record_model_limit_hit": {
-      "kind": "method",
-      "signature": "(self, account_id: str, kind: Literal['rate', 'daily_tokens'], created_at: str | None = None) -> None"
-    },
-    "set_account_last_seen_at": {
-      "kind": "method",
-      "signature": "(self, account_id: str, day: str) -> None"
-    },
-    "is_username_held": {
-      "kind": "method",
-      "signature": "(self, username: str, now_iso: str | None = None) -> bool"
-    },
-    "issue_new_account_coach_invite": {
-      "kind": "method",
-      "signature": "(self, token_hash: str, username: str, expires_at: str) -> bool"
-    },
-    "register_account_with_coach_invite": {
-      "kind": "method",
-      "signature": "(self, token_hash: str, username: str, now_iso: str, default_capacity: int, display_language: str = 'en') -> dict[str, typing.Any] | None"
-    },
-    "get_roster_missed_streak": {
-      "kind": "method",
-      "signature": "(self, assignment_id: str) -> int"
-    },
-    "is_stall_session_processed": {
-      "kind": "method",
-      "signature": "(self, assignment_id: str, session_id: str) -> bool"
-    },
-    "mark_stall_session_processed": {
-      "kind": "method",
-      "signature": "(self, assignment_id: str, session_id: str, now_iso: str) -> None"
-    },
-    "set_account_display_language": {
-      "kind": "method",
-      "signature": "(self, account_id: str, language: str) -> bool"
-    },
-    "create_coach_exercise": {
-      "kind": "method",
-      "signature": "(self, coach_account_id: str, fields: database.registry.coach_exercises.CoachExerciseCreate) -> dict[str, typing.Any]"
-    },
-    "get_coach_exercise": {
-      "kind": "method",
-      "signature": "(self, coach_account_id: str, exercise_id: str) -> dict[str, typing.Any] | None"
-    },
-    "get_coach_exercise_unscoped": {
-      "kind": "method",
-      "signature": "(self, exercise_id: str) -> dict[str, typing.Any] | None"
-    },
-    "search_coach_exercises": {
-      "kind": "method",
-      "signature": "(self, coach_account_id: str, query: str, limit: int = 10) -> list[dict[str, typing.Any]]"
-    },
-    "record_first_touch_acquisition_once": {
-      "kind": "method",
-      "signature": "(self, account_id: str, first_touch: dict[str, str | None]) -> None"
-    },
-    "record_first_touch_referring_coach_once": {
-      "kind": "method",
-      "signature": "(self, account_id: str, coach_account_id: str, referred_at: str) -> str | None"
-    },
-    "get_first_touch_acquisition": {
-      "kind": "method",
-      "signature": "(self, account_id: str) -> dict[str, str | None] | None"
-    },
-    "analytics_preference_allows": {
-      "kind": "method",
-      "signature": "(self, account_id: str) -> bool"
-    },
-    "set_account_analytics_allowed": {
-      "kind": "method",
-      "signature": "(self, account_id: str, allowed: bool) -> bool | None"
     }
   },
   "module_names": [

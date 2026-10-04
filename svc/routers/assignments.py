@@ -16,7 +16,7 @@ selects an account, and no raw invite code is ever logged.
 import asyncio
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, Response
 
 from agent.ProgramState import PersistedProgramSchema
@@ -38,6 +38,7 @@ from svc.dependencies import (
     get_ledger,
     get_verified_player,
 )
+from svc.llm import register_ai_analytics_background_tasks
 from svc.rate_limit import (
     ASSIGNMENT_INVITE_LIMIT,
     ASSIGNMENT_MUTATE_LIMIT,
@@ -425,12 +426,16 @@ async def create_assigned_player_program_draft(
 @limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
 async def generate_assigned_player_program_draft(
     request: Request,
+    background_tasks: BackgroundTasks,
     assignment_id: str,
     body: ProgramGenerateIn,
     coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
     replace: bool = False,
 ):
+    register_ai_analytics_background_tasks(request, background_tasks)
+    client = analytics.client_context(request)
+
     def _run():
         try:
             generated = coach_programs_service.generate_program_draft(
@@ -443,6 +448,8 @@ async def generate_assigned_player_program_draft(
                     frequency_override=body.frequency_override,
                 ),
                 replace_existing=replace,
+                client=client,
+                background_tasks=background_tasks,
             )
         except coach_program_drafts_service.ProgramDraftAlreadyExists as exc:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -576,12 +583,15 @@ async def list_assignment_program_requests(
 @limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
 async def apply_assignment_program_request(
     request: Request,
+    background_tasks: BackgroundTasks,
     assignment_id: str,
     request_id: str,
     coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Revalidates and applies a pending request, publishing a new immutable version."""
+
+    register_ai_analytics_background_tasks(request, background_tasks)
 
     def _run():
         result = program_requests_service.apply_request(
@@ -590,6 +600,7 @@ async def apply_assignment_program_request(
             assignment_id,
             request_id,
             client=analytics.client_context(request),
+            background_tasks=background_tasks,
         )
         if result is None:
             raise _no_active_assignment()

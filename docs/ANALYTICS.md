@@ -173,6 +173,8 @@ registry.
 | `performed_date_corrected` | server | A committed workout's performed date has changed and the correction row is stored. A no-op correction emits nothing. | `role`, `platform`, `app_version`, `env` |
 | `training_schedule_set` | server | A new Training schedule version has committed. | `role`, `platform`, `app_version`, `env`, `days_per_week` |
 | `schedule_pause_scheduled` | server | A prospective Training schedule pause has committed. | `role`, `platform`, `app_version`, `env`, `length_days` |
+| `ai_request_completed` | server | One inference turn ended after its caller-owned write; one event summarizes rows selected by its `model_usage.turn_id`. Failed turns with no model calls are emitted with zero tokens and cost. | `role`, `platform`, `app_version`, `env`, `plan`, `use_case`, `models`, `model_count`, `input_tokens`, `output_tokens`, `tokens`, `cost_usd`, `estimated`, `latency_ms`, `outcome`, `finish_reason`, `turns_today`, `requests_per_minute_limit`, `tokens_today`, `tokens_daily_limit` |
+| `ai_request_limited` | server | Admission refused a user turn after its coded model-limit hit was recorded. | `role`, `platform`, `app_version`, `env`, `plan`, `limit` |
 | `workout_sync_failed` | server | The authenticated client reports a failed Workout draft sync attempt. | `role`, `platform`, `app_version`, `env`, `sync_failure_reason`, `attempt` |
 | `workout_started` | client | A new Active workout is saved locally before logger navigation; resuming an existing Active workout is not a new start. | `role`, `platform`, `app_version`, `env` |
 | `workout_draft_discarded` | client | A Player explicitly discards an Active workout or an unsynced Workout draft. The client deduplicates by local workout identity and sends no workout identifier. | `role`, `platform`, `app_version`, `env` |
@@ -211,7 +213,7 @@ registry.
 | `is_coaching_action` | Boolean | True for a recorded coaching action. Coach publication, request resolution, alert acknowledgement or resolution, and check-in recording are true; Player cancellation is false. |
 | `kind` | `exercise_substitution` or `split_change` | Program request category. Request reasons and split preference are never sent. |
 | `alert_kind` | `missed_expected_days`, `follow_up_due`, `profile_change`, `stall`, `deload_recommended`, or `performance_regression` | Coach alert category. Alert explanations are never sent. |
-| `outcome` | `applied`, `declined`, or `cancelled` | Program request's committed resolution. A decline response is never sent. |
+| `outcome` | `applied`, `declined`, `cancelled`, `ok`, `error`, or `interrupted` | Program request's committed resolution or the result of an inference turn. A decline response is never sent. |
 | `time_open_seconds` | Bounded nonnegative integer | Whole seconds between request or alert creation and resolution, or alert creation and acknowledgement, capped at one year. |
 | `set_count` | Integer from 0 to 1000 | Number of logged working sets, capped at 1000; Warm-up sets are excluded. |
 | `exercise_count` | Integer from 0 to 100 | Number of distinct exercises with a logged working set, capped at 100. Exercise ids and names are never sent. |
@@ -228,6 +230,22 @@ registry.
 | `length_days` | Integer from 1 to 14 | Inclusive length of a committed prospective Training schedule pause. Dates and reason text are never sent. |
 | `attempt` | Integer from 1 to 100 | Bounded sync attempt number reported by the client. |
 | `sync_failure_reason` | `network`, `server`, `conflict`, or `rejected` | Coded reason for a failed Workout draft sync. No response text or workout identifier is sent. |
+| `use_case` | `chat`, `onboarding`, `onboarding_complete`, `program_active`, `program_generate`, `profile_rebuild`, `coach_generate_draft`, `coach_program_request`, `coach_assistant`, `checkpoint_review`, or `other` | Allowlisted ADR 038 metering purpose category. Unknown purpose labels map to `other`. |
+| `plan` | `free`, `pro`, or `unknown` | Current plan for the capability matching the event role: Lifter plan for Player inference, Coach plan for Coach inference. |
+| `models` | List of 1–5 configured model ids or `other` | Distinct model ids found in the committed metering rows, bounded to five; any id not in the model factory's current configuration maps to `other`. A zero-row turn uses `other`. |
+| `model_count` | Integer from 1 to 5 | Number of distinct model ids included in `models`. |
+| `input_tokens` | Integer from 0 to 10,000,000 | Sum of input tokens from the user turn's committed `model_usage` rows. |
+| `output_tokens` | Integer from 0 to 10,000,000 | Sum of output tokens from the user turn's committed `model_usage` rows. |
+| `tokens` | Integer from 0 to 20,000,000 | Input plus output tokens from the user turn's committed `model_usage` rows. |
+| `cost_usd` | Number from 0 to 100,000 | Sum of the recorded `cost_usd` values from those same metering rows. |
+| `estimated` | Boolean | True if any of the turn's metering rows used estimated token counts. |
+| `latency_ms` | Integer from 0 to 31,557,600 | Time spent in the inference scope, excluding any caller-owned write that follows it. |
+| `finish_reason` | `stop`, `length`, `tool_calls`, `content_filter`, `other`, or `unknown` | Provider finish reason mapped to a small vocabulary; `unknown` means none was available. |
+| `turns_today` | Integer from 0 to 1,000,000 | Distinct non-null `turn_id` values on this account's metering rows since UTC midnight, excluding `checkpoint_review` under ADR 052 just like `tokens_today`. A turn with no model call emits its event but does not count here. |
+| `requests_per_minute_limit` | Integer from 0 to 1,000,000 | Current `MODEL_RATE_LIMIT_REQUESTS` setting; zero disables the per-minute request limit. MAYOS has no daily turn ceiling. |
+| `tokens_today` | Integer from 0 to 100,000,000 | Account token usage since UTC midnight, using the same exclusion rule as the daily token admission check; `checkpoint_review` is excluded under ADR 052. |
+| `tokens_daily_limit` | Integer from 0 to 100,000,000 | Current `MODEL_DAILY_TOKEN_LIMIT` setting; zero disables this limit. |
+| `limit` | `requests_per_minute` or `daily_tokens` | The coded model limit that refused admission. |
 
 ## PostHog and operational database boundary
 

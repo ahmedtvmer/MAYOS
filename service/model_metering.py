@@ -170,6 +170,7 @@ def record_model_usage(
     input_tokens: int,
     output_tokens: int,
     estimated: bool,
+    turn_id: str | None = None,
 ) -> None:
     """Computes cost and persists one metered call (called by the metering callback).
 
@@ -184,7 +185,7 @@ def record_model_usage(
                 f"Model usage for account {account_id!r} has no store to persist to; "
                 "refusing to drop the row (ADR 041)."
             )
-        return
+        return None
     cost = compute_cost(model, input_tokens, output_tokens)
     store.record_model_usage(
         account_id=account_id,
@@ -195,6 +196,7 @@ def record_model_usage(
         output_tokens=output_tokens,
         estimated=estimated,
         cost_usd=cost,
+        turn_id=turn_id,
     )
 
 

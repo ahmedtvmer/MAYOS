@@ -10,11 +10,13 @@ never persisted; only the ADR 038 metering rows are written (role ``coach``).
 import asyncio
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 
+from service import analytics
 from service import coach_ai as coach_ai_service
 from service import coach_history as coach_history_service
 from svc.dependencies import VerifiedPlayer, get_current_coach, get_db
+from svc.llm import register_ai_analytics_background_tasks
 from svc.rate_limit import COACH_ASSISTANT_LIMIT, limiter
 from svc.schemas import CoachAssistantIn, CoachAssistantOut
 
@@ -25,6 +27,7 @@ router = APIRouter(prefix="/coach/assignments", tags=["coach"])
 @limiter.limit(COACH_ASSISTANT_LIMIT)
 async def coach_assistant(
     request: Request,
+    background_tasks: BackgroundTasks,
     assignment_id: str,
     body: CoachAssistantIn,
     coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
@@ -37,6 +40,7 @@ async def coach_assistant(
     rest of the coach surface, and the per-account model limits (ADR 038) are
     enforced at the inference entry with role ``coach``.
     """
+    register_ai_analytics_background_tasks(request, background_tasks)
     if not coach_ai_service.coach_ai_enabled():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Coach AI is not available."
@@ -49,6 +53,8 @@ async def coach_assistant(
             assignment_id,
             body.question,
             [turn.model_dump() for turn in body.history],
+            client=analytics.client_context(request),
+            background_tasks=background_tasks,
         )
         if result is None:
             raise HTTPException(

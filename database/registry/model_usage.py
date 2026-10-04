@@ -14,7 +14,7 @@ ALLOWANCE_EXEMPT_PURPOSE = "checkpoint_review"
 
 class RegistryModelUsageMixin:
     _MODEL_USAGE_COLUMNS = (
-        "id, account_id, role, model, purpose, input_tokens, output_tokens, estimated, cost_usd, created_at"
+        "id, account_id, turn_id, role, model, purpose, input_tokens, output_tokens, estimated, cost_usd, created_at"
     )
 
     @staticmethod
@@ -22,14 +22,15 @@ class RegistryModelUsageMixin:
         return {
             "id": str(row[0]),
             "account_id": row[1],
-            "role": str(row[2]),
-            "model": str(row[3]),
-            "purpose": row[4],
-            "input_tokens": int(row[5]),
-            "output_tokens": int(row[6]),
-            "estimated": bool(row[7]),
-            "cost_usd": float(row[8]),
-            "created_at": str(row[9]),
+            "turn_id": row[2],
+            "role": str(row[3]),
+            "model": str(row[4]),
+            "purpose": row[5],
+            "input_tokens": int(row[6]),
+            "output_tokens": int(row[7]),
+            "estimated": bool(row[8]),
+            "cost_usd": float(row[9]),
+            "created_at": str(row[10]),
         }
 
     def record_model_usage(
@@ -43,6 +44,7 @@ class RegistryModelUsageMixin:
         estimated: bool,
         purpose: str | None = None,
         created_at: str | None = None,
+        turn_id: str | None = None,
     ) -> None:
         """Appends one metered model call to the catalog.
 
@@ -54,6 +56,7 @@ class RegistryModelUsageMixin:
         row = (
             uuid.uuid4().hex,
             str(account_id) if account_id else None,
+            str(turn_id) if turn_id else None,
             str(role or "unknown"),
             str(model),
             str(purpose) if purpose else None,
@@ -65,10 +68,33 @@ class RegistryModelUsageMixin:
         )
         with self._catalog_lock:
             self.catalog_conn.execute(
-                f"INSERT INTO model_usage ({self._MODEL_USAGE_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                f"INSERT INTO model_usage ({self._MODEL_USAGE_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 row,
             )
             self._commit_catalog()
+    def model_usage_rows_for_turn(self, turn_id: str, account_id: str) -> list[dict[str, Any]]:
+        """Returns persisted model calls for one attributed inference turn."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            rows = self.catalog_conn.execute(
+                f"SELECT {self._MODEL_USAGE_COLUMNS} FROM model_usage WHERE turn_id = ? AND account_id = ?",
+                (str(turn_id), str(account_id)),
+            ).fetchall()
+        return [self._model_usage_from_row(row) for row in rows]
+
+    def count_model_turns_for_account(self, account_id: str, since_iso: str) -> int:
+        """Counts allowance-eligible turns with metering since ``since_iso``."""
+        if not account_id:
+            return 0
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            row = self.catalog_conn.execute(
+                "SELECT COUNT(DISTINCT turn_id) FROM model_usage"
+                " WHERE account_id = ? AND turn_id IS NOT NULL AND created_at >= ?"
+                " AND (purpose IS NULL OR purpose <> ?)",
+                (str(account_id), str(since_iso), ALLOWANCE_EXEMPT_PURPOSE),
+            ).fetchone()
+        return int(row[0] or 0) if row else 0
 
     def sum_model_cost(self, start_iso: str, end_iso: str | None = None) -> float:
         """Total metered USD cost in the half-open window ``[start, end)``."""
@@ -87,18 +113,20 @@ class RegistryModelUsageMixin:
 
     def record_model_limit_hit(
         self, account_id: str, kind: Literal["rate", "daily_tokens"], created_at: str | None = None
-    ) -> None:
+    ) -> str:
         """Records one refused account request; retention pruning runs separately."""
         if kind not in {"rate", "daily_tokens"}:
             raise ValueError("Unknown model-limit hit kind.")
         timestamp = created_at or datetime.now(UTC).isoformat()
         self.ensure_account_schema()
+        hit_id = uuid.uuid4().hex
         with self._catalog_lock:
             self.catalog_conn.execute(
                 "INSERT INTO model_limit_hits (id, account_id, kind, created_at) VALUES (?, ?, ?, ?)",
-                (uuid.uuid4().hex, str(account_id), kind, timestamp),
+                (hit_id, str(account_id), kind, timestamp),
             )
             self._commit_catalog()
+        return hit_id
 
     def _prune_model_limit_hits(self, cutoff_iso: str) -> int:
         """Deletes limit-hit history older than the caller's retention cutoff."""

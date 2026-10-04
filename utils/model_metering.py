@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 #: Characters-per-token heuristic used only when a provider returns no usage
 #: metadata; the row is flagged ``estimated`` so the report can distinguish it.
 _CHARS_PER_TOKEN = 4
+FINISH_REASONS = frozenset({"stop", "length", "tool_calls", "content_filter", "other", "unknown"})
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,12 @@ class UsageContext:
     role: str
     purpose: str | None
     store: Any = None
+    turn_id: str | None = None
+    turn_state: Any = None
+    on_finish_reason: Callable[[str], None] | None = None
+    on_usage: Callable[[str, int, int, bool], None] | None = None
+    on_limit_hit: Callable[[str], None] | None = None
+    background_tasks: Any = None
 
 
 _usage_context: contextvars.ContextVar[UsageContext | None] = contextvars.ContextVar(
@@ -55,12 +62,21 @@ def current_usage_context() -> UsageContext:
 
 
 @contextmanager
-def usage_context(
-    account_id: str | None, role: str = "unknown", purpose: str | None = None, store: Any = None
-) -> Iterator[None]:
+def usage_context(context: UsageContext) -> Iterator[None]:
     """Sets the usage context for the duration of the block (per thread/task)."""
     token = _usage_context.set(
-        UsageContext(account_id=account_id, role=role or "unknown", purpose=purpose, store=store)
+        UsageContext(
+            account_id=context.account_id,
+            role=context.role or "unknown",
+            purpose=context.purpose,
+            store=context.store,
+            turn_id=context.turn_id,
+            turn_state=context.turn_state,
+            on_finish_reason=context.on_finish_reason,
+            on_usage=context.on_usage,
+            on_limit_hit=context.on_limit_hit,
+            background_tasks=context.background_tasks,
+        )
     )
     try:
         yield
@@ -117,11 +133,11 @@ def _extract_usage(response: Any, prompt_chars: int) -> tuple[int, int, bool]:
 #: The sink that persists a recorded call. Registered once at startup by
 #: ``svc.app`` (or explicitly by tests); the unregistered default is a no-op so
 #: this module never imports the service layer.
-_recorder: Callable[..., None] | None = None
+_recorder: Callable[..., Any] | None = None
 _no_op_logged = False
 
 
-def set_recorder(recorder: Callable[..., None] | None) -> None:
+def set_recorder(recorder: Callable[..., Any] | None) -> None:
     """Registers the usage sink; ``None`` restores the no-op default."""
     global _recorder
     _recorder = recorder
@@ -140,6 +156,7 @@ def record_usage(
     output_tokens: int,
     estimated: bool,
     context: UsageContext | None = None,
+    finish_reason: str | None = None,
 ) -> None:
     """Persists one metered call; never raises (metering must not break inference)."""
     try:
@@ -153,7 +170,12 @@ def record_usage(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             estimated=estimated,
+            turn_id=active.turn_id,
         )
+        if active.on_usage is not None:
+            active.on_usage(model, input_tokens, output_tokens, estimated)
+        if finish_reason is not None and active.on_finish_reason is not None:
+            active.on_finish_reason(finish_reason)
     except Exception:  # pragma: no cover - defensive; logging only
         logger.exception("Model usage metering failed; inference continues.")
 
@@ -190,10 +212,34 @@ class MeteringCallback(BaseCallbackHandler):
         except Exception:  # pragma: no cover - defensive
             logger.exception("Could not extract model usage; skipping row.")
             return
-        record_usage(self.model, input_tokens, output_tokens, estimated)
+        record_usage(
+            self.model,
+            input_tokens,
+            output_tokens,
+            estimated,
+            finish_reason=_finish_reason(response),
+        )
 
     def on_llm_error(self, error: Any, *, run_id: Any, **kwargs: Any) -> None:
         self._prompt_chars.pop(run_id, None)
+
+
+def _finish_reason(response: Any) -> str | None:
+    """Maps provider metadata to the small reason vocabulary allowed in events."""
+    for group in reversed(getattr(response, "generations", None) or []):
+        for generation in reversed(group or []):
+            info = getattr(generation, "generation_info", None) or {}
+            message = getattr(generation, "message", None)
+            metadata = getattr(message, "response_metadata", None) or {}
+            additional = getattr(message, "additional_kwargs", None) or {}
+            raw = info.get("finish_reason") or metadata.get("finish_reason") or additional.get("finish_reason")
+            if raw is None:
+                continue
+            value = str(raw).lower()
+            if value in FINISH_REASONS - {"unknown", "other"}:
+                return value
+            return "other"
+    return None
 
 
 __all__ = [

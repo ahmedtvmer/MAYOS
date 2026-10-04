@@ -22,8 +22,11 @@ import threading
 import time
 from collections import deque
 from contextvars import ContextVar, Token
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from typing import Any, Callable, Literal, NoReturn
+
+from service.analytics import ClientContext, UNKNOWN_CLIENT
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +40,31 @@ REQUEST_LIMIT_DETAIL = "Too many AI requests. Please wait a minute and try again
 DAILY_TOKEN_LIMIT_DETAIL = "You have reached your daily AI usage limit. Please try again tomorrow."
 
 
+@dataclass(frozen=True)
+class ModelAdmissionContext:
+    role: str
+    client: ClientContext
+    background_tasks: Any | None = None
+    defer_limit_hit: Callable[[str], None] | None = None
+
+
+@dataclass(frozen=True)
+class ModelLimitContext:
+    kind: Literal["rate", "daily_tokens"]
+    account_id: str
+    role: str
+    hit_id: str | None
+    store: Any
+    client: ClientContext
+
+
 class ModelLimitExceeded(Exception):
     """Raised before any model call when an account is over its limit."""
 
-    def __init__(self, detail: str) -> None:
+    def __init__(self, detail: str, context: ModelLimitContext | None = None) -> None:
         super().__init__(detail)
         self.detail = detail
+        self.context = context
 
 
 def _int_env(name: str, default: int) -> int:
@@ -98,14 +120,15 @@ def _check_request_window(account_id: str, now: float) -> int:
     return len(window)
 
 
-def _record_limit_hit(db: Any, account_id: str, kind: Literal["rate", "daily_tokens"]) -> None:
+def record_model_limit_hit(db: Any, account_id: str, kind: Literal["rate", "daily_tokens"]) -> str | None:
     """Best-effort refusal telemetry; a catalog outage must preserve the 429."""
     try:
-        db.record_model_limit_hit(account_id, kind)
+        hit_id = db.record_model_limit_hit(account_id, kind)
     except Exception:
         logger.exception("Failed to record %s model-limit hit for account %s", kind, account_id)
-        return
+        return None
     _prune_limit_hits_once_daily(db)
+    return str(hit_id)
 
 
 def _prune_limit_hits_once_daily(db: Any) -> None:
@@ -121,8 +144,6 @@ def _prune_limit_hits_once_daily(db: Any) -> None:
         db._prune_model_limit_hits(cutoff)
     except Exception:
         logger.exception("Failed to prune old model-limit hits")
-
-
 def release_admission(token: Token[str | None] | None) -> None:
     """Releases a guard token returned by :func:`admit_model_request` (scope exit)."""
     if token is not None:
@@ -130,7 +151,11 @@ def release_admission(token: Token[str | None] | None) -> None:
 
 
 def admit_model_request(
-    account_id: str | None, *, guard: bool = True, db: Any = None
+    account_id: str | None,
+    *,
+    guard: bool = True,
+    db: Any = None,
+    context: ModelAdmissionContext | None = None,
 ) -> Token[str | None] | None:
     """Checks and reserves one request for ``account_id``; raises :class:`ModelLimitExceeded`.
 
@@ -147,16 +172,30 @@ def admit_model_request(
     no store raises rather than silently skipping the daily token ceiling;
     unattributed calls are never limited.
     """
-    if not account_id:
+    if _admission_is_skipped(account_id, guard, db):
         return None
+    refusal = _check_admission_window(account_id, db)
+    if refusal is not None:
+        _raise_model_limit(account_id, db, context, refusal)
+    return _admitted.set(account_id) if guard else None
+
+
+def _admission_is_skipped(account_id: str | None, guard: bool, db: Any) -> bool:
+    if not account_id:
+        return True
     if db is None:
         raise RuntimeError(
             f"Account {account_id!r} admission has no store for the daily token check; "
             "refusing to skip the limit (ADR 041)."
         )
     if guard and _admitted.get() == account_id:
-        return None
+        return True
+    return False
 
+
+def _check_admission_window(
+    account_id: str, db: Any
+) -> tuple[Literal["rate", "daily_tokens"], str] | None:
     request_limit = request_limit_per_minute()
     token_limit = daily_token_limit()
     refusal: tuple[Literal["rate", "daily_tokens"], str] | None = None
@@ -171,15 +210,52 @@ def admit_model_request(
                 refusal = ("daily_tokens", DAILY_TOKEN_LIMIT_DETAIL)
         if refusal is None:
             _request_window.setdefault(account_id, deque()).append(now)
+    return refusal
 
-    if refusal is not None:
-        kind, detail = refusal
-        _record_limit_hit(db, account_id, kind)
-        raise ModelLimitExceeded(detail)
 
-    if guard:
-        return _admitted.set(account_id)
-    return None
+def _raise_model_limit(
+    account_id: str,
+    db: Any,
+    context: ModelAdmissionContext | None,
+    refusal: tuple[Literal["rate", "daily_tokens"], str],
+) -> NoReturn:
+    kind, detail = refusal
+    deferred = context.defer_limit_hit if context is not None else None
+    hit_id = None if deferred is not None else record_model_limit_hit(db, account_id, kind)
+    if deferred is not None:
+        deferred(kind)
+    role = context.role if context is not None else "unknown"
+    client = context.client if context is not None else UNKNOWN_CLIENT
+    payload = ModelLimitContext(
+        kind=kind,
+        account_id=account_id,
+        role=role,
+        hit_id=hit_id,
+        store=db,
+        client=client,
+    )
+    if hit_id is not None:
+        try:
+            from service.ai_usage_analytics import AILimitContext, capture_ai_request_limited
+
+            limit_context = AILimitContext(
+                account_id=account_id,
+                role=role,
+                limit=kind,
+                hit_id=hit_id,
+                store=db,
+                client=client,
+            )
+            if context is not None and context.background_tasks is not None:
+                context.background_tasks.add_task(capture_ai_request_limited, limit_context)
+            else:
+                capture_ai_request_limited(limit_context)
+        except Exception:
+            logger.exception("Failed to capture model-limit refusal for account %s", account_id)
+    raise ModelLimitExceeded(
+        detail,
+        payload,
+    )
 
 
 __all__ = [
@@ -187,9 +263,12 @@ __all__ = [
     "DEFAULT_DAILY_TOKEN_LIMIT",
     "DEFAULT_REQUESTS_PER_MINUTE",
     "ModelLimitExceeded",
+    "ModelAdmissionContext",
+    "ModelLimitContext",
     "REQUEST_LIMIT_DETAIL",
     "admit_model_request",
     "daily_token_limit",
+    "record_model_limit_hit",
     "release_admission",
     "request_limit_per_minute",
     "reset_model_limits",

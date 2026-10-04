@@ -3,12 +3,13 @@
 import asyncio
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 
 from service import analytics, profile as profile_service
 from service.programs import player_controls_program
 from service import schedule as schedule_service
 from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
+from svc.llm import register_ai_analytics_background_tasks
 from svc.schemas import (
     PersonaUpdate,
     ProfileUpdate,
@@ -43,11 +44,13 @@ async def read_profile(
 @router.put("")
 async def update_profile(
     request: Request,
+    background_tasks: BackgroundTasks,
     body: ProfileUpdate,
     player: Annotated[Any, Depends(get_verified_player)],
     ledger: Annotated[Any, Depends(get_ledger)],
     db: Annotated[Any, Depends(get_db)],
 ):
+    register_ai_analytics_background_tasks(request, background_tasks)
     payload = {key: value for key, value in body.model_dump().items() if value is not None}
     result = await asyncio.to_thread(
         profile_service.update_profile,
@@ -57,6 +60,7 @@ async def update_profile(
         account_id_of(player),
         ledger,
         client=analytics.client_context(request),
+        background_tasks=background_tasks,
     )
     result["profile"] = {
         **(result.get("profile") or {}),

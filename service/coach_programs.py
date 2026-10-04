@@ -1,4 +1,4 @@
-"""Coach program generation and publication effects."""
+"""Coach program draft generation."""
 
 import logging
 from datetime import UTC, datetime
@@ -39,15 +39,8 @@ def _program_draft(
     return validate_generated_program_draft(generated, days, db, coach_account_id, ledger)
 
 
-def _coach_split_inference(db: Any, actor: ProgramAnalyticsActor):
-    from svc.llm import InferenceScope, run_inference_sync
-
-    scope = InferenceScope(
-        account_id=actor.account_id,
-        role="coach",
-        purpose="coach_generate_draft",
-        store=db,
-    )
+def _coach_split_inference(scope: Any):
+    from svc.llm import run_inference_sync
 
     def infer(function, *args, **kwargs):
         return run_inference_sync(function, *args, scope=scope, **kwargs)
@@ -60,10 +53,11 @@ def _build_generated_draft(
     actor: ProgramAnalyticsActor,
     request: ProgramGenerationRequest,
     ledger: Any,
+    inference_scope: Any,
 ) -> dict[str, Any]:
     program, _ = generate_program_draft_pipeline(
         request,
-        inference_call=_coach_split_inference(db, actor),
+        inference_call=_coach_split_inference(inference_scope),
         ledger=ledger,
     )
     return _program_draft(program, db, actor.account_id, ledger)
@@ -76,8 +70,12 @@ def generate_program_draft(
     request: ProgramGenerationRequest,
     *,
     replace_existing: bool = False,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+    background_tasks: Any = None,
 ) -> Any | None:
+    """Generates a coach-owned program draft for an assigned player."""
     from service import coach_program_drafts
+    from svc.llm import InferenceScope, inference_turn
 
     authorized = authorized_player_ledger(db, actor.account_id, assignment_id)
     if authorized is None:
@@ -87,11 +85,19 @@ def generate_program_draft(
         coach_program_drafts.ensure_generated_program_draft_available(
             ledger, assignment_id, replace_existing=replace_existing
         )
-        draft = _build_generated_draft(db, actor, request, ledger)
-        if db.get_active_assignment_for_coach(actor.account_id, assignment_id) is None:
-            return None
-        if replace_existing:
-            return coach_program_drafts.replace_generated_program_draft(ledger, assignment_id, draft)
+        inference_scope = InferenceScope(
+            account_id=actor.account_id,
+            role="coach",
+            purpose="coach_generate_draft",
+            store=db,
+            client=client,
+        )
+        with inference_turn(inference_scope, background_tasks=background_tasks):
+            draft = _build_generated_draft(db, actor, request, ledger, inference_scope)
+            if db.get_active_assignment_for_coach(actor.account_id, assignment_id) is None:
+                return None
+            if replace_existing:
+                return coach_program_drafts.replace_generated_program_draft(ledger, assignment_id, draft)
         return coach_program_drafts.create_generated_program_draft(ledger, assignment_id, draft)
 
 

@@ -47,6 +47,7 @@ class _UsageFakeChatModel(BaseChatModel):
     input_tokens: int = 120
     output_tokens: int = 30
     emit_usage: bool = True
+    finish_reason: str | None = None
 
     @property
     def _llm_type(self) -> str:
@@ -62,16 +63,20 @@ class _UsageFakeChatModel(BaseChatModel):
         }
 
     def _generate(self, messages: Any, stop: Any = None, run_manager: Any = None, **kwargs: Any) -> ChatResult:
-        message = AIMessage(content=self.reply, usage_metadata=self._usage())
+        metadata = {"finish_reason": self.finish_reason} if self.finish_reason else {}
+        message = AIMessage(content=self.reply, usage_metadata=self._usage(), response_metadata=metadata)
         return ChatResult(generations=[ChatGeneration(message=message)])
 
     def _stream(self, messages: Any, stop: Any = None, run_manager: Any = None, **kwargs: Any) -> Any:
+        metadata = {"finish_reason": self.finish_reason} if self.finish_reason else {}
         chunk = ChatGenerationChunk(message=AIMessageChunk(content=self.reply))
         if run_manager:
             run_manager.on_llm_new_token(self.reply, chunk=chunk)
         yield chunk
         if self.emit_usage:
-            final = ChatGenerationChunk(message=AIMessageChunk(content="", usage_metadata=self._usage()))
+            final = ChatGenerationChunk(
+                message=AIMessageChunk(content="", usage_metadata=self._usage(), response_metadata=metadata)
+            )
             if run_manager:
                 run_manager.on_llm_new_token("", chunk=final)
             yield final
@@ -89,12 +94,14 @@ def _fake_model(
     input_tokens: int = 120,
     output_tokens: int = 30,
     emit_usage: bool = True,
+    finish_reason: str | None = None,
 ) -> _UsageFakeChatModel:
     return _UsageFakeChatModel(
         model_id=model_id,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         emit_usage=emit_usage,
+        finish_reason=finish_reason,
         callbacks=[MeteringCallback(model_id)],
     )
 
@@ -166,6 +173,70 @@ def _usage_rows(db, account_id: str) -> list[dict[str, Any]]:
     return [row for row in db.summarize_model_usage("2000-01-01") if row["account_id"] == account_id]
 
 
+def _simple_program():
+    from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
+
+    return GeneratedProgramSchema(
+        program_name="Metered test program",
+        split_type="Full Body",
+        weekly_frequency=1,
+        days=[
+            ProgramDaySchema(
+                day_name="Full A",
+                day_order=1,
+                exercises=[
+                    ProgramExerciseSchema(
+                        exercise_id=exercise_id,
+                        exercise_name=name,
+                        target_reps_min=5,
+                        target_reps_max=8,
+                    )
+                    for exercise_id, name in (("sq", "Squat"), ("bp", "Bench Press"), ("row", "Row"))
+                ],
+            )
+        ],
+    )
+
+
+def _assert_ai_usage_event(sink, db, account_id: str, use_case: str, calls: int) -> None:
+    events = [event for event in sink.events if event["event"] == "ai_request_completed"]
+    assert len(events) == 1
+    properties = events[0]["properties"]
+    with db.catalog_locked() as catalog:
+        turn_id = catalog.execute(
+            "SELECT turn_id FROM model_usage WHERE account_id = ? AND turn_id IS NOT NULL"
+            " ORDER BY created_at DESC LIMIT 1",
+            (account_id,),
+        ).fetchone()[0]
+    rows = db.model_usage_rows_for_turn(turn_id, account_id)
+    usage = {
+        "calls": len(rows),
+        "input_tokens": sum(row["input_tokens"] for row in rows),
+        "output_tokens": sum(row["output_tokens"] for row in rows),
+        "cost_usd": sum(row["cost_usd"] for row in rows),
+    }
+    assert properties["use_case"] == use_case
+    assert properties["plan"] in {"free", "pro"}
+    assert properties["input_tokens"] == usage["input_tokens"]
+    assert properties["output_tokens"] == usage["output_tokens"]
+    assert properties["tokens"] == usage["input_tokens"] + usage["output_tokens"]
+    if use_case == "checkpoint_review":
+        assert properties["tokens_today"] == 0
+        assert properties["turns_today"] == 0
+    else:
+        assert properties["tokens_today"] >= properties["tokens"]
+        assert properties["turns_today"] >= 1
+    assert properties["tokens_daily_limit"] >= 0
+    assert properties["requests_per_minute_limit"] >= 0
+    assert properties["cost_usd"] == pytest.approx(usage["cost_usd"])
+    assert properties["model_count"] == 1
+    assert properties["models"] == [events[0]["properties"]["models"][0]]
+    assert usage["calls"] == calls
+    assert all(row["turn_id"] == rows[0]["turn_id"] for row in rows)
+    assert "prompt" not in repr(events[0]).lower()
+    assert "response" not in repr(events[0]).lower()
+
+
 def _post_chat(client, token: str):
     return client.post("/chat/messages", headers=_authed(token), json={"content": CHAT_MESSAGE})
 
@@ -212,10 +283,10 @@ def _assigned_player(client, db, player: str = "player1"):
 # --------------------------------------------------------------------------
 
 
-def test_chat_streamed_call_is_metered(api, monkeypatch):
+def test_chat_streamed_call_is_metered(api, monkeypatch, recording_analytics):
     client, db = api
     token = _register(client, "player1")
-    monkeypatch.setattr(assistant_graph, "llm", _fake_model("Qwen/Qwen3.5-9B"))
+    monkeypatch.setattr(assistant_graph, "llm", _fake_model("Qwen/Qwen3.5-9B", finish_reason="stop"))
 
     resp = _post_chat(client, token)
     assert resp.status_code == 200, resp.text
@@ -227,23 +298,31 @@ def test_chat_streamed_call_is_metered(api, monkeypatch):
     assert rows[0]["requests"] == 1
     assert rows[0]["input_tokens"] == 120 and rows[0]["output_tokens"] == 30
     assert rows[0]["estimated_calls"] == 0
+    _assert_ai_usage_event(recording_analytics, db, _account_id(db, "player1"), "chat", 1)
+    ai_event = next(event for event in recording_analytics.events if event["event"] == "ai_request_completed")
+    assert ai_event["properties"]["finish_reason"] == "stop"
 
 
-def test_multicall_turn_records_every_call(api):
+def test_multicall_chat_turn_emits_one_metered_event(api, monkeypatch, recording_analytics):
     client, db = api
-    _register(client, "player1")
+    token = _register(client, "player1")
     account_id = _account_id(db, "player1")
     fake = _fake_model()
 
-    def work():
+    def fake_turn(state, **_kwargs):
         fake.invoke("first")
         fake.invoke("second")
+        state["response_content"] = "answer"
+        yield "answer"
 
-    run_inference_sync(work, scope=InferenceScope(account_id=account_id, role="player", purpose="test_multicall", store=db))
+    monkeypatch.setattr("svc.routers.chat.stream_assistant_turn", fake_turn)
+    response = _post_chat(client, token)
+    assert response.status_code == 200, response.text
 
     rows = _usage_rows(db, account_id)
     assert len(rows) == 1
     assert rows[0]["requests"] == 2
+    _assert_ai_usage_event(recording_analytics, db, account_id, "chat", 2)
 
 
 def test_resolve_split_meters_only_model_path_through_injected_inference(api, monkeypatch):
@@ -278,8 +357,8 @@ def test_resolve_split_meters_only_model_path_through_injected_inference(api, mo
     assert rows[0]["role"] == "coach"
     assert rows[0]["requests"] == 1
     assert rows[0]["input_tokens"] == 120
-    with db._catalog_lock:
-        purposes = db.catalog_conn.execute(
+    with db.catalog_locked() as catalog:
+        purposes = catalog.execute(
             "SELECT purpose FROM model_usage WHERE account_id = ?",
             (account_id,),
         ).fetchall()
@@ -291,7 +370,7 @@ def test_resolve_split_meters_only_model_path_through_injected_inference(api, mo
     structured.invoke.assert_called_once()
 
 
-def test_onboarding_step_is_metered(api, monkeypatch):
+def test_onboarding_step_is_metered(api, monkeypatch, recording_analytics):
     client, db = api
     token = _register(client, "player1")
     fake = _fake_model()
@@ -317,14 +396,111 @@ def test_onboarding_step_is_metered(api, monkeypatch):
     assert rows and rows[0]["role"] == "player"
     assert rows[0]["requests"] >= 1
     assert rows[0]["input_tokens"] > 0
+    _assert_ai_usage_event(recording_analytics, db, _account_id(db, "player1"), "onboarding", 2)
 
 
-def test_coach_generate_draft_meters_only_model_calls_and_uses_shared_429(api, monkeypatch):
+def test_program_generation_emits_metered_ai_event(api, monkeypatch, recording_analytics):
+    from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
+
+    client, db = api
+    token = _register(client, "player1")
+    account_id = _account_id(db, "player1")
+    fake = _fake_model("Qwen/Qwen3.5-9B")
+    program = GeneratedProgramSchema(
+        program_name="Stub",
+        split_type="Full Body",
+        weekly_frequency=1,
+        days=[
+            ProgramDaySchema(
+                day_name="Full A",
+                day_order=1,
+                exercises=[
+                    ProgramExerciseSchema(
+                        exercise_id="sq", exercise_name="Squat", target_reps_min=5, target_reps_max=8
+                    ),
+                    ProgramExerciseSchema(
+                        exercise_id="bp", exercise_name="Bench Press", target_reps_min=5, target_reps_max=8
+                    ),
+                    ProgramExerciseSchema(
+                        exercise_id="row", exercise_name="Row", target_reps_min=8, target_reps_max=12
+                    ),
+                ],
+            )
+        ],
+    )
+
+    def generate_program(*, ledger, **_kwargs):
+        fake.invoke("program generation")
+        ledger.save_training_program(program.model_dump())
+        return program, ""
+
+    monkeypatch.setattr("service.programs.generate_program_pipeline", generate_program)
+    response = client.post("/programs/generate", headers=_authed(token), json={})
+    assert response.status_code == 200, response.text
+    _assert_ai_usage_event(recording_analytics, db, account_id, "program_generate", 1)
+
+
+def test_program_generation_provider_error_emits_after_error_response(api, monkeypatch, recording_analytics):
+    from utils.model_downloader import _local_model_id
+    from utils.model_metering import record_usage
+
+    client, db = api
+    token = _register(client, "player1")
+    account_id = _account_id(db, "player1")
+
+    def fail_generation(*_args, **_kwargs):
+        record_usage(_local_model_id("production"), 27, 9, False)
+        raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr("service.programs.generate_program_pipeline", fail_generation)
+    with TestClient(client.app, raise_server_exceptions=False) as error_client:
+        response = error_client.post("/programs/generate", headers=_authed(token), json={})
+    assert response.status_code == 502, response.text
+    _assert_ai_usage_event(recording_analytics, db, account_id, "program_generate", 1)
+    event = next(item for item in recording_analytics.events if item["event"] == "ai_request_completed")
+    assert event["properties"]["outcome"] == "error"
+
+
+def test_program_generation_limit_refusal_emits_limit_without_completion(api, monkeypatch, recording_analytics):
+    from service.model_limits import reset_model_limits
+    from utils.model_downloader import _local_model_id
+    from utils.model_metering import record_usage
+
+    client, db = api
+    token = _register(client, "player1")
+    program = _simple_program()
+
+    def generate(*_args, ledger, **_kwargs):
+        record_usage(_local_model_id("production"), 27, 9, False)
+        ledger.save_training_program(program.model_dump())
+        return program, ""
+
+    monkeypatch.setattr("service.programs.generate_program_pipeline", generate)
+    monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "1")
+    reset_model_limits()
+    try:
+        first = client.post("/programs/generate", headers=_authed(token), json={})
+        refused = client.post("/programs/generate", headers=_authed(token), json={})
+    finally:
+        reset_model_limits()
+
+    assert first.status_code == 200, first.text
+    assert refused.status_code == 429, refused.text
+    completed = [event for event in recording_analytics.events if event["event"] == "ai_request_completed"]
+    limited = [event for event in recording_analytics.events if event["event"] == "ai_request_limited"]
+    assert len(completed) == 1
+    assert len(limited) == 1
+    assert limited[0]["properties"]["limit"] == "requests_per_minute"
+
+
+def test_coach_generate_draft_is_metered(api, monkeypatch, recording_analytics):
     from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
 
     client, db = api
     coach_headers, _player_headers, assignment_id = _assigned_player(client, db)
     monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "1")
+    coach_account_id = _account_id(db, "coach")
+    db.set_plan(coach_account_id, "coach", "pro")
     fake = _fake_model("deepseek-ai/DeepSeek-V4-Flash")
 
     def _stub_program() -> GeneratedProgramSchema:
@@ -362,6 +538,11 @@ def test_coach_generate_draft_meters_only_model_calls_and_uses_shared_429(api, m
     )
     assert deterministic.status_code == 200, deterministic.text
     assert _usage_rows(db, _account_id(db, "coach")) == []
+    empty_turns = [event for event in recording_analytics.events if event["event"] == "ai_request_completed"]
+    assert len(empty_turns) == 1
+    assert empty_turns[0]["properties"]["use_case"] == "coach_generate_draft"
+    assert empty_turns[0]["properties"]["tokens"] == 0
+    recording_analytics.events.clear()
 
     model_backed = client.post(
         f"/coach/assignments/{assignment_id}/program-draft/generate",
@@ -375,8 +556,8 @@ def test_coach_generate_draft_meters_only_model_calls_and_uses_shared_429(api, m
     rows = _usage_rows(db, coach_account_id)
     assert rows and rows[0]["role"] == "coach"
     assert rows[0]["model"] == "deepseek-ai/DeepSeek-V4-Flash"
-    with db._catalog_lock:
-        purposes = db.catalog_conn.execute(
+    with db.catalog_locked() as catalog:
+        purposes = catalog.execute(
             "SELECT purpose FROM model_usage WHERE account_id = ? ORDER BY created_at",
             (coach_account_id,),
         ).fetchall()
@@ -390,6 +571,244 @@ def test_coach_generate_draft_meters_only_model_calls_and_uses_shared_429(api, m
     )
     assert refused.status_code == 429
     assert refused.json() == {"detail": "Too many AI requests. Please wait a minute and try again."}
+    _assert_ai_usage_event(recording_analytics, db, coach_account_id, "coach_generate_draft", 1)
+    event = next(item for item in recording_analytics.events if item["event"] == "ai_request_completed")
+    assert event["properties"]["plan"] == "pro"
+    limited = [event for event in recording_analytics.events if event["event"] == "ai_request_limited"]
+    assert len(limited) == 1
+    assert limited[0]["properties"]["limit"] == "requests_per_minute"
+    assert len([event for event in recording_analytics.events if event["event"] == "ai_request_completed"]) == 1
+
+
+def test_profile_rebuild_emits_its_metered_turn_after_api_write(api, monkeypatch, recording_analytics):
+    from utils.model_metering import record_usage
+    from utils.model_downloader import _local_model_id
+
+    client, db = api
+    token = _register(client, "player1")
+    account_id = _account_id(db, "player1")
+    program = _simple_program()
+    with db.open_ledger("player1") as ledger:
+        ledger.upsert_player_profile(
+            {"weekly_frequency": 2, "equipment_access": "Commercial gym", "rep_preference": "balanced"}
+        )
+        ledger.save_training_program(program.model_dump())
+
+    def rebuild(_request, *, ledger, **_kwargs):
+        record_usage(_local_model_id("production"), 31, 11, False)
+        return program, ""
+
+    monkeypatch.setattr("service.profile.generate_program_draft_pipeline", rebuild)
+    response = client.put("/profile", headers=_authed(token), json={"weekly_frequency": 3})
+    assert response.status_code == 200, response.text
+    _assert_ai_usage_event(recording_analytics, db, account_id, "profile_rebuild", 1)
+
+
+def test_rolled_back_profile_rebuild_keeps_metering_and_emits_completion(api, monkeypatch, recording_analytics):
+    from utils.model_metering import record_usage
+    from utils.model_downloader import _local_model_id
+
+    client, db = api
+    token = _register(client, "player1")
+    account_id = _account_id(db, "player1")
+    program = _simple_program()
+    with db.open_ledger("player1") as ledger:
+        ledger.upsert_player_profile(
+            {"weekly_frequency": 2, "equipment_access": "Commercial gym", "rep_preference": "balanced"}
+        )
+        ledger.save_training_program(program.model_dump())
+        prior_program = ledger.get_active_program()
+
+    def rebuild(_request, **_kwargs):
+        record_usage(_local_model_id("production"), 31, 11, False)
+        return program.model_copy(update={"program_name": "Uncommitted"}), ""
+
+    monkeypatch.setattr("service.profile.generate_program_draft_pipeline", rebuild)
+    from database.ledger.handle import TrainingLedger
+
+    save_training_program = TrainingLedger.save_training_program
+
+    def fail_after_program_write(self, *args, **kwargs):
+        save_training_program(self, *args, **kwargs)
+        raise RuntimeError("profile rebuild interrupted")
+
+    monkeypatch.setattr(TrainingLedger, "save_training_program", fail_after_program_write)
+    with TestClient(client.app, raise_server_exceptions=False) as error_client:
+        response = error_client.put("/profile", headers=_authed(token), json={"weekly_frequency": 3})
+
+    assert response.status_code == 502, response.text
+    _assert_ai_usage_event(recording_analytics, db, account_id, "profile_rebuild", 1)
+    event = next(item for item in recording_analytics.events if item["event"] == "ai_request_completed")
+    assert event["properties"]["outcome"] == "error"
+    with db.open_ledger("player1") as ledger:
+        assert ledger.get_active_program().version == prior_program.version
+
+
+def test_later_limit_refusal_keeps_completion_for_earlier_metered_call(api, monkeypatch, recording_analytics):
+    from svc.llm import InferenceScope, inference_turn, run_inference_sync
+
+    client, db = api
+    _register(client, "player1")
+    account_id = _account_id(db, "player1")
+    scope = InferenceScope(account_id=account_id, role="player", purpose="chat", store=db)
+    fake = _fake_model()
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "100")
+    reset_model_limits()
+    try:
+        with pytest.raises(ModelLimitExceeded):
+            with inference_turn(scope):
+                run_inference_sync(lambda: fake.invoke("first call"), scope=scope)
+                run_inference_sync(lambda: fake.invoke("refused later call"), scope=scope)
+    finally:
+        reset_model_limits()
+
+    rows = _usage_rows(db, account_id)
+    assert len(rows) == 1
+    completed = [event for event in recording_analytics.events if event["event"] == "ai_request_completed"]
+    limited = [event for event in recording_analytics.events if event["event"] == "ai_request_limited"]
+    assert len(completed) == 1
+    assert completed[0]["properties"]["outcome"] == "error"
+    assert completed[0]["properties"]["tokens"] == 150
+    assert len(limited) == 1
+    assert limited[0]["properties"]["limit"] == "daily_tokens"
+
+
+def test_exception_mid_turn_keeps_earlier_call_rows_and_one_completion(api, recording_analytics):
+    from svc.llm import InferenceScope, inference_turn, run_inference_sync
+
+    client, db = api
+    _register(client, "player1")
+    account_id = _account_id(db, "player1")
+    scope = InferenceScope(account_id=account_id, role="player", purpose="chat", store=db)
+    fake = _fake_model()
+
+    with pytest.raises(RuntimeError, match="simulated worker crash"):
+        with inference_turn(scope):
+            run_inference_sync(lambda: fake.invoke("first call"), scope=scope)
+            run_inference_sync(lambda: fake.invoke("second call"), scope=scope)
+            raise RuntimeError("simulated worker crash")
+
+    rows = _usage_rows(db, account_id)
+    assert len(rows) == 1
+    assert rows[0]["requests"] == 2
+    completed = [event for event in recording_analytics.events if event["event"] == "ai_request_completed"]
+    assert len(completed) == 1
+    assert completed[0]["properties"]["outcome"] == "error"
+
+
+def test_coach_ai_analysis_emits_metered_turn_after_http_answer(api, monkeypatch, recording_analytics):
+    from utils.model_metering import record_usage
+    from utils.model_downloader import _local_model_id
+
+    client, db = api
+    coach_headers, _player_headers, assignment_id = _assigned_player(client, db)
+    coach_account_id = _account_id(db, "coach")
+    monkeypatch.setattr("service.coach_ai.coach_ai_enabled", lambda: True)
+
+    def invoke(_messages):
+        record_usage(_local_model_id("production"), 29, 9, False)
+        return "Keep the same training load."
+
+    monkeypatch.setattr("service.coach_ai._invoke_coach_model", invoke)
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/assistant",
+        headers=coach_headers,
+        json={"question": "How has training changed?"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == {"answer": "Keep the same training load."}
+    _assert_ai_usage_event(recording_analytics, db, coach_account_id, "coach_assistant", 1)
+
+
+def test_checkpoint_review_ai_emits_metered_turn_after_review_is_stored(api, monkeypatch, recording_analytics):
+    import json as json_module
+
+    from utils.model_metering import record_usage
+    from utils.model_downloader import _local_model_id
+
+    client, db = api
+    token = _register(client, "player1")
+    account_id = _account_id(db, "player1")
+    now = datetime.now(UTC).isoformat()
+    facts = {
+        "workouts_in_period": 10,
+        "weeks_met": 4,
+        "weeks_counted": 5,
+        "personal_records": 2,
+        "regressed_exercises": 1,
+        "volume_first_half": 4200.0,
+        "volume_second_half": 4500.0,
+    }
+    rating = [
+        {"part": "Consistency", "label": "Steady"},
+        {"part": "Progression", "label": "Strong"},
+        {"part": "Volume trend", "label": "Rising"},
+    ]
+    with db.open_ledger("player1") as ledger:
+        ledger.log_workout_session(
+            session_id="review-session",
+            session_date="2026-09-01",
+            split_name="Full body",
+            started_at=now,
+            completed_at=now,
+        )
+        ledger.conn.execute(
+            "INSERT INTO checkpoint_reviews "
+            "(checkpoint, session_id, period_start, period_end, facts_json, rating_json, created_at, opened_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
+            (10, "review-session", "2026-08-01", "2026-09-01", json_module.dumps(facts), json_module.dumps(rating), now),
+        )
+        ledger.commit_ledger()
+
+    monkeypatch.setattr("service.checkpoint_review_ai.checkpoint_review_ai_enabled", lambda: True)
+
+    def invoke(_messages):
+        record_usage(_local_model_id("production"), 37, 13, False)
+        return "Consistency remained steady."
+
+    monkeypatch.setattr("service.checkpoint_review_ai._invoke_player_model", invoke)
+    response = client.get("/checkpoint-reviews/10", headers=_authed(token))
+    assert response.status_code == 200, response.text
+    assert response.json()["text"] == "Consistency remained steady."
+    with db.open_ledger("player1") as ledger:
+        assert ledger.get_checkpoint_review_row(10)["text"] == "Consistency remained steady."
+    _assert_ai_usage_event(recording_analytics, db, account_id, "checkpoint_review", 1)
+
+
+def test_coach_program_request_apply_emits_one_metered_turn(api, monkeypatch, recording_analytics):
+    from utils.model_metering import record_usage
+    from utils.model_downloader import _local_model_id
+
+    client, db = api
+    coach_headers, player_headers, assignment_id = _assigned_player(client, db)
+    coach_account_id = _account_id(db, "coach")
+    player_program = _simple_program()
+    with db.open_ledger("player1") as ledger:
+        ledger.save_training_program(
+            player_program.model_dump(),
+            published_by_coach_account_id=coach_account_id,
+        )
+
+    created = client.post(
+        "/assignments/me/program-requests",
+        headers=player_headers,
+        json={"kind": "split_change", "desired_weekly_frequency": 3, "reason": "Change the split"},
+    )
+    assert created.status_code == 200, created.text
+
+    def apply(*_args, ledger, **_kwargs):
+        record_usage(_local_model_id("production"), 41, 15, False)
+        ledger.save_training_program(player_program.model_copy(update={"weekly_frequency": 3}).model_dump(),
+                                     published_by_coach_account_id=coach_account_id)
+        return player_program, ""
+
+    monkeypatch.setattr("service.program_requests.generate_program_pipeline", apply)
+    applied = client.post(
+        f"/coach/assignments/{assignment_id}/program-requests/{created.json()['request_id']}/apply",
+        headers=coach_headers,
+    )
+    assert applied.status_code == 200, applied.text
+    _assert_ai_usage_event(recording_analytics, db, coach_account_id, "coach_program_request", 1)
 
 
 def test_cost_computed_from_pricing_json(api, monkeypatch):
@@ -404,6 +823,9 @@ def test_cost_computed_from_pricing_json(api, monkeypatch):
     rows = _usage_rows(db, account_id)
     assert rows[0]["model"] == "test-model"
     assert rows[0]["cost_usd"] == pytest.approx(2.0)
+    assert db.catalog_conn.execute(
+        "SELECT turn_id FROM model_usage WHERE account_id = ?", (account_id,)
+    ).fetchone()[0] is None
 
 
 def test_unknown_model_cost_is_zero():

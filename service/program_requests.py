@@ -245,6 +245,7 @@ def apply_request(
     request_id: Any,
     *,
     client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+    background_tasks: Any = None,
 ) -> dict[str, Any] | None:
     """Revalidates and applies a pending request, writing a NEW immutable program version.
 
@@ -279,6 +280,30 @@ def apply_request(
         if not claimed["ok"]:
             return {"ok": False, "error": NOT_PENDING_ERROR}
 
+        def _finish_applied_request() -> dict[str, Any]:
+            published = ledger.get_active_program()
+            version = published.version if published is not None else None
+            _notify_player(
+                db,
+                request["player_account_id"],
+                request["assignment_id"],
+                f"Your coach applied your program change. Program version {version}.",
+                _now_iso(),
+            )
+            resolved_request = db.get_program_request(request_id)
+            if published is not None:
+                if request["kind"] == EXERCISE_SUBSTITUTION:
+                    capture_program_exercise_swapped(
+                        coach_actor, published, player_account_id=request["player_account_id"], client=client
+                    )
+                else:
+                    capture_program_generated(
+                        coach_actor, "coach_request", published,
+                        player_account_id=request["player_account_id"], client=client,
+                    )
+            capture_program_request_resolved(coach_actor, resolved_request, client=client)
+            return {"ok": True, "request": resolved_request, "program_version": version}
+
         try:
             if request["kind"] == EXERCISE_SUBSTITUTION:
                 substitution = substitute_program_exercise(
@@ -307,18 +332,24 @@ def apply_request(
                         return {"ok": False, "error": STALE_REQUEST_ERROR, "stale": True}
                     return {"ok": False, "error": substitution["error"]}
             else:
-                from svc.llm import InferenceScope, run_inference_sync
+                from svc.llm import InferenceScope, inference_turn, run_inference_sync
 
-                run_inference_sync(
-                    generate_program_pipeline,
-                    frequency_override=request["desired_weekly_frequency"],
-                    user_split_override=request["desired_split_preference"],
-                    published_by_coach_account_id=coach_account_id,
-                    ledger=ledger,
-                    scope=InferenceScope(
-                        account_id=coach_account_id, role="coach", purpose="coach_program_request", store=db
-                    ),
+                inference_scope = InferenceScope(
+                    account_id=coach_account_id,
+                    role="coach",
+                    purpose="coach_program_request",
+                    store=db,
+                    client=client,
                 )
+                with inference_turn(inference_scope, background_tasks=background_tasks):
+                    run_inference_sync(
+                        generate_program_pipeline,
+                        frequency_override=request["desired_weekly_frequency"],
+                        user_split_override=request["desired_split_preference"],
+                        published_by_coach_account_id=coach_account_id,
+                        ledger=ledger,
+                        scope=inference_scope,
+                    )
         except Exception:
             logger.exception("Program request %s write failed after claim; reverting to pending", request_id)
             now_iso = _now_iso()
@@ -334,28 +365,7 @@ def apply_request(
                 logger.exception("Program request %s revert raised unexpectedly", request_id)
             raise
 
-        published = ledger.get_active_program()
-        version = published.version if published is not None else None
-        _notify_player(
-            db,
-            request["player_account_id"],
-            request["assignment_id"],
-            f"Your coach applied your program change. Program version {version}.",
-            _now_iso(),
-        )
-        resolved_request = db.get_program_request(request_id)
-        if published is not None:
-            if request["kind"] == EXERCISE_SUBSTITUTION:
-                capture_program_exercise_swapped(
-                    coach_actor, published, player_account_id=request["player_account_id"], client=client
-                )
-            else:
-                capture_program_generated(
-                    coach_actor, "coach_request", published,
-                    player_account_id=request["player_account_id"], client=client,
-                )
-        capture_program_request_resolved(coach_actor, resolved_request, client=client)
-        return {"ok": True, "request": resolved_request, "program_version": version}
+        return _finish_applied_request()
 
 
 def decline_request(

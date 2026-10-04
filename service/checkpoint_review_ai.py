@@ -72,6 +72,7 @@ class ReviewGenerationRequest:
     language: str
     coach_tone: str = DEFAULT_ASSISTANT_STYLE
     custom_instructions: str = ""
+    inference_scope: Any | None = None
 
 
 def format_number(value: Any) -> str:
@@ -225,6 +226,13 @@ def generate_review_text(request: ReviewGenerationRequest) -> str:
     """Runs the metered player model without consuming the account's allowance."""
     from svc.llm import InferenceScope, run_inference_sync
 
+    scope = request.inference_scope or InferenceScope(
+        account_id=request.account_id,
+        role="player",
+        purpose=ALLOWANCE_EXEMPT_PURPOSE,
+        admit=False,
+        store=request.db,
+    )
     messages = build_messages(
         request.facts, request.rating, request.language,
         preferences=AssistantStylePreferences(request.coach_tone, request.custom_instructions),
@@ -232,13 +240,7 @@ def generate_review_text(request: ReviewGenerationRequest) -> str:
     return run_inference_sync(
         _invoke_player_model,
         messages,
-        scope=InferenceScope(
-            account_id=request.account_id,
-            role="player",
-            purpose=ALLOWANCE_EXEMPT_PURPOSE,
-            admit=False,
-            store=request.db,
-        ),
+        scope=scope,
     )
 
 

@@ -165,6 +165,16 @@ def _local_model_id(model_type: str) -> str:
     return f"local:{MODEL_REGISTRY[model_type]['repo_id']}"
 
 
+def configured_model_ids() -> frozenset[str]:
+    """Returns every model id this factory can meter under the current config."""
+    return frozenset(
+        {
+            *(_local_model_id(model_type) for model_type in MODEL_REGISTRY),
+            *(_cloud_model_id(model_type) for model_type in CLOUD_MODEL_REGISTRY),
+        }
+    )
+
+
 def model_identity(model_type: str = "production") -> tuple[str, str]:
     """``(model id, backend)`` the configured model of ``model_type`` resolves to.
 

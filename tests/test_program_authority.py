@@ -205,7 +205,12 @@ def _auto_generation(db, monkeypatch):
 
 def _profile_generation(db, monkeypatch):
     fake, calls = _counting_saver(db, "Player Plan")
-    monkeypatch.setattr("service.profile.generate_program_pipeline", fake)
+
+    def preview(_request, *, ledger, profile=None):
+        calls["profile"] = profile
+        return fake(persist_program=False, ledger=ledger)
+
+    monkeypatch.setattr("service.profile.generate_program_draft_pipeline", preview)
     return fake, calls
 
 
@@ -366,6 +371,23 @@ def test_profile_rebuild_allowed_before_publication(api, monkeypatch):
     assert body["program_message"] is None
     assert calls["n"] == 1
     assert _active(db).program_name == "Player Plan"
+
+
+def test_profile_rebuild_generates_from_the_edited_profile(api, monkeypatch):
+    client, _, _ = api
+    _, player_headers, _, _, _ = _assigned_player(api)
+    _, calls = _profile_generation(api[1], monkeypatch)
+
+    resp = client.put(
+        "/profile",
+        headers=player_headers,
+        json={"equipment_access": "Home gym", "weekly_frequency": 3},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["program_rebuilt"] is True
+    assert calls["profile"]["equipment_access"] == "Home gym"
+    assert calls["profile"]["weekly_frequency"] == 3
 
 
 def test_profile_rebuild_quota_refusal_rolls_back_and_can_retry(shipped_library_api, monkeypatch):
