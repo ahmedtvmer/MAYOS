@@ -31,6 +31,28 @@ def player_controls_program(db: Any, ledger: Any, player_account_id: str | None)
     return False
 
 
+def with_library_equipment(program: Any, db: Any) -> dict[str, Any]:
+    """Return a program payload whose exercises carry library equipment.
+
+    Older saved programs predate the equipment field. Resolve it when serving
+    the program so an Active workout created from a cached program has the same
+    equipment facts as a newly generated one.
+    """
+    payload = program.model_dump() if hasattr(program, "model_dump") else dict(program)
+    for day in payload.get("days", []):
+        program_movements = [
+            *day.get("exercises", []),
+            *day.get("warmup_exercises", []),
+        ]
+        for exercise in program_movements:
+            entry = db.get_exercise_library_entry(
+                str(exercise.get("exercise_id", ""))
+            )
+            if entry is not None:
+                exercise["equipment"] = entry.get("equipment")
+    return payload
+
+
 def ensure_active_program(
     db: Any, ledger_id: str, player_account_id: str | None = None, ledger: Any | None = None
 ) -> Any:

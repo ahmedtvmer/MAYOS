@@ -433,15 +433,14 @@ def _to_rir(rpe: Any) -> float | None:
 
 
 def _baseline_rows(ledger: Any) -> list[dict[str, Any]]:
-    """One baseline row per exercise with at least one committed working set (#122).
+    """One row per exercise with previous performance or weighted records (#122).
 
     Two queries total, neither per exercise: every working set (which supplies
-    the aggregates, the session count, and which exercises qualify) plus one
-    window query for each exercise's latest session and its sets. Aggregates
-    come from ``WorkingSetAggregates.from_sets`` — the same code the commit
-    comparison reduces with — over the ledger mixin's single working-set
-    definition, so a device reading a baseline and the server's first-session
-    rule agree by construction.
+    the strict record aggregates and session count) plus one window query for
+    each exercise's latest previous-performance session and its sets. The
+    ``last_session`` display/autofill data includes non-warm-up sets with reps
+    at any load; record aggregates come only from the strict weighted working
+    sets so a body-weight-only history does not become a record baseline.
     """
     working_by_exercise: dict[str, list[dict[str, Any]]] = {}
     for row in ledger.working_set_rows():
@@ -455,8 +454,9 @@ def _baseline_rows(ledger: Any) -> list[dict[str, Any]]:
         performed_date.setdefault(exercise_id, str(row["session_date"]))
 
     rows: list[dict[str, Any]] = []
-    for exercise_id in sorted(working_by_exercise):
-        working = working_by_exercise[exercise_id]
+    exercise_ids = working_by_exercise.keys() | sets_by_exercise.keys()
+    for exercise_id in sorted(exercise_ids):
+        working = working_by_exercise.get(exercise_id, [])
         aggregates = WorkingSetAggregates.from_sets(working)
         rows.append(
             {
@@ -483,13 +483,11 @@ def _baseline_rows(ledger: Any) -> list[dict[str, Any]]:
 def baselines(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, Any]:
     """The player's exercise baselines for the device's frozen Active workout (#122).
 
-    One row per exercise with at least one committed working set. ``max_weight_kg``
-    and ``best_e1rm_kg`` come from ``WorkingSetAggregates.from_sets`` over the
-    same working-set rows the commit comparison uses — so the device and the
-    server agree by construction (ADR 042). ``last_session`` carries the working
-    sets of the most recent committed session in logged order, with effort
-    exposed as RIR (``10 - RPE``, ``null`` when the set is unrated) at the
-    display boundary. Reads only the caller's own ledger.
+    Rows include exercises with previous performance, even when they have only
+    zero-load sets. ``max_weight_kg``, ``best_e1rm_kg``, and ``sessions_logged``
+    use only strict weighted working sets (ADR 042); ``last_session`` carries
+    the latest non-warm-up sets with reps at any load for display and autofill.
+    Reads only the caller's own ledger.
     """
     with ledger_scope(db, ledger, ledger_id) as open_ledger:
         return {"baselines": _baseline_rows(open_ledger)}

@@ -56,8 +56,17 @@ def _warmup_movements_payload(db: Any, body: SessionCommitIn) -> list[dict[str, 
     movements = []
     for movement in body.warmup_movements:
         payload = movement.model_dump()
-        if movement.exercise_id and db.get_exercise_library_entry(movement.exercise_id) is None:
+        entry = (
+            db.get_exercise_library_entry(movement.exercise_id)
+            if movement.exercise_id
+            else None
+        )
+        if movement.exercise_id and entry is None:
             payload["exercise_id"] = None
+        if movement.equipment is not None:
+            payload["equipment"] = entry.get("equipment") if entry is not None else None
+        else:
+            payload.pop("equipment", None)
         movements.append(payload)
     return movements
 

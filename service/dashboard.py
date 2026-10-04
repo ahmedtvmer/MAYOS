@@ -68,6 +68,12 @@ def exercise_history(
         return get_exercise_progression_history(ledger, exercise_id)
 
 
+def exercise_equipment(db: Any, exercise_id: str) -> str | None:
+    """The Exercise library equipment for a history payload, when available."""
+    exercise = db.get_exercise_library_entry(exercise_id)
+    return exercise.get("equipment") if exercise is not None else None
+
+
 def latest_record_caption(history: list[dict[str, Any]]) -> str | None:
     if not history:
         return None

@@ -74,6 +74,7 @@ async def read_exercise_history(
             "history": history,
             "caption": dashboard_service.latest_record_caption(history),
             "records": dashboard_service.exercise_records(db, str(player), exercise_id, ledger=ledger),
+            "equipment": dashboard_service.exercise_equipment(db, exercise_id),
         }
 
     return await asyncio.to_thread(_run)

@@ -1198,6 +1198,7 @@ class CoachExerciseHistory {
     required this.history,
     required this.records,
     this.caption,
+    this.equipment,
   });
 
   factory CoachExerciseHistory.fromJson(Map<String, dynamic> json) =>
@@ -1207,6 +1208,7 @@ class CoachExerciseHistory {
                 point as Map<String, dynamic>))
             .toList(growable: false),
         caption: json['caption'] as String?,
+        equipment: json['equipment'] as String?,
         records: (json['records'] as List<dynamic>? ?? const [])
             .map((dynamic record) =>
                 CoachExerciseRecord.fromJson(record as Map<String, dynamic>))
@@ -1216,6 +1218,7 @@ class CoachExerciseHistory {
   final List<CoachExerciseHistoryPoint> history;
   final String? caption;
   final List<CoachExerciseRecord> records;
+  final String? equipment;
 }
 
 /// An authenticated account plus onboarding and recovery-email state.
@@ -1878,6 +1881,7 @@ class ProgramExercise {
     required this.targetRepsMin,
     required this.targetRepsMax,
     required this.targetRpe,
+    this.equipment,
     this.warmupSets = 0,
     this.restSeconds,
     this.notes,
@@ -1893,6 +1897,7 @@ class ProgramExercise {
         targetRepsMin: (json['target_reps_min'] as num?)?.toInt() ?? 0,
         targetRepsMax: (json['target_reps_max'] as num?)?.toInt() ?? 0,
         targetRpe: (json['target_rpe'] as num?)?.toDouble() ?? 8.5,
+        equipment: json['equipment'] as String?,
         warmupSets: (json['warmup_sets'] as num?)?.toInt() ?? 0,
         // A missing `rest_seconds` is *unset*, not 180: the rest timer then
         // resolves it to the flat 2:00 instead of a phantom 3:00 (#125).
@@ -1917,6 +1922,7 @@ class ProgramExercise {
   final int targetRepsMin;
   final int targetRepsMax;
   final double targetRpe;
+  final String? equipment;
 
   /// Ramped warm-up sets prescribed before the working sets (0 when none).
   final int warmupSets;
@@ -1957,6 +1963,9 @@ class ProgramExercise {
       'target_rpe': targetRpe,
       'warmup_sets': warmupSets,
     };
+    if (equipment != null) {
+      json['equipment'] = equipment;
+    }
     // The key is omitted when unset, so the Active workout (and the draft
     // built from it) keeps "no rest_seconds" as-is and the timer resolves it
     // to 2:00 rather than writing a phantom 180 back (#125). Its position in
@@ -2006,6 +2015,7 @@ class WarmupExercise {
   const WarmupExercise({
     required this.exerciseName,
     this.exerciseId,
+    this.equipment,
     this.sets = 2,
     this.reps = 10,
     this.restSeconds = 45,
@@ -2015,6 +2025,7 @@ class WarmupExercise {
   factory WarmupExercise.fromJson(Map<String, dynamic> json) => WarmupExercise(
         exerciseName: json['exercise_name'] as String,
         exerciseId: json['exercise_id'] as String?,
+        equipment: json['equipment'] as String?,
         sets: (json['sets'] as num?)?.toInt() ?? 2,
         reps: (json['reps'] as num?)?.toInt() ?? 10,
         restSeconds: (json['rest_seconds'] as num?)?.toInt() ?? 45,
@@ -2022,6 +2033,7 @@ class WarmupExercise {
       );
 
   final String? exerciseId;
+  final String? equipment;
   final String exerciseName;
   final int sets;
   final int reps;
@@ -2034,6 +2046,7 @@ class WarmupExercise {
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'exercise_id': exerciseId,
+        if (equipment != null) 'equipment': equipment,
         'exercise_name': exerciseName,
         'sets': sets,
         'reps': reps,
@@ -2343,11 +2356,13 @@ class WarmupMovementLog {
     required this.exerciseName,
     required this.sets,
     this.exerciseId,
+    this.equipment,
   });
 
   factory WarmupMovementLog.fromJson(Map<String, dynamic> json) =>
       WarmupMovementLog(
         exerciseId: json['exercise_id'] as String?,
+        equipment: json['equipment'] as String?,
         exerciseName: json['exercise_name'] as String,
         sets: (json['sets'] as List<dynamic>? ?? const <dynamic>[])
             .map((dynamic set) =>
@@ -2356,11 +2371,13 @@ class WarmupMovementLog {
       );
 
   final String? exerciseId;
+  final String? equipment;
   final String exerciseName;
   final List<WarmupSetLog> sets;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'exercise_id': exerciseId,
+        if (equipment != null) 'equipment': equipment,
         'exercise_name': exerciseName,
         'sets': <Map<String, dynamic>>[
           for (final WarmupSetLog set in sets) set.toJson(),
@@ -2392,11 +2409,13 @@ class WarmupMovementDraft {
     required this.exerciseName,
     required this.sets,
     this.exerciseId,
+    this.equipment,
   });
 
   factory WarmupMovementDraft.fromJson(Map<String, dynamic> json) =>
       WarmupMovementDraft(
         exerciseId: json['exercise_id'] as String?,
+        equipment: json['equipment'] as String?,
         exerciseName: json['exercise_name'] as String,
         sets: (json['sets'] as List<dynamic>? ?? const <dynamic>[])
             .map((dynamic set) =>
@@ -2405,6 +2424,7 @@ class WarmupMovementDraft {
       );
 
   final String? exerciseId;
+  final String? equipment;
   final String exerciseName;
   final List<WarmupSetDraft> sets;
 
@@ -2412,6 +2432,7 @@ class WarmupMovementDraft {
 
   WarmupMovementLog toCommitLog() => WarmupMovementLog(
         exerciseId: exerciseId,
+        equipment: equipment,
         exerciseName: exerciseName,
         sets: <WarmupSetLog>[
           for (final WarmupSetDraft set in sets)
@@ -2422,6 +2443,7 @@ class WarmupMovementDraft {
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'exercise_id': exerciseId,
+        if (equipment != null) 'equipment': equipment,
         'exercise_name': exerciseName,
         'sets': <Map<String, dynamic>>[
           for (final WarmupSetDraft set in sets) set.toJson(),
@@ -2876,6 +2898,7 @@ class ExerciseCatalogEntry {
     required this.name,
     this.imagePath,
     this.targetMuscle,
+    this.equipment,
   });
 
   factory ExerciseCatalogEntry.fromJson(Map<String, dynamic> json) =>
@@ -2884,6 +2907,7 @@ class ExerciseCatalogEntry {
         name: json['name'] as String,
         imagePath: json['image_path'] as String?,
         targetMuscle: json['target_muscle'] as String?,
+        equipment: json['equipment'] as String?,
       );
 
   final String id;
@@ -2893,6 +2917,9 @@ class ExerciseCatalogEntry {
   /// The muscle the catalog file trains (`Quads`, `Chest`, …), or null when
   /// the row carries none.
   final String? targetMuscle;
+
+  /// The Exercise library equipment carried into the Active workout.
+  final String? equipment;
 }
 
 /// `GET /workouts/exercises/{exercise_id}`: read-only catalog detail for the
@@ -3016,6 +3043,7 @@ class ExerciseHistory {
     required this.history,
     required this.records,
     this.caption,
+    this.equipment,
   });
 
   factory ExerciseHistory.fromJson(Map<String, dynamic> json) =>
@@ -3029,11 +3057,13 @@ class ExerciseHistory {
                 CoachExerciseRecord.fromJson(record as Map<String, dynamic>))
             .toList(growable: false),
         caption: json['caption'] as String?,
+        equipment: json['equipment'] as String?,
       );
 
   final List<ExerciseHistoryPoint> history;
   final List<CoachExerciseRecord> records;
   final String? caption;
+  final String? equipment;
 
   bool get isEmpty => history.isEmpty;
 }

@@ -192,6 +192,7 @@ class LedgerTrainingProgramMixin:
                     select_cols += ", pe.warmup_sets"
                 if has_suggested_substitutes:
                     select_cols += ", pe.suggested_substitutes_json"
+                select_cols += ", e.equipment"
                 cursor.execute(
                     f"""
                     SELECT {select_cols}
@@ -226,6 +227,7 @@ class LedgerTrainingProgramMixin:
                             notes=r[7] or "",
                             image_path=r[8],
                             gif_path=r[9],
+                            equipment=row_by_column.get("equipment"),
                             slot_key=r[10] if has_slot_key else None,
                             warmup_sets=int(r[11]) if has_warmup_sets and r[11] is not None else 0,
                             suggested_substitutes=suggested_substitutes,

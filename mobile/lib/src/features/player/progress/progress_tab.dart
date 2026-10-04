@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/display_language/copy_context.dart';
+import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/api_client.dart';
 import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
@@ -16,6 +17,7 @@ import '../../../core/ui/mayos_card.dart';
 import '../../../core/ui/mayos_section_header.dart';
 import '../../../core/ui/mayos_segmented_control.dart';
 import '../../../core/ui/first_strong_direction.dart';
+import '../../../core/workout_equipment.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import 'progress_chart.dart';
@@ -405,12 +407,15 @@ class _StrengthSection extends StatelessWidget {
           if (selectedPoint != null &&
               selectedPoint! < points.length) ...<Widget>[
             const SizedBox(height: MayosSpacing.md),
-            _PointCallout(point: points[selectedPoint!]),
+            _PointCallout(
+              point: points[selectedPoint!],
+              equipment: history?.equipment,
+            ),
           ],
           const SizedBox(height: MayosSpacing.xl),
           MayosSectionHeader(title: displayCopyOf(context).recentSessions),
           for (final ExerciseHistoryPoint point in points.reversed)
-            _SessionRow(point: point),
+            _SessionRow(point: point, equipment: history?.equipment),
           const SizedBox(height: MayosSpacing.md),
           MayosButton(
             label: displayCopyOf(context).viewExercise,
@@ -506,9 +511,10 @@ class _StrengthChart extends StatelessWidget {
 }
 
 class _PointCallout extends StatelessWidget {
-  const _PointCallout({required this.point});
+  const _PointCallout({required this.point, required this.equipment});
 
   final ExerciseHistoryPoint point;
+  final String? equipment;
 
   @override
   Widget build(BuildContext context) {
@@ -534,22 +540,34 @@ class _PointCallout extends StatelessWidget {
           ),
           const SizedBox(height: MayosSpacing.xxs),
           FirstStrongDirection(
-            text: _progressPointValue(context, point, includeRepsUnit: true),
+            text: _progressPointValue(
+              context,
+              point,
+              equipment: equipment,
+              includeRepsUnit: true,
+            ),
             child: Text(
-              _progressPointValue(context, point, includeRepsUnit: true),
+              _progressPointValue(
+                context,
+                point,
+                equipment: equipment,
+                includeRepsUnit: true,
+              ),
               style:
                   MayosTypography.numericSmall.copyWith(color: c.textPrimary),
             ),
           ),
-          const SizedBox(height: 2),
-          Directionality(
-            textDirection: TextDirection.ltr,
-            child: Text(
-              '${displayCopyOf(context).estimatedOneRepMaxShort} ${_formatValue(point.e1rm)} kg',
-              style: MayosTypography.bodySecondary
-                  .copyWith(color: c.textSecondary),
+          if (zeroLoadLabelKind(point.weightKg, equipment) == null) ...<Widget>[
+            const SizedBox(height: 2),
+            Directionality(
+              textDirection: TextDirection.ltr,
+              child: Text(
+                '${displayCopyOf(context).estimatedOneRepMaxShort} ${_formatValue(point.e1rm)} kg',
+                style: MayosTypography.bodySecondary
+                    .copyWith(color: c.textSecondary),
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -557,9 +575,10 @@ class _PointCallout extends StatelessWidget {
 }
 
 class _SessionRow extends StatelessWidget {
-  const _SessionRow({required this.point});
+  const _SessionRow({required this.point, required this.equipment});
 
   final ExerciseHistoryPoint point;
+  final String? equipment;
 
   @override
   Widget build(BuildContext context) {
@@ -582,26 +601,30 @@ class _SessionRow extends StatelessWidget {
               text: _progressPointValue(
                 context,
                 point,
+                equipment: equipment,
                 includeRepsUnit: false,
               ),
               child: Text(
                 _progressPointValue(
                   context,
                   point,
+                  equipment: equipment,
                   includeRepsUnit: false,
                 ),
                 style: MayosTypography.body.copyWith(color: c.textPrimary),
               ),
             ),
           ),
-          const SizedBox(width: MayosSpacing.xs),
-          Directionality(
-            textDirection: TextDirection.ltr,
-            child: Text(
-              '${displayCopyOf(context).estimatedOneRepMaxShort} ${_formatValue(point.e1rm)}',
-              style: MayosTypography.caption.copyWith(color: c.textSecondary),
+          if (zeroLoadLabelKind(point.weightKg, equipment) == null) ...<Widget>[
+            const SizedBox(width: MayosSpacing.xs),
+            Directionality(
+              textDirection: TextDirection.ltr,
+              child: Text(
+                '${displayCopyOf(context).estimatedOneRepMaxShort} ${_formatValue(point.e1rm)}',
+                style: MayosTypography.caption.copyWith(color: c.textSecondary),
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -876,13 +899,19 @@ class _ErrorView extends StatelessWidget {
 String _progressPointValue(
   BuildContext context,
   ExerciseHistoryPoint point, {
+  required String? equipment,
   required bool includeRepsUnit,
 }) {
   final copy = displayCopyOf(context);
+  final WorkoutEquipmentKind? labelKind =
+      zeroLoadLabelKind(point.weightKg, equipment);
   final String measured = copy.repetitionValue(
-    _formatValue(point.weightKg),
+    labelKind == null
+        ? _formatValue(point.weightKg)
+        : workoutCopyOf(context).zeroLoadWeightLabel(labelKind),
     '${point.reps}',
     includeRepsUnit: includeRepsUnit,
+    weightUnit: exerciseWeightUnit(point.weightKg, equipment),
   );
   final String rir = rirLabel(point.rpe);
   return copy.isArabic

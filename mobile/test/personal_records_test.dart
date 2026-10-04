@@ -355,6 +355,65 @@ void main() {
       expect(stats.volumeLabel, '1475');
     });
 
+    test('zero-load body-weight sets are excluded from working-set totals', () {
+      final ActiveWorkoutSet set = _set(id: 'push-up', reps: 12);
+      final BaselineExercise baseline = BaselineExercise(
+        exerciseId: 'push_up',
+        sessionsLogged: 0,
+        maxWeightKg: null,
+        bestE1rmKg: null,
+        lastSession: const BaselineLastSession(
+          performedDate: '2026-09-26',
+          sets: <BaselineSet>[BaselineSet(weightKg: 0, reps: 12)],
+        ),
+      );
+      final ActiveWorkout workout = ActiveWorkout(
+        id: 'aw-1',
+        accountId: 'account-alice',
+        startedAt: '2026-09-28T08:00:00.000Z',
+        dayOrder: 1,
+        dayName: 'Push',
+        programVersion: 3,
+        exercises: <ActiveWorkoutExercise>[
+          ActiveWorkoutExercise(
+            exercise: <String, dynamic>{
+              'exercise_id': 'push_up',
+              'exercise_name': 'Push-Up',
+              'equipment': 'body weight',
+            },
+            sets: <ActiveWorkoutSet>[set],
+          ),
+        ],
+        baselines: <String, BaselineExercise>{'push_up': baseline},
+      );
+      final WorkoutSummary summary = WorkoutSummary.of(
+        workout,
+        now: DateTime.parse('2026-09-28T09:00:00.000Z'),
+      );
+
+      expect(summary.stats.exercisesDone, 0);
+      expect(summary.stats.workingSets, 0);
+      expect(summary.stats.totalVolumeKg, 0);
+      expect(summary.records, isEmpty);
+      expect(
+        exerciseRecordBadges(sets: <ActiveWorkoutSet>[set], baseline: baseline),
+        isEmpty,
+      );
+
+      final ActiveWorkoutSet firstWeightedSet = _set(
+        id: 'first-weighted-set',
+        weightKg: 60,
+        reps: 8,
+      );
+      expect(
+        exerciseRecordBadges(
+          sets: <ActiveWorkoutSet>[firstWeightedSet],
+          baseline: baseline,
+        ),
+        isEmpty,
+      );
+    });
+
     test('an exercise with only unticked or warm-up rows is not done', () {
       final WorkoutSummaryStats stats = workoutSummaryStats(summaryWorkout(
         benchSets: <ActiveWorkoutSet>[

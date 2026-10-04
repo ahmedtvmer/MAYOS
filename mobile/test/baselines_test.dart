@@ -188,7 +188,8 @@ void main() {
                   // Warm-up: excluded from every aggregate.
                   WorkoutSetLog(
                       weightKg: 40, reps: 10, rpe: 8.0, isWarmup: true),
-                  // 0 kg: excluded.
+                  // 0 kg: excluded from record aggregates but retained as
+                  // previous performance for autofill.
                   WorkoutSetLog(weightKg: 0, reps: 8, rpe: 8.0),
                   WorkoutSetLog(weightKg: 110, reps: 5, rpe: 9.0),
                 ],
@@ -205,10 +206,12 @@ void main() {
       // e1RM of 110x5 @ RIR 1 is 132, past the server's 120.
       expect(bench.bestE1rmKg, 132.0);
       expect(bench.lastSession.performedDate, '2026-09-26');
-      expect(bench.lastSession.sets, hasLength(1));
-      expect(bench.lastSession.sets.single.weightKg, 110.0);
-      expect(bench.lastSession.sets.single.reps, 5);
-      expect(bench.lastSession.sets.single.rir, 1.0);
+      expect(bench.lastSession.sets, hasLength(2));
+      expect(bench.lastSession.sets.last.weightKg, 110.0);
+      expect(bench.lastSession.sets.last.reps, 5);
+      expect(bench.lastSession.sets.last.rir, 1.0);
+      expect(bench.lastSession.sets.first.weightKg, 0.0);
+      expect(bench.lastSession.sets.first.reps, 8);
     });
 
     test('keeps the server last session when the draft is older', () {
@@ -265,6 +268,37 @@ void main() {
       expect(row.bestE1rmKg, 79.0);
       expect(row.lastSession.performedDate, '2026-09-26');
       expect(row.lastSession.sets.single.rir, 1.5);
+    });
+
+    test('folds zero-load previous performance without record aggregates', () {
+      final List<BaselineExercise> folded = foldDraftsIntoBaselines(
+        baselines: const <BaselineExercise>[],
+        drafts: <WorkoutDraft>[
+          _draft(
+            performedDate: '2026-09-26',
+            capturedAt: '2026-09-26T10:00:00.000Z',
+            exercises: <DraftExercise>[
+              DraftExercise(
+                exercise: _exerciseJson('push_up'),
+                sets: const <WorkoutSetLog>[
+                  WorkoutSetLog(weightKg: 0, reps: 12, rpe: 8.0),
+                  WorkoutSetLog(
+                      weightKg: 40, reps: 5, rpe: 8.0, isWarmup: true),
+                ],
+              ),
+            ],
+          ),
+        ],
+      );
+
+      expect(folded, hasLength(1));
+      expect(folded.single.sessionsLogged, 0);
+      expect(folded.single.maxWeightKg, isNull);
+      expect(folded.single.bestE1rmKg, isNull);
+      expect(folded.single.lastSession.sets, hasLength(1));
+      expect(folded.single.lastSession.sets.single.weightKg, 0.0);
+      expect(folded.single.lastSession.sets.single.reps, 12);
+      expect(folded.single.lastSession.sets.single.rir, 2.0);
     });
 
     test('ignores synced drafts, skipped exercises, and empty drafts', () {

@@ -2,11 +2,13 @@ import 'package:flutter/foundation.dart' show immutable;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'baselines.dart';
+import 'display_language/workout_copy.dart';
 import 'effort.dart';
 import 'models.dart';
 import 'performed_date_window.dart';
 import 'rest_length.dart';
 import 'secure_store.dart';
+import 'workout_equipment.dart';
 
 int _setSequence = 0;
 
@@ -60,11 +62,13 @@ class ActiveWarmupMovement {
     required this.exerciseName,
     required this.sets,
     this.exerciseId,
+    this.equipment,
   });
 
   factory ActiveWarmupMovement.fromJson(Map<String, dynamic> json) =>
       ActiveWarmupMovement(
         exerciseId: json['exercise_id'] as String?,
+        equipment: json['equipment'] as String?,
         exerciseName: json['exercise_name'] as String,
         sets: (json['sets'] as List<dynamic>? ?? const <dynamic>[])
             .map((dynamic set) =>
@@ -75,6 +79,7 @@ class ActiveWarmupMovement {
   factory ActiveWarmupMovement.fromPrescription(WarmupExercise movement) =>
       ActiveWarmupMovement(
         exerciseId: movement.exerciseId,
+        equipment: movement.equipment,
         exerciseName: movement.exerciseName,
         sets: <ActiveWarmupSet>[
           for (int i = 0; i < movement.sets; i++)
@@ -83,18 +88,21 @@ class ActiveWarmupMovement {
       );
 
   final String? exerciseId;
+  final String? equipment;
   final String exerciseName;
   final List<ActiveWarmupSet> sets;
 
   ActiveWarmupMovement copyWith({List<ActiveWarmupSet>? sets}) =>
       ActiveWarmupMovement(
         exerciseId: exerciseId,
+        equipment: equipment,
         exerciseName: exerciseName,
         sets: sets ?? this.sets,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'exercise_id': exerciseId,
+    if (equipment != null) 'equipment': equipment,
     'exercise_name': exerciseName,
     'sets': <Map<String, dynamic>>[
       for (final ActiveWarmupSet set in sets) set.toJson(),
@@ -108,15 +116,16 @@ class ActiveWarmupMovement {
 /// Rows start **empty** (0 kg, 0 reps, no RIR), exactly like the #107
 /// prototype: the table shows the previous set as a faded hint and fills the
 /// cells on tick, so nothing is pre-entered for the player to correct.
-/// An empty cell is 0 for weight/reps and null for RIR, so "no value yet" is
-/// distinguishable from a typed zero weight only by intent — the working-set
-/// rules treat both as not logged, matching the server predicate.
+/// An empty cell is 0 for weight/reps and null for RIR. The weight-entry flag
+/// distinguishes a typed zero from an empty cell so BW/Band zero can override
+/// previous-weight autofill; zero loads remain outside working-set counts.
 class ActiveWorkoutSet {
   ActiveWorkoutSet({
     String? id,
     this.weightKg = 0,
     this.reps = 0,
     this.rir,
+    this.weightExplicitlyEntered = false,
     this.isWarmup = false,
     this.ticked = false,
   }) : id = id ?? newActiveWorkoutSetId();
@@ -127,6 +136,8 @@ class ActiveWorkoutSet {
         weightKg: (json['weight_kg'] as num?)?.toDouble() ?? 0,
         reps: (json['reps'] as num?)?.toInt() ?? 0,
         rir: (json['rir'] as num?)?.toDouble(),
+        weightExplicitlyEntered:
+            json['weight_explicitly_entered'] as bool? ?? false,
         isWarmup: json['is_warmup'] as bool? ?? false,
         ticked: json['ticked'] as bool? ?? false,
       );
@@ -139,6 +150,9 @@ class ActiveWorkoutSet {
 
   /// Reps in reserve; null when the set is unrated (#111).
   final double? rir;
+
+  /// Whether the player entered a value in the weight cell.
+  final bool weightExplicitlyEntered;
 
   final bool isWarmup;
   final bool ticked;
@@ -157,6 +171,7 @@ class ActiveWorkoutSet {
     double? weightKg,
     int? reps,
     double? rir,
+    bool? weightExplicitlyEntered,
     bool? isWarmup,
     bool? ticked,
     bool clearRir = false,
@@ -165,6 +180,8 @@ class ActiveWorkoutSet {
     weightKg: weightKg ?? this.weightKg,
     reps: reps ?? this.reps,
     rir: clearRir ? null : (rir ?? this.rir),
+    weightExplicitlyEntered:
+        weightExplicitlyEntered ?? this.weightExplicitlyEntered,
     isWarmup: isWarmup ?? this.isWarmup,
     ticked: ticked ?? this.ticked,
   );
@@ -174,17 +191,73 @@ class ActiveWorkoutSet {
     'weight_kg': weightKg,
     'reps': reps,
     'rir': rir,
+    if (weightExplicitlyEntered) 'weight_explicitly_entered': true,
     'is_warmup': isWarmup,
     'ticked': ticked,
   };
 }
 
+/// The localized weight value for a set, with BW/Band labels at zero load.
+String formatExerciseWeight(
+  double weight, {
+  String? equipment,
+  String languageCode = 'en',
+}) {
+  final WorkoutEquipmentKind? labelKind =
+      zeroLoadLabelKind(weight, equipment);
+  if (labelKind != null) {
+    return WorkoutCopy(languageCode).zeroLoadWeightLabel(labelKind);
+  }
+  return formatCellWeight(weight);
+}
+
+/// Formats a weight with its unit unless equipment labels zero load.
+String formatExerciseWeightWithUnit(
+  double weight, {
+  String? equipment,
+  String languageCode = 'en',
+  String unit = 'kg',
+}) {
+  final String value = formatExerciseWeight(
+    weight,
+    equipment: equipment,
+    languageCode: languageCode,
+  );
+  return '$value${exerciseWeightUnit(weight, equipment, unit: unit)}';
+}
+
+/// Whether a non-warm-up set has reps and can be ticked for this equipment.
+bool isLoggableWorkoutSet(
+  ActiveWorkoutSet set, {
+  required String? equipment,
+}) =>
+    !set.isWarmup &&
+    set.reps > 0 &&
+    (set.weightKg > 0 || zeroLoadLabelKind(set.weightKg, equipment) != null);
+
+/// Whether ticking this set will borrow the previous set's weight.
+bool shouldAutofillPreviousWeight({
+  required ActiveWorkoutSet set,
+  required double? previousWeightKg,
+  required String? equipment,
+}) =>
+    set.weightKg <= 0 &&
+    previousWeightKg != null &&
+    !(set.weightExplicitlyEntered && isBodyWeightOrBandEquipment(equipment));
+
 /// `100 × 5 @1` — one ticked row as the rest notification's "last" shows it
-/// (`last 100 × 5 @1`, #125), unrated rows dropping the `@` part like the
-/// table's previous column does.
-String setPerformanceLabel(ActiveWorkoutSet set) {
+/// (`last 100 × 5 @1`); unrated rows drop the `@` like the previous column.
+String setPerformanceLabel(
+  ActiveWorkoutSet set, {
+  String? equipment,
+  String languageCode = 'en',
+}) {
   final String effort = set.rir == null ? '' : ' @${formatRir(set.rir!)}';
-  return '${formatCellWeight(set.weightKg)} × ${set.reps}$effort';
+  return '${formatExerciseWeight(
+    set.weightKg,
+    equipment: equipment,
+    languageCode: languageCode,
+  )} × ${set.reps}$effort';
 }
 
 /// `100`, `92.5`, `33.33` — the cell/previous weight format.
@@ -225,25 +298,51 @@ BaselineSet? previousSetFor(
 
 /// `100 × 5 @1`, or `—` when there is no previous set. An unrated previous
 /// set drops the `@` part (`100 × 5`).
-String previousLabel(BaselineSet? set) {
+String previousLabel(
+  BaselineSet? set, {
+  String? equipment,
+  String languageCode = 'en',
+}) {
   if (set == null) {
     return '—';
   }
   final String effort = set.rir == null ? '' : ' @${formatRir(set.rir!)}';
-  return '${formatCellWeight(set.weightKg)} × ${set.reps}$effort';
+  return '${formatExerciseWeight(
+    set.weightKg,
+    equipment: equipment,
+    languageCode: languageCode,
+  )} × ${set.reps}$effort';
 }
 
-/// The card's previous-performance line (#158): the frozen baseline's last
-/// session as `Last: 60kg × 6 · 60kg × 5`, working sets in logged order. A
-/// bodyweight set reads `BW × 10`, never `0kg × 10`.
-String lastSessionLabel(List<BaselineSet> sets) {
+/// The card's previous-performance line from the frozen baseline's last
+/// session. Only body-weight/band equipment labels zero load as BW/Band.
+String lastSessionLabel(
+  List<BaselineSet> sets, {
+  String? equipment,
+  String languageCode = 'en',
+}) {
   final String joined = <String>[
     for (final BaselineSet set in sets)
-      set.weightKg > 0
-          ? '${formatCellWeight(set.weightKg)}kg × ${set.reps}'
-          : 'BW × ${set.reps}',
+      _lastSessionSetLabel(
+        set,
+        equipment: equipment,
+        languageCode: languageCode,
+      ),
   ].join(' · ');
   return 'Last: $joined';
+}
+
+String _lastSessionSetLabel(
+  BaselineSet set, {
+  required String? equipment,
+  required String languageCode,
+}) {
+  final String value = formatExerciseWeightWithUnit(
+    set.weightKg,
+    equipment: equipment,
+    languageCode: languageCode,
+  );
+  return '$value × ${set.reps}';
 }
 
 /// The prescription caption (#108, #158): the effective prescription the rows
@@ -628,6 +727,13 @@ class ActiveWorkoutExercise {
 
   String get exerciseId => exercise['exercise_id'] as String;
   String get exerciseName => exercise['exercise_name'] as String;
+  String? get equipment => exercise['equipment'] as String?;
+
+  /// A zero-load set is loggable even though [countsAsWorkingSet] excludes it.
+  bool get hasLoggableSet => sets.any(
+        (ActiveWorkoutSet set) =>
+            set.ticked && isLoggableWorkoutSet(set, equipment: equipment),
+      );
 
   /// The catalog image path the program payload carried (#161), for the
   /// card's picture. Null when the program (or an unplanned addition) had
@@ -953,6 +1059,7 @@ class ActiveWorkout {
       if (movement.sets.any((ActiveWarmupSet set) => set.ticked))
         WarmupMovementLog(
           exerciseId: movement.exerciseId,
+          equipment: movement.equipment,
           exerciseName: movement.exerciseName,
           sets: <WarmupSetLog>[
             for (final ActiveWarmupSet set in movement.sets)
@@ -968,6 +1075,7 @@ class ActiveWorkout {
     for (final ActiveWarmupMovement movement in movements)
       WarmupMovementDraft(
         exerciseId: movement.exerciseId,
+        equipment: movement.equipment,
         exerciseName: movement.exerciseName,
         sets: <WarmupSetDraft>[
           for (final ActiveWarmupSet set in movement.sets)

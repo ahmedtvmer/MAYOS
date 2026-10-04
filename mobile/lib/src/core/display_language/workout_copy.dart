@@ -1,5 +1,6 @@
 import 'arabic_count.dart';
 import '../training_status_projection.dart';
+import '../workout_equipment.dart';
 
 /// App-owned labels and messages used by the player workout logger.
 class WorkoutCopy {
@@ -337,6 +338,11 @@ class WorkoutCopy {
       : 'Offline workout drafts are available in the Android app.';
   String previousPerformance(String values) =>
       isArabic ? 'السابق: ${_ltr(values)}' : 'Last: $values';
+  String zeroLoadWeightLabel(WorkoutEquipmentKind kind) => switch (kind) {
+        WorkoutEquipmentKind.bodyWeight => isArabic ? 'وزن الجسم' : 'BW',
+        WorkoutEquipmentKind.band => isArabic ? 'مطاط' : 'Band',
+        WorkoutEquipmentKind.other => '0',
+      };
   String prescriptionSetCount(int count) {
     if (!isArabic) return count == 1 ? '1 set' : '$count sets';
     final String phrase = arabicCountPhrase(count, ArabicCountNoun.group);

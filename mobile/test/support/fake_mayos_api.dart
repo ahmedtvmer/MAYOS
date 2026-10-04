@@ -2916,6 +2916,7 @@ class FakeMayosApi {
       <String, dynamic>{
         'id': 'bicep_curl',
         'name': 'Bicep Curl',
+        'equipment': 'dumbbell',
         'target_muscle': 'Biceps',
         'body_part': 'Upper Arms',
         'image_path': 'images/bicep_curl.jpg',
@@ -2923,6 +2924,7 @@ class FakeMayosApi {
       <String, dynamic>{
         'id': 'cable_fly',
         'name': 'Cable Fly',
+        'equipment': 'cable',
         'target_muscle': 'Chest',
         'body_part': 'Chest',
         'image_path': 'images/cable_fly.jpg',
@@ -2930,6 +2932,7 @@ class FakeMayosApi {
       <String, dynamic>{
         'id': 'bench_press',
         'name': 'Bench Press',
+        'equipment': 'barbell',
         'target_muscle': 'Chest',
         'body_part': 'Chest',
         'image_path': 'images/bench_press.jpg',

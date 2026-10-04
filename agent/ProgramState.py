@@ -13,6 +13,7 @@ class SuggestedSubstitute(BaseModel):
 class ProgramExerciseSchema(BaseModel):
     exercise_id: str = Field(description="Exact ID matching candidate from the database")
     exercise_name: str = Field(description="Exact name of the exercise")
+    equipment: str | None = Field(default=None, description="Exercise library equipment")
     slot_key: str | None = Field(default=None, description="Movement slot that produced this exercise")
     warmup_sets: int = Field(default=0, ge=0, le=4, description="Ramped warm-up sets before working sets")
     target_sets: int = Field(default=2, ge=1, le=4, description="Working sets count (1 to 4)")
@@ -31,6 +32,7 @@ class ProgramExerciseSchema(BaseModel):
 
 class WarmupExerciseSchema(BaseModel):
     exercise_id: str | None = Field(default=None, description="Catalog ID when resolvable")
+    equipment: str | None = Field(default=None, description="Exercise library equipment")
     exercise_name: str = Field(description="Warm-up movement name")
     sets: int = Field(default=2, ge=1, le=3)
     reps: int = Field(default=10, ge=5, le=20)

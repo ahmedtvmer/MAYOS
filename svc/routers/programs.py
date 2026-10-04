@@ -67,7 +67,7 @@ async def generate_program(
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         return {
-            **program.model_dump(),
+            **programs_service.with_library_equipment(program, db),
             "player_controls_program": programs_service.player_controls_program(db, ledger, account_id),
         }
 
@@ -95,7 +95,7 @@ async def read_active_program(
         if program is None:
             return None
         return {
-            **program.model_dump(),
+            **programs_service.with_library_equipment(program, db),
             "player_controls_program": programs_service.player_controls_program(db, ledger, account_id),
         }
 
@@ -131,6 +131,7 @@ async def substitute_active_program_exercise(
         substitution["player_controls_program"] = programs_service.player_controls_program(
             db, ledger, account_id_of(player)
         )
+        substitution = programs_service.with_library_equipment(substitution, db)
         return substitution
 
     substitution = await asyncio.to_thread(_run)
@@ -165,6 +166,7 @@ async def undo_active_program_exercise_substitution(
         restoration["player_controls_program"] = programs_service.player_controls_program(
             db, ledger, account_id_of(player)
         )
+        restoration = programs_service.with_library_equipment(restoration, db)
         return restoration
 
     restoration = await asyncio.to_thread(_run)

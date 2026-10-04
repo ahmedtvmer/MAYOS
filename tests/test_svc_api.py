@@ -172,6 +172,14 @@ def test_active_program_served_for_returning_user(tmp_path, monkeypatch):
                         {
                             "day_name": "Full A",
                             "day_order": 1,
+                            "warmup_exercises": [
+                                {
+                                    "exercise_id": "sq",
+                                    "exercise_name": "Squat",
+                                    "sets": 1,
+                                    "reps": 10,
+                                }
+                            ],
                             "exercises": [
                                 {"exercise_id": "sq", "target_sets": 3, "target_reps_min": 5, "target_reps_max": 8, "target_rpe": 8.5},
                                 {"exercise_id": "bp", "target_sets": 3, "target_reps_min": 5, "target_reps_max": 8, "target_rpe": 8.5},
@@ -181,9 +189,25 @@ def test_active_program_served_for_returning_user(tmp_path, monkeypatch):
                     ],
                 }
             )
+            db.catalog_conn.executemany(
+                "UPDATE exercises SET equipment = ? WHERE id = ?",
+                [("body weight", "sq"), ("barbell", "bp"), ("band", "row")],
+            )
+            db.catalog_conn.commit()
             resp = api.get("/programs/active", headers=headers)
             assert resp.status_code == 200
             assert resp.json()["program_name"] == "Saved Split"
+            equipment_by_id = {
+                exercise["exercise_id"]: exercise["equipment"]
+                for exercise in resp.json()["days"][0]["exercises"]
+            }
+            assert equipment_by_id == {
+                "sq": "body weight",
+                "bp": "barbell",
+                "row": "band",
+            }
+            warmup = resp.json()["days"][0]["warmup_exercises"][0]
+            assert warmup["equipment"] == "body weight"
     finally:
         if db.ledger_conn is not None:
             db.ledger_conn.close()
@@ -262,8 +286,13 @@ def test_workout_commit_detects_prs_and_dashboard_serves_them(tmp_path, monkeypa
             assert shelf.status_code == 200
             assert any(record["exercise_id"] == "sq" for record in shelf.json())
 
+            db.catalog_conn.execute(
+                "UPDATE exercises SET equipment = 'body weight' WHERE id = 'sq'"
+            )
+            db.catalog_conn.commit()
             history = api.get("/dashboard/exercises/sq/history", headers=headers).json()
             assert history["records"]
+            assert history["equipment"] == "body weight"
     finally:
         if db.ledger_conn is not None:
             db.ledger_conn.close()
@@ -455,7 +484,12 @@ def test_dashboard_empty_ledger(client):
     assert volume["Quads"] == 0.0
     assert client.get("/dashboard/exercises").json() == []
     history = client.get("/dashboard/exercises/sq/history").json()
-    assert history == {"history": [], "caption": None, "records": []}
+    assert history == {
+        "history": [],
+        "caption": None,
+        "records": [],
+        "equipment": None,
+    }
     assert client.get("/dashboard/personal-records").json() == []
 
 

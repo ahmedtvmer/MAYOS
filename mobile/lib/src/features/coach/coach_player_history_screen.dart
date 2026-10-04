@@ -20,6 +20,7 @@ import '../../core/ui/mayos_section_header.dart';
 import '../../core/ui/mayos_segmented_control.dart';
 import '../../core/ui/mayos_settings_tile.dart';
 import '../../core/ui/first_strong_direction.dart';
+import '../../core/workout_equipment.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import 'coach_assistant_screen.dart';
@@ -750,10 +751,31 @@ class _CoachPlayerHistoryScreenState
     if (history == null) {
       return const SizedBox.shrink();
     }
+    final CoachExerciseHistoryPoint? latest =
+        history.history.isEmpty ? null : history.history.last;
+    final bool latestZeroLoadUsesEquipmentLabel = latest != null &&
+        zeroLoadLabelKind(latest.weightKg, history.equipment) != null;
+
+    Widget historyPoint(CoachExerciseHistoryPoint point) {
+      final WorkoutEquipmentKind? labelKind =
+          zeroLoadLabelKind(point.weightKg, history.equipment);
+      return Text(copy.exerciseHistoryPoint(
+        point.date,
+        labelKind == null
+            ? '${point.weightKg}'
+            : workoutCopyOf(context).zeroLoadWeightLabel(labelKind),
+        point.reps,
+        weightUnit: exerciseWeightUnit(point.weightKg, history.equipment),
+        rir: point.rpe == null ? null : rirLabel(point.rpe!),
+        e1rm: labelKind == null ? '${point.e1rm}' : null,
+      ));
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        if (history.caption != null) Text(history.caption!),
+        if (history.caption != null && !latestZeroLoadUsesEquipmentLabel)
+          Text(history.caption!),
         const SizedBox(height: MayosSpacing.xxs),
         if (history.history.isEmpty)
           Text(copy.noExerciseSets)
@@ -761,13 +783,7 @@ class _CoachPlayerHistoryScreenState
           for (final CoachExerciseHistoryPoint point in history.history)
             // Effort is hidden when nobody rated the set, as this line always
             // was; a rated one reads as RIR (#111).
-            Text(copy.exerciseHistoryPoint(
-              point.date,
-              '${point.weightKg}',
-              point.reps,
-              rir: point.rpe == null ? null : rirLabel(point.rpe!),
-              e1rm: '${point.e1rm}',
-            )),
+            historyPoint(point),
         if (history.records.isNotEmpty) ...<Widget>[
           const SizedBox(height: MayosSpacing.xs),
           Text(copy.records),

@@ -77,8 +77,8 @@ class SetRecordBadges {
 /// is part of the Active workout and survives a restart without being stored.
 ///
 /// Rules (ADR 042, #124):
-/// - No baseline row, `sessions_logged == 0`, or a baseline missing either
-///   aggregate (the server's own first-session guard) → no badges at all.
+/// - No baseline row, no strict weighted sessions, or a baseline missing
+///   either strict aggregate (the server's own first-session guard) → no badges.
 /// - Only ticked working sets are considered: warm-ups and unticked rows
 ///   never earn a badge.
 /// - A record needs a strict improvement over the baseline (`ties are not

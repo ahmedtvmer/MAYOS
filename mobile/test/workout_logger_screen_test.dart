@@ -102,6 +102,76 @@ const ProgramDay _warmupDay = ProgramDay(
   ],
 );
 
+const ProgramDay _warmupEquipmentDay = ProgramDay(
+  dayName: 'Warm-up equipment',
+  dayOrder: 1,
+  warmupExercises: <WarmupExercise>[
+    WarmupExercise(
+      exerciseId: 'push_up',
+      exerciseName: 'Push-Up',
+      equipment: 'body weight',
+      sets: 1,
+      reps: 10,
+    ),
+    WarmupExercise(
+      exerciseId: 'band_pull_apart',
+      exerciseName: 'Band Pull-Apart',
+      equipment: 'resistance band',
+      sets: 1,
+      reps: 12,
+    ),
+    WarmupExercise(
+      exerciseId: 'cat_cow',
+      exerciseName: 'Cat-Cow',
+      equipment: 'other',
+      sets: 1,
+      reps: 8,
+    ),
+  ],
+  exercises: <ProgramExercise>[
+    ProgramExercise(
+      exerciseId: 'bench_press',
+      exerciseName: 'Bench Press',
+      targetSets: 1,
+      targetRepsMin: 5,
+      targetRepsMax: 8,
+      targetRpe: 8.5,
+    ),
+  ],
+);
+
+const ProgramDay _bodyweightDay = ProgramDay(
+  dayName: 'Push',
+  dayOrder: 1,
+  exercises: <ProgramExercise>[
+    ProgramExercise(
+      exerciseId: 'push_up',
+      exerciseName: 'Push-Up',
+      equipment: 'body weight',
+      targetSets: 1,
+      targetRepsMin: 8,
+      targetRepsMax: 15,
+      targetRpe: 8.0,
+    ),
+  ],
+);
+
+const ProgramDay _bandDay = ProgramDay(
+  dayName: 'Band Work',
+  dayOrder: 1,
+  exercises: <ProgramExercise>[
+    ProgramExercise(
+      exerciseId: 'band_pull_apart',
+      exerciseName: 'Band Pull-Apart',
+      equipment: 'band',
+      targetSets: 1,
+      targetRepsMin: 8,
+      targetRepsMax: 15,
+      targetRpe: 8.0,
+    ),
+  ],
+);
+
 final ProgramDay _cardioDay = ProgramDay(
   dayName: 'Upper A',
   dayOrder: 2,
@@ -161,6 +231,28 @@ List<Map<String, dynamic>> _baselinesBody() => <Map<String, dynamic>>[
           // An unrated previous set: the label drops the `@` part.
           'sets': <Map<String, dynamic>>[
             <String, dynamic>{'weight_kg': 40.0, 'reps': 10, 'rir': null},
+          ],
+        },
+      },
+    ];
+
+List<Map<String, dynamic>> _pushUpBaseline({
+  required double weightKg,
+  required int reps,
+}) => <Map<String, dynamic>>[
+      <String, dynamic>{
+        'exercise_id': 'push_up',
+        'sessions_logged': weightKg > 0 ? 1 : 0,
+        'max_weight_kg': weightKg > 0 ? weightKg : null,
+        'best_e1rm_kg': weightKg > 0 ? weightKg * 1.2 : null,
+        'last_session': <String, dynamic>{
+          'performed_date': '2026-09-26',
+          'sets': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'weight_kg': weightKg,
+              'reps': reps,
+              'rir': null,
+            },
           ],
         },
       },
@@ -341,6 +433,7 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
   FakeMayosApi? fakeApi,
   bool webDirectCommit = false,
   String? languageCode,
+  bool roundTripStoredWorkout = false,
 }) async {
   _usePhoneView(tester);
 
@@ -383,6 +476,15 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
           replacementExercise,
           ...seeded.exercises.skip(1),
         ],
+      ),
+    );
+  }
+  if (roundTripStoredWorkout) {
+    final ActiveWorkout seeded = (await store.read(_account))!;
+    await store.write(
+      _account,
+      ActiveWorkout.fromJson(
+        jsonDecode(jsonEncode(seeded.toJson())) as Map<String, dynamic>,
       ),
     );
   }
@@ -800,6 +902,98 @@ void main() {
     expect(find.text('Sets × reps'), findsNothing);
   });
 
+  testWidgets('warm-up weight cells label body weight and band zero loads',
+      (WidgetTester tester) async {
+    final InMemoryActiveWorkoutStore store =
+        await _openLogger(tester, day: _warmupEquipmentDay);
+
+    TextFormField weightField(int movementIndex) => tester.widget<TextFormField>(
+          find.byKey(
+            ValueKey<String>('logger.warmup.$movementIndex.0.kg'),
+          ),
+        );
+    InputDecorator weightDecorator(int movementIndex) =>
+        tester.widget<InputDecorator>(
+          find.descendant(
+            of: find.byKey(
+              ValueKey<String>('logger.warmup.$movementIndex.0.kg'),
+            ),
+            matching: find.byType(InputDecorator),
+          ),
+        );
+
+    expect(weightDecorator(0).decoration.hintText, 'BW');
+    expect(weightDecorator(1).decoration.hintText, 'Band');
+    expect(weightDecorator(2).decoration.hintText, '—');
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('logger.warmup.0.0.kg')),
+        matching: find.text('BW'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('logger.warmup.1.0.kg')),
+        matching: find.text('Band'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('logger.warmup.0.0.kg')),
+      '0',
+    );
+    await tester.pumpAndSettle();
+    expect(weightField(0).controller!.text, '0');
+    await tester.tap(
+        find.byKey(const ValueKey<String>('logger.warmup.0.0.tick')));
+    await tester.pumpAndSettle();
+    expect(weightField(0).controller!.text, isEmpty);
+    expect(weightDecorator(0).decoration.hintText, 'BW');
+    expect(
+      (await store.read(_account))!.warmupMovements[0].sets.single.weightKg,
+      0,
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('logger.warmup.1.0.kg')),
+      '0',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+        find.byKey(const ValueKey<String>('logger.warmup.1.0.tick')));
+    await tester.pumpAndSettle();
+    expect(weightField(1).controller!.text, isEmpty);
+    expect(weightDecorator(1).decoration.hintText, 'Band');
+    expect(
+      (await store.read(_account))!.warmupMovements[1].sets.single.weightKg,
+      0,
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('logger.warmup.1.0.kg')),
+      '20',
+    );
+    await tester.pumpAndSettle();
+    expect(weightField(1).controller!.text, '20');
+  });
+
+  testWidgets('warm-up movement sets remain tickable with no weight',
+      (WidgetTester tester) async {
+    final InMemoryActiveWorkoutStore store =
+        await _openLogger(tester, day: _warmupEquipmentDay);
+
+    await tester.tap(find.byKey(const ValueKey<String>('logger.warmup.0.0.tick')));
+    await tester.pumpAndSettle();
+
+    final ActiveWarmupSet set =
+        (await store.read(_account))!.warmupMovements[0].sets.single;
+    expect(set.ticked, isTrue);
+    expect(set.weightKg, isNull);
+    expect(find.text('Push-Up · set 1 · Reps'), findsNothing);
+  });
+
   testWidgets('clearing a warm-up weight commits null',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _signedInFake();
@@ -1041,6 +1235,211 @@ void main() {
     await tester.tap(find.byKey(const ValueKey<String>('logger.key.hide')));
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Hide'), findsNothing);
+  });
+
+  testWidgets(
+      'body-weight sets need reps only, show BW, and save 0 kg in an Android draft',
+      (WidgetTester tester) async {
+    final InMemoryDraftStore drafts = InMemoryDraftStore();
+    final InMemoryActiveWorkoutStore store = await _openLogger(
+      tester,
+      day: _bodyweightDay,
+      drafts: drafts,
+      roundTripStoredWorkout: true,
+    );
+
+    final ActiveWorkout restored = (await store.read(_account))!;
+    expect(restored.exercises.single.equipment, 'body weight');
+    expect(
+      find.descendant(of: _cell(0, 0, 'kg'), matching: find.text('BW')),
+      findsOneWidget,
+    );
+
+    // With no reps, the tick opens the reps keypad directly despite the
+    // exercise's zero added load.
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Push-Up · set 1 · Reps'), findsOneWidget);
+    await _typeCell(tester, 0, 0, 'reps', '12');
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final ActiveWorkout logged = (await store.read(_account))!;
+    expect(logged.exercises.single.sets.single.ticked, isTrue);
+    expect(logged.exercises.single.sets.single.weightKg, 0);
+    expect(find.text('Hide'), findsNothing);
+
+    await _finishAndOpenSummary(tester);
+    await tester.tap(find.byKey(const ValueKey<String>('logger.save')));
+    await _pumpUntilFound(tester, find.text('Workouts'));
+
+    final List<WorkoutDraft> saved = await drafts.read(_account);
+    expect(saved, hasLength(1));
+    expect(saved.single.exercises.single.sets.single.weightKg, 0);
+  });
+
+  testWidgets('an added load on a body-weight exercise stays numeric',
+      (WidgetTester tester) async {
+    await _openLogger(tester, day: _bodyweightDay);
+    await _typeCell(tester, 0, 0, 'kg', '20');
+    expect(
+      find.descendant(of: _cell(0, 0, 'kg'), matching: find.text('20')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('an untouched BW row shows and autofills its previous added load',
+      (WidgetTester tester) async {
+    final InMemoryActiveWorkoutStore store = await _openLogger(
+      tester,
+      day: _bodyweightDay,
+      baselines: _pushUpBaseline(weightKg: 20, reps: 10),
+    );
+
+    expect(
+      find.descendant(of: _cell(0, 0, 'kg'), matching: find.text('20')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: _cell(0, 0, 'kg'), matching: find.text('BW')),
+      findsNothing,
+    );
+
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final ActiveWorkoutSet set =
+        (await store.read(_account))!.exercises.single.sets.single;
+    expect(set.ticked, isTrue);
+    expect(set.weightKg, 20);
+    expect(find.text('Hide'), findsNothing);
+  });
+
+  testWidgets('an entered BW zero overrides a positive previous added load',
+      (WidgetTester tester) async {
+    final InMemoryActiveWorkoutStore store = await _openLogger(
+      tester,
+      day: _bodyweightDay,
+      baselines: _pushUpBaseline(weightKg: 20, reps: 10),
+    );
+
+    await _typeCell(tester, 0, 0, 'kg', '0');
+    final ActiveWorkout stored = (await store.read(_account))!;
+    final ActiveWorkout restored = ActiveWorkout.fromJson(
+      jsonDecode(jsonEncode(stored.toJson())) as Map<String, dynamic>,
+    );
+    expect(
+      restored.exercises.single.sets.single.weightExplicitlyEntered,
+      isTrue,
+    );
+    expect(
+      find.descendant(of: _cell(0, 0, 'kg'), matching: find.text('BW')),
+      findsOneWidget,
+    );
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final ActiveWorkoutSet set =
+        (await store.read(_account))!.exercises.single.sets.single;
+    expect(set.ticked, isTrue);
+    expect(set.weightKg, 0);
+  });
+
+  testWidgets('a BW row with previous zero shows BW and autofills zero',
+      (WidgetTester tester) async {
+    final InMemoryActiveWorkoutStore store = await _openLogger(
+      tester,
+      day: _bodyweightDay,
+      baselines: _pushUpBaseline(weightKg: 0, reps: 10),
+    );
+
+    expect(
+      find.descendant(of: _cell(0, 0, 'kg'), matching: find.text('BW')),
+      findsOneWidget,
+    );
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final ActiveWorkoutSet set =
+        (await store.read(_account))!.exercises.single.sets.single;
+    expect(set.ticked, isTrue);
+    expect(set.weightKg, 0);
+    expect(find.text('Hide'), findsNothing);
+  });
+
+  testWidgets(
+      'a previous 0 kg band set autofills and displays the localized Band label',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..displayLanguage = 'ar'
+      ..baselinesBody = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'exercise_id': 'band_pull_apart',
+          'sessions_logged': 1,
+          'max_weight_kg': 0.0,
+          'best_e1rm_kg': 0.0,
+          'last_session': <String, dynamic>{
+            'performed_date': '2026-09-26',
+            'sets': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'weight_kg': 0.0,
+                'reps': 12,
+                'rir': null,
+              },
+            ],
+          },
+        },
+      ];
+    final InMemoryActiveWorkoutStore store = await _openLogger(
+      tester,
+      day: _bandDay,
+      fakeApi: fake,
+      languageCode: 'ar',
+      roundTripStoredWorkout: true,
+    );
+
+    expect(find.textContaining('مطاط'), findsNWidgets(2));
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final ActiveWorkout logged = (await store.read(_account))!;
+    expect(logged.exercises.single.sets.single.ticked, isTrue);
+    expect(logged.exercises.single.sets.single.weightKg, 0);
+    expect(logged.exercises.single.sets.single.reps, 12);
+    expect(find.text('Hide'), findsNothing);
+    expect(
+      find.descendant(of: _cell(0, 0, 'kg'), matching: find.text('مطاط')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('web commits a body-weight set at 0 kg',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _openLogger(
+      tester,
+      day: _bodyweightDay,
+      fakeApi: fake,
+      webDirectCommit: true,
+    );
+
+    await _typeCell(tester, 0, 0, 'reps', '10');
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+    await _finishAndOpenSummary(tester);
+    await tester.tap(find.byKey(const ValueKey<String>('logger.save')));
+    await _pumpUntilFound(tester, find.text('Workouts'));
+
+    final FakeRequest commit = fake.adapter.requests.lastWhere(
+      (FakeRequest request) =>
+          request.method == 'POST' && request.path == '/workouts/sessions',
+    );
+    final Map<String, dynamic> exercise =
+        (commit.body['sets'] as List<dynamic>).single as Map<String, dynamic>;
+    final Map<String, dynamic> set =
+        (exercise['sets'] as List<dynamic>).single as Map<String, dynamic>;
+    expect(set['weight_kg'], 0);
+    expect(set['reps'], 10);
   });
 
   testWidgets('the keypad Next order is kg → reps → RIR → the next set',

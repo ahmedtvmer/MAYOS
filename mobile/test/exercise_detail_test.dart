@@ -212,6 +212,36 @@ void main() {
     expect(find.textContaining('100 kg × 5'), findsOneWidget);
   });
 
+  testWidgets('band zero-load history is labeled Band', (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    fake.dashboardExerciseHistories['band_pull_apart'] =
+        <String, dynamic>{
+      'history': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'date': '2026-09-20',
+          'weight_kg': 0.0,
+          'reps': 12,
+          'rpe': 8.0,
+          'e1rm': 0.0,
+        },
+      ],
+      'caption': 'Latest Recorded: **0.0 kg × 12 reps @ RIR 2** (e1RM: 0.0 kg)',
+      'records': <dynamic>[],
+    };
+    await _pumpDetail(
+      tester,
+      fake,
+      'band_pull_apart',
+      dayOrder: null,
+      initialTab: 'history',
+    );
+    await _pumpUntilFound(tester, find.textContaining('Band × 12'));
+
+    expect(find.textContaining('Band × 12'), findsOneWidget);
+    expect(find.textContaining('0.0 kg'), findsNothing);
+    expect(find.textContaining('e1RM'), findsNothing);
+  });
+
   testWidgets('history tab shows an honest empty state', (tester) async {
     final FakeMayosApi fake = _signedInFake();
     await _pumpDetail(tester, fake, 'overhead_press', dayOrder: null);

@@ -32,6 +32,7 @@ import '../../../core/ui/mayos_section_header.dart';
 import '../../../core/ui/mayos_settings_tile.dart';
 import '../../../core/ui/mayos_stat.dart';
 import '../../../core/ui/mayos_text_field.dart';
+import '../../../core/workout_equipment.dart';
 import '../../../core/workout_storage.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
@@ -513,11 +514,20 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     final ActiveWorkoutExercise exercise =
         workout.exercises[focus.exerciseIndex];
     final ActiveWorkoutSet set = exercise.sets[focus.setIndex];
+    if (focus.field == LoggerField.kg &&
+        zeroLoadLabelKind(set.weightKg, exercise.equipment) != null) {
+      return '';
+    }
     return cellTexts(
-          set: set,
-          previous: previousSetFor(exercise, focus.setIndex, workout.baselines),
-          prescriptionHint: exercise.prescriptionHint,
-          field: focus.field,
+          LoggerCellState(
+            set: set,
+            previous:
+                previousSetFor(exercise, focus.setIndex, workout.baselines),
+            prescriptionHint: exercise.prescriptionHint,
+            equipment: exercise.equipment,
+          ),
+          focus.field,
+          _copy,
         ).value ??
         '';
   }
@@ -713,10 +723,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     switch (focus.field) {
       case LoggerField.kg:
         unawaited(
-          _controller.updateCell(
+          _controller.updateWeightCell(
             focus.exerciseIndex,
             focus.setIndex,
             weightKg: double.tryParse(text) ?? 0,
+            weightExplicitlyEntered: double.tryParse(text) != null,
           ),
         );
       case LoggerField.reps:
@@ -814,8 +825,14 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     int reps = set.reps;
     double? rir = set.rir;
     bool changed = false;
-    if (weight <= 0 && prev != null) {
-      weight = prev.weightKg;
+    if (shouldAutofillPreviousWeight(
+      set: set,
+      previousWeightKg: prev?.weightKg,
+      equipment: exercise.equipment,
+    )) {
+      // A missing weight borrows the previous performance unless the player
+      // explicitly entered zero for a body-weight or band exercise.
+      weight = prev!.weightKg;
       changed = true;
     }
     if (reps <= 0 && prev != null) {
@@ -826,13 +843,15 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       rir = prev.rir;
       changed = true;
     }
-    if (weight <= 0 || reps <= 0) {
+    final bool weightRequired =
+        !isBodyWeightOrBandEquipment(exercise.equipment) && weight <= 0;
+    if (weightRequired || reps <= 0) {
       // Nothing to log yet: open the keypad at the first required cell.
       _changeFocusAndReveal(
         LoggerCellFocus(
           exerciseIndex,
           setIndex,
-          weight <= 0 ? LoggerField.kg : LoggerField.reps,
+          weightRequired ? LoggerField.kg : LoggerField.reps,
         ),
       );
       return;
@@ -921,12 +940,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     if (workout == null || _blockReason != null) {
       return;
     }
-    final bool anyWorking = workout.exercises.any(
-      (ActiveWorkoutExercise exercise) => exercise.sets.any(
-        (ActiveWorkoutSet s) => s.ticked && s.countsAsWorkingSet,
-      ),
+    final bool hasLoggableSet = workout.exercises.any(
+      (ActiveWorkoutExercise exercise) => exercise.hasLoggableSet,
     );
-    if (!anyWorking) {
+    if (!hasLoggableSet) {
       setState(
         () => _error = const _WorkoutLoggerCopyErrorState(
           _WorkoutLoggerCopyError.workoutProgressBlocked,
@@ -1239,6 +1256,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       exerciseId: entry.id,
       exerciseName: entry.name,
       imagePath: entry.imagePath,
+      equipment: entry.equipment,
     );
   }
 
@@ -1774,9 +1792,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     setState(() => _reindexFocus(pick.exerciseIndex, delta: delta));
     await _controller.replaceExercise(
       exerciseIndex: pick.exerciseIndex,
-      exerciseId: pick.replacement.id,
-      exerciseName: pick.replacement.name,
-      imagePath: pick.replacement.imagePath,
+      replacementExercise: pick.replacement,
     );
   }
 
@@ -2103,6 +2119,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       exerciseIndex: exerciseIndex,
       setIndex: setIndex,
       set: set,
+      equipment: exercise.equipment,
       previous: previousSetFor(exercise, setIndex, workout.baselines),
       prescriptionHint: exercise.prescriptionHint,
       badges: badges[set.id] ?? const SetRecordBadges(),

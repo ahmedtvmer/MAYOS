@@ -657,6 +657,7 @@ class CoachExerciseHistoryOut(BaseModel):
     history: list[CoachExerciseHistoryPointOut]
     caption: str | None = None
     records: list[CoachExerciseRecordOut]
+    equipment: str | None = None
 
 
 class AssignmentNoticeOut(BaseModel):
@@ -956,6 +957,7 @@ class WarmupMovementSetIn(BaseModel):
 
 class WarmupMovementIn(BaseModel):
     exercise_id: str | None = Field(default=None, min_length=1, max_length=64)
+    equipment: str | None = Field(default=None, max_length=80)
     exercise_name: str = Field(min_length=1, max_length=120)
     sets: list[WarmupMovementSetIn] = Field(min_length=1, max_length=10)
 
@@ -1013,7 +1015,7 @@ class SessionPerformedDateCorrectOut(BaseModel):
 
 
 class BaselineSetOut(BaseModel):
-    """One working set of a baseline's last committed session, in logged order (#122).
+    """One previous-performance set, in logged order (#122).
 
     Effort is RIR at the display boundary (``10 - RPE``); null when the set is
     unrated (#111).
@@ -1025,7 +1027,7 @@ class BaselineSetOut(BaseModel):
 
 
 class BaselineLastSessionOut(BaseModel):
-    """The most recent committed session for one exercise (#122)."""
+    """The latest previous-performance session for one exercise (#122)."""
 
     performed_date: str
     sets: list[BaselineSetOut]
@@ -1042,7 +1044,7 @@ class BaselineOut(BaseModel):
 
 
 class BaselinesOut(BaseModel):
-    """``GET /workouts/baselines``: one row per exercise with a committed working set."""
+    """``GET /workouts/baselines``: previous performance and strict record aggregates."""
 
     baselines: list[BaselineOut]
 

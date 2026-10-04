@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/app_failure.dart';
+import '../../../core/active_workout.dart';
 import '../../../core/display_language/copy_context.dart';
+import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/api_client.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/effort.dart';
@@ -14,6 +16,7 @@ import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_app_header.dart';
 import '../../../core/ui/mayos_scaffold.dart';
 import '../../../core/ui/mayos_segmented_control.dart';
+import '../../../core/workout_equipment.dart';
 import '../../../providers.dart';
 
 /// Read-only exercise detail (#53): a typographic/muscle-group hero, the
@@ -211,7 +214,10 @@ class _DetailBody extends StatelessWidget {
         const SizedBox(height: MayosSpacing.xl),
         switch (tab) {
           'technique' => _TechniqueTab(catalog: catalog),
-          'history' => _HistoryTab(history: data.history),
+          'history' => _HistoryTab(
+              history: data.history,
+              equipment: catalog?.equipment ?? data.history?.equipment,
+            ),
           _ => _OverviewTab(catalog: catalog, exercise: exercise),
         },
       ],
@@ -660,15 +666,21 @@ class _TechniqueTab extends StatelessWidget {
 }
 
 class _HistoryTab extends StatelessWidget {
-  const _HistoryTab({required this.history});
+  const _HistoryTab({required this.history, required this.equipment});
 
   final ExerciseHistory? history;
+  final String? equipment;
 
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final WorkoutCopy copy = workoutCopyOf(context);
     final List<ExerciseHistoryPoint> points =
         history?.history ?? const <ExerciseHistoryPoint>[];
+    final ExerciseHistoryPoint? latest =
+        points.isEmpty ? null : points.last;
+    final bool latestZeroLoadUsesEquipmentLabel = latest != null &&
+        zeroLoadLabelKind(latest.weightKg, equipment) != null;
     if (points.isEmpty) {
       return _EmptyTab(
         message: displayCopyOf(context).noExerciseHistory,
@@ -677,7 +689,8 @@ class _HistoryTab extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        if (history?.caption != null) ...<Widget>[
+        if (history?.caption != null &&
+            !latestZeroLoadUsesEquipmentLabel) ...<Widget>[
           Text(
             history!.caption!.replaceAll('**', ''),
             style:
@@ -702,21 +715,28 @@ class _HistoryTab extends StatelessWidget {
                   child: Directionality(
                     textDirection: TextDirection.ltr,
                     child: Text(
-                      '${_trim(point.weightKg)} kg × ${point.reps} @ RIR '
+                      '${formatExerciseWeightWithUnit(
+                        point.weightKg,
+                        equipment: equipment,
+                        languageCode: copy.languageCode,
+                        unit: ' kg',
+                      )} '
+                      '× ${point.reps} @ RIR '
                       '${rirLabel(point.rpe)}',
                       style:
                           MayosTypography.body.copyWith(color: c.textPrimary),
                     ),
                   ),
                 ),
-                Directionality(
-                  textDirection: TextDirection.ltr,
-                  child: Text(
-                    'e1RM ${_trim(point.e1rm)}',
-                    style: MayosTypography.caption
-                        .copyWith(color: c.textSecondary),
+                if (zeroLoadLabelKind(point.weightKg, equipment) == null)
+                  Directionality(
+                    textDirection: TextDirection.ltr,
+                    child: Text(
+                      'e1RM ${_trim(point.e1rm)}',
+                      style: MayosTypography.caption
+                          .copyWith(color: c.textSecondary),
+                    ),
                   ),
-                ),
               ],
             ),
           ),

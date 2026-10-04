@@ -468,9 +468,11 @@ class MayosCopy {
           : '$metric for $exercise, $count sessions from $first to $last, latest $value $unit.';
   String get session => isArabic ? 'الحصة' : 'Session';
   String repetitionValue(String value, String reps,
-      {bool includeRepsUnit = false}) {
+      {bool includeRepsUnit = false, String weightUnit = 'kg'}) {
+    final String measuredWeight =
+        weightUnit.isEmpty ? value : '$value $weightUnit';
     if (!isArabic) {
-      return '$value kg × $reps${includeRepsUnit ? ' reps' : ''}';
+      return '$measuredWeight × $reps${includeRepsUnit ? ' reps' : ''}';
     }
     final int? count = int.tryParse(reps);
     final String repetitionLabel = count == null
@@ -480,7 +482,7 @@ class MayosCopy {
             ArabicCountNoun.repetition,
             isolateCount: true,
           );
-    return '${_ltr('$value kg')} × $repetitionLabel';
+    return '${_ltr(measuredWeight)} × $repetitionLabel';
   }
 
   String get estimatedOneRepMaxShort => 'e1RM';

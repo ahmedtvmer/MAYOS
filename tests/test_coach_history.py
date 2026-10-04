@@ -211,6 +211,11 @@ def test_coach_reads_all_drill_downs_for_active_assignment(api):
     assert history.json()["history"]
     assert history.json()["caption"] is not None
     assert history.json()["records"]
+    db.catalog_conn.execute("UPDATE exercises SET equipment = 'body weight' WHERE id = 'sq'")
+    db.catalog_conn.commit()
+    history = client.get(f"{base}/exercises/sq/history", headers=coach_headers)
+    assert history.status_code == 200, history.text
+    assert history.json()["equipment"] == "body weight"
 
     for response in (summary, records, exercises, history):
         assert not _contains_chat_field(response.json()), response.text

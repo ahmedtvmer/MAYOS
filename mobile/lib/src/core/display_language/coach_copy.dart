@@ -421,10 +421,12 @@ class CoachCopy {
       ? '${_ltr(name)}: ${_count(sets, ArabicCountNoun.trainingSet)} · إجمالي الوزن المرفوع ${_ltr('$volume kg')}'
       : '$name: $sets sets · $volume kg';
   String exerciseHistoryPoint(String date, String weight, int reps,
-          {String? rir, String? e1rm}) =>
-      isArabic
-          ? '${_ltr(date)}: ${_ltr('$weight kg')} × ${_count(reps, ArabicCountNoun.repetition)}${rir == null ? '' : ' · RIR ${_ltr(rir)}'}${e1rm == null ? '' : ' (e1RM ${_ltr(e1rm)})'}'
-          : '$date: $weight kg × $reps${rir == null ? '' : ' @ RIR $rir'} (e1RM $e1rm)';
+          {String weightUnit = 'kg', String? rir, String? e1rm}) {
+    final String value = weightUnit.isEmpty ? weight : '$weight $weightUnit';
+    return isArabic
+        ? '${_ltr(date)}: ${_ltr(value)} × ${_count(reps, ArabicCountNoun.repetition)}${rir == null ? '' : ' · RIR ${_ltr(rir)}'}${e1rm == null ? '' : ' (e1RM ${_ltr(e1rm)})'}'
+        : '$date: $value × $reps${rir == null ? '' : ' @ RIR $rir'}${e1rm == null ? '' : ' (e1RM $e1rm)'}';
+  }
   String historicalProgram(int captured, int current) => isArabic
       ? 'سُجلت الحصة على إصدار البرنامج ${_ltr('$captured')} (الحالي ${_ltr('$current')})'
       : 'Logged against program v$captured (current v$current)';

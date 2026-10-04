@@ -279,6 +279,53 @@ void main() {
     );
   });
 
+  testWidgets('zero-load body-weight history uses BW without e1RM',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..loggedExercises = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': 'push_up',
+          'name': 'Push-Up',
+          'equipment': 'body weight',
+        },
+      ]
+      ..dashboardExerciseHistories = <String, Map<String, dynamic>>{
+        'push_up': <String, dynamic>{
+          'equipment': 'body weight',
+          'history': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'date': '2026-06-10',
+              'weight_kg': 0.0,
+              'reps': 10,
+              'rpe': 8.0,
+              'e1rm': 0.0,
+            },
+            <String, dynamic>{
+              'date': '2026-06-17',
+              'weight_kg': 0.0,
+              'reps': 12,
+              'rpe': 8.0,
+              'e1rm': 0.0,
+            },
+          ],
+          'caption': 'Latest Recorded: **0.0 kg × 12 reps**',
+          'records': <dynamic>[],
+        },
+      };
+    await _pumpProgress(tester, fake);
+
+    await tester.tap(find.byKey(const Key('progress.chart')));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final Finder callout = find.byKey(const Key('progress.callout'));
+    expect(
+      find.descendant(of: callout, matching: find.textContaining('BW ×')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('0 kg × 12'), findsNothing);
+    expect(find.textContaining('e1RM'), findsNothing);
+  });
+
   testWidgets('selecting another logged exercise reloads its history',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _signedInFake();

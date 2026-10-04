@@ -45,6 +45,7 @@ def api(tmp_path: Path, monkeypatch):
         " ('sq', 'Squat', 'Upper Legs', 'Quads'), ('bp', 'Bench Press', 'Chest', 'Chest'),"
         " ('row', 'Row', 'Back', 'Back');"
     )
+    cat_conn.execute("UPDATE exercises SET equipment = 'body weight' WHERE id = 'row'")
     cat_conn.commit()
     cat_conn.close()
     db = DatabaseManager(
@@ -233,21 +234,44 @@ def test_baselines_report_unrated_sets_as_null_rir(api):
     assert bench["best_e1rm_kg"] == round(calculate_e1rm(80.0, 5, 10.0), 2)
 
 
-def test_exercise_logged_only_with_zero_kg_sets_has_no_baseline(api):
+def test_body_weight_history_is_previous_performance_but_not_a_record_baseline(api):
     client, db = api
     headers, version = _prepare_player(client, db)
     zero_kg = [
-        {"exercise": _exercise_payload("row", "Row"), "sets": [{"weight_kg": 0.0, "reps": 8, "rpe": 8.0}]}
+        {
+            "exercise": _exercise_payload("row", "Row"),
+            "sets": [
+                {"weight_kg": 0.0, "reps": 8, "rpe": 8.0},
+                {"weight_kg": 30.0, "reps": 0, "rpe": None},
+            ],
+        }
     ]
     _commit(
         client, headers, version, zero_kg,
         client_session_id=CLIENT_A, performed_date="2026-09-25", captured_at="2026-09-25T11:00:00+00:00",
     )
 
-    # One shared working-set definition: a 0 kg set is not a working set, so
-    # the exercise has no baseline row at all.
+    # Previous performance includes all non-warm-up sets while the record
+    # fields remain tied to the strict weighted working-set predicate.
     rows = client.get("/workouts/baselines", headers=headers).json()["baselines"]
-    assert rows == []
+    assert len(rows) == 1
+    baseline = rows[0]
+    assert baseline["exercise_id"] == "row"
+    assert baseline["sessions_logged"] == 0
+    assert baseline["max_weight_kg"] is None
+    assert baseline["best_e1rm_kg"] is None
+    assert baseline["last_session"] == {
+        "performed_date": "2026-09-25",
+        "sets": [
+            {"weight_kg": 0.0, "reps": 8, "rir": 2.0},
+            {"weight_kg": 30.0, "reps": 0, "rir": None},
+        ],
+    }
+    db.switch_user("alice")
+    assert db.ledger.get_last_performance("row") == [
+        {"set_index": 1, "weight_kg": 0.0, "reps": 8, "rpe": 8.0},
+        {"set_index": 2, "weight_kg": 30.0, "reps": 0, "rpe": None},
+    ]
 
     # The first session with a real load is still the exercise's baseline.
     loaded = [
@@ -263,6 +287,7 @@ def test_exercise_logged_only_with_zero_kg_sets_has_no_baseline(api):
     assert [row["exercise_id"] for row in rows] == ["row"]
     assert rows[0]["sessions_logged"] == 1
     assert rows[0]["max_weight_kg"] == 60.0
+    assert rows[0]["best_e1rm_kg"] == round(calculate_e1rm(60.0, 8, 8.0), 2)
     assert rows[0]["last_session"]["performed_date"] == "2026-09-26"
 
 

@@ -127,6 +127,7 @@ def test_catalog_search_returns_the_image_path_for_added_exercise_pictures(api):
     assert matches, "expected the fixture's Bench Press"
     assert matches[0]["id"] == "bp"
     assert matches[0]["image_path"] == "images/bp.jpg"
+    assert matches[0]["equipment"] == "barbell"
     # The client's own thumbnail URL builder is fed from this field alone.
     assert matches[0]["image_path"].startswith("images/")
 

@@ -20,6 +20,19 @@ import 'support/fake_mayos_api.dart';
 
 const String _account = 'account-alice';
 
+ExerciseCatalogEntry _catalogEntry(
+  String id,
+  String name, {
+  String? imagePath,
+  String? equipment,
+}) =>
+    ExerciseCatalogEntry(
+      id: id,
+      name: name,
+      imagePath: imagePath,
+      equipment: equipment,
+    );
+
 const ProgramDay _day = ProgramDay(
   dayName: 'Upper A',
   dayOrder: 2,
@@ -569,9 +582,12 @@ void main() {
 
       await controller.replaceExercise(
         exerciseIndex: 0,
-        exerciseId: 'cable_row',
-        exerciseName: 'Cable Row',
-        imagePath: 'images/cable_row.jpg',
+        replacementExercise: _catalogEntry(
+          'cable_row',
+          'Cable Row',
+          imagePath: 'images/cable_row.jpg',
+          equipment: 'band',
+        ),
       );
 
       final ActiveWorkout workout = controller.workout!;
@@ -592,6 +608,7 @@ void main() {
       expect(replacement.exerciseId, 'cable_row');
       expect(replacement.exerciseName, 'Cable Row');
       expect(replacement.imagePath, 'images/cable_row.jpg');
+      expect(replacement.equipment, 'band');
       expect(replacement.sets, hasLength(3));
       for (final ActiveWorkoutSet set in replacement.sets) {
         expect(set.weightKg, 0);
@@ -619,6 +636,7 @@ void main() {
       expect(restored.workout!.exercises, hasLength(2));
       expect(restored.workout!.exercises[0].replaced, isTrue);
       expect(restored.workout!.exercises[1].exerciseId, 'cable_row');
+      expect(restored.workout!.exercises[1].equipment, 'band');
     });
 
     test('the draft sends the planned exercise as skipped and the '
@@ -634,9 +652,12 @@ void main() {
 
       await controller.replaceExercise(
         exerciseIndex: 0,
-        exerciseId: 'cable_row',
-        exerciseName: 'Cable Row',
-        imagePath: 'images/cable_row.jpg',
+        replacementExercise: _catalogEntry(
+          'cable_row',
+          'Cable Row',
+          imagePath: 'images/cable_row.jpg',
+          equipment: 'band',
+        ),
       );
       // The replacement's rows start empty, then the player logs one (#162).
       expect(
@@ -662,6 +683,7 @@ void main() {
       expect(skipped.sets, isEmpty);
       final DraftExercise performed = draft.exercises[1];
       expect(performed.exerciseId, 'cable_row');
+      expect(performed.exercise['equipment'], 'band');
       expect(performed.skipped, isFalse);
       expect(performed.sets, hasLength(1));
       expect(performed.sets.single.weightKg, 55);
@@ -675,6 +697,26 @@ void main() {
       );
     });
 
+    test('an Unplanned exercise carries its Exercise library equipment',
+        () async {
+      final ActiveWorkoutController controller =
+          await start(fakeWithBaselines());
+      await controller.addUnplannedExercise(
+        exerciseId: 'push_up',
+        exerciseName: 'Push-Up',
+        equipment: 'body weight',
+      );
+
+      final ActiveWorkoutExercise added = controller.workout!.exercises.last;
+      expect(added.unplanned, isTrue);
+      expect(added.equipment, 'body weight');
+      final ActiveWorkout restored = ActiveWorkout.fromJson(
+        jsonDecode(jsonEncode(controller.workout!.toJson()))
+            as Map<String, dynamic>,
+      );
+      expect(restored.exercises.last.equipment, 'body weight');
+    });
+
     test('never touches the program, and the replacement reads its own '
         'frozen baseline', () async {
       final FakeMayosApi fake = fakeWithBaselines();
@@ -685,8 +727,7 @@ void main() {
 
       await controller.replaceExercise(
         exerciseIndex: 0,
-        exerciseId: 'cable_row',
-        exerciseName: 'Cable Row',
+        replacementExercise: _catalogEntry('cable_row', 'Cable Row'),
       );
       final ActiveWorkout workout = controller.workout!;
       // The frozen baselines are exactly what the start resolved: the
@@ -701,8 +742,7 @@ void main() {
       // "Last:" line — never the replaced exercise's history (#162).
       await controller.replaceExercise(
         exerciseIndex: 1,
-        exerciseId: 'bicep_curl',
-        exerciseName: 'Bicep Curl',
+        replacementExercise: _catalogEntry('bicep_curl', 'Bicep Curl'),
       );
       // An unplanned exercise is swapped in place: it was never prescribed,
       // so there is no skipped row to keep.
@@ -741,8 +781,7 @@ void main() {
       // the unplanned replacement can.
       await controller.replaceExercise(
         exerciseIndex: 0,
-        exerciseId: 'cable_row',
-        exerciseName: 'Cable Row',
+        replacementExercise: _catalogEntry('cable_row', 'Cable Row'),
       );
       await controller.removeExercise(0);
       expect(controller.workout!.exercises, hasLength(2));
@@ -757,9 +796,7 @@ void main() {
           await start(fakeWithBaselines());
       await controller.replaceExercise(
         exerciseIndex: 0,
-        exerciseId: 'cable_row',
-        exerciseName: 'Cable Row',
-        imagePath: 'images/cable_row.jpg',
+        replacementExercise: _catalogEntry('cable_row', 'Cable Row'),
       );
       expect(controller.workout!.exercises, hasLength(2));
       expect(controller.workout!.exercises[1].unplanned, isTrue);
@@ -843,8 +880,7 @@ void main() {
       // Replacing the *other* exercise leaves the countdown alone.
       await controller.replaceExercise(
         exerciseIndex: 1,
-        exerciseId: 'cable_row',
-        exerciseName: 'Cable Row',
+        replacementExercise: _catalogEntry('cable_row', 'Cable Row'),
       );
       expect(controller.workout!.rest, isNotNull);
 
@@ -852,8 +888,7 @@ void main() {
       // effect: the countdown is gone and the platform alerts with it.
       await controller.replaceExercise(
         exerciseIndex: 0,
-        exerciseId: 'cable_row',
-        exerciseName: 'Cable Row',
+        replacementExercise: _catalogEntry('cable_row', 'Cable Row'),
       );
       expect(controller.workout!.rest, isNull);
       expect(alerts.removeCalls, greaterThanOrEqualTo(1));
@@ -868,8 +903,7 @@ void main() {
       final ActiveWorkoutController controller = await start(_signedInFake());
       await controller.replaceExercise(
         exerciseIndex: 0,
-        exerciseId: 'bench_press',
-        exerciseName: 'Bench Press',
+        replacementExercise: _catalogEntry('bench_press', 'Bench Press'),
       );
       expect(controller.workout!.exercises, hasLength(1));
       expect(controller.workout!.exercises.single.replaced, isFalse);
@@ -978,13 +1012,28 @@ void main() {
           '1 set');
     });
 
-    test('the Last: line reads a bodyweight set as BW, never 0kg', () {
+    test('the Last: line uses library equipment for zero-load sets', () {
       expect(
         lastSessionLabel(const <BaselineSet>[
           BaselineSet(weightKg: 60, reps: 6),
           BaselineSet(weightKg: 0, reps: 10),
-        ]),
+        ], equipment: 'body weight'),
         'Last: 60kg × 6 · BW × 10',
+      );
+      expect(
+        lastSessionLabel(
+          const <BaselineSet>[BaselineSet(weightKg: 0, reps: 10)],
+          equipment: 'resistance band',
+          languageCode: 'ar',
+        ),
+        'Last: مطاط × 10',
+      );
+      expect(
+        lastSessionLabel(
+          const <BaselineSet>[BaselineSet(weightKg: 0, reps: 10)],
+          equipment: 'barbell',
+        ),
+        'Last: 0kg × 10',
       );
     });
   });
@@ -1559,7 +1608,7 @@ void main() {
       // 120x3 @ RIR 1: effective reps 3 + 1 → 120 * (1 + 4/30) = 136 > 120.
       expect(bench.bestE1rmKg, closeTo(136.0, 1e-9));
       expect(bench.lastSession.performedDate, '2026-09-26');
-      expect(bench.lastSession.sets, hasLength(1));
+      expect(bench.lastSession.sets, hasLength(2));
 
       final BaselineExercise row = resolved.baselines
           .firstWhere((BaselineExercise b) => b.exerciseId == 'row');
@@ -1641,6 +1690,7 @@ void main() {
           ),
           ActiveWarmupMovement(
             exerciseId: 'band_pull_apart',
+            equipment: 'resistance band',
             exerciseName: 'Band Pull-Apart',
             sets: const <ActiveWarmupSet>[ActiveWarmupSet(reps: 12)],
           ),
@@ -1668,7 +1718,11 @@ void main() {
         },
       ]);
 
-      final WorkoutDraft draft = workout.buildWorkoutDraft(
+      final ActiveWorkout cachedWorkout =
+          ActiveWorkout.fromJson(workout.toJson());
+      expect(cachedWorkout.warmupMovements[1].equipment, 'resistance band');
+
+      final WorkoutDraft draft = cachedWorkout.buildWorkoutDraft(
         timezone: 'UTC',
         clientSessionId: 'fixed-session',
         now: now,
@@ -1676,6 +1730,7 @@ void main() {
       expect(draft.toCommitBody()['warmup_movements'], direct['warmup_movements']);
       final WorkoutDraft restored = WorkoutDraft.fromJson(draft.toJson());
       expect(restored.warmupMovements, hasLength(2));
+      expect(restored.warmupMovements[1].equipment, 'resistance band');
       expect(restored.warmupMovements.first.sets.first.ticked, isTrue);
       expect(restored.warmupMovements.first.sets[1].ticked, isFalse);
       expect(restored.warmupMovements[1].sets.single.ticked, isFalse);

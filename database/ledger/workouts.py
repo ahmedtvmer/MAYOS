@@ -11,13 +11,14 @@ from database.migration_manager import create_atomic_backup
 from database.migration_manager import prune_ledger_backups
 
 #: The one committed-working-set definition for records (#122, ADR 042): not a
-#: warm-up, with a load and a rep count that can carry a record. The record
-#: aggregates, the first-session rule, the ADR 009 history rows, and
-#: ``GET /workouts/baselines`` all filter through it, so a device reading a
-#: baseline and the server's first-session rule cannot disagree.
-#: ``get_last_performance`` deliberately keeps plain ``is_warmup = 0``: a 0 kg
-#: bodyweight set is still previous performance and must reach progression.
+#: warm-up, with a load and a rep count that can carry a record. Record
+#: aggregates, session counts, and the first-session rule filter through it.
+#: ``GET /workouts/baselines`` uses a separate previous-performance rule for
+#: ``last_session`` so body-weight work remains available for autofill.
 WORKING_SET_PREDICATE = "ws.is_warmup = 0 AND ws.weight_kg > 0 AND ws.reps > 0"
+
+#: Previous performance includes every non-warm-up set, regardless of values.
+PREVIOUS_PERFORMANCE_PREDICATE = "ws.is_warmup = 0"
 
 #: How the "last" session of an exercise is chosen: commit start time, then
 #: rowid as a stable tie. Performed-date corrections (ADR 035) rewrite
@@ -597,7 +598,7 @@ class LedgerWorkoutsMixin:
         return [dict(row) for row in cursor.fetchall()]
 
     def baseline_last_sessions(self) -> list[dict[str, Any]]:
-        """Each exercise's latest committed session and that session's working sets.
+        """Each exercise's latest committed session with previous performance.
 
         One window-function query for the whole ledger (#122), so ``GET
         /workouts/baselines`` stays bounded in queries rather than one per
@@ -618,7 +619,7 @@ class LedgerWorkoutsMixin:
                        ) AS session_rank
                 FROM workout_sets ws
                 JOIN workout_sessions s ON ws.session_id = s.id
-                WHERE {WORKING_SET_PREDICATE}
+                WHERE {PREVIOUS_PERFORMANCE_PREDICATE}
             )
             SELECT exercise_id, session_id, session_date, set_index, weight_kg, reps, rpe
             FROM ranked
@@ -629,11 +630,11 @@ class LedgerWorkoutsMixin:
         return [dict(row) for row in cursor.fetchall()]
 
     def get_last_performance(self, exercise_id: str) -> list[dict[str, Any]]:
-        """The exercise's most recent non-warm-up sets, for previous performance.
+        """The exercise's most recent non-warm-up sets for previous performance.
 
-        Deliberately not :data:`WORKING_SET_PREDICATE`: bodyweight exercises log
-        0 kg working sets, and previous performance / progression must keep
-        seeing them. Records and ``GET /workouts/baselines`` use the stricter
+        Deliberately not :data:`WORKING_SET_PREDICATE`: previous performance
+        includes every non-warm-up set, regardless of load or reps. Records and
+        the aggregate fields in ``GET /workouts/baselines`` use the stricter
         definition. The session is chosen with the shared
         :data:`LAST_SESSION_ORDER`, so it cannot disagree with the baseline
         ``last_session`` after an ADR 035 performed-date correction.
@@ -644,7 +645,7 @@ class LedgerWorkoutsMixin:
             SELECT s.id
             FROM workout_sessions s
             JOIN workout_sets ws ON ws.session_id = s.id
-            WHERE ws.exercise_id = ? AND ws.is_warmup = 0
+            WHERE ws.exercise_id = ? AND {PREVIOUS_PERFORMANCE_PREDICATE}
             ORDER BY {LAST_SESSION_ORDER}
             LIMIT 1
         """,
@@ -655,10 +656,11 @@ class LedgerWorkoutsMixin:
             return []
 
         cursor.execute(
-            """
+            f"""
             SELECT ws.set_index, ws.weight_kg, ws.reps, ws.rpe
             FROM workout_sets ws
-            WHERE ws.session_id = ? AND ws.exercise_id = ? AND ws.is_warmup = 0
+            WHERE ws.session_id = ? AND ws.exercise_id = ?
+              AND {PREVIOUS_PERFORMANCE_PREDICATE}
             ORDER BY ws.set_index ASC
         """,
             (session_row[0], exercise_id),

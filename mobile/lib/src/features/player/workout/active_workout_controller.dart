@@ -472,6 +472,22 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
         ),
       );
 
+  /// Updates weight while retaining whether the field contains a value.
+  Future<void> updateWeightCell(
+    int exerciseIndex,
+    int setIndex, {
+    required double weightKg,
+    required bool weightExplicitlyEntered,
+  }) =>
+      _updateSet(
+        exerciseIndex,
+        setIndex,
+        (ActiveWorkoutSet set) => set.copyWith(
+          weightKg: weightKg,
+          weightExplicitlyEntered: weightExplicitlyEntered,
+        ),
+      );
+
   Future<void> updateWarmupMovementSet(
     int movementIndex,
     int setIndex,
@@ -523,6 +539,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     required String exerciseId,
     required String exerciseName,
     String? imagePath,
+    String? equipment,
   }) async {
     final ActiveWorkout? current = state.workout;
     if (current == null) {
@@ -532,6 +549,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       exerciseId: exerciseId,
       exerciseName: exerciseName,
       imagePath: imagePath,
+      equipment: equipment,
     );
     await _persist(
       current.copyWith(
@@ -547,6 +565,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     required String exerciseId,
     required String exerciseName,
     String? imagePath,
+    String? equipment,
   }) {
     final Map<String, dynamic> exercise = <String, dynamic>{
       'exercise_id': exerciseId,
@@ -558,6 +577,9 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       'rest_seconds': 120,
       'notes': null,
     };
+    if (equipment != null) {
+      exercise['equipment'] = equipment;
+    }
     // The catalog search's picture path, so an unplanned exercise gets the
     // same card picture as a planned one (#161). Omitted when the search
     // carried none, exactly like `ProgramExercise.toJson` (#53/#161).
@@ -573,11 +595,13 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     required String exerciseId,
     required String exerciseName,
     String? imagePath,
+    String? equipment,
   }) {
     final Map<String, dynamic> payload = _unplannedPayload(
       exerciseId: exerciseId,
       exerciseName: exerciseName,
       imagePath: imagePath,
+      equipment: equipment,
     );
     return ActiveWorkoutExercise(
       exercise: payload,
@@ -604,23 +628,22 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   /// there is no skipped row to keep.
   Future<void> replaceExercise({
     required int exerciseIndex,
-    required String exerciseId,
-    required String exerciseName,
-    String? imagePath,
+    required ExerciseCatalogEntry replacementExercise,
   }) async {
     final ActiveWorkout? current = state.workout;
     final ActiveWorkoutExercise? planned = _exerciseAt(exerciseIndex);
     if (current == null || planned == null || planned.replaced) {
       return;
     }
-    if (exerciseId == planned.exerciseId) {
+    if (replacementExercise.id == planned.exerciseId) {
       // Picking the same exercise again changes nothing.
       return;
     }
     final ActiveWorkoutExercise replacement = _unplannedExercise(
-      exerciseId: exerciseId,
-      exerciseName: exerciseName,
-      imagePath: imagePath,
+      exerciseId: replacementExercise.id,
+      exerciseName: replacementExercise.name,
+      imagePath: replacementExercise.imagePath,
+      equipment: replacementExercise.equipment,
     );
     final List<ActiveWorkoutExercise> exercises =
         List<ActiveWorkoutExercise>.of(current.exercises);
@@ -762,7 +785,13 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       exerciseName: exercise.exerciseName,
       setNumber: setIndex + 1,
       lastLabel:
-          set.reps > 0 || set.weightKg > 0 ? setPerformanceLabel(set) : null,
+          set.reps > 0 || set.weightKg > 0
+              ? setPerformanceLabel(
+                  set,
+                  equipment: exercise.equipment,
+                  languageCode: _displayLanguageCode(),
+                )
+              : null,
     );
     await _persist(current.copyWith(rest: rest));
     _alertsLive = true;
@@ -955,15 +984,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   /// ticked does it fall back to the row that started the rest.
   RestAlertInfo _alertInfo(ActiveRestTimer rest, DateTime now) {
     final ActiveWorkout? current = state.workout;
-    String displayLanguage() {
-      try {
-        return _displayLanguage();
-      } on FlutterError {
-        // The optional alert copy must not require a WidgetsBinding. The
-        // controller is also used in plain unit tests and non-widget hosts.
-        return 'en';
-      }
-    }
+    final String languageCode = _displayLanguageCode();
 
     RestAlertInfo origin() => RestAlertInfo(
           endsAt: rest.endsAtClock(now),
@@ -971,7 +992,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
           exerciseName: rest.exerciseName,
           setNumber: rest.setNumber,
           lastLabel: rest.lastLabel,
-          languageCode: displayLanguage(),
+          languageCode: languageCode,
         );
     if (current == null) {
       return origin();
@@ -991,9 +1012,24 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       totalSeconds: rest.totalSeconds,
       exerciseName: next.exercise.exerciseName,
       setNumber: next.setIndex + 1,
-      lastLabel: previous == null ? null : previousLabel(previous),
-      languageCode: displayLanguage(),
+      lastLabel: previous == null
+          ? null
+          : previousLabel(
+              previous,
+              equipment: next.exercise.equipment,
+              languageCode: languageCode,
+            ),
+      languageCode: languageCode,
     );
+  }
+
+  String _displayLanguageCode() {
+    try {
+      return _displayLanguage();
+    } on FlutterError {
+      // Optional alert copy must not require a WidgetsBinding in plain tests.
+      return 'en';
+    }
   }
 
   /// The next unticked row after the one [rest] started on: the rest of that

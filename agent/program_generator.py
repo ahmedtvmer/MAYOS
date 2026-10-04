@@ -100,6 +100,7 @@ def _build_program_exercise(
     return ProgramExerciseSchema(
         exercise_id=str(candidate["id"]),
         exercise_name=candidate["name"],
+        equipment=candidate.get("equipment"),
         slot_key=prescription.movement_slot,
         warmup_sets=warmup_sets_for_load_class(spec),
         target_sets=prescription.working_sets,

@@ -137,6 +137,49 @@ void main() {
     expect(find.textContaining('e1RM 120.0'), findsOneWidget);
   });
 
+  testWidgets('coach history labels zero-load resistance band sets',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachPlayerExercises = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': 'band_pull_apart',
+          'name': 'Band Pull-Apart',
+          'equipment': 'resistance band',
+        },
+      ]
+      ..coachPlayerHistories = <String, Map<String, dynamic>>{
+        'band_pull_apart': <String, dynamic>{
+          'equipment': 'resistance band',
+          'history': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'date': '2026-09-20',
+              'weight_kg': 0.0,
+              'reps': 12,
+              'rpe': 8.0,
+              'e1rm': 0.0,
+            },
+          ],
+          'caption': 'Latest Recorded: **0.0 kg × 12 reps**',
+          'records': <dynamic>[],
+        },
+      };
+    await _pumpApp(tester, fake);
+
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    final Finder bandTile = find.widgetWithText(ExpansionTile, 'Band Pull-Apart');
+    await tester.scrollUntilVisible(bandTile, 300,
+        scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(bandTile);
+    await tester.pump();
+    await tester.tap(bandTile);
+    await _pumpUntilFound(tester, find.textContaining('Band × 12'));
+
+    expect(find.textContaining('Band × 12'), findsOneWidget);
+    expect(find.textContaining('0.0 kg × 12'), findsNothing);
+    expect(find.textContaining('Band × 12 (e1RM'), findsNothing);
+  });
+
   testWidgets('coach history lists and opens Checkpoints for the assignment',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _coachFake()

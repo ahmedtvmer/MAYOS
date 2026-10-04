@@ -7,7 +7,7 @@ import 'secure_store.dart';
 export 'effort.dart' show rirFromRpe, round2;
 
 /// Exercise baselines for the device's frozen Active workout (#122/#123):
-/// `GET /workouts/baselines`, one row per exercise with a committed working set.
+/// `GET /workouts/baselines`, previous performance and strict record aggregates.
 ///
 /// The wire shape mirrors `svc/schemas.py` `BaselinesOut`; effort at the
 /// display boundary is RIR (`10 - RPE`, null when unrated, #111).
@@ -43,7 +43,7 @@ class BaselineExercise {
   /// Best working-set e1RM (ADR 042), or null when none is known.
   final double? bestE1rmKg;
 
-  /// The latest committed session's working sets, in logged order.
+  /// The latest non-warm-up sets with reps at any load, in logged order.
   final BaselineLastSession lastSession;
 
   BaselineExercise copyWith({
@@ -69,7 +69,7 @@ class BaselineExercise {
       };
 }
 
-/// `BaselineLastSessionOut`: the latest committed session's date and working sets.
+/// The latest committed previous-performance session and its sets.
 class BaselineLastSession {
   const BaselineLastSession({required this.performedDate, required this.sets});
 
@@ -92,7 +92,7 @@ class BaselineLastSession {
       };
 }
 
-/// `BaselineSetOut`: one working set of a baseline's last session.
+/// `BaselineSetOut`: one non-warm-up set with reps from a previous session.
 class BaselineSet {
   const BaselineSet({required this.weightKg, required this.reps, this.rir});
 
@@ -199,17 +199,13 @@ double? rpeFromRir(double? rir) =>
 bool draftWillCommit(WorkoutDraft draft) =>
     draft.status == DraftStatus.pending || draft.status == DraftStatus.syncing;
 
-/// Folds the player's unsynced Workout drafts into the server baselines using
-/// the server's aggregate rules, so the frozen Active-workout baseline counts
-/// what this device has already logged but not yet committed (#123).
+/// Folds unsynced drafts into previous performance and record baselines (#123).
 ///
 /// Only [draftWillCommit] drafts are folded.
 ///
-/// For every folded, non-skipped draft exercise with at least one working
-/// set ([isWorkingSet]): `sessions_logged` gains one session, the maxima take
-/// the draft's heavier weight and better e1RM (rounded to 2 dp), and
-/// `last_session` becomes the draft's working sets when that session is the
-/// latest.
+/// Previous performance accepts non-warm-up sets with reps at any load.
+/// `sessions_logged` and the maxima still accept only weighted working sets
+/// ([isWorkingSet]), matching the server's record baseline.
 ///
 /// "Latest" mirrors the server's `LAST_SESSION_ORDER`
 /// (`database/ledger/workouts.py`: `started_at DESC, rowid DESC`), **not** the
@@ -242,6 +238,13 @@ List<BaselineExercise> foldDraftsIntoBaselines({
       if (exercise.skipped) {
         continue;
       }
+      final List<WorkoutSetLog> previousPerformance = <WorkoutSetLog>[
+        for (final WorkoutSetLog set in exercise.sets)
+          if (!set.isWarmup && set.reps > 0) set,
+      ];
+      if (previousPerformance.isEmpty) {
+        continue;
+      }
       final List<WorkoutSetLog> working = <WorkoutSetLog>[
         for (final WorkoutSetLog set in exercise.sets)
           if (isWorkingSet(
@@ -251,9 +254,6 @@ List<BaselineExercise> foldDraftsIntoBaselines({
           ))
             set,
       ];
-      if (working.isEmpty) {
-        continue;
-      }
       double maxWeight = 0;
       double bestE1rm = 0;
       for (final WorkoutSetLog set in working) {
@@ -273,7 +273,7 @@ List<BaselineExercise> foldDraftsIntoBaselines({
       final BaselineLastSession draftSession = BaselineLastSession(
         performedDate: draft.performedDate,
         sets: <BaselineSet>[
-          for (final WorkoutSetLog set in working)
+          for (final WorkoutSetLog set in previousPerformance)
             BaselineSet(
               weightKg: set.weightKg,
               reps: set.reps,
@@ -286,9 +286,9 @@ List<BaselineExercise> foldDraftsIntoBaselines({
       if (current == null) {
         byExercise[exerciseId] = BaselineExercise(
           exerciseId: exerciseId,
-          sessionsLogged: 1,
-          maxWeightKg: round2(maxWeight),
-          bestE1rmKg: round2(bestE1rm),
+          sessionsLogged: working.isEmpty ? 0 : 1,
+          maxWeightKg: working.isEmpty ? null : round2(maxWeight),
+          bestE1rmKg: working.isEmpty ? null : round2(bestE1rm),
           lastSession: draftSession,
         );
         latestStartedAt[exerciseId] = startedAt;
@@ -304,9 +304,13 @@ List<BaselineExercise> foldDraftsIntoBaselines({
         latestStartedAt[exerciseId] = startedAt;
       }
       byExercise[exerciseId] = current.copyWith(
-        sessionsLogged: current.sessionsLogged + 1,
-        maxWeightKg: _maxOrNull(current.maxWeightKg, round2(maxWeight)),
-        bestE1rmKg: _maxOrNull(current.bestE1rmKg, round2(bestE1rm)),
+        sessionsLogged: current.sessionsLogged + (working.isEmpty ? 0 : 1),
+        maxWeightKg: working.isEmpty
+            ? current.maxWeightKg
+            : _maxOrNull(current.maxWeightKg, round2(maxWeight)),
+        bestE1rmKg: working.isEmpty
+            ? current.bestE1rmKg
+            : _maxOrNull(current.bestE1rmKg, round2(bestE1rm)),
         lastSession: draftIsLatest ? draftSession : current.lastSession,
       );
     }

@@ -14,6 +14,7 @@ import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_card.dart';
+import '../../../core/workout_equipment.dart';
 import 'logger_keypad.dart';
 import 'personal_record_badge.dart';
 
@@ -38,6 +39,21 @@ const List<int> kLoggerValueColumnFlex = <int>[4, 3, 3];
 /// The spec's tick: a 40dp square inside the row's 48dp tap area (#107).
 const double kLoggerTickSize = 40;
 
+/// The set and equipment facts needed to display one logger cell.
+class LoggerCellState {
+  const LoggerCellState({
+    required this.set,
+    required this.previous,
+    required this.prescriptionHint,
+    required this.equipment,
+  });
+
+  final ActiveWorkoutSet set;
+  final BaselineSet? previous;
+  final PrescriptionHint? prescriptionHint;
+  final String? equipment;
+}
+
 /// The one mapping from a field to what its cell shows (#123 item 12): the
 /// typed [value] when there is one, else the faded [hint].
 ///
@@ -48,44 +64,64 @@ const double kLoggerTickSize = 40;
 ///
 /// The PREVIOUS column is gone (#158), so these hints are now the only place
 /// last time's values appear while the player is entering a set.
-({String? value, String? hint}) cellTexts({
-  required ActiveWorkoutSet set,
-  required BaselineSet? previous,
-  required PrescriptionHint? prescriptionHint,
-  required LoggerField field,
-}) {
+({String? value, String? hint}) cellTexts(
+  LoggerCellState row,
+  LoggerField field,
+  WorkoutCopy copy,
+) {
   String? fromPrevious;
   String? fromPrescription;
   switch (field) {
     case LoggerField.kg:
+      final bool autofillsPreviousWeight = shouldAutofillPreviousWeight(
+        set: row.set,
+        previousWeightKg: row.previous?.weightKg,
+        equipment: row.equipment,
+      );
+      final double weightThatWillBeLogged = autofillsPreviousWeight
+          ? row.previous!.weightKg
+          : row.set.weightKg;
+      final WorkoutEquipmentKind? labelKind =
+          zeroLoadLabelKind(weightThatWillBeLogged, row.equipment);
       fromPrevious =
-          previous == null ? null : formatCellWeight(previous.weightKg);
-      final double? projected = prescriptionHint?.weightKg;
+          row.previous == null
+              ? null
+              : formatExerciseWeight(
+                  row.previous!.weightKg,
+                  equipment: row.equipment,
+                  languageCode: copy.languageCode,
+                );
+      final double? projected = row.prescriptionHint?.weightKg;
       fromPrescription = projected == null || projected <= 0
           ? null
           : formatCellWeight(projected);
       return (
-        value: set.weightKg > 0 ? formatCellWeight(set.weightKg) : null,
+        value: row.set.weightKg > 0
+            ? formatCellWeight(row.set.weightKg)
+            : labelKind == null
+                ? null
+                : copy.zeroLoadWeightLabel(labelKind),
         hint: fromPrevious ?? fromPrescription,
       );
     case LoggerField.reps:
-      fromPrevious = previous == null ? null : '${previous.reps}';
-      final int? targetReps = prescriptionHint?.reps;
+      fromPrevious =
+          row.previous == null ? null : '${row.previous!.reps}';
+      final int? targetReps = row.prescriptionHint?.reps;
       fromPrescription =
           targetReps == null || targetReps <= 0 ? null : '$targetReps';
       return (
-        value: set.reps > 0 ? '${set.reps}' : null,
+        value: row.set.reps > 0 ? '${row.set.reps}' : null,
         hint: fromPrevious ?? fromPrescription,
       );
     case LoggerField.rir:
       // A recorded RIR reads as itself (5 → 5+); the prescription fallback is
       // a *target*, so it reads as the equivalent minimum RIR (≥ n) (#111).
-      final double? previousRir = previous?.rir;
+      final double? previousRir = row.previous?.rir;
       fromPrevious = previousRir == null ? null : formatRir(previousRir);
-      final double? targetRir = prescriptionHint?.rir;
+      final double? targetRir = row.prescriptionHint?.rir;
       fromPrescription = targetRir == null ? null : formatMinRir(targetRir);
       return (
-        value: set.rir == null ? null : formatRir(set.rir!),
+        value: row.set.rir == null ? null : formatRir(row.set.rir!),
         hint: fromPrevious ?? fromPrescription,
       );
   }
@@ -95,16 +131,25 @@ const double kLoggerTickSize = 40;
 /// (#158, plan §7). Not editable, not per set: one line for the exercise,
 /// formatted by [lastSessionLabel] next to the model.
 class PreviousPerformanceSummary extends StatelessWidget {
-  const PreviousPerformanceSummary({super.key, required this.sets});
+  const PreviousPerformanceSummary({
+    super.key,
+    required this.sets,
+    required this.equipment,
+  });
 
-  /// The baseline's last-session working sets, in logged order.
+  /// The baseline's previous-performance sets, in logged order.
   final List<BaselineSet> sets;
+  final String? equipment;
 
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
     final WorkoutCopy copy = workoutCopyOf(context);
-    final String modelLabel = lastSessionLabel(sets);
+    final String modelLabel = lastSessionLabel(
+      sets,
+      equipment: equipment,
+      languageCode: copy.languageCode,
+    );
     final String values = modelLabel.startsWith('Last: ')
         ? modelLabel.substring('Last: '.length)
         : modelLabel;
@@ -510,7 +555,10 @@ class ExerciseLoggingCard extends StatelessWidget {
                             padding:
                                 const EdgeInsets.only(top: MayosSpacing.xxs),
                             child:
-                                PreviousPerformanceSummary(sets: lastSession),
+                                PreviousPerformanceSummary(
+                                  sets: lastSession,
+                                  equipment: exercise.equipment,
+                                ),
                           ),
                       ],
                     ),
@@ -608,7 +656,7 @@ class WarmupMovementLoggingCard extends StatelessWidget {
           child: Text('${setIndex + 1}',
               textAlign: TextAlign.center, textDirection: TextDirection.ltr),
         ),
-        _weightField(setIndex, set),
+        _weightField(context, setIndex, set),
         const SizedBox(width: MayosSpacing.xs),
         _repsField(setIndex, set),
         _tickButton(context, setIndex, set, c),
@@ -644,27 +692,23 @@ class WarmupMovementLoggingCard extends StatelessWidget {
         ],
       );
 
-  Widget _weightField(int setIndex, ActiveWarmupSet set) {
-    final String initialValue =
-        set.weightKg == null ? '' : formatCellWeight(set.weightKg!);
+  Widget _weightField(
+    BuildContext context,
+    int setIndex,
+    ActiveWarmupSet set,
+  ) {
     return Expanded(
-      child: TextFormField(
-        key: ValueKey<String>('logger.warmup.$movementIndex.$setIndex.kg'),
-        initialValue: initialValue,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        textAlign: TextAlign.center,
-        textDirection: TextDirection.ltr,
-        decoration: const InputDecoration(hintText: '—', isDense: true),
-        onChanged: (String text) {
-          final double? weightKg = double.tryParse(text);
-          onSetChanged((
-            setIndex,
-            set.copyWith(
-              weightKg: weightKg,
-              clearWeight: weightKg == null,
-            )
-          ));
-        },
+      child: _WarmupMovementWeightField(
+        set: set,
+        equipment: movement.equipment,
+        fieldKey: ValueKey<String>('logger.warmup.$movementIndex.$setIndex.kg'),
+        onWeightChanged: (double? weightKg) => onSetChanged((
+          setIndex,
+          set.copyWith(
+            weightKg: weightKg,
+            clearWeight: weightKg == null,
+          )
+        )),
       ),
     );
   }
@@ -695,13 +739,101 @@ class WarmupMovementLoggingCard extends StatelessWidget {
           tooltip: set.ticked
               ? workoutCopyOf(context).markSetNotDone
               : workoutCopyOf(context).markSetDone,
-          onPressed: () =>
-              onSetChanged((setIndex, set.copyWith(ticked: !set.ticked))),
+          onPressed: () {
+            FocusScope.of(context).unfocus();
+            onSetChanged((setIndex, set.copyWith(ticked: !set.ticked)));
+          },
           icon: Icon(
             set.ticked ? Icons.check_box : Icons.check_box_outline_blank,
             color: set.ticked ? c.accent : c.textMuted,
           ),
         ),
+      );
+}
+
+class _WarmupMovementWeightField extends StatefulWidget {
+  const _WarmupMovementWeightField({
+    required this.set,
+    required this.equipment,
+    required this.fieldKey,
+    required this.onWeightChanged,
+  });
+
+  final ActiveWarmupSet set;
+  final String? equipment;
+  final Key fieldKey;
+  final ValueChanged<double?> onWeightChanged;
+
+  @override
+  State<_WarmupMovementWeightField> createState() =>
+      _WarmupMovementWeightFieldState();
+}
+
+class _WarmupMovementWeightFieldState
+    extends State<_WarmupMovementWeightField> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+
+  WorkoutEquipmentKind? get _zeroLabelKind =>
+      zeroLoadLabelKind(0, widget.equipment);
+
+  String get _inputText {
+    final double? weightKg = widget.set.weightKg;
+    if (weightKg == null || (weightKg == 0 && _zeroLabelKind != null)) {
+      return '';
+    }
+    return formatCellWeight(weightKg);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: _inputText);
+    _focusNode = FocusNode()..addListener(_onFocusChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _WarmupMovementWeightField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_focusNode.hasFocus && oldWidget.set.weightKg != widget.set.weightKg) {
+      _controller.text = _inputText;
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode
+      ..removeListener(_onFocusChanged)
+      ..dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChanged() {
+    if (!_focusNode.hasFocus &&
+        widget.set.weightKg == 0 &&
+        _zeroLabelKind != null &&
+        double.tryParse(_controller.text) == 0) {
+      _controller.clear();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => TextFormField(
+        key: widget.fieldKey,
+        controller: _controller,
+        focusNode: _focusNode,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        textAlign: TextAlign.center,
+        textDirection: TextDirection.ltr,
+        decoration: InputDecoration(
+          hintText: _zeroLabelKind == null
+              ? '—'
+              : workoutCopyOf(context).zeroLoadWeightLabel(_zeroLabelKind!),
+          isDense: true,
+        ),
+        onChanged: (String text) =>
+            widget.onWeightChanged(double.tryParse(text)),
       );
 }
 
@@ -857,6 +989,7 @@ class SetLoggingRow extends StatelessWidget {
     required this.exerciseIndex,
     required this.setIndex,
     required this.set,
+    required this.equipment,
     required this.previous,
     required this.prescriptionHint,
     required this.badges,
@@ -871,6 +1004,7 @@ class SetLoggingRow extends StatelessWidget {
   final int exerciseIndex;
   final int setIndex;
   final ActiveWorkoutSet set;
+  final String? equipment;
 
   /// This row's frozen previous working set, for hints and tick-to-fill.
   final BaselineSet? previous;
@@ -886,11 +1020,18 @@ class SetLoggingRow extends StatelessWidget {
   final VoidCallback onToggleTick;
   final VoidCallback? onDismissed;
 
-  ({String? value, String? hint}) _texts(LoggerField field) => cellTexts(
-        set: set,
-        previous: previous,
-        prescriptionHint: prescriptionHint,
-        field: field,
+  ({String? value, String? hint}) _texts(
+    LoggerField field,
+    WorkoutCopy copy,
+  ) => cellTexts(
+        LoggerCellState(
+          set: set,
+          previous: previous,
+          prescriptionHint: prescriptionHint,
+          equipment: equipment,
+        ),
+        field,
+        copy,
       );
 
   bool _focused(LoggerField field) =>
@@ -911,6 +1052,7 @@ class SetLoggingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
+    final WorkoutCopy copy = workoutCopyOf(context);
     final bool muted = set.isWarmup;
 
     Widget row = Container(
@@ -957,8 +1099,8 @@ class SetLoggingRow extends StatelessWidget {
                 child: RirSelector(
                   cellKey: ValueKey<String>(
                       'logger.cell.$exerciseIndex.$setIndex.rir'),
-                  value: _texts(LoggerField.rir).value,
-                  hint: _texts(LoggerField.rir).hint,
+                  value: _texts(LoggerField.rir, copy).value,
+                  hint: _texts(LoggerField.rir, copy).hint,
                   muted: muted,
                   surface: _surface(c, LoggerField.rir),
                   focused: _focused(LoggerField.rir),
@@ -1026,7 +1168,8 @@ class SetLoggingRow extends StatelessWidget {
   /// KG and REPS: the typed value or the faded hint, one tap to edit.
   Widget _cell(BuildContext context, LoggerField field, int flex) {
     final MayosThemeExtension c = MayosTheme.of(context);
-    final ({String? value, String? hint}) texts = _texts(field);
+    final WorkoutCopy copy = workoutCopyOf(context);
+    final ({String? value, String? hint}) texts = _texts(field, copy);
     final Color color =
         texts.value == null || set.isWarmup ? c.textDisabled : c.textPrimary;
     return Expanded(

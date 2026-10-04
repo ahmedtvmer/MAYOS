@@ -2,6 +2,7 @@
 
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -35,11 +36,11 @@ def api(tmp_path: Path, monkeypatch):
     )
     catalog.execute("CREATE TABLE exercise_secondary_muscles (exercise_id TEXT, muscle TEXT);")
     catalog.execute(
-        "INSERT INTO exercises (id, name, body_part, target_muscle, instructions, image_path, gif_path) VALUES"
-        " ('sq', 'Squat', 'Upper Legs', 'Quads', 'Sit back.', 'squat.png', 'squat.gif'),"
-        " ('bp', 'Bench Press', 'Chest', 'Chest', 'Press steadily.', 'bench.png', 'bench.gif'),"
-        " ('row', 'Row', 'Back', 'Back', 'Pull to ribs.', 'row.png', 'row.gif'),"
-        " ('ohp', 'Overhead Press', 'Shoulders', 'Shoulders', 'Press overhead with control', 'ohp.png', 'ohp.gif');"
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment, instructions, image_path, gif_path) VALUES"
+        " ('sq', 'Squat', 'Upper Legs', 'Quads', 'barbell', 'Sit back.', 'squat.png', 'squat.gif'),"
+        " ('bp', 'Bench Press', 'Chest', 'Chest', 'barbell', 'Press steadily.', 'bench.png', 'bench.gif'),"
+        " ('row', 'Row', 'Back', 'Back', 'cable', 'Pull to ribs.', 'row.png', 'row.gif'),"
+        " ('ohp', 'Overhead Press', 'Shoulders', 'Shoulders', 'dumbbell', 'Press overhead with control', 'ohp.png', 'ohp.gif');"
     )
     catalog.commit()
     catalog.close()
@@ -105,6 +106,17 @@ def _program() -> GeneratedProgramSchema:
     )
 
 
+def _days_with_library_equipment(
+    days: list[ProgramDaySchema], db: DatabaseManager
+) -> list[dict[str, Any]]:
+    expected = [day.model_dump() for day in days]
+    for day in expected:
+        for exercise in day["exercises"]:
+            entry = db.get_exercise_library_entry(exercise["exercise_id"])
+            exercise["equipment"] = entry["equipment"] if entry else None
+    return expected
+
+
 def _make_player_with_program(client, db):
     registered = _register(client, "player")
     headers = _headers(registered["access_token"])
@@ -133,6 +145,7 @@ def test_substitution_changes_only_named_slot_and_keeps_old_version(api):
     assert active["published_by_coach_account_id"] is None
     assert active["days"][0]["exercises"][0]["exercise_id"] == "ohp"
     assert active["days"][0]["exercises"][0]["exercise_name"] == "Overhead Press"
+    assert active["days"][0]["exercises"][0]["equipment"] == "dumbbell"
     assert active["days"][0]["exercises"][0]["notes"] == "Press overhead with control"
     assert active["days"][0]["exercises"][0]["image_path"] == "ohp.png"
     assert active["days"][0]["exercises"][0]["gif_path"] == "ohp.gif"
@@ -166,7 +179,7 @@ def test_all_occurrences_undo_restores_exact_snapshot_with_existing_replacement(
     )
     db.ledger.save_training_program(program)
     original = db.ledger.get_active_program()
-    original_days = [day.model_dump() for day in original.days]
+    original_days = _days_with_library_equipment(original.days, db)
 
     swapped = client.post(
         "/programs/active/substitutions",
@@ -203,7 +216,7 @@ def test_undo_restores_duplicate_source_slots_on_the_same_day(api):
     program["days"][0]["exercises"].append(dict(program["days"][0]["exercises"][0]))
     db.ledger.save_training_program(program)
     original = db.ledger.get_active_program()
-    original_days = [day.model_dump() for day in original.days]
+    original_days = _days_with_library_equipment(original.days, db)
 
     swapped = client.post(
         "/programs/active/substitutions",

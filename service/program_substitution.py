@@ -208,6 +208,7 @@ def _set_replacement(exercise: dict[str, Any], replacement: dict[str, Any]) -> N
     exercise.update(
         exercise_id=str(replacement["id"]),
         exercise_name=str(replacement["name"]),
+        equipment=replacement.get("equipment"),
         notes=replacement.get("instructions") or "",
         image_path=replacement.get("image_path"),
         gif_path=replacement.get("gif_path"),
