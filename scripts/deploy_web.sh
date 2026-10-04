@@ -9,7 +9,8 @@
 #
 # Optional env: PAGES_PROJECT (default mayos), MAYOS_API_BASE_URL
 # (default https://mayos-api.fly.dev; must match the CSP connect-src in
-# mobile/web/_headers), GOOGLE_WEB_CLIENT_ID, PAGES_BRANCH (default main).
+# mobile/web/_headers), GOOGLE_WEB_CLIENT_ID, POSTHOG_CLIENT_KEY,
+# PAGES_BRANCH (default main).
 set -euo pipefail
 
 cd "$(dirname "$0")/../mobile"
@@ -28,6 +29,7 @@ fi
 
 defines=(--dart-define="MAYOS_API_BASE_URL=$api_url")
 [[ -n "${GOOGLE_WEB_CLIENT_ID:-}" ]] && defines+=(--dart-define="GOOGLE_WEB_CLIENT_ID=$GOOGLE_WEB_CLIENT_ID")
+[[ -n "${POSTHOG_CLIENT_KEY:-}" ]] && defines+=(--dart-define="POSTHOG_CLIENT_KEY=$POSTHOG_CLIENT_KEY")
 
 # Self-hosted CanvasKit and no service worker keep the CSP strict and reloads predictable.
 flutter build web --release --no-web-resources-cdn --pwa-strategy=none "${defines[@]}"

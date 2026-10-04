@@ -1173,17 +1173,19 @@ own environment, never the repo):
 
 ```bash
 source ~/.config/mayos/cloudflare.env
-GOOGLE_WEB_CLIENT_ID=<web client id> scripts/deploy_web.sh   # add --preview for a preview URL
+GOOGLE_WEB_CLIENT_ID="<web client id>" POSTHOG_CLIENT_KEY="<public project key>" scripts/deploy_web.sh   # add --preview for a preview URL
 ```
 
 The script runs `flutter build web --release --no-web-resources-cdn
 --pwa-strategy=none` with `--dart-define=MAYOS_API_BASE_URL=https://mayos-api.fly.dev`
-(and `GOOGLE_WEB_CLIENT_ID` when set), then `wrangler pages deploy build/web`.
+(and `GOOGLE_WEB_CLIENT_ID` and `POSTHOG_CLIENT_KEY` when set), then
+`wrangler pages deploy build/web`.
 
 | Input | Where | Purpose |
 | :--- | :--- | :--- |
 | `MAYOS_API_BASE_URL` dart-define | build | API origin; release builds require https |
 | `GOOGLE_WEB_CLIENT_ID` dart-define | build | Google sign-in web client (#112, #115) |
+| `POSTHOG_CLIENT_KEY` dart-define | release build | Public PostHog EU project key; omitted or blank disables the Flutter client. Debug and profile builds never initialize it. |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | operator env | wrangler auth |
 | `PAGES_PROJECT` | operator env | default `mayos` |
 | `UI_BASE_URL` | Fly `[env]` | must list the Pages origin (CORS) |

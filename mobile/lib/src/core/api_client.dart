@@ -3,10 +3,13 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 
 import 'app_failure.dart';
 import 'baselines.dart';
 import 'chat_models.dart';
+import 'client_dimensions.dart';
 import 'models.dart';
 import 'sse.dart';
 import 'token_store.dart';
@@ -95,7 +98,9 @@ class ApiClient {
     required TokenStore tokens,
     required String baseUrl,
     HttpClientAdapter? adapter,
-  }) : _tokens = tokens {
+    String Function()? clientHeaderLoader,
+  })  : _tokens = tokens,
+        _clientHeader = (clientHeaderLoader ?? _loadClientHeader)() {
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
@@ -166,6 +171,7 @@ class ApiClient {
       AppFailureMessage(AppFailureId.invalidServiceData, message);
 
   final TokenStore _tokens;
+  final String _clientHeader;
   late final Dio _dio;
 
   /// Invoked when an authenticated request fails with 401.
@@ -182,6 +188,7 @@ class ApiClient {
     RequestOptions options,
     RequestInterceptorHandler handler,
   ) async {
+    options.headers['X-MAYOS-Client'] = _clientHeader;
     if (options.extra[_skipAuth] != true) {
       final String? token = await _tokens.read();
       if (token != null && token.isNotEmpty) {
@@ -190,6 +197,26 @@ class ApiClient {
     }
     handler.next(options);
   }
+
+  static String _loadClientHeader() {
+    final String platform = resolveClientPlatform(
+      isWeb: kIsWeb,
+      platform: defaultTargetPlatform,
+    );
+    return clientHeaderFor(platform: platform, version: clientAppVersion);
+  }
+
+  static String clientPlatformLabel({
+    required bool isWeb,
+    required TargetPlatform platform,
+  }) =>
+      resolveClientPlatform(isWeb: isWeb, platform: platform);
+
+  static String clientHeaderFor({
+    required String platform,
+    required String version,
+  }) =>
+      '$platform/$version';
 
   void _handleError(DioException error, ErrorInterceptorHandler handler) {
     final bool skipped = error.requestOptions.extra[_skipAuth] == true;

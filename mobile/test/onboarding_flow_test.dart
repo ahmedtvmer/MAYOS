@@ -5,22 +5,23 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
+import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/connectivity_message.dart';
+import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_player_column.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_choice_card.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_player_column.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/onboarding/onboarding_screen.dart';
 import 'package:mayos_mobile/src/features/player/onboarding/onboarding_widgets.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
+import 'support/fake_analytics_client.dart';
 import 'support/fake_mayos_api.dart';
 
 const Map<String, Object> _requiredAnswers = <String, Object>{
@@ -89,6 +90,7 @@ Future<InMemoryTokenStore> _signedInTokens() async {
 Future<void> _pumpOnboarding(
   WidgetTester tester,
   FakeMayosApi fake, {
+  FakeAnalyticsClient? analytics,
   Size size = const Size(393, 852),
   ThemeMode mode = ThemeMode.light,
   double textScale = 1.0,
@@ -99,6 +101,7 @@ Future<void> _pumpOnboarding(
     fake,
     viewport: (size: size, mode: mode, textScale: textScale),
     languageCode: languageCode,
+    analytics: analytics,
   );
   await _pumpUntilFound(tester, find.byType(OnboardingScaffold));
 }
@@ -106,6 +109,7 @@ Future<void> _pumpOnboarding(
 Future<void> _mountOnboarding(
   WidgetTester tester,
   FakeMayosApi fake, {
+  FakeAnalyticsClient? analytics,
   _OnboardingViewport? viewport,
   String languageCode = 'en',
 }) async {
@@ -126,10 +130,12 @@ Future<void> _mountOnboarding(
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
   }
   final InMemoryTokenStore tokens = await _signedInTokens();
+  final FakeAnalyticsClient fakeAnalytics = analytics ?? FakeAnalyticsClient();
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
         tokenStoreProvider.overrideWithValue(tokens),
+        analyticsClientProvider.overrideWithValue(fakeAnalytics),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
         systemDisplayLanguageProvider.overrideWithValue(languageCode),
         _apiOverride(fake),
@@ -237,6 +243,84 @@ Future<void> _answerAll(WidgetTester tester,
 }
 
 void main() {
+  testWidgets('disclosure and review each emit once when shown',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _fake()
+      ..intakeAnswers.addAll(_requiredAnswers);
+    final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    await _pumpOnboarding(tester, fake, analytics: analytics);
+
+    expect(
+      analytics.events.map((event) => event['properties']),
+      <Map<String, String>>[<String, String>{'step': 'disclosure'}],
+    );
+    await tester.pump();
+    expect(analytics.events, hasLength(1));
+
+    await _tapAndFind(
+      tester,
+      find.byKey(const Key('onboarding_disclosure_continue')),
+      find.byKey(const Key('onboarding_confirm')),
+    );
+    expect(
+      analytics.events.map((event) => event['properties']),
+      <Map<String, String>>[
+        <String, String>{'step': 'disclosure'},
+        <String, String>{'step': 'review'},
+      ],
+    );
+    await tester.pump();
+    expect(analytics.events, hasLength(2));
+  });
+
+  testWidgets('onboarding views capture only the step identifier per display',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _fake(acknowledged: true);
+    final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    await _pumpOnboarding(tester, fake, analytics: analytics);
+
+    expect(analytics.events, <Map<String, Object>>[
+      <String, Object>{
+        'event': 'onboarding_step_viewed',
+        'properties': <String, Object>{'step': 'gender'},
+      },
+    ]);
+    await tester.pump();
+    expect(analytics.events, hasLength(1));
+
+    await _tapAndFind(
+      tester,
+      find.byKey(const Key('gender_option_female')),
+      find.byKey(const Key('onboarding_continue')),
+    );
+    await _tapAndFind(
+      tester,
+      find.byKey(const Key('onboarding_continue')),
+      find.byKey(const Key('proportions_option_long_legs')),
+    );
+    expect(
+      analytics.events.map((event) => event['properties']),
+      <Map<String, String>>[
+        <String, String>{'step': 'gender'},
+        <String, String>{'step': 'proportions'},
+      ],
+    );
+
+    await _tapAndFind(
+      tester,
+      find.byKey(const Key('onboarding_back')),
+      find.byKey(const Key('gender_option_female')),
+    );
+    expect(
+      analytics.events.map((event) => event['properties']),
+      <Map<String, String>>[
+        <String, String>{'step': 'gender'},
+        <String, String>{'step': 'proportions'},
+        <String, String>{'step': 'gender'},
+      ],
+    );
+  });
+
   testWidgets(
       'Arabic onboarding translates app copy and preserves API explanations',
       (tester) async {

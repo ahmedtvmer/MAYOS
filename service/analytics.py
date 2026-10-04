@@ -16,6 +16,8 @@ from typing import Any, Protocol
 
 from fastapi import Request
 
+from service.intake import INTAKE_FIELDS
+
 logger = logging.getLogger(__name__)
 
 POSTHOG_EU_HOST = "https://eu.i.posthog.com"
@@ -84,6 +86,10 @@ def _version_label() -> PropertyType:
 
 
 _PHASES = frozenset({"closed_trial", "public"})
+_ONBOARDING_STEPS = frozenset(field.name for field in INTAKE_FIELDS) | {
+    "disclosure",
+    "review",
+}
 _DIMENSION_VALUES: dict[str, frozenset[str]] = {
     "role": frozenset({"player", "coach", "unknown"}),
     "platform": frozenset({"android", "web", "unknown"}),
@@ -99,6 +105,7 @@ PROPERTY_TYPES: dict[str, PropertyType] = {
     "prefilled_fields_count": _bounded_int(100),
     "is_player": _boolean(),
     "is_coach": _boolean(),
+    "step": _enum(_ONBOARDING_STEPS),
 }
 _COMMON_PROPERTIES = {name: PROPERTY_TYPES[name] for name in ("role", "platform", "app_version", "env")}
 EVENT_CATALOGUE: dict[str, EventContract] = {
@@ -118,6 +125,10 @@ EVENT_CATALOGUE: dict[str, EventContract] = {
             "duration_seconds": PROPERTY_TYPES["duration_seconds"],
             "prefilled_fields_count": PROPERTY_TYPES["prefilled_fields_count"],
         },
+    ),
+    "onboarding_step_viewed": EventContract(
+        "client",
+        {**_COMMON_PROPERTIES, "step": PROPERTY_TYPES["step"]},
     ),
 }
 

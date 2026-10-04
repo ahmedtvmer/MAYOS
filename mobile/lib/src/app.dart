@@ -1,11 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/analytics_client.dart';
 import 'core/app_mode.dart';
 import 'core/connectivity.dart';
 import 'core/display_language/controller.dart';
@@ -28,9 +29,18 @@ class MayosApp extends ConsumerStatefulWidget {
 
 class _MayosAppState extends ConsumerState<MayosApp>
     with WidgetsBindingObserver {
+  String? _analyticsAccountId;
+  String? _analyticsRole;
+  late final ProviderSubscription<AuthState> _analyticsAuthSubscription;
+
   @override
   void initState() {
     super.initState();
+    _analyticsAuthSubscription = ref.listenManual<AuthState>(
+      authControllerProvider,
+      (_, AuthState next) => _syncAnalyticsIdentity(next),
+      fireImmediately: true,
+    );
     WidgetsBinding.instance.addObserver(this);
     // Keep API and browser signals alive during splash and auth startup, before
     // either shared screen frame has mounted its banner slot. Android remains
@@ -85,6 +95,7 @@ class _MayosAppState extends ConsumerState<MayosApp>
 
   @override
   void dispose() {
+    _analyticsAuthSubscription.close();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -166,6 +177,27 @@ class _MayosAppState extends ConsumerState<MayosApp>
         );
       },
     );
+  }
+
+  void _syncAnalyticsIdentity(AuthState state) {
+    final Account? account = state.session?.account;
+    final String? accountId = account?.accountId;
+    final String? role = account == null
+        ? null
+        : account.capabilities.player
+            ? 'player'
+            : account.capabilities.coach
+                ? 'coach'
+                : 'unknown';
+    if (accountId == _analyticsAccountId && role == _analyticsRole) return;
+
+    final AnalyticsClient analytics = ref.read(analyticsClientProvider);
+    if (_analyticsAccountId != null && _analyticsAccountId != accountId) {
+      analytics.reset();
+    }
+    if (accountId != null) analytics.identify(accountId, role: role!);
+    _analyticsAccountId = accountId;
+    _analyticsRole = role;
   }
 
   ThemeData _responsiveOverlayTheme(

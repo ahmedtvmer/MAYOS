@@ -23,6 +23,7 @@ dependencies:
     path: packages/flutter_markdown_plus
   flutter_timezone: ^5.1.0
   go_router: ^14.2.0
+  posthog_flutter: ^5.50.13
   # Privacy policy (issue #43): the API serves the policy at /privacy and the
   # app opens it in the system browser rather than embedding a WebView or
   # rendering its own copy of the text.

@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode;
 import 'package:flutter/material.dart'
     show GlobalKey, ScaffoldMessengerState, SnackBar, Text, ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/account_data_eraser.dart';
 import 'core/active_program.dart';
 import 'core/active_workout.dart';
+import 'core/analytics_client.dart';
 import 'core/api_client.dart';
 import 'core/app_mode.dart';
 import 'core/baseline_service.dart';
@@ -71,6 +72,15 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
   client.onAccountDeleted = ref.watch(accountDeletedEventsProvider).signal;
   return client;
 });
+
+final Provider<AnalyticsClient> analyticsClientProvider =
+    Provider<AnalyticsClient>(
+  (ref) => createAnalyticsClient(
+    isRelease: kReleaseMode,
+    clientKey: configuredPostHogClientKey,
+    isWeb: kIsWeb,
+  ),
+);
 
 final recoveryEmailDetailsProvider =
     FutureProvider.autoDispose<RecoveryEmailDetails>(

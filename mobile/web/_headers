@@ -5,7 +5,7 @@
 # Never set Cross-Origin-Opener-Policy: same-origin: it breaks Google sign-in popups.
 
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data: blob: https://mayos-api.fly.dev https://*.googleusercontent.com; font-src 'self' data:; connect-src 'self' https://mayos-api.fly.dev https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com/gsi/client https://eu-assets.i.posthog.com; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data: blob: https://mayos-api.fly.dev https://*.googleusercontent.com; font-src 'self' data:; connect-src 'self' https://mayos-api.fly.dev https://accounts.google.com/gsi/ https://eu.i.posthog.com https://eu-assets.i.posthog.com; frame-src https://accounts.google.com/gsi/; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
   Cross-Origin-Opener-Policy: same-origin-allow-popups
   Strict-Transport-Security: max-age=31536000; includeSubDomains
   X-Content-Type-Options: nosniff

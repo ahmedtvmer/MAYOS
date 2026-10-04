@@ -105,9 +105,11 @@ fly secrets set ANDROID_APP_SHA256_CERT_FINGERPRINTS="AA:BB:…,DD:EE:…"
 cd mobile
 flutter pub get
 GOOGLE_WEB_CLIENT_ID="<web-client-id>.apps.googleusercontent.com"
+POSTHOG_CLIENT_KEY="<public-posthog-project-key>"
 flutter build appbundle --release \
   --dart-define=MAYOS_API_BASE_URL=https://<api-host> \
-  --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID"
+  --dart-define=GOOGLE_WEB_CLIENT_ID="$GOOGLE_WEB_CLIENT_ID" \
+  --dart-define=POSTHOG_CLIENT_KEY="$POSTHOG_CLIENT_KEY"
 # → build/app/outputs/bundle/release/app-release.aab
 ```
 
@@ -117,6 +119,9 @@ flutter build appbundle --release \
 - [ ] Set `GOOGLE_WEB_CLIENT_ID` to the Web OAuth client ID configured on the
       API and pass it as shown above; without the Dart define, the app hides
       the Google sign-in button (`mobile/lib/src/features/player/auth/google_auth_gateway.dart`).
+- [ ] Set `POSTHOG_CLIENT_KEY` to the public PostHog EU project key and pass it
+      only to release builds. If it is unset, the analytics client is disabled;
+      debug and profile builds do not initialize PostHog.
 - [ ] The bundle is signed with the upload key (`key.properties`), not the
       debug key.
 - [ ] Version code/name come from `mobile/pubspec.yaml`

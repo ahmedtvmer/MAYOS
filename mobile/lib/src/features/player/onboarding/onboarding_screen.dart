@@ -4,12 +4,12 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/app_failure.dart';
+import '../../../core/connectivity.dart';
+import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/display_language/onboarding_copy.dart';
-import '../../../core/connectivity.dart';
-import '../../../core/connectivity_message.dart';
 import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
@@ -86,6 +86,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   List<IntakeField> get _fields => _intake?.fields ?? const <IntakeField>[];
 
+  void _reportStepViewed(String? step) {
+    if (step == null) return;
+    ref.read(analyticsClientProvider).onboardingStepViewed(step);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -116,6 +121,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         _finishToHome();
         return;
       }
+      final String viewedStep = !intake.disclosureAcknowledged
+          ? 'disclosure'
+          : _firstUnanswered(intake) ?? 'review';
       setState(() {
         _intake = intake;
         if (!intake.disclosureAcknowledged) {
@@ -128,6 +136,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           _currentField = first;
         }
       });
+      _reportStepViewed(viewedStep);
     } on ApiException catch (error) {
       if (!mounted) {
         return;
@@ -225,6 +234,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       _stepError = null;
       _stepFailure = null;
     });
+    _reportStepViewed(name ?? 'review');
   }
 
   void _editField(String name) {
@@ -235,6 +245,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       _stepError = null;
       _stepFailure = null;
     });
+    _reportStepViewed(name);
   }
 
   void _advance(IntakeField field) {
@@ -245,6 +256,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         _stepError = null;
         _stepFailure = null;
       });
+      _reportStepViewed('review');
       return;
     }
     final int index =
@@ -263,6 +275,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         _stepError = null;
         _stepFailure = null;
       });
+      _reportStepViewed('review');
       return;
     }
     final int index =
@@ -294,6 +307,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         _prepareField(first);
         _currentField = first;
       });
+      _reportStepViewed(_currentField ?? 'review');
     } on ApiException catch (error) {
       if (!mounted) {
         return;
@@ -341,6 +355,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           _saving = false;
           _phase = _OnboardingPhase.disclosure;
         });
+        _reportStepViewed('disclosure');
         return;
       }
       // Offline/network: keep the answer on screen so it can be retried.
@@ -373,6 +388,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           _submitting = false;
           _phase = _OnboardingPhase.disclosure;
         });
+        _reportStepViewed('disclosure');
         return;
       }
       if (error.statusCode == 409 && error.errorCode == 'confirm_in_progress') {
@@ -533,16 +549,20 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           _stepError = null;
           _stepFailure = null;
         });
+        _reportStepViewed(_fields.last.name);
       };
     }
     final bool isFirst = _fields.isNotEmpty && _fields.first.name == field.name;
     if (isFirst && !_editingFromReview) {
       // Consistent chrome: the first question returns to the disclosure.
-      return () => setState(() {
+      return () {
+        setState(() {
             _phase = _OnboardingPhase.disclosure;
             _stepError = null;
             _stepFailure = null;
-          });
+        });
+        _reportStepViewed('disclosure');
+      };
     }
     return _goBack;
   }

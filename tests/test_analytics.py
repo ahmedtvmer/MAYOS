@@ -220,6 +220,41 @@ def test_registration_and_onboarding_events_follow_successful_api_writes(analyti
         assert ledger.get_intake_state()["status"] == "confirmed"
 
 
+def test_server_events_resolve_android_web_and_missing_client_dimensions(analytics_api):
+    client, db, sink = analytics_api
+    preflight = client.options(
+        "/auth/me",
+        headers={
+            "Origin": "http://localhost:7357",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "x-mayos-client",
+        },
+    )
+    assert preflight.status_code == 200
+    assert "x-mayos-client" in preflight.headers["access-control-allow-headers"].lower()
+
+    _register(client, "analytics-android", client_header="android/1.2.3")
+    _register(client, "analytics-web", client_header="web/2.4.0")
+    _register(client, "analytics-unknown")
+
+    for username, expected in (
+        ("analytics-android", ("android", "1.2.3")),
+        ("analytics-web", ("web", "2.4.0")),
+        ("analytics-unknown", ("unknown", "unknown")),
+    ):
+        account = db.get_active_account_by_username(username)
+        event = next(
+            captured
+            for captured in sink.events
+            if captured["event"] == "account_created"
+            and captured["distinct_id"] == account["account_id"]
+        )
+        assert (
+            event["properties"]["platform"],
+            event["properties"]["app_version"],
+        ) == expected
+
+
 def test_registration_failure_and_incomplete_confirmation_emit_no_event(analytics_api):
     client, _, sink = analytics_api
     headers = _register(client, "analytics-failure")
@@ -429,6 +464,21 @@ def test_posthog_sink_drops_invalid_payload_without_logging_private_event(caplog
     assert sink.client.events == []
     assert "alice@example.com" not in caplog.text
     assert any(record.levelname == "WARNING" for record in caplog.records)
+
+
+def test_onboarding_step_viewed_is_a_client_event_with_allowlisted_identifiers():
+    contract = analytics.EVENT_CATALOGUE["onboarding_step_viewed"]
+    assert contract.origin == "client"
+    assert set(contract.properties) == {
+        "role",
+        "platform",
+        "app_version",
+        "env",
+        "step",
+    }
+    assert contract.properties["step"].validate("gender")
+    assert contract.properties["step"].validate("review")
+    assert not contract.properties["step"].validate("left knee pain")
 
 
 def test_tracking_plan_events_and_properties_match_code_catalogue():
