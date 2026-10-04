@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/display_language/assignment_copy.dart';
 import '../../../core/display_language/feature_copy_context.dart';
@@ -7,6 +9,7 @@ import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_text_field.dart';
+import '../../../providers.dart';
 
 /// A player program-request payload ready for the existing create-request API.
 class ProgramRequestDraft {
@@ -59,6 +62,28 @@ class ProgramRequestDialog extends StatefulWidget {
 
   @override
   State<ProgramRequestDialog> createState() => _ProgramRequestDialogState();
+}
+
+Future<ProgramRequest?> requestProgramChange(
+  BuildContext context,
+  WidgetRef ref, {
+  VoidCallback? onSubmitting,
+}) async {
+  final ProgramRequestDraft? draft = await showDialog<ProgramRequestDraft>(
+    context: context,
+    builder: (BuildContext context) => const ProgramRequestDialog(),
+  );
+  if (draft == null || !context.mounted) return null;
+  onSubmitting?.call();
+  return ref.read(apiClientProvider).createPlayerProgramRequest(
+        kind: draft.kind,
+        dayName: draft.dayName,
+        exerciseId: draft.exerciseId,
+        replacementExerciseId: draft.replacementExerciseId,
+        desiredWeeklyFrequency: draft.desiredWeeklyFrequency,
+        desiredSplitPreference: draft.desiredSplitPreference,
+        reason: draft.reason,
+      );
 }
 
 class _ProgramRequestDialogState extends State<ProgramRequestDialog> {

@@ -196,28 +196,26 @@ void main() {
     expect(find.text('Former coach'), findsOneWidget);
   });
 
-  testWidgets('self-service regeneration is refused with the server message',
+  testWidgets('coach-controlled programs direct changes to the request flow',
       (tester) async {
     final FakeMayosApi fake = _playerFake();
     fake.programVersion = 6;
     fake.programPublishedByCoachAccountId = 'account-coach-1';
     fake.coachControlsProgram = true;
+    fake.activeAssignmentId = 'assignment-1';
+    fake.activeCoachDisplayName = 'Coach Alice';
     await _pumpApp(tester, fake);
 
     await tester.tap(find.text('Program'));
-    await _pumpUntilFound(tester, find.text('Regenerate program'));
-    await tester.tap(find.text('Regenerate program'));
-    await _pumpUntilFound(
-      tester,
-      find.text(
-          'Your assigned coach controls your program. Ask your coach for changes.'),
-    );
+    await _pumpUntilFound(tester, find.text('Your coach manages this program.'));
 
-    expect(
-      find.text(
-          'Your assigned coach controls your program. Ask your coach for changes.'),
-      findsOneWidget,
-    );
+    expect(find.text('Request a change'), findsOneWidget);
+    expect(find.text('Published by your coach'), findsOneWidget);
+    expect(find.text('Regenerate program'), findsNothing);
+
+    await tester.tap(find.text('Request a change'));
+    await tester.pumpAndSettle();
+    expect(find.text('Request a program change'), findsOneWidget);
   });
 
   testWidgets('player sees a program_published notice and can mark it read',

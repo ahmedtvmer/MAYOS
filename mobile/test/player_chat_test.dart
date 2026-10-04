@@ -603,27 +603,6 @@ void main() {
   });
 
   testWidgets(
-      'regenerating a program offline shows the shared needs-connection message',
-      (tester) async {
-    final FakeMayosApi fake = _fakePlayer('alice');
-    fake.failOffline('POST', '/programs/generate');
-    await _pumpHome(tester, fake);
-
-    // Open the Program tab, then regenerate.
-    await tester.tap(find.text('Program'));
-    await _pumpUntilFound(tester, find.text('Regenerate program'));
-    await tester.tap(find.text('Regenerate program'));
-    await _pumpUntilFound(tester, find.text(needsConnectionMessage));
-
-    expect(find.text(needsConnectionMessage), findsOneWidget);
-    // A refusal is never queued: no regenerate request succeeded.
-    expect(
-        fake.adapter.requests.any((FakeRequest r) =>
-            r.method == 'POST' && r.path == '/programs/generate'),
-        isTrue);
-  });
-
-  testWidgets(
       'saving the schedule offline shows the shared needs-connection message',
       (tester) async {
     final FakeMayosApi fake = _fakePlayer('alice');

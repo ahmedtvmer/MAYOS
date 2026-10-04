@@ -9,6 +9,7 @@ import '../../../core/app_failure.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/copy_context.dart';
+import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/api_client.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/models.dart';
@@ -70,8 +71,8 @@ class ProgramTab extends ConsumerStatefulWidget {
 
 class _ProgramTabState extends ConsumerState<ProgramTab> {
   bool _loading = true;
-  bool _generating = false;
   bool _substituting = false;
+  bool _requestingProgramChange = false;
   bool _pickerBusy = false;
   FailureMessage? _loadError;
   FailureMessage? _actionError;
@@ -145,14 +146,12 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     String? accountId, {
     required bool fromCache,
     bool? loading,
-    bool? generating,
   }) {
     setState(() {
       _program = program;
       _deloadByDay = <int, DeloadDecision>{};
       _fromCache = fromCache;
       if (loading != null) _loading = loading;
-      if (generating != null) _generating = generating;
     });
     if (program != null) {
       unawaited(_loadProgramDeload(program, accountId));
@@ -203,33 +202,41 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     ];
   }
 
-  Future<void> _generate() async {
-    setState(() {
-      _generating = true;
-      _actionError = null;
-    });
+  Future<void> _requestProgramChange() async {
     try {
-      final TrainingProgram program =
-          await ref.read(apiClientProvider).playerGenerateProgram();
-      final String? accountId = _accountId;
-      if (accountId != null) {
-        unawaited(cacheActiveProgram(
-            ref.read(workoutCacheStoreProvider), accountId, program));
-      }
-      if (!mounted) return;
-      _updateProgram(
-        program,
-        accountId,
-        fromCache: false,
-        generating: false,
+      final ProgramRequest? createdRequest = await requestProgramChange(
+        context,
+        ref,
+        onSubmitting: () => setState(() {
+          _requestingProgramChange = true;
+          _actionError = null;
+        }),
       );
+      if (createdRequest == null || !mounted) return;
+      _showProgramChangeRequestSent();
     } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() {
-        _generating = false;
-        _actionError = mutationFailureMessage(error);
-      });
+      _showProgramChangeRequestError(error);
     }
+  }
+
+  void _showProgramChangeRequestSent() {
+    if (!mounted) return;
+    setState(() => _requestingProgramChange = false);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(displayCopyOf(context).programChangeRequestSent),
+        ),
+      );
+  }
+
+  void _showProgramChangeRequestError(ApiException error) {
+    setState(() {
+      _requestingProgramChange = false;
+      _actionError = mutationFailureMessage(error);
+    });
   }
 
   Future<void> _onSubstituteExercise(
@@ -689,15 +696,32 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     if (program == null) {
       return _CenteredMessage(
         message: displayCopyOf(context).noActiveProgramYet,
-        error: _actionError == null
-            ? null
-            : displayCopyOf(context).failureMessage(_actionError!),
-        actionLabel: displayCopyOf(context).regenerateProgram,
-        onAction: _generating ? null : _generate,
-        loading: _generating,
+        actionLabel: displayCopyOf(context).openAssistant,
+        onAction: () => context.push(chatPath),
       );
     }
     final MayosThemeExtension c = MayosTheme.of(context);
+    final ({
+      String message,
+      String actionLabel,
+      IconData icon,
+      VoidCallback onPressed,
+    }) authorityAction;
+    if (program.playerControlsProgram) {
+      authorityAction = (
+        message: displayCopyOf(context).wantDifferentProgramAskAssistant,
+        actionLabel: displayCopyOf(context).askAssistant,
+        icon: Icons.chat_outlined,
+        onPressed: () => context.push(chatPath),
+      );
+    } else {
+      authorityAction = (
+        message: displayCopyOf(context).coachManagesProgram,
+        actionLabel: assignmentCopyOf(context).requestChange,
+        icon: Icons.edit_outlined,
+        onPressed: _requestProgramChange,
+      );
+    }
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
@@ -732,15 +756,26 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
             ),
           ],
           const SizedBox(height: MayosSpacing.md),
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: MayosButton(
-              label: displayCopyOf(context).regenerateProgram,
-              icon: Icons.auto_awesome,
-              variant: MayosButtonVariant.tertiary,
-              loading: _generating,
-              expand: false,
-              onPressed: _generating ? null : _generate,
+          MayosCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  authorityAction.message,
+                  style: MayosTypography.bodySecondary
+                      .copyWith(color: c.textSecondary),
+                ),
+                const SizedBox(height: MayosSpacing.sm),
+                MayosButton(
+                  label: authorityAction.actionLabel,
+                  icon: authorityAction.icon,
+                  loading: _requestingProgramChange,
+                  expand: false,
+                  onPressed: _requestingProgramChange
+                      ? null
+                      : authorityAction.onPressed,
+                ),
+              ],
             ),
           ),
           const SizedBox(height: MayosSpacing.lg),
@@ -817,15 +852,11 @@ class _CenteredMessage extends StatelessWidget {
     required this.message,
     this.actionLabel,
     this.onAction,
-    this.loading = false,
-    this.error,
   });
 
   final String message;
   final String? actionLabel;
   final VoidCallback? onAction;
-  final bool loading;
-  final String? error;
 
   @override
   Widget build(BuildContext context) {
@@ -841,19 +872,10 @@ class _CenteredMessage extends StatelessWidget {
               textAlign: TextAlign.center,
               style: MayosTypography.body.copyWith(color: c.textPrimary),
             ),
-            if (error != null) ...<Widget>[
-              const SizedBox(height: MayosSpacing.sm),
-              Text(
-                error!,
-                textAlign: TextAlign.center,
-                style: MayosTypography.bodySecondary.copyWith(color: c.danger),
-              ),
-            ],
             if (actionLabel != null) ...<Widget>[
               const SizedBox(height: MayosSpacing.lg),
               MayosButton(
                 label: actionLabel!,
-                loading: loading,
                 expand: false,
                 onPressed: onAction,
               ),

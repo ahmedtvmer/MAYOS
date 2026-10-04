@@ -102,8 +102,16 @@ Future<void> _pumpProgram(
   await tester.pump(const Duration(milliseconds: 400));
   await tester
       .tap(find.text(languageCode == 'ar' ? 'البرنامج التدريبي' : 'Program'));
-  await _pumpUntilFound(tester,
-      find.text(languageCode == 'ar' ? 'اليوم 1: Upper 1' : 'Day 1: Upper 1'));
+  await _pumpUntilFound(
+    tester,
+    find.text(fake.noActiveProgram
+        ? languageCode == 'ar'
+            ? 'لا يوجد برنامج تدريبي نشط بعد. أكمل إعدادك لإنشاء برنامج.'
+            : 'No active program yet. Complete onboarding to build one.'
+        : languageCode == 'ar'
+            ? 'اليوم 1: Upper 1'
+            : 'Day 1: Upper 1'),
+  );
 
   // Resize after navigating so the layout is exercised at the target size
   // without depending on bottom-bar hit-testing at the small viewport.
@@ -160,6 +168,118 @@ void main() {
     expect(find.text('2 × 15 · rest 45s'), findsNothing);
     expect(Directionality.of(tester.element(find.text('مجموعات التدريب'))),
         TextDirection.rtl);
+    expect(
+      find.text('هل تريد برنامجًا تدريبيًا مختلفًا؟ اسأل المساعد.'),
+      findsOneWidget,
+    );
+    expect(find.text('إنشاء البرنامج التدريبي من جديد'), findsNothing);
+  });
+
+  testWidgets('player authority points to the assistant chat', (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _pumpProgram(tester, fake);
+
+    expect(
+      find.text('Want a different program? Ask the assistant.'),
+      findsOneWidget,
+    );
+    expect(find.text('Ask the assistant'), findsOneWidget);
+    expect(find.text('Regenerate program'), findsNothing);
+
+    await tester.tap(find.text('Ask the assistant'));
+    await _pumpUntilFound(tester, find.byKey(const Key('chat_composer')));
+    expect(find.byKey(const Key('chat_composer')), findsOneWidget);
+  });
+
+  testWidgets('an unpublished assignment still leaves program authority with the player',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..activeAssignmentId = 'assignment-1'
+      ..activeCoachDisplayName = 'Coach Alice';
+    await _pumpProgram(tester, fake);
+
+    expect(
+      find.text('Want a different program? Ask the assistant.'),
+      findsOneWidget,
+    );
+    expect(find.text('Your coach manages this program.'), findsNothing);
+    expect(find.text('Ask the assistant'), findsOneWidget);
+  });
+
+  testWidgets('coach authority opens the program change request flow',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..activeAssignmentId = 'assignment-1'
+      ..activeCoachDisplayName = 'Coach Alice'
+      ..programPublishedByCoachAccountId = 'account-coach-1'
+      ..coachControlsProgram = true;
+    await _pumpProgram(tester, fake);
+
+    expect(find.text('Your coach manages this program.'), findsOneWidget);
+    expect(find.text('Want a different program? Ask the assistant.'), findsNothing);
+    expect(find.text('Published by your coach'), findsOneWidget);
+    expect(find.text('Regenerate program'), findsNothing);
+
+    await tester.tap(find.text('Request a change'));
+    await tester.pumpAndSettle();
+    expect(find.text('Request a program change'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('program_request_kind_field')));
+    await tester.pumpAndSettle();
+    expect(find.text('Split change'), findsOneWidget);
+    await tester.tap(find.text('Split change'));
+    await tester.enterText(
+      find.byKey(const Key('program_request_reason_field')),
+      'I would prefer a different split.',
+    );
+    await tester.tap(find.byKey(const Key('program_request_submit_button')));
+    await tester.pumpAndSettle();
+    await _pumpUntilFound(
+      tester,
+      find.text('Your program change request was sent to your coach.'),
+    );
+
+    expect(fake.programRequests, hasLength(1));
+    expect(fake.programRequests.single, containsPair('kind', 'split_change'));
+    expect(fake.programRequests.single,
+        containsPair('desired_weekly_frequency', 4));
+  });
+
+  testWidgets('Arabic coach authority message uses the coaching vocabulary',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..activeAssignmentId = 'assignment-1'
+      ..activeCoachDisplayName = 'Coach Alice'
+      ..programPublishedByCoachAccountId = 'account-coach-1'
+      ..coachControlsProgram = true;
+    await _pumpProgram(tester, fake, languageCode: 'ar');
+
+    expect(find.text('يدير مدربك هذا البرنامج التدريبي.'), findsOneWidget);
+    expect(find.text('طلب تغيير'), findsOneWidget);
+    expect(find.text('إنشاء البرنامج التدريبي من جديد'), findsNothing);
+  });
+
+  testWidgets('empty Program state opens the assistant in English and Arabic',
+      (tester) async {
+    for (final String languageCode in <String>['en', 'ar']) {
+      final FakeMayosApi fake = _signedInFake()..noActiveProgram = true;
+      await _pumpProgram(
+        tester,
+        fake,
+        languageCode: languageCode,
+      );
+
+      final String openAssistant =
+          languageCode == 'ar' ? 'فتح المساعد' : 'Open assistant';
+      expect(find.text(openAssistant), findsOneWidget);
+      expect(find.text('Regenerate program'), findsNothing);
+      expect(find.text('إنشاء البرنامج التدريبي من جديد'), findsNothing);
+
+      await tester.tap(find.text(openAssistant));
+      await _pumpUntilFound(tester, find.byKey(const Key('chat_composer')));
+      expect(find.byKey(const Key('chat_composer')), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
   });
 
   testWidgets('Arabic Program translates app-composed deload labels',
@@ -199,7 +319,7 @@ void main() {
       Directionality.of(tester.element(deloadSummary)),
       TextDirection.rtl,
     );
-    expect(find.text('اسأل المساعد'), findsOneWidget);
+    expect(find.text('اسأل المساعد'), findsNWidgets(2));
   });
 
   testWidgets('program shows a suggested deload and opens the assistant',

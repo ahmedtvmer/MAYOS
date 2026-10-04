@@ -456,8 +456,6 @@ class FakeMayosApi {
         return _playerNotices(request);
       case '/assignments/notices/read':
         return _markPlayerNoticesRead(request);
-      case '/programs/generate':
-        return _playerGenerateProgram(request);
       case '/profile/schedule':
         return _schedule(request);
       case '/profile/schedule/pauses':
@@ -1917,20 +1915,6 @@ class FakeMayosApi {
       }
     }
     return FakeResponse(200, <String, dynamic>{'marked_read': marked});
-  }
-
-  FakeResponse _playerGenerateProgram(FakeRequest request) {
-    if (!_authorized(request)) {
-      return const FakeResponse(
-          401, <String, dynamic>{'detail': 'Token has been revoked.'});
-    }
-    if (coachControlsProgram) {
-      return const FakeResponse(403, <String, dynamic>{
-        'detail':
-            'Your assigned coach controls your program. Ask your coach for changes.'
-      });
-    }
-    return FakeResponse(200, _activeProgramBody());
   }
 
   FakeResponse _profile(FakeRequest request) {

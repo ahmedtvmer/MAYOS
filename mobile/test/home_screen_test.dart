@@ -174,7 +174,8 @@ void main() {
     expect(find.text('No personal records yet.'), findsOneWidget);
   });
 
-  testWidgets('the no-program action opens the Program tab', (tester) async {
+  testWidgets('the no-program action reaches the assistant from Program',
+      (tester) async {
     final FakeMayosApi fake = _signedInFake();
     fake.noActiveProgram = true;
     fake.scheduleEmpty = true;
@@ -183,8 +184,13 @@ void main() {
     await _pumpHome(tester, fake);
 
     await tester.tap(find.text('Go to Program'));
-    await _pumpUntilFound(tester, find.text('Regenerate program'));
-    expect(find.text('Regenerate program'), findsOneWidget);
+    await _pumpUntilFound(tester, find.text('Open assistant'));
+    expect(find.text('Open assistant'), findsOneWidget);
+    expect(find.text('Regenerate program'), findsNothing);
+
+    await tester.tap(find.text('Open assistant'));
+    await _pumpUntilFound(tester, find.byKey(const Key('chat_composer')));
+    expect(find.byKey(const Key('chat_composer')), findsOneWidget);
   });
 
   testWidgets('home reads the latest committed session from the ledger',

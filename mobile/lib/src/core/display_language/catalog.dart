@@ -23,6 +23,16 @@ class MayosCopy {
   String get progress => isArabic ? 'التقدم' : 'Progress';
   String get assistant => isArabic ? 'المساعد' : 'Assistant';
   String get askAssistant => isArabic ? 'اسأل المساعد' : 'Ask the assistant';
+  String get openAssistant => isArabic ? 'فتح المساعد' : 'Open assistant';
+  String get wantDifferentProgramAskAssistant => isArabic
+      ? 'هل تريد برنامجًا تدريبيًا مختلفًا؟ اسأل المساعد.'
+      : 'Want a different program? Ask the assistant.';
+  String get coachManagesProgram => isArabic
+      ? 'يدير مدربك هذا البرنامج التدريبي.'
+      : 'Your coach manages this program.';
+  String get programChangeRequestSent => isArabic
+      ? 'أُرسل طلب تغيير البرنامج التدريبي إلى مدربك.'
+      : 'Your program change request was sent to your coach.';
   String get back => isArabic ? 'رجوع' : 'Back';
   String get retry => isArabic ? 'إعادة المحاولة' : 'Retry';
   String get cancel => isArabic ? 'إلغاء' : 'Cancel';
@@ -125,8 +135,6 @@ class MayosCopy {
   String get substitutionUndone =>
       isArabic ? 'تم التراجع عن تبديل التمرين.' : 'Substitution undone.';
   String get undo => isArabic ? 'تراجع' : 'Undo';
-  String get regenerateProgram =>
-      isArabic ? 'إنشاء البرنامج التدريبي من جديد' : 'Regenerate program';
   String get moreExerciseActions =>
       isArabic ? 'المزيد من الخيارات للتمرين' : 'More actions for exercise';
   String get checkpoints => isArabic ? 'محطات التقدم' : 'Checkpoints';

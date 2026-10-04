@@ -248,27 +248,16 @@ class _PlayerAssignmentScreenState
   }
 
   Future<void> _requestChange() async {
-    final ProgramRequestDraft? draft = await showDialog<ProgramRequestDraft>(
-      context: context,
-      builder: (BuildContext context) => const ProgramRequestDialog(),
-    );
-    if (draft == null || !mounted) return;
-    setState(() {
-      _requestingChange = true;
-      _requestError = null;
-    });
     try {
-      final ProgramRequest created =
-          await ref.read(apiClientProvider).createPlayerProgramRequest(
-                kind: draft.kind,
-                dayName: draft.dayName,
-                exerciseId: draft.exerciseId,
-                replacementExerciseId: draft.replacementExerciseId,
-                desiredWeeklyFrequency: draft.desiredWeeklyFrequency,
-                desiredSplitPreference: draft.desiredSplitPreference,
-                reason: draft.reason,
-              );
-      if (!mounted) return;
+      final ProgramRequest? created = await requestProgramChange(
+        context,
+        ref,
+        onSubmitting: () => setState(() {
+          _requestingChange = true;
+          _requestError = null;
+        }),
+      );
+      if (created == null || !mounted) return;
       setState(() {
         _requestingChange = false;
         _programRequests = <ProgramRequest>[created, ..._programRequests];

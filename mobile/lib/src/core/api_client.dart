@@ -964,14 +964,6 @@ class ApiClient {
     );
   }
 
-  /// Regenerates the player's own program (self-service), refused 403 while an
-  /// assigned coach's published program is active.
-  Future<TrainingProgram> playerGenerateProgram() async {
-    final response = await _send(() => _dio
-        .post<dynamic>('/programs/generate', data: const <String, dynamic>{}));
-    return _parseBody(response.data, TrainingProgram.fromJson, _invalidProgram);
-  }
-
   /// Coach revokes an assignment; access is revoked immediately.
   Future<void> revokeAssignment(String assignmentId) async {
     await _send(
