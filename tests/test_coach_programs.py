@@ -372,6 +372,55 @@ def test_approve_active_program_rejects_stale_version_without_changes(api, recor
     assert not [event for event in recording_analytics.events if event["event"] == "coach_program_published"]
 
 
+def test_approve_invalid_active_program_returns_issues_without_changes(api, recording_analytics):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, player_account_id = _assigned_player(api)
+    _seed_complete_active_program(db, player_account_id)
+    player = db.get_account(player_account_id)
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        invalid_program = ledger.get_active_program().model_dump()
+        invalid_program["days"][0]["exercises"][0]["exercise_id"] = "missing-exercise"
+        ledger.save_training_program(invalid_program)
+        active_before = ledger.get_active_program()
+        versions_before = [
+            row[0]
+            for row in ledger.conn.execute(
+                "SELECT version FROM training_programs ORDER BY version"
+            )
+        ]
+
+    draft_path = _program_draft_path(assignment_id)
+    existing_draft = client.post(
+        draft_path, headers=coach_headers, json=_one_day_draft("row")
+    ).json()["draft"]
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program/approve",
+        headers=coach_headers,
+        json={"expected_active_version": active_before.version},
+    )
+
+    assert response.status_code == 400
+    issues = response.json()["detail"]["errors"]
+    assert issues[0]["code"] == "unknown_exercise"
+    assert issues[0]["location"] == {
+        "day_index": 0,
+        "exercise_index": 0,
+        "field": "exercise_id",
+    }
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        assert ledger.get_active_program().version == active_before.version
+        assert [
+            row[0]
+            for row in ledger.conn.execute(
+                "SELECT version FROM training_programs ORDER BY version"
+            )
+        ] == versions_before
+    notices = client.get("/assignments/notices", headers=player_headers).json()["notices"]
+    assert not [notice for notice in notices if notice["kind"] == "program_published"]
+    assert client.get(draft_path, headers=coach_headers).json()["draft"] == existing_draft
+    assert not [event for event in recording_analytics.events if event["event"] == "coach_program_published"]
+
+
 def test_approve_active_program_without_program_returns_not_found(api):
     client, _, _ = api
     coach_headers, _, assignment_id, _, _ = _assigned_player(api)

@@ -1,6 +1,5 @@
 """Assignment-gated lifecycle for coach-authored Program drafts."""
 
-from dataclasses import dataclass
 from typing import Any
 
 from pydantic import ValidationError
@@ -81,30 +80,6 @@ class ProgramDraftValidationError(Exception):
                 }
             ]
         )
-
-
-@dataclass(frozen=True)
-class _DraftPublicationSource:
-    pass
-
-
-@dataclass(frozen=True)
-class _ActiveProgramApprovalSource:
-    expected_version: int
-
-
-@dataclass(frozen=True)
-class ProgramApproval:
-    expected_active_version: int
-    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT
-
-
-@dataclass(frozen=True)
-class _ProgramPublicationRequest:
-    coach_account_id: str
-    assignment_id: str
-    client: analytics.ClientContext
-    source: _DraftPublicationSource | _ActiveProgramApprovalSource
 
 
 def _assignment_still_active(db: Any, coach_account_id: str, assignment_id: str) -> bool:
@@ -439,50 +414,46 @@ def validate_generated_program_draft(
     return draft
 
 
-def _program_draft_for_publication(
-    ledger: Any,
+def _publish_program(
+    db: Any,
+    coach_account_id: str,
     assignment_id: str,
-    source: _DraftPublicationSource | _ActiveProgramApprovalSource,
-) -> dict[str, Any]:
-    if isinstance(source, _DraftPublicationSource):
-        draft_record = ledger.get_program_draft(assignment_id)
-        if draft_record is None:
-            raise ProgramDraftNotFound("Program draft not found.")
-        return draft_record["draft"]
-
-    active_program = ledger.get_active_program()
-    if active_program is None:
-        raise ActiveProgramNotFound("No active program to approve.")
-    if active_program.version != source.expected_version:
-        raise ActiveProgramVersionMismatch(active_program.version)
-    return _active_program_as_draft(active_program)
-
-
-def _publish_program_core(db: Any, publication: _ProgramPublicationRequest) -> Any | None:
-    authorized = authorized_player_ledger(
-        db, publication.coach_account_id, publication.assignment_id
-    )
+    client: analytics.ClientContext,
+    *,
+    approve_version: int | None = None,
+) -> Any | None:
+    authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
     if authorized is None:
         return None
     ledger, assignment_context = authorized
+    publishes_draft = approve_version is None
     with ledger:
         with ledger.ledger_transaction():
             prior_publication = ledger.has_program_published_by_coach_since(
-                publication.coach_account_id,
+                coach_account_id,
                 assignment_context["assignment"]["started_at"],
             )
-            source_draft = _program_draft_for_publication(
-                ledger, publication.assignment_id, publication.source
-            )
+            if publishes_draft:
+                draft_record = ledger.get_program_draft(assignment_id)
+                if draft_record is None:
+                    raise ProgramDraftNotFound("Program draft not found.")
+                source_draft = draft_record["draft"]
+            else:
+                active_program = ledger.get_active_program()
+                if active_program is None:
+                    raise ActiveProgramNotFound("No active program to approve.")
+                if active_program.version != approve_version:
+                    raise ActiveProgramVersionMismatch(active_program.version)
+                source_draft = _active_program_as_draft(active_program)
             program_data = _published_program(
-                source_draft, db, publication.coach_account_id, ledger
+                source_draft, db, coach_account_id, ledger
             )
             ledger.save_training_program(
                 program_data,
-                published_by_coach_account_id=publication.coach_account_id,
+                published_by_coach_account_id=coach_account_id,
             )
-            if isinstance(publication.source, _DraftPublicationSource):
-                ledger.discard_program_draft(publication.assignment_id)
+            if publishes_draft:
+                ledger.discard_program_draft(assignment_id)
             published = ledger.get_active_program()
     if published is None:
         raise RuntimeError("Published program is missing from the player ledger after save.")
@@ -490,9 +461,9 @@ def _publish_program_core(db: Any, publication: _ProgramPublicationRequest) -> A
         db,
         assignment_context,
         published,
-        actor=ProgramAnalyticsActor(publication.coach_account_id, "coach"),
+        actor=ProgramAnalyticsActor(coach_account_id, "coach"),
         first_for_assignment=not prior_publication,
-        client=publication.client,
+        client=client,
     )
     return published
 
@@ -503,14 +474,11 @@ def publish_program_draft(
     assignment_id: str,
     client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> Any | None:
-    return _publish_program_core(
+    return _publish_program(
         db,
-        _ProgramPublicationRequest(
-            coach_account_id=coach_account_id,
-            assignment_id=assignment_id,
-            client=client,
-            source=_DraftPublicationSource(),
-        ),
+        coach_account_id,
+        assignment_id,
+        client,
     )
 
 
@@ -518,15 +486,14 @@ def approve_active_program(
     db: Any,
     coach_account_id: str,
     assignment_id: str,
-    approval: ProgramApproval,
+    expected_active_version: int,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> Any | None:
     """Approves and publishes the active Program snapshot if its version is unchanged."""
-    return _publish_program_core(
+    return _publish_program(
         db,
-        _ProgramPublicationRequest(
-            coach_account_id=coach_account_id,
-            assignment_id=assignment_id,
-            client=approval.client,
-            source=_ActiveProgramApprovalSource(approval.expected_active_version),
-        ),
+        coach_account_id,
+        assignment_id,
+        client,
+        approve_version=expected_active_version,
     )

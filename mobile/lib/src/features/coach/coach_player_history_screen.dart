@@ -1234,7 +1234,17 @@ class _CoachPlayerHistoryScreenState
       );
       if (mounted) await _showPublishedProgram(published);
     } on ApiException catch (error) {
-      if (mounted) {
+      if (error.errorCode == 'program_version_mismatch') {
+        await _load();
+        if (mounted) {
+          setState(
+            () => _programActionError = const AppFailureMessage(
+              AppFailureId.coachProgramChanged,
+              "The player's program changed. Review it and approve again.",
+            ),
+          );
+        }
+      } else if (mounted) {
         setState(() => _programActionError = apiFailureMessage(error));
       }
     } finally {

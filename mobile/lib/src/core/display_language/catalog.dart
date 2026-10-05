@@ -228,6 +228,8 @@ class MayosCopy {
                     'تعذر تأكيد البريد الإلكتروني للاسترداد. حاول مجددًا.',
                   AppFailureId.programVersionMismatch =>
                     'سُجلت هذه الحصة على إصدار أقدم من البرنامج.',
+                  AppFailureId.coachProgramChanged =>
+                    'تغيّر برنامج اللاعب. راجعه ثم أعد اعتماده.',
                   AppFailureId.invalidCheckInData =>
                     'أعادت الخدمة بيانات سجلات التواصل بصيغة غير صالحة.',
                   AppFailureId.invalidAssignmentNotices =>

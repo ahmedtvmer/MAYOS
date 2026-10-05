@@ -328,6 +328,37 @@ void main() {
     expect(fake.programDraft?['program_name'], 'Saved draft');
   });
 
+  testWidgets('stale Approve as is reloads the program before retrying',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic')
+      ..programApproveMismatchVersion = 8
+      ..programApproveMismatchName = 'Updated Full Body';
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_as_is')));
+
+    await tester.tap(find.byKey(const Key('coach_program_approve_as_is')));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_confirm')));
+    await tester.tap(find.byKey(const Key('coach_program_approve_confirm')));
+    await _pumpUntilFound(tester, find.text('Updated Full Body'));
+    await _pumpUntilFound(tester, find.text('program v8'));
+    await _pumpUntilFound(
+      tester,
+      find.text("The player's program changed. Review it and approve again."),
+    );
+
+    expect(fake.programApproveExpectedVersions, <int?>[7]);
+    await tester.tap(find.byKey(const Key('coach_program_approve_as_is')));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_confirm')));
+    await tester.tap(find.byKey(const Key('coach_program_approve_confirm')));
+    await _pumpUntilFound(tester, find.text('Published program version 9'));
+
+    expect(fake.programApproveExpectedVersions, <int?>[7, 8]);
+    expect(fake.programDraftCopyRequests, 0);
+  });
+
   testWidgets('coach creates and reuses a Coach exercise from the picker',
       (tester) async {
     final FakeMayosApi fake = _coachFake();

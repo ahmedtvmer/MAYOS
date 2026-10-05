@@ -486,10 +486,8 @@ async def approve_assigned_player_active_program(
                 db,
                 coach.account_id,
                 assignment_id,
-                coach_program_drafts_service.ProgramApproval(
-                    expected_active_version=body.expected_active_version,
-                    client=analytics.client_context(request),
-                ),
+                body.expected_active_version,
+                client=analytics.client_context(request),
             )
         except coach_program_drafts_service.ActiveProgramNotFound as exc:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

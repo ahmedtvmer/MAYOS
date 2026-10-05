@@ -9,6 +9,7 @@ enum AppFailureId {
   invalidServiceData,
   recoveryEmailNotConfirmed,
   programVersionMismatch,
+  coachProgramChanged,
   invalidCheckInData,
   invalidAssignmentNotices,
   invalidProgramRequestData,

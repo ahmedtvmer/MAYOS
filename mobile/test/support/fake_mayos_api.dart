@@ -148,6 +148,9 @@ class FakeMayosApi {
   int programDraftCopyRequests = 0;
   int programApproveRequests = 0;
   int? lastProgramApproveExpectedVersion;
+  final List<int?> programApproveExpectedVersions = <int?>[];
+  int? programApproveMismatchVersion;
+  String? programApproveMismatchName;
   int programDraftGenerationRequests = 0;
   Map<String, dynamic>? programDraftPublishError;
   Object? programDraftReplaceError;
@@ -1960,6 +1963,7 @@ class FakeMayosApi {
         request.body['expected_active_version'];
     lastProgramApproveExpectedVersion =
         (rawExpectedVersion as num?)?.toInt();
+    programApproveExpectedVersions.add(lastProgramApproveExpectedVersion);
     final Map<String, dynamic>? activeProgram =
         coachActiveProgram['program'] as Map<String, dynamic>?;
     if (activeProgram == null) {
@@ -1967,6 +1971,16 @@ class FakeMayosApi {
         404,
         <String, dynamic>{'detail': 'No active program to approve.'},
       );
+    }
+    final int? mismatchVersion = programApproveMismatchVersion;
+    if (mismatchVersion != null) {
+      activeProgram['version'] = mismatchVersion;
+      final String? mismatchName = programApproveMismatchName;
+      if (mismatchName != null) {
+        activeProgram['program_name'] = mismatchName;
+      }
+      programApproveMismatchVersion = null;
+      programApproveMismatchName = null;
     }
     final int? activeVersion = (activeProgram['version'] as num?)?.toInt();
     if (activeVersion != lastProgramApproveExpectedVersion) {
