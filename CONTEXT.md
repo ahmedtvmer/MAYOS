@@ -7,8 +7,16 @@ MAYOS supports personal training and a consented coaching relationship. A person
 Arabic wording uses simple standard Arabic for ordinary training and coaching
 terms: set is **مجموعة**, rep is **تكرار**, and Training program is
 **برنامج تدريبي**. Exercise names and established abbreviations retain their
-English spelling; the label RIR stays **RIR**. The UI and Arabic assistant
-replies use the same vocabulary.
+English spelling; the label RIR stays **RIR**. The UI, emails, server messages,
+fixed safety replies, Roster briefings and Checkpoint reviews use this
+vocabulary.
+
+Arabic **assistant chat replies** (player chat and coach chat about one
+player) are an exception: they use polite everyday Egyptian Arabic, as a
+trainer talks to a client, without street slang, whatever kind of Arabic the
+person wrote. They use the glossary term when naming something in the app
+(Training program, Exercise library, Checkpoint) and everyday Egyptian gym
+words otherwise, such as **سيتات** for sets and **عدّات** for reps.
 
 **Account**:
 The identity a person uses to access MAYOS. An account can have player and coach capabilities at the same time.
@@ -185,6 +193,10 @@ _Avoid_: Lifter UI, coach account
 **Display language**:
 An account's chosen English or Arabic language for the app and MAYOS messages, initially taken from the system or a manual choice and restored on sign-in without later system changes overriding it. The assistant replies in the language of the player's latest message and falls back to Display language only when that message has no clear language.
 _Avoid_: Locale (implementation term), app language
+
+**Franco-Arabic**:
+Arabic written in Latin letters and digits, such as "3ayez a8ayar el bench". The assistant does not act on or answer it, and asks the person to write in Arabic or English instead.
+_Avoid_: Arabizi, Franco
 
 **Linked sign-in**:
 An external identity, such as a Google account, attached to exactly one MAYOS account and usable to sign in to it. Sign-in and connection match only by provider and subject; accounts are never linked or merged by email. Google's verified email may be kept as the recovery email when a new account is created and no live account already uses it. On an existing account, it can verify the current unverified recovery email only when the addresses match; it never replaces a different address. It never replaces the account's username. An account always keeps at least one way to sign in, so a Linked sign-in can be removed only while the account has a password.
