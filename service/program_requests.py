@@ -82,7 +82,7 @@ def _notify_player(db: Any, player_account_id: str, assignment_id: str, message:
     try:
         db.create_assignment_notice(player_account_id, assignment_id, "program_request", message, now_iso)
     except Exception:
-        logger.exception("Player program-request notice raised unexpectedly")
+        logger.warning("Player program-request notice failed", exc_info=True)
 
 
 def validate_publish_request_ids(
@@ -146,7 +146,7 @@ def resolve_published_requests(
     program_version: int,
     *,
     client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
-) -> None:
+) -> list[str]:
     """Marks still-pending selected requests addressed by a published version.
 
     The catalog claim is one pending-only transaction. A Player cancellation
@@ -158,7 +158,11 @@ def resolve_published_requests(
         _now_iso(),
     )
     for request_id in claimed_ids:
-        _record_published_request_resolution(db, coach_actor, request_id, client)
+        try:
+            _record_published_request_resolution(db, coach_actor, request_id, client)
+        except Exception:
+            logger.warning("Published program request follow-up failed", exc_info=True)
+    return claimed_ids
 
 
 def create_request(

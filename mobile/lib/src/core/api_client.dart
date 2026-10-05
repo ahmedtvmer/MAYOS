@@ -934,7 +934,7 @@ class ApiClient {
     );
   }
 
-  Future<TrainingProgram> coachPublishProgramDraft(
+  Future<CoachProgramPublication> coachPublishProgramDraft(
     String assignmentId, {
     List<String> resolveRequestIds = const <String>[],
   }) async {
@@ -944,10 +944,14 @@ class ApiClient {
         data: <String, dynamic>{'resolve_request_ids': resolveRequestIds},
       ),
     );
-    return _parseBody(response.data, TrainingProgram.fromJson, _invalidProgram);
+    return _parseBody(
+      response.data,
+      CoachProgramPublication.fromJson,
+      _invalidProgram,
+    );
   }
 
-  Future<TrainingProgram> coachApproveActiveProgram(
+  Future<CoachProgramPublication> coachApproveActiveProgram(
     String assignmentId, {
     required int expectedActiveVersion,
     List<String> resolveRequestIds = const <String>[],
@@ -961,7 +965,11 @@ class ApiClient {
         },
       ),
     );
-    return _parseBody(response.data, TrainingProgram.fromJson, _invalidProgram);
+    return _parseBody(
+      response.data,
+      CoachProgramPublication.fromJson,
+      _invalidProgram,
+    );
   }
 
   Future<List<ExerciseCatalogEntry>> coachSearchExercises(String query) async {

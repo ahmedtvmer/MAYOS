@@ -861,6 +861,10 @@ def test_publish_resolves_selected_requests_with_player_language_notice_and_anal
 
     assert published.status_code == 200, published.text
     assert published.json()["version"] == 2
+    assert set(published.json()["resolved_request_ids"]) == {
+        first["request_id"],
+        second["request_id"],
+    }
     requests = client.get(
         f"/coach/assignments/{assignment_id}/program-requests", headers=coach_headers
     ).json()["requests"]
@@ -935,6 +939,107 @@ def test_failed_approval_does_not_resolve_selected_requests(api):
     ).json()["requests"][0]["status"] == "pending"
 
 
+@pytest.mark.parametrize("draft_state", ["missing", "invalid"])
+def test_failed_draft_publish_does_not_resolve_selected_requests(api, draft_state):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, player_account_id = _assigned_player(api)
+    path = _program_draft_path(assignment_id)
+    assert client.post(path, headers=coach_headers, json=_one_day_draft()).status_code == 200
+    assert client.post(f"{path}/publish", headers=coach_headers).status_code == 200
+    request = _create_substitution_request(client, player_headers)
+
+    if draft_state == "invalid":
+        assert client.post(path, headers=coach_headers, json=_one_day_draft("row")).status_code == 200
+        player = db.get_account(player_account_id)
+        with db.open_ledger(player["ledger_id"]) as ledger:
+            invalid_draft = ledger.get_program_draft(assignment_id)["draft"]
+            invalid_draft["days"][0]["exercises"][0]["target_rir"] = 99
+            ledger.replace_program_draft(assignment_id, invalid_draft)
+
+    failed = client.post(
+        f"{path}/publish",
+        headers=coach_headers,
+        json={"resolve_request_ids": [request["request_id"]]},
+    )
+
+    assert failed.status_code == (404 if draft_state == "missing" else 400)
+    assert db.get_program_request(request["request_id"])["status"] == "pending"
+    player = db.get_account(player_account_id)
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        assert ledger.get_active_program().version == 1
+
+
+@pytest.mark.parametrize("resolution", ["applied", "declined", "cancelled"])
+def test_publish_rejects_non_pending_request_without_publishing(api, resolution):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, player_account_id = _assigned_player(api)
+    path = _program_draft_path(assignment_id)
+    assert client.post(path, headers=coach_headers, json=_one_day_draft()).status_code == 200
+    assert client.post(f"{path}/publish", headers=coach_headers).status_code == 200
+    request = _create_substitution_request(client, player_headers)
+    if resolution == "applied":
+        resolved = client.post(
+            f"/coach/assignments/{assignment_id}/program-requests/{request['request_id']}/apply",
+            headers=coach_headers,
+        )
+    elif resolution == "declined":
+        resolved = client.post(
+            f"/coach/assignments/{assignment_id}/program-requests/{request['request_id']}/decline",
+            headers=coach_headers,
+            json={"response": "I will keep the current exercise."},
+        )
+    else:
+        resolved = client.post(
+            f"/assignments/me/program-requests/{request['request_id']}/cancel",
+            headers=player_headers,
+        )
+    assert resolved.status_code == 200, resolved.text
+    if resolution != "applied":
+        assert client.post(path, headers=coach_headers, json=_one_day_draft("row")).status_code == 200
+    player = db.get_account(player_account_id)
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        active_version = ledger.get_active_program().version
+
+    rejected = client.post(
+        f"{path}/publish",
+        headers=coach_headers,
+        json={"resolve_request_ids": [request["request_id"]]},
+    )
+
+    assert rejected.status_code == 400
+    assert db.get_program_request(request["request_id"])["status"] == resolution
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        assert ledger.get_active_program().version == active_version
+
+
+def test_request_resolution_failure_does_not_fail_program_publication(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, player_account_id = _assigned_player(api)
+    path = _program_draft_path(assignment_id)
+    assert client.post(path, headers=coach_headers, json=_one_day_draft()).status_code == 200
+    assert client.post(f"{path}/publish", headers=coach_headers).status_code == 200
+    request = _create_substitution_request(client, player_headers)
+    assert client.post(path, headers=coach_headers, json=_one_day_draft("row")).status_code == 200
+
+    def fail_catalog_claim(*_args, **_kwargs):
+        raise RuntimeError("catalog unavailable")
+
+    monkeypatch.setattr(db, "resolve_program_requests_for_publish", fail_catalog_claim)
+    published = client.post(
+        f"{path}/publish",
+        headers=coach_headers,
+        json={"resolve_request_ids": [request["request_id"]]},
+    )
+
+    assert published.status_code == 200, published.text
+    assert published.json()["version"] == 2
+    assert published.json()["resolved_request_ids"] == []
+    assert db.get_program_request(request["request_id"])["status"] == "pending"
+    player = db.get_account(player_account_id)
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        assert ledger.get_active_program().version == 2
+
+
 def test_publish_rejects_request_from_another_assignment_without_publication(api):
     client, db, _ = api
     coach_headers, _, assignment_id, _, player_account_id = _assigned_player(api)
@@ -963,6 +1068,47 @@ def test_publish_rejects_request_from_another_assignment_without_publication(api
 
     assert rejected.status_code == 400
     assert client.get(path, headers=coach_headers).status_code == 200
+    assert db.get_program_request(foreign["request_id"])["status"] == "pending"
+    player = db.get_account(player_account_id)
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        assert ledger.get_active_program() is None
+
+
+def test_publish_rejects_request_from_another_coachs_assignment(api):
+    client, db, _ = api
+    coach_headers, _, assignment_id, _, player_account_id = _assigned_player(api)
+    target_path = _program_draft_path(assignment_id)
+    assert client.post(target_path, headers=coach_headers, json=_one_day_draft()).status_code == 200
+
+    other_coach_headers = _make_coach(client, db, "coach2")
+    invite = client.post(
+        "/coach/assignments/invites", headers=other_coach_headers
+    ).json()["token"]
+    other_player = _register(client, "p2")
+    other_player_headers = _authed(other_player["access_token"])
+    redeemed = client.post(
+        "/assignments/invites/redeem",
+        headers=other_player_headers,
+        json={"token": invite, "consent": True},
+    )
+    assert redeemed.status_code == 200, redeemed.text
+    other_assignment_id = redeemed.json()["assignment"]["assignment_id"]
+    other_path = _program_draft_path(other_assignment_id)
+    assert client.post(
+        other_path, headers=other_coach_headers, json=_one_day_draft()
+    ).status_code == 200
+    assert client.post(
+        f"{other_path}/publish", headers=other_coach_headers
+    ).status_code == 200
+    foreign = _create_substitution_request(client, other_player_headers)
+
+    rejected = client.post(
+        f"{target_path}/publish",
+        headers=coach_headers,
+        json={"resolve_request_ids": [foreign["request_id"]]},
+    )
+
+    assert rejected.status_code == 400
     assert db.get_program_request(foreign["request_id"])["status"] == "pending"
     player = db.get_account(player_account_id)
     with db.open_ledger(player["ledger_id"]) as ledger:

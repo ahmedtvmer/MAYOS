@@ -27,8 +27,8 @@ import 'coach_assistant_screen.dart';
 import 'coach_check_in_sheet.dart';
 import 'coach_program_draft_screen.dart';
 import 'coach_request_sheet.dart';
-import 'program_publish_confirmation.dart';
 import 'coach_shared.dart';
+import 'program_publish_confirmation.dart';
 
 /// The player page (#120): one assigned player's open coach alerts on top,
 /// then the **History · Check-ins** segments.
@@ -1123,22 +1123,25 @@ class _CoachPlayerHistoryScreenState
 
   void _openProgramDraft() {
     Navigator.of(context)
-        .push<TrainingProgram>(
-      MaterialPageRoute<TrainingProgram>(
+        .push<CoachProgramPublication>(
+      MaterialPageRoute<CoachProgramPublication>(
         builder: (BuildContext context) => CoachProgramDraftScreen(
           assignmentId: _entry.assignmentId,
           playerUsername: _entry.playerUsername,
         ),
       ),
     )
-        .then((TrainingProgram? program) async {
+        .then((CoachProgramPublication? publication) async {
       if (!mounted) return;
-      if (program != null) {
+      if (publication != null) {
         ref.read(coachRosterRevisionProvider.notifier).state++;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              coachCopyOf(context).programPublished(program.version),
+              coachCopyOf(context).programPublished(
+                publication.program.version,
+                resolvedRequestCount: publication.resolvedRequestIds.length,
+              ),
             ),
           ),
         );
@@ -1217,23 +1220,11 @@ class _CoachPlayerHistoryScreenState
     final CoachActiveProgram? active = _activeProgram;
     final int? expectedVersion = active?.program?.version;
     if (expectedVersion == null) return;
-    List<ProgramRequest> requests;
-    try {
-      requests = (await ref
-              .read(apiClientProvider)
-              .coachProgramRequests(_entry.assignmentId))
-          .where((ProgramRequest request) => request.isPending)
-          .toList(growable: false);
-    } on ApiException catch (error) {
-      if (mounted) {
-        setState(() => _programActionError = apiFailureMessage(error));
-      }
-      return;
-    }
-    if (!mounted) return;
+    final ApiClient api = ref.read(apiClientProvider);
     final List<String>? resolveRequestIds =
-        await _confirmApproveActiveProgram(requests);
-    if (!mounted || resolveRequestIds == null) return;
+        await _confirmApproveActiveProgram(api);
+    if (!mounted) return;
+    if (resolveRequestIds == null) return;
     await _publishActiveProgramAsIs(
       expectedVersion,
       resolveRequestIds: resolveRequestIds,
@@ -1250,7 +1241,7 @@ class _CoachPlayerHistoryScreenState
     });
     try {
       final ApiClient api = ref.read(apiClientProvider);
-      final TrainingProgram published = await api.coachApproveActiveProgram(
+      final CoachProgramPublication published = await api.coachApproveActiveProgram(
         _entry.assignmentId,
         expectedActiveVersion: expectedActiveVersion,
         resolveRequestIds: resolveRequestIds,
@@ -1275,30 +1266,41 @@ class _CoachPlayerHistoryScreenState
     }
   }
 
-  Future<void> _showPublishedProgram(TrainingProgram published) async {
+  Future<void> _showPublishedProgram(CoachProgramPublication published) async {
     ref.read(coachRosterRevisionProvider.notifier).state++;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(coachCopyOf(context).programPublished(published.version)),
+        content: Text(
+          coachCopyOf(context).programPublished(
+            published.program.version,
+            resolvedRequestCount: published.resolvedRequestIds.length,
+          ),
+        ),
       ),
     );
     await _load();
   }
 
   Future<List<String>?> _confirmApproveActiveProgram(
-    List<ProgramRequest> requests,
+    ApiClient api,
   ) async {
     final copy = coachCopyOf(context);
     return showProgramPublishConfirmation(
       context,
+      api,
+      _entry.assignmentId,
       ProgramPublishConfirmation(
         title: copy.confirmApproveProgramTitle,
         prompt: copy.approveProgramAsIsPrompt,
         confirmLabel: copy.confirmApproveProgram,
         cancelLabel: copy.cancel,
         confirmKey: 'coach_program_approve_confirm',
-        requests: requests,
       ),
+      onRequestsLoadError: (ApiException error) {
+        if (mounted) {
+          setState(() => _programActionError = apiFailureMessage(error));
+        }
+      },
     );
   }
 

@@ -359,7 +359,10 @@ void main() {
     await tester.tap(find.byKey(const Key('publish_resolve_request-2')));
     expect(fake.programVersion, isNull);
     await tester.tap(find.byKey(const Key('coach_program_approve_confirm')));
-    await _pumpUntilFound(tester, find.text('Published program version 8'));
+    await _pumpUntilFound(
+      tester,
+      find.text('Published program version 8 · Resolved 1 request'),
+    );
 
     expect(fake.programApproveRequests, 1);
     expect(fake.lastProgramApproveExpectedVersion, 7);
@@ -369,6 +372,73 @@ void main() {
     expect(fake.programPublishedByCoachAccountId, 'account-alice');
     expect(fake.coachActiveProgram['program']?['provenance'], 'coach');
     expect(fake.programDraft?['program_name'], 'Saved draft');
+  });
+
+  testWidgets('failed Approve as is leaves selected requests open without a count',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic')
+      ..programApproveMismatchVersion = 8
+      ..programRequests.add(_pendingSubstitutionRequest('request-1'));
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_as_is')));
+
+    await tester.tap(find.byKey(const Key('coach_program_approve_as_is')));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_confirm')));
+    await tester.tap(find.byKey(const Key('coach_program_approve_confirm')));
+    await _pumpUntilFound(
+      tester,
+      find.text('The player\'s program changed. Review it and approve again.'),
+    );
+
+    expect(fake.programRequests.single['status'], 'pending');
+    expect(fake.lastProgramApproveResolveRequestIds, <String>['request-1']);
+    expect(find.textContaining('Resolved 1 request'), findsNothing);
+    expect(find.textContaining('Published program version'), findsNothing);
+  });
+
+  testWidgets('Approve as is request confirmation renders Arabic copy',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..displayLanguage = 'ar'
+      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic')
+      ..programRequests.add(_pendingSubstitutionRequest('request-1'));
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('قائمة اللاعبين'));
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_as_is')));
+
+    await tester.tap(find.byKey(const Key('coach_program_approve_as_is')));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_confirm')));
+
+    final Finder requestRow =
+        find.byKey(const Key('publish_resolve_request-1'));
+    expect(
+      find.descendant(
+        of: requestRow,
+        matching: find.textContaining('طلب تبديل تمرين من المدرب'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: requestRow, matching: find.textContaining('Squat')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: requestRow,
+        matching: find.textContaining('2026-10-02'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester.widget<CheckboxListTile>(
+        find.byKey(const Key('publish_resolve_request-1')),
+      ).value,
+      isTrue,
+    );
   });
 
   testWidgets('stale Approve as is reloads the program before retrying',
@@ -499,7 +569,10 @@ void main() {
     );
     await tester.tap(find.byKey(const Key('publish_resolve_draft-request-2')));
     await tester.tap(find.text('Publish').last);
-    await _pumpUntilFound(tester, find.text('Published program version 1'));
+    await _pumpUntilFound(
+      tester,
+      find.text('Published program version 1 · Resolved 1 request'),
+    );
 
     expect(fake.programVersion, 1);
     expect(fake.lastProgramDraftResolveRequestIds, <String>['draft-request-1']);

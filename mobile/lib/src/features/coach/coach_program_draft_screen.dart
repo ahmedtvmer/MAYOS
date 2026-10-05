@@ -330,26 +330,20 @@ class _CoachProgramDraftScreenState
   Future<void> _publishDraft() async {
     final copy = coachCopyOf(context);
     final ApiClient api = ref.read(apiClientProvider);
-    List<ProgramRequest> requests;
-    try {
-      requests = (await api.coachProgramRequests(widget.assignmentId))
-          .where((ProgramRequest request) => request.isPending)
-          .toList(growable: false);
-    } on ApiException catch (error) {
-      if (mounted) setState(() => _failure = apiFailureMessage(error));
-      return;
-    }
-    if (!mounted) return;
     final List<String>? resolveRequestIds =
         await showProgramPublishConfirmation(
       context,
+      api,
+      widget.assignmentId,
       ProgramPublishConfirmation(
         title: copy.publishDraft,
         prompt: copy.confirmPublishDraft,
         confirmLabel: copy.publish,
         cancelLabel: copy.cancel,
-        requests: requests,
       ),
+      onRequestsLoadError: (ApiException error) {
+        if (mounted) setState(() => _failure = apiFailureMessage(error));
+      },
     );
     if (!mounted || resolveRequestIds == null) return;
     final Map<String, dynamic>? draft = _draftForSave();
@@ -366,11 +360,12 @@ class _CoachProgramDraftScreenState
             draft,
       );
       if (mounted) setState(() => _hasUnsavedChanges = false);
-      final TrainingProgram program = await api.coachPublishProgramDraft(
+      final CoachProgramPublication publication =
+          await api.coachPublishProgramDraft(
         widget.assignmentId,
         resolveRequestIds: resolveRequestIds,
       );
-      if (mounted) _popEditor(program);
+      if (mounted) _popEditor(publication);
     } on ApiException catch (error) {
       if (!mounted) return;
       if (error.serverDetails?['errors'] is List ||

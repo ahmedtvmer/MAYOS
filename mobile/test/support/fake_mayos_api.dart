@@ -1947,8 +1947,14 @@ class FakeMayosApi {
         request.body['resolve_request_ids'] as List<dynamic>? ?? <dynamic>[],
       );
       _publishProgramDraft(assignmentId, programDraft!);
-      _resolvePublishedRequests(assignmentId, lastProgramDraftResolveRequestIds);
-      return FakeResponse(200, _activeProgramBody());
+      final List<String> resolvedRequestIds = _resolvePublishedRequests(
+        assignmentId,
+        lastProgramDraftResolveRequestIds,
+      );
+      return FakeResponse(200, <String, dynamic>{
+        ..._activeProgramBody(),
+        'resolved_request_ids': resolvedRequestIds,
+      });
     }
     if (request.method == 'GET' && programDraft == null) {
       return const FakeResponse(
@@ -2037,24 +2043,33 @@ class FakeMayosApi {
       draft,
       clearDraft: false,
     );
-    _resolvePublishedRequests(
+    final List<String> resolvedRequestIds = _resolvePublishedRequests(
       request.path.split('/')[3],
       lastProgramApproveResolveRequestIds,
     );
-    return FakeResponse(200, _activeProgramBody());
+    return FakeResponse(200, <String, dynamic>{
+      ..._activeProgramBody(),
+      'resolved_request_ids': resolvedRequestIds,
+    });
   }
 
-  void _resolvePublishedRequests(String assignmentId, List<String> requestIds) {
+  List<String> _resolvePublishedRequests(
+    String assignmentId,
+    List<String> requestIds,
+  ) {
+    final List<String> resolved = <String>[];
     for (final Map<String, dynamic> row in programRequests) {
       if (requestIds.contains(row['request_id']) &&
           row['assignment_id'] == assignmentId &&
           row['status'] == 'pending') {
+        resolved.add(row['request_id'] as String);
         row['status'] = 'applied';
         row['response'] =
             'Addressed in your new program (version $programVersion)';
         row['resolved_by'] = 'account-$currentUsername';
       }
     }
+    return resolved;
   }
 
   void _publishProgramDraft(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/api_client.dart';
 import '../../core/display_language/coach_copy.dart';
 import '../../core/display_language/feature_copy_context.dart';
 import '../../core/models.dart';
@@ -10,7 +11,6 @@ class ProgramPublishConfirmation {
     required this.prompt,
     required this.confirmLabel,
     required this.cancelLabel,
-    required this.requests,
     this.confirmKey = 'program_publish_confirm',
   });
 
@@ -19,23 +19,54 @@ class ProgramPublishConfirmation {
   final String confirmLabel;
   final String cancelLabel;
   final String confirmKey;
-  final List<ProgramRequest> requests;
 }
 
 Future<List<String>?> showProgramPublishConfirmation(
   BuildContext context,
+  ApiClient api,
+  String assignmentId,
   ProgramPublishConfirmation confirmation,
-) =>
-    showDialog<List<String>>(
-      context: context,
-      builder: (BuildContext context) =>
-          _ProgramPublishConfirmationDialog(confirmation: confirmation),
-    );
+  {
+  required void Function(ApiException error) onRequestsLoadError,
+}) async {
+  final List<ProgramRequest>? requests = await _loadPendingRequests(
+    api,
+    assignmentId,
+    onRequestsLoadError,
+  );
+  if (requests == null || !context.mounted) return null;
+  return showDialog<List<String>>(
+    context: context,
+    builder: (BuildContext context) => _ProgramPublishConfirmationDialog(
+      confirmation: confirmation,
+      requests: requests,
+    ),
+  );
+}
+
+Future<List<ProgramRequest>?> _loadPendingRequests(
+  ApiClient api,
+  String assignmentId,
+  void Function(ApiException error) onRequestsLoadError,
+) async {
+  try {
+    return (await api.coachProgramRequests(assignmentId))
+        .where((ProgramRequest request) => request.isPending)
+        .toList(growable: false);
+  } on ApiException catch (error) {
+    onRequestsLoadError(error);
+    return null;
+  }
+}
 
 class _ProgramPublishConfirmationDialog extends StatefulWidget {
-  const _ProgramPublishConfirmationDialog({required this.confirmation});
+  const _ProgramPublishConfirmationDialog({
+    required this.confirmation,
+    required this.requests,
+  });
 
   final ProgramPublishConfirmation confirmation;
+  final List<ProgramRequest> requests;
 
   @override
   State<_ProgramPublishConfirmationDialog> createState() =>
@@ -45,7 +76,7 @@ class _ProgramPublishConfirmationDialog extends StatefulWidget {
 class _ProgramPublishConfirmationDialogState
     extends State<_ProgramPublishConfirmationDialog> {
   late final Set<String> _selectedRequestIds = <String>{
-    for (final ProgramRequest request in widget.confirmation.requests)
+    for (final ProgramRequest request in widget.requests)
       request.requestId,
   };
 
@@ -62,7 +93,7 @@ class _ProgramPublishConfirmationDialogState
         subtitle: Text(
           copy.publishRequestDetails(
             request.exerciseName ?? request.exerciseId,
-            request.createdAt.split('T').first,
+            isoDateOf(request.createdOn),
           ),
         ),
         onChanged: (bool? selected) => setState(() {
@@ -75,7 +106,7 @@ class _ProgramPublishConfirmationDialogState
       );
 
   Widget _content(CoachCopy copy) {
-    final List<ProgramRequest> requests = widget.confirmation.requests;
+    final List<ProgramRequest> requests = widget.requests;
     return SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,

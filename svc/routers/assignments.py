@@ -19,7 +19,6 @@ from typing import Annotated, Any
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, Response
 
-from agent.ProgramState import PersistedProgramSchema
 from service import analytics
 from service import assignments as assignment_service
 from service import analytics as analytics_service
@@ -67,6 +66,7 @@ from svc.schemas import (
     CoachProgramDraftIn,
     CoachProgramDraftOut,
     CoachProgramPublishIn,
+    CoachProgramPublicationOut,
     CoachCheckInListOut,
     CoachCrossRosterProgramRequestListOut,
     CoachCrossRosterProgramRequestOut,
@@ -472,7 +472,7 @@ async def copy_assigned_player_active_program_to_draft(
     return await asyncio.to_thread(_run)
 
 
-@coach_router.post("/{assignment_id}/program/approve", response_model=PersistedProgramSchema)
+@coach_router.post("/{assignment_id}/program/approve", response_model=CoachProgramPublicationOut)
 @limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
 async def approve_assigned_player_active_program(
     request: Request,
@@ -507,7 +507,10 @@ async def approve_assigned_player_active_program(
             raise _bad_request(str(exc)) from exc
         if published is None:
             raise _no_active_assignment()
-        return published
+        return CoachProgramPublicationOut(
+            **published.program.model_dump(),
+            resolved_request_ids=published.resolved_request_ids,
+        )
 
     return await asyncio.to_thread(_run)
 
@@ -608,7 +611,7 @@ async def discard_assigned_player_program_draft(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@coach_router.post("/{assignment_id}/program-draft/publish", response_model=PersistedProgramSchema)
+@coach_router.post("/{assignment_id}/program-draft/publish", response_model=CoachProgramPublicationOut)
 @limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
 async def publish_assigned_player_program_draft(
     request: Request,
@@ -635,7 +638,10 @@ async def publish_assigned_player_program_draft(
         raise _bad_request(str(exc)) from exc
     if published is None:
         raise _no_active_assignment()
-    return published
+    return CoachProgramPublicationOut(
+        **published.program.model_dump(),
+        resolved_request_ids=published.resolved_request_ids,
+    )
 
 
 @coach_roster_router.get("/program-requests", response_model=CoachCrossRosterProgramRequestListOut)

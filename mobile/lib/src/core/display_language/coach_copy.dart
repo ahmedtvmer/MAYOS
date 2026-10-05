@@ -426,9 +426,16 @@ class CoachCopy {
   String get daysPerWeek =>
       isArabic ? 'أيام التدريب أسبوعيًا' : 'Days per week';
   String get publish => isArabic ? 'نشر' : 'Publish';
-  String programPublished(int? version) => isArabic
-      ? 'نُشر إصدار البرنامج التدريبي ${_ltr('$version')}'
-      : 'Published program version $version';
+  String programPublished(int? version, {int resolvedRequestCount = 0}) {
+    final String published = isArabic
+        ? 'نُشر إصدار البرنامج التدريبي ${_ltr('$version')}'
+        : 'Published program version $version';
+    if (resolvedRequestCount == 0) return published;
+    final String addressed = isArabic
+        ? 'تمت معالجة ${requestsCount(resolvedRequestCount)}'
+        : 'Resolved ${requestsCount(resolvedRequestCount)}';
+    return '$published · $addressed';
+  }
   String get programRequests =>
       isArabic ? 'طلبات البرنامج التدريبي' : 'Program requests';
   String get noProgramRequests => isArabic

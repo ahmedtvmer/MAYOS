@@ -1015,6 +1015,10 @@ class CoachProgramPublishIn(BaseModel):
     resolve_request_ids: list[str] = Field(default_factory=list)
 
 
+class CoachProgramPublicationOut(PersistedProgramSchema):
+    resolved_request_ids: list[str] = Field(default_factory=list)
+
+
 class CoachProgramDraftOut(BaseModel):
     assignment_id: str
     draft: CoachProgramDraftIn

@@ -475,6 +475,7 @@ class ProgramRequest {
   final String? playerUsername;
 
   bool get isPending => status == 'pending';
+  DateTime get createdOn => DateTime.parse(createdAt);
 
   /// Once applied the request is answered: the program carries a new version
   /// and no further coaching action is possible (#121).
@@ -2322,6 +2323,26 @@ class TrainingProgram {
         'published_by_coach_account_id': publishedByCoachAccountId,
         'player_controls_program': playerControlsProgram,
       };
+}
+
+/// The published Program and the requests claimed by the same publish call.
+class CoachProgramPublication {
+  const CoachProgramPublication({
+    required this.program,
+    required this.resolvedRequestIds,
+  });
+
+  factory CoachProgramPublication.fromJson(Map<String, dynamic> json) =>
+      CoachProgramPublication(
+        program: TrainingProgram.fromJson(json),
+        resolvedRequestIds:
+            (json['resolved_request_ids'] as List<dynamic>? ?? const <dynamic>[])
+                .map((dynamic id) => id as String)
+                .toList(growable: false),
+      );
+
+  final TrainingProgram program;
+  final List<String> resolvedRequestIds;
 }
 
 /// Program payload plus the ledger versions needed for exact substitution undo.

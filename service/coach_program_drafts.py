@@ -1,5 +1,7 @@
 """Assignment-gated lifecycle for coach-authored Program drafts."""
 
+import logging
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import ValidationError
@@ -24,11 +26,19 @@ from agent.program_prescription import (
 )
 from database.exercise_resolution import resolve_exercise_display_row
 from service import analytics
+from service import program_requests as program_requests_service
 from service.assignments import authorized_player_ledger
 from service.coach_programs import ProgramPublicationDetails, record_program_publication
 from service.program_change_summary import summarize_program_change
 from service.program_analytics import ProgramAnalyticsActor
-from service import program_requests as program_requests_service
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ProgramPublicationResult:
+    program: Any
+    resolved_request_ids: list[str]
 
 
 class ProgramDraftNotFound(Exception):
@@ -481,15 +491,19 @@ def _publish_program(
             client=client,
         ),
     )
+    resolved_request_ids = []
     if selected_requests:
-        program_requests_service.resolve_published_requests(
-            db,
-            ProgramAnalyticsActor(coach_account_id, "coach"),
-            selected_requests,
-            int(published.version or 0),
-            client=client,
-        )
-    return published
+        try:
+            resolved_request_ids = program_requests_service.resolve_published_requests(
+                db,
+                ProgramAnalyticsActor(coach_account_id, "coach"),
+                selected_requests,
+                int(published.version or 0),
+                client=client,
+            )
+        except Exception:
+            logger.warning("Program request resolution failed after program publication", exc_info=True)
+    return ProgramPublicationResult(published, resolved_request_ids)
 
 
 def _published_exercise_display_name(db: Any, exercise_id: str) -> str | None:
