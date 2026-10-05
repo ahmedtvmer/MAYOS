@@ -29,6 +29,7 @@ import '../workout/active_workout_prompt.dart';
 import '../workout/deload_banner.dart';
 import 'program_authority_recovery.dart';
 import 'program_change_summary_card.dart';
+import 'preparing_program_banner.dart';
 
 enum _SwapDirection { apply, undo }
 
@@ -88,6 +89,9 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   /// (e.g. offline), so the label never wrongly claims a coach is "former".
   Assignment? _assignment;
   bool _assignmentKnown = false;
+
+  bool get _showPreparingProgram =>
+      _assignmentKnown && _assignment?.coachPreparingProgram == true;
 
   /// True only when [_program] is being served from the offline cache after
   /// an online fetch failed (ADR 020/033) — never merely because a cache
@@ -732,6 +736,13 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         unawaited(_load());
       }
     });
+    ref.listen<PlayerAssignmentUpdate?>(playerAssignmentUpdateProvider,
+        (_, PlayerAssignmentUpdate? update) {
+      setState(() {
+        _assignment = update?.assignment;
+        _assignmentKnown = update != null;
+      });
+    });
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -744,6 +755,34 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     }
     final TrainingProgram? program = _program;
     if (program == null) {
+      if (_showPreparingProgram) {
+        return RefreshIndicator(
+          onRefresh: _load,
+          child: ListView(
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  MayosSpacing.lg,
+                  MayosSpacing.md,
+                  MayosSpacing.lg,
+                  0,
+                ),
+                child: PreparingProgramBanner(
+                  coachName: _assignment!.coach.displayName,
+                ),
+              ),
+              SizedBox(
+                height: MediaQuery.sizeOf(context).height * 0.6,
+                child: _CenteredMessage(
+                  message: displayCopyOf(context).noActiveProgramYet,
+                  actionLabel: displayCopyOf(context).openAssistant,
+                  onAction: () => context.push(chatPath),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
       return _CenteredMessage(
         message: displayCopyOf(context).noActiveProgramYet,
         actionLabel: displayCopyOf(context).openAssistant,
@@ -778,6 +817,12 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         padding: const EdgeInsets.fromLTRB(MayosSpacing.lg, MayosSpacing.md,
             MayosSpacing.lg, MayosSpacing.xxl),
         children: <Widget>[
+          if (_showPreparingProgram) ...<Widget>[
+            PreparingProgramBanner(
+              coachName: _assignment!.coach.displayName,
+            ),
+            const SizedBox(height: MayosSpacing.md),
+          ],
           if (_fromCache) ...<Widget>[
             const _OfflineBanner(),
             const SizedBox(height: MayosSpacing.md),

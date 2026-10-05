@@ -322,6 +322,20 @@ final StateProvider<int> playerShellTabProvider = StateProvider<int>(
   (ref) => PlayerShellTab.home.index,
 );
 
+/// Carries My coach's committed Assignment response to mounted Player tabs
+/// without requiring a second API read.
+class PlayerAssignmentUpdate {
+  const PlayerAssignmentUpdate(this.assignment);
+
+  final Assignment? assignment;
+}
+
+final StateProvider<PlayerAssignmentUpdate?> playerAssignmentUpdateProvider =
+    StateProvider<PlayerAssignmentUpdate?>((ref) {
+  _resetOnAccountChange(ref, () => ref.controller.state = null);
+  return null;
+});
+
 /// The number of coach alerts still in the `new` state, published by the
 /// Alerts tab so the shell's badge tracks acknowledge/resolve without a second
 /// fetch. It resets whenever the account changes, so one account's badge count

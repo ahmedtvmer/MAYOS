@@ -383,7 +383,7 @@ def redeem_assignment_invite(
     }
 
 
-def get_player_assignment(db: Any, player_account_id: str) -> dict[str, Any] | None:
+def get_player_assignment(db: Any, player_account_id: str, ledger: Any | None = None) -> dict[str, Any] | None:
     """The player's active assignment with the coach's current identity, or ``None``."""
     assignment = db.get_active_assignment_for_player(player_account_id)
     if assignment is None:
@@ -391,12 +391,17 @@ def get_player_assignment(db: Any, player_account_id: str) -> dict[str, Any] | N
     coach = db.get_account(assignment["coach_account_id"])
     if not db.is_live_account(coach) or not coach["is_coach"]:
         return None
-    return {
+    assignment_details: dict[str, Any] = {
         "assignment_id": assignment["assignment_id"],
         "coach": coach_identity(db, assignment["coach_account_id"], coach),
         "started_at": assignment["started_at"],
         "status": assignment["status"],
     }
+    if ledger is not None:
+        assignment_details["coach_preparing_program"] = not ledger.has_program_published_by_coach_since(
+            assignment["coach_account_id"], assignment["started_at"]
+        )
+    return assignment_details
 
 
 def authorized_player_ledger(db: Any, coach_account_id: str, assignment_id: Any) -> tuple[Any, dict[str, Any]] | None:

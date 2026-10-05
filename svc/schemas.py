@@ -377,6 +377,7 @@ class AssignmentOut(BaseModel):
     coach: CoachIdentityOut
     started_at: str
     status: str
+    coach_preparing_program: bool
 
 
 class AssignmentInviteIssueOut(BaseModel):

@@ -371,10 +371,12 @@ void main() {
     expect(find.text('إنشاء البرنامج التدريبي من جديد'), findsNothing);
   });
 
-  testWidgets('player authority points to the assistant chat', (tester) async {
+  testWidgets('without a coach, player authority points to the assistant chat',
+      (tester) async {
     final FakeMayosApi fake = _signedInFake();
     await _pumpProgram(tester, fake);
 
+    expect(find.textContaining('preparing your program'), findsNothing);
     expect(
       find.text('Want a different program? Ask the assistant.'),
       findsOneWidget,
@@ -385,6 +387,106 @@ void main() {
     await tester.tap(find.text('Ask the assistant'));
     await _pumpUntilFound(tester, find.byKey(const Key('chat_composer')));
     expect(find.byKey(const Key('chat_composer')), findsOneWidget);
+  });
+
+  testWidgets('assigned player sees the named coach preparing the program',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..activeAssignmentId = 'assignment-1'
+      ..activeCoachDisplayName = 'Coach Alice';
+    await _pumpProgram(tester, fake);
+
+    expect(
+      find.text(
+        "Your coach, Coach Alice, is preparing your program. You're on a starting program until then.",
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('published program hides the preparing banner', (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..activeAssignmentId = 'assignment-1'
+      ..activeCoachDisplayName = 'Coach Alice'
+      ..coachPreparingProgram = false
+      ..programPublishedByCoachAccountId = 'account-coach-1'
+      ..coachControlsProgram = true;
+    await _pumpProgram(tester, fake);
+
+    expect(find.textContaining('preparing your program'), findsNothing);
+  });
+
+  testWidgets('ending the assignment removes the preparing banner',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..activeAssignmentId = 'assignment-1'
+      ..activeCoachDisplayName = 'Coach Alice';
+    await _pumpProgram(tester, fake);
+    expect(find.textContaining('preparing your program'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await _pumpUntilFound(tester, find.text('Appearance'));
+    await tester.tap(find.byIcon(Icons.badge_outlined));
+    await _pumpUntilFound(tester, find.text('My coach'));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Leave coach'));
+    await _pumpUntilFound(tester, find.text('Leave coach?'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Leave coach'));
+    await _pumpUntilFound(tester, find.text('Invite code from your coach'));
+
+    await tester.binding.handlePopRoute();
+    await _pumpUntilFound(tester, find.text('Appearance'));
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await _pumpUntilFound(tester, find.text('Day 1: Upper 1'));
+
+    expect(find.textContaining('preparing your program'), findsNothing);
+  });
+
+  testWidgets('Home shows the preparing banner above its program card',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..activeAssignmentId = 'assignment-1'
+      ..activeCoachDisplayName = 'Coach Alice';
+    await _pumpProgram(tester, fake);
+    await tester.tap(find.text('Home'));
+    await _pumpUntilFound(tester, find.text('Coach Alice'));
+
+    expect(
+      find.text(
+        "Your coach, Coach Alice, is preparing your program. You're on a starting program until then.",
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Home hides the preparing banner after coach publication',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..activeAssignmentId = 'assignment-1'
+      ..activeCoachDisplayName = 'Coach Alice'
+      ..coachPreparingProgram = false
+      ..programPublishedByCoachAccountId = 'account-coach-1'
+      ..coachControlsProgram = true;
+    await _pumpProgram(tester, fake);
+    await tester.tap(find.text('Home'));
+    await _pumpUntilFound(tester, find.text('Day 1: Upper 1'));
+
+    expect(find.textContaining('preparing your program'), findsNothing);
+  });
+
+  testWidgets('Arabic preparing banner names the coach in Display language',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..activeAssignmentId = 'assignment-1'
+      ..activeCoachDisplayName = 'Coach Alice';
+    await _pumpProgram(tester, fake, languageCode: 'ar');
+
+    expect(
+      find.text(
+        'مدربك Coach Alice يُعدّ برنامجك التدريبي. ستتدرب على برنامج مبدئي حتى ذلك الحين.',
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('an unpublished assignment still leaves program authority with the player',

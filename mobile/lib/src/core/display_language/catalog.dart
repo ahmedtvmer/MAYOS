@@ -39,6 +39,9 @@ class MayosCopy {
   String get coachManagesProgram => isArabic
       ? 'يدير مدربك هذا البرنامج التدريبي.'
       : 'Your coach manages this program.';
+  String coachPreparingProgram(String coachName) => isArabic
+      ? 'مدربك $coachName يُعدّ برنامجك التدريبي. ستتدرب على برنامج مبدئي حتى ذلك الحين.'
+      : "Your coach, $coachName, is preparing your program. You're on a starting program until then.";
   String get programChangeRequestSent => isArabic
       ? 'أُرسل طلب تغيير البرنامج التدريبي إلى مدربك.'
       : 'Your program change request was sent to your coach.';

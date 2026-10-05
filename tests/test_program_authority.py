@@ -254,6 +254,42 @@ def _end_assignment(client, player_headers):
     assert ended.status_code == 200, ended.text
 
 
+def test_player_assignment_reports_first_coach_publication_window(api, monkeypatch):
+    client, db, _ = api
+    coach_headers = _make_coach(client, db, "coach", capacity=5)
+    token = client.post("/coach/assignments/invites", headers=coach_headers).json()["token"]
+    player = _register(client, "p1")
+    player_headers = _authed(player["access_token"])
+
+    assert client.get("/assignments/me", headers=player_headers).json() is None
+
+    redeemed = client.post(
+        "/assignments/invites/redeem",
+        headers=player_headers,
+        json={"token": token, "consent": True},
+    )
+    assert redeemed.status_code == 200, redeemed.text
+    assert redeemed.json()["assignment"]["coach_preparing_program"] is True
+    assignment_id = redeemed.json()["assignment"]["assignment_id"]
+    before_publish = client.get("/assignments/me", headers=player_headers).json()
+    assert before_publish["coach_preparing_program"] is True
+    assert "coach_account_id" not in before_publish
+    assert "account_id" not in before_publish["coach"]
+
+    _coach_generation(db, monkeypatch)
+    published = _publish(client, coach_headers, assignment_id)
+    assert published.status_code == 200, published.text
+    assert client.get("/assignments/me", headers=player_headers).json()["coach_preparing_program"] is False
+
+    # A later program version from the same Coach does not restart the banner.
+    published_again = _publish(client, coach_headers, assignment_id)
+    assert published_again.status_code == 200, published_again.text
+    assert client.get("/assignments/me", headers=player_headers).json()["coach_preparing_program"] is False
+
+    _end_assignment(client, player_headers)
+    assert client.get("/assignments/me", headers=player_headers).json() is None
+
+
 # --------------------------------------------------------------------------
 # 1. POST /programs/generate
 # --------------------------------------------------------------------------

@@ -63,6 +63,11 @@ class _PlayerAssignmentScreenState
 
   FailureMessage _rawFailure(ApiException error) => apiFailureMessage(error);
 
+  void _notifyAssignmentChanged(Assignment? assignment) {
+    ref.read(playerAssignmentUpdateProvider.notifier).state =
+        PlayerAssignmentUpdate(assignment);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -181,6 +186,7 @@ class _PlayerAssignmentScreenState
         // The redeem response is the committed truth; no follow-up read is needed.
         _assignment = assignment;
       });
+      _notifyAssignmentChanged(assignment);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_copy.assignmentAccepted)),
       );
@@ -227,6 +233,7 @@ class _PlayerAssignmentScreenState
         _ending = false;
         _assignment = null;
       });
+      _notifyAssignmentChanged(null);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(_copy.leaveCoachComplete)),
       );

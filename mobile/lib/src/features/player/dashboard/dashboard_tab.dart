@@ -21,6 +21,7 @@ import '../../../core/ui/mayos_card.dart';
 import '../../../core/ui/mayos_section_header.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
+import '../program/preparing_program_banner.dart';
 import '../workout/active_workout_prompt.dart';
 import 'home_planning.dart';
 
@@ -45,6 +46,7 @@ class _DashboardData {
     this.latestSession,
     this.unopenedCheckpointReview,
     this.partialError,
+    this.assignment,
     this.programFromCache = false,
   });
 
@@ -57,6 +59,7 @@ class _DashboardData {
   /// last-known value offline), used to derive the next program day (#53).
   final LatestSession? latestSession;
   final CheckpointReviewListItem? unopenedCheckpointReview;
+  final Assignment? assignment;
 
   /// True when [program] is the offline cached copy after a failed fetch (#54).
   final bool programFromCache;
@@ -64,10 +67,24 @@ class _DashboardData {
   /// Set when a non-fatal section failed to load so the body can say so instead
   /// of silently showing an empty section.
   final FailureMessage? partialError;
+
+  _DashboardData withAssignment(Assignment? assignment) => _DashboardData(
+        program: program,
+        schedule: schedule,
+        volume: volume,
+        records: records,
+        latestSession: latestSession,
+        unopenedCheckpointReview: unopenedCheckpointReview,
+        partialError: partialError,
+        assignment: assignment,
+        programFromCache: programFromCache,
+      );
 }
 
 class _DashboardTabState extends ConsumerState<DashboardTab> {
   late Future<_DashboardData> _future;
+  Assignment? _assignmentOverride;
+  bool _assignmentOverrideKnown = false;
 
   @override
   void initState() {
@@ -100,6 +117,12 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
       accountId: accountId,
     );
     final TrainingProgram? program = active.program;
+    Assignment? assignment;
+    try {
+      assignment = await api.myAssignment();
+    } on ApiException {
+      // The program remains available if assignment details are offline.
+    }
     TrainingSchedule? schedule;
     Map<String, double> volume = const <String, double>{};
     List<PersonalRecord> records = const <PersonalRecord>[];
@@ -152,6 +175,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
       latestSession: latestSession,
       unopenedCheckpointReview: unopenedCheckpointReview,
       partialError: partialError,
+      assignment: assignment,
       programFromCache: active.fromCache,
     );
   }
@@ -159,6 +183,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
   Future<void> _refresh() async {
     final Future<_DashboardData> future = _load();
     setState(() {
+      _assignmentOverrideKnown = false;
       _future = future;
     });
     await future;
@@ -188,6 +213,18 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(playerShellTabProvider, (int? previous, int next) {
+      if (next == 0 && previous != 0) {
+        unawaited(_refresh());
+      }
+    });
+    ref.listen<PlayerAssignmentUpdate?>(playerAssignmentUpdateProvider,
+        (_, PlayerAssignmentUpdate? update) {
+      setState(() {
+        _assignmentOverrideKnown = update != null;
+        _assignmentOverride = update?.assignment;
+      });
+    });
     return FutureBuilder<_DashboardData>(
       future: _future,
       builder: (BuildContext context, AsyncSnapshot<_DashboardData> snapshot) {
@@ -204,10 +241,14 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
         }
         final List<WorkoutDraft> drafts =
             ref.watch(draftSyncServiceProvider).drafts;
+        final _DashboardData loadedData = snapshot.data!;
+        final _DashboardData displayedData = _assignmentOverrideKnown
+            ? loadedData.withAssignment(_assignmentOverride)
+            : loadedData;
         final LatestSession? latest = snapshot.data!.latestSession;
         return _HomeBody(
           copy: MayosCopy(ref.watch(displayLanguageProvider)),
-          data: snapshot.data!,
+          data: displayedData,
           onRefresh: _refresh,
           onOpenExercise: _openExercise,
           onOpenDrafts: _openDrafts,
@@ -282,7 +323,10 @@ class _HomeBody extends StatelessWidget {
           ],
           const SizedBox(height: MayosSpacing.xl),
           _ProgramSection(
-              program: program, onOpenProgram: onOpenProgram, copy: copy),
+              program: program,
+              assignment: data.assignment,
+              onOpenProgram: onOpenProgram,
+              copy: copy),
           if (pendingDrafts > 0) ...<Widget>[
             const SizedBox(height: MayosSpacing.md),
             _DraftsBanner(count: pendingDrafts, onTap: onOpenDrafts),
@@ -346,9 +390,13 @@ class _CheckpointReviewCard extends StatelessWidget {
 
 class _ProgramSection extends StatelessWidget {
   const _ProgramSection(
-      {required this.program, required this.onOpenProgram, required this.copy});
+      {required this.program,
+      required this.assignment,
+      required this.onOpenProgram,
+      required this.copy});
 
   final TrainingProgram? program;
+  final Assignment? assignment;
   final VoidCallback onOpenProgram;
   final MayosCopy copy;
 
@@ -356,10 +404,19 @@ class _ProgramSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
     final TrainingProgram? active = program;
+    final Assignment? currentAssignment = assignment;
+    final bool showPreparingProgram =
+        currentAssignment?.coachPreparingProgram == true;
     if (active == null) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
+          if (showPreparingProgram) ...<Widget>[
+            PreparingProgramBanner(
+              coachName: currentAssignment!.coach.displayName,
+            ),
+            const SizedBox(height: MayosSpacing.md),
+          ],
           Text(copy.noActiveProgram,
               style: MayosTypography.of(context).sectionHeading
                   .copyWith(color: c.textPrimary)),
@@ -383,6 +440,12 @@ class _ProgramSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
+        if (showPreparingProgram) ...<Widget>[
+          PreparingProgramBanner(
+            coachName: currentAssignment!.coach.displayName,
+          ),
+          const SizedBox(height: MayosSpacing.md),
+        ],
         Text(
           active.programName,
           style: MayosTypography.of(context).pageHeading.copyWith(color: c.textPrimary),

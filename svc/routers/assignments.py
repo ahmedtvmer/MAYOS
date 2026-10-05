@@ -108,6 +108,7 @@ def _assignment_out(assignment: dict[str, Any]) -> AssignmentOut:
         coach=CoachIdentityOut(**assignment["coach"]),
         started_at=assignment["started_at"],
         status=assignment["status"],
+        coach_preparing_program=assignment["coach_preparing_program"],
     )
 
 
@@ -778,19 +779,25 @@ async def preview_assignment_invite(
 async def redeem_assignment_invite(
     request: Request,
     body: AssignmentRedeemIn,
-    player: Annotated[VerifiedPlayer, Depends(get_current_player)],
+    player: Annotated[VerifiedPlayer, Depends(get_verified_player)],
     db: Annotated[Any, Depends(get_db)],
+    ledger: Annotated[Any, Depends(get_ledger)],
 ):
     """Explicitly consents to and atomically redeems an assignment invite."""
     client = analytics_service.client_context(request)
 
     def _run():
-        result = assignment_service.redeem_assignment_invite(
+        redemption = assignment_service.redeem_assignment_invite(
             db, body.token, player.account_id, body.consent, client=client
         )
-        if not result["ok"]:
-            raise _bad_request(result["error"])
-        return result
+        if not redemption["ok"]:
+            raise _bad_request(redemption["error"])
+        active_assignment = assignment_service.get_player_assignment(db, player.account_id, ledger)
+        if active_assignment is None:
+            redemption["assignment"]["coach_preparing_program"] = False
+        else:
+            redemption["assignment"] = active_assignment
+        return redemption
 
     result = await asyncio.to_thread(_run)
     return AssignmentRedeemOut(
@@ -802,12 +809,15 @@ async def redeem_assignment_invite(
 
 @player_router.get("/me", response_model=AssignmentOut | None)
 async def read_my_assignment(
-    player: Annotated[VerifiedPlayer, Depends(get_current_player)],
+    player: Annotated[VerifiedPlayer, Depends(get_verified_player)],
     db: Annotated[Any, Depends(get_db)],
+    ledger: Annotated[Any, Depends(get_ledger)],
 ):
     """The caller's active assignment, or ``null`` when none is active."""
 
-    assignment = await asyncio.to_thread(assignment_service.get_player_assignment, db, player.account_id)
+    assignment = await asyncio.to_thread(
+        assignment_service.get_player_assignment, db, player.account_id, ledger
+    )
     return _assignment_out(assignment) if assignment is not None else None
 
 

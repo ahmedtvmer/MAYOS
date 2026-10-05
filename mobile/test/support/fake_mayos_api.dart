@@ -173,6 +173,7 @@ class FakeMayosApi {
   // simulation for the Program tab's cache fallback, ADR 020/033).
   bool activeProgramFails = false;
   bool coachControlsProgram = false;
+  bool? coachPreparingProgram;
   bool substitutionVersionConflict = false;
   // When true `GET /programs/active` returns an empty body (no active program).
   bool noActiveProgram = false;
@@ -1082,6 +1083,8 @@ class FakeMayosApi {
         ),
         'started_at': '2026-09-24T10:00:00Z',
         'status': 'active',
+        'coach_preparing_program':
+            coachPreparingProgram ?? !coachControlsProgram,
       };
 
   FakeResponse _issueAssignmentInvite(FakeRequest request) {
