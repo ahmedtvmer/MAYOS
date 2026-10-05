@@ -182,6 +182,10 @@ _Arabic_: طلب تبديل تمرين من المدرب
 A permanent change of one exercise in the player's own program, made by the player while they hold Program authority. It is distinct from Replace exercise, which changes one workout only, and Substitution request, which asks the coach to make a permanent change.
 _Arabic_: تبديل تمرين في البرنامج
 
+**Program edit**:
+A permanent change to one training day of the player's own program, made while the player holds Program authority: removing working-set exercises, lowering their working-set counts, or reordering them. It never adds an exercise, and one save creates one program version. It is distinct from Exercise substitution, which swaps an exercise, and from reordering or deleting sets in an Active workout, which changes that workout only.
+_Avoid_: Program customization
+
 **Unplanned exercise**:
 An exercise the player performed and recorded that was not prescribed in the active program. Recording it does not change the program.
 
