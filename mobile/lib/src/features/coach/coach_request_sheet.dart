@@ -122,15 +122,13 @@ class _CoachRequestDecisionControlsState
 }
 
 /// The swap as the coach reads it: **old → new exercise**, or the new split
-/// for a split-change request (#121). Exercise IDs are shown as-is: the
-/// catalogue is API-only (`GET /workouts/exercises...`), so no client-side
-/// id→name map exists without a new call per request.
+/// for a split-change request (#121).
 String coachRequestTitle(BuildContext context, ProgramRequest request) =>
     coachCopyOf(context).programRequestTitle(
       isSubstitution: request.isExerciseSubstitution,
-      exerciseId: request.exerciseId,
+      exerciseName: request.exerciseName,
       day: request.dayName,
-      replacementId: request.replacementExerciseId,
+      replacementName: request.replacementExerciseName,
       frequency: request.desiredWeeklyFrequency,
       preference: request.desiredSplitPreference,
     );

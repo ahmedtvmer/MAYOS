@@ -1144,6 +1144,7 @@ class ProgramRequestOut(BaseModel):
     exercise_id: str | None = None
     exercise_name: str | None = None
     replacement_exercise_id: str | None = None
+    replacement_exercise_name: str | None = None
     desired_weekly_frequency: int | None = None
     desired_split_preference: str | None = None
     reason: str

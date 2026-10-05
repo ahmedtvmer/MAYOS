@@ -234,9 +234,9 @@ class CoachRequestCard extends StatelessWidget {
           Text(
             copy.programRequestTitle(
               isSubstitution: request.isExerciseSubstitution,
-              exerciseId: request.exerciseId,
+              exerciseName: request.exerciseName,
               day: request.dayName,
-              replacementId: request.replacementExerciseId,
+              replacementName: request.replacementExerciseName,
               frequency: request.desiredWeeklyFrequency,
               preference: request.desiredSplitPreference,
             ),

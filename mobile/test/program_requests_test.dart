@@ -100,6 +100,8 @@ Map<String, dynamic> _request({
   String? dayName = 'Upper 1',
   String? exerciseId = 'bench_press',
   String? replacementExerciseId = 'incline_press',
+  String? exerciseName = 'Bench Press',
+  String? replacementExerciseName = 'Incline Press',
   int? desiredWeeklyFrequency,
   String? desiredSplitPreference,
   String reason = 'Shoulder discomfort.',
@@ -112,6 +114,8 @@ Map<String, dynamic> _request({
       'day_name': dayName,
       'exercise_id': exerciseId,
       'replacement_exercise_id': replacementExerciseId,
+      'exercise_name': exerciseName,
+      'replacement_exercise_name': replacementExerciseName,
       'desired_weekly_frequency': desiredWeeklyFrequency,
       'desired_split_preference': desiredSplitPreference,
       'reason': reason,
@@ -169,6 +173,8 @@ void main() {
     expect(
         fake.programRequests.first['replacement_exercise_id'], 'incline_press');
     expect(fake.programRequests.first['status'], 'pending');
+    expect(find.text('Substitute Bench Press on Upper 1 with Incline Press'),
+        findsOneWidget);
     expect(find.text('Reason: Shoulder discomfort.'), findsOneWidget);
   });
 
@@ -184,6 +190,34 @@ void main() {
 
     expect(find.text('Declined'), findsOneWidget);
     expect(find.text('Coach: Rest that shoulder first.'), findsOneWidget);
+  });
+
+  testWidgets('player request list uses Arabic exercise names', (tester) async {
+    final FakeMayosApi fake = _playerFake()..displayLanguage = 'ar';
+    fake.programRequests.add(_request(id: 'req-ar', status: 'pending'));
+    await _pumpApp(tester, fake);
+    await _openPlayerAssignment(tester);
+
+    expect(find.textContaining('Bench Press'), findsOneWidget);
+    expect(find.textContaining('Incline Press'), findsOneWidget);
+    expect(find.textContaining('Upper 1'), findsOneWidget);
+  });
+
+  testWidgets('player request list uses a localized neutral fallback',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake()..displayLanguage = 'ar';
+    fake.programRequests.add(_request(
+      id: 'req-missing',
+      status: 'pending',
+      exerciseName: null,
+      replacementExerciseName: null,
+    ));
+    await _pumpApp(tester, fake);
+    await _openPlayerAssignment(tester);
+
+    expect(find.textContaining('التمرين'), findsOneWidget);
+    expect(find.textContaining('bench_press'), findsNothing);
+    expect(find.textContaining('incline_press'), findsNothing);
   });
 
   testWidgets('player cancels a pending request', (tester) async {
@@ -221,7 +255,7 @@ void main() {
     await _pumpUntilFound(tester, find.text('Requests (2)'));
     await tester.tap(find.text('Requests (2)'));
     await _pumpUntilFound(tester, find.text('Program requests'));
-    expect(find.text('bench_press → incline_press'), findsNWidgets(2));
+    expect(find.text('Bench Press → Incline Press'), findsNWidgets(2));
 
     // Tapping a pending row opens the shared resolve sheet (#121).
     final Finder firstCard = find.byKey(const Key('request_card_req-1'));

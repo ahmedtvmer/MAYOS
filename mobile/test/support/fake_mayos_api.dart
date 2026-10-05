@@ -2172,6 +2172,8 @@ class FakeMayosApi {
       'day_name': null,
       'exercise_id': null,
       'replacement_exercise_id': null,
+      'exercise_name': null,
+      'replacement_exercise_name': null,
       'desired_weekly_frequency': null,
       'desired_split_preference': null,
       'reason': reason,
@@ -2199,6 +2201,9 @@ class FakeMayosApi {
       row['day_name'] = day;
       row['exercise_id'] = exercise;
       row['replacement_exercise_id'] = replacement;
+      row['exercise_name'] = exercise == 'bench_press' ? 'Bench Press' : null;
+      row['replacement_exercise_name'] =
+          replacement == 'incline_press' ? 'Incline Press' : null;
     } else if (kind == 'split_change') {
       final int? frequency =
           (request.body['desired_weekly_frequency'] as num?)?.toInt();

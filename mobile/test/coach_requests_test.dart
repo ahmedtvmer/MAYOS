@@ -120,6 +120,9 @@ Map<String, dynamic> _request({
       'exercise_id': kind == 'split_change' ? null : exerciseId,
       'replacement_exercise_id':
           kind == 'split_change' ? null : replacementExerciseId,
+      'exercise_name': kind == 'split_change' ? null : 'Bench Press',
+      'replacement_exercise_name':
+          kind == 'split_change' ? null : 'Incline Press',
       'desired_weekly_frequency': desiredWeeklyFrequency,
       'desired_split_preference': desiredSplitPreference,
       'reason': reason,
@@ -280,7 +283,7 @@ void main() {
     await tester.tap(find.text('Requests'));
     await _pumpUntilFound(tester, find.text('Pending'));
     expect(find.text('Answered'), findsOneWidget);
-    expect(find.text('bench_press → incline_press'), findsNWidgets(2));
+    expect(find.text('Bench Press → Incline Press'), findsNWidgets(2));
     expect(find.text('Nothing answered yet.'), findsOneWidget);
   });
 
@@ -349,8 +352,7 @@ void main() {
     await _pumpUntilFound(
         tester, find.byKey(const Key('request_apply_button')));
     expect(_sheet(find.text('bob asks')), findsOneWidget);
-    expect(
-        _sheet(find.text('bench_press → incline_press')), findsOneWidget);
+    expect(_sheet(find.text('Bench Press → Incline Press')), findsOneWidget);
     expect(_sheet(find.text('Upper 1 · program v1')), findsOneWidget);
     expect(_sheet(find.text('“Shoulder discomfort.”')), findsOneWidget);
     expect(_sheet(find.text('Apply swap')), findsOneWidget);
@@ -419,6 +421,25 @@ void main() {
     );
     expect(find.text('Apply swap'), findsNothing);
     expect(find.text('Decline'), findsNothing);
+  });
+
+  testWidgets('coach request row and resolve sheet use Arabic display names',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake()..displayLanguage = 'ar';
+    fake.programRequests.add(_request(id: 'req-ar', status: 'pending'));
+    await _pumpApp(tester, fake, InMemoryAppModeStore());
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('الطلبات'));
+    await _pumpUntilFound(tester, find.text('قيد الانتظار'));
+
+    expect(find.textContaining('Bench Press'), findsOneWidget);
+    expect(find.textContaining('Incline Press'), findsOneWidget);
+    expect(find.textContaining('Upper 1'), findsAtLeastNWidgets(1));
+    await tester.tap(find.byKey(const Key('request_card_req-ar')));
+    await _pumpUntilFound(tester, find.byKey(const Key('request_apply_button')));
+    expect(_sheet(find.textContaining('Bench Press')), findsOneWidget);
+    expect(_sheet(find.textContaining('Incline Press')), findsOneWidget);
+    expect(_sheet(find.textContaining('Upper 1')), findsAtLeastNWidgets(1));
   });
 
   testWidgets('a split-change request offers Apply (rebuilds program)',
@@ -542,7 +563,7 @@ void main() {
 
     await tester.tap(find.text('Requests (1)'));
     await _pumpUntilFound(tester, find.text('Program requests'));
-    expect(find.text('bench_press → incline_press'), findsOneWidget);
+    expect(find.text('Bench Press → Incline Press'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('request_card_req-1')));
     await _pumpUntilFound(

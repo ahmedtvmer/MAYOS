@@ -20,6 +20,7 @@ from agent.ProgramState import (
     ProgramExerciseSchema,
 )
 from database.database_manager import DatabaseManager
+from database.registry.coach_exercises import CoachExerciseCreate
 from service import coach as coach_service
 from service import coach_history as coach_history_service
 from service import program_requests as program_requests_service
@@ -255,6 +256,130 @@ def test_create_substitution_records_exact_target_and_leaves_program(api, monkey
 
     listed = client.get("/assignments/me/program-requests", headers=player_headers).json()["requests"]
     assert [row["request_id"] for row in listed] == [body["request_id"]]
+
+
+def test_program_request_responses_include_library_display_names_on_every_route(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, coach_account_id, player_account_id = _assigned_player(api)
+    _capture_email(monkeypatch)
+    db.set_account_display_language(player_account_id, "ar")
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+    with db.catalog_locked() as conn:
+        conn.execute(
+            "INSERT INTO exercise_display_names (exercise_id, display_name) VALUES (?, ?)",
+            ("sq", "Barbell Squat"),
+        )
+        conn.commit()
+
+    first = _create(client, player_headers, **_substitution()).json()
+    second = _create(
+        client, player_headers, **_substitution(reason="Try another block.")
+    ).json()
+    third = _create(
+        client, player_headers, **_substitution(reason="Maybe next week.")
+    ).json()
+    expected_names = ("Barbell Squat", "Overhead Press")
+
+    # Create and the player's list use the Player's Display language. Library
+    # exercise names stay English because the catalog has no Arabic name column.
+    assert (first["exercise_name"], first["replacement_exercise_name"]) == expected_names
+    listed = client.get(
+        "/assignments/me/program-requests", headers=player_headers
+    ).json()["requests"]
+    assert all(
+        (row["exercise_name"], row["replacement_exercise_name"]) == expected_names
+        for row in listed
+    )
+
+    per_assignment = client.get(
+        f"/coach/assignments/{assignment_id}/program-requests", headers=coach_headers
+    ).json()["requests"]
+    cross_roster = client.get("/coach/program-requests", headers=coach_headers).json()["requests"]
+    for rows in (per_assignment, cross_roster):
+        assert all(
+            (row["exercise_name"], row["replacement_exercise_name"]) == expected_names
+            for row in rows
+        )
+
+    applied = client.post(
+        f"/coach/assignments/{assignment_id}/program-requests/{first['request_id']}/apply",
+        headers=coach_headers,
+    )
+    assert applied.status_code == 200, applied.text
+    assert (
+        applied.json()["exercise_name"],
+        applied.json()["replacement_exercise_name"],
+    ) == expected_names
+
+    declined = client.post(
+        f"/coach/assignments/{assignment_id}/program-requests/{second['request_id']}/decline",
+        headers=coach_headers,
+        json={"response": "Keep the current program."},
+    )
+    assert declined.status_code == 200, declined.text
+    assert (
+        declined.json()["exercise_name"],
+        declined.json()["replacement_exercise_name"],
+    ) == expected_names
+
+    cancelled = client.post(
+        f"/assignments/me/program-requests/{third['request_id']}/cancel",
+        headers=player_headers,
+    )
+    assert cancelled.status_code == 200, cancelled.text
+    assert (
+        cancelled.json()["exercise_name"],
+        cancelled.json()["replacement_exercise_name"],
+    ) == expected_names
+
+
+def test_program_request_resolves_coach_exercises_and_localizes_unknown_names(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, coach_account_id, player_account_id = _assigned_player(api)
+    _capture_email(monkeypatch)
+    db.set_account_display_language(player_account_id, "ar")
+    db.set_account_display_language(coach_account_id, "en")
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+
+    custom = db.create_coach_exercise(coach_account_id, CoachExerciseCreate(name="Coach Row"))
+    db.switch_user("p1")
+    program = db.ledger.get_active_program().model_dump()
+    program.pop("created_at", None)
+    program["days"][0]["exercises"][0]["exercise_id"] = custom["id"]
+    program["days"][0]["exercises"][0]["exercise_name"] = custom["name"]
+    db.ledger.save_training_program(program, published_by_coach_account_id=coach_account_id)
+
+    coach_request = _create(
+        client, player_headers, **_substitution(exercise_id=custom["id"])
+    ).json()
+    assert coach_request["exercise_name"] == "Coach Row"
+
+    with db.catalog_locked() as conn:
+        conn.execute("DELETE FROM coach_exercises WHERE id = ?", (custom["id"],))
+        conn.commit()
+    unknown_request = _create(
+        client,
+        player_headers,
+        **_substitution(
+            exercise_id=custom["id"], reason="The old coach exercise is gone."
+        ),
+    )
+    assert unknown_request.status_code == 200, unknown_request.text
+    assert unknown_request.json()["exercise_name"] == "التمرين"
+    assert unknown_request.json()["exercise_name"] != custom["id"]
+
+    coach_rows = client.get(
+        f"/coach/assignments/{assignment_id}/program-requests", headers=coach_headers
+    ).json()["requests"]
+    missing_name = next(
+        row
+        for row in coach_rows
+        if row["request_id"] == unknown_request.json()["request_id"]
+    )
+    assert missing_name["exercise_name"] == "Exercise"
+    assert missing_name["exercise_name"] != custom["id"]
 
 
 def test_program_request_email_looks_up_by_account_id_not_ledger_id(api, monkeypatch):

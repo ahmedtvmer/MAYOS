@@ -43,16 +43,18 @@ class AssignmentCopy {
     required int? frequency,
     required String? preference,
   }) {
+    final String from = exercise ?? (isArabic ? 'التمرين' : 'Exercise');
+    final String to = replacement ?? (isArabic ? 'التمرين' : 'Exercise');
     if (!isArabic) {
       if (kind == 'exercise_substitution') {
-        return 'Substitute $exercise on $day with $replacement';
+        return 'Substitute $from on $day with $to';
       }
       final String split =
           preference == null || preference.isEmpty ? '' : ' ($preference)';
       return 'Change to $frequency days/week$split';
     }
     if (kind == 'exercise_substitution') {
-      return 'طلب تبديل تمرين من المدرب: ${_ltr(exercise ?? '')} في ${_ltr(day ?? '')} إلى ${_ltr(replacement ?? '')}';
+      return 'طلب تبديل تمرين من المدرب: ${_ltr(from)} في ${_ltr(day ?? '')} إلى ${_ltr(to)}';
     }
     final String days = frequency == null
         ? ''

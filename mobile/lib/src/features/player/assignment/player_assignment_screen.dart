@@ -362,9 +362,9 @@ class _PlayerAssignmentScreenState
                             child: Text(
                               copy.programRequestDescription(
                                 kind: request.kind,
-                                exercise: request.exerciseId,
+                                exercise: request.exerciseName,
                                 day: request.dayName,
-                                replacement: request.replacementExerciseId,
+                                replacement: request.replacementExerciseName,
                                 frequency: request.desiredWeeklyFrequency,
                                 preference: request.desiredSplitPreference,
                               ),

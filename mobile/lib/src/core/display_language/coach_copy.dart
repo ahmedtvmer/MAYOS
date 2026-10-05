@@ -590,19 +590,21 @@ class CoachCopy {
       : 'Sent $date · $tapToReview';
   String programRequestTitle({
     required bool isSubstitution,
-    required String? exerciseId,
+    required String? exerciseName,
     required String? day,
-    required String? replacementId,
+    required String? replacementName,
     required int? frequency,
     required String? preference,
   }) {
+    final String from = exerciseName ?? (isArabic ? 'التمرين' : 'Exercise');
+    final String to = replacementName ?? (isArabic ? 'التمرين' : 'Exercise');
     if (!isArabic) {
-      if (isSubstitution) return '$exerciseId → $replacementId';
+      if (isSubstitution) return '$from → $to';
       return 'Split change → $frequency days/week'
           '${preference == null || preference.isEmpty ? '' : ' · $preference'}';
     }
     if (isSubstitution) {
-      return 'تبديل تمرين ${_ltr(exerciseId ?? '')} في ${_ltr(day ?? '')} إلى ${_ltr(replacementId ?? '')}';
+      return 'تبديل تمرين ${_ltr(from)} في ${_ltr(day ?? '')} إلى ${_ltr(to)}';
     }
     return 'تغيير تقسيمة البرنامج إلى ${_count(frequency ?? 0, ArabicCountNoun.day)} في الأسبوع'
         '${preference == null || preference.isEmpty ? '' : ' · ${_ltr(preference)}'}';
