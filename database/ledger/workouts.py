@@ -499,6 +499,27 @@ class LedgerWorkoutsMixin:
         """)
         return [dict(row) for row in cursor.fetchall()]
 
+    def working_set_rows_between(
+        self, exercise_ids: set[str], start_date: str, end_date: str
+    ) -> list[dict[str, Any]]:
+        """Working sets for selected exercises in an inclusive date window."""
+        ids = sorted({str(exercise_id) for exercise_id in exercise_ids if exercise_id})
+        if not ids:
+            return []
+        placeholders = ", ".join("?" for _ in ids)
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "SELECT ws.exercise_id, s.session_date, ws.weight_kg, ws.reps, ws.rpe"
+            " FROM workout_sets ws"
+            " JOIN workout_sessions s ON ws.session_id = s.id"
+            f" WHERE ws.exercise_id IN ({placeholders})"
+            " AND s.session_date >= ? AND s.session_date <= ?"
+            f" AND {WORKING_SET_PREDICATE}"
+            " ORDER BY s.session_date ASC, s.started_at ASC, s.rowid ASC, ws.rowid ASC",
+            (*ids, start_date, end_date),
+        )
+        return [dict(row) for row in cursor.fetchall()]
+
     def record_session_divergences(
         self, session_id: str, divergences: list[dict[str, Any]], now_iso: str
     ) -> None:

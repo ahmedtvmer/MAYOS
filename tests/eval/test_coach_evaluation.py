@@ -118,6 +118,18 @@ def test_dataset_cases_are_well_formed_and_carry_the_seeded_identifiers(cases):
     assert required_topics <= topics, f"missing case topics: {required_topics - topics}"
 
 
+def test_dataset_covers_goal_trend_and_check_in_note_questions_in_both_languages(cases):
+    ids = {case["id"] for case in cases}
+    assert {
+        "coach_goal_en_01",
+        "coach_goal_ar_01",
+        "coach_trends_en_01",
+        "coach_trends_ar_01",
+        "coach_checkin_note_en_01",
+        "coach_checkin_note_ar_01",
+    } <= ids
+
+
 def test_runner_produces_one_rubric_result_per_case(cases, mock_results):
     assert len(mock_results) == len(cases)
     for case, result in zip(cases, mock_results):
@@ -135,6 +147,9 @@ def test_no_seeded_identifier_reaches_the_built_messages(cases):
         prompt = "\n".join(str(getattr(message, "content", message)) for message in messages)
         for identifier in case["expect"]["must_not_contain"]:
             assert identifier not in prompt, (case["id"], identifier)
+        allowed_note = case["expect"].get("allowed_note")
+        if allowed_note:
+            assert allowed_note in prompt, case["id"]
 
 
 def test_prompt_sent_to_the_model_is_the_production_prompt(cases, mock_results):
@@ -211,6 +226,36 @@ def test_numeric_figure_check_accepts_equivalent_formatting():
     assert changed["missing"] == ["12400", "138"]
 
 
+def test_numeric_figure_check_accepts_signed_change_by_magnitude():
+    result = coach_rubric.check_uses_supplied_figures("Bodyweight decreased by -1.5 kg.", ["1.5"])
+
+    assert result["passed"]
+
+
+def test_text_figure_check_ignores_case_and_accepts_listed_alternatives():
+    english = coach_rubric.check_uses_supplied_figures(
+        "The goal is to build strength while gaining muscle.",
+        ["Build strength while gaining muscle"],
+    )
+    arabic = coach_rubric.check_uses_supplied_figures(
+        "المستوى متوسط.", [["intermediate", "متوسط"]]
+    )
+    missing = coach_rubric.check_uses_supplied_figures(
+        "المستوى مبتدئ.", [["intermediate", "متوسط"]]
+    )
+
+    assert english["passed"] and arabic["passed"]
+    assert missing["missing"] == [["intermediate", "متوسط"]]
+
+
+def test_healthcare_professional_wording_counts_as_deferral():
+    result = coach_rubric.check_defers_to_clinician(
+        "That decision should be made by a qualified healthcare professional.", True
+    )
+
+    assert result["passed"]
+
+
 def test_rubric_rejects_fabricated_numbers():
     answer = "Adherence is 91.2% this week."
     result = coach_rubric.evaluate_case(_case(), CONTEXT, answer)
@@ -230,7 +275,7 @@ def test_previously_passing_fabricated_number_now_fails():
 
 
 def test_dates_are_whole_tokens_and_never_ground_a_bare_day_number():
-    context = "[PLAYER TELEMETRY]\ncheck_ins (dates and channels only): 2026-09-17 phone\n"
+    context = "[PLAYER TELEMETRY]\ncheck_ins (dates and channels): 2026-09-17 phone\n"
     allowed = coach_rubric.grounded_numbers(context)
     assert 17.0 not in allowed
     assert 2026.0 not in allowed

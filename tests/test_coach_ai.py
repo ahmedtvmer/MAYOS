@@ -7,16 +7,22 @@ per-account model limits with role ``coach``, and the pure context renderer.
 
 import json
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, SystemMessage
 
+from agent.ProgramState import (
+    PersistedProgramDaySchema,
+    PersistedProgramExerciseSchema,
+    PersistedProgramSchema,
+)
 from database.database_manager import DatabaseManager
 from service import coach as coach_service
 from service import coach_ai
+from service import weight_history
 from svc.app import create_app
 from svc.dependencies import get_db
 from tests.fakes.chat_model import ScriptedChatModel
@@ -82,6 +88,15 @@ def api(tmp_path: Path, monkeypatch):
         db.catalog_conn.close()
 
 
+@pytest.fixture(autouse=True)
+def stub_weight_history(monkeypatch):
+    monkeypatch.setattr(
+        coach_ai,
+        "get_weight_trend",
+        lambda db, query, ledger=None: weight_history.WeightTrend((), None),
+    )
+
+
 def _register(client, username, password="correct-horse-1"):
     resp = client.post("/auth/register", json={"trainee_id": username, "password": password})
     assert resp.status_code == 201, resp.text
@@ -134,6 +149,28 @@ def _assigned_player(api, player_name="p1"):
         == 200
     )
     return coach_headers, player_headers, redeemed.json()["assignment"]["assignment_id"]
+
+
+def _program_lift(exercise_id, exercise_name, slot_key=None):
+    return PersistedProgramExerciseSchema(
+        exercise_id=exercise_id,
+        exercise_name=exercise_name,
+        slot_key=slot_key,
+        target_reps_min=5,
+        target_reps_max=8,
+    )
+
+
+def _program_with_lifts(lift_days):
+    return PersistedProgramSchema(
+        program_name="Trend test",
+        split_type="custom",
+        weekly_frequency=len(lift_days),
+        days=[
+            PersistedProgramDaySchema(day_name=f"Day {index}", day_order=index, exercises=lifts)
+            for index, lifts in enumerate(lift_days, start=1)
+        ],
+    )
 
 
 def _passing_runs(count: int = 6) -> list[dict[str, Any]]:
@@ -194,6 +231,256 @@ def test_format_number_is_deterministic():
     assert coach_ai.format_number(142.5) == "142.5"
     assert coach_ai.format_number(None) == "n/a"
     assert coach_ai.format_number(5) == "5"
+
+
+def test_render_training_profile_allowlists_goal_experience_and_equipment():
+    rendered = coach_ai._render_training_profile(
+        {
+            "training_profile": {
+                "current_goal": "Get stronger",
+                "experience_level": "intermediate",
+                "equipment_access": "Home gym",
+            }
+        }
+    )
+
+    assert rendered == [
+        "training_profile:",
+        "  current_goal: Get stronger",
+        "  experience_level: intermediate",
+        "  equipment_access: Home gym",
+    ]
+    assert coach_ai._render_training_profile({}) == [
+        "training_profile:",
+        "  current_goal: not available",
+        "  experience_level: not available",
+        "  equipment_access: not available",
+    ]
+
+
+def test_render_bodyweight_trend_includes_dated_points_and_signed_change():
+    facts = {
+        "bodyweight_trend": {
+            "points": [
+                {"date": "2026-08-01", "weight_kg": 80.0},
+                {"date": "2026-09-26", "weight_kg": 81.75},
+            ],
+            "change_kg": 1.75,
+        }
+    }
+
+    assert coach_ai._render_bodyweight_trend(facts) == [
+        "bodyweight_trend (last 8 weeks):",
+        "  2026-08-01: 80 kg",
+        "  2026-09-26: 81.75 kg",
+        "  change_kg: +1.75",
+    ]
+    assert coach_ai._render_bodyweight_trend({}) == ["bodyweight_trend: not available"]
+    assert coach_ai._render_bodyweight_trend(
+        {
+            "bodyweight_trend": {
+                "points": [{"date": "2026-09-26", "weight_kg": 78.25}],
+                "change_kg": None,
+            }
+        }
+    )[-1] == "  change_kg: not available"
+
+
+def test_render_e1rm_trends_lists_main_lifts_and_computed_change():
+    assert coach_ai._render_e1rm_trends(
+        {
+            "e1rm_trends": [
+                {
+                    "exercise": "Squat",
+                    "points": [
+                        {"week_of": "2026-09-07", "e1rm_kg": 140.0},
+                        {"week_of": "2026-09-14", "e1rm_kg": 142.5},
+                    ],
+                    "change_kg": 2.5,
+                },
+                {"exercise": "Bench Press", "points": [], "change_kg": None},
+                {
+                    "exercise": "Deadlift",
+                    "points": [{"week_of": "2026-09-14", "e1rm_kg": 180.0}],
+                    "change_kg": None,
+                },
+            ]
+        }
+    ) == [
+        "e1rm_trends (weekly best, main lifts, last 12 weeks):",
+        "  Squat: 2026-09-07 140 kg; 2026-09-14 142.5 kg; change_kg: +2.5",
+        "  Bench Press: not available",
+        "  Deadlift: 2026-09-14 180 kg; change_kg: not available",
+    ]
+    assert coach_ai._render_e1rm_trends({}) == ["e1rm_trends: not available"]
+
+
+def test_e1rm_trend_facts_use_active_program_sets_and_shared_formula():
+    today = date(2026, 9, 28)
+    program = _program_with_lifts(
+        [[
+            _program_lift("sq", "Squat", "quad_compound"),
+            _program_lift("bp", "Bench Press", "flat_press"),
+            _program_lift("curl", "Curl", "biceps_preacher"),
+        ]]
+    )
+    rows = [
+        {
+            "exercise_id": "sq",
+            "session_date": "2026-09-07",
+            "weight_kg": 100,
+            "reps": 5,
+            "rpe": 8,
+            "is_warmup": 0,
+        },
+        {
+            "exercise_id": "sq",
+            "session_date": "2026-09-09",
+            "weight_kg": 102.5,
+            "reps": 5,
+            "rpe": 8,
+            "is_warmup": 0,
+        },
+        {
+            "exercise_id": "sq",
+            "session_date": "2026-09-14",
+            "weight_kg": 105,
+            "reps": 5,
+            "rpe": 8,
+            "is_warmup": 0,
+        },
+    ]
+
+    class RowsLedger:
+        def working_set_rows_between(self, exercise_ids, start_date, end_date):
+            assert exercise_ids == {"sq", "bp"}
+            assert start_date == (today - timedelta(weeks=12)).isoformat()
+            assert end_date == today.isoformat()
+            return rows
+
+    selected = coach_ai._main_lift_exercise_names(program)
+    trends = coach_ai._e1rm_trend_facts(selected, RowsLedger(), today)
+
+    assert trends == [
+        {
+            "exercise": "Squat",
+            "points": [
+                {"week_of": "2026-09-07", "e1rm_kg": 126.42},
+                {"week_of": "2026-09-14", "e1rm_kg": 129.5},
+            ],
+            "change_kg": 3.08,
+        },
+        {"exercise": "Bench Press", "points": [], "change_kg": None},
+    ]
+
+
+def test_ledger_working_sets_query_filters_exercises_dates_and_warmups(api):
+    _client, db, _tmp_path = api
+    _assigned_player(api, "workoutrows")
+    with db.open_ledger("workoutrows") as ledger:
+        for session_id, session_date, exercise_id, weight, warmup in [
+            ("inside", "2026-09-15", "sq", 100.0, 0),
+            ("warmup", "2026-09-16", "sq", 200.0, 1),
+            ("other-exercise", "2026-09-17", "row", 90.0, 0),
+            ("before", "2026-08-31", "sq", 120.0, 0),
+            ("after", "2026-09-21", "bp", 130.0, 0),
+        ]:
+            started_at = f"{session_date}T12:00:00+00:00"
+            ledger.log_workout_session(
+                session_id, session_date, "Test", started_at, started_at
+            )
+            ledger.log_workout_set(
+                f"{session_id}-set", session_id, exercise_id, 1, weight, 5, 8.0, warmup
+            )
+
+        rows = ledger.working_set_rows_between({"sq", "bp"}, "2026-09-01", "2026-09-20")
+
+    assert rows == [
+        {
+            "exercise_id": "sq",
+            "session_date": "2026-09-15",
+            "weight_kg": 100.0,
+            "reps": 5,
+            "rpe": 8.0,
+        }
+    ]
+
+
+def test_main_lift_selection_deduplicates_and_caps_at_six():
+    compounds = [_program_lift(str(index), f"Lift {index}", "flat_press") for index in range(7)]
+    program = _program_with_lifts([compounds, [compounds[0]]])
+    selected = coach_ai._main_lift_exercise_names(program)
+    assert list(selected) == ["0", "1", "2", "3", "4", "5"]
+
+
+def test_main_lift_selection_uses_first_exercise_per_day_without_slots():
+    unclassified = _program_with_lifts(
+        [
+            [_program_lift("first", "First"), _program_lift("second", "Second")],
+            [_program_lift("third", "Third")],
+        ]
+    )
+    assert coach_ai._main_lift_exercise_names(unclassified) == {
+        "first": "First",
+        "third": "Third",
+    }
+
+
+def test_bodyweight_facts_pin_window_and_compute_change_only_with_two_points(monkeypatch):
+    as_of = date(2026, 9, 28)
+    points = (
+        weight_history.WeightTrendPoint(as_of - timedelta(days=49), 80.0),
+        weight_history.WeightTrendPoint(as_of, 78.5),
+    )
+    queries = []
+
+    def get_trend(db, query, ledger=None):
+        queries.append(query)
+        return weight_history.WeightTrend(points, 999.0)
+
+    monkeypatch.setattr(coach_ai, "get_weight_trend", get_trend)
+    facts = coach_ai._bodyweight_trend_facts(None, "player-ledger", object(), as_of)
+
+    assert queries[0] == weight_history.WeightTrendQuery("player-ledger", 8, as_of=as_of)
+    assert facts["change_kg"] == -1.5
+
+    monkeypatch.setattr(
+        coach_ai,
+        "get_weight_trend",
+        lambda db, query, ledger=None: weight_history.WeightTrend(points[:1], 999.0),
+    )
+    assert coach_ai._bodyweight_trend_facts(None, "player-ledger", object(), as_of)["change_kg"] is None
+
+
+def test_check_in_note_facts_keep_five_and_truncate_to_300_characters():
+    notes = coach_ai._check_in_note_facts(
+        [
+            {"checked_in_on": f"2026-09-{day:02d}", "note": f"{day}" + ("x" * 400)}
+            for day in range(8, 2, -1)
+        ]
+    )
+
+    assert len(notes) == 5
+    assert [note["checked_in_on"] for note in notes] == [
+        "2026-09-08", "2026-09-07", "2026-09-06", "2026-09-05", "2026-09-04"
+    ]
+    assert all(len(note["note"]) == 300 and note["note"].endswith("…") for note in notes)
+
+
+def test_render_check_in_notes_is_separate_from_date_and_channel_section():
+    facts = {
+        "check_in_notes": [
+            {"checked_in_on": "2026-09-17", "note": "sleep has been poor"},
+            {"checked_in_on": "2026-09-10", "note": None},
+        ]
+    }
+
+    assert coach_ai._render_check_in_notes(facts) == [
+        "check_in_notes (last 5; each at most 300 characters):",
+        "  2026-09-17: sleep has been poor",
+        "  2026-09-10: no note",
+    ]
+    assert coach_ai._render_check_in_notes({}) == ["check_in_notes: none yet"]
 
 
 def _sample_facts() -> dict[str, Any]:
@@ -341,7 +628,7 @@ def test_system_prompt_forbids_computation_and_medical_advice():
     assert "Never compute, estimate, or invent" in coach_ai.SYSTEM_PROMPT
     assert "no diagnosis" in coach_ai.SYSTEM_PROMPT
     assert '"the player"' in coach_ai.SYSTEM_PROMPT
-    assert coach_ai.CONTEXT_VERSION == "coach-context-v3"
+    assert coach_ai.CONTEXT_VERSION == "coach-context-v4"
 
 
 def test_issue_148_messages_have_one_leading_system_message():

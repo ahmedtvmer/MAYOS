@@ -246,16 +246,24 @@ When it is enabled, each question sends to the model:
   program's structure and version, your volume totals for the last 7 and 28
   days, your recent sessions (date, sets, volume, readiness, skipped or
   unplanned exercises), your personal records, adherence and missed-day
-  figures, coach alerts, your schedule and pauses, and the **dates and
-  channels** of your check-ins.
+  figures, coach alerts, your schedule and pauses, and the dates, channels, and
+  coach-written notes on your five most recent check-ins (each note is capped
+  at 300 characters). It also receives your current goal, Experience level,
+  Equipment access, your dated bodyweight trend for the last 8 weeks, and the
+  weekly best e1RM trend for the main lifts in your active Training program
+  for the last 12 weeks.
 
-It does **not** receive: your username or any account id, your recovery email,
-your coach's name or bio, your conversation with the MAYOS assistant, the note
-your coach writes on a check-in, the reason you type on a program request, or
-any other free text you wrote. Every number (volume, estimated maxes,
-adherence, streaks) is calculated by the service before the call; the model is
-told to rely on those figures and to say when the data is not available. It
-gives no medical advice.
+These added facts describe coaching and training rather than identity.
+Check-in notes are free text and may contain identifying details; their length
+is capped and their use in hosted processing is disclosed here and in the
+coach console. The model does **not** receive your username or any account id,
+your recovery email, your coach's name or bio, your conversation with the MAYOS
+assistant, your Assistant style or custom instructions, your preferred name,
+the reason or response on a program request, or other program-request free
+text. Every number (volume, e1RM and bodyweight trends, adherence, and
+streaks) is calculated by the service before the call; the model is told to
+rely on those figures and to say when data is not available. It gives no
+medical advice.
 
 Nothing about the exchange is stored. The app keeps the short conversation in
 memory for the one selected player and clears it when the player is switched,

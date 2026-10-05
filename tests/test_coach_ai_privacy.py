@@ -6,8 +6,9 @@ same way ``tests/test_player_chat_privacy.py`` captures the player graph entry:
 
 1. The coach model's input carries only the telemetry block, the coach's own
    question, and the client-held transcript — never the player's username,
-   recovery email, coach name/bio, player-assistant chat, check-in note text,
-   program-request reason, or any account id.
+   recovery email, coach name/bio, player-assistant chat or preferences,
+   program-request reason/response, or any account id. Coach-written notes on
+   the five most recent check-ins are an explicit, 300-character-capped input.
 2. The deterministic figures in the prompt match the service computations
    (volume, attendance/adherence).
 3. Nothing about the exchange is persisted: catalog and ledger tables are
@@ -18,7 +19,7 @@ same way ``tests/test_player_chat_privacy.py`` captures the player graph entry:
 
 import json
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,7 @@ from agent.ProgramState import ProgramDaySchema, ProgramExerciseSchema
 from database.database_manager import DatabaseManager
 from service import coach as coach_service
 from service import coach_ai
+from service import weight_history
 from service import dashboard as dashboard_service
 from service import workouts as workouts_service
 from service.attendance import evaluate_attendance
@@ -48,6 +50,10 @@ PLAYER_CHAT = "PRIVATE_PLAYER_CHAT_7f3a how should I cue my bench"
 ASSISTANT_CHAT = "PRIVATE_ASSISTANT_REPLY_9c1d keep the elbows tucked"
 CHECK_IN_NOTE = "IDENTIFY_CHECKIN_NOTE_4b7c call me after the session"
 REQUEST_REASON = "IDENTIFY_REQUEST_REASON_5a1d I want more squat volume"
+REQUEST_RESPONSE = "IDENTIFY_REQUEST_RESPONSE_8e31 use the next program instead"
+ASSISTANT_STYLE = "PRIVATE_ASSISTANT_STYLE_15fd"
+ASSISTANT_INSTRUCTIONS = "PRIVATE_ASSISTANT_INSTRUCTIONS_37ab"
+PREFERRED_NAME = "PRIVATE_PREFERRED_NAME_64c2"
 
 COACH_MODEL_ID = "deepseek-ai/DeepSeek-V4-Flash"
 
@@ -59,8 +65,11 @@ IDENTIFIERS = (
     COACH_BIO,
     PLAYER_CHAT,
     ASSISTANT_CHAT,
-    CHECK_IN_NOTE,
     REQUEST_REASON,
+    REQUEST_RESPONSE,
+    ASSISTANT_STYLE,
+    ASSISTANT_INSTRUCTIONS,
+    PREFERRED_NAME,
 )
 
 
@@ -112,9 +121,19 @@ def api(tmp_path: Path, monkeypatch):
         with TestClient(app) as client:
             yield client, db, tmp_path
     finally:
-        if db.ledger_conn is not None:
-            db.ledger_conn.close()
         db.catalog_conn.close()
+
+
+@pytest.fixture(autouse=True)
+def stub_weight_history(monkeypatch):
+    def get_trend(db, query, ledger=None):
+        trend_points = (
+            weight_history.WeightTrendPoint(query.as_of - timedelta(days=49), 80.0),
+            weight_history.WeightTrendPoint(query.as_of, 78.5),
+        )
+        return weight_history.WeightTrend(trend_points, -1.5)
+
+    monkeypatch.setattr(coach_ai, "get_weight_trend", get_trend)
 
 
 def _register(client, username, password="correct-horse-1"):
@@ -164,7 +183,12 @@ def _assigned_player(api):
     assert redeemed.status_code == 200, redeemed.text
     assert (
         client.put(
-            "/profile", headers=player_headers, json={"weekly_frequency": 4, "current_goal": "Hypertrophy"}
+            "/profile",
+            headers=player_headers,
+            json={
+                "weekly_frequency": 4,
+                "current_goal": "Hypertrophy",
+            },
         ).status_code
         == 200
     )
@@ -176,9 +200,18 @@ def _day_plan():
         day_name="Full A",
         day_order=1,
         exercises=[
-            ProgramExerciseSchema(exercise_id="sq", exercise_name="Squat", target_reps_min=5, target_reps_max=8),
-            ProgramExerciseSchema(exercise_id="bp", exercise_name="Bench Press", target_reps_min=5, target_reps_max=8),
-            ProgramExerciseSchema(exercise_id="row", exercise_name="Row", target_reps_min=5, target_reps_max=8),
+            ProgramExerciseSchema(
+                exercise_id="sq", exercise_name="Squat", slot_key="quad_compound",
+                target_reps_min=5, target_reps_max=8,
+            ),
+            ProgramExerciseSchema(
+                exercise_id="bp", exercise_name="Bench Press", slot_key="flat_press",
+                target_reps_min=5, target_reps_max=8,
+            ),
+            ProgramExerciseSchema(
+                exercise_id="row", exercise_name="Row", slot_key="horizontal_row",
+                target_reps_min=5, target_reps_max=8,
+            ),
         ],
     )
 
@@ -263,6 +296,24 @@ def _seed_identifiers(client, db, coach_headers, player_headers, assignment_id) 
     )
     _seed_session(db, PLAYER_USERNAME, datetime.now(UTC).isoformat())
 
+    active_program = {
+        "program_name": "Privacy Test Program",
+        "split_type": "Full Body",
+        "weekly_frequency": 3,
+        "instructions": "",
+        "days": [_day_plan().model_dump()],
+    }
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        profile = ledger.get_player_profile() or {}
+        ledger.upsert_player_profile(
+            {**profile, "training_age_years": 3, "equipment_access": "Home gym"}
+        )
+        ledger.save_training_program(
+            active_program, published_by_coach_account_id=_account_id(db, "coach")
+        )
+        ledger.update_player_persona(ASSISTANT_STYLE, ASSISTANT_INSTRUCTIONS)
+        ledger.set_assistant_memory("preferred_name", PREFERRED_NAME)
+
     today = datetime.now(UTC).date().isoformat()
     assert (
         client.post(
@@ -289,11 +340,29 @@ def _seed_identifiers(client, db, coach_headers, player_headers, assignment_id) 
         REQUEST_REASON,
         datetime.now(UTC).isoformat(),
     )
+    db.resolve_program_request(
+        "req-identify", "declined", REQUEST_RESPONSE, _account_id(db, "coach"), datetime.now(UTC).isoformat()
+    )
+    db.create_program_request(
+        "req-identify-pending",
+        assignment_id,
+        _account_id(db, "coach"),
+        _account_id(db, PLAYER_USERNAME),
+        "exercise_substitution",
+        1,
+        "Full A",
+        "sq",
+        "bp",
+        None,
+        None,
+        REQUEST_REASON,
+        datetime.now(UTC).isoformat(),
+    )
 
     # Player-assistant chat in the player's ledger.
-    assert db.switch_user(PLAYER_USERNAME)
-    db.ledger.add_chat_message("user", PLAYER_CHAT)
-    db.ledger.add_chat_message("assistant", ASSISTANT_CHAT)
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        ledger.add_chat_message("user", PLAYER_CHAT)
+        ledger.add_chat_message("assistant", ASSISTANT_CHAT)
 
     roster = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
     return next(row["started_at"] for row in roster if row["assignment_id"] == assignment_id)
@@ -402,11 +471,68 @@ def test_prompt_carries_only_necessary_telemetry_and_deterministic_figures(api, 
     attendance = _expected_attendance(db, started_at)
     for key, value in attendance.items():
         assert f"{key}: {value}" in rendered, key
-    # Check-in dates and channels are supplied — but never the note.
+    # The bounded coach-authored note is allowed, together with profile and
+    # trend facts; player-authored private text remains excluded.
     today = datetime.now(UTC).date().isoformat()
-    assert f"check_ins (dates and channels only): {today} video" in rendered
+    assert f"check_ins (dates and channels): {today} video" in rendered
+    assert f"{today}: {CHECK_IN_NOTE}" in rendered
+    assert "current_goal: Hypertrophy" in rendered
+    assert "experience_level: intermediate" in rendered
+    assert "equipment_access: Home gym" in rendered
+    assert "bodyweight_trend (last 8 weeks)" in rendered
+    assert "change_kg: -1.5" in rendered
+    assert "e1rm_trends (weekly best, main lifts, last 12 weeks)" in rendered
+    assert "Squat:" in rendered
+    assert "Bench Press: not available" in rendered
+    assert len(CHECK_IN_NOTE) <= 300
     # The program-request reason is excluded; only its state is.
     assert "exercise_substitution" in rendered
+
+
+def test_model_prompt_limits_real_check_in_notes_to_five_and_300_characters(api, monkeypatch):
+    client, _db, tmp_path = api
+    coach_headers, _player_headers, assignment_id = _assigned_player(api)
+    _enable(monkeypatch, tmp_path)
+    stub = _capturing_coach_llm(monkeypatch)
+    today = datetime.now(UTC).date().isoformat()
+    long_note = "IDENTIFY_LONG_CHECK_IN_NOTE_" + ("x" * 400)
+    assert len(long_note) > 300
+    notes = [
+        "older note 1",
+        "older note 2",
+        long_note,
+        "new note 1",
+        "new note 2",
+        "new note 3",
+        "new note 4",
+    ]
+
+    for note in notes:
+        created = client.post(
+            f"/coach/assignments/{assignment_id}/check-ins",
+            headers=coach_headers,
+            json={"checked_in_on": today, "channel": "phone", "note": note},
+        )
+        assert created.status_code == 200, created.text
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/assistant", headers=coach_headers, json=QUESTION
+    )
+    assert response.status_code == 200, response.text
+    prompt = "\n".join(
+        str(getattr(message, "content", message)) for message in stub.calls[0]["messages"]
+    )
+    note_section = prompt.split("check_in_notes (last 5; each at most 300 characters):\n", 1)[1]
+    note_lines = note_section.split("\n\n", 1)[0].splitlines()
+    note_texts = [line.split(": ", 1)[1] for line in note_lines]
+
+    assert len(note_texts) == 5
+    assert all(len(note) <= 300 for note in note_texts)
+    assert any(
+        note.startswith("IDENTIFY_LONG_CHECK_IN_NOTE_") and note.endswith("…")
+        for note in note_texts
+    )
+    assert long_note not in prompt
 
 
 # --------------------------------------------------------------------------

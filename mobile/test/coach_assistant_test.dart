@@ -7,6 +7,7 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
+import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
@@ -190,6 +191,16 @@ Future<void> _pumpUntilCount(WidgetTester tester, Finder finder, int count,
 }
 
 void main() {
+  test('the coach assistant disclosure is translated for Arabic Display language', () {
+    final String disclosure = const CoachCopy('ar').assistantNote('bob');
+
+    expect(disclosure, contains('المعدات المتاحة'));
+    expect(disclosure, contains('\u2066e1RM\u2069'));
+    expect(disclosure, contains('آخر 5 ملاحظات'));
+    expect(disclosure, contains('300 حرف'));
+    expect(disclosure, contains('قد تكشف الملاحظات الهوية'));
+  });
+
   testWidgets('the Ask assistant entry is hidden while the feature is off',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _coachFake(coachAiEnabled: false);
@@ -217,7 +228,12 @@ void main() {
     await _openAssistant(tester, 'bob');
 
     expect(
-      find.text("Answers use the player's training figures. Nothing is saved."),
+      find.text(
+        "The hosted model receives bob's goal, Experience level, Equipment access, "
+        'bodyweight and e1RM trends, and your last 5 check-in notes '
+        '(up to 300 characters each). Notes may contain identifying details. '
+        "This exchange isn't saved.",
+      ),
       findsOneWidget,
     );
     expect(find.text('0/1000'), findsOneWidget);

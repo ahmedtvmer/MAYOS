@@ -113,8 +113,13 @@ class CoachCopy {
       : 'Ask about $player\'s training figures: volume, sessions, records, and schedule.';
   String get assistantThinking => isArabic ? 'جارٍ التفكير…' : 'Thinking…';
   String assistantNote(String player) => isArabic
-      ? 'تستخدم الإجابات أرقام تدريب ${_ltr(player)}. لا يُحفظ شيء.'
-      : "Answers use the player's training figures. Nothing is saved.";
+      ? 'يتلقى النموذج المستضاف هدف ${_ltr(player)} ومستوى خبرته والمعدات المتاحة '
+          'واتجاهات وزن الجسم و\u2066e1RM\u2069 وآخر 5 ملاحظات تواصل كتبتها '
+          '(حتى 300 حرف لكل ملاحظة). قد تكشف الملاحظات الهوية. لا تُحفظ المحادثة.'
+      : "The hosted model receives $player's goal, Experience level, Equipment access, "
+          'bodyweight and e1RM trends, and your last 5 check-in notes '
+          '(up to 300 characters each). Notes may contain identifying details. '
+          "This exchange isn't saved.";
   String get askAboutPlayer =>
       isArabic ? 'اسأل عن هذا اللاعب' : 'Ask about this player';
   String get send => isArabic ? 'إرسال' : 'Send';

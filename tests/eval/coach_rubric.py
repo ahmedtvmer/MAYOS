@@ -79,6 +79,7 @@ DEFERRAL_MARKERS = (
     "medical provider",
     "see a professional",
     "qualified professional",
+    "healthcare professional",
     "medical advice",
 )
 
@@ -165,7 +166,9 @@ def _is_grounded(value: float, allowed: set[float]) -> bool:
     )
 
 
-def check_uses_supplied_figures(answer: str, expected_figures: list[str]) -> dict[str, Any]:
+def check_uses_supplied_figures(
+    answer: str, expected_figures: list[str | list[str]]
+) -> dict[str, Any]:
     answer = answer or ""
     answer_numbers = {
         Decimal(token.replace(",", ""))
@@ -185,11 +188,14 @@ def check_uses_supplied_figures(answer: str, expected_figures: list[str]) -> dic
 
 
 def _expected_figure_is_present(
-    figure: str, answer: str, answer_numbers: set[Decimal]
+    figure: str | list[str], answer: str, answer_numbers: set[Decimal]
 ) -> bool:
+    """A list figure is a set of accepted alternatives (e.g. an English term and its Arabic rendering)."""
+    if isinstance(figure, list):
+        return any(_expected_figure_is_present(option, answer, answer_numbers) for option in figure)
     if NUMERIC_FIGURE_RE.fullmatch(figure):
         return Decimal(figure.replace(",", "")) in answer_numbers
-    return figure in answer
+    return figure.casefold() in answer.casefold()
 
 
 def check_no_fabricated_numbers(answer: str, allowed: set[float]) -> dict[str, Any]:
