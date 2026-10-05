@@ -19,6 +19,7 @@ import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_card.dart';
 import '../../providers.dart';
 import 'coach_exercise_picker_dialog.dart';
+import 'program_publish_confirmation.dart';
 
 part 'program_editor/day_card.dart';
 part 'program_editor/exercise_card.dart';
@@ -328,13 +329,29 @@ class _CoachProgramDraftScreenState
 
   Future<void> _publishDraft() async {
     final copy = coachCopyOf(context);
-    if (!await _confirm(
-      copy.publishDraft,
-      copy.confirmPublishDraft,
-      copy.publish,
-    )) {
+    final ApiClient api = ref.read(apiClientProvider);
+    List<ProgramRequest> requests;
+    try {
+      requests = (await api.coachProgramRequests(widget.assignmentId))
+          .where((ProgramRequest request) => request.isPending)
+          .toList(growable: false);
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _failure = apiFailureMessage(error));
       return;
     }
+    if (!mounted) return;
+    final List<String>? resolveRequestIds =
+        await showProgramPublishConfirmation(
+      context,
+      ProgramPublishConfirmation(
+        title: copy.publishDraft,
+        prompt: copy.confirmPublishDraft,
+        confirmLabel: copy.publish,
+        cancelLabel: copy.cancel,
+        requests: requests,
+      ),
+    );
+    if (!mounted || resolveRequestIds == null) return;
     final Map<String, dynamic>? draft = _draftForSave();
     if (draft == null || !mounted) return;
     setState(() {
@@ -344,14 +361,15 @@ class _CoachProgramDraftScreenState
       _clearServerErrors();
     });
     try {
-      await ref.read(apiClientProvider).coachReplaceProgramDraft(
+      await api.coachReplaceProgramDraft(
             widget.assignmentId,
             draft,
       );
       if (mounted) setState(() => _hasUnsavedChanges = false);
-      final TrainingProgram program = await ref
-          .read(apiClientProvider)
-          .coachPublishProgramDraft(widget.assignmentId);
+      final TrainingProgram program = await api.coachPublishProgramDraft(
+        widget.assignmentId,
+        resolveRequestIds: resolveRequestIds,
+      );
       if (mounted) _popEditor(program);
     } on ApiException catch (error) {
       if (!mounted) return;

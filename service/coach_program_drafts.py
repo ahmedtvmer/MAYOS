@@ -28,6 +28,7 @@ from service.assignments import authorized_player_ledger
 from service.coach_programs import ProgramPublicationDetails, record_program_publication
 from service.program_change_summary import summarize_program_change
 from service.program_analytics import ProgramAnalyticsActor
+from service import program_requests as program_requests_service
 
 
 class ProgramDraftNotFound(Exception):
@@ -423,11 +424,15 @@ def _publish_program(
     client: analytics.ClientContext,
     *,
     approve_version: int | None = None,
+    resolve_request_ids: list[str] | None = None,
 ) -> Any | None:
     authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
     if authorized is None:
         return None
     ledger, assignment_context = authorized
+    selected_requests = program_requests_service.validate_publish_request_ids(
+        db, coach_account_id, assignment_id, resolve_request_ids or []
+    )
     publishes_draft = approve_version is None
     with ledger:
         with ledger.ledger_transaction():
@@ -476,6 +481,14 @@ def _publish_program(
             client=client,
         ),
     )
+    if selected_requests:
+        program_requests_service.resolve_published_requests(
+            db,
+            ProgramAnalyticsActor(coach_account_id, "coach"),
+            selected_requests,
+            int(published.version or 0),
+            client=client,
+        )
     return published
 
 
@@ -491,12 +504,15 @@ def publish_program_draft(
     coach_account_id: str,
     assignment_id: str,
     client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+    *,
+    resolve_request_ids: list[str] | None = None,
 ) -> Any | None:
     return _publish_program(
         db,
         coach_account_id,
         assignment_id,
         client,
+        resolve_request_ids=resolve_request_ids,
     )
 
 
@@ -506,6 +522,8 @@ def approve_active_program(
     assignment_id: str,
     expected_active_version: int,
     client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+    *,
+    resolve_request_ids: list[str] | None = None,
 ) -> Any | None:
     """Approves and publishes the active Program snapshot if its version is unchanged."""
     return _publish_program(
@@ -514,4 +532,5 @@ def approve_active_program(
         assignment_id,
         client,
         approve_version=expected_active_version,
+        resolve_request_ids=resolve_request_ids,
     )

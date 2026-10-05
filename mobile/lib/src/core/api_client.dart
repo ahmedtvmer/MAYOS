@@ -934,10 +934,14 @@ class ApiClient {
     );
   }
 
-  Future<TrainingProgram> coachPublishProgramDraft(String assignmentId) async {
+  Future<TrainingProgram> coachPublishProgramDraft(
+    String assignmentId, {
+    List<String> resolveRequestIds = const <String>[],
+  }) async {
     final response = await _send(
       () => _dio.post<dynamic>(
         '/coach/assignments/$assignmentId/program-draft/publish',
+        data: <String, dynamic>{'resolve_request_ids': resolveRequestIds},
       ),
     );
     return _parseBody(response.data, TrainingProgram.fromJson, _invalidProgram);
@@ -946,12 +950,14 @@ class ApiClient {
   Future<TrainingProgram> coachApproveActiveProgram(
     String assignmentId, {
     required int expectedActiveVersion,
+    List<String> resolveRequestIds = const <String>[],
   }) async {
     final response = await _send(
       () => _dio.post<dynamic>(
         '/coach/assignments/$assignmentId/program/approve',
         data: <String, dynamic>{
           'expected_active_version': expectedActiveVersion,
+          'resolve_request_ids': resolveRequestIds,
         },
       ),
     );

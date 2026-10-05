@@ -421,6 +421,7 @@ class ProgramRequest {
     required this.createdAt,
     this.dayName,
     this.exerciseId,
+    this.exerciseName,
     this.replacementExerciseId,
     this.desiredWeeklyFrequency,
     this.desiredSplitPreference,
@@ -438,6 +439,7 @@ class ProgramRequest {
         programVersion: (json['program_version'] as num).toInt(),
         dayName: json['day_name'] as String?,
         exerciseId: json['exercise_id'] as String?,
+        exerciseName: json['exercise_name'] as String?,
         replacementExerciseId: json['replacement_exercise_id'] as String?,
         desiredWeeklyFrequency:
             (json['desired_weekly_frequency'] as num?)?.toInt(),
@@ -456,6 +458,7 @@ class ProgramRequest {
   final int programVersion;
   final String? dayName;
   final String? exerciseId;
+  final String? exerciseName;
   final String? replacementExerciseId;
   final int? desiredWeeklyFrequency;
   final String? desiredSplitPreference;

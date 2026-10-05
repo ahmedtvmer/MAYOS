@@ -256,6 +256,23 @@ class CoachCopy {
       : 'This publishes the active program unchanged as a new version. It applies from the player’s next workout.';
   String get confirmApproveProgram =>
       isArabic ? 'اعتماد ونشر' : 'Approve and publish';
+  String get publishRequestsWillBeAddressed => isArabic
+      ? 'يمكنك اختيار الطلبات التي عالجها البرنامج التدريبي الجديد.'
+      : 'Choose which requests the new Training program addresses.';
+  String get publishRequestResolveLabel =>
+      isArabic ? 'معالجة الطلب' : 'Resolve';
+  String publishRequestKind(String kind) => switch (kind) {
+        'exercise_substitution' => isArabic
+            ? 'طلب تبديل تمرين من المدرب'
+            : 'Substitution request',
+        _ => isArabic ? 'طلب تغيير البرنامج التدريبي' : 'Program change request',
+      };
+  String publishRequestDetails(String? exercise, String date) {
+    final String dateText = _ltr(date);
+    final String dateLabel = isArabic ? 'التاريخ: $dateText' : 'Date: $dateText';
+    if (exercise == null || exercise.isEmpty) return dateLabel;
+    return '$exercise · $dateLabel';
+  }
   String activeProgramSince(String date) => isArabic
       ? 'بدأ البرنامج في ${_ltr(date)}'
       : 'Active since $date';

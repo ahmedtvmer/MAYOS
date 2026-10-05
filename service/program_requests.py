@@ -25,6 +25,7 @@ from service.email_sender import (
     send_program_request_email,
 )
 from service.programs import player_controls_program
+from database.exercise_resolution import resolve_exercise_display_row
 from service.program_analytics import (
     ProgramAnalyticsActor,
     capture_program_exercise_swapped,
@@ -46,6 +47,7 @@ PLAYER_CONTROLS_PROGRAM_CODE = "player_controls_program"
 STALE_REQUEST_ERROR = "The program changed since this request was created. Ask the player to update it."
 NOT_PENDING_ERROR = "This request is no longer pending."
 REQUEST_NOT_FOUND_ERROR = "Request not found."
+PUBLISH_REQUEST_SELECTION_ERROR = "One or more selected requests cannot be resolved for this assignment."
 
 EXERCISE_SUBSTITUTION = "exercise_substitution"
 SPLIT_CHANGE = "split_change"
@@ -54,6 +56,10 @@ REQUEST_KINDS = {EXERCISE_SUBSTITUTION, SPLIT_CHANGE}
 MAX_REASON_CHARS = 500
 MAX_RESPONSE_CHARS = 500
 MAX_SPLIT_PREFERENCE_CHARS = 200
+
+
+class ProgramRequestSelectionError(Exception):
+    """The publish selection includes a request outside its assignment or not pending."""
 
 
 def _now_iso() -> str:
@@ -77,6 +83,82 @@ def _notify_player(db: Any, player_account_id: str, assignment_id: str, message:
         db.create_assignment_notice(player_account_id, assignment_id, "program_request", message, now_iso)
     except Exception:
         logger.exception("Player program-request notice raised unexpectedly")
+
+
+def validate_publish_request_ids(
+    db: Any, coach_account_id: str, assignment_id: str, request_ids: list[str]
+) -> list[dict[str, Any]]:
+    """Checks every selected request before publication writes to the Player ledger."""
+    if len(set(request_ids)) != len(request_ids):
+        raise ProgramRequestSelectionError(PUBLISH_REQUEST_SELECTION_ERROR)
+    requests = []
+    for request_id in request_ids:
+        request = db.get_program_request(request_id)
+        if (
+            request is None
+            or request["assignment_id"] != str(assignment_id)
+            or request["coach_account_id"] != str(coach_account_id)
+            or request["status"] != "pending"
+        ):
+            raise ProgramRequestSelectionError(PUBLISH_REQUEST_SELECTION_ERROR)
+        requests.append(request)
+    return requests
+
+
+def _publish_resolution_responses(
+    db: Any, requests: list[dict[str, Any]], program_version: int
+) -> dict[str, str]:
+    responses = {}
+    for request in requests:
+        account = db.get_account(request["player_account_id"])
+        language = account.get("display_language", "en") if account else "en"
+        responses[request["request_id"]] = (
+            f"تمت معالجة طلبك في البرنامج التدريبي الجديد (الإصدار {program_version})"
+            if language == "ar"
+            else f"Addressed in your new program (version {program_version})"
+        )
+    return responses
+
+
+def _record_published_request_resolution(
+    db: Any,
+    coach_actor: ProgramAnalyticsActor,
+    request_id: str,
+    client: analytics.ClientContext,
+) -> None:
+    request = db.get_program_request(request_id)
+    if request is None:
+        return
+    _notify_player(
+        db,
+        request["player_account_id"],
+        request["assignment_id"],
+        request["response"],
+        request["resolved_at"] or _now_iso(),
+    )
+    capture_program_request_resolved(coach_actor, request, client=client)
+
+
+def resolve_published_requests(
+    db: Any,
+    coach_actor: ProgramAnalyticsActor,
+    requests: list[dict[str, Any]],
+    program_version: int,
+    *,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+) -> None:
+    """Marks still-pending selected requests addressed by a published version.
+
+    The catalog claim is one pending-only transaction. A Player cancellation
+    committed after preflight therefore wins and is skipped here.
+    """
+    claimed_ids = db.resolve_program_requests_for_publish(
+        _publish_resolution_responses(db, requests, program_version),
+        coach_actor.account_id,
+        _now_iso(),
+    )
+    for request_id in claimed_ids:
+        _record_published_request_resolution(db, coach_actor, request_id, client)
 
 
 def create_request(
@@ -444,7 +526,16 @@ def list_assignment_requests(db: Any, coach_account_id: str, assignment_id: Any)
         return None
     if db.get_active_assignment_for_coach(coach_account_id, assignment_id) is None:
         return None
-    return db.list_program_requests_for_assignment(assignment_id)
+    requests = db.list_program_requests_for_assignment(assignment_id)
+    for request in requests:
+        if request.get("exercise_id"):
+            exercise = resolve_exercise_display_row(db, request["exercise_id"])
+            request["exercise_name"] = (
+                exercise.get("display_name") or exercise.get("name")
+                if exercise is not None
+                else request["exercise_id"]
+            )
+    return requests
 
 
 def list_coach_program_requests(db: Any, coach_account_id: str) -> list[dict[str, Any]]:

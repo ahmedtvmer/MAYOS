@@ -66,6 +66,7 @@ from svc.schemas import (
     CoachProgramApproveIn,
     CoachProgramDraftIn,
     CoachProgramDraftOut,
+    CoachProgramPublishIn,
     CoachCheckInListOut,
     CoachCrossRosterProgramRequestListOut,
     CoachCrossRosterProgramRequestOut,
@@ -110,9 +111,9 @@ def _assignment_out(assignment: dict[str, Any]) -> AssignmentOut:
     )
 
 
-async def _run_program_draft_action(action, *args):
+async def _run_program_draft_action(action, *args, **kwargs):
     try:
-        return await asyncio.to_thread(action, *args)
+        return await asyncio.to_thread(action, *args, **kwargs)
     except coach_program_drafts_service.ProgramDraftNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -488,6 +489,7 @@ async def approve_assigned_player_active_program(
                 assignment_id,
                 body.expected_active_version,
                 client=analytics.client_context(request),
+                resolve_request_ids=body.resolve_request_ids,
             )
         except coach_program_drafts_service.ActiveProgramNotFound as exc:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -501,6 +503,8 @@ async def approve_assigned_player_active_program(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={"errors": exc.issues},
             ) from exc
+        except program_requests_service.ProgramRequestSelectionError as exc:
+            raise _bad_request(str(exc)) from exc
         if published is None:
             raise _no_active_assignment()
         return published
@@ -611,6 +615,7 @@ async def publish_assigned_player_program_draft(
     assignment_id: str,
     coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
+    body: CoachProgramPublishIn | None = None,
 ):
     try:
         published = await _run_program_draft_action(
@@ -619,12 +624,15 @@ async def publish_assigned_player_program_draft(
             coach.account_id,
             assignment_id,
             analytics.client_context(request),
+            resolve_request_ids=body.resolve_request_ids if body is not None else [],
         )
     except coach_program_drafts_service.ProgramDraftValidationError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"errors": exc.issues},
         ) from exc
+    except program_requests_service.ProgramRequestSelectionError as exc:
+        raise _bad_request(str(exc)) from exc
     if published is None:
         raise _no_active_assignment()
     return published

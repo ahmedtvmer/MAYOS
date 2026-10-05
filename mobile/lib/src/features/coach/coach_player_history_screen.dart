@@ -27,6 +27,7 @@ import 'coach_assistant_screen.dart';
 import 'coach_check_in_sheet.dart';
 import 'coach_program_draft_screen.dart';
 import 'coach_request_sheet.dart';
+import 'program_publish_confirmation.dart';
 import 'coach_shared.dart';
 
 /// The player page (#120): one assigned player's open coach alerts on top,
@@ -1216,12 +1217,33 @@ class _CoachPlayerHistoryScreenState
     final CoachActiveProgram? active = _activeProgram;
     final int? expectedVersion = active?.program?.version;
     if (expectedVersion == null) return;
-    final bool confirmed = await _confirmApproveActiveProgram();
-    if (!mounted || !confirmed) return;
-    await _publishActiveProgramAsIs(expectedVersion);
+    List<ProgramRequest> requests;
+    try {
+      requests = (await ref
+              .read(apiClientProvider)
+              .coachProgramRequests(_entry.assignmentId))
+          .where((ProgramRequest request) => request.isPending)
+          .toList(growable: false);
+    } on ApiException catch (error) {
+      if (mounted) {
+        setState(() => _programActionError = apiFailureMessage(error));
+      }
+      return;
+    }
+    if (!mounted) return;
+    final List<String>? resolveRequestIds =
+        await _confirmApproveActiveProgram(requests);
+    if (!mounted || resolveRequestIds == null) return;
+    await _publishActiveProgramAsIs(
+      expectedVersion,
+      resolveRequestIds: resolveRequestIds,
+    );
   }
 
-  Future<void> _publishActiveProgramAsIs(int expectedActiveVersion) async {
+  Future<void> _publishActiveProgramAsIs(
+    int expectedActiveVersion, {
+    required List<String> resolveRequestIds,
+  }) async {
     setState(() {
       _approvingActiveProgram = true;
       _programActionError = null;
@@ -1231,6 +1253,7 @@ class _CoachPlayerHistoryScreenState
       final TrainingProgram published = await api.coachApproveActiveProgram(
         _entry.assignmentId,
         expectedActiveVersion: expectedActiveVersion,
+        resolveRequestIds: resolveRequestIds,
       );
       if (mounted) await _showPublishedProgram(published);
     } on ApiException catch (error) {
@@ -1262,27 +1285,21 @@ class _CoachPlayerHistoryScreenState
     await _load();
   }
 
-  Future<bool> _confirmApproveActiveProgram() async {
+  Future<List<String>?> _confirmApproveActiveProgram(
+    List<ProgramRequest> requests,
+  ) async {
     final copy = coachCopyOf(context);
-    return await showDialog<bool>(
-          context: context,
-          builder: (BuildContext context) => AlertDialog(
-            title: Text(copy.confirmApproveProgramTitle),
-            content: Text(copy.approveProgramAsIsPrompt),
-            actions: <Widget>[
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: Text(copy.cancel),
-              ),
-              TextButton(
-                key: const Key('coach_program_approve_confirm'),
-                onPressed: () => Navigator.of(context).pop(true),
-                child: Text(copy.confirmApproveProgram),
-              ),
-            ],
-          ),
-        ) ??
-        false;
+    return showProgramPublishConfirmation(
+      context,
+      ProgramPublishConfirmation(
+        title: copy.confirmApproveProgramTitle,
+        prompt: copy.approveProgramAsIsPrompt,
+        confirmLabel: copy.confirmApproveProgram,
+        cancelLabel: copy.cancel,
+        confirmKey: 'coach_program_approve_confirm',
+        requests: requests,
+      ),
+    );
   }
 
   /// One open coach alert with its actions (#120): acknowledge and resolve

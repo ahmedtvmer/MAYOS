@@ -131,6 +131,19 @@ Map<String, dynamic> _coachActiveProgram({
       },
     };
 
+Map<String, dynamic> _pendingSubstitutionRequest(String requestId) =>
+    <String, dynamic>{
+      'request_id': requestId,
+      'assignment_id': 'assignment-1',
+      'kind': 'exercise_substitution',
+      'program_version': 7,
+      'exercise_id': 'sq',
+      'exercise_name': 'Squat',
+      'reason': 'Please change this exercise.',
+      'status': 'pending',
+      'created_at': '2026-10-02T10:00:00Z',
+    };
+
 FakeMayosApi _playerFake() {
   final FakeMayosApi fake = FakeMayosApi();
   fake.issuedToken = 'token-alice';
@@ -306,7 +319,11 @@ void main() {
         provenance: 'automatic',
         hasDraft: true,
       )
-      ..programDraft = <String, dynamic>{'program_name': 'Saved draft'};
+      ..programDraft = <String, dynamic>{'program_name': 'Saved draft'}
+      ..programRequests.addAll(<Map<String, dynamic>>[
+        _pendingSubstitutionRequest('request-1'),
+        _pendingSubstitutionRequest('request-2'),
+      ]);
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
@@ -315,12 +332,38 @@ void main() {
     await tester.tap(find.byKey(const Key('coach_program_approve_as_is')));
     await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_confirm')));
     expect(find.textContaining('pending Program draft'), findsNothing);
+    for (final String requestId in <String>['request-1', 'request-2']) {
+      final Finder requestRow =
+          find.byKey(Key('publish_resolve_$requestId'));
+      expect(
+        find.descendant(
+          of: requestRow,
+          matching: find.textContaining('Substitution request'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: requestRow,
+          matching: find.textContaining('2026-10-02'),
+        ),
+        findsOneWidget,
+      );
+    }
+    expect(
+      tester.widget<CheckboxListTile>(
+        find.byKey(const Key('publish_resolve_request-1')),
+      ).value,
+      isTrue,
+    );
+    await tester.tap(find.byKey(const Key('publish_resolve_request-2')));
     expect(fake.programVersion, isNull);
     await tester.tap(find.byKey(const Key('coach_program_approve_confirm')));
     await _pumpUntilFound(tester, find.text('Published program version 8'));
 
     expect(fake.programApproveRequests, 1);
     expect(fake.lastProgramApproveExpectedVersion, 7);
+    expect(fake.lastProgramApproveResolveRequestIds, <String>['request-1']);
     expect(fake.programDraftCopyRequests, 0);
     expect(fake.programVersion, 8);
     expect(fake.programPublishedByCoachAccountId, 'account-alice');
@@ -409,7 +452,11 @@ void main() {
 
   testWidgets('coach builds one training day and publishes a Program draft',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMayosApi fake = _coachFake()
+      ..programRequests.addAll(<Map<String, dynamic>>[
+        _pendingSubstitutionRequest('draft-request-1'),
+        _pendingSubstitutionRequest('draft-request-2'),
+      ]);
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
@@ -443,10 +490,19 @@ void main() {
     await tester.tap(find.byKey(const Key('program_draft_publish')));
     await _pumpUntilFound(tester,
         find.text('Publish this Training program now? It will become the active program.'));
+    expect(find.textContaining('Substitution request'), findsNWidgets(2));
+    expect(
+      tester.widget<CheckboxListTile>(
+        find.byKey(const Key('publish_resolve_draft-request-1')),
+      ).value,
+      isTrue,
+    );
+    await tester.tap(find.byKey(const Key('publish_resolve_draft-request-2')));
     await tester.tap(find.text('Publish').last);
     await _pumpUntilFound(tester, find.text('Published program version 1'));
 
     expect(fake.programVersion, 1);
+    expect(fake.lastProgramDraftResolveRequestIds, <String>['draft-request-1']);
     expect(fake.programPublishedByCoachAccountId, 'account-alice');
     expect(fake.programDraft, isNull);
     expect(fake.programDaysOverride!.single['day_name'], 'Full A');

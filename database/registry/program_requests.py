@@ -184,6 +184,29 @@ class RegistryProgramRequestsMixin:
             self.catalog_conn.commit()
             return {"ok": cursor.rowcount == 1, "rowcount": int(cursor.rowcount)}
 
+    def resolve_program_requests_for_publish(
+        self, responses: dict[str, str], resolved_by: str, now_iso: str
+    ) -> list[str]:
+        """Claims selected pending requests together after their Program publishes."""
+        self.ensure_account_schema()
+        claimed: list[str] = []
+        with self._catalog_lock:
+            try:
+                for request_id, response in responses.items():
+                    cursor = self.catalog_conn.execute(
+                        "UPDATE program_requests SET status = 'applied', response = ?,"
+                        " resolved_at = ?, resolved_by = ?"
+                        " WHERE request_id = ? AND status = 'pending'",
+                        (response, now_iso, str(resolved_by), str(request_id)),
+                    )
+                    if cursor.rowcount == 1:
+                        claimed.append(str(request_id))
+                self.catalog_conn.commit()
+            except Exception:
+                self.catalog_conn.rollback()
+                raise
+        return claimed
+
     def reopen_program_request(self, request_id: str, now_iso: str) -> dict[str, Any]:
         """Reverts an applied request back to pending after a post-claim write failure.
 

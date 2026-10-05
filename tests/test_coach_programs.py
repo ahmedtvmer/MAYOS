@@ -822,6 +822,153 @@ def _one_day_draft(exercise_id="sq", **exercise_fields):
     }
 
 
+def _create_substitution_request(client, player_headers, exercise_id="sq"):
+    response = client.post(
+        "/assignments/me/program-requests",
+        headers=player_headers,
+        json={
+            "kind": "exercise_substitution",
+            "day_name": "Full A",
+            "exercise_id": exercise_id,
+            "replacement_exercise_id": "bp",
+            "reason": "Please change this exercise.",
+        },
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_publish_resolves_selected_requests_with_player_language_notice_and_analytics(
+    api, recording_analytics
+):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, coach_account_id, player_account_id = _assigned_player(api)
+    path = _program_draft_path(assignment_id)
+    assert client.post(path, headers=coach_headers, json=_one_day_draft()).status_code == 200
+    first_publish = client.post(f"{path}/publish", headers=coach_headers)
+    assert first_publish.status_code == 200, first_publish.text
+    first = _create_substitution_request(client, player_headers)
+    second = _create_substitution_request(client, player_headers)
+    assert db.set_account_display_language(player_account_id, "ar")
+    assert client.post(path, headers=coach_headers, json=_one_day_draft("row")).status_code == 200
+    events_before = len(recording_analytics.events)
+
+    published = client.post(
+        f"{path}/publish",
+        headers=coach_headers,
+        json={"resolve_request_ids": [first["request_id"], second["request_id"]]},
+    )
+
+    assert published.status_code == 200, published.text
+    assert published.json()["version"] == 2
+    requests = client.get(
+        f"/coach/assignments/{assignment_id}/program-requests", headers=coach_headers
+    ).json()["requests"]
+    resolved = {row["request_id"]: row for row in requests}
+    addressed = "تمت معالجة طلبك في البرنامج التدريبي الجديد (الإصدار 2)"
+    assert resolved[first["request_id"]]["status"] == "applied"
+    assert resolved[second["request_id"]]["status"] == "applied"
+    assert resolved[first["request_id"]]["response"] == addressed
+    assert resolved[first["request_id"]]["resolved_by"] == coach_account_id
+    assert resolved[first["request_id"]]["exercise_name"] == "Squat"
+    notices = [
+        row for row in client.get("/assignments/notices", headers=player_headers).json()["notices"]
+        if row["kind"] == "program_request"
+    ]
+    assert len(notices) == 2
+    assert all(row["message"] == addressed for row in notices)
+    new_events = recording_analytics.events[events_before:]
+    assert len([row for row in new_events if row["event"] == "program_request_resolved"]) == 2
+    assert all(
+        row["distinct_id"] == coach_account_id
+        and row["properties"]["is_coaching_action"] is True
+        and row["properties"]["outcome"] == "applied"
+        for row in new_events
+        if row["event"] == "program_request_resolved"
+    )
+    assert len([row for row in new_events if row["event"] == "coach_program_published"]) == 1
+    assert db.get_account(player_account_id)["display_language"] == "ar"
+
+
+def test_publish_leaves_unticked_request_open(api):
+    client, _, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    path = _program_draft_path(assignment_id)
+    assert client.post(path, headers=coach_headers, json=_one_day_draft()).status_code == 200
+    assert client.post(f"{path}/publish", headers=coach_headers).status_code == 200
+    selected = _create_substitution_request(client, player_headers)
+    unticked = _create_substitution_request(client, player_headers)
+    assert client.post(path, headers=coach_headers, json=_one_day_draft("row")).status_code == 200
+
+    published = client.post(
+        f"{path}/publish",
+        headers=coach_headers,
+        json={"resolve_request_ids": [selected["request_id"]]},
+    )
+
+    assert published.status_code == 200, published.text
+    rows = client.get(
+        f"/coach/assignments/{assignment_id}/program-requests", headers=coach_headers
+    ).json()["requests"]
+    states = {row["request_id"]: row["status"] for row in rows}
+    assert states[selected["request_id"]] == "applied"
+    assert states[unticked["request_id"]] == "pending"
+
+
+def test_failed_approval_does_not_resolve_selected_requests(api):
+    client, _, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    path = _program_draft_path(assignment_id)
+    assert client.post(path, headers=coach_headers, json=_one_day_draft()).status_code == 200
+    assert client.post(f"{path}/publish", headers=coach_headers).status_code == 200
+    request = _create_substitution_request(client, player_headers)
+
+    failed = client.post(
+        f"/coach/assignments/{assignment_id}/program/approve",
+        headers=coach_headers,
+        json={"expected_active_version": 999, "resolve_request_ids": [request["request_id"]]},
+    )
+
+    assert failed.status_code == 409
+    assert client.get(
+        f"/coach/assignments/{assignment_id}/program-requests", headers=coach_headers
+    ).json()["requests"][0]["status"] == "pending"
+
+
+def test_publish_rejects_request_from_another_assignment_without_publication(api):
+    client, db, _ = api
+    coach_headers, _, assignment_id, _, player_account_id = _assigned_player(api)
+    other_invite = client.post("/coach/assignments/invites", headers=coach_headers).json()["token"]
+    other_player = _register(client, "p2")
+    other_player_headers = _authed(other_player["access_token"])
+    redeemed = client.post(
+        "/assignments/invites/redeem",
+        headers=other_player_headers,
+        json={"token": other_invite, "consent": True},
+    )
+    assert redeemed.status_code == 200, redeemed.text
+    other_assignment_id = redeemed.json()["assignment"]["assignment_id"]
+    other_path = _program_draft_path(other_assignment_id)
+    assert client.post(other_path, headers=coach_headers, json=_one_day_draft()).status_code == 200
+    assert client.post(f"{other_path}/publish", headers=coach_headers).status_code == 200
+    foreign = _create_substitution_request(client, other_player_headers)
+    path = _program_draft_path(assignment_id)
+    assert client.post(path, headers=coach_headers, json=_one_day_draft()).status_code == 200
+
+    rejected = client.post(
+        f"{path}/publish",
+        headers=coach_headers,
+        json={"resolve_request_ids": [foreign["request_id"]]},
+    )
+
+    assert rejected.status_code == 400
+    assert client.get(path, headers=coach_headers).status_code == 200
+    assert db.get_program_request(foreign["request_id"])["status"] == "pending"
+    player = db.get_account(player_account_id)
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        assert ledger.get_active_program() is None
+
+
 def test_program_draft_is_assignment_gated_and_one_per_assignment(api):
     client, _, _ = api
     coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)

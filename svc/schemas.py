@@ -1008,6 +1008,11 @@ class CoachProgramDraftIn(ProgramDraftInput):
 
 class CoachProgramApproveIn(BaseModel):
     expected_active_version: int = Field(ge=1)
+    resolve_request_ids: list[str] = Field(default_factory=list)
+
+
+class CoachProgramPublishIn(BaseModel):
+    resolve_request_ids: list[str] = Field(default_factory=list)
 
 
 class CoachProgramDraftOut(BaseModel):
@@ -1130,6 +1135,7 @@ class ProgramRequestOut(BaseModel):
     program_version: int
     day_name: str | None = None
     exercise_id: str | None = None
+    exercise_name: str | None = None
     replacement_exercise_id: str | None = None
     desired_weekly_frequency: int | None = None
     desired_split_preference: str | None = None

@@ -149,6 +149,8 @@ class FakeMayosApi {
   int programApproveRequests = 0;
   int? lastProgramApproveExpectedVersion;
   final List<int?> programApproveExpectedVersions = <int?>[];
+  List<String> lastProgramApproveResolveRequestIds = <String>[];
+  List<String> lastProgramDraftResolveRequestIds = <String>[];
   int? programApproveMismatchVersion;
   String? programApproveMismatchName;
   int programDraftGenerationRequests = 0;
@@ -1941,7 +1943,11 @@ class FakeMayosApi {
           <String, dynamic>{'detail': programDraftPublishError},
         );
       }
+      lastProgramDraftResolveRequestIds = List<String>.from(
+        request.body['resolve_request_ids'] as List<dynamic>? ?? <dynamic>[],
+      );
       _publishProgramDraft(assignmentId, programDraft!);
+      _resolvePublishedRequests(assignmentId, lastProgramDraftResolveRequestIds);
       return FakeResponse(200, _activeProgramBody());
     }
     if (request.method == 'GET' && programDraft == null) {
@@ -1977,6 +1983,9 @@ class FakeMayosApi {
     lastProgramApproveExpectedVersion =
         (rawExpectedVersion as num?)?.toInt();
     programApproveExpectedVersions.add(lastProgramApproveExpectedVersion);
+    lastProgramApproveResolveRequestIds = List<String>.from(
+      request.body['resolve_request_ids'] as List<dynamic>? ?? <dynamic>[],
+    );
     final Map<String, dynamic>? activeProgram =
         coachActiveProgram['program'] as Map<String, dynamic>?;
     if (activeProgram == null) {
@@ -2028,7 +2037,24 @@ class FakeMayosApi {
       draft,
       clearDraft: false,
     );
+    _resolvePublishedRequests(
+      request.path.split('/')[3],
+      lastProgramApproveResolveRequestIds,
+    );
     return FakeResponse(200, _activeProgramBody());
+  }
+
+  void _resolvePublishedRequests(String assignmentId, List<String> requestIds) {
+    for (final Map<String, dynamic> row in programRequests) {
+      if (requestIds.contains(row['request_id']) &&
+          row['assignment_id'] == assignmentId &&
+          row['status'] == 'pending') {
+        row['status'] = 'applied';
+        row['response'] =
+            'Addressed in your new program (version $programVersion)';
+        row['resolved_by'] = 'account-$currentUsername';
+      }
+    }
   }
 
   void _publishProgramDraft(
