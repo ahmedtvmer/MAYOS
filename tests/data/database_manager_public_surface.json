@@ -481,6 +481,10 @@
       "kind": "method",
       "signature": "(self, assignment_id: str, kind: str, dedupe_key: str, now_iso: str) -> int"
     },
+    "resolve_program_requests_for_publish": {
+      "kind": "method",
+      "signature": "(self, responses: dict[str, str], resolved_by: str, now_iso: str) -> list[str]"
+    },
     "resolve_program_request": {
       "kind": "method",
       "signature": "(self, request_id: str, status: str, response: str | None, resolved_by: str, now_iso: str) -> dict[str, typing.Any]"
