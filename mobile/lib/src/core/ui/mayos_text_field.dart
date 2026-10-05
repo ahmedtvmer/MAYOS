@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// A thin wrapper over [TextField] so inputs share the themed decoration and
 /// consistent text actions. The visual treatment lives in the theme's
@@ -31,6 +32,9 @@ class MayosTextField extends StatelessWidget {
     this.minLines,
     this.maxLines = 1,
     this.maxLength,
+    this.maxLengthEnforcement,
+    this.inputFormatters,
+    this.hideCounter = false,
     this.dense = false,
     this.fieldKey,
   });
@@ -60,9 +64,18 @@ class MayosTextField extends StatelessWidget {
   final int? minLines;
   final int maxLines;
 
-  /// When set, the field truncates input and shows a live `n/maxLength`
-  /// counter below it (the coach assistant's 1000-character question, #45).
+  /// When set, this limit is enforced. The field shows a live `n/maxLength`
+  /// counter unless [hideCounter] is true.
   final int? maxLength;
+
+  /// Selects how [maxLength] applies to edits and pasted text.
+  final MaxLengthEnforcement? maxLengthEnforcement;
+
+  /// Optional input formatters applied before the text field's length limit.
+  final List<TextInputFormatter>? inputFormatters;
+
+  /// Hides the built-in counter while preserving [maxLength] enforcement.
+  final bool hideCounter;
 
   /// Tighter content padding for narrow numeric cells (workout set rows)
   /// while keeping the themed border and label.
@@ -90,9 +103,11 @@ class MayosTextField extends StatelessWidget {
       enableSuggestions: enableSuggestions,
       onSubmitted: onSubmitted,
       onChanged: onChanged,
+      inputFormatters: inputFormatters,
       minLines: minLines,
       maxLines: maxLines,
       maxLength: maxLength,
+      maxLengthEnforcement: maxLengthEnforcement,
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
@@ -100,6 +115,7 @@ class MayosTextField extends StatelessWidget {
         errorText: errorText,
         prefixIcon: prefixIcon,
         suffixIcon: suffixIcon,
+        counterText: hideCounter ? '' : null,
         isDense: dense,
         contentPadding: dense
             ? const EdgeInsets.symmetric(horizontal: 10, vertical: 12)

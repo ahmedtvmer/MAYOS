@@ -25,6 +25,7 @@ from service import coach as coach_service
 from service import workouts as workouts_service
 from svc.app import create_app
 from svc.dependencies import get_db
+from svc.schemas import CHAT_MESSAGE_MAX_CHARS
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
 
@@ -219,6 +220,74 @@ def test_player_model_input_excludes_identifying_fields(api, monkeypatch):
     assert username not in rendered
     assert email not in rendered
     assert "secretpineapple" not in rendered
+
+
+@pytest.mark.parametrize("content", ["x" * 400, "ا" * 400])
+def test_chat_accepts_messages_at_the_character_limit(api, monkeypatch, content):
+    assert CHAT_MESSAGE_MAX_CHARS == 400
+    client, db = api
+    registered = _register(client, "chat-boundary")
+    headers = _authed(registered["access_token"])
+    llm = _CapturingLLM(reply="Received.")
+    monkeypatch.setattr(assistant_graph, "llm", llm)
+    monkeypatch.setattr(assistant_graph, "_prompt_budget", lambda: 100_000)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": content}
+    ) as response:
+        response.read()
+        assert response.status_code == 200
+
+    history = client.get("/chat/history", headers=headers).json()
+    assert history[0]["content"] == content
+    assert [message["role"] for message in history] == ["user", "assistant"]
+    assert llm.payloads
+
+
+def test_oversized_chat_message_is_rejected_before_admission_or_model_work(
+    api, monkeypatch
+):
+    from service.model_limits import reset_model_limits
+    client, db = api
+    registered = _register(client, "chat-too-long")
+    headers = _authed(registered["access_token"])
+    monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "1")
+    reset_model_limits()
+    llm = _CapturingLLM(reply="Received.")
+    monkeypatch.setattr(assistant_graph, "llm", llm)
+    monkeypatch.setattr(assistant_graph, "_prompt_budget", lambda: 100_000)
+    account_id = db.get_active_account_by_username("chat-too-long")["account_id"]
+    usage_before = [
+        row
+        for row in db.summarize_model_usage("2000-01-01")
+        if row["account_id"] == account_id
+    ]
+
+    rejected = client.post(
+        "/chat/messages", headers=headers, json={"content": "ا" * 401}
+    )
+    assert rejected.status_code == 422
+    assert "at most 400 characters" in rejected.text
+    assert client.get("/chat/history", headers=headers).json() == []
+    assert llm.payloads == []
+    usage_after = [
+        row
+        for row in db.summarize_model_usage("2000-01-01")
+        if row["account_id"] == account_id
+    ]
+    assert usage_after == usage_before
+
+    # The rejected request did not reserve the sole AI request slot.
+    with client.stream(
+        "POST",
+        "/chat/messages",
+        headers=headers,
+        json={"content": "How should I cue my bench?"},
+    ) as accepted:
+        accepted.read()
+        assert accepted.status_code == 200
+    assert llm.payloads
+    reset_model_limits()
 
 
 # --------------------------------------------------------------------------

@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/chat_models.dart';
+import '../../../core/chat_message_limit.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/copy_context.dart';
@@ -621,6 +623,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Widget _composer() {
     final MayosCopy copy = MayosCopy(ref.read(displayLanguageProvider));
+    final int typedCharacters = _controller.text.runes.length;
     final String? helper = _offline && !_disclosureAccepted
         ? null
         : !_disclosureAccepted
@@ -628,6 +631,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             : _offline
                 ? copy.chatNeedsConnection
                 : null;
+    final List<String> helperLines = <String>[
+      if (helper != null) helper,
+      if (typedCharacters >= chatMessageCounterStart)
+        copy.chatCharactersLeft(chatMessageMaxChars - typedCharacters),
+    ];
+    final String? helperText =
+        helperLines.isEmpty ? null : helperLines.join('\n');
     final MayosThemeExtension c = MayosTheme.of(context);
     return SafeArea(
       key: const Key('chat_composer_bar'),
@@ -645,9 +655,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 enabled: _composerEnabled,
                 minLines: 1,
                 maxLines: 4,
+                maxLength: chatMessageMaxChars,
+                maxLengthEnforcement: MaxLengthEnforcement.enforced,
+                inputFormatters: const <TextInputFormatter>[
+                  ChatMessageCodePointLengthFormatter(),
+                ],
+                hideCounter: true,
                 textInputAction: TextInputAction.newline,
                 hint: _offline ? copy.offline : copy.messageAssistant,
-                helperText: helper,
+                helperText: helperText,
+                onChanged: (_) => _setStateIfMounted(() {}),
                 onSubmitted: (_) => _send(),
               ),
             ),

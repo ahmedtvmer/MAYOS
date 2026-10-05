@@ -930,6 +930,17 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 | Back to {exercise} | العودة إلى {exercise} |
 | Rest alerts need permission to reach you when your screen is off. | تحتاج تنبيهات الراحة إلى إذن لتصلك عند إطفاء الشاشة. |
 
+## Player chat character counter
+
+| English | Arabic |
+| --- | --- |
+| 0 characters left | المتبقي: 0 أحرف |
+| 80 characters left | المتبقي: 80 حرفًا |
+| 1 character left | المتبقي: حرف واحد |
+| 2 characters left | المتبقي: حرفان |
+| 3 characters left | المتبقي: 3 أحرف |
+| 11 characters left | المتبقي: 11 حرفًا |
+
 ## New Arabic count forms used by Chunk C
 
 The count helper keeps Western digits and selects a short form by count.

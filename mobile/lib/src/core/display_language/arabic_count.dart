@@ -70,6 +70,13 @@ enum ArabicCountNoun {
     dualOblique: 'تكرارين',
     many: 'تكرارًا',
   ),
+  character(
+    zeroAndFew: 'أحرف',
+    one: 'حرف واحد',
+    dualNominative: 'حرفان',
+    dualOblique: 'حرفين',
+    many: 'حرفًا',
+  ),
   assignment(
     zeroAndFew: 'علاقات تدريب',
     one: 'علاقة تدريب واحدة',

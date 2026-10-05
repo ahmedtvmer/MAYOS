@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart' show MaxLengthEnforcement;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
@@ -13,6 +14,8 @@ import 'package:mayos_mobile/src/core/active_workout.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/chat_models.dart';
+import 'package:mayos_mobile/src/core/chat_message_limit.dart';
+import 'package:mayos_mobile/src/core/display_language/catalog.dart';
 import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/connectivity_message.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
@@ -170,6 +173,111 @@ Future<void> _openSettings(WidgetTester tester) async {
 }
 
 void main() {
+  test('chat message limit and localized counter copy match the service', () {
+    expect(chatMessageMaxChars, 400);
+    const MayosCopy english = MayosCopy('en');
+    const MayosCopy arabic = MayosCopy('ar');
+    expect(english.chatCharactersLeft(80), '80 characters left');
+    expect(english.chatCharactersLeft(1), '1 character left');
+    expect(
+      arabic.chatCharactersLeft(80),
+      'المتبقي: \u{2066}80\u{2069} حرفًا',
+    );
+    expect(arabic.chatCharactersLeft(1), 'المتبقي: حرف واحد');
+    expect(arabic.chatCharactersLeft(2), 'المتبقي: حرفان');
+    expect(arabic.chatCharactersLeft(3), 'المتبقي: \u{2066}3\u{2069} أحرف');
+    expect(
+      arabic.chatCharactersLeft(11),
+      'المتبقي: \u{2066}11\u{2069} حرفًا',
+    );
+  });
+
+  test('chat input formatter counts Unicode code points', () {
+    const ChatMessageCodePointLengthFormatter formatter =
+        ChatMessageCodePointLengthFormatter();
+    const String combiningCharacter = 'e\u0301';
+    final TextEditingValue bounded = formatter.formatEditUpdate(
+      TextEditingValue.empty,
+      TextEditingValue(
+        text: combiningCharacter * 201,
+        selection: TextSelection.collapsed(
+          offset: (combiningCharacter * 201).length,
+        ),
+      ),
+    );
+
+    expect(bounded.text.runes.length, 400);
+    expect(bounded.text, combiningCharacter * 200);
+  });
+
+  testWidgets('chat composer localizes its counter and caps input at 400',
+      (tester) async {
+    for (final String languageCode in <String>['en', 'ar']) {
+      final FakeMayosApi fake = _fakePlayer('alice');
+      await _pumpChat(
+        tester,
+        fake,
+        store: InMemoryChatCacheStore(),
+        scopeKey: UniqueKey(),
+        languageCode: languageCode,
+      );
+      await _acceptDisclosure(tester);
+
+      expect(_composer(tester).maxLength, chatMessageMaxChars);
+      expect(
+        _composer(tester).maxLengthEnforcement,
+        MaxLengthEnforcement.enforced,
+      );
+      expect(_composer(tester).decoration!.counterText, '');
+      final String character = languageCode == 'ar' ? 'ا' : 'a';
+      final Finder composer = find.byKey(const Key('chat_composer'));
+
+      await tester.enterText(composer, character * 319);
+      await tester.pump();
+      expect(
+        find.text(MayosCopy('en').chatCharactersLeft(81)),
+        findsNothing,
+      );
+      expect(
+        find.text(MayosCopy('ar').chatCharactersLeft(81)),
+        findsNothing,
+      );
+
+      await tester.enterText(composer, character * 320);
+      await tester.pump();
+      expect(
+        find.text(const MayosCopy('en').chatCharactersLeft(80)),
+        languageCode == 'en' ? findsOneWidget : findsNothing,
+      );
+      expect(
+        find.text(const MayosCopy('ar').chatCharactersLeft(80)),
+        languageCode == 'ar' ? findsOneWidget : findsNothing,
+      );
+
+      // Simulates a paste above the boundary; the formatter clips it before
+      // the send action can pass it to the API.
+      await tester.enterText(composer, character * 401);
+      await tester.pump();
+      expect(_composer(tester).controller!.text.runes.length, 400);
+      expect(
+        find.text(const MayosCopy('en').chatCharactersLeft(0)),
+        languageCode == 'en' ? findsOneWidget : findsNothing,
+      );
+      expect(
+        find.text(const MayosCopy('ar').chatCharactersLeft(0)),
+        languageCode == 'ar' ? findsOneWidget : findsNothing,
+      );
+
+      await tester.tap(find.byKey(const Key('chat_send')));
+      await _pumpUntilFound(tester, _chatMarkdown('Keep your elbows tucked.'));
+      final Map<String, dynamic> sent = fake.chatHistory
+          .singleWhere(
+              (Map<String, dynamic> message) => message['role'] == 'user');
+      expect((sent['content'] as String).runes.length, 400);
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
+
   group('SseDecoder', () {
     test('splits whole frames and survives chunk boundaries', () {
       final SseDecoder decoder = SseDecoder();

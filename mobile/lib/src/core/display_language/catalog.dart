@@ -55,6 +55,13 @@ class MayosCopy {
       isArabic ? 'المساعد يرد…' : 'Assistant is replying…';
   String get messageAssistant =>
       isArabic ? 'أرسل رسالة إلى المساعد' : 'Message your assistant';
+  String chatCharactersLeft(int count) => isArabic
+      ? 'المتبقي: ${arabicCountPhrase(
+          count,
+          ArabicCountNoun.character,
+          isolateCount: true,
+        )}'
+      : '$count character${count == 1 ? '' : 's'} left';
   String get offline => isArabic ? 'غير متصل' : 'Offline';
   String get offlineBanner =>
       isArabic ? 'أنت غير متصل بالإنترنت' : "You're offline";

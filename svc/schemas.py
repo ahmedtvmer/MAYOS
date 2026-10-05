@@ -1292,8 +1292,11 @@ class BaselinesOut(BaseModel):
     baselines: list[BaselineOut]
 
 
+CHAT_MESSAGE_MAX_CHARS = 400
+
+
 class ChatMessageIn(BaseModel):
-    content: str = Field(min_length=1, max_length=5000)
+    content: str = Field(min_length=1, max_length=CHAT_MESSAGE_MAX_CHARS)
 
 
 class ChatMessageOut(BaseModel):
