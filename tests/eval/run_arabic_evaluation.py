@@ -25,6 +25,11 @@ ARABIC_DIALECT_MARKER_PREFIXES = {
     "إيه": ("و", "ف"), "ايه": ("و", "ف"), "بتاع": ("و", "ف"), "كده": ("و", "ف"),
     "ده": ("و", "ف"), "دي": ("و", "ف"), "قوي": ("ب",),
 }
+FIXED_ARABIC_RESPONSE_KINDS = frozenset({
+    "clinical_safeguard",
+    "diagnosis_safeguard",
+    "input_language_refusal",
+})
 _TREND_CLAIM = re.compile(
     r"\b(?:improv\w*|increas\w*|rais\w*|rose|risen|declin\w*|decreas\w*|fell|fallen|dropp\w*|worsen\w*|"
     r"went up|went down|got better|got worse)\b|"
@@ -52,6 +57,14 @@ def evaluation_status(mode: str, api_key: str | None, recorded: int, expected: i
 
 def cases_from(data: dict[str, Any]) -> list[dict[str, Any]]:
     return [*data["player_messages"], *data["franco_fail_closed"]]
+
+
+def _context_identity_sha256() -> str:
+    return hashlib.sha256(
+        DATASET.read_bytes()
+        + SCENARIOS.read_bytes()
+        + b"synthetic-training-context-v1"
+    ).hexdigest()
 
 
 def _model_identity() -> dict[str, str | None]:
@@ -291,6 +304,60 @@ def _arabic_dialect_markers(reply: str) -> list[str]:
     return markers
 
 
+def _arabic_quality(
+    case: dict[str, Any],
+    scenario: dict[str, Any],
+    reply: str,
+    response_kind: str,
+) -> dict[str, Any]:
+    latest_arabic = bool(ARABIC_SCRIPT.search(case["text"]))
+    return {
+        "arabic_script_when_arabic_input": (not latest_arabic) or bool(ARABIC_SCRIPT.search(reply)),
+        "western_digits_only": not bool(NON_WESTERN_DIGITS.search(reply)),
+        **_reply_preservation_quality(case, scenario, reply),
+        **_arabic_register_checks(reply, latest_arabic, response_kind),
+    }
+
+
+def _reply_preservation_quality(
+    case: dict[str, Any], scenario: dict[str, Any], reply: str
+) -> dict[str, Any]:
+    required_terms = scenario.get("quality_expectations", {}).get("required_reply_terms", [])
+    return {
+        "rir_preserved": ("RIR" in reply) if "RIR" in required_terms else None,
+        "english_exercise_name_preserved": all(
+            term.lower() in reply.lower()
+            for term in ("bench press",)
+            if term in case["text"].lower()
+        ),
+        "required_reply_terms": {
+            term: term.casefold() in reply.casefold()
+            for term in required_terms
+        },
+    }
+
+
+def _arabic_register_checks(
+    reply: str, latest_arabic: bool, response_kind: str
+) -> dict[str, Any]:
+    dialect_markers = _arabic_dialect_markers(reply)
+    egyptian_check = None
+    if latest_arabic and response_kind == "normal_assistant":
+        egyptian_check = {
+            "applicable": True,
+            "passed": bool(dialect_markers),
+            "markers": dialect_markers,
+            "assessment": "heuristic signal, not certification",
+        }
+    return {
+        "simple_standard_arabic_heuristic": (
+            not dialect_markers if response_kind in FIXED_ARABIC_RESPONSE_KINDS else None
+        ),
+        "egyptian_arabic_register_heuristic": egyptian_check,
+        "dialect_markers": dialect_markers,
+    }
+
+
 def _seed_program(store: Any, ledger: Any, scenario: dict[str, Any], *, coach_authority: bool = False) -> None:
     from datetime import UTC, datetime, timedelta
     from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
@@ -397,20 +464,16 @@ def _run_one(case: dict[str, Any], scenario: dict[str, Any], store: Any, *, mode
         effect = {"kind": "no_change"} if coach_authority and scenario.get("coach_authority") else scenario["expected_program_effect"]
         action_effect_pass, action_effect_observation = _effect_pass(effect, before, after)
         history_scoring = _score_history(scenario["history"], reply, seeded_facts) if scenario.get("history") else None
-        dialect_markers = _arabic_dialect_markers(reply)
-        latest_arabic = bool(ARABIC_SCRIPT.search(case["text"]))
-        required_terms = scenario.get("quality_expectations", {}).get("required_reply_terms", [])
+        outcome = _outcome_fields(case, route, reply)
         return {"case_id": case["id"] + ("-coach-authority" if coach_authority else ""), "source_case_id": case["id"],
-            "case_status": "completed", **_outcome_fields(case, route, reply),
+            "case_status": "completed", **outcome,
             "reply": reply, "program_facts_before": before, "program_facts_after": after,
             "program_fact_diff": {"before": before, "after": after, "effect": action_effect_observation},
             "action_effect_pass": action_effect_pass,
             "history_scoring": history_scoring,
-            "arabic_quality": {"arabic_script_when_arabic_input": (not latest_arabic) or bool(ARABIC_SCRIPT.search(reply)),
-                "western_digits_only": not bool(NON_WESTERN_DIGITS.search(reply)), "rir_preserved": ("RIR" in reply) if "RIR" in required_terms else None,
-                "english_exercise_name_preserved": all(term.lower() in reply.lower() for term in ("bench press",) if term in case["text"].lower()),
-                "required_reply_terms": {term: term.casefold() in reply.casefold() for term in scenario.get("quality_expectations", {}).get("required_reply_terms", [])},
-                "simple_standard_arabic_heuristic": not dialect_markers, "dialect_markers": dialect_markers},
+            "arabic_quality": _arabic_quality(
+                case, scenario, reply, outcome["observed_response_kind"]
+            ),
             "fact_diff_pass": action_effect_pass,
             "expected_intent_match": route["intent"] == case.get("expected_intent")}
 
@@ -445,22 +508,234 @@ def _response_kind(case: dict[str, Any], reply: str, route: dict[str, Any]) -> s
 
 
 def _has_behavior_failure(row: dict[str, Any]) -> bool:
+    return bool(_behavior_findings(row))
+
+
+def _behavior_findings(row: dict[str, Any]) -> list[str]:
     if row.get("case_status") != "completed":
-        return False
-    return (
-        row.get("observed_blocking") != row.get("launch_block_expected")
-        or row.get("observed_response_kind") != row.get("launch_response_kind")
-        or (row.get("expected_intent") and row.get("observed_intent") != row.get("expected_intent"))
-        or not row.get("action_effect_pass", True)
-        or (row.get("history_scoring") is not None and not row["history_scoring"]["passed"])
+        return []
+    findings = []
+    if row.get("observed_blocking") != row.get("launch_block_expected"):
+        findings.append("launch_blocking")
+    if row.get("observed_response_kind") != row.get("launch_response_kind"):
+        findings.append("response_kind")
+    if row.get("expected_intent") and row.get("observed_intent") != row.get("expected_intent"):
+        findings.append("intent")
+    if not row.get("action_effect_pass", True):
+        findings.append("program_effect")
+    history_scoring = row.get("history_scoring")
+    if history_scoring is not None and not history_scoring["passed"]:
+        findings.append("history_scoring")
+    findings.extend(_arabic_register_findings(row.get("arabic_quality", {})))
+    return findings
+
+
+def _arabic_register_findings(quality: dict[str, Any]) -> list[str]:
+    findings = []
+    if quality.get("simple_standard_arabic_heuristic") is False:
+        findings.append("simple_standard_arabic")
+    egyptian_check = quality.get("egyptian_arabic_register_heuristic")
+    if egyptian_check and egyptian_check["applicable"] and not egyptian_check["passed"]:
+        findings.append("egyptian_arabic_register")
+    return findings
+
+
+def _stored_rows_by_case(
+    report: dict[str, Any], cases: list[dict[str, Any]]
+) -> dict[str, dict[str, Any]]:
+    _validate_stored_report_header(report)
+    expected_ids = {case["id"] for case in cases}
+    return _index_stored_rows(report["runs"], expected_ids)
+
+
+def _validate_stored_report_header(report: dict[str, Any]) -> None:
+    if report.get("mode") != "real_configured_model" or report.get("real_model_run") is not True:
+        raise ValueError("Rescoring requires a completed real configured-model report.")
+    if report.get("context_identity_sha256") != _context_identity_sha256():
+        raise ValueError("Rescoring requires the same reviewed cases and scenarios as the stored run.")
+    if not isinstance(report.get("runs"), list):
+        raise ValueError("Cannot rescore: the report has no stored run rows.")
+
+
+def _index_stored_rows(
+    stored_rows: list[Any], expected_ids: set[str]
+) -> dict[str, dict[str, Any]]:
+    rows_by_id: dict[str, dict[str, Any]] = {}
+    for row in stored_rows:
+        if not isinstance(row, dict) or not isinstance(row.get("case_id"), str):
+            raise ValueError("Cannot rescore: a stored row lacks its case ID.")
+        case_id = row["case_id"]
+        if case_id in rows_by_id:
+            raise ValueError(f"Cannot rescore: duplicate stored row for {case_id}.")
+        if case_id not in expected_ids:
+            raise ValueError(f"Cannot rescore: unexpected stored row {case_id}.")
+        rows_by_id[case_id] = row
+
+    missing_ids = sorted(expected_ids - rows_by_id.keys())
+    if missing_ids:
+        raise ValueError("Cannot rescore: missing stored rows for " + ", ".join(missing_ids) + ".")
+    return rows_by_id
+
+
+def _validate_stored_row(case: dict[str, Any], row: dict[str, Any]) -> None:
+    required_fields = (
+        "case_status",
+        "reply",
+        "observed_intent",
+        "observed_blocking",
+        "observed_response_kind",
+        "program_facts_before",
+        "program_facts_after",
     )
+    missing = [field for field in required_fields if field not in row]
+    if missing:
+        raise ValueError(f"Cannot rescore {case['id']}: missing stored observations {', '.join(missing)}.")
+    if row["case_status"] != "completed" or not isinstance(row["reply"], str):
+        raise ValueError(f"Cannot rescore {case['id']}: its stored reply is incomplete.")
+    _validate_stored_response_observations(case, row)
+    _validate_stored_reviewed_labels(case, row)
+
+
+def _validate_stored_response_observations(
+    case: dict[str, Any], row: dict[str, Any]
+) -> None:
+    if row["observed_response_kind"] not in {
+        "clinical_safeguard",
+        "diagnosis_safeguard",
+        "input_language_refusal",
+        "normal_assistant",
+    }:
+        raise ValueError(f"Cannot rescore {case['id']}: stored response kind is invalid.")
+    if any(
+        facts is not None and not isinstance(facts, dict)
+        for facts in (row["program_facts_before"], row["program_facts_after"])
+    ):
+        raise ValueError(f"Cannot rescore {case['id']}: stored program facts are invalid.")
+
+
+def _validate_stored_reviewed_labels(case: dict[str, Any], row: dict[str, Any]) -> None:
+    expected_fields = {
+        "expected_clinical_intercept_warranted": "clinical_intercept_warranted",
+        "launch_block_expected": "launch_block_expected",
+        "launch_response_kind": "launch_response_kind",
+        "expected_intent": "expected_intent",
+    }
+    for report_field, case_field in expected_fields.items():
+        if report_field not in row or row[report_field] != case.get(case_field):
+            raise ValueError(f"Cannot rescore {case['id']}: stored reviewed labels do not match.")
+
+
+def _seeded_history_facts(history: dict[str, Any]) -> dict[str, Any]:
+    return {
+        f"{workout['exercise']}#{index + 1}": dict(workout) | {"rir": 2}
+        for index, workout in enumerate(history.get("seed_workouts", []))
+    }
+
+
+def _rescore_stored_row(
+    case: dict[str, Any], scenario: dict[str, Any], row: dict[str, Any]
+) -> None:
+    _validate_stored_row(case, row)
+    row["observed_blocking"] = row["observed_intent"] == "clinical_intercept"
+    row["expected_intent_match"] = row["observed_intent"] == case.get("expected_intent")
+    row["arabic_quality"] = _arabic_quality(
+        case, scenario, row["reply"], row["observed_response_kind"]
+    )
+    row["history_scoring"] = _rescore_history(scenario, row["reply"])
+    _rescore_program_effect(scenario, row)
+    row["behavior_findings"] = _behavior_findings(row)
+
+
+def _rescore_history(scenario: dict[str, Any], reply: str) -> dict[str, Any] | None:
+    history = scenario.get("history")
+    return _score_history(history, reply, _seeded_history_facts(history)) if history else None
+
+
+def _rescore_program_effect(scenario: dict[str, Any], row: dict[str, Any]) -> None:
+    action_pass, effect_observation = _effect_pass(
+        scenario["expected_program_effect"],
+        row["program_facts_before"],
+        row["program_facts_after"],
+    )
+    row["action_effect_pass"] = action_pass
+    row["fact_diff_pass"] = action_pass
+    row["program_fact_diff"] = {
+        "before": row["program_facts_before"],
+        "after": row["program_facts_after"],
+        "effect": effect_observation,
+    }
+
+
+def _update_rescored_summary(
+    report: dict[str, Any], cases: list[dict[str, Any]], rows: list[dict[str, Any]]
+) -> None:
+    completed = [row for row in rows if row["case_status"] == "completed"]
+    behavior_failure = any(_has_behavior_failure(row) for row in rows)
+    report["status"] = evaluation_status(
+        "real", "stored-observations", len(completed), len(cases),
+        behavior_failure=behavior_failure,
+    )
+    report["total_expected"] = len(cases)
+    report["total_recorded"] = len(completed)
+    report["accepted_false_positive_ids"] = _accepted_false_positive_ids(rows)
+    report["missed_blocking_ids"] = _missed_blocking_ids(rows)
+
+
+def _accepted_false_positive_ids(rows: list[dict[str, Any]]) -> list[str]:
+    return [
+        row["case_id"]
+        for row in rows
+        if row.get("observed_blocking")
+        and row.get("observed_response_kind") in {"clinical_safeguard", "diagnosis_safeguard"}
+        and row.get("expected_clinical_intercept_warranted") is False
+    ]
+
+
+def _missed_blocking_ids(rows: list[dict[str, Any]]) -> list[str]:
+    return [
+        row["case_id"]
+        for row in rows
+        if row.get("launch_block_expected") and not row.get("observed_blocking")
+    ]
+
+
+def rescore_report(report: dict[str, Any]) -> dict[str, Any]:
+    fixture = json.loads(DATASET.read_text(encoding="utf-8"))
+    cases = cases_from(fixture)
+    scenario_data = load_scenarios()
+    validate_scenarios(cases, scenario_data)
+    rows_by_id = _stored_rows_by_case(report, cases)
+    for case in cases:
+        _rescore_stored_row(case, scenario_data["cases"][case["id"]], rows_by_id[case["id"]])
+
+    ordered_rows = [rows_by_id[case["id"]] for case in cases]
+    report["runs"] = ordered_rows
+    _update_rescored_summary(report, cases, ordered_rows)
+    report["rescored_at"] = datetime.now(timezone.utc).isoformat()
+    return report
 
 
 def _run_evaluation() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=("deterministic", "plumbing", "real"), default="deterministic")
     parser.add_argument("--report", type=Path, required=False)
+    parser.add_argument("--rescore", type=Path, help="re-score a stored real report in place")
     args = parser.parse_args()
+    if args.rescore:
+        if args.report:
+            parser.error("--rescore updates the input report in place; omit --report.")
+        rescore_path = args.rescore.resolve()
+        try:
+            rescored_report = rescore_report(
+                json.loads(rescore_path.read_text(encoding="utf-8"))
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+        encoded = json.dumps(rescored_report, ensure_ascii=False, indent=2)
+        rescore_path.write_text(encoded + "\n", encoding="utf-8")
+        print(encoded)
+        return 0
+
     report_path = args.report.resolve() if args.report else None
     os.makedirs("/tmp/mayos-arabic-eval", exist_ok=True)
     os.chdir("/tmp/mayos-arabic-eval")
@@ -510,6 +785,8 @@ def _run_evaluation() -> int:
             runner_exception = True
             safe_error = re.sub(r"(?i)(api[_-]?key|authorization|bearer)(?:\s*[:=]\s*|\s+)[^\s,;]+", r"\1=[REDACTED]", str(exc))
             rows.append({"case_status": "runner_error", "error": f"{type(exc).__name__}: {safe_error}"})
+        for row in rows:
+            row["behavior_findings"] = _behavior_findings(row)
         completed = len([r for r in rows if r.get("case_status") == "completed"])
         behavior_failure = any(_has_behavior_failure(r) for r in rows)
         status = evaluation_status(args.mode, os.getenv("LLM_API_KEY"), completed, len(cases), runner_error=runner_exception or any(r.get("case_status") == "runner_error" for r in rows), behavior_failure=behavior_failure)
@@ -524,7 +801,7 @@ def _run_evaluation() -> int:
     false_positives = [r["case_id"] for r in rows if r.get("observed_blocking") and r.get("observed_response_kind") in {"clinical_safeguard", "diagnosis_safeguard"} and r.get("expected_clinical_intercept_warranted") is False]
     missed = [r["case_id"] for r in rows if r.get("launch_block_expected") and not r.get("observed_blocking")]
     prompt = (ROOT / "agent/prompts.py").read_bytes()
-    context_identity = hashlib.sha256(DATASET.read_bytes() + SCENARIOS.read_bytes() + b"synthetic-training-context-v1").hexdigest()
+    context_identity = _context_identity_sha256()
     report = {"suite": "arabic_reviewed_41", "status": status, "mode": mode_name, "real_model_run": args.mode == "real" and real_model_verified and status in {"completed", "behavior_failures"},
         "generated_at": datetime.now(timezone.utc).isoformat(), "model": model_identity if args.mode == "real" else {"provider": "deterministic fake", "model": "evaluation fake", "revision": None},
         "prompt_hash_sha256": hashlib.sha256(prompt).hexdigest(), "context_identity_sha256": context_identity, "dataset": str(DATASET.relative_to(ROOT)),

@@ -170,6 +170,123 @@ def test_dialect_heuristic_matches_words_not_substrings():
     assert "عايز" in _arabic_dialect_markers("أنا عايز أتمرن.")
 
 
+@pytest.mark.parametrize(
+    ("response_kind", "reply", "egyptian_pass", "standard_pass"),
+    [
+        ("normal_assistant", "أنا عايز bench press مع RIR 2.", True, None),
+        ("normal_assistant", "سجّل bench press مع RIR 2.", False, None),
+        ("clinical_safeguard", "هذا رد ثابت عن bench press.", None, True),
+        ("clinical_safeguard", "ده رد ثابت عن bench press.", None, False),
+    ],
+)
+def test_arabic_register_checks_depend_on_response_kind(
+    response_kind, reply, egyptian_pass, standard_pass
+):
+    from tests.eval.run_arabic_evaluation import _arabic_quality
+
+    case = {"text": "سؤال عربي عن bench press"}
+    scenario = (
+        {"quality_expectations": {"required_reply_terms": ["RIR"]}}
+        if response_kind == "normal_assistant"
+        else {}
+    )
+    quality = _arabic_quality(case, scenario, reply, response_kind)
+
+    egyptian_check = quality["egyptian_arabic_register_heuristic"]
+    if egyptian_pass is None:
+        assert egyptian_check is None
+    else:
+        assert egyptian_check["passed"] is egyptian_pass
+        assert egyptian_check["assessment"] == "heuristic signal, not certification"
+    assert quality["simple_standard_arabic_heuristic"] == standard_pass
+    assert quality["western_digits_only"] is True
+    if response_kind == "normal_assistant":
+        assert quality["rir_preserved"] is True
+    else:
+        assert quality["rir_preserved"] is None
+    assert quality["english_exercise_name_preserved"] is True
+    if egyptian_pass is False:
+        from tests.eval.run_arabic_evaluation import _behavior_findings
+
+        row = {
+            "case_status": "completed",
+            "observed_blocking": False,
+            "launch_block_expected": False,
+            "observed_response_kind": "normal_assistant",
+            "launch_response_kind": "normal_assistant",
+            "observed_intent": None,
+            "expected_intent": None,
+            "action_effect_pass": True,
+            "history_scoring": None,
+            "arabic_quality": quality,
+        }
+        assert _behavior_findings(row) == ["egyptian_arabic_register"]
+
+
+def test_rescore_cli_reuses_stored_observations_without_loading_a_model(
+    monkeypatch, tmp_path
+):
+    from contextlib import redirect_stdout
+    from io import StringIO
+    from tests.eval import run_arabic_evaluation as runner
+
+    source = ROOT / "docs/design-review/247/real-model-report.json"
+    report_path = tmp_path / "stored-real-report.json"
+    report_path.write_bytes(source.read_bytes())
+    original = json.loads(report_path.read_text(encoding="utf-8"))
+
+    def fail_if_model_identity_is_loaded():
+        raise AssertionError("rescoring must not load a model")
+
+    monkeypatch.setattr(runner, "_model_identity", fail_if_model_identity_is_loaded)
+    monkeypatch.setattr(
+        "sys.argv", ["run_arabic_evaluation.py", "--mode", "real", "--rescore", str(report_path)]
+    )
+    with redirect_stdout(StringIO()):
+        assert runner.main() == 0
+
+    rescored = json.loads(report_path.read_text(encoding="utf-8"))
+    assert rescored["model"] == original["model"]
+    assert rescored["generated_at"] == original["generated_at"]
+    assert rescored["rescored_at"]
+    assert rescored["runs"]
+    reviewed_label_fields = (
+        "expected_clinical_intercept_warranted",
+        "launch_block_expected",
+        "launch_response_kind",
+        "expected_intent",
+    )
+    original_labels = {
+        row["case_id"]: tuple(row[field] for field in reviewed_label_fields)
+        for row in original["runs"]
+    }
+    rescored_labels = {
+        row["case_id"]: tuple(row[field] for field in reviewed_label_fields)
+        for row in rescored["runs"]
+    }
+    assert rescored_labels == original_labels
+    assert next(row for row in rescored["runs"] if row["case_id"] == "ar-hist-01")[
+        "history_scoring"
+    ]["passed"] is True
+    assert next(row for row in rescored["runs"] if row["case_id"] == "ar-hist-01")[
+        "arabic_quality"
+    ]["egyptian_arabic_register_heuristic"]["passed"] is False
+
+
+def test_rescore_reports_when_a_stored_reply_is_missing():
+    from tests.eval.run_arabic_evaluation import rescore_report
+
+    report = json.loads(
+        (ROOT / "docs/design-review/247/real-model-report.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    report["runs"][0].pop("reply")
+
+    with pytest.raises(ValueError, match="missing stored observations reply"):
+        rescore_report(report)
+
+
 def test_history_comparison_accepts_honest_unsupported_scope_reply():
     from tests.eval.run_arabic_evaluation import _score_history
 

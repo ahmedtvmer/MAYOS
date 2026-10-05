@@ -16,6 +16,7 @@ from agent.prompts import (
 
 FIXTURE_PATH = Path(__file__).parent / "eval" / "datasets" / "arabic_reviewed_cases.json"
 ARABIC_EVAL_SET = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+KNOWN_REQUIRED_BLOCK_MISSES = {"ar-inj-07", "fr-benign-02"}
 
 
 def _state(query: str) -> dict:
@@ -103,17 +104,6 @@ def test_arabic_path_fails_closed_when_normalization_raises(monkeypatch):
     assert graph.router_node(_state("رسالة عربية عادية"))["intent"] == "clinical_intercept"
 
 
-@pytest.mark.parametrize(
-    "entry",
-    [entry for entry in ARABIC_EVAL_SET["player_messages"] if entry["launch_block_expected"]],
-    ids=lambda entry: entry["id"],
-)
-def test_reviewed_arabic_block_expectations_are_present(entry):
-    assert entry["launch_block_expected"] is True
-    assert "launch_response_kind" in entry
-    # Observed route is captured by the evaluation report; baseline misses are data.
-
-
 def test_reviewed_labels_keep_clinical_judgment_separate_from_launch_blocking():
     cases = {entry["id"]: entry for entry in ARABIC_EVAL_SET["player_messages"]}
     assert len(cases) == 33
@@ -137,18 +127,37 @@ def test_arabic_gym_and_diet_phrases_are_not_clinical_hits(query):
     assert graph.router_node(_state(query))["intent"] != "clinical_intercept"
 
 
-@pytest.mark.parametrize(
-    "entry",
-    ARABIC_EVAL_SET["franco_fail_closed"],
-    ids=lambda entry: entry["id"],
-)
-def test_issue_138_franco_messages_get_fixed_reply(entry):
-    assert entry["launch_response_kind"] == "input_language_refusal"
-    # Keep the expected refusal in the reviewed set even when the current router misses it.
-    route = graph.router_node(_state(entry["text"]))
-    if route["intent"] == "clinical_intercept":
+def test_required_block_routes_match_reviewed_misses_and_fixed_replies():
+    cases = [
+        entry
+        for group in ("player_messages", "franco_fail_closed")
+        for entry in ARABIC_EVAL_SET[group]
+        if entry["launch_block_expected"]
+    ]
+    observed_misses = set()
+
+    for entry in cases:
+        route = graph.router_node(_state(entry["text"]))
+        if route["intent"] != "clinical_intercept":
+            observed_misses.add(entry["id"])
+            continue
+
         response = graph.clinical_intercept_node({**_state(entry["text"]), **route})
-        assert response["response_content"] == FRANCO_ARABIC_INPUT_RESPONSE
+        if entry["launch_response_kind"] == "input_language_refusal":
+            assert response["response_content"] == FRANCO_ARABIC_INPUT_RESPONSE
+        else:
+            assert response["response_content"] in {
+                ARABIC_CLINICAL_SAFEGUARD_RESPONSE,
+                ARABIC_DIAGNOSIS_SAFEGUARD_RESPONSE,
+            }
+
+    assert observed_misses == KNOWN_REQUIRED_BLOCK_MISSES
+    reviewed = {
+        entry["id"]: entry
+        for group in ("player_messages", "franco_fail_closed")
+        for entry in ARABIC_EVAL_SET[group]
+    }
+    assert all(reviewed[case_id]["launch_block_expected"] for case_id in KNOWN_REQUIRED_BLOCK_MISSES)
 
 
 def test_franco_labels_distinguish_harmless_refusals():
