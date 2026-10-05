@@ -912,6 +912,7 @@ class _CoachPlayerHistoryScreenState
   Widget _activeProgramActions(BuildContext context) {
     final copy = coachCopyOf(context);
     final bool busy = _copyingActiveProgram || _approvingActiveProgram;
+    final bool canApprove = _activeProgram?.program?.version != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -929,7 +930,7 @@ class _CoachPlayerHistoryScreenState
           label: copy.approveProgramAsIs,
           icon: Icons.check,
           loading: _approvingActiveProgram,
-          onPressed: busy ? null : _approveActiveProgramAsIs,
+          onPressed: busy || !canApprove ? null : _approveActiveProgramAsIs,
         ),
       ],
     );
@@ -1157,19 +1158,20 @@ class _CoachPlayerHistoryScreenState
       return;
     }
     await _copyActiveProgramDraft(
-      choice == _ExistingDraftChoice.replaceWithActive
-          ? _ProgramDraftCopy.replace
-          : _ProgramDraftCopy.create,
+      replace: choice == _ExistingDraftChoice.replaceWithActive,
     );
   }
 
-  Future<void> _copyActiveProgramDraft(_ProgramDraftCopy operation) async {
+  Future<void> _copyActiveProgramDraft({bool replace = false}) async {
     setState(() {
       _copyingActiveProgram = true;
       _programActionError = null;
     });
     try {
-      await _sendActiveProgramDraftCopy(operation);
+      await ref.read(apiClientProvider).coachCopyActiveProgramToDraft(
+            _entry.assignmentId,
+            replace: replace,
+          );
       if (mounted) _openProgramDraft();
     } on ApiException catch (error) {
       if (mounted) {
@@ -1177,15 +1179,6 @@ class _CoachPlayerHistoryScreenState
       }
     } finally {
       if (mounted) setState(() => _copyingActiveProgram = false);
-    }
-  }
-
-  Future<void> _sendActiveProgramDraftCopy(_ProgramDraftCopy operation) async {
-    final ApiClient api = ref.read(apiClientProvider);
-    if (operation == _ProgramDraftCopy.replace) {
-      await api.coachReplaceDraftWithActiveProgram(_entry.assignmentId);
-    } else {
-      await api.coachCopyActiveProgramToDraft(_entry.assignmentId);
     }
   }
 
@@ -1221,26 +1214,24 @@ class _CoachPlayerHistoryScreenState
 
   Future<void> _approveActiveProgramAsIs() async {
     final CoachActiveProgram? active = _activeProgram;
-    if (active?.program == null) return;
-    final bool confirmed = await _confirmApproveActiveProgram(
-      replacesDraft: active!.hasDraft,
-    );
+    final int? expectedVersion = active?.program?.version;
+    if (expectedVersion == null) return;
+    final bool confirmed = await _confirmApproveActiveProgram();
     if (!mounted || !confirmed) return;
-    await _publishActiveProgramAsIs(
-      active.hasDraft ? _ProgramDraftCopy.replace : _ProgramDraftCopy.create,
-    );
+    await _publishActiveProgramAsIs(expectedVersion);
   }
 
-  Future<void> _publishActiveProgramAsIs(_ProgramDraftCopy operation) async {
+  Future<void> _publishActiveProgramAsIs(int expectedActiveVersion) async {
     setState(() {
       _approvingActiveProgram = true;
       _programActionError = null;
     });
     try {
       final ApiClient api = ref.read(apiClientProvider);
-      await _sendActiveProgramDraftCopy(operation);
-      final TrainingProgram published =
-          await api.coachPublishProgramDraft(_entry.assignmentId);
+      final TrainingProgram published = await api.coachApproveActiveProgram(
+        _entry.assignmentId,
+        expectedActiveVersion: expectedActiveVersion,
+      );
       if (mounted) await _showPublishedProgram(published);
     } on ApiException catch (error) {
       if (mounted) {
@@ -1261,15 +1252,13 @@ class _CoachPlayerHistoryScreenState
     await _load();
   }
 
-  Future<bool> _confirmApproveActiveProgram({required bool replacesDraft}) async {
+  Future<bool> _confirmApproveActiveProgram() async {
     final copy = coachCopyOf(context);
     return await showDialog<bool>(
           context: context,
           builder: (BuildContext context) => AlertDialog(
             title: Text(copy.confirmApproveProgramTitle),
-            content: Text(
-              copy.approveProgramAsIsPrompt(replacesDraft: replacesDraft),
-            ),
+            content: Text(copy.approveProgramAsIsPrompt),
             actions: <Widget>[
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),
@@ -1488,9 +1477,4 @@ enum _ExistingDraftChoice {
   copyActive,
   continueDraft,
   replaceWithActive,
-}
-
-enum _ProgramDraftCopy {
-  create,
-  replace,
 }

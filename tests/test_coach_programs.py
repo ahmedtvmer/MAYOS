@@ -251,6 +251,10 @@ def test_approving_active_program_publishes_next_version_and_keeps_workouts(api,
     initial = client.get(
         f"/coach/assignments/{assignment_id}/program", headers=coach_headers
     ).json()["program"]
+    draft_path = _program_draft_path(assignment_id)
+    existing_draft = client.post(
+        draft_path, headers=coach_headers, json=_one_day_draft("row")
+    ).json()["draft"]
 
     committed = client.post(
         "/workouts/sessions",
@@ -288,17 +292,10 @@ def test_approving_active_program_publishes_next_version_and_keeps_workouts(api,
             for row in ledger.conn.execute("SELECT * FROM workout_sets ORDER BY id")
         ]
 
-    copied = client.post(
-        f"{_program_draft_path(assignment_id)}/copy-active", headers=coach_headers
-    )
-    assert copied.status_code == 200, copied.text
-    assert not [
-        event for event in recording_analytics.events
-        if event["event"] == "coach_program_published"
-    ]
-
     published = client.post(
-        f"{_program_draft_path(assignment_id)}/publish", headers=coach_headers
+        f"/coach/assignments/{assignment_id}/program/approve",
+        headers=coach_headers,
+        json={"expected_active_version": initial["version"]},
     )
 
     assert published.status_code == 200, published.text
@@ -307,20 +304,20 @@ def test_approving_active_program_publishes_next_version_and_keeps_workouts(api,
     for field in ("program_name", "split_type", "weekly_frequency", "instructions", "days"):
         assert published.json()[field] == initial[field]
     assert client.get("/programs/active", headers=player_headers).json()["version"] == 2
+    assert client.get(draft_path, headers=coach_headers).json()["draft"] == existing_draft
     refused = client.post("/programs/generate", headers=player_headers, json={})
     assert refused.status_code == 403
     assert refused.json()["detail"] == programs_service.COACH_CONTROLLED_ERROR
 
-    repeated_copy = client.post(
-        f"{_program_draft_path(assignment_id)}/copy-active", headers=coach_headers
-    )
-    assert repeated_copy.status_code == 200, repeated_copy.text
     republished = client.post(
-        f"{_program_draft_path(assignment_id)}/publish", headers=coach_headers
+        f"/coach/assignments/{assignment_id}/program/approve",
+        headers=coach_headers,
+        json={"expected_active_version": 2},
     )
     assert republished.status_code == 200, republished.text
     assert republished.json()["version"] == 3
     assert republished.json()["published_by_coach_account_id"] == coach_account_id
+    assert client.get(draft_path, headers=coach_headers).json()["draft"] == existing_draft
 
     with db.open_ledger(player["ledger_id"]) as ledger:
         assert [
@@ -337,6 +334,73 @@ def test_approving_active_program_publishes_next_version_and_keeps_workouts(api,
     ]
     assert len(events) == 2
     assert all(event["properties"]["is_coaching_action"] for event in events)
+
+
+def test_approve_active_program_rejects_stale_version_without_changes(api, recording_analytics):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, player_account_id = _assigned_player(api)
+    _seed_complete_active_program(db, player_account_id)
+    substitution = client.post(
+        "/programs/active/substitutions",
+        headers=player_headers,
+        json={
+            "day_name": "Upper A",
+            "exercise_id": "bp",
+            "replacement_exercise_id": "row",
+            "expected_active_version": 1,
+        },
+    )
+    assert substitution.status_code == 200, substitution.text
+    draft_path = _program_draft_path(assignment_id)
+    draft = client.post(draft_path, headers=coach_headers, json=_one_day_draft()).json()["draft"]
+    player = db.get_account(player_account_id)
+
+    refused = client.post(
+        f"/coach/assignments/{assignment_id}/program/approve",
+        headers=coach_headers,
+        json={"expected_active_version": 1},
+    )
+
+    assert refused.status_code == 409
+    assert refused.json() == {"error": "program_version_mismatch", "active_version": 2}
+    assert client.get(draft_path, headers=coach_headers).json()["draft"] == draft
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        assert [row[0] for row in ledger.conn.execute(
+            "SELECT version FROM training_programs ORDER BY version"
+        )] == [1, 2]
+    assert client.get("/assignments/notices", headers=player_headers).json()["notices"] == []
+    assert not [event for event in recording_analytics.events if event["event"] == "coach_program_published"]
+
+
+def test_approve_active_program_without_program_returns_not_found(api):
+    client, _, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program/approve",
+        headers=coach_headers,
+        json={"expected_active_version": 1},
+    )
+
+    assert response.status_code == 404
+
+
+def test_approve_active_program_denies_foreign_unknown_and_ended_assignments_identically(api):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    other_headers = _make_coach(client, db, "other")
+    path = f"/coach/assignments/{assignment_id}/program/approve"
+    body = {"expected_active_version": 1}
+
+    foreign = client.post(path, headers=other_headers, json=body)
+    unknown = client.post(
+        "/coach/assignments/missing/program/approve", headers=other_headers, json=body
+    )
+    assert client.post("/assignments/me/end", headers=player_headers).status_code == 200
+    ended = client.post(path, headers=coach_headers, json=body)
+
+    assert [response.status_code for response in (foreign, unknown, ended)] == [403, 403, 403]
+    assert foreign.json() == unknown.json() == ended.json()
 
 
 def test_second_publish_increments_version_and_keeps_first_stable(api, monkeypatch):

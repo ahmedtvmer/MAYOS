@@ -146,6 +146,8 @@ class FakeMayosApi {
   String? programPublishedByCoachAccountId;
   Map<String, dynamic>? programDraft;
   int programDraftCopyRequests = 0;
+  int programApproveRequests = 0;
+  int? lastProgramApproveExpectedVersion;
   int programDraftGenerationRequests = 0;
   Map<String, dynamic>? programDraftPublishError;
   Object? programDraftReplaceError;
@@ -402,6 +404,10 @@ class FakeMayosApi {
     }
     if (path.startsWith('/coach/assignments/') && path.endsWith('/check-ins')) {
       return _coachCheckIns(request);
+    }
+    if (path.startsWith('/coach/assignments/') &&
+        path.endsWith('/program/approve')) {
+      return _coachApproveProgram(request);
     }
     if (path.startsWith('/coach/assignments/') && path.endsWith('/program')) {
       return _coachPlayerHistory(request);
@@ -1919,7 +1925,7 @@ class FakeMayosApi {
           <String, dynamic>{'detail': programDraftPublishError},
         );
       }
-      _publishProgramDraft(assignmentId);
+      _publishProgramDraft(assignmentId, programDraft!);
       return FakeResponse(200, _activeProgramBody());
     }
     if (request.method == 'GET' && programDraft == null) {
@@ -1948,8 +1954,62 @@ class FakeMayosApi {
     });
   }
 
-  void _publishProgramDraft(String assignmentId) {
-    final Map<String, dynamic> draft = programDraft!;
+  FakeResponse _coachApproveProgram(FakeRequest request) {
+    programApproveRequests++;
+    final dynamic rawExpectedVersion =
+        request.body['expected_active_version'];
+    lastProgramApproveExpectedVersion =
+        (rawExpectedVersion as num?)?.toInt();
+    final Map<String, dynamic>? activeProgram =
+        coachActiveProgram['program'] as Map<String, dynamic>?;
+    if (activeProgram == null) {
+      return const FakeResponse(
+        404,
+        <String, dynamic>{'detail': 'No active program to approve.'},
+      );
+    }
+    final int? activeVersion = (activeProgram['version'] as num?)?.toInt();
+    if (activeVersion != lastProgramApproveExpectedVersion) {
+      return FakeResponse(
+        409,
+        <String, dynamic>{
+          'error': 'program_version_mismatch',
+          'active_version': activeVersion,
+        },
+      );
+    }
+    final Map<String, dynamic> draft = Map<String, dynamic>.from(activeProgram)
+      ..remove('version')
+      ..remove('provenance')
+      ..remove('active_since');
+    draft['days'] = (activeProgram['days'] as List<dynamic>)
+        .map((dynamic rawDay) {
+          final Map<String, dynamic> day =
+              Map<String, dynamic>.from(rawDay as Map);
+          day['exercises'] = (day['exercises'] as List<dynamic>)
+              .map((dynamic rawExercise) {
+                final Map<String, dynamic> exercise =
+                    Map<String, dynamic>.from(rawExercise as Map);
+                exercise['target_rir'] =
+                    10 - (exercise.remove('target_rpe') as num).toDouble();
+                return exercise;
+              }).toList(growable: false);
+          return day;
+        }).toList(growable: false);
+    _publishProgramDraft(
+      request.path.split('/')[3],
+      draft,
+      clearDraft: false,
+    );
+    return FakeResponse(200, _activeProgramBody());
+  }
+
+  void _publishProgramDraft(
+    String assignmentId,
+    Map<String, dynamic> draft, {
+    bool clearDraft = true,
+  }) {
+    final bool hasDraft = !clearDraft && coachActiveProgram['has_draft'] == true;
     _programNameOverride = draft['program_name'] as String?;
     _splitTypeOverride = draft['split_type'] as String?;
     _weeklyFrequencyOverride = (draft['weekly_frequency'] as num?)?.toInt();
@@ -1987,9 +2047,9 @@ class FakeMayosApi {
         'provenance': 'coach',
         'active_since': '2026-10-05T10:00:00Z',
       },
-      'has_draft': false,
+      'has_draft': hasDraft,
     };
-    programDraft = null;
+    if (clearDraft) programDraft = null;
   }
 
   FakeResponse _playerProgramRequests(FakeRequest request) {

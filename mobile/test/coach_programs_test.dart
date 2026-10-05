@@ -302,7 +302,11 @@ void main() {
   testWidgets('Approve as is confirms before publishing a new coach version',
       (tester) async {
     final FakeMayosApi fake = _coachFake()
-      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
+      ..coachActiveProgram = _coachActiveProgram(
+        provenance: 'automatic',
+        hasDraft: true,
+      )
+      ..programDraft = <String, dynamic>{'program_name': 'Saved draft'};
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
@@ -310,14 +314,18 @@ void main() {
 
     await tester.tap(find.byKey(const Key('coach_program_approve_as_is')));
     await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_confirm')));
+    expect(find.textContaining('pending Program draft'), findsNothing);
     expect(fake.programVersion, isNull);
     await tester.tap(find.byKey(const Key('coach_program_approve_confirm')));
     await _pumpUntilFound(tester, find.text('Published program version 8'));
 
-    expect(fake.programDraftCopyRequests, 1);
+    expect(fake.programApproveRequests, 1);
+    expect(fake.lastProgramApproveExpectedVersion, 7);
+    expect(fake.programDraftCopyRequests, 0);
     expect(fake.programVersion, 8);
     expect(fake.programPublishedByCoachAccountId, 'account-alice');
     expect(fake.coachActiveProgram['program']?['provenance'], 'coach');
+    expect(fake.programDraft?['program_name'], 'Saved draft');
   });
 
   testWidgets('coach creates and reuses a Coach exercise from the picker',

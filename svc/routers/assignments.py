@@ -63,6 +63,7 @@ from svc.schemas import (
     CoachCheckInCreateOut,
     CheckpointReviewListItemOut,
     CheckpointReviewOut,
+    CoachProgramApproveIn,
     CoachProgramDraftIn,
     CoachProgramDraftOut,
     CoachCheckInListOut,
@@ -449,15 +450,11 @@ async def copy_assigned_player_active_program_to_draft(
     db: Annotated[Any, Depends(get_db)],
     replace: bool = False,
 ):
-    action = (
-        coach_program_drafts_service.replace_program_draft_with_active_program
-        if replace
-        else coach_program_drafts_service.copy_active_program_to_draft
-    )
-
     def _run():
         try:
-            copied = action(db, coach.account_id, assignment_id)
+            copied = coach_program_drafts_service.copy_active_program_to_draft(
+                db, coach.account_id, assignment_id, replace=replace
+            )
         except coach_program_drafts_service.ProgramDraftAlreadyExists as exc:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
         except coach_program_drafts_service.ActiveProgramNotFound as exc:
@@ -470,6 +467,45 @@ async def copy_assigned_player_active_program_to_draft(
         if copied is None:
             raise _no_active_assignment()
         return copied
+
+    return await asyncio.to_thread(_run)
+
+
+@coach_router.post("/{assignment_id}/program/approve", response_model=PersistedProgramSchema)
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def approve_assigned_player_active_program(
+    request: Request,
+    assignment_id: str,
+    body: CoachProgramApproveIn,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    def _run():
+        try:
+            published = coach_program_drafts_service.approve_active_program(
+                db,
+                coach.account_id,
+                assignment_id,
+                coach_program_drafts_service.ProgramApproval(
+                    expected_active_version=body.expected_active_version,
+                    client=analytics.client_context(request),
+                ),
+            )
+        except coach_program_drafts_service.ActiveProgramNotFound as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        except coach_program_drafts_service.ActiveProgramVersionMismatch as exc:
+            return JSONResponse(
+                status_code=status.HTTP_409_CONFLICT,
+                content={"error": "program_version_mismatch", "active_version": exc.active_version},
+            )
+        except coach_program_drafts_service.ProgramDraftValidationError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"errors": exc.issues},
+            ) from exc
+        if published is None:
+            raise _no_active_assignment()
+        return published
 
     return await asyncio.to_thread(_run)
 

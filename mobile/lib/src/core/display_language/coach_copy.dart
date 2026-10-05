@@ -251,14 +251,9 @@ class CoachCopy {
       isArabic ? 'استبدالها بالبرنامج النشط' : 'Replace with active program';
   String get confirmApproveProgramTitle =>
       isArabic ? 'اعتماد البرنامج كما هو؟' : 'Approve the current program?';
-  String approveProgramAsIsPrompt({required bool replacesDraft}) =>
-      isArabic
-          ? replacesDraft
-              ? 'سيؤدي ذلك إلى استبدال المسودة الحالية ونشر البرنامج النشط كما هو بإصدار جديد. سيبدأ تطبيقه من الحصة التدريبية التالية للاعب.'
-              : 'سيُنشر البرنامج النشط كما هو بإصدار جديد. سيبدأ تطبيقه من الحصة التدريبية التالية للاعب.'
-          : replacesDraft
-              ? 'This replaces the pending Program draft, then publishes the active program unchanged as a new version. It applies from the player’s next workout.'
-              : 'This publishes the active program unchanged as a new version. It applies from the player’s next workout.';
+  String get approveProgramAsIsPrompt => isArabic
+      ? 'سيُنشر البرنامج النشط كما هو بإصدار جديد. سيبدأ تطبيقه من الحصة التدريبية التالية للاعب.'
+      : 'This publishes the active program unchanged as a new version. It applies from the player’s next workout.';
   String get confirmApproveProgram =>
       isArabic ? 'اعتماد ونشر' : 'Approve and publish';
   String activeProgramSince(String date) => isArabic

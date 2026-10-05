@@ -96,6 +96,7 @@ __all__ = [
     "CoachProfileOut",
     "CoachProfileUpdate",
     "CoachProgramRequestListOut",
+    "CoachProgramApproveIn",
     "CoachProgramDraftIn",
     "CoachProgramDraftOut",
     "CoachExerciseCreateIn",
@@ -1001,6 +1002,10 @@ class CoachProgramDraftIn(ProgramDraftInput):
         for field_name in ("version", "published_by_coach_account_id"):
             normalized.pop(field_name, None)
         return normalized
+
+
+class CoachProgramApproveIn(BaseModel):
+    expected_active_version: int = Field(ge=1)
 
 
 class CoachProgramDraftOut(BaseModel):

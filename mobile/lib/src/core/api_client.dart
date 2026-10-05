@@ -892,27 +892,13 @@ class ApiClient {
 
   /// Copies the assigned player's active Training program into a new draft.
   Future<Map<String, dynamic>> coachCopyActiveProgramToDraft(
-    String assignmentId,
-  ) =>
-      _postActiveProgramDraftCopy(assignmentId, null);
-
-  /// Replaces an existing Program draft with a fresh copy of the active program.
-  Future<Map<String, dynamic>> coachReplaceDraftWithActiveProgram(
-    String assignmentId,
-  ) =>
-      _postActiveProgramDraftCopy(
-        assignmentId,
-        <String, dynamic>{'replace': true},
-      );
-
-  Future<Map<String, dynamic>> _postActiveProgramDraftCopy(
-    String assignmentId,
-    Map<String, dynamic>? queryParameters,
-  ) async {
+    String assignmentId, {
+    bool replace = false,
+  }) async {
     final response = await _send(
       () => _dio.post<dynamic>(
         '/coach/assignments/$assignmentId/program-draft/copy-active',
-        queryParameters: queryParameters,
+        queryParameters: replace ? <String, dynamic>{'replace': true} : null,
       ),
     );
     return _parseCoachProgramDraft(response.data);
@@ -952,6 +938,21 @@ class ApiClient {
     final response = await _send(
       () => _dio.post<dynamic>(
         '/coach/assignments/$assignmentId/program-draft/publish',
+      ),
+    );
+    return _parseBody(response.data, TrainingProgram.fromJson, _invalidProgram);
+  }
+
+  Future<TrainingProgram> coachApproveActiveProgram(
+    String assignmentId, {
+    required int expectedActiveVersion,
+  }) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/assignments/$assignmentId/program/approve',
+        data: <String, dynamic>{
+          'expected_active_version': expectedActiveVersion,
+        },
       ),
     );
     return _parseBody(response.data, TrainingProgram.fromJson, _invalidProgram);
