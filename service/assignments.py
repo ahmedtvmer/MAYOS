@@ -24,6 +24,7 @@ from typing import Any, Callable
 from database.registry.assignments import EndedAssignmentSnapshot
 from service import missed_day_alerts
 from service import analytics as analytics_service
+from service._base import ledger_scope
 from service._tokens import hash_token
 from service.check_ins import next_follow_up_on
 from service.email_sender import (
@@ -73,6 +74,19 @@ def assignment_invite_ttl() -> timedelta:
 
 def _valid_token(token: Any) -> bool:
     return isinstance(token, str) and 10 <= len(token) <= 128
+
+
+def _coach_preparing_program(
+    db: Any,
+    player_account_id: str,
+    coach_account_id: str,
+    assignment_started_at: str,
+) -> bool:
+    player = db.get_account(player_account_id)
+    with ledger_scope(db, None, player["ledger_id"]) as ledger:
+        return not ledger.has_program_published_by_coach_since(
+            coach_account_id, assignment_started_at
+        )
 
 
 def _access_disclosure() -> dict[str, Any]:
@@ -314,7 +328,6 @@ def redeem_assignment_invite(
     player_account_id: str,
     consent: bool,
     *,
-    ledger: Any,
     client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
 ) -> dict[str, Any]:
     """Atomically redeems a code after explicit consent; emails the coach afterwards.
@@ -334,6 +347,13 @@ def redeem_assignment_invite(
     if not result["ok"]:
         _capture_redemption_failure(player_account_id, result["reason"], client)
         return {"ok": False, "error": _reason_error(result["reason"])}
+
+    coach_preparing_program = _coach_preparing_program(
+        db,
+        player_account_id,
+        result["coach_account_id"],
+        result["started_at"],
+    )
 
     if result.get("referring_coach_id"):
         analytics_service.set_person_once(
@@ -378,16 +398,14 @@ def redeem_assignment_invite(
             "coach": identity,
             "started_at": result["started_at"],
             "status": "active",
-            "coach_preparing_program": not ledger.has_program_published_by_coach_since(
-                result["coach_account_id"], result["started_at"]
-            ),
+            "coach_preparing_program": coach_preparing_program,
         },
         "notices_created": 1,
         "email_sent": email_sent,
     }
 
 
-def get_player_assignment(db: Any, player_account_id: str, ledger: Any) -> dict[str, Any] | None:
+def get_player_assignment(db: Any, player_account_id: str) -> dict[str, Any] | None:
     """The player's active assignment with the coach's current identity, or ``None``."""
     assignment = db.get_active_assignment_for_player(player_account_id)
     if assignment is None:
@@ -400,10 +418,13 @@ def get_player_assignment(db: Any, player_account_id: str, ledger: Any) -> dict[
         "coach": coach_identity(db, assignment["coach_account_id"], coach),
         "started_at": assignment["started_at"],
         "status": assignment["status"],
+        "coach_preparing_program": _coach_preparing_program(
+            db,
+            player_account_id,
+            assignment["coach_account_id"],
+            assignment["started_at"],
+        ),
     }
-    assignment_details["coach_preparing_program"] = not ledger.has_program_published_by_coach_since(
-        assignment["coach_account_id"], assignment["started_at"]
-    )
     return assignment_details
 
 

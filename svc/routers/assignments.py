@@ -779,9 +779,8 @@ async def preview_assignment_invite(
 async def redeem_assignment_invite(
     request: Request,
     body: AssignmentRedeemIn,
-    player: Annotated[VerifiedPlayer, Depends(get_verified_player)],
+    player: Annotated[VerifiedPlayer, Depends(get_current_player)],
     db: Annotated[Any, Depends(get_db)],
-    ledger: Annotated[Any, Depends(get_ledger)],
 ):
     """Explicitly consents to and atomically redeems an assignment invite."""
     client = analytics_service.client_context(request)
@@ -792,7 +791,6 @@ async def redeem_assignment_invite(
             body.token,
             player.account_id,
             body.consent,
-            ledger=ledger,
             client=client,
         )
         if not redemption["ok"]:
@@ -809,14 +807,13 @@ async def redeem_assignment_invite(
 
 @player_router.get("/me", response_model=AssignmentOut | None)
 async def read_my_assignment(
-    player: Annotated[VerifiedPlayer, Depends(get_verified_player)],
+    player: Annotated[VerifiedPlayer, Depends(get_current_player)],
     db: Annotated[Any, Depends(get_db)],
-    ledger: Annotated[Any, Depends(get_ledger)],
 ):
     """The caller's active assignment, or ``null`` when none is active."""
 
     assignment = await asyncio.to_thread(
-        assignment_service.get_player_assignment, db, player.account_id, ledger
+        assignment_service.get_player_assignment, db, player.account_id
     )
     return _assignment_out(assignment) if assignment is not None else None
 
