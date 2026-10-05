@@ -17,6 +17,8 @@ data
 !tests/data/database_manager_public_surface.json
 .env
 db
+models/
+*.gguf
 tests/eval/reports/
 logs/*.log
 .pytest_cache/
