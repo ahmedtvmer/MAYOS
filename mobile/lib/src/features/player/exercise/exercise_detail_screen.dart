@@ -255,7 +255,7 @@ class _Hero extends StatelessWidget {
           Text(
             gymVisualCreditShort,
             textAlign: TextAlign.center,
-            style: MayosTypography.caption.copyWith(color: c.textMuted),
+            style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
           ),
           const SizedBox(height: MayosSpacing.md),
           _typographicHeader(context, name, detail),
@@ -295,7 +295,7 @@ class _Hero extends StatelessWidget {
       children: <Widget>[
         Text(
           name,
-          style: MayosTypography.display.copyWith(
+          style: MayosTypography.of(context).display.copyWith(
             fontSize: 34,
             color: c.textPrimary,
           ),
@@ -456,7 +456,7 @@ class _TagChip extends StatelessWidget {
           ],
           Text(
             label,
-            style: MayosTypography.caption.copyWith(color: foreground),
+            style: MayosTypography.of(context).caption.copyWith(color: foreground),
           ),
         ],
       ),
@@ -519,14 +519,14 @@ class _PrescriptionStat extends StatelessWidget {
               value,
               maxLines: 1,
               style:
-                  MayosTypography.numericSmall.copyWith(color: c.textPrimary),
+                  MayosTypography.of(context).numericSmall.copyWith(color: c.textPrimary),
             ),
           ),
         ),
         const SizedBox(height: 2),
         Text(
           label,
-          style: MayosTypography.caption.copyWith(color: c.textMuted),
+          style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
         ),
       ],
     );
@@ -597,13 +597,13 @@ class _DetailRow extends StatelessWidget {
             width: 108,
             child: Text(
               label,
-              style: MayosTypography.caption.copyWith(color: c.textMuted),
+              style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: MayosTypography.body.copyWith(color: c.textPrimary),
+              style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
             ),
           ),
         ],
@@ -645,7 +645,7 @@ class _TechniqueTab extends StatelessWidget {
                   width: 28,
                   child: Text(
                     '${i + 1}',
-                    style: MayosTypography.numericSmall.copyWith(
+                    style: MayosTypography.of(context).numericSmall.copyWith(
                       color: c.accent,
                       fontSize: 15,
                     ),
@@ -654,7 +654,7 @@ class _TechniqueTab extends StatelessWidget {
                 Expanded(
                   child: Text(
                     steps[i],
-                    style: MayosTypography.body.copyWith(color: c.textPrimary),
+                    style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
                   ),
                 ),
               ],
@@ -694,7 +694,7 @@ class _HistoryTab extends StatelessWidget {
           Text(
             history!.caption!.replaceAll('**', ''),
             style:
-                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           ),
           const SizedBox(height: MayosSpacing.md),
         ],
@@ -708,7 +708,7 @@ class _HistoryTab extends StatelessWidget {
                   child: Text(
                     point.date,
                     textDirection: TextDirection.ltr,
-                    style: MayosTypography.caption.copyWith(color: c.textMuted),
+                    style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
                   ),
                 ),
                 Expanded(
@@ -724,7 +724,7 @@ class _HistoryTab extends StatelessWidget {
                       '× ${point.reps} @ RIR '
                       '${rirLabel(point.rpe)}',
                       style:
-                          MayosTypography.body.copyWith(color: c.textPrimary),
+                          MayosTypography.of(context).body.copyWith(color: c.textPrimary),
                     ),
                   ),
                 ),
@@ -733,7 +733,7 @@ class _HistoryTab extends StatelessWidget {
                     textDirection: TextDirection.ltr,
                     child: Text(
                       'e1RM ${_trim(point.e1rm)}',
-                      style: MayosTypography.caption
+                      style: MayosTypography.of(context).caption
                           .copyWith(color: c.textSecondary),
                     ),
                   ),
@@ -757,7 +757,7 @@ class _EmptyTab extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: MayosSpacing.md),
       child: Text(
         message,
-        style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+        style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
       ),
     );
   }
@@ -780,7 +780,7 @@ class _InlineNotice extends StatelessWidget {
           child: Text(
             message,
             style:
-                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           ),
         ),
       ],
@@ -806,7 +806,7 @@ class _ErrorView extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: MayosTypography.body.copyWith(color: c.textPrimary),
+              style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
             ),
             const SizedBox(height: MayosSpacing.md),
             FilledButton(

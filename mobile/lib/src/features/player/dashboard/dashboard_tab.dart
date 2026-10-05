@@ -268,7 +268,7 @@ class _HomeBody extends StatelessWidget {
         children: <Widget>[
           Text(
             displayCopyOf(context).greetingFor(now),
-            style: MayosTypography.display.copyWith(
+            style: MayosTypography.of(context).display.copyWith(
               fontSize: 34,
               color: c.textPrimary,
             ),
@@ -361,13 +361,13 @@ class _ProgramSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(copy.noActiveProgram,
-              style: MayosTypography.sectionHeading
+              style: MayosTypography.of(context).sectionHeading
                   .copyWith(color: c.textPrimary)),
           const SizedBox(height: MayosSpacing.xs),
           Text(
             copy.generateProgramForNextSession,
             style:
-                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           ),
           const SizedBox(height: MayosSpacing.md),
           MayosButton(
@@ -385,12 +385,12 @@ class _ProgramSection extends StatelessWidget {
       children: <Widget>[
         Text(
           active.programName,
-          style: MayosTypography.pageHeading.copyWith(color: c.textPrimary),
+          style: MayosTypography.of(context).pageHeading.copyWith(color: c.textPrimary),
         ),
         const SizedBox(height: MayosSpacing.xs),
         Text(
           '${active.splitType} · ${displayCopyOf(context).programFrequency(active.weeklyFrequency)}',
-          style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
         ),
       ],
     );
@@ -426,12 +426,12 @@ class _NextSessionSection extends StatelessWidget {
           // duplicate section heading.
           Text(
             label,
-            style: MayosTypography.caption.copyWith(color: c.textMuted),
+            style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
           ),
           const SizedBox(height: MayosSpacing.xxs),
           Text(
             current.dayName,
-            style: MayosTypography.exerciseTitle.copyWith(
+            style: MayosTypography.of(context).exerciseTitle.copyWith(
               fontSize: 18,
               color: c.textPrimary,
             ),
@@ -452,7 +452,7 @@ class _NextSessionSection extends StatelessWidget {
                 Expanded(
                   child: Text(
                     current.cardio!,
-                    style: MayosTypography.bodySecondary
+                    style: MayosTypography.of(context).bodySecondary
                         .copyWith(color: c.textSecondary),
                   ),
                 ),
@@ -495,20 +495,20 @@ class _NextSessionExercise extends StatelessWidget {
             Text(
               exercise.exerciseName,
               style:
-                  MayosTypography.exerciseTitle.copyWith(color: c.textPrimary),
+                  MayosTypography.of(context).exerciseTitle.copyWith(color: c.textPrimary),
             ),
             const SizedBox(height: 2),
             Directionality(
               textDirection: TextDirection.ltr,
               child: Text(
                 exercise.prescription,
-                style: MayosTypography.bodySecondary
+                style: MayosTypography.of(context).bodySecondary
                     .copyWith(color: c.textSecondary),
               ),
             ),
             Text(
               displayCopyOf(context).restTime(exercise.restSecondsOrDefault),
-              style: MayosTypography.caption.copyWith(color: c.textMuted),
+              style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
             ),
           ],
         ),
@@ -541,12 +541,12 @@ class _VolumeSection extends StatelessWidget {
           Text(
             displayCopyOf(context).noSetsLastWeek,
             style:
-                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           )
         else ...<Widget>[
           Text(
             displayCopyOf(context).countedSetsMetric(total),
-            style: MayosTypography.numericSmall.copyWith(color: c.textPrimary),
+            style: MayosTypography.of(context).numericSmall.copyWith(color: c.textPrimary),
           ),
           const SizedBox(height: MayosSpacing.md),
           for (final MapEntry<String, double> entry in muscles)
@@ -585,7 +585,7 @@ class _VolumeRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   muscle,
-                  style: MayosTypography.bodySecondary
+                  style: MayosTypography.of(context).bodySecondary
                       .copyWith(color: c.textPrimary),
                 ),
               ),
@@ -593,7 +593,7 @@ class _VolumeRow extends StatelessWidget {
                 textDirection: TextDirection.ltr,
                 child: Text(
                   _formatValue(value),
-                  style: MayosTypography.numericSmall
+                  style: MayosTypography.of(context).numericSmall
                       .copyWith(color: c.textSecondary),
                 ),
               ),
@@ -635,7 +635,7 @@ class _RecordsSection extends StatelessWidget {
           Text(
             displayCopyOf(context).noPersonalRecords,
             style:
-                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           )
         else
           for (final PersonalRecord record in records)
@@ -649,13 +649,13 @@ class _RecordsSection extends StatelessWidget {
                       children: <Widget>[
                         Text(
                           record.name,
-                          style: MayosTypography.body
+                          style: MayosTypography.of(context).body
                               .copyWith(color: c.textPrimary),
                         ),
                         Text(
                           displayCopyOf(context)
                               .personalRecordType(record.recordType),
-                          style: MayosTypography.caption
+                          style: MayosTypography.of(context).caption
                               .copyWith(color: c.textMuted),
                         ),
                       ],
@@ -669,7 +669,7 @@ class _RecordsSection extends StatelessWidget {
                           ? displayCopyOf(context)
                               .personalRecordReps(record.reps)
                           : '${_formatValue(record.value)} kg × ${record.reps}',
-                      style: MayosTypography.numericSmall
+                      style: MayosTypography.of(context).numericSmall
                           .copyWith(color: c.textPrimary),
                     ),
                   ),
@@ -706,7 +706,7 @@ class _DraftsBanner extends StatelessWidget {
               Expanded(
                 child: Text(
                   displayCopyOf(context).pendingWorkoutDrafts(count),
-                  style: MayosTypography.bodySecondary
+                  style: MayosTypography.of(context).bodySecondary
                       .copyWith(color: c.textPrimary),
                 ),
               ),
@@ -736,7 +736,7 @@ class _InlineNotice extends StatelessWidget {
           child: Text(
             message,
             style:
-                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           ),
         ),
       ],
@@ -816,7 +816,7 @@ class _ErrorView extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: MayosTypography.body.copyWith(color: c.textPrimary),
+              style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
             ),
             const SizedBox(height: MayosSpacing.md),
             MayosButton(

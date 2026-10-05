@@ -236,13 +236,13 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
         children: <Widget>[
           Text(
             copy.profileTitle,
-            style: MayosTypography.pageHeading.copyWith(color: c.textPrimary),
+            style: MayosTypography.of(context).pageHeading.copyWith(color: c.textPrimary),
           ),
           const SizedBox(height: MayosSpacing.xxs),
           Text(
             copy.profileLead,
             style:
-                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           ),
           const SizedBox(height: MayosSpacing.md),
           TextFormField(
@@ -290,7 +290,7 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
             const SizedBox(height: MayosSpacing.sm),
             Text(
               displayCopyOf(context).failureMessage(_saveError!),
-              style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+              style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
             ),
           ],
           const SizedBox(height: MayosSpacing.lg),
@@ -319,13 +319,13 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(coachCopyOf(context).invitePlayer,
-              style: MayosTypography.sectionHeading
+              style: MayosTypography.of(context).sectionHeading
                   .copyWith(color: c.textPrimary)),
           const SizedBox(height: MayosSpacing.xs),
           Text(
             coachCopyOf(context).inviteExplanation,
             style:
-                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           ),
           const SizedBox(height: MayosSpacing.sm),
           MayosButton(
@@ -339,15 +339,15 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
             SelectableText(
               invite.token,
               textDirection: TextDirection.ltr,
-              style: MayosTypography.numeric.copyWith(color: c.textPrimary),
+              style: MayosTypography.of(context).numeric.copyWith(color: c.textPrimary),
             ),
             const SizedBox(height: MayosSpacing.xxs),
             Text(coachCopyOf(context).inviteExpires(invite.expiresAt),
-                style: MayosTypography.caption.copyWith(color: c.textMuted)),
+                style: MayosTypography.of(context).caption.copyWith(color: c.textMuted)),
             Text(
                 coachCopyOf(context)
                     .rosterSlotsFree(invite.remaining, invite.capacity),
-                style: MayosTypography.caption.copyWith(color: c.textMuted)),
+                style: MayosTypography.of(context).caption.copyWith(color: c.textMuted)),
           ],
         ],
       ),
@@ -369,7 +369,7 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
             children: <Widget>[
               Expanded(
                 child: Text(coachCopyOf(context).notices,
-                    style: MayosTypography.sectionHeading
+                    style: MayosTypography.of(context).sectionHeading
                         .copyWith(color: c.textPrimary)),
               ),
               if (unread > 0)
@@ -414,7 +414,7 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(coachCopyOf(context).resolvedAlerts,
-              style: MayosTypography.sectionHeading
+              style: MayosTypography.of(context).sectionHeading
                   .copyWith(color: c.textPrimary)),
           for (final CoachAlert alert in _resolvedAlerts)
             _resolvedAlertTile(context, alert, languageCode, c),
@@ -444,7 +444,7 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
           ? null
           : Text(coachCopyOf(context).resolvedBy(alert.resolvedBy!),
               style:
-                  MayosTypography.caption.copyWith(color: colors.textMuted)),
+                  MayosTypography.of(context).caption.copyWith(color: colors.textMuted)),
     );
   }
 }

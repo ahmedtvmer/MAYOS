@@ -226,7 +226,7 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
                 padding: const EdgeInsets.only(top: MayosSpacing.sm),
                 child: Text(
                   _failure == null ? _error! : copy.failureMessage(_failure!),
-                  style: MayosTypography.bodySecondary.copyWith(
+                  style: MayosTypography.of(context).bodySecondary.copyWith(
                     color: c.danger,
                   ),
                 ),
@@ -237,7 +237,7 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
                 child: Text(
                   widget.emptyFilteredMessage ??
                       copy.everyExerciseMatchInWorkout,
-                  style: MayosTypography.bodySecondary.copyWith(
+                  style: MayosTypography.of(context).bodySecondary.copyWith(
                     color: c.textSecondary,
                   ),
                 ),
@@ -336,7 +336,7 @@ class _ExercisePickerMuscleFilterChip extends StatelessWidget {
               children: <Widget>[
                 Text(
                   displayCopyOf(context).muscleFilterLabel(muscle),
-                  style: MayosTypography.caption.copyWith(
+                  style: MayosTypography.of(context).caption.copyWith(
                     color: active ? c.accent : c.textSecondary,
                   ),
                 ),

@@ -102,30 +102,14 @@ class _LoggerTopBarState extends ConsumerState<LoggerTopBar> {
       showBack: true,
       // Sans, one line: the serif display role belongs to the day heading
       // alone (#157 typography).
-      titleWidget: time == null || !copy.isArabic
-          ? Text(
-              time == null ? copy.logWorkout : copy.logWorkoutTime(time),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style:
-                  MayosTypography.sectionHeading.copyWith(color: c.textPrimary),
-            )
-          : Text.rich(
-              TextSpan(children: <InlineSpan>[
-                TextSpan(text: copy.logWorkout),
-                WidgetSpan(
-                  alignment: PlaceholderAlignment.middle,
-                  child: Directionality(
-                    textDirection: TextDirection.ltr,
-                    child: Text(' · $time'),
-                  ),
-                ),
-              ]),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style:
-                  MayosTypography.sectionHeading.copyWith(color: c.textPrimary),
-            ),
+      titleWidget: Text(
+        time == null ? copy.logWorkout : copy.logWorkoutTime(time),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: MayosTypography.of(context)
+            .sectionHeading
+            .copyWith(color: c.textPrimary),
+      ),
       actions: <Widget>[
         if (workout != null)
           PopupMenuButton<String>(
@@ -141,7 +125,7 @@ class _LoggerTopBarState extends ConsumerState<LoggerTopBar> {
                 value: 'discard',
                 child: Text(
                   copy.discardWorkout,
-                  style: MayosTypography.body,
+                  style: MayosTypography.of(context).body,
                 ),
               ),
             ],

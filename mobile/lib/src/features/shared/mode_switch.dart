@@ -56,7 +56,7 @@ class ModeAvatarButton extends ConsumerWidget {
                   backgroundColor: c.accentSubtle,
                   child: Text(
                     initials,
-                    style: MayosTypography.avatarInitials
+                    style: MayosTypography.of(context).avatarInitials
                         .copyWith(color: c.accent),
                   ),
                 ),
@@ -74,7 +74,7 @@ class ModeAvatarButton extends ConsumerWidget {
                     ),
                     child: Text(
                       coachMode ? 'C' : 'P',
-                      style: MayosTypography.modeBadge.copyWith(
+                      style: MayosTypography.of(context).modeBadge.copyWith(
                           color: coachMode ? c.onAccent : c.onSuccess),
                     ),
                   ),
@@ -149,8 +149,8 @@ Future<void> showModeSheet(BuildContext context, WidgetRef ref) {
         return ListTile(
           minTileHeight: 64,
           leading: Icon(icon, color: selected ? c.accent : c.textSecondary),
-          title: Text(title, style: MayosTypography.body),
-          subtitle: Text(subtitle, style: MayosTypography.caption),
+          title: Text(title, style: MayosTypography.of(context).body),
+          subtitle: Text(subtitle, style: MayosTypography.of(context).caption),
           trailing: selected ? Icon(Icons.check_circle, color: c.accent) : null,
           onTap: () {
             Navigator.of(sheetContext).pop();
@@ -172,9 +172,9 @@ Future<void> showModeSheet(BuildContext context, WidgetRef ref) {
             child: Row(
               children: <Widget>[
                 Expanded(
-                  child: Text(username, style: MayosTypography.sectionHeading),
+                  child: Text(username, style: MayosTypography.of(context).sectionHeading),
                 ),
-                Text(copy.switchMode, style: MayosTypography.caption),
+                Text(copy.switchMode, style: MayosTypography.of(context).caption),
               ],
             ),
           ),

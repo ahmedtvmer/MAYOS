@@ -157,8 +157,8 @@ class _MayosAppState extends ConsumerState<MayosApp>
     return MaterialApp.router(
       title: 'MAYOS',
       debugShowCheckedModeBanner: false,
-      theme: MayosTheme.light,
-      darkTheme: MayosTheme.dark,
+      theme: MayosTheme.lightForLanguage(selectedLanguage),
+      darkTheme: MayosTheme.darkForLanguage(selectedLanguage),
       themeMode: themeMode,
       locale: Locale(selectedLanguage),
       supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
@@ -169,7 +169,12 @@ class _MayosAppState extends ConsumerState<MayosApp>
         return MayosAppModeScope(
           mode: appMode,
           child: Theme(
-            data: _responsiveOverlayTheme(context, appMode, themeMode),
+            data: _responsiveOverlayTheme(
+              context,
+              appMode,
+              themeMode,
+              selectedLanguage,
+            ),
             child: ScaffoldMessenger(
               // Own the app's screen snackbars under the responsive theme.
               // The same messenger also receives permission prompts via its
@@ -218,6 +223,7 @@ class _MayosAppState extends ConsumerState<MayosApp>
     BuildContext context,
     AppMode mode,
     ThemeMode themeMode,
+    String language,
   ) {
     final bool desktop = isDesktopLayout(context);
     final double overlayMaxWidth;
@@ -229,12 +235,12 @@ class _MayosAppState extends ConsumerState<MayosApp>
       overlayMaxWidth = MayosLayout.coachOverlayMaxWidth;
     }
     final ThemeData theme = switch (themeMode) {
-      ThemeMode.light => MayosTheme.light,
-      ThemeMode.dark => MayosTheme.dark,
+      ThemeMode.light => MayosTheme.lightForLanguage(language),
+      ThemeMode.dark => MayosTheme.darkForLanguage(language),
       ThemeMode.system =>
         MediaQuery.platformBrightnessOf(context) == Brightness.dark
-            ? MayosTheme.dark
-            : MayosTheme.light,
+            ? MayosTheme.darkForLanguage(language)
+            : MayosTheme.lightForLanguage(language),
     };
     return theme.copyWith(
       bottomSheetTheme: theme.bottomSheetTheme.copyWith(

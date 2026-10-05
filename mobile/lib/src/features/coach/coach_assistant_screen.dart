@@ -174,7 +174,7 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
         child: Text(
           coachCopyOf(context).assistantNoHistory(widget.entry.playerUsername),
           textAlign: TextAlign.center,
-          style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
         ),
       ),
     );
@@ -199,7 +199,7 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
                 ),
                 const SizedBox(width: MayosSpacing.sm),
                 Text(coachCopyOf(context).assistantThinking,
-                    style: MayosTypography.bodySecondary
+                    style: MayosTypography.of(context).bodySecondary
                         .copyWith(color: c.textSecondary)),
               ],
             ),
@@ -211,13 +211,13 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
           child: turn.role == 'assistant'
               ? MayosMarkdown(
                   source: turn.content,
-                  bodyStyle: MayosTypography.bodySecondary,
+                  bodyStyle: MayosTypography.of(context).bodySecondary,
                 )
               : FirstStrongDirection(
                   text: turn.content,
                   child: Text(
                     turn.content,
-                    style: MayosTypography.bodySecondary.copyWith(
+                    style: MayosTypography.of(context).bodySecondary.copyWith(
                       color: c.onAccent,
                     ),
                   ),
@@ -268,7 +268,7 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
         text: message,
         child: Text(
           message,
-          style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
         ),
       ),
     );
@@ -282,7 +282,7 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
       child: Text(
         coachCopyOf(context).assistantNote(widget.entry.playerUsername),
         textAlign: TextAlign.center,
-        style: MayosTypography.caption.copyWith(color: c.textMuted),
+        style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
       ),
     );
   }

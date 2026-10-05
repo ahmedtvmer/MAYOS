@@ -621,8 +621,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ? _notice!
                   : displayCopyOf(context).failureMessage(_noticeFailure!),
               style: _noticeIsError
-                  ? MayosTypography.bodySecondary.copyWith(color: c.danger)
-                  : MayosTypography.body,
+                  ? MayosTypography.of(context).bodySecondary.copyWith(color: c.danger)
+                  : MayosTypography.of(context).body,
             ),
           ),
         ],
@@ -682,8 +682,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ? _scheduleNotice!
                   : displayCopyOf(context).failureMessage(_scheduleFailure!),
               style: _scheduleNoticeIsError
-                  ? MayosTypography.bodySecondary.copyWith(color: c.danger)
-                  : MayosTypography.body,
+                  ? MayosTypography.of(context).bodySecondary.copyWith(color: c.danger)
+                  : MayosTypography.of(context).body,
             ),
           ),
         ],
@@ -731,8 +731,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ? _pauseNotice!
                   : displayCopyOf(context).failureMessage(_pauseFailure!),
               style: _pauseNoticeIsError
-                  ? MayosTypography.bodySecondary.copyWith(color: c.danger)
-                  : MayosTypography.body,
+                  ? MayosTypography.of(context).bodySecondary.copyWith(color: c.danger)
+                  : MayosTypography.of(context).body,
             ),
           ),
         ],
@@ -746,13 +746,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         const SizedBox(height: MayosSpacing.sm),
         if (_pauses.isEmpty)
           Text(copy.noScheduledPauses,
-              style: MayosTypography.bodySecondary
+              style: MayosTypography.of(context).bodySecondary
                   .copyWith(color: c.textSecondary))
         else
           for (final ScheduledPause pause in _pauses)
             Text(
               copy.pauseRange(pause.startsOn, pause.endsOn),
-              style: MayosTypography.body.copyWith(color: c.textPrimary),
+              style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
             ),
         const SizedBox(height: MayosSpacing.xxl),
       ],

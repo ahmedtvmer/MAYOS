@@ -225,7 +225,7 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
         children: <Widget>[
           Text(
             displayCopyOf(context).progress,
-            style: MayosTypography.display.copyWith(
+            style: MayosTypography.of(context).display.copyWith(
               fontSize: 34,
               color: c.textPrimary,
             ),
@@ -245,7 +245,7 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
           else if (_checkpointReviews.isEmpty)
             Text(
               displayCopyOf(context).noCheckpointsYet,
-              style: MayosTypography.bodySecondary
+              style: MayosTypography.of(context).bodySecondary
                   .copyWith(color: c.textSecondary),
             )
           else
@@ -388,7 +388,7 @@ class _StrengthSection extends StatelessWidget {
           Text(
             displayCopyOf(context).noSetsForExercise(name),
             style:
-                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           )
         else ...<Widget>[
           _StrengthChart(
@@ -401,7 +401,7 @@ class _StrengthSection extends StatelessWidget {
             const SizedBox(height: MayosSpacing.sm),
             Text(
               displayCopyOf(context).oneSessionTrendNeedsMore,
-              style: MayosTypography.bodySecondary
+              style: MayosTypography.of(context).bodySecondary
                   .copyWith(color: c.textSecondary),
             ),
           ],
@@ -456,7 +456,7 @@ class _ExerciseSelector extends StatelessWidget {
           borderRadius: BorderRadius.circular(MayosRadii.medium),
           dropdownColor: c.surfaceElevated,
           icon: Icon(Icons.expand_more, color: c.textSecondary),
-          style: MayosTypography.body.copyWith(color: c.textPrimary),
+          style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
           onChanged: (String? value) {
             if (value != null) onSelected(value);
           },
@@ -537,7 +537,7 @@ class _PointCallout extends StatelessWidget {
             textAlign: displayCopyOf(context).isArabic
                 ? TextAlign.start
                 : TextAlign.end,
-            style: MayosTypography.caption.copyWith(color: c.textSecondary),
+            style: MayosTypography.of(context).caption.copyWith(color: c.textSecondary),
           ),
           const SizedBox(height: MayosSpacing.xxs),
           FirstStrongDirection(
@@ -555,7 +555,7 @@ class _PointCallout extends StatelessWidget {
                 includeRepsUnit: true,
               ),
               style:
-                  MayosTypography.numericSmall.copyWith(color: c.textPrimary),
+                  MayosTypography.of(context).numericSmall.copyWith(color: c.textPrimary),
             ),
           ),
           if (zeroLoadLabelKind(point.weightKg, equipment) == null) ...<Widget>[
@@ -564,7 +564,7 @@ class _PointCallout extends StatelessWidget {
               textDirection: TextDirection.ltr,
               child: Text(
                 '${displayCopyOf(context).estimatedOneRepMaxShort} ${_formatValue(point.e1rm)} kg',
-                style: MayosTypography.bodySecondary
+                style: MayosTypography.of(context).bodySecondary
                     .copyWith(color: c.textSecondary),
               ),
             ),
@@ -594,7 +594,7 @@ class _SessionRow extends StatelessWidget {
               shortDate(point.date, isArabic: displayCopyOf(context).isArabic),
               textDirection: TextDirection.ltr,
               textAlign: TextAlign.end,
-              style: MayosTypography.caption.copyWith(color: c.textMuted),
+              style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
             ),
           ),
           Expanded(
@@ -612,7 +612,7 @@ class _SessionRow extends StatelessWidget {
                   equipment: equipment,
                   includeRepsUnit: false,
                 ),
-                style: MayosTypography.body.copyWith(color: c.textPrimary),
+                style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
               ),
             ),
           ),
@@ -622,7 +622,7 @@ class _SessionRow extends StatelessWidget {
               textDirection: TextDirection.ltr,
               child: Text(
                 '${displayCopyOf(context).estimatedOneRepMaxShort} ${_formatValue(point.e1rm)}',
-                style: MayosTypography.caption.copyWith(color: c.textSecondary),
+                style: MayosTypography.of(context).caption.copyWith(color: c.textSecondary),
               ),
             ),
           ],
@@ -691,19 +691,19 @@ class _VolumeSection extends StatelessWidget {
           Text(
             displayCopyOf(context).countedSetsLogged(days),
             style:
-                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           )
         else ...<Widget>[
           Text(
             displayCopyOf(context)
                 .countedSetsMetric(total, roundNearInteger: true),
             textDirection: TextDirection.ltr,
-            style: MayosTypography.numericSmall.copyWith(color: c.textPrimary),
+            style: MayosTypography.of(context).numericSmall.copyWith(color: c.textPrimary),
           ),
           const SizedBox(height: MayosSpacing.xxs),
           Text(
             displayCopyOf(context).countedSetsExplanation,
-            style: MayosTypography.caption.copyWith(color: c.textMuted),
+            style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
           ),
           const SizedBox(height: MayosSpacing.md),
           for (final MapEntry<String, double> entry in muscles)
@@ -742,7 +742,7 @@ class _MuscleVolumeBar extends StatelessWidget {
               Expanded(
                 child: Text(
                   muscle,
-                  style: MayosTypography.bodySecondary
+                  style: MayosTypography.of(context).bodySecondary
                       .copyWith(color: c.textPrimary),
                 ),
               ),
@@ -751,7 +751,7 @@ class _MuscleVolumeBar extends StatelessWidget {
                 textDirection: TextDirection.ltr,
                 child: Text(
                   _formatValue(value),
-                  style: MayosTypography.numericSmall
+                  style: MayosTypography.of(context).numericSmall
                       .copyWith(color: c.textSecondary),
                 ),
               ),
@@ -790,12 +790,12 @@ class _NoHistoryState extends StatelessWidget {
       children: <Widget>[
         Text(
           displayCopyOf(context).noTrainingHistory,
-          style: MayosTypography.sectionHeading.copyWith(color: c.textPrimary),
+          style: MayosTypography.of(context).sectionHeading.copyWith(color: c.textPrimary),
         ),
         const SizedBox(height: MayosSpacing.xs),
         Text(
           displayCopyOf(context).logToSeeHistory,
-          style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
         ),
         const SizedBox(height: MayosSpacing.md),
         MayosButton(
@@ -824,7 +824,7 @@ class _InlineError extends StatelessWidget {
       children: <Widget>[
         Text(
           message,
-          style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
         ),
         const SizedBox(height: MayosSpacing.sm),
         MayosButton(
@@ -855,7 +855,7 @@ class _InlineNotice extends StatelessWidget {
           child: Text(
             message,
             style:
-                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           ),
         ),
       ],
@@ -881,7 +881,7 @@ class _ErrorView extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: MayosTypography.body.copyWith(color: c.textPrimary),
+              style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
             ),
             const SizedBox(height: MayosSpacing.md),
             MayosButton(

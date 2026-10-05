@@ -54,7 +54,7 @@ class MayosStat extends StatelessWidget {
                 children: <Widget>[
                   Text(
                     value,
-                    style: MayosTypography.numeric
+                    style: MayosTypography.of(context).numeric
                         .copyWith(color: valueColor ?? c.textPrimary),
                   ),
                   if (unit != null) ...<Widget>[
@@ -63,7 +63,7 @@ class MayosStat extends StatelessWidget {
                       padding: const EdgeInsets.only(bottom: 3),
                       child: Text(
                         unit!,
-                        style: MayosTypography.label
+                        style: MayosTypography.of(context).label
                             .copyWith(color: c.textSecondary),
                       ),
                     ),
@@ -75,7 +75,7 @@ class MayosStat extends StatelessWidget {
           const SizedBox(height: MayosSpacing.xxs),
           Text(
             label,
-            style: MayosTypography.caption.copyWith(color: c.textMuted),
+            style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
           ),
         ],
       ),

@@ -337,6 +337,7 @@ days” and “rest for two seconds”).
 | {exercise} · set {setNumber} · {field} | {exercise} · مجموعة {setNumber} · {field} |
 | Unrated | بلا تقييم |
 | Hide | إخفاء |
+| Backspace | حذف آخر رقم |
 | Next | التالي |
 | Off | إيقاف |
 | Rest · {exercise} | راحة · {exercise} |

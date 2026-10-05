@@ -134,6 +134,7 @@ class _ProgressLineChartState extends State<ProgressLineChart> {
                     textScaler: scaler,
                     textDirection: direction,
                     isArabic: widget.copy.isArabic,
+                    labelStyle: MayosTypography.of(context).caption,
                   ),
                 );
               },
@@ -158,6 +159,7 @@ class _ProgressLinePainter extends CustomPainter {
     required this.textScaler,
     required this.textDirection,
     required this.isArabic,
+    required this.labelStyle,
   });
 
   final List<ProgressChartPoint> points;
@@ -171,6 +173,7 @@ class _ProgressLinePainter extends CustomPainter {
   final TextScaler textScaler;
   final TextDirection textDirection;
   final bool isArabic;
+  final TextStyle labelStyle;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -305,7 +308,7 @@ class _ProgressLinePainter extends CustomPainter {
       TextPainter(
         text: TextSpan(
           text: text,
-          style: MayosTypography.caption.copyWith(color: labelColor),
+          style: labelStyle.copyWith(color: labelColor),
         ),
         textDirection: textDirection ?? this.textDirection,
         textScaler: textScaler,

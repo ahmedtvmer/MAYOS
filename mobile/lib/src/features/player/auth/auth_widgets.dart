@@ -171,7 +171,9 @@ class AuthScaffold extends ConsumerWidget {
       return scaffold;
     }
     return Theme(
-      data: MayosTheme.wallpaper,
+      data: MayosTheme.wallpaperForLanguage(
+        Localizations.localeOf(context).languageCode,
+      ),
       child: MayosWallpaper(child: scaffold),
     );
   }
@@ -193,7 +195,7 @@ class AuthHeading extends StatelessWidget {
       children: <Widget>[
         Text(
           title,
-          style: MayosTypography.pageHeading.copyWith(
+          style: MayosTypography.of(context).pageHeading.copyWith(
             color: c.textPrimary,
             fontSize: width < 400 ? 28 : 32,
             height: 1.12,
@@ -203,7 +205,7 @@ class AuthHeading extends StatelessWidget {
           const SizedBox(height: MayosSpacing.sm),
           Text(
             lead!,
-            style: MayosTypography.bodySecondary.copyWith(
+            style: MayosTypography.of(context).bodySecondary.copyWith(
               color: c.textSecondary,
               height: 1.5,
             ),
@@ -245,7 +247,7 @@ class AuthInlineNotice extends StatelessWidget {
           Expanded(
             child: Text(
               message,
-              style: MayosTypography.bodySecondary.copyWith(color: color),
+              style: MayosTypography.of(context).bodySecondary.copyWith(color: color),
             ),
           ),
         ],
@@ -360,7 +362,7 @@ class AuthConsentRow extends ConsumerWidget {
                 Expanded(
                   child: Text(
                     label,
-                    style: MayosTypography.body.copyWith(color: labelColor),
+                    style: MayosTypography.of(context).body.copyWith(color: labelColor),
                   ),
                 ),
               ],

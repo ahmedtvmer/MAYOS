@@ -121,7 +121,7 @@ class OfflineBanner extends StatelessWidget {
             const SizedBox(width: MayosSpacing.xs),
             Text(
               displayCopyOf(context).offlineBanner,
-              style: MayosTypography.body.copyWith(color: c.textPrimary),
+              style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
             ),
           ],
         ),

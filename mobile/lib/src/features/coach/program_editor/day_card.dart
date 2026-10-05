@@ -50,7 +50,7 @@ class _ProgramDraftDayCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     copy.trainingDayNumber(index + 1),
-                    style: MayosTypography.sectionHeading,
+                    style: MayosTypography.of(context).sectionHeading,
                   ),
                 ),
                 IconButton(
@@ -94,10 +94,10 @@ class _ProgramDraftDayCard extends StatelessWidget {
               ),
               onChanged: (_) => onChanged('day_name'),
             ),
-            if (dayError != null) _editorErrorText(dayError!, colors),
+            if (dayError != null) _editorErrorText(context, dayError!, colors),
             const SizedBox(height: MayosSpacing.md),
             Text(workoutCopyOf(context).warmup,
-                style: MayosTypography.sectionHeading),
+                style: MayosTypography.of(context).sectionHeading),
             const SizedBox(height: MayosSpacing.xs),
             for (int movementIndex = 0;
                 movementIndex < day.warmups.length;
@@ -111,7 +111,7 @@ class _ProgramDraftDayCard extends StatelessWidget {
               onPressed: busy ? null : onAddWarmup,
             ),
             const SizedBox(height: MayosSpacing.md),
-            Text(copy.exercises, style: MayosTypography.sectionHeading),
+            Text(copy.exercises, style: MayosTypography.of(context).sectionHeading),
             const SizedBox(height: MayosSpacing.xs),
             for (int exerciseIndex = 0;
                 exerciseIndex < day.exercises.length;

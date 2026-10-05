@@ -125,7 +125,7 @@ class _LoggerReplaceConfirmationDialogState
                   padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
                   child: Text(
                     copy.loggedSetsCleared,
-                    style: MayosTypography.bodySecondary
+                    style: MayosTypography.of(context).bodySecondary
                         .copyWith(color: colors.textPrimary),
                   ),
                 ),
@@ -137,7 +137,7 @@ class _LoggerReplaceConfirmationDialogState
                   value: _keepInProgram,
                   title: Text(
                     optionLabel,
-                    style: MayosTypography.body
+                    style: MayosTypography.of(context).body
                         .copyWith(color: colors.textPrimary),
                   ),
                   onChanged: (bool? value) => setState(() {

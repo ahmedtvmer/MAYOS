@@ -1,0 +1,5 @@
+00:00 +0: loading /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/mayos_typography_fallback_test.dart
+00:00 +0: all roles select IBM Plex for Arabic and preserve English families
+00:00 +1: context typography follows the active app locale
+00:01 +2: Arabic font assets load from the bundle
+00:01 +3: All tests passed!

@@ -14,6 +14,7 @@ import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/display_language/workout_copy.dart';
+import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/performed_date_window.dart';
 import 'package:mayos_mobile/src/core/personal_records.dart';
@@ -401,12 +402,14 @@ List<Override> _appOverrides({
   DateTime Function()? clock,
   bool webDirectCommit = false,
   FakeAnalyticsClient? analytics,
+  String languageCode = 'en',
 }) =>
     <Override>[
       tokenStoreProvider.overrideWithValue(tokens),
       appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
       themeModeStoreProvider
           .overrideWithValue(InMemoryThemeModeStore(themeMode)),
+      systemDisplayLanguageProvider.overrideWithValue(languageCode),
       draftStoreProvider.overrideWithValue(drafts ?? InMemoryDraftStore()),
       workoutCacheStoreProvider
           .overrideWithValue(workoutCache ?? InMemoryWorkoutCacheStore()),
@@ -544,6 +547,7 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
       clock: clock,
       webDirectCommit: webDirectCommit,
       analytics: analytics,
+      languageCode: effectiveLanguage,
     ),
   );
   await _resumeFromPrompt(tester, languageCode: effectiveLanguage);
@@ -1888,6 +1892,138 @@ void main() {
     expect(keysAfter, <String>[keysBefore.first, keysBefore.last]);
   });
 
+  testWidgets(
+      'logger keypad backspace has a localized semantic label and deletes one digit',
+      (WidgetTester tester) async {
+    final SemanticsHandle semantics = tester.ensureSemantics();
+
+    for (final (String language, String label) in <(String, String)>[
+      ('en', 'Backspace'),
+      ('ar', 'حذف آخر رقم'),
+    ]) {
+      await tester.pumpWidget(const SizedBox.shrink());
+      final InMemoryActiveWorkoutStore store = await _openLogger(
+        tester,
+        languageCode: language,
+        clock: () => DateTime.parse('2026-09-28T08:12:34.000Z'),
+      );
+      await tester.tap(_cell(0, 0, 'kg'));
+      await tester.pump(const Duration(milliseconds: 100));
+      for (final String key in <String>['2', '7', 'dot', '5']) {
+        await tester.tap(find.byKey(ValueKey<String>('logger.key.$key')));
+      }
+      await tester.pump(const Duration(milliseconds: 100));
+
+      final Finder backspace = find.bySemanticsLabel(label);
+      expect(backspace, findsOneWidget);
+      expect(find.text('⌫'), findsNothing);
+      await tester.tap(backspace);
+      await tester.pump(const Duration(milliseconds: 100));
+      final ActiveWorkout updated = (await store.read(_account))!;
+      expect(updated.exercises.first.sets.first.weightKg, 27);
+    }
+    semantics.dispose();
+  });
+
+  testWidgets(
+      'Arabic keypad persists 27.5 and RIR before an end-to-start swipe deletes the set',
+      (WidgetTester tester) async {
+    final InMemoryActiveWorkoutStore store = await _openLogger(
+      tester,
+      languageCode: 'ar',
+      clock: () => DateTime.parse('2026-09-28T08:12:34.000Z'),
+    );
+    tester.view.physicalSize = const Size(824, 1830);
+    tester.view.devicePixelRatio = 2;
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(
+      Directionality.of(tester.element(find.byType(WorkoutLoggerScreen))),
+      TextDirection.rtl,
+    );
+
+    await tester.tap(_cell(0, 0, 'kg'));
+    await tester.pump(const Duration(milliseconds: 100));
+    final List<Offset> keypadCenters = <Offset>[
+      for (final String key in <String>[
+        '1', '2', '3', '4', '5', '6', '7', '8', '9', 'dot', '0', 'backspace',
+      ])
+        tester.getCenter(
+          find.byKey(ValueKey<String>('logger.key.$key')),
+        ),
+    ];
+    for (int row = 0; row < 4; row++) {
+      final List<double> x = <double>[
+        for (int column = 0; column < 3; column++)
+          keypadCenters[row * 3 + column].dx,
+      ];
+      expect(x, orderedEquals(x.toList()..sort()));
+    }
+    for (int row = 0; row < 3; row++) {
+      expect(
+        keypadCenters[row * 3].dy,
+        lessThan(keypadCenters[(row + 1) * 3].dy),
+      );
+    }
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.2')));
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.7')));
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.dot')));
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.5')));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+      find.descendant(of: _cell(0, 0, 'kg'), matching: find.text('27.5')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.hide')));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final ActiveWorkout entered = (await store.read(_account))!;
+    final ActiveWorkoutSet enteredSet = entered.exercises.first.sets.first;
+    expect(enteredSet.weightKg, 27.5);
+    expect(enteredSet.weightExplicitlyEntered, isTrue);
+
+    await tester.tap(_cell(0, 0, 'rir'));
+    await tester.pump(const Duration(milliseconds: 100));
+    final List<double> rirCenters = <double>[
+      for (int value = 0; value <= 5; value++)
+        tester.getCenter(find.byKey(ValueKey<String>('logger.rir.$value'))).dx,
+    ];
+    expect(rirCenters, orderedEquals(rirCenters.toList()..sort()));
+    expect(find.text('5+'), findsOneWidget);
+
+    final Finder firstSwipe = find.byType(Dismissible).first;
+    final Dismissible row = tester.widget<Dismissible>(firstSwipe);
+    expect(row.direction, DismissDirection.endToStart);
+    final Container deleteBackground = row.background! as Container;
+    expect(deleteBackground.alignment, AlignmentDirectional.centerEnd);
+    expect(
+      deleteBackground.alignment!.resolve(TextDirection.rtl),
+      Alignment.centerLeft,
+    );
+
+    await tester.tap(find.byKey(const ValueKey<String>('logger.rir.5')));
+    await tester.pump(const Duration(milliseconds: 100));
+    final ActiveWorkout rated = (await store.read(_account))!;
+    expect(rated.exercises.first.sets.first.weightKg, 27.5);
+    expect(rated.exercises.first.sets.first.rir, 5);
+    final String removedSetId = rated.exercises.first.sets.first.id;
+
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.hide')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey<String>('logger.key.hide')), findsNothing);
+    await tester.ensureVisible(_row(0, 0));
+    await tester.pumpAndSettle();
+    await tester.drag(firstSwipe, const Offset(700, 0));
+    await tester.pumpAndSettle();
+    final ActiveWorkout deleted = (await store.read(_account))!;
+    expect(deleted.exercises.first.sets, hasLength(2));
+    expect(
+      deleted.exercises.first.sets.any((ActiveWorkoutSet set) =>
+          set.id == removedSetId),
+      isFalse,
+    );
+  });
+
   testWidgets('Finish with nothing ticked is blocked by Log at least one set',
       (WidgetTester tester) async {
     await _openLogger(tester);
@@ -2625,13 +2761,32 @@ void main() {
     expect(label, findsOneWidget);
     // Sans: the serif display role belongs to the day heading alone (#157).
     expect(
-        tester.widget<Text>(label).style!.fontFamily, MayosTypography.uiFamily);
+        tester.widget<Text>(label).style!.fontFamily, MayosTypography.forLanguage('en').interfaceFamily);
 
     // The bar redraws once a second off the clock — derived, never counted,
     // so nothing pauses and nothing has to be stored.
     now = DateTime.parse('2026-09-28T08:01:07.000Z');
     await tester.pump(const Duration(seconds: 1));
     expect(find.text('Log workout · 01:07'), findsOneWidget);
+  });
+
+  testWidgets('Arabic logger header isolates its workout time after the title',
+      (WidgetTester tester) async {
+    await _openLogger(
+      tester,
+      languageCode: 'ar',
+      startedAt: '2026-09-28T08:00:00.000Z',
+      clock: () => DateTime.parse('2026-09-28T08:00:42.000Z'),
+    );
+
+    expect(
+      find.text('تسجيل حصة تدريبية · \u206600:42\u2069'),
+      findsOneWidget,
+    );
+    expect(
+      Directionality.of(tester.element(find.byType(LoggerTopBar))),
+      TextDirection.rtl,
+    );
   });
 
   testWidgets('Workout time stays correct across a simulated restart (#159)',
@@ -2745,7 +2900,7 @@ void main() {
     final Finder progress =
         find.byKey(const ValueKey<String>('logger.progress'));
     final Text line = tester.widget<Text>(progress);
-    expect(line.style!.fontFamily, MayosTypography.uiFamily);
+    expect(line.style!.fontFamily, MayosTypography.forLanguage('en').interfaceFamily);
     // Two exercises, four working rows, nothing ticked yet.
     expect(line.data, '0/2 exercises · 0/4 sets');
 

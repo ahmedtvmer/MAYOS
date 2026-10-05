@@ -1,0 +1,10 @@
+Resolving dependencies...
+Downloading packages...
+  flutter_lints 4.0.0 (6.0.0 available)
+  js 0.6.7 (0.7.2 available)
+  lints 4.0.0 (6.1.0 available)
+  meta 1.18.3 (1.19.0 available)
+  vector_math 2.4.0 (2.4.2 available)
+Got dependencies!
+5 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.

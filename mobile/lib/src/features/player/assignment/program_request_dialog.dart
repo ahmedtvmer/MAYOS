@@ -184,7 +184,7 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
           alignment: AlignmentDirectional.centerStart,
           child: Text(
             value,
-            style: MayosTypography.body.copyWith(
+            style: MayosTypography.of(context).body.copyWith(
               color: MayosTheme.of(context).textPrimary,
             ),
             textDirection: TextDirection.ltr,
@@ -276,7 +276,7 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
         child: Text(
           copy.reasonCharacterCount(reasonLength, maxProgramRequestReasonChars),
           key: const Key('program_request_reason_counter'),
-          style: MayosTypography.bodySecondary.copyWith(
+          style: MayosTypography.of(context).bodySecondary.copyWith(
             color: reasonLength > maxProgramRequestReasonChars
                 ? colors.danger
                 : null,
@@ -287,7 +287,7 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
         const SizedBox(height: MayosSpacing.sm),
         Text(
           _localError!,
-          style: MayosTypography.bodySecondary.copyWith(color: colors.danger),
+          style: MayosTypography.of(context).bodySecondary.copyWith(color: colors.danger),
         ),
       ],
     ];

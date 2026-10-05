@@ -154,7 +154,7 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
       padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
       child: Text(
         displayCopyOf(context).failureMessage(_error!),
-        style: MayosTypography.bodySecondary
+        style: MayosTypography.of(context).bodySecondary
             .copyWith(color: MayosTheme.of(context).danger),
       ),
     );
@@ -184,7 +184,7 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
 
   Widget _emptyRequests(BuildContext context) => Text(
         coachCopyOf(context).noProgramRequests,
-        style: MayosTypography.bodySecondary
+        style: MayosTypography.of(context).bodySecondary
             .copyWith(color: MayosTheme.of(context).textSecondary),
       );
 
@@ -198,7 +198,7 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
         MayosSectionHeader(title: copy.pending),
         if (pending.isEmpty)
           Text(copy.noPendingRequests,
-              style: MayosTypography.bodySecondary.copyWith(color: secondary))
+              style: MayosTypography.of(context).bodySecondary.copyWith(color: secondary))
         else
           for (final ProgramRequest request in pending)
             CoachRequestCard(
@@ -229,7 +229,7 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
         MayosSectionHeader(title: copy.answered),
         if (answered.isEmpty)
           Text(copy.nothingAnswered,
-              style: MayosTypography.bodySecondary.copyWith(color: secondary))
+              style: MayosTypography.of(context).bodySecondary.copyWith(color: secondary))
         else
           for (final ProgramRequest request in answered)
             CoachRequestCard(
@@ -344,7 +344,7 @@ class _CoachRequestDetailPaneState extends State<CoachRequestDetailPane> {
             child: Text(
               displayCopyOf(context).failureMessage(widget.error!),
               style:
-                  MayosTypography.bodySecondary.copyWith(color: theme.danger),
+                  MayosTypography.of(context).bodySecondary.copyWith(color: theme.danger),
             ),
           ),
         MayosSectionHeader(title: copy.requestDetail),
@@ -356,7 +356,7 @@ class _CoachRequestDetailPaneState extends State<CoachRequestDetailPane> {
               const SizedBox(height: MayosSpacing.xs),
               Text(
                 coachRequestTitle(context, request),
-                style: MayosTypography.exerciseTitle
+                style: MayosTypography.of(context).exerciseTitle
                     .copyWith(color: theme.textPrimary),
               ),
               const SizedBox(height: MayosSpacing.xs),
@@ -387,7 +387,7 @@ class _CoachRequestDetailPaneState extends State<CoachRequestDetailPane> {
         ] else
           Text(
             copy.requestAnswered,
-            style: MayosTypography.bodySecondary
+            style: MayosTypography.of(context).bodySecondary
                 .copyWith(color: theme.textSecondary),
           ),
       ],

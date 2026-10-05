@@ -43,7 +43,7 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
               children: <Widget>[
                 Expanded(
                   child: Text(exercise.exerciseName,
-                      style: MayosTypography.sectionHeading),
+                      style: MayosTypography.of(context).sectionHeading),
                 ),
                 IconButton(
                   key: Key('program_draft_exercise_up_${dayIndex}_$exerciseIndex'),
@@ -75,7 +75,7 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
                 ),
               ],
             ),
-            _editorErrorText(errorFor('exercise_id'), colors),
+            _editorErrorText(context, errorFor('exercise_id'), colors),
             Row(
               children: <Widget>[
                 Expanded(

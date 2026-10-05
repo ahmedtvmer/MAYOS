@@ -44,7 +44,7 @@ class CoachListDetail extends StatelessWidget {
 
 /// A tinted caption pill — the roster's urgency chips and the alert state
 /// chip (#120). Colour comes from the theme tokens, type from
-/// [MayosTypography.caption].
+/// [MayosTypography.of(context).caption].
 Widget coachPillChip(BuildContext context, String label, Color color) {
   return Container(
     padding: const EdgeInsets.symmetric(
@@ -53,7 +53,7 @@ Widget coachPillChip(BuildContext context, String label, Color color) {
       color: color.withValues(alpha: 0.12),
       borderRadius: MayosRadii.pillRadius,
     ),
-    child: Text(label, style: MayosTypography.caption.copyWith(color: color)),
+    child: Text(label, style: MayosTypography.of(context).caption.copyWith(color: color)),
   );
 }
 
@@ -224,7 +224,7 @@ class CoachRequestCard extends StatelessWidget {
                       ? player
                       : copy.requestPlayerDay(player, request.dayName!),
                   style:
-                      MayosTypography.caption.copyWith(color: c.textSecondary),
+                      MayosTypography.of(context).caption.copyWith(color: c.textSecondary),
                 ),
               ),
               coachRequestStatusChip(context, request),
@@ -240,7 +240,7 @@ class CoachRequestCard extends StatelessWidget {
               frequency: request.desiredWeeklyFrequency,
               preference: request.desiredSplitPreference,
             ),
-            style: MayosTypography.exerciseTitle.copyWith(color: c.textPrimary),
+            style: MayosTypography.of(context).exerciseTitle.copyWith(color: c.textPrimary),
           ),
           const SizedBox(height: MayosSpacing.xxs),
           FirstStrongDirection(
@@ -248,7 +248,7 @@ class CoachRequestCard extends StatelessWidget {
             child: Text(
               '“${request.reason}”',
               style:
-                  MayosTypography.bodySecondary.copyWith(color: c.textPrimary),
+                  MayosTypography.of(context).bodySecondary.copyWith(color: c.textPrimary),
             ),
           ),
           if (request.hasResponse) ...<Widget>[
@@ -257,7 +257,7 @@ class CoachRequestCard extends StatelessWidget {
               text: copy.youReplied(request.response!),
               child: Text(
                 copy.youReplied(request.response!),
-                style: MayosTypography.caption.copyWith(color: c.textSecondary),
+                style: MayosTypography.of(context).caption.copyWith(color: c.textSecondary),
               ),
             ),
           ],
@@ -267,7 +267,7 @@ class CoachRequestCard extends StatelessWidget {
               sent == null
                   ? copy.sentOn(request.createdAt)
                   : copy.sentOn(isoDateOf(sent)),
-              style: MayosTypography.caption.copyWith(color: c.textMuted),
+              style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
             ),
           ],
         ],

@@ -165,7 +165,7 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
                 Expanded(
                   child: Text(
                     alert.playerUsername,
-                    style: MayosTypography.exerciseTitle
+                    style: MayosTypography.of(context).exerciseTitle
                         .copyWith(color: c.textPrimary),
                   ),
                 ),
@@ -177,13 +177,13 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
               text: description,
               child: Text(
                 description,
-                style: MayosTypography.body.copyWith(color: c.textPrimary),
+                style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
               ),
             ),
             if (alert.resolvedBy != null)
               Text(
                 copy.resolvedBy(alert.resolvedBy!),
-                style: MayosTypography.caption.copyWith(color: c.textMuted),
+                style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
               ),
             const SizedBox(height: MayosSpacing.xs),
             // Wraps so both actions fit on a narrow phone (390 dp).
@@ -240,7 +240,7 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
             padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
             child: Text(
               displayCopyOf(context).failureMessage(_error!),
-              style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+              style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
             ),
           ),
         Wrap(
@@ -257,7 +257,7 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
         const SizedBox(height: MayosSpacing.sm),
         if (visible.isEmpty)
           Text(copy.noAlerts,
-              style: MayosTypography.bodySecondary
+              style: MayosTypography.of(context).bodySecondary
                   .copyWith(color: c.textSecondary))
         else
           for (final CoachAlert alert in visible) _alertCard(context, alert),

@@ -57,7 +57,7 @@ class PlanScreen extends ConsumerWidget {
           child: Text(
             copy.noPlanAvailable,
             textAlign: TextAlign.center,
-            style: MayosTypography.body.copyWith(color: c.textSecondary),
+            style: MayosTypography.of(context).body.copyWith(color: c.textSecondary),
           ),
         ),
       );
@@ -101,7 +101,7 @@ class _PlanCard extends StatelessWidget {
           const SizedBox(height: MayosSpacing.sm),
           Text(
             displayCopyOf(context).includedFeatures,
-            style: MayosTypography.label.copyWith(color: c.textSecondary),
+            style: MayosTypography.of(context).label.copyWith(color: c.textSecondary),
           ),
           const SizedBox(height: MayosSpacing.xs),
           for (final String benefit in benefits)
@@ -116,7 +116,7 @@ class _PlanCard extends StatelessWidget {
                     child: Text(
                       benefit,
                       style:
-                          MayosTypography.body.copyWith(color: c.textPrimary),
+                          MayosTypography.of(context).body.copyWith(color: c.textPrimary),
                     ),
                   ),
                 ],

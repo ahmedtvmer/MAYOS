@@ -484,7 +484,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   void _applyDefaultPerformedDate(ActiveWorkout workout) {
     final DateTime started =
         DateTime.tryParse(workout.startedDate) ?? DateTime.now();
-    final DateTime clamped = performedDateWindow().clamp(started);
+    final DateTime clamped = performedDateWindow(
+      now: ref.read(clockProvider)(),
+    ).clamp(started);
     _performedDate = clamped;
     if (formatPerformedDate(clamped) != formatPerformedDate(started)) {
       _notice = _copy.dateWindowClamped(
@@ -1034,7 +1036,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
               Text(
                 _copy.untickedSetQuestion(unticked),
                 textAlign: _copy.isArabic ? TextAlign.end : null,
-                style: MayosTypography.sectionHeading,
+                style: MayosTypography.of(context).sectionHeading,
               ),
               const SizedBox(height: MayosSpacing.xs),
               Text(_copy.onlyTickedSetsSaved),
@@ -1532,7 +1534,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         children: <Widget>[
           Text(
             workout.dayName,
-            style: MayosTypography.pageHeading.copyWith(color: c.textPrimary),
+            style: MayosTypography.of(context).pageHeading.copyWith(color: c.textPrimary),
           ),
           const SizedBox(height: MayosSpacing.xxs),
           // The progress line (#159): the same pure counts the bottom bar
@@ -1541,7 +1543,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
             _progressLine(workout),
             key: const ValueKey<String>('logger.progress'),
             textAlign: copy.isArabic ? TextAlign.end : null,
-            style: MayosTypography.bodySecondary.copyWith(
+            style: MayosTypography.of(context).bodySecondary.copyWith(
               color: c.textSecondary,
             ),
           ),
@@ -2051,7 +2053,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         ),
         content: Text(
           _copy.loggedSetsDiscarded,
-          style: MayosTypography.bodySecondary.copyWith(color: c.textPrimary),
+          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textPrimary),
         ),
         actions: <Widget>[
           MayosButton(
@@ -2194,7 +2196,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
                 ),
               Text(
                 _copy.workoutSummary,
-                style: MayosTypography.sectionHeading.copyWith(
+                style: MayosTypography.of(context).sectionHeading.copyWith(
                   color: c.textPrimary,
                 ),
               ),
@@ -2274,7 +2276,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         children: <Widget>[
           Text(
             _copy.personalRecords,
-            style: MayosTypography.exerciseTitle.copyWith(color: c.accent),
+            style: MayosTypography.of(context).exerciseTitle.copyWith(color: c.accent),
           ),
           const SizedBox(height: MayosSpacing.xs),
           for (final WorkoutRecord record in records)
@@ -2286,7 +2288,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
                   record.kind,
                   formatRecordKg(record.value),
                 ),
-                style: MayosTypography.bodySecondary.copyWith(
+                style: MayosTypography.of(context).bodySecondary.copyWith(
                   color: c.textPrimary,
                 ),
               ),
@@ -2339,7 +2341,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         children: <Widget>[
           Text(
             workoutCopyOf(context).checkpointWorkout(checkpoint),
-            style: MayosTypography.exerciseTitle.copyWith(color: c.accent),
+            style: MayosTypography.of(context).exerciseTitle.copyWith(color: c.accent),
           ),
           const SizedBox(height: MayosSpacing.xs),
           if (review == null) ...<Widget>[
@@ -2454,7 +2456,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
                 copy.trainingStatusLine(lines[index]),
                 key: ValueKey<String>('logger.summary.training.$index'),
                 textAlign: copy.isArabic ? TextAlign.end : null,
-                style: MayosTypography.bodySecondary.copyWith(
+                style: MayosTypography.of(context).bodySecondary.copyWith(
                   color: c.textPrimary,
                 ),
               ),
@@ -2481,7 +2483,7 @@ class _MessageLine extends StatelessWidget {
       padding: const EdgeInsets.only(top: MayosSpacing.sm),
       child: Text(
         text,
-        style: MayosTypography.bodySecondary.copyWith(
+        style: MayosTypography.of(context).bodySecondary.copyWith(
           color: danger ? c.danger : c.textSecondary,
         ),
       ),
@@ -2513,7 +2515,7 @@ class _OfflineLoggerNotice extends StatelessWidget {
           Expanded(
             child: Text(
               workoutCopyOf(context).offlineCachedProgram,
-              style: MayosTypography.bodySecondary.copyWith(
+              style: MayosTypography.of(context).bodySecondary.copyWith(
                 color: c.textSecondary,
               ),
             ),

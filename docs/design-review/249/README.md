@@ -98,3 +98,31 @@ Desktop layouts, OS keyboards, accessibility text scales, other screens,
 production Display language, account persistence and production localization
 remain uncaptured or out of scope. The selected captures represent the Arabic
 Home, logger and Player assistant chat only.
+
+## Production selected-family evidence
+
+The production implementation and actual-widget captures are published in
+[production/README.md](production/README.md), with 28 separately labeled PNGs
+under [production/screens/](production/screens/) and their hashes in
+[production/SHA256SUMS](production/SHA256SUMS). The earlier #143 A/B and
+selected-family records above remain historical evidence and are unchanged.
+This implementation and capture rerun close the prototype-only gaps as
+follows:
+
+| Criterion | Updated result | Production evidence |
+| --- | --- | --- |
+| 1 | **met** | The shared typography roles resolve to IBM Plex Sans Arabic when Display language is Arabic. English Playfair Display / Inter roles, brand artwork and the Inter wordmark remain. Font identities and license are recorded in `production/README.md`. |
+| 2 | **met with limits** | The app selects theme typography from Display language rather than assistant reply language. The shared app theme is used by Player, Coach and web; captures are representative Player screens only. |
+| 3 | **met** | The opt-in test renders `MayosApp` with fake API/store overrides, bundled fonts and Material icons. It uses fixed fixture data and makes no hosted-model calls. |
+| 4 | **met** | The 28 images include Home, Home detail, logger before/after keypad entry, chat and scrolled chat detail at 360×640 and 412×915 in light and dark, plus the 412×915 dark RIR/swipe stress and English comparisons. All use text scale 1.0 and 2× output. The four new chat-detail captures differ from their matching chat captures. |
+| 5 | **met with limits** | Headings, exercise names and chat text wrap without unintended ellipsis in the fixed captures. At 360×640, the logger's lower Add set control extends partly below the viewport and is reachable by scrolling. This checks only these fixtures, not arbitrary future content. |
+| 6 | **met with limits** | RTL alignment and the logger's directional delete side are checked in the Arabic widget test; chat captures include Arabic, English names, numeric spans, Markdown and a quote. The fixed first-letter direction heuristic and authored isolates do not solve arbitrary future model/server text. |
+| 7 | **met** | Captures show Western digits; the logger test checks physical keypad order, RIR order and `27.5` entry. |
+| 8 | **met** | The Arabic widget test and stress capture confirm keypad entry stores 27.5, the set retains that value and RIR after editing, and a completed end-to-start swipe removes the set. The test checks that the delete background resolves to the left in RTL; the stress image shows the completed swipe result. |
+| 9 | **met** | English Home and logger images use the same app/capture seam. Widget checks assert Playfair Display display roles and Inter interface roles remain selected for English. |
+| 10 | **met** | Arabic roles keep the semantic size hierarchy, use line height 1.5 and zero tracking; the captures show long Arabic and English text at both phone widths. |
+| 11 | **met with limits** | Flutter analysis reported no issues; the relevant Home/logger/chat/Markdown/theme-shell/typography files passed 156 tests, and the opt-in capture test passed 1 test. `ruff check .` passed. The full Flutter and Python suites were not run for this focused mobile change; see `production/verification/`. |
+| 12 | **met with limits** | The image hashes, font identities and reproduction steps are published separately. The reproduction pointer is `production/BASE_COMMIT.txt` plus the Git commit that adds this production evidence folder. Desktop, OS keyboard and accessibility-scale states remain uncaptured; this is bounded confirmation, not complete production-localization sign-off. |
+
+See [production/README.md](production/README.md) for the final gate results,
+visual inspection findings, capture command and remaining limits.

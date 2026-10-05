@@ -49,7 +49,7 @@ class ProgramChangeSummaryCard extends StatelessWidget {
   ) =>
       unchanged
           ? _text(context, copy.approvedAsIs, colors.textPrimary)
-          : Text(copy.heading, style: MayosTypography.sectionHeading);
+          : Text(copy.heading, style: MayosTypography.of(context).sectionHeading);
 
   Widget _noticeMessage(BuildContext context, MayosThemeExtension colors) =>
       Padding(
@@ -121,7 +121,7 @@ class ProgramChangeSummaryCard extends StatelessWidget {
         child: Text(
           text,
           textAlign: TextAlign.start,
-          style: MayosTypography.bodySecondary.copyWith(color: color),
+          style: MayosTypography.of(context).bodySecondary.copyWith(color: color),
         ),
       );
 }

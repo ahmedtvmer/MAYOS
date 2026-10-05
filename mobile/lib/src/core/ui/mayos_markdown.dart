@@ -43,55 +43,59 @@ class MayosMarkdown extends ConsumerWidget {
   const MayosMarkdown({
     super.key,
     required this.source,
-    this.bodyStyle = MayosTypography.body,
+    this.bodyStyle,
   });
 
   final String source;
-  final TextStyle bodyStyle;
+  final TextStyle? bodyStyle;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final MayosThemeExtension colors = MayosTheme.of(context);
-    final TextStyle body = bodyStyle.copyWith(color: colors.textPrimary);
-    final TextStyle code = MayosTypography.code.copyWith(
+    final MayosTypography typography = MayosTypography.of(context);
+    final TextStyle body =
+        (bodyStyle ?? typography.body).copyWith(
+      color: colors.textPrimary,
+    );
+    final TextStyle code = typography.code.copyWith(
       color: colors.textPrimary,
       backgroundColor: colors.surfaceSunken,
     );
     final styleSheet = MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
       p: body,
       pPadding: EdgeInsets.zero,
-      h1: MayosTypography.pageHeading.copyWith(color: colors.textPrimary),
+      h1: typography.pageHeading.copyWith(color: colors.textPrimary),
       h1Padding: const EdgeInsets.only(
         top: MayosSpacing.xs,
         bottom: MayosSpacing.xs,
       ),
-      h2: MayosTypography.sectionHeading.copyWith(color: colors.textPrimary),
+      h2: typography.sectionHeading.copyWith(color: colors.textPrimary),
       h2Padding: const EdgeInsets.only(
         top: MayosSpacing.xs,
         bottom: MayosSpacing.xxs,
       ),
-      h3: MayosTypography.sectionHeading.copyWith(color: colors.textPrimary),
+      h3: typography.sectionHeading.copyWith(color: colors.textPrimary),
       h3Padding: const EdgeInsets.only(
         top: MayosSpacing.xs,
         bottom: MayosSpacing.xxs,
       ),
-      h4: MayosTypography.exerciseTitle.copyWith(color: colors.textPrimary),
+      h4: typography.exerciseTitle.copyWith(color: colors.textPrimary),
       h4Padding: const EdgeInsets.only(
         top: MayosSpacing.xs,
         bottom: MayosSpacing.xxs,
       ),
-      h5: MayosTypography.exerciseTitle.copyWith(color: colors.textPrimary),
+      h5: typography.exerciseTitle.copyWith(color: colors.textPrimary),
       h5Padding: const EdgeInsets.only(
         top: MayosSpacing.xs,
         bottom: MayosSpacing.xxs,
       ),
-      h6: MayosTypography.exerciseTitle.copyWith(color: colors.textPrimary),
+      h6: typography.exerciseTitle.copyWith(color: colors.textPrimary),
       h6Padding: const EdgeInsets.only(
         top: MayosSpacing.xs,
         bottom: MayosSpacing.xxs,
       ),
       em: body.copyWith(fontStyle: FontStyle.italic),
-      strong: MayosTypography.captionStrong.copyWith(
+      strong: typography.captionStrong.copyWith(
         fontSize: body.fontSize,
         height: body.height,
         letterSpacing: body.letterSpacing,

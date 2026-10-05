@@ -540,7 +540,7 @@ class _CoachPlayerHistoryScreenState
       children: <Widget>[
         Text(
           copy.nextFollowUpLabel(_nextFollowUpOn),
-          style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
         ),
         const SizedBox(height: MayosSpacing.sm),
         Align(
@@ -559,7 +559,7 @@ class _CoachPlayerHistoryScreenState
           Text(
             copy.noRecordedCheckIns,
             style:
-                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           )
         else
           for (final CheckIn checkIn in _checkIns)
@@ -591,7 +591,7 @@ class _CoachPlayerHistoryScreenState
         if (_requestError != null) ...<Widget>[
           Text(
             displayCopyOf(context).failureMessage(_requestError!),
-            style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+            style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
           ),
           const SizedBox(height: MayosSpacing.sm),
         ],
@@ -599,7 +599,7 @@ class _CoachPlayerHistoryScreenState
           Text(
             copy.noProgramRequests,
             style:
-                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           )
         else
           for (final ProgramRequest request in _programRequests)
@@ -892,7 +892,7 @@ class _CoachPlayerHistoryScreenState
       children.add(
         Text(
           copy.noActiveProgram,
-          style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
         ),
       );
     } else {
@@ -905,7 +905,7 @@ class _CoachPlayerHistoryScreenState
         const SizedBox(height: MayosSpacing.sm),
         Text(
           displayCopyOf(context).failureMessage(_programActionError!),
-          style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
         ),
       ]);
     }
@@ -975,7 +975,7 @@ class _CoachPlayerHistoryScreenState
         children: <Widget>[
           Text(
             day.dayName,
-            style: MayosTypography.body.copyWith(color: c.textPrimary),
+            style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
           ),
           for (final ProgramExercise exercise in day.exercises)
             _programExercise(context, exercise),
@@ -1011,7 +1011,7 @@ class _CoachPlayerHistoryScreenState
           minRirLabel(exercise.targetRpe),
           exercise.restSecondsOrDefault,
         ),
-        style: MayosTypography.bodySecondary,
+        style: MayosTypography.of(context).bodySecondary,
       ),
       if (exercise.tempo != null && exercise.tempo!.isNotEmpty)
         Text(copy.programTempo(exercise.tempo!)),
@@ -1334,7 +1334,7 @@ class _CoachPlayerHistoryScreenState
                     child: Text(
                       description,
                       style:
-                          MayosTypography.body.copyWith(color: c.textPrimary),
+                          MayosTypography.of(context).body.copyWith(color: c.textPrimary),
                     ),
                   ),
                 ),
@@ -1408,7 +1408,7 @@ class _CoachPlayerHistoryScreenState
                       ? copy.noActiveAssignment
                       : displayCopyOf(context).failureMessage(_error!),
                   textAlign: TextAlign.center,
-                  style: MayosTypography.body.copyWith(color: c.textPrimary)),
+                  style: MayosTypography.of(context).body.copyWith(color: c.textPrimary)),
               const SizedBox(height: MayosSpacing.md),
               MayosButton(
                 label: copy.retry,
@@ -1426,14 +1426,14 @@ class _CoachPlayerHistoryScreenState
         if (_generateError != null) ...<Widget>[
           Text(
             displayCopyOf(context).failureMessage(_generateError!),
-            style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+            style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
           ),
           const SizedBox(height: MayosSpacing.sm),
         ],
         if (_alerts.isNotEmpty) ...<Widget>[
           const SizedBox(height: MayosSpacing.md),
           Text(copy.openAlerts,
-              style: MayosTypography.sectionHeading
+              style: MayosTypography.of(context).sectionHeading
                   .copyWith(color: c.textPrimary)),
           const SizedBox(height: MayosSpacing.xs),
           for (final CoachAlert alert in _alerts) _alertCard(context, alert),
@@ -1472,7 +1472,7 @@ class _CoachPlayerHistoryScreenState
     final CoachPlayerSummary summary = _summary!;
     return <Widget>[
       Text(coachCopyOf(context).since(summary.startedAt),
-          style: MayosTypography.bodySecondary),
+          style: MayosTypography.of(context).bodySecondary),
       const SizedBox(height: MayosSpacing.sm),
       _programCard(context),
       const SizedBox(height: MayosSpacing.sm),

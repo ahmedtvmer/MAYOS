@@ -282,7 +282,7 @@ class _PlayerAssignmentScreenState
   Widget _noticeCaption(AssignmentNotice notice) => Text(
         '${notice.kind} · ${notice.createdAt}',
         textDirection: TextDirection.ltr,
-        style: MayosTypography.caption.copyWith(
+        style: MayosTypography.of(context).caption.copyWith(
           color: MayosTheme.of(context).textMuted,
         ),
       );
@@ -337,14 +337,14 @@ class _PlayerAssignmentScreenState
             if (_requestError != null) ...<Widget>[
               Text(
                 displayCopyOf(context).failureMessage(_requestError!),
-                style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+                style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
               ),
               const SizedBox(height: MayosSpacing.sm),
             ],
             if (_programRequests.isEmpty)
               Text(
                 copy.noProgramRequests,
-                style: MayosTypography.bodySecondary
+                style: MayosTypography.of(context).bodySecondary
                     .copyWith(color: c.textSecondary),
               )
             else
@@ -368,7 +368,7 @@ class _PlayerAssignmentScreenState
                                 frequency: request.desiredWeeklyFrequency,
                                 preference: request.desiredSplitPreference,
                               ),
-                              style: MayosTypography.body
+                              style: MayosTypography.of(context).body
                                   .copyWith(color: c.textPrimary),
                               textAlign: copy.isArabic ? TextAlign.end : null,
                             ),
@@ -379,7 +379,7 @@ class _PlayerAssignmentScreenState
                         text: request.reason,
                         child: Text(
                           '${copy.reasonPrefix}${request.reason}',
-                          style: MayosTypography.caption
+                          style: MayosTypography.of(context).caption
                               .copyWith(color: c.textMuted),
                         ),
                       ),
@@ -388,7 +388,7 @@ class _PlayerAssignmentScreenState
                           text: request.response!,
                           child: Text(
                             '${copy.coachPrefix}${request.response}',
-                            style: MayosTypography.caption
+                            style: MayosTypography.of(context).caption
                                 .copyWith(color: c.textSecondary),
                           ),
                         ),
@@ -535,7 +535,7 @@ class _PlayerAssignmentScreenState
           _error == null
               ? _localError!
               : displayCopyOf(context).failureMessage(_error!),
-          style: MayosTypography.bodySecondary
+          style: MayosTypography.of(context).bodySecondary
               .copyWith(color: MayosTheme.of(context).danger),
         ),
       ),
@@ -565,7 +565,7 @@ class _PlayerAssignmentScreenState
         const SizedBox(height: MayosSpacing.sm),
         Text(
           _copy.activeAssignmentAccess,
-          style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
         ),
         const SizedBox(height: MayosSpacing.lg),
         MayosButton(
@@ -590,7 +590,7 @@ class _PlayerAssignmentScreenState
         MayosSectionHeader(title: _copy.myCoach),
         Text(
           _copy.inviteExplanation,
-          style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
         ),
         const SizedBox(height: MayosSpacing.md),
         MayosTextField(
@@ -612,22 +612,22 @@ class _PlayerAssignmentScreenState
           Text(
             _copy.coachWillBe(preview.coach.displayName),
             style:
-                MayosTypography.sectionHeading.copyWith(color: c.textPrimary),
+                MayosTypography.of(context).sectionHeading.copyWith(color: c.textPrimary),
           ),
           if (preview.coach.bio.isNotEmpty) ...<Widget>[
             const SizedBox(height: MayosSpacing.xxs),
             Text(preview.coach.bio,
-                style: MayosTypography.bodySecondary
+                style: MayosTypography.of(context).bodySecondary
                     .copyWith(color: c.textSecondary)),
           ],
           if (preview.coach.specialization.isNotEmpty) ...<Widget>[
             const SizedBox(height: MayosSpacing.xxs),
             Text(preview.coach.specialization,
-                style: MayosTypography.caption.copyWith(color: c.textMuted)),
+                style: MayosTypography.of(context).caption.copyWith(color: c.textMuted)),
           ],
           const SizedBox(height: MayosSpacing.sm),
           Text(preview.access.description,
-              style: MayosTypography.body.copyWith(color: c.textPrimary)),
+              style: MayosTypography.of(context).body.copyWith(color: c.textPrimary)),
           const SizedBox(height: MayosSpacing.md),
           MayosButton(
             label: _copy.acceptAssignment,

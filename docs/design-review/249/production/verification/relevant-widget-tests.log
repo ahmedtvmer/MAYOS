@@ -1,0 +1,158 @@
+00:00 +0: loading /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/home_screen_test.dart
+00:00 +0: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/home_screen_test.dart: Arabic Home labels use RTL while server program names stay as sent
+00:02 +1: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: logger shows Coach exercise details without opening library details
+00:03 +2: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: logger shows Coach exercise details without opening library details
+00:03 +3: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: logger shows Coach exercise details without opening library details
+00:03 +4: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: logger shows Coach exercise details without opening library details
+00:03 +5: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: logger shows Coach exercise details without opening library details
+00:03 +6: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: logger shows Coach exercise details without opening library details
+00:03 +7: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: logger shows Coach exercise details without opening library details
+00:04 +8: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: logger shows Coach exercise details without opening library details
+00:04 +9: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: logger shows Coach exercise details without opening library details
+00:05 +10: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_pictures_test.dart: Arabic workout logger uses translated UI and Western digits
+00:06 +11: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_pictures_test.dart: Arabic workout logger uses translated UI and Western digits
+00:07 +12: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: planned exercise detail keeps its prescription and returns to the unchanged Active workout (#217)
+00:07 +13: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: planned exercise detail keeps its prescription and returns to the unchanged Active workout (#217)
+00:07 +14: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:07 +15: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:08 +16: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:08 +17: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_back_test.dart: starting from Home: the back arrow returns Home
+00:08 +18: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_pictures_test.dart: loaded, failed and missing pictures keep one fixed card layout (#161)
+00:09 +19: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_pictures_test.dart: loaded, failed and missing pictures keep one fixed card layout (#161)
+00:09 +20: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: replacement exercise detail has no program prescription (#217)
+00:10 +21: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: replacement exercise detail has no program prescription (#217)
+00:10 +22: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: replacement exercise detail has no program prescription (#217)
+00:11 +23: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: replacement exercise detail has no program prescription (#217)
+00:11 +24: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: replacement exercise detail has no program prescription (#217)
+00:11 +25: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: replacement exercise detail has no program prescription (#217)
+00:11 +26: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: replacement exercise detail has no program prescription (#217)
+00:12 +27: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_pictures_test.dart: the picture loads once and is reused on rebuild (#161)
+00:12 +28: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_pictures_test.dart: the picture loads once and is reused on rebuild (#161)
+00:12 +29: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_back_test.dart: Resume from the prompt: the back arrow returns Home
+00:12 +30: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/player_chat_test.dart: streamed tokens render progressively and done finalizes
+00:13 +31: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/player_chat_test.dart: streamed tokens render progressively and done finalizes
+00:13 +32: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: unplanned exercise detail has no program prescription (#217)
+00:14 +33: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: unplanned exercise detail has no program prescription (#217)
+00:14 +34: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: unplanned exercise detail has no program prescription (#217)
+00:14 +35: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: unplanned exercise detail has no program prescription (#217)
+00:14 +36: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/player_chat_test.dart: refusal action opens a prefilled request form for confirmation
+00:15 +37: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/player_chat_test.dart: refusal action opens a prefilled request form for confirmation
+00:15 +38: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/player_chat_test.dart: refusal action opens a prefilled request form for confirmation
+00:15 +39: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/player_chat_test.dart: refusal action opens a prefilled request form for confirmation
+00:16 +40: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_pictures_test.dart: no overflow at 360dp, light and dark, pictures settled (#161)
+00:16 +41: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_pictures_test.dart: no overflow at 360dp, light and dark, pictures settled (#161)
+00:16 +42: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_pictures_test.dart: no overflow at 360dp, light and dark, pictures settled (#161)
+00:16 +43: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_pictures_test.dart: no overflow at 360dp, light and dark, pictures settled (#161)
+00:17 +44: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_pictures_test.dart: no overflow at 360dp, light and dark, pictures settled (#161)
+00:17 +45: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_pictures_test.dart: no overflow at 360dp, light and dark, pictures settled (#161)
+00:17 +46: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_pictures_test.dart: no overflow at 360dp, light and dark, pictures settled (#161)
+00:17 +47: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_pictures_test.dart: no overflow at 360dp, light and dark, pictures settled (#161)
+00:17 +48: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_pictures_test.dart: no overflow at 360dp, light and dark, pictures settled (#161)
+00:17 +49: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_pictures_test.dart: no overflow at 360dp, light and dark, pictures settled (#161)
+00:17 +50: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_pictures_test.dart: no overflow at 360dp, light and dark, pictures settled (#161)
+00:18 +51: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_pictures_test.dart: no overflow at 360dp, light and dark, pictures settled (#161)
+00:18 +52: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: prescribed Cardio needs valid minutes and stays outside set progress
+00:19 +53: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: prescribed Cardio needs valid minutes and stays outside set progress
+00:20 +54: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: prescribed Cardio needs valid minutes and stays outside set progress
+00:20 +55: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/player_chat_test.dart: partial Markdown streams into the same selectable history render at 360 dp
+00:21 +56: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/player_chat_test.dart: partial Markdown streams into the same selectable history render at 360 dp
+00:22 +57: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/player_chat_test.dart: partial Markdown streams into the same selectable history render at 360 dp
+00:22 +58: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/player_chat_test.dart: partial Markdown streams into the same selectable history render at 360 dp
+00:22 +59: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/player_chat_test.dart: partial Markdown streams into the same selectable history render at 360 dp
+00:22 +60: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:22 +61: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:22 +62: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:24 +63: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:25 +64: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:25 +65: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/theme_and_shell_test.dart: appearance defaults to System and switches Light/Dark immediately
+00:27 +66: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: warm-up weight cells label body weight and band zero loads
+00:27 +67: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: authority refusal refreshes coach-controlled state
+00:27 +68: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/player_chat_test.dart: program_updated refreshes the cached program and prescription
+00:28 +69: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/theme_and_shell_test.dart: an explicit choice is persisted across a restart
+00:29 +70: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/theme_and_shell_test.dart: an explicit choice is persisted across a restart
+00:30 +71: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/theme_and_shell_test.dart: an explicit choice is persisted across a restart
+00:30 +72: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/theme_and_shell_test.dart: an explicit choice is persisted across a restart
+00:30 +73: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/theme_and_shell_test.dart: an explicit choice is persisted across a restart
+00:31 +74: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: clearing a warm-up weight commits null
+00:31 +75: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: clearing a warm-up weight commits null
+00:32 +76: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: clearing a warm-up weight commits null
+00:33 +77: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/theme_and_shell_test.dart: system bar style follows the effective theme
+00:34 +78: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/theme_and_shell_test.dart: system bar style follows the effective theme
+00:35 +79: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: an unplanned exercise never offers a program action
+00:35 +80: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: the table is SET · KG · REPS · RIR · ✓ and the baseline rides on the card as the Last: line (#158)
+00:35 +81: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/theme_and_shell_test.dart: bottom navigation exposes Home, Program, and Progress
+00:35 +82: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: unchecked option replaces only the Active workout
+00:36 +83: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: unchecked option replaces only the Active workout
+00:37 +84: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: unchecked option replaces only the Active workout
+00:37 +85: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/theme_and_shell_test.dart: Settings opens from the header and keeps entry points reachable
+00:38 +86: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: a warm-up row has no previous to borrow and is never filled from one
+00:38 +87: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: version mismatch keeps local replacement and skips program call
+00:40 +88: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: version mismatch keeps local replacement and skips program call
+00:40 +89: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: version mismatch keeps local replacement and skips program call
+00:40 +90: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/theme_and_shell_test.dart: shell and settings have no overflow at 360.0x640.0 and 1.5x text
+00:41 +91: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: ticking with no value and no previous opens the keypad there
+00:42 +92: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: 409 program version conflict shows the version message
+00:42 +93: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: 409 program version conflict shows the version message
+00:42 +94: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: body-weight sets need reps only, show BW, and save 0 kg in an Android draft
+00:43 +95: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: body-weight sets need reps only, show BW, and save 0 kg in an Android draft
+00:44 +96: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: body-weight sets need reps only, show BW, and save 0 kg in an Android draft
+00:44 +97: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: Finish replaces a substitution failure after all working sets are unticked
+00:45 +98: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/theme_and_shell_test.dart: shell and settings have no overflow at 412.0x915.0 and 1.5x text
+00:45 +99: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: an added load on a body-weight exercise stays numeric
+00:45 +100: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: program failure does not roll back the logger replacement
+00:46 +101: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: program failure does not roll back the logger replacement
+00:46 +102: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: program failure does not roll back the logger replacement
+00:47 +103: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: an entered BW zero overrides a positive previous added load
+00:47 +104: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: logger never creates connectivity controller on Android
+00:48 +105: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: logger never creates connectivity controller on Android
+00:49 +106: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: the logger and summary show localized most-reps records
+00:51 +107: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: the logger and summary show localized most-reps records
+00:51 +108: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: the Replace search never offers an exercise already in this workout, planned or unplanned (#162)
+00:53 +109: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: the Replace search never offers an exercise already in this workout, planned or unplanned (#162)
+00:53 +110: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: a previous 0 kg band set autofills and displays the localized Band label
+00:54 +111: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: Remove exercise asks before discarding logged sets and takes an untouched one out at once (#162)
+00:56 +112: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: Remove exercise asks before discarding logged sets and takes an untouched one out at once (#162)
+00:56 +113: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: the keypad Next order is kg → reps → RIR → the next set
+00:58 +114: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: Undo replace brings the planned exercise back, asking first over logged sets (#162)
+01:00 +115: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: the RIR keypad is one-tap chips 0–5+ and Unrated, and a chip advances
+01:00 +116: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: a keypad focus stays on its own exercise when a card is inserted before it (#162)
+01:02 +117: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: tapping the SET number cycles N ↔ W and mutes the row
+01:02 +118: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: Rest time… in the menu opens the #125 picker and writes the device override (#162)
+01:03 +119: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: the Current set is the first unticked working set and moves across exercises, skipping warm-ups (#158)
+01:04 +120: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_card_menu_test.dart: Remove exercise takes an unplanned exercise out of the workout (#162)
+01:05 +121: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: row states: a pending check is outlined, a ticked row is filled, tinted and still editable (#158)
+01:05 +122: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: RIR in the row is a compact selector that opens the existing chips (#158)
+01:06 +123: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: no overflow at 360dp (light) and the row keeps its 48dp targets (#158)
+01:07 +124: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: no overflow at 360dp (dark) and the row keeps its 48dp targets (#158)
+01:08 +125: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: swiping a middle set row deletes that row only
+01:09 +126: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: logger keypad backspace has a localized semantic label and deletes one digit
+01:12 +127: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: Arabic keypad persists 27.5 and RIR before an end-to-start swipe deletes the set
+01:14 +128: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: Finish with nothing ticked is blocked by Log at least one set
+01:15 +129: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: the unticked-sets sheet offers Keep logging and Discard
+01:16 +130: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: the saved draft matches today's shape: ticked sets, warm-up flag, skipped exercise
+01:18 +131: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: an out-of-window start day is clamped and the player is told
+01:19 +132: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: a record badge is solid on the current best, then struck through when a later set beats it
+01:21 +133: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: unticking a record-earning set clears its badges (#124)
+01:22 +134: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: the summary lists the current records and the stats (#124)
+01:24 +135: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: the online summary freezes projected Weekly streak and Checkpoint
+01:25 +136: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: an offline summary projects pending drafts from its cached status
+01:26 +137: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: a committed Checkpoint shows its review and computed ratings
+01:27 +138: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: a stale cached week hides streak lines but keeps Checkpoint progress
+01:29 +139: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: records and workout summary fit phone and desktop columns
+01:31 +140: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: Arabic workout summary keeps server names and Western digits
+01:33 +141: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: the summary omits the celebration when nothing earned a record
+01:33 +142: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: a newly earned record vibrates heavily once, and an untick never vibrates
+01:35 +143: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: a cell edit vibrates when it settles, never per keystroke
+01:36 +144: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: turning a ticked warm-up into a working set vibrates (#124)
+01:38 +145: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: the summary snapshot never changes after the rows change (#124)
+01:39 +146: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: the top bar shows Workout time from the start, ticking every second (#159)
+01:40 +147: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: Arabic logger header isolates its workout time after the title
+01:41 +148: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: Workout time stays correct across a simulated restart (#159)
+01:42 +149: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: the ⋮ menu discards the workout behind its own confirmation (#159)
+01:43 +150: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: the day heading is the one serif line and the progress line counts exercises and sets (#159)
+01:44 +151: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: the summary shows the workout's total duration, frozen at Finish, with no overflow at 360dp (#159)
+01:45 +152: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: the bottom bar keeps sets progress and Finish in reach while the list scrolls (#160)
+01:47 +153: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: the bottom bar steps aside for the keypad and the last card scrolls clear of it (#160)
+01:49 +154: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: the bottom bar takes the system-nav inset inside its surface and keeps its content above it (#160)
+01:49 +155: /mnt/work/MAYOS/.claude/worktrees/issue-249-b/mobile/test/workout_logger_screen_test.dart: a tick clears the Finish nudge and no other message (#160)
+01:50 +156: All tests passed!

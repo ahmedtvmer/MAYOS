@@ -100,7 +100,7 @@ class _ReviewBody extends StatelessWidget {
         Text(
           displayCopyOf(context).checkpointWorkout(review.checkpoint),
           key: const ValueKey<String>('checkpoint.review.title'),
-          style: MayosTypography.display.copyWith(
+          style: MayosTypography.of(context).display.copyWith(
             fontSize: 30,
             color: c.textPrimary,
           ),
@@ -116,7 +116,7 @@ class _ReviewBody extends StatelessWidget {
                 '${review.periodStart} – ${review.periodEnd}',
                 key: const ValueKey<String>('checkpoint.review.period'),
                 textDirection: TextDirection.ltr,
-                style: MayosTypography.bodySecondary
+                style: MayosTypography.of(context).bodySecondary
                     .copyWith(color: c.textSecondary),
               ),
             ],
@@ -143,7 +143,7 @@ class _ReviewBody extends StatelessWidget {
           child: Text(
             review.text,
             key: const ValueKey<String>('checkpoint.review.text'),
-            style: MayosTypography.body.copyWith(color: c.textPrimary),
+            style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
           ),
         ),
       ],

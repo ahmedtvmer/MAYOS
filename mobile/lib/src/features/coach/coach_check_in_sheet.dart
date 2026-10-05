@@ -129,12 +129,12 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
           Text(
             copy.checkInWithPlayer(widget.playerUsername),
             style:
-                MayosTypography.sectionHeading.copyWith(color: c.textPrimary),
+                MayosTypography.of(context).sectionHeading.copyWith(color: c.textPrimary),
           ),
           const SizedBox(height: MayosSpacing.xxs),
           Text(
             copy.datedToday(today),
-            style: MayosTypography.caption.copyWith(color: c.textSecondary),
+            style: MayosTypography.of(context).caption.copyWith(color: c.textSecondary),
           ),
           const SizedBox(height: MayosSpacing.md),
           Wrap(
@@ -166,14 +166,14 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
             const SizedBox(height: MayosSpacing.sm),
             Text(
               _error!,
-              style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+              style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
             ),
           ],
           if (_failure != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
             Text(
               displayCopyOf(context).failureMessage(_failure!),
-              style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+              style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
             ),
           ],
           const SizedBox(height: MayosSpacing.md),

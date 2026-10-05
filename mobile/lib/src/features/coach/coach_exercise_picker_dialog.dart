@@ -138,7 +138,7 @@ class _CoachExercisePickerDialogState
         padding: const EdgeInsets.only(top: MayosSpacing.sm),
         child: Text(
           _failure == null ? _error! : copy.failureMessage(_failure!),
-          style: MayosTypography.bodySecondary,
+          style: MayosTypography.of(context).bodySecondary,
         ),
       );
 
@@ -342,7 +342,7 @@ class _CoachExerciseCreateDialogState
           _videoField(copy),
           if (_error != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.xs),
-            Text(_error!, style: MayosTypography.bodySecondary),
+            Text(_error!, style: MayosTypography.of(context).bodySecondary),
           ],
         ],
       );

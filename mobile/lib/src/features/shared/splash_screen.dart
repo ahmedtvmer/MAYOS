@@ -23,7 +23,9 @@ class SplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Theme(
-      data: MayosTheme.wallpaper,
+      data: MayosTheme.wallpaperForLanguage(
+        Localizations.localeOf(context).languageCode,
+      ),
       child: Builder(
         builder: (BuildContext context) {
           final MayosThemeExtension c = MayosTheme.of(context);
@@ -69,7 +71,7 @@ class SplashScreen extends StatelessWidget {
                                 Text(
                                   displayCopyOf(context).brandTagline,
                                   textAlign: TextAlign.center,
-                                  style: MayosTypography.serifMedium.copyWith(
+                                  style: MayosTypography.of(context).serifMedium.copyWith(
                                     fontSize: 20,
                                     height: 1.2,
                                     color: c.textSecondary,

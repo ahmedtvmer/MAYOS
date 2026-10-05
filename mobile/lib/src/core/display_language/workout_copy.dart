@@ -12,7 +12,9 @@ class WorkoutCopy {
 
   String get logWorkout => isArabic ? 'تسجيل حصة تدريبية' : 'Log workout';
   String logWorkoutTime(String time) =>
-      isArabic ? 'تسجيل حصة تدريبية · $time' : 'Log workout · $time';
+      isArabic
+          ? 'تسجيل حصة تدريبية · ${_ltr(time)}'
+          : 'Log workout · $time';
   String get discardWorkout => isArabic ? 'حذف الحصة' : 'Discard workout';
   String get finishWorkout => isArabic ? 'إنهاء الحصة' : 'Finish workout';
   String setsProgress(int done, int total) =>
@@ -93,6 +95,7 @@ class WorkoutCopy {
       : '$exercise · set $setNumber · $field';
   String get unrated => isArabic ? 'بلا تقييم' : 'Unrated';
   String get hideKeypad => isArabic ? 'إخفاء' : 'Hide';
+  String get backspace => isArabic ? 'حذف آخر رقم' : 'Backspace';
   String get next => isArabic ? 'التالي' : 'Next';
   String get restOff => isArabic ? 'إيقاف' : 'Off';
   String restForExercise(String exercise) =>

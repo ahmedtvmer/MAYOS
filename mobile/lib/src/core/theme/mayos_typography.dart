@@ -2,19 +2,38 @@ import 'package:flutter/material.dart';
 
 import 'mayos_theme_extension.dart';
 
-/// MAYOS typography roles.
+/// MAYOS typography roles selected from the active Display language.
 ///
-/// A licensed editorial serif ([displayFamily]) carries display and page
-/// headings; a clean sans ([uiFamily]) carries all interface text and numerics.
-/// These are an acknowledged approximation of the reference (see DESIGN.md).
-///
-/// Both families are variable fonts. We select weights with explicit
-/// `fontVariations` so the look does not depend on engine weight mapping.
-abstract final class MayosTypography {
+/// Widgets resolve the shared roles from their build context. This keeps
+/// typography tied to the displayed app version, independently of assistant
+/// reply language.
+final class MayosTypography {
+  const MayosTypography._({
+    required this.interfaceFamily,
+    required this.fallbackFamilies,
+    required this.isArabic,
+    required this.display,
+    required this.pageHeading,
+    required this.sectionHeading,
+    required this.exerciseTitle,
+    required this.body,
+    required this.bodySecondary,
+    required this.code,
+    required this.label,
+    required this.numeric,
+    required this.numericSmall,
+    required this.numericMedium,
+    required this.avatarInitials,
+    required this.modeBadge,
+    required this.caption,
+    required this.captionStrong,
+    required this.serifMedium,
+  });
+
   static const String displayFamily = 'PlayfairDisplay';
   static const String uiFamily = 'Inter';
-  static const String arabicFallbackFamily = 'IBMPlexSansArabic';
-  static const List<String> fontFamilyFallback = <String>[arabicFallbackFamily];
+  static const String arabicFamily = 'IBMPlexSansArabic';
+  static const List<String> fontFamilyFallback = <String>[arabicFamily];
 
   static const List<FontVariation> _serifSemiBold = <FontVariation>[
     FontVariation('wght', 600),
@@ -41,86 +60,7 @@ abstract final class MayosTypography {
   static const List<FontFeature> _tabular = <FontFeature>[
     FontFeature.tabularFigures(),
   ];
-
-  /// Hero / display heading.
-  static const TextStyle display = TextStyle(
-    fontFamily: displayFamily,
-    fontFamilyFallback: fontFamilyFallback,
-    fontSize: 40,
-    height: 1.08,
-    fontWeight: FontWeight.w600,
-    fontVariations: _serifSemiBold,
-    letterSpacing: -0.5,
-  );
-
-  /// Page heading (e.g. a section's editorial title).
-  static const TextStyle pageHeading = TextStyle(
-    fontFamily: displayFamily,
-    fontFamilyFallback: fontFamilyFallback,
-    fontSize: 28,
-    height: 1.15,
-    fontWeight: FontWeight.w600,
-    fontVariations: _serifSemiBold,
-    letterSpacing: -0.3,
-  );
-
-  /// Section heading inside a page (sans, confident but quiet).
-  static const TextStyle sectionHeading = TextStyle(
-    fontFamily: uiFamily,
-    fontFamilyFallback: fontFamilyFallback,
-    fontSize: 18,
-    height: 1.3,
-    fontWeight: FontWeight.w600,
-    fontVariations: _semibold,
-    letterSpacing: -0.1,
-  );
-
-  /// Exercise / card title.
-  static const TextStyle exerciseTitle = TextStyle(
-    fontFamily: uiFamily,
-    fontFamilyFallback: fontFamilyFallback,
-    fontSize: 16,
-    height: 1.3,
-    fontWeight: FontWeight.w600,
-    fontVariations: _semibold,
-  );
-
-  /// Primary body copy.
-  static const TextStyle body = TextStyle(
-    fontFamily: uiFamily,
-    fontFamilyFallback: fontFamilyFallback,
-    fontSize: 15,
-    height: 1.5,
-    fontWeight: FontWeight.w400,
-    fontVariations: _regular,
-  );
-
-  /// Secondary / supporting body copy.
-  static const TextStyle bodySecondary = TextStyle(
-    fontFamily: uiFamily,
-    fontFamilyFallback: fontFamilyFallback,
-    fontSize: 14,
-    height: 1.5,
-    fontWeight: FontWeight.w400,
-    fontVariations: _regular,
-  );
-
-  /// Selectable code; generic monospace resolves to Android/iOS system fonts.
-  static const TextStyle code = TextStyle(
-    fontFamily: 'monospace',
-    fontFamilyFallback: <String>[
-      'Roboto Mono',
-      'Menlo',
-      'Courier New',
-      arabicFallbackFamily,
-    ],
-    fontSize: 14,
-    height: 1.4,
-    fontWeight: FontWeight.w400,
-  );
-
-  /// UI label / button text.
-  static const TextStyle label = TextStyle(
+  static const TextStyle brandWordmark = TextStyle(
     fontFamily: uiFamily,
     fontFamilyFallback: fontFamilyFallback,
     fontSize: 14,
@@ -130,116 +70,261 @@ abstract final class MayosTypography {
     letterSpacing: 0.1,
   );
 
-  /// Numeric / stat figures. Tabular so values align.
-  static const TextStyle numeric = TextStyle(
-    fontFamily: uiFamily,
-    fontFamilyFallback: fontFamilyFallback,
-    fontSize: 28,
-    height: 1.05,
-    fontWeight: FontWeight.w700,
-    fontVariations: _bold,
-    letterSpacing: -0.5,
-    fontFeatures: _tabular,
+  static const MayosTypography _english = MayosTypography._(
+    interfaceFamily: uiFamily,
+    fallbackFamilies: fontFamilyFallback,
+    isArabic: false,
+    display: TextStyle(
+      fontFamily: displayFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontSize: 40,
+      height: 1.08,
+      fontWeight: FontWeight.w600,
+      fontVariations: _serifSemiBold,
+      letterSpacing: -0.5,
+    ),
+    pageHeading: TextStyle(
+      fontFamily: displayFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontSize: 28,
+      height: 1.15,
+      fontWeight: FontWeight.w600,
+      fontVariations: _serifSemiBold,
+      letterSpacing: -0.3,
+    ),
+    sectionHeading: TextStyle(
+      fontFamily: uiFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontSize: 18,
+      height: 1.3,
+      fontWeight: FontWeight.w600,
+      fontVariations: _semibold,
+      letterSpacing: -0.1,
+    ),
+    exerciseTitle: TextStyle(
+      fontFamily: uiFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontSize: 16,
+      height: 1.3,
+      fontWeight: FontWeight.w600,
+      fontVariations: _semibold,
+    ),
+    body: TextStyle(
+      fontFamily: uiFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontSize: 15,
+      height: 1.5,
+      fontWeight: FontWeight.w400,
+      fontVariations: _regular,
+    ),
+    bodySecondary: TextStyle(
+      fontFamily: uiFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontSize: 14,
+      height: 1.5,
+      fontWeight: FontWeight.w400,
+      fontVariations: _regular,
+    ),
+    code: TextStyle(
+      fontFamily: 'monospace',
+      fontFamilyFallback: <String>[
+        'Roboto Mono',
+        'Menlo',
+        'Courier New',
+        arabicFamily,
+      ],
+      fontSize: 14,
+      height: 1.4,
+      fontWeight: FontWeight.w400,
+    ),
+    label: TextStyle(
+      fontFamily: uiFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontSize: 14,
+      height: 1.2,
+      fontWeight: FontWeight.w600,
+      fontVariations: _semibold,
+      letterSpacing: 0.1,
+    ),
+    numeric: TextStyle(
+      fontFamily: uiFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontSize: 28,
+      height: 1.05,
+      fontWeight: FontWeight.w700,
+      fontVariations: _bold,
+      letterSpacing: -0.5,
+      fontFeatures: _tabular,
+    ),
+    numericSmall: TextStyle(
+      fontFamily: uiFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontSize: 17,
+      height: 1.1,
+      fontWeight: FontWeight.w600,
+      fontVariations: _semibold,
+      fontFeatures: _tabular,
+    ),
+    numericMedium: TextStyle(
+      fontFamily: uiFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontSize: 22,
+      height: 1.1,
+      fontWeight: FontWeight.w700,
+      fontVariations: _bold,
+      fontFeatures: _tabular,
+    ),
+    avatarInitials: TextStyle(
+      fontFamily: uiFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontSize: 12,
+      height: 1.1,
+      fontWeight: FontWeight.w600,
+      fontVariations: _semibold,
+      letterSpacing: 0.1,
+    ),
+    modeBadge: TextStyle(
+      fontFamily: uiFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontSize: 9,
+      height: 1.1,
+      fontWeight: FontWeight.w700,
+      fontVariations: _bold,
+      letterSpacing: 0.1,
+    ),
+    caption: TextStyle(
+      fontFamily: uiFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontSize: 12,
+      height: 1.35,
+      fontWeight: FontWeight.w500,
+      fontVariations: _medium,
+      letterSpacing: 0.2,
+    ),
+    captionStrong: TextStyle(
+      fontFamily: uiFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontSize: 12,
+      height: 1.35,
+      fontWeight: FontWeight.w700,
+      fontVariations: _bold,
+      letterSpacing: 0.2,
+    ),
+    serifMedium: TextStyle(
+      fontFamily: displayFamily,
+      fontFamilyFallback: fontFamilyFallback,
+      fontWeight: FontWeight.w500,
+      fontVariations: _serifMedium,
+    ),
   );
 
-  /// Small numeric / metric label.
-  static const TextStyle numericSmall = TextStyle(
-    fontFamily: uiFamily,
-    fontFamilyFallback: fontFamilyFallback,
-    fontSize: 17,
-    height: 1.1,
-    fontWeight: FontWeight.w600,
-    fontVariations: _semibold,
-    fontFeatures: _tabular,
-  );
+  static final MayosTypography _arabic = _english._asArabic();
 
-  /// Numeric for the in-app keypad keys: between [numericSmall] and [numeric].
-  static const TextStyle numericMedium = TextStyle(
-    fontFamily: uiFamily,
-    fontFamilyFallback: fontFamilyFallback,
-    fontSize: 22,
-    height: 1.1,
-    fontWeight: FontWeight.w700,
-    fontVariations: _bold,
-    fontFeatures: _tabular,
-  );
+  final String interfaceFamily;
+  final List<String> fallbackFamilies;
+  final bool isArabic;
+  final TextStyle display;
+  final TextStyle pageHeading;
+  final TextStyle sectionHeading;
+  final TextStyle exerciseTitle;
+  final TextStyle body;
+  final TextStyle bodySecondary;
+  final TextStyle code;
+  final TextStyle label;
+  final TextStyle numeric;
+  final TextStyle numericSmall;
+  final TextStyle numericMedium;
+  final TextStyle avatarInitials;
+  final TextStyle modeBadge;
+  final TextStyle caption;
+  final TextStyle captionStrong;
+  final TextStyle serifMedium;
 
-  /// Header-avatar initials, set on the accent-subtle disc.
-  static const TextStyle avatarInitials = TextStyle(
-    fontFamily: uiFamily,
-    fontFamilyFallback: fontFamilyFallback,
-    fontSize: 12,
-    height: 1.1,
-    fontWeight: FontWeight.w600,
-    fontVariations: _semibold,
-    letterSpacing: 0.1,
-  );
+  MayosTypography _asArabic() => MayosTypography._(
+        interfaceFamily: arabicFamily,
+        fallbackFamilies: const <String>[],
+        isArabic: true,
+        display: _arabicStyle(display),
+        pageHeading: _arabicStyle(pageHeading),
+        sectionHeading: _arabicStyle(sectionHeading),
+        exerciseTitle: _arabicStyle(exerciseTitle),
+        body: _arabicStyle(body),
+        bodySecondary: _arabicStyle(bodySecondary),
+        code: _arabicStyle(code),
+        label: _arabicStyle(label),
+        numeric: _arabicStyle(numeric),
+        numericSmall: _arabicStyle(numericSmall),
+        numericMedium: _arabicStyle(numericMedium),
+        avatarInitials: _arabicStyle(avatarInitials),
+        modeBadge: _arabicStyle(modeBadge),
+        caption: _arabicStyle(caption),
+        captionStrong: _arabicStyle(captionStrong),
+        serifMedium: _arabicStyle(serifMedium),
+      );
 
-  /// The single-letter Player/Coach badge chip on the header avatar.
-  static const TextStyle modeBadge = TextStyle(
-    fontFamily: uiFamily,
-    fontFamilyFallback: fontFamilyFallback,
-    fontSize: 9,
-    height: 1.1,
-    fontWeight: FontWeight.w700,
-    fontVariations: _bold,
-    letterSpacing: 0.1,
-  );
+  /// Resolves typography from the app's active locale, which is the account's
+  /// selected Display language inside MAYOS.
+  static MayosTypography of(BuildContext context) {
+    final String language = Localizations.maybeLocaleOf(context)?.languageCode
+            .toLowerCase() ??
+        'en';
+    return forLanguage(language);
+  }
 
-  /// Caption / metadata.
-  static const TextStyle caption = TextStyle(
-    fontFamily: uiFamily,
-    fontFamilyFallback: fontFamilyFallback,
-    fontSize: 12,
-    height: 1.35,
-    fontWeight: FontWeight.w500,
-    fontVariations: _medium,
-    letterSpacing: 0.2,
-  );
+  static MayosTypography forLanguage(String language) =>
+      language.toLowerCase() == 'ar' ? _arabic : _english;
 
-  /// Caption weight for dense labels that must hold their own in a row of
-  /// neighbours (table headers).
-  static const TextStyle captionStrong = TextStyle(
-    fontFamily: uiFamily,
-    fontFamilyFallback: fontFamilyFallback,
-    fontSize: 12,
-    height: 1.35,
-    fontWeight: FontWeight.w700,
-    fontVariations: _bold,
-    letterSpacing: 0.2,
-  );
-
-  static const TextStyle _displaySerifMedium = TextStyle(
-    fontFamily: displayFamily,
-    fontFamilyFallback: fontFamilyFallback,
-    fontWeight: FontWeight.w500,
-    fontVariations: _serifMedium,
-  );
-
-  /// Builds the Material [TextTheme] for a theme, mapping MAYOS roles onto
-  /// Material slots so components and existing screens inherit the system.
-  static TextTheme textTheme(MayosThemeExtension c) {
+  /// Builds the Material [TextTheme] from the same shared roles used by
+  /// explicit screen styles.
+  static TextTheme textTheme(
+    MayosThemeExtension colors,
+    MayosTypography type,
+  ) {
     return TextTheme(
-      displayLarge: display.copyWith(color: c.textPrimary),
-      displayMedium: pageHeading.copyWith(color: c.textPrimary),
-      displaySmall: pageHeading.copyWith(fontSize: 24, color: c.textPrimary),
-      headlineLarge: pageHeading.copyWith(fontSize: 26, color: c.textPrimary),
-      headlineMedium:
-          sectionHeading.copyWith(fontSize: 20, color: c.textPrimary),
-      headlineSmall: sectionHeading.copyWith(color: c.textPrimary),
-      titleLarge: sectionHeading.copyWith(fontSize: 19, color: c.textPrimary),
-      titleMedium: exerciseTitle.copyWith(color: c.textPrimary),
-      titleSmall: exerciseTitle.copyWith(fontSize: 14, color: c.textPrimary),
-      bodyLarge: body.copyWith(fontSize: 16, color: c.textPrimary),
-      bodyMedium: body.copyWith(color: c.textPrimary),
-      bodySmall: bodySecondary.copyWith(fontSize: 13, color: c.textSecondary),
-      labelLarge: label.copyWith(color: c.textPrimary),
-      labelMedium: caption.copyWith(fontSize: 12, color: c.textSecondary),
-      labelSmall: caption.copyWith(color: c.textMuted),
+      displayLarge: type.display.copyWith(color: colors.textPrimary),
+      displayMedium: type.pageHeading.copyWith(color: colors.textPrimary),
+      displaySmall: type.pageHeading.copyWith(
+        fontSize: 24,
+        color: colors.textPrimary,
+      ),
+      headlineLarge: type.pageHeading.copyWith(
+        fontSize: 26,
+        color: colors.textPrimary,
+      ),
+      headlineMedium: type.sectionHeading.copyWith(
+        fontSize: 20,
+        color: colors.textPrimary,
+      ),
+      headlineSmall: type.sectionHeading.copyWith(color: colors.textPrimary),
+      titleLarge: type.sectionHeading.copyWith(
+        fontSize: 19,
+        color: colors.textPrimary,
+      ),
+      titleMedium: type.exerciseTitle.copyWith(color: colors.textPrimary),
+      titleSmall: type.exerciseTitle.copyWith(
+        fontSize: 14,
+        color: colors.textPrimary,
+      ),
+      bodyLarge: type.body.copyWith(fontSize: 16, color: colors.textPrimary),
+      bodyMedium: type.body.copyWith(color: colors.textPrimary),
+      bodySmall: type.bodySecondary.copyWith(
+        fontSize: 13,
+        color: colors.textSecondary,
+      ),
+      labelLarge: type.label.copyWith(color: colors.textPrimary),
+      labelMedium: type.caption.copyWith(
+        fontSize: 12,
+        color: colors.textSecondary,
+      ),
+      labelSmall: type.caption.copyWith(color: colors.textMuted),
     );
   }
 
-  /// A soft serif used for the few numeric display moments that want editorial
-  /// character (e.g. splash tagline). Kept for completeness/consumers.
-  static const TextStyle serifMedium = _displaySerifMedium;
+  static TextStyle _arabicStyle(TextStyle style) => style.copyWith(
+        fontFamily: arabicFamily,
+        fontFamilyFallback: const <String>[],
+        height: 1.5,
+        letterSpacing: 0,
+        fontVariations: const <FontVariation>[],
+      );
 }

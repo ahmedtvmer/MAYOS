@@ -275,7 +275,7 @@ class GoogleSignInButton extends StatelessWidget {
                     Text(
                       label,
                       style: TextStyle(
-                        fontFamily: MayosTypography.uiFamily,
+                        fontFamily: MayosTypography.of(context).interfaceFamily,
                         fontSize: 14,
                         height: 20 / 14,
                         fontWeight: FontWeight.w500,
@@ -318,7 +318,7 @@ class AuthOrDivider extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: MayosSpacing.sm),
           child: Text(
             MayosCopy(ref.watch(displayLanguageProvider)).signInOr,
-            style: MayosTypography.bodySecondary.copyWith(color: c.textMuted),
+            style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textMuted),
           ),
         ),
         Expanded(child: Divider(height: 1, thickness: 1, color: c.border)),

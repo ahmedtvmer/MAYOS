@@ -234,7 +234,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
       padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
       child: Text(
         displayCopyOf(context).failureMessage(_error!),
-        style: MayosTypography.bodySecondary
+        style: MayosTypography.of(context).bodySecondary
             .copyWith(color: MayosTheme.of(context).danger),
       ),
     );
@@ -309,7 +309,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                   entry.playerUsername.isEmpty
                       ? '?'
                       : entry.playerUsername.substring(0, 1).toUpperCase(),
-                  style: MayosTypography.label.copyWith(color: c.textPrimary),
+                  style: MayosTypography.of(context).label.copyWith(color: c.textPrimary),
                 ),
               ),
               const SizedBox(width: MayosSpacing.md),
@@ -319,7 +319,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                   children: <Widget>[
                     Text(
                       entry.playerUsername,
-                      style: MayosTypography.exerciseTitle
+                      style: MayosTypography.of(context).exerciseTitle
                           .copyWith(color: c.textPrimary),
                     ),
                     const SizedBox(height: MayosSpacing.xxs),
@@ -328,7 +328,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                         lastWorkout: entry.lastWorkoutOn,
                         program: entry.programName,
                       ),
-                      style: MayosTypography.caption
+                      style: MayosTypography.of(context).caption
                           .copyWith(color: c.textSecondary),
                     ),
                     if (chips.isNotEmpty) ...<Widget>[
@@ -374,12 +374,12 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(copy.activeAssignments,
-              style: MayosTypography.sectionHeading
+              style: MayosTypography.of(context).sectionHeading
                   .copyWith(color: c.textPrimary)),
           const SizedBox(height: MayosSpacing.xs),
           if (_assignments.isEmpty)
             Text(copy.noAssignedPlayers,
-                style: MayosTypography.bodySecondary
+                style: MayosTypography.of(context).bodySecondary
                     .copyWith(color: c.textSecondary))
           else
             for (int i = 0; i < _assignments.length; i++) ...<Widget>[

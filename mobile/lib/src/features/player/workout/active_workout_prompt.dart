@@ -45,12 +45,12 @@ Future<ActiveWorkoutPromptChoice?> showActiveWorkoutPrompt(
             copy.startedWorkoutLabel(
                 activeWorkout.dayName, _startedLabel(activeWorkout)),
             style:
-                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           ),
           const SizedBox(height: MayosSpacing.sm),
           Text(
             forNewStart ? copy.resumeOrDiscardNewStart : copy.resumeOrDiscard,
-            style: MayosTypography.bodySecondary.copyWith(color: c.textPrimary),
+            style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textPrimary),
           ),
         ],
       ),
@@ -96,7 +96,7 @@ Future<bool> confirmDiscardWorkout(BuildContext context) async {
       title: Text(copy.confirmDiscardTitle),
       content: Text(
         copy.discardSetsLost,
-        style: MayosTypography.bodySecondary.copyWith(color: c.textPrimary),
+        style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textPrimary),
       ),
       actions: <Widget>[
         MayosButton(

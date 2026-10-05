@@ -87,7 +87,7 @@ class LoggerBottomBar extends StatelessWidget {
                       textAlign: copy.isArabic ? TextAlign.end : null,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: MayosTypography.label
+                      style: MayosTypography.of(context).label
                           .copyWith(color: c.textSecondary),
                     ),
                   ),

@@ -41,13 +41,13 @@ class PlayerSetupScreen extends ConsumerWidget {
             Text(
               copy.setupOwnTraining,
               textAlign: TextAlign.center,
-              style: MayosTypography.pageHeading.copyWith(color: c.textPrimary),
+              style: MayosTypography.of(context).pageHeading.copyWith(color: c.textPrimary),
             ),
             const SizedBox(height: MayosSpacing.sm),
             Text(
               copy.setupLead,
               textAlign: TextAlign.center,
-              style: MayosTypography.bodySecondary
+              style: MayosTypography.of(context).bodySecondary
                   .copyWith(color: c.textSecondary),
             ),
             const SizedBox(height: MayosSpacing.xl),

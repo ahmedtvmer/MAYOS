@@ -27,22 +27,23 @@ class DeloadBanner extends StatelessWidget {
       padding: const EdgeInsets.all(MayosSpacing.md),
       color: colors.accentSubtle,
       borderColor: colors.selectedBorder,
-      child: _bannerContents(colors, copy),
+      child: _bannerContents(context, colors, copy),
     );
   }
 
   Widget _bannerContents(
+    BuildContext context,
     MayosThemeExtension colors,
     MayosCopy copy,
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        _title(colors, copy),
+        _title(context, colors, copy),
         const SizedBox(height: MayosSpacing.xs),
         Text(
           decision.reason ?? copy.fatigueSignalDetected,
-          style: MayosTypography.bodySecondary.copyWith(
+          style: MayosTypography.of(context).bodySecondary.copyWith(
             color: colors.textSecondary,
           ),
         ),
@@ -57,7 +58,7 @@ class DeloadBanner extends StatelessWidget {
                 )
               : decision.changeSummary,
           textAlign: copy.isArabic ? TextAlign.end : null,
-          style: MayosTypography.bodySecondary.copyWith(
+          style: MayosTypography.of(context).bodySecondary.copyWith(
             color: colors.textPrimary,
           ),
         ),
@@ -66,7 +67,11 @@ class DeloadBanner extends StatelessWidget {
     );
   }
 
-  Widget _title(MayosThemeExtension colors, MayosCopy copy) => Row(
+  Widget _title(
+    BuildContext context,
+    MayosThemeExtension colors,
+    MayosCopy copy,
+  ) => Row(
         children: <Widget>[
           Icon(Icons.battery_alert_outlined, color: colors.accent),
           const SizedBox(width: MayosSpacing.xs),
@@ -77,7 +82,7 @@ class DeloadBanner extends StatelessWidget {
                       ? copy.deloadApplied
                       : copy.deloadSuggested
                   : decision.title,
-              style: MayosTypography.sectionHeading.copyWith(
+              style: MayosTypography.of(context).sectionHeading.copyWith(
                 color: colors.textPrimary,
               ),
             ),

@@ -841,7 +841,7 @@ class _HostedProcessingDisclosure extends StatelessWidget {
               Expanded(
                 child: Text(
                   displayCopyOf(context).hostedAIProcessing,
-                  style: MayosTypography.sectionHeading
+                  style: MayosTypography.of(context).sectionHeading
                       .copyWith(color: c.textPrimary),
                 ),
               ),
@@ -851,7 +851,7 @@ class _HostedProcessingDisclosure extends StatelessWidget {
           Text(
             displayCopyOf(context).onboardingHostedDisclosure,
             style:
-                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           ),
           const SizedBox(height: MayosSpacing.md),
           Row(
@@ -862,7 +862,7 @@ class _HostedProcessingDisclosure extends StatelessWidget {
               Expanded(
                 child: Text(
                   displayCopyOf(context).onboardingPrivacyNote,
-                  style: MayosTypography.caption.copyWith(color: c.textMuted),
+                  style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
                 ),
               ),
             ],
@@ -918,14 +918,14 @@ class _LoadErrorContent extends StatelessWidget {
         Text(
           displayCopyOf(context).setupLoadFailed,
           textAlign: TextAlign.center,
-          style: MayosTypography.pageHeading
+          style: MayosTypography.of(context).pageHeading
               .copyWith(color: c.textPrimary, fontSize: 24),
         ),
         const SizedBox(height: MayosSpacing.xs),
         Text(
           message,
           textAlign: TextAlign.center,
-          style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
         ),
         const SizedBox(height: MayosSpacing.xl),
         MayosButton(
@@ -952,13 +952,13 @@ class _BuildingProgramContent extends StatelessWidget {
         Text(
           displayCopyOf(context).buildingYourProgram,
           textAlign: TextAlign.center,
-          style: MayosTypography.pageHeading.copyWith(color: c.textPrimary),
+          style: MayosTypography.of(context).pageHeading.copyWith(color: c.textPrimary),
         ),
         const SizedBox(height: MayosSpacing.sm),
         Text(
           displayCopyOf(context).answersSavedBuilding,
           textAlign: TextAlign.center,
-          style: MayosTypography.bodySecondary.copyWith(
+          style: MayosTypography.of(context).bodySecondary.copyWith(
             color: c.textSecondary,
           ),
         ),

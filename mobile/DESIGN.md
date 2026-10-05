@@ -5,7 +5,7 @@ This document records the visual system established for the Android player app
 `UI_app_design/mayos-ui-reference.png` and
 `UI_app_design/mayos-flutter-redesign-prompt.txt`.
 
-## Typography (an acknowledged approximation)
+## Typography
 
 No font files shipped with the project, and the exact faces in the reference
 are not identifiable from the raster, so this pass bundles a licensed pair from
@@ -20,15 +20,17 @@ the official Google Fonts OFL sources:
 Licenses: `assets/fonts/OFL-PlayfairDisplay.txt`, `assets/fonts/OFL-Inter.txt`
 (SIL Open Font License 1.1).
 
-### Arabic glyph fallback
+### Arabic Display language
 
-Flutter web's CanvasKit renderer cannot use the operating system's Arabic
-fonts, so the app bundles **IBM Plex Sans Arabic** as a glyph fallback for all
-MAYOS typography roles and Material's base theme. The primary families remain
-Playfair Display for display headings and Inter for interface text; Latin text
-continues to use those families. This is a glyph coverage fix, not the full
-"IBM Plex for every role in the Arabic version" rollout tracked separately in
-issue #245.
+When the account's Display language is Arabic, every MAYOS typography role,
+including display headings, body, labels, code and numeric text, uses
+**IBM Plex Sans Arabic** through `MayosTypography`. This applies to the Arabic
+app version in Player and Coach mode and Flutter web, independently of the
+assistant reply language. The English app version continues to use Playfair
+Display for display headings and Inter for interface text. The branded MAYOS
+wordmark keeps its Inter treatment and supplied brand artwork. Arabic styles
+retain the existing role sizes and weights, use 1.5 line height, and use zero
+letter spacing.
 
 The static Regular, Medium, SemiBold and Bold faces are registered as family
 `IBMPlexSansArabic` at weights 400, 500, 600 and 700. They come from
@@ -47,6 +49,8 @@ The static Regular, Medium, SemiBold and Bold faces are registered as family
 The font is licensed under the SIL Open Font License 1.1; the upstream license
 is kept at `assets/fonts/arabic/OFL-IBMPlex.txt`. The checked-in source and
 hashes are also recorded in `docs/design-review/143/font-provenance.json`.
+Selected-family actual-widget captures and a disposable source bundle are
+published in `docs/design-review/249/production/`.
 
 **Approximation note.** Playfair Display is chosen as the closest widely
 licensed match to the reference's high-contrast, transitional-style editorial
@@ -60,11 +64,12 @@ depend on engine weight mapping.
 
 1. Drop new `.ttf` files under `mobile/assets/fonts/`.
 2. Update the `fonts:` block in `mobile/pubspec.yaml`.
-3. Update `displayFamily` / `uiFamily` and the `FontVariation` helpers in
-   `lib/src/core/theme/mayos_typography.dart`.
+3. Update the language-selected role definitions and font registration in
+   `lib/src/core/theme/mayos_typography.dart` and `pubspec.yaml`.
 
-No screen references a font family directly; every role resolves through
-`MayosTypography`.
+Screen typography roles resolve through `MayosTypography.of(context)`. The
+branded wordmark retains its Inter style, and partner or platform-owned
+controls may keep their own required typography.
 
 ## Logos
 

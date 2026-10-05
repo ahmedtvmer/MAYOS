@@ -13,14 +13,23 @@ export 'mayos_theme_extension.dart';
 /// Material is used as infrastructure only: every visual default that would
 /// otherwise look like an untouched Material 3 template is overridden below.
 abstract final class MayosTheme {
-  static ThemeData get light => _build(MayosThemeExtension.light);
-  static ThemeData get dark => _build(MayosThemeExtension.dark);
+  static ThemeData get light => lightForLanguage('en');
+  static ThemeData get dark => darkForLanguage('en');
+
+  static ThemeData lightForLanguage(String language) =>
+      _build(MayosThemeExtension.light, language: language);
+  static ThemeData darkForLanguage(String language) =>
+      _build(MayosThemeExtension.dark, language: language);
 
   /// Dark tokens tuned for the logged-out surfaces drawn on the gym photo
   /// (#110). Links, progress and focused field edges use a lighter blue so they
   /// clear WCAG AA / non-text contrast against the photo.
-  static ThemeData get wallpaper => _build(MayosThemeExtension.wallpaper,
-      linkColor: MayosPalette.wallpaperLink);
+  static ThemeData get wallpaper => wallpaperForLanguage('en');
+  static ThemeData wallpaperForLanguage(String language) => _build(
+        MayosThemeExtension.wallpaper,
+        linkColor: MayosPalette.wallpaperLink,
+        language: language,
+      );
 
   /// The active MAYOS semantic tokens.
   static MayosThemeExtension of(BuildContext context) =>
@@ -79,9 +88,11 @@ abstract final class MayosTheme {
     );
   }
 
-  static ThemeData _build(MayosThemeExtension c, {Color? linkColor}) {
+  static ThemeData _build(MayosThemeExtension c,
+      {Color? linkColor, String language = 'en'}) {
     final ColorScheme scheme = _scheme(c);
-    final TextTheme textTheme = MayosTypography.textTheme(c);
+    final MayosTypography typography = MayosTypography.forLanguage(language);
+    final TextTheme textTheme = MayosTypography.textTheme(c, typography);
     final SystemUiOverlayStyle overlay = overlayStyle(c);
     // Links, progress and focus rings default to the accent; the wallpaper theme
     // passes a lighter blue so they clear contrast against the photo.
@@ -104,8 +115,8 @@ abstract final class MayosTheme {
       colorScheme: scheme,
       scaffoldBackgroundColor: c.canvas,
       canvasColor: c.canvas,
-      fontFamily: MayosTypography.uiFamily,
-      fontFamilyFallback: MayosTypography.fontFamilyFallback,
+      fontFamily: typography.interfaceFamily,
+      fontFamilyFallback: typography.fallbackFamilies,
       textTheme: textTheme,
       primaryTextTheme: textTheme,
       splashFactory: InkSparkle.splashFactory,

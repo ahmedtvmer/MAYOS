@@ -364,7 +364,7 @@ mixin _AccountSecurityMethods on ConsumerState<AccountSecuritySection> {
                     error ??
                         MayosCopy(ref.read(displayLanguageProvider))
                             .failureMessage(dialogFailure!),
-                    style: MayosTypography.bodySecondary
+                    style: MayosTypography.of(context).bodySecondary
                         .copyWith(color: MayosTheme.of(context).danger),
                   ),
                 ],
@@ -502,7 +502,7 @@ mixin _AccountSecurityMethods on ConsumerState<AccountSecuritySection> {
                     error ??
                         MayosCopy(ref.read(displayLanguageProvider))
                             .failureMessage(dialogFailure!),
-                    style: MayosTypography.bodySecondary
+                    style: MayosTypography.of(context).bodySecondary
                         .copyWith(color: MayosTheme.of(context).danger),
                   ),
                 ],
@@ -690,8 +690,8 @@ mixin _AccountSecurityMethods on ConsumerState<AccountSecuritySection> {
         child: Text(
           notice,
           style: _methodNoticeIsError
-              ? MayosTypography.bodySecondary.copyWith(color: c.danger)
-              : MayosTypography.body,
+              ? MayosTypography.of(context).bodySecondary.copyWith(color: c.danger)
+              : MayosTypography.of(context).body,
         ),
       ),
     );

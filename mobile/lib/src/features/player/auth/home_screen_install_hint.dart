@@ -123,7 +123,7 @@ class _HomeScreenInstallHintText extends ConsumerWidget {
       maxLines: 1,
       softWrap: false,
       overflow: TextOverflow.ellipsis,
-      style: MayosTypography.captionStrong.copyWith(color: colors.textPrimary),
+      style: MayosTypography.of(context).captionStrong.copyWith(color: colors.textPrimary),
     );
   }
 }

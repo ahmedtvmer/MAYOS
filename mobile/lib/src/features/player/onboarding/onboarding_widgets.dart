@@ -209,7 +209,7 @@ class _OnboardingHeader extends StatelessWidget {
             const SizedBox(width: MayosSpacing.sm),
             Text(
               '$answered/$total',
-              style: MayosTypography.caption.copyWith(color: c.textMuted),
+              style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
             ),
           ] else
             const SizedBox(width: 48),
@@ -280,7 +280,7 @@ class OnboardingQuestion extends StatelessWidget {
       children: <Widget>[
         Text(
           question,
-          style: MayosTypography.pageHeading.copyWith(
+          style: MayosTypography.of(context).pageHeading.copyWith(
             color: c.textPrimary,
             fontSize: 30,
             height: 1.12,
@@ -290,7 +290,7 @@ class OnboardingQuestion extends StatelessWidget {
           const SizedBox(height: MayosSpacing.sm),
           Text(
             explanation!,
-            style: MayosTypography.bodySecondary.copyWith(
+            style: MayosTypography.of(context).bodySecondary.copyWith(
               color: c.textSecondary,
               height: 1.5,
             ),
@@ -305,7 +305,7 @@ class OnboardingQuestion extends StatelessWidget {
               Flexible(
                 child: Text(
                   note!,
-                  style: MayosTypography.caption.copyWith(color: c.textMuted),
+                  style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
                 ),
               ),
             ],
@@ -335,7 +335,7 @@ class OnboardingInlineError extends StatelessWidget {
           Expanded(
             child: Text(
               message,
-              style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+              style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
             ),
           ),
         ],
@@ -585,7 +585,7 @@ class _ProportionCardState extends State<_ProportionCard> {
     final Widget label = Text(
       widget.title,
       textAlign: widget.stacked ? TextAlign.start : TextAlign.center,
-      style: MayosTypography.exerciseTitle.copyWith(
+      style: MayosTypography.of(context).exerciseTitle.copyWith(
         color: selected ? c.accent : c.textPrimary,
       ),
     );
@@ -594,7 +594,7 @@ class _ProportionCardState extends State<_ProportionCard> {
         : Text(
             widget.caption!,
             textAlign: widget.stacked ? TextAlign.start : TextAlign.center,
-            style: MayosTypography.caption.copyWith(color: c.textSecondary),
+            style: MayosTypography.of(context).caption.copyWith(color: c.textSecondary),
           );
 
     return Semantics(
@@ -843,7 +843,7 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
                         textDirection: TextDirection.ltr,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: MayosTypography.numeric.copyWith(
+                        style: MayosTypography.of(context).numeric.copyWith(
                           fontSize: 56,
                           color: c.textPrimary,
                         ),
@@ -855,7 +855,7 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Text(
                           widget.unit!,
-                          style: MayosTypography.label
+                          style: MayosTypography.of(context).label
                               .copyWith(color: c.textSecondary),
                         ),
                       ),
@@ -896,7 +896,7 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
                 widget.unit == null ? range : '$range ${widget.unit}',
                 textDirection: TextDirection.ltr,
                 textAlign: TextAlign.end,
-                style: MayosTypography.caption.copyWith(color: c.textMuted),
+                style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
               ),
             ),
             Flexible(
@@ -1032,7 +1032,7 @@ class FrequencySelector extends StatelessWidget {
           value == null
               ? displayCopyOf(context).chooseWeeklyTrainingDays
               : displayCopyOf(context).daysInWeek(value),
-          style: MayosTypography.caption.copyWith(color: c.textMuted),
+          style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
         ),
       ],
     );
@@ -1086,7 +1086,7 @@ class _FrequencyPill extends StatelessWidget {
                   Text(
                     '$value',
                     textDirection: TextDirection.ltr,
-                    style: MayosTypography.numericSmall.copyWith(
+                    style: MayosTypography.of(context).numericSmall.copyWith(
                       fontSize: 20,
                       color: selected ? c.accent : c.textPrimary,
                     ),
@@ -1095,7 +1095,7 @@ class _FrequencyPill extends StatelessWidget {
                     value == 1
                         ? displayCopyOf(context).day
                         : displayCopyOf(context).days,
-                    style: MayosTypography.caption.copyWith(
+                    style: MayosTypography.of(context).caption.copyWith(
                       color: selected ? c.accent : c.textMuted,
                     ),
                   ),
@@ -1174,7 +1174,7 @@ class _TextFieldEditorState extends State<TextFieldEditor> {
           const SizedBox(height: MayosSpacing.md),
           Text(
             displayCopyOf(context).tapExampleToStart,
-            style: MayosTypography.caption.copyWith(color: c.textMuted),
+            style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
           ),
           const SizedBox(height: MayosSpacing.xs),
           Wrap(
@@ -1226,7 +1226,7 @@ class _ExampleChip extends StatelessWidget {
           ),
           child: Text(
             label,
-            style: MayosTypography.bodySecondary
+            style: MayosTypography.of(context).bodySecondary
                 .copyWith(fontSize: 13, color: c.textSecondary),
           ),
         ),
@@ -1269,7 +1269,7 @@ class ReviewSection extends StatelessWidget {
                 start: MayosSpacing.xxs, bottom: MayosSpacing.xs),
             child: Text(
               title.toUpperCase(),
-              style: MayosTypography.caption.copyWith(
+              style: MayosTypography.of(context).caption.copyWith(
                 color: c.textMuted,
                 letterSpacing: 1.2,
               ),
@@ -1321,12 +1321,12 @@ class _ReviewRow extends StatelessWidget {
                 children: <Widget>[
                   Text(
                     copy.reviewLabel(field.name, serverLabel: field.label),
-                    style: MayosTypography.caption.copyWith(color: c.textMuted),
+                    style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
                   ),
                   const SizedBox(height: MayosSpacing.xxs),
                   Text(
                     value,
-                    style: MayosTypography.body.copyWith(
+                    style: MayosTypography.of(context).body.copyWith(
                       color: answered ? c.textPrimary : c.textMuted,
                     ),
                   ),

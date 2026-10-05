@@ -32,13 +32,13 @@ class NotFoundScreen extends StatelessWidget {
                 copy.pageNotFound,
                 textAlign: TextAlign.center,
                 style:
-                    MayosTypography.pageHeading.copyWith(color: c.textPrimary),
+                    MayosTypography.of(context).pageHeading.copyWith(color: c.textPrimary),
               ),
               const SizedBox(height: MayosSpacing.sm),
               Text(
                 copy.pageMissingLead,
                 textAlign: TextAlign.center,
-                style: MayosTypography.body.copyWith(color: c.textSecondary),
+                style: MayosTypography.of(context).body.copyWith(color: c.textSecondary),
               ),
               const SizedBox(height: MayosSpacing.xl),
               MayosButton(

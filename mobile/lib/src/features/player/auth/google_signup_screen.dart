@@ -344,7 +344,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
       children: <Widget>[
         Text(
           copy.googleSignupIncomplete,
-          style: MayosTypography.bodySecondary
+          style: MayosTypography.of(context).bodySecondary
               .copyWith(color: c.textSecondary, height: 1.5),
         ),
       ],

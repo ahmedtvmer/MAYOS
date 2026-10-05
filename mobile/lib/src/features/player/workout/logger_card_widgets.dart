@@ -159,7 +159,7 @@ class PreviousPerformanceSummary extends StatelessWidget {
     return Text(
       copy.previousPerformance(values),
       textAlign: copy.isArabic ? TextAlign.end : null,
-      style: MayosTypography.caption.copyWith(color: c.textSecondary),
+      style: MayosTypography.of(context).caption.copyWith(color: c.textSecondary),
     );
   }
 }
@@ -189,7 +189,7 @@ class LoggerTableHeader extends StatelessWidget {
             child: Text(
               copy.setShort,
               textAlign: TextAlign.center,
-              style: MayosTypography.captionStrong.copyWith(color: c.textMuted),
+              style: MayosTypography.of(context).captionStrong.copyWith(color: c.textMuted),
             ),
           ),
           for (int i = 1; i < labels.length - 1; i++)
@@ -203,7 +203,7 @@ class LoggerTableHeader extends StatelessWidget {
                 },
                 textAlign: TextAlign.center,
                 style:
-                    MayosTypography.captionStrong.copyWith(color: c.textMuted),
+                    MayosTypography.of(context).captionStrong.copyWith(color: c.textMuted),
               ),
             ),
           SizedBox(
@@ -211,7 +211,7 @@ class LoggerTableHeader extends StatelessWidget {
             child: Text(
               labels[labels.length - 1],
               textAlign: TextAlign.center,
-              style: MayosTypography.captionStrong.copyWith(color: c.textMuted),
+              style: MayosTypography.of(context).captionStrong.copyWith(color: c.textMuted),
             ),
           ),
         ],
@@ -468,7 +468,7 @@ class ExerciseLoggingCard extends StatelessWidget {
                   child: LoggerExerciseName(
                     name: exercise.exerciseName,
                     onTap: onOpenDetail,
-                    style: MayosTypography.exerciseTitle
+                    style: MayosTypography.of(context).exerciseTitle
                         .copyWith(color: c.textPrimary),
                   ),
                 ),
@@ -497,13 +497,13 @@ class ExerciseLoggingCard extends StatelessWidget {
                       value: 'replace',
                       child: Text(
                         copy.replaceExercise,
-                        style: MayosTypography.body,
+                        style: MayosTypography.of(context).body,
                       ),
                     ),
                     PopupMenuItem<String>(
                       key: restKey,
                       value: 'rest',
-                      child: Text(copy.restTime, style: MayosTypography.body),
+                      child: Text(copy.restTime, style: MayosTypography.of(context).body),
                     ),
                     // Exactly one of the two: a replacement is undone (which
                     // brings its planned exercise back), any other unplanned
@@ -514,7 +514,7 @@ class ExerciseLoggingCard extends StatelessWidget {
                         value: 'undo',
                         child: Text(
                           copy.undoReplace,
-                          style: MayosTypography.body,
+                          style: MayosTypography.of(context).body,
                         ),
                       )
                     else if (onRemove != null)
@@ -523,7 +523,7 @@ class ExerciseLoggingCard extends StatelessWidget {
                         value: 'remove',
                         child: Text(
                           copy.removeExercise,
-                          style: MayosTypography.body,
+                          style: MayosTypography.of(context).body,
                         ),
                       ),
                   ],
@@ -551,7 +551,7 @@ class ExerciseLoggingCard extends StatelessWidget {
                       children: <Widget>[
                         Text(
                           _prescriptionLine(copy),
-                          style: MayosTypography.caption
+                          style: MayosTypography.of(context).caption
                               .copyWith(color: c.textMuted),
                           textAlign: copy.isArabic ? TextAlign.end : null,
                         ),
@@ -563,7 +563,7 @@ class ExerciseLoggingCard extends StatelessWidget {
                             child: Text(
                               copy.tempoCue(tempo),
                               textAlign: copy.isArabic ? TextAlign.end : null,
-                              style: MayosTypography.caption
+                              style: MayosTypography.of(context).caption
                                   .copyWith(color: c.textMuted),
                             ),
                           ),
@@ -575,7 +575,7 @@ class ExerciseLoggingCard extends StatelessWidget {
                             child: Text(
                               '${copy.exerciseNotes}: $notes',
                               textAlign: copy.isArabic ? TextAlign.end : null,
-                              style: MayosTypography.caption
+                              style: MayosTypography.of(context).caption
                                   .copyWith(color: c.textSecondary),
                             ),
                           ),
@@ -664,7 +664,7 @@ class _CoachExerciseLoggerDetails extends StatelessWidget {
           const SizedBox(height: MayosSpacing.xxs),
           Text(
             note!,
-            style: MayosTypography.bodySecondary.copyWith(
+            style: MayosTypography.of(context).bodySecondary.copyWith(
               color: MayosTheme.of(context).textSecondary,
             ),
           ),
@@ -737,14 +737,14 @@ class WarmupMovementLoggingCard extends StatelessWidget {
                     (movement.sets.isEmpty ? 10 : movement.sets.first.reps),
                 movement.restSeconds ?? 45,
               ),
-              style: MayosTypography.caption.copyWith(
+              style: MayosTypography.of(context).caption.copyWith(
                 color: MayosTheme.of(context).textMuted,
               ),
             ),
             if (movement.notes != null && movement.notes!.isNotEmpty)
               Text(
                 '${workoutCopyOf(context).exerciseNotes}: ${movement.notes}',
-                style: MayosTypography.caption.copyWith(
+                style: MayosTypography.of(context).caption.copyWith(
                   color: MayosTheme.of(context).textSecondary,
                 ),
               ),
@@ -787,7 +787,7 @@ class WarmupMovementLoggingCard extends StatelessWidget {
           child: LoggerExerciseName(
             name: movement.exerciseName,
             onTap: onOpenDetail,
-            style: MayosTypography.exerciseTitle.copyWith(color: c.textPrimary),
+            style: MayosTypography.of(context).exerciseTitle.copyWith(color: c.textPrimary),
           ),
         ),
         const _WarmupTag(),
@@ -976,14 +976,14 @@ class CardioLoggingCard extends StatelessWidget {
           children: <Widget>[
             Text(
               copy.cardio,
-              style: MayosTypography.exerciseTitle.copyWith(
+              style: MayosTypography.of(context).exerciseTitle.copyWith(
                 color: colors.textPrimary,
               ),
             ),
             const SizedBox(height: MayosSpacing.xs),
             Text(
               cardio.prescription,
-              style: MayosTypography.bodySecondary.copyWith(
+              style: MayosTypography.of(context).bodySecondary.copyWith(
                 color: colors.textSecondary,
               ),
             ),
@@ -1068,7 +1068,7 @@ class _WarmupTag extends StatelessWidget {
         borderRadius: MayosRadii.pillRadius,
       ),
       child: Text(workoutCopyOf(context).warmupMovementTag,
-          style: MayosTypography.caption),
+          style: MayosTypography.of(context).caption),
     );
   }
 }
@@ -1088,7 +1088,7 @@ class _UnplannedTag extends StatelessWidget {
         borderRadius: MayosRadii.pillRadius,
       ),
       child: Text(workoutCopyOf(context).unplanned,
-          style: MayosTypography.caption),
+          style: MayosTypography.of(context).caption),
     );
   }
 }
@@ -1199,7 +1199,7 @@ class SetLoggingRow extends StatelessWidget {
                       child: Text(
                         set.isWarmup ? 'W' : '${setIndex + 1}',
                         textDirection: TextDirection.ltr,
-                        style: MayosTypography.numericSmall.copyWith(
+                        style: MayosTypography.of(context).numericSmall.copyWith(
                           color: muted ? c.textMuted : c.textPrimary,
                         ),
                       ),
@@ -1309,7 +1309,7 @@ class SetLoggingRow extends StatelessWidget {
                 child: Text(
                   texts.value ?? texts.hint ?? '–',
                   textDirection: TextDirection.ltr,
-                  style: MayosTypography.numericSmall.copyWith(color: color),
+                  style: MayosTypography.of(context).numericSmall.copyWith(color: color),
                 ),
               ),
             ),
@@ -1407,7 +1407,7 @@ class RirSelector extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
-                    style: MayosTypography.numericSmall.copyWith(color: color),
+                    style: MayosTypography.of(context).numericSmall.copyWith(color: color),
                   ),
                 ),
                 Icon(

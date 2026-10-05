@@ -227,18 +227,18 @@ class _ResolveRequestSheetState extends ConsumerState<_ResolveRequestSheet> {
         children: <Widget>[
           Text(
             copy.playerAsks(widget.playerUsername ?? copy.player),
-            style: MayosTypography.caption.copyWith(color: c.textSecondary),
+            style: MayosTypography.of(context).caption.copyWith(color: c.textSecondary),
           ),
           const SizedBox(height: MayosSpacing.xxs),
           Text(
             coachRequestTitle(context, request),
             style:
-                MayosTypography.sectionHeading.copyWith(color: c.textPrimary),
+                MayosTypography.of(context).sectionHeading.copyWith(color: c.textPrimary),
           ),
           const SizedBox(height: MayosSpacing.xxs),
           Text(
             copy.requestScope(request.dayName, request.programVersion),
-            style: MayosTypography.caption.copyWith(color: c.textSecondary),
+            style: MayosTypography.of(context).caption.copyWith(color: c.textSecondary),
           ),
           const SizedBox(height: MayosSpacing.sm),
           FirstStrongDirection(
@@ -246,7 +246,7 @@ class _ResolveRequestSheetState extends ConsumerState<_ResolveRequestSheet> {
             child: Text(
               '“${request.reason}”',
               style:
-                  MayosTypography.bodySecondary.copyWith(color: c.textPrimary),
+                  MayosTypography.of(context).bodySecondary.copyWith(color: c.textPrimary),
             ),
           ),
           const SizedBox(height: MayosSpacing.md),

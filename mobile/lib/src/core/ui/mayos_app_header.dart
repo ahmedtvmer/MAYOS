@@ -107,7 +107,7 @@ class MayosAppHeader extends StatelessWidget {
               child: Text(
                 title!,
                 overflow: TextOverflow.ellipsis,
-                style: MayosTypography.pageHeading.copyWith(
+                style: MayosTypography.of(context).pageHeading.copyWith(
                   fontSize: 22,
                   color: c.textPrimary,
                 ),
@@ -146,7 +146,7 @@ class _MayosWordmark extends StatelessWidget {
             const SizedBox(width: MayosSpacing.xxs),
             Text(
               'MAYOS',
-              style: MayosTypography.label.copyWith(
+              style: MayosTypography.brandWordmark.copyWith(
                 fontSize: 11.5,
                 letterSpacing: 2.4,
                 color: c.textPrimary,

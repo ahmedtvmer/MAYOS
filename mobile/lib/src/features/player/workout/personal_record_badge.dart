@@ -51,7 +51,7 @@ class PersonalRecordBadge extends StatelessWidget {
             const SizedBox(width: MayosSpacing.xxs),
             Text(
               workoutCopyOf(context).recordBadge(kind),
-              style: MayosTypography.captionStrong.copyWith(
+              style: MayosTypography.of(context).captionStrong.copyWith(
                 color: fg,
                 decoration: beaten ? TextDecoration.lineThrough : null,
               ),

@@ -47,10 +47,10 @@ Future<int?> showRestLengthPicker(
                           textDirection:
                               seconds <= 0 ? null : TextDirection.ltr,
                           style: selected
-                              ? MayosTypography.bodySecondary.copyWith(
+                              ? MayosTypography.of(context).bodySecondary.copyWith(
                                   color: MayosTheme.of(context).accent,
                                 )
-                              : MayosTypography.bodySecondary,
+                              : MayosTypography.of(context).bodySecondary,
                         ),
                       ),
                       if (selected)
@@ -168,7 +168,7 @@ class _RestTimerControlsState extends ConsumerState<RestTimerControls> {
                   textDirection: label == '−15' || label == '+15'
                       ? TextDirection.ltr
                       : null,
-                  style: MayosTypography.label.copyWith(color: c.accent),
+                  style: MayosTypography.of(context).label.copyWith(color: c.accent),
                 ),
               ),
             ),
@@ -211,7 +211,7 @@ class _RestTimerControlsState extends ConsumerState<RestTimerControls> {
                       Text(
                         restMmSs(_remainingSeconds),
                         textDirection: TextDirection.ltr,
-                        style: MayosTypography.numericMedium.copyWith(
+                        style: MayosTypography.of(context).numericMedium.copyWith(
                           color: c.textPrimary,
                         ),
                       ),
@@ -219,7 +219,7 @@ class _RestTimerControlsState extends ConsumerState<RestTimerControls> {
                         copy.restForExercise(widget.rest.exerciseName),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: MayosTypography.caption.copyWith(
+                        style: MayosTypography.of(context).caption.copyWith(
                           color: c.textMuted,
                         ),
                       ),

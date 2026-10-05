@@ -135,8 +135,8 @@ void main() {
       spans.any(
         (TextSpan span) =>
             span.text == 'Training plan' &&
-            span.style?.fontFamily == MayosTypography.pageHeading.fontFamily &&
-            span.style?.fontSize == MayosTypography.pageHeading.fontSize,
+            span.style?.fontFamily == MayosTypography.forLanguage('en').pageHeading.fontFamily &&
+            span.style?.fontSize == MayosTypography.forLanguage('en').pageHeading.fontSize,
       ),
       isTrue,
     );
@@ -145,8 +145,8 @@ void main() {
         (TextSpan span) =>
             span.text == 'Main lift' &&
             span.style?.fontFamily ==
-                MayosTypography.sectionHeading.fontFamily &&
-            span.style?.fontSize == MayosTypography.sectionHeading.fontSize,
+                MayosTypography.forLanguage('en').sectionHeading.fontFamily &&
+            span.style?.fontSize == MayosTypography.forLanguage('en').sectionHeading.fontSize,
       ),
       isTrue,
     );
@@ -195,7 +195,7 @@ void main() {
       spans.any(
         (TextSpan span) =>
             span.text == '3 reps' &&
-            span.style?.fontFamily == MayosTypography.code.fontFamily &&
+            span.style?.fontFamily == MayosTypography.forLanguage('en').code.fontFamily &&
             span.style?.height == 1.4,
       ),
       isTrue,
@@ -204,7 +204,7 @@ void main() {
       spans.any(
         (TextSpan span) =>
             span.text == 'Keep the same setup.' &&
-            span.style?.fontFamily == MayosTypography.code.fontFamily &&
+            span.style?.fontFamily == MayosTypography.forLanguage('en').code.fontFamily &&
             span.style?.height == 1.4,
       ),
       isTrue,

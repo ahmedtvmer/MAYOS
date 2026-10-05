@@ -791,13 +791,13 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
           ],
           Text(
             program.programName,
-            style: MayosTypography.pageHeading.copyWith(color: c.textPrimary),
+            style: MayosTypography.of(context).pageHeading.copyWith(color: c.textPrimary),
           ),
           const SizedBox(height: MayosSpacing.xs),
           Text(
             '${program.splitType} · ${displayCopyOf(context).programFrequency(program.weeklyFrequency)}',
             style:
-                MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           ),
           if (program.isCoachPublished) ...<Widget>[
             const SizedBox(height: MayosSpacing.xs),
@@ -809,7 +809,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
             const SizedBox(height: MayosSpacing.sm),
             Text(
               displayCopyOf(context).failureMessage(_actionError!),
-              style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+              style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
             ),
           ],
           const SizedBox(height: MayosSpacing.md),
@@ -819,7 +819,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
               children: <Widget>[
                 Text(
                   authorityAction.message,
-                  style: MayosTypography.bodySecondary
+                  style: MayosTypography.of(context).bodySecondary
                       .copyWith(color: c.textSecondary),
                 ),
                 const SizedBox(height: MayosSpacing.sm),
@@ -852,7 +852,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
                   title: Text(
                     displayCopyOf(context)
                         .dayHeading(day.dayOrder, day.dayName),
-                    style: MayosTypography.sectionHeading
+                    style: MayosTypography.of(context).sectionHeading
                         .copyWith(color: c.textPrimary),
                   ),
                   children: <Widget>[
@@ -928,7 +928,7 @@ class _CenteredMessage extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: MayosTypography.body.copyWith(color: c.textPrimary),
+              style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
             ),
             if (actionLabel != null) ...<Widget>[
               const SizedBox(height: MayosSpacing.lg),
@@ -965,7 +965,7 @@ class _ProvenanceLabel extends StatelessWidget {
           former
               ? displayCopyOf(context).formerCoach
               : displayCopyOf(context).publishedByCoach,
-          style: MayosTypography.caption.copyWith(
+          style: MayosTypography.of(context).caption.copyWith(
             color: former ? c.textMuted : c.textSecondary,
           ),
         ),
@@ -1006,7 +1006,7 @@ class _ExerciseRow extends StatelessWidget {
                 children: <Widget>[
                   Text(
                     exercise.exerciseName,
-                    style: MayosTypography.exerciseTitle.copyWith(
+                    style: MayosTypography.of(context).exerciseTitle.copyWith(
                       color: c.textPrimary,
                     ),
                   ),
@@ -1017,7 +1017,7 @@ class _ExerciseRow extends StatelessWidget {
                     textDirection: TextDirection.ltr,
                     child: Text(
                       exercise.prescription,
-                      style: MayosTypography.bodySecondary.copyWith(
+                      style: MayosTypography.of(context).bodySecondary.copyWith(
                         color: c.textSecondary,
                       ),
                     ),
@@ -1030,7 +1030,7 @@ class _ExerciseRow extends StatelessWidget {
                           .map((SuggestedSubstitute item) => item.exerciseName)
                           .join(', ')),
                       style:
-                          MayosTypography.caption.copyWith(color: c.textMuted),
+                          MayosTypography.of(context).caption.copyWith(color: c.textMuted),
                     ),
                   ],
                   const SizedBox(height: 2),
@@ -1042,20 +1042,20 @@ class _ExerciseRow extends StatelessWidget {
                       displayCopyOf(context)
                           .restTime(exercise.restSecondsOrDefault),
                     ].join(' · '),
-                    style: MayosTypography.caption.copyWith(color: c.textMuted),
+                    style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
                   ),
                   if (exercise.tempo != null && exercise.tempo!.isNotEmpty) ...<Widget>[
                     const SizedBox(height: 2),
                     Text(
                       workoutCopyOf(context).tempoCue(exercise.tempo!),
-                      style: MayosTypography.caption.copyWith(color: c.textMuted),
+                      style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
                     ),
                   ],
                   if (showCoachNotes && exercise.hasNotes) ...<Widget>[
                     const SizedBox(height: 2),
                     Text(
                       exercise.notes!,
-                      style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+                      style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
                     ),
                   ],
                 ],
@@ -1104,7 +1104,7 @@ class _CoachExerciseDetails extends StatelessWidget {
             const SizedBox(height: MayosSpacing.xxs),
             Text(
               exercise.note!,
-              style: MayosTypography.bodySecondary.copyWith(
+              style: MayosTypography.of(context).bodySecondary.copyWith(
                 color: MayosTheme.of(context).textSecondary,
               ),
             ),
@@ -1166,7 +1166,7 @@ class _WarmupRow extends StatelessWidget {
           children: <Widget>[
             Text(
               warmup.exerciseName,
-              style: MayosTypography.body.copyWith(color: c.textPrimary),
+              style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
             ),
             const SizedBox(height: 2),
             Text(
@@ -1175,13 +1175,13 @@ class _WarmupRow extends StatelessWidget {
                 warmup.reps,
                 warmup.restSeconds,
               ),
-              style: MayosTypography.caption.copyWith(color: c.textMuted),
+              style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
             ),
             if (warmup.hasNotes) ...<Widget>[
               const SizedBox(height: 2),
               Text(
                 warmup.notes!,
-                style: MayosTypography.bodySecondary
+                style: MayosTypography.of(context).bodySecondary
                     .copyWith(color: c.textSecondary),
               ),
             ],
@@ -1212,7 +1212,7 @@ class _CardioRow extends StatelessWidget {
               text: cardio,
               child: Text(
                 cardio,
-                style: MayosTypography.bodySecondary
+                style: MayosTypography.of(context).bodySecondary
                     .copyWith(color: c.textSecondary),
               ),
             ),
@@ -1244,7 +1244,7 @@ class _OfflineBanner extends StatelessWidget {
           Expanded(
             child: Text(
               displayCopyOf(context).offlineProgramBanner,
-              style: MayosTypography.bodySecondary.copyWith(
+              style: MayosTypography.of(context).bodySecondary.copyWith(
                 color: c.textSecondary,
               ),
             ),
@@ -1270,7 +1270,7 @@ class _SectionLabel extends StatelessWidget {
         alignment: AlignmentDirectional.centerStart,
         child: Text(
           text,
-          style: MayosTypography.caption.copyWith(
+          style: MayosTypography.of(context).caption.copyWith(
             color: c.textMuted,
             letterSpacing: 0.6,
           ),

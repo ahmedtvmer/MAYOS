@@ -38,7 +38,7 @@ class WorkoutDraftsScreen extends ConsumerWidget {
           child: Text(
             copy.androidDraftsUnavailable,
             textAlign: TextAlign.center,
-            style: MayosTypography.body.copyWith(color: c.textSecondary),
+            style: MayosTypography.of(context).body.copyWith(color: c.textSecondary),
           ),
         ),
       );
@@ -63,7 +63,7 @@ class WorkoutDraftsScreen extends ConsumerWidget {
                     ? copy.noDraftsYet
                     : copy.draftsCounts(pending, synced),
                 textAlign: copy.isArabic ? TextAlign.end : null,
-                style: MayosTypography.bodySecondary
+                style: MayosTypography.of(context).bodySecondary
                     .copyWith(color: c.textSecondary),
               ),
               MayosButton(
@@ -86,7 +86,7 @@ class WorkoutDraftsScreen extends ConsumerWidget {
                       copy.offlineDraftsExplanation,
                       textAlign: TextAlign.center,
                       style:
-                          MayosTypography.body.copyWith(color: c.textSecondary),
+                          MayosTypography.of(context).body.copyWith(color: c.textSecondary),
                     ),
                   ),
                 )
@@ -132,14 +132,14 @@ class _DraftTile extends ConsumerWidget {
                     children: <Widget>[
                       Text(
                         '${draft.dayName} · ${draft.performedDate}',
-                        style: MayosTypography.exerciseTitle
+                        style: MayosTypography.of(context).exerciseTitle
                             .copyWith(color: c.textPrimary),
                         textDirection: TextDirection.ltr,
                       ),
                       const SizedBox(height: 2),
                       Text(
                         '${copy.workingSetCount(draft.workingSetCount)} · ${copy.draftStatus(draft.status)}',
-                        style: MayosTypography.bodySecondary
+                        style: MayosTypography.of(context).bodySecondary
                             .copyWith(color: c.textSecondary),
                         textAlign: copy.isArabic ? TextAlign.end : null,
                       ),
@@ -153,7 +153,7 @@ class _DraftTile extends ConsumerWidget {
                                   draft.activeProgramVersionAtSync!,
                                 )
                               : draft.versionDifferenceLabel!,
-                          style: MayosTypography.caption
+                          style: MayosTypography.of(context).caption
                               .copyWith(color: c.textMuted),
                           textAlign: copy.isArabic ? TextAlign.end : null,
                         ),
@@ -171,7 +171,7 @@ class _DraftTile extends ConsumerWidget {
                               draft.lastErrorFailure ??
                                   ServerFailureMessage(draft.lastError!),
                             ),
-                            style: MayosTypography.caption
+                            style: MayosTypography.of(context).caption
                                 .copyWith(color: c.danger),
                           ),
                         ),

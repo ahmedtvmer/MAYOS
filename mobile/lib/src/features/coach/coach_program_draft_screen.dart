@@ -611,7 +611,7 @@ class _CoachProgramDraftScreenState
                             padding: MayosSpacing.screen,
                             children: <Widget>[
                               Text(widget.playerUsername,
-                                  style: MayosTypography.sectionHeading),
+                                  style: MayosTypography.of(context).sectionHeading),
                               const SizedBox(height: MayosSpacing.md),
                               for (int index = 0; index < _days.length; index++)
                                 _dayCard(context, index),
@@ -639,7 +639,7 @@ class _CoachProgramDraftScreenState
                                       _serverSummary ??
                                       displayCopyOf(context)
                                           .failureMessage(_failure!),
-                                  style: MayosTypography.body
+                                  style: MayosTypography.of(context).body
                                       .copyWith(color: colors.danger),
                                 ),
                               ],
@@ -871,13 +871,17 @@ String? _trimToNull(String value) {
   return trimmed.isEmpty ? null : trimmed;
 }
 
-Widget _editorErrorText(String? message, MayosThemeExtension colors) {
+Widget _editorErrorText(
+  BuildContext context,
+  String? message,
+  MayosThemeExtension colors,
+) {
   if (message == null) return const SizedBox.shrink();
   return Padding(
     padding: const EdgeInsets.only(top: MayosSpacing.xs),
     child: Text(
       message,
-      style: MayosTypography.body.copyWith(color: colors.danger),
+      style: MayosTypography.of(context).body.copyWith(color: colors.danger),
     ),
   );
 }

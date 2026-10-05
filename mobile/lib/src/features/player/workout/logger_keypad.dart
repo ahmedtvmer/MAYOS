@@ -9,6 +9,8 @@ import '../../../core/theme/mayos_typography.dart';
 /// Which table cell the in-app keypad is editing (#123).
 enum LoggerField { kg, reps, rir }
 
+const String _backspaceInput = 'backspace';
+
 /// The keypad's caption for one field: `Bench Press · set 1 · Weight (kg)`.
 String loggerFieldLabel(LoggerField field, {WorkoutCopy? copy}) =>
     switch (field) {
@@ -139,7 +141,7 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
 
   void _press(String label) {
     String next = _text;
-    if (label == '⌫') {
+    if (label == _backspaceInput) {
       next = _text.isEmpty ? '' : _text.substring(0, _text.length - 1);
     } else if (label == '.') {
       if (widget.field == LoggerField.kg && !_text.contains('.')) {
@@ -163,9 +165,34 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
     final WorkoutCopy copy = workoutCopyOf(context);
     final double rowHeight = _keyHeight + 2 * _keyPadding;
 
-    Widget key(String label,
-        {VoidCallback? onTap, Color? bg, Color? fg, Key? key}) {
+    Widget key(String label, {
+      VoidCallback? onTap,
+      Color? bg,
+      Color? fg,
+      Key? key,
+      Widget? content,
+      String? semanticLabel,
+    }) {
       final bool enabled = onTap != null;
+      Widget keyContent = SizedBox(
+        height: _keyHeight,
+        child: Center(
+          child: content ??
+              Text(
+                label,
+                style: MayosTypography.of(context).numericMedium.copyWith(
+                      color: fg ?? c.textPrimary,
+                    ),
+              ),
+        ),
+      );
+      if (semanticLabel != null) {
+        keyContent = Semantics(
+          label: semanticLabel,
+          button: true,
+          child: keyContent,
+        );
+      }
       return Expanded(
         child: Padding(
           padding: const EdgeInsets.all(_keyPadding),
@@ -178,14 +205,7 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
               onTap: onTap,
               child: Opacity(
                 opacity: enabled ? 1 : 0.35,
-                child: SizedBox(
-                  height: _keyHeight,
-                  child: Center(
-                    child: Text(label,
-                        style: MayosTypography.numericMedium
-                            .copyWith(color: fg ?? c.textPrimary)),
-                  ),
-                ),
+                child: keyContent,
               ),
             ),
           ),
@@ -262,9 +282,16 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
                     key('0',
                         key: const ValueKey<String>('logger.key.0'),
                         onTap: () => _press('0')),
-                    key('⌫',
-                        key: const ValueKey<String>('logger.key.backspace'),
-                        onTap: () => _press('⌫')),
+                    key(
+                      copy.backspace,
+                      key: const ValueKey<String>('logger.key.backspace'),
+                      onTap: () => _press(_backspaceInput),
+                      content: Icon(
+                        Icons.backspace_outlined,
+                        color: c.textPrimary,
+                      ),
+                      semanticLabel: copy.backspace,
+                    ),
                   ],
                 ),
               ],
@@ -295,7 +322,7 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
                               onTap: widget.onNext,
                               child: Center(
                                 child: Text(copy.next,
-                                    style: MayosTypography.label
+                                    style: MayosTypography.of(context).label
                                         .copyWith(color: c.onAccent)),
                               ),
                             ),
@@ -337,7 +364,7 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
                 child: Text(
                   copy.keypadCaption(widget.exerciseName, widget.setNumber,
                       loggerFieldLabel(widget.field, copy: copy)),
-                  style: MayosTypography.caption.copyWith(color: c.textMuted),
+                  style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
                 ),
               ),
               Directionality(
