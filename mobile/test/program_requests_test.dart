@@ -198,9 +198,13 @@ void main() {
     await _pumpApp(tester, fake);
     await _openPlayerAssignment(tester);
 
-    expect(find.textContaining('Bench Press'), findsOneWidget);
-    expect(find.textContaining('Incline Press'), findsOneWidget);
-    expect(find.textContaining('Upper 1'), findsOneWidget);
+    expect(
+      find.text(
+        'طلب تبديل تمرين من المدرب: \u2066Bench Press\u2069 في '
+        '\u2066Upper 1\u2069 إلى \u2066Incline Press\u2069',
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('player request list uses a localized neutral fallback',
@@ -215,7 +219,13 @@ void main() {
     await _pumpApp(tester, fake);
     await _openPlayerAssignment(tester);
 
-    expect(find.textContaining('التمرين'), findsOneWidget);
+    expect(
+      find.text(
+        'طلب تبديل تمرين من المدرب: \u2066التمرين\u2069 في '
+        '\u2066Upper 1\u2069 إلى \u2066التمرين\u2069',
+      ),
+      findsOneWidget,
+    );
     expect(find.textContaining('bench_press'), findsNothing);
     expect(find.textContaining('incline_press'), findsNothing);
   });

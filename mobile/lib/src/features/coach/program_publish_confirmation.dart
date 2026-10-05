@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/api_client.dart';
+import '../../core/display_language/catalog.dart' show exerciseNameOrFallback;
 import '../../core/display_language/coach_copy.dart';
 import '../../core/display_language/feature_copy_context.dart';
 import '../../core/models.dart';
@@ -92,7 +93,7 @@ class _ProgramPublishConfirmationDialogState
         ),
         subtitle: Text(
           copy.publishRequestDetails(
-            request.exerciseName ?? request.exerciseId,
+            exerciseNameOrFallback(request.exerciseName, copy.languageCode),
             isoDateOf(request.createdOn),
           ),
         ),

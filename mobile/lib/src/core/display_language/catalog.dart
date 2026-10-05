@@ -15,6 +15,12 @@ bool isSupportedDisplayLanguage(Object? value) =>
 String normalizeDisplayLanguage(Object? value) =>
     isSupportedDisplayLanguage(value) ? value! as String : 'en';
 
+String exerciseNameOrFallback(String? name, String languageCode) {
+  final String? normalizedName = name?.trim();
+  if (normalizedName != null && normalizedName.isNotEmpty) return normalizedName;
+  return MayosCopy(languageCode).exerciseFallbackName;
+}
+
 class MayosCopy {
   const MayosCopy(this.languageCode);
   final String languageCode;
@@ -575,7 +581,7 @@ class MayosCopy {
       isArabic ? 'تعذر تحميل التمرين.' : 'Could not load this exercise.';
   String get exerciseUnavailable =>
       isArabic ? 'هذا التمرين غير متاح.' : 'This exercise is not available.';
-  String get exerciseFallbackName => isArabic ? 'التمرين' : 'Exercise';
+  String get exerciseFallbackName => exercise;
   String get exerciseMediaUnavailable =>
       isArabic ? 'وسائط التمرين غير متاحة' : 'Exercise media unavailable';
   String get enterCoachCodeLead =>

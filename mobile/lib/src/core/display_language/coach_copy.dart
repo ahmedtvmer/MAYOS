@@ -1,4 +1,5 @@
 import 'arabic_count.dart';
+import 'catalog.dart' show exerciseNameOrFallback;
 import '../personal_records.dart';
 import '../program_prescription.dart';
 
@@ -596,8 +597,8 @@ class CoachCopy {
     required int? frequency,
     required String? preference,
   }) {
-    final String from = exerciseName ?? (isArabic ? 'التمرين' : 'Exercise');
-    final String to = replacementName ?? (isArabic ? 'التمرين' : 'Exercise');
+    final String from = exerciseNameOrFallback(exerciseName, languageCode);
+    final String to = exerciseNameOrFallback(replacementName, languageCode);
     if (!isArabic) {
       if (isSubstitution) return '$from → $to';
       return 'Split change → $frequency days/week'

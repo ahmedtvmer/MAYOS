@@ -131,14 +131,17 @@ Map<String, dynamic> _coachActiveProgram({
       },
     };
 
-Map<String, dynamic> _pendingSubstitutionRequest(String requestId) =>
+Map<String, dynamic> _pendingSubstitutionRequest(
+  String requestId, {
+  String? exerciseName = 'Squat',
+}) =>
     <String, dynamic>{
       'request_id': requestId,
       'assignment_id': 'assignment-1',
       'kind': 'exercise_substitution',
       'program_version': 7,
       'exercise_id': 'sq',
-      'exercise_name': 'Squat',
+      'exercise_name': exerciseName,
       'reason': 'Please change this exercise.',
       'status': 'pending',
       'created_at': '2026-10-02T10:00:00Z',
@@ -349,6 +352,13 @@ void main() {
         ),
         findsOneWidget,
       );
+      expect(
+        find.descendant(
+          of: requestRow,
+          matching: find.text('Squat · Date: \u20662026-10-02\u2069'),
+        ),
+        findsOneWidget,
+      );
     }
     expect(
       tester.widget<CheckboxListTile>(
@@ -404,7 +414,10 @@ void main() {
     final FakeMayosApi fake = _coachFake()
       ..displayLanguage = 'ar'
       ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic')
-      ..programRequests.add(_pendingSubstitutionRequest('request-1'));
+      ..programRequests.addAll(<Map<String, dynamic>>[
+        _pendingSubstitutionRequest('request-1'),
+        _pendingSubstitutionRequest('request-missing', exerciseName: null),
+      ]);
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('قائمة اللاعبين'));
     await tester.tap(find.text('bob'));
@@ -423,7 +436,10 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.descendant(of: requestRow, matching: find.textContaining('Squat')),
+      find.descendant(
+        of: requestRow,
+        matching: find.text('Squat · التاريخ: \u20662026-10-02\u2069'),
+      ),
       findsOneWidget,
     );
     expect(
@@ -434,11 +450,45 @@ void main() {
       findsOneWidget,
     );
     expect(
+      find.descendant(
+        of: find.byKey(const Key('publish_resolve_request-missing')),
+        matching: find.text('التمرين · التاريخ: \u20662026-10-02\u2069'),
+      ),
+      findsOneWidget,
+    );
+    expect(
       tester.widget<CheckboxListTile>(
         find.byKey(const Key('publish_resolve_request-1')),
       ).value,
       isTrue,
     );
+  });
+
+  testWidgets('publish confirmation uses a localized fallback for a missing name',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic')
+      ..programRequests.add(
+        _pendingSubstitutionRequest('request-missing', exerciseName: null),
+      );
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_as_is')));
+
+    await tester.tap(find.byKey(const Key('coach_program_approve_as_is')));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_confirm')));
+
+    final Finder requestRow =
+        find.byKey(const Key('publish_resolve_request-missing'));
+    expect(
+      find.descendant(
+        of: requestRow,
+        matching: find.text('Exercise · Date: \u20662026-10-02\u2069'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('sq'), findsNothing);
   });
 
   testWidgets('stale Approve as is reloads the program before retrying',

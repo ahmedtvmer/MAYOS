@@ -77,55 +77,49 @@ def _day_contains(program: Any, day_name: Any, exercise_id: Any) -> bool:
     return any(str(exercise.exercise_id) == str(exercise_id) for exercise in day.exercises)
 
 
-def _request_display_language(db: Any, account_id: str) -> str:
-    account = db.get_account(str(account_id))
-    return "ar" if account and account.get("display_language") == "ar" else "en"
-
-
 def _request_exercise_name(
     db: Any,
     exercise_id: Any,
-    display_language: str,
-    cache: dict[str, str],
+    library_entries: dict[str, dict[str, Any]],
+    cache: dict[str, str | None],
 ) -> str | None:
-    if exercise_id is None:
+    if exercise_id is None or not str(exercise_id):
         return None
     exercise_id = str(exercise_id)
     if exercise_id not in cache:
-        exercise = resolve_exercise_display_row(db, exercise_id)
-        name = exercise.get("name") if exercise else None
-        cache[exercise_id] = str(name).strip() if name and str(name).strip() else (
-            "التمرين" if display_language == "ar" else "Exercise"
+        exercise = resolve_exercise_display_row(
+            db, exercise_id, library_entries=library_entries
         )
+        name = exercise.get("name") if exercise else None
+        cache[exercise_id] = str(name).strip() if name and str(name).strip() else None
     return cache[exercise_id]
 
 
-def _present_program_request(
-    db: Any,
-    request: dict[str, Any],
-    display_language: str,
-    cache: dict[str, str] | None = None,
-) -> dict[str, Any]:
-    names = cache if cache is not None else {}
-    return {
-        **request,
-        "exercise_name": _request_exercise_name(db, request.get("exercise_id"), display_language, names),
-        "replacement_exercise_name": _request_exercise_name(
-            db, request.get("replacement_exercise_id"), display_language, names
-        ),
+def _present_program_requests(db: Any, requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    exercise_ids = {
+        str(exercise_id)
+        for request in requests
+        for exercise_id in (request.get("exercise_id"), request.get("replacement_exercise_id"))
+        if exercise_id is not None and str(exercise_id)
     }
-
-
-def _present_program_requests(
-    db: Any,
-    requests: list[dict[str, Any]],
-    display_language: str,
-) -> list[dict[str, Any]]:
-    cache: dict[str, str] = {}
+    library_entries = db.get_exercise_library_entries(exercise_ids)
+    cache: dict[str, str | None] = {}
     return [
-        _present_program_request(db, request, display_language, cache)
+        {
+            **request,
+            "exercise_name": _request_exercise_name(
+                db, request.get("exercise_id"), library_entries, cache
+            ),
+            "replacement_exercise_name": _request_exercise_name(
+                db, request.get("replacement_exercise_id"), library_entries, cache
+            ),
+        }
         for request in requests
     ]
+
+
+def _present_program_request(db: Any, request: dict[str, Any]) -> dict[str, Any]:
+    return _present_program_requests(db, [request])[0]
 
 
 def _notify_player(db: Any, player_account_id: str, assignment_id: str, message: str, now_iso: str) -> None:
@@ -323,7 +317,7 @@ def create_request(
         capture_program_request_created(player_actor, request, client=client)
         return {
             "ok": True,
-            "request": _present_program_request(db, request, account.get("display_language", "en")),
+            "request": _present_program_request(db, request),
             "email_sent": email_sent,
         }
 
@@ -445,9 +439,7 @@ def apply_request(
             capture_program_request_resolved(coach_actor, resolved_request, client=client)
             return {
                 "ok": True,
-                "request": _present_program_request(
-                    db, resolved_request, _request_display_language(db, coach_account_id)
-                ),
+                "request": _present_program_request(db, resolved_request),
                 "program_version": version,
             }
 
@@ -558,9 +550,7 @@ def decline_request(
         capture_program_request_resolved(coach_actor, resolved_request, client=client)
         return {
             "ok": True,
-            "request": _present_program_request(
-                db, resolved_request, _request_display_language(db, coach_account_id)
-            ),
+            "request": _present_program_request(db, resolved_request),
         }
 
 
@@ -585,9 +575,7 @@ def cancel_request(
     capture_program_request_resolved(player_actor, resolved_request, client=client)
     return {
         "ok": True,
-        "request": _present_program_request(
-            db, resolved_request, _request_display_language(db, player_account_id)
-        ),
+        "request": _present_program_request(db, resolved_request),
     }
 
 
@@ -595,7 +583,6 @@ def list_player_requests(db: Any, player_account_id: str) -> list[dict[str, Any]
     return _present_program_requests(
         db,
         db.list_program_requests_for_player(player_account_id),
-        _request_display_language(db, player_account_id),
     )
 
 
@@ -608,7 +595,6 @@ def list_assignment_requests(db: Any, coach_account_id: str, assignment_id: Any)
     return _present_program_requests(
         db,
         db.list_program_requests_for_assignment(assignment_id),
-        _request_display_language(db, coach_account_id),
     )
 
 
@@ -624,5 +610,4 @@ def list_coach_program_requests(db: Any, coach_account_id: str) -> list[dict[str
     return _present_program_requests(
         db,
         db.list_program_requests_for_coach(coach_account_id),
-        _request_display_language(db, coach_account_id),
     )

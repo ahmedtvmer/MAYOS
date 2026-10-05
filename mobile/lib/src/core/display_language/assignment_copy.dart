@@ -1,4 +1,5 @@
 import 'arabic_count.dart';
+import 'catalog.dart' show exerciseNameOrFallback;
 
 /// App-owned labels for the player side of a coaching assignment and program
 /// requests. Coach and service prose is rendered directly by the screen.
@@ -43,8 +44,8 @@ class AssignmentCopy {
     required int? frequency,
     required String? preference,
   }) {
-    final String from = exercise ?? (isArabic ? 'التمرين' : 'Exercise');
-    final String to = replacement ?? (isArabic ? 'التمرين' : 'Exercise');
+    final String from = exerciseNameOrFallback(exercise, languageCode);
+    final String to = exerciseNameOrFallback(replacement, languageCode);
     if (!isArabic) {
       if (kind == 'exercise_substitution') {
         return 'Substitute $from on $day with $to';

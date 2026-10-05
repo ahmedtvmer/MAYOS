@@ -213,6 +213,26 @@ def _capture_email(monkeypatch):
     return sent
 
 
+def _coach_exercise_request(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, coach_account_id, _ = _assigned_player(api)
+    _capture_email(monkeypatch)
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+
+    exercise = db.create_coach_exercise(coach_account_id, CoachExerciseCreate(name="Coach Row"))
+    db.switch_user("p1")
+    program = db.ledger.get_active_program().model_dump()
+    program.pop("created_at", None)
+    program["days"][0]["exercises"][0]["exercise_id"] = exercise["id"]
+    program["days"][0]["exercises"][0]["exercise_name"] = exercise["name"]
+    db.ledger.save_training_program(program, published_by_coach_account_id=coach_account_id)
+
+    created = _create(client, player_headers, **_substitution(exercise_id=exercise["id"]))
+    assert created.status_code == 200, created.text
+    return client, db, coach_headers, player_headers, assignment_id, exercise, created.json()
+
+
 # --------------------------------------------------------------------------
 # Create: exact target, no program mutation, notices
 # --------------------------------------------------------------------------
@@ -334,52 +354,96 @@ def test_program_request_responses_include_library_display_names_on_every_route(
     ) == expected_names
 
 
-def test_program_request_resolves_coach_exercises_and_localizes_unknown_names(api, monkeypatch):
+def test_other_coach_exercise_in_program_history_resolves_for_player_and_roster(api, monkeypatch):
     client, db, _ = api
     coach_headers, player_headers, assignment_id, coach_account_id, player_account_id = _assigned_player(api)
+    _make_coach(client, db, "other_coach")
+    other_account_id = db.get_active_account_by_username("other_coach")["account_id"]
     _capture_email(monkeypatch)
     db.set_account_display_language(player_account_id, "ar")
-    db.set_account_display_language(coach_account_id, "en")
     _coach_generation(db, monkeypatch)
     assert _publish(client, coach_headers, assignment_id).status_code == 200
 
-    custom = db.create_coach_exercise(coach_account_id, CoachExerciseCreate(name="Coach Row"))
+    exercise = db.create_coach_exercise(other_account_id, CoachExerciseCreate(name="Other Coach Row"))
     db.switch_user("p1")
     program = db.ledger.get_active_program().model_dump()
     program.pop("created_at", None)
-    program["days"][0]["exercises"][0]["exercise_id"] = custom["id"]
-    program["days"][0]["exercises"][0]["exercise_name"] = custom["name"]
-    db.ledger.save_training_program(program, published_by_coach_account_id=coach_account_id)
-
-    coach_request = _create(
-        client, player_headers, **_substitution(exercise_id=custom["id"])
-    ).json()
-    assert coach_request["exercise_name"] == "Coach Row"
-
-    with db.catalog_locked() as conn:
-        conn.execute("DELETE FROM coach_exercises WHERE id = ?", (custom["id"],))
-        conn.commit()
-    unknown_request = _create(
-        client,
-        player_headers,
-        **_substitution(
-            exercise_id=custom["id"], reason="The old coach exercise is gone."
-        ),
+    program["days"][0]["exercises"][0]["exercise_id"] = exercise["id"]
+    program["days"][0]["exercises"][0]["exercise_name"] = exercise["name"]
+    db.ledger.save_training_program(
+        program,
+        published_by_coach_account_id=coach_account_id,
     )
-    assert unknown_request.status_code == 200, unknown_request.text
-    assert unknown_request.json()["exercise_name"] == "التمرين"
-    assert unknown_request.json()["exercise_name"] != custom["id"]
 
-    coach_rows = client.get(
-        f"/coach/assignments/{assignment_id}/program-requests", headers=coach_headers
+    created = _create(client, player_headers, **_substitution(exercise_id=exercise["id"]))
+    assert created.status_code == 200, created.text
+    assert created.json()["exercise_name"] == "Other Coach Row"
+
+    player_rows = client.get(
+        "/assignments/me/program-requests", headers=player_headers
     ).json()["requests"]
-    missing_name = next(
-        row
-        for row in coach_rows
-        if row["request_id"] == unknown_request.json()["request_id"]
+    cross_roster = client.get("/coach/program-requests", headers=coach_headers).json()["requests"]
+    assert next(row for row in player_rows if row["request_id"] == created.json()["request_id"])[
+        "exercise_name"
+    ] == "Other Coach Row"
+    assert next(row for row in cross_roster if row["request_id"] == created.json()["request_id"])[
+        "exercise_name"
+    ] == "Other Coach Row"
+
+
+@pytest.mark.parametrize("list_kind", ["player", "assignment", "cross_roster"])
+def test_deleted_coach_exercise_has_null_name_on_request_lists(api, monkeypatch, list_kind):
+    client, db, coach_headers, player_headers, assignment_id, exercise, created = _coach_exercise_request(
+        api, monkeypatch
     )
-    assert missing_name["exercise_name"] == "Exercise"
-    assert missing_name["exercise_name"] != custom["id"]
+    with db.catalog_locked() as conn:
+        conn.execute("DELETE FROM coach_exercises WHERE id = ?", (exercise["id"],))
+        conn.commit()
+
+    if list_kind == "player":
+        response = client.get("/assignments/me/program-requests", headers=player_headers)
+    elif list_kind == "assignment":
+        response = client.get(
+            f"/coach/assignments/{assignment_id}/program-requests", headers=coach_headers
+        )
+    else:
+        response = client.get("/coach/program-requests", headers=coach_headers)
+
+    assert response.status_code == 200, response.text
+    request = next(row for row in response.json()["requests"] if row["request_id"] == created["request_id"])
+    assert request["exercise_name"] is None
+    assert request["replacement_exercise_name"] == "Overhead Press"
+
+
+@pytest.mark.parametrize("action", ["apply", "decline", "cancel"])
+def test_deleted_coach_exercise_has_null_name_on_request_resolution(api, monkeypatch, action):
+    client, db, coach_headers, player_headers, assignment_id, exercise, created = _coach_exercise_request(
+        api, monkeypatch
+    )
+    with db.catalog_locked() as conn:
+        conn.execute("DELETE FROM coach_exercises WHERE id = ?", (exercise["id"],))
+        conn.commit()
+
+    if action == "apply":
+        response = client.post(
+            f"/coach/assignments/{assignment_id}/program-requests/{created['request_id']}/apply",
+            headers=coach_headers,
+        )
+    elif action == "decline":
+        response = client.post(
+            f"/coach/assignments/{assignment_id}/program-requests/{created['request_id']}/decline",
+            headers=coach_headers,
+            json={"response": "Keep the current program."},
+        )
+    else:
+        response = client.post(
+            f"/assignments/me/program-requests/{created['request_id']}/cancel",
+            headers=player_headers,
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["exercise_name"] is None
+    assert response.json()["replacement_exercise_name"] == "Overhead Press"
 
 
 def test_program_request_email_looks_up_by_account_id_not_ledger_id(api, monkeypatch):
