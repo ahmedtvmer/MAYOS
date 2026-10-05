@@ -7,6 +7,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request,
 from fastapi.responses import JSONResponse
 
 from service import analytics, programs as programs_service
+from service.messages import MessageMetadata, http_error_message
+from svc.errors import message_http_exception
 from service.program_analytics import ProgramAnalyticsActor
 from service.program_substitution import (
     ProgramSubstitution,
@@ -40,7 +42,15 @@ def _substitution_error_response(substitution: dict[str, Any]) -> JSONResponse:
     }.get(code, status.HTTP_400_BAD_REQUEST)
     return JSONResponse(
         status_code=http_status,
-        content={"detail": substitution["error"], "code": code.value},
+        content={
+            "detail": substitution["error"],
+            "code": code.value,
+            **http_error_message(
+                http_status,
+                substitution["error"],
+                message_metadata=MessageMetadata(substitution.get("message_code")),
+            ),
+        },
     )
 
 
@@ -58,7 +68,11 @@ async def generate_program(
     def _run():
         account_id = account_id_of(player)
         if not programs_service.player_controls_program(db, ledger, account_id):
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=programs_service.COACH_CONTROLLED_ERROR)
+            raise message_http_exception(
+                status.HTTP_403_FORBIDDEN,
+                programs_service.COACH_CONTROLLED_ERROR,
+                MessageMetadata("program.coach_controls.v1"),
+            )
         try:
             program = programs_service.generate_program_version(
                 db,

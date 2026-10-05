@@ -13,7 +13,9 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from service.google_sign_in import GoogleIdentity
+from service.messages import MessageMetadata
 from svc.auth import signup_ticket_subject, token_claims, token_version_of
+from svc.errors import message_http_exception
 
 _bearer = HTTPBearer(auto_error=False)
 logger = logging.getLogger(__name__)
@@ -95,11 +97,19 @@ def _authorize_account(
     if account is not None and account["deleted_at"] is not None:
         raise AccountDeletedError()
     if not db.is_live_account(account) or (require_player and not account["is_player"]):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
+        raise message_http_exception(
+            status.HTTP_401_UNAUTHORIZED,
+            "Invalid or expired token.",
+            MessageMetadata("auth.invalid_or_expired_token.v1"),
+        )
     if token_epoch != account["session_epoch"]:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked.")
     if not db.ledger_exists(account["ledger_id"]):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
+        raise message_http_exception(
+            status.HTTP_401_UNAUTHORIZED,
+            "Invalid or expired token.",
+            MessageMetadata("auth.invalid_or_expired_token.v1"),
+        )
     return account
 
 
@@ -129,7 +139,11 @@ def _resolve_registry_identity(
         claims = token_claims(credentials.credentials)
         account_id = str(claims["sub"])
     except jwt.PyJWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.") from None
+        raise message_http_exception(
+            status.HTTP_401_UNAUTHORIZED,
+            "Invalid or expired token.",
+            MessageMetadata("auth.invalid_or_expired_token.v1"),
+        ) from None
     account = _authorize_account(
         db, account_id, token_version_of(claims), require_player=require_player
     )
@@ -321,11 +335,19 @@ def get_signup_subject(
     or non-ticket token all share one 401.
     """
     if credentials is None or credentials.scheme.lower() != "bearer" or not credentials.credentials:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing signup ticket.")
+        raise message_http_exception(
+            status.HTTP_401_UNAUTHORIZED,
+            "Missing signup ticket.",
+            MessageMetadata("auth.signup_ticket_missing.v1"),
+        )
     try:
         return signup_ticket_subject(credentials.credentials)
     except jwt.PyJWTError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired signup ticket.") from None
+        raise message_http_exception(
+            status.HTTP_401_UNAUTHORIZED,
+            "Invalid or expired signup ticket.",
+            MessageMetadata("auth.invalid_signup_ticket.v1"),
+        ) from None
 
 
 _GOOGLE_TRANSPORT: Any | None = None

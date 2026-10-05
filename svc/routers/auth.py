@@ -18,6 +18,7 @@ from service import google_sign_in as google_service
 from service import password_reset as reset_service
 from service.email_verification import GENERIC_CODE_ERROR
 from service import plans as plans_service
+from service.messages import MessageMetadata
 from svc.auth import (
     create_access_token,
     create_signup_ticket,
@@ -39,6 +40,7 @@ from svc.dependencies import (
     VerifiedAccount,
     google_sign_in_enabled,
 )
+from svc.errors import message_http_exception
 from svc.rate_limit import PASSWORD_LIMIT, REGISTER_LIMIT, LOGIN_LIMIT, RESET_LIMIT, USERNAME_CHECK_LIMIT, limiter
 from svc.schemas import (
     AccountCapabilitiesOut,
@@ -67,10 +69,19 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 _bearer = HTTPBearer(auto_error=False)
 
 
+def _invalid_recovery_code() -> HTTPException:
+    return message_http_exception(
+        status.HTTP_400_BAD_REQUEST,
+        GENERIC_CODE_ERROR,
+        MessageMetadata("recovery.invalid_or_expired_code.v1"),
+    )
+
+
 def _invalid_google_credentials() -> HTTPException:
-    return HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid Google credentials.",
+    return message_http_exception(
+        status.HTTP_401_UNAUTHORIZED,
+        "Invalid Google credentials.",
+        MessageMetadata("google.invalid_token.v1"),
     )
 
 
@@ -130,6 +141,18 @@ async def register(request: Request, body: TraineeIn, db: Annotated[Any, Depends
                 if result.get("code") == "username_taken"
                 else status.HTTP_400_BAD_REQUEST
             )
+            if result.get("code") == "username_taken":
+                raise message_http_exception(
+                    status_code,
+                    result["error"],
+                    MessageMetadata("auth.username_taken.v1"),
+                )
+            if result.get("code") == "invalid_coach_invite":
+                raise message_http_exception(
+                    status_code,
+                    result["error"],
+                    MessageMetadata("coach_invite.invalid_code.v1"),
+                )
             raise HTTPException(status_code=status_code, detail=result["error"])
         return result
 
@@ -163,7 +186,11 @@ async def login(request: Request, body: TraineeIn, db: Annotated[Any, Depends(ge
     def _run():
         result = auth_service.login_player(db, body.trainee_id, body.password)
         if not result["ok"]:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=result["error"])
+            raise message_http_exception(
+                status.HTTP_401_UNAUTHORIZED,
+                result["error"],
+                MessageMetadata("auth.invalid_credentials.v1"),
+            )
         return result
 
     result = await asyncio.to_thread(_run)
@@ -269,8 +296,10 @@ async def google_complete(
     try:
         claims = signup_ticket_claims(body.signup_ticket)
     except jwt.PyJWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired signup ticket."
+        raise message_http_exception(
+            status.HTTP_401_UNAUTHORIZED,
+            "Invalid or expired signup ticket.",
+            MessageMetadata("auth.invalid_signup_ticket.v1"),
         ) from None
     subject = claims["sub"]
     identity = None
@@ -297,6 +326,21 @@ async def google_complete(
             )
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+        except google_service.GoogleAccountAlreadyLinkedError as exc:
+            raise message_http_exception(
+                status.HTTP_409_CONFLICT,
+                str(exc),
+                MessageMetadata(
+                    exc.message_code,
+                    business_code="google_account_already_linked",
+                ),
+            ) from None
+        except google_service.UsernameTakenError as exc:
+            raise message_http_exception(
+                status.HTTP_409_CONFLICT,
+                str(exc),
+                MessageMetadata(exc.message_code),
+            ) from None
         except google_service.SignUpConflictError as exc:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from None
 
@@ -347,7 +391,11 @@ async def link_google(
         try:
             result = google_service.link_account(db, player.account_id, identity)
         except google_service.SignInMethodError as exc:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from None
+            raise message_http_exception(
+                status.HTTP_409_CONFLICT,
+                str(exc),
+                MessageMetadata(exc.message_code),
+            ) from None
         if not result["ok"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
         return result["message"]
@@ -376,7 +424,11 @@ async def unlink_google(
         try:
             result = google_service.unlink_account(db, player.account_id)
         except google_service.SignInMethodError as exc:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from None
+            raise message_http_exception(
+                status.HTTP_409_CONFLICT,
+                str(exc),
+                MessageMetadata(exc.message_code),
+            ) from None
         if not result["ok"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
         return result["message"]
@@ -405,7 +457,11 @@ async def read_current_account(
     def _run():
         account = db.get_account(player.account_id)
         if not db.is_live_account(account):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
+            raise message_http_exception(
+                status.HTTP_401_UNAUTHORIZED,
+                "Invalid or expired token.",
+                MessageMetadata("auth.invalid_or_expired_token.v1"),
+            )
         plans = plans_service.effective_plans_for_account(db, account)
         return (
             account,
@@ -588,7 +644,11 @@ async def delete_account(
             db, player.account_id, body.password, google_identity=google_identity, client=client
         )
         if not result["ok"]:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
+            raise message_http_exception(
+                status.HTTP_400_BAD_REQUEST,
+                result["error"],
+                MessageMetadata("auth.invalid_credentials.v1"),
+            )
         return result
 
     if body.google_id_token is not None:
@@ -597,8 +657,10 @@ async def delete_account(
         except GoogleIdentityError:
             # Not a 401: an unverifiable token must look exactly like a wrong
             # password (#114), so this endpoint never says why it refused.
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail=auth_service.INVALID_CREDENTIALS
+            raise message_http_exception(
+                status.HTTP_400_BAD_REQUEST,
+                auth_service.INVALID_CREDENTIALS,
+                MessageMetadata("auth.invalid_credentials.v1"),
             ) from None
         await asyncio.to_thread(_run, identity)
     else:
@@ -673,7 +735,11 @@ async def request_recovery_email_code(
         reset_service.issue_recovery_email_verification_code, db, player.account_id
     )
     if not sent:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=GENERIC_CODE_ERROR)
+        raise message_http_exception(
+            status.HTTP_400_BAD_REQUEST,
+            GENERIC_CODE_ERROR,
+            MessageMetadata("recovery.code_send_limit.v1"),
+        )
     return MessageOut(message="A verification code has been sent.")
 
 
@@ -688,15 +754,15 @@ async def verify_recovery_email(
     try:
         body = json.loads(await request.body())
     except ValueError:  # malformed JSON, bad encoding, or a number too long to parse
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=GENERIC_CODE_ERROR) from None
+        raise _invalid_recovery_code() from None
     code = body.get("code") if isinstance(body, dict) else None
     if not isinstance(code, str):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=GENERIC_CODE_ERROR)
+        raise _invalid_recovery_code()
     verified = await asyncio.to_thread(
         reset_service.verify_recovery_email_code, db, player.account_id, code
     )
     if not verified:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=GENERIC_CODE_ERROR)
+        raise _invalid_recovery_code()
     return MessageOut(message="Recovery email verified.")
 
 
@@ -710,15 +776,15 @@ async def verify_recovery_email_change(
     try:
         body = json.loads(await request.body())
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=GENERIC_CODE_ERROR) from None
+        raise _invalid_recovery_code() from None
     code = body.get("code") if isinstance(body, dict) else None
     if not isinstance(code, str):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=GENERIC_CODE_ERROR)
+        raise _invalid_recovery_code()
     verified = await asyncio.to_thread(
         reset_service.verify_recovery_email_change_code, db, player.account_id, code
     )
     if not verified:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=GENERIC_CODE_ERROR)
+        raise _invalid_recovery_code()
     return MessageOut(message="Recovery email changed.")
 
 
@@ -743,7 +809,11 @@ async def reset_password(request: Request, body: ResetPasswordIn, db: Annotated[
     def _run():
         result = reset_service.reset_password_with_token(db, body.token, body.new_password)
         if not result["ok"]:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
+            raise message_http_exception(
+                status.HTTP_400_BAD_REQUEST,
+                result["error"],
+                MessageMetadata("recovery.invalid_or_expired_token.v1"),
+            )
         return result["trainee_id"]
 
     changed_id = await asyncio.to_thread(_run)

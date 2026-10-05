@@ -125,6 +125,16 @@ def _reason_error(reason: str) -> str:
     return GENERIC_INVITE_ERROR
 
 
+def _refusal(error: str, message_code: str, **details: Any) -> dict[str, Any]:
+    """Carries an internal display-message code with a business refusal."""
+    return {
+        "ok": False,
+        "error": error,
+        "message_code": message_code,
+        **details,
+    }
+
+
 def duration_seconds(started_at: str, ended_at: str) -> int:
     elapsed = datetime.fromisoformat(ended_at) - datetime.fromisoformat(started_at)
     return max(0, int(elapsed.total_seconds()))
@@ -241,19 +251,30 @@ def issue_assignment_invite(
     """
     account = db.get_account(coach_account_id)
     if not db.is_live_account(account) or not account["is_coach"]:
-        return {"ok": False, "error": "Coach capability required."}
+        return _refusal("Coach capability required.", "assignment.coach_capability_required.v1")
 
     capacity = db.get_coach_capacity(coach_account_id)
     if capacity is None:
-        return {"ok": False, "error": "Set up your coach profile before issuing invites."}
+        return _refusal(
+            "Set up your coach profile before issuing invites.",
+            "assignment.coach_profile_required.v1",
+        )
     active = db.count_active_assignments_for_coach(coach_account_id)
     if active >= capacity:
-        return {"ok": False, "error": ROSTER_FULL_ERROR, "active_assignments": active, "capacity": capacity}
+        return _refusal(
+            ROSTER_FULL_ERROR,
+            "assignment.coach_roster_full.v1",
+            active_assignments=active,
+            capacity=capacity,
+        )
 
     if ttl_minutes is None:
         ttl = assignment_invite_ttl()
     elif isinstance(ttl_minutes, bool) or not isinstance(ttl_minutes, int) or ttl_minutes <= 0:
-        return {"ok": False, "error": "Invite lifetime must be a positive number of minutes."}
+        return _refusal(
+            "Invite lifetime must be a positive number of minutes.",
+            "assignment.invite_lifetime_invalid.v1",
+        )
     else:
         ttl = timedelta(minutes=_bounded_ttl_minutes(ttl_minutes))
 
@@ -274,22 +295,22 @@ def issue_assignment_invite(
 def preview_assignment_invite(db: Any, token: Any, player_account_id: str) -> dict[str, Any]:
     """Reads the coach identity and access disclosure for a code without consuming it."""
     if not _valid_token(token):
-        return {"ok": False, "error": GENERIC_INVITE_ERROR}
+        return _refusal(GENERIC_INVITE_ERROR, "assignment.invite_invalid.v1")
     invite = db.get_assignment_invite(hash_token(token))
     now_iso = datetime.now(UTC).isoformat()
     if invite is None or invite["used_at"] is not None or invite["expires_at"] <= now_iso:
-        return {"ok": False, "error": GENERIC_INVITE_ERROR}
+        return _refusal(GENERIC_INVITE_ERROR, "assignment.invite_invalid.v1")
     if invite["coach_account_id"] == str(player_account_id):
-        return {"ok": False, "error": SELF_ASSIGNMENT_ERROR}
+        return _refusal(SELF_ASSIGNMENT_ERROR, "assignment.self_assignment.v1")
 
     coach = db.get_account(invite["coach_account_id"])
     if not db.is_live_account(coach) or not coach["is_coach"]:
-        return {"ok": False, "error": GENERIC_INVITE_ERROR}
+        return _refusal(GENERIC_INVITE_ERROR, "assignment.invite_invalid.v1")
     player = db.get_account(player_account_id)
     if not db.is_live_account(player) or not player["is_player"]:
-        return {"ok": False, "error": GENERIC_INVITE_ERROR}
+        return _refusal(GENERIC_INVITE_ERROR, "assignment.invite_invalid.v1")
     if db.get_active_assignment_for_player(player_account_id) is not None:
-        return {"ok": False, "error": ALREADY_ASSIGNED_ERROR}
+        return _refusal(ALREADY_ASSIGNED_ERROR, "assignment.already_assigned.v1")
 
     return {
         "ok": True,
@@ -337,16 +358,22 @@ def redeem_assignment_invite(
     """
     if consent is not True:
         _capture_redemption_failure(player_account_id, "consent_required", client)
-        return {"ok": False, "error": CONSENT_REQUIRED_ERROR}
+        return _refusal(CONSENT_REQUIRED_ERROR, "assignment.consent_required.v1")
     if not _valid_token(token):
         _capture_redemption_failure(player_account_id, "unknown_code", client)
-        return {"ok": False, "error": GENERIC_INVITE_ERROR}
+        return _refusal(GENERIC_INVITE_ERROR, "assignment.invite_invalid.v1")
 
     now_iso = datetime.now(UTC).isoformat()
     result = db.redeem_assignment_invite(hash_token(token), player_account_id, now_iso)
     if not result["ok"]:
         _capture_redemption_failure(player_account_id, result["reason"], client)
-        return {"ok": False, "error": _reason_error(result["reason"])}
+        reason = result["reason"]
+        message_code = {
+            "self_assignment": "assignment.self_assignment.v1",
+            "already_assigned": "assignment.already_assigned.v1",
+            "capacity": "assignment.roster_full.v1",
+        }.get(reason, "assignment.invite_invalid.v1")
+        return _refusal(_reason_error(reason), message_code)
 
     coach_preparing_program = _coach_preparing_program(
         db,
@@ -469,15 +496,15 @@ def end_assignment(
 ) -> dict[str, Any]:
     """Ends an assignment when the caller is the coach or the player. Revocation is immediate."""
     if not isinstance(assignment_id, str) or not assignment_id:
-        return {"ok": False, "error": "Assignment not found."}
+        return _refusal("Assignment not found.", "assignment.not_found.v1")
     result = db.end_assignment(assignment_id, account_id, datetime.now(UTC).isoformat(), ended_by)
     if not result["ok"]:
         reason = result["reason"]
         if reason == "forbidden":
-            return {"ok": False, "error": "You are not part of this assignment."}
+            return _refusal("You are not part of this assignment.", "assignment.not_participant.v1")
         if reason == "already_ended":
-            return {"ok": False, "error": "This assignment has already ended."}
-        return {"ok": False, "error": "Assignment not found."}
+            return _refusal("This assignment has already ended.", "assignment.already_ended.v1")
+        return _refusal("Assignment not found.", "assignment.not_found.v1")
     assignment = result["ended_assignment"]
     discard_assignment_program_draft(
         db, assignment_id, assignment.player_account_id, best_effort=True

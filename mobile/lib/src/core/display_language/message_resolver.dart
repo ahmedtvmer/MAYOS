@@ -92,9 +92,118 @@ String resolveStructuredMessage({
   if (messageCode is! String || messageParams is! Map<String, dynamic>) {
     return fallback;
   }
+  final Set<String>? allowedParams = _paramKeys[messageCode];
+  if (allowedParams == null || !_hasExactKeys(messageParams, allowedParams)) {
+    return fallback;
+  }
   final _MessageTemplate? template = _templates[messageCode];
   return template?.call(messageParams, copy) ?? fallback;
 }
+
+bool _hasExactKeys(Map<String, dynamic> params, Set<String> allowed) =>
+    params.length == allowed.length && params.keys.every(allowed.contains);
+
+const Map<String, Set<String>> _paramKeys = <String, Set<String>>{
+  'coach_alert.missed_expected_days.v1': <String>{
+    'count',
+    'start_date',
+    'end_date',
+  },
+  'coach_alert.follow_up_due.v1': <String>{'due_on'},
+  'coach_alert.stall.v1': <String>{'count', 'window_start_date'},
+  'coach_alert.deload_recommended.v1': <String>{
+    'reason_code',
+    'recent_readiness_avg',
+    'choice',
+  },
+  'coach_alert.performance_regression.v1': <String>{
+    'exercise_name',
+    'e1rm_delta',
+    'status_badge',
+  },
+  'coach_alert.profile_change.v1': <String>{'changed_fields'},
+  'http.bad_request.v1': <String>{},
+  'http.unauthorized.v1': <String>{},
+  'http.forbidden.v1': <String>{},
+  'http.not_found.v1': <String>{},
+  'http.conflict.v1': <String>{},
+  'http.validation_failed.v1': <String>{},
+  'http.input_too_long.v1': <String>{'limit'},
+  'http.rate_limited.v1': <String>{},
+  'http.server_error.v1': <String>{},
+  'http.request_failed.v1': <String>{},
+  'ai_limit.request_rate.v1': <String>{},
+  'ai_limit.daily_usage.v1': <String>{},
+  'chat.failed.v1': <String>{},
+  'google.account_already_linked.v1': <String>{},
+  'google.invalid_token.v1': <String>{},
+  'google.linked_elsewhere.v1': <String>{},
+  'google.different_account.v1': <String>{},
+  'google.unlink_password_required.v1': <String>{},
+  'workout.program_version_mismatch.v1': <String>{},
+
+  'auth.invalid_credentials.v1': <String>{},
+  'auth.username_taken.v1': <String>{},
+  'auth.invalid_or_expired_token.v1': <String>{},
+  'auth.invalid_signup_ticket.v1': <String>{},
+  'auth.signup_ticket_missing.v1': <String>{},
+  'recovery.invalid_or_expired_code.v1': <String>{},
+  'recovery.code_send_limit.v1': <String>{},
+  'recovery.invalid_or_expired_token.v1': <String>{},
+  'coach_invite.invalid_code.v1': <String>{},
+  'assignment.none_active.v1': <String>{},
+  'assignment.invite_invalid.v1': <String>{},
+  'assignment.self_assignment.v1': <String>{},
+  'assignment.already_assigned.v1': <String>{},
+  'assignment.consent_required.v1': <String>{},
+  'assignment.roster_full.v1': <String>{},
+  'assignment.request_invalid.v1': <String>{},
+  'assignment.coach_roster_full.v1': <String>{},
+  'assignment.coach_capability_required.v1': <String>{},
+  'assignment.coach_profile_required.v1': <String>{},
+  'assignment.invite_lifetime_invalid.v1': <String>{},
+  'assignment.not_participant.v1': <String>{},
+  'assignment.already_ended.v1': <String>{},
+  'assignment.program_draft_exists.v1': <String>{},
+  'assignment.program_draft_changed.v1': <String>{},
+  'assignment.program_draft_invalid.v1': <String>{},
+  'assignment.check_in_invalid.v1': <String>{},
+  'assignment.not_found.v1': <String>{},
+  'assignment.program_draft_not_found.v1': <String>{},
+  'assignment.notice_not_found.v1': <String>{},
+  'program.no_active.v1': <String>{},
+  'program.coach_controls.v1': <String>{},
+  'program.substitution.day_not_found.v1': <String>{},
+  'program.substitution.source_not_on_day.v1': <String>{},
+  'program.substitution.replacement_is_source.v1': <String>{},
+  'program.substitution.replacement_not_found.v1': <String>{},
+  'program.substitution.replacement_already_on_day.v1': <String>{},
+  'program.substitution.restore_version_not_found.v1': <String>{},
+  'program.substitution.changed.v1': <String>{},
+  'program_request.invalid_kind.v1': <String>{},
+  'program_request.reason_required.v1': <String>{},
+  'program_request.reason_too_long.v1': <String>{'limit'},
+  'program_request.direct_change.v1': <String>{},
+  'program_request.no_active_program.v1': <String>{},
+  'program_request.target_incomplete.v1': <String>{},
+  'program_request.same_replacement.v1': <String>{},
+  'program_request.day_not_in_program.v1': <String>{},
+  'program_request.exercise_not_in_day.v1': <String>{},
+  'program_request.replacement_not_found.v1': <String>{},
+  'program_request.frequency_invalid.v1': <String>{},
+  'program_request.split_too_long.v1': <String>{'limit'},
+  'program_request.not_found.v1': <String>{},
+  'program_request.not_pending.v1': <String>{},
+  'program_request.stale.v1': <String>{},
+  'program_request.response_required.v1': <String>{},
+  'program_request.response_too_long.v1': <String>{'limit'},
+  'program_request.selection_invalid.v1': <String>{},
+  'intake.structured_active.v1': <String>{},
+  'intake.in_progress.v1': <String>{},
+  'coach.ai_unavailable.v1': <String>{},
+  'media.unavailable.v1': <String>{},
+  'media.not_found.v1': <String>{},
+};
 
 final Map<String, _MessageTemplate> _templates = <String, _MessageTemplate>{
   'coach_alert.missed_expected_days.v1': _missedDays,
@@ -103,7 +212,105 @@ final Map<String, _MessageTemplate> _templates = <String, _MessageTemplate>{
   'coach_alert.deload_recommended.v1': _deload,
   'coach_alert.performance_regression.v1': _regression,
   'coach_alert.profile_change.v1': _profileChange,
+  'http.bad_request.v1': _badRequest,
+  'http.unauthorized.v1': _unauthorized,
+  'http.forbidden.v1': _forbidden,
+  'http.not_found.v1': _notFound,
+  'http.conflict.v1': _conflict,
+  'http.validation_failed.v1': _validationFailed,
+  'http.input_too_long.v1': _inputTooLong,
+  'http.rate_limited.v1': _rateLimited,
+  'http.server_error.v1': _requestUnavailable,
+  'http.request_failed.v1': _requestFailed,
+  'ai_limit.request_rate.v1': _aiRequestRateLimited,
+  'ai_limit.daily_usage.v1': _aiDailyLimit,
+  'chat.failed.v1': _chatFailed,
+  'google.account_already_linked.v1': _googleAlreadyLinked,
+  'workout.program_version_mismatch.v1': _programVersionMismatch,
+  for (final String code in _paramKeys.keys.where(_isSpecificErrorCode))
+    code: (params, copy) => _specificError(code, params, copy),
 };
+
+bool _isSpecificErrorCode(String code) =>
+    (code.startsWith('google.') &&
+        code != 'google.account_already_linked.v1') ||
+    code.startsWith('auth.') ||
+    code.startsWith('assignment.') ||
+    code.startsWith('program.') ||
+    code.startsWith('program_request.') ||
+    code.startsWith('intake.') ||
+    code.startsWith('coach.') ||
+    code.startsWith('media.') ||
+    code.startsWith('recovery.') ||
+    code.startsWith('coach_invite.');
+
+String? _specificError(
+  String code,
+  Map<String, dynamic> params,
+  MessageCopy copy,
+) {
+  final int? limit = switch (params['limit']) {
+    int value => value,
+    _ => null,
+  };
+  return copy.specificError(code, limit: limit);
+}
+
+String? _badRequest(Map<String, dynamic> params, MessageCopy copy) =>
+    copy.badRequest;
+
+String? _unauthorized(Map<String, dynamic> params, MessageCopy copy) =>
+    copy.unauthorized;
+
+String? _forbidden(Map<String, dynamic> params, MessageCopy copy) =>
+    copy.forbidden;
+
+String? _notFound(Map<String, dynamic> params, MessageCopy copy) =>
+    copy.notFound;
+
+String? _conflict(Map<String, dynamic> params, MessageCopy copy) =>
+    copy.conflict;
+
+String? _validationFailed(Map<String, dynamic> params, MessageCopy copy) =>
+    copy.invalidRequest;
+
+String? _inputTooLong(Map<String, dynamic> params, MessageCopy copy) {
+  final int? limit = switch (params['limit']) {
+    int value => value,
+    _ => null,
+  };
+  return limit == null || limit <= 0 ? null : copy.inputTooLong(limit);
+}
+
+String? _rateLimited(Map<String, dynamic> params, MessageCopy copy) =>
+    copy.rateLimited;
+
+String? _aiRequestRateLimited(
+  Map<String, dynamic> params,
+  MessageCopy copy,
+) =>
+    copy.aiRequestRateLimited;
+
+String? _aiDailyLimit(Map<String, dynamic> params, MessageCopy copy) =>
+    copy.aiDailyLimit;
+
+String? _requestUnavailable(Map<String, dynamic> params, MessageCopy copy) =>
+    copy.requestUnavailable;
+
+String? _requestFailed(Map<String, dynamic> params, MessageCopy copy) =>
+    copy.requestFailed;
+
+String? _chatFailed(Map<String, dynamic> params, MessageCopy copy) =>
+    copy.chatFailure;
+
+String? _googleAlreadyLinked(Map<String, dynamic> params, MessageCopy copy) =>
+    copy.googleAlreadyLinked;
+
+String? _programVersionMismatch(
+  Map<String, dynamic> params,
+  MessageCopy copy,
+) =>
+    copy.programVersionMismatch;
 
 String? _missedDays(Map<String, dynamic> params, MessageCopy copy) {
   final int? count = _count(params['count']);

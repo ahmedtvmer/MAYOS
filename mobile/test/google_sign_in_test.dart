@@ -9,6 +9,7 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
 import 'package:mayos_mobile/src/features/player/auth/auth_controller.dart';
 import 'package:mayos_mobile/src/features/player/auth/google_auth_gateway.dart';
@@ -664,6 +665,50 @@ void main() {
 
     await tester.tap(find.byKey(const Key('google_signup_submit')));
     await _pumpUntilFound(tester, find.text(kGoogleAlreadyLinkedMessage));
+
+    expect(find.byKey(const Key('login_username')), findsOneWidget);
+    expect(find.byKey(const Key('google_signup_username')), findsNothing);
+    expect(fake.googleCompletedUsernames, isEmpty);
+  });
+
+  testWidgets('a structured Google conflict is shown in the selected language',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()
+      ..googleCompleteAlreadyLinked = true;
+    final ProviderContainer container =
+        await _pumpAuth(tester, fake, google: FakeGoogleAuthGateway());
+
+    await _openPicker(tester);
+    await _awaitAvailability(tester);
+    await container.read(displayLanguageProvider.notifier).choose('ar');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('google_signup_submit')));
+    await _pumpUntilFound(
+      tester,
+      find.text('حساب Google هذا مرتبط بالفعل بحساب MAYOS.'),
+    );
+
+    expect(find.byKey(const Key('login_username')), findsOneWidget);
+    expect(find.byKey(const Key('google_signup_username')), findsNothing);
+    expect(fake.googleCompletedUsernames, isEmpty);
+  });
+
+  testWidgets('an English-only Google conflict keeps the legacy UI path',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()
+      ..googleCompleteLegacyAlreadyLinked = true;
+    final ProviderContainer container =
+        await _pumpAuth(tester, fake, google: FakeGoogleAuthGateway());
+
+    await _openPicker(tester);
+    await _awaitAvailability(tester);
+    await container.read(displayLanguageProvider.notifier).choose('ar');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('google_signup_submit')));
+    await _pumpUntilFound(
+      tester,
+      find.text('This Google account is already linked to a MAYOS account.'),
+    );
 
     expect(find.byKey(const Key('login_username')), findsOneWidget);
     expect(find.byKey(const Key('google_signup_username')), findsNothing);

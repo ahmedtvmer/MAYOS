@@ -88,7 +88,15 @@ class ChatDone extends ChatStreamEvent {
 
 /// The turn failed; [detail] is the service's fixed, non-leaking message.
 class ChatError extends ChatStreamEvent {
-  const ChatError(this.detail);
+  const ChatError(
+    this.detail, {
+    this.messageCode,
+    this.messageParams,
+    this.messageFallback,
+  });
 
   final String detail;
+  final String? messageCode;
+  final Map<String, dynamic>? messageParams;
+  final String? messageFallback;
 }

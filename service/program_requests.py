@@ -62,6 +62,23 @@ class ProgramRequestSelectionError(Exception):
     """The publish selection includes a request outside its assignment or not pending."""
 
 
+def _refusal(
+    message_code: str,
+    error: str,
+    *,
+    message_params: dict[str, Any] | None = None,
+    **details: Any,
+) -> dict[str, Any]:
+    """Attaches a stable source code to a program-request refusal."""
+    return {
+        "ok": False,
+        "error": error,
+        "message_code": message_code,
+        **({"message_params": message_params} if message_params is not None else {}),
+        **details,
+    }
+
+
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -226,37 +243,47 @@ def create_request(
     player_account_id = player_actor.account_id
     kind = payload.get("kind")
     if kind not in REQUEST_KINDS:
-        return {"ok": False, "error": "Choose an exercise substitution or a split change."}
+        return _refusal(
+            "program_request.invalid_kind.v1",
+            "Choose an exercise substitution or a split change.",
+        )
 
     reason = str(payload.get("reason") or "").strip()
     if not reason:
-        return {"ok": False, "error": "A reason is required."}
+        return _refusal("program_request.reason_required.v1", "A reason is required.")
     if len(reason) > MAX_REASON_CHARS:
-        return {"ok": False, "error": f"Keep the reason under {MAX_REASON_CHARS} characters."}
+        return _refusal(
+            "program_request.reason_too_long.v1",
+            f"Keep the reason under {MAX_REASON_CHARS} characters.",
+            message_params={"limit": MAX_REASON_CHARS},
+        )
 
     account = db.get_account(player_account_id)
     if not db.is_live_account(account):
-        return {"ok": False, "error": DIRECT_CHANGE_ERROR}
+        return _refusal("program_request.direct_change.v1", DIRECT_CHANGE_ERROR)
 
     with ledger_scope(db, ledger, account["ledger_id"]) as ledger:
         if player_controls_program(db, ledger, player_account_id):
-            return {
-                "ok": False,
-                "error": DIRECT_CHANGE_ERROR,
-                "code": PLAYER_CONTROLS_PROGRAM_CODE,
-            }
+            return _refusal(
+                "program_request.direct_change.v1",
+                DIRECT_CHANGE_ERROR,
+                code=PLAYER_CONTROLS_PROGRAM_CODE,
+            )
 
         assignment = db.get_active_assignment_for_player(player_account_id)
         if assignment is None:
-            return {
-                "ok": False,
-                "error": DIRECT_CHANGE_ERROR,
-                "code": PLAYER_CONTROLS_PROGRAM_CODE,
-            }
+            return _refusal(
+                "program_request.direct_change.v1",
+                DIRECT_CHANGE_ERROR,
+                code=PLAYER_CONTROLS_PROGRAM_CODE,
+            )
 
         active = ledger.get_active_program()
         if active is None:
-            return {"ok": False, "error": "You do not have an active program to change."}
+            return _refusal(
+                "program_request.no_active_program.v1",
+                "You do not have an active program to change.",
+            )
 
         day_name = exercise_id = replacement_exercise_id = None
         desired_weekly_frequency = None
@@ -267,15 +294,30 @@ def create_request(
             exercise_id = payload.get("exercise_id")
             replacement_exercise_id = payload.get("replacement_exercise_id")
             if not day_name or not exercise_id or not replacement_exercise_id:
-                return {"ok": False, "error": "Pick the day, the exercise, and its replacement."}
+                return _refusal(
+                    "program_request.target_incomplete.v1",
+                    "Pick the day, the exercise, and its replacement.",
+                )
             if str(replacement_exercise_id) == str(exercise_id):
-                return {"ok": False, "error": "Choose a different replacement exercise."}
+                return _refusal(
+                    "program_request.same_replacement.v1",
+                    "Choose a different replacement exercise.",
+                )
             if _find_day(active, day_name) is None:
-                return {"ok": False, "error": "That day is not part of your current program."}
+                return _refusal(
+                    "program_request.day_not_in_program.v1",
+                    "That day is not part of your current program.",
+                )
             if not _day_contains(active, day_name, exercise_id):
-                return {"ok": False, "error": "That exercise is not in that day of your current program."}
+                return _refusal(
+                    "program_request.exercise_not_in_day.v1",
+                    "That exercise is not in that day of your current program.",
+                )
             if db.get_exercise_library_entry(str(replacement_exercise_id)) is None:
-                return {"ok": False, "error": "That replacement exercise was not found."}
+                return _refusal(
+                    "program_request.replacement_not_found.v1",
+                    "That replacement exercise was not found.",
+                )
             exercise_id = str(exercise_id)
             replacement_exercise_id = str(replacement_exercise_id)
         else:
@@ -285,13 +327,17 @@ def create_request(
                 or not isinstance(desired_weekly_frequency, int)
                 or not 1 <= desired_weekly_frequency <= 5
             ):
-                return {"ok": False, "error": "Weekly frequency must be between 1 and 5."}
+                return _refusal(
+                    "program_request.frequency_invalid.v1",
+                    "Weekly frequency must be between 1 and 5.",
+                )
             desired_split_preference = str(payload.get("desired_split_preference") or "").strip() or None
             if desired_split_preference and len(desired_split_preference) > MAX_SPLIT_PREFERENCE_CHARS:
-                return {
-                    "ok": False,
-                    "error": f"Keep the split preference under {MAX_SPLIT_PREFERENCE_CHARS} characters.",
-                }
+                return _refusal(
+                    "program_request.split_too_long.v1",
+                    f"Keep the split preference under {MAX_SPLIT_PREFERENCE_CHARS} characters.",
+                    message_params={"limit": MAX_SPLIT_PREFERENCE_CHARS},
+                )
 
         now_iso = _now_iso()
         request_id = uuid.uuid4().hex
@@ -396,9 +442,9 @@ def apply_request(
     with ledger:
         request = _pending_request(db, coach_account_id, assignment_id, request_id)
         if request is None:
-            return {"ok": False, "error": REQUEST_NOT_FOUND_ERROR}
+            return _refusal("program_request.not_found.v1", REQUEST_NOT_FOUND_ERROR)
         if request["status"] != "pending":
-            return {"ok": False, "error": NOT_PENDING_ERROR}
+            return _refusal("program_request.not_pending.v1", NOT_PENDING_ERROR)
 
         active = ledger.get_active_program()
         stale = (
@@ -409,11 +455,11 @@ def apply_request(
         if not stale and request["kind"] == EXERCISE_SUBSTITUTION:
             stale = not _day_contains(active, request["day_name"], request["exercise_id"])
         if stale:
-            return {"ok": False, "error": STALE_REQUEST_ERROR, "stale": True}
+            return _refusal("program_request.stale.v1", STALE_REQUEST_ERROR, stale=True)
 
         claimed = db.resolve_program_request(request_id, "applied", None, coach_account_id, _now_iso())
         if not claimed["ok"]:
-            return {"ok": False, "error": NOT_PENDING_ERROR}
+            return _refusal("program_request.not_pending.v1", NOT_PENDING_ERROR)
 
         def _finish_applied_request() -> dict[str, Any]:
             published = ledger.get_active_program()
@@ -468,8 +514,12 @@ def apply_request(
                         SubstitutionErrorCode.SOURCE_NOT_ON_DAY,
                         SubstitutionErrorCode.REPLACEMENT_NOT_FOUND,
                     }:
-                        return {"ok": False, "error": STALE_REQUEST_ERROR, "stale": True}
-                    return {"ok": False, "error": substitution["error"]}
+                        return _refusal(
+                            "program_request.stale.v1", STALE_REQUEST_ERROR, stale=True
+                        )
+                    return _refusal(
+                        "program_request.stale.v1", substitution["error"], stale=True
+                    )
             else:
                 from svc.llm import InferenceScope, inference_turn, run_inference_sync
 
@@ -525,19 +575,23 @@ def decline_request(
     with ledger:
         response = str(response or "").strip()
         if not response:
-            return {"ok": False, "error": "A response is required."}
+            return _refusal("program_request.response_required.v1", "A response is required.")
         if len(response) > MAX_RESPONSE_CHARS:
-            return {"ok": False, "error": f"Keep the response under {MAX_RESPONSE_CHARS} characters."}
+            return _refusal(
+                "program_request.response_too_long.v1",
+                f"Keep the response under {MAX_RESPONSE_CHARS} characters.",
+                message_params={"limit": MAX_RESPONSE_CHARS},
+            )
 
         request = _pending_request(db, coach_account_id, assignment_id, request_id)
         if request is None:
-            return {"ok": False, "error": REQUEST_NOT_FOUND_ERROR}
+            return _refusal("program_request.not_found.v1", REQUEST_NOT_FOUND_ERROR)
         if request["status"] != "pending":
-            return {"ok": False, "error": NOT_PENDING_ERROR}
+            return _refusal("program_request.not_pending.v1", NOT_PENDING_ERROR)
 
         claimed = db.resolve_program_request(request_id, "declined", response, coach_account_id, _now_iso())
         if not claimed["ok"]:
-            return {"ok": False, "error": NOT_PENDING_ERROR}
+            return _refusal("program_request.not_pending.v1", NOT_PENDING_ERROR)
 
         _notify_player(
             db,
@@ -565,12 +619,12 @@ def cancel_request(
     player_account_id = player_actor.account_id
     request = db.get_program_request(request_id) if isinstance(request_id, str) and request_id else None
     if request is None or request["player_account_id"] != str(player_account_id):
-        return {"ok": False, "error": REQUEST_NOT_FOUND_ERROR}
+        return _refusal("program_request.not_found.v1", REQUEST_NOT_FOUND_ERROR)
     if request["status"] != "pending":
-        return {"ok": False, "error": NOT_PENDING_ERROR}
+        return _refusal("program_request.not_pending.v1", NOT_PENDING_ERROR)
     claimed = db.resolve_program_request(request_id, "cancelled", None, "player", _now_iso())
     if not claimed["ok"]:
-        return {"ok": False, "error": NOT_PENDING_ERROR}
+        return _refusal("program_request.not_pending.v1", NOT_PENDING_ERROR)
     resolved_request = db.get_program_request(request_id)
     capture_program_request_resolved(player_actor, resolved_request, client=client)
     return {

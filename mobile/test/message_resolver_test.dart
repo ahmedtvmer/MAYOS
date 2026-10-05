@@ -108,6 +108,48 @@ void main() {
       ),
       'تعذر عرض الرسالة.',
     );
+    expect(
+      _resolve('http.input_too_long.v1', <String, dynamic>{
+        'limit': 400,
+        'rejected_input': 'private text',
+      }),
+      'Safe English fallback.',
+    );
+  });
+
+  test('HTTP and stream error messages use safe typed Arabic values', () {
+    expect(
+      _resolve('http.input_too_long.v1', <String, dynamic>{'limit': 400}),
+      'يجب ألا يتجاوز هذا الحقل 400 حرفًا',
+    );
+    expect(
+      _resolve('ai_limit.daily_usage.v1', const <String, dynamic>{}),
+      'وصلت إلى حد استخدام المساعد اليوم. أعد المحاولة غدًا.',
+    );
+    expect(
+      _resolve('google.account_already_linked.v1', const <String, dynamic>{}),
+      'حساب Google هذا مرتبط بالفعل بحساب MAYOS.',
+    );
+    expect(
+      _resolve('chat.failed.v1', const <String, dynamic>{}),
+      'تعذر على المساعد إكمال الرد. يُرجى إعادة المحاولة.',
+    );
+    expect(
+      _resolve('google.invalid_token.v1', const <String, dynamic>{}),
+      'تعذر التحقق من بيانات Google.',
+    );
+    expect(
+      _resolve('recovery.invalid_or_expired_code.v1', const <String, dynamic>{}),
+      'رمز التحقق غير صالح أو انتهت صلاحيته.',
+    );
+    expect(
+      _resolve('recovery.code_send_limit.v1', const <String, dynamic>{}),
+      'تعذر إرسال رمز التحقق الآن. حاول مجددًا لاحقًا.',
+    );
+    expect(
+      _resolve('coach_invite.invalid_code.v1', const <String, dynamic>{}),
+      'رمز دعوة تفعيل دور المدرب غير صالح أو انتهت صلاحيته.',
+    );
   });
 
   test('known messages switch language from the same structured values', () {

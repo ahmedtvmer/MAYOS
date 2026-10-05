@@ -246,7 +246,12 @@ def test_expired_invite_is_rejected(api):
 
     denied = client.post("/coach/invite/redeem", headers=headers, json={"token": raw})
     assert denied.status_code == 400
-    assert denied.json()["detail"] == coach_service.GENERIC_INVITE_ERROR
+    assert denied.json() == {
+        "detail": coach_service.GENERIC_INVITE_ERROR,
+        "message_code": "coach_invite.invalid_code.v1",
+        "message_params": {},
+        "message_fallback": coach_service.GENERIC_INVITE_ERROR,
+    }
     assert client.get("/auth/me", headers=headers).json()["capabilities"]["coach"] is False
 
 
@@ -259,7 +264,12 @@ def test_used_invite_cannot_be_replayed(api):
     assert client.post("/coach/invite/redeem", headers=headers, json={"token": issued["token"]}).status_code == 200
     replay = client.post("/coach/invite/redeem", headers=headers, json={"token": issued["token"]})
     assert replay.status_code == 400
-    assert replay.json()["detail"] == coach_service.GENERIC_INVITE_ERROR
+    assert replay.json() == {
+        "detail": coach_service.GENERIC_INVITE_ERROR,
+        "message_code": "coach_invite.invalid_code.v1",
+        "message_params": {},
+        "message_fallback": coach_service.GENERIC_INVITE_ERROR,
+    }
 
 
 def test_redeem_is_atomic_under_concurrency(api):
@@ -622,7 +632,12 @@ def test_invalid_new_account_code_creates_nothing(api, monkeypatch, case):
         json={"trainee_id": username, "password": "correct-horse-1", "coach_invite_code": code},
     )
     assert response.status_code == 400
-    assert response.json() == {"detail": "This coach invite code isn't valid for this username"}
+    assert response.json() == {
+        "detail": "This coach invite code isn't valid for this username",
+        "message_code": "coach_invite.invalid_code.v1",
+        "message_params": {},
+        "message_fallback": "This coach invite code isn't valid for this username",
+    }
     login = client.post("/auth/login", json={"trainee_id": username, "password": "correct-horse-1"})
     assert login.status_code == 401
 

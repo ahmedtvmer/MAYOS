@@ -87,6 +87,7 @@ class FakeMayosApi {
   /// Answers `POST /auth/google/complete` with the service's other 409 — the
   /// subject was linked while the ticket was open (#113).
   bool googleCompleteAlreadyLinked = false;
+  bool googleCompleteLegacyAlreadyLinked = false;
   final Set<String> googleTakenUsernames = <String>{};
   int googleSignInRequests = 0;
   int usernameAvailableRequests = 0;
@@ -618,6 +619,16 @@ class FakeMayosApi {
           400, <String, dynamic>{'detail': _invalidUsername});
     }
     if (googleCompleteAlreadyLinked) {
+      return const FakeResponse(409, <String, dynamic>{
+        'detail': 'This Google account is already linked to a MAYOS account.',
+        'code': 'google_account_already_linked',
+        'message_code': 'google.account_already_linked.v1',
+        'message_params': <String, Object>{},
+        'message_fallback':
+            'This Google account is already linked to a MAYOS account.',
+      });
+    }
+    if (googleCompleteLegacyAlreadyLinked) {
       return const FakeResponse(409, <String, dynamic>{
         'detail': 'This Google account is already linked to a MAYOS account.',
       });
@@ -1554,7 +1565,10 @@ class FakeMayosApi {
     }
     if (chatSendError) {
       return const FakeResponse(200, null, <String>[
-        'event: error\ndata: {"detail": "The assistant is temporarily unavailable."}\n\n',
+        'data: {"token":"partial reply"}\n\n',
+        'event: error\ndata: {"detail":"The assistant is temporarily unavailable.",'
+            '"message_code":"chat.failed.v1","message_params":{},'
+            '"message_fallback":"The assistant is temporarily unavailable."}\n\n',
       ]);
     }
     final String reply = chatReplyChunks.join();

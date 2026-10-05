@@ -15,6 +15,18 @@ from svc.dependencies import get_db
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
 GENERIC_VERIFICATION_ERROR = "Invalid or expired verification code."
+GENERIC_VERIFICATION_ERROR_BODY = {
+    "detail": GENERIC_VERIFICATION_ERROR,
+    "message_code": "recovery.invalid_or_expired_code.v1",
+    "message_params": {},
+    "message_fallback": GENERIC_VERIFICATION_ERROR,
+}
+RECOVERY_CODE_SEND_LIMIT_BODY = {
+    "detail": GENERIC_VERIFICATION_ERROR,
+    "message_code": "recovery.code_send_limit.v1",
+    "message_params": {},
+    "message_fallback": GENERIC_VERIFICATION_ERROR,
+}
 
 
 @pytest.fixture
@@ -208,7 +220,12 @@ def test_reset_token_single_use_expiry_and_generic_errors(api, monkeypatch, veri
     assert client.post("/auth/reset-password", json={"token": "one-time-token-abcdef1234", "new_password": "first-reset-11"}).status_code == 200
     reuse = client.post("/auth/reset-password", json={"token": "one-time-token-abcdef1234", "new_password": "second-reset-22"})
     assert reuse.status_code == 400
-    assert reuse.json()["detail"] == reset_service.GENERIC_TOKEN_ERROR
+    assert reuse.json() == {
+        "detail": reset_service.GENERIC_TOKEN_ERROR,
+        "message_code": "recovery.invalid_or_expired_token.v1",
+        "message_params": {},
+        "message_fallback": reset_service.GENERIC_TOKEN_ERROR,
+    }
 
     garbage = client.post("/auth/reset-password", json={"token": "no-such-token-zzzzzzzzzz", "new_password": "whatever-horse-1"})
     assert garbage.status_code == 400
@@ -443,7 +460,7 @@ def test_recovery_email_change_wrong_expired_and_reused_codes_are_generic_and_at
         "/auth/email/change/verify", json={"code": "000000"}, headers=headers
     )
     assert wrong.status_code == 400
-    assert wrong.json() == {"detail": GENERIC_VERIFICATION_ERROR}
+    assert wrong.json() == GENERIC_VERIFICATION_ERROR_BODY
     assert client.get("/auth/email", headers=headers).json() == {
         "email": "old@example.com",
         "verified": True,
@@ -458,7 +475,8 @@ def test_recovery_email_change_wrong_expired_and_reused_codes_are_generic_and_at
         "/auth/email/change/verify", json={"code": code}, headers=headers
     )
     assert expired.status_code == 400
-    assert expired.json() == {"detail": GENERIC_VERIFICATION_ERROR}
+    assert expired.json() == GENERIC_VERIFICATION_ERROR_BODY
+    assert wrong.json() == expired.json()
     assert client.get("/auth/email", headers=headers).json()["email"] == "old@example.com"
 
     replacement = client.post(
@@ -474,7 +492,8 @@ def test_recovery_email_change_wrong_expired_and_reused_codes_are_generic_and_at
         "/auth/email/change/verify", json={"code": fresh_code}, headers=headers
     )
     assert reused.status_code == 400
-    assert reused.json() == {"detail": GENERIC_VERIFICATION_ERROR}
+    assert reused.json() == GENERIC_VERIFICATION_ERROR_BODY
+    assert wrong.json() == expired.json() == reused.json()
     assert client.get("/auth/email", headers=headers).json() == {
         "email": "fresh@example.com",
         "verified": True,
@@ -506,7 +525,7 @@ def test_new_recovery_email_change_replaces_pending_code(api, monkeypatch):
         "/auth/email/change/verify", json={"code": first_code}, headers=headers
     )
     assert stale.status_code == 400
-    assert stale.json() == {"detail": GENERIC_VERIFICATION_ERROR}
+    assert stale.json() == GENERIC_VERIFICATION_ERROR_BODY
     assert client.get("/auth/email", headers=headers).json() == {
         "email": "old@example.com",
         "verified": True,
@@ -576,7 +595,7 @@ def test_two_accounts_can_pending_the_same_address_but_only_one_can_verify(api, 
     )
 
     assert bob_verify.status_code == 400
-    assert bob_verify.json() == {"detail": GENERIC_VERIFICATION_ERROR}
+    assert bob_verify.json() == GENERIC_VERIFICATION_ERROR_BODY
     assert client.get("/auth/email", headers=alice_headers).json() == {
         "email": "shared@example.com",
         "verified": True,
@@ -744,7 +763,7 @@ def test_wrong_recovery_code_has_generic_error(api, monkeypatch):
     wrong = client.post("/auth/email/verify", json={"code": "111111"}, headers=_authed(token))
 
     assert wrong.status_code == 400
-    assert wrong.json() == {"detail": GENERIC_VERIFICATION_ERROR}
+    assert wrong.json() == GENERIC_VERIFICATION_ERROR_BODY
 
 
 def test_expired_recovery_code_has_generic_error(api, monkeypatch):
@@ -764,7 +783,7 @@ def test_expired_recovery_code_has_generic_error(api, monkeypatch):
     expired = client.post("/auth/email/verify", json={"code": code}, headers=_authed(token))
 
     assert expired.status_code == 400
-    assert expired.json() == {"detail": GENERIC_VERIFICATION_ERROR}
+    assert expired.json() == GENERIC_VERIFICATION_ERROR_BODY
 
 
 def test_reused_recovery_code_has_generic_error(api, monkeypatch):
@@ -779,7 +798,7 @@ def test_reused_recovery_code_has_generic_error(api, monkeypatch):
     reused = client.post("/auth/email/verify", json={"code": code}, headers=_authed(token))
 
     assert reused.status_code == 400
-    assert reused.json() == {"detail": GENERIC_VERIFICATION_ERROR}
+    assert reused.json() == GENERIC_VERIFICATION_ERROR_BODY
 
 
 def test_resending_recovery_code_invalidates_previous_code(api, monkeypatch):
@@ -801,7 +820,7 @@ def test_resending_recovery_code_invalidates_previous_code(api, monkeypatch):
     accepted = client.post("/auth/email/verify", json={"code": second_code}, headers=headers)
 
     assert invalidated.status_code == 400
-    assert invalidated.json() == {"detail": GENERIC_VERIFICATION_ERROR}
+    assert invalidated.json() == GENERIC_VERIFICATION_ERROR_BODY
     assert accepted.status_code == 200
 
 
@@ -882,7 +901,7 @@ def test_five_wrong_recovery_code_attempts_persist_across_tokens_and_ips(api, mo
     for _ in range(3):
         response = client.post("/auth/email/verify", json=wrong, headers=_authed(token_one))
         assert response.status_code == 400
-        assert response.json() == {"detail": GENERIC_VERIFICATION_ERROR}
+        assert response.json() == GENERIC_VERIFICATION_ERROR_BODY
 
     login = client.post(
         "/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}
@@ -905,7 +924,7 @@ def test_five_wrong_recovery_code_attempts_persist_across_tokens_and_ips(api, mo
         )
 
     assert response.status_code == 400
-    assert response.json() == {"detail": GENERIC_VERIFICATION_ERROR}
+    assert response.json() == GENERIC_VERIFICATION_ERROR_BODY
     account_id = db.get_active_account_by_username("alice")["account_id"]
     failed_attempts, used_at = db.catalog_conn.execute(
         "SELECT failed_attempts, used_at FROM email_verification_codes WHERE account_id = ?",
@@ -940,7 +959,7 @@ def test_recovery_code_send_limit_persists_across_logins_and_ips(api, monkeypatc
         ]
 
     assert [response.status_code for response in results] == [200, 200, 200, 200, 200, 400]
-    assert results[-1].json() == {"detail": GENERIC_VERIFICATION_ERROR}
+    assert results[-1].json() == RECOVERY_CODE_SEND_LIMIT_BODY
     assert len(deliveries) == 5
 
 
@@ -961,7 +980,7 @@ def test_malformed_recovery_code_bodies_return_generic_error_without_echo(api, m
     ]
 
     assert all(response.status_code == 400 for response in responses)
-    assert all(response.json() == {"detail": GENERIC_VERIFICATION_ERROR} for response in responses)
+    assert all(response.json() == GENERIC_VERIFICATION_ERROR_BODY for response in responses)
     assert all("123456" not in response.text for response in responses)
 
 
@@ -991,7 +1010,7 @@ def test_recovery_code_verification_is_rate_limited(api, monkeypatch):
     responses = [client.post("/auth/email/verify", json={"code": "111111"}, headers=headers) for _ in range(11)]
 
     assert [response.status_code for response in responses] == [400] * 10 + [429]
-    assert all(response.json() == {"detail": GENERIC_VERIFICATION_ERROR} for response in responses[:10])
+    assert all(response.json() == GENERIC_VERIFICATION_ERROR_BODY for response in responses[:10])
 
 
 def test_catalog_upgrade_marks_existing_recovery_addresses_unverified(tmp_path: Path):

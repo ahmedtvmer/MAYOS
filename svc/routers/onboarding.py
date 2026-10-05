@@ -20,6 +20,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from service import analytics as analytics_service
 from service import intake as intake_service
 from service import onboarding as onboarding_service
+from service.messages import MessageMetadata, http_error_message
 from service.program_analytics import ProgramAnalyticsActor
 from svc.dependencies import account_id_of, get_current_player, get_db, get_ledger, get_verified_player
 from svc.llm import InferenceScope, inference_turn, register_ai_analytics_background_tasks
@@ -34,6 +35,22 @@ from svc.schemas import (
 )
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
+ONBOARDING_CONFLICT_FALLBACK = "The service rejected this request."
+
+
+def _onboarding_conflict(error_code: str, message_code: str) -> JSONResponse:
+    """Keeps onboarding's existing error body while tagging its source outcome."""
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={
+            "error": error_code,
+            **http_error_message(
+                status.HTTP_409_CONFLICT,
+                ONBOARDING_CONFLICT_FALLBACK,
+                message_metadata=MessageMetadata(message_code),
+            ),
+        },
+    )
 
 
 @dataclass(frozen=True)
@@ -163,7 +180,9 @@ async def start_onboarding(
     try:
         return await asyncio.to_thread(_run)
     except intake_service.StructuredIntakeActive:
-        return JSONResponse(status_code=409, content={"error": "structured_intake_active"})
+        return _onboarding_conflict(
+            "structured_intake_active", "intake.structured_active.v1"
+        )
 
 
 @router.post("/step", response_model=OnboardingStepOut)
@@ -217,7 +236,9 @@ async def answer_step(
     try:
         return await asyncio.to_thread(_run)
     except intake_service.StructuredIntakeActive:
-        return JSONResponse(status_code=409, content={"error": "structured_intake_active"})
+        return _onboarding_conflict(
+            "structured_intake_active", "intake.structured_active.v1"
+        )
 
 
 @router.get("/intake", response_model=IntakeOut)
@@ -320,7 +341,11 @@ async def confirm_intake(
         _capture_onboarding_completed(request, account_id_of(player), outcome.completion)
         return outcome.response_body
     except intake_service.IntakeConfirmInProgress:
-        return JSONResponse(status_code=409, content={"error": "confirm_in_progress"}, background=background_tasks)
+        response = _onboarding_conflict(
+            "confirm_in_progress", "intake.in_progress.v1"
+        )
+        response.background = background_tasks
+        return response
 
 
 @router.post("/complete")

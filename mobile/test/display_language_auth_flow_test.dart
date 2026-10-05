@@ -756,7 +756,7 @@ void main() {
     ]));
     await tester.pumpAndSettle();
     await _selectArabicOnAuth(tester);
-    await tester.tap(find.text('المتابعة باستخدام Google'));
+    await tester.tap(find.text('المتابعة مع Google'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('google_signup_username')), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 500));

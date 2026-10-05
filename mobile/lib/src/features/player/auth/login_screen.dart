@@ -68,7 +68,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
     final Uri uri = GoRouterState.of(context).uri;
     final bool resetJustCompleted = uri.queryParameters['reset'] == '1';
-    final String? notice = ref.watch(authControllerProvider).notice;
+    final authState = ref.watch(authControllerProvider);
+    final String? notice = authState.notice;
     return AuthScaffold(
       title: copy.logIn,
       lead: copy.signInLead,
@@ -109,7 +110,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             message: copy.passwordChanged,
           )
         else if (notice != null)
-          AuthInlineNotice(kind: AuthNoticeKind.info, message: notice),
+          AuthInlineNotice(
+            kind: AuthNoticeKind.info,
+            message: authState.noticeFailure == null
+                ? notice
+                : copy.failureMessage(authState.noticeFailure!),
+          ),
         if (resetJustCompleted || notice != null)
           const SizedBox(height: MayosSpacing.md),
         GoogleSignInSection(

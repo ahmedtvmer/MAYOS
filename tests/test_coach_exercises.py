@@ -1,6 +1,6 @@
 import sqlite3
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -258,13 +258,16 @@ def test_owner_can_publish_player_can_log_and_keep_coach_exercise_prs(api):
         "performed_date": date.today().isoformat(),
         "performed_timezone": "UTC",
         "program_version": 999,
-        "captured_at": "2026-10-04T08:00:00+00:00",
+        "captured_at": datetime.now(timezone.utc).isoformat(),
     }
     refused_version = client.post(
         "/workouts/sessions", headers=player_headers, json=unknown_version
     )
-    assert refused_version.status_code == 409
-    assert refused_version.json() == {"error": "program_version_mismatch", "active_version": 1}
+    assert refused_version.status_code == 409, refused_version.text
+    refused_body = refused_version.json()
+    assert refused_body["error"] == "program_version_mismatch"
+    assert refused_body["active_version"] == 1
+    assert refused_body["message_code"] == "workout.program_version_mismatch.v1"
 
     exported = client.get("/workouts/sessions/export.json", headers=player_headers)
     assert exported.status_code == 200, exported.text

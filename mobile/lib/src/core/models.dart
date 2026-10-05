@@ -2603,6 +2603,69 @@ abstract final class DraftStatus {
   static const String needsReconciliation = 'needs_reconciliation';
 }
 
+FailureMessage? _storedDraftFailure(Map<String, dynamic> json) {
+  final String? detail = json['last_error'] as String?;
+  final AppFailureMessage? appFailure = AppFailureMessage.fromStored(
+    id: json['last_error_failure_id'] as String?,
+    englishMessage: detail,
+    value: (json['last_error_failure_value'] as num?)?.toInt(),
+  );
+  if (appFailure != null) return appFailure;
+  final String? code = switch (json['last_error_message_code']) {
+    String value => value,
+    _ => null,
+  };
+  final Object? rawFallback = json['last_error_message_fallback'];
+  if (code == null && rawFallback is! String) return null;
+  final Object? rawParams = json['last_error_message_params'];
+  final Map<String, dynamic>? params = rawParams is Map
+      ? Map<String, dynamic>.from(rawParams)
+      : null;
+  return ServerFailureMessage(
+    detail ?? (rawFallback is String ? rawFallback : ''),
+    messageCode: code,
+    messageParams: _persistableServerMessageParams(code, params),
+    messageFallback: rawFallback is String ? rawFallback : null,
+  );
+}
+
+Map<String, Object?> _storedDraftFailureFields(FailureMessage? failure) {
+  if (failure is AppFailureMessage) {
+    return <String, Object?>{
+      'last_error_failure_id': failure.id.name,
+      'last_error_failure_value': failure.value,
+    };
+  }
+  if (failure is ServerFailureMessage &&
+      (failure.messageCode != null || failure.messageFallback != null)) {
+    return <String, Object?>{
+      'last_error_message_code': failure.messageCode,
+      'last_error_message_params': _persistableServerMessageParams(
+        failure.messageCode,
+        failure.messageParams,
+      ),
+      'last_error_message_fallback': failure.messageFallback,
+    };
+  }
+  return const <String, Object?>{};
+}
+
+Map<String, dynamic>? _persistableServerMessageParams(
+  Object? code,
+  Map<String, dynamic>? params,
+) {
+  if (params == null) return null;
+  if (code == 'http.input_too_long.v1' &&
+      params.length == 1 &&
+      params['limit'] is int &&
+      (params['limit'] as int) > 0 &&
+      (params['limit'] as int) <= 100000) {
+    return <String, dynamic>{'limit': params['limit']};
+  }
+  if (params.isEmpty) return <String, dynamic>{};
+  return null;
+}
+
 /// A workout recorded on the device but not yet committed to history (ADR 020).
 ///
 /// The [clientSessionId] is generated once at creation and never changes, so a
@@ -2660,11 +2723,7 @@ class WorkoutDraft {
         notes: json['notes'] as String? ?? '',
         status: json['status'] as String? ?? DraftStatus.pending,
         lastError: json['last_error'] as String?,
-        lastErrorFailure: AppFailureMessage.fromStored(
-          id: json['last_error_failure_id'] as String?,
-          englishMessage: json['last_error'] as String?,
-          value: (json['last_error_failure_value'] as num?)?.toInt(),
-        ),
+        lastErrorFailure: _storedDraftFailure(json),
         serverResponse: json['server_response'] as Map<String, dynamic>?,
         updatedAt: json['updated_at'] as String? ?? '',
         attempt: (json['attempt'] as num?)?.toInt() ?? 0,
@@ -2691,7 +2750,7 @@ class WorkoutDraft {
   final String notes;
   final String status;
   final String? lastError;
-  final AppFailureMessage? lastErrorFailure;
+  final FailureMessage? lastErrorFailure;
   final Map<String, dynamic>? serverResponse;
   final String updatedAt;
 
@@ -2759,7 +2818,7 @@ class WorkoutDraft {
     String? performedDate,
     String? status,
     String? lastError,
-    AppFailureMessage? lastErrorFailure,
+    FailureMessage? lastErrorFailure,
     Map<String, dynamic>? serverResponse,
     String? updatedAt,
     int? attempt,
@@ -2858,10 +2917,7 @@ class WorkoutDraft {
         'notes': notes,
         'status': status,
         'last_error': lastError,
-        if (lastErrorFailure != null) ...<String, Object?>{
-          'last_error_failure_id': lastErrorFailure!.id.name,
-          'last_error_failure_value': lastErrorFailure!.value,
-        },
+        ..._storedDraftFailureFields(lastErrorFailure),
         'server_response': serverResponse,
         'updated_at': updatedAt,
         'attempt': attempt,

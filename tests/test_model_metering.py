@@ -524,7 +524,11 @@ def test_coach_generate_draft_is_metered(api, monkeypatch, recording_analytics):
         params={"replace": "true"},
     )
     assert refused.status_code == 429
-    assert refused.json() == {"detail": "Too many AI requests. Please wait a minute and try again."}
+    refused_body = refused.json()
+    assert refused_body["detail"] == "Too many AI requests. Please wait a minute and try again."
+    assert refused_body["message_code"] == "ai_limit.request_rate.v1"
+    assert refused_body["message_params"] == {}
+    assert refused_body["message_fallback"] == refused_body["detail"]
     _assert_ai_usage_event(recording_analytics, db, coach_account_id, "coach_generate_draft", 1)
     event = next(item for item in recording_analytics.events if item["event"] == "ai_request_completed")
     assert event["properties"]["plan"] == "pro"

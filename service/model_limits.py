@@ -61,9 +61,15 @@ class ModelLimitContext:
 class ModelLimitExceeded(Exception):
     """Raised before any model call when an account is over its limit."""
 
-    def __init__(self, detail: str, context: ModelLimitContext | None = None) -> None:
+    def __init__(
+        self,
+        detail: str,
+        kind: Literal["rate", "daily_tokens"],
+        context: ModelLimitContext | None = None,
+    ) -> None:
         super().__init__(detail)
         self.detail = detail
+        self.kind = kind
         self.context = context
 
 
@@ -254,6 +260,7 @@ def _raise_model_limit(
             logger.exception("Failed to capture model-limit refusal for account %s", account_id)
     raise ModelLimitExceeded(
         detail,
+        kind,
         payload,
     )
 

@@ -145,24 +145,28 @@ final class DeleteWithGoogleRefused extends DeleteWithGoogleResult {
 const String kGoogleDeleteCancelledMessage =
     'Google sign-in was cancelled. Your account was not deleted.';
 
-/// `service/google_sign_in.py::ALREADY_LINKED`, echoed verbatim by
-/// `POST /auth/google/complete` as a 409 (#113). The service sends no machine
-/// code with it, so the detail is what distinguishes this from a taken
-/// username.
+/// English fallback for the `google_account_already_linked` conflict from
+/// `POST /auth/google/complete`. Older servers omit the machine code, so the
+/// exact detail remains a compatibility fallback.
 const String kGoogleAlreadyLinkedMessage =
     'This Google account is already linked to a MAYOS account.';
 
 @immutable
 class AuthState {
-  const AuthState._(this.status, this.session, this.notice);
+  const AuthState._(this.status, this.session, this.notice, this.noticeFailure);
 
-  const AuthState.loading() : this._(AuthStatus.loading, null, null);
+  const AuthState.loading() : this._(AuthStatus.loading, null, null, null);
 
   const AuthState.unauthenticated([String? notice])
-      : this._(AuthStatus.unauthenticated, null, notice);
+      : this._(AuthStatus.unauthenticated, null, notice, null);
+
+  const AuthState.unauthenticatedWithFailure(
+    String notice,
+    FailureMessage noticeFailure,
+  ) : this._(AuthStatus.unauthenticated, null, notice, noticeFailure);
 
   const AuthState.authenticated(AccountSession session, {String? notice})
-      : this._(AuthStatus.authenticated, session, notice);
+      : this._(AuthStatus.authenticated, session, notice, null);
 
   final AuthStatus status;
   final AccountSession? session;
@@ -170,6 +174,7 @@ class AuthState {
   /// A one-shot message to show on the login screen (for example, after account
   /// deletion). It is not a session: [isAuthenticated] ignores it.
   final String? notice;
+  final FailureMessage? noticeFailure;
 
   bool get isAuthenticated => status == AuthStatus.authenticated;
 
@@ -220,7 +225,12 @@ class AuthController extends StateNotifier<AuthState> {
       // Preserve a notice an account-deleted signal may have set mid-restore so
       // the login screen can explain why the session ended (ADR 039).
       state = session == null
-          ? AuthState.unauthenticated(state.notice)
+          ? state.noticeFailure != null && state.notice != null
+              ? AuthState.unauthenticatedWithFailure(
+                  state.notice!,
+                  state.noticeFailure!,
+                )
+              : AuthState.unauthenticated(state.notice)
           : AuthState.authenticated(session);
       return session == null;
     } on Object {
@@ -395,9 +405,13 @@ class AuthController extends StateNotifier<AuthState> {
         return const GoogleSignupTicketExpired();
       }
       if (error.statusCode == 409) {
-        // Same status for both conflicts; only the detail tells them apart.
-        if (error.message == kGoogleAlreadyLinkedMessage) {
-          await abandonGoogleSignup(notice: kGoogleAlreadyLinkedMessage);
+        // Older servers identify this conflict through the unchanged detail.
+        if (error.errorCode == 'google_account_already_linked' ||
+            error.message == kGoogleAlreadyLinkedMessage) {
+          await abandonGoogleSignup(
+            notice: kGoogleAlreadyLinkedMessage,
+            noticeFailure: error.failureMessage,
+          );
           return const GoogleAccountAlreadyLinked();
         }
         return const GoogleUsernameTaken();
@@ -411,14 +425,19 @@ class AuthController extends StateNotifier<AuthState> {
 
   /// Drops the pending ticket, signs the Google SDK out, and optionally hands
   /// [notice] to the sign-in screen (#115). No account is ever created here.
-  Future<void> abandonGoogleSignup({String? notice}) async {
+  Future<void> abandonGoogleSignup({
+    String? notice,
+    FailureMessage? noticeFailure,
+  }) async {
     if (_pendingSignup == null && notice == null) {
       return;
     }
     _pendingSignup = null;
     await _google.clearSdkState();
     if (notice != null) {
-      state = AuthState.unauthenticated(notice);
+      state = noticeFailure == null
+          ? AuthState.unauthenticated(notice)
+          : AuthState.unauthenticatedWithFailure(notice, noticeFailure);
     }
   }
 

@@ -1,22 +1,27 @@
 """FastAPI application factory for the hosted inference service."""
 
 import asyncio
+import json
 import logging
 import os
 import re
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.exception_handlers import http_exception_handler as default_http_exception_handler
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from database.storage import storage_status
 from service.admin_auth import AdminSecurity, partial_secret_configuration
+from service.messages import MessageMetadata, ai_limit_message, http_error_message
 from service import account_deletion as account_deletion_service
 from service.analytics import register_analytics_preference_reader, register_configured_sink
 from service.model_limits import ModelLimitExceeded
@@ -51,6 +56,7 @@ from svc.routers import (
 from svc.schemas import HealthOut
 
 logger = logging.getLogger(__name__)
+REQUEST_FAILURE_DETAIL = "Request failed. Please try again."
 
 
 def web_origins() -> list[str]:
@@ -95,6 +101,52 @@ def _install_access_log_redaction() -> None:
     access_logger = logging.getLogger("uvicorn.access")
     if not any(isinstance(existing, RedactResetTokenFilter) for existing in access_logger.filters):
         access_logger.addFilter(RedactResetTokenFilter())
+
+
+def _error_response_parts(
+    response: Response,
+) -> tuple[dict[str, Any], dict[str, str]] | None:
+    if response.status_code in {204, 304} or not getattr(response, "body", None):
+        return None
+    try:
+        content = json.loads(response.body)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(content, dict):
+        return None
+    headers = {
+        key: value
+        for key, value in response.headers.items()
+        if key.lower() != "content-length"
+    }
+    return content, headers
+
+
+def _add_error_metadata(
+    request: Request,
+    response: Response,
+    message_metadata: MessageMetadata | None = None,
+    validation_errors: Any = None,
+) -> Response:
+    """Adds structured metadata to a JSON error without changing its detail."""
+    response_parts = _error_response_parts(response)
+    if response_parts is None:
+        return response
+    content, headers = response_parts
+    content.update(
+        http_error_message(
+            response.status_code,
+            content.get("detail") or content.get("error"),
+            validation_errors=validation_errors,
+            message_metadata=message_metadata,
+        )
+    )
+    return JSONResponse(
+        status_code=response.status_code,
+        content=content,
+        headers=headers,
+        background=_ai_analytics_background_tasks(request),
+    )
 
 
 _install_access_log_redaction()
@@ -275,23 +327,39 @@ def create_app() -> FastAPI:
     @app.exception_handler(RateLimitExceeded)
     async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
         response = _rate_limit_exceeded_handler(request, exc)
-        response.background = _ai_analytics_background_tasks(request)
-        return response
+        return _add_error_metadata(request, response)
 
     @app.exception_handler(ModelLimitExceeded)
     async def model_limit_handler(request: Request, exc: ModelLimitExceeded):
         """One 429 shape for every per-account model limit refusal (ADR 038)."""
-        return JSONResponse(
-            status_code=429,
-            content={"detail": exc.detail},
-            background=_ai_analytics_background_tasks(request),
+        refusal = ai_limit_message(exc.kind, exc.detail)
+        response = JSONResponse(status_code=429, content={"detail": exc.detail})
+        return _add_error_metadata(
+            request,
+            response,
+            MessageMetadata(
+                code=refusal["message_code"],
+                params=refusal["message_params"],
+            ),
         )
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_handler(request: Request, exc: RequestValidationError):
+        errors = exc.errors()
+        response = JSONResponse(
+            status_code=422,
+            content={"detail": jsonable_encoder(errors)},
+        )
+        return _add_error_metadata(request, response, validation_errors=errors)
 
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         response = await default_http_exception_handler(request, exc)
-        response.background = _ai_analytics_background_tasks(request)
-        return response
+        return _add_error_metadata(
+            request,
+            response,
+            getattr(exc, "message_metadata", None),
+        )
 
     @app.exception_handler(AccountDeletedError)
     async def account_deleted_handler(request: Request, exc: AccountDeletedError):
@@ -342,11 +410,11 @@ def create_app() -> FastAPI:
     @app.exception_handler(Exception)
     async def unhandled_handler(request: Request, exc: Exception):
         logger.exception("Unhandled error on %s %s", request.method, request.url.path)
-        return JSONResponse(
+        response = JSONResponse(
             status_code=502,
-            content={"detail": "Request failed. Please try again."},
-            background=_ai_analytics_background_tasks(request),
+            content={"detail": REQUEST_FAILURE_DETAIL},
         )
+        return _add_error_metadata(request, response)
 
     app.include_router(auth.router)
     app.include_router(admin.router)

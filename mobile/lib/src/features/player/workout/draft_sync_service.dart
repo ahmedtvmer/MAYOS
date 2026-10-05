@@ -540,10 +540,8 @@ class DraftSyncService extends ChangeNotifier {
           clearPendingNetworkFailureAttempt:
               !networkFailure || draft.lastReportedSyncFailureReason == 'network',
           lastError: error.message,
-          lastErrorFailure: error.failureMessage is AppFailureMessage
-              ? error.failureMessage! as AppFailureMessage
-              : null,
-          clearLastErrorFailure: error.failureMessage is! AppFailureMessage,
+          lastErrorFailure: error.failureMessage,
+          clearLastErrorFailure: error.failureMessage == null,
           updatedAt: _iso(),
         );
       }
@@ -644,10 +642,8 @@ class DraftSyncService extends ChangeNotifier {
     return draft.copyWith(
       status: DraftStatus.pending,
       lastError: error.message,
-      lastErrorFailure: error.failureMessage is AppFailureMessage
-          ? error.failureMessage! as AppFailureMessage
-          : null,
-      clearLastErrorFailure: error.failureMessage is! AppFailureMessage,
+      lastErrorFailure: error.failureMessage,
+      clearLastErrorFailure: error.failureMessage == null,
       attempt: attempt,
       nextAttemptAt: nextAttemptAt.toIso8601String(),
       updatedAt: _iso(),

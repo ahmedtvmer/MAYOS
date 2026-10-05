@@ -14,7 +14,9 @@ from service import analytics
 from service import sessions as sessions_service
 from service import workouts as workouts_service
 from service import workout_analytics
+from service.messages import MessageMetadata, program_version_mismatch_message
 from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
+from svc.errors import message_http_exception
 from svc.rate_limit import WORKOUT_SYNC_FAILURE_LIMIT, limiter
 from svc.schemas import (
     BaselinesOut,
@@ -34,7 +36,11 @@ EXPORT_MEDIA_TYPES = {"csv": "text/csv", "json": "application/json"}
 def _day_plan(ledger: Any, day_order: int) -> Any:
     program = ledger.get_active_program()
     if program is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No active program.")
+        raise message_http_exception(
+            status.HTTP_404_NOT_FOUND,
+            "No active program.",
+            MessageMetadata("program.no_active.v1"),
+        )
     try:
         return workouts_service.day_plan_from(program, day_order)
     except workouts_service.DayPlanNotFoundError as exc:
@@ -267,7 +273,11 @@ async def commit_session(
     except workouts_service.ProgramVersionMismatchError as exc:
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
-            content={"error": "program_version_mismatch", "active_version": exc.active_version},
+            content={
+                "error": "program_version_mismatch",
+                "active_version": exc.active_version,
+                **program_version_mismatch_message(),
+            },
         )
 
     if not result.created:

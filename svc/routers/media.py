@@ -8,8 +8,10 @@ import re
 from typing import Any, Iterator
 
 from botocore.exceptions import BotoCoreError, ClientError
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, Request, Response, status
 from fastapi.responses import FileResponse, StreamingResponse
+from service.messages import MessageMetadata
+from svc.errors import message_http_exception
 
 from utils.r2 import (
     MEDIA_CACHE_CONTROL,
@@ -56,10 +58,15 @@ def _raise_provider_error(exc: Exception) -> None:
     if isinstance(exc, ClientError):
         error = exc.response.get("Error", {})
         if str(error.get("Code", "")) in MISSING_R2_OBJECT_CODES:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media not found.") from None
-    raise HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail="Media is temporarily unavailable.",
+            raise message_http_exception(
+                status.HTTP_404_NOT_FOUND,
+                "Media not found.",
+                MessageMetadata("media.not_found.v1"),
+            ) from None
+    raise message_http_exception(
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+        "Media is temporarily unavailable.",
+        MessageMetadata("media.unavailable.v1"),
     ) from None
 
 
@@ -128,7 +135,11 @@ def _not_modified(request: Request, headers: dict[str, str]) -> bool:
 
 def _r2_media_response(name: str, client: Any, bucket: str, request: Request) -> Response:
     if not _allowed_media_path(name):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media not found.")
+        raise message_http_exception(
+            status.HTTP_404_NOT_FOUND,
+            "Media not found.",
+            MessageMetadata("media.not_found.v1"),
+        )
     metadata = _head_r2_media(name, client, bucket)
     headers = _validator_headers(metadata)
     if _not_modified(request, headers):
@@ -147,13 +158,21 @@ def _local_media_response(name: str) -> FileResponse:
             continue
         if resolved.is_file() and directory in resolved.parents:
             return FileResponse(resolved, headers={"Cache-Control": MEDIA_CACHE_CONTROL})
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media not found.")
+    raise message_http_exception(
+        status.HTTP_404_NOT_FOUND,
+        "Media not found.",
+        MessageMetadata("media.not_found.v1"),
+    )
 
 
 @router.get("/{name:path}")
 def get_media(name: str, request: Request) -> Response:
     if not _allowed_media_path(name):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Media not found.")
+        raise message_http_exception(
+            status.HTTP_404_NOT_FOUND,
+            "Media not found.",
+            MessageMetadata("media.not_found.v1"),
+        )
 
     connection = _configured_r2_connection()
     if connection is not None:

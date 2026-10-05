@@ -28,7 +28,13 @@ from service import coach_history as coach_history_service
 from service import coach_programs as coach_programs_service
 from service import coach_program_drafts as coach_program_drafts_service
 from service import program_requests as program_requests_service
+from service.messages import (
+    MessageMetadata,
+    http_error_message,
+    program_version_mismatch_message,
+)
 from service.program_analytics import ProgramAnalyticsActor
+from svc.errors import message_http_exception
 from svc.dependencies import (
     VerifiedPlayer,
     get_current_coach,
@@ -93,13 +99,25 @@ coach_roster_router = APIRouter(prefix="/coach", tags=["coach"])
 player_router = APIRouter(prefix="/assignments", tags=["assignments"])
 
 
-def _bad_request(error: str) -> HTTPException:
-    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
+def _bad_request(
+    error: Any,
+    message_code: str | None = "assignment.request_invalid.v1",
+    message_params: dict[str, Any] | None = None,
+) -> HTTPException:
+    return message_http_exception(
+        status.HTTP_400_BAD_REQUEST,
+        error,
+        MessageMetadata(message_code, message_params or {}),
+    )
 
 
 def _no_active_assignment() -> HTTPException:
     """One generic 403 for unknown, revoked, and other-coach assignments alike."""
-    return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=coach_history_service.DENIED_ERROR)
+    return message_http_exception(
+        status.HTTP_403_FORBIDDEN,
+        coach_history_service.DENIED_ERROR,
+        MessageMetadata("assignment.none_active.v1"),
+    )
 
 
 def _assignment_out(assignment: dict[str, Any]) -> AssignmentOut:
@@ -116,7 +134,11 @@ async def _run_program_draft_action(action, *args, **kwargs):
     try:
         return await asyncio.to_thread(action, *args, **kwargs)
     except coach_program_drafts_service.ProgramDraftNotFound as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise message_http_exception(
+            status.HTTP_404_NOT_FOUND,
+            str(exc),
+            MessageMetadata("assignment.program_draft_not_found.v1"),
+        ) from exc
 
 
 # --------------------------------------------------------------------------
@@ -151,7 +173,7 @@ async def issue_assignment_invite(
     def _run():
         result = assignment_service.issue_assignment_invite(db, coach.account_id, client=client)
         if not result["ok"]:
-            raise _bad_request(result["error"])
+            raise _bad_request(result["error"], result.get("message_code"))
         return result
 
     result = await asyncio.to_thread(_run)
@@ -343,7 +365,9 @@ async def create_assignment_check_in(
         if not result["ok"]:
             if result.get("denied"):
                 raise _no_active_assignment()
-            raise _bad_request(result["error"])
+            raise _bad_request(
+                result["error"], result.get("message_code", "assignment.check_in_invalid.v1")
+            )
         return result
 
     result = await asyncio.to_thread(_run)
@@ -407,9 +431,14 @@ async def revoke_assignment(
             db, coach.account_id, assignment_id, "coach", client=client
         )
         if not result["ok"]:
-            if "not part of this assignment" in result["error"]:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=result["error"])
-            raise _bad_request(result["error"])
+            message_code = result.get("message_code")
+            if message_code == "assignment.not_participant.v1":
+                raise message_http_exception(
+                    status.HTTP_403_FORBIDDEN,
+                    result["error"],
+                    MessageMetadata(message_code),
+                )
+            raise _bad_request(result["error"], message_code)
         return result
 
     result = await asyncio.to_thread(_run)
@@ -432,7 +461,11 @@ async def create_assigned_player_program_draft(
                 db, coach.account_id, assignment_id, initial_draft
             )
         except coach_program_drafts_service.ProgramDraftAlreadyExists as exc:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+            raise message_http_exception(
+                status.HTTP_409_CONFLICT,
+                str(exc),
+                MessageMetadata("assignment.program_draft_exists.v1"),
+            ) from exc
         if created is None:
             raise _no_active_assignment()
         return created
@@ -458,13 +491,22 @@ async def copy_assigned_player_active_program_to_draft(
                 db, coach.account_id, assignment_id, replace=replace
             )
         except coach_program_drafts_service.ProgramDraftAlreadyExists as exc:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+            raise message_http_exception(
+                status.HTTP_409_CONFLICT,
+                str(exc),
+                MessageMetadata("assignment.program_draft_exists.v1"),
+            ) from exc
         except coach_program_drafts_service.ActiveProgramNotFound as exc:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+            raise message_http_exception(
+                status.HTTP_404_NOT_FOUND,
+                str(exc),
+                MessageMetadata("program.no_active.v1"),
+            ) from exc
         except coach_program_drafts_service.ProgramDraftValidationError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"errors": exc.issues},
+            raise message_http_exception(
+                status.HTTP_400_BAD_REQUEST,
+                {"errors": exc.issues},
+                MessageMetadata("assignment.program_draft_invalid.v1"),
             ) from exc
         if copied is None:
             raise _no_active_assignment()
@@ -493,19 +535,30 @@ async def approve_assigned_player_active_program(
                 resolve_request_ids=body.resolve_request_ids,
             )
         except coach_program_drafts_service.ActiveProgramNotFound as exc:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+            raise message_http_exception(
+                status.HTTP_404_NOT_FOUND,
+                str(exc),
+                MessageMetadata("program.no_active.v1"),
+            ) from exc
         except coach_program_drafts_service.ActiveProgramVersionMismatch as exc:
             return JSONResponse(
                 status_code=status.HTTP_409_CONFLICT,
-                content={"error": "program_version_mismatch", "active_version": exc.active_version},
+                content={
+                    "error": "program_version_mismatch",
+                    "active_version": exc.active_version,
+                    **program_version_mismatch_message(),
+                },
             )
         except coach_program_drafts_service.ProgramDraftValidationError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"errors": exc.issues},
+            raise message_http_exception(
+                status.HTTP_400_BAD_REQUEST,
+                {"errors": exc.issues},
+                MessageMetadata("assignment.program_draft_invalid.v1"),
             ) from exc
         except program_requests_service.ProgramRequestSelectionError as exc:
-            raise _bad_request(str(exc)) from exc
+            raise _bad_request(
+                str(exc), "program_request.selection_invalid.v1"
+            ) from exc
         if published is None:
             raise _no_active_assignment()
         return CoachProgramPublicationOut(
@@ -546,11 +599,16 @@ async def generate_assigned_player_program_draft(
                 background_tasks=background_tasks,
             )
         except coach_program_drafts_service.ProgramDraftAlreadyExists as exc:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+            raise message_http_exception(
+                status.HTTP_409_CONFLICT,
+                str(exc),
+                MessageMetadata("assignment.program_draft_exists.v1"),
+            ) from exc
         except coach_program_drafts_service.ProgramDraftValidationError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"errors": exc.issues},
+            raise message_http_exception(
+                status.HTTP_400_BAD_REQUEST,
+                {"errors": exc.issues},
+                MessageMetadata("assignment.program_draft_invalid.v1"),
             ) from exc
         if generated is None:
             raise _no_active_assignment()
@@ -608,7 +666,11 @@ async def discard_assigned_player_program_draft(
     if discarded is None:
         raise _no_active_assignment()
     if not discarded:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Program draft not found.")
+        raise message_http_exception(
+            status.HTTP_404_NOT_FOUND,
+            "Program draft not found.",
+            MessageMetadata("assignment.program_draft_not_found.v1"),
+        )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -631,12 +693,13 @@ async def publish_assigned_player_program_draft(
             resolve_request_ids=body.resolve_request_ids if body is not None else [],
         )
     except coach_program_drafts_service.ProgramDraftValidationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"errors": exc.issues},
+        raise message_http_exception(
+            status.HTTP_400_BAD_REQUEST,
+            {"errors": exc.issues},
+            MessageMetadata("assignment.program_draft_invalid.v1"),
         ) from exc
     except program_requests_service.ProgramRequestSelectionError as exc:
-        raise _bad_request(str(exc)) from exc
+        raise _bad_request(str(exc), "program_request.selection_invalid.v1") from exc
     if published is None:
         raise _no_active_assignment()
     return CoachProgramPublicationOut(
@@ -706,7 +769,7 @@ async def apply_assignment_program_request(
         if result is None:
             raise _no_active_assignment()
         if not result["ok"]:
-            raise _bad_request(result["error"])
+            raise _bad_request(result["error"], result.get("message_code"))
         return result["request"]
 
     return ProgramRequestOut(**await asyncio.to_thread(_run))
@@ -736,7 +799,7 @@ async def decline_assignment_program_request(
         if result is None:
             raise _no_active_assignment()
         if not result["ok"]:
-            raise _bad_request(result["error"])
+            raise _bad_request(result["error"], result.get("message_code"))
         return result["request"]
 
     return ProgramRequestOut(**await asyncio.to_thread(_run))
@@ -763,7 +826,7 @@ async def preview_assignment_invite(
     def _run():
         result = assignment_service.preview_assignment_invite(db, body.token, player.account_id)
         if not result["ok"]:
-            raise _bad_request(result["error"])
+            raise _bad_request(result["error"], result.get("message_code"))
         return result
 
     result = await asyncio.to_thread(_run)
@@ -794,7 +857,7 @@ async def redeem_assignment_invite(
             client=client,
         )
         if not redemption["ok"]:
-            raise _bad_request(redemption["error"])
+            raise _bad_request(redemption["error"], redemption.get("message_code"))
         return redemption
 
     result = await asyncio.to_thread(_run)
@@ -873,7 +936,11 @@ async def dismiss_player_program_change_summary(
         notice_id,
     )
     if not dismissed:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notice not found.")
+        raise message_http_exception(
+            status.HTTP_404_NOT_FOUND,
+            "Notice not found.",
+            MessageMetadata("assignment.notice_not_found.v1"),
+        )
     return {"dismissed": True}
 
 
@@ -890,12 +957,15 @@ async def end_my_assignment(
     def _run():
         assignment_id = assignment_service.get_active_player_assignment_id(db, player.account_id)
         if assignment_id is None:
-            raise _bad_request("You have no active coaching assignment.")
+            raise _bad_request(
+                "You have no active coaching assignment.",
+                "assignment.none_active.v1",
+            )
         result = assignment_service.end_assignment(
             db, player.account_id, assignment_id, "player", client=client
         )
         if not result["ok"]:
-            raise _bad_request(result["error"])
+            raise _bad_request(result["error"], result.get("message_code"))
         return result
 
     result = await asyncio.to_thread(_run)
@@ -938,9 +1008,24 @@ async def create_my_program_request(
         if "code" in result:
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                content={"detail": result["error"], "code": result["code"]},
+                content={
+                    "detail": result["error"],
+                    "code": result["code"],
+                    **http_error_message(
+                        status.HTTP_400_BAD_REQUEST,
+                        result["error"],
+                        message_metadata=MessageMetadata(
+                            result.get("message_code"),
+                            result.get("message_params", {}),
+                        ),
+                    ),
+                },
             )
-        raise _bad_request(result["error"])
+        raise _bad_request(
+            result["error"],
+            result.get("message_code", "program_request.invalid_kind.v1"),
+            result.get("message_params"),
+        )
     return ProgramRequestOut(**result["request"])
 
 
@@ -962,7 +1047,11 @@ async def cancel_my_program_request(
             client=analytics.client_context(request),
         )
         if not result["ok"]:
-            raise _bad_request(result["error"])
+            raise _bad_request(
+                result["error"],
+                result.get("message_code", "program_request.not_found.v1"),
+                result.get("message_params"),
+            )
         return result["request"]
 
     return ProgramRequestOut(**await asyncio.to_thread(_run))

@@ -4,6 +4,7 @@ import '../checkpoint_ordinal.dart';
 import '../effort.dart';
 import '../personal_records.dart';
 import 'arabic_count.dart';
+import 'message_resolver.dart';
 
 /// Small hand-written app catalog entry point. Product copy is added here as
 /// each surface joins the account Display language workflow.
@@ -225,7 +226,12 @@ class MayosCopy {
 
   /// Renders typed app failures in one place and preserves server details.
   String failureMessage(FailureMessage failure) => switch (failure) {
-        ServerFailureMessage(:final detail) => detail,
+        ServerFailureMessage serverFailure => resolveStructuredMessage(
+            messageCode: serverFailure.messageCode,
+            messageParams: serverFailure.messageParams,
+            englishFallback: serverFailure.safeEnglishFallback,
+            displayLanguage: languageCode,
+          ),
         AppFailureMessage(:final id, :final englishMessage, :final value) =>
           !isArabic
               ? englishMessage
@@ -833,7 +839,7 @@ class MayosCopy {
   String get dismissHomeScreenHint =>
       isArabic ? 'إخفاء تلميح الشاشة الرئيسية' : 'Dismiss Home Screen hint';
   String get googleName =>
-      isArabic ? 'المتابعة باستخدام Google' : 'Continue with Google';
+      isArabic ? 'المتابعة مع Google' : 'Continue with Google';
 
   String _ltr(String value) => '\u2066$value\u2069';
 }

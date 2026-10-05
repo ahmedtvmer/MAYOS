@@ -14,7 +14,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from service import analytics as analytics_service
 from service import missed_day_alerts as alerts_service
 from service.assignments import DENIED_ERROR
+from service.messages import MessageMetadata
 from svc.dependencies import VerifiedPlayer, get_current_coach, get_db
+from svc.errors import message_http_exception
 from svc.rate_limit import ASSIGNMENT_MUTATE_LIMIT, limiter
 from svc.schemas import CoachAlertListOut, CoachAlertOut
 
@@ -27,7 +29,11 @@ def _no_active_assignment() -> HTTPException:
     A resolved alert is not a denial: acknowledge/resolve on it is idempotent and
     returns 200 with the alert still resolved.
     """
-    return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=DENIED_ERROR)
+    return message_http_exception(
+        status.HTTP_403_FORBIDDEN,
+        DENIED_ERROR,
+        MessageMetadata("assignment.none_active.v1"),
+    )
 
 
 @router.get("", response_model=CoachAlertListOut)

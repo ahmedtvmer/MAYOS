@@ -68,7 +68,11 @@ final Provider<AccountDeletedEvents> accountDeletedEventsProvider =
 
 final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
   final TokenStore tokens = ref.watch(tokenStoreProvider);
-  final ApiClient client = ApiClient(tokens: tokens, baseUrl: apiBaseUrl);
+  final ApiClient client = ApiClient(
+    tokens: tokens,
+    baseUrl: apiBaseUrl,
+    displayLanguageLoader: () => ref.read(displayLanguageProvider),
+  );
   client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
   client.onAccountDeleted = ref.watch(accountDeletedEventsProvider).signal;
   return client;

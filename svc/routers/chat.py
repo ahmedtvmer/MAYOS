@@ -18,6 +18,7 @@ from agent.prompts import DEFAULT_ASSISTANT_STYLE
 from service import analytics, programs as programs_service
 from service import chat as chat_service
 from service.program_analytics import ProgramAnalyticsActor
+from service.messages import chat_error_message
 from service.model_limits import ModelAdmissionContext, admit_model_request
 from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
 from svc.llm import (
@@ -114,7 +115,15 @@ def _run_turn(
     except Exception:
         if disconnected.is_set():
             turn.mark_interrupted()
-        out.put(("error", {"detail": PIPELINE_ERROR_RESPONSE}))
+        out.put(
+            (
+                "error",
+                {
+                    "detail": PIPELINE_ERROR_RESPONSE,
+                    **chat_error_message(PIPELINE_ERROR_RESPONSE),
+                },
+            )
+        )
     finally:
         worker_done.set()
         out.put(("end", None))
@@ -131,9 +140,8 @@ async def post_message(
 ):
     register_ai_analytics_background_tasks(request, background_tasks)
     account_id = account_id_of(player)
-    # Refuse before the stream starts: the app-wide ModelLimitExceeded handler
-    # returns a plain HTTP 429 with a JSON ``detail`` (surfaced verbatim by the
-    # mobile client, ADR 036/038).
+    # Refuse before the stream starts so the app-wide handler can return a
+    # structured JSON 429 before any SSE response begins.
     client = analytics.client_context(request)
     scope = InferenceScope(
         account_id=account_id,

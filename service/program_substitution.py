@@ -33,6 +33,17 @@ SUBSTITUTION_ERRORS = {
     SubstitutionErrorCode.RESTORE_VERSION_NOT_FOUND: "The program version to restore was not found.",
     SubstitutionErrorCode.PROGRAM_CHANGED: "The program changed since this substitution",
 }
+SUBSTITUTION_MESSAGE_CODES = {
+    SubstitutionErrorCode.DAY_NOT_FOUND: "program.substitution.day_not_found.v1",
+    SubstitutionErrorCode.SOURCE_NOT_ON_DAY: "program.substitution.source_not_on_day.v1",
+    SubstitutionErrorCode.REPLACEMENT_IS_SOURCE: "program.substitution.replacement_is_source.v1",
+    SubstitutionErrorCode.REPLACEMENT_NOT_FOUND: "program.substitution.replacement_not_found.v1",
+    SubstitutionErrorCode.REPLACEMENT_ALREADY_ON_DAY: "program.substitution.replacement_already_on_day.v1",
+    SubstitutionErrorCode.COACH_CONTROLLED: "program.coach_controls.v1",
+    SubstitutionErrorCode.NO_ACTIVE_PROGRAM: "program.no_active.v1",
+    SubstitutionErrorCode.RESTORE_VERSION_NOT_FOUND: "program.substitution.restore_version_not_found.v1",
+    SubstitutionErrorCode.PROGRAM_CHANGED: "program.substitution.changed.v1",
+}
 
 
 @dataclass(frozen=True)
@@ -193,7 +204,12 @@ def _replacement(catalog: Any, source_id: str, replacement_id: str) -> dict[str,
 
 
 def _failure(code: SubstitutionErrorCode) -> dict[str, Any]:
-    return {"ok": False, "code": code, "error": SUBSTITUTION_ERRORS[code]}
+    return {
+        "ok": False,
+        "code": code,
+        "error": SUBSTITUTION_ERRORS[code],
+        "message_code": SUBSTITUTION_MESSAGE_CODES[code],
+    }
 
 
 def _program_data(active_program: Any) -> dict[str, Any]:

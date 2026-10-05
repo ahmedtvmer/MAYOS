@@ -16,8 +16,10 @@ from service import analytics as analytics_service
 from service import auth as auth_service
 from service import coach as coach_service
 from service import coach_ai as coach_ai_service
+from service.messages import MessageMetadata
 from service import plans as plans_service
 from svc.dependencies import VerifiedPlayer, get_current_coach, get_current_player, get_db
+from svc.errors import message_http_exception
 from svc.rate_limit import ASSIGNMENT_MUTATE_LIMIT, COACH_INVITE_LIMIT, limiter
 from svc.schemas import (
     AccountCapabilitiesOut,
@@ -46,7 +48,11 @@ async def redeem_coach_invite(
     def _run():
         result = coach_service.redeem_coach_invite(db, player.account_id, body.token, client=client)
         if not result["ok"]:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result["error"])
+            raise message_http_exception(
+                status.HTTP_400_BAD_REQUEST,
+                result["error"],
+                MessageMetadata("coach_invite.invalid_code.v1"),
+            )
         # Same sign-in-method fields /auth/me reports (#114), read for real
         # rather than defaulted, so the two AccountOut producers agree.
         account = db.get_account(result["account_id"])

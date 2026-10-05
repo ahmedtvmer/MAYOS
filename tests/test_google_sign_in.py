@@ -182,6 +182,25 @@ def test_first_sign_in_creates_account_only_after_the_username_is_picked(api):
     assert completed.json()["display_language"] == "ar"
 
 
+def test_google_signup_conflict_keeps_legacy_detail_and_adds_machine_code(api):
+    client, _db, _verifier = api
+    signup = _sign_in_for_ticket(client, "race-token:Race")
+    first = client.post(
+        "/auth/google/complete",
+        json={"signup_ticket": signup["signup_ticket"], "username": "first-player"},
+    )
+    assert first.status_code == 200, first.text
+
+    conflict = client.post(
+        "/auth/google/complete",
+        json={"signup_ticket": signup["signup_ticket"], "username": "second-player"},
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"] == google_service.ALREADY_LINKED
+    assert conflict.json()["code"] == "google_account_already_linked"
+    assert conflict.json()["message_code"] == "google.account_already_linked.v1"
+
+
 def test_returning_google_sign_in_goes_straight_in_with_remember_me(api):
     client, db, verifier = api
     signup = _sign_in_for_ticket(client, "bob-token:Bob")
@@ -1072,7 +1091,11 @@ def test_password_login_for_google_only_account_is_refused(api):
     # Password login for a Google-only account has no local password.
     login = client.post("/auth/login", json={"trainee_id": "gina", "password": "correct-horse-1"})
     assert login.status_code == 401
-    assert login.json() == {"detail": "Invalid credentials."}
+    body = login.json()
+    assert body["detail"] == "Invalid credentials."
+    assert body["message_code"] == "auth.invalid_credentials.v1"
+    assert body["message_params"] == {}
+    assert body["message_fallback"] == "Invalid credentials."
 
     with db.open_ledger(account["ledger_id"]) as ledger:
         assert ledger.get_password_hash() is None
@@ -1084,7 +1107,11 @@ def test_verifier_rejections_are_reported_as_invalid_credentials(api):
     for bad_token in ("bad-audience", "bad-issuer", "bad-signature"):
         response = client.post("/auth/google", json={"id_token": bad_token})
         assert response.status_code == 401
-        assert response.json() == {"detail": "Invalid Google credentials."}
+        body = response.json()
+        assert body["detail"] == "Invalid Google credentials."
+        assert body["message_code"] == "google.invalid_token.v1"
+        assert body["message_params"] == {}
+        assert body["message_fallback"] == "Invalid Google credentials."
 
 
 def test_google_endpoints_are_rate_limited_like_login(api):

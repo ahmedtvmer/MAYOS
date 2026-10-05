@@ -456,7 +456,12 @@ def test_concurrent_confirm_generates_exactly_one_program(api, monkeypatch):
 
     second = client.post("/onboarding/intake/confirm", headers=headers)
     assert second.status_code == 409, second.text
-    assert second.json() == {"error": "confirm_in_progress"}
+    assert second.json() == {
+        "error": "confirm_in_progress",
+        "message_code": "intake.in_progress.v1",
+        "message_params": {},
+        "message_fallback": "The service rejected this request.",
+    }
 
     release.set()
     thread.join(timeout=10)
@@ -535,7 +540,9 @@ def test_failed_generation_releases_claim_for_retry(api, monkeypatch):
     def fake(**kwargs):
         if state["fail"]:
             state["fail"] = False
-            raise ModelLimitExceeded("Too many AI requests. Please wait a minute and try again.")
+            raise ModelLimitExceeded(
+                "Too many AI requests. Please wait a minute and try again.", "rate"
+            )
         program = _program()
         kwargs["ledger"].save_training_program(program.model_dump())
         return program, "markdown"
@@ -751,6 +758,12 @@ def test_legacy_routes_refused_while_structured_intake_active(api, monkeypatch):
     active = _register(client, "active")
     _ack(client, active)
     _answer(client, active, "gender", "female")
+    expected_conflict = {
+        "error": "structured_intake_active",
+        "message_code": "intake.structured_active.v1",
+        "message_params": {},
+        "message_fallback": "The service rejected this request.",
+    }
     for path, body in (
         ("/onboarding/start", None),
         ("/onboarding/step", {"content": "x"}),
@@ -758,7 +771,7 @@ def test_legacy_routes_refused_while_structured_intake_active(api, monkeypatch):
     ):
         resp = client.post(path, headers=active, json=body) if body else client.post(path, headers=active)
         assert resp.status_code == 409, (path, resp.text)
-        assert resp.json() == {"error": "structured_intake_active"}
+        assert resp.json() == expected_conflict
 
     # An account with no structured row keeps the legacy routes (backward compat).
     fresh = _register(client, "fresh")

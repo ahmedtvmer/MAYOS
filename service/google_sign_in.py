@@ -70,8 +70,24 @@ class SignUpConflictError(Exception):
     """A completion that must not create an account: taken username, live link."""
 
 
+class GoogleAccountAlreadyLinkedError(SignUpConflictError):
+    """The Google identity is already linked to a live MAYOS account."""
+
+    message_code = "google.account_already_linked.v1"
+
+
+class UsernameTakenError(SignUpConflictError):
+    """The selected username belongs to a live MAYOS account."""
+
+    message_code = "auth.username_taken.v1"
+
+
 class SignInMethodError(Exception):
     """A refused sign-in-method change; its message is safe to show the caller."""
+
+    def __init__(self, detail: str, message_code: str) -> None:
+        super().__init__(detail)
+        self.message_code = message_code
 
 
 def validate_username(raw: Any) -> str:
@@ -176,21 +192,21 @@ def complete_signup(db: Any, completion: GoogleSignupCompletion) -> dict[str, An
         existing_id = db.get_linked_sign_in_account_id(PROVIDER, completion.subject)
         if existing_id is not None:
             if db.is_live_account(db.get_account(existing_id)):
-                raise SignUpConflictError(ALREADY_LINKED)
+                raise GoogleAccountAlreadyLinkedError(ALREADY_LINKED)
             # A dead account's link is replaced here, in the same transaction.
             db.remove_linked_sign_in(PROVIDER, completion.subject)
         if not _is_free(db, clean):
-            raise SignUpConflictError(USERNAME_TAKEN)
+            raise UsernameTakenError(USERNAME_TAKEN)
         account_id = db.create_account(clean, display_language=completion.display_language)
         if account_id is None:
-            raise SignUpConflictError(USERNAME_TAKEN)
+            raise UsernameTakenError(USERNAME_TAKEN)
         db.record_first_touch_acquisition_once(account_id, first_touch)
         try:
             db.link_sign_in(PROVIDER, completion.subject, account_id, linked_at=linked_at)
         except sqlite3.IntegrityError:
             # UNIQUE(provider, subject): the other completion won the race, and
             # unwinding here takes the freshly created account with it.
-            raise SignUpConflictError(ALREADY_LINKED) from None
+            raise GoogleAccountAlreadyLinkedError(ALREADY_LINKED) from None
         _store_signup_recovery_email(db, account_id, completion)
     account = db.get_account(account_id) or {}
     # Materialise the ledger, as registration does when it stores the hash, so
@@ -234,11 +250,11 @@ def link_account(db: Any, account_id: str, identity: GoogleIdentity) -> dict[str
             return {"ok": True, "message": "Google account already connected."}
         if holder is not None:
             if db.is_live_account(db.get_account(holder)):
-                raise SignInMethodError(LINKED_ELSEWHERE)
+                raise SignInMethodError(LINKED_ELSEWHERE, "google.linked_elsewhere.v1")
             db.remove_linked_sign_in(PROVIDER, subject)
         connected = db.get_linked_sign_in_subject(account_id, PROVIDER)
         if connected is not None and connected != subject:
-            raise SignInMethodError(DIFFERENT_GOOGLE)
+            raise SignInMethodError(DIFFERENT_GOOGLE, "google.different_account.v1")
         try:
             db.link_sign_in(PROVIDER, subject, account_id, linked_at=linked_at)
         except sqlite3.IntegrityError:
@@ -290,8 +306,8 @@ def _link_conflict(db: Any, account_id: str, subject: str) -> SignInMethodError:
     """
     holder = db.get_linked_sign_in_account_id(PROVIDER, subject)
     if holder is not None and holder != account_id:
-        return SignInMethodError(LINKED_ELSEWHERE)
-    return SignInMethodError(DIFFERENT_GOOGLE)
+        return SignInMethodError(LINKED_ELSEWHERE, "google.linked_elsewhere.v1")
+    return SignInMethodError(DIFFERENT_GOOGLE, "google.different_account.v1")
 
 
 def unlink_account(db: Any, account_id: str) -> dict[str, Any]:
@@ -309,7 +325,7 @@ def unlink_account(db: Any, account_id: str) -> dict[str, Any]:
     if db.get_linked_sign_in_subject(account_id, PROVIDER) is None:
         return {"ok": True, "message": "No Google account was connected."}
     if not auth_service.account_has_password(db, account):
-        raise SignInMethodError(NEEDS_PASSWORD)
+        raise SignInMethodError(NEEDS_PASSWORD, "google.unlink_password_required.v1")
     with db.catalog_transaction():
         subject = db.get_linked_sign_in_subject(account_id, PROVIDER)
         if subject is not None:

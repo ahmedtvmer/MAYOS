@@ -690,6 +690,40 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('Arabic mid-stream errors leave no assistant reply in chat state',
+      (tester) async {
+    final InMemoryChatCacheStore store = InMemoryChatCacheStore();
+    final FakeMayosApi fake = _fakePlayer('alice')..chatSendError = true;
+    await _pumpChat(
+      tester,
+      fake,
+      store: store,
+      scopeKey: UniqueKey(),
+      languageCode: 'ar',
+    );
+    await _acceptDisclosure(tester);
+
+    await tester.enterText(
+        find.byKey(const Key('chat_composer')), 'كيف أحسن تمرين الضغط؟');
+    await tester.tap(find.byKey(const Key('chat_send')));
+    const String localizedError = 'تعذر على المساعد إكمال الرد. يُرجى إعادة المحاولة.';
+    await _pumpUntilFound(tester, find.text(localizedError));
+
+    expect(find.byKey(const Key('chat_send_error')), findsOneWidget);
+    expect(_renderedMarkdownText('partial reply'), findsNothing);
+    expect(
+      fake.chatHistory.where((Map<String, dynamic> message) =>
+          message['role'] == 'assistant'),
+      isEmpty,
+    );
+    final List<ChatMessage> cached = await store.readHistory('account-alice');
+    expect(cached.where((ChatMessage message) => message.role == 'assistant'),
+        isEmpty);
+
+    await tester.pump(const Duration(seconds: 31));
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
       'offline disables send with a message while cached history renders',
       (tester) async {

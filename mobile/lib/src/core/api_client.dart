@@ -37,6 +37,15 @@ class ApiException implements Exception {
   /// Structured validation detail returned by the service, when present.
   final Map<String, dynamic>? serverDetails;
 
+  ServerFailureMessage? get _serverFailure =>
+      failureMessage is ServerFailureMessage
+          ? failureMessage! as ServerFailureMessage
+          : null;
+
+  String? get messageCode => _serverFailure?.messageCode;
+  Map<String, dynamic>? get messageParams => _serverFailure?.messageParams;
+  String? get messageFallback => _serverFailure?.messageFallback;
+
   @override
   String toString() => 'ApiException($statusCode): $message';
 }
@@ -99,8 +108,10 @@ class ApiClient {
     required String baseUrl,
     HttpClientAdapter? adapter,
     String Function()? clientHeaderLoader,
+    String Function()? displayLanguageLoader,
   })  : _tokens = tokens,
-        _clientHeader = (clientHeaderLoader ?? _loadClientHeader)() {
+        _clientHeader = (clientHeaderLoader ?? _loadClientHeader)(),
+        _displayLanguageLoader = displayLanguageLoader ?? (() => 'en') {
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
@@ -174,6 +185,7 @@ class ApiClient {
 
   final TokenStore _tokens;
   final String _clientHeader;
+  final String Function() _displayLanguageLoader;
   late final Dio _dio;
 
   /// Invoked when an authenticated request fails with 401.
@@ -191,6 +203,8 @@ class ApiClient {
     RequestInterceptorHandler handler,
   ) async {
     options.headers['X-MAYOS-Client'] = _clientHeader;
+    options.headers['Accept-Language'] =
+        _displayLanguageLoader() == 'ar' ? 'ar' : 'en';
     if (options.extra[_skipAuth] != true) {
       final String? token = await _tokens.read();
       if (token != null && token.isNotEmpty) {
@@ -246,54 +260,7 @@ class ApiClient {
     final int? status = error.response?.statusCode;
     final dynamic data = error.response?.data;
     if (data is Map) {
-      final Map<String, dynamic> body = Map<String, dynamic>.from(data);
-      if (body['detail'] is String) {
-        final String detail = body['detail'] as String;
-        return ApiException(
-          detail,
-          statusCode: status,
-          errorCode: _machineCode(body),
-          failureMessage: ServerFailureMessage(detail),
-        );
-      }
-      if (body['detail'] is Map) {
-        final Map<String, dynamic> details =
-            Map<String, dynamic>.from(body['detail'] as Map);
-        final String code = details['code'] is String
-            ? details['code'] as String
-            : 'validation_failed';
-        return ApiException(
-          'The request contains invalid fields.',
-          statusCode: status,
-          errorCode: code,
-          serverDetails: details,
-        );
-      }
-      if (body['detail'] is List) {
-        return ApiException(
-          'The request contains invalid fields.',
-          statusCode: status,
-          errorCode: 'validation_failed',
-          serverDetails: <String, dynamic>{
-            'pydantic_errors': List<dynamic>.from(body['detail'] as List),
-          },
-        );
-      }
-      if (body['error'] is String) {
-        final String code = body['error'] as String;
-        final String message = _messageForError(code);
-        return ApiException(
-          message,
-          statusCode: status,
-          errorCode: code,
-          failureMessage: AppFailureMessage(
-            code == 'program_version_mismatch'
-                ? AppFailureId.programVersionMismatch
-                : AppFailureId.serviceRejected,
-            message,
-          ),
-        );
-      }
+      return _apiExceptionFromBody(status, Map<String, dynamic>.from(data));
     }
     if (status == null) {
       return const ApiException(
@@ -320,6 +287,128 @@ class ApiClient {
         'Request failed ($status).',
         value: status,
       ),
+    );
+  }
+
+  static ApiException _apiExceptionFromBody(
+    int? status,
+    Map<String, dynamic> body,
+  ) {
+    final Object? rawDetail = body['detail'];
+    const String genericDetail = 'The request contains invalid fields.';
+    final String fallback = rawDetail is String ? rawDetail : genericDetail;
+    final ServerFailureMessage? serverFailure =
+        _serverMessageMetadata(body, fallback);
+    if (rawDetail is String) {
+      return _detailFailure(status, body, rawDetail, serverFailure);
+    }
+    if (rawDetail is Map) {
+      return _validationMapFailure(status, rawDetail, serverFailure);
+    }
+    if (rawDetail is List) {
+      return _validationListFailure(status, rawDetail, serverFailure);
+    }
+    if (body['error'] is String) {
+      return _machineErrorFailure(status, body, serverFailure);
+    }
+    return ApiException(genericDetail, statusCode: status, failureMessage: serverFailure);
+  }
+
+  static ApiException _detailFailure(
+    int? status,
+    Map<String, dynamic> body,
+    String detail,
+    ServerFailureMessage? serverFailure,
+  ) =>
+      ApiException(
+        detail,
+        statusCode: status,
+        errorCode: _machineCode(body),
+        failureMessage: serverFailure ?? ServerFailureMessage(detail),
+      );
+
+  static ApiException _validationMapFailure(
+    int? status,
+    Map rawDetail,
+    ServerFailureMessage? serverFailure,
+  ) {
+    final Map<String, dynamic> details = Map<String, dynamic>.from(rawDetail);
+    final String code = details['code'] is String
+        ? details['code'] as String
+        : 'validation_failed';
+    return ApiException(
+      'The request contains invalid fields.',
+      statusCode: status,
+      errorCode: code,
+      serverDetails: details,
+      failureMessage: serverFailure,
+    );
+  }
+
+  static ApiException _validationListFailure(
+    int? status,
+    List rawDetail,
+    ServerFailureMessage? serverFailure,
+  ) =>
+      ApiException(
+        'The request contains invalid fields.',
+        statusCode: status,
+        errorCode: 'validation_failed',
+        serverDetails: <String, dynamic>{
+          'pydantic_errors': List<dynamic>.from(rawDetail),
+        },
+        failureMessage: serverFailure,
+      );
+
+  static ApiException _machineErrorFailure(
+    int? status,
+    Map<String, dynamic> body,
+    ServerFailureMessage? serverFailure,
+  ) {
+    final String code = body['error'] as String;
+    final String message = serverFailure?.safeEnglishFallback ??
+        _messageForError(code);
+    return ApiException(
+      message,
+      statusCode: status,
+      errorCode: code,
+      failureMessage: serverFailure ??
+          AppFailureMessage(
+            code == 'program_version_mismatch'
+                ? AppFailureId.programVersionMismatch
+                : AppFailureId.serviceRejected,
+            message,
+          ),
+    );
+  }
+
+  static ServerFailureMessage? _serverMessageMetadata(
+    Map<String, dynamic> body,
+    String safeFallback,
+  ) {
+    final bool hasMetadata = body.containsKey('message_code') ||
+        body.containsKey('message_params') ||
+        body.containsKey('message_fallback');
+    if (!hasMetadata) return null;
+    final Object? rawParams = body['message_params'];
+    final Map<String, dynamic>? params = switch (rawParams) {
+      Map<String, dynamic> value => value,
+      Map value => Map<String, dynamic>.from(value),
+      _ => null,
+    };
+    final String? messageCode = switch (body['message_code']) {
+      String value => value,
+      _ => null,
+    };
+    final String fallback = switch (body['message_fallback']) {
+      String value when value.trim().isNotEmpty => value,
+      _ => safeFallback,
+    };
+    return ServerFailureMessage(
+      safeFallback,
+      messageCode: messageCode,
+      messageParams: params,
+      messageFallback: fallback,
     );
   }
 
@@ -2010,6 +2099,11 @@ class ApiClient {
         options: Options(responseType: ResponseType.stream),
       );
     } on DioException catch (error) {
+      final dynamic errorBody = error.response?.data;
+      final int? errorStatus = error.response?.statusCode;
+      if (errorBody is ResponseBody && errorStatus != null) {
+        throw _errorFromResponse(errorStatus, await _readStream(errorBody.stream));
+      }
       throw _toApiException(error);
     }
 
@@ -2077,12 +2171,10 @@ class ApiClient {
     if (trimmed.isNotEmpty) {
       try {
         final dynamic decoded = jsonDecode(trimmed);
-        if (decoded is Map && decoded['detail'] is String) {
-          final String detail = decoded['detail'] as String;
-          return ApiException(
-            detail,
-            statusCode: status,
-            failureMessage: ServerFailureMessage(detail),
+        if (decoded is Map) {
+          return _apiExceptionFromBody(
+            status,
+            Map<String, dynamic>.from(decoded),
           );
         }
       } on FormatException {
@@ -2115,9 +2207,19 @@ class ApiClient {
     }
     if (event.event == 'error') {
       final dynamic detail = decoded['detail'];
-      return ChatError(detail is String && detail.isNotEmpty
+      final String safeDetail = detail is String && detail.isNotEmpty
           ? detail
-          : 'The assistant could not answer. Please retry.');
+          : 'The assistant could not answer. Please retry.';
+      final ServerFailureMessage? metadata = _serverMessageMetadata(
+        decoded,
+        safeDetail,
+      );
+      return ChatError(
+        safeDetail,
+        messageCode: metadata?.messageCode,
+        messageParams: metadata?.messageParams,
+        messageFallback: metadata?.messageFallback,
+      );
     }
     if (decoded['done'] == true) {
       final dynamic suggestion = decoded['request_suggestion'];

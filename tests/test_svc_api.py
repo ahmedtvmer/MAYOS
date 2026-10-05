@@ -69,6 +69,82 @@ def test_register_login_roundtrip(client):
     wrong = client.post("/auth/login", json={"trainee_id": "alice", "password": "wrong-horse-99"})
     assert ghost.status_code == wrong.status_code == 401
     assert ghost.json() == wrong.json()
+    assert ghost.json()["detail"] == "Invalid credentials."
+    assert ghost.json()["message_code"] == "auth.invalid_credentials.v1"
+    assert wrong.json()["message_fallback"] == "Invalid credentials."
+
+
+def test_http_error_messages_are_additive_and_validation_values_are_allowlisted(client):
+    ordinary = client.get("/workouts/exercises/not-a-real-id")
+    assert ordinary.status_code == 404
+    assert ordinary.json()["detail"] == "Unknown exercise id."
+    assert ordinary.json()["message_code"] == "http.not_found.v1"
+    assert ordinary.json()["message_fallback"] == "Unknown exercise id."
+
+    rejected = "x" * 401
+    invalid = client.post("/chat/messages", json={"content": rejected})
+    assert invalid.status_code == 422
+    body = invalid.json()
+    assert isinstance(body["detail"], list)
+    assert body["message_code"] == "http.input_too_long.v1"
+    assert body["message_params"] == {"limit": 400}
+    assert body["message_fallback"] == "The request contains invalid fields."
+    assert rejected not in str(body["message_params"])
+
+    framework_invalid = client.post("/auth/login", json={})
+    assert framework_invalid.status_code == 422
+    assert framework_invalid.json()["message_code"] == "http.validation_failed.v1"
+    assert framework_invalid.json()["message_params"] == {}
+    assert framework_invalid.json()["detail"] != "The request contains invalid fields."
+
+
+def test_bodyless_http_exceptions_keep_204_and_304_responses(client):
+    from fastapi import HTTPException
+
+    def empty_response(status_code: int):
+        def endpoint():
+            raise HTTPException(status_code=status_code)
+
+        return endpoint
+
+    client.app.add_api_route("/test-empty-204", empty_response(204), methods=["GET"])
+    client.app.add_api_route("/test-empty-304", empty_response(304), methods=["GET"])
+
+    for status_code in (204, 304):
+        response = client.get(f"/test-empty-{status_code}")
+        assert response.status_code == status_code
+        assert response.content == b""
+
+
+def test_rate_limit_error_has_structured_metadata(client):
+    client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
+    responses = [
+        client.post("/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"})
+        for _ in range(7)
+    ]
+    limited = next(response for response in responses if response.status_code == 429)
+    assert limited.json()["error"] == "Rate limit exceeded: 5 per 1 minute"
+    assert limited.json()["message_code"] == "http.rate_limited.v1"
+    assert limited.json()["message_params"] == {}
+    assert limited.json()["message_fallback"] == "Rate limit exceeded: 5 per 1 minute"
+
+
+def test_model_limit_refusal_has_structured_metadata_before_chat_stream(client, monkeypatch):
+    from service.model_limits import DAILY_TOKEN_LIMIT_DETAIL, ModelLimitExceeded
+    from svc.routers import chat as chat_router
+
+    client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
+
+    def refuse(*_args, **_kwargs):
+        raise ModelLimitExceeded(DAILY_TOKEN_LIMIT_DETAIL, "daily_tokens")
+
+    monkeypatch.setattr(chat_router, "admit_model_request", refuse)
+    response = client.post("/chat/messages", json={"content": "Help me plan."})
+    assert response.status_code == 429
+    body = response.json()
+    assert body["detail"] == DAILY_TOKEN_LIMIT_DETAIL
+    assert body["message_code"] == "ai_limit.daily_usage.v1"
+    assert body["message_params"] == {}
 
 
 def test_remember_me_token_lifetime(client, monkeypatch):
@@ -536,6 +612,9 @@ def test_chat_error_frame_never_leaks(client, monkeypatch):
         raw = stream.read().decode()
     assert "event: error" in raw
     assert "secret" not in raw
+    assert '"message_code": "chat.failed.v1"' in raw
+    history = client.get("/chat/history").json()
+    assert [message["role"] for message in history] == ["user"]
 
 
 def test_chat_stream_disconnect_still_persists_reply(client, monkeypatch):

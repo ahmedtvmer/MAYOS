@@ -14,12 +14,14 @@ from fastapi import APIRouter
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from service.app_links import build_asset_links
+from service.messages import http_error_message
 from service.password_reset import GENERIC_TOKEN_ERROR
 from svc.html import self_contained_html
 
 router = APIRouter(tags=["recovery"])
 
 SUCCESS_MESSAGE = "Password changed. Sign in to MAYOS with your new password."
+ASSET_LINKS_NOT_FOUND_DETAIL = "Not found."
 
 # Server-owned strings are embedded as a JSON object, never interpolated into
 # quoted JS, so any quote/newline in a message can never break the script.
@@ -132,7 +134,13 @@ async def asset_links():
     """Serves the Android App Link statement, or 404 when unconfigured."""
     statement = build_asset_links()
     if statement is None:
-        return JSONResponse(status_code=404, content={"detail": "Not found."})
+        return JSONResponse(
+            status_code=404,
+            content={
+                "detail": ASSET_LINKS_NOT_FOUND_DETAIL,
+                **http_error_message(404, ASSET_LINKS_NOT_FOUND_DETAIL),
+            },
+        )
     return JSONResponse(content=statement)
 
 

@@ -183,7 +183,12 @@ def test_link_is_refused_when_the_google_account_belongs_to_another_account(api)
     refused = client.post("/auth/google/link", json={"id_token": "shared-token:S"}, headers=_authed(alice_token))
     assert refused.status_code == 409, refused.text
     # The pinned message, and nothing about *which* account holds it.
-    assert refused.json()["detail"] == LINKED_ELSEWHERE
+    assert refused.json() == {
+        "detail": LINKED_ELSEWHERE,
+        "message_code": "google.linked_elsewhere.v1",
+        "message_params": {},
+        "message_fallback": LINKED_ELSEWHERE,
+    }
     assert "bob" not in refused.json()["detail"]
     assert bob_id not in refused.json()["detail"]
     assert _subject(alice_token) not in refused.json()["detail"]
@@ -198,7 +203,12 @@ def test_link_is_refused_when_the_caller_already_has_a_different_google(api):
 
     second = client.post("/auth/google/link", json={"id_token": "second-token:S"}, headers=_authed(token))
     assert second.status_code == 409, second.text
-    assert "Disconnect it first" in second.json()["detail"]
+    assert second.json() == {
+        "detail": "This account already has a different Google account connected. Disconnect it first.",
+        "message_code": "google.different_account.v1",
+        "message_params": {},
+        "message_fallback": "This account already has a different Google account connected. Disconnect it first.",
+    }
     # The original link is untouched.
     assert _link_rows(db) == [("google", "sub-ana-token", account_id)]
 
@@ -210,7 +220,12 @@ def test_link_requires_a_session_a_valid_token_and_configuration(api, monkeypatc
     assert client.post("/auth/google/link", json={"id_token": "x-token"}).status_code == 401
     bad = client.post("/auth/google/link", json={"id_token": "bad-audience"}, headers=_authed(token))
     assert bad.status_code == 401
-    assert bad.json() == {"detail": "Invalid Google credentials."}
+    assert bad.json() == {
+        "detail": "Invalid Google credentials.",
+        "message_code": "google.invalid_token.v1",
+        "message_params": {},
+        "message_fallback": "Invalid Google credentials.",
+    }
     assert _link_rows(db) == [("google", "sub-ana-token", account_id)]
 
     # The same single 503 gate as the rest of the /auth/google* family (#113).
@@ -343,7 +358,12 @@ def test_disconnect_is_refused_without_a_password(api):
 
     refused = client.delete("/auth/google/link", headers=_authed(token))
     assert refused.status_code == 409, refused.text
-    assert "password" in refused.json()["detail"].lower()
+    assert refused.json() == {
+        "detail": "Set a password before disconnecting Google, so you can still sign in.",
+        "message_code": "google.unlink_password_required.v1",
+        "message_params": {},
+        "message_fallback": "Set a password before disconnecting Google, so you can still sign in.",
+    }
     # Nothing changed: still Google-only, still exactly one way to sign in.
     assert _link_rows(db) == [("google", "sub-ana-token", account_id)]
     me = _me(client, token)
@@ -549,13 +569,18 @@ def test_deletion_via_google_refuses_stale_wrong_and_unverifiable_tokens(api):
         attempt = client.request("DELETE", "/auth/account", headers=headers, json={"google_id_token": id_token})
         assert attempt.status_code == 400, (id_token, attempt.status_code, attempt.text)
         # Byte-identical to a wrong password: no hint about link, sub, or freshness.
-        assert attempt.json() == {"detail": auth_service.INVALID_CREDENTIALS}
+        assert attempt.json() == {
+            "detail": auth_service.INVALID_CREDENTIALS,
+            "message_code": "auth.invalid_credentials.v1",
+            "message_params": {},
+            "message_fallback": auth_service.INVALID_CREDENTIALS,
+        }
 
     wrong_password = client.request(
         "DELETE", "/auth/account", headers=headers, json={"password": "not-the-password"}
     )
     assert wrong_password.status_code == 400
-    assert wrong_password.json() == {"detail": auth_service.INVALID_CREDENTIALS}
+    assert wrong_password.json() == attempt.json()
 
     # Everything survived every refusal.
     assert _me(client, token)["linked_sign_ins"] == ["google"]

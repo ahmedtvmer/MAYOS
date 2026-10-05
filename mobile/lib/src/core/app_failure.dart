@@ -1,5 +1,5 @@
 /// Stable identifiers for failures authored by the app or its client layers.
-/// API `detail` strings use [ServerFailureMessage] instead and stay untouched.
+/// API detail fields remain unchanged; structured metadata resolves separately.
 enum AppFailureId {
   cannotReachService,
   serviceUnavailable,
@@ -61,11 +61,25 @@ final class AppFailureMessage extends FailureMessage {
   }
 }
 
-/// Server details are displayed verbatim and never looked up by their text.
+/// Server details remain the English fallback; codes, never detail text, select
+/// supported translations.
 final class ServerFailureMessage extends FailureMessage {
-  const ServerFailureMessage(this.detail);
+  const ServerFailureMessage(
+    this.detail, {
+    this.messageCode,
+    this.messageParams,
+    this.messageFallback,
+  });
 
   final String detail;
+  final String? messageCode;
+  final Map<String, dynamic>? messageParams;
+  final String? messageFallback;
+
+  String get safeEnglishFallback =>
+      messageFallback?.trim().isNotEmpty == true
+          ? messageFallback!
+          : detail;
 }
 
 sealed class FailureMessage {
@@ -73,6 +87,6 @@ sealed class FailureMessage {
 
   String get englishText => switch (this) {
         AppFailureMessage(:final englishMessage) => englishMessage,
-        ServerFailureMessage(:final detail) => detail,
+        ServerFailureMessage(:final safeEnglishFallback) => safeEnglishFallback,
       };
 }

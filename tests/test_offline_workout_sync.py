@@ -1210,7 +1210,10 @@ def test_newer_program_version_is_refused_and_writes_nothing(api):
 
     resp = client.post("/workouts/sessions", headers=headers, json=_sync_body(version=version + 1))
     assert resp.status_code == 409, resp.text
-    assert resp.json() == {"error": "program_version_mismatch", "active_version": version}
+    body = resp.json()
+    assert body["error"] == "program_version_mismatch"
+    assert body["active_version"] == version
+    assert body["message_code"] == "workout.program_version_mismatch.v1"
     db.switch_user("p1")
     assert db.conn.execute("SELECT COUNT(*) FROM workout_sessions").fetchone()[0] == 0
     assert db.conn.execute("SELECT COUNT(*) FROM session_commits").fetchone()[0] == 0
@@ -1224,7 +1227,10 @@ def test_unknown_older_program_version_is_refused(api):
     # Version 0 predates every stored program row.
     resp = client.post("/workouts/sessions", headers=headers, json=_sync_body(version=0))
     assert resp.status_code == 409, resp.text
-    assert resp.json() == {"error": "program_version_mismatch", "active_version": version}
+    body = resp.json()
+    assert body["error"] == "program_version_mismatch"
+    assert body["active_version"] == version
+    assert body["message_code"] == "workout.program_version_mismatch.v1"
     db.switch_user("p1")
     assert db.conn.execute("SELECT COUNT(*) FROM workout_sessions").fetchone()[0] == 0
 

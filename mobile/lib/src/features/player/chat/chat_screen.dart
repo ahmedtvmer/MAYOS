@@ -248,9 +248,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             if (programUpdated) {
               unawaited(_refreshProgramCache());
             }
-          case ChatError(:final String detail):
+          case ChatError(
+              :final String detail,
+              :final String? messageCode,
+              :final Map<String, dynamic>? messageParams,
+              :final String? messageFallback
+            ):
             finished = true;
-            await _failTurn(content, detail);
+            final ServerFailureMessage failure = ServerFailureMessage(
+              detail,
+              messageCode: messageCode,
+              messageParams: messageParams,
+              messageFallback: messageFallback,
+            );
+            await _failTurn(
+              content,
+              MayosCopy(ref.read(displayLanguageProvider))
+                  .failureMessage(failure),
+              failure: failure,
+            );
             return;
         }
       }

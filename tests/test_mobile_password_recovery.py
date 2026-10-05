@@ -256,6 +256,20 @@ def test_forgot_password_sends_notice_only_for_unmatched_addresses(api, monkeypa
     assert known.json() == unknown.json()
     assert "reset link" in known.json()["message"]
 
+    _reset_limiter()
+    known_ar = client.post(
+        "/auth/forgot-password",
+        json={"email": "alice@example.com"},
+        headers={"Accept-Language": "ar"},
+    )
+    unknown_ar = client.post(
+        "/auth/forgot-password",
+        json={"email": "new-person@example.com"},
+        headers={"Accept-Language": "ar"},
+    )
+    assert known_ar.status_code == unknown_ar.status_code == 202
+    assert known_ar.json() == unknown_ar.json()
+
     deliveries = []
 
     def fake_reset_mailer(to_email, reset_link, *, account_id=None):

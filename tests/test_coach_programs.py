@@ -518,7 +518,10 @@ def test_approve_active_program_rejects_stale_version_without_changes(api, recor
     )
 
     assert refused.status_code == 409
-    assert refused.json() == {"error": "program_version_mismatch", "active_version": 2}
+    refused_body = refused.json()
+    assert refused_body["error"] == "program_version_mismatch"
+    assert refused_body["active_version"] == 2
+    assert refused_body["message_code"] == "workout.program_version_mismatch.v1"
     assert client.get(draft_path, headers=coach_headers).json()["draft"] == draft
     with db.open_ledger(player["ledger_id"]) as ledger:
         assert [row[0] for row in ledger.conn.execute(

@@ -10,12 +10,14 @@ never persisted; only the ADR 038 metering rows are written (role ``coach``).
 import asyncio
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 
 from service import analytics
 from service import coach_ai as coach_ai_service
 from service import coach_history as coach_history_service
+from service.messages import MessageMetadata
 from svc.dependencies import VerifiedPlayer, get_current_coach, get_db
+from svc.errors import message_http_exception
 from svc.llm import register_ai_analytics_background_tasks
 from svc.rate_limit import COACH_ASSISTANT_LIMIT, limiter
 from svc.schemas import CoachAssistantIn, CoachAssistantOut
@@ -42,8 +44,10 @@ async def coach_assistant(
     """
     register_ai_analytics_background_tasks(request, background_tasks)
     if not coach_ai_service.coach_ai_enabled():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Coach AI is not available."
+        raise message_http_exception(
+            status.HTTP_404_NOT_FOUND,
+            "Coach AI is not available.",
+            MessageMetadata("coach.ai_unavailable.v1"),
         )
 
     def _run():
@@ -57,9 +61,10 @@ async def coach_assistant(
             background_tasks=background_tasks,
         )
         if result is None:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=coach_history_service.DENIED_ERROR,
+            raise message_http_exception(
+                status.HTTP_403_FORBIDDEN,
+                coach_history_service.DENIED_ERROR,
+                MessageMetadata("assignment.none_active.v1"),
             )
         return result
 
