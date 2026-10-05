@@ -281,6 +281,10 @@ class FakeMayosApi {
 
   // Coach drill-down (#25). Denied mirrors a revoked/foreign assignment.
   bool coachHistoryDenied = false;
+  Map<String, dynamic> coachActiveProgram = <String, dynamic>{
+    'program': null,
+    'has_draft': false,
+  };
   Map<String, dynamic> coachPlayerSummary = _defaultCoachSummary();
   List<Map<String, dynamic>> coachPlayerRecords = _defaultCoachRecords();
   List<Map<String, dynamic>> coachPlayerExercises = _defaultCoachExercises();
@@ -397,6 +401,9 @@ class FakeMayosApi {
     }
     if (path.startsWith('/coach/assignments/') && path.endsWith('/check-ins')) {
       return _coachCheckIns(request);
+    }
+    if (path.startsWith('/coach/assignments/') && path.endsWith('/program')) {
+      return _coachPlayerHistory(request);
     }
     if (path.startsWith('/coach/assignments/') && path.contains('/program-draft')) {
       return _coachProgramDraft(request);
@@ -1309,6 +1316,9 @@ class FakeMayosApi {
           403, <String, dynamic>{'detail': 'No active assignment.'});
     }
     final String path = request.path;
+    if (path.endsWith('/program')) {
+      return FakeResponse(200, coachActiveProgram);
+    }
     if (path.endsWith('/player/checkpoint-reviews')) {
       return FakeResponse(
           200, List<Map<String, dynamic>>.from(checkpointReviewRows));

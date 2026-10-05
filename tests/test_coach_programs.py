@@ -351,7 +351,7 @@ def test_old_direct_publish_route_is_removed(api):
 
     response = client.post(f"/coach/assignments/{assignment_id}/program", headers=coach_headers, json={})
 
-    assert response.status_code == 404
+    assert response.status_code == 405
 
 
 def _program_draft_path(assignment_id):
@@ -1022,3 +1022,120 @@ def test_unknown_and_other_coach_assignments_are_indistinguishable(api, monkeypa
 def test_publish_requires_authentication(api):
     client, _, _ = api
     assert client.post("/coach/assignments/x/program-draft/generate", json={}).status_code == 401
+
+
+def test_coach_reads_active_program_without_account_ids(api):
+    client, db, _ = api
+    coach_headers, _, assignment_id, coach_account_id, player_account_id = _assigned_player(api)
+    player = db.get_account(player_account_id)
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        program_data = _program().model_dump()
+        exercise = program_data["days"][0]["exercises"][0]
+        exercise.update(
+            target_sets=4,
+            target_reps_min=6,
+            target_reps_max=8,
+            target_rpe=8.0,
+            rest_seconds=150,
+            tempo="3-1-1",
+            notes="Brace before each rep.",
+        )
+        ledger.save_training_program(program_data)
+        active = ledger.get_active_program()
+
+    response = client.get(f"/coach/assignments/{assignment_id}/program", headers=coach_headers)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["has_draft"] is False
+    assert "edited_by_player" not in body
+    assert body["program"]["version"] == active.version
+    assert body["program"]["provenance"] == "automatic"
+    assert body["program"]["active_since"] == active.created_at
+    prescribed = body["program"]["days"][0]["exercises"][0]
+    assert prescribed["target_sets"] == 4
+    assert (prescribed["target_reps_min"], prescribed["target_reps_max"]) == (6, 8)
+    assert prescribed["target_rpe"] == 8.0
+    assert prescribed["rest_seconds"] == 150
+    assert prescribed["tempo"] == "3-1-1"
+    assert prescribed["notes"] == "Brace before each rep."
+    serialized = response.text
+    assert coach_account_id not in serialized
+    assert player_account_id not in serialized
+    assert "published_by_coach_account_id" not in serialized
+
+
+def test_coach_reads_program_as_published_by_current_coach(api, monkeypatch):
+    client, _, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+    _coach_generation(monkeypatch)
+    published = _publish(client, coach_headers, assignment_id)
+    assert published.status_code == 200, published.text
+
+    response = client.get(f"/coach/assignments/{assignment_id}/program", headers=coach_headers)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["program"]["provenance"] == "coach"
+
+
+def test_active_program_read_is_not_recorded_as_a_coaching_action(api, recording_analytics):
+    client, db, _ = api
+    coach_headers, _, assignment_id, _, player_account_id = _assigned_player(api)
+    player = db.get_account(player_account_id)
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        ledger.save_training_program(_program().model_dump())
+    event_count = len(recording_analytics.events)
+
+    response = client.get(f"/coach/assignments/{assignment_id}/program", headers=coach_headers)
+
+    assert response.status_code == 200, response.text
+    assert len(recording_analytics.events) == event_count
+
+
+def test_previous_coach_provenance_is_reported_without_identity(api):
+    client, db, _ = api
+    coach_headers, _, assignment_id, _, player_account_id = _assigned_player(api)
+    player = db.get_account(player_account_id)
+    previous_coach_id = "previous-coach-account-id"
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        ledger.save_training_program(_program().model_dump(), published_by_coach_account_id=previous_coach_id)
+
+    response = client.get(f"/coach/assignments/{assignment_id}/program", headers=coach_headers)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["program"]["provenance"] == "automatic"
+    assert previous_coach_id not in response.text
+
+
+def test_empty_active_program_and_pending_draft_are_returned(api):
+    client, db, _ = api
+    coach_headers, _, assignment_id, _, player_account_id = _assigned_player(api)
+    player = db.get_account(player_account_id)
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        assert ledger.get_active_program() is None
+
+    empty = client.get(f"/coach/assignments/{assignment_id}/program", headers=coach_headers)
+    assert empty.status_code == 200, empty.text
+    assert empty.json() == {"program": None, "has_draft": False}
+
+    created = client.post(f"/coach/assignments/{assignment_id}/program-draft", headers=coach_headers, json={})
+    assert created.status_code == 200, created.text
+    pending = client.get(f"/coach/assignments/{assignment_id}/program", headers=coach_headers)
+    assert pending.status_code == 200, pending.text
+    assert pending.json() == {"program": None, "has_draft": True}
+
+
+def test_active_program_read_uses_generic_assignment_denial(api):
+    client, db, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+    intruder_headers = _make_coach(client, db, "intruder", capacity=5)
+
+    foreign = client.get(f"/coach/assignments/{assignment_id}/program", headers=intruder_headers)
+    unknown = client.get("/coach/assignments/does-not-exist/program", headers=intruder_headers)
+    ended_response = client.post(f"/coach/assignments/{assignment_id}/revoke", headers=coach_headers)
+    ended = client.get(f"/coach/assignments/{assignment_id}/program", headers=coach_headers)
+
+    assert ended_response.status_code == 200
+    assert foreign.status_code == unknown.status_code == ended.status_code == 403
+    assert foreign.json()["detail"] == unknown.json()["detail"] == ended.json()["detail"]
+    assert foreign.json()["detail"] == coach_history_service.DENIED_ERROR

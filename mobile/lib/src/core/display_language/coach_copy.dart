@@ -226,6 +226,42 @@ class CoachCopy {
       : 'Generating a new draft will replace your saved edits. Continue?';
   String get replaceProgramDraftAction =>
       isArabic ? 'استبدال المسودة' : 'Replace draft';
+  String get program => isArabic ? 'البرنامج التدريبي' : 'Program';
+  String get generatedAutomatically =>
+      isArabic ? 'تم إنشاؤه تلقائيًا' : 'Generated automatically';
+  String get publishedByYou => isArabic ? 'نشرته أنت' : 'Published by you';
+  String get editedByPlayer =>
+      isArabic ? 'عدّله اللاعب' : 'Edited by the player';
+  String get pendingProgramDraft => isArabic
+      ? 'مسودة البرنامج التدريبي قيد الانتظار'
+      : 'Program draft pending';
+  String get noActiveProgram =>
+      isArabic ? 'لا يوجد برنامج تدريبي نشط.' : 'No active program.';
+  String activeProgramSince(String date) => isArabic
+      ? 'بدأ البرنامج في ${_ltr(date)}'
+      : 'Active since $date';
+  String programWorkingSets(int count) =>
+      isArabic ? _count(count, ArabicCountNoun.trainingSet) : '$count sets';
+  String programRepRange(int minimum, int maximum) => minimum == maximum
+      ? isArabic
+          ? _count(minimum, ArabicCountNoun.repetition)
+          : '$minimum reps'
+      : isArabic
+          ? '${_ltr('$minimum–$maximum')} تكرار'
+          : '$minimum–$maximum reps';
+  String programPrescription(
+    String sets,
+    String reps,
+    String rir,
+    int rest,
+  ) =>
+      isArabic
+          ? '$sets · $reps · RIR ${_ltr(rir)} · الراحة ${_ltr('$rest s')}'
+          : '$sets · $reps · RIR $rir · Rest $rest s';
+  String programTempo(String tempo) =>
+      isArabic ? 'الإيقاع: ${_ltr(tempo)}' : 'Tempo: $tempo';
+  String programNotes(String notes) =>
+      isArabic ? 'ملاحظات: $notes' : 'Notes: $notes';
   String get writeProgram =>
       isArabic ? 'اكتب برنامجًا تدريبيًا' : 'Write program';
   String get trainingDay => isArabic ? 'يوم التدريب' : 'Training day';

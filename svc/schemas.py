@@ -8,6 +8,7 @@ from service.analytics import PROPERTY_TYPES, WORKOUT_SYNC_FAILURE_REASONS
 
 from agent.ProgramState import (
     GeneratedProgramSchema,
+    PersistedProgramDaySchema,
     PersistedProgramSchema,
     ProgramExerciseSchema,
     SuggestedSubstitute,
@@ -65,6 +66,8 @@ __all__ = [
     "CoachAssistantIn",
     "CoachAssistantOut",
     "CoachAssistantTurn",
+    "CoachActiveProgramDetailsOut",
+    "CoachActiveProgramOut",
     "CoachAssignmentsOut",
     "CoachCapabilityDisableOut",
     "CoachCheckInCreateOut",
@@ -1005,6 +1008,26 @@ class CoachProgramDraftOut(BaseModel):
     draft: CoachProgramDraftIn
     created_at: str
     updated_at: str
+
+
+class CoachActiveProgramDetailsOut(BaseModel):
+    """Active Training program content without account identity fields."""
+
+    program_name: str
+    split_type: str
+    weekly_frequency: int
+    instructions: str
+    days: list[PersistedProgramDaySchema]
+    version: int | None = None
+    provenance: Literal["automatic", "coach"]
+    active_since: str | None = None
+
+
+class CoachActiveProgramOut(BaseModel):
+    """The active program and pending Program draft state for one assignment."""
+
+    program: CoachActiveProgramDetailsOut | None = None
+    has_draft: bool
 
 
 class CoachExerciseCreateIn(BaseModel):

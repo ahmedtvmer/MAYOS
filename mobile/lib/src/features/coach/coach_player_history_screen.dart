@@ -175,6 +175,7 @@ class _CoachPlayerHistoryScreenState
   FailureMessage? _error;
   bool _assignmentDenied = false;
   CoachPlayerSummary? _summary;
+  CoachActiveProgram? _activeProgram;
   List<PersonalRecord> _records = const <PersonalRecord>[];
   List<CheckpointReviewListItem> _checkpointReviews =
       const <CheckpointReviewListItem>[];
@@ -264,6 +265,7 @@ class _CoachPlayerHistoryScreenState
         api.coachPlayerExercises(_entry.assignmentId),
         api.coachProgramRequests(_entry.assignmentId),
         api.coachCheckIns(_entry.assignmentId),
+        api.coachActiveProgram(_entry.assignmentId),
       ]);
 
   void _applyPlayerData(List<Object> playerData) {
@@ -276,6 +278,7 @@ class _CoachPlayerHistoryScreenState
       _programRequests =
           sortCoachRequests(playerData[5] as List<ProgramRequest>);
       _checkIns = sortCheckInsNewestFirst(playerData[6] as List<CheckIn>);
+      _activeProgram = playerData[7] as CoachActiveProgram;
       _loading = false;
       _assignmentDenied = false;
       _requestError = null;
@@ -872,6 +875,107 @@ class _CoachPlayerHistoryScreenState
     );
   }
 
+  Widget _programCard(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final copy = coachCopyOf(context);
+    final CoachActiveProgram active = _activeProgram!;
+    final List<Widget> children = <Widget>[
+      if (active.hasDraft) _pendingProgramDraftBadge(context),
+    ];
+    if (active.program == null) {
+      children.add(
+        Text(
+          copy.noActiveProgram,
+          style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+        ),
+      );
+    } else {
+      children.addAll(_programDetails(context, active, active.program!));
+    }
+    return _section(context, copy.program, children);
+  }
+
+  Widget _pendingProgramDraftBadge(BuildContext context) => Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Chip(
+          key: const Key('coach_program_pending_draft'),
+          label: Text(coachCopyOf(context).pendingProgramDraft),
+        ),
+      );
+
+  List<Widget> _programDetails(
+    BuildContext context,
+    CoachActiveProgram active,
+    TrainingProgram program,
+  ) {
+    final copy = coachCopyOf(context);
+    final String? activeDate = active.activeSince?.split('T').first;
+    return <Widget>[
+      Text(active.provenance == 'coach'
+          ? copy.publishedByYou
+          : copy.generatedAutomatically),
+      if (active.editedByPlayer) Text(copy.editedByPlayer),
+      if (program.version != null) Text(copy.programVersion(program.version!)),
+      if (activeDate != null) Text(copy.activeProgramSince(activeDate)),
+      Text(program.programName),
+      for (final ProgramDay day in program.days) _programDay(context, day),
+    ];
+  }
+
+  Widget _programDay(BuildContext context, ProgramDay day) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: MayosSpacing.xs),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            day.dayName,
+            style: MayosTypography.body.copyWith(color: c.textPrimary),
+          ),
+          for (final ProgramExercise exercise in day.exercises)
+            _programExercise(context, exercise),
+        ],
+      ),
+    );
+  }
+
+  Widget _programExercise(BuildContext context, ProgramExercise exercise) {
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(start: MayosSpacing.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: _programExerciseDetails(context, exercise),
+      ),
+    );
+  }
+
+  List<Widget> _programExerciseDetails(
+    BuildContext context,
+    ProgramExercise exercise,
+  ) {
+    final copy = coachCopyOf(context);
+    return <Widget>[
+      Text(exercise.exerciseName),
+      Text(
+        copy.programPrescription(
+          copy.programWorkingSets(exercise.targetSets),
+          copy.programRepRange(
+            exercise.targetRepsMin,
+            exercise.targetRepsMax,
+          ),
+          minRirLabel(exercise.targetRpe),
+          exercise.restSecondsOrDefault,
+        ),
+        style: MayosTypography.bodySecondary,
+      ),
+      if (exercise.tempo != null && exercise.tempo!.isNotEmpty)
+        Text(copy.programTempo(exercise.tempo!)),
+      if (exercise.notes != null && exercise.notes!.isNotEmpty)
+        Text(copy.programNotes(exercise.notes!)),
+    ];
+  }
+
   /// The segment label counts what still needs the coach (#121): the pending
   /// requests, or no number once nothing is waiting.
   int get _pendingRequests => _programRequests
@@ -985,14 +1089,19 @@ class _CoachPlayerHistoryScreenState
         ),
       ),
     )
-        .then((TrainingProgram? program) {
-      if (program == null || !mounted) return;
-      ref.read(coachRosterRevisionProvider.notifier).state++;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(coachCopyOf(context).programPublished(program.version)),
-        ),
-      );
+        .then((TrainingProgram? program) async {
+      if (!mounted) return;
+      if (program != null) {
+        ref.read(coachRosterRevisionProvider.notifier).state++;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              coachCopyOf(context).programPublished(program.version),
+            ),
+          ),
+        );
+      }
+      await _load();
     });
   }
 
@@ -1158,6 +1267,8 @@ class _CoachPlayerHistoryScreenState
     return <Widget>[
       Text(coachCopyOf(context).since(summary.startedAt),
           style: MayosTypography.bodySecondary),
+      const SizedBox(height: MayosSpacing.sm),
+      _programCard(context),
       const SizedBox(height: MayosSpacing.sm),
       _volumeCard(context),
       const SizedBox(height: MayosSpacing.sm),

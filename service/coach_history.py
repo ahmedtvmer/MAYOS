@@ -38,6 +38,36 @@ def schedule_and_pauses(db: Any, ledger: Any, ledger_id: str) -> tuple[dict[str,
     return schedule, pauses
 
 
+def active_program(db: Any, coach_account_id: str, assignment_id: Any) -> dict[str, Any] | None:
+    authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
+    if authorized is None:
+        return None
+    ledger, context = authorized
+    with ledger:
+        program = ledger.get_active_program()
+        has_draft = ledger.get_program_draft(str(assignment_id)) is not None
+    return _active_program_response(
+        program, has_draft, context["assignment"]["coach_account_id"]
+    )
+
+
+def _active_program_response(
+    program: Any, has_draft: bool, assignment_coach_id: str
+) -> dict[str, Any]:
+    if program is None:
+        return {"program": None, "has_draft": has_draft}
+    content = program.model_dump(
+        exclude={"published_by_coach_account_id", "created_at"}
+    )
+    content["provenance"] = (
+        "coach"
+        if program.published_by_coach_account_id == assignment_coach_id
+        else "automatic"
+    )
+    content["active_since"] = program.created_at
+    return {"program": content, "has_draft": has_draft}
+
+
 def recent_sessions(ledger: Any, limit: int) -> list[dict[str, Any]]:
     """Newest-first working-set summaries grouped from the ledger session log."""
     divergences_by_session = ledger.list_divergences_by_session()

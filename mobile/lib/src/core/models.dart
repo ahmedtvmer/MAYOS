@@ -1180,6 +1180,37 @@ class CoachPlayerSummary {
   final List<CoachPlayerPause> pauses;
 }
 
+/// `GET /coach/assignments/{id}/program` for an actively assigned player.
+class CoachActiveProgram {
+  const CoachActiveProgram({
+    required this.program,
+    required this.provenance,
+    required this.activeSince,
+    required this.editedByPlayer,
+    required this.hasDraft,
+  });
+
+  factory CoachActiveProgram.fromJson(Map<String, dynamic> json) {
+    final Map<String, dynamic>? programJson =
+        json['program'] as Map<String, dynamic>?;
+    return CoachActiveProgram(
+      program: programJson == null
+          ? null
+          : TrainingProgram.fromJson(programJson),
+      provenance: programJson?['provenance'] as String?,
+      activeSince: programJson?['active_since'] as String?,
+      editedByPlayer: json['edited_by_player'] as bool? ?? false,
+      hasDraft: json['has_draft'] as bool? ?? false,
+    );
+  }
+
+  final TrainingProgram? program;
+  final String? provenance;
+  final String? activeSince;
+  final bool editedByPlayer;
+  final bool hasDraft;
+}
+
 /// One exercise the assigned player has logged.
 class CoachPlayerExercise {
   const CoachPlayerExercise({required this.id, required this.name});

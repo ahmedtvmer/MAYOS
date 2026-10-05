@@ -58,6 +58,7 @@ from svc.schemas import (
     AssignmentRedeemOut,
     CheckInIn,
     CheckInOut,
+    CoachActiveProgramOut,
     CoachAssignmentsOut,
     CoachCheckInCreateOut,
     CheckpointReviewListItemOut,
@@ -118,6 +119,20 @@ async def _run_program_draft_action(action, *args):
 # --------------------------------------------------------------------------
 # Coach side
 # --------------------------------------------------------------------------
+
+
+@coach_router.get("/{assignment_id}/program", response_model=CoachActiveProgramOut)
+async def read_assigned_player_active_program(
+    assignment_id: str,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    program = await asyncio.to_thread(
+        coach_history_service.active_program, db, coach.account_id, assignment_id
+    )
+    if program is None:
+        raise _no_active_assignment()
+    return CoachActiveProgramOut(**program)
 
 
 @coach_router.post("/invites", response_model=AssignmentInviteIssueOut)

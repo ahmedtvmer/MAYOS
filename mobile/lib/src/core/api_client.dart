@@ -642,6 +642,20 @@ class ApiClient {
         response.data, CoachPlayerSummary.fromJson, _invalidCoachHistory);
   }
 
+  /// Fetches the active program and Program draft state through its Assignment.
+  Future<CoachActiveProgram> coachActiveProgram(String assignmentId) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+        '/coach/assignments/$assignmentId/program',
+      ),
+    );
+    return _parseBody(
+      response.data,
+      CoachActiveProgram.fromJson,
+      _invalidCoachHistory,
+    );
+  }
+
   /// The assigned player's recent personal records, newest-first.
   Future<List<PersonalRecord>> coachPlayerPersonalRecords(String assignmentId,
       {int limit = 20}) async {

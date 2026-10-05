@@ -93,6 +93,44 @@ FakeMayosApi _coachFake() {
   return fake;
 }
 
+Map<String, dynamic> _coachActiveProgram({
+  required String provenance,
+  bool hasDraft = false,
+  bool editedByPlayer = false,
+}) =>
+    <String, dynamic>{
+      'has_draft': hasDraft,
+      if (editedByPlayer) 'edited_by_player': true,
+      'program': <String, dynamic>{
+        'program_name': 'Full Body',
+        'split_type': 'Full Body',
+        'weekly_frequency': 1,
+        'instructions': '',
+        'version': 7,
+        'provenance': provenance,
+        'active_since': '2026-10-04T10:00:00Z',
+        'days': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'day_name': 'Full A',
+            'day_order': 1,
+            'exercises': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'exercise_id': 'sq',
+                'exercise_name': 'Squat',
+                'target_sets': 4,
+                'target_reps_min': 6,
+                'target_reps_max': 8,
+                'target_rpe': 8.0,
+                'rest_seconds': 150,
+                'tempo': '3-1-1',
+                'notes': 'Brace before each rep.',
+              },
+            ],
+          },
+        ],
+      },
+    };
+
 FakeMayosApi _playerFake() {
   final FakeMayosApi fake = FakeMayosApi();
   fake.issuedToken = 'token-alice';
@@ -118,6 +156,53 @@ Future<void> _openSettings(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('coach player page shows automatic program and pending draft',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachActiveProgram = _coachActiveProgram(
+        provenance: 'automatic',
+        hasDraft: true,
+      );
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.text('Generated automatically'));
+
+    expect(find.text('Program draft pending'), findsOneWidget);
+    expect(find.text('program v7'), findsOneWidget);
+    expect(find.text('Active since 2026-10-04'), findsOneWidget);
+    expect(find.text('Squat'), findsOneWidget);
+    expect(find.text('4 sets · 6–8 reps · RIR ≥ 2 · Rest 150 s'), findsOneWidget);
+    expect(find.text('Tempo: 3-1-1'), findsOneWidget);
+    expect(find.text('Notes: Brace before each rep.'), findsOneWidget);
+  });
+
+  testWidgets('coach player page labels current coach program and player edit',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachActiveProgram = _coachActiveProgram(
+        provenance: 'coach',
+        editedByPlayer: true,
+      );
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.text('Published by you'));
+
+    expect(find.text('Edited by the player'), findsOneWidget);
+    expect(find.text('Program draft pending'), findsNothing);
+  });
+
+  testWidgets('coach player page shows an empty program state', (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.text('No active program.'));
+
+    expect(find.text('No active program.'), findsOneWidget);
+  });
+
   testWidgets('coach creates and reuses a Coach exercise from the picker',
       (tester) async {
     final FakeMayosApi fake = _coachFake();
