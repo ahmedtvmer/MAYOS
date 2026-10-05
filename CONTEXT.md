@@ -149,6 +149,10 @@ _Arabic_: برنامج تدريبي
 An unpublished Training program a Coach is writing for a Player on an active Assignment. It lives in the Player's Training ledger, is keyed to that Assignment, and is visible only to that Coach while the Assignment is active. There is at most one open Program draft per Assignment. It keeps the existing program fields; the editor shows target RIR and storage keeps `target_rpe` (RIR = 10 − RPE). Publishing activates it as a new program version and removes the draft. Ending the Assignment discards it.
 _Arabic_: مسودة برنامج تدريبي
 
+**Program import**:
+Turning a spreadsheet a Coach uploads into the Program draft of a Player on an active Assignment. A sheet in the MAYOS template is read directly; a sheet in the Coach's own layout is first translated into the same rows. Either way the result is only a Program draft: an import never publishes, and a multi-week sheet contributes one chosen week.
+_Avoid_: Program migration, program upload
+
 **Training profile**:
 The editable facts a player can update after onboarding: current goal, Equipment access, injuries or limitations, and weight. Body proportions remain onboarding-only.
 _Arabic_: الملف التدريبي
