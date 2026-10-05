@@ -186,6 +186,9 @@ class _CoachPlayerHistoryScreenState
   bool _loadingHistory = false;
   bool _generatingDraft = false;
   FailureMessage? _generateError;
+  bool _copyingActiveProgram = false;
+  bool _approvingActiveProgram = false;
+  FailureMessage? _programActionError;
   List<ProgramRequest> _programRequests = const <ProgramRequest>[];
   FailureMessage? _requestError;
   List<CheckIn> _checkIns = const <CheckIn>[];
@@ -891,8 +894,45 @@ class _CoachPlayerHistoryScreenState
       );
     } else {
       children.addAll(_programDetails(context, active, active.program!));
+      children.add(const SizedBox(height: MayosSpacing.sm));
+      children.add(_activeProgramActions(context));
+    }
+    if (_programActionError != null) {
+      children.addAll(<Widget>[
+        const SizedBox(height: MayosSpacing.sm),
+        Text(
+          displayCopyOf(context).failureMessage(_programActionError!),
+          style: MayosTypography.bodySecondary.copyWith(color: c.danger),
+        ),
+      ]);
     }
     return _section(context, copy.program, children);
+  }
+
+  Widget _activeProgramActions(BuildContext context) {
+    final copy = coachCopyOf(context);
+    final bool busy = _copyingActiveProgram || _approvingActiveProgram;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        MayosButton(
+          key: const Key('coach_program_edit_active'),
+          label: copy.editActiveProgram,
+          icon: Icons.edit_outlined,
+          variant: MayosButtonVariant.secondary,
+          loading: _copyingActiveProgram,
+          onPressed: busy ? null : _editActiveProgram,
+        ),
+        const SizedBox(height: MayosSpacing.xs),
+        MayosButton(
+          key: const Key('coach_program_approve_as_is'),
+          label: copy.approveProgramAsIs,
+          icon: Icons.check,
+          loading: _approvingActiveProgram,
+          onPressed: busy ? null : _approveActiveProgramAsIs,
+        ),
+      ],
+    );
   }
 
   Widget _pendingProgramDraftBadge(BuildContext context) => Align(
@@ -1105,6 +1145,147 @@ class _CoachPlayerHistoryScreenState
     });
   }
 
+  Future<void> _editActiveProgram() async {
+    final CoachActiveProgram? active = _activeProgram;
+    if (active?.program == null) return;
+    final _ExistingDraftChoice? choice = active!.hasDraft
+        ? await _chooseExistingDraftAction()
+        : _ExistingDraftChoice.copyActive;
+    if (!mounted || choice == null) return;
+    if (choice == _ExistingDraftChoice.continueDraft) {
+      _openProgramDraft();
+      return;
+    }
+    await _copyActiveProgramDraft(
+      choice == _ExistingDraftChoice.replaceWithActive
+          ? _ProgramDraftCopy.replace
+          : _ProgramDraftCopy.create,
+    );
+  }
+
+  Future<void> _copyActiveProgramDraft(_ProgramDraftCopy operation) async {
+    setState(() {
+      _copyingActiveProgram = true;
+      _programActionError = null;
+    });
+    try {
+      await _sendActiveProgramDraftCopy(operation);
+      if (mounted) _openProgramDraft();
+    } on ApiException catch (error) {
+      if (mounted) {
+        setState(() => _programActionError = apiFailureMessage(error));
+      }
+    } finally {
+      if (mounted) setState(() => _copyingActiveProgram = false);
+    }
+  }
+
+  Future<void> _sendActiveProgramDraftCopy(_ProgramDraftCopy operation) async {
+    final ApiClient api = ref.read(apiClientProvider);
+    if (operation == _ProgramDraftCopy.replace) {
+      await api.coachReplaceDraftWithActiveProgram(_entry.assignmentId);
+    } else {
+      await api.coachCopyActiveProgramToDraft(_entry.assignmentId);
+    }
+  }
+
+  Future<_ExistingDraftChoice?> _chooseExistingDraftAction() =>
+      showDialog<_ExistingDraftChoice>(
+        context: context,
+        builder: (BuildContext context) {
+          final copy = coachCopyOf(context);
+          return AlertDialog(
+            title: Text(copy.programDraftChoiceTitle),
+            content: Text(copy.programDraftChoicePrompt),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(copy.cancel),
+              ),
+              TextButton(
+                key: const Key('coach_program_continue_draft'),
+                onPressed: () => Navigator.of(context)
+                    .pop(_ExistingDraftChoice.continueDraft),
+                child: Text(copy.continueProgramDraft),
+              ),
+              TextButton(
+                key: const Key('coach_program_replace_draft'),
+                onPressed: () => Navigator.of(context)
+                    .pop(_ExistingDraftChoice.replaceWithActive),
+                child: Text(copy.replaceDraftWithActiveProgram),
+              ),
+            ],
+          );
+        },
+      );
+
+  Future<void> _approveActiveProgramAsIs() async {
+    final CoachActiveProgram? active = _activeProgram;
+    if (active?.program == null) return;
+    final bool confirmed = await _confirmApproveActiveProgram(
+      replacesDraft: active!.hasDraft,
+    );
+    if (!mounted || !confirmed) return;
+    await _publishActiveProgramAsIs(
+      active.hasDraft ? _ProgramDraftCopy.replace : _ProgramDraftCopy.create,
+    );
+  }
+
+  Future<void> _publishActiveProgramAsIs(_ProgramDraftCopy operation) async {
+    setState(() {
+      _approvingActiveProgram = true;
+      _programActionError = null;
+    });
+    try {
+      final ApiClient api = ref.read(apiClientProvider);
+      await _sendActiveProgramDraftCopy(operation);
+      final TrainingProgram published =
+          await api.coachPublishProgramDraft(_entry.assignmentId);
+      if (mounted) await _showPublishedProgram(published);
+    } on ApiException catch (error) {
+      if (mounted) {
+        setState(() => _programActionError = apiFailureMessage(error));
+      }
+    } finally {
+      if (mounted) setState(() => _approvingActiveProgram = false);
+    }
+  }
+
+  Future<void> _showPublishedProgram(TrainingProgram published) async {
+    ref.read(coachRosterRevisionProvider.notifier).state++;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(coachCopyOf(context).programPublished(published.version)),
+      ),
+    );
+    await _load();
+  }
+
+  Future<bool> _confirmApproveActiveProgram({required bool replacesDraft}) async {
+    final copy = coachCopyOf(context);
+    return await showDialog<bool>(
+          context: context,
+          builder: (BuildContext context) => AlertDialog(
+            title: Text(copy.confirmApproveProgramTitle),
+            content: Text(
+              copy.approveProgramAsIsPrompt(replacesDraft: replacesDraft),
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(copy.cancel),
+              ),
+              TextButton(
+                key: const Key('coach_program_approve_confirm'),
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text(copy.confirmApproveProgram),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
   /// One open coach alert with its actions (#120): acknowledge and resolve
   /// through the existing alert client calls, plus **Log check-in** while a
   /// follow-up is due.
@@ -1301,4 +1482,15 @@ enum _PlayerAction {
   writeProgram,
   generateDraft,
   askAssistant,
+}
+
+enum _ExistingDraftChoice {
+  copyActive,
+  continueDraft,
+  replaceWithActive,
+}
+
+enum _ProgramDraftCopy {
+  create,
+  replace,
 }

@@ -203,6 +203,123 @@ void main() {
     expect(find.text('No active program.'), findsOneWidget);
   });
 
+  testWidgets('Edit copies the active program into a draft before opening it',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_program_edit_active')));
+
+    await tester.tap(find.byKey(const Key('coach_program_edit_active')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_exercise_0')));
+
+    expect(fake.programDraftCopyRequests, 1);
+    expect(fake.programDraft!['program_name'], 'Full Body');
+    expect((fake.programDraft!['days'] as List<dynamic>).first['day_name'], 'Full A');
+    final Map<String, dynamic> exercise =
+        ((fake.programDraft!['days'] as List<dynamic>).first['exercises']
+            as List<dynamic>).first as Map<String, dynamic>;
+    expect(exercise['target_rir'], 2);
+    expect(exercise['notes'], 'Brace before each rep.');
+  });
+
+  testWidgets('Edit lets the coach continue an existing Program draft',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachActiveProgram = _coachActiveProgram(
+        provenance: 'automatic',
+        hasDraft: true,
+      )
+      ..programDraft = <String, dynamic>{
+        'program_name': 'Saved draft',
+        'split_type': 'Full Body',
+        'weekly_frequency': 1,
+        'instructions': '',
+        'days': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'day_name': 'Saved day',
+            'day_order': 1,
+            'warmup_exercises': <dynamic>[],
+            'exercises': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'exercise_id': 'sq',
+                'exercise_name': 'Squat',
+                'warmup_sets': 0,
+                'target_sets': 3,
+                'target_reps_min': 6,
+                'target_reps_max': 8,
+                'target_rir': 2,
+                'rest_seconds': 180,
+                'notes': null,
+              },
+            ],
+            'cardio': null,
+          },
+        ],
+      };
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_program_edit_active')));
+
+    await tester.tap(find.byKey(const Key('coach_program_edit_active')));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_program_continue_draft')));
+    await tester.tap(find.byKey(const Key('coach_program_continue_draft')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_day_name_0')));
+
+    expect(fake.programDraftCopyRequests, 0);
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('program_draft_day_name_0')))
+          .controller?.text,
+      'Saved day',
+    );
+  });
+
+  testWidgets('Edit can replace an existing Program draft from the active one',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachActiveProgram = _coachActiveProgram(
+        provenance: 'automatic',
+        hasDraft: true,
+      )
+      ..programDraft = <String, dynamic>{'program_name': 'Saved draft'};
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_program_edit_active')));
+
+    await tester.tap(find.byKey(const Key('coach_program_edit_active')));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_program_replace_draft')));
+    await tester.tap(find.byKey(const Key('coach_program_replace_draft')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_exercise_0')));
+
+    expect(fake.programDraftCopyRequests, 1);
+    expect(fake.programDraft!['program_name'], 'Full Body');
+  });
+
+  testWidgets('Approve as is confirms before publishing a new coach version',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_as_is')));
+
+    await tester.tap(find.byKey(const Key('coach_program_approve_as_is')));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_confirm')));
+    expect(fake.programVersion, isNull);
+    await tester.tap(find.byKey(const Key('coach_program_approve_confirm')));
+    await _pumpUntilFound(tester, find.text('Published program version 8'));
+
+    expect(fake.programDraftCopyRequests, 1);
+    expect(fake.programVersion, 8);
+    expect(fake.programPublishedByCoachAccountId, 'account-alice');
+    expect(fake.coachActiveProgram['program']?['provenance'], 'coach');
+  });
+
   testWidgets('coach creates and reuses a Coach exercise from the picker',
       (tester) async {
     final FakeMayosApi fake = _coachFake();

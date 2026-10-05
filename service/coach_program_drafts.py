@@ -1,6 +1,6 @@
 """Assignment-gated lifecycle for coach-authored Program drafts."""
 
-from typing import Any
+from typing import Any, Callable
 
 from pydantic import ValidationError
 
@@ -30,6 +30,10 @@ from service.program_analytics import ProgramAnalyticsActor
 
 class ProgramDraftNotFound(Exception):
     """Raised when an active assignment has no open Program draft."""
+
+
+class ActiveProgramNotFound(Exception):
+    """Raised when an active assignment has no Training program to copy."""
 
 
 class ProgramDraftAlreadyExists(Exception):
@@ -230,6 +234,74 @@ def _pydantic_issue(error: dict[str, Any]) -> dict[str, Any]:
             "field": field,
         },
     }
+
+
+def _active_program_as_draft(program: PersistedProgramSchema) -> dict[str, Any]:
+    from svc.schemas import CoachProgramDraftIn
+
+    try:
+        return CoachProgramDraftIn.model_validate(
+            program.model_dump(
+                exclude={"version", "published_by_coach_account_id", "created_at"}
+            )
+        ).model_dump()
+    except ValidationError as error:
+        raise ProgramDraftValidationError(
+            [_pydantic_issue(issue) for issue in error.errors()]
+        ) from error
+
+
+def _store_active_program_as_draft(
+    db: Any,
+    coach_account_id: str,
+    assignment_id: str,
+    store_draft: Callable[[Any, str, dict[str, Any]], dict[str, Any] | None],
+) -> dict[str, Any] | None:
+    authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
+    if authorized is None:
+        return None
+    ledger, _ = authorized
+    with ledger:
+        program = ledger.get_active_program()
+        if program is None:
+            raise ActiveProgramNotFound("No active program to copy.")
+        draft = _active_program_as_draft(program)
+        stored = store_draft(ledger, assignment_id, draft)
+        if stored is None:
+            raise ProgramDraftAlreadyExists("A Program draft already exists for this assignment.")
+        if not _assignment_still_active(db, coach_account_id, assignment_id):
+            ledger.discard_program_draft(assignment_id)
+            return None
+        return stored
+
+
+def _create_active_program_draft(
+    ledger: Any, assignment_id: str, draft: dict[str, Any]
+) -> dict[str, Any] | None:
+    return ledger.create_program_draft(assignment_id, draft)
+
+
+def _replace_active_program_draft(
+    ledger: Any, assignment_id: str, draft: dict[str, Any]
+) -> dict[str, Any] | None:
+    replaced = ledger.replace_program_draft(assignment_id, draft)
+    return replaced if replaced is not None else ledger.create_program_draft(assignment_id, draft)
+
+
+def copy_active_program_to_draft(
+    db: Any, coach_account_id: str, assignment_id: str
+) -> dict[str, Any] | None:
+    return _store_active_program_as_draft(
+        db, coach_account_id, assignment_id, _create_active_program_draft
+    )
+
+
+def replace_program_draft_with_active_program(
+    db: Any, coach_account_id: str, assignment_id: str
+) -> dict[str, Any] | None:
+    return _store_active_program_as_draft(
+        db, coach_account_id, assignment_id, _replace_active_program_draft
+    )
 
 
 def _published_program(

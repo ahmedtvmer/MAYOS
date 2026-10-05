@@ -437,6 +437,43 @@ async def create_assigned_player_program_draft(
     return await asyncio.to_thread(_run)
 
 
+@coach_router.post(
+    "/{assignment_id}/program-draft/copy-active",
+    response_model=CoachProgramDraftOut,
+)
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def copy_assigned_player_active_program_to_draft(
+    request: Request,
+    assignment_id: str,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+    replace: bool = False,
+):
+    action = (
+        coach_program_drafts_service.replace_program_draft_with_active_program
+        if replace
+        else coach_program_drafts_service.copy_active_program_to_draft
+    )
+
+    def _run():
+        try:
+            copied = action(db, coach.account_id, assignment_id)
+        except coach_program_drafts_service.ProgramDraftAlreadyExists as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        except coach_program_drafts_service.ActiveProgramNotFound as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        except coach_program_drafts_service.ProgramDraftValidationError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"errors": exc.issues},
+            ) from exc
+        if copied is None:
+            raise _no_active_assignment()
+        return copied
+
+    return await asyncio.to_thread(_run)
+
+
 @coach_router.post("/{assignment_id}/program-draft/generate", response_model=CoachProgramDraftOut)
 @limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
 async def generate_assigned_player_program_draft(

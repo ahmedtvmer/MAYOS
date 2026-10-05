@@ -890,6 +890,34 @@ class ApiClient {
     return _parseCoachProgramDraft(response.data);
   }
 
+  /// Copies the assigned player's active Training program into a new draft.
+  Future<Map<String, dynamic>> coachCopyActiveProgramToDraft(
+    String assignmentId,
+  ) =>
+      _postActiveProgramDraftCopy(assignmentId, null);
+
+  /// Replaces an existing Program draft with a fresh copy of the active program.
+  Future<Map<String, dynamic>> coachReplaceDraftWithActiveProgram(
+    String assignmentId,
+  ) =>
+      _postActiveProgramDraftCopy(
+        assignmentId,
+        <String, dynamic>{'replace': true},
+      );
+
+  Future<Map<String, dynamic>> _postActiveProgramDraftCopy(
+    String assignmentId,
+    Map<String, dynamic>? queryParameters,
+  ) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/assignments/$assignmentId/program-draft/copy-active',
+        queryParameters: queryParameters,
+      ),
+    );
+    return _parseCoachProgramDraft(response.data);
+  }
+
   Future<Map<String, dynamic>> coachReadProgramDraft(String assignmentId) async {
     final response = await _send(
       () => _dio.get<dynamic>(

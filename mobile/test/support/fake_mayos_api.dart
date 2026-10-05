@@ -145,6 +145,7 @@ class FakeMayosApi {
   int? programVersion;
   String? programPublishedByCoachAccountId;
   Map<String, dynamic>? programDraft;
+  int programDraftCopyRequests = 0;
   int programDraftGenerationRequests = 0;
   Map<String, dynamic>? programDraftPublishError;
   Object? programDraftReplaceError;
@@ -1862,6 +1863,51 @@ class FakeMayosApi {
         'updated_at': '2026-10-04T10:00:00Z',
       });
     }
+    if (request.path.endsWith('/program-draft/copy-active')) {
+      programDraftCopyRequests++;
+      final bool replace = request.query['replace'] == true ||
+          request.query['replace'] == 'true';
+      final Map<String, dynamic>? activeProgram =
+          coachActiveProgram['program'] as Map<String, dynamic>?;
+      if (activeProgram == null) {
+        return const FakeResponse(
+          404,
+          <String, dynamic>{'detail': 'No active program to copy.'},
+        );
+      }
+      if (programDraft != null && !replace) {
+        return const FakeResponse(
+          409,
+          <String, dynamic>{
+            'detail': 'A Program draft already exists for this assignment.'
+          },
+        );
+      }
+      programDraft = Map<String, dynamic>.from(activeProgram)
+        ..remove('version')
+        ..remove('provenance')
+        ..remove('active_since');
+      programDraft!['days'] = (activeProgram['days'] as List<dynamic>)
+          .map((dynamic rawDay) {
+            final Map<String, dynamic> day =
+                Map<String, dynamic>.from(rawDay as Map);
+            day['exercises'] = (day['exercises'] as List<dynamic>)
+                .map((dynamic rawExercise) {
+                  final Map<String, dynamic> exercise =
+                      Map<String, dynamic>.from(rawExercise as Map);
+                  exercise['target_rir'] =
+                      10 - (exercise.remove('target_rpe') as num).toDouble();
+                  return exercise;
+                }).toList(growable: false);
+            return day;
+          }).toList(growable: false);
+      return FakeResponse(200, <String, dynamic>{
+        'assignment_id': assignmentId,
+        'draft': programDraft,
+        'created_at': '2026-10-04T10:00:00Z',
+        'updated_at': '2026-10-04T10:00:00Z',
+      });
+    }
     if (request.path.endsWith('/publish')) {
       if (programDraft == null) {
         return const FakeResponse(
@@ -1918,6 +1964,11 @@ class FakeMayosApi {
       }).toList(growable: false);
       return day;
     }).toList(growable: false);
+    final dynamic oldVersion =
+        (coachActiveProgram['program'] as Map<String, dynamic>?)?['version'];
+    if (oldVersion is num && oldVersion.toInt() > _publishedVersion) {
+      _publishedVersion = oldVersion.toInt();
+    }
     _publishedVersion++;
     programVersion = _publishedVersion;
     programPublishedByCoachAccountId = 'account-$currentUsername';
@@ -1930,6 +1981,14 @@ class FakeMayosApi {
       'created_at': '2026-09-24T11:00:00Z',
       'read_at': null,
     });
+    coachActiveProgram = <String, dynamic>{
+      'program': <String, dynamic>{
+        ..._activeProgramBody(),
+        'provenance': 'coach',
+        'active_since': '2026-10-05T10:00:00Z',
+      },
+      'has_draft': false,
+    };
     programDraft = null;
   }
 

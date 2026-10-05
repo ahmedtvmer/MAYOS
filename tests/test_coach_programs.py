@@ -8,6 +8,7 @@ on unassignment, version increments, and the generic denial for every
 non-active assignment case.
 """
 
+import copy
 import sqlite3
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -20,8 +21,10 @@ from agent.ProgramState import (
     GeneratedProgramSchema,
     ProgramDaySchema,
     ProgramExerciseSchema,
+    PersistedProgramSchema,
 )
 from database.database_manager import DatabaseManager
+from database.registry.coach_exercises import CoachExerciseCreate
 from service import coach as coach_service
 from service import coach_history as coach_history_service
 from service import programs as programs_service
@@ -241,6 +244,101 @@ def test_publish_activates_immediately_with_provenance_and_notice(api, monkeypat
     assert client.get("/assignments/notices", headers=player_headers).json()["notices"][0]["read_at"] is not None
 
 
+def test_approving_active_program_publishes_next_version_and_keeps_workouts(api, recording_analytics):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, coach_account_id, player_account_id = _assigned_player(api)
+    _seed_complete_active_program(db, player_account_id)
+    initial = client.get(
+        f"/coach/assignments/{assignment_id}/program", headers=coach_headers
+    ).json()["program"]
+
+    committed = client.post(
+        "/workouts/sessions",
+        headers=player_headers,
+        json={
+            "day_order": 1,
+            "readiness": 4,
+            "session_notes": "Completed before the new version.",
+            "sets": [
+                {
+                    "exercise": {
+                        "exercise_id": "bp",
+                        "exercise_name": "Bench Press",
+                        "target_sets": 4,
+                        "target_reps_min": 6,
+                        "target_reps_max": 8,
+                        "target_rpe": 8.5,
+                        "rest_seconds": 150,
+                        "notes": "Pause on the chest.",
+                    },
+                    "sets": [{"weight_kg": 60, "reps": 6, "rpe": 8}],
+                }
+            ],
+        },
+    )
+    assert committed.status_code == 201, committed.text
+    player = db.get_account(player_account_id)
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        workouts_before = [
+            tuple(row)
+            for row in ledger.conn.execute("SELECT * FROM workout_sessions ORDER BY id")
+        ]
+        sets_before = [
+            tuple(row)
+            for row in ledger.conn.execute("SELECT * FROM workout_sets ORDER BY id")
+        ]
+
+    copied = client.post(
+        f"{_program_draft_path(assignment_id)}/copy-active", headers=coach_headers
+    )
+    assert copied.status_code == 200, copied.text
+    assert not [
+        event for event in recording_analytics.events
+        if event["event"] == "coach_program_published"
+    ]
+
+    published = client.post(
+        f"{_program_draft_path(assignment_id)}/publish", headers=coach_headers
+    )
+
+    assert published.status_code == 200, published.text
+    assert published.json()["version"] == 2
+    assert published.json()["published_by_coach_account_id"] == coach_account_id
+    for field in ("program_name", "split_type", "weekly_frequency", "instructions", "days"):
+        assert published.json()[field] == initial[field]
+    assert client.get("/programs/active", headers=player_headers).json()["version"] == 2
+    refused = client.post("/programs/generate", headers=player_headers, json={})
+    assert refused.status_code == 403
+    assert refused.json()["detail"] == programs_service.COACH_CONTROLLED_ERROR
+
+    repeated_copy = client.post(
+        f"{_program_draft_path(assignment_id)}/copy-active", headers=coach_headers
+    )
+    assert repeated_copy.status_code == 200, repeated_copy.text
+    republished = client.post(
+        f"{_program_draft_path(assignment_id)}/publish", headers=coach_headers
+    )
+    assert republished.status_code == 200, republished.text
+    assert republished.json()["version"] == 3
+    assert republished.json()["published_by_coach_account_id"] == coach_account_id
+
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        assert [
+            tuple(row)
+            for row in ledger.conn.execute("SELECT * FROM workout_sessions ORDER BY id")
+        ] == workouts_before
+        assert [
+            tuple(row)
+            for row in ledger.conn.execute("SELECT * FROM workout_sets ORDER BY id")
+        ] == sets_before
+    events = [
+        event for event in recording_analytics.events
+        if event["event"] == "coach_program_published"
+    ]
+    assert len(events) == 2
+    assert all(event["properties"]["is_coaching_action"] for event in events)
+
+
 def test_second_publish_increments_version_and_keeps_first_stable(api, monkeypatch):
     client, db, _ = api
     coach_headers, player_headers, assignment_id, coach_account_id, _ = _assigned_player(api)
@@ -358,6 +456,85 @@ def _program_draft_path(assignment_id):
     return f"/coach/assignments/{assignment_id}/program-draft"
 
 
+def _seed_complete_active_program(db, player_account_id):
+    old_coach_exercise = db.create_coach_exercise(
+        "previous-coach",
+        CoachExerciseCreate(
+            "Pin Squat",
+            body_part="Quads",
+            equipment="Barbell",
+            note="Pause on the pins.",
+            video_url="https://example.com/pin-squat",
+        ),
+    )
+    program = PersistedProgramSchema.model_validate(
+        {
+            "program_name": "Strength and conditioning",
+            "split_type": "Upper/Lower",
+            "weekly_frequency": 2,
+            "instructions": "Leave one rep in reserve.",
+            "days": [
+                {
+                    "day_name": "Upper A",
+                    "day_order": 1,
+                    "warmup_exercises": [
+                        {
+                            "exercise_id": "row",
+                            "equipment": "Cable",
+                            "exercise_name": "Light cable row",
+                            "sets": 2,
+                            "reps": 12,
+                            "rest_seconds": 30,
+                            "notes": "Keep this easy.",
+                            "image_path": "warmup.png",
+                            "gif_path": "warmup.gif",
+                        }
+                    ],
+                    "exercises": [
+                        {
+                            "exercise_id": "bp",
+                            "exercise_name": "Bench Press",
+                            "target_sets": 4,
+                            "target_reps_min": 6,
+                            "target_reps_max": 8,
+                            "target_rpe": 8.5,
+                            "rest_seconds": 150,
+                            "warmup_sets": 3,
+                            "tempo": "3-1-1",
+                            "notes": "Pause on the chest.",
+                            "slot_key": "horizontal_press",
+                            "suggested_substitutes": [
+                                {"exercise_id": "sq", "exercise_name": "Squat"}
+                            ],
+                        }
+                    ],
+                    "cardio": "Cycle for 10 minutes.",
+                },
+                {
+                    "day_name": "Lower A",
+                    "day_order": 2,
+                    "exercises": [
+                        {
+                            "exercise_id": old_coach_exercise["id"],
+                            "exercise_name": old_coach_exercise["name"],
+                            "target_sets": 3,
+                            "target_reps_min": 5,
+                            "target_reps_max": 8,
+                            "target_rpe": 8.0,
+                            "rest_seconds": 180,
+                            "warmup_sets": 2,
+                            "notes": "Control the descent.",
+                        }
+                    ],
+                },
+            ],
+        }
+    )
+    player = db.get_account(player_account_id)
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        ledger.save_training_program(program.model_dump())
+
+
 def _one_day_draft(exercise_id="sq", **exercise_fields):
     exercise = {
         "exercise_id": exercise_id,
@@ -407,6 +584,55 @@ def test_program_draft_can_be_created_empty(api):
 
     assert created.status_code == 200, created.text
     assert created.json()["draft"]["days"] == []
+
+
+def test_copy_active_program_to_draft_preserves_the_complete_program(api):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, player_account_id = _assigned_player(api)
+    _seed_complete_active_program(db, player_account_id)
+    active = client.get(
+        f"/coach/assignments/{assignment_id}/program", headers=coach_headers
+    ).json()["program"]
+
+    copied = client.post(
+        f"{_program_draft_path(assignment_id)}/copy-active",
+        headers=coach_headers,
+    )
+
+    assert copied.status_code == 200, copied.text
+    expected_draft = copy.deepcopy(active)
+    for metadata in ("version", "provenance", "active_since"):
+        expected_draft.pop(metadata, None)
+    for day in expected_draft["days"]:
+        for exercise in day["exercises"]:
+            exercise["target_rir"] = 10 - exercise.pop("target_rpe")
+    assert copied.json()["draft"] == expected_draft
+    active_after = client.get("/programs/active", headers=player_headers).json()
+    assert active_after["version"] == 1
+    assert active_after["published_by_coach_account_id"] is None
+
+
+def test_copy_active_program_requires_confirmation_and_an_active_program(api):
+    client, db, _ = api
+    coach_headers, _, assignment_id, _, player_account_id = _assigned_player(api)
+    copy_path = f"{_program_draft_path(assignment_id)}/copy-active"
+
+    no_program = client.post(copy_path, headers=coach_headers)
+    assert no_program.status_code == 404
+
+    _seed_complete_active_program(db, player_account_id)
+    original = _one_day_draft()
+    draft_path = _program_draft_path(assignment_id)
+    created = client.post(draft_path, headers=coach_headers, json=original)
+    assert created.status_code == 200, created.text
+
+    refused = client.post(copy_path, headers=coach_headers)
+    assert refused.status_code == 409
+    assert client.get(draft_path, headers=coach_headers).json()["draft"] == created.json()["draft"]
+
+    replaced = client.post(f"{copy_path}?replace=true", headers=coach_headers)
+    assert replaced.status_code == 200, replaced.text
+    assert replaced.json()["draft"]["program_name"] == "Strength and conditioning"
 
 
 def test_program_draft_strips_draft_level_publication_metadata(api):

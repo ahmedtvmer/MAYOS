@@ -237,6 +237,30 @@ class CoachCopy {
       : 'Program draft pending';
   String get noActiveProgram =>
       isArabic ? 'لا يوجد برنامج تدريبي نشط.' : 'No active program.';
+  String get editActiveProgram => isArabic ? 'تعديل' : 'Edit';
+  String get approveProgramAsIs =>
+      isArabic ? 'اعتماد البرنامج كما هو' : 'Approve as is';
+  String get programDraftChoiceTitle =>
+      isArabic ? 'توجد مسودة للبرنامج التدريبي' : 'A Program draft already exists';
+  String get programDraftChoicePrompt => isArabic
+      ? 'يمكنك متابعة المسودة الحالية أو استبدالها بنسخة من البرنامج النشط.'
+      : 'Continue the current draft or replace it with a copy of the active program.';
+  String get continueProgramDraft =>
+      isArabic ? 'متابعة المسودة' : 'Continue draft';
+  String get replaceDraftWithActiveProgram =>
+      isArabic ? 'استبدالها بالبرنامج النشط' : 'Replace with active program';
+  String get confirmApproveProgramTitle =>
+      isArabic ? 'اعتماد البرنامج كما هو؟' : 'Approve the current program?';
+  String approveProgramAsIsPrompt({required bool replacesDraft}) =>
+      isArabic
+          ? replacesDraft
+              ? 'سيؤدي ذلك إلى استبدال المسودة الحالية ونشر البرنامج النشط كما هو بإصدار جديد. سيبدأ تطبيقه من الحصة التدريبية التالية للاعب.'
+              : 'سيُنشر البرنامج النشط كما هو بإصدار جديد. سيبدأ تطبيقه من الحصة التدريبية التالية للاعب.'
+          : replacesDraft
+              ? 'This replaces the pending Program draft, then publishes the active program unchanged as a new version. It applies from the player’s next workout.'
+              : 'This publishes the active program unchanged as a new version. It applies from the player’s next workout.';
+  String get confirmApproveProgram =>
+      isArabic ? 'اعتماد ونشر' : 'Approve and publish';
   String activeProgramSince(String date) => isArabic
       ? 'بدأ البرنامج في ${_ltr(date)}'
       : 'Active since $date';
