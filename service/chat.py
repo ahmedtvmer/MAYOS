@@ -72,6 +72,7 @@ def build_turn_state(
         "coach_tone": coach_tone,
         "custom_instructions": custom_instructions,
         "telemetry_context": None,
+        "weight_context": None,
         "intent": None,
         "intent_metadata": {},
         "program_updated": False,

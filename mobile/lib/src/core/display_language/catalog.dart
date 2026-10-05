@@ -480,6 +480,26 @@ class MayosCopy {
   String get oneSessionTrendNeedsMore => isArabic
       ? 'سُجلت حصة واحدة فقط. يلزم تسجيل حصتين على الأقل لمتابعة التقدم.'
       : 'Only one session logged. A trend needs at least two sessions.';
+  String get bodyWeight => isArabic ? 'وزن الجسم' : 'Body weight';
+  String get targetWeight => isArabic ? 'الوزن المستهدف' : 'Target weight';
+  String targetWeightLabel(String value) => isArabic
+      ? '$targetWeight · ${_ltr('$value kg')}'
+      : '$targetWeight · $value kg';
+  String chartReferenceValue(String label, String value, String unit) =>
+      isArabic ? '$label: ${_ltr('$value $unit')}' : '$label: $value $unit';
+  String get logWeight => isArabic ? 'تسجيل الوزن' : 'Log weight';
+  String get weightHistoryEmpty => isArabic
+      ? 'سجّل وزنك لبدء متابعة التغيّر عبر الوقت.'
+      : 'Log your weight to start tracking changes over time.';
+  String get addWeightEntry => isArabic ? 'إضافة وزن اليوم' : 'Add today’s weight';
+  String get weightEntryTitle => isArabic ? 'تسجيل الوزن' : 'Log today’s weight';
+  String weightEntrySaved(String date) => isArabic
+      ? 'تم تسجيل الوزن بتاريخ \u2066$date\u2069.'
+      : 'Weight logged for $date.';
+  String get weightKg => isArabic ? 'الوزن (\u2066kg\u2069)' : 'Weight (kg)';
+  String weightRange(String minimum, String maximum) => isArabic
+      ? 'يجب أن يكون الوزن بين ${_ltr('$minimum kg')} و${_ltr('$maximum kg')}.'
+      : 'Weight must be between $minimum and $maximum kg.';
   String countedSetsLogged(int days) => isArabic
       ? 'لم تُسجل مجموعات محسوبة لكل عضلة خلال آخر ${arabicCountPhrase(days, ArabicCountNoun.day, afterPreposition: true)}.'
       : 'No weighted sets logged in the last $days days.';

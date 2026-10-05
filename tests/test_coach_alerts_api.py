@@ -475,6 +475,157 @@ def test_profile_alert_write_failure_does_not_block_training_profile_edit(api, m
     assert response.json()["profile"]["equipment_access"] == "Home gym"
 
 
+def test_weight_trend_alert_fires_with_evidence_and_respects_fourteen_day_cooldown(
+    api, monkeypatch
+):
+    from service import weight_history, weight_trend_alerts
+
+    class FrozenDateTime(datetime):
+        current = datetime(2026, 5, 15, 12, tzinfo=UTC)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current if tz else cls.current.replace(tzinfo=None)
+
+    monkeypatch.setattr(weight_history, "datetime", FrozenDateTime)
+    monkeypatch.setattr(weight_trend_alerts, "datetime", FrozenDateTime)
+    client, db = api
+    coach_headers, player_headers, _, coach_account_id = _assign(api)
+    _seed_training_profile(
+        db, target_weight_kg=70.0, weight_kg=74.0, current_goal="Build strength"
+    )
+    with db.open_ledger("p1") as ledger:
+        ledger.upsert_weight_history_entry("2026-05-01", 70.0)
+        ledger.upsert_weight_history_entry("2026-05-02", 72.0)
+        ledger.upsert_weight_history_entry("2026-05-15", 74.0)
+
+    first = client.post("/profile/weight", headers=player_headers, json={"weight_kg": 75.0})
+
+    assert first.status_code == 200, first.text
+    alerts = client.get("/coach/alerts", headers=coach_headers).json()["alerts"]
+    assert len(alerts) == 1
+    alert = alerts[0]
+    assert alert["kind"] == "weight_off_target_trend"
+    assert alert["target_weight_kg"] == 70.0
+    assert alert["weight_points"] == [
+        {"date": "2026-05-02", "weight_kg": 72.0},
+        {"date": "2026-05-15", "weight_kg": 75.0},
+    ]
+    assert alert["message_code"] == "coach_alert.weight_off_target_trend.v1"
+    assert alert["message_params"] == {
+        "distance_change_kg": 3.0,
+        "target_weight_kg": 70.0,
+        "window_days": 14,
+        "threshold_kg": 1.0,
+    }
+    assert len(db.list_coach_alerts(coach_account_id, ("new",))) == 1
+
+    FrozenDateTime.current = datetime(2026, 5, 22, 12, tzinfo=UTC)
+    second = client.post(
+        "/profile/weight", headers=player_headers, json={"weight_kg": 76.0}
+    )
+
+    assert second.status_code == 200, second.text
+    assert len(client.get("/coach/alerts", headers=coach_headers).json()["alerts"]) == 1
+    assert len(db.list_coach_alerts(coach_account_id, ("new",))) == 1
+
+
+def test_weight_trend_alert_skips_toward_target_and_without_active_assignment(
+    api, monkeypatch
+):
+    from service import weight_history, weight_trend_alerts
+
+    class FrozenDateTime(datetime):
+        current = datetime(2026, 5, 15, 12, tzinfo=UTC)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current if tz else cls.current.replace(tzinfo=None)
+
+    monkeypatch.setattr(weight_history, "datetime", FrozenDateTime)
+    monkeypatch.setattr(weight_trend_alerts, "datetime", FrozenDateTime)
+    client, db = api
+    coach_headers, player_headers, _, _ = _assign(api)
+    _seed_training_profile(db, target_weight_kg=70.0, weight_kg=73.0)
+    with db.open_ledger("p1") as ledger:
+        ledger.upsert_weight_history_entry("2026-05-02", 75.0)
+        ledger.upsert_weight_history_entry("2026-05-15", 73.0)
+
+    toward = client.post(
+        "/profile/weight", headers=player_headers, json={"weight_kg": 72.0}
+    )
+    assert toward.status_code == 200, toward.text
+    assert client.get("/coach/alerts", headers=coach_headers).json()["alerts"] == []
+
+
+def test_weight_trend_alert_requires_points_at_least_seven_days_apart(api, monkeypatch):
+    from service import weight_history, weight_trend_alerts
+
+    class FrozenDateTime(datetime):
+        current = datetime(2026, 5, 15, 12, tzinfo=UTC)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current if tz else cls.current.replace(tzinfo=None)
+
+    monkeypatch.setattr(weight_history, "datetime", FrozenDateTime)
+    monkeypatch.setattr(weight_trend_alerts, "datetime", FrozenDateTime)
+    client, db = api
+    coach_headers, player_headers, _, _ = _assign(api)
+    _seed_training_profile(db, target_weight_kg=70.0, weight_kg=74.0)
+    with db.open_ledger("p1") as ledger:
+        ledger.upsert_weight_history_entry("2026-05-09", 72.0)
+        ledger.upsert_weight_history_entry("2026-05-15", 74.0)
+
+    response = client.post(
+        "/profile/weight", headers=player_headers, json={"weight_kg": 75.0}
+    )
+
+    assert response.status_code == 200, response.text
+    assert client.get("/coach/alerts", headers=coach_headers).json()["alerts"] == []
+
+    solo = _register(client, "solo_player")
+    solo_headers = _authed(solo["access_token"])
+    _seed_training_profile(db, "solo_player", target_weight_kg=70.0, weight_kg=74.0)
+    with db.open_ledger("solo_player") as ledger:
+        ledger.upsert_weight_history_entry("2026-05-02", 72.0)
+        ledger.upsert_weight_history_entry("2026-05-15", 74.0)
+    unassigned = client.post(
+        "/profile/weight", headers=solo_headers, json={"weight_kg": 75.0}
+    )
+    assert unassigned.status_code == 200, unassigned.text
+    assert client.get("/coach/alerts", headers=coach_headers).json()["alerts"] == []
+
+
+def test_revoked_assignment_gets_no_weight_trend_alert(api, monkeypatch):
+    from service import weight_history, weight_trend_alerts
+
+    class FrozenDateTime(datetime):
+        current = datetime(2026, 5, 15, 12, tzinfo=UTC)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current if tz else cls.current.replace(tzinfo=None)
+
+    monkeypatch.setattr(weight_history, "datetime", FrozenDateTime)
+    monkeypatch.setattr(weight_trend_alerts, "datetime", FrozenDateTime)
+    client, db = api
+    coach_headers, player_headers, _, _ = _assign(api)
+    _seed_training_profile(db, target_weight_kg=70.0, weight_kg=74.0)
+    with db.open_ledger("p1") as ledger:
+        ledger.upsert_weight_history_entry("2026-05-02", 72.0)
+        ledger.upsert_weight_history_entry("2026-05-15", 74.0)
+
+    ended = client.post("/assignments/me/end", headers=player_headers)
+    assert ended.status_code == 200, ended.text
+    response = client.post(
+        "/profile/weight", headers=player_headers, json={"weight_kg": 75.0}
+    )
+
+    assert response.status_code == 200, response.text
+    assert client.get("/coach/alerts", headers=coach_headers).json()["alerts"] == []
+
+
 def test_profile_change_compares_structured_equipment_values_by_value():
     from service.profile_change_alerts import changed_fields
 

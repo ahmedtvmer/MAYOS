@@ -3,9 +3,11 @@
 import asyncio
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 
 from service import analytics, profile as profile_service
+from service import weight_history as weight_history_service
+from service.weight_history import WeightTrendQuery
 from service.programs import player_controls_program
 from service import schedule as schedule_service
 from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
@@ -19,6 +21,9 @@ from svc.schemas import (
     TrainingScheduleOut,
     TrainingScheduleSetOut,
     TrainingScheduleUpdateIn,
+    WeightEntryIn,
+    WeightEntryOut,
+    WeightTrendOut,
 )
 
 router = APIRouter(prefix="/profile", tags=["profile"])
@@ -52,6 +57,8 @@ async def update_profile(
 ):
     register_ai_analytics_background_tasks(request, background_tasks)
     payload = {key: value for key, value in body.model_dump().items() if value is not None}
+    if "target_weight_kg" in body.model_fields_set:
+        payload["target_weight_kg"] = body.target_weight_kg
     result = await asyncio.to_thread(
         profile_service.update_profile,
         db,
@@ -69,6 +76,57 @@ async def update_profile(
         ),
     }
     return result
+
+
+@router.post("/weight", response_model=WeightEntryOut)
+async def record_weight(
+    body: WeightEntryIn,
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Records today's weight and updates the latest Training profile value."""
+    try:
+        point = await asyncio.to_thread(
+            profile_service.record_weight_entry,
+            db,
+            ledger,
+            profile_service.WeightEntryCommand(
+                ledger_id=str(player),
+                player_account_id=account_id_of(player),
+                weight_kg=body.weight_kg,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+    return WeightEntryOut(entry_date=point.date.isoformat(), weight_kg=point.weight_kg)
+
+
+@router.get("/weight/trend", response_model=WeightTrendOut)
+async def read_weight_trend(
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
+    weeks: Annotated[int, Query(ge=1, le=52)] = 8,
+):
+    """Returns the recent dated weight series and the current target."""
+    profile = await asyncio.to_thread(profile_service.get_profile, db, str(player), ledger)
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No profile yet; complete onboarding.")
+    trend = await asyncio.to_thread(
+        weight_history_service.get_weight_trend,
+        db,
+        WeightTrendQuery(ledger_id=str(player), weeks=weeks),
+        ledger,
+    )
+    return WeightTrendOut(
+        points=[
+            {"date": point.date.isoformat(), "weight_kg": point.weight_kg}
+            for point in trend.points
+        ],
+        change_kg=trend.change_kg,
+        target_weight_kg=profile.get("target_weight_kg"),
+    )
 
 
 @router.put("/persona")

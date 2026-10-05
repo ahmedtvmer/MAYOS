@@ -103,6 +103,20 @@ class RegistryCoachAlertsMixin:
             )
             return self._coach_alert_from_row(cursor.fetchone())
 
+    def get_latest_coach_alert_created_at(self, player_account_id: str, kind: str) -> str | None:
+        """Returns the most recent alert timestamp for a Player and kind, in any state."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "SELECT created_at FROM coach_alerts"
+                " WHERE player_account_id = ? AND kind = ?"
+                " ORDER BY created_at DESC, rowid DESC LIMIT 1",
+                (str(player_account_id), str(kind)),
+            )
+            row = cursor.fetchone()
+            return str(row[0]) if row else None
+
     def get_coach_alert(self, alert_id: str) -> dict[str, Any] | None:
         self.ensure_account_schema()
         with self._catalog_lock:

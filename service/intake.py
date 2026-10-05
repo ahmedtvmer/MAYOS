@@ -21,6 +21,7 @@ guesswork, defines them:
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -29,12 +30,15 @@ from typing import Any
 from service import onboarding as onboarding_service
 from service import analytics
 from service.program_analytics import ProgramAnalyticsActor, capture_program_generated
-from service.profile import PROFILE_REBUILD_FIELDS
 from service._base import ledger_scope
 from service.messages import (
     register_intake_copy_message_allowlists,
     structured_message,
 )
+from service.profile_fields import PROFILE_REBUILD_FIELDS
+from service.weight_history import player_local_date
+from service.weight_limits import MAX_WEIGHT_KG, MIN_WEIGHT_KG
+from service.weight_trend_alerts import evaluate_for_player
 from utils.equipment_access import (
     BODYWEIGHT_ONLY,
     COMMERCIAL_GYM,
@@ -156,7 +160,14 @@ INTAKE_FIELDS: tuple[IntakeField, ...] = (
     ),
     IntakeField("age", "int", True, "age", minimum=12, maximum=100),
     IntakeField("height_cm", "float", True, "height_cm", minimum=100, maximum=250),
-    IntakeField("weight_kg", "float", True, "weight_kg", minimum=30, maximum=250),
+    IntakeField(
+        "weight_kg", "float", True, "weight_kg",
+        minimum=MIN_WEIGHT_KG, maximum=MAX_WEIGHT_KG,
+    ),
+    IntakeField(
+        "target_weight_kg", "float", False, "target_weight_kg",
+        minimum=MIN_WEIGHT_KG, maximum=MAX_WEIGHT_KG,
+    ),
     IntakeField("training_age_years", "float", True, "training_age_years", minimum=0, maximum=70),
     IntakeField(
         "current_goal", "text", True, "current_goal",
@@ -287,6 +298,8 @@ def _validate_number(spec: IntakeField, raw: Any, *, integer: bool) -> int | flo
         value = float(match.group(1))
     else:
         raise IntakeValidationError(f"Invalid value for '{spec.name}': must be a number.")
+    if not math.isfinite(value):
+        raise IntakeValidationError(f"Invalid value for '{spec.name}': must be a finite number.")
     if integer and value != int(value):
         raise IntakeValidationError(f"Invalid value for '{spec.name}': must be a whole number.")
     result: int | float = int(value) if integer else value
@@ -644,7 +657,8 @@ def confirm_intake(
                 "Missing required onboarding answers: " + ", ".join(missing) + "."
             )
 
-        confirmed_at = datetime.now(UTC).isoformat()
+        confirmed_instant = datetime.now(UTC)
+        confirmed_at = confirmed_instant.isoformat()
         if not ledger.claim_intake_confirmation(confirmed_at):
             # Lost the race: replay if the winner already confirmed, else report busy.
             state = ledger.get_intake_state() or {}
@@ -653,7 +667,11 @@ def confirm_intake(
             raise IntakeConfirmInProgress("A program is already being generated for this intake.")
 
         profile = {FIELD_BY_NAME[name].profile_key: answers[name]["value"] for name in answers}
-        ledger.upsert_player_profile(profile)
+        ledger.upsert_player_profile_with_weight_history(
+            profile, player_local_date(ledger, ledger_id, confirmed_instant).isoformat()
+        )
+        if player_account_id:
+            evaluate_for_player(db, player_account_id, ledger=ledger)
 
         try:
             result = onboarding_service.complete_onboarding(

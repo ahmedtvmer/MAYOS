@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/display_language/feature_copy_context.dart';
+import '../../../core/display_language/catalog.dart';
 import '../../../core/api_client.dart';
 import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
@@ -18,6 +19,7 @@ import '../../../core/ui/mayos_section_header.dart';
 import '../../../core/ui/mayos_segmented_control.dart';
 import '../../../core/ui/first_strong_direction.dart';
 import '../../../core/workout_equipment.dart';
+import '../../../core/weight_limits.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import 'progress_chart.dart';
@@ -32,7 +34,7 @@ import 'progress_chart.dart';
 ///   window from `GET /dashboard/volume?days=N`.
 ///
 /// There is no Overview tab: no endpoint provides a real session/PR summary
-/// (and no fabricated percentage, body metric, or readiness is ever shown).
+/// (and no fabricated percentage or readiness value is ever shown).
 class ProgressTab extends ConsumerStatefulWidget {
   const ProgressTab({super.key});
 
@@ -60,6 +62,12 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
   FailureMessage? _volumeError;
   bool _volumeLoading = false;
   int _volumeDays = 7;
+
+  WeightTrendResult? _weightTrend;
+  FailureMessage? _weightError;
+  bool _weightLoading = true;
+  bool _weightSaving = false;
+  String? _weightNotice;
 
   List<CheckpointReviewListItem> _checkpointReviews =
       const <CheckpointReviewListItem>[];
@@ -103,7 +111,10 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
       _loadError = null;
       _notice = null;
     });
-    await _loadCheckpoints();
+    await Future.wait<void>(<Future<void>>[
+      _loadCheckpoints(),
+      _loadWeightTrend(),
+    ]);
     final List<LoggedExercise> exercises;
     try {
       exercises = await ref.read(apiClientProvider).loggedExercises();
@@ -178,6 +189,63 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
       setState(() {
         _volumeError = _failureMessage(error);
         _volumeLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadWeightTrend() async {
+    setState(() {
+      _weightLoading = true;
+      _weightError = null;
+    });
+    try {
+      final WeightTrendResult trend =
+          await ref.read(apiClientProvider).weightTrend(weeks: 26);
+      if (!mounted) return;
+      setState(() {
+        _weightTrend = trend;
+        _weightLoading = false;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _weightError = _failureMessage(error);
+        _weightLoading = false;
+      });
+    }
+  }
+
+  Future<void> _addWeightEntry() async {
+    final double? initial = _weightTrend?.points.isNotEmpty == true
+        ? _weightTrend!.points.last.weightKg
+        : null;
+    final double? weight = await showDialog<double>(
+      context: context,
+      builder: (BuildContext context) => _WeightEntryDialog(
+        copy: displayCopyOf(context),
+        initialWeight: initial,
+      ),
+    );
+    if (weight == null || !mounted) return;
+    setState(() {
+      _weightSaving = true;
+      _weightNotice = null;
+      _weightError = null;
+    });
+    try {
+      final WeightEntryResult entry =
+          await ref.read(apiClientProvider).recordWeight(weightKg: weight);
+      await _loadWeightTrend();
+      if (!mounted) return;
+      setState(() {
+        _weightSaving = false;
+        _weightNotice = displayCopyOf(context).weightEntrySaved(entry.entryDate);
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _weightSaving = false;
+        _weightError = _failureMessage(error);
       });
     }
   }
@@ -275,56 +343,228 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
                 message: displayCopyOf(context).failureMessage(_notice!)),
           ],
           const SizedBox(height: MayosSpacing.lg),
-          if (_exercises.isEmpty)
-            _NoHistoryState(onGoToProgram: _goToProgram)
-          else ...<Widget>[
-            MayosSegmentedControl<String>(
-              segments: <MayosSegment<String>>[
-                MayosSegment<String>(
-                    value: 'strength', label: displayCopyOf(context).strength),
-                MayosSegment<String>(
-                    value: 'volume', label: displayCopyOf(context).volume),
-              ],
-              selected: _section,
-              onChanged: (String value) => setState(() => _section = value),
-            ),
-            const SizedBox(height: MayosSpacing.xl),
-            if (_section == 'volume')
-              _VolumeSection(
-                volume: _volume,
-                days: _volumeDays,
-                periods: _volumePeriods,
-                loading: _volumeLoading,
-                error: _volumeError == null
-                    ? null
-                    : displayCopyOf(context).failureMessage(_volumeError!),
-                onPeriod: _selectPeriod,
-                onRetry: () => _loadVolume(_volumeDays),
-              )
-            else
-              _StrengthSection(
-                exercises: _exercises,
-                selectedId: _selectedExerciseId,
-                history: _history,
-                loading: _historyLoading,
-                error: _historyError == null
-                    ? null
-                    : displayCopyOf(context).failureMessage(_historyError!),
-                selectedPoint: _selectedPoint,
-                onSelectExercise: _selectExercise,
-                onSelectPoint: (int index) =>
-                    setState(() => _selectedPoint = index),
-                onRetry: () {
-                  final String? id = _selectedExerciseId;
-                  if (id != null) _loadHistory(id);
-                },
-              ),
-          ],
+          MayosSegmentedControl<String>(
+            segments: <MayosSegment<String>>[
+              MayosSegment<String>(
+                  value: 'strength', label: displayCopyOf(context).strength),
+              MayosSegment<String>(
+                  value: 'volume', label: displayCopyOf(context).volume),
+              MayosSegment<String>(
+                  value: 'weight', label: displayCopyOf(context).bodyWeight),
+            ],
+            selected: _section,
+            onChanged: (String value) => setState(() => _section = value),
+          ),
+          const SizedBox(height: MayosSpacing.xl),
+          if (_section == 'weight')
+            _WeightSection(
+              trend: _weightTrend,
+              loading: _weightLoading,
+              saving: _weightSaving,
+              error: _weightError == null
+                  ? null
+                  : displayCopyOf(context).failureMessage(_weightError!),
+              notice: _weightNotice,
+              onAddWeight: _addWeightEntry,
+              onRetry: _loadWeightTrend,
+            )
+          else if (_section == 'volume')
+            _VolumeSection(
+              volume: _volume,
+              days: _volumeDays,
+              periods: _volumePeriods,
+              loading: _volumeLoading,
+              error: _volumeError == null
+                  ? null
+                  : displayCopyOf(context).failureMessage(_volumeError!),
+              onPeriod: _selectPeriod,
+              onRetry: () => _loadVolume(_volumeDays),
+            )
+          else
+            _exercises.isEmpty
+                ? _NoHistoryState(onGoToProgram: _goToProgram)
+                : _StrengthSection(
+                    exercises: _exercises,
+                    selectedId: _selectedExerciseId,
+                    history: _history,
+                    loading: _historyLoading,
+                    error: _historyError == null
+                        ? null
+                        : displayCopyOf(context)
+                            .failureMessage(_historyError!),
+                    selectedPoint: _selectedPoint,
+                    onSelectExercise: _selectExercise,
+                    onSelectPoint: (int index) =>
+                        setState(() => _selectedPoint = index),
+                    onRetry: () {
+                      final String? id = _selectedExerciseId;
+                      if (id != null) _loadHistory(id);
+                    },
+                  ),
         ],
       ),
     );
   }
 }
+
+class _WeightSection extends StatelessWidget {
+  const _WeightSection({
+    required this.trend,
+    required this.loading,
+    required this.saving,
+    required this.error,
+    required this.notice,
+    required this.onAddWeight,
+    required this.onRetry,
+  });
+
+  final WeightTrendResult? trend;
+  final bool loading;
+  final bool saving;
+  final String? error;
+  final String? notice;
+  final VoidCallback onAddWeight;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosCopy copy = displayCopyOf(context);
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final List<WeightTrendPoint> points =
+        trend?.points ?? const <WeightTrendPoint>[];
+    final double? target = trend?.targetWeightKg;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        MayosSectionHeader(title: copy.bodyWeight),
+        if (loading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: MayosSpacing.xl),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (error != null)
+          _InlineError(message: error!, onRetry: onRetry)
+        else if (points.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: MayosSpacing.md),
+            child: Text(
+              copy.weightHistoryEmpty,
+              style: MayosTypography.of(context)
+                  .bodySecondary
+                  .copyWith(color: c.textSecondary),
+            ),
+          )
+        else ...<Widget>[
+          if (target != null) ...<Widget>[
+            Text(
+              copy.targetWeightLabel(_formatWeight(target)),
+              key: const Key('progress.weight_target'),
+              style: MayosTypography.of(context)
+                  .bodySecondary
+                  .copyWith(color: c.textSecondary),
+            ),
+            const SizedBox(height: MayosSpacing.xs),
+          ],
+          MayosCard(
+            padding: const EdgeInsets.fromLTRB(
+                MayosSpacing.xs, MayosSpacing.md, MayosSpacing.sm, MayosSpacing.xs),
+            child: ProgressLineChart(
+              key: const Key('progress.weight_chart'),
+              points: <ProgressChartPoint>[
+                for (final WeightTrendPoint point in points)
+                  ProgressChartPoint(date: point.date, value: point.weightKg),
+              ],
+              metricLabel: copy.bodyWeight,
+              unit: 'kg',
+              label: copy.bodyWeight,
+              copy: copy,
+              referenceValue: target,
+              referenceLabel: target == null ? null : copy.targetWeight,
+            ),
+          ),
+        ],
+        if (notice != null) ...<Widget>[
+          const SizedBox(height: MayosSpacing.sm),
+          Text(notice!, style: MayosTypography.of(context).bodySecondary),
+        ],
+        const SizedBox(height: MayosSpacing.md),
+        OutlinedButton.icon(
+          key: const Key('progress.add_weight'),
+          onPressed: saving ? null : onAddWeight,
+          icon: const Icon(Icons.monitor_weight_outlined),
+          label: Text(copy.addWeightEntry),
+        ),
+      ],
+    );
+  }
+}
+
+class _WeightEntryDialog extends StatefulWidget {
+  const _WeightEntryDialog({required this.copy, this.initialWeight});
+
+  final MayosCopy copy;
+  final double? initialWeight;
+
+  @override
+  State<_WeightEntryDialog> createState() => _WeightEntryDialogState();
+}
+
+class _WeightEntryDialogState extends State<_WeightEntryDialog> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initialWeight == null ? '' : _formatWeight(widget.initialWeight!),
+  );
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final double? value = double.tryParse(_controller.text.trim());
+    if (value == null ||
+        value < minimumPlayerWeightKg ||
+        value > maximumPlayerWeightKg) {
+      setState(() => _error = widget.copy.weightRange(
+            _formatWeight(minimumPlayerWeightKg),
+            _formatWeight(maximumPlayerWeightKg),
+          ));
+      return;
+    }
+    Navigator.of(context).pop(value);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text(widget.copy.weightEntryTitle),
+        content: TextField(
+          key: const Key('progress.weight_entry_field'),
+          controller: _controller,
+          autofocus: true,
+          textDirection: TextDirection.ltr,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            labelText: widget.copy.weightKg,
+            errorText: _error,
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(widget.copy.cancel),
+          ),
+          FilledButton(
+            key: const Key('progress.weight_entry_submit'),
+            onPressed: _submit,
+            child: Text(widget.copy.save),
+          ),
+        ],
+      );
+}
+
+String _formatWeight(double value) =>
+    value == value.roundToDouble() ? value.toInt().toString() : value.toString();
 
 class _StrengthSection extends StatelessWidget {
   const _StrengthSection({
@@ -502,7 +742,7 @@ class _StrengthChart extends StatelessWidget {
         ],
         metricLabel: displayCopyOf(context).estimatedOneRepMax,
         unit: 'kg',
-        exerciseName: exerciseName,
+        label: exerciseName,
         copy: displayCopyOf(context),
         selectedIndex: selectedIndex,
         onPointSelected: onSelectPoint,

@@ -264,7 +264,7 @@ void main() {
               ],
               metricLabel: 'Estimated 1RM',
               unit: 'kg',
-              exerciseName: 'Bench Press',
+              label: 'Bench Press',
               onPointSelected: (int index) => selected = index,
             ),
           ),

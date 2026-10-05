@@ -446,6 +446,42 @@ def test_comparison_hydration_followup_and_budget(graph, comparison):
     assert payload[-1].content == "what should I focus on next?"
 
 
+@pytest.mark.parametrize(
+    ("query", "included"),
+    [
+        ("How can I adjust my squat setup?", False),
+        ("How has my bodyweight changed?", True),
+        ("كيف تغير وزني؟", True),
+        ("أنا نزلت في الوزن؟", True),
+    ],
+)
+def test_weight_context_is_relevance_gated(graph, query, included):
+    graph.db.get_player_profile.return_value = {"target_weight_kg": 70.0}
+    graph.db.get_assistant_memory.return_value = {}
+    graph.db.list_training_schedules.return_value = []
+    graph.db.list_weight_history.return_value = []
+    prior = (
+        [HumanMessage(content="How has my bodyweight changed?"), AIMessage(content="Here is the trend.")]
+        if not included
+        else []
+    )
+    request = {**state(query, prior), "trainee_id": "alice"}
+
+    request.update(
+        graph.hydrate_context_node(
+            request, {"configurable": {"ledger": graph.db, "store": graph.db}}
+        )
+    )
+    prompt = graph.build_prompt_payload(request)[0].content
+
+    if included:
+        assert "[PLAYER WEIGHT CONTEXT]" in prompt
+        assert "not available" in request["weight_context"]
+    else:
+        assert request["weight_context"] is None
+        assert "[PLAYER WEIGHT CONTEXT]" not in prompt
+
+
 def test_comparison_empty_working_sets(graph, comparison):
     comparison["exercises"] = []
     result = graph.assistant_graph.invoke(state("my last session"), config={"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]

@@ -655,6 +655,11 @@ class CoachAlert {
     this.resolvedBy,
     this.playerDeloadChoice,
     this.profileChanges,
+    this.weightPoints,
+    this.targetWeightKg,
+    this.distanceChangeKg,
+    this.windowDays,
+    this.thresholdKg,
     this.messageCode,
     this.messageParams,
     this.messageFallback,
@@ -699,8 +704,18 @@ class CoachAlert {
                     ),
                   ),
                 ),
-              )
+            )
             : null,
+        weightPoints: json['weight_points'] is List<dynamic>
+            ? (json['weight_points'] as List<dynamic>)
+                .map((dynamic point) => WeightTrendPoint.fromJson(
+                    point as Map<String, dynamic>))
+                .toList(growable: false)
+            : null,
+        targetWeightKg: (json['target_weight_kg'] as num?)?.toDouble(),
+        distanceChangeKg: (json['distance_change_kg'] as num?)?.toDouble(),
+        windowDays: (json['window_days'] as num?)?.toInt(),
+        thresholdKg: (json['threshold_kg'] as num?)?.toDouble(),
         messageCode: json['message_code'] is String
             ? json['message_code'] as String
             : null,
@@ -734,6 +749,11 @@ class CoachAlert {
   final String? resolvedBy;
   final Map<String, dynamic>? playerDeloadChoice;
   final Map<String, Map<String, String?>>? profileChanges;
+  final List<WeightTrendPoint>? weightPoints;
+  final double? targetWeightKg;
+  final double? distanceChangeKg;
+  final int? windowDays;
+  final double? thresholdKg;
   final String? messageCode;
   final Object? messageParams;
   final String? messageFallback;
@@ -744,6 +764,7 @@ class CoachAlert {
   static const String performanceRegressionKind = 'performance_regression';
   static const String stallKind = 'stall';
   static const String profileChangeKind = 'profile_change';
+  static const String weightOffTargetTrendKind = 'weight_off_target_trend';
 
   bool get isNew => state == 'new';
   bool get isAcknowledged => state == 'acknowledged';
@@ -754,6 +775,7 @@ class CoachAlert {
   bool get isPerformanceRegression => kind == performanceRegressionKind;
   bool get isStall => kind == stallKind;
   bool get isProfileChange => kind == profileChangeKind;
+  bool get isWeightOffTargetTrend => kind == weightOffTargetTrendKind;
 
   static const Map<String, String> _messageCodeByKind = <String, String>{
     missedExpectedDaysKind: 'coach_alert.missed_expected_days.v1',
@@ -762,6 +784,7 @@ class CoachAlert {
     deloadRecommendedKind: 'coach_alert.deload_recommended.v1',
     performanceRegressionKind: 'coach_alert.performance_regression.v1',
     profileChangeKind: 'coach_alert.profile_change.v1',
+    weightOffTargetTrendKind: 'coach_alert.weight_off_target_trend.v1',
   };
 
   String? get supportedMessageCode {
@@ -1643,6 +1666,7 @@ class PlayerProfile {
     this.currentGoal = '',
     this.injuriesOrLimitations = 'None',
     this.weightKg = 75,
+    this.targetWeightKg,
     this.assistantStyle = defaultAssistantStyle,
     this.assistantInstructions = '',
     this.playerControlsProgram = true,
@@ -1657,6 +1681,7 @@ class PlayerProfile {
         injuriesOrLimitations:
             json['injuries_or_limitations'] as String? ?? 'None',
         weightKg: (json['weight_kg'] as num?)?.toDouble() ?? 75,
+        targetWeightKg: (json['target_weight_kg'] as num?)?.toDouble(),
         assistantStyle: json['coach_tone'] as String? ?? defaultAssistantStyle,
         assistantInstructions: json['custom_instructions'] as String? ?? '',
         playerControlsProgram: json['player_controls_program'] as bool? ?? true,
@@ -1668,9 +1693,23 @@ class PlayerProfile {
   final String currentGoal;
   final String injuriesOrLimitations;
   final double weightKg;
+  final double? targetWeightKg;
   final String assistantStyle;
   final String assistantInstructions;
   final bool playerControlsProgram;
+
+  PlayerProfile copyWith({double? weightKg, double? targetWeightKg}) => PlayerProfile(
+        repPreference: repPreference,
+        weeklyFrequency: weeklyFrequency,
+        equipmentAccess: equipmentAccess,
+        currentGoal: currentGoal,
+        injuriesOrLimitations: injuriesOrLimitations,
+        weightKg: weightKg ?? this.weightKg,
+        targetWeightKg: targetWeightKg ?? this.targetWeightKg,
+        assistantStyle: assistantStyle,
+        assistantInstructions: assistantInstructions,
+        playerControlsProgram: playerControlsProgram,
+      );
 }
 
 /// `PUT /profile` response body.
@@ -1705,6 +1744,55 @@ class ProfileUpdateResult {
   final String? programMessage;
   final PlayerProfile? profile;
   final TrainingProgram? program;
+}
+
+/// The date-only result from `POST /profile/weight`.
+class WeightEntryResult {
+  const WeightEntryResult({required this.entryDate, required this.weightKg});
+
+  factory WeightEntryResult.fromJson(Map<String, dynamic> json) =>
+      WeightEntryResult(
+        entryDate: json['entry_date'] as String,
+        weightKg: (json['weight_kg'] as num).toDouble(),
+      );
+
+  final String entryDate;
+  final double weightKg;
+}
+
+class WeightTrendPoint {
+  const WeightTrendPoint({required this.date, required this.weightKg});
+
+  factory WeightTrendPoint.fromJson(Map<String, dynamic> json) =>
+      WeightTrendPoint(
+        date: json['date'] as String,
+        weightKg: (json['weight_kg'] as num).toDouble(),
+      );
+
+  final String date;
+  final double weightKg;
+}
+
+class WeightTrendResult {
+  const WeightTrendResult({
+    required this.points,
+    required this.changeKg,
+    required this.targetWeightKg,
+  });
+
+  factory WeightTrendResult.fromJson(Map<String, dynamic> json) =>
+      WeightTrendResult(
+        points: (json['points'] as List<dynamic>)
+            .map((dynamic point) => WeightTrendPoint.fromJson(
+                point as Map<String, dynamic>))
+            .toList(growable: false),
+        changeKg: (json['change_kg'] as num?)?.toDouble(),
+        targetWeightKg: (json['target_weight_kg'] as num?)?.toDouble(),
+      );
+
+  final List<WeightTrendPoint> points;
+  final double? changeKg;
+  final double? targetWeightKg;
 }
 
 const List<String> weekdayLabels = <String>[

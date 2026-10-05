@@ -36,6 +36,9 @@ COACH_ALERT_MESSAGE_PARAM_ALLOWLISTS = {
         {"exercise_name", "e1rm_delta", "status_badge"}
     ),
     "coach_alert.profile_change.v1": frozenset({"changed_fields"}),
+    "coach_alert.weight_off_target_trend.v1": frozenset(
+        {"distance_change_kg", "target_weight_kg", "window_days", "threshold_kg"}
+    ),
 }
 ERROR_MESSAGE_PARAM_ALLOWLISTS = {
     "http.bad_request.v1": frozenset(),
@@ -406,6 +409,35 @@ def _profile_change(evidence: Mapping[str, Any]) -> dict[str, Any]:
     )
 
 
+def _weight_off_target_trend(evidence: Mapping[str, Any]) -> dict[str, Any]:
+    change = _alert_number(evidence.get("distance_change_kg"))
+    target = _alert_number(evidence.get("target_weight_kg"))
+    days = evidence.get("window_days")
+    threshold = _alert_number(evidence.get("threshold_kg"))
+    if (
+        change is None
+        or target is None
+        or threshold is None
+        or isinstance(days, bool)
+        or not isinstance(days, int)
+    ):
+        return structured_message(None, {}, "Weight is moving away from its target.")
+    fallback = (
+        f"Weight moved away from the target by {change:.1f} kg over {days} days "
+        f"(alert threshold {threshold:g} kg; target {target:g} kg)."
+    )
+    return structured_message(
+        "coach_alert.weight_off_target_trend.v1",
+        {
+            "distance_change_kg": change,
+            "target_weight_kg": target,
+            "window_days": days,
+            "threshold_kg": threshold,
+        },
+        fallback,
+    )
+
+
 _COACH_ALERT_BUILDERS: dict[str, Callable[[Mapping[str, Any]], dict[str, Any]]] = {
     "missed_expected_days": _missed_days,
     "follow_up_due": _follow_up,
@@ -413,4 +445,5 @@ _COACH_ALERT_BUILDERS: dict[str, Callable[[Mapping[str, Any]], dict[str, Any]]] 
     "deload_recommended": _deload,
     "performance_regression": _regression,
     "profile_change": _profile_change,
+    "weight_off_target_trend": _weight_off_target_trend,
 }

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/core/display_language/message_resolver.dart';
+import 'package:mayos_mobile/src/core/models.dart';
 
 String _resolve(String code, Map<String, dynamic> params) =>
     resolveStructuredMessage(
@@ -174,5 +175,44 @@ void main() {
       ),
       contains('حان موعد المتابعة'),
     );
+  });
+
+  test('weight trend coach alert renders localized text and dated evidence', () {
+    final CoachAlert alert = CoachAlert.fromJson(<String, dynamic>{
+      'alert_id': 'alert-1',
+      'assignment_id': 'assignment-1',
+      'player_username': 'player',
+      'kind': CoachAlert.weightOffTargetTrendKind,
+      'state': 'new',
+      'created_at': '2026-10-05T12:00:00+00:00',
+      'message_code': 'coach_alert.weight_off_target_trend.v1',
+      'message_params': <String, dynamic>{
+        'distance_change_kg': 2.0,
+        'target_weight_kg': 70.0,
+        'window_days': 14,
+        'threshold_kg': 1.0,
+      },
+      'message_fallback': 'Weight moved away from the target by 2 kg.',
+      'distance_change_kg': 2.0,
+      'target_weight_kg': 70.0,
+      'window_days': 14,
+      'threshold_kg': 1.0,
+      'weight_points': <Map<String, dynamic>>[
+        <String, dynamic>{'date': '2026-09-21', 'weight_kg': 72.0},
+        <String, dynamic>{'date': '2026-10-05', 'weight_kg': 74.0},
+      ],
+    });
+
+    final String rawDescription = resolveCoachAlertDescription(alert, 'ar');
+    final String isolateStart = String.fromCharCode(0x2066);
+    final String isolateEnd = String.fromCharCode(0x2069);
+    expect(rawDescription, contains('${isolateStart}2 kg$isolateEnd'));
+    final String description = rawDescription
+        .replaceAll('\u2066', '')
+        .replaceAll('\u2069', '');
+    expect(description, contains('ابتعد الوزن عن الهدف بمقدار 2 kg'));
+    expect(description, contains('2026-09-21: 72 kg'));
+    expect(description, contains('2026-10-05: 74 kg'));
+    expect(description, contains('الوزن المستهدف: 70 kg'));
   });
 }

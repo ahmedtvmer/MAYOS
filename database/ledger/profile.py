@@ -12,6 +12,31 @@ from agent.prompts import DEFAULT_ASSISTANT_STYLE
 
 
 class LedgerProfileMixin:
+    def upsert_player_profile_with_weight_history(self, profile_data: dict, entry_date: str) -> None:
+        """Writes an explicit profile weight together with its dated ledger entry."""
+        with self.ledger_transaction():
+            self.upsert_player_profile(profile_data)
+            if "weight_kg" in profile_data:
+                self.upsert_weight_history_entry(entry_date, float(profile_data["weight_kg"]))
+
+    def upsert_weight_history_entry(self, entry_date: str, weight_kg: float) -> None:
+        """Keeps one weight value for a calendar day in this Training ledger."""
+        self.conn.execute(
+            "INSERT INTO weight_history (entry_date, weight_kg) VALUES (?, ?) "
+            "ON CONFLICT(entry_date) DO UPDATE SET weight_kg = excluded.weight_kg",
+            (str(entry_date), float(weight_kg)),
+        )
+        self._commit_ledger()
+
+    def list_weight_history(self, start_date: str, end_date: str) -> list[dict[str, Any]]:
+        """Returns dated weight entries in ascending calendar-day order."""
+        rows = self.conn.execute(
+            "SELECT entry_date, weight_kg FROM weight_history "
+            "WHERE entry_date >= ? AND entry_date <= ? ORDER BY entry_date ASC",
+            (str(start_date), str(end_date)),
+        ).fetchall()
+        return [{"entry_date": str(row[0]), "weight_kg": float(row[1])} for row in rows]
+
     def get_deload_choice(self) -> str | None:
         row = self.conn.execute("SELECT choice FROM deload_choices WHERE id = 1").fetchone()
         return str(row[0]) if row else None
@@ -67,6 +92,12 @@ class LedgerProfileMixin:
             "proportions": str(profile_data.get("proportions", "balanced")),
             "age": int(profile_data.get("age", 25)),
             "weight_kg": float(profile_data.get("weight_kg", 75.0)),
+            "target_weight_kg": (
+                float(profile_data["target_weight_kg"])
+                if profile_data.get("target_weight_kg") is not None
+                else None
+            ),
+            "target_weight_present": int("target_weight_kg" in profile_data),
             "height_cm": float(profile_data.get("height_cm", 175.0)),
             "rep_preference": str(profile_data.get("rep_preference", "balanced")),
             "current_goal": str(profile_data.get("current_goal", "hypertrophy")),
@@ -84,19 +115,22 @@ class LedgerProfileMixin:
         cursor.execute(
             """
             INSERT INTO user_profile (
-                id, gender, proportions, age, weight_kg, height_cm, rep_preference,
+                id, gender, proportions, age, weight_kg, target_weight_kg, height_cm, rep_preference,
                 current_goal, long_term_goal, weekly_frequency, training_age_years,
                 equipment_access, injuries_or_limitations, stress_and_sleep, coach_tone,
                 custom_instructions, created_at, updated_at
             ) VALUES (
-                :id, :gender, :proportions, :age, :weight_kg, :height_cm, :rep_preference,
+                :id, :gender, :proportions, :age, :weight_kg, :target_weight_kg, :height_cm, :rep_preference,
                 :current_goal, :long_term_goal, :weekly_frequency, :training_age_years,
                 :equipment_access, :injuries_or_limitations, :stress_and_sleep, :coach_tone,
                 :custom_instructions, :created_at, :updated_at
             )
             ON CONFLICT(id) DO UPDATE SET
                 gender = excluded.gender, proportions = excluded.proportions, age = excluded.age,
-                weight_kg = excluded.weight_kg, height_cm = excluded.height_cm,
+                weight_kg = excluded.weight_kg,
+                target_weight_kg = CASE WHEN :target_weight_present = 1
+                    THEN excluded.target_weight_kg ELSE user_profile.target_weight_kg END,
+                height_cm = excluded.height_cm,
                 rep_preference = excluded.rep_preference, current_goal = excluded.current_goal,
                 long_term_goal = excluded.long_term_goal, weekly_frequency = excluded.weekly_frequency,
                 training_age_years = excluded.training_age_years, equipment_access = excluded.equipment_access,

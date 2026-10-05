@@ -30,6 +30,14 @@ String resolveCoachAlertDescription(
     final String evidence = copy.profileChangeEvidence(alert.profileChanges);
     return evidence.isEmpty ? description : '$description\n$evidence';
   }
+  if (alert.isWeightOffTargetTrend && alert.weightPoints != null) {
+    final List<String> evidence = alert.weightPoints!
+        .map((WeightTrendPoint point) =>
+            copy.weightTrendPoint(point.date, _messageNumber(point.weightKg)))
+        .toList(growable: false);
+    return '$description\n'
+        '${copy.weightTrendEvidence(evidence, alert.targetWeightKg)}';
+  }
   return description;
 }
 
@@ -53,6 +61,21 @@ String? _legacyAlertFallback(CoachAlert alert, MessageCopy copy) {
         alert.statusBadge,
       ),
     CoachAlert.profileChangeKind => copy.profileChangeEvidence(alert.profileChanges),
+    CoachAlert.weightOffTargetTrendKind => alert.distanceChangeKg == null ||
+            alert.targetWeightKg == null ||
+            alert.windowDays == null ||
+            alert.thresholdKg == null
+        ? alert.messageFallback
+        : copy.weightOffTargetTrend(
+            alert.distanceChangeKg!,
+            alert.targetWeightKg!,
+            alert.windowDays!,
+            alert.thresholdKg!),
     _ => null,
   };
+}
+
+String _messageNumber(double value) {
+  final String fixed = value.toStringAsFixed(1);
+  return fixed.endsWith('.0') ? fixed.substring(0, fixed.length - 2) : fixed;
 }

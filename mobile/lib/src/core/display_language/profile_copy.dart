@@ -14,7 +14,11 @@ class ProfileCopy {
   String get currentGoal => isArabic ? 'الهدف الحالي' : 'Current goal';
   String get injuriesLimitations =>
       isArabic ? 'الإصابات أو القيود' : 'Injuries or limitations';
-  String get weightKg => isArabic ? 'الوزن (kg)' : 'Weight (kg)';
+  String get weightKg => isArabic ? 'الوزن (\u2066kg\u2069)' : 'Weight (kg)';
+  String get targetWeightKg => isArabic
+      ? 'الوزن المستهدف (\u2066kg\u2069، اختياري)'
+      : 'Target weight (kg, optional)';
+  String get logWeight => isArabic ? 'تسجيل الوزن' : 'Log weight';
   String get trainingDaysPerWeek =>
       isArabic ? 'أيام التدريب في الأسبوع' : 'Training days per week';
   String get repPreference => isArabic ? 'تفضيل التكرارات' : 'Rep preference';
@@ -64,7 +68,7 @@ class ProfileCopy {
       ? 'تحقق من معلومات ملفك وحاول مجددًا.'
       : 'Check your profile details and try again.';
   String weightRange(String min, String max) => isArabic
-      ? 'يجب أن يكون الوزن بين $min و$max kg.'
+      ? 'يجب أن يكون الوزن بين ${_ltr('$min kg')} و${_ltr('$max kg')}.'
       : 'Weight must be between $min and $max kg.';
   String chooseAllowed(String field) => isArabic
       ? 'اختر قيمة مسموحًا بها لـ$field.'

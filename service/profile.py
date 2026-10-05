@@ -1,5 +1,6 @@
 """Profile and coach-persona operations."""
 
+from dataclasses import dataclass
 from typing import Any
 
 from agent.program_generator import ProgramGenerationRequest, generate_program_draft_pipeline
@@ -9,16 +10,28 @@ from service.profile_change_alerts import normalize_profile_value
 from service.programs import COACH_CONTROLLED_ERROR, player_controls_program
 from service.program_analytics import ProgramAnalyticsActor, capture_program_generated
 from service import profile_change_alerts
+from service import weight_history
+from service.profile_fields import PROFILE_REBUILD_FIELDS
+from service.weight_trend_alerts import evaluate_for_player
 from utils.equipment_access import map_equipment_access
 
-# Profile facts that alter program structure. The intake API exposes this list
-# so clients can ask for confirmation without reimplementing the service rule.
-PROFILE_REBUILD_FIELDS = (
-    "injuries_or_limitations",
-    "equipment_access",
-    "weekly_frequency",
-    "rep_preference",
-)
+
+@dataclass(frozen=True)
+class WeightEntryCommand:
+    """Verified caller and submitted value for one Player weight write."""
+
+    ledger_id: str
+    player_account_id: str
+    weight_kg: float
+
+
+def record_weight_entry(db: Any, ledger: Any, command: WeightEntryCommand) -> weight_history.WeightTrendPoint:
+    """Writes a date-only weight entry, then evaluates its active Coach alert."""
+    point = weight_history.record_weight(
+        ledger, command.ledger_id, command.weight_kg
+    )
+    evaluate_for_player(db, command.player_account_id, ledger=ledger)
+    return point
 
 
 def get_profile(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, Any] | None:
@@ -62,6 +75,16 @@ def update_profile(
             for key in PROFILE_REBUILD_FIELDS
         )
         updated = {**profile, **payload}
+
+        def persist_profile() -> None:
+            if "weight_kg" in payload:
+                ledger.upsert_player_profile_with_weight_history(
+                    updated,
+                    weight_history.player_local_date(ledger, ledger_id).isoformat(),
+                )
+            else:
+                ledger.upsert_player_profile(updated)
+
         profile_change_alerts.record_profile_change(
             db,
             profile_change_alerts.ProfileChangeSnapshot(
@@ -98,14 +121,16 @@ def update_profile(
                     # Keep the profile and generated Program atomic, after each
                     # model call has been written to the catalog.
                     with ledger.ledger_transaction():
-                        ledger.upsert_player_profile(updated)
+                        persist_profile()
                         if program is not None:
                             ledger.save_training_program(program.model_dump())
             else:
                 program_blocked = True
-                ledger.upsert_player_profile(updated)
+                persist_profile()
         else:
-            ledger.upsert_player_profile(updated)
+            persist_profile()
+        if "weight_kg" in payload and player_account_id:
+            evaluate_for_player(db, player_account_id, ledger=ledger)
         if program is not None and player_account_id:
             persisted = ledger.get_active_program()
             if persisted is not None:

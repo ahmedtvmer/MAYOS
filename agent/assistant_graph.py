@@ -2,6 +2,7 @@
 import logging
 import math
 import re
+import sqlite3
 import sys
 import time
 from collections.abc import Generator, Sequence
@@ -14,7 +15,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
-from typing_extensions import TypedDict
+from typing_extensions import NotRequired, TypedDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
@@ -52,6 +53,16 @@ from agent.prompts import (
 from agent.telemetry_reconciler import (
     clean_movement_stem,
     reconcile_telemetry_query,
+)
+from service.player_weight_context import (
+    is_weight_context_relevant,
+    render_player_weight_context,
+)
+from service.weight_history import (
+    WeightTrend,
+    WeightTrendQuery,
+    get_weight_trend,
+    player_local_date,
 )
 from database.exercise_library.names import near_miss_exercise_ids
 from service import programs as programs_service
@@ -302,6 +313,7 @@ class AssistantState(TypedDict):
     custom_instructions: str
     preferred_name: str | None
     telemetry_context: str | None
+    weight_context: NotRequired[str | None]
     intent: IntentType | None
     intent_metadata: dict[str, Any]
     active_intents: list[dict[str, Any]] | None
@@ -377,7 +389,7 @@ def _graph_context(config: dict[str, Any] | None) -> tuple[Any, Any]:
 
 
 def hydrate_context_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
-    ledger, _ = _graph_context(config)
+    ledger, store = _graph_context(config)
     profile = ledger.get_player_profile()
     profile = profile if isinstance(profile, dict) else {}
     getter = getattr(ledger, "get_assistant_memory", None)
@@ -388,10 +400,35 @@ def hydrate_context_node(state: AssistantState, config: dict[str, Any] | None = 
     comparison = _session_comparison_context(ledger) if re.search(r"\b(?:session|workout|performance|compare|comparison|progress|sets?|reps?|rpe|load|heavier|improve)\b", recent, re.IGNORECASE) else None
     if comparison is not None:
         telemetry = _comparison_text(comparison, compact=True) + "\n" + str(telemetry or "")
+    messages = state.get("messages", [])
+    latest_user = next(
+        (message for message in reversed(messages) if isinstance(message, HumanMessage)),
+        None,
+    )
+    recent_user = _get_message_text(latest_user) if latest_user is not None else ""
+    weight_context = None
+    if is_weight_context_relevant(recent_user):
+        try:
+            as_of = player_local_date(ledger, str(state.get("trainee_id", "")))
+            weight_trend = get_weight_trend(
+                store,
+                WeightTrendQuery(
+                    ledger_id=str(state.get("trainee_id", "")), weeks=8, as_of=as_of
+                ),
+                ledger,
+            )
+        except sqlite3.Error:
+            logger.exception("Player weight history could not be loaded for assistant context.")
+            weight_trend = WeightTrend(points=(), change_kg=None)
+            as_of = None
+        weight_context = render_player_weight_context(
+            weight_trend, profile.get("target_weight_kg"), as_of=as_of
+        )
     return {
         "coach_tone": state.get("coach_tone") or profile.get("coach_tone") or DEFAULT_ASSISTANT_STYLE,
         "custom_instructions": state.get("custom_instructions") or profile.get("custom_instructions", ""),
         "telemetry_context": telemetry,
+        "weight_context": weight_context,
         "preferred_name": name,
     }
 
@@ -1694,6 +1731,7 @@ def build_prompt_payload(state: Dict[str, Any]) -> list[BaseMessage]:
         raise PromptBudgetError(INPUT_TOO_LONG_RESPONSE)
     context = [
         f"[TRAINEE CONTEXT]\n{state.get('telemetry_context') or 'Unavailable; do not infer history.'}",
+        state.get("weight_context") or "",
         render_assistant_style(
             state.get("coach_tone") or DEFAULT_ASSISTANT_STYLE,
             state.get("custom_instructions") or "",

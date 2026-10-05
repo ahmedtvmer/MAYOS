@@ -197,11 +197,7 @@ void main() {
       Directionality.of(tester.element(find.text('الملف التدريبي').first)),
       TextDirection.rtl,
     );
-    expect(
-      Directionality.of(
-          tester.element(find.byKey(const Key('weight_kg_field')))),
-      TextDirection.ltr,
-    );
+    expect(weightField.textDirection, TextDirection.ltr);
   });
 
   testWidgets('player previews access, consents, then ends the assignment',

@@ -54,6 +54,10 @@ class FakeMayosApi {
   String currentGoal = 'Get stronger';
   String injuriesOrLimitations = 'None';
   double weightKg = 75;
+  double? targetWeightKg;
+  int weightEntryRequests = 0;
+  double? lastLoggedWeightKg;
+  List<Map<String, dynamic>> weightHistoryPoints = <Map<String, dynamic>>[];
   final List<Map<String, dynamic>> profileUpdateBodies =
       <Map<String, dynamic>>[];
   int profileRebuildCalls = 0;
@@ -536,6 +540,10 @@ class FakeMayosApi {
         return _schedulePauses(request);
       case '/profile/persona':
         return _profilePersona(request);
+      case '/profile/weight':
+        return _recordWeight(request);
+      case '/profile/weight/trend':
+        return _weightTrend(request);
       case '/profile':
         return _profile(request);
       case '/onboarding/start':
@@ -2439,6 +2447,61 @@ class FakeMayosApi {
     return FakeResponse(200, _profileBody());
   }
 
+  FakeResponse _recordWeight(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!profileExists) {
+      return const FakeResponse(
+        404,
+        <String, dynamic>{'detail': 'No profile yet; complete onboarding.'},
+      );
+    }
+    final num? weight = request.body['weight_kg'] as num?;
+    if (weight == null || weight < 30 || weight > 250) {
+      return const FakeResponse(
+        400,
+        <String, dynamic>{'detail': 'Weight must be between 30 and 250 kg.'},
+      );
+    }
+    weightEntryRequests++;
+    weightKg = weight.toDouble();
+    lastLoggedWeightKg = weightKg;
+    final DateTime now = DateTime.now();
+    final String entryDate = '${now.year.toString().padLeft(4, '0')}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+    final Map<String, dynamic> point = <String, dynamic>{
+      'date': entryDate,
+      'weight_kg': weightKg,
+    };
+    weightHistoryPoints.removeWhere((Map<String, dynamic> prior) =>
+        prior['date'] == entryDate);
+    weightHistoryPoints.add(point);
+    weightHistoryPoints.sort((Map<String, dynamic> a, Map<String, dynamic> b) =>
+        '${a['date']}'.compareTo('${b['date']}'));
+    return FakeResponse(200, <String, dynamic>{
+      'entry_date': entryDate,
+      'weight_kg': weightKg,
+    });
+  }
+
+  FakeResponse _weightTrend(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    return FakeResponse(200, <String, dynamic>{
+      'points': weightHistoryPoints,
+      'change_kg': weightHistoryPoints.length < 2
+          ? null
+          : (weightHistoryPoints.last['weight_kg'] as num).toDouble() -
+              (weightHistoryPoints.first['weight_kg'] as num).toDouble(),
+      'target_weight_kg': targetWeightKg,
+    });
+  }
+
   Map<String, dynamic> _profileBody() => <String, dynamic>{
         'rep_preference': repPreference,
         'weekly_frequency': weeklyFrequency,
@@ -2446,6 +2509,7 @@ class FakeMayosApi {
         'current_goal': currentGoal,
         'injuries_or_limitations': injuriesOrLimitations,
         'weight_kg': weightKg,
+        'target_weight_kg': targetWeightKg,
         'coach_tone': assistantStyle,
         'custom_instructions': assistantInstructions,
         'player_controls_program': !coachControlsProgram,
@@ -2497,6 +2561,10 @@ class FakeMayosApi {
     if (injuries != null) injuriesOrLimitations = injuries;
     final String? goal = request.body['current_goal'] as String?;
     final num? weight = request.body['weight_kg'] as num?;
+    if (request.body.containsKey('target_weight_kg')) {
+      final num? target = request.body['target_weight_kg'] as num?;
+      targetWeightKg = target?.toDouble();
+    }
     if (goal != null) currentGoal = goal;
     if (weight != null) weightKg = weight.toDouble();
 
@@ -2761,6 +2829,14 @@ class FakeMayosApi {
       'type': 'float',
       'required': true,
       'profile_field': 'weight_kg',
+      'minimum': 30,
+      'maximum': 250
+    },
+    <String, dynamic>{
+      'name': 'target_weight_kg',
+      'type': 'float',
+      'required': false,
+      'profile_field': 'target_weight_kg',
       'minimum': 30,
       'maximum': 250
     },

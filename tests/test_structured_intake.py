@@ -10,6 +10,7 @@ import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -1057,3 +1058,206 @@ def test_specialization_still_changes_the_split(generation_db, monkeypatch):
     female, _ = program_generator.generate_program_pipeline(ledger=db.ledger)
 
     assert male.split_type != female.split_type
+
+
+def test_confirm_intake_appends_weight_history(api, monkeypatch):
+    client, db, _ = api
+    headers = _register(client, "weight_intake")
+    _ack(client, headers)
+    _fill(client, headers)
+    _spy_generation(db, monkeypatch)
+    before_confirmation = datetime.now(UTC).date().isoformat()
+
+    response = client.post("/onboarding/intake/confirm", headers=headers)
+
+    assert response.status_code == 200, response.text
+    with db.open_ledger("weight_intake") as ledger:
+        profile = ledger.get_player_profile()
+        history = ledger.list_weight_history("0000-01-01", "9999-12-31")
+    valid_confirmation_days = {
+        before_confirmation,
+        datetime.now(UTC).date().isoformat(),
+    }
+    assert profile["weight_kg"] == 64.5
+    assert profile["target_weight_kg"] is None
+    assert history[0]["entry_date"] in valid_confirmation_days
+    assert history[0]["weight_kg"] == 64.5
+    assert len(history) == 1
+
+
+def test_weight_entry_uses_players_local_day_at_utc_rollover(api, monkeypatch):
+    from service import weight_history
+
+    class FrozenDateTime(datetime):
+        current = datetime(2026, 10, 5, 23, 30, tzinfo=UTC)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current if tz else cls.current.replace(tzinfo=None)
+
+    monkeypatch.setattr(weight_history, "datetime", FrozenDateTime)
+    client, db, _ = api
+    headers = _register(client, "local_weight_day")
+    with db.open_ledger("local_weight_day") as ledger:
+        ledger.upsert_player_profile({"weight_kg": 70.0})
+        ledger.append_training_schedule(
+            "local_weight_day",
+            [1],
+            "Asia/Riyadh",
+            "2026-01-01",
+            "2026-01-01T00:00:00+00:00",
+        )
+
+    response = client.post(
+        "/profile/weight", headers=headers, json={"weight_kg": 71.0}
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["entry_date"] == "2026-10-06"
+    trend = client.get("/profile/weight/trend", headers=headers)
+    assert trend.status_code == 200, trend.text
+    assert trend.json()["points"] == [
+        {"date": "2026-10-06", "weight_kg": 71.0},
+    ]
+
+
+def test_optional_target_weight_can_be_set_during_intake(api, monkeypatch):
+    client, db, _ = api
+    headers = _register(client, "target_intake")
+    _ack(client, headers)
+    _fill(client, headers)
+    _spy_generation(db, monkeypatch)
+
+    answer = client.put(
+        "/onboarding/intake/answers/target_weight_kg",
+        headers=headers,
+        json={"value": 68.5},
+    )
+    assert answer.status_code == 200, answer.text
+    response = client.post("/onboarding/intake/confirm", headers=headers)
+
+    assert response.status_code == 200, response.text
+    with db.open_ledger("target_intake") as ledger:
+        assert ledger.get_player_profile()["target_weight_kg"] == 68.5
+
+
+def test_profile_weight_edit_appends_history(api):
+    client, db, _ = api
+    headers = _register(client, "weight_profile")
+    baseline_day = (datetime.now(UTC).date() - timedelta(days=1)).isoformat()
+    with db.open_ledger("weight_profile") as ledger:
+        ledger.upsert_player_profile({"weight_kg": 70.0})
+        ledger.upsert_weight_history_entry(baseline_day, 70.0)
+
+    response = client.put("/profile", headers=headers, json={"weight_kg": 71.5})
+
+    assert response.status_code == 200, response.text
+    with db.open_ledger("weight_profile") as ledger:
+        profile = ledger.get_player_profile()
+        history = ledger.list_weight_history(baseline_day, "9999-12-31")
+    assert profile["weight_kg"] == 71.5
+    assert history[0] == {"entry_date": baseline_day, "weight_kg": 70.0}
+    assert len(history) == 2
+    assert history[-1]["weight_kg"] == 71.5
+
+
+def test_weight_entry_endpoint_updates_profile_and_replaces_same_day(api):
+    client, db, _ = api
+    headers = _register(client, "weight_endpoint")
+    with db.open_ledger("weight_endpoint") as ledger:
+        ledger.upsert_player_profile({"weight_kg": 70.0})
+
+    recorded_dates = []
+    for value in (72.0, 73.5):
+        response = client.post("/profile/weight", headers=headers, json={"weight_kg": value})
+        assert response.status_code == 200, response.text
+        assert response.json()["weight_kg"] == value
+        recorded_dates.append(response.json()["entry_date"])
+
+    invalid_low = client.post("/profile/weight", headers=headers, json={"weight_kg": 29.9})
+    invalid_high = client.post("/profile/weight", headers=headers, json={"weight_kg": 250.1})
+    assert invalid_low.status_code == invalid_high.status_code == 422
+
+    with db.open_ledger("weight_endpoint") as ledger:
+        profile = ledger.get_player_profile()
+        entries = ledger.list_weight_history(recorded_dates[0], recorded_dates[0])
+    assert profile["weight_kg"] == 73.5
+    assert recorded_dates[0] == recorded_dates[1]
+    assert entries == [{"entry_date": recorded_dates[0], "weight_kg": 73.5}]
+
+
+def test_profile_target_weight_is_nullable_and_uses_intake_range(api):
+    client, db, _ = api
+    headers = _register(client, "target_profile")
+    with db.open_ledger("target_profile") as ledger:
+        ledger.upsert_player_profile({"weight_kg": 70.0})
+
+    for target in (30, 250):
+        response = client.put(
+            "/profile", headers=headers, json={"target_weight_kg": target}
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["profile"]["target_weight_kg"] == target
+
+    for target in (29.9, 250.1):
+        response = client.put(
+            "/profile", headers=headers, json={"target_weight_kg": target}
+        )
+        assert response.status_code == 422
+
+    cleared = client.put(
+        "/profile", headers=headers, json={"target_weight_kg": None}
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["profile"]["target_weight_kg"] is None
+
+
+def test_weight_trend_endpoint_returns_points_change_and_target(api):
+    client, db, _ = api
+    headers = _register(client, "weight_trend_route")
+    today = datetime.now(UTC).date()
+    earlier = (today - timedelta(days=7)).isoformat()
+    older = (today - timedelta(days=30)).isoformat()
+    with db.open_ledger("weight_trend_route") as ledger:
+        ledger.upsert_player_profile({"weight_kg": 73.0, "target_weight_kg": 70.0})
+        ledger.upsert_weight_history_entry(older, 71.0)
+        ledger.upsert_weight_history_entry(earlier, 72.0)
+        ledger.upsert_weight_history_entry(today.isoformat(), 73.0)
+
+    response = client.get("/profile/weight/trend", headers=headers)
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "points": [
+            {"date": older, "weight_kg": 71.0},
+            {"date": earlier, "weight_kg": 72.0},
+            {"date": today.isoformat(), "weight_kg": 73.0},
+        ],
+        "change_kg": 2.0,
+        "target_weight_kg": 70.0,
+    }
+
+    short = client.get("/profile/weight/trend?weeks=1", headers=headers)
+    assert short.status_code == 200, short.text
+    assert [point["date"] for point in short.json()["points"]] == [
+        earlier,
+        today.isoformat(),
+    ]
+    assert client.get("/profile/weight/trend?weeks=0", headers=headers).status_code == 422
+    assert client.get("/profile/weight/trend?weeks=53", headers=headers).status_code == 422
+
+
+def test_weight_trend_route_checks_profile_before_reading_history(api, monkeypatch):
+    from service import weight_history
+
+    client, _, _ = api
+    headers = _register(client, "profile_missing_weight_trend")
+    monkeypatch.setattr(
+        weight_history,
+        "get_weight_trend",
+        lambda *args, **kwargs: pytest.fail("history loaded without a profile"),
+    )
+
+    response = client.get("/profile/weight/trend", headers=headers)
+
+    assert response.status_code == 404

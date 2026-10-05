@@ -15,9 +15,17 @@ import 'package:mayos_mobile/src/core/ui/mayos_bottom_navigation.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/player/exercise/exercise_detail_screen.dart';
 import 'package:mayos_mobile/src/features/player/progress/progress_tab.dart';
+import 'package:mayos_mobile/src/features/player/progress/progress_chart.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
+
+String _todayIso() {
+  final DateTime now = DateTime.now();
+  return '${now.year.toString().padLeft(4, '0')}-'
+      '${now.month.toString().padLeft(2, '0')}-'
+      '${now.day.toString().padLeft(2, '0')}';
+}
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     {int attempts = 40}) async {
@@ -199,6 +207,90 @@ Future<void> _openProgressTab(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('weight Progress chart shows dated points and target reference',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..weightHistoryPoints = <Map<String, dynamic>>[
+        <String, dynamic>{'date': '2026-09-01', 'weight_kg': 81.0},
+        <String, dynamic>{'date': '2026-09-15', 'weight_kg': 82.5},
+      ]
+      ..targetWeightKg = 80.0;
+    await _pumpProgress(tester, fake);
+    await tester.tap(find.text('Body weight'));
+    await _pumpUntilFound(tester, find.byKey(const Key('progress.weight_chart')));
+
+    final ProgressLineChart chart = tester.widget<ProgressLineChart>(
+      find.byKey(const Key('progress.weight_chart')),
+    );
+    expect(chart.points.map((ProgressChartPoint point) => point.date),
+        <String>['2026-09-01', '2026-09-15']);
+    expect(chart.points.map((ProgressChartPoint point) => point.value),
+        <double>[81, 82.5]);
+    expect(chart.referenceValue, 80.0);
+    expect(find.text('Target weight · 80 kg'), findsOneWidget);
+    expect(chart.semanticsSummary, contains('Target weight: 80 kg'));
+  });
+
+  testWidgets('empty weight history explains how to start', (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _pumpProgress(tester, fake);
+    await tester.tap(find.text('Body weight'));
+    await _pumpUntilFound(tester, find.byKey(const Key('progress.add_weight')));
+
+    expect(
+      find.text('Log your weight to start tracking changes over time.'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('progress.add_weight')), findsOneWidget);
+    expect(find.byKey(const Key('progress.weight_chart')), findsNothing);
+  });
+
+  testWidgets('Arabic weight target isolates its Western value and unit',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..weightHistoryPoints = <Map<String, dynamic>>[
+        <String, dynamic>{'date': '2026-09-01', 'weight_kg': 81.0},
+        <String, dynamic>{'date': '2026-09-15', 'weight_kg': 82.5},
+      ]
+      ..targetWeightKg = 80.0;
+    await _pumpProgress(tester, fake, languageCode: 'ar');
+    await tester.tap(find.text('وزن الجسم'));
+    await _pumpUntilFound(tester, find.byKey(const Key('progress.weight_chart')));
+
+    final String isolateStart = String.fromCharCode(0x2066);
+    final String isolateEnd = String.fromCharCode(0x2069);
+    final String expectedValue = '${isolateStart}80 kg$isolateEnd';
+    final Text target = tester.widget<Text>(
+      find.byKey(const Key('progress.weight_target')),
+    );
+    final ProgressLineChart chart = tester.widget<ProgressLineChart>(
+      find.byKey(const Key('progress.weight_chart')),
+    );
+
+    expect(target.data, contains(expectedValue));
+    expect(chart.semanticsSummary, contains(expectedValue));
+  });
+
+  testWidgets('Progress weight entry uses the shared weight endpoint',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _pumpProgress(tester, fake);
+    await tester.tap(find.text('Body weight'));
+    await _pumpUntilFound(tester, find.byKey(const Key('progress.add_weight')));
+    await tester.tap(find.byKey(const Key('progress.add_weight')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('progress.weight_entry_field')));
+    await tester.enterText(
+        find.byKey(const Key('progress.weight_entry_field')), '82.5');
+    await tester.tap(find.byKey(const Key('progress.weight_entry_submit')));
+    await _pumpUntilFound(
+        tester, find.text('Weight logged for ${_todayIso()}.'));
+
+    expect(fake.weightEntryRequests, 1);
+    expect(fake.lastLoggedWeightKg, 82.5);
+    expect(fake.weightHistoryPoints, hasLength(1));
+  });
+
   testWidgets('Arabic Progress shows localized labels and Western chart digits',
       (tester) async {
     final FakeMayosApi fake = _signedInFake();

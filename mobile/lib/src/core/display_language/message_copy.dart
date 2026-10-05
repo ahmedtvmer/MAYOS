@@ -233,6 +233,35 @@ class MessageCopy {
         .join('\n');
   }
 
+  String weightTrendEvidence(List<String> points, double? targetWeightKg) {
+    final String evidence = points.map(_ltr).join(isArabic ? '، ' : '; ');
+    final String target = targetWeightKg == null
+        ? (isArabic ? 'غير متاح' : 'not available')
+        : _ltr('${_formatMessageNumber(targetWeightKg)} kg');
+    return isArabic
+        ? 'نقاط الوزن المؤرخة: $evidence. الوزن المستهدف: $target.'
+        : 'Dated weight points: $evidence. Target weight: $target.';
+  }
+
+  String weightTrendPoint(String date, String weight) =>
+      isArabic ? _ltr('$date: $weight kg') : '$date: $weight kg';
+
+  String weightOffTargetTrend(
+    double changeKg,
+    double targetWeightKg,
+    int windowDays,
+    double thresholdKg,
+  ) =>
+      isArabic
+          ? 'ابتعد الوزن عن الهدف بمقدار '
+              '${_ltr('${_formatMessageNumber(changeKg)} kg')} خلال آخر ${_ltr('$windowDays')} يومًا '
+              '(حد التنبيه ${_ltr('${_formatMessageNumber(thresholdKg)} kg')}؛ '
+              'الهدف ${_ltr('${_formatMessageNumber(targetWeightKg)} kg')}).'
+          : 'Weight moved away from the target by '
+              '${_formatMessageNumber(changeKg)} kg over $windowDays days '
+              '(alert threshold ${_formatMessageNumber(thresholdKg)} kg; '
+              'target ${_formatMessageNumber(targetWeightKg)} kg).';
+
   String _profileValue(String? value) {
     if (value == null || value.isEmpty) {
       return isArabic ? 'غير محدد' : 'Not set';
@@ -315,3 +344,8 @@ const Map<String, String> _specificArabicErrors = <String, String>{
 const String _limitPlaceholder = 'الحد المحدد';
 
 String _ltr(Object value) => '\u2066$value\u2069';
+
+String _formatMessageNumber(double value) {
+  final String fixed = value.toStringAsFixed(1);
+  return fixed.endsWith('.0') ? fixed.substring(0, fixed.length - 2) : fixed;
+}

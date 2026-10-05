@@ -5,6 +5,7 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from service.analytics import PROPERTY_TYPES, WORKOUT_SYNC_FAILURE_REASONS
+from service.intake import IntakeValidationError, validate_answer
 
 from agent.ProgramState import (
     GeneratedProgramSchema,
@@ -442,6 +443,11 @@ class CoachAssignmentsOut(BaseModel):
     assignments: list[CoachRosterEntryOut]
 
 
+class WeightTrendPointOut(BaseModel):
+    date: str
+    weight_kg: float
+
+
 class CoachAlertOut(BaseModel):
     """One catalog-side alert for the coach alert centre (ADR 030/031/032).
 
@@ -487,6 +493,11 @@ class CoachAlertOut(BaseModel):
     latest_session_date: str | None = None
     player_deload_choice: dict[str, Any] | None = None
     profile_changes: dict[str, dict[str, Any]] | None = None
+    weight_points: list[WeightTrendPointOut] | None = None
+    target_weight_kg: float | None = None
+    distance_change_kg: float | None = None
+    window_days: int | None = None
+    threshold_kg: float | None = None
     message_code: str | None = None
     message_params: dict[str, Any] = Field(default_factory=dict)
     message_fallback: str | None = None
@@ -799,6 +810,7 @@ class ProfileUpdate(BaseModel):
     equipment_access: str | None = None
     injuries_or_limitations: str | None = None
     weight_kg: float | None = None
+    target_weight_kg: float | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -806,14 +818,13 @@ class ProfileUpdate(BaseModel):
         """Use the onboarding catalog for every editable intake field."""
         if not isinstance(value, dict):
             return value
-        from service.intake import IntakeValidationError, validate_answer
-
         normalized = dict(value)
         for field_name in (
             "current_goal",
             "equipment_access",
             "injuries_or_limitations",
             "weight_kg",
+            "target_weight_kg",
             "weekly_frequency",
             "rep_preference",
         ):
@@ -823,6 +834,35 @@ class ProfileUpdate(BaseModel):
                 except IntakeValidationError as exc:
                     raise ValueError(str(exc)) from None
         return normalized
+
+
+class WeightEntryIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    weight_kg: float
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_weight_against_intake(cls, value: Any) -> Any:
+        if not isinstance(value, dict) or "weight_kg" not in value:
+            return value
+        normalized = dict(value)
+        try:
+            normalized["weight_kg"] = validate_answer("weight_kg", normalized["weight_kg"])
+        except IntakeValidationError as exc:
+            raise ValueError(str(exc)) from None
+        return normalized
+
+
+class WeightEntryOut(BaseModel):
+    entry_date: str
+    weight_kg: float
+
+
+class WeightTrendOut(BaseModel):
+    points: list[WeightTrendPointOut]
+    change_kg: float | None
+    target_weight_kg: float | None
 
 
 class PersonaUpdate(BaseModel):

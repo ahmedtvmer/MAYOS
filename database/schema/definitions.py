@@ -18,6 +18,7 @@ from database.migration_manager import PERFORMED_DATE_CORRECTIONS_DDL
 from database.migration_manager import PROGRAM_DRAFTS_DDL
 from database.migration_manager import SESSION_CARDIO_DDL
 from database.migration_manager import SESSION_WARMUP_SETS_DDL
+from database.migration_manager import WEIGHT_HISTORY_DDL
 from database.migration_manager import get_ledger_schema_version
 from database.migration_manager import set_ledger_schema_version
 
@@ -104,6 +105,7 @@ class SchemaMixin:
                 proportions TEXT NOT NULL,
                 age INTEGER NOT NULL,
                 weight_kg REAL NOT NULL,
+                target_weight_kg REAL,
                 height_cm REAL NOT NULL,
                 rep_preference TEXT DEFAULT 'balanced',
                 current_goal TEXT NOT NULL,
@@ -296,6 +298,7 @@ class SchemaMixin:
                 *CHECKPOINT_REVIEWS_DDL,
                 *DELOAD_CHOICES_DDL,
                 *PROGRAM_DRAFTS_DDL,
+                *WEIGHT_HISTORY_DDL,
                 *EQUIPMENT_ACCESS_DDL,
             )
         ))

@@ -15,6 +15,7 @@ from service import account_deletion as account_deletion_service
 from service import coach_analytics
 from service.check_ins import evaluate_follow_up
 from service.missed_day_alerts import evaluate_assignment
+from service.weight_trend_alerts import evaluate_assignment as evaluate_weight_trend
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,14 @@ def run_sweep(db: Any, now: datetime | None = None) -> dict[str, int]:
                 counts["evaluated"] += 1
             counts["alerts_created"] += int(result.get("alerts_created", 0))
             counts["alerts_resolved"] += int(result.get("alerts_resolved", 0))
+        try:
+            counts["alerts_created"] += int(evaluate_weight_trend(db, assignment, now=now))
+        except Exception:
+            counts["errors"] += 1
+            logger.exception(
+                "Weight trend alert evaluation failed for assignment %s",
+                assignment.get("assignment_id"),
+            )
         try:
             follow_up = evaluate_follow_up(db, assignment, now=now)
             counts["follow_ups_created"] += int(follow_up.get("created", 0))

@@ -213,6 +213,10 @@
       "kind": "method",
       "signature": "(self, account_id: str) -> dict[str, str | None] | None"
     },
+    "get_latest_coach_alert_created_at": {
+      "kind": "method",
+      "signature": "(self, player_account_id: str, kind: str) -> str | None"
+    },
     "get_linked_sign_in_account_id": {
       "kind": "method",
       "signature": "(self, provider: str, subject: str) -> str | None"

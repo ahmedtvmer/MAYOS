@@ -16,7 +16,7 @@ from utils.equipment_access import (
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 24
+CURRENT_LEDGER_SCHEMA_VERSION: int = 26
 
 PROGRAM_DRAFTS_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS program_drafts ("
@@ -24,6 +24,13 @@ PROGRAM_DRAFTS_DDL: tuple[str, ...] = (
     " draft_json TEXT NOT NULL,"
     " created_at TEXT NOT NULL,"
     " updated_at TEXT NOT NULL"
+    ")",
+)
+
+WEIGHT_HISTORY_DDL: tuple[str, ...] = (
+    "CREATE TABLE IF NOT EXISTS weight_history ("
+    " entry_date TEXT PRIMARY KEY,"
+    " weight_kg REAL NOT NULL"
     ")",
 )
 
@@ -605,6 +612,35 @@ def _migrate_v23_to_v24(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE program_exercises ADD COLUMN tempo TEXT")
 
 
+def _migrate_v24_to_v25(conn: sqlite3.Connection) -> None:
+    """Stores daily Player weight entries and seeds the current profile weight."""
+    for statement in WEIGHT_HISTORY_DDL:
+        conn.execute(statement)
+
+    if not _ledger_table_exists(conn, "user_profile"):
+        return
+    columns = {column[1] for column in conn.execute("PRAGMA table_info(user_profile)")}
+    if "weight_kg" not in columns:
+        return
+    profile = conn.execute("SELECT weight_kg FROM user_profile WHERE id = 1").fetchone()
+    if profile is None or profile[0] is None:
+        return
+
+    conn.execute(
+        "INSERT OR IGNORE INTO weight_history (entry_date, weight_kg) VALUES (?, ?)",
+        (datetime.now(UTC).date().isoformat(), float(profile[0])),
+    )
+
+
+def _migrate_v25_to_v26(conn: sqlite3.Connection) -> None:
+    """Adds the optional Player target weight to the Training profile."""
+    if not _ledger_table_exists(conn, "user_profile"):
+        return
+    columns = {column[1] for column in conn.execute("PRAGMA table_info(user_profile)")}
+    if "target_weight_kg" not in columns:
+        conn.execute("ALTER TABLE user_profile ADD COLUMN target_weight_kg REAL")
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -714,6 +750,8 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     21: _migrate_v21_to_v22,
     22: _migrate_v22_to_v23,
     23: _migrate_v23_to_v24,
+    24: _migrate_v24_to_v25,
+    25: _migrate_v25_to_v26,
 }
 
 

@@ -36,6 +36,7 @@ const Map<String, String> _profileFieldTypes = <String, String>{
   'current_goal': 'text',
   'injuries_or_limitations': 'text',
   'weight_kg': 'float',
+  'target_weight_kg': 'float',
   'weekly_frequency': 'int',
   'equipment_access': 'enum',
   'rep_preference': 'enum',
@@ -65,6 +66,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       TextEditingController();
   final TextEditingController _weightController =
       TextEditingController(text: '75');
+  final TextEditingController _targetWeightController = TextEditingController();
   PlayerProfile? _savedProfile;
   OnboardingIntake? _intake;
 
@@ -120,6 +122,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _currentGoalController.dispose();
     _injuriesOrLimitationsController.dispose();
     _weightController.dispose();
+    _targetWeightController.dispose();
     super.dispose();
   }
 
@@ -205,6 +208,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _currentGoalController.text = profile.currentGoal;
         _injuriesOrLimitationsController.text = profile.injuriesOrLimitations;
         _weightController.text = profile.weightKg.toString();
+        _targetWeightController.text = profile.targetWeightKg?.toString() ?? '';
         _repPreference = repOptions.contains(profile.repPreference)
             ? profile.repPreference
             : repOptions.first;
@@ -236,6 +240,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         : parsedWeight != saved.weightKg;
     final String currentGoal = _currentGoalController.text.trim();
     final String injuries = _injuriesOrLimitationsController.text.trim();
+    final String targetWeightText = _targetWeightController.text.trim();
+    final double? parsedTargetWeight = targetWeightText.isEmpty
+        ? null
+        : double.tryParse(targetWeightText);
+    final bool targetWeightChanged =
+        parsedTargetWeight != saved.targetWeightKg ||
+            (targetWeightText.isNotEmpty && parsedTargetWeight == null);
     final Map<String, Object?> changedValues = <String, Object?>{
       if (_weeklyFrequency != saved.weeklyFrequency)
         'weekly_frequency': _weeklyFrequency,
@@ -247,6 +258,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (injuries != saved.injuriesOrLimitations)
         'injuries_or_limitations': injuries,
       if (weightChanged) 'weight_kg': parsedWeight ?? _weightController.text,
+      if (targetWeightChanged)
+        'target_weight_kg': parsedTargetWeight ?? targetWeightText,
     };
     for (final MapEntry<String, Object?> entry in changedValues.entries) {
       final String contractName = entry.key;
@@ -301,6 +314,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 weightKg: changedValues.containsKey('weight_kg')
                     ? parsedWeight
                     : null,
+                targetWeightKg: parsedTargetWeight,
+                updateTargetWeight: changedValues.containsKey('target_weight_kg'),
                 equipmentAccess: changedValues['equipment_access'] as String?,
               );
       if (!mounted) return;
@@ -317,6 +332,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               currentGoal: currentGoal,
               injuriesOrLimitations: injuries,
               weightKg: parsedWeight ?? saved.weightKg,
+              targetWeightKg: targetWeightChanged
+                  ? parsedTargetWeight
+                  : saved.targetWeightKg,
               playerControlsProgram: saved.playerControlsProgram,
             );
         _notice = result.programBlocked
@@ -324,6 +342,53 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             : result.programRebuilt
                 ? _copy.programRebuilt
                 : _copy.profileSaved;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _noticeFailure = _mutationFailure(error);
+        _noticeIsError = true;
+      });
+    }
+  }
+
+  Future<void> _logWeight() async {
+    final OnboardingIntake? intake = _intake;
+    final PlayerProfile? saved = _savedProfile;
+    final double? weight = double.tryParse(_weightController.text.trim());
+    final IntakeField? field = intake?.field('weight_kg');
+    if (saved == null || field == null || !isFieldAnswerValid(field, weight)) {
+      _showWeightLogValidation(field);
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _notice = null;
+      _noticeFailure = null;
+      _noticeIsError = false;
+    });
+    await _submitWeightEntry(weight!, saved);
+  }
+
+  void _showWeightLogValidation(IntakeField? field) {
+    setState(() {
+      _notice = _validationMessage(field);
+      _noticeFailure = null;
+      _noticeIsError = true;
+    });
+  }
+
+  Future<void> _submitWeightEntry(double weight, PlayerProfile saved) async {
+    try {
+      final WeightEntryResult weightEntry =
+          await ref.read(apiClientProvider).recordWeight(weightKg: weight);
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _savedProfile = saved.copyWith(weightKg: weightEntry.weightKg);
+        _weightController.text = weightEntry.weightKg.toString();
+        _notice = displayCopyOf(context).weightEntrySaved(weightEntry.entryDate);
       });
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -551,14 +616,31 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           textCapitalization: TextCapitalization.sentences,
         ),
         const SizedBox(height: MayosSpacing.sm),
-        Directionality(
+        MayosTextField(
+          fieldKey: const Key('weight_kg_field'),
+          controller: _weightController,
+          label: copy.weightKg,
+          enabled: !_saving,
           textDirection: TextDirection.ltr,
-          child: MayosTextField(
-            fieldKey: const Key('weight_kg_field'),
-            controller: _weightController,
-            label: copy.weightKg,
-            enabled: !_saving,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        ),
+        const SizedBox(height: MayosSpacing.sm),
+        MayosTextField(
+          fieldKey: const Key('target_weight_kg_field'),
+          controller: _targetWeightController,
+          label: copy.targetWeightKg,
+          enabled: !_saving,
+          textDirection: TextDirection.ltr,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        ),
+        const SizedBox(height: MayosSpacing.xs),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: OutlinedButton.icon(
+            key: const Key('log_weight_button'),
+            onPressed: _saving ? null : _logWeight,
+            icon: const Icon(Icons.monitor_weight_outlined),
+            label: Text(copy.logWeight),
           ),
         ),
         const SizedBox(height: MayosSpacing.sm),

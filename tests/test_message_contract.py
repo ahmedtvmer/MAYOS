@@ -135,3 +135,29 @@ def test_intake_message_codes_have_resolver_and_arabic_copy_entries():
     assert program_message_code in messages.MESSAGE_PARAM_ALLOWLISTS
     assert program_message_code in resolver_codes
     assert program_message_code in arabic_codes
+
+
+def test_weight_trend_alert_message_contains_allowlisted_typed_values():
+    message = messages.coach_alert_message(
+        "weight_off_target_trend",
+        {
+            "distance_change_kg": 1.4,
+            "target_weight_kg": 70,
+            "window_days": 14,
+            "threshold_kg": 1.0,
+        },
+    )
+
+    assert message == {
+        "message_code": "coach_alert.weight_off_target_trend.v1",
+        "message_params": {
+            "distance_change_kg": 1.4,
+            "target_weight_kg": 70.0,
+            "window_days": 14,
+            "threshold_kg": 1.0,
+        },
+        "message_fallback": (
+            "Weight moved away from the target by 1.4 kg over 14 days "
+            "(alert threshold 1 kg; target 70 kg)."
+        ),
+    }

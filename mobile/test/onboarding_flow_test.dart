@@ -198,6 +198,8 @@ Future<void> _answerAll(WidgetTester tester,
   await _tapAndFind(tester, find.byKey(const Key('onboarding_continue')),
       find.byKey(const Key('weight_kg_increment')));
   await _tapAndFind(tester, find.byKey(const Key('onboarding_continue')),
+      find.byKey(const Key('target_weight_kg_direct_toggle')));
+  await _tapAndFind(tester, find.byKey(const Key('onboarding_skip')),
       find.byKey(const Key('training_age_years_increment')));
   await _tapAndFind(tester, find.byKey(const Key('onboarding_continue')),
       find.byKey(const Key('current_goal_input')));
@@ -371,6 +373,37 @@ void main() {
     expect(fake.intakeDisclosureAcknowledged, isTrue);
     expect(find.text(questionFor('gender')), findsOneWidget);
     expect(find.text("I'm a coach — enter coach code"), findsNothing);
+  });
+
+  testWidgets('target weight is an optional onboarding answer', (tester) async {
+    final Map<String, Object> earlierAnswers =
+        Map<String, Object>.from(_requiredAnswers)..remove('weight_kg');
+    final FakeMayosApi fake = _fake(acknowledged: true)
+      ..intakeAnswers.addAll(earlierAnswers);
+    await _pumpOnboarding(tester, fake);
+
+    expect(find.text('What do you weigh?'), findsOneWidget);
+    await _tapAndFind(tester,
+        find.byKey(const Key('weight_kg_direct_toggle')),
+        find.byKey(const Key('weight_kg_input')));
+    await tester.enterText(
+        find.byKey(const Key('weight_kg_input')), '64.5');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('onboarding_continue')));
+    await _pumpUntilFound(tester, find.text('Do you have a target weight?'));
+
+    await _tapAndFind(tester,
+        find.byKey(const Key('target_weight_kg_direct_toggle')),
+        find.byKey(const Key('target_weight_kg_input')));
+    await tester.enterText(
+        find.byKey(const Key('target_weight_kg_input')), '68.5');
+    await tester.pump();
+    expect(_continueEnabled(tester), isTrue);
+    await _tapAndFind(tester, find.byKey(const Key('onboarding_continue')),
+        find.byKey(const Key('training_age_years_increment')));
+
+    expect(fake.intakeAnswers['target_weight_kg'], 68.5);
+    expect(fake.intakeAnswers['weight_kg'], 64.5);
   });
 
   testWidgets('raw onboarding loading state uses the desktop player column',

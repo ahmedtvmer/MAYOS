@@ -18,6 +18,8 @@ class OnboardingCopy {
         'age' => isArabic ? 'كم عمرك؟' : 'How old are you?',
         'height_cm' => isArabic ? 'ما طولك؟' : 'How tall are you?',
         'weight_kg' => isArabic ? 'ما وزنك؟' : 'What do you weigh?',
+        'target_weight_kg' =>
+          isArabic ? 'هل لديك وزن مستهدف؟' : 'Do you have a target weight?',
         'training_age_years' =>
           isArabic ? 'منذ متى وأنت تتدرب؟' : 'How long have you been training?',
         'current_goal' => isArabic
@@ -74,6 +76,7 @@ class OnboardingCopy {
         'age' => isArabic ? 'العمر' : 'Age',
         'height_cm' => isArabic ? 'الطول' : 'Height',
         'weight_kg' => isArabic ? 'الوزن' : 'Weight',
+        'target_weight_kg' => isArabic ? 'الوزن المستهدف' : 'Target weight',
         'training_age_years' => isArabic ? 'سنوات التدريب' : 'Training age',
         'current_goal' => isArabic ? 'الهدف الحالي' : 'Current goal',
         'long_term_goal' => isArabic ? 'الهدف طويل المدى' : 'Long-term goal',
@@ -90,9 +93,24 @@ class OnboardingCopy {
   String? unitFor(String fieldName) => switch (fieldName) {
         'height_cm' => 'cm',
         'weight_kg' => 'kg',
+        'target_weight_kg' => 'kg',
         'age' || 'training_age_years' => isArabic ? 'سنوات' : 'years',
         _ => null,
       };
+
+  String measurementValue(String number, String unit) =>
+      isArabic ? '\u2066$number $unit\u2069' : '$number $unit';
+
+  String measurementUnit(String unit) => isArabic && _isLatinUnit(unit)
+      ? '\u2066$unit\u2069'
+      : unit;
+
+  String measurementRange(String range, String? unit) {
+    if (!isArabic) return unit == null ? range : '$range $unit';
+    if (unit == null) return '\u2066$range\u2069';
+    if (_isLatinUnit(unit)) return '\u2066$range $unit\u2069';
+    return '\u2066$range\u2069 $unit';
+  }
 
   String yearsValue(String number) {
     final num? numericValue = num.tryParse(number);
@@ -110,8 +128,13 @@ class OnboardingCopy {
       ? '${arabicCountPhrase(days, ArabicCountNoun.day)} في الأسبوع'
       : '$days ${days == 1 ? 'day' : 'days'}/week';
 
-  String numericRangeHint(int minimum, int maximum) =>
-      isArabic ? '$minimum إلى $maximum' : '$minimum to $maximum';
+  String numericRangeHint(int minimum, int maximum) => isArabic
+      ? '${_ltr('$minimum')} إلى ${_ltr('$maximum')}'
+      : '$minimum to $maximum';
+
+  bool _isLatinUnit(String unit) => unit == 'kg' || unit == 'cm';
+
+  String _ltr(String value) => '\u2066$value\u2069';
 
   String get notAnswered => isArabic ? 'لم تتم الإجابة' : 'Not answered';
 }

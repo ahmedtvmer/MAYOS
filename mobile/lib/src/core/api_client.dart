@@ -1548,6 +1548,8 @@ class ApiClient {
     String? currentGoal,
     String? injuriesOrLimitations,
     double? weightKg,
+    double? targetWeightKg,
+    bool updateTargetWeight = false,
   }) async {
     final Map<String, dynamic> body = <String, dynamic>{
       if (weeklyFrequency != null) 'weekly_frequency': weeklyFrequency,
@@ -1557,6 +1559,7 @@ class ApiClient {
       if (injuriesOrLimitations != null)
         'injuries_or_limitations': injuriesOrLimitations,
       if (weightKg != null) 'weight_kg': weightKg,
+      if (updateTargetWeight) 'target_weight_kg': targetWeightKg,
     };
     final response = await _send(
       () => _dio.put<dynamic>('/profile', data: body),
@@ -1564,6 +1567,38 @@ class ApiClient {
     return _parseBody(
       response.data,
       ProfileUpdateResult.fromJson,
+      _invalidProfile,
+      failureMessage: _invalidProfileFailure,
+    );
+  }
+
+  /// Records today's Player weight and updates the latest Training profile value.
+  Future<WeightEntryResult> recordWeight({required double weightKg}) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/profile/weight',
+        data: <String, dynamic>{'weight_kg': weightKg},
+      ),
+    );
+    return _parseBody(
+      response.data,
+      WeightEntryResult.fromJson,
+      _invalidProfile,
+      failureMessage: _invalidProfileFailure,
+    );
+  }
+
+  /// Returns a date-only weight series and the current target.
+  Future<WeightTrendResult> weightTrend({int weeks = 8}) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+        '/profile/weight/trend',
+        queryParameters: <String, dynamic>{'weeks': weeks},
+      ),
+    );
+    return _parseBody(
+      response.data,
+      WeightTrendResult.fromJson,
       _invalidProfile,
       failureMessage: _invalidProfileFailure,
     );

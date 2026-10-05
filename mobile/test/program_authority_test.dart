@@ -168,6 +168,44 @@ void main() {
     expect(find.text('This rebuilds your program'), findsNothing);
   });
 
+  testWidgets('player can log a weight entry from the Training profile',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake()..weightKg = 82.5;
+    await _pumpApp(tester, fake);
+    await _openProfile(tester);
+
+    await tester.enterText(find.byKey(const Key('weight_kg_field')), '83');
+    await tester.ensureVisible(find.byKey(const Key('log_weight_button')));
+    await tester.tap(find.byKey(const Key('log_weight_button')));
+    await _pumpUntilFound(tester, find.text('Weight logged for ${_todayIso()}.'));
+
+    expect(fake.weightEntryRequests, 1);
+    expect(fake.lastLoggedWeightKg, 83);
+    expect(fake.weightKg, 83);
+  });
+
+  testWidgets('Training profile can set and clear a target weight',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake();
+    await _pumpApp(tester, fake);
+    await _openProfile(tester);
+
+    await tester.enterText(
+        find.byKey(const Key('target_weight_kg_field')), '82.5');
+    await tester.ensureVisible(find.text('Save profile'));
+    await tester.tap(find.text('Save profile'));
+    await _pumpUntilFound(tester, find.text('Profile saved.'));
+
+    expect(fake.targetWeightKg, 82.5);
+    expect(fake.profileUpdateBodies.last['target_weight_kg'], 82.5);
+
+    await tester.enterText(find.byKey(const Key('target_weight_kg_field')), '');
+    await tester.ensureVisible(find.text('Save profile'));
+    await tester.tap(find.text('Save profile'));
+    await _pumpUntilFound(tester, find.text('Profile saved.'));
+    expect(fake.targetWeightKg, isNull);
+  });
+
   testWidgets('older intake contract shows a service update error instead of hanging',
       (tester) async {
     final FakeMayosApi fake = _playerFake()

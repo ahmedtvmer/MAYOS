@@ -154,8 +154,16 @@ Turning a spreadsheet a Coach uploads into the Program draft of a Player on an a
 _Avoid_: Program migration, program upload
 
 **Training profile**:
-The editable facts a player can update after onboarding: current goal, Equipment access, injuries or limitations, and weight. Body proportions remain onboarding-only.
+The editable facts a player can update after onboarding: current goal, Equipment access, injuries or limitations, latest weight, and optional Target weight. Weight history records each local-day weight entry; the profile continues to show the latest value. Body proportions remain onboarding-only.
 _Arabic_: الملف التدريبي
+
+**Weight history**:
+The dated record of a Player's bodyweight in the Training ledger, with at most one entry per Player-local calendar day. A later entry on the same day replaces that day's value; the Training profile shows the latest weight.
+_Arabic_: سجل الوزن
+
+**Target weight**:
+An optional bodyweight goal, in kg, saved in the Training profile and used as a reference for Player progress context and active Coach alerts.
+_Arabic_: الوزن المستهدف
 
 **Body proportions**:
 A player's self-reported comparison of leg and torso length, recorded as coaching context.

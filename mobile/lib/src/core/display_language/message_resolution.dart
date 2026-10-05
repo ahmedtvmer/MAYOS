@@ -68,6 +68,12 @@ const Map<String, Set<String>> _paramKeys = <String, Set<String>>{
     'status_badge',
   },
   'coach_alert.profile_change.v1': <String>{'changed_fields'},
+  'coach_alert.weight_off_target_trend.v1': <String>{
+    'distance_change_kg',
+    'target_weight_kg',
+    'window_days',
+    'threshold_kg',
+  },
   'http.bad_request.v1': <String>{},
   'http.unauthorized.v1': <String>{},
   'http.forbidden.v1': <String>{},
@@ -185,6 +191,7 @@ final Map<String, _MessageTemplate> _templates = <String, _MessageTemplate>{
   'coach_alert.deload_recommended.v1': _deload,
   'coach_alert.performance_regression.v1': _regression,
   'coach_alert.profile_change.v1': _profileChange,
+  'coach_alert.weight_off_target_trend.v1': _weightOffTargetTrend,
   'http.bad_request.v1': _badRequest,
   'http.unauthorized.v1': _unauthorized,
   'http.forbidden.v1': _forbidden,
@@ -342,6 +349,17 @@ String? _profileChange(Map<String, dynamic> params, MessageCopy copy) {
     return null;
   }
   return copy.profileChange(rawFields.cast<String>());
+}
+
+String? _weightOffTargetTrend(Map<String, dynamic> params, MessageCopy copy) {
+  final double? distanceChange = _number(params['distance_change_kg']);
+  final double? target = _number(params['target_weight_kg']);
+  final int? windowDays = _count(params['window_days']);
+  final double? threshold = _number(params['threshold_kg']);
+  if (distanceChange == null || target == null || windowDays == null || threshold == null) {
+    return null;
+  }
+  return copy.weightOffTargetTrend(distanceChange, target, windowDays, threshold);
 }
 
 int? _count(Object? value) => value is int && value >= 0 ? value : null;

@@ -1,5 +1,7 @@
 # tests/test_migration_manager.py
 import sqlite3
+from datetime import date as calendar_date
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -65,7 +67,7 @@ def test_v18_upgrade_adds_deload_choice(temp_db_env):
         default_ledger_id="v18lifter",
     )
     try:
-        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 24
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 26
         assert migrated.ledger.conn.execute(
             "SELECT started_at FROM onboarding_analytics WHERE id = 1"
         ).fetchone() is None
@@ -123,7 +125,7 @@ def test_v20_upgrade_allows_most_reps_records_without_backfilling(temp_db_env):
 
     apply_lazy_migrations(conn, "v20player", db.ledgers_dir, backups_dir)
 
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 24
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 26
     assert conn.execute(
         "SELECT id, record_type, value FROM personal_records"
     ).fetchall() == [("old", "max_weight", 100.0)]
@@ -146,8 +148,115 @@ def test_v22_upgrade_adds_program_drafts(temp_db_env):
 
     columns = {row[1] for row in conn.execute("PRAGMA table_info(program_drafts)")}
     assert columns == {"assignment_id", "draft_json", "created_at", "updated_at"}
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 24
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 26
     conn.close()
+
+
+@pytest.mark.parametrize(
+    ("profile_weight", "expected_history"),
+    [
+        (73.4, [("2026-09-12", 73.4)]),
+        (None, []),
+    ],
+)
+def test_v24_upgrade_seeds_profile_weight_only_when_present(
+    temp_db_env, monkeypatch, profile_weight, expected_history
+):
+    from database import migration_manager
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 9, 12, tzinfo=tz)
+
+    monkeypatch.setattr(migration_manager, "datetime", FrozenDateTime)
+    db, _, backups_dir = temp_db_env
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE user_profile (id INTEGER PRIMARY KEY, weight_kg REAL)")
+    conn.execute("INSERT INTO user_profile VALUES (1, ?)", (profile_weight,))
+    conn.execute("PRAGMA user_version = 24")
+    conn.commit()
+
+    apply_lazy_migrations(conn, "v24player", db.ledgers_dir, backups_dir)
+
+    assert conn.execute("SELECT entry_date, weight_kg FROM weight_history").fetchall() == expected_history
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 26
+    conn.close()
+
+
+def test_weight_trend_filters_window_and_reports_endpoint_change(temp_db_env, monkeypatch):
+    from datetime import datetime
+
+    from service import weight_history
+    from service.weight_history import WeightTrendQuery, get_weight_trend
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 1, 29, tzinfo=tz)
+
+    monkeypatch.setattr(weight_history, "datetime", FrozenDateTime)
+
+    db, _, _ = temp_db_env
+    with db.open_ledger("alice") as ledger:
+        ledger.upsert_weight_history_entry("2025-12-31", 82.0)
+        ledger.upsert_weight_history_entry("2026-01-01", 80.0)
+        ledger.upsert_weight_history_entry("2026-01-10", 78.5)
+        ledger.upsert_weight_history_entry("2026-01-29", 77.0)
+
+    trend = get_weight_trend(db, WeightTrendQuery("alice", 4))
+
+    assert [(point.date.isoformat(), point.weight_kg) for point in trend.points] == [
+        ("2026-01-01", 80.0),
+        ("2026-01-10", 78.5),
+        ("2026-01-29", 77.0),
+    ]
+    assert trend.change_kg == -3.0
+
+
+def test_v25_upgrade_adds_nullable_target_weight(temp_db_env):
+    db, _, backups_dir = temp_db_env
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE user_profile (id INTEGER PRIMARY KEY, weight_kg REAL)")
+    conn.execute("INSERT INTO user_profile VALUES (1, 73.0)")
+    conn.execute("PRAGMA user_version = 25")
+    conn.commit()
+
+    apply_lazy_migrations(conn, "v25player", db.ledgers_dir, backups_dir)
+
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(user_profile)")}
+    assert "target_weight_kg" in columns
+    assert conn.execute("SELECT target_weight_kg FROM user_profile").fetchone() == (None,)
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 26
+    conn.close()
+
+
+def test_weight_trend_empty_and_one_point_have_no_change(temp_db_env, monkeypatch):
+    from datetime import datetime
+
+    from service import weight_history
+    from service.weight_history import WeightTrendQuery, get_weight_trend
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 2, 1, tzinfo=tz)
+
+    monkeypatch.setattr(weight_history, "datetime", FrozenDateTime)
+
+    db, _, _ = temp_db_env
+    day = calendar_date(2026, 2, 1)
+    query = WeightTrendQuery("alice", 4)
+    empty = get_weight_trend(db, query)
+    assert empty.points == ()
+    assert empty.change_kg is None
+
+    with db.open_ledger("alice") as ledger:
+        ledger.upsert_weight_history_entry(day.isoformat(), 75.0)
+
+    one = get_weight_trend(db, query)
+    assert [(point.date, point.weight_kg) for point in one.points] == [(day, 75.0)]
+    assert one.change_kg is None
 
 
 def test_v23_upgrade_adds_tempo_to_program_exercises(temp_db_env):
@@ -166,7 +275,7 @@ def test_v23_upgrade_adds_tempo_to_program_exercises(temp_db_env):
     assert conn.execute(
         "SELECT notes, tempo FROM program_exercises WHERE id = 'exercise-1'"
     ).fetchone() == ("Keep control", None)
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 24
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 26
     conn.close()
 
 

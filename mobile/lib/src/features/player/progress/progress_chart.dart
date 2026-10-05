@@ -27,9 +27,11 @@ class ProgressLineChart extends StatefulWidget {
     required this.points,
     required this.metricLabel,
     required this.unit,
-    required this.exerciseName,
+    required this.label,
     this.selectedIndex,
     this.onPointSelected,
+    this.referenceValue,
+    this.referenceLabel,
     this.height = 208,
     this.copy = const MayosCopy('en'),
   });
@@ -41,25 +43,36 @@ class ProgressLineChart extends StatefulWidget {
 
   /// Explicit unit, e.g. "kg".
   final String unit;
-  final String exerciseName;
+  final String label;
   final int? selectedIndex;
   final ValueChanged<int>? onPointSelected;
+  final double? referenceValue;
+  final String? referenceLabel;
   final double height;
   final MayosCopy copy;
 
   /// The accessibility summary read in place of the painted chart.
   String get semanticsSummary {
     if (points.isEmpty) {
-      return copy.chartNoSessions(metricLabel, exerciseName);
+      return copy.chartNoSessions(metricLabel, label);
     }
     final String first = shortDate(points.first.date, isArabic: copy.isArabic);
     if (points.length == 1) {
-      return copy.chartOneSession(metricLabel, exerciseName, first,
+      final String summary = copy.chartOneSession(metricLabel, label, first,
           _formatValue(points.first.value), unit);
+      return _appendReference(summary);
     }
     final String last = shortDate(points.last.date, isArabic: copy.isArabic);
-    return copy.chartManySessions(metricLabel, exerciseName, points.length,
+    final String summary = copy.chartManySessions(metricLabel, label, points.length,
         first, last, _formatValue(points.last.value), unit);
+    return _appendReference(summary);
+  }
+
+  String _appendReference(String summary) {
+    if (referenceValue == null || referenceLabel == null) return summary;
+    return '$summary. ${copy.chartReferenceValue(
+      referenceLabel!, _formatValue(referenceValue!), unit,
+    )}';
   }
 
   @override
@@ -124,6 +137,7 @@ class _ProgressLineChartState extends State<ProgressLineChart> {
                   size: Size(width, widget.height),
                   painter: _ProgressLinePainter(
                     points: widget.points,
+                    referenceValue: widget.referenceValue,
                     unit: widget.unit,
                     selectedIndex: widget.selectedIndex,
                     color: c.chartPrimary,
@@ -149,6 +163,7 @@ class _ProgressLineChartState extends State<ProgressLineChart> {
 class _ProgressLinePainter extends CustomPainter {
   _ProgressLinePainter({
     required this.points,
+    required this.referenceValue,
     required this.unit,
     required this.selectedIndex,
     required this.color,
@@ -163,6 +178,7 @@ class _ProgressLinePainter extends CustomPainter {
   });
 
   final List<ProgressChartPoint> points;
+  final double? referenceValue;
   final String unit;
   final int? selectedIndex;
   final Color color;
@@ -201,6 +217,11 @@ class _ProgressLinePainter extends CustomPainter {
       minValue = math.min(minValue, point.value);
       maxValue = math.max(maxValue, point.value);
     }
+    final double? reference = referenceValue;
+    if (reference != null && reference.isFinite) {
+      minValue = math.min(minValue, reference);
+      maxValue = math.max(maxValue, reference);
+    }
     final AxisTicks ticks = niceAxisTicks(minValue, maxValue);
     final double tickMin = ticks.min;
     final double tickMax = ticks.max;
@@ -227,6 +248,22 @@ class _ProgressLinePainter extends CustomPainter {
         centerVertically: true,
         textDirection: TextDirection.ltr,
       );
+    }
+
+    if (reference != null && reference.isFinite) {
+      final double y = yFor(reference);
+      final Paint referencePaint = Paint()
+        ..color = labelColor
+        ..strokeWidth = 1.6;
+      const double dashWidth = 6;
+      const double gapWidth = 4;
+      for (double x = left; x < right; x += dashWidth + gapWidth) {
+        canvas.drawLine(
+          Offset(x, y),
+          Offset(math.min(x + dashWidth, right), y),
+          referencePaint,
+        );
+      }
     }
 
     // The x labels are drawn first/last; the first is dropped when the two
@@ -345,6 +382,7 @@ class _ProgressLinePainter extends CustomPainter {
         oldDelegate.gridColor != gridColor ||
         oldDelegate.labelColor != labelColor ||
         oldDelegate.surfaceColor != surfaceColor ||
+        oldDelegate.referenceValue != referenceValue ||
         !_samePoints(oldDelegate.points, points);
   }
 

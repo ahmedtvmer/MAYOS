@@ -117,6 +117,15 @@ numbers use Western digits.
 | Could not load this Checkpoint review. | تعذر تحميل مراجعة محطة التقدم. |
 | Strength | القوة |
 | Volume | الحجم التدريبي |
+| Body weight | وزن الجسم |
+| Target weight | الوزن المستهدف |
+| Target weight · {value} kg | الوزن المستهدف · ⁦{value} kg⁩ |
+| Target weight: {value} kg | الوزن المستهدف: ⁦{value} kg⁩ |
+| Add today's weight | إضافة وزن اليوم |
+| Log today's weight | تسجيل الوزن |
+| Log your weight to start tracking changes over time. | سجّل وزنك لبدء متابعة التغيّر عبر الوقت. |
+| Weight logged for {date}. | تم تسجيل الوزن بتاريخ ⁦{date}⁩. |
+| Weight must be between {min} and {max} kg. | يجب أن يكون الوزن بين ⁦{min} kg⁩ و⁦{max} kg⁩. |
 | Estimated 1RM | الحد الأقصى التقديري لتكرار واحد |
 | Recent sessions | الحصص الأخيرة |
 | View exercise | عرض التمرين |
@@ -195,6 +204,8 @@ numbers use Western digits.
 | How old are you? | كم عمرك؟ |
 | How tall are you? | ما طولك؟ |
 | What do you weigh? | ما وزنك؟ |
+| Do you have a target weight? | هل لديك وزن مستهدف؟ |
+| {value} kg | ⁦{value} kg⁩ |
 | How long have you been training? | منذ متى وأنت تتدرب؟ |
 | What's your main goal right now? | ما هدفك الأساسي الآن؟ |
 | Where do you want to be long term? | ما هدفك على المدى الطويل؟ |
@@ -221,6 +232,7 @@ numbers use Western digits.
 | Age | العمر |
 | Height | الطول |
 | Weight | الوزن |
+| Target weight | الوزن المستهدف |
 | Training age | سنوات التدريب |
 | Current goal | الهدف الحالي |
 | Long-term goal | الهدف طويل المدى |
@@ -233,7 +245,7 @@ numbers use Western digits.
 | Not answered | لم تتم الإجابة |
 | years | سنوات |
 | {count} days/week | {Arabic count phrase for days} في الأسبوع |
-| {minimum} to {maximum} | {minimum} إلى {maximum} |
+| {minimum} to {maximum} | ⁦{minimum}⁩ إلى ⁦{maximum}⁩ |
 
 ## Onboarding flow, review, and validation
 
@@ -334,7 +346,7 @@ days” and “rest for two seconds”).
 | Mark set not done | إلغاء تحديد المجموعة |
 | Mark Cardio done | تحديد اللياقة كمكتملة |
 | Mark Cardio not done | إلغاء تحديد اللياقة |
-| Weight (kg) | الوزن (kg) |
+| Weight (kg) | الوزن (⁦kg⁩) |
 | Reps | التكرارات |
 | Reps in reserve | التكرارات المتبقية |
 | {exercise} · set {setNumber} · {field} | {exercise} · مجموعة {setNumber} · {field} |
@@ -478,7 +490,10 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 | Update the profile facts used to personalize your training. | حدّث معلومات الملف التي تساعد على تخصيص تدريبك. |
 | Current goal | الهدف الحالي |
 | Injuries or limitations | الإصابات أو القيود |
-| Weight (kg) | الوزن (kg) |
+| Weight (kg) | الوزن (⁦kg⁩) |
+| Log weight | تسجيل الوزن |
+| Weight logged for {date}. | تم تسجيل الوزن بتاريخ ⁦{date}⁩. |
+| Target weight (kg, optional) | الوزن المستهدف (⁦kg⁩، اختياري) |
 | Training days per week | أيام التدريب في الأسبوع |
 | Rep preference | تفضيل التكرارات |
 | Equipment access | المعدات المتاحة |
@@ -505,7 +520,7 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 | Pause scheduled. | تمت جدولة التوقف. |
 | Pause scheduled; your coach was notified. | تمت جدولة التوقف وإبلاغ مدربك. |
 | Check your profile details and try again. | تحقق من معلومات ملفك وحاول مجددًا. |
-| Weight must be between {min} and {max} kg. | يجب أن يكون الوزن بين {min} و{max} kg. |
+| Weight must be between {min} and {max} kg. | يجب أن يكون الوزن بين ⁦{min} kg⁩ و⁦{max} kg⁩. |
 | Choose an allowed {field}. | اختر قيمة مسموحًا بها لـ{field}. |
 | Check your {field} and try again. | تحقق من {field} وحاول مجددًا. |
 | Enter an IANA timezone, e.g. Europe/London or UTC. | أدخل منطقة زمنية بصيغة IANA، مثل Europe/London أو UTC. |
@@ -764,6 +779,8 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 | Player chose to undo deload for the next workout only | اختار اللاعب التراجع عن تخفيف التدريب للحصة التدريبية التالية فقط |
 | Performance regression — {exercise}: e1RM {delta} kg ({status}) | تراجع الأداء — {exercise}: e1RM {delta} kg ({status}) |
 | Training profile changed: injuries or limitations, equipment access | تغير الملف التدريبي: الإصابات أو القيود، المعدات المتاحة |
+| Weight moved away from the target by {change} kg over {windowDays} days (alert threshold {threshold} kg; target {target} kg). | ابتعد الوزن عن الهدف بمقدار ⁦{change} kg⁩ خلال آخر ⁦{windowDays}⁩ يومًا (حد التنبيه ⁦{threshold} kg⁩؛ الهدف ⁦{target} kg⁩). |
+| Dated weight points: {points}. Target weight: {target}. | نقاط الوزن المؤرخة: {points}. الوزن المستهدف: ⁦{target} kg⁩. |
 | Injuries or limitations: {before} → {after} | الإصابات أو القيود: {before} → {after} |
 | Equipment access: {before} → {after} | المعدات المتاحة: {before} → {after} |
 | Not set (profile change value) | غير محدد |

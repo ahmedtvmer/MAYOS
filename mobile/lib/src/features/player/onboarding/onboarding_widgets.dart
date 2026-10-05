@@ -77,7 +77,7 @@ String displayAnswer(IntakeField field, {required OnboardingCopy copy}) {
         return activeCopy.yearsValue(number);
       }
       final String unit = activeCopy.unitFor(field.name) ?? '';
-      return unit.isEmpty ? number : '$number $unit';
+      return unit.isEmpty ? number : activeCopy.measurementValue(number, unit);
     default:
       return answer.toString();
   }
@@ -821,7 +821,8 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
             children: <Widget>[
               Semantics(
                 label:
-                    '${copy.reviewLabel(widget.fieldName, serverLabel: widget.fieldLabel)} $display ${widget.unit ?? ''}'
+                    '${copy.reviewLabel(widget.fieldName, serverLabel: widget.fieldLabel)} '
+                        '${widget.unit == null ? display : copy.measurementValue(display, widget.unit!)}'
                         .trim(),
                 excludeSemantics: true,
                 child: Row(
@@ -846,7 +847,7 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Text(
-                          widget.unit!,
+                          copy.measurementUnit(widget.unit!),
                           style: MayosTypography.of(context).label
                               .copyWith(color: c.textSecondary),
                         ),
@@ -885,8 +886,7 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
           children: <Widget>[
             Expanded(
               child: Text(
-                widget.unit == null ? range : '$range ${widget.unit}',
-                textDirection: TextDirection.ltr,
+                copy.measurementRange(range, widget.unit),
                 textAlign: TextAlign.end,
                 style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
               ),
@@ -908,28 +908,26 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
         ),
         if (_direct) ...<Widget>[
           const SizedBox(height: MayosSpacing.xs),
-          Directionality(
+          MayosTextField(
+            fieldKey: Key('${widget.fieldName}_input'),
+            controller: _controller,
             textDirection: TextDirection.ltr,
-            child: MayosTextField(
-              fieldKey: Key('${widget.fieldName}_input'),
-              controller: _controller,
-              keyboardType: widget.integer
-                  ? TextInputType.number
-                  : const TextInputType.numberWithOptions(decimal: true),
-              hint: copy.numericRangeHint(
-                widget.minimum.round(),
-                widget.maximum.round(),
-              ),
-              onChanged: (String text) {
-                final String trimmed = text.trim();
-                if (trimmed.isEmpty) {
-                  widget.onChanged(null);
-                  return;
-                }
-                final num? parsed = num.tryParse(trimmed);
-                widget.onChanged(parsed);
-              },
+            keyboardType: widget.integer
+                ? TextInputType.number
+                : const TextInputType.numberWithOptions(decimal: true),
+            hint: copy.numericRangeHint(
+              widget.minimum.round(),
+              widget.maximum.round(),
             ),
+            onChanged: (String text) {
+              final String trimmed = text.trim();
+              if (trimmed.isEmpty) {
+                widget.onChanged(null);
+                return;
+              }
+              final num? parsed = num.tryParse(trimmed);
+              widget.onChanged(parsed);
+            },
           ),
         ],
       ],
