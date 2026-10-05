@@ -24,7 +24,9 @@ from agent.program_prescription import (
 )
 from service import analytics
 from service.assignments import authorized_player_ledger
-from service.coach_programs import record_program_publication
+from service.coach_programs import ProgramPublicationDetails, record_program_publication
+from service.program_change_summary import summarize_program_change
+from database.exercise_resolution import resolve_exercise_display_row
 from service.program_analytics import ProgramAnalyticsActor
 
 
@@ -433,13 +435,14 @@ def _publish_program(
                 coach_account_id,
                 assignment_context["assignment"]["started_at"],
             )
+            previous_program = ledger.get_active_program()
             if publishes_draft:
                 draft_record = ledger.get_program_draft(assignment_id)
                 if draft_record is None:
                     raise ProgramDraftNotFound("Program draft not found.")
                 source_draft = draft_record["draft"]
             else:
-                active_program = ledger.get_active_program()
+                active_program = previous_program
                 if active_program is None:
                     raise ActiveProgramNotFound("No active program to approve.")
                 if active_program.version != approve_version:
@@ -447,6 +450,11 @@ def _publish_program(
                 source_draft = _active_program_as_draft(active_program)
             program_data = _published_program(
                 source_draft, db, coach_account_id, ledger
+            )
+            program_change_summary = summarize_program_change(
+                previous_program,
+                PersistedProgramSchema.model_validate(program_data),
+                lambda exercise_id: _published_exercise_display_name(db, exercise_id),
             )
             ledger.save_training_program(
                 program_data,
@@ -461,11 +469,21 @@ def _publish_program(
         db,
         assignment_context,
         published,
-        actor=ProgramAnalyticsActor(coach_account_id, "coach"),
-        first_for_assignment=not prior_publication,
-        client=client,
+        ProgramPublicationDetails(
+            actor=ProgramAnalyticsActor(coach_account_id, "coach"),
+            first_for_assignment=not prior_publication,
+            change_summary=program_change_summary,
+            client=client,
+        ),
     )
     return published
+
+
+def _published_exercise_display_name(db: Any, exercise_id: str) -> str | None:
+    row = resolve_exercise_display_row(db, exercise_id)
+    if row is None:
+        return None
+    return row.get("name") or row.get("display_name")
 
 
 def publish_program_draft(

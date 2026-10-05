@@ -1134,6 +1134,18 @@ void main() {
       'message': 'Your coach published program version 1.',
       'created_at': '2026-09-24T11:00:00Z',
       'read_at': null,
+      'program_change_summary': <String, dynamic>{
+        'version': 1,
+        'unchanged': false,
+        'changes': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'type': 'exercise_replaced',
+            'day': 'Lower 1',
+            'before': 'Back Squat',
+            'after': 'Safety Bar Squat',
+          },
+        ],
+      },
     });
     await _pumpApp(tester, fake);
 
@@ -1145,11 +1157,19 @@ void main() {
 
     expect(
         find.text('Your coach published program version 1.'), findsOneWidget);
+    expect(
+      find.textContaining('Back Squat → Safety Bar Squat on Lower 1'),
+      findsOneWidget,
+    );
+    expect(find.text('View program'), findsOneWidget);
     expect(find.textContaining('program_published'), findsOneWidget);
 
     await tester.tap(find.text('Mark all read'));
     await _pumpUntilFound(tester, find.byIcon(Icons.notifications_none));
     expect(fake.playerNotices.first['read_at'], isNotNull);
+
+    await tester.tap(find.text('View program'));
+    await _pumpUntilFound(tester, find.text('Upper/Lower 4x'));
   });
 
   test('malformed player-notice payloads fail closed with ApiException',

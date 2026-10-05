@@ -336,6 +336,7 @@ class AssignmentNotice {
     required this.message,
     required this.createdAt,
     this.readAt,
+    this.programChangeSummary,
   });
 
   factory AssignmentNotice.fromJson(Map<String, dynamic> json) =>
@@ -345,6 +346,8 @@ class AssignmentNotice {
         message: json['message'] as String? ?? '',
         createdAt: json['created_at'] as String? ?? '',
         readAt: json['read_at'] as String?,
+        programChangeSummary:
+            json['program_change_summary'] as Map<String, dynamic>?,
       );
 
   final String noticeId;
@@ -352,6 +355,7 @@ class AssignmentNotice {
   final String message;
   final String createdAt;
   final String? readAt;
+  final Map<String, dynamic>? programChangeSummary;
 
   bool get isUnread => readAt == null || readAt!.isEmpty;
 }

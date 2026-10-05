@@ -728,6 +728,7 @@ class AssignmentNoticeOut(BaseModel):
     message: str
     created_at: str
     read_at: str | None = None
+    program_change_summary: dict[str, Any] | None = None
 
 
 class CoachNoticeListOut(BaseModel):

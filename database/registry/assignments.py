@@ -3,6 +3,7 @@
 Extracted from DatabaseManager; behaviour is unchanged.
 """
 
+import json
 import sqlite3
 import uuid
 from dataclasses import dataclass
@@ -18,6 +19,16 @@ class EndedAssignmentSnapshot:
     started_at: str
     ended_at: str
     ended_by: str
+
+
+@dataclass(frozen=True)
+class AssignmentNoticeRecord:
+    account_id: str
+    assignment_id: str | None
+    kind: str
+    message: str
+    created_at: str
+    program_change_summary: dict[str, Any] | None = None
 
 
 class RegistryAssignmentsMixin:
@@ -409,17 +420,37 @@ class RegistryAssignmentsMixin:
             }
 
     def create_assignment_notice(
-        self, account_id: str, assignment_id: str | None, kind: str, message: str, now_iso: str
+        self,
+        account_id: str,
+        assignment_id: str | None,
+        kind: str,
+        message: str,
+        now_iso: str,
     ) -> str:
         """Writes one in-app notice for an account (coach or player)."""
+        return self.create_assignment_notice_record(
+            AssignmentNoticeRecord(account_id, assignment_id, kind, message, now_iso)
+        )
+
+    def create_assignment_notice_record(self, notice: AssignmentNoticeRecord) -> str:
         notice_id = uuid.uuid4().hex
         self.ensure_account_schema()
         with self._catalog_lock:
             self.catalog_conn.execute(
                 "INSERT INTO assignment_notices"
-                " (notice_id, account_id, assignment_id, kind, message, created_at, read_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, NULL)",
-                (notice_id, str(account_id), assignment_id, kind, message, now_iso),
+                " (notice_id, account_id, assignment_id, kind, message, created_at, read_at,"
+                " program_change_summary_json) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)",
+                (
+                    notice_id,
+                    str(notice.account_id),
+                    notice.assignment_id,
+                    notice.kind,
+                    notice.message,
+                    notice.created_at,
+                    json.dumps(notice.program_change_summary)
+                    if notice.program_change_summary is not None
+                    else None,
+                ),
             )
             self.catalog_conn.commit()
         return notice_id
@@ -429,7 +460,8 @@ class RegistryAssignmentsMixin:
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
             cursor.execute(
-                "SELECT notice_id, assignment_id, kind, message, created_at, read_at"
+                "SELECT notice_id, assignment_id, kind, message, created_at, read_at,"
+                " program_change_summary_json"
                 " FROM assignment_notices WHERE account_id = ?"
                 " ORDER BY created_at DESC LIMIT ?",
                 (str(account_id), max(1, int(limit))),
@@ -442,6 +474,7 @@ class RegistryAssignmentsMixin:
                     "message": str(row[3]),
                     "created_at": str(row[4]),
                     "read_at": row[5],
+                    "program_change_summary": json.loads(row[6]) if row[6] is not None else None,
                 }
                 for row in cursor.fetchall()
             ]

@@ -524,7 +524,8 @@ class SchemaMixin:
                     kind TEXT NOT NULL,
                     message TEXT NOT NULL,
                     created_at TEXT NOT NULL,
-                    read_at TEXT
+                    read_at TEXT,
+                    program_change_summary_json TEXT
                 );
                 CREATE INDEX IF NOT EXISTS idx_assignment_notices_account ON assignment_notices(account_id);
 
@@ -736,6 +737,7 @@ class SchemaMixin:
             self._ensure_pending_recovery_email_address_is_not_unique()
             self._ensure_accounts_last_seen_at()
             self._ensure_accounts_display_language()
+            self._ensure_assignment_notice_summary_column()
             self._ensure_roster_attendance_timezone()
             self._ensure_roster_attendance_last_workout_on()
             self._ensure_roster_attendance_program_name()
@@ -762,6 +764,13 @@ class SchemaMixin:
             )
             self._commit_catalog()
             self._account_schema_ready = True
+
+    def _ensure_assignment_notice_summary_column(self) -> None:
+        columns = self._table_columns(self.catalog_conn.cursor(), "assignment_notices")
+        if "program_change_summary_json" not in columns:
+            self.catalog_conn.execute(
+                "ALTER TABLE assignment_notices ADD COLUMN program_change_summary_json TEXT"
+            )
 
     def _ensure_model_usage_turn_id_column(self) -> None:
         columns = self._table_columns(self.catalog_conn.cursor(), "model_usage")

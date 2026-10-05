@@ -73,6 +73,10 @@
       "kind": "method",
       "signature": "(self, account_id: str, assignment_id: str | None, kind: str, message: str, now_iso: str) -> str"
     },
+    "create_assignment_notice_record": {
+      "kind": "method",
+      "signature": "(self, notice: database.registry.assignments.AssignmentNoticeRecord) -> str"
+    },
     "create_catalog_schema": {
       "kind": "method",
       "signature": "(self) -> None"

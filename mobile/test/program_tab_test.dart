@@ -122,6 +122,66 @@ Future<void> _pumpProgram(
   }
 }
 
+Future<void> _expectProgramChangeSummary(
+  WidgetTester tester,
+  String languageCode, {
+  bool unchanged = false,
+}) async {
+  final FakeMayosApi fake = _signedInFake();
+  fake.playerNotices.add(<String, dynamic>{
+    'notice_id': 'published-1',
+    'kind': 'program_published',
+    'message': 'Your coach published program version 2.',
+    'created_at': '2026-10-05T10:00:00Z',
+    'read_at': null,
+    'program_change_summary': <String, dynamic>{
+      'version': 1,
+      'unchanged': unchanged,
+      'changes': unchanged
+          ? <dynamic>[]
+          : <Map<String, dynamic>>[
+              <String, dynamic>{
+                'type': 'exercise_replaced',
+                'day': 'Lower 1',
+                'before': 'Back Squat',
+                'after': 'Safety Bar Squat',
+              },
+              for (int index = 1; index <= 11; index++)
+                <String, dynamic>{
+                  'type': 'exercise_added',
+                  'day': 'Upper 1',
+                  'exercise': 'Exercise $index',
+                },
+            ],
+    },
+  });
+  await _pumpProgram(tester, fake, languageCode: languageCode);
+  if (unchanged) {
+    final Finder approval = find.text(languageCode == 'ar'
+        ? 'وافق مدربك على برنامجك التدريبي الحالي.'
+        : 'Your coach approved your current program.');
+    await _pumpUntilFound(tester, approval);
+    expect(approval, findsOneWidget);
+    expect(find.text(languageCode == 'ar' ? 'إخفاء' : 'Dismiss'), findsOneWidget);
+    return;
+  }
+  final Finder replacement = find.textContaining(languageCode == 'ar'
+      ? 'استبدال Back Squat بـ Safety Bar Squat في Lower 1'
+      : 'Back Squat → Safety Bar Squat on Lower 1');
+  await _pumpUntilFound(tester, replacement);
+  expect(replacement, findsOneWidget);
+  expect(
+    find.text(languageCode == 'ar' ? 'والمزيد من التغييرات: 2' : 'and 2 more'),
+    findsOneWidget,
+  );
+  expect(find.textContaining('Exercise 10'), findsNothing);
+
+  await tester.tap(find.text(languageCode == 'ar' ? 'إخفاء' : 'Dismiss'));
+  await tester.pumpAndSettle();
+  expect(replacement, findsNothing);
+  expect(fake.playerNotices.first['read_at'], isNotNull);
+}
+
 Future<void> _openSubstitutePicker(WidgetTester tester) async {
   await tester.drag(find.byType(ListView).first, const Offset(0, -180));
   await tester.pumpAndSettle();
@@ -462,6 +522,24 @@ void main() {
     await tester.tap(find.text('Technique'));
     await _pumpUntilFound(tester, find.textContaining('Lie on a flat bench'));
     expect(find.textContaining('Lie on a flat bench'), findsOneWidget);
+  });
+
+  testWidgets('program change summary is localized, capped, and dismissible in English',
+      (tester) async {
+    await _expectProgramChangeSummary(tester, 'en');
+  });
+
+  testWidgets('program change summary is localized, capped, and dismissible in Arabic',
+      (tester) async {
+    await _expectProgramChangeSummary(tester, 'ar');
+  });
+
+  testWidgets('approval without changes uses its English confirmation', (tester) async {
+    await _expectProgramChangeSummary(tester, 'en', unchanged: true);
+  });
+
+  testWidgets('approval without changes uses its Arabic confirmation', (tester) async {
+    await _expectProgramChangeSummary(tester, 'ar', unchanged: true);
   });
 
   for (final ThemeMode mode in <ThemeMode>[ThemeMode.light, ThemeMode.dark]) {

@@ -25,6 +25,7 @@ import '../../../providers.dart';
 import '../../../router.dart';
 import '../assignment/program_request_dialog.dart';
 import '../exercise_picker_dialog.dart';
+import 'program_change_summary_card.dart';
 import '../workout/deload_banner.dart';
 import '../workout/active_workout_prompt.dart';
 import 'program_authority_recovery.dart';
@@ -78,6 +79,8 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   FailureMessage? _loadError;
   FailureMessage? _actionError;
   TrainingProgram? _program;
+  AssignmentNotice? _programChangeNotice;
+  bool _dismissingProgramChange = false;
   Map<int, DeloadDecision> _deloadByDay = <int, DeloadDecision>{};
 
   /// The player's active assignment, or null when none (used for coach
@@ -139,6 +142,50 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       });
     } on ApiException {
       // Leave the label as "Published by your coach" rather than guessing.
+    }
+    await _loadProgramChangeNotice();
+  }
+
+  Future<void> _loadProgramChangeNotice() async {
+    try {
+      final List<AssignmentNotice> notices =
+          await ref.read(apiClientProvider).playerNotices();
+      AssignmentNotice? latest;
+      for (final AssignmentNotice notice in notices) {
+        if (notice.kind == 'program_published' &&
+            notice.isUnread &&
+            notice.programChangeSummary != null) {
+          latest = notice;
+          break;
+        }
+      }
+      if (!mounted) return;
+      setState(() => _programChangeNotice = latest);
+    } on ApiException {
+      if (!mounted) return;
+      setState(() => _programChangeNotice = null);
+    }
+  }
+
+  Future<void> _dismissProgramChange() async {
+    if (_dismissingProgramChange) return;
+    setState(() {
+      _dismissingProgramChange = true;
+      _actionError = null;
+    });
+    try {
+      await ref.read(apiClientProvider).markPlayerNoticesRead();
+      if (!mounted) return;
+      setState(() {
+        _dismissingProgramChange = false;
+        _programChangeNotice = null;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _dismissingProgramChange = false;
+        _actionError = apiFailureMessage(error);
+      });
     }
   }
 
@@ -731,6 +778,13 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         children: <Widget>[
           if (_fromCache) ...<Widget>[
             const _OfflineBanner(),
+            const SizedBox(height: MayosSpacing.md),
+          ],
+          if (_programChangeNotice?.programChangeSummary != null) ...<Widget>[
+            ProgramChangeSummaryCard(
+              summary: _programChangeNotice!.programChangeSummary!,
+              onDismiss: _dismissingProgramChange ? null : _dismissProgramChange,
+            ),
             const SizedBox(height: MayosSpacing.md),
           ],
           Text(

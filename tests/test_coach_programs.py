@@ -237,11 +237,97 @@ def test_publish_activates_immediately_with_provenance_and_notice(api, monkeypat
     assert notices[0]["kind"] == "program_published"
     assert "version 1" in notices[0]["message"]
     assert notices[0]["read_at"] is None
+    assert notices[0]["program_change_summary"] == {
+        "version": 1,
+        "unchanged": False,
+        "changes": [
+            {"type": "day_added", "day": "Full 1"},
+            {"type": "exercise_added", "day": "Full 1", "exercise": "Squat"},
+            {"type": "exercise_added", "day": "Full 1", "exercise": "Bench Press"},
+            {"type": "exercise_added", "day": "Full 1", "exercise": "Row"},
+            {"type": "day_added", "day": "Full 2"},
+            {"type": "exercise_added", "day": "Full 2", "exercise": "Squat"},
+            {"type": "exercise_added", "day": "Full 2", "exercise": "Bench Press"},
+            {"type": "exercise_added", "day": "Full 2", "exercise": "Row"},
+            {"type": "day_added", "day": "Full 3"},
+            {"type": "exercise_added", "day": "Full 3", "exercise": "Squat"},
+            {"type": "exercise_added", "day": "Full 3", "exercise": "Bench Press"},
+            {"type": "exercise_added", "day": "Full 3", "exercise": "Row"},
+        ],
+    }
 
     marked = client.post("/assignments/notices/read", headers=player_headers)
     assert marked.status_code == 200
     assert marked.json()["marked_read"] == 1
     assert client.get("/assignments/notices", headers=player_headers).json()["notices"][0]["read_at"] is not None
+
+
+def test_publish_notice_summarizes_previous_automatic_program(api):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, player_account_id = _assigned_player(api)
+    _seed_complete_active_program(db, player_account_id)
+    db.catalog_conn.execute(
+        "INSERT OR REPLACE INTO exercise_display_names (exercise_id, display_name) VALUES (?, ?)",
+        ("bp", "Display Bench Press"),
+    )
+    db.catalog_conn.execute(
+        "INSERT OR REPLACE INTO exercise_display_names (exercise_id, display_name) VALUES (?, ?)",
+        ("sq", "Safety Bar Squat"),
+    )
+    db.catalog_conn.commit()
+    draft_path = _program_draft_path(assignment_id)
+    copied = client.post(f"{draft_path}/copy-active", headers=coach_headers)
+    assert copied.status_code == 200, copied.text
+    draft = copied.json()["draft"]
+    upper_day = draft["days"][0]
+    upper_day["day_name"] = "Upper 1"
+    upper_exercise = upper_day["exercises"][0]
+    upper_exercise.update(
+        {
+            "exercise_id": "sq",
+            "target_sets": 5,
+            "target_reps_min": 5,
+            "target_reps_max": 7,
+            "target_rir": 2,
+            "rest_seconds": 180,
+            "warmup_sets": 4,
+        }
+    )
+    draft["days"] = [upper_day]
+    draft["weekly_frequency"] = 1
+    updated = client.put(draft_path, headers=coach_headers, json=draft)
+    assert updated.status_code == 200, updated.text
+
+    published = client.post(f"{draft_path}/publish", headers=coach_headers)
+    assert published.status_code == 200, published.text
+    notice = client.get("/assignments/notices", headers=player_headers).json()["notices"][0]
+    summary = notice["program_change_summary"]
+
+    assert notice["kind"] == "program_published"
+    assert summary["unchanged"] is False
+    assert {change["type"] for change in summary["changes"]} >= {
+        "day_renamed",
+        "day_removed",
+        "exercise_replaced",
+        "prescription_changed",
+    }
+    replacement = next(
+        change
+        for change in summary["changes"]
+        if change["type"] == "exercise_replaced"
+    )
+    assert replacement["before"] == "Display Bench Press"
+    assert replacement["after"] == "Safety Bar Squat"
+    prescription = next(
+        change for change in summary["changes"] if change["type"] == "prescription_changed"
+    )
+    assert prescription["fields"] == {
+        "sets": {"before": 4, "after": 5},
+        "warmup_sets": {"before": 3, "after": 4},
+        "reps": {"before": "6–8", "after": "5–7"},
+        "rir": {"before": 1.5, "after": 2},
+        "rest_seconds": {"before": 150, "after": 180},
+    }
 
 
 def test_approving_active_program_publishes_next_version_and_keeps_workouts(api, recording_analytics):
@@ -303,6 +389,12 @@ def test_approving_active_program_publishes_next_version_and_keeps_workouts(api,
     assert published.json()["published_by_coach_account_id"] == coach_account_id
     for field in ("program_name", "split_type", "weekly_frequency", "instructions", "days"):
         assert published.json()[field] == initial[field]
+    notices = client.get("/assignments/notices", headers=player_headers).json()["notices"]
+    assert notices[0]["program_change_summary"] == {
+        "version": 1,
+        "unchanged": True,
+        "changes": [],
+    }
     assert client.get("/programs/active", headers=player_headers).json()["version"] == 2
     assert client.get(draft_path, headers=coach_headers).json()["draft"] == existing_draft
     refused = client.post("/programs/generate", headers=player_headers, json={})

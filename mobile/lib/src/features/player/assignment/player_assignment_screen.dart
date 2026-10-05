@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/api_client.dart';
 import '../../../core/app_failure.dart';
@@ -16,7 +17,9 @@ import '../../../core/ui/mayos_card.dart';
 import '../../../core/ui/mayos_section_header.dart';
 import '../../../core/ui/mayos_text_field.dart';
 import '../../../core/ui/first_strong_direction.dart';
+import '../program/program_change_summary_card.dart';
 import '../../../providers.dart';
+import '../../../router.dart';
 import 'program_request_dialog.dart';
 
 /// Player-side coaching assignment (#24).
@@ -247,6 +250,11 @@ class _PlayerAssignmentScreenState
     }
   }
 
+  void _openProgram() {
+    ref.read(playerShellTabProvider.notifier).state = 1;
+    context.go(homePath);
+  }
+
   Future<void> _requestChange() async {
     try {
       final ProgramRequest? created = await requestProgramChange(
@@ -421,27 +429,45 @@ class _PlayerAssignmentScreenState
                   : null,
             ),
             for (final AssignmentNotice notice in _notices)
-              ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  notice.isUnread
-                      ? Icons.notifications_active
-                      : Icons.notifications_none,
-                  color: notice.isUnread ? c.accent : c.textMuted,
-                ),
-                title: FirstStrongDirection(
-                  text: notice.message,
-                  child: Text(
-                    notice.message,
-                    textAlign: TextAlign.start,
+              if (notice.programChangeSummary != null)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    ProgramChangeSummaryCard(
+                      summary: notice.programChangeSummary!,
+                      message: notice.message,
+                      onViewProgram: _openProgram,
+                    ),
+                    Text(
+                      '${notice.kind} · ${notice.createdAt}',
+                      textDirection: TextDirection.ltr,
+                      style: MayosTypography.caption
+                          .copyWith(color: c.textMuted),
+                    ),
+                  ],
+                )
+              else
+                ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    notice.isUnread
+                        ? Icons.notifications_active
+                        : Icons.notifications_none,
+                    color: notice.isUnread ? c.accent : c.textMuted,
+                  ),
+                  title: FirstStrongDirection(
+                    text: notice.message,
+                    child: Text(
+                      notice.message,
+                      textAlign: TextAlign.start,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '${notice.kind} · ${notice.createdAt}',
+                    textDirection: TextDirection.ltr,
                   ),
                 ),
-                subtitle: Text(
-                  '${notice.kind} · ${notice.createdAt}',
-                  textDirection: TextDirection.ltr,
-                ),
-              ),
           ],
         ),
       ),

@@ -1,17 +1,27 @@
 """Coach program draft generation."""
 
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 from agent.ProgramState import GeneratedProgramSchema
 from agent.program_generator import ProgramGenerationRequest, generate_program_draft_pipeline
+from database.registry.assignments import AssignmentNoticeRecord
 from service.assignments import authorized_player_ledger
 from service.program_analytics import ProgramAnalyticsActor, capture_coach_program_published
 from service import stall_alerts
 from service import analytics
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ProgramPublicationDetails:
+    actor: ProgramAnalyticsActor
+    first_for_assignment: bool
+    change_summary: dict[str, Any]
+    client: analytics.ClientContext
 
 
 def _generated_exercise_draft(exercise: dict[str, Any]) -> dict[str, Any]:
@@ -105,10 +115,7 @@ def record_program_publication(
     db: Any,
     context: dict[str, Any],
     published: Any,
-    *,
-    actor: ProgramAnalyticsActor,
-    first_for_assignment: bool,
-    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+    details: ProgramPublicationDetails,
 ) -> None:
     """Records the shared catalog and analytics effects of activating a coach program."""
     assignment_id = context["assignment"]["assignment_id"]
@@ -118,20 +125,23 @@ def record_program_publication(
         stall_alerts.resolve_for_assignment(db, assignment_id, now)
     except Exception:
         logger.warning("Stall alert resolution failed after program publication", exc_info=True)
-    db.create_assignment_notice(
-        player_account_id,
-        assignment_id,
-        "program_published",
-        f"Your coach published program version {published.version}.",
-        now.isoformat(),
+    db.create_assignment_notice_record(
+        AssignmentNoticeRecord(
+            account_id=player_account_id,
+            assignment_id=assignment_id,
+            kind="program_published",
+            message=f"Your coach published program version {published.version}.",
+            created_at=now.isoformat(),
+            program_change_summary=details.change_summary,
+        )
     )
     # Attendance evaluation is not run here, so refresh the roster's cached name.
     db.set_roster_program_name(assignment_id, published.program_name)
     capture_coach_program_published(
-        actor,
+        details.actor,
         str(assignment_id),
         published,
-        first_for_assignment,
+        details.first_for_assignment,
         player_account_id=player_account_id,
-        client=client,
+        client=details.client,
     )
