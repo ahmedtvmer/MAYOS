@@ -295,7 +295,13 @@ def test_follow_up_alert_is_created_once_when_due(api):
     assert follow_ups[0]["details"]["last_check_in_on"] is None
 
     listed = client.get("/coach/alerts", headers=coach_headers).json()["alerts"]
-    assert any(row["kind"] == check_ins_service.FOLLOW_UP_KIND and row["due_on"] for row in listed)
+    follow_up = next(
+        row for row in listed if row["kind"] == check_ins_service.FOLLOW_UP_KIND
+    )
+    assert follow_up["due_on"]
+    assert follow_up["message_code"] == "coach_alert.follow_up_due.v1"
+    assert follow_up["message_params"] == {"due_on": follow_up["due_on"]}
+    assert follow_up["message_fallback"] == f"Follow-up due since {follow_up['due_on']}"
 
 
 def test_follow_up_is_not_created_before_due(api):

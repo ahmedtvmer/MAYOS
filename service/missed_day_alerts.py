@@ -31,6 +31,7 @@ from service.schedule import local_date_in, timezone_for_versions
 from service import stall_alerts
 from service import coach_analytics
 from service import analytics as analytics_service
+from service.messages import coach_alert_message
 
 logger = logging.getLogger(__name__)
 
@@ -249,6 +250,7 @@ def present_alert(alert: dict[str, Any]) -> dict[str, Any]:
     if isinstance(details, dict):
         for key, value in details.items():
             presented.setdefault(str(key), value)
+    presented.update(coach_alert_message(presented.get("kind"), presented))
     return presented
 
 

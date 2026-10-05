@@ -140,7 +140,7 @@ def _notices(db, coach_account_id, kind=alerts_service.MISSED_DAY_KIND):
 
 def test_sweep_creates_one_alert_and_notice_for_a_two_day_streak(api):
     client, db = api
-    _, _, assignment_id, coach_account_id = _assign(api)
+    coach_headers, _, assignment_id, coach_account_id = _assign(api)
     now = datetime.now(UTC)
     started = now - timedelta(days=10)
     _backdate_assignment(db, assignment_id, started)
@@ -169,6 +169,18 @@ def test_sweep_creates_one_alert_and_notice_for_a_two_day_streak(api):
     assert alert["details"]["streak_start_date"] == started.date().isoformat()
     assert alert["details"]["missed_count"] == 9
     assert alert["state"] == "new"
+    public_alert = next(
+        row
+        for row in client.get("/coach/alerts", headers=coach_headers).json()["alerts"]
+        if row["kind"] == alerts_service.MISSED_DAY_KIND
+    )
+    assert public_alert["message_code"] == "coach_alert.missed_expected_days.v1"
+    assert public_alert["message_params"] == {
+        "count": 9,
+        "start_date": public_alert["streak_start_date"],
+        "end_date": public_alert["last_missed_date"],
+    }
+    assert public_alert["message_fallback"].startswith("Missed 9 expected training days (")
     assert len(_notices(db, coach_account_id)) == 1
     summary = db.get_roster_alert_badges(coach_account_id)[assignment_id]
     assert summary["current_missed_streak"] == 9

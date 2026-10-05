@@ -8,6 +8,7 @@ import '../../core/ui/mayos_bottom_navigation.dart';
 import '../../core/ui/mayos_scaffold.dart';
 import '../../core/display_language/feature_copy_context.dart';
 import '../../core/display_language/coach_copy.dart';
+import '../../core/display_language/controller.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import '../shared/mode_switch.dart';
@@ -63,6 +64,7 @@ class CoachShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(displayLanguageProvider);
     final int newAlerts = ref.watch(coachNewAlertsCountProvider);
     final int pendingRequests = ref.watch(coachPendingRequestsCountProvider);
     final List<MayosNavItem> items = _items(coachCopyOf(context));

@@ -7,7 +7,9 @@ import '../../core/app_failure.dart';
 import '../../core/connectivity.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/copy_context.dart';
+import '../../core/display_language/controller.dart';
 import '../../core/display_language/feature_copy_context.dart';
+import '../../core/display_language/message_resolver.dart';
 import '../../core/effort.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
@@ -1026,6 +1028,7 @@ class _CoachPlayerHistoryScreenState
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(displayLanguageProvider);
     final CoachRosterEntry entry = _entry;
     final copy = coachCopyOf(context);
     final bool assistantEnabled =
@@ -1310,6 +1313,10 @@ class _CoachPlayerHistoryScreenState
   Widget _alertCard(BuildContext context, CoachAlert alert) {
     final MayosThemeExtension c = MayosTheme.of(context);
     final copy = coachCopyOf(context);
+    final String description = resolveCoachAlertDescription(
+      alert,
+      displayCopyOf(context).languageCode,
+    );
     final bool busy = _busyAlertId == alert.alertId;
     return Padding(
       padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
@@ -1323,9 +1330,9 @@ class _CoachPlayerHistoryScreenState
               children: <Widget>[
                 Expanded(
                   child: FirstStrongDirection(
-                    text: alert.description,
+                    text: description,
                     child: Text(
-                      alert.description,
+                      description,
                       style:
                           MayosTypography.body.copyWith(color: c.textPrimary),
                     ),

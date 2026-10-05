@@ -123,6 +123,7 @@ def _summary(exercise_id, name="Bench Press", **overrides):
 def _deload_fatigue():
     return {
         "deload_recommended": True,
+        "reason_code": "rolling_readiness_crash",
         "severity": "HIGH",
         "reason": "Rolling readiness crash (avg 1.7/5 across last 3 sessions).",
         "volume_multiplier": 0.5,
@@ -663,6 +664,15 @@ def test_active_coach_sees_acks_and_resolves_a_regression_alert(api):
     assert rows[0]["exercise_name"] == "Bench Press"
     assert rows[0]["e1rm_delta"] == -6.0
     assert rows[0]["status_badge"] == "CONSOLIDATING"
+    assert rows[0]["message_code"] == "coach_alert.performance_regression.v1"
+    assert rows[0]["message_params"] == {
+        "exercise_name": "Bench Press",
+        "e1rm_delta": -6.0,
+        "status_badge": "CONSOLIDATING",
+    }
+    assert rows[0]["message_fallback"] == (
+        "Performance regression — Bench Press: e1RM −6.0 kg (CONSOLIDATING)"
+    )
 
     alert_id = rows[0]["alert_id"]
     ack = client.post(f"/coach/alerts/{alert_id}/acknowledge", headers=coach_headers)
@@ -716,6 +726,13 @@ def test_roster_badge_counts_progression_alerts(api):
     )
     roster = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
     assert roster[0]["alerts_new"] == 1
+    alert = client.get("/coach/alerts", headers=coach_headers).json()["alerts"][0]
+    assert alert["message_code"] == "coach_alert.deload_recommended.v1"
+    assert alert["message_params"] == {
+        "reason_code": "rolling_readiness_crash",
+        "recent_readiness_avg": 1.67,
+        "choice": None,
+    }
 
 
 def test_alert_signal_state_episode_columns_exist(api):

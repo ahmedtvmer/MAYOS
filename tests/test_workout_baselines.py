@@ -546,10 +546,12 @@ def test_zero_load_sets_on_non_eligible_equipment_do_not_record(api):
 def test_assistant_deload_choice_is_one_workout_and_replay_safe(api, monkeypatch):
     client, db = api
     headers, version = _prepare_player(client, db, "deload-player")
-    monkeypatch.setattr(workouts_service, "evaluate_systemic_fatigue", lambda _ledger: {
+    fatigue = {
         "deload_recommended": True, "reason": "Acute readiness floor (1/5) detected.",
         "volume_multiplier": 0.5, "intensity_cap_rpe": 7.0,
-    })
+        "reason_code": "acute_readiness_floor",
+    }
+    monkeypatch.setattr(workouts_service, "evaluate_systemic_fatigue", lambda _ledger: fatigue)
 
     before = client.get("/workouts/prescription?day_order=1", headers=headers).json()
     assert before["deload"]["state"] == "applied"
@@ -609,10 +611,12 @@ def test_apply_suggested_deload_adds_note_to_open_coach_alert(api, monkeypatch):
         json={"token": invitation.json()["token"], "consent": True},
     )
     assert redeemed.status_code == 200, redeemed.text
-    monkeypatch.setattr(workouts_service, "evaluate_systemic_fatigue", lambda _ledger: {
+    fatigue = {
         "deload_recommended": True, "reason": "Rolling readiness crash across recent sessions.",
         "volume_multiplier": 0.5, "intensity_cap_rpe": 7.0,
-    })
+        "reason_code": "rolling_readiness_crash",
+    }
+    monkeypatch.setattr(workouts_service, "evaluate_systemic_fatigue", lambda _ledger: fatigue)
 
     _commit(
         client, player_headers, version, _session_one_sets(), client_session_id=CLIENT_A,

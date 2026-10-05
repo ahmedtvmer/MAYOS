@@ -696,6 +696,7 @@ def evaluate_systemic_fatigue(db_manager) -> dict[str, Any]:
         "volume_multiplier": 1.0,
         "intensity_cap_rpe": None,
         "recent_readiness_avg": None,
+        "reason_code": None,
     }
     if not recent_sessions:
         return default_result
@@ -728,6 +729,7 @@ def evaluate_systemic_fatigue(db_manager) -> dict[str, Any]:
             "volume_multiplier": 0.5,
             "intensity_cap_rpe": 7.0,
             "recent_readiness_avg": round(avg_readiness_3, 2),
+            "reason_code": "rolling_readiness_crash",
         }
 
     if readiness_scores[0] == 1:
@@ -738,6 +740,7 @@ def evaluate_systemic_fatigue(db_manager) -> dict[str, Any]:
             "volume_multiplier": 0.5,
             "intensity_cap_rpe": 7.0,
             "recent_readiness_avg": round(avg_readiness_3, 2),
+            "reason_code": "acute_readiness_floor",
         }
 
     if total_rated_sets >= 6 and overshoot_ratio >= 0.50 and avg_readiness_3 <= 3.0:
@@ -748,6 +751,7 @@ def evaluate_systemic_fatigue(db_manager) -> dict[str, Any]:
             "volume_multiplier": 0.6,
             "intensity_cap_rpe": 8.0,
             "recent_readiness_avg": round(avg_readiness_3, 2),
+            "reason_code": "high_exertion_density",
         }
 
     return default_result

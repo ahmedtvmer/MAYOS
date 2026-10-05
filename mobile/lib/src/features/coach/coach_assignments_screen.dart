@@ -6,6 +6,7 @@ import '../../core/api_client.dart';
 import '../../core/app_failure.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/copy_context.dart';
+import '../../core/display_language/controller.dart';
 import '../../core/display_language/feature_copy_context.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
@@ -392,6 +393,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(displayLanguageProvider);
     // A coaching action landed elsewhere (the player page's alert buttons or
     // check-in sheet, the Alerts tab): refetch quietly so this row's chips
     // track it without a restart (#120). Producers bump the revision; this

@@ -19,8 +19,6 @@ const List<String> equipmentAccessValues = <String>[
 const String defaultAssistantStyle = 'direct';
 const int maxAssistantStyleInstructions = 500;
 const int maxProgramRequestReasonChars = 500;
-const String deloadChoiceUndo = 'undo';
-const String deloadChoiceApply = 'apply';
 
 class Capabilities {
   const Capabilities({required this.player, required this.coach});
@@ -650,6 +648,9 @@ class CoachAlert {
     this.resolvedBy,
     this.playerDeloadChoice,
     this.profileChanges,
+    this.messageCode,
+    this.messageParams,
+    this.messageFallback,
   });
 
   factory CoachAlert.fromJson(Map<String, dynamic> json) => CoachAlert(
@@ -682,16 +683,23 @@ class CoachAlert {
         profileChanges: json['profile_changes'] is Map<String, dynamic>
             ? (json['profile_changes'] as Map<String, dynamic>).map(
                 (String key, dynamic value) =>
-                    MapEntry<String, Map<String, String>>(
+                    MapEntry<String, Map<String, String?>>(
                   key,
                   (value as Map<String, dynamic>).map(
-                    (String part, dynamic text) => MapEntry<String, String>(
+                    (String part, dynamic text) => MapEntry<String, String?>(
                       part,
-                      text == null || '$text'.isEmpty ? 'Not set' : '$text',
+                      text == null ? null : '$text',
                     ),
                   ),
                 ),
               )
+            : null,
+        messageCode: json['message_code'] is String
+            ? json['message_code'] as String
+            : null,
+        messageParams: json['message_params'],
+        messageFallback: json['message_fallback'] is String
+            ? json['message_fallback'] as String
             : null,
       );
 
@@ -718,9 +726,13 @@ class CoachAlert {
   final String? resolvedAt;
   final String? resolvedBy;
   final Map<String, dynamic>? playerDeloadChoice;
-  final Map<String, Map<String, String>>? profileChanges;
+  final Map<String, Map<String, String?>>? profileChanges;
+  final String? messageCode;
+  final Object? messageParams;
+  final String? messageFallback;
 
   static const String followUpDueKind = 'follow_up_due';
+  static const String missedExpectedDaysKind = 'missed_expected_days';
   static const String deloadRecommendedKind = 'deload_recommended';
   static const String performanceRegressionKind = 'performance_regression';
   static const String stallKind = 'stall';
@@ -736,61 +748,19 @@ class CoachAlert {
   bool get isStall => kind == stallKind;
   bool get isProfileChange => kind == profileChangeKind;
 
-  /// The alert-centre description, rendered per kind.
-  String get description {
-    if (isStall) {
-      return 'Stalling — $stallLength sessions without a personal record '
-          '(since ${windowStartDate ?? 'an earlier date'})';
-    }
-    if (isDeloadRecommended) {
-      final String base =
-          'Deload recommended — ${reason ?? 'Systemic fatigue'}';
-      final String? choice = playerDeloadChoice?['choice'] as String?;
-      if (choice == deloadChoiceUndo || choice == deloadChoiceApply) {
-        return '$base · Player chose to $choice it for the next workout only';
-      }
-      return base;
-    }
-    if (isPerformanceRegression) {
-      final String badge = statusBadge ?? 'regression';
-      return 'Performance regression — ${exerciseName ?? 'Exercise'}: '
-          'e1RM ${_signedE1rm(e1rmDelta)} kg ($badge)';
-    }
-    if (isFollowUpDue) {
-      return 'Follow-up due since ${dueOn ?? 'an earlier date'}';
-    }
-    if (isProfileChange) {
-      const Map<String, String> labels = <String, String>{
-        'injuries_or_limitations': 'Injuries or limitations',
-        'equipment_access': 'Equipment access',
-      };
-      final Map<String, Map<String, String>> changes =
-          profileChanges ?? const {};
-      return changes.entries.map((MapEntry<String, Map<String, String>> entry) {
-        final String label = labels[entry.key] ?? entry.key;
-        return '$label: ${entry.value['before'] ?? ''} → ${entry.value['after'] ?? ''}';
-      }).join('\n');
-    }
-    return 'Missed $missedCount expected training '
-        '${missedCount == 1 ? 'day' : 'days'} '
-        '(${streakStartDate ?? '?'} to ${lastMissedDate ?? '?'})';
-  }
+  static const Map<String, String> _messageCodeByKind = <String, String>{
+    missedExpectedDaysKind: 'coach_alert.missed_expected_days.v1',
+    followUpDueKind: 'coach_alert.follow_up_due.v1',
+    stallKind: 'coach_alert.stall.v1',
+    deloadRecommendedKind: 'coach_alert.deload_recommended.v1',
+    performanceRegressionKind: 'coach_alert.performance_regression.v1',
+    profileChangeKind: 'coach_alert.profile_change.v1',
+  };
 
-  String get stateLabel => switch (state) {
-        'new' => 'New',
-        'acknowledged' => 'Acknowledged',
-        'resolved' => 'Resolved',
-        _ => state,
-      };
-}
-
-/// Formats an e1RM delta with a true minus sign, e.g. `−6.2` or `+1.0`.
-String _signedE1rm(double? value) {
-  if (value == null) {
-    return '?';
+  String? get supportedMessageCode {
+    final String? expectedCode = _messageCodeByKind[kind];
+    return messageCode == expectedCode ? expectedCode : null;
   }
-  final String sign = value < 0 ? '−' : '+';
-  return '$sign${value.abs().toStringAsFixed(1)}';
 }
 
 /// One coach-recorded check-in fact (`GET /coach/assignments/{id}/check-ins`,

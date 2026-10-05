@@ -46,8 +46,15 @@ class CoachCopy {
   String get noAlerts => isArabic ? 'لا توجد تنبيهات.' : 'No alerts to show.';
   String get noActiveAssignment =>
       isArabic ? 'لا توجد علاقة تدريب نشطة.' : 'No active assignment.';
-  String resolvedBy(String username) =>
-      isArabic ? 'حلّه ${_ltr(username)}' : 'Resolved by $username';
+  String resolvedBy(String username) {
+    if (!isArabic) return 'Resolved by $username';
+    final String label = switch (username) {
+      'system' => 'النظام',
+      'coach' => 'المدرب',
+      _ => _ltr(username),
+    };
+    return 'حلّه $label';
+  }
   String get alertNew => isArabic ? 'جديد' : 'New';
   String get alertAcknowledged =>
       isArabic ? 'تم تأكيد الاطلاع' : 'Acknowledged';
@@ -56,7 +63,7 @@ class CoachCopy {
         'new' => alertNew,
         'acknowledged' => alertAcknowledged,
         'resolved' => alertResolved,
-        _ => state,
+        _ => isArabic ? 'حالة غير معروفة' : 'Unknown status',
       };
   String missedDays(int count) {
     if (!isArabic) return 'Missed ${count}d';

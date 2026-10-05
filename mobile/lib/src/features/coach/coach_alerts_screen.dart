@@ -5,7 +5,9 @@ import '../../core/api_client.dart';
 import '../../core/app_failure.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/copy_context.dart';
+import '../../core/display_language/controller.dart';
 import '../../core/display_language/feature_copy_context.dart';
+import '../../core/display_language/message_resolver.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
@@ -147,6 +149,10 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
   Widget _alertCard(BuildContext context, CoachAlert alert) {
     final MayosThemeExtension c = MayosTheme.of(context);
     final copy = coachCopyOf(context);
+    final String description = resolveCoachAlertDescription(
+      alert,
+      displayCopyOf(context).languageCode,
+    );
     final bool busy = _busyAlertId == alert.alertId;
     return Padding(
       padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
@@ -168,9 +174,9 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
             ),
             const SizedBox(height: MayosSpacing.xxs),
             FirstStrongDirection(
-              text: alert.description,
+              text: description,
               child: Text(
-                alert.description,
+                description,
                 style: MayosTypography.body.copyWith(color: c.textPrimary),
               ),
             ),
@@ -209,6 +215,7 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(displayLanguageProvider);
     // The player page acknowledged or resolved one of these alerts: refetch
     // so this list and the tab badge track it (#120). The player page bumps
     // the revision and this tab never does, so the listener cannot loop.

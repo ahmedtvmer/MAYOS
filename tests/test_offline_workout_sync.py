@@ -330,6 +330,14 @@ def test_roster_stall_length_recounts_commits_and_replays_through_routes(
         "stall_length": 8,
         "window_start_date": "2026-09-23",
     }
+    assert stall_alert["message_code"] == "coach_alert.stall.v1"
+    assert stall_alert["message_params"] == {
+        "count": 8,
+        "window_start_date": "2026-09-23",
+    }
+    assert stall_alert["message_fallback"] == (
+        "Stalling — 8 sessions without a personal record (since 2026-09-23)"
+    )
     assert stall_alert["session_id"] is None
     assert stall_alert["exercise_id"] is None
     assert stall_alert["exercise_name"] is None
@@ -1871,6 +1879,19 @@ def test_workout_commit_emits_progression_alert_events_once_through_http(
         "/workouts/sessions", headers=player_headers, json=deload_payload
     )
     assert deload_commit.status_code == 201, deload_commit.text
+    assert deload_commit.json()["fatigue_post"]["reason_code"] == "acute_readiness_floor"
+    prescription = client.get(
+        "/workouts/prescription?day_order=1", headers=player_headers
+    )
+    assert prescription.status_code == 200, prescription.text
+    assert prescription.json()["fatigue_info"]["reason_code"] == "acute_readiness_floor"
+    deload_alert = next(
+        row
+        for row in client.get("/coach/alerts", headers=coach_headers).json()["alerts"]
+        if row["kind"] == "deload_recommended"
+    )
+    assert deload_alert["message_code"] == "coach_alert.deload_recommended.v1"
+    assert deload_alert["message_params"]["reason_code"] == "acute_readiness_floor"
 
     baseline_payload = _sync_body(
         client_session_id="99222222-2222-4222-8222-222222222222",

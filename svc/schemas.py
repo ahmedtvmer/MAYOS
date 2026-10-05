@@ -486,6 +486,9 @@ class CoachAlertOut(BaseModel):
     latest_session_date: str | None = None
     player_deload_choice: dict[str, Any] | None = None
     profile_changes: dict[str, dict[str, Any]] | None = None
+    message_code: str | None = None
+    message_params: dict[str, Any] = Field(default_factory=dict)
+    message_fallback: str | None = None
 
 
 class CoachAlertListOut(BaseModel):

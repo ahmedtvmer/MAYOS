@@ -159,15 +159,19 @@ def test_acknowledge_and_resolve_transitions_are_idempotent(api):
     assert acknowledged.status_code == 200, acknowledged.text
     assert acknowledged.json()["state"] == "acknowledged"
     assert acknowledged.json()["acknowledged_at"] is not None
+    assert acknowledged.json()["message_code"] == "coach_alert.missed_expected_days.v1"
     again = client.post(f"{base}/acknowledge", headers=coach_headers)
     assert again.status_code == 200
     assert again.json()["state"] == "acknowledged"
     assert again.json()["acknowledged_at"] == acknowledged.json()["acknowledged_at"]
+    assert again.json()["message_params"] == acknowledged.json()["message_params"]
 
     resolved = client.post(f"{base}/resolve", headers=coach_headers)
     assert resolved.status_code == 200, resolved.text
     assert resolved.json()["state"] == "resolved"
     assert resolved.json()["resolved_by"] == "coach"
+    assert resolved.json()["message_code"] == "coach_alert.missed_expected_days.v1"
+    assert resolved.json()["message_params"] == acknowledged.json()["message_params"]
     resolved_again = client.post(f"{base}/resolve", headers=coach_headers)
     assert resolved_again.status_code == 200
     assert resolved_again.json()["state"] == "resolved"
@@ -222,16 +226,87 @@ def test_unknown_foreign_and_ended_alerts_deny_generically(api):
     assert unknown.json()["detail"] == DENIED_ERROR
 
     intruder_headers = _make_coach(client, db, "intruder")
+    foreign_acknowledged = client.post(f"{base}/acknowledge", headers=intruder_headers)
+    assert foreign_acknowledged.status_code == 403
+    assert foreign_acknowledged.json()["detail"] == DENIED_ERROR
     foreign = client.post(f"{base}/resolve", headers=intruder_headers)
     assert foreign.status_code == 403
     assert foreign.json()["detail"] == DENIED_ERROR
+    assert client.get("/coach/alerts", headers=intruder_headers).json()["alerts"] == []
 
     assert client.post(f"/coach/assignments/{assignment_id}/revoke", headers=coach_headers).status_code == 200
+    ended_acknowledged = client.post(f"{base}/acknowledge", headers=coach_headers)
+    assert ended_acknowledged.status_code == 403
+    assert ended_acknowledged.json()["detail"] == DENIED_ERROR
     ended = client.post(f"{base}/resolve", headers=coach_headers)
     assert ended.status_code == 403
     assert ended.json()["detail"] == DENIED_ERROR
     # The ended assignment's alert disappears from the listing entirely.
     assert client.get("/coach/alerts?state=new&state=acknowledged&state=resolved", headers=coach_headers).json()["alerts"] == []
+
+
+def test_unknown_kind_and_invalid_alert_evidence_use_safe_api_fallbacks(api):
+    coach_headers, _, assignment_id, coach_account_id, _ = _seed_alert(api)
+    client, db = api
+    player_account_id = db.get_active_account_by_username("p1")["account_id"]
+    now_iso = datetime.now(UTC).isoformat()
+    db.insert_coach_alert(
+        "unknown-kind-alert",
+        assignment_id,
+        coach_account_id,
+        player_account_id,
+        "future_alert_kind",
+        "unknown-kind",
+        {},
+        now_iso,
+    )
+    db.insert_coach_alert(
+        "invalid-deload-alert",
+        assignment_id,
+        coach_account_id,
+        player_account_id,
+        "deload_recommended",
+        "invalid-deload",
+        {
+            "reason_code": ["private_future_reason"],
+            "reason": "System fatigue",
+            "recent_readiness_avg": 2.2,
+            "player_deload_choice": {"choice": ["invalid"]},
+        },
+        now_iso,
+    )
+    db.insert_coach_alert(
+        "missing-regression-name-alert",
+        assignment_id,
+        coach_account_id,
+        player_account_id,
+        "performance_regression",
+        "missing-regression-name",
+        {"e1rm_delta": -2.1, "status_badge": "OVERSHOOT"},
+        now_iso,
+    )
+
+    response = client.get("/coach/alerts", headers=coach_headers)
+    assert response.status_code == 200, response.text
+    alerts = {row["alert_id"]: row for row in response.json()["alerts"]}
+
+    unknown_kind = alerts["unknown-kind-alert"]
+    assert unknown_kind["message_code"] is None
+    assert unknown_kind["message_params"] == {}
+    assert unknown_kind["message_fallback"] == "Alert details are unavailable."
+
+    invalid_evidence = alerts["invalid-deload-alert"]
+    assert invalid_evidence["message_code"] is None
+    assert invalid_evidence["message_params"] == {}
+    assert invalid_evidence["message_fallback"] == "Deload recommended — System fatigue"
+    assert "private_future_reason" not in str(invalid_evidence)
+
+    missing_regression_name = alerts["missing-regression-name-alert"]
+    assert missing_regression_name["message_code"] is None
+    assert missing_regression_name["message_params"] == {}
+    assert missing_regression_name["message_fallback"] == (
+        "Performance regression — Exercise: e1RM −2.1 kg (OVERSHOOT)"
+    )
 
 
 def test_non_coach_cannot_read_alerts(api):
@@ -286,6 +361,13 @@ def test_profile_change_alert_projects_only_changed_training_profile_fields(api,
         "equipment_access": {"before": "Commercial gym", "after": "Home gym"},
         "injuries_or_limitations": {"before": "None", "after": "Left knee pain"},
     }
+    assert alerts[0]["message_code"] == "coach_alert.profile_change.v1"
+    assert alerts[0]["message_params"] == {
+        "changed_fields": ["injuries_or_limitations", "equipment_access"]
+    }
+    assert alerts[0]["message_fallback"] == "Training profile changed."
+    assert "Left knee pain" not in str(alerts[0]["message_params"])
+    assert "Left knee pain" not in alerts[0]["message_fallback"]
     assert not ({"current_goal", "weight_kg"} & alerts[0].keys())
 
 

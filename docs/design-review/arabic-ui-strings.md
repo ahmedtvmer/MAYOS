@@ -750,6 +750,22 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 | No workouts yet | لم يسجل حصصًا بعد |
 | Last workout {date} · {program} | آخر حصة تدريبية {date} · {program} |
 | Revoking… | جارٍ إنهاء العلاقة… |
+| Missed {count} expected training day(s) ({start} to {end}) | فات اللاعب {Arabic count phrase for days} من أيام التدريب المتوقعة ({start} إلى {end}) |
+| Follow-up due since {date} | حان موعد المتابعة منذ {date} |
+| Stalling — {count} sessions without a personal record (since {date}) | توقف التقدم: {Arabic count phrase for training sessions} دون رقم قياسي شخصي (منذ {date}) |
+| Deload recommended — rolling readiness crash, average {average}/5 across the last 3 workouts | يوصى بتخفيف التدريب بسبب انخفاض الاستعداد في آخر 3 حصص تدريبية (المتوسط {average}/5) |
+| Deload recommended — acute readiness floor, 1/5 logged | يوصى بتخفيف التدريب بعد تسجيل الاستعداد بدرجة 1/5 |
+| Deload recommended — high exertion density with declining readiness | يوصى بتخفيف التدريب بسبب ارتفاع نسبة مجموعات التدريب عند RIR 0.5 أو أقل مع انخفاض الاستعداد |
+| Player chose to apply deload for the next workout only | اختار اللاعب تطبيق تخفيف التدريب في الحصة التدريبية التالية فقط |
+| Player chose to undo deload for the next workout only | اختار اللاعب التراجع عن تخفيف التدريب للحصة التدريبية التالية فقط |
+| Performance regression — {exercise}: e1RM {delta} kg ({status}) | تراجع الأداء — {exercise}: e1RM {delta} kg ({status}) |
+| Training profile changed: injuries or limitations, equipment access | تغير الملف التدريبي: الإصابات أو القيود، المعدات المتاحة |
+| Injuries or limitations: {before} → {after} | الإصابات أو القيود: {before} → {after} |
+| Equipment access: {before} → {after} | المعدات المتاحة: {before} → {after} |
+| Not set (profile change value) | غير محدد |
+| Message unavailable. | تعذر عرض الرسالة. |
+| Unknown status | حالة غير معروفة |
+| Resolved by coach / system | حلّه المدرب / حلّه النظام |
 
 ## Coach assistant and check-ins (Chunk C)
 

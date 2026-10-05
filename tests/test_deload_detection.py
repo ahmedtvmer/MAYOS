@@ -24,6 +24,7 @@ def test_normal_recovery_state():
     assert res["deload_recommended"] is False
     assert res["severity"] == "NORMAL"
     assert res["volume_multiplier"] == 1.0
+    assert res["reason_code"] is None
     logger.info("✅ Normal recovery state verified.")
 
 
@@ -42,6 +43,7 @@ def test_rolling_readiness_crash():
     assert res["volume_multiplier"] == 0.5
     assert res["intensity_cap_rpe"] == 7.0
     assert "Rolling readiness crash" in res["reason"]
+    assert res["reason_code"] == "rolling_readiness_crash"
     logger.info("✅ Rolling readiness crash trigger verified.")
 
 
@@ -58,6 +60,7 @@ def test_acute_readiness_floor():
     assert res["deload_recommended"] is True
     assert res["severity"] == "HIGH"
     assert "Acute readiness floor" in res["reason"]
+    assert res["reason_code"] == "acute_readiness_floor"
     logger.info("✅ Acute readiness floor trigger verified.")
 
 
@@ -75,6 +78,7 @@ def test_high_exertion_density():
     assert res["severity"] == "MODERATE"
     assert res["volume_multiplier"] == 0.6
     assert res["intensity_cap_rpe"] == 8.0
+    assert res["reason_code"] == "high_exertion_density"
     logger.info("✅ High exertion density trigger verified.")
 
 

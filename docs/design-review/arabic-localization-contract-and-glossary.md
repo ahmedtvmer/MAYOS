@@ -167,6 +167,25 @@ They are implementation requirements, not claims of completed work.
   independently of account lookup. Localizing recovery and deletion forms
   preserves their existing generic responses and token protections.
 
+## Shared message implementation notes
+
+Coach alert responses keep their existing `kind`, state and evidence fields and
+add `message_code`, `message_params` and `message_fallback`. Codes identify one
+stable meaning; each resolver entry validates its required typed values before
+rendering. The fallback is safe English for old or malformed metadata. An
+unknown kind has no translation code and uses a generic fallback rather than a
+known alert template. When no usable fallback exists, the client uses a
+localized generic message.
+
+To add a code, add its typed value allowlist and safe English fallback to the
+server message builder, then add a matching client template and a test for valid
+and invalid values. Values must come from existing authorized evidence or a
+stable enum emitted by the decision that produced that evidence; human-written
+text stays in its original field and language. Never derive a code or values by
+parsing prose, or show a code as readable text. Preserve all existing API fields
+and keep translations in the Display language catalog so already loaded
+messages can be rendered again after a language change.
+
 ## Verified implementation boundaries
 
 Read-only findings on 2026-10-01; implementation belongs in subsequent GitHub

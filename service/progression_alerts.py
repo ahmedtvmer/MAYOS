@@ -66,6 +66,7 @@ class CommitSignal:
 
 def _deload_details(fatigue_post: dict[str, Any], session_id: str, session_date: str) -> dict[str, Any]:
     return {
+        "reason_code": fatigue_post.get("reason_code"),
         "severity": fatigue_post.get("severity"),
         "reason": fatigue_post.get("reason"),
         "recent_readiness_avg": fatigue_post.get("recent_readiness_avg"),

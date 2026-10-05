@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_failure.dart';
 import '../../core/models.dart';
+import '../../core/display_language/coach_copy.dart';
+import '../../core/display_language/controller.dart';
 import '../../core/display_language/feature_copy_context.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
@@ -69,10 +71,15 @@ Color coachAlertStateColor(BuildContext context, String state) {
 /// The alert's state as a pill chip, as shown on the player page and in the
 /// alert centre (#120).
 Widget coachAlertStateChip(BuildContext context, CoachAlert alert) {
-  return coachPillChip(
-    context,
-    coachCopyOf(context).alertState(alert.state),
-    coachAlertStateColor(context, alert.state),
+  return Consumer(
+    builder: (BuildContext context, WidgetRef ref, Widget? child) {
+      final CoachCopy copy = CoachCopy(ref.watch(displayLanguageProvider));
+      return coachPillChip(
+        context,
+        copy.alertState(alert.state),
+        coachAlertStateColor(context, alert.state),
+      );
+    },
   );
 }
 

@@ -535,10 +535,10 @@ def _persist_session(
     cardio: dict[str, Any] | None = None,
     active_program_version_at_sync: int | None = None,
 ) -> dict[str, Any]:
-    """Writes one session and all of its derived records; the caller owns the transaction.
+    """Writes one session and its derived records; the caller owns the transaction.
 
-    Returns the response body. No ledger commit happens here, so the whole
-    commit (session, sets, cardio, divergences, PRs, debrief, chat pointer) is atomic.
+    No ledger commit happens here, so the whole commit (session, sets, cardio,
+    divergences, PRs, debrief, chat pointer) is atomic.
     ``active_program_version_at_sync`` is the version active when the commit
     landed, which may be newer than the captured ``sync.program_version`` for a
     historical-sync session (ADR 034).
@@ -758,7 +758,7 @@ def _persist_session(
     )
     ledger.add_chat_message("assistant", compact_pointer)
 
-    return {
+    body = {
         "session_id": session_id,
         "total_tonnage_kg": total_tonnage_kg,
         "total_working_sets": total_working_sets,
@@ -779,6 +779,7 @@ def _persist_session(
             sync.program_version, active_program_version_at_sync
         ),
     }
+    return body
 
 
 def _commit_outcome_from_row(row: dict[str, Any]) -> CommitOutcome:
@@ -915,7 +916,12 @@ def commit_session(
             )
 
     _run_post_commit_hooks(
-        db, account_id, session_id, today_date, body["exercise_summaries"], body["fatigue_post"]
+        db,
+        account_id,
+        session_id,
+        today_date,
+        body["exercise_summaries"],
+        body["fatigue_post"],
     )
     return CommitOutcome(body, created=True)
 
@@ -1032,7 +1038,12 @@ def commit_logged_session(
             )
 
     _run_post_commit_hooks(
-        db, account_id, session_id, sync.performed_date, outcome.body["exercise_summaries"], outcome.body["fatigue_post"]
+        db,
+        account_id,
+        session_id,
+        sync.performed_date,
+        outcome.body["exercise_summaries"],
+        outcome.body["fatigue_post"],
     )
     return outcome
 

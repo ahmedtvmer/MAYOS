@@ -5,7 +5,9 @@ import '../../core/api_client.dart';
 import '../../core/app_failure.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/copy_context.dart';
+import '../../core/display_language/controller.dart';
 import '../../core/display_language/feature_copy_context.dart';
+import '../../core/display_language/message_resolver.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
@@ -200,6 +202,7 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(displayLanguageProvider);
     final copy = coachCopyOf(context);
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
@@ -405,6 +408,7 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
       return const SizedBox.shrink();
     }
     final MayosThemeExtension c = MayosTheme.of(context);
+    final String languageCode = displayCopyOf(context).languageCode;
     return MayosCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -413,22 +417,34 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
               style: MayosTypography.sectionHeading
                   .copyWith(color: c.textPrimary)),
           for (final CoachAlert alert in _resolvedAlerts)
-            ListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.check_circle_outline, color: c.success),
-              title: FirstStrongDirection(
-                text: '${alert.playerUsername} · ${alert.description}',
-                child: Text('${alert.playerUsername} · ${alert.description}'),
-              ),
-              subtitle: alert.resolvedBy == null
-                  ? null
-                  : Text(coachCopyOf(context).resolvedBy(alert.resolvedBy!),
-                      style:
-                          MayosTypography.caption.copyWith(color: c.textMuted)),
-            ),
+            _resolvedAlertTile(context, alert, languageCode, c),
         ],
       ),
+    );
+  }
+
+  Widget _resolvedAlertTile(
+    BuildContext context,
+    CoachAlert alert,
+    String languageCode,
+    MayosThemeExtension colors,
+  ) {
+    final String description =
+        resolveCoachAlertDescription(alert, languageCode);
+    final String text = '${alert.playerUsername} · $description';
+    return ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(Icons.check_circle_outline, color: colors.success),
+      title: FirstStrongDirection(
+        text: text,
+        child: Text(text),
+      ),
+      subtitle: alert.resolvedBy == null
+          ? null
+          : Text(coachCopyOf(context).resolvedBy(alert.resolvedBy!),
+              style:
+                  MayosTypography.caption.copyWith(color: colors.textMuted)),
     );
   }
 }
