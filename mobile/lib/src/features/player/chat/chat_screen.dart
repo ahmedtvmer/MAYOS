@@ -324,6 +324,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           await ref.read(apiClientProvider).activeProgram();
       if (program == null) return;
       final WorkoutCacheStore cache = ref.read(workoutCacheStoreProvider);
+      if (!mounted) return;
+      ref.read(playerProgramUpdateProvider.notifier).state =
+          PlayerProgramUpdate(
+        accountId: accountId,
+        program: program,
+        fromCache: false,
+      );
       await cache.writeProgram(accountId, program);
       final ProgramDay? nextWorkout =
           program.days.isEmpty ? null : program.days.first;

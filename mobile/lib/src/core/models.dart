@@ -1640,6 +1640,7 @@ class ProfileUpdateResult {
     this.programBlocked = false,
     this.programMessage,
     this.profile,
+    this.program,
   });
 
   factory ProfileUpdateResult.fromJson(Map<String, dynamic> json) =>
@@ -1650,12 +1651,16 @@ class ProfileUpdateResult {
         profile: json['profile'] is Map<String, dynamic>
             ? PlayerProfile.fromJson(json['profile'] as Map<String, dynamic>)
             : null,
+        program: json['program'] is Map<String, dynamic>
+            ? TrainingProgram.fromJson(json['program'] as Map<String, dynamic>)
+            : null,
       );
 
   final bool programRebuilt;
   final bool programBlocked;
   final String? programMessage;
   final PlayerProfile? profile;
+  final TrainingProgram? program;
 }
 
 const List<String> weekdayLabels = <String>[

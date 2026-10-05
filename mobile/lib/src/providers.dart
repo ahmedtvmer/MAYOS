@@ -336,6 +336,25 @@ final StateProvider<PlayerAssignmentUpdate?> playerAssignmentUpdateProvider =
   return null;
 });
 
+class PlayerProgramUpdate {
+  const PlayerProgramUpdate({
+    required this.accountId,
+    required this.program,
+    required this.fromCache,
+  });
+
+  final String accountId;
+  final TrainingProgram? program;
+  final bool fromCache;
+}
+
+/// Tracks the latest active program loaded in Player mode across its tabs.
+final StateProvider<PlayerProgramUpdate?> playerProgramUpdateProvider =
+    StateProvider<PlayerProgramUpdate?>((ref) {
+  _resetOnAccountChange(ref, () => ref.controller.state = null);
+  return null;
+});
+
 /// The number of coach alerts still in the `new` state, published by the
 /// Alerts tab so the shell's badge tracks acknowledge/resolve without a second
 /// fetch. It resets whenever the account changes, so one account's badge count

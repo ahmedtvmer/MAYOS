@@ -304,7 +304,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 equipmentAccess: changedValues['equipment_access'] as String?,
               );
       if (!mounted) return;
-      if (result.programRebuilt) unawaited(_refreshProgramCache());
+      if (result.programRebuilt) {
+        unawaited(_refreshProgramCache(rebuiltProgram: result.program));
+      }
       setState(() {
         _saving = false;
         _savedProfile = result.profile ??
@@ -355,18 +357,32 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         );
   }
 
-  Future<void> _refreshProgramCache() async {
+  Future<void> _refreshProgramCache({TrainingProgram? rebuiltProgram}) async {
     final String? accountId = _account?.accountId;
     if (accountId == null) return;
     final ApiClient api = ref.read(apiClientProvider);
     final cache = ref.read(workoutCacheStoreProvider);
-    try {
-      final TrainingProgram? program = await api.activeProgram();
-      if (program != null) {
-        await cache.writeProgram(accountId, program);
+    TrainingProgram? program = rebuiltProgram;
+    if (program == null) {
+      try {
+        program = await api.activeProgram();
+      } on ApiException {
+        // Keep the currently displayed program when the online refresh fails.
+        return;
       }
+    }
+    if (program == null) return;
+    if (!mounted) return;
+    ref.read(playerProgramUpdateProvider.notifier).state =
+        PlayerProgramUpdate(
+      accountId: accountId,
+      program: program,
+      fromCache: false,
+    );
+    try {
+      await cache.writeProgram(accountId, program);
     } on Object {
-      // The online program read remains authoritative if the cache write fails.
+      // Keep the fresh response usable if device storage fails.
     }
   }
 

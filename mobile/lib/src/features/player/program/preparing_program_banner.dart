@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/display_language/copy_context.dart';
+import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -8,14 +9,15 @@ import '../../../core/ui/first_strong_direction.dart';
 import '../../../core/ui/mayos_card.dart';
 
 class PreparingProgramBanner extends StatelessWidget {
-  const PreparingProgramBanner({super.key, required this.coachName});
+  const PreparingProgramBanner({super.key, required this.assignment});
 
-  final String coachName;
+  final Assignment assignment;
 
   @override
   Widget build(BuildContext context) {
     final String message =
-        displayCopyOf(context).coachPreparingProgram(coachName);
+        displayCopyOf(context)
+            .coachPreparingProgram(assignment.coach.displayName);
     return MayosCard(child: _messageContent(context, message));
   }
 
@@ -31,7 +33,7 @@ class PreparingProgramBanner extends StatelessWidget {
             text: message,
             child: Text(
               message,
-              style: MayosTypography.bodySecondary
+              style: MayosTypography.of(context).bodySecondary
                   .copyWith(color: colors.textPrimary),
             ),
           ),

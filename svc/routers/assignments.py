@@ -788,15 +788,15 @@ async def redeem_assignment_invite(
 
     def _run():
         redemption = assignment_service.redeem_assignment_invite(
-            db, body.token, player.account_id, body.consent, client=client
+            db,
+            body.token,
+            player.account_id,
+            body.consent,
+            ledger=ledger,
+            client=client,
         )
         if not redemption["ok"]:
             raise _bad_request(redemption["error"])
-        active_assignment = assignment_service.get_player_assignment(db, player.account_id, ledger)
-        if active_assignment is None:
-            redemption["assignment"]["coach_preparing_program"] = False
-        else:
-            redemption["assignment"] = active_assignment
         return redemption
 
     result = await asyncio.to_thread(_run)
@@ -891,11 +891,11 @@ async def end_my_assignment(
     client = analytics_service.client_context(request)
 
     def _run():
-        assignment = assignment_service.get_player_assignment(db, player.account_id)
-        if assignment is None:
+        assignment_id = assignment_service.get_active_player_assignment_id(db, player.account_id)
+        if assignment_id is None:
             raise _bad_request("You have no active coaching assignment.")
         result = assignment_service.end_assignment(
-            db, player.account_id, assignment["assignment_id"], "player", client=client
+            db, player.account_id, assignment_id, "player", client=client
         )
         if not result["ok"]:
             raise _bad_request(result["error"])

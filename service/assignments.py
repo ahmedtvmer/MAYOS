@@ -314,6 +314,7 @@ def redeem_assignment_invite(
     player_account_id: str,
     consent: bool,
     *,
+    ledger: Any,
     client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
 ) -> dict[str, Any]:
     """Atomically redeems a code after explicit consent; emails the coach afterwards.
@@ -377,13 +378,16 @@ def redeem_assignment_invite(
             "coach": identity,
             "started_at": result["started_at"],
             "status": "active",
+            "coach_preparing_program": not ledger.has_program_published_by_coach_since(
+                result["coach_account_id"], result["started_at"]
+            ),
         },
         "notices_created": 1,
         "email_sent": email_sent,
     }
 
 
-def get_player_assignment(db: Any, player_account_id: str, ledger: Any | None = None) -> dict[str, Any] | None:
+def get_player_assignment(db: Any, player_account_id: str, ledger: Any) -> dict[str, Any] | None:
     """The player's active assignment with the coach's current identity, or ``None``."""
     assignment = db.get_active_assignment_for_player(player_account_id)
     if assignment is None:
@@ -397,11 +401,21 @@ def get_player_assignment(db: Any, player_account_id: str, ledger: Any | None = 
         "started_at": assignment["started_at"],
         "status": assignment["status"],
     }
-    if ledger is not None:
-        assignment_details["coach_preparing_program"] = not ledger.has_program_published_by_coach_since(
-            assignment["coach_account_id"], assignment["started_at"]
-        )
+    assignment_details["coach_preparing_program"] = not ledger.has_program_published_by_coach_since(
+        assignment["coach_account_id"], assignment["started_at"]
+    )
     return assignment_details
+
+
+def get_active_player_assignment_id(db: Any, player_account_id: str) -> str | None:
+    """Returns the active Assignment id for the player's end action."""
+    assignment = db.get_active_assignment_for_player(player_account_id)
+    if assignment is None:
+        return None
+    coach = db.get_account(assignment["coach_account_id"])
+    if not db.is_live_account(coach) or not coach["is_coach"]:
+        return None
+    return assignment["assignment_id"]
 
 
 def authorized_player_ledger(db: Any, coach_account_id: str, assignment_id: Any) -> tuple[Any, dict[str, Any]] | None:

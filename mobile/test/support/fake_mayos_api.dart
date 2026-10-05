@@ -130,6 +130,7 @@ class FakeMayosApi {
   String? activeCoachDisplayName;
   String? activeCoachSpecialization;
   bool myAssignmentFails = false;
+  int myAssignmentRequests = 0;
   final List<Map<String, dynamic>> assignmentNotices = <Map<String, dynamic>>[];
   final List<Map<String, dynamic>> assignments = <Map<String, dynamic>>[];
 
@@ -172,6 +173,7 @@ class FakeMayosApi {
   // When true, `GET /programs/active` fails with a transient 500 (offline
   // simulation for the Program tab's cache fallback, ADR 020/033).
   bool activeProgramFails = false;
+  int activeProgramRequests = 0;
   bool coachControlsProgram = false;
   bool? coachPreparingProgram;
   bool substitutionVersionConflict = false;
@@ -1790,6 +1792,7 @@ class FakeMayosApi {
   }
 
   FakeResponse _myAssignment(FakeRequest request) {
+    myAssignmentRequests++;
     if (!_authorized(request)) {
       return const FakeResponse(
           401, <String, dynamic>{'detail': 'Token has been revoked.'});
@@ -3158,6 +3161,7 @@ class FakeMayosApi {
       };
 
   FakeResponse _activeProgram(FakeRequest request) {
+    activeProgramRequests++;
     if (!_authorized(request)) {
       return const FakeResponse(
           401, <String, dynamic>{'detail': 'Token has been revoked.'});

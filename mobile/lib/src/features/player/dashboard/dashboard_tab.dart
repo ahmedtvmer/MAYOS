@@ -67,18 +67,6 @@ class _DashboardData {
   /// Set when a non-fatal section failed to load so the body can say so instead
   /// of silently showing an empty section.
   final FailureMessage? partialError;
-
-  _DashboardData withAssignment(Assignment? assignment) => _DashboardData(
-        program: program,
-        schedule: schedule,
-        volume: volume,
-        records: records,
-        latestSession: latestSession,
-        unopenedCheckpointReview: unopenedCheckpointReview,
-        partialError: partialError,
-        assignment: assignment,
-        programFromCache: programFromCache,
-      );
 }
 
 class _DashboardTabState extends ConsumerState<DashboardTab> {
@@ -94,6 +82,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
 
   Future<_DashboardData> _load() async {
     final ApiClient api = ref.read(apiClientProvider);
+    final Future<Assignment?> assignmentFuture = _loadAssignment(api);
     final String? accountId =
         ref.read(authControllerProvider).session?.account.accountId;
     final cache = ref.read(workoutCacheStoreProvider);
@@ -117,11 +106,17 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
       accountId: accountId,
     );
     final TrainingProgram? program = active.program;
-    Assignment? assignment;
-    try {
-      assignment = await api.myAssignment();
-    } on ApiException {
-      // The program remains available if assignment details are offline.
+    if (accountId != null) {
+      final PlayerProgramUpdate? sharedProgram =
+          ref.read(playerProgramUpdateProvider);
+      if (!active.fromCache || sharedProgram?.accountId != accountId) {
+        ref.read(playerProgramUpdateProvider.notifier).state =
+            PlayerProgramUpdate(
+          accountId: accountId,
+          program: program,
+          fromCache: active.fromCache,
+        );
+      }
     }
     TrainingSchedule? schedule;
     Map<String, double> volume = const <String, double>{};
@@ -175,9 +170,32 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
       latestSession: latestSession,
       unopenedCheckpointReview: unopenedCheckpointReview,
       partialError: partialError,
-      assignment: assignment,
+      assignment: await assignmentFuture,
       programFromCache: active.fromCache,
     );
+  }
+
+  Future<Assignment?> _loadAssignment(ApiClient api) async {
+    try {
+      return await api.myAssignment();
+    } on ApiException {
+      // The program remains available if assignment details are offline.
+      return null;
+    }
+  }
+
+  Future<void> _refreshAssignment() async {
+    try {
+      final Assignment? assignment =
+          await ref.read(apiClientProvider).myAssignment();
+      if (!mounted) return;
+      setState(() {
+        _assignmentOverrideKnown = true;
+        _assignmentOverride = assignment;
+      });
+    } on ApiException {
+      // Keep the last-known assignment when a tab-switch refresh is offline.
+    }
   }
 
   Future<void> _refresh() async {
@@ -213,9 +231,13 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
 
   @override
   Widget build(BuildContext context) {
+    final String? accountId =
+        ref.watch(authControllerProvider).session?.account.accountId;
+    final PlayerProgramUpdate? sharedProgram =
+        ref.watch(playerProgramUpdateProvider);
     ref.listen<int>(playerShellTabProvider, (int? previous, int next) {
       if (next == 0 && previous != 0) {
-        unawaited(_refresh());
+        unawaited(_refreshAssignment());
       }
     });
     ref.listen<PlayerAssignmentUpdate?>(playerAssignmentUpdateProvider,
@@ -242,13 +264,19 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
         final List<WorkoutDraft> drafts =
             ref.watch(draftSyncServiceProvider).drafts;
         final _DashboardData loadedData = snapshot.data!;
-        final _DashboardData displayedData = _assignmentOverrideKnown
-            ? loadedData.withAssignment(_assignmentOverride)
-            : loadedData;
+        final bool hasSharedProgram =
+            sharedProgram != null && sharedProgram.accountId == accountId;
         final LatestSession? latest = snapshot.data!.latestSession;
         return _HomeBody(
           copy: MayosCopy(ref.watch(displayLanguageProvider)),
-          data: displayedData,
+          data: loadedData,
+          program: hasSharedProgram ? sharedProgram.program : loadedData.program,
+          programFromCache: hasSharedProgram
+              ? sharedProgram.fromCache
+              : loadedData.programFromCache,
+          assignment: _assignmentOverrideKnown
+              ? _assignmentOverride
+              : loadedData.assignment,
           onRefresh: _refresh,
           onOpenExercise: _openExercise,
           onOpenDrafts: _openDrafts,
@@ -271,6 +299,9 @@ class _HomeBody extends StatelessWidget {
   const _HomeBody({
     required this.copy,
     required this.data,
+    required this.program,
+    required this.programFromCache,
+    required this.assignment,
     required this.onRefresh,
     required this.onOpenExercise,
     required this.onOpenDrafts,
@@ -284,6 +315,9 @@ class _HomeBody extends StatelessWidget {
   final MayosCopy copy;
 
   final _DashboardData data;
+  final TrainingProgram? program;
+  final bool programFromCache;
+  final Assignment? assignment;
   final Future<void> Function() onRefresh;
   final void Function(ProgramExercise exercise, int dayOrder) onOpenExercise;
   final VoidCallback onOpenDrafts;
@@ -297,9 +331,9 @@ class _HomeBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final MayosThemeExtension c = MayosTheme.of(context);
     final DateTime now = DateTime.now();
-    final TrainingProgram? program = data.program;
+    final TrainingProgram? activeProgram = program;
     final ProgramDay? nextDay =
-        program == null ? null : selectNextDay(program, trainedDays);
+        activeProgram == null ? null : selectNextDay(activeProgram, trainedDays);
 
     return RefreshIndicator(
       onRefresh: onRefresh,
@@ -314,7 +348,7 @@ class _HomeBody extends StatelessWidget {
               color: c.textPrimary,
             ),
           ),
-          if (data.programFromCache) ...<Widget>[
+          if (programFromCache) ...<Widget>[
             const SizedBox(height: MayosSpacing.sm),
             _InlineNotice(message: displayCopyOf(context).offlineSavedProgram),
           ] else if (data.partialError != null) ...<Widget>[
@@ -323,8 +357,8 @@ class _HomeBody extends StatelessWidget {
           ],
           const SizedBox(height: MayosSpacing.xl),
           _ProgramSection(
-              program: program,
-              assignment: data.assignment,
+              program: activeProgram,
+              assignment: assignment,
               onOpenProgram: onOpenProgram,
               copy: copy),
           if (pendingDrafts > 0) ...<Widget>[
@@ -348,7 +382,7 @@ class _HomeBody extends StatelessWidget {
               label: nextSessionLabel(data.schedule, now,
                   isArabic: displayCopyOf(context).isArabic),
               onOpenExercise: onOpenExercise,
-              onLogWorkout: () => onLogWorkout(nextDay, data.program?.version),
+              onLogWorkout: () => onLogWorkout(nextDay, activeProgram?.version),
               logEnabled: true,
             ),
           ],
@@ -407,54 +441,48 @@ class _ProgramSection extends StatelessWidget {
     final Assignment? currentAssignment = assignment;
     final bool showPreparingProgram =
         currentAssignment?.coachPreparingProgram == true;
-    if (active == null) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          if (showPreparingProgram) ...<Widget>[
-            PreparingProgramBanner(
-              coachName: currentAssignment!.coach.displayName,
+    final List<Widget> programContent = active == null
+        ? <Widget>[
+            Text(copy.noActiveProgram,
+                style: MayosTypography.of(context).sectionHeading
+                    .copyWith(color: c.textPrimary)),
+            const SizedBox(height: MayosSpacing.xs),
+            Text(
+              copy.generateProgramForNextSession,
+              style: MayosTypography.of(context).bodySecondary
+                  .copyWith(color: c.textSecondary),
             ),
             const SizedBox(height: MayosSpacing.md),
-          ],
-          Text(copy.noActiveProgram,
-              style: MayosTypography.of(context).sectionHeading
-                  .copyWith(color: c.textPrimary)),
-          const SizedBox(height: MayosSpacing.xs),
-          Text(
-            copy.generateProgramForNextSession,
-            style:
-                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
-          ),
-          const SizedBox(height: MayosSpacing.md),
-          MayosButton(
-            label: copy.goToProgram,
-            icon: Icons.auto_awesome,
-            variant: MayosButtonVariant.secondary,
-            expand: false,
-            onPressed: onOpenProgram,
-          ),
-        ],
-      );
-    }
+            MayosButton(
+              label: copy.goToProgram,
+              icon: Icons.auto_awesome,
+              variant: MayosButtonVariant.secondary,
+              expand: false,
+              onPressed: onOpenProgram,
+            ),
+          ]
+        : <Widget>[
+            Text(
+              active.programName,
+              style: MayosTypography.of(context).pageHeading.copyWith(color: c.textPrimary),
+            ),
+            const SizedBox(height: MayosSpacing.xs),
+            Text(
+              '${active.splitType} · ${displayCopyOf(context).programFrequency(active.weeklyFrequency)}',
+              style: MayosTypography.of(context).bodySecondary
+                  .copyWith(color: c.textSecondary),
+            ),
+          ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         if (showPreparingProgram) ...<Widget>[
           PreparingProgramBanner(
-            coachName: currentAssignment!.coach.displayName,
+            assignment: currentAssignment!,
           ),
           const SizedBox(height: MayosSpacing.md),
         ],
-        Text(
-          active.programName,
-          style: MayosTypography.of(context).pageHeading.copyWith(color: c.textPrimary),
-        ),
-        const SizedBox(height: MayosSpacing.xs),
-        Text(
-          '${active.splitType} · ${displayCopyOf(context).programFrequency(active.weeklyFrequency)}',
-          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
-        ),
+        ...programContent,
       ],
     );
   }

@@ -150,6 +150,23 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     await _loadProgramChangeNotice();
   }
 
+  Future<void> _refreshAssignment() async {
+    try {
+      final Assignment? assignment =
+          await ref.read(apiClientProvider).myAssignment();
+      if (!mounted) return;
+      setState(() {
+        _assignment = assignment;
+        _assignmentKnown = true;
+      });
+    } on ApiException {
+      // Keep the last-known Assignment when a tab-switch refresh is offline.
+    }
+  }
+
+  Widget _preparingProgramBanner() =>
+      PreparingProgramBanner(assignment: _assignment!);
+
   Future<void> _loadProgramChangeNotice() async {
     try {
       final List<AssignmentNotice> notices =
@@ -207,9 +224,31 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       _fromCache = fromCache;
       if (loading != null) _loading = loading;
     });
+    _shareProgram(program, accountId, fromCache: fromCache);
     if (program != null) {
       unawaited(_loadProgramDeload(program, accountId));
     }
+  }
+
+  void _shareProgram(
+    TrainingProgram? program,
+    String? accountId, {
+    required bool fromCache,
+  }) {
+    if (accountId == null) return;
+    final PlayerProgramUpdate? current =
+        ref.read(playerProgramUpdateProvider);
+    if (fromCache &&
+        current != null &&
+        current.accountId == accountId &&
+        !current.fromCache) {
+      return;
+    }
+    ref.read(playerProgramUpdateProvider.notifier).state = PlayerProgramUpdate(
+      accountId: accountId,
+      program: program,
+      fromCache: fromCache,
+    );
   }
 
   Future<void> _loadProgramDeload(
@@ -367,6 +406,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
           _program = refreshedProgram;
           _fromCache = false;
         });
+        _shareProgram(refreshedProgram, _accountId, fromCache: false);
       }
       if (!mounted) return;
       final ProgramAuthorityRoute route =
@@ -632,6 +672,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         _fromCache = false;
         _substituting = false;
       });
+      _shareProgram(swapResult.program, _accountId, fromCache: false);
       _showSwapResult(swap, direction, swapResult);
     } on ApiException catch (error) {
       if (direction == _SwapDirection.apply &&
@@ -733,7 +774,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   Widget build(BuildContext context) {
     ref.listen<int>(playerShellTabProvider, (int? previous, int next) {
       if (next == 1 && previous != 1) {
-        unawaited(_load());
+        unawaited(_refreshAssignment());
       }
     });
     ref.listen<PlayerAssignmentUpdate?>(playerAssignmentUpdateProvider,
@@ -743,6 +784,8 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         _assignmentKnown = update != null;
       });
     });
+    final PlayerProgramUpdate? programUpdate =
+        ref.watch(playerProgramUpdateProvider);
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -753,7 +796,12 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         onAction: _load,
       );
     }
-    final TrainingProgram? program = _program;
+    final bool hasSharedProgram =
+        programUpdate != null && programUpdate.accountId == _accountId;
+    final TrainingProgram? program =
+        hasSharedProgram ? programUpdate.program : _program;
+    final bool fromCache =
+        hasSharedProgram ? programUpdate.fromCache : _fromCache;
     if (program == null) {
       if (_showPreparingProgram) {
         return RefreshIndicator(
@@ -767,9 +815,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
                   MayosSpacing.lg,
                   0,
                 ),
-                child: PreparingProgramBanner(
-                  coachName: _assignment!.coach.displayName,
-                ),
+                child: _preparingProgramBanner(),
               ),
               SizedBox(
                 height: MediaQuery.sizeOf(context).height * 0.6,
@@ -818,12 +864,10 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
             MayosSpacing.lg, MayosSpacing.xxl),
         children: <Widget>[
           if (_showPreparingProgram) ...<Widget>[
-            PreparingProgramBanner(
-              coachName: _assignment!.coach.displayName,
-            ),
+            _preparingProgramBanner(),
             const SizedBox(height: MayosSpacing.md),
           ],
-          if (_fromCache) ...<Widget>[
+          if (fromCache) ...<Widget>[
             const _OfflineBanner(),
             const SizedBox(height: MayosSpacing.md),
           ],

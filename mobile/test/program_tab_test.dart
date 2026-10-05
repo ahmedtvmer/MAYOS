@@ -442,6 +442,33 @@ void main() {
     expect(find.textContaining('preparing your program'), findsNothing);
   });
 
+  testWidgets('Home removes the preparing banner after the player ends assignment',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..activeAssignmentId = 'assignment-1'
+      ..activeCoachDisplayName = 'Coach Alice';
+    await _pumpProgram(tester, fake);
+    await tester.tap(find.text('Home'));
+    await _pumpUntilFound(tester, find.text('Coach Alice'));
+    expect(find.textContaining('preparing your program'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await _pumpUntilFound(tester, find.text('Appearance'));
+    await tester.tap(find.byIcon(Icons.badge_outlined));
+    await _pumpUntilFound(tester, find.text('My coach'));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Leave coach'));
+    await _pumpUntilFound(tester, find.text('Leave coach?'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Leave coach'));
+    await _pumpUntilFound(tester, find.text('Invite code from your coach'));
+
+    await tester.binding.handlePopRoute();
+    await _pumpUntilFound(tester, find.text('Appearance'));
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('preparing your program'), findsNothing);
+  });
+
   testWidgets('Home shows the preparing banner above its program card',
       (tester) async {
     final FakeMayosApi fake = _signedInFake()
@@ -471,6 +498,43 @@ void main() {
     await tester.tap(find.text('Home'));
     await _pumpUntilFound(tester, find.text('Day 1: Upper 1'));
 
+    expect(find.textContaining('preparing your program'), findsNothing);
+  });
+
+  testWidgets('Home tab switch refreshes only the assignment', (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..activeAssignmentId = 'assignment-1'
+      ..activeCoachDisplayName = 'Coach Alice';
+    await _pumpProgram(tester, fake);
+    final int assignmentRequests = fake.myAssignmentRequests;
+    final int programRequests = fake.activeProgramRequests;
+
+    await tester.tap(find.text('Home'));
+    await _pumpUntilFound(tester, find.text('Coach Alice'));
+
+    expect(fake.myAssignmentRequests, assignmentRequests + 1);
+    expect(fake.activeProgramRequests, programRequests);
+  });
+
+  testWidgets('Program tab refresh hides the banner after coach ends assignment',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..activeAssignmentId = 'assignment-1'
+      ..activeCoachDisplayName = 'Coach Alice';
+    await _pumpProgram(tester, fake);
+    expect(find.textContaining('preparing your program'), findsOneWidget);
+
+    await tester.tap(find.text('Home'));
+    await _pumpUntilFound(tester, find.text('Coach Alice'));
+    fake.activeAssignmentId = null;
+    final int assignmentRequests = fake.myAssignmentRequests;
+    final int programRequests = fake.activeProgramRequests;
+
+    await tester.tap(find.text('Program'));
+    await _pumpUntilFound(tester, find.text('Day 1: Upper 1'));
+
+    expect(fake.myAssignmentRequests, assignmentRequests + 1);
+    expect(fake.activeProgramRequests, programRequests);
     expect(find.textContaining('preparing your program'), findsNothing);
   });
 
