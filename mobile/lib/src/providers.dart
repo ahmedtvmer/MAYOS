@@ -313,11 +313,13 @@ void _resetOnAccountChange(Ref ref, void Function() reset) {
   });
 }
 
-/// The selected bottom-navigation tab in the player shell (0 = Home,
-/// 1 = Program, 2 = Progress). Home's no-program state points at Program so the
-/// player can generate a program through the existing Program-tab flow.
+/// The selected bottom-navigation tab in the player shell. Home's no-program
+/// state points at Program so the player can generate a program through the
+/// existing Program-tab flow.
+enum PlayerShellTab { home, program, progress }
+
 final StateProvider<int> playerShellTabProvider = StateProvider<int>(
-  (ref) => 0,
+  (ref) => PlayerShellTab.home.index,
 );
 
 /// The number of coach alerts still in the `new` state, published by the

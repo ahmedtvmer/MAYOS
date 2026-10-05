@@ -836,6 +836,26 @@ async def mark_player_notices_read(
     return {"marked_read": count}
 
 
+@player_router.post("/notices/{notice_id}/dismiss-summary")
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def dismiss_player_program_change_summary(
+    request: Request,
+    notice_id: str,
+    player: Annotated[VerifiedPlayer, Depends(get_current_player)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Dismiss one of the caller's program change summaries without changing read state."""
+    dismissed = await asyncio.to_thread(
+        assignment_service.dismiss_player_program_change_summary,
+        db,
+        player.account_id,
+        notice_id,
+    )
+    if not dismissed:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notice not found.")
+    return {"dismissed": True}
+
+
 @player_router.post("/me/end", response_model=AssignmentEndOut)
 @limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
 async def end_my_assignment(

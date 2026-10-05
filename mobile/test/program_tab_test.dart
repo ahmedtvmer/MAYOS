@@ -133,7 +133,8 @@ Future<void> _expectProgramChangeSummary(
     'kind': 'program_published',
     'message': 'Your coach published program version 2.',
     'created_at': '2026-10-05T10:00:00Z',
-    'read_at': null,
+    'read_at': '2026-10-05T10:01:00Z',
+    'summary_dismissed_at': null,
     'program_change_summary': <String, dynamic>{
       'version': 1,
       'unchanged': unchanged,
@@ -179,7 +180,80 @@ Future<void> _expectProgramChangeSummary(
   await tester.tap(find.text(languageCode == 'ar' ? 'إخفاء' : 'Dismiss'));
   await tester.pumpAndSettle();
   expect(replacement, findsNothing);
-  expect(fake.playerNotices.first['read_at'], isNotNull);
+  expect(fake.dismissedPlayerNoticeIds, <String>['published-1']);
+  expect(fake.playerNotices.first['summary_dismissed_at'], isNotNull);
+  expect(fake.playerNotices.first['read_at'], '2026-10-05T10:01:00Z');
+  expect(fake.markPlayerNoticesReadRequests, 0);
+}
+
+Future<void> _expectOtherDetailsSummary(
+  WidgetTester tester,
+  String languageCode,
+) async {
+  final FakeMayosApi fake = _signedInFake();
+  fake.playerNotices.add(<String, dynamic>{
+    'notice_id': 'other-details-1',
+    'kind': 'program_published',
+    'message': 'Your coach published program version 3.',
+    'created_at': '2026-10-05T10:00:00Z',
+    'read_at': null,
+    'summary_dismissed_at': null,
+    'program_change_summary': <String, dynamic>{
+      'version': 1,
+      'unchanged': false,
+      'changes': <Map<String, dynamic>>[
+        <String, dynamic>{'type': 'other_details_changed'},
+      ],
+    },
+  });
+  await _pumpProgram(tester, fake, languageCode: languageCode);
+  final Finder generic = find.textContaining(languageCode == 'ar'
+      ? 'حدّث مدربك أيضًا تفاصيل أخرى في البرنامج التدريبي.'
+      : 'Your coach also updated other program details.');
+  await _pumpUntilFound(tester, generic);
+  expect(generic, findsOneWidget);
+  expect(
+    find.text(languageCode == 'ar'
+        ? 'وافق مدربك على برنامجك التدريبي الحالي.'
+        : 'Your coach approved your current program.'),
+    findsNothing,
+  );
+}
+
+Future<void> _expectPrescriptionFormatting(
+  WidgetTester tester,
+  String languageCode,
+) async {
+  final FakeMayosApi fake = _signedInFake();
+  fake.playerNotices.add(<String, dynamic>{
+    'notice_id': 'prescription-1',
+    'kind': 'program_published',
+    'message': 'Your coach published program version 3.',
+    'created_at': '2026-10-05T10:00:00Z',
+    'read_at': null,
+    'summary_dismissed_at': null,
+    'program_change_summary': <String, dynamic>{
+      'version': 1,
+      'unchanged': false,
+      'changes': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'type': 'prescription_changed',
+          'day': 'Upper 1',
+          'exercise': 'Bench Press',
+          'fields': <String, dynamic>{
+            'reps': <String, dynamic>{'before': '8', 'after': '10'},
+            'rir': <String, dynamic>{'before': 1.5, 'after': 2},
+          },
+        },
+      ],
+    },
+  });
+  await _pumpProgram(tester, fake, languageCode: languageCode);
+  final Finder prescription = find.textContaining(languageCode == 'ar'
+      ? 'Bench Press (Upper 1): التكرارات 8 → 10، RIR 1.5 → 2'
+      : 'Bench Press (Upper 1): reps 8 → 10, RIR 1.5 → 2');
+  await _pumpUntilFound(tester, prescription);
+  expect(prescription, findsOneWidget);
 }
 
 Future<void> _openSubstitutePicker(WidgetTester tester) async {
@@ -540,6 +614,73 @@ void main() {
 
   testWidgets('approval without changes uses its Arabic confirmation', (tester) async {
     await _expectProgramChangeSummary(tester, 'ar', unchanged: true);
+  });
+
+  testWidgets('unitemized program details are stated in English', (tester) async {
+    await _expectOtherDetailsSummary(tester, 'en');
+  });
+
+  testWidgets('unitemized program details are stated in Arabic', (tester) async {
+    await _expectOtherDetailsSummary(tester, 'ar');
+  });
+
+  testWidgets('fixed reps and fractional RIR render in English', (tester) async {
+    await _expectPrescriptionFormatting(tester, 'en');
+  });
+
+  testWidgets('fixed reps and fractional RIR render in Arabic', (tester) async {
+    await _expectPrescriptionFormatting(tester, 'ar');
+  });
+
+  testWidgets('a dismissed newest summary supersedes older unread summaries',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    fake.playerNotices.addAll(<Map<String, dynamic>>[
+      <String, dynamic>{
+        'notice_id': 'newest-summary',
+        'kind': 'program_published',
+        'message': 'Your coach published program version 3.',
+        'created_at': '2026-10-05T10:03:00Z',
+        'read_at': null,
+        'summary_dismissed_at': '2026-10-05T10:04:00Z',
+        'program_change_summary': <String, dynamic>{
+          'version': 1,
+          'unchanged': false,
+          'changes': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'type': 'exercise_added',
+              'day': 'Upper 1',
+              'exercise': 'Newest summary exercise',
+            },
+          ],
+        },
+      },
+      <String, dynamic>{
+        'notice_id': 'older-summary',
+        'kind': 'program_published',
+        'message': 'Your coach published program version 2.',
+        'created_at': '2026-10-05T10:02:00Z',
+        'read_at': null,
+        'summary_dismissed_at': null,
+        'program_change_summary': <String, dynamic>{
+          'version': 1,
+          'unchanged': false,
+          'changes': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'type': 'exercise_added',
+              'day': 'Upper 1',
+              'exercise': 'Older summary exercise',
+            },
+          ],
+        },
+      },
+    ]);
+
+    await _pumpProgram(tester, fake);
+
+    expect(find.textContaining('Newest summary exercise'), findsNothing);
+    expect(find.textContaining('Older summary exercise'), findsNothing);
+    expect(find.text('Program changes'), findsNothing);
   });
 
   for (final ThemeMode mode in <ThemeMode>[ThemeMode.light, ThemeMode.dark]) {

@@ -420,12 +420,7 @@ class RegistryAssignmentsMixin:
             }
 
     def create_assignment_notice(
-        self,
-        account_id: str,
-        assignment_id: str | None,
-        kind: str,
-        message: str,
-        now_iso: str,
+        self, account_id: str, assignment_id: str | None, kind: str, message: str, now_iso: str
     ) -> str:
         """Writes one in-app notice for an account (coach or player)."""
         return self.create_assignment_notice_record(
@@ -461,7 +456,7 @@ class RegistryAssignmentsMixin:
             cursor = self.catalog_conn.cursor()
             cursor.execute(
                 "SELECT notice_id, assignment_id, kind, message, created_at, read_at,"
-                " program_change_summary_json"
+                " program_change_summary_json, summary_dismissed_at"
                 " FROM assignment_notices WHERE account_id = ?"
                 " ORDER BY created_at DESC LIMIT ?",
                 (str(account_id), max(1, int(limit))),
@@ -475,9 +470,23 @@ class RegistryAssignmentsMixin:
                     "created_at": str(row[4]),
                     "read_at": row[5],
                     "program_change_summary": json.loads(row[6]) if row[6] is not None else None,
+                    "summary_dismissed_at": row[7],
                 }
                 for row in cursor.fetchall()
             ]
+
+    def dismiss_assignment_notice_summary(self, account_id: str, notice_id: str, now_iso: str) -> bool:
+        """Dismiss only a program change summary belonging to the given account."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.execute(
+                "UPDATE assignment_notices SET summary_dismissed_at = COALESCE(summary_dismissed_at, ?)"
+                " WHERE account_id = ? AND notice_id = ? AND kind = 'program_published'"
+                " AND program_change_summary_json IS NOT NULL",
+                (now_iso, str(account_id), str(notice_id)),
+            )
+            self.catalog_conn.commit()
+            return cursor.rowcount == 1
 
     def mark_assignment_notices_read(self, account_id: str, now_iso: str) -> int:
         self.ensure_account_schema()

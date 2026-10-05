@@ -122,8 +122,14 @@ def test_identical_program_has_no_structural_changes():
     program = _program(
         [{"day_name": "Full A", "day_order": 1, "exercises": [_exercise("sq", "Squat")]}]
     )
+    previous = program.model_copy(
+        update={"version": 2, "published_by_coach_account_id": "coach-old", "created_at": "old"}
+    )
+    current = program.model_copy(
+        update={"version": 3, "published_by_coach_account_id": "coach-new", "created_at": "new"}
+    )
 
-    assert summarize_program_change(program, program, lambda exercise_id: exercise_id) == {
+    assert summarize_program_change(previous, current, lambda exercise_id: exercise_id) == {
         "version": 1,
         "unchanged": True,
         "changes": [],
@@ -177,3 +183,118 @@ def test_duplicate_slot_keys_match_exercises_in_order():
         "old-press-1",
         "old-press-2",
     ]
+
+
+def test_inserted_day_matches_existing_days_by_name_before_position():
+    previous = _program(
+        [
+            {"day_name": "Push", "day_order": 1, "exercises": [_exercise("bench", "Bench Press")]},
+            {"day_name": "Pull", "day_order": 2, "exercises": [_exercise("row", "Cable Row")]},
+            {"day_name": "Legs", "day_order": 3, "exercises": [_exercise("squat", "Back Squat")]},
+        ]
+    )
+    current = _program(
+        [
+            {"day_name": "Push", "day_order": 1, "exercises": [_exercise("bench", "Bench Press")]},
+            {"day_name": "Upper", "day_order": 2, "exercises": [_exercise("fly", "Cable Fly")]},
+            {"day_name": "Pull", "day_order": 3, "exercises": [_exercise("row", "Cable Row")]},
+            {"day_name": "Legs", "day_order": 4, "exercises": [_exercise("squat", "Back Squat")]},
+        ]
+    )
+
+    summary = summarize_program_change(previous, current, lambda exercise_id: exercise_id)
+
+    assert summary["changes"] == [
+        {"type": "day_added", "day": "Upper"},
+        {"type": "exercise_added", "day": "Upper", "exercise": "fly"},
+    ]
+
+
+def test_exercise_reordering_emits_generic_details_line_instead_of_approval():
+    previous = _program(
+        [
+            {
+                "day_name": "Upper",
+                "day_order": 1,
+                "exercises": [
+                    _exercise("bench", "Bench Press"),
+                    _exercise("row", "Cable Row"),
+                ],
+            }
+        ]
+    )
+    current = _program(
+        [
+            {
+                "day_name": "Upper",
+                "day_order": 1,
+                "exercises": [
+                    _exercise("row", "Cable Row"),
+                    _exercise("bench", "Bench Press"),
+                ],
+            }
+        ]
+    )
+
+    summary = summarize_program_change(previous, current, lambda exercise_id: exercise_id)
+
+    assert summary["unchanged"] is False
+    assert summary["changes"] == [{"type": "other_details_changed"}]
+
+
+def test_repeated_exercise_ids_are_matched_without_false_additions_or_replacements():
+    previous = _program(
+        [
+            {
+                "day_name": "Upper",
+                "day_order": 1,
+                "exercises": [
+                    _exercise("row", "Cable Row", slot_key="row_a", notes="Pause at the chest."),
+                    _exercise("row", "Cable Row", slot_key="row_b", notes="Keep elbows tucked."),
+                ],
+            }
+        ]
+    )
+    current = _program(
+        [
+            {
+                "day_name": "Upper",
+                "day_order": 1,
+                "exercises": [
+                    _exercise("row", "Cable Row", slot_key="row_a", notes="Pause at the chest."),
+                    _exercise("row", "Cable Row", slot_key="row_b", notes="Keep the chest tall."),
+                ],
+            }
+        ]
+    )
+
+    summary = summarize_program_change(previous, current, lambda exercise_id: exercise_id)
+
+    assert summary["unchanged"] is False
+    assert summary["changes"] == [{"type": "other_details_changed"}]
+
+
+def test_fixed_rep_targets_do_not_render_as_a_range():
+    previous = _program(
+        [
+            {
+                "day_name": "Upper",
+                "day_order": 1,
+                "exercises": [_exercise("bench", "Bench Press", target_reps_min=8, target_reps_max=8)],
+            }
+        ]
+    )
+    current = _program(
+        [
+            {
+                "day_name": "Upper",
+                "day_order": 1,
+                "exercises": [_exercise("bench", "Bench Press", target_reps_min=10, target_reps_max=10)],
+            }
+        ]
+    )
+
+    summary = summarize_program_change(previous, current, lambda exercise_id: exercise_id)
+
+    prescription = summary["changes"][0]
+    assert prescription["fields"]["reps"] == {"before": "8", "after": "10"}

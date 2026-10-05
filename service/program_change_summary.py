@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from agent.ProgramState import PersistedProgramSchema
 
@@ -31,31 +31,91 @@ def summarize_program_change(
     changes: list[dict[str, Any]] = []
     previous_days = previous.days if previous is not None else []
     current_days = current.days
-    for index in range(max(len(previous_days), len(current_days))):
-        if index >= len(previous_days):
-            _append_added_day(changes, current_days[index], resolve_exercise_name)
-        elif index >= len(current_days):
-            _append_removed_day(changes, previous_days[index], resolve_exercise_name)
+    for old_index, new_index in _match_days(previous_days, current_days):
+        before = previous_days[old_index] if old_index is not None else None
+        after = current_days[new_index] if new_index is not None else None
+        if before is None:
+            _append_unmatched_day(changes, after, "day_added", resolve_exercise_name)
+        elif after is None:
+            _append_unmatched_day(changes, before, "day_removed", resolve_exercise_name)
         else:
-            _append_day_changes(changes, previous_days[index], current_days[index], resolve_exercise_name)
-    return {"version": 1, "unchanged": not changes, "changes": changes}
+            _append_day_changes(changes, before, after, resolve_exercise_name)
+    return _finish_summary(previous, current, changes)
 
 
-def _append_added_day(changes: list[dict[str, Any]], day: Any, resolve_name: Callable[[str], str | None]) -> None:
-    changes.append({"type": "day_added", "day": day.day_name})
-    for exercise in day.exercises:
-        changes.append(
-            {"type": "exercise_added", "day": day.day_name, "exercise": _exercise_name(exercise, resolve_name)}
+def _finish_summary(
+    previous: PersistedProgramSchema | None,
+    current: PersistedProgramSchema,
+    changes: list[dict[str, Any]],
+) -> dict[str, Any]:
+    unchanged = previous is not None and _program_content(previous) == _program_content(current)
+    if not unchanged and not changes:
+        changes.append({"type": "other_details_changed"})
+    return {"version": 1, "unchanged": unchanged, "changes": changes}
+
+
+def _program_content(program: PersistedProgramSchema) -> dict[str, Any]:
+    return program.model_dump(
+        mode="python",
+        exclude={"version", "published_by_coach_account_id", "created_at"},
+    )
+
+
+def _match_days(old: list[Any], new: list[Any]) -> list[tuple[int | None, int | None]]:
+    old_for_new, used_old = _match_days_by_name(old, new)
+    _pair_remaining_days(old, new, old_for_new, used_old)
+    return _ordered_day_pairs(old, new, old_for_new, used_old)
+
+
+def _match_days_by_name(old: list[Any], new: list[Any]) -> tuple[dict[int, int], set[int]]:
+    old_by_name: dict[str, list[int]] = {}
+    for old_index, day in enumerate(old):
+        old_by_name.setdefault(day.day_name, []).append(old_index)
+
+    old_for_new: dict[int, int] = {}
+    used_old: set[int] = set()
+    for new_index, day in enumerate(new):
+        old_index = next(
+            (candidate for candidate in old_by_name.get(day.day_name, []) if candidate not in used_old),
+            None,
         )
+        if old_index is not None:
+            old_for_new[new_index] = old_index
+            used_old.add(old_index)
+    return old_for_new, used_old
 
 
-def _append_removed_day(
-    changes: list[dict[str, Any]], day: Any, resolve_name: Callable[[str], str | None]
+def _pair_remaining_days(old: list[Any], new: list[Any], old_for_new: dict[int, int], used_old: set[int]) -> None:
+    unmatched_old = [index for index in range(len(old)) if index not in used_old]
+    unmatched_new = [index for index in range(len(new)) if index not in old_for_new]
+    for old_index, new_index in zip(unmatched_old, unmatched_new):
+        old_for_new[new_index] = old_index
+        used_old.add(old_index)
+
+
+def _ordered_day_pairs(
+    old: list[Any], new: list[Any], old_for_new: dict[int, int], used_old: set[int]
+) -> list[tuple[int | None, int | None]]:
+    pairs = [(old_for_new.get(new_index), new_index) for new_index in range(len(new))]
+    pairs.extend((old_index, None) for old_index in range(len(old)) if old_index not in used_old)
+    return pairs
+
+
+def _append_unmatched_day(
+    changes: list[dict[str, Any]],
+    day: Any,
+    day_change_type: Literal["day_added", "day_removed"],
+    resolve_name: Callable[[str], str | None],
 ) -> None:
-    changes.append({"type": "day_removed", "day": day.day_name})
+    exercise_type = {"day_added": "exercise_added", "day_removed": "exercise_removed"}[day_change_type]
+    changes.append({"type": day_change_type, "day": day.day_name})
     for exercise in day.exercises:
         changes.append(
-            {"type": "exercise_removed", "day": day.day_name, "exercise": _exercise_name(exercise, resolve_name)}
+            {
+                "type": exercise_type,
+                "day": day.day_name,
+                "exercise": _exercise_name(exercise, resolve_name),
+            }
         )
 
 
@@ -168,6 +228,8 @@ def _add_field_change(
 
 
 def _reps(exercise: Any) -> str:
+    if exercise.target_reps_min == exercise.target_reps_max:
+        return str(exercise.target_reps_min)
     return f"{exercise.target_reps_min}–{exercise.target_reps_max}"
 
 

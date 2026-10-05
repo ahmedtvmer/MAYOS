@@ -22,11 +22,11 @@ from agent.program_prescription import (
     MIN_WARMUP_MOVEMENT_REPS,
     MIN_WARMUP_MOVEMENT_SETS,
 )
+from database.exercise_resolution import resolve_exercise_display_row
 from service import analytics
 from service.assignments import authorized_player_ledger
 from service.coach_programs import ProgramPublicationDetails, record_program_publication
 from service.program_change_summary import summarize_program_change
-from database.exercise_resolution import resolve_exercise_display_row
 from service.program_analytics import ProgramAnalyticsActor
 
 

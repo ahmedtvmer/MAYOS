@@ -514,6 +514,12 @@ def mark_player_notices_read(db: Any, player_account_id: str) -> int:
     return db.mark_assignment_notices_read(player_account_id, datetime.now(UTC).isoformat())
 
 
+def dismiss_player_program_change_summary(db: Any, player_account_id: str, notice_id: str) -> bool:
+    return db.dismiss_assignment_notice_summary(
+        player_account_id, notice_id, datetime.now(UTC).isoformat()
+    )
+
+
 def disable_coach_capability(
     db: Any,
     coach_account_id: str,

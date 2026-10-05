@@ -5,30 +5,30 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/active_program.dart';
+import '../../../core/api_client.dart';
 import '../../../core/app_failure.dart';
+import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/copy_context.dart';
-import '../../../core/external_url_launcher.dart';
 import '../../../core/display_language/feature_copy_context.dart';
-import '../../../core/api_client.dart';
-import '../../../core/connectivity_message.dart';
+import '../../../core/external_url_launcher.dart';
 import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
+import '../../../core/ui/first_strong_direction.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_card.dart';
 import '../../../core/workout_storage.dart';
-import '../../../core/ui/first_strong_direction.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import '../assignment/program_request_dialog.dart';
 import '../exercise_picker_dialog.dart';
-import 'program_change_summary_card.dart';
-import '../workout/deload_banner.dart';
 import '../workout/active_workout_prompt.dart';
+import '../workout/deload_banner.dart';
 import 'program_authority_recovery.dart';
+import 'program_change_summary_card.dart';
 
 enum _SwapDirection { apply, undo }
 
@@ -153,14 +153,14 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       AssignmentNotice? latest;
       for (final AssignmentNotice notice in notices) {
         if (notice.kind == 'program_published' &&
-            notice.isUnread &&
             notice.programChangeSummary != null) {
           latest = notice;
           break;
         }
       }
       if (!mounted) return;
-      setState(() => _programChangeNotice = latest);
+      setState(() =>
+          _programChangeNotice = latest?.summaryDismissedAt == null ? latest : null);
     } on ApiException {
       if (!mounted) return;
       setState(() => _programChangeNotice = null);
@@ -174,7 +174,9 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       _actionError = null;
     });
     try {
-      await ref.read(apiClientProvider).markPlayerNoticesRead();
+      await ref
+          .read(apiClientProvider)
+          .dismissPlayerProgramChangeSummary(_programChangeNotice!.noticeId);
       if (!mounted) return;
       setState(() {
         _dismissingProgramChange = false;

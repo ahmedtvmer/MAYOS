@@ -224,6 +224,8 @@ class FakeMayosApi {
   int baselinesRequests = 0;
 
   final List<Map<String, dynamic>> playerNotices = <Map<String, dynamic>>[];
+  final List<String> dismissedPlayerNoticeIds = <String>[];
+  int markPlayerNoticesReadRequests = 0;
 
   // Player program requests and coach resolution (#28).
   final List<Map<String, dynamic>> programRequests = <Map<String, dynamic>>[];
@@ -352,6 +354,17 @@ class FakeMayosApi {
     }
     if (path == '/dashboard/training-status') {
       return _trainingStatus(request);
+    }
+    if (request.method == 'POST' &&
+        path.startsWith('/assignments/notices/') &&
+        path.endsWith('/dismiss-summary')) {
+      final List<String> segments = path.split('/');
+      if (segments.length == 5) {
+        return _dismissPlayerProgramChangeSummary(
+          request,
+          Uri.decodeComponent(segments[3]),
+        );
+      }
     }
     if (path.startsWith('/checkpoint-reviews')) {
       return _checkpointReview(request);
@@ -2311,6 +2324,7 @@ class FakeMayosApi {
       return const FakeResponse(
           401, <String, dynamic>{'detail': 'Token has been revoked.'});
     }
+    markPlayerNoticesReadRequests++;
     int marked = 0;
     for (final Map<String, dynamic> notice in playerNotices) {
       if (notice['read_at'] == null) {
@@ -2319,6 +2333,27 @@ class FakeMayosApi {
       }
     }
     return FakeResponse(200, <String, dynamic>{'marked_read': marked});
+  }
+
+  FakeResponse _dismissPlayerProgramChangeSummary(
+    FakeRequest request,
+    String noticeId,
+  ) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    for (final Map<String, dynamic> notice in playerNotices) {
+      if (notice['notice_id'] == noticeId &&
+          notice['kind'] == 'program_published' &&
+          notice['program_change_summary'] != null &&
+          notice['summary_dismissed_at'] == null) {
+        notice['summary_dismissed_at'] = '2026-10-05T10:05:00Z';
+        dismissedPlayerNoticeIds.add(noticeId);
+        return const FakeResponse(200, <String, dynamic>{'dismissed': true});
+      }
+    }
+    return const FakeResponse(404, <String, dynamic>{'detail': 'Notice not found.'});
   }
 
   FakeResponse _profile(FakeRequest request) {
@@ -3881,6 +3916,8 @@ class FakeMayosApi {
       latestSessionBody = null;
       latestSessionFails = false;
       playerNotices.clear();
+      dismissedPlayerNoticeIds.clear();
+      markPlayerNoticesReadRequests = 0;
       programRequests.clear();
       staleProgramRequest = false;
       _programRequestSeq = 0;

@@ -109,6 +109,10 @@
       "kind": "method",
       "signature": "(self, coach_account_id: str, now_iso: str, ended_by: str) -> dict[str, typing.Any]"
     },
+    "dismiss_assignment_notice_summary": {
+      "kind": "method",
+      "signature": "(self, account_id: str, notice_id: str, now_iso: str) -> bool"
+    },
     "end_assignment": {
       "kind": "method",
       "signature": "(self, assignment_id: str, account_id: str, now_iso: str, ended_by: str) -> dict[str, typing.Any]"

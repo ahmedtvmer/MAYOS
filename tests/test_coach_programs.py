@@ -24,6 +24,7 @@ from agent.ProgramState import (
     PersistedProgramSchema,
 )
 from database.database_manager import DatabaseManager
+from database.registry.assignments import AssignmentNoticeRecord
 from database.registry.coach_exercises import CoachExerciseCreate
 from service import coach as coach_service
 from service import coach_history as coach_history_service
@@ -328,6 +329,69 @@ def test_publish_notice_summarizes_previous_automatic_program(api):
         "rir": {"before": 1.5, "after": 2},
         "rest_seconds": {"before": 150, "after": 180},
     }
+
+
+def test_player_dismisses_only_own_program_summary_without_marking_notices_read(api):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, player_account_id = _assigned_player(api)
+    draft_path = _program_draft_path(assignment_id)
+    assert client.post(draft_path, headers=coach_headers, json=_one_day_draft()).status_code == 200
+    published = client.post(f"{draft_path}/publish", headers=coach_headers)
+    assert published.status_code == 200, published.text
+    own_summary = client.get("/assignments/notices", headers=player_headers).json()["notices"][0]
+    own_other_notice_id = db.create_assignment_notice(
+        player_account_id,
+        assignment_id,
+        "program_request",
+        "Your program change request was received.",
+        "2026-10-05T10:01:00Z",
+    )
+
+    invite_token = client.post("/coach/assignments/invites", headers=coach_headers).json()["token"]
+    foreign_player = _register(client, "p2")
+    foreign_player_headers = _authed(foreign_player["access_token"])
+    redeemed = client.post(
+        "/assignments/invites/redeem",
+        headers=foreign_player_headers,
+        json={"token": invite_token, "consent": True},
+    )
+    assert redeemed.status_code == 200, redeemed.text
+    foreign_player_account_id = db.get_active_account_by_username("p2")["account_id"]
+    foreign_assignment_id = redeemed.json()["assignment"]["assignment_id"]
+    foreign_summary_id = db.create_assignment_notice_record(
+        AssignmentNoticeRecord(
+            account_id=foreign_player_account_id,
+            assignment_id=foreign_assignment_id,
+            kind="program_published",
+            message="Your coach published a program.",
+            created_at="2026-10-05T10:02:00Z",
+            program_change_summary={"version": 1, "unchanged": False, "changes": []},
+        )
+    )
+
+    dismissed = client.post(
+        f"/assignments/notices/{own_summary['notice_id']}/dismiss-summary",
+        headers=player_headers,
+    )
+    foreign_dismissal = client.post(
+        f"/assignments/notices/{foreign_summary_id}/dismiss-summary",
+        headers=player_headers,
+    )
+
+    assert dismissed.status_code == 200, dismissed.text
+    assert dismissed.json() == {"dismissed": True}
+    assert foreign_dismissal.status_code == 404
+    assert foreign_dismissal.json()["detail"] == "Notice not found."
+    own_notices = {
+        notice["notice_id"]: notice
+        for notice in client.get("/assignments/notices", headers=player_headers).json()["notices"]
+    }
+    foreign_notice = db.list_assignment_notices(foreign_player_account_id)[0]
+    assert own_notices[own_summary["notice_id"]]["summary_dismissed_at"] is not None
+    assert own_notices[own_summary["notice_id"]]["read_at"] is None
+    assert own_notices[own_other_notice_id]["read_at"] is None
+    assert foreign_notice["summary_dismissed_at"] is None
+    assert foreign_notice["read_at"] is None
 
 
 def test_approving_active_program_publishes_next_version_and_keeps_workouts(api, recording_analytics):

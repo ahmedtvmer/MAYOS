@@ -34,6 +34,9 @@ class ProgramChangeCopy {
           : 'Removed ${change['exercise']} from $day',
       'exercise_replaced' => _replacedExercise(change, day),
       'prescription_changed' => _prescription(change),
+      'other_details_changed' => isArabic
+          ? 'حدّث مدربك أيضًا تفاصيل أخرى في البرنامج التدريبي.'
+          : 'Your coach also updated other program details.',
       _ => '',
     };
   }

@@ -164,3 +164,27 @@ def test_existing_coach_invite_catalog_adds_revocation_column(tmp_path: Path):
         assert invite == ("a" * 64, None)
     finally:
         db.catalog_conn.close()
+
+
+def test_existing_assignment_notices_adds_program_summary_columns(tmp_path: Path):
+    catalog_path = tmp_path / "catalog.db"
+    legacy = sqlite3.connect(catalog_path)
+    legacy.execute(
+        "CREATE TABLE assignment_notices (notice_id TEXT PRIMARY KEY, account_id TEXT NOT NULL,"
+        " assignment_id TEXT, kind TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL, read_at TEXT)"
+    )
+    legacy.commit()
+    legacy.close()
+
+    db = DatabaseManager(
+        catalog_path=catalog_path,
+        ledgers_dir=tmp_path / "users",
+        backups_dir=tmp_path / "backups",
+    )
+    try:
+        with db.catalog_locked() as conn:
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(assignment_notices)")}
+        assert "program_change_summary_json" in columns
+        assert "summary_dismissed_at" in columns
+    finally:
+        db.catalog_conn.close()

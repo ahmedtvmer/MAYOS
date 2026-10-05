@@ -175,7 +175,9 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     if (mounted) await _refresh();
   }
 
-  void _openProgram() => ref.read(playerShellTabProvider.notifier).state = 1;
+  void _openProgram() =>
+      ref.read(playerShellTabProvider.notifier).state =
+          PlayerShellTab.program.index;
 
   void _logWorkout(ProgramDay day, int? programVersion) {
     // Runs the Resume/Discard guard and creates the Active workout before

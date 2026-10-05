@@ -12,11 +12,11 @@ import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
+import '../../../core/ui/first_strong_direction.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_card.dart';
 import '../../../core/ui/mayos_section_header.dart';
 import '../../../core/ui/mayos_text_field.dart';
-import '../../../core/ui/first_strong_direction.dart';
 import '../program/program_change_summary_card.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
@@ -251,7 +251,7 @@ class _PlayerAssignmentScreenState
   }
 
   void _openProgram() {
-    ref.read(playerShellTabProvider.notifier).state = 1;
+    ref.read(playerShellTabProvider.notifier).state = PlayerShellTab.program.index;
     context.go(homePath);
   }
 
@@ -278,6 +278,14 @@ class _PlayerAssignmentScreenState
       });
     }
   }
+
+  Widget _noticeCaption(AssignmentNotice notice) => Text(
+        '${notice.kind} · ${notice.createdAt}',
+        textDirection: TextDirection.ltr,
+        style: MayosTypography.caption.copyWith(
+          color: MayosTheme.of(context).textMuted,
+        ),
+      );
 
   Future<void> _cancelRequest(ProgramRequest request) async {
     setState(() {
@@ -429,7 +437,8 @@ class _PlayerAssignmentScreenState
                   : null,
             ),
             for (final AssignmentNotice notice in _notices)
-              if (notice.programChangeSummary != null)
+              if (notice.programChangeSummary != null &&
+                  notice.summaryDismissedAt == null)
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
@@ -438,12 +447,7 @@ class _PlayerAssignmentScreenState
                       message: notice.message,
                       onViewProgram: _openProgram,
                     ),
-                    Text(
-                      '${notice.kind} · ${notice.createdAt}',
-                      textDirection: TextDirection.ltr,
-                      style: MayosTypography.caption
-                          .copyWith(color: c.textMuted),
-                    ),
+                    _noticeCaption(notice),
                   ],
                 )
               else
@@ -463,10 +467,7 @@ class _PlayerAssignmentScreenState
                       textAlign: TextAlign.start,
                     ),
                   ),
-                  subtitle: Text(
-                    '${notice.kind} · ${notice.createdAt}',
-                    textDirection: TextDirection.ltr,
-                  ),
+                  subtitle: _noticeCaption(notice),
                 ),
           ],
         ),

@@ -1037,6 +1037,22 @@ class ApiClient {
     return (data['marked_read'] as num).toInt();
   }
 
+  /// Dismisses the caller's one program change summary without changing read state.
+  Future<void> dismissPlayerProgramChangeSummary(String noticeId) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/assignments/notices/${Uri.encodeComponent(noticeId)}/dismiss-summary',
+      ),
+    );
+    final dynamic data = response.data;
+    if (data is! Map<String, dynamic> || data['dismissed'] != true) {
+      throw const ApiException(
+        _invalidNotices,
+        failureMessage: _invalidNoticesFailure,
+      );
+    }
+  }
+
   /// Lists the player's own program requests, newest-first (ADR 027).
   Future<List<ProgramRequest>> playerProgramRequests() async {
     final response = await _send(

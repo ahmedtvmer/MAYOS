@@ -197,7 +197,8 @@ class _ProgressTabState extends ConsumerState<ProgressTab> {
   }
 
   void _goToProgram() {
-    ref.read(playerShellTabProvider.notifier).state = 1;
+    ref.read(playerShellTabProvider.notifier).state =
+        PlayerShellTab.program.index;
   }
 
   FailureMessage _failureMessage(ApiException error) => isNetworkFailure(error)
