@@ -11,14 +11,10 @@ import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, AIMessageChunk
-from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
-from langchain_core.runnables import RunnableLambda
+from langchain_core.messages import AIMessage
 
 from agent import assistant_graph
 from agent import onboarding_graph as onboarding_module
@@ -32,60 +28,12 @@ from service.model_limits import ModelLimitExceeded, admit_model_request, reset_
 from svc.app import create_app
 from svc.dependencies import get_db
 from svc.llm import InferenceScope, run_inference_sync
+from tests.fakes.chat_model import ScriptedChatModel
 from utils import model_metering as utils_metering
 from utils.model_metering import MeteringCallback
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
 CHAT_MESSAGE = "How should I cue my bench?"
-
-
-class _UsageFakeChatModel(BaseChatModel):
-    """A chat model double that emits provider usage and fires callbacks."""
-
-    model_id: str = "Qwen/Qwen3.5-9B"
-    reply: str = "Keep the elbows tucked."
-    input_tokens: int = 120
-    output_tokens: int = 30
-    emit_usage: bool = True
-    finish_reason: str | None = None
-
-    @property
-    def _llm_type(self) -> str:
-        return "usage-fake"
-
-    def _usage(self) -> dict[str, int] | None:
-        if not self.emit_usage:
-            return None
-        return {
-            "input_tokens": self.input_tokens,
-            "output_tokens": self.output_tokens,
-            "total_tokens": self.input_tokens + self.output_tokens,
-        }
-
-    def _generate(self, messages: Any, stop: Any = None, run_manager: Any = None, **kwargs: Any) -> ChatResult:
-        metadata = {"finish_reason": self.finish_reason} if self.finish_reason else {}
-        message = AIMessage(content=self.reply, usage_metadata=self._usage(), response_metadata=metadata)
-        return ChatResult(generations=[ChatGeneration(message=message)])
-
-    def _stream(self, messages: Any, stop: Any = None, run_manager: Any = None, **kwargs: Any) -> Any:
-        metadata = {"finish_reason": self.finish_reason} if self.finish_reason else {}
-        chunk = ChatGenerationChunk(message=AIMessageChunk(content=self.reply))
-        if run_manager:
-            run_manager.on_llm_new_token(self.reply, chunk=chunk)
-        yield chunk
-        if self.emit_usage:
-            final = ChatGenerationChunk(
-                message=AIMessageChunk(content="", usage_metadata=self._usage(), response_metadata=metadata)
-            )
-            if run_manager:
-                run_manager.on_llm_new_token("", chunk=final)
-            yield final
-
-    def with_structured_output(self, schema: Any, **kwargs: Any) -> Any:
-        def _call(messages: Any, config: Any = None) -> Any:
-            return self.invoke(messages, config)
-
-        return RunnableLambda(_call)
 
 
 def _fake_model(
@@ -95,11 +43,21 @@ def _fake_model(
     output_tokens: int = 30,
     emit_usage: bool = True,
     finish_reason: str | None = None,
-) -> _UsageFakeChatModel:
-    return _UsageFakeChatModel(
-        model_id=model_id,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
+) -> ScriptedChatModel:
+    usage_metadata = (
+        {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+        }
+        if emit_usage
+        else None
+    )
+    return ScriptedChatModel(
+        ["Keep the elbows tucked."],
+        default_turn="Keep the elbows tucked.",
+        model_name=model_id,
+        usage_metadata=usage_metadata,
         emit_usage=emit_usage,
         finish_reason=finish_reason,
         callbacks=[MeteringCallback(model_id)],
@@ -330,11 +288,8 @@ def test_resolve_split_meters_only_model_path_through_injected_inference(api, mo
     _assigned_player(_client, db)
     account_id = _account_id(db, "coach")
     fake = _fake_model("deepseek-ai/DeepSeek-V4-Flash")
-    structured = MagicMock()
-    structured.invoke.side_effect = lambda _prompt: (fake.invoke("custom split"), get_default_split(3))[1]
-    model = MagicMock()
-    model.with_structured_output.return_value.bind.return_value = structured
-    monkeypatch.setattr(program_rules, "llm", model)
+    fake.reset([get_default_split(3)])
+    monkeypatch.setattr(program_rules, "llm", fake)
 
     scope = InferenceScope(
         account_id=account_id,
@@ -367,7 +322,8 @@ def test_resolve_split_meters_only_model_path_through_injected_inference(api, mo
     deterministic = resolve_split(3, preference="ppl", inference_call=injected_inference)
     assert len(deterministic.days) == 3
     assert _usage_rows(db, account_id)[0]["requests"] == 1
-    structured.invoke.assert_called_once()
+    assert len(fake.calls) == 1
+    assert fake.calls[0]["mode"] == "structured"
 
 
 def test_onboarding_step_is_metered(api, monkeypatch, recording_analytics):
@@ -441,7 +397,6 @@ def test_program_generation_emits_metered_ai_event(api, monkeypatch, recording_a
 
 
 def test_program_generation_provider_error_emits_after_error_response(api, monkeypatch, recording_analytics):
-    from utils.model_downloader import _local_model_id
     from utils.model_metering import record_usage
 
     client, db = api
@@ -449,7 +404,7 @@ def test_program_generation_provider_error_emits_after_error_response(api, monke
     account_id = _account_id(db, "player1")
 
     def fail_generation(*_args, **_kwargs):
-        record_usage(_local_model_id("production"), 27, 9, False)
+        record_usage("deepseek-ai/DeepSeek-V4-Flash", 27, 9, False)
         raise RuntimeError("provider unavailable")
 
     monkeypatch.setattr("service.programs.generate_program_pipeline", fail_generation)
@@ -463,7 +418,6 @@ def test_program_generation_provider_error_emits_after_error_response(api, monke
 
 def test_program_generation_limit_refusal_emits_limit_without_completion(api, monkeypatch, recording_analytics):
     from service.model_limits import reset_model_limits
-    from utils.model_downloader import _local_model_id
     from utils.model_metering import record_usage
 
     client, db = api
@@ -471,7 +425,7 @@ def test_program_generation_limit_refusal_emits_limit_without_completion(api, mo
     program = _simple_program()
 
     def generate(*_args, ledger, **_kwargs):
-        record_usage(_local_model_id("production"), 27, 9, False)
+        record_usage("deepseek-ai/DeepSeek-V4-Flash", 27, 9, False)
         ledger.save_training_program(program.model_dump())
         return program, ""
 
@@ -582,7 +536,6 @@ def test_coach_generate_draft_is_metered(api, monkeypatch, recording_analytics):
 
 def test_profile_rebuild_emits_its_metered_turn_after_api_write(api, monkeypatch, recording_analytics):
     from utils.model_metering import record_usage
-    from utils.model_downloader import _local_model_id
 
     client, db = api
     token = _register(client, "player1")
@@ -595,7 +548,7 @@ def test_profile_rebuild_emits_its_metered_turn_after_api_write(api, monkeypatch
         ledger.save_training_program(program.model_dump())
 
     def rebuild(_request, *, ledger, **_kwargs):
-        record_usage(_local_model_id("production"), 31, 11, False)
+        record_usage("deepseek-ai/DeepSeek-V4-Flash", 31, 11, False)
         return program, ""
 
     monkeypatch.setattr("service.profile.generate_program_draft_pipeline", rebuild)
@@ -606,7 +559,6 @@ def test_profile_rebuild_emits_its_metered_turn_after_api_write(api, monkeypatch
 
 def test_rolled_back_profile_rebuild_keeps_metering_and_emits_completion(api, monkeypatch, recording_analytics):
     from utils.model_metering import record_usage
-    from utils.model_downloader import _local_model_id
 
     client, db = api
     token = _register(client, "player1")
@@ -620,7 +572,7 @@ def test_rolled_back_profile_rebuild_keeps_metering_and_emits_completion(api, mo
         prior_program = ledger.get_active_program()
 
     def rebuild(_request, **_kwargs):
-        record_usage(_local_model_id("production"), 31, 11, False)
+        record_usage("deepseek-ai/DeepSeek-V4-Flash", 31, 11, False)
         return program.model_copy(update={"program_name": "Uncommitted"}), ""
 
     monkeypatch.setattr("service.profile.generate_program_draft_pipeline", rebuild)
@@ -698,7 +650,6 @@ def test_exception_mid_turn_keeps_earlier_call_rows_and_one_completion(api, reco
 
 def test_coach_ai_analysis_emits_metered_turn_after_http_answer(api, monkeypatch, recording_analytics):
     from utils.model_metering import record_usage
-    from utils.model_downloader import _local_model_id
 
     client, db = api
     coach_headers, _player_headers, assignment_id = _assigned_player(client, db)
@@ -706,7 +657,7 @@ def test_coach_ai_analysis_emits_metered_turn_after_http_answer(api, monkeypatch
     monkeypatch.setattr("service.coach_ai.coach_ai_enabled", lambda: True)
 
     def invoke(_messages):
-        record_usage(_local_model_id("production"), 29, 9, False)
+        record_usage("deepseek-ai/DeepSeek-V4-Flash", 29, 9, False)
         return "Keep the same training load."
 
     monkeypatch.setattr("service.coach_ai._invoke_coach_model", invoke)
@@ -724,7 +675,6 @@ def test_checkpoint_review_ai_emits_metered_turn_after_review_is_stored(api, mon
     import json as json_module
 
     from utils.model_metering import record_usage
-    from utils.model_downloader import _local_model_id
 
     client, db = api
     token = _register(client, "player1")
@@ -763,7 +713,7 @@ def test_checkpoint_review_ai_emits_metered_turn_after_review_is_stored(api, mon
     monkeypatch.setattr("service.checkpoint_review_ai.checkpoint_review_ai_enabled", lambda: True)
 
     def invoke(_messages):
-        record_usage(_local_model_id("production"), 37, 13, False)
+        record_usage("deepseek-ai/DeepSeek-V4-Flash", 37, 13, False)
         return "Consistency remained steady."
 
     monkeypatch.setattr("service.checkpoint_review_ai._invoke_player_model", invoke)
@@ -777,7 +727,6 @@ def test_checkpoint_review_ai_emits_metered_turn_after_review_is_stored(api, mon
 
 def test_coach_program_request_apply_emits_one_metered_turn(api, monkeypatch, recording_analytics):
     from utils.model_metering import record_usage
-    from utils.model_downloader import _local_model_id
 
     client, db = api
     coach_headers, player_headers, assignment_id = _assigned_player(client, db)
@@ -797,7 +746,7 @@ def test_coach_program_request_apply_emits_one_metered_turn(api, monkeypatch, re
     assert created.status_code == 200, created.text
 
     def apply(*_args, ledger, **_kwargs):
-        record_usage(_local_model_id("production"), 41, 15, False)
+        record_usage("deepseek-ai/DeepSeek-V4-Flash", 41, 15, False)
         ledger.save_training_program(player_program.model_copy(update={"weekly_frequency": 3}).model_dump(),
                                      published_by_coach_account_id=coach_account_id)
         return player_program, ""

@@ -55,7 +55,6 @@ def run_suite(
     cases: list[dict[str, Any]] | None = None,
     *,
     model: Any = None,
-    model_backend: str | None = None,
     dataset_path: Path = DEFAULT_DATASET,
 ) -> list[dict[str, Any]]:
     if cases is None:
@@ -64,7 +63,7 @@ def run_suite(
         from utils.model_downloader import get_llm
 
         model = get_llm()
-    bound_model = bind_review_model(model, backend=model_backend)
+    bound_model = bind_review_model(model)
     results: list[dict[str, Any]] = []
     for case in cases:
         messages = build_messages(
@@ -111,9 +110,9 @@ def check_report(report_path: Path) -> tuple[bool, list[str]]:
 
 
 def _mock_model():
-    from utils.model_downloader import MockSafeChatLlamaCpp
+    from tests.fakes.chat_model import ScriptedChatModel
 
-    return MockSafeChatLlamaCpp()
+    return ScriptedChatModel(default_turn="Your recorded training shows steady progress.")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -121,7 +120,6 @@ def main(argv: list[str] | None = None) -> int:
         return run_suite(
             cases,
             model=_mock_model() if mock else None,
-            model_backend="local" if mock else None,
             dataset_path=dataset_path,
         )
 

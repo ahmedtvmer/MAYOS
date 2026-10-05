@@ -16,8 +16,6 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from langchain_core.messages import AIMessage
-
 from agent import assistant_graph
 from agent.ProgramState import ProgramDaySchema, ProgramExerciseSchema
 from database.database_manager import DatabaseManager
@@ -26,6 +24,7 @@ from service import workouts as workouts_service
 from svc.app import create_app
 from svc.dependencies import get_db
 from svc.schemas import CHAT_MESSAGE_MAX_CHARS
+from tests.fakes.chat_model import ScriptedChatModel
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
 
@@ -35,29 +34,10 @@ COACH_USERNAME = "CoachPrivateIdentity"
 COACH_NOTES = "COACH_PRIVATE_NOTES_2b6e this player is fragile"
 
 
-class _CapturingLLM:
-    """Stub for ``assistant_graph.llm`` that records the payload it is sent."""
-
-    def __init__(self, reply: str = "Keep the elbows tucked."):
-        self.payloads: list[list] = []
-        self._reply = reply
-
-    def stream(self, messages):
-        self.payloads.append(list(messages))
-        yield AIMessage(content=self._reply)
-
-    def invoke(self, messages):
-        self.payloads.append(list(messages))
-        return AIMessage(content=self._reply)
-
-    def with_structured_output(self, _schema):
-        raise RuntimeError("router LLM must not be called in this test")
-
-
-def _last_rendered(llm: _CapturingLLM) -> str:
-    assert llm.payloads, "the model was never called"
+def _last_rendered(llm: ScriptedChatModel) -> str:
+    assert llm.calls, "the model was never called"
     return "\n".join(
-        str(getattr(message, "content", message)) for message in llm.payloads[-1]
+        str(getattr(message, "content", message)) for message in llm.calls[-1]["messages"]
     )
 
 
@@ -199,7 +179,7 @@ def test_player_model_input_excludes_identifying_fields(api, monkeypatch):
     db.ledger.update_player_persona("direct", "Prefer short answers.")
     db.ledger.set_assistant_memory("preferred_name", "Sam")
 
-    llm = _CapturingLLM()
+    llm = ScriptedChatModel(["Keep the elbows tucked."])
     monkeypatch.setattr(assistant_graph, "llm", llm)
     # Keep the prompt budget generous so the trimming loop cannot drop the
     # context block and mask the privacy assertion.
@@ -228,7 +208,7 @@ def test_chat_accepts_messages_at_the_character_limit(api, monkeypatch, content)
     client, db = api
     registered = _register(client, "chat-boundary")
     headers = _authed(registered["access_token"])
-    llm = _CapturingLLM(reply="Received.")
+    llm = ScriptedChatModel(["Received."])
     monkeypatch.setattr(assistant_graph, "llm", llm)
     monkeypatch.setattr(assistant_graph, "_prompt_budget", lambda: 100_000)
 
@@ -241,7 +221,7 @@ def test_chat_accepts_messages_at_the_character_limit(api, monkeypatch, content)
     history = client.get("/chat/history", headers=headers).json()
     assert history[0]["content"] == content
     assert [message["role"] for message in history] == ["user", "assistant"]
-    assert llm.payloads
+    assert llm.calls
 
 
 def test_oversized_chat_message_is_rejected_before_admission_or_model_work(
@@ -253,7 +233,7 @@ def test_oversized_chat_message_is_rejected_before_admission_or_model_work(
     headers = _authed(registered["access_token"])
     monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "1")
     reset_model_limits()
-    llm = _CapturingLLM(reply="Received.")
+    llm = ScriptedChatModel(["Received."])
     monkeypatch.setattr(assistant_graph, "llm", llm)
     monkeypatch.setattr(assistant_graph, "_prompt_budget", lambda: 100_000)
     account_id = db.get_active_account_by_username("chat-too-long")["account_id"]
@@ -269,7 +249,7 @@ def test_oversized_chat_message_is_rejected_before_admission_or_model_work(
     assert rejected.status_code == 422
     assert "at most 400 characters" in rejected.text
     assert client.get("/chat/history", headers=headers).json() == []
-    assert llm.payloads == []
+    assert llm.calls == []
     usage_after = [
         row
         for row in db.summarize_model_usage("2000-01-01")
@@ -286,7 +266,7 @@ def test_oversized_chat_message_is_rejected_before_admission_or_model_work(
     ) as accepted:
         accepted.read()
         assert accepted.status_code == 200
-    assert llm.payloads
+    assert llm.calls
     reset_model_limits()
 
 

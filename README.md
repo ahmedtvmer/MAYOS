@@ -16,9 +16,9 @@
 <div align="center">
   <h1 align="center">⚡ MAYOS</h1>
   <p align="center">
-    <b>Local-First, CPU/GPU-Optimized Training Ledger & Biomechanics Engine</b>
+    <b>Training Ledger & Biomechanics Engine with Hosted Assistant Inference</b>
     <br />
-    <i>Deterministic auto-regulation, sub-millisecond triage routing, JWT-secured multi-tenant ledgers, and fractional volume attribution powered by local GGUF inference.</i>
+    <i>Deterministic auto-regulation, sub-millisecond triage routing, JWT-secured multi-tenant ledgers, and fractional volume attribution with hosted chat inference.</i>
     <br />
     <br />
     <a href="#quickstart">Quickstart</a>
@@ -35,13 +35,13 @@
 
 ## Overview
 
-**Mayos** is an offline, privacy-first workout ledger and biomechanics engine engineered to eliminate cloud dependencies, privacy leaks, and computational bloat in personal fitness software.
+**Mayos** is a privacy-conscious workout ledger and biomechanics engine. Chat uses a hosted OpenAI-compatible model; embeddings for clinical checks and catalog search run locally.
 
 Commercial fitness trackers rely on rigid linear progressions and binary volume attribution that inflate synergistic muscle tracking. Conversely, naive AI agents route every prompt through an LLM, incurring multi-second inference bottlenecks just to classify basic user intents.
 
 Mayos bridges this gap:
 
-* **Zero-Cloud Architecture**: Runs entirely offline on local hardware using quantized GGUF inference (**Qwen3.5-4B** production + an optional **Qwen3.5-9B** offline judge), with full GPU offload on a 4 GB card or pure-CPU operation.
+* **Hosted Chat, Local Embeddings**: Player, judge, and coach chat use hosted OpenAI-compatible models. The clinical guard and Exercise library search keep their embedding model local.
 * **Deterministic Fast-Path Router**: Clinical trauma halts, movement swaps, and split mutations are resolved by compiled regex and ledger logic in **0.014–0.075 ms** — up to **375,000× faster** than an LLM classification call — while a Tier-1 semantic guard keeps colloquial injury reports safe.
 * **Biomechanical Auto-Regulation**: Quantizes weights to 2.5 kg Olympic increments, calculates dynamic RPE-adjusted effective 1RMs, and tracks synergists fractionally (0.5 sets).
 * **JWT-Secured Multi-Tenant Ledgers**: The FastAPI service checks HS256 tokens against a durable account registry for status, player capability, and session epoch, then checks the ledger revocation list. Each user has an isolated SQLite ledger in WAL mode with an in-process `sqlite-vec` semantic catalog.
@@ -57,9 +57,9 @@ Detailed architectural specifications, benchmarks, and mathematical proofs are m
 | :--- | :--- |
 | [**Architecture Specification**](docs/ARCHITECTURE.md) | Mermaid state graphs, deterministic fast-path routing tiers, service-layer request lifecycle, chunk sanitization, and connection topologies. |
 | [**Authentication & Recovery**](docs/AUTHENTICATION.md) | JWT claims and verification, registry session epochs, revocation ledgers, recovery email, single-use reset tokens, and operator runbooks. |
-| [**Empirical Benchmarks**](docs/ARCHITECTURAL_BENCHMARKS.md) | Routing latency matrices, context-clamping scaling curves, WAL concurrency stress tests, and the Qwen 2.5 3B → Qwen 3.5 4B model-refresh comparison. |
+| [**Empirical Benchmarks**](docs/ARCHITECTURAL_BENCHMARKS.md) | Deterministic routing latency, context clamping, WAL concurrency, and historical evaluation results. |
 | [**Progression & Biomechanics**](docs/PROGRESSION_RULES.md) | Mathematical formulations for effective 1RMs, Olympic plate quantization, warmup ramps, deload rules, and clinical interception boundaries. |
-| [**Deployment Runbook**](docs/DEPLOYMENT.md) | Fly.io closed-trial API topology (single always-on writer, durable `/data` volume, hosted inference), local Docker Compose orchestration, GPU memory planning, the two-phase evaluation lifecycle, auth ops, and disaster recovery checkpointing. |
+| [**Deployment Runbook**](docs/DEPLOYMENT.md) | Fly.io closed-trial API topology (single always-on writer, durable `/data` volume, hosted inference), Docker Compose orchestration, local embedding configuration, auth operations, and disaster recovery. |
 | [**Decision Records**](DECISIONS.md) | ADRs 001–020: engine safeguards, account and coaching rules, hosted inference, mobile migration, and offline sync. |
 
 ---
@@ -83,12 +83,12 @@ flowchart LR
 ### Prerequisites
 
 * Docker Engine with Docker Compose v2.
-* x86_64 CPU with AVX2 support.
-* *(Optional)* NVIDIA GPU with ≥4 GB VRAM and the container toolkit for GPU offload — CPU-only hosts work with `N_GPU_LAYERS=0`.
+* An OpenAI-compatible provider API key.
+* CPU resources for the local embedding model.
 
 ### 1. Configure secrets
 
-`docker compose up` **requires** `JWT_SECRET`; the stack fails fast without it. Copy the template and export a generated secret:
+`docker compose up` **requires** `JWT_SECRET` and `LLM_API_KEY`; the stack fails fast without either. Copy the template, fill in the hosted API key, and export a generated JWT secret:
 
 ```bash
 git clone https://github.com/ahmedtvmer/myos.git
@@ -99,7 +99,7 @@ cp .env.example .env
 export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 ```
 
-> The exported value takes precedence over `.env`. If you rely on the file instead of the export, replace the `changeme…` placeholder — compose will not fail on the placeholder, but it is insecure.
+> The exported JWT value takes precedence over `.env`. If you rely on the file, replace the `changeme…` placeholder.
 
 ### 2. Initialize the catalog & semantic index (one time)
 
@@ -114,7 +114,7 @@ docker compose run --rm myos-api python scripts/seed_vectors.py
 docker compose up -d
 ```
 
-The FastAPI service is available at **`http://localhost:8000`** and its OpenAPI page at **`http://localhost:8000/docs`**. Connect the Flutter app to that API and complete Player onboarding there. The production GGUF (`Qwen3.5-4B-Q4_K_M.gguf`) downloads automatically when needed if it is not present in `./models/` — or stage it manually for air-gapped hosts (see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) §7).
+The FastAPI service is available at **`http://localhost:8000`** and its OpenAPI page at **`http://localhost:8000/docs`**. Connect the Flutter app to that API and complete Player onboarding there. The API sends chat requests to the hosted endpoint configured by `LLM_API_BASE` and `LLM_API_KEY`.
 
 <details>
   <summary><b>Local Python Installation (Native, two processes)</b></summary>
@@ -125,7 +125,6 @@ The FastAPI service is available at **`http://localhost:8000`** and its OpenAPI 
   ```bash
   uv venv
   source .venv/bin/activate
-  uv pip install --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu llama-cpp-python
   uv pip install -r requirements.txt
 
   uv run python scripts/intialize_db.py
@@ -147,7 +146,7 @@ The FastAPI service is available at **`http://localhost:8000`** and its OpenAPI 
 * **Up to ~375,000× Latency Elimination**: Pure-regex paths resolve in 0.014–0.075 ms; the guard-inclusive deterministic router averages **17 ms** against a **5.6 s** LLM classification call (**≈329× on average, never below ≈157×**).
 * **Flat Clamped Latency**: A 6-message context tail (`TAIL_WINDOW_SIZE = 6`) plus compact telemetry holds a **~4.2 s asymptotic ceiling** regardless of conversation length — 2.4× faster than an unclamped pipeline by turn 30.
 * **Zero Math Hallucination**: Offloads e1RM tracking, Olympic barbell plate distribution, and volume tonnage directly to deterministic Python algorithms.
-* **Model Refresh Verified**: The Qwen 2.5 3B → Qwen 3.5 4B upgrade leaves pure-regex latency and best-case speedups unchanged; see the comparison table in [`docs/ARCHITECTURAL_BENCHMARKS.md`](docs/ARCHITECTURAL_BENCHMARKS.md).
+* **Chat roles are hosted-only**: Player, judge, and coach use the hosted model factory; local BGE embeddings remain available for clinical triage and catalog search.
 
 > Review the full empirical benchmark tables and context scaling curves in [`docs/ARCHITECTURAL_BENCHMARKS.md`](docs/ARCHITECTURAL_BENCHMARKS.md).
 
@@ -197,7 +196,7 @@ docker compose exec myos-api tail -f /app/logs/myos.log | grep "\[TELEMETRY\]"
 docker compose exec myos-api python scripts/check_engine_health.py
 ```
 
-> Note: `GET /healthz` reports `model: false` whenever eager warmup is skipped (`SKIP_LLM_LOAD=true`) — the real model still lazy-loads on first inference.
+> Note: `GET /healthz` reports `model: false` whenever eager hosted-model warmup is skipped (`SKIP_LLM_LOAD=true`).
 
 ---
 
@@ -208,13 +207,13 @@ docker compose exec myos-api python scripts/check_engine_health.py
 - [x] Dynamic entity extraction and introspective ledger reconciliation layer.
 - [x] Hybrid deterministic debrief architecture (zero-hallucination metrics).
 - [x] Standard & generalization benchmark suites re-run on the refreshed stack (63/65 standard, 15/15 generalization).
-- [x] `SafeChatLlamaCpp` streaming tool-call sanitization.
+- [x] Hosted chat streaming and tool-call support.
 - [x] In-process `sqlite-vec` semantic exercise catalog search.
 - [x] Fractional synergist volume attribution (1.0 direct / 0.5 synergist).
 - [x] FastAPI service layer with JWT authentication, rate limiting, and SSE streaming.
 - [x] Self-service password recovery, recovery-email endpoints, and operator reset CLI.
 - [x] Context-gated Tier-0b clinical safety (DOMS slang vs. genuine trauma reports).
-- [x] Qwen 3.5 4B model refresh with GPU offload and restored streaming telemetry.
+- [x] Hosted-only player, judge, and coach chat with bounded streaming inference; local embeddings retained for clinical triage and catalog search.
 - [x] Export session logs to standardized CSV / JSON fitness exchange formats.
 - [ ] Direct Apple HealthKit and Google Health Connect local synchronization.
 - [ ] Email ownership verification (double opt-in) for recovery addresses.

@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
-os.environ.setdefault("EMBEDDING_DEVICE", "cpu")
+os.environ.setdefault("MODEL_DEVICE", "cpu")
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(BASE_DIR))
@@ -51,9 +51,6 @@ from tests.eval.schemas import (
 from utils.logger import MyosLogger
 from utils.model_downloader import (
     get_judge_llm,
-    unload_judge_llm,
-    unload_llm,
-    uses_cloud_backend,
 )
 from utils.text_scrubber import scrub_coach_output
 
@@ -100,12 +97,7 @@ def _invoke_onboarding_graph(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def safe_invoke_judge(judge: Any, system_prompt: str, user_payload: str, schema: type[T]) -> T | None:
-    # The hosted judge uses function calling for reliable structured output.
-    # The local GGUF judge keeps its default method.
-    if uses_cloud_backend() is True:
-        structured_judge = judge.with_structured_output(schema, method="function_calling")
-    else:
-        structured_judge = judge.with_structured_output(schema)
+    structured_judge = judge.with_structured_output(schema, method="function_calling")
     try:
         return structured_judge.invoke([
             SystemMessage(content=system_prompt),
@@ -464,24 +456,15 @@ def evaluate_onboarding(judge: Any, dataset_path: Path) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# Two-Phase CLI Runner
+# Hosted Evaluation Runner
 # ---------------------------------------------------------------------------
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Myos LLM-as-a-Judge Offline Evaluation Suite (Two-Phase GPU)")
+    parser = argparse.ArgumentParser(description="Myos hosted LLM evaluation suite")
     parser.add_argument("--target", choices=["qa", "debrief", "onboarding", "all"], default="all")
     parser.add_argument(
         "--generalize", action="store_true", help="Run 15 unseen generalization cases across all modules"
-    )
-    parser.add_argument(
-        "--gpu-layers", type=int, default=16, help="Layers to offload to GPU for the Judge LLM"
-    )
-    parser.add_argument(
-        "--main-gpu-layers",
-        type=int,
-        default=None,
-        help="Layers to offload to GPU for the Main LLM (default: env N_GPU_LAYERS or -1)",
     )
     parser.add_argument(
         "--phase",
@@ -490,12 +473,6 @@ def main():
         help="Evaluation phase to execute: 'generate', 'judge', or 'all'",
     )
     args = parser.parse_args()
-
-    # Configure Main LLM GPU layers for Phase 1
-    if args.main_gpu_layers is not None:
-        os.environ["N_GPU_LAYERS"] = str(args.main_gpu_layers)
-    elif "N_GPU_LAYERS" not in os.environ:
-        os.environ["N_GPU_LAYERS"] = "-1"
 
     report_payload = {"timestamp": datetime.now().isoformat(), "runs": {}}
     eval_datasets = datasets_dir()
@@ -515,7 +492,7 @@ def main():
             gen_data = json.load(f)
 
         logger.info("\n" + "=" * 75)
-        logger.info("🚀 RUNNING GENERALIZATION EVALUATION (15 UNSEEN CASES - TWO-PHASE GPU)")
+        logger.info("🚀 RUNNING HOSTED GENERALIZATION EVALUATION (15 UNSEEN CASES)")
         logger.info("=" * 75)
 
         qa_tmp = eval_datasets / "_tmp_gen_qa.json"
@@ -533,12 +510,11 @@ def main():
                 cached_debrief = generate_debrief_candidates(deb_tmp)
                 cached_onboarding = generate_onboarding_candidates(onb_tmp)
 
-                logger.info("\n🧹 Releasing Main LLM from VRAM before initializing Judge...")
-                unload_llm()
+                logger.info("\nGeneration complete; starting hosted judge evaluation...")
 
             # --- PHASE 2: JUDGMENT ---
             if args.phase in ("all", "judge"):
-                judge = get_judge_llm(n_gpu_layers=args.gpu_layers)
+                judge = get_judge_llm()
 
                 qa_results = judge_qa_candidates(judge, cached_qa)
                 qa_pass = (sum(1 for r in qa_results if r["passed"]) / len(qa_results)) * 100 if qa_results else 0.0
@@ -583,7 +559,6 @@ def main():
                 logger.info(f"🎯 FINAL GENERALIZATION SCORE: {total_passed}/{total_cases} ({total_pct:.1f}%)")
                 logger.info("=" * 75)
 
-                unload_judge_llm()
 
         finally:
             qa_tmp.unlink(missing_ok=True)
@@ -606,12 +581,11 @@ def main():
                 onboarding_data = eval_datasets / "onboarding_cases.json"
                 cached_onboarding = generate_onboarding_candidates(onboarding_data)
 
-            logger.info("\n🧹 Releasing Main LLM from VRAM before initializing Judge...")
-            unload_llm()
+            logger.info("\nGeneration complete; starting hosted judge evaluation...")
 
         # --- PHASE 2: JUDGMENT ---
         if args.phase in ("all", "judge"):
-            judge = get_judge_llm(n_gpu_layers=args.gpu_layers)
+            judge = get_judge_llm()
 
             if cached_qa:
                 qa_results = judge_qa_candidates(judge, cached_qa)
@@ -648,7 +622,6 @@ def main():
                 )
                 report_payload["runs"]["onboarding"] = onboarding_results
 
-            unload_judge_llm()
 
     gate_ok = True
     if args.phase in ("all", "judge"):

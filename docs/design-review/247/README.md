@@ -10,12 +10,11 @@ From the repository root:
 SKIP_LLM_LOAD=true HF_HUB_OFFLINE=1 python3 -m pytest tests/test_arabic_clinical_guard.py tests/eval/test_arabic_evaluation.py -q -p no:cacheprovider
 SKIP_LLM_LOAD=true HF_HUB_OFFLINE=1 python3 tests/eval/run_arabic_evaluation.py --mode deterministic --report docs/design-review/247/deterministic-report.json
 SKIP_LLM_LOAD=true HF_HUB_OFFLINE=1 python3 tests/eval/run_arabic_evaluation.py --mode plumbing --report docs/design-review/247/plumbing-report.json
-# Uses the production backend selected by LLM_BACKEND (local by default).
-# For the hosted backend, set both values explicitly:
-LLM_BACKEND=openai LLM_API_KEY=... python3 tests/eval/run_arabic_evaluation.py --mode real --report docs/design-review/247/real-model-report.json
+# Real runs use the hosted OpenAI-compatible backend and require its API key.
+LLM_API_KEY=... python3 tests/eval/run_arabic_evaluation.py --mode real --report docs/design-review/247/real-model-report.json
 ```
 
-The real command follows the production backend selected by `LLM_BACKEND` (`local` by default; `openai` selects the hosted backend). Only hosted runs require `LLM_API_KEY`; without it, the runner records `missing_credentials` and evaluates zero cases. Local runs need no cloud key, but a missing configured local model file is reported as `runner_error` rather than a credential failure. Real mode refuses explicit model-mock switches and verifies the assistant graph loaded the configured production model before setting `real_model_run` true. With the required backend/model available, it runs the real assistant graph against temporary synthetic ledger/store data. The report records provider, model, artifact where applicable, revision, prompt hash, context identity, per-case status, and an overall `completed`, `behavior_failures`, `runner_error`, or `incomplete` status. Runner and incomplete statuses return a non-zero exit code. Error messages redact credential-like values.
+The real command requires `LLM_API_KEY`; without it, the runner records `missing_credentials` and evaluates zero cases. Real mode refuses explicit model-mock switches and verifies that the assistant graph loaded the configured hosted production model before setting `real_model_run` true. It runs the real assistant graph against temporary synthetic ledger/store data. The report records provider, model, prompt hash, context identity, per-case status, and an overall `completed`, `behavior_failures`, `runner_error`, or `incomplete` status. Runner and incomplete statuses return a non-zero exit code. Error messages redact credential-like values.
 
 ## Published results
 
@@ -23,7 +22,7 @@ The real command follows the production backend selected by `LLM_BACKEND` (`loca
 | --- | --- | ---: | --- |
 | Deterministic | `behavior_failures` | 41/41 | Current guard/router and fixed safeguard/refusal outcomes. |
 | Plumbing | `behavior_failures` | 46 rows: 41 approved cases plus 5 graph smoke scenarios | `/chat` graph entry with a deterministic fake model, temporary seeded ledger/store, action and history scoring, and coach-authority protection. **This is not a real-model run.** |
-| Real configured model | `runner_error` | 0/41 | Backend is local, no cloud key is required, but the configured local model file is unavailable. |
+| Real configured model | `runner_error` | 0/41 | Archived report predates hosted-only chat configuration; rerun with `LLM_API_KEY` for a real model result. |
 
 Accepted interim false positive: `ar-sore-04`. Missed required blocking: `ar-inj-07`, `fr-benign-02`. Both remain present with their approved outcomes. The real graph plumbing report also exposes Arabic routing/action mismatches without changing expectations. Synthetic smoke cases separately demonstrate a frequency rebuild with version advance, no mutation for advice, unchanged coach-controlled facts, seeded history scoring, and ordinary English numeric input routing.
 

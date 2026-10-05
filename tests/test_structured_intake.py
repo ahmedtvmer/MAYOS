@@ -474,9 +474,7 @@ def test_concurrent_legacy_completion_reuses_one_program_and_welcome(api, monkey
             {"intake_step": 3, "is_complete": True, "profile_data": None, "messages": []}
         )
 
-    # Exercise the parallel inference behavior of the cloud backend while
-    # keeping generation deterministic and local to this test.
-    monkeypatch.setattr("utils.model_downloader.uses_cloud_backend", lambda: True)
+    # Keep generation deterministic while the inference gate admits parallel work.
     monkeypatch.setattr("svc.llm._GATE", threading.Semaphore(2))
     generation_barrier = threading.Barrier(2)
 

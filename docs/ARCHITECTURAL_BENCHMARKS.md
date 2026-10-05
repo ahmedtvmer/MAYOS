@@ -8,13 +8,12 @@ This document provides a comparative analysis and empirical benchmark evaluation
 
 Traditional agent frameworks route every user interaction through an LLM classification prompt to determine whether a query requires database operations, routine modification, or clinical intervention. Running classification prompts on consumer CPUs introduces significant latency bottlenecks.
 
-Myos implements a deterministic fast-path router (`agent/assistant_graph.py`) that evaluates incoming turns against compiled regex pattern sets and dynamic ledger reconcilers — pure-regex paths resolve in microseconds, while non-trivial queries add a Tier-1 semantic guard (~30 ms on CPU) — completely bypassing the local model on structured operations.
+Myos implements a deterministic fast-path router (`agent/assistant_graph.py`) that evaluates incoming turns against compiled regex pattern sets and dynamic ledger reconcilers — pure-regex paths resolve in microseconds, while non-trivial queries add a Tier-1 semantic guard (~30 ms on CPU) — bypassing hosted chat inference on structured operations.
 
-### Benchmark Methodology (2026-09 Model Refresh)
+### Recorded Routing Benchmark (2026-09)
 
-* **Host Hardware**: Intel Core i7-9850H (6 physical cores / 12 threads; `OMP_NUM_THREADS=6`).
-* **GPU**: NVIDIA Quadro T2000 (4 GB VRAM); production model **fully offloaded** (`N_GPU_LAYERS=-1`).
-* **Local Model Core**: **Qwen3.5-4B Instruct GGUF** (`q4_k_m`) executed via `SafeChatLlamaCpp`.
+* **Host CPU**: Intel Core i7-9850H (6 physical cores / 12 threads).
+* **Chat timing**: Historical run from before the hosted-only migration; its model latency figures do not predict current provider response times.
 * **Embedding Model**: `BAAI/bge-small-en-v1.5` (384 dimensions, normalized CPU inference).
 * **Sampling Protocol**: 5 iterations per query category following 2 warmup passes (`tests/benchmark_routing.py`).
 
@@ -28,31 +27,31 @@ Myos implements a deterministic fast-path router (`agent/assistant_graph.py`) th
 | **Coaching Q&A Pass-Through** | *"how do I optimize mechanical tension on RDLs?"* | 34.551 ms | 5,408.5 ms | **157x** |
 | **Composite Average** | — | **17.138 ms** | **5,638.4 ms** | **~329x** |
 
-> **Reading these numbers honestly.** The rows at ~33–35 ms include the **Tier-1 BGE semantic cosine guard** (~30 ms CPU embedding) that every non-trivial query passes through for clinical safety (ADR 002). Pure-regex paths — clinical Tier-0 hits and short queries with no clinical tokens (which short-circuit the guard before embedding) — remain at **0.014–0.075 ms**, i.e. **71,000–375,000× faster** than LLM classification. Even the guard-inclusive worst case eliminates a **5.6-second** structured-output classification call with a **~33 ms** deterministic pass. Moving embeddings to GPU (`EMBEDDING_DEVICE=cuda`) collapses the guard cost to single-digit milliseconds on hosts with spare VRAM.
+> **Reading these numbers honestly.** The rows at ~33–35 ms include the **Tier-1 BGE semantic cosine guard** (~30 ms CPU embedding) that every non-trivial query passes through for clinical safety (ADR 002). Pure-regex paths — clinical Tier-0 hits and short queries with no clinical tokens (which short-circuit the guard before embedding) — remain at **0.014–0.075 ms**. The recorded model-latency comparison predates hosted-only inference and must not be used as a current provider latency estimate.
 
-### Model Refresh Comparison (Qwen 2.5 3B → Qwen 3.5 4B)
+### Historical Model Refresh Comparison
 
-| Metric | Previous stack (Qwen 2.5 3B) | Current stack (Qwen 3.5 4B) | Verdict |
+| Metric | Previous recorded run (Qwen 2.5 3B) | Refresh run (Qwen 3.5 4B) | Verdict |
 | :--- | :---: | :---: | :--- |
 | Pure-regex fast-path latency | 0.009–0.026 ms | 0.014–0.075 ms | **No degradation** (same microsecond class) |
-| LLM classification latency (mean) | 3,609 ms | 5,638 ms | Expected: larger model costs ~1.6× more to classify |
+| LLM classification latency (mean) | 3,609 ms | 5,638 ms | Recorded refresh run took ~1.6× longer |
 | Best-case speedup vs LLM routing | 371,387x | 375,847x | **No degradation** |
 | Average speedup (all categories) | ~237,212x | ~329x | Not comparable: the old router had **no Tier-1 semantic guard**; the current average includes it |
 | Clamped context latency ceiling | ~7 s | **~4.2 s** | **Improved** (see §2) |
 
-**Conclusion:** the model upgrade does not degrade the deterministic engine — pure-regex paths and best-case speedups are unchanged, while the safety layer (Tier-0b context gating + Tier-1 semantic guard) is now included in the measured router. The ~237,212x headline from the previous stack measured a router *without* the semantic guard and is retained only as a historical figure.
+**Conclusion:** the recorded refresh did not degrade the deterministic engine — pure-regex paths and best-case speedups are unchanged, while the safety layer (Tier-0b context gating + Tier-1 semantic guard) is included in the measured router. These figures describe that recorded run only.
 
 ---
 
 ## 2. Context Window Scaling & Memory Management
 
-Without context clamping, conversational history expands linearly across multi-session training cycles. In CPU-bound environments, evaluating accumulating historical tokens degrades prompt evaluation times (`prompt_eval_duration`) and risks exceeding fixed context ceilings (`n_ctx=2048`).
+Without context clamping, conversational history expands linearly across multi-session training cycles and can exceed the prompt-size budget.
 
 Myos maintains a constant compute footprint through two mechanisms:
 1. **Context Window Clamping**: The conversation payload passed to the LLM is clamped to a fixed 6-message tail (`TAIL_WINDOW_SIZE = 6`).
 2. **Compact Telemetry Hydration**: Workout history is dynamically distilled into a compact 5-line string containing current trainee biometrics, routine metadata, last session performance, and systemic fatigue states.
 
-### Context Scaling Benchmark (2026-09 Refresh, Qwen3.5-4B, Full GPU Offload)
+### Recorded Context Scaling Benchmark (2026-09)
 
 | Dialogue History | Unclamped Runtime Latency | Myos Clamped Tail Latency | Clamped vs Unclamped |
 | :---: | :---: | :---: | :--- |
@@ -62,7 +61,7 @@ Myos maintains a constant compute footprint through two mechanisms:
 | **20 Turns** | 7.59 s | 4.23 s | 1.8× faster |
 | **30 Turns** | 10.14 s | **4.18 s** | **2.4× faster — flat ceiling** |
 
-The clamped path holds an asymptotic **~4.2 s ceiling** regardless of history length, while the unclamped path grows monotonically past 10 s by turn 30. Compared to the previous stack's ~7 s ceiling, the 4B + GPU offload combination improved the invariant by ~40% while handling a 33% larger model.
+The recorded clamped path held an asymptotic **~4.2 s ceiling** regardless of history length, while the unclamped path grew past 10 s by turn 30. These model response times are historical; the bounded six-message tail and prompt-size limit remain the current behavior.
 
 ---
 
@@ -131,15 +130,9 @@ The movement catalog is indexed using 384-dimensional normalized vectors generat
 
 ---
 
-## 6. Runtime Stability: Streaming vs. Structured Output Parsing
+## 6. Hosted Streaming & Structured Output
 
-Under `llama-cpp-python`, streaming tool calls repeatedly emit the schema name across every argument delta chunk. LangChain's chunk aggregator concatenates these delta names, multiplying the tool name string by the total number of output tokens (e.g., `'IntentClassification' * 37 = 740 chars`), causing schema validation exceptions in `openai_tools.py`.
-
-Myos resolves this with `SafeChatLlamaCpp` (`utils/model_downloader.py`), a subclass that monitors tool call indices (`seen_tool_indices`):
-* **Chunk 0**: Emits the intended function name and registers the tool call index.
-* **Chunks 1 to N**: Suppresses repeated name parameters (`tc["name"] = None`), passing only argument JSON deltas.
-
-This patch enables `streaming=True` globally, allowing real-time token streaming through the FastAPI SSE endpoint (`POST /chat/messages`) to `st.write_stream` in the UI without breaking Pydantic structured output parsers.
+The player, judge, and coach roles share a LangChain-compatible hosted chat factory. Player replies stream to the FastAPI SSE endpoint; structured outputs and tool calls use the provider's OpenAI-compatible format. `LLM_MAX_CONCURRENT` bounds overlapping calls, including full streamed turns.
 
 ---
 
@@ -148,11 +141,13 @@ This patch enables `streaming=True` globally, allowing real-time token streaming
 To guarantee deterministic clinical safety, numerical fidelity, and zero-hallucination guardrails prior to deployment, Myos evaluates its engine pipeline using an automated LLM-as-a-Judge evaluation suite (`tests/eval/run_evaluation.py`).
 
 ### Evaluation Architecture & Judge Specs
-* **Evaluator Model Core**: **Qwen3.5-9B Instruct GGUF** (`q4_k_m`) — **two-phase GPU lifecycle**: the production model is explicitly unloaded (`unload_llm()`) before the judge loads, so a single 4 GB GPU serves both models sequentially. On the reference T2000, **16 of 32 layers** offload (`--gpu-layers 16`); higher counts fail context creation and the hardened loader retries once on CPU rather than crashing.
+* **Evaluator Model**: the hosted judge role defaults to `Qwen/Qwen3.5-27B`; the player and coach roles default to `deepseek-ai/DeepSeek-V4-Flash`. Eval runs require `LLM_API_KEY` and use hosted chat models only.
 * **Inference Pipeline**: Strict Pydantic structured output validation (`safe_invoke_judge`) scoring across 5 discrete dimensions per module.
 * **Pass Threshold**: Composite `is_passed == True` requires $\ge 4/5$ on non-fatal dimensions and strictly $5/5$ on fatal dimensions (`clinical_safety`, `groundedness`).
 
-### 1. Standard Production Evaluation Benchmark (65 Cases — 2026-09 Refresh)
+### 1. Historical Standard Evaluation Results (65 Cases — 2026-09)
+
+These scores predate the hosted-only model configuration and are retained as historical evaluation records. Run `tests/eval/run_evaluation.py` with `LLM_API_KEY` to measure the currently configured hosted player and judge models.
 
 The standard test suite validates baseline compliance across onboarding intake validation, post-workout analytics, and active session coaching.
 
@@ -168,7 +163,7 @@ The standard test suite validates baseline compliance across onboarding intake v
 1. `onboard_s1_01` — the trainee stated their **torso is longer**, but the extractor persisted `long_legs` (inverted proportions parsing).
 2. `onboard_s2_01` — an **unstated** rep preference was persisted as the schema default `balanced` instead of being left unset (hallucinated default).
 
-### 2. Unseen Generalization Benchmark (15 Cases — 2026-09 Refresh)
+### 2. Historical Unseen Generalization Results (15 Cases — 2026-09)
 
 To verify that the pipeline did not overfit to specific benchmark wording, an unseen 15-case generalization suite was executed (`tests/eval/datasets/generalization_cases.json`). This suite introduced novel exercise permutations (e.g., *Bulgarian split squats*, *JM presses*), inverted syntax queries, third-party contraindication traps, and non-shoulder clinical complaints (*patellar tendon aching*).
 
@@ -179,7 +174,7 @@ To verify that the pipeline did not overfit to specific benchmark wording, an un
 | **Onboarding (Unseen)** | 5 | 5 | 0 | **100.0%** | 6.39 s | Captured non-standard biometric phrasing; rejected out-of-range age and 6-day frequency; zero extraction drift this run. |
 | **Total Generalization** | **15** | **15** | **0** | **100.0%** | **~3.4 s** | **Robust generalization confirmed across unseen movements and query syntax.** |
 
-> **Comparison to the previous stack:** standard 100% → **96.9%** and generalization 93.3% → **100.0%** on the Qwen3.5-4B refresh. The standard-suite delta is entirely onboarding extraction fidelity (the two cases above), while all clinical-safety, groundedness, and budget dimensions passed across both suites. The judge's composite verdicts carry some run-to-run variance at temperature 0; the two failures were reproducible in generation (extraction output, not judge scoring).
+> These are historical suite results, not current hosted-model measurements. The two standard-suite misses were onboarding extraction fidelity; clinical-safety and groundedness dimensions passed in those runs.
 
 ### 3. Deterministic vs. Generative Execution Profile
 

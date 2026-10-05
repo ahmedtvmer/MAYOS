@@ -59,7 +59,7 @@ from service.program_requests import MAX_REASON_CHARS
 from service.program_substitution import ProgramSubstitution, substitute_program_exercise
 from utils.logger import MyosLogger
 from utils.equipment_access import COMMERCIAL_GYM, equipment_access_allows, map_equipment_access
-from utils.model_downloader import llm, uses_cloud_backend
+from utils.model_downloader import llm
 from utils.text_scrubber import CoachOutputScrubber, EMPTY_RESPONSE_FALLBACK, PIPELINE_ERROR_RESPONSE, finalize_coach_output
 
 load_dotenv()
@@ -1653,50 +1653,23 @@ def _is_session_pointer(message: Any) -> bool:
 
 def _prompt_token_count(messages: Sequence[BaseMessage]) -> int:
     rendered = "".join(f"<|{_message_role(m)}|>\n{m.content}\n<|end|>\n" for m in messages) + "<|assistant|>\n"
-    try:
-        tokenize = getattr(getattr(llm, "client", None), "tokenize", None)
-        if callable(tokenize):
-            tokens = tokenize(rendered.encode("utf-8"), add_bos=True)
-            if isinstance(tokens, (list, tuple)):
-                return len(tokens) + 32 * len(messages) + 32
-    except Exception:
-        logger.warning("Local tokenizer unavailable; using conservative byte budget.")
     return len(rendered.encode("utf-8")) + 32 * len(messages) + 32
 
 
 def _count_display_tokens(text: str) -> int:
-    """Telemetry token count: exact when the local tokenizer is loaded, else chars/4."""
+    """Estimate displayed tokens from text length for telemetry."""
     if not text:
         return 0
-    try:
-        tokenize = getattr(getattr(llm, "client", None), "tokenize", None)
-        if callable(tokenize):
-            tokens = tokenize(text.encode("utf-8"), add_bos=False)
-            if isinstance(tokens, (list, tuple)):
-                return len(tokens)
-    except Exception:
-        logger.debug("Local tokenizer unavailable for telemetry; using char heuristic.")
     return max(1, len(text) // 4)
 
 
-def _model_limit(name: str, default: int) -> int:
-    value = getattr(llm, name, default)
-    return value if type(value) is int and value > 0 else default
-
-
-#: Conservative hosted prompt ceiling in UTF-8 bytes. A hosted ``ChatOpenAI``
-#: has no local tokenizer, so ``_prompt_token_count`` falls back to byte length;
-#: the local GGUF budget (``n_ctx - max_tokens``) is far too small for that
-#: heuristic and falsely rejects short queries. Data sent is unchanged — the
-#: same trimming loop below still minimizes the payload (ADR-0016).
+#: Conservative hosted prompt ceiling in UTF-8 bytes.
 HOSTED_PROMPT_BYTE_BUDGET = 8 * 1024
 
 
 def _prompt_budget() -> int:
-    """Prompt ceiling: local GGUF token budget, or a conservative hosted byte budget."""
-    if uses_cloud_backend() is True:
-        return HOSTED_PROMPT_BYTE_BUDGET
-    return _model_limit("n_ctx", 2048) - _model_limit("max_tokens", 200)
+    """Returns the conservative UTF-8 byte ceiling for hosted chat prompts."""
+    return HOSTED_PROMPT_BYTE_BUDGET
 
 
 def build_prompt_payload(state: Dict[str, Any]) -> list[BaseMessage]:

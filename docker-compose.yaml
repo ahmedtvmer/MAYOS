@@ -5,23 +5,23 @@ services:
       dockerfile: Dockerfile
     container_name: myos_api
     restart: unless-stopped
-    # Single replica: local GGUF + SQLite cannot scale horizontally.
+    # SQLite has a single writer, and the API uses a bounded hosted model client.
     stop_grace_period: 60s
     command: ["uvicorn", "svc.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
     ports:
       - "8000:8000"
     volumes:
-      - ./models:/app/models
       - ./db:/app/db
       - ./logs:/app/logs
     environment:
-      - MODEL_PATH=/app/models/Qwen3.5-4B-Q4_K_M.gguf
-      - JUDGE_MODEL_PATH=/app/models/Qwen3.5-9B-Q4_K_M.gguf
-      - MODEL_DIR=/app/models
+      - LLM_API_BASE=${LLM_API_BASE:-https://api.deepinfra.com/v1/openai}
+      - LLM_API_KEY=${LLM_API_KEY:?set LLM_API_KEY in environment}
+      - LLM_MODEL=${LLM_MODEL:-deepseek-ai/DeepSeek-V4-Flash}
+      - JUDGE_MODEL=${JUDGE_MODEL:-Qwen/Qwen3.5-27B}
+      - COACH_MODEL=${COACH_MODEL:-deepseek-ai/DeepSeek-V4-Flash}
+      - LLM_MAX_CONCURRENT=${LLM_MAX_CONCURRENT:-1}
       - EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
-      - N_GPU_LAYERS=16
-      - MODEL_DEVICE=cuda
-      - EMBEDDING_DEVICE=cuda
+      - MODEL_DEVICE=cpu
       - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in environment}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
@@ -29,13 +29,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 120s
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
 
   cloudflared:
     image: cloudflare/cloudflared:latest

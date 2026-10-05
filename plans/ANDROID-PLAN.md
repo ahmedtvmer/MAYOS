@@ -7,9 +7,8 @@
 > have a desktop-capable web console. Fly.io serves the API only (uvicorn).
 > The shared Flutter client in `mobile/` serves Android and web. The legacy
 > Streamlit client and dependencies were deleted in #242 (ADR 056).
-> The local GGUF backend remains available for
-> development and evaluation; production uses a hosted model selected by the
-> parity gate.
+> Player, judge, and coach chat use the hosted OpenAI-compatible backend;
+> embeddings remain local for clinical triage and Exercise library search.
 >
 > The player-only v1 plan is superseded. Phase 0's hosted parity gate passed;
 > the phase sections below retain the original delivery sequence, not an
@@ -133,10 +132,9 @@ Two consent paths:
   FastAPI player and coach contracts with JWT auth, rate limits, catalog-gated
   assignments and dual-capability identity. The former `ui/api_client.py` is
   historical prior art, deleted with Streamlit in #242.
-- Model construction uses the `get_llm()` / `get_judge_llm()` /
-  `get_coach_llm()` factories behind a LangChain-standard surface. The cloud
-  factory exists in the current worktree; live chat and onboarding inference
-  still need to be covered by the promised concurrency limit.
+- Model construction uses the hosted `get_llm()` / `get_judge_llm()` /
+  `get_coach_llm()` factories behind a LangChain-standard surface. The
+  `LLM_MAX_CONCURRENT` limit bounds live chat and onboarding inference.
 - The eval harness (`tests/eval/run_evaluation.py`) uses the same factories, so
   the existing 65-case + 15-case suites can check the player model swap. The
   command still needs a failing exit status when thresholds are missed.
@@ -153,42 +151,15 @@ Two consent paths:
 
 ## 5. Phases
 
-### Phase 0 — LLM Backend Abstraction
+### Hosted Chat Model Configuration
 
-1. **Factory swap** — `utils/model_downloader.py`
-   - Env `LLM_BACKEND` = `local` (default) | `openai`.
-   - `openai` → thin `SafeChatOpenAI` wrapper (langchain-openai `ChatOpenAI`):
-     `LLM_API_BASE`, `LLM_API_KEY`, `LLM_MODEL` (DeepSeek-V4-Flash player),
-     `temperature=0.0`, `max_tokens=200`, streaming. Judge equivalents
-     (`JUDGE_MODEL`, Qwen3.5-27B, `max_tokens=700`) and coach equivalents
-     (`COACH_MODEL`, DeepSeek-V4-Flash) follow the same shape. The coach sends
-     no extra body by default; `COACH_EXTRA_BODY` replaces it when set.
-   - The DeepSeek player sends no extra body by default; `LLM_EXTRA_BODY`
-     replaces only the player body. The Qwen judge disables thinking via
-     `extra_body.chat_template_kwargs.enable_thinking=false`; `JUDGE_EXTRA_BODY`
-     replaces its body and `LLM_ENABLE_THINKING=true` opts it back in. The live
-     smoke verifies model echo, no leaked reasoning, structured output,
-     streaming, and tool calls.
-     `CoachOutputScrubber`
-     (`utils/text_scrubber.py:38`) remains the final guard.
-   - Mock seams preserved: `TESTING=1` → `MockSafeChatLlamaCpp` regardless of
-     backend; `openai` + missing key in pytest context → mock.
-2. **Concurrency** — `svc/llm.py`
-   - `LLM_MAX_CONCURRENT` bounds chat streams and onboarding invocations in
-     the current service paths. Keep the trial default at 1 until load testing
-     the single SQLite writer.
-   - Meter hosted-model usage per account, enforce separate player and coach
-     request limits, and alert the owner when projected monthly spend reaches
-     $50. Review measured usage before expanding the trial.
-3. **Parity gate (blocking)**
-   - `pytest` full suite green (mock path, zero regression).
-   - Provider smoke passed for Qwen3.5-9B: model ID, thinking-off, streaming,
-     and tool calls. The proposed Qwen3.5-4B endpoint was unavailable.
-   - 65-case standard + 15-case generalization suites with
-     `LLM_BACKEND=openai` (player = Qwen3.5-9B, judge = Qwen3.5-27B).
-     **Gate: ≥ 62/65, 15/15 generalization, strict 5/5 clinical safety.**
-     The measured runs scored 62/65 and 15/15 with no clinical-safety failures.
-     The eval command exits nonzero below the gate.
+Player, judge, and coach roles use the hosted `SafeChatOpenAI` factory with
+role-specific model ids and output limits. `LLM_API_KEY` is required when a
+model is built. The shared LangChain interface supports streaming, structured
+output, and tool calls. The provider smoke and eval runners use hosted models;
+tests use the shared scripted network-free fake. `LLM_MAX_CONCURRENT` bounds
+overlapping calls. The local BGE embedding model remains in service for
+clinical triage and Exercise library search.
 
 ### C1 — Coach Domain & Authorization
 
@@ -342,9 +313,8 @@ Two consent paths:
   workout counts and are deleted with the account.
 - **Email**: Resend SMTP credentials + SPF/DKIM on the domain (transport
   already exists); add invite-redemption and program-request notice templates.
-- **Deployment**: `Dockerfile.fly` (`python:3.12-slim`, install without
-  `llama-cpp-python` — split `requirements.txt` into base + `[local-llm]`
-  extra, `MODEL_DEVICE=cpu`, CMD `uvicorn svc.app:app --workers 1`,
+- **Deployment**: `Dockerfile.fly` (`python:3.12-slim`, `MODEL_DEVICE=cpu`,
+  CMD `uvicorn svc.app:app --workers 1`,
   healthcheck `/healthz`); `fly.toml` (single machine, `fra`, 1–2 GB, 10 GB
   volume at `/data`, autostop off); route catalog, ledgers, and local backups to
   the mounted volume; one-time catalog init + vector seeding; secrets via
@@ -458,9 +428,9 @@ Two consent paths:
 
 ## 6. Closed-Trial Verification Gates (in order)
 
-1. `pytest` green on mock backend (zero-regression baseline)
+1. `pytest` green with the shared scripted chat fake (zero-regression baseline)
 2. Hosted-provider curl smoke (model IDs + thinking-off + tool calls verified)
-3. Player eval suites ≥ 62/65 and 15/15 on the selected hosted backend
+3. Player eval suites ≥ 62/65 and 15/15 on the configured hosted player and judge models
 4. Authorization tests (C1): coach can only open actively assigned player
    ledgers; revoked assignments denied; dual capabilities enforced; every
    program write path, including existing exercise-swap routes, respects coach

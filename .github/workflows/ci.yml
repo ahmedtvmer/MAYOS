@@ -30,20 +30,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgomp1 sqlite3
 
-      - name: Cache GGUF & Embedding Models
+      - name: Cache Embedding Model
         uses: actions/cache@v4
         with:
-          path: |
-            models/
-            ~/.cache/huggingface
-          key: myos-models-${{ runner.os }}-qwen3.5-4b-bge
+          path: ~/.cache/huggingface
+          key: myos-embeddings-${{ runner.os }}-bge-small-en-v1.5
           restore-keys: |
-            myos-models-${{ runner.os }}-
+            myos-embeddings-${{ runner.os }}-
 
-      - name: Install llama-cpp-python (CPU AVX2)
-        run: |
-          uv pip install --system llama-cpp-python \
-            --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+      - name: Install CPU PyTorch for Local Embeddings
+        run: uv pip install --system --index-url https://download.pytorch.org/whl/cpu "torch>=2.0"
 
       - name: Install Dependencies
         run: |
@@ -78,14 +74,6 @@ jobs:
       - name: Run WAL Concurrency Stress Test
         run: |
           python tests/benchmark_wal_concurrency.py
-
-      - name: Run Generalization Benchmark (15 Unseen Cases)
-        env:
-          OMP_NUM_THREADS: "2"
-          MODEL_DEVICE: "cpu"
-          N_GPU_LAYERS: "-1"
-        run: |
-          python tests/eval/run_evaluation.py --generalize --gpu-layers -1
 
   docker-build:
     name: Docker Build Validation

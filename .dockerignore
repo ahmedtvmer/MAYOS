@@ -9,9 +9,7 @@ ENV/
 *.pem
 *.key
 
-# Model weights (mounted via volume, never copied)
-models/
-*.gguf
+# Generic model cache artifacts are not part of the image.
 *.bin
 
 # Local runtime state: catalog, ledgers, backups, logs

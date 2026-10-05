@@ -1423,10 +1423,9 @@ def test_chat_provider_error_emits_one_error_turn_event(analytics_api, monkeypat
     headers = _register(client, "analytics-chat-provider-error")
     account = db.get_active_account_by_username("analytics-chat-provider-error")
     from utils.model_metering import record_usage
-    from utils.model_downloader import _local_model_id
 
     def failing_turn(state, **_kwargs):
-        record_usage(_local_model_id("production"), 17, 4, False)
+        record_usage("deepseek-ai/DeepSeek-V4-Flash", 17, 4, False)
         raise RuntimeError("provider unavailable")
         yield state
 
@@ -1458,13 +1457,12 @@ def test_chat_disconnect_keeps_reply_and_emits_interrupted(analytics_api, monkey
     headers = _register(client, "analytics-chat-disconnect")
     account = db.get_active_account_by_username("analytics-chat-disconnect")
     from utils.model_metering import record_usage
-    from utils.model_downloader import _local_model_id
 
     allow_second_chunk = threading.Event()
     disconnect_seen = threading.Event()
 
     def turn(state, **_kwargs):
-        record_usage(_local_model_id("production"), 23, 7, False)
+        record_usage("deepseek-ai/DeepSeek-V4-Flash", 23, 7, False)
         yield "first chunk"
         allow_second_chunk.wait(timeout=2)
         state["response_content"] = "Persisted assistant reply"

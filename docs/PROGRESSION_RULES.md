@@ -239,7 +239,7 @@ Fatigue idioms deliberately **pass through** to normal routing and still face Ti
 
 ### Protocol Action
 
-* **Zero Model Invocation**: Intercepted queries never reach `SafeChatLlamaCpp`; the response is an immutable hardcoded directive.
+* **Zero Model Invocation**: Intercepted queries never reach the hosted chat model; the response is an immutable hardcoded directive.
 * **Immediate Cease Directive**: The system instructs the trainee to deload the bar, cease loading the affected kinetic chain, and consult a qualified medical professional.
 * **No Progression Contamination**: Intercepts never mutate programs, never update memory, and are excluded from progression telemetry.
 

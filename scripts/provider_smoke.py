@@ -1,4 +1,4 @@
-"""Hosted-provider smoke check for the Phase 0 player-model gate.
+"""Hosted-provider smoke check for the configured player model.
 
 Confirms, against the configured OpenAI-compatible endpoint, that:
 
@@ -13,8 +13,7 @@ Usage::
     ./.venv/bin/python scripts/provider_smoke.py
 
 Exit codes: ``0`` on a live pass, ``1`` on a failed live check, and ``2`` when
-the check could not run because ``LLM_BACKEND`` is not ``openai`` or no
-``LLM_API_KEY`` is configured. A ``not run`` status is deliberately nonzero so
+the check could not run because ``LLM_API_KEY`` is not configured. A ``not run`` status is deliberately nonzero so
 it can never be mistaken for a passed release gate; the orchestrator runs the
 live gate once the user supplies the key. The API key is never printed, logged,
 or written to the report; both the text and JSON renderings are redacted.
@@ -83,10 +82,6 @@ class SmokeReport:
 # ---------------------------------------------------------------------------
 # Configuration (read-only; the key is only ever used as a header value)
 # ---------------------------------------------------------------------------
-
-
-def backend() -> str:
-    return os.getenv("LLM_BACKEND", "local").strip().lower()
 
 
 def configured_model() -> str:
@@ -293,7 +288,7 @@ def render_json(report: SmokeReport, api_key: str = "") -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Live hosted player-model smoke check (Phase 0 gate).")
+    parser = argparse.ArgumentParser(description="Live hosted player-model smoke check.")
     parser.add_argument("--timeout", type=float, default=30.0, help="Per-request timeout in seconds.")
     parser.add_argument("--json", action="store_true", help="Emit the report as JSON.")
     args = parser.parse_args(argv)
@@ -302,9 +297,7 @@ def main(argv: list[str] | None = None) -> int:
     model = configured_model()
     api_base = configured_api_base()
 
-    if backend() != "openai":
-        report = SmokeReport(status="not_run", reason=f"LLM_BACKEND={backend()!r}, expected 'openai'", model=model, base_url=api_base)
-    elif not api_key:
+    if not api_key:
         report = SmokeReport(status="not_run", reason="LLM_API_KEY not set", model=model, base_url=api_base)
     else:
         try:
@@ -326,7 +319,7 @@ def main(argv: list[str] | None = None) -> int:
     print(render_json(report, api_key) if args.json else render_report(report, api_key))
 
     # A "not run" smoke is NOT a passed release gate: exit 2 so CI cannot treat
-    # a missing key or local backend as green. 0 = live pass, 1 = live failure.
+    # a missing key as green. 0 = live pass, 1 = live failure.
     if report.status == "pass":
         return 0
     if report.status == "fail":

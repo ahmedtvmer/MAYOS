@@ -1,122 +1,49 @@
 # Myos: Production Deployment, Containerization & Operational Runbook
 
-This document details production deployment procedures, container orchestration, host hardware tuning, database provisioning, and disaster recovery protocols for the Myos training engine.
+This document details production deployment procedures, container orchestration, database provisioning, and disaster recovery for the MAYOS service.
 
 > **Android closed trial (Fly.io, FastAPI only):** the §10 runbook targets the
 > API service alone on one always-on Machine with a durable volume. See
 > [§10 Fly.io Closed-Trial API Deployment](#10-flyio-closed-trial-api-deployment-fastapi-only).
-> The GPU/`docker-compose` topology below remains the local-development and
-> engine-evaluation reference; it is not the trial topology.
+> The Docker Compose topology below supports hosted chat inference and local
+> embeddings; it is not the trial topology.
 
 ---
 
-## 1. Host Hardware & Runtime Prerequisites
+## 1. Host Runtime Prerequisites
 
-Myos runs entirely in-process without external model daemons or network API requirements. The reference deployment target is a single host with one modest CUDA GPU:
-
-| Resource | Minimum | Recommended | Notes |
-| :--- | :--- | :--- | :--- |
-| CPU | 4 physical cores, x86_64 with **AVX2 + FMA** | 6+ physical cores | OpenMP pinning matters more than core count |
-| RAM | 8 GB | 16 GB | ~2.7 GB for the 4B weights (when GPU-offloaded, this is VRAM), ~0.5 GB embeddings, remainder for OS/SQLite |
-| GPU (optional) | — | 4 GB VRAM CUDA card (e.g. Quadro T2000) | 4B Q4_K_M fully offloads into 4 GB; the 9B judge partially offloads (see §4) |
-| Disk | 10 GB free | 20 GB+ | GGUF weights (2.7 GB + optional 5.7 GB judge) and per-user ledgers |
-
-CPU-only hosts are fully supported: set `N_GPU_LAYERS=0` (see §4) and expect roughly 5–15 TPS generation versus 30+ TPS with GPU offload.
+MAYOS runs its chat, judge, and coach roles through a hosted OpenAI-compatible API. The service also loads its local BGE embedding model for clinical triage and Exercise library search. Plan memory for the API service, SQLite, and the embedding model; chat model weights are not stored or downloaded by the service.
 
 **Host system dependencies (non-Docker native runs):**
 
 ```bash
-sudo apt-get update && sudo apt-get install -y \
-    build-essential \
-    libgomp1 \
-    sqlite3 \
-    curl
+sudo apt-get update && sudo apt-get install -y sqlite3 libgomp1 curl
 ```
-
----
 
 ## 2. Docker Architecture & Container Topology
 
-The deployment is **one FastAPI service** plus an optional tunnel:
+The deployment is one FastAPI service plus an optional tunnel. Hosted chat requests leave the service through the configured OpenAI-compatible endpoint; embeddings remain in-process.
 
 ```
-+-----------------------------------------------------------------------------------+
-|                                   HOST SYSTEM                                     |
-|                                                                                   |
-|   Persistent Volumes:                                                             |
-|   ├── ./models/  ------> /app/models  (GGUF weights; auto-download on first boot) |
-|   ├── ./db/      ------> /app/db      (catalog.db + users/ + backups/)            |
-|   └── ./logs/    ------> /app/logs    (structured telemetry log)                  |
-|                                                                                   |
-|   +----------------------------------+                                             |
-|   |  Container: myos_api             |                                             |
-|   |  uvicorn svc.app:app  (:8000)    |                                             |
-|   |  JWT auth, rate limits, SSE      |                                             |
-|   |  LangGraph + SafeChatLlamaCpp    |                                             |
-|   |  DatabaseManager (thread-local)  |                                             |
-|   +----------------------------------+                                             |
-|                         ^                                                         |
-|             +-----------------------------+                                       |
-|             | cloudflared tunnel (optional)|                                       |
-|             +-----------------------------+                                       |
-+-----------------------------------------------------------------------------------+
++-----------------------------------------------------------------------+
+| HOST SYSTEM                                                           |
+|   Persistent volumes: ./db -> /app/db; ./logs -> /app/logs            |
+|   +-----------------------------+                                     |
+|   | Container: myos_api         |       +--------------------------+  |
+|   | FastAPI + LangGraph         |------>| Hosted chat API          |  |
+|   | Local BGE embeddings        |       | OpenAI-compatible        |  |
+|   | DatabaseManager             |       +--------------------------+  |
+|   +-----------------------------+                                     |
+|                  ^                                                    |
+|      cloudflared tunnel (optional)                                    |
++-----------------------------------------------------------------------+
 ```
 
-The API holds the model, databases, and assistant graph. The image is built from the actual `Dockerfile` *(abridged — see the file itself for verbatim comments)*:
-
-```dockerfile
-FROM nvidia/cuda:12.4.1-runtime-ubuntu22.04
-
-WORKDIR /app
-
-ENV DEBIAN_FRONTEND=noninteractive \
-    TZ=Etc/UTC \
-    PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
-
-# Python 3.12 (deadsnakes), build tools, sqlite3, libgomp
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    software-properties-common curl sqlite3 libgomp1 build-essential tzdata \
-    && add-apt-repository -y ppa:deadsnakes/ppa \
-    && apt-get update && apt-get install -y --no-install-recommends \
-    python3.12 python3.12-dev python3.12-venv \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 \
-    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 \
-    && update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1
-
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
-
-# NVIDIA runtime flags; compose overrides per host
-ENV NVIDIA_VISIBLE_DEVICES=all \
-    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
-    N_GPU_LAYERS=-1 \
-    EMBEDDING_DEVICE=cuda
-
-COPY requirements.txt .
-
-# CUDA 12.4 prebuilt wheel for llama-cpp-python
-RUN uv pip install --system \
-    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124 \
-    llama-cpp-python
-
-RUN uv pip install --system -r requirements.txt
-
-COPY . .
-
-EXPOSE 8000
-
-CMD ["uvicorn", "svc.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
-```
-
-> **CPU-only hosts:** swap the base image for `python:3.12-slim-bookworm`, install the CPU wheel (`--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu`), and set `N_GPU_LAYERS=0`. No NVIDIA runtime is required.
-
----
+The container uses the Python 3.12 slim image and installs `requirements.txt`. See [`Dockerfile`](../Dockerfile) and [`docker-compose.yaml`](../docker-compose.yaml) for the current build and runtime settings.
 
 ## 3. Configuration & Secrets
 
-Copy [`.env.example`](../.env.example) and fill it in. The compose file **requires** `JWT_SECRET` to be exported in the host environment — `docker compose up` fails fast without it (`${JWT_SECRET:?set JWT_SECRET in environment}`).
+Copy [`.env.example`](../.env.example) and fill it in. The compose file requires both `JWT_SECRET` and `LLM_API_KEY` in the host environment; it fails fast if either is missing.
 
 ```bash
 # Generate a signing secret (64 hex chars)
@@ -151,7 +78,10 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `MODEL_DAILY_TOKEN_LIMIT` | `200000` | Per-account input+output tokens/UTC day; `0` disables |
 | `MODEL_PRICING_JSON` | built-in defaults | `{model: {"input": usd, "output": usd}}` per 1M tokens; unknown model ⇒ cost 0 + warning |
 | `MODEL_SPEND_ALERT_USD` | `50` | Owner alert when projected month spend reaches this (evaluated on the hourly sweep) |
-| `LLM_BACKEND` | `local` | `local` uses GGUF; `openai` uses the hosted OpenAI-compatible endpoint |
+| `LLM_API_KEY` | **required** | Credential for the hosted OpenAI-compatible chat API; missing credentials fail at model build |
+| `LLM_API_BASE` | `https://api.deepinfra.com/v1/openai` | OpenAI-compatible chat API base URL |
+| `LLM_MAX_CONCURRENT` | `1` | Maximum overlapping hosted inference calls; excess requests fail fast |
+| `MODEL_DEVICE` | `cpu` | Device for the local embedding model used by clinical triage and catalog search |
 | `LLM_MODEL` | `deepseek-ai/DeepSeek-V4-Flash` | Hosted player model; set to override the default |
 | `LLM_EXTRA_BODY` | unset | Hosted player sends no extra body by default; a JSON object replaces only the player body, and `{}` sends none |
 | `JUDGE_MODEL` | `Qwen/Qwen3.5-27B` | Hosted evaluation judge; set to override the default |
@@ -159,22 +89,12 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `LLM_ENABLE_THINKING` | unset (`false`) | `true` opts only the judge back into thinking unless `JUDGE_EXTRA_BODY` overrides it |
 | `COACH_MODEL` | `deepseek-ai/DeepSeek-V4-Flash` | Hosted coach model; set to override the default |
 | `COACH_CLOSED_TRIAL_OVERRIDE` | `true` | Grants Coach Pro behaviour to every Coach during the closed trial; set to `false` at public launch to use each account's stored Coach plan |
-| `COACH_AI_ENABLED` | `false` | Enables the optional coach AI assistant (#45); refused unless `COACH_AI_EVAL_REPORT` records a passing **live** report for the current prompt version *and* the configured coach model/backend |
+| `COACH_AI_ENABLED` | `false` | Enables the optional coach AI assistant (#45); refused unless `COACH_AI_EVAL_REPORT` records a passing **live** report for the current prompt version and configured hosted coach model |
 | `COACH_AI_EVAL_REPORT` | unset | Path to the recorded coach privacy + evaluation report JSON (see §4, "Enabling the optional coach AI assistant") |
 | `RATE_LIMIT_COACH_ASSISTANT` | `30/minute` | Per-client limit on `POST /coach/assignments/{id}/assistant`; the per-account model limits (`MODEL_*`) still apply |
 | `PRIVACY_CONTACT_EMAIL` | unset (⇒ placeholder + warning) | Owner contact rendered on the public privacy policy at `GET /privacy`; unset still serves the page |
 | `OWNER_ALERT_EMAIL` | unset | Recipient for model-spend and `/admin` login alerts. Model-spend alerts retry on the sweep; an admin login still succeeds if this is unset or email delivery fails, and the dashboard shows a red banner and audit event |
-| `MODEL_PATH` / `JUDGE_MODEL_PATH` | registry defaults | Explicit GGUF paths (win over `MODEL_DIR` + registry filename) |
 | `COACH_EXTRA_BODY` | unset | Coach sends no extra body by default and ignores the player and judge body settings; a JSON object replaces its body, and `{}` sends none |
-| `MODEL_DIR` | `models/` | Download target directory |
-| `MODEL_REVISION` / `MODEL_SHA256` (and `JUDGE_*`) | unset | Optional pin + integrity check for reproducible deployments |
-| `N_GPU_LAYERS` | `-1` (all layers) | Production model offload; `0` = CPU-only |
-| `JUDGE_N_GPU_LAYERS` | `18` | Judge offload default; tune per VRAM (see §4) |
-| `LLM_N_CTX` / `LLM_MAX_TOKENS` / `LLM_N_BATCH` / `LLM_THREADS` | `2048` / `200` / `512` / `OMP_NUM_THREADS` | Inference tuning; hosted player chat replies use 200 tokens, while DynamicSplitPlan binds 1200 for that call |
-| `OMP_NUM_THREADS` | — | Pin to physical cores (see §6) |
-| `SKIP_LLM_LOAD` | unset | Skips **eager warmup only**; the real GGUF lazy-loads on first inference. **Not** a mock switch |
-| `TESTING` | unset | Substitutes the in-repo mock model (CI/tests only; never in production) |
-| `CI` | unset | Mock fallback only when the model file is absent |
 
 **Rate-limit keying on Fly.** Every route limit (`RATE_LIMIT_*`) is keyed by
 client address — plus a bearer-token suffix for authenticated calls — in
@@ -189,30 +109,11 @@ forge — is ignored.
 
 ---
 
-## 4. GPU Memory Planning & the Two-Phase Evaluation Lifecycle
+## 4. Hosted Model Roles & Evaluation
 
-Myos runs **two different models** and a single modest GPU can serve both — sequentially, never concurrently:
+Player, judge, and coach chat use the hosted OpenAI-compatible backend. Each role has a configurable model id and output-token limit; the service fails fast when `LLM_API_KEY` is absent. `LLM_MAX_CONCURRENT` bounds overlapping inference calls. This limit applies to regular and streamed calls.
 
-| Model | Role | Quantized size | Offload strategy on a 4 GB card |
-| :--- | :--- | :--- | :--- |
-| Qwen3.5-4B | Production chat / onboarding / debriefs | ≈2.7 GB | **Full offload** (`N_GPU_LAYERS=-1`) — fits with context |
-| Qwen3.5-9B | LLM-as-a-judge (offline evaluation only) | ≈5.7 GB | **Partial offload** — the engine loads it *after* the production model is unloaded |
-
-The evaluation runner (`tests/eval/run_evaluation.py`) is explicitly two-phase:
-
-1. **Generation batch** — the production LLM answers every case (`N_GPU_LAYERS`, default `-1`).
-2. `unload_llm()` — the production model is explicitly released and VRAM reclaimed (CUDA cache emptied).
-3. **Judgement batch** — the 9B judge loads into the freed VRAM (`--gpu-layers`, default 16) and scores every candidate.
-4. `unload_judge_llm()` at the end.
-
-**Tuning `--gpu-layers` for the judge:** on the reference 4 GB T2000 (Quadro), 16 layers is the maximum that reliably loads at `n_ctx=4096` (the 9B has 32 transformer blocks). Higher values fail context creation and — thanks to the loader's hardware-failure retry — silently fall back to CPU, making judgement ~10× slower. If VRAM is exhausted, the loader logs a warning and retries once on CPU rather than crashing:
-
-```bash
-# Reference invocation on a 4 GB GPU (generation full-offload, judge 16/32 layers)
-export N_GPU_LAYERS=-1
-python tests/eval/run_evaluation.py --target all --gpu-layers 16
-python tests/eval/run_evaluation.py --generalize --gpu-layers 16
-```
+The evaluation runners use the same hosted model configuration. They require the hosted API credential and do not load local chat weights. The separate BGE embedding model remains local for the clinical guard and Exercise library search.
 
 ### Enabling the optional coach AI assistant (issue #45)
 
@@ -245,12 +146,12 @@ for the current prompt version (ADR 049):
    `--check-report` uses): expected `report_version`, `mode: "live"` (a
    `mode: "mock"` plumbing report is refused), `pass=true`, `prompt_hash` for
    the current prompt version, the currently configured coach `model` and
-   `backend`, both gate results — and it re-derives the evaluation verdict from
+   provider identity, both gate results — and it re-derives the evaluation verdict from
    the recorded runs, so a hand-edited `pass` flag cannot disagree with them.
    If anything is missing it logs
    `Coach AI requested but refused; the feature stays off: …` and the feature
    stays off (the flag alone is never enough). The parsed verdict is cached on
-   report path + mtime + size + model + backend, so requests do not re-parse
+   report path + mtime + size + model, so requests do not re-parse
    the file; re-recording the report applies on the next request, without a
    restart:
 
@@ -268,9 +169,9 @@ mock, recorded for another model, or failing):
 
 Changing the system prompt, the context rendering, or the field selection
 changes `service.coach_ai.prompt_version_hash()` (it hashes the rendered
-canonical fixture, not just the prompt text), and changing `COACH_MODEL` /
-`LLM_BACKEND` changes the model identity the report is bound to — either
-invalidates an existing report: re-run step 2 before enabling again. The report is a JSON file, safe
+canonical fixture, not just the prompt text), and changing `COACH_MODEL`
+changes the model identity the report is bound to and invalidates
+an existing report: re-run step 2 before enabling again. The report is a JSON file, safe
 to commit — it contains fixture questions/answers, never production data.
 
 ### Enabling model-written Checkpoint reviews (issue #222)
@@ -292,7 +193,7 @@ privacy suite as part of `--write-report`:
 
 Point `CHECKPOINT_REVIEW_EVAL_REPORT` at that report. The service and
 `--check-report` use the same validator. It requires `mode: "live"`, a matching
-`prompt_hash`, the configured player `model` and `backend`, passing privacy and
+`prompt_hash`, the configured player `model`, passing privacy and
 evaluation gates, and runs whose recorded verdict agrees with the report.
 Changing the prompt, renderer, reduced facts, style descriptions/preference framing,
 or configured player model invalidates the report. The style-aware prompt requires
@@ -305,7 +206,7 @@ classifier: English rejects Arabic script; Arabic requires at least ten Arabic
 letters and at least as many as ASCII Latin letters. Adversarial preferences request the
 opposite supported Display language (English/Arabic).
 The generated player text is stored after its first successful player read; failed attempts return the fixed template and can retry after ten minutes.
-For this call only, cloud inference sets `chat_template_kwargs.enable_thinking`
+For this call only, inference sets `chat_template_kwargs.enable_thinking`
 to `false`; other player requests keep the configured `LLM_EXTRA_BODY` behavior.
 These calls are metered as player usage with purpose `checkpoint_review` and
 excluded from the player's daily AI-allowance admission total. Saved style changes
@@ -336,17 +237,14 @@ services:
     command: ["uvicorn", "svc.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
     ports: ["8000:8000"]
     volumes:
-      - ./models:/app/models
       - ./db:/app/db
       - ./logs:/app/logs
     environment:
-      - MODEL_PATH=/app/models/Qwen3.5-4B-Q4_K_M.gguf
-      - JUDGE_MODEL_PATH=/app/models/Qwen3.5-9B-Q4_K_M.gguf
-      - MODEL_DIR=/app/models
+      - LLM_API_KEY=${LLM_API_KEY:?set LLM_API_KEY in environment}
+      - LLM_API_BASE=${LLM_API_BASE:-https://api.deepinfra.com/v1/openai}
+      - LLM_MAX_CONCURRENT=${LLM_MAX_CONCURRENT:-1}
       - EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
-      - N_GPU_LAYERS=16
-      - MODEL_DEVICE=cuda
-      - EMBEDDING_DEVICE=cuda
+      - MODEL_DEVICE=cpu
       - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in environment}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
@@ -354,10 +252,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 120s
-    deploy:
-      resources:
-        reservations:
-          devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
 
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -400,36 +294,13 @@ docker compose run --rm myos-api sqlite3 /app/db/catalog.db \
 
 ---
 
-## 6. CPU Performance Tuning & Thread Pinning
+## 6. Hosted Chat Inference
 
-1. **`OMP_NUM_THREADS`** — set equal to the number of **physical** cores, not logical hyperthreads:
-   * 4C/8T → `OMP_NUM_THREADS=4` · 6C/12T → `6` · 8C/16T → `8`
-   * Over-subscribing threads causes context-switch overhead and lowers TPS. `LLM_THREADS` overrides the tokenizer/llama thread count independently when needed.
-2. **CPU governor** (Linux hosts):
-   ```bash
-   echo "performance" | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
-   ```
-3. **GPU offload beats thread tuning.** Full 4B offload on a 4 GB card raises sustained throughput from ~5–15 TPS (CPU) to 30+ TPS, with the first-token latency dominated by prompt evaluation.
+The service applies `LLM_MAX_CONCURRENT` (default `1`) to blocking, async, and streamed calls. Tune it to the provider quota and service capacity. Configure outbound HTTPS access to the hosted OpenAI-compatible API.
 
----
+## 7. Local Embedding Model
 
-## 7. Offline / Air-Gapped Model Artifact Staging
-
-For hosts without outbound HTTPS to Hugging Face:
-
-1. Download the production GGUF manually:
-   * **Source**: `unsloth/Qwen3.5-4B-GGUF` → **File**: `Qwen3.5-4B-Q4_K_M.gguf`
-2. Optionally download the judge for offline evaluation:
-   * **Source**: `unsloth/Qwen3.5-9B-GGUF` → **File**: `Qwen3.5-9B-Q4_K_M.gguf`
-3. Download the embedding weights: `BAAI/bge-small-en-v1.5` (into the container's HF cache volume).
-4. Stage the files into the mounted directories:
-   ```bash
-   mkdir -p ./models
-   cp /path/to/Qwen3.5-4B-Q4_K_M.gguf ./models/
-   ```
-5. `get_or_download_model_path()` detects pre-existing files and bypasses the Hugging Face download entirely. For reproducible deployments, pin `MODEL_SHA256` / `MODEL_REVISION` so a corrupted transfer is rejected at load time.
-
----
+The BGE embedding model remains local for clinical triage and Exercise library search. It uses `MODEL_DEVICE` (default `cpu`). Configure access to the embedding model source or bake its cache into the image.
 
 ## 8. Operational Observability, Auth Ops & Health Monitoring
 
@@ -671,8 +542,8 @@ Frankfurt (`fra`) on a `shared-cpu-1x` Machine with a **10 GB volume** mounted a
 
 | Piece | Setting | Why |
 | :--- | :--- | :--- |
-| Image | `Dockerfile.fly` + `requirements-fly.txt` | `python:3.12-slim`, CPU-only PyTorch, no `llama-cpp-python`/CUDA |
-| Inference | `LLM_BACKEND=openai` | hosted OpenAI-compatible endpoint (ADR 012); no GGUF in the image |
+| Image | `Dockerfile.fly` + `requirements-fly.txt` | `python:3.12-slim`, CPU-only PyTorch for local embeddings |
+| Chat inference | hosted OpenAI-compatible endpoint (ADR 065) | Player, judge, and coach roles require `LLM_API_KEY`; the local BGE embedding model remains in the image |
 | Process | `uvicorn svc.app:app --workers 1` | SQLite is a single writer and the Machine owns the volume |
 | Region/VM | `primary_region = "fra"`, `shared-cpu-1x`, 2 GB | within the locked trial size (ANDROID-PLAN §1); 2 GB is chosen to leave headroom for the CPU BGE embedding model, which measured near 1 GB RSS in local development — confirm headroom on the deployed Machine |
 | Volume | `[[mounts]]` `mayos_data` → `/data`, `initial_size = "10gb"` | catalog, ledgers, and the migration/backup work area |

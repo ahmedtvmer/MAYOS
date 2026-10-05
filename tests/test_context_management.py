@@ -3,11 +3,12 @@ import logging
 import re
 import sys
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import ModuleType
 from unittest.mock import MagicMock
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
+from tests.fakes.chat_model import ScriptedChatModel
 
 
 @pytest.fixture
@@ -17,7 +18,7 @@ def graph(monkeypatch):
         "agent.clinical_guard": ["ARABIC_SCRIPT_RE", "EMBED_MODEL", "evaluate_clinical_semantic_guard"],
         "agent.program_generator": ["extract_frequency_from_text", "generate_program_pipeline", "get_biomechanical_cue"],
         "database.database_manager": ["DatabaseManager"],
-        "utils.model_downloader": ["llm", "uses_cloud_backend"],
+        "utils.model_downloader": ["llm"],
         "utils.logger": ["MyosLogger"],
     }.items():
         module = ModuleType(name)
@@ -40,7 +41,7 @@ def graph(monkeypatch):
     spec = importlib.util.spec_from_file_location("isolated_assistant_graph", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    module.llm = SimpleNamespace(n_ctx=2048, max_tokens=200, client=SimpleNamespace(tokenize=lambda data, **kwargs: list(range((len(data) + 3) // 4))), invoke=MagicMock(return_value=AIMessage(content="Use controlled reps.")))
+    module.llm = ScriptedChatModel(["Use controlled reps."])
     module.reconcile_telemetry_query = MagicMock(return_value=None)
     module._record_telemetry_event = MagicMock()
     # The isolated graph receives its ledger/store explicitly on each call's config.
@@ -60,8 +61,8 @@ def test_short_conversation_bypasses_canned_clarification(graph, query):
     assert graph.router_node(request) == {"intent": "coaching_qa", "intent_metadata": {}}
     result = graph.generation_node(request)
     assert result["response_content"] == "Use controlled reps."
-    graph.llm.invoke.assert_called_once()
-    prompt = graph.llm.invoke.call_args.args[0][0].content
+    assert len(graph.llm.calls) == 1
+    prompt = graph.llm.calls[0]["messages"][0].content
     assert "Respond naturally to greetings, introductions and frustration" in prompt
     assert "Short messages are not inherently unclear" in prompt
 
@@ -83,7 +84,7 @@ def test_explicit_name_and_recall(graph, query):
     recall = state("what's my name?")
     assert "".join(graph.stream_assistant_turn(recall, ledger=graph.db, store=graph.db)) == f"You asked me to call you {name}."
     assert recall["messages"][-1].content == recall["response_content"]
-    graph.llm.invoke.assert_not_called()
+    assert graph.llm.calls == []
 
 
 @pytest.mark.parametrize("query", ["how did I do in my last session?", "how was my perfomance in my last session?", "review my latest workout"])
@@ -101,7 +102,7 @@ def test_whole_session_summary(graph, query):
     assert "comparison is needed" in display
     assert display == request["response_content"] == request["messages"][-1].content
     graph.db.find_exercise_by_name.assert_not_called()
-    graph.llm.invoke.assert_not_called()
+    assert graph.llm.calls == []
 
 
 def test_missing_session_is_not_an_exercise_clarification(graph):
@@ -121,7 +122,7 @@ def test_history_followup_routes_to_exercise_history(graph, comparison, query):
     assert result["response_content"] == result["messages"][-1].content
     assert "Machine Leg Extension" not in result["response_content"]
     assert "Which exercise" not in result["response_content"]
-    graph.llm.invoke.assert_not_called()
+    assert graph.llm.calls == []
 
 
 @pytest.mark.parametrize("query", ["what about leg curl", "what about leg extension"])
@@ -162,7 +163,7 @@ def test_reported_two_turn_session_review(graph, comparison, mode):
     assert "Baseline: 2026-09-11" in second["response_content"]
     assert "Machine Leg Extension" not in second["response_content"]
     graph.db.get_last_performance.assert_not_called()
-    graph.llm.invoke.assert_not_called()
+    assert graph.llm.calls == []
 
 
 def test_history_followup_inherits_occurrence_scope(graph, comparison):
@@ -175,8 +176,7 @@ def test_history_followup_inherits_occurrence_scope(graph, comparison):
 
 
 def test_history_followup_not_triggered_without_history_context(graph, comparison):
-    graph.llm.with_structured_output = MagicMock()
-    graph.llm.with_structured_output.return_value.invoke.return_value = SimpleNamespace(intent="coaching_qa")
+    graph.llm = ScriptedChatModel([{"intent": "coaching_qa"}])
     request = state("what about leg curl")
     assert graph.router_node(request)["intent"] == "coaching_qa"
 
@@ -232,18 +232,10 @@ def test_assistant_style_follows_safety_core_and_quotes_player_wording(graph):
         "coach_tone": "scientific",
         "custom_instructions": instruction,
     }
-    captured = {}
-
-    def fake_model(messages):
-        captured["messages"] = messages
-        return AIMessage(content="Use controlled reps.")
-
-    graph.llm.invoke = fake_model
-
     response = graph.generation_node(request)
 
     assert response["response_content"] == "Use controlled reps."
-    prompt = captured["messages"][0].content
+    prompt = graph.llm.calls[-1]["messages"][0].content
     assert prompt.startswith(graph.STATIC_SYSTEM_CORE)
     style_start = prompt.index("Assistant style (")
     assert style_start >= len(graph.STATIC_SYSTEM_CORE)
@@ -259,15 +251,11 @@ def test_assistant_style_follows_safety_core_and_quotes_player_wording(graph):
 
 
 def test_prompt_budget_drops_assistant_style_before_training_context(graph, monkeypatch):
-    graph.llm.n_ctx = 700
-    graph.llm.max_tokens = 200
-
-    def count_with_style_block(prompt_bytes, **options):
-        rendered = prompt_bytes.decode("utf-8")
-        token_count = 600 if "Assistant style (" in rendered else 200
-        return list(range(token_count))
-
-    monkeypatch.setattr(graph.llm.client, "tokenize", count_with_style_block)
+    monkeypatch.setattr(
+        graph,
+        "_prompt_token_count",
+        lambda messages: 9000 if "Assistant style (" in messages[0].content else 100,
+    )
     payload = graph.build_prompt_payload(
         {
             **state("squat reps?"),
@@ -297,29 +285,18 @@ def test_oversized_latest_is_not_truncated(graph):
 
 def test_oversized_context_and_reserve(graph):
     payload = graph.build_prompt_payload({**state("squat reps?"), "telemetry_context": "x" * 20000, "custom_instructions": "y" * 20000})
-    assert graph._prompt_token_count(payload) + graph.llm.max_tokens <= graph.llm.n_ctx
+    assert graph._prompt_token_count(payload) <= graph.HOSTED_PROMPT_BYTE_BUDGET
     assert payload[-1].content == "squat reps?"
 
 
-def test_conservative_fallback_can_answer_short_request(graph):
-    graph.llm.client = None
-    payload = graph.build_prompt_payload(state("squat reps?"))
-    assert graph._prompt_token_count(payload) + 200 <= 2048
-
-
-def test_hosted_short_query_builds_prompt(graph, monkeypatch):
-    """Hosted ChatOpenAI has no tokenizer; the 8 KiB byte budget must not reject short Q&A."""
-    monkeypatch.setattr(graph, "uses_cloud_backend", lambda: True)
-    graph.llm.client = None  # byte heuristic, matching a hosted ChatOpenAI
+def test_hosted_short_query_builds_prompt(graph):
     query = "How should I position my elbows and wrists on JM presses to maximize triceps tension safely?"
     payload = graph.build_prompt_payload(state(query))
     assert payload[-1].content == query
     assert graph._prompt_token_count(payload) <= graph.HOSTED_PROMPT_BYTE_BUDGET
 
 
-def test_hosted_genuinely_oversized_query_still_fails(graph, monkeypatch):
-    monkeypatch.setattr(graph, "uses_cloud_backend", lambda: True)
-    graph.llm.client = None
+def test_hosted_genuinely_oversized_query_still_fails(graph):
     with pytest.raises(graph.PromptBudgetError, match="latest message"):
         graph.build_prompt_payload(state("squat " * 3000))
 
@@ -334,8 +311,7 @@ def test_hosted_genuinely_oversized_query_still_fails(graph, monkeypatch):
     ("how did my squats look", "exercise_history"),
 ])
 def test_routes(graph, query, expected):
-    graph.llm.with_structured_output = MagicMock()
-    graph.llm.with_structured_output.return_value.invoke.return_value = SimpleNamespace(intent="program_mutation", target_frequency=3)
+    graph.llm = ScriptedChatModel([{"intent": "program_mutation", "target_frequency": 3}] * 5)
     assert graph.router_node(state(query))["intent"] == expected
     assert graph._classify_single_clause(query)["intent"] == expected
 
@@ -397,7 +373,7 @@ def test_comparison_all_exercises_deterministic(graph, comparison, query, mode):
     assert "Baseline: missing previous occurrence" in display
     assert "12 working sets" in display
     assert "Readiness: 4/5" in display
-    graph.llm.invoke.assert_not_called()
+    assert graph.llm.calls == []
     graph.db.get_latest_session_summary.assert_not_called()
     graph.db.get_last_performance.assert_not_called()
 
@@ -464,7 +440,7 @@ def test_comparison_hydration_followup_and_budget(graph, comparison):
     assert "@ RIR not rated" in request["telemetry_context"]
     payload = graph.build_prompt_payload(request)
     assert graph.TAIL_WINDOW_SIZE == 6
-    assert graph._prompt_token_count(payload) + graph.llm.max_tokens <= graph.llm.n_ctx
+    assert graph._prompt_token_count(payload) <= graph.HOSTED_PROMPT_BYTE_BUDGET
     for exercise in comparison["exercises"]:
         assert exercise["name"] in payload[0].content
     assert payload[-1].content == "what should I focus on next?"

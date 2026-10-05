@@ -1,8 +1,9 @@
 from unittest.mock import MagicMock
 
 import pytest
-from langchain_core.messages import AIMessage, AIMessageChunk
+from langchain_core.messages import AIMessage
 
+from tests.fakes.chat_model import StreamErrorTurn
 from tests.test_context_management import graph as graph_fixture, state
 from utils.text_scrubber import CoachOutputScrubber, EMPTY_RESPONSE_FALLBACK, PIPELINE_ERROR_RESPONSE, finalize_coach_output, scrub_coach_output
 
@@ -29,8 +30,7 @@ def test_empty_fallback(raw):
 
 @pytest.mark.parametrize("raw", ["Sure thing! Use controlled reps. Hope this helps!", "Sure thing! Hope this helps!"])
 def test_graph_stream_and_saved_parity(graph, raw):
-    graph.llm.invoke.return_value = AIMessage(content=raw)
-    graph.llm.stream = MagicMock(return_value=iter([AIMessageChunk(content=raw[:10]), AIMessageChunk(content=raw[10:])]))
+    graph.llm.reset([raw, raw, raw])
     request = state("How many squat reps?")
     original = list(request["messages"])
     shown = list(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db))
@@ -45,11 +45,10 @@ def test_graph_stream_and_saved_parity(graph, raw):
 
 
 def test_partial_failure_preserves_sanitized_display_and_state(graph):
-    def fail():
-        yield AIMessageChunk(content="<think>private reasoning</think>Sure! Use controlled reps. ")
-        yield AIMessageChunk(content="You have tendonitis")
-        raise RuntimeError("internal database secret")
-    graph.llm.stream = MagicMock(return_value=fail())
+    graph.llm.reset([StreamErrorTurn(
+        "<think>private reasoning</think>Sure! Use controlled reps. You have tendonitis",
+        RuntimeError("internal database secret"),
+    )])
     request = state("How many squat reps?")
     shown = "".join(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db))
     assert shown == "Use controlled reps. [Consult a sports physician regarding joint pain]\n\n" + PIPELINE_ERROR_RESPONSE
@@ -70,15 +69,14 @@ def test_graph_and_stream_failures(graph, stage):
         graph.db.catalog_conn.cursor.return_value.fetchall.return_value = [("squat", "Squat")]
         graph.db.get_last_performance.side_effect = RuntimeError("private detail")
     else:
-        graph.llm.invoke.side_effect = RuntimeError("private detail")
-        graph.llm.stream = MagicMock(side_effect=RuntimeError("private detail"))
+        graph.llm.reset([RuntimeError("private detail"), RuntimeError("private detail")])
     assert graph.assistant_graph.invoke(request, config={"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"] == PIPELINE_ERROR_RESPONSE
     assert list(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db)) == [PIPELINE_ERROR_RESPONSE]
 
 
 def test_finish_limit_preserves_partial_answer(graph):
-    graph.llm.invoke.return_value = AIMessage(content="Cut off", response_metadata={"finish_reason": "length"})
-    graph.llm.stream = MagicMock(return_value=iter([AIMessageChunk(content="Cut off", response_metadata={"finish_reason": "length"})]))
+    partial = AIMessage(content="Cut off", response_metadata={"finish_reason": "length"})
+    graph.llm.reset([partial, partial])
     expected = "Cut off\n\n" + graph.OUTPUT_LIMIT_RESPONSE
     assert graph.generation_node(state("How many squat reps?"))["response_content"] == expected
     request = state("How many squat reps?")
@@ -87,23 +85,16 @@ def test_finish_limit_preserves_partial_answer(graph):
 
 
 def test_words_visible_before_sentence_or_generation_finishes(graph):
-    consumed = []
-
-    def produce():
-        for text in ["Use ", "controlled ", "reps", "."]:
-            consumed.append(text)
-            yield AIMessageChunk(content=text)
-        consumed.append("finished")
-
-    graph.llm.stream = MagicMock(return_value=produce())
+    graph.llm.reset(["Use controlled reps."])
+    graph.llm.chunk_size = 5
     request = state("How many squat reps?")
     stream = graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db)
     first = next(stream)
     assert first == "Use"
-    assert consumed == ["Use "]
+    assert graph.llm.streamed_chunk_count == 1
     second = next(stream)
     assert second == " controlled"
-    assert consumed == ["Use ", "controlled "]
+    assert graph.llm.streamed_chunk_count == 3
     output = first + second + "".join(stream)
     assert output == "Use controlled reps."
     assert output == request["response_content"] == request["messages"][-1].content

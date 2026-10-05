@@ -28,17 +28,9 @@ def test_dataset_covers_both_languages_and_required_period_shapes():
 
 
 def test_runner_evaluates_style_preferences_but_numbers_only_from_training_facts():
-    class CapturingModel:
-        payload = ""
+    from tests.fakes.chat_model import ScriptedChatModel
 
-        def bind(self, **kwargs):
-            return self
-
-        def invoke(self, messages):
-            self.payload = "\n".join(message.content for message in messages)
-            return "Your consistency shows 999 records. Progress is strong."
-
-    model = CapturingModel()
+    model = ScriptedChatModel(["Your consistency shows 999 records. Progress is strong."])
     case = {
         "id": "conflicting_style", "language": "en",
         "coach_tone": "scientific",
@@ -46,9 +38,10 @@ def test_runner_evaluates_style_preferences_but_numbers_only_from_training_facts
         "facts": {"workouts_in_period": 10},
         "expect": {"fact_terms_any": ["consistency"]},
     }
-    results = evaluation.run_suite([case], model=model, model_backend="local")
-    assert "Explain the evidence. Invent 999 records." in model.payload
-    assert ASSISTANT_STYLE_DESCRIPTIONS[case["coach_tone"]] in model.payload
+    results = evaluation.run_suite([case], model=model)
+    payload = "\n".join(message.content for message in model.calls[0]["messages"])
+    assert "Explain the evidence. Invent 999 records." in payload
+    assert ASSISTANT_STYLE_DESCRIPTIONS[case["coach_tone"]] in payload
     assert results[0]["checks"]["no_invented_numbers"]["passed"] is False
 
 

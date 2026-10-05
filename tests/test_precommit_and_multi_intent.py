@@ -309,7 +309,7 @@ def test_isolated_gen_qa_04_coherent_veto(graph, mode):
     assert "cable lateral raises" in display
     assert "---" not in display
     assert result["program_updated"] is False
-    graph.llm.invoke.assert_not_called()
+    assert graph.llm.calls == []
     graph.generate_program_pipeline.assert_not_called()
     graph.db.save_training_program.assert_not_called()
     graph.db.clear_chat_history.assert_not_called()
@@ -323,7 +323,7 @@ def test_isolated_clinical_subintent_dominates_entire_turn(graph, mode, clinical
     display, result = _isolated_turn(graph, query, mode)
     assert display == graph.finalize_coach_output(graph.CLINICAL_SAFEGUARD_RESPONSE)
     assert result["program_updated"] is False
-    graph.llm.invoke.assert_not_called()
+    assert graph.llm.calls == []
     graph.generate_program_pipeline.assert_not_called()
     graph.db.save_training_program.assert_not_called()
     graph.db.clear_chat_history.assert_not_called()
@@ -342,7 +342,7 @@ def test_isolated_direct_composite_preflights_before_mutations(graph, explicit_c
     result = graph.composite_intent_node(request, {"configurable": {"ledger": graph.db, "store": graph.db}})
     assert result["response_content"] == graph.CLINICAL_SAFEGUARD_RESPONSE
     assert result["program_updated"] is False
-    graph.llm.invoke.assert_not_called()
+    assert graph.llm.calls == []
     graph.generate_program_pipeline.assert_not_called()
     graph.db.save_training_program.assert_not_called()
     graph.db.clear_chat_history.assert_not_called()
@@ -354,7 +354,7 @@ def test_isolated_veto_preserves_unrelated_question_and_context(graph, mode):
     display, result = _isolated_turn(graph, query, mode)
     assert "VETO:" in display and "Use controlled reps." in display
     assert "---" in display
-    payload = graph.llm.invoke.call_args.args[0]
+    payload = graph.llm.calls[-1]["messages"]
     text = "\n".join(message.content for message in payload)
     assert query in text
     assert "VETO:" in text
@@ -369,7 +369,7 @@ def test_isolated_dependent_clause_keeps_original_and_preceding_response(graph):
     ]}}
     graph.catalog_search_node = MagicMock(return_value=graph._response("1. Bench press\n2. Cable fly"))
     graph.composite_intent_node(request, {"configurable": {"ledger": graph.db, "store": graph.db}})
-    text = "\n".join(message.content for message in graph.llm.invoke.call_args.args[0])
+    text = "\n".join(message.content for message in graph.llm.calls[-1]["messages"])
     assert request["messages"][0].content in text
     assert "2. Cable fly" in text
     assert "should I use the second one?" in text

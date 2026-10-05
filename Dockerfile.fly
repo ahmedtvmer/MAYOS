@@ -1,7 +1,6 @@
 # Fly.io production image for the MAYOS API (hosted LLM backend).
 #
-# FastAPI only: no GGUF/CUDA/llama-cpp-python. Inference is
-# served by the hosted OpenAI-compatible endpoint selected with LLM_BACKEND=openai.
+# FastAPI service with hosted OpenAI-compatible chat inference.
 # The catalog, ledgers, and backup work area live on the mounted /data volume via
 # MAYOS_DATA_DIR (see fly.toml and docs/DEPLOYMENT.md).
 FROM python:3.12-slim
@@ -10,9 +9,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     HF_HOME=/app/.cache/huggingface \
-    LLM_BACKEND=openai \
-    MODEL_DEVICE=cpu \
-    EMBEDDING_DEVICE=cpu
+    MODEL_DEVICE=cpu
 
 WORKDIR /app
 

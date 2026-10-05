@@ -1,4 +1,4 @@
-"""FastAPI application factory. Single-replica service (local GGUF + SQLite)."""
+"""FastAPI application factory for the hosted inference service."""
 
 import asyncio
 import logging

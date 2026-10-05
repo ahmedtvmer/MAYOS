@@ -6,7 +6,7 @@ This document provides a comprehensive architectural specification of the Myos e
 
 ## 1. High-Level System Architecture
 
-The following diagram illustrates how the Flutter app reaches the engine through the FastAPI service layer (JWT auth, rate limiting, SSE delivery), and how the LangGraph state engine, in-process vector database, and local quantized GGUF runtime interact:
+The following diagram illustrates how the Flutter app reaches the engine through the FastAPI service layer (JWT auth, rate limiting, SSE delivery), and how the LangGraph state engine, in-process vector database, and hosted chat model interact. Embeddings remain local for clinical triage and catalog search.
 
 ```mermaid
 flowchart TD
@@ -31,12 +31,12 @@ flowchart TD
             Node_Catalog["catalog_search_node"]
         end
 
-        subgraph In_Process_LLM ["Local Inference Core (SafeChatLlamaCpp)"]
+        subgraph Hosted_LLM ["Hosted Chat Model"]
             Context_Clamper["6-Message Context Tail Clamper"]
             Telemetry_Hydrator["5-Line Compact Telemetry Injection"]
             Prompt_Assembler["System Core + Coaching Directives"]
-            LLM_Stream["SafeChatLlamaCpp (Qwen3.5-4B GGUF)"]
-            Chunk_Sanitizer["Tool Call Delta Deduplicator"]
+            LLM_Stream["SafeChatOpenAI (OpenAI-compatible endpoint)"]
+            Chunk_Sanitizer["Streamed Response Handling"]
         end
     end
 
@@ -149,7 +149,7 @@ stateDiagram-v2
     ProgramMutationNode --> SmoothStream: Rebuild Program Days
     CatalogSearchNode --> SmoothStream: Query sqlite-vec
     CompositeIntentNode --> SmoothStream: Sequential Sub-Intent Dispatch
-    LLMStreamingNode --> SmoothStream: Yield Quantized Delta Chunks
+    LLMStreamingNode --> SmoothStream: Yield Text Chunks
 
     SmoothStream --> [*]: SSE Frames to FastAPI Client
 ```
@@ -183,7 +183,7 @@ flowchart TD
     Mutations -- "None" --> Search{"Catalog Search\nRE_SEARCH_TOKENS"}
 
     Search -- "Search / Lookup Query" --> CatNode["catalog_search_node"]
-    Search -- "General Coaching Question" --> GenNode["generation_node\n(Local Qwen3.5-4B Inference)"]
+    Search -- "General Coaching Question" --> GenNode["generation_node\n(Hosted OpenAI-compatible chat)"]
 ```
 
 > Tier-0b is where DOMS slang is separated from genuine injury reports: ambiguous tokens (`swelling`, `tear/tore/torn`, `pop`, `tweaked`) only intercept with explicit injury context — mechanism perception (*"felt a pop"*), anatomical proximity (joints, tendons, pec/bicep/ACL…), or body-part objects. Fatigue idioms (*"torn up from leg day"*, *"tweaked my program"*, painless *"knees pop when"*) defer to the Tier-1 semantic guard. See ADR 002 in [`DECISIONS.md`](../DECISIONS.md).
@@ -278,39 +278,32 @@ catalog cannot resurrect the identity or its ledger. See
 
 ---
 
-## 5. Token Streaming & Tool-Call Sanitization Flow
+## 5. Token Streaming & Tool-Call Handling
 
-To prevent `llama-cpp-python` streaming tool calls from corrupting Pydantic structured output parsers via repeated function name concatenation, `SafeChatLlamaCpp` intercepts the raw C++ chunk stream:
+The hosted OpenAI-compatible chat model streams response chunks through the assistant graph, which forwards player-facing text as SSE. Structured calls and tool calls use the same LangChain chat model interface:
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Engine as SafeChatLlamaCpp
-    participant CppCore as llama_cpp (C++ Runtime)
-    participant Sanitizer as _filter_tool_chunks()
+    participant Engine as HostedChatModel
+    participant Provider as OpenAI-compatible provider
+    participant Graph as Assistant graph
     participant UI as SSE Client (FastAPI /chat/messages)
 
-    Engine->>CppCore: stream(prompt_payload)
+    Engine->>Provider: stream(prompt_payload)
     
     rect rgb(240, 248, 255)
-        Note over CppCore,Sanitizer: Chunk 0 (First Frame)
-        CppCore->>Sanitizer: Chunk 0: {id: 0, name: "SaveProfile", args: "{"}
-        Sanitizer->>Sanitizer: seen_tool_indices.add(0)
-        Sanitizer-->>UI: Yield Chunk 0 (Retains "SaveProfile")
+        Note over Provider,Graph: Provider chunks
+        Provider->>Graph: Text and tool-call chunks
+        Graph-->>UI: Yield text chunks as SSE
     end
 
     rect rgb(255, 245, 245)
-        Note over CppCore,Sanitizer: Chunks 1 to N (Delta Frames)
-        CppCore->>Sanitizer: Chunk 1: {id: 0, name: "SaveProfile", args: "gender\":"}
-        Sanitizer->>Sanitizer: Index 0 already seen -> tc["name"] = None
-        Sanitizer-->>UI: Yield Chunk 1 ({id: 0, name: None, args: "gender\":"})
-        
-        CppCore->>Sanitizer: Chunk 2: {id: 0, name: "SaveProfile", args: "male\"}"}
-        Sanitizer->>Sanitizer: Index 0 already seen -> tc["name"] = None
-        Sanitizer-->>UI: Yield Chunk 2 ({id: 0, name: None, args: "male\"}"})
+        Note over Provider,Graph: Tool arguments are assembled by LangChain
+        Provider->>Graph: Completed tool call
     end
 
-    Note over UI: Aggregator parses clean JSON payload without string duplication
+    Note over UI: Client renders streamed assistant text
 ```
 
 ---
@@ -392,17 +385,17 @@ flowchart LR
         SystemCore["STATIC_SYSTEM_CORE\n(Directives, Word Budgets, Scrubber Rules)"]
         TelemetryStr --> SystemBlock["System Message"]
         SystemCore --> SystemBlock
-        SystemBlock --> FinalPayload["Model Context Window (n_ctx = 2048 by default via LLM_N_CTX)"]
+        SystemBlock --> FinalPayload["Prompt budget (8192 UTF-8 bytes)"]
         Tail --> FinalPayload
     end
 
-    FinalPayload --> Inference["SafeChatLlamaCpp (flat clamped latency, ~4 s on GPU offload)"]
+    FinalPayload --> Inference["Hosted OpenAI-compatible chat model"]
 
 ---
 
 ## 8. Hybrid Post-Workout Debrief Architecture
 
-To prevent small quantized models (4B) from hallucinating mathematical calculations or echoing bracketed prompt templates, session debriefs are assembled via a hybrid deterministic-generative pipeline:
+To keep arithmetic deterministic and constrain generated wording, session debriefs are assembled via a hybrid deterministic-generative pipeline:
 
 1. **Deterministic Metrics Calculation (`format_overload_deltas`)**:
    Calculates e1RM deltas, load advancements (+2.5 kg), and rep-corridor holds directly in Python. If no load advancement occurred, yields an exact maintenance directive.
@@ -447,7 +440,7 @@ Key invariants:
 
 * **Identity is derived only from the verified JWT** — request bodies may carry a `trainee_id`, but it is ignored (schema-level rejection in most routes).
 * **Ledger binding happens per thread.** `DatabaseManager` routes connections through `threading.local`, and every worker thread re-runs the registry live/capability/epoch check and re-binds the trainee before touching SQLite (`bind_request` / `_bind_trainee_connection`). This worker-side recheck closes the gap between request-scoped verification and the thread that performs ledger work.
-* **Blocking work is isolated.** Sync DB and GGUF inference run on worker threads via `asyncio.to_thread`; llama-cpp calls are additionally serialized by an inference lock and a single-slot semaphore so overload fails fast instead of piling up.
+* **Blocking work is isolated and bounded.** Sync database and hosted inference calls run on worker threads via `asyncio.to_thread`; `LLM_MAX_CONCURRENT` bounds overlapping inference and overload fails fast instead of piling up.
 * **Errors never leak.** SSE error frames carry a fixed pipeline-error string; unhandled exceptions return a generic `502` detail.
 * **Auth endpoints are rate-limited** (`slowapi`), with strict buckets for login/register and per-token buckets for chat.
 

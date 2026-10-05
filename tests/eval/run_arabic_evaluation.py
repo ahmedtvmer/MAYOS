@@ -40,10 +40,10 @@ _TREND_NEGATION = re.compile(
 )
 
 
-def evaluation_status(mode: str, api_key: str | None, recorded: int, expected: int, *, backend: str = "local", runner_error: bool = False, behavior_failure: bool = False) -> str:
+def evaluation_status(mode: str, api_key: str | None, recorded: int, expected: int, *, runner_error: bool = False, behavior_failure: bool = False) -> str:
     if runner_error:
         return "runner_error"
-    if mode == "real" and backend == "openai-compatible" and not api_key:
+    if mode == "real" and not api_key:
         return "missing_credentials"
     if recorded < expected:
         return "incomplete"
@@ -57,28 +57,8 @@ def cases_from(data: dict[str, Any]) -> list[dict[str, Any]]:
 def _model_identity() -> dict[str, str | None]:
     from utils import model_downloader
 
-    model_id, backend = model_downloader.model_identity("production")
-    if model_downloader.uses_cloud_backend():
-        return {"provider": "openai-compatible", "model": model_id, "revision": None}
-    config = model_downloader.MODEL_REGISTRY["production"]
-    return {"provider": backend, "model": model_id, "artifact": model_downloader.resolve_model_path("production"), "revision": config.get("revision")}
-
-
-def _missing_model_error(identity: dict[str, Any]) -> str | None:
-    artifact = identity.get("artifact")
-    if identity.get("provider") == "local" and artifact and not Path(artifact).is_file():
-        return "Configured local player model file is missing."
-    return None
-
-
-def _mock_environment_error() -> str | None:
-    from utils import model_downloader
-    from utils.env_flags import env_flag
-
-    enabled = [name for name in model_downloader._MOCK_ENV_VARS if env_flag(name)]
-    if enabled:
-        return "Real mode refuses mock-selecting environment flags: " + ", ".join(enabled)
-    return None
+    model_id, _provider = model_downloader.model_identity("production")
+    return {"provider": "openai-compatible", "model": model_id, "revision": None}
 
 
 def _verify_loaded_production_model(identity: dict[str, Any]) -> str | None:
@@ -87,23 +67,11 @@ def _verify_loaded_production_model(identity: dict[str, Any]) -> str | None:
     model = model_downloader._llm_instance
     if model is None:
         return "Assistant graph did not load the configured production player model."
-    if isinstance(model, model_downloader.MockSafeChatLlamaCpp):
-        return "Assistant graph loaded a mock model; real-model certification is unavailable."
-    if identity.get("provider") == "openai-compatible":
-        expected_type = model_downloader.SafeChatOpenAI
-        if expected_type is None or not isinstance(model, expected_type):
-            return "Assistant graph loaded a model object that does not match the configured hosted production backend."
-        loaded_name = getattr(model, "model_name", None) or getattr(model, "model", None)
-        if loaded_name != identity.get("model"):
-            return "Loaded hosted model identity does not match the configured production model."
-        return None
-    expected_type = model_downloader.SafeChatLlamaCpp
-    if expected_type is None or not isinstance(model, expected_type):
-        return "Assistant graph loaded a model object that does not match the configured local production backend."
-    loaded_path = getattr(model, "model_path", None)
-    configured_path = identity.get("artifact")
-    if not loaded_path or not configured_path or Path(loaded_path).resolve() != Path(configured_path).resolve():
-        return "Loaded local model artifact does not match the configured production model."
+    if not isinstance(model, model_downloader.SafeChatOpenAI):
+        return "Assistant graph did not load the configured hosted production model."
+    loaded_name = getattr(model, "model_name", None) or getattr(model, "model", None)
+    if loaded_name != identity.get("model"):
+        return "Loaded hosted model identity does not match the configured production model."
     return None
 
 
@@ -391,7 +359,7 @@ def _fake_generation(scenario: dict[str, Any], **kwargs):
 
 
 def _run_one(case: dict[str, Any], scenario: dict[str, Any], store: Any, *, mode: str, coach_authority: bool = False) -> dict[str, Any]:
-    from langchain_core.messages import AIMessageChunk, HumanMessage
+    from langchain_core.messages import HumanMessage
     from agent import assistant_graph as graph
     from unittest.mock import patch
 
@@ -405,13 +373,12 @@ def _run_one(case: dict[str, Any], scenario: dict[str, Any], store: Any, *, mode
         state = {"messages": [HumanMessage(content=case["text"])], "trainee_id": ledger_id,
                  "player_account_id": "synthetic-player" if coach_authority else None, "telemetry_context": "Synthetic eval context: bench 80 kg x 5, squat 100 kg x 5; RIR is the effort measure.",
                  "coach_tone": "direct", "custom_instructions": ""}
-        def fake_stream(_payload):
-            if scenario.get("plumbing_raise_model"):
-                raise RuntimeError("synthetic model failure")
-            text = scenario.get("plumbing_reply", "سجّل التدريب بناءً على بيانات السجل. استخدم RIR لتقدير التكرارات المتبقية.")
-            yield AIMessageChunk(content=text)
-        from types import SimpleNamespace
-        fake_model = SimpleNamespace(n_ctx=2048, max_tokens=200, client=SimpleNamespace(tokenize=lambda data, **_kwargs: list(range((len(data) + 3) // 4))), stream=fake_stream)
+        from tests.fakes.chat_model import ScriptedChatModel
+
+        turn = RuntimeError("synthetic model failure") if scenario.get("plumbing_raise_model") else scenario.get(
+            "plumbing_reply", "سجّل التدريب بناءً على بيانات السجل. استخدم RIR لتقدير التكرارات المتبقية."
+        )
+        fake_model = ScriptedChatModel([turn])
         patches = [patch.object(graph, "llm", fake_model)] if mode == "plumbing" else []
         if mode == "plumbing":
             patches.append(patch.object(graph, "generate_program_pipeline", side_effect=lambda **kwargs: _fake_generation(scenario, **kwargs)))
@@ -503,16 +470,9 @@ def _run_evaluation() -> int:
     validate_scenarios(cases, scenario_data)
     mode_name = {"deterministic": "deterministic_guard_checks", "plumbing": "graph_fake_model_plumbing", "real": "real_configured_model"}[args.mode]
     model_identity = _model_identity() if args.mode == "real" else None
-    backend = model_identity["provider"] if model_identity else "local"
-    mock_environment_error = _mock_environment_error() if args.mode == "real" else None
-    preflight = evaluation_status(args.mode, os.getenv("LLM_API_KEY"), 0, len(cases), backend=backend)
-    missing_model = _missing_model_error(model_identity) if model_identity else None
-    if mock_environment_error:
-        status, rows = "runner_error", [{"case_status": "runner_error", "error": mock_environment_error}]
-    elif preflight == "missing_credentials":
+    preflight = evaluation_status(args.mode, os.getenv("LLM_API_KEY"), 0, len(cases))
+    if preflight == "missing_credentials":
         status, rows = "missing_credentials", []
-    elif missing_model:
-        status, rows = "runner_error", [{"case_status": "runner_error", "error": missing_model}]
     else:
         status, rows = "completed", []
         runner_exception = False
@@ -552,7 +512,7 @@ def _run_evaluation() -> int:
             rows.append({"case_status": "runner_error", "error": f"{type(exc).__name__}: {safe_error}"})
         completed = len([r for r in rows if r.get("case_status") == "completed"])
         behavior_failure = any(_has_behavior_failure(r) for r in rows)
-        status = evaluation_status(args.mode, os.getenv("LLM_API_KEY"), completed, len(cases), backend=backend, runner_error=runner_exception or any(r.get("case_status") == "runner_error" for r in rows), behavior_failure=behavior_failure)
+        status = evaluation_status(args.mode, os.getenv("LLM_API_KEY"), completed, len(cases), runner_error=runner_exception or any(r.get("case_status") == "runner_error" for r in rows), behavior_failure=behavior_failure)
     real_model_verified = False
     if args.mode == "real" and status in {"completed", "behavior_failures"}:
         verification_error = _verify_loaded_production_model(model_identity or {})

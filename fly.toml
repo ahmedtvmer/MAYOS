@@ -27,8 +27,6 @@ primary_region = "fra"
   MAYOS_DATA_DIR = "/data"
   # Fail closed at boot/readiness when the volume is not a writable mount.
   MAYOS_REQUIRE_PERSISTENT_DATA = "true"
-  # Hosted inference: no GGUF/CUDA/llama-cpp in the image.
-  LLM_BACKEND = "openai"
   # Hosted player defaults to DeepSeek-V4-Flash and sends no extra body.
   # LLM_EXTRA_BODY replaces the player body; JUDGE_EXTRA_BODY replaces the
   # judge body (which defaults to Qwen thinking disabled).
@@ -41,7 +39,6 @@ primary_region = "fra"
   COACH_AI_ENABLED = "true"
   COACH_AI_EVAL_REPORT = "/app/reports/coach_ai_eval.json"
   MODEL_DEVICE = "cpu"
-  EMBEDDING_DEVICE = "cpu"
   HF_HOME = "/app/.cache/huggingface"
   # Password-reset / App Link base: this app's public host. It must be identical
   # in RESET_LINK_BASE_URL, the Android App Link intent-filter host

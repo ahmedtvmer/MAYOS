@@ -1,13 +1,14 @@
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
 from langchain_core.tools import tool
 from langchain_huggingface import HuggingFaceEmbeddings
 from pydantic import BaseModel, Field, field_validator
 
-from utils.model_downloader import llm
+from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 
 load_dotenv()
 
@@ -17,13 +18,12 @@ Embedding = os.getenv("EMBEDDING_MODEL", 'BAAI/bge-small-en-v1.5')
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
-from database.database_manager import DatabaseManager
 from utils.logger import MyosLogger
 
 logger = MyosLogger().get_logger(__name__)
 
-# Initialize shared components
-db = DatabaseManager()
+# The seeded Exercise library and local embedding model stay available to the tool.
+db: Any = None
 embed_model = HuggingFaceEmbeddings(
     model_name=Embedding, model_kwargs={"device": "cpu"}, encode_kwargs={"normalize_embeddings": True}
 )
@@ -62,11 +62,23 @@ def search_exercises(query: str) -> str:
     return "\n".join(formatted)
 
 
-def test_tool_calling():
-    logger.info("Initializing ChatOllama...")
+def test_tool_calling(scripted_chat_model: ScriptedChatModel, fresh_store, monkeypatch):
+    logger.info("Initializing scripted hosted chat model...")
+    monkeypatch.setitem(globals(), "db", fresh_store)
 
     tools = [search_exercises]
-    llm_with_tools = llm.bind_tools(tools)
+    scripted_chat_model.script(
+        ToolCallsTurn(
+            calls=[
+                {
+                    "name": "search_exercises",
+                    "args": {"query": "hamstring exercises with a barbell"},
+                    "id": "search_exercises_1",
+                }
+            ]
+        )
+    )
+    llm_with_tools = scripted_chat_model.bind_tools(tools)
 
     # Test tool invocation
     user_prompt = "Can you recommend some hamstring exercises with a barbell?"
@@ -86,7 +98,3 @@ def test_tool_calling():
         logger.info(f"Tool Result:\n{tool_output}")
     else:
         logger.warning("LLM responded directly without triggering the tool.")
-
-
-if __name__ == "__main__":
-    test_tool_calling()

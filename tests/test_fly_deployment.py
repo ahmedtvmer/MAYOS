@@ -45,8 +45,6 @@ def _prepare_env(monkeypatch, data_dir: Path):
     monkeypatch.setenv("MAYOS_DATA_DIR", str(data_dir))
     monkeypatch.delenv("MAYOS_REQUIRE_PERSISTENT_DATA", raising=False)
     monkeypatch.setenv("JWT_SECRET", "test-secret-key-0123456789abcdef")
-    monkeypatch.setenv("LLM_BACKEND", "openai")
-    monkeypatch.setenv("TESTING", "1")
     monkeypatch.setenv("LLM_API_KEY", "")
     monkeypatch.delenv("SKIP_LLM_LOAD", raising=False)
 

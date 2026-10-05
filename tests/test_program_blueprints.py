@@ -34,6 +34,7 @@ from agent.program_blueprints import (
     prescription_class,
 )
 from agent.program_rules import fetch_slot_candidates, fetch_warmup_candidates, get_split_plan, resolve_split
+from agent.program_rules import get_default_split
 from utils.equipment_access import COMMERCIAL_GYM, EQUIPMENT_ACCESS_VALUES
 
 db = None
@@ -200,7 +201,10 @@ def test_generation_is_repeatable_and_offers_ordered_staple_substitutes():
     assert biceps_alternatives and biceps_alternatives[0].exercise_id == "318"
 
 
-def test_equipment_access_generation_uses_only_ordered_staples_and_next_substitutes():
+def test_equipment_access_generation_uses_only_ordered_staples_and_next_substitutes(scripted_chat_model):
+    # The custom Glute Specialized preference needs a structured plan; all
+    # catalog assertions below depend only on exercise-slot resolution.
+    scripted_chat_model.default_turn = get_default_split(5)
     preferences = (
         ("Full Body", 5),
         ("Upper/Lower", 5),

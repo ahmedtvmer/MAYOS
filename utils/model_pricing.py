@@ -61,10 +61,7 @@ def load_pricing() -> dict[str, dict[str, float]]:
 def price_for(model: str, pricing: dict[str, dict[str, float]] | None = None) -> dict[str, float] | None:
     """Returns ``{"input", "output"}`` for ``model``, or ``None`` when unpriced.
 
-    Local GGUF models (``local:*``) are intentionally cost 0 and never warned.
     """
-    if model.startswith("local:"):
-        return {"input": 0.0, "output": 0.0}
     table = pricing if pricing is not None else load_pricing()
     entry = table.get(model)
     if entry is None:

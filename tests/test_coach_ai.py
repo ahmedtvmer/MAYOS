@@ -10,18 +10,16 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-
 import pytest
 from fastapi.testclient import TestClient
-from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, SystemMessage
-from langchain_core.outputs import ChatGeneration, ChatResult
 
 from database.database_manager import DatabaseManager
 from service import coach as coach_service
 from service import coach_ai
 from svc.app import create_app
 from svc.dependencies import get_db
+from tests.fakes.chat_model import ScriptedChatModel
 from utils import model_downloader
 from utils.model_metering import MeteringCallback
 
@@ -31,32 +29,12 @@ TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
 COACH_MODEL_ID = "deepseek-ai/DeepSeek-V4-Flash"
 
 
-class _StubCoachLLM(BaseChatModel):
-    """Coach-role double: records payloads, emits usage, fires the metering callback."""
-
-    model_id: str = COACH_MODEL_ID
-    reply: str = "Volume is steady; keep the current plan."
-    input_tokens: int = 120
-    output_tokens: int = 30
-    payloads: list = []
-
-    @property
-    def _llm_type(self) -> str:
-        return "stub-coach"
-
-    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
-        self.payloads.append(list(messages))
-        usage = {
-            "input_tokens": self.input_tokens,
-            "output_tokens": self.output_tokens,
-            "total_tokens": self.input_tokens + self.output_tokens,
-        }
-        message = AIMessage(content=self.reply, usage_metadata=usage)
-        return ChatResult(generations=[ChatGeneration(message=message)])
-
-
-def _stub_coach_llm(monkeypatch, reply: str = "Volume is steady; keep the current plan.") -> _StubCoachLLM:
-    stub = _StubCoachLLM(reply=reply, callbacks=[MeteringCallback(COACH_MODEL_ID)])
+def _stub_coach_llm(monkeypatch, reply: str = "Volume is steady; keep the current plan.") -> ScriptedChatModel:
+    stub = ScriptedChatModel(
+        [reply],
+        usage_metadata={"input_tokens": 120, "output_tokens": 30, "total_tokens": 150},
+        callbacks=[MeteringCallback(COACH_MODEL_ID)],
+    )
     monkeypatch.setattr(model_downloader, "get_coach_llm", lambda *args, **kwargs: stub)
     return stub
 
@@ -521,11 +499,11 @@ def test_gate_rejects_a_report_recorded_for_another_model(api, monkeypatch, tmp_
 
 def test_gate_rejects_a_report_recorded_for_another_backend(api, monkeypatch, tmp_path):
     _client, _db, _tmp = api
-    _enable(monkeypatch, tmp_path)
-    assert coach_ai.resolve_enable_gate().enabled is True
+    path = _enable(monkeypatch, tmp_path)
+    report = json.loads(path.read_text(encoding="utf-8"))
+    report["backend"] = "local"
+    path.write_text(json.dumps(report), encoding="utf-8")
 
-    monkeypatch.setenv("LLM_BACKEND", "openai")
-    monkeypatch.setenv("COACH_MODEL", "Qwen/other-model")
     status = coach_ai.resolve_enable_gate()
     assert status.enabled is False
     assert "backend" in status.reason
@@ -648,7 +626,7 @@ def test_flag_off_returns_404_and_never_calls_the_model(api, monkeypatch):
     )
     assert response.status_code == 404
     assert "not available" in response.json()["detail"]
-    assert stub.payloads == []
+    assert stub.calls == []
 
 
 def test_enabled_turn_answers_and_meters_with_role_coach(api, monkeypatch, tmp_path):
@@ -662,7 +640,7 @@ def test_enabled_turn_answers_and_meters_with_role_coach(api, monkeypatch, tmp_p
     )
     assert response.status_code == 200, response.text
     assert response.json() == {"answer": "No change: 12400 kg in the last 7 days."}
-    assert len(stub.payloads) == 1
+    assert len(stub.calls) == 1
 
     rows = [
         row
@@ -694,4 +672,4 @@ def test_daily_token_limit_refuses_before_the_model_is_called(api, monkeypatch, 
         f"/coach/assignments/{assignment_id}/assistant", headers=coach_headers, json=QUESTION
     )
     assert response.status_code == 429
-    assert stub.payloads == []
+    assert stub.calls == []

@@ -1,15 +1,7 @@
 """Hermetic test environment.
 
-``agent/*`` modules call ``load_dotenv()`` at import time, which injects any
-``.env`` keys not already present into ``os.environ``. If a developer keeps
-cloud settings (``LLM_BACKEND=openai`` / ``LLM_API_KEY``) in their ``.env``,
-every local-path unit test would silently take the cloud branch.
-
-Declaring the backend pins here — at conftest import, before any test module is
-collected — keeps the suite deterministic. ``load_dotenv()`` does not override
-existing keys, and empty strings count as existing, so these neutral values
-survive the agent-module imports. Cloud tests override them explicitly with
-``monkeypatch.setenv`` and restore to these values on teardown.
+Environment pins precede dotenv loading because ``load_dotenv()`` preserves
+values that are already present in the process environment.
 """
 
 import os
@@ -17,13 +9,12 @@ import re
 
 import pytest
 
-os.environ["LLM_BACKEND"] = "local"
 os.environ["LLM_API_KEY"] = ""
 os.environ["LLM_API_BASE"] = ""
 os.environ["LLM_EXTRA_BODY"] = ""
 os.environ["LLM_ENABLE_THINKING"] = ""
 # A developer's configured analytics key must never receive test traffic.
-# Keep the model-loading TESTING switch unset for tests that exercise its mocks.
+# ``load_dotenv()`` does not override these already-present environment keys.
 os.environ["POSTHOG_API_KEY"] = ""
 
 # Same for outbound email: a developer `.env` with real SMTP settings must not
@@ -36,6 +27,51 @@ os.environ["SMTP_USER"] = ""
 os.environ["SMTP_PASSWORD"] = ""
 os.environ["SMTP_FROM"] = ""
 os.environ["OWNER_ALERT_EMAIL"] = ""
+
+from utils import model_downloader as _model_downloader
+from tests.fakes.chat_model import ScriptedChatModel
+
+_REAL_CLOUD_MODEL_BUILDER = _model_downloader._build_cloud_llm
+_COLLECTION_CHAT_MODEL = ScriptedChatModel(default_turn="Use controlled reps.")
+_ACTIVE_TEST_CHAT_MODEL = _COLLECTION_CHAT_MODEL
+
+
+def _scripted_model_builder(_role):
+    return _ACTIVE_TEST_CHAT_MODEL
+
+
+# Collection imports can call ``get_llm`` before pytest fixtures run; keeping
+# this one builder installed makes those imports use a network-free model.
+_model_downloader._build_cloud_llm = _scripted_model_builder
+
+
+@pytest.fixture
+def scripted_chat_model():
+    # Unrelated legacy paths get an explicit answer; tests that need exhaustion
+    # failures can construct/reset the fake without a default_turn.
+    return ScriptedChatModel(default_turn="Use controlled reps.")
+
+
+@pytest.fixture(autouse=True)
+def _install_scripted_chat_model(scripted_chat_model):
+    """Makes default player, judge, and coach calls hermetic in every test."""
+    global _ACTIVE_TEST_CHAT_MODEL
+    from utils import model_downloader
+
+    _ACTIVE_TEST_CHAT_MODEL = scripted_chat_model
+    model_downloader._llm_instance = None
+    model_downloader._judge_llm_instance = None
+    model_downloader._coach_llm_instance = None
+    return scripted_chat_model
+
+
+@pytest.fixture
+def hosted_model_builder(monkeypatch):
+    """Restores the real hosted builder for factory configuration tests."""
+    from utils import model_downloader
+
+    monkeypatch.setattr(model_downloader, "_build_cloud_llm", _REAL_CLOUD_MODEL_BUILDER)
+    return _REAL_CLOUD_MODEL_BUILDER
 
 
 @pytest.fixture(autouse=True)

@@ -142,14 +142,12 @@ def checkpoint_review_model_identity() -> tuple[str, str]:
     return model_downloader.model_identity("production")
 
 
-def bind_review_model(model: Any, *, backend: str | None = None) -> Any:
-    """Bounds review output and disables cloud thinking for this call only."""
-    if backend is None:
-        backend = checkpoint_review_model_identity()[1]
-    params: dict[str, Any] = {"max_tokens": MAX_OUTPUT_TOKENS}
-    if backend == "openai":
-        params["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
-    return model.bind(**params)
+def bind_review_model(model: Any) -> Any:
+    """Bounds review output and disables hosted-model thinking for this call."""
+    return model.bind(
+        max_tokens=MAX_OUTPUT_TOKENS,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+    )
 
 
 def evaluate_gate(

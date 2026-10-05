@@ -23,10 +23,6 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage
-from langchain_core.outputs import ChatGeneration, ChatResult
-
 from agent.ProgramState import ProgramDaySchema, ProgramExerciseSchema
 from database.database_manager import DatabaseManager
 from service import coach as coach_service
@@ -38,6 +34,7 @@ from service.missed_day_alerts import window_start_for_assignment
 from service.schedule import timezone_for_versions
 from svc.app import create_app
 from svc.dependencies import get_db
+from tests.fakes.chat_model import ScriptedChatModel
 from utils import model_downloader
 from utils.model_metering import MeteringCallback
 
@@ -67,32 +64,12 @@ IDENTIFIERS = (
 )
 
 
-class _CapturingCoachLLM(BaseChatModel):
-    """Coach-role double: records every payload, emits usage, fires metering."""
-
-    model_id: str = COACH_MODEL_ID
-    reply: str = "Volume is steady; keep the current plan."
-    input_tokens: int = 120
-    output_tokens: int = 30
-    payloads: list = []
-
-    @property
-    def _llm_type(self) -> str:
-        return "capturing-coach"
-
-    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
-        self.payloads.append(list(messages))
-        usage = {
-            "input_tokens": self.input_tokens,
-            "output_tokens": self.output_tokens,
-            "total_tokens": self.input_tokens + self.output_tokens,
-        }
-        message = AIMessage(content=self.reply, usage_metadata=usage)
-        return ChatResult(generations=[ChatGeneration(message=message)])
-
-
-def _capturing_coach_llm(monkeypatch) -> _CapturingCoachLLM:
-    stub = _CapturingCoachLLM(callbacks=[MeteringCallback(COACH_MODEL_ID)])
+def _capturing_coach_llm(monkeypatch) -> ScriptedChatModel:
+    stub = ScriptedChatModel(
+        ["Volume is steady; keep the current plan."],
+        usage_metadata={"input_tokens": 120, "output_tokens": 30, "total_tokens": 150},
+        callbacks=[MeteringCallback(COACH_MODEL_ID)],
+    )
     monkeypatch.setattr(model_downloader, "get_coach_llm", lambda *args, **kwargs: stub)
     return stub
 
@@ -393,10 +370,12 @@ def test_prompt_carries_only_necessary_telemetry_and_deterministic_figures(api, 
         f"/coach/assignments/{assignment_id}/assistant", headers=coach_headers, json=QUESTION
     )
     assert response.status_code == 200, response.text
-    assert response.json()["answer"] == stub.reply
-    assert len(stub.payloads) == 1
+    assert response.json()["answer"] == "Volume is steady; keep the current plan."
+    assert len(stub.calls) == 1
 
-    rendered = "\n".join(str(getattr(message, "content", message)) for message in stub.payloads[0])
+    rendered = "\n".join(
+        str(getattr(message, "content", message)) for message in stub.calls[0]["messages"]
+    )
 
     # The coach's own text reaches the model: the question and the transcript
     # the client holds in memory for this one player.
@@ -452,7 +431,7 @@ def test_nothing_is_persisted_beyond_model_usage(api, monkeypatch):
         json={"question": "Anything I should change?"},
     )
     assert response.status_code == 200, response.text
-    assert stub.payloads
+    assert stub.calls
 
     catalog_after = _dump_tables(db.catalog_conn)
     with db.open_ledger(PLAYER_USERNAME) as player_ledger:
@@ -496,7 +475,7 @@ def test_revoked_assignment_is_denied_without_a_model_call(api, monkeypatch):
     )
     assert response.status_code == 403
     assert response.json()["detail"] == "No active assignment."
-    assert stub.payloads == []
+    assert stub.calls == []
 
 
 def test_other_coach_and_non_coach_are_denied_without_a_model_call(api, monkeypatch):
@@ -517,7 +496,7 @@ def test_other_coach_and_non_coach_are_denied_without_a_model_call(api, monkeypa
     )
     assert as_player.status_code == 403
     assert "Coach capability required." == as_player.json()["detail"]
-    assert stub.payloads == []
+    assert stub.calls == []
 
 
 def test_flag_off_returns_404_without_a_model_call(api, monkeypatch):
@@ -529,4 +508,4 @@ def test_flag_off_returns_404_without_a_model_call(api, monkeypatch):
         f"/coach/assignments/{assignment_id}/assistant", headers=coach_headers, json=QUESTION
     )
     assert response.status_code == 404
-    assert stub.payloads == []
+    assert stub.calls == []

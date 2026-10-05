@@ -141,9 +141,9 @@ def check_report(report_path: Path) -> tuple[bool, list[str]]:
 
 
 def _mock_model():
-    from utils.model_downloader import MockSafeChatLlamaCpp
+    from tests.fakes.chat_model import ScriptedChatModel
 
-    return MockSafeChatLlamaCpp()
+    return ScriptedChatModel(default_turn="Your recorded training shows steady progress.")
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -1,6 +1,5 @@
 import uuid
 from datetime import UTC, datetime
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -230,13 +229,9 @@ def test_database_manager_operations(isolated_db):
 
 
 def _llm_stream_stub(chunks):
-    """Model-independent stub replacing the graph's lazy ``llm`` proxy.
+    from tests.fakes.chat_model import ScriptedChatModel
 
-    Patching the class (ChatLlamaCpp.stream) is bypassed whenever the in-repo
-    mock model is active (model file absent), because the mock defines its own
-    ``stream``. Stubbing the module attribute works in every environment.
-    """
-    return SimpleNamespace(stream=lambda payload: iter(chunks))
+    return ScriptedChatModel(["".join(chunk.content for chunk in chunks)])
 
 
 def test_stream_assistant_turn_mocked_llm(fresh_store, monkeypatch):

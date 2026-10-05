@@ -50,8 +50,17 @@ def _assert_step_transition(
     return result
 
 
-def test_onboarding_validation_workflow(fresh_store):
+def test_onboarding_validation_workflow(fresh_store, scripted_chat_model):
     """Validates the multi-step conversational intake state machine end-to-end."""
+    from agent.onboarding_graph import Step1Extraction
+
+    scripted_chat_model.reset([
+        Step1Extraction(is_off_topic=True),
+        Step1Extraction(),
+        Step1Extraction(
+            proportions="balanced", gender="male", age=5, weight_kg=400, height_cm=320
+        ),
+    ])
     logger.info("⚡ Starting Intake Validation Test Suite...")
     config = {"configurable": {"ledger": fresh_store.ledger, "store": fresh_store}}
 
@@ -137,6 +146,7 @@ def test_onboarding_validation_workflow(fresh_store):
     )
 
     assert state_after_t7["is_complete"] is True, "Failed: Intake failed to flag is_complete=True on Step 3!"
+    assert len(scripted_chat_model.calls) == 3
     logger.info("\n🎉 All 7 validation edge cases passed successfully.")
 
 
@@ -144,6 +154,7 @@ import pytest
 from unittest.mock import MagicMock
 
 from agent import onboarding_graph as onboarding
+from tests.fakes.chat_model import ScriptedChatModel, StructuredValue
 
 
 @pytest.fixture(autouse=True)
@@ -167,7 +178,8 @@ def _rebind_llm_extractors():
 @pytest.mark.parametrize("numbered", [True, False])
 def test_invalid_frequency_never_advances_or_writes(monkeypatch, frequency, numbered):
     database = MagicMock()
-    extractor = MagicMock()
+    model = ScriptedChatModel()
+    extractor = model.with_structured_output(onboarding.Step2Extraction)
     monkeypatch.setattr(onboarding, "step2_extractor", extractor)
     query = (
         f"3strength 4longevity 5: {frequency} days a week 63years"
@@ -182,7 +194,7 @@ def test_invalid_frequency_never_advances_or_writes(monkeypatch, frequency, numb
     assert result["profile_data"] == profile
     assert "1 to 5" in result["messages"][-1].content
     assert database.mock_calls == []
-    extractor.invoke.assert_not_called()
+    assert model.calls == []
 
 
 @pytest.mark.parametrize("frequency", [1, 5])
@@ -200,11 +212,11 @@ def test_valid_frequency_boundaries_advance_without_writes(monkeypatch, frequenc
 @pytest.mark.parametrize("frequency", [0, 6, 7, 99, -1])
 def test_invalid_extracted_frequency_rejected(monkeypatch, frequency):
     database = MagicMock()
-    extractor = MagicMock()
-    extractor.invoke.return_value = onboarding.Step2Extraction.model_construct(
+    model = ScriptedChatModel([StructuredValue(onboarding.Step2Extraction.model_construct(
         current_goal="strength", long_term_goal="health", weekly_frequency=frequency,
         training_age_years=3, rep_preference="balanced", is_off_topic=False,
-    )
+    ))])
+    extractor = model.with_structured_output(onboarding.Step2Extraction)
     monkeypatch.setattr(onboarding, "step2_extractor", extractor)
     result = onboarding.intake_node({
         "messages": [HumanMessage(content="My goal is strength and long term health")],
@@ -235,28 +247,28 @@ UNSTATED_REP_INPUT = (
 
 
 def _step2_result(monkeypatch, user_input, extracted_rep):
-    extractor = MagicMock()
-    extractor.invoke.return_value = onboarding.Step2Extraction.model_construct(
+    model = ScriptedChatModel([onboarding.Step2Extraction.model_construct(
         current_goal="build a wider back taper",
         long_term_goal="200kg squat safely",
         weekly_frequency=3,
         training_age_years=4.5,
         rep_preference=extracted_rep,
         is_off_topic=False,
-    )
+    )])
+    extractor = model.with_structured_output(onboarding.Step2Extraction)
     monkeypatch.setattr(onboarding, "step2_extractor", extractor)
     result = onboarding.intake_node({
         "messages": [HumanMessage(content=user_input)],
         "intake_step": 2,
         "profile_data": {},
     })
-    return result, extractor
+    return result, model
 
 
 def test_unstated_rep_preference_never_becomes_low(monkeypatch):
     """gen_onboard_03: a strength goal/200kg target must not imply a low-rep pref."""
-    result, extractor = _step2_result(monkeypatch, UNSTATED_REP_INPUT, "low")
-    extractor.invoke.assert_called_once()
+    result, model = _step2_result(monkeypatch, UNSTATED_REP_INPUT, "low")
+    assert len(model.calls) == 1
     assert result["intake_step"] == 3
     assert result["profile_data"]["rep_preference"] == "balanced"
 
@@ -285,8 +297,8 @@ def test_unstated_rep_preference_never_becomes_low(monkeypatch):
     ],
 )
 def test_explicit_rep_preference_is_respected(monkeypatch, user_input, extracted, expected):
-    result, extractor = _step2_result(monkeypatch, user_input, extracted)
-    extractor.invoke.assert_called_once()
+    result, model = _step2_result(monkeypatch, user_input, extracted)
+    assert len(model.calls) == 1
     assert result["intake_step"] == 3
     assert result["profile_data"]["rep_preference"] == expected
 
@@ -308,14 +320,15 @@ def test_explicit_rep_preference_is_respected(monkeypatch, user_input, extracted
 )
 def test_generic_rep_wording_does_not_authorize_low_or_high(monkeypatch, user_input, extracted):
     """Generic "heavy compounds"/"rep range" wording states no preference; stay balanced."""
-    result, extractor = _step2_result(monkeypatch, user_input, extracted)
-    extractor.invoke.assert_called_once()
+    result, model = _step2_result(monkeypatch, user_input, extracted)
+    assert len(model.calls) == 1
     assert result["intake_step"] == 3
     assert result["profile_data"]["rep_preference"] == "balanced"
 
 
 def test_numbered_step2_still_defaults_rep_preference(monkeypatch):
-    extractor = MagicMock()
+    model = ScriptedChatModel()
+    extractor = model.with_structured_output(onboarding.Step2Extraction)
     monkeypatch.setattr(onboarding, "step2_extractor", extractor)
     result = onboarding.intake_node({
         "messages": [HumanMessage(content="3strength 4longevity 54 days per week 63 years lifting")],
@@ -324,7 +337,7 @@ def test_numbered_step2_still_defaults_rep_preference(monkeypatch):
     })
     assert result["intake_step"] == 3
     assert result["profile_data"]["rep_preference"] == "balanced"
-    extractor.invoke.assert_not_called()
+    assert model.calls == []
 
 
 if __name__ == "__main__":

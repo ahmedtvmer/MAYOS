@@ -1,6 +1,5 @@
 # tests/test_fitness_abbreviations.py
 import pytest
-from unittest.mock import MagicMock, patch
 from langchain_core.messages import HumanMessage
 
 from agent.fitness_abbreviations import (
@@ -13,6 +12,7 @@ from agent.assistant_graph import (
     exercise_substitution_node,
     router_node,
 )
+from tests.fakes.chat_model import ScriptedChatModel
 
 
 def test_expand_fitness_abbreviations_lexicon():
@@ -49,32 +49,26 @@ def test_resolve_unknown_abbreviation_with_llm_validation():
     assert resolve_unknown_abbreviation_with_llm("1234") is None
 
 
-def test_resolve_unknown_abbreviation_with_llm_mock():
+def test_resolve_unknown_abbreviation_with_llm_scripted_model(monkeypatch):
     """Verifies structured LLM resolution with positive and negative outputs."""
-    with patch("agent.fitness_abbreviations.llm") as mock_llm:
-        mock_structured = MagicMock()
-        mock_llm.with_structured_output.return_value = mock_structured
-
-        # Case 1: Valid fitness acronym
-        mock_structured.invoke.return_value = AbbreviationExpansion(
+    model = ScriptedChatModel([
+        AbbreviationExpansion(
             is_fitness_movement=True,
             canonical_name="Romanian Deadlift",
-        )
-        res = resolve_unknown_abbreviation_with_llm("RDL")
-        assert res == "romanian deadlift"
-
-        # Case 2: Gibberish / non-fitness acronym
-        mock_structured.invoke.return_value = AbbreviationExpansion(
+        ),
+        AbbreviationExpansion(
             is_fitness_movement=False,
             canonical_name=None,
-        )
-        res_gibberish = resolve_unknown_abbreviation_with_llm("XYZ")
-        assert res_gibberish is None
+        ),
+        RuntimeError("Model timeout"),
+    ])
+    monkeypatch.setattr("agent.fitness_abbreviations.llm", model)
 
-        # Case 3: LLM error gracefully handled
-        mock_structured.invoke.side_effect = RuntimeError("Model timeout")
-        res_error = resolve_unknown_abbreviation_with_llm("ABC")
-        assert res_error is None
+    assert resolve_unknown_abbreviation_with_llm("RDL") == "romanian deadlift"
+    assert resolve_unknown_abbreviation_with_llm("XYZ") is None
+    assert resolve_unknown_abbreviation_with_llm("ABC") is None
+    assert len(model.calls) == 3
+    assert all(call["mode"] == "structured" for call in model.calls)
 
 
 @pytest.fixture

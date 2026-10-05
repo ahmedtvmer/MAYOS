@@ -1,7 +1,6 @@
 # tests/test_assistant_pipeline.py
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -17,7 +16,8 @@ from agent.assistant_graph import (
     stream_assistant_turn,
 )
 from utils.logger import MyosLogger
-from utils.model_downloader import SafeChatLlamaCpp, llm
+from tests.fakes.chat_model import ScriptedChatModel
+from utils.model_downloader import llm
 
 logger = MyosLogger().get_logger(__name__)
 
@@ -102,7 +102,7 @@ def test_phase1_tier1_program_mutations():
     logger.info("✅ Phase 1 Tier 1: Program mutations & frequencies verified.")
 
 
-def test_deload_choice_routing_is_deterministic_in_english_and_arabic():
+def test_deload_choice_routing_is_deterministic_in_english_and_arabic(monkeypatch, scripted_chat_model):
     cases = [
         ("undo the deload", "undo"),
         ("apply the deload", "apply"),
@@ -116,11 +116,12 @@ def test_deload_choice_routing_is_deterministic_in_english_and_arabic():
         ("ألغِ التخفيف", "undo"),
         ("طبّق التخفيف", "apply"),
     ]
-    with patch("agent.assistant_graph.llm.with_structured_output", side_effect=AssertionError("model call")):
-        for query, choice in cases:
-            routed = router_node({"messages": [HumanMessage(content=query)]})
-            assert routed["intent"] == "deload_choice"
-            assert routed["intent_metadata"]["choice"] == choice
+    monkeypatch.setattr("agent.assistant_graph.llm", scripted_chat_model)
+    for query, choice in cases:
+        routed = router_node({"messages": [HumanMessage(content=query)]})
+        assert routed["intent"] == "deload_choice"
+        assert routed["intent_metadata"]["choice"] == choice
+    assert scripted_chat_model.calls == []
 
 
 def test_deload_routing_does_not_override_clinical_or_negated_requests():
@@ -215,15 +216,10 @@ def test_phase1_tier2_coaching_qa_passthrough():
 
 def test_phase2_streaming_generator_qa(fresh_store, monkeypatch):
     """Validates token streaming, chunk yielding, and in-place state mutation for Q&A."""
-    consumed = []
-
-    def produce():
-        consumed.append(1)
-        yield MagicMock(content="Keep your elbows tucked. ")
-        consumed.append(2)
-        yield MagicMock(content="Use controlled reps.")
-        consumed.append("exhausted")
-
+    model = ScriptedChatModel(
+        ["Keep your elbows tucked. Use controlled reps."],
+        chunk_size=len("Keep your elbows tucked. "),
+    )
     state = {
         "messages": [HumanMessage(content="How should I cue the close grip bench press?")],
         "trainee_id": "test_user",
@@ -236,16 +232,13 @@ def test_phase2_streaming_generator_qa(fresh_store, monkeypatch):
         "response_content": None,
     }
 
-    # Stub the module-level proxy: class patches are bypassed when the in-repo
-    # mock model is active. A fresh generator per call preserves lazy consumption.
-    monkeypatch.setattr("agent.assistant_graph.llm", SimpleNamespace(stream=lambda payload: produce()))
+    monkeypatch.setattr("agent.assistant_graph.llm", model)
     generator = stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store)
     first = next(generator)
     assert first == "Keep your elbows tucked."
-    assert consumed == [1]
     yielded_tokens = [first, *generator]
-    assert consumed == [1, 2, "exhausted"]
     assert "".join(yielded_tokens) == "Keep your elbows tucked. Use controlled reps."
+    assert len(model.calls) == 1
     assert state["messages"][-1].content == "".join(yielded_tokens)
     assert state["intent"] == "coaching_qa"
     assert state["program_updated"] is False
@@ -254,7 +247,7 @@ def test_phase2_streaming_generator_qa(fresh_store, monkeypatch):
     logger.info("✅ Phase 2: Conversational token streaming & state updates verified.")
 
 
-def test_phase2_streaming_generator_programmatic_bypass(fresh_store):
+def test_phase2_streaming_generator_programmatic_bypass(fresh_store, monkeypatch, scripted_chat_model):
     """Validates that programmatic nodes stream confirmation without invoking llm.stream()."""
     state = {
         "messages": [HumanMessage(content="switch split to 3 days")],
@@ -268,16 +261,14 @@ def test_phase2_streaming_generator_programmatic_bypass(fresh_store):
         "response_content": None,
     }
 
-    with (
-        patch("agent.assistant_graph.program_mutation_node") as mock_mutation,
-        patch.object(SafeChatLlamaCpp, "stream") as mock_llm_stream,
-    ):
+    monkeypatch.setattr("agent.assistant_graph.llm", scripted_chat_model)
+    with patch("agent.assistant_graph.program_mutation_node") as mock_mutation:
         mock_mutation.return_value = {"program_updated": True, "response_content": "Rebuilt routine for 3 days/week."}
 
         generator = stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store)
         output = list(generator)
 
-        mock_llm_stream.assert_not_called()
+        assert scripted_chat_model.calls == []
         mock_mutation.assert_called_once()
         assert len(output) > 0
         assert "".join(output) == "Rebuilt routine for 3 days/week."
@@ -423,7 +414,7 @@ def test_phase3_substitution_direct_swap(fresh_store):
     logger.info("✅ Phase 3: Direct exercise substitution & ledger mutation verified.")
 
 
-def test_component1_medical_red_flag_interceptor(fresh_store):
+def test_component1_medical_red_flag_interceptor(fresh_store, monkeypatch, scripted_chat_model):
     """Validates that acute trauma / injury phrases trigger immediate zero-LLM intercept."""
     red_flag_queries = [
         "I felt a sharp pop in my shoulder during the top set",
@@ -433,6 +424,7 @@ def test_component1_medical_red_flag_interceptor(fresh_store):
         "My knee has painful swelling and joint clicking with pain",
     ]
 
+    monkeypatch.setattr("agent.assistant_graph.llm", scripted_chat_model)
     for q in red_flag_queries:
         state = {
             "messages": [HumanMessage(content=q)],
@@ -446,17 +438,13 @@ def test_component1_medical_red_flag_interceptor(fresh_store):
             "response_content": None,
         }
 
-        with patch.object(SafeChatLlamaCpp, "stream") as mock_llm_stream:
-            tokens = list(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
+        tokens = list(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
+        full_response = "".join(tokens)
+        assert "Clinical Safeguard Triggered" in full_response
+        assert "Cease training the affected movement immediately" in full_response
+        assert state["intent"] == "clinical_intercept"
 
-            # 1. Must NOT invoke LLM inference
-            mock_llm_stream.assert_not_called()
-
-            # 2. Must stream safeguard response text
-            full_response = "".join(tokens)
-            assert "Clinical Safeguard Triggered" in full_response
-            assert "Cease training the affected movement immediately" in full_response
-            assert state["intent"] == "clinical_intercept"
+    assert scripted_chat_model.calls == []
 
     logger.info("✅ Component 1: Medical red-flag zero-LLM interceptor verified.")
 

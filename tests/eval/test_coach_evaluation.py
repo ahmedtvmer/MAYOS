@@ -51,9 +51,12 @@ def cases():
 
 @pytest.fixture(scope="module")
 def mock_results(cases):
-    from utils.model_downloader import MockSafeChatLlamaCpp
+    from tests.fakes.chat_model import ScriptedChatModel
 
-    return runner.run_suite(cases, model=MockSafeChatLlamaCpp())
+    return runner.run_suite(
+        cases,
+        model=ScriptedChatModel(default_turn="Your recorded training shows steady progress."),
+    )
 
 
 def _passing_results(count: int | None = None):

@@ -27,6 +27,7 @@ from service import onboarding as onboarding_service
 from service import programs as programs_service
 from svc.app import create_app
 from svc.dependencies import get_db
+from tests.fakes.chat_model import ScriptedChatModel
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
 
@@ -1137,13 +1138,10 @@ def test_assistant_substitution_targets_named_day_and_publishes_version(api, mon
     program_data["days"].append(second_day)
     db.ledger.save_training_program(program_data)
 
-    structured_model = MagicMock()
-    structured_model.invoke.return_value = AbbreviationExpansion(
+    model = ScriptedChatModel([AbbreviationExpansion(
         is_fitness_movement=True,
         canonical_name="dumbbell press",
-    )
-    model = MagicMock()
-    model.with_structured_output.return_value = structured_model
+    )])
     monkeypatch.setattr("agent.fitness_abbreviations.llm", model)
 
     state = {
@@ -1160,7 +1158,8 @@ def test_assistant_substitution_targets_named_day_and_publishes_version(api, mon
     result = assistant_graph.exercise_substitution_node(state, {"configurable": {"ledger": db.ledger, "store": db}})
 
     assert result["program_updated"] is True, result["response_content"]
-    structured_model.invoke.assert_called_once()
+    assert len(model.calls) == 1
+    assert model.calls[0]["mode"] == "structured"
     active = db.ledger.get_active_program()
     assert active.version == 3
     assert active.days[0].day_name == "Full A"

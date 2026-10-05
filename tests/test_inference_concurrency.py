@@ -74,12 +74,10 @@ def _reset_gate():
 def _measure_peak(client, monkeypatch, *, install_double, request, max_concurrent, workers=4):
     """Fires ``workers`` concurrent requests; returns (peak active work, responses).
 
-    Uses the cloud backend so the thread-unsafe local llama.cpp serial lock does
-    not mask the configurable gate. Waits until the gate is saturated (or all
+    Waits until the hosted inference gate is saturated (or all
     workers are active), then holds an observation window before releasing; that
     window is what catches an ungated endpoint overshooting the cap.
     """
-    monkeypatch.setenv("LLM_BACKEND", "openai")
     monkeypatch.setenv("LLM_MAX_CONCURRENT", str(max_concurrent))
     reset_inference_gate()
 

@@ -1,5 +1,4 @@
 # tests/benchmark_routing.py
-import os
 import statistics
 import sys
 import time
@@ -11,7 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
 from agent.assistant_graph import ROUTER_PROMPT, IntentClassification, router_node
-from utils.model_downloader import llm
+from utils.model_downloader import llm, model_identity
 
 BENCHMARK_PROMPTS = [
     ("Clinical Intercept", "I felt a sharp pop in my shoulder during bench press"),
@@ -48,7 +47,7 @@ def time_llm_routing(query: str) -> float:
 def run_benchmark():
     print("=" * 80)
     print("⚡ ZERO-LLM ROUTING VS TRADITIONAL LLM CLASSIFICATION BENCHMARK")
-    print(f"Model: {os.getenv('MODEL_PATH', 'Qwen 2.5 3B GGUF')} | Runs: {ITERATIONS} (after {WARMUP_RUNS} warmups)")
+    print(f"Model: {model_identity('production')[0]} | Runs: {ITERATIONS} (after {WARMUP_RUNS} warmups)")
     print("=" * 80)
 
     print("\nWarming up inference pipeline...")

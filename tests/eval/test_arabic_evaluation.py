@@ -42,20 +42,22 @@ def test_accepted_false_positive_and_known_gap_labels_are_not_rewritten():
 
 
 def test_report_status_distinguishes_all_terminal_states():
-    assert evaluation_status("real", None, 0, 41, backend="openai-compatible") == "missing_credentials"
-    assert evaluation_status("real", None, 41, 41, backend="local") == "completed"
-    assert evaluation_status("real", "present", 41, 41, backend="openai-compatible", behavior_failure=True) == "behavior_failures"
+    assert evaluation_status("real", None, 0, 41) == "missing_credentials"
+    assert evaluation_status("real", "present", 41, 41, behavior_failure=True) == "behavior_failures"
     assert evaluation_status("plumbing", None, 10, 41) == "incomplete"
     assert evaluation_status("plumbing", None, 41, 41, runner_error=True) == "runner_error"
     assert evaluation_status("plumbing", None, 41, 41) == "completed"
 
 
-def test_local_real_backend_needs_model_file_not_cloud_credentials(tmp_path):
-    from tests.eval.run_arabic_evaluation import _missing_model_error
+def test_real_mode_records_the_hosted_model_identity(monkeypatch):
+    monkeypatch.setenv("LLM_MODEL", "custom/player")
+    from tests.eval.run_arabic_evaluation import _model_identity
 
-    identity = {"provider": "local", "artifact": str(tmp_path / "missing.gguf")}
-    assert evaluation_status("real", None, 0, 41, backend="local", runner_error=True) == "runner_error"
-    assert _missing_model_error(identity) == "Configured local player model file is missing."
+    assert _model_identity() == {
+        "provider": "openai-compatible",
+        "model": "custom/player",
+        "revision": None,
+    }
 
 
 def test_scenario_validation_fails_loudly_for_missing_action_or_history_case():
@@ -249,25 +251,25 @@ def test_runner_exception_is_reported_and_returns_nonzero(monkeypatch, tmp_path)
     assert report["runs"][-1]["error"] == "RuntimeError: seed adapter failed"
 
 
-def test_real_mode_refuses_mock_environment(monkeypatch, tmp_path):
+def test_real_mode_without_key_reports_missing_credentials(monkeypatch, tmp_path):
     from tests.eval import run_arabic_evaluation as runner
 
     report_path = tmp_path / "mock-real-run.json"
-    monkeypatch.setenv("TESTING", "true")
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     monkeypatch.setattr("sys.argv", ["run_arabic_evaluation.py", "--mode", "real", "--report", str(report_path)])
-    assert runner.main() == 1
+    assert runner.main() == 0
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["status"] == "runner_error"
+    assert report["status"] == "missing_credentials"
     assert report["real_model_run"] is False
-    assert "TESTING" in report["runs"][0]["error"]
+    assert report["runs"] == []
 
 
 def test_real_mode_model_verification_rejects_mock_object(monkeypatch):
     from utils import model_downloader
     from tests.eval.run_arabic_evaluation import _verify_loaded_production_model
+    from tests.fakes.chat_model import ScriptedChatModel
 
-    monkeypatch.setattr(model_downloader, "_llm_instance", model_downloader.MockSafeChatLlamaCpp())
-    error = _verify_loaded_production_model({"provider": "local", "artifact": "/unused/model.gguf"})
+    monkeypatch.setattr(model_downloader, "_llm_instance", ScriptedChatModel())
+    error = _verify_loaded_production_model({"provider": "openai-compatible", "model": "configured-model"})
     assert error is not None
-    assert "mock model" in error.lower()
+    assert "hosted production model" in error.lower()

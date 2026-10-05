@@ -13,6 +13,7 @@ from agent.program_rules import (
     get_default_split,
     resolve_split,
 )
+from tests.fakes.chat_model import ScriptedChatModel
 from utils.logger import MyosLogger
 
 logger = MyosLogger().get_logger(__name__)
@@ -64,8 +65,7 @@ def test_rules(fresh_store):
 
 
 def test_dynamic_split_plan_uses_its_own_output_budget(monkeypatch):
-    model = MagicMock()
-    model.with_structured_output.return_value.bind.return_value.invoke.return_value = get_default_split(3)
+    model = ScriptedChatModel([get_default_split(3)])
     monkeypatch.setattr("agent.program_rules.llm", model)
 
     plan = resolve_split(
@@ -74,16 +74,14 @@ def test_dynamic_split_plan_uses_its_own_output_budget(monkeypatch):
     )
 
     assert len(plan.days) == 3
-    model.with_structured_output.assert_called_once()
-    model.with_structured_output.return_value.bind.assert_called_once_with(
-        max_tokens=DYNAMIC_SPLIT_PLAN_MAX_TOKENS
-    )
+    assert len(model.calls) == 1
+    assert model.calls[0]["mode"] == "structured"
+    assert model.calls[0]["kwargs"]["schema"] == "DynamicSplitPlan"
+    assert model.calls[0]["kwargs"]["max_tokens"] == DYNAMIC_SPLIT_PLAN_MAX_TOKENS
 
 
 def test_dynamic_split_uses_the_generation_metering_scope(monkeypatch):
-    model = MagicMock()
-    structured = model.with_structured_output.return_value.bind.return_value
-    structured.invoke.return_value = get_default_split(3)
+    model = ScriptedChatModel([get_default_split(3)])
     monkeypatch.setattr("agent.program_rules.llm", model)
     calls = []
 
@@ -99,7 +97,8 @@ def test_dynamic_split_uses_the_generation_metering_scope(monkeypatch):
 
     assert len(plan.days) == 3
     assert len(calls) == 1
-    structured.invoke.assert_called_once()
+    assert len(model.calls) == 1
+    assert model.calls[0]["mode"] == "structured"
 
 
 def test_blueprint_split_does_not_call_injected_inference():

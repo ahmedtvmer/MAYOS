@@ -6,18 +6,13 @@ import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
-
 from fastapi.testclient import TestClient
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage
-from langchain_core.outputs import ChatGeneration, ChatResult
 
 from database.database_manager import DatabaseManager
 from service import checkpoint_review_ai
 from svc.app import create_app
 from svc.dependencies import get_db
-from utils import model_downloader
+from tests.fakes.chat_model import ScriptedChatModel
 from utils.model_metering import MeteringCallback
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
@@ -29,22 +24,6 @@ ASSISTANT_CHAT = "PRIVATE_REVIEW_CHAT_REPLY_14ed"
 PROFILE_GOAL = "PRIVATE_PROFILE_GOAL"
 PROFILE_LIMITATION = "PRIVATE_PROFILE_LIMITATION"
 PREFERRED_NAME = "PRIVATE_PREFERRED_NAME"
-
-
-class _CapturingReviewModel(BaseChatModel):
-    payloads: list[list[Any]] = []
-
-    @property
-    def _llm_type(self) -> str:
-        return "checkpoint-review-privacy-test"
-
-    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
-        self.payloads.append(list(messages))
-        message = AIMessage(
-            content="Your consistency stayed steady. The recorded progression also held.",
-            usage_metadata={"input_tokens": 40, "output_tokens": 18, "total_tokens": 58},
-        )
-        return ChatResult(generations=[ChatGeneration(message=message)])
 
 
 def _write_live_report(path: Path) -> Path:
@@ -69,7 +48,9 @@ def _write_live_report(path: Path) -> Path:
     return path
 
 
-def test_review_model_input_excludes_account_and_ledger_private_text(tmp_path: Path, monkeypatch):
+def test_review_model_input_excludes_account_and_ledger_private_text(
+    tmp_path: Path, monkeypatch, scripted_chat_model: ScriptedChatModel
+):
     monkeypatch.setenv("SKIP_LLM_LOAD", "true")
     monkeypatch.setenv("TESTING", "1")
     monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
@@ -98,8 +79,10 @@ def test_review_model_input_excludes_account_and_ledger_private_text(tmp_path: P
     monkeypatch.setenv("CHECKPOINT_REVIEW_AI_ENABLED", "true")
     monkeypatch.setenv("CHECKPOINT_REVIEW_EVAL_REPORT", str(report))
     model_id, _backend = checkpoint_review_ai.checkpoint_review_model_identity()
-    model = _CapturingReviewModel(callbacks=[MeteringCallback(model_id)])
-    monkeypatch.setattr(model_downloader, "get_llm", lambda *args, **kwargs: model)
+    model = scripted_chat_model
+    model.reset(["Your consistency stayed steady. The recorded progression also held."])
+    model.usage_metadata = {"input_tokens": 40, "output_tokens": 18, "total_tokens": 58}
+    model.callbacks = [MeteringCallback(model_id)]
 
     try:
         with TestClient(app) as client:
@@ -163,7 +146,7 @@ def test_review_model_input_excludes_account_and_ledger_private_text(tmp_path: P
             assert response.json()["text_is_template"] is False
 
         rendered = "\n".join(
-            str(getattr(message, "content", message)) for message in model.payloads[0]
+            str(getattr(message, "content", message)) for message in model.calls[0]["messages"]
         )
         for private_value in (PLAYER_USERNAME, PLAYER_EMAIL, SESSION_NOTE, PLAYER_CHAT, ASSISTANT_CHAT, account_id,
                               PROFILE_GOAL, PROFILE_LIMITATION, PREFERRED_NAME, "PRIVATE_LONG_TERM_GOAL"):

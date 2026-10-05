@@ -1,8 +1,6 @@
-"""Gateway to the inference backends.
+"""Gateway to the hosted inference service.
 
-Local ``llama-cpp-python`` is not thread-safe, so every inference runs under
-``_INFERENCE_LOCK``. Cloud (OpenAI-compatible) endpoints are thread-safe: the
-lock is skipped and ``LLM_MAX_CONCURRENT`` (default 1) bounds overlap instead.
+``LLM_MAX_CONCURRENT`` (default 1) bounds overlapping inference calls.
 
 There are two entry surfaces because callers live in two worlds:
 
@@ -42,7 +40,6 @@ from service.analytics import ClientContext, UNKNOWN_CLIENT
 from utils.model_metering import UsageContext
 
 logger = logging.getLogger(__name__)
-_INFERENCE_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -286,24 +283,14 @@ def is_judge_loaded() -> bool:
 def is_coach_loaded() -> bool:
     from utils import model_downloader
 
-    if not model_downloader.uses_cloud_backend():
-        # Local mode aliases the production model, which owns the instance.
-        return model_downloader._llm_instance is not None
     return model_downloader._coach_llm_instance is not None
 
 
 async def warmup_llm() -> None:
-    """Preloads the production model on a worker thread. Judge stays lazy."""
+    """Preloads the hosted player model on a worker thread. Judge stays lazy."""
     from utils.model_downloader import get_llm
 
     await asyncio.to_thread(get_llm)
-
-
-def _uses_serial_lock() -> bool:
-    """True only for the thread-unsafe local llama.cpp backend."""
-    from utils.model_downloader import uses_cloud_backend
-
-    return not uses_cloud_backend()
 
 
 @contextlib.contextmanager
@@ -387,19 +374,14 @@ def inference_slot(timeout: float = 30.0, *, scope: InferenceScope | None = None
 
     Raises ``TimeoutError`` when the gate stays full for ``timeout`` seconds and
     ``ModelLimitExceeded`` when the account is over its model limit. The
-    thread-unsafe local backend additionally holds ``_INFERENCE_LOCK`` for the
-    whole slot; cloud calls skip it.
+    slot bounds the complete model operation.
     """
     with _usage_scope(scope or InferenceScope()):
         gate = _inference_gate()
         if not gate.acquire(timeout=timeout):
             raise TimeoutError("Inference queue is full; retry shortly.")
         try:
-            if _uses_serial_lock():
-                with _INFERENCE_LOCK:
-                    yield
-            else:
-                yield
+            yield
         finally:
             gate.release()
 
@@ -421,8 +403,7 @@ def bound_stream(
     """Yields from a sync generator while holding one inference slot.
 
     The slot spans the whole stream so concurrent chat turns are bounded by
-    ``LLM_MAX_CONCURRENT`` (and serialized for the local backend) instead of
-    only buffering whole responses.
+    ``LLM_MAX_CONCURRENT`` instead of only buffering whole responses.
     """
     with inference_slot(scope=scope):
         generator = stream_factory(*args, **kwargs)
@@ -445,22 +426,14 @@ async def run_inference(
         except asyncio.TimeoutError:
             raise TimeoutError("Inference queue is full; retry shortly.") from None
         try:
-            if _uses_serial_lock():
-                return await asyncio.to_thread(_locked_call, fn, args, kwargs)
             return await asyncio.to_thread(fn, *args, **kwargs)
         finally:
             _SEMAPHORE.release()
 
 
-def _locked_call(fn: Callable[..., Any], args: tuple, kwargs: dict) -> Any:
-    with _INFERENCE_LOCK:
-        return fn(*args, **kwargs)
-
-
 def unload_all() -> None:
     from utils.model_downloader import unload_coach_llm, unload_judge_llm, unload_llm
 
-    with _INFERENCE_LOCK:
-        unload_llm()
-        unload_judge_llm()
-        unload_coach_llm()
+    unload_llm()
+    unload_judge_llm()
+    unload_coach_llm()
