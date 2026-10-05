@@ -330,11 +330,13 @@ async def confirm_intake(
                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from None
             except intake_service.IntakeValidationError as exc:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+            field_copy = intake_service.build_view(db, str(player), ledger)["fields"]
+            response = {**result, "fields": field_copy}
             if result.get("status") != intake_service.STATUS_CONFIRMED:
-                return _OnboardingRouteOutcome(result)
+                return _OnboardingRouteOutcome(response)
             _record_onboarding_started(request, account_id_of(player), ledger)
             completion = onboarding_service.record_onboarding_completion(ledger, answers)
-            return _OnboardingRouteOutcome(result, completion)
+            return _OnboardingRouteOutcome(response, completion)
 
     try:
         outcome = await asyncio.to_thread(_run)

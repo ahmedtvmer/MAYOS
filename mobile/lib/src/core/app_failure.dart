@@ -76,10 +76,40 @@ final class ServerFailureMessage extends FailureMessage {
   final Map<String, dynamic>? messageParams;
   final String? messageFallback;
 
+  static ServerFailureMessage? parseMetadata(
+    Object? metadataJson, {
+    required String safeFallback,
+  }) {
+    if (metadataJson is! Map) return null;
+    final bool hasMetadata = metadataJson.containsKey('message_code') ||
+        metadataJson.containsKey('message_params') ||
+        metadataJson.containsKey('message_fallback');
+    if (!hasMetadata) return null;
+    final Object? rawFallback = metadataJson['message_fallback'];
+    return ServerFailureMessage(
+      safeFallback,
+      messageCode: metadataJson['message_code'] is String
+          ? metadataJson['message_code'] as String
+          : null,
+      messageParams: _serverMessageParams(metadataJson['message_params']),
+      messageFallback: rawFallback is String && rawFallback.trim().isNotEmpty
+          ? rawFallback
+          : safeFallback,
+    );
+  }
+
   String get safeEnglishFallback =>
       messageFallback?.trim().isNotEmpty == true
           ? messageFallback!
           : detail;
+}
+
+Map<String, dynamic>? _serverMessageParams(Object? rawParams) {
+  if (rawParams is Map<String, dynamic>) return rawParams;
+  if (rawParams is! Map || rawParams.keys.any((Object? key) => key is! String)) {
+    return null;
+  }
+  return Map<String, dynamic>.from(rawParams);
 }
 
 sealed class FailureMessage {

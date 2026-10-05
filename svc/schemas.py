@@ -1340,6 +1340,14 @@ class IntakeAnswerIn(BaseModel):
     value: Any
 
 
+class StructuredMessageOut(BaseModel):
+    """Stable client-rendered copy plus its unchanged English fallback."""
+
+    message_code: str | None = None
+    message_params: dict[str, Any] = Field(default_factory=dict)
+    message_fallback: str | None = None
+
+
 class IntakeFieldOut(BaseModel):
     """One named onboarding decision: contract, current answer, and prefill marker."""
 
@@ -1353,9 +1361,13 @@ class IntakeFieldOut(BaseModel):
     maximum_length: int | None = None
     profile_field: str
     explanation: str | None = None
+    explanation_message: StructuredMessageOut | None = None
     hint: str | None = None
+    hint_message: StructuredMessageOut | None = None
     examples: list[str] = []
+    example_messages: list[StructuredMessageOut | None] = []
     option_descriptions: dict[str, str] = {}
+    option_description_messages: dict[str, StructuredMessageOut | None] = {}
     answer: Any | None = None
     prefilled: bool = False
     answered: bool = False
@@ -1378,6 +1390,7 @@ class IntakeProgramOut(BaseModel):
     program_name: str | None = None
     weekly_frequency: int | None = None
     program_message: str | None = None
+    program_message_metadata: StructuredMessageOut | None = None
 
 
 class IntakeOut(BaseModel):
@@ -1398,6 +1411,8 @@ class IntakeConfirmOut(BaseModel):
     program_name: str | None = None
     weekly_frequency: int | None = None
     program_message: str | None = None
+    program_message_metadata: StructuredMessageOut | None = None
+    fields: list[IntakeFieldOut] = []
 
 
 class HealthOut(BaseModel):

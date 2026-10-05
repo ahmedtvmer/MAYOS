@@ -2867,6 +2867,32 @@ class FakeMayosApi {
         if (spec['type'] == 'text') 'minimum_length': 2,
         if (spec['type'] == 'text') 'maximum_length': 500,
         'explanation': spec['explanation'],
+        'explanation_message': spec['explanation'] is String
+            ? _intakeCopyMessage(
+                'intake.$name.explanation.v1', spec['explanation'] as String)
+            : null,
+        'hint_message': spec['hint'] is String
+            ? _intakeCopyMessage(
+                'intake.$name.hint.v1', spec['hint'] as String)
+            : null,
+        'example_messages': <Map<String, dynamic>>[
+          for (final MapEntry<int, dynamic> entry
+              in ((spec['examples'] as List<dynamic>?) ?? const <dynamic>[])
+                  .asMap()
+                  .entries)
+            _intakeCopyMessage('intake.$name.example.${entry.key + 1}.v1',
+                entry.value as String),
+        ],
+        'option_description_messages': <String, Map<String, dynamic>>{
+          for (final MapEntry<String, dynamic> entry in
+              ((spec['option_descriptions'] as Map<String, dynamic>?) ??
+                      const <String, dynamic>{})
+                  .entries)
+            entry.key: _intakeCopyMessage(
+              'intake.$name.option.${_intakeOptionSlug(entry.key)}.v1',
+              entry.value as String,
+            ),
+        },
         'answer': intakeAnswers[name],
         'prefilled': false,
         'answered': answered,
@@ -2902,6 +2928,18 @@ class FakeMayosApi {
       'program': intakeStatus == 'confirmed' ? intakeProgram : null,
     };
   }
+
+  Map<String, dynamic> _intakeCopyMessage(String code, String fallback) =>
+      <String, dynamic>{
+        'message_code': code,
+        'message_params': <String, dynamic>{},
+        'message_fallback': fallback,
+      };
+
+  String _intakeOptionSlug(String value) => value
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'^_|_$'), '');
 
   String? _validateIntakeAnswer(String field, Object? value) {
     Map<String, dynamic>? spec;
@@ -2974,6 +3012,9 @@ class FakeMayosApi {
           'program_name': intakeProgram?['program_name'],
           'weekly_frequency': intakeProgram?['weekly_frequency'],
           'program_message': intakeProgram?['program_message'],
+          'program_message_metadata':
+              intakeProgram?['program_message_metadata'],
+          'fields': _intakeView()['fields'],
         });
       }
       if (!intakeDisclosureAcknowledged) {
@@ -2999,17 +3040,24 @@ class FakeMayosApi {
           ? <String, dynamic>{
               'program_name': null,
               'weekly_frequency': null,
-              'program_message':
-                  'Your coach controls your program, so none was generated.',
+              'program_message': 'Your assigned coach controls your program. '
+                  'Ask your coach for changes.',
+              'program_message_metadata': _intakeCopyMessage(
+                'intake.program_generation_unavailable.v1',
+                'Your assigned coach controls your program. '
+                    'Ask your coach for changes.',
+              ),
             }
           : <String, dynamic>{
               'program_name': 'Upper/Lower 4x',
               'weekly_frequency': 4,
               'program_message': null,
+              'program_message_metadata': null,
             };
       return FakeResponse(200, <String, dynamic>{
         'status': 'confirmed',
         ...intakeProgram!,
+        'fields': _intakeView()['fields'],
       });
     }
     if (path.startsWith('/onboarding/intake/answers/') &&
@@ -3032,7 +3080,13 @@ class FakeMayosApi {
       if (intakeRejectField == field) {
         intakeRejectField = null;
         return FakeResponse(
-            400, <String, dynamic>{'detail': intakeRejectMessage});
+            400,
+            <String, dynamic>{
+              'detail': intakeRejectMessage,
+              'message_code': 'http.bad_request.v1',
+              'message_params': <String, dynamic>{},
+              'message_fallback': intakeRejectMessage,
+            });
       }
       final String? error = _validateIntakeAnswer(field, value);
       if (error != null) {

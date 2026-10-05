@@ -385,32 +385,8 @@ class ApiClient {
   static ServerFailureMessage? _serverMessageMetadata(
     Map<String, dynamic> body,
     String safeFallback,
-  ) {
-    final bool hasMetadata = body.containsKey('message_code') ||
-        body.containsKey('message_params') ||
-        body.containsKey('message_fallback');
-    if (!hasMetadata) return null;
-    final Object? rawParams = body['message_params'];
-    final Map<String, dynamic>? params = switch (rawParams) {
-      Map<String, dynamic> value => value,
-      Map value => Map<String, dynamic>.from(value),
-      _ => null,
-    };
-    final String? messageCode = switch (body['message_code']) {
-      String value => value,
-      _ => null,
-    };
-    final String fallback = switch (body['message_fallback']) {
-      String value when value.trim().isNotEmpty => value,
-      _ => safeFallback,
-    };
-    return ServerFailureMessage(
-      safeFallback,
-      messageCode: messageCode,
-      messageParams: params,
-      messageFallback: fallback,
-    );
-  }
+  ) =>
+      ServerFailureMessage.parseMetadata(body, safeFallback: safeFallback);
 
   /// The machine-readable code from a service error body, whether it arrives as
   /// `error` (for example `account_deleted`) or alongside a `detail` as `code`.

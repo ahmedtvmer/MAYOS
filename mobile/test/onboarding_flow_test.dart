@@ -322,7 +322,7 @@ void main() {
   });
 
   testWidgets(
-      'Arabic onboarding translates app copy and preserves API explanations',
+      'Arabic onboarding translates app copy and server explanations',
       (tester) async {
     final FakeMayosApi fake = _fake();
     await _pumpOnboarding(tester, fake, languageCode: 'ar');
@@ -334,9 +334,22 @@ void main() {
     await _pumpUntilFound(tester, find.text('أي تخصص تريد أن يوجّه تدريبك؟'));
     expect(find.text('أي تخصص تريد أن يوجّه تدريبك؟'), findsOneWidget);
     expect(
-        find.text(
-            'Your specialization is required and selects the default split family.'),
-        findsOneWidget);
+      find.text(
+        'اختيار التخصص مطلوب. وهو يحدد تقسيمة التدريب الافتراضية التي سنبنيها لك: '
+        'تركز التقسيمات المخصصة للاعبات على عضلات الألوية والجزء السفلي من الجسم، '
+        'أما التقسيمات المخصصة للاعبين فتتبع تقسيمتنا المتوازنة المعتادة. ويحدد '
+        'عدد أيام تدريبك أسبوعيًا شكل التقسيمة بالتفصيل.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('أنثى'), findsOneWidget);
+    expect(
+      find.text(
+        'تُخصص التقسيمات بحسب عدد الأيام: Glute-specialised Full Body عند '
+        '1-3 أيام، وLower-body (glute bias) وUpper body + core عند 4-5 أيام.',
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('the disclosure gates every answer', (WidgetTester tester) async {
@@ -469,6 +482,85 @@ void main() {
     expect(find.text('Proportional upper and lower body'), findsOneWidget);
   });
 
+  testWidgets('switching language keeps the draft and saved answers intact',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _fake(acknowledged: true)
+      ..intakeAnswers.addAll(<String, Object>{
+        'gender': 'female',
+        'proportions': 'balanced',
+        'age': 30,
+        'height_cm': 175.0,
+        'weight_kg': 75.0,
+        'training_age_years': 2.0,
+      });
+    await _pumpOnboarding(tester, fake);
+
+    expect(find.text(questionFor('current_goal')), findsOneWidget);
+    expect(find.text('What are you training for right now?'), findsOneWidget);
+    expect(find.text('build glutes and legs'), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const Key('current_goal_input')),
+      'Build strength for climbing',
+    );
+
+    final BuildContext context =
+        tester.element(find.byType(OnboardingScaffold));
+    final ProviderContainer container = ProviderScope.containerOf(context);
+    await container.read(displayLanguageProvider.notifier).choose('ar');
+    await tester.pump();
+
+    expect(find.text('ما هدفك الأساسي الآن؟'), findsOneWidget);
+    expect(find.text('ما الذي تتمرن من أجله الآن؟'), findsOneWidget);
+    expect(find.text('بناء عضلات الألوية والساقين'), findsOneWidget);
+    final TextField field = tester.widget<TextField>(
+      find.byKey(const Key('current_goal_input')),
+    );
+    expect(field.controller!.text, 'Build strength for climbing');
+    expect(fake.intakeAnswers['gender'], 'female');
+    expect(fake.intakeAnswers['proportions'], 'balanced');
+  });
+
+  testWidgets('unknown intake copy metadata keeps its English fallback',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _fake(acknowledged: true)
+      ..intakeFieldOverrides['gender'] = <String, dynamic>{
+        'explanation_message': <String, dynamic>{
+          'message_code': 'intake.gender.future_copy.v1',
+          'message_params': <String, dynamic>{},
+          'message_fallback':
+              'Your specialization is required and selects the default split family.',
+        },
+      };
+    await _pumpOnboarding(tester, fake, languageCode: 'ar');
+
+    expect(
+      find.text('Your specialization is required and selects the default split family.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Arabic invalid intake answers use the shared localized error',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _fake(acknowledged: true)
+      ..intakeAnswers.addAll(
+          <String, Object>{'gender': 'female', 'proportions': 'balanced'});
+    await _pumpOnboarding(tester, fake, languageCode: 'ar');
+    fake.intakeRejectField = 'age';
+
+    await _tapAndFind(tester, find.byKey(const Key('age_direct_toggle')),
+        find.byKey(const Key('age_input')));
+    await tester.enterText(find.byKey(const Key('age_input')), '29');
+    await tester.tap(find.byKey(const Key('onboarding_continue')));
+    await _pumpUntilFound(
+      tester,
+      find.text('تعذر تنفيذ الطلب. راجع البيانات وحاول مجددًا.'),
+    );
+
+    expect(find.text('تعذر تنفيذ الطلب. راجع البيانات وحاول مجددًا.'),
+        findsOneWidget);
+    expect(fake.intakeAnswers.containsKey('age'), isFalse);
+  });
+
   testWidgets('an optional field can be skipped', (WidgetTester tester) async {
     final FakeMayosApi fake = _fake(acknowledged: true);
     await _pumpOnboarding(tester, fake);
@@ -524,23 +616,29 @@ void main() {
     expect(_continueEnabled(tester), isTrue);
   });
 
-  testWidgets('resume opens at the first unanswered required field',
-      (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake(acknowledged: true)
-      ..intakeAnswers.addAll(<String, Object>{
-        'gender': 'female',
-        'proportions': 'balanced',
-      });
-    await _pumpOnboarding(tester, fake);
+  for (final String languageCode in const <String>['en', 'ar']) {
+    testWidgets('resume opens at the first unanswered field ($languageCode)',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = _fake(acknowledged: true)
+        ..intakeAnswers.addAll(<String, Object>{
+          'gender': 'female',
+          'proportions': 'balanced',
+        });
+      await _pumpOnboarding(tester, fake, languageCode: languageCode);
 
-    expect(find.text(questionFor('age')), findsOneWidget);
-    await _tapAndFind(tester, find.byKey(const Key('onboarding_back')),
-        find.byKey(const Key('proportions_option_balanced')));
-    expect(
-      tester.getSemantics(find.byKey(const Key('proportions_option_balanced'))),
-      isSemantics(isSelected: true, isButton: true),
-    );
-  });
+      expect(
+        find.text(languageCode == 'ar' ? 'كم عمرك؟' : questionFor('age')),
+        findsOneWidget,
+      );
+      await _tapAndFind(tester, find.byKey(const Key('onboarding_back')),
+          find.byKey(const Key('proportions_option_balanced')));
+      expect(
+        tester.getSemantics(
+            find.byKey(const Key('proportions_option_balanced'))),
+        isSemantics(isSelected: true, isButton: true),
+      );
+    });
+  }
 
   testWidgets('an answer can be edited from review and returns to review',
       (WidgetTester tester) async {
@@ -616,45 +714,74 @@ void main() {
       find.text('يتطلب هذا اتصالًا بالإنترنت. لم يتغير شيء.'),
       findsOneWidget,
     );
-    expect(find.text('build glutes and legs'), findsWidgets);
+    expect(find.text('بناء عضلات الألوية والساقين'), findsWidgets);
     expect(fake.intakeAnswers.containsKey('current_goal'), isFalse);
   });
 
-  testWidgets('confirm only acts from review and lands on Home',
-      (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake(acknowledged: true)
-      ..recoveryEmail = 'alice@example.com'
-      ..intakeAnswers.addAll(_requiredAnswers);
-    tester.view.physicalSize = const Size(393, 852);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final InMemoryTokenStore tokens = await _signedInTokens();
+  for (final MapEntry<String, bool> testCase in <MapEntry<String, bool>>[
+    const MapEntry<String, bool>('en', false),
+    const MapEntry<String, bool>('ar', false),
+    const MapEntry<String, bool>('ar', true),
+  ]) {
+    final String languageCode = testCase.key;
+    final bool noProgram = testCase.value;
+    testWidgets('confirm works from review and lands on Home '
+        '($languageCode, program unavailable: $noProgram)',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = _fake(acknowledged: true)
+        ..displayLanguage = languageCode
+        ..nullOnboardingProgram = noProgram
+        ..recoveryEmail = 'alice@example.com'
+        ..intakeAnswers.addAll(_requiredAnswers);
+      tester.view.physicalSize = const Size(393, 852);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final InMemoryTokenStore tokens = await _signedInTokens();
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: <Override>[
-          tokenStoreProvider.overrideWithValue(tokens),
-          appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
-          themeModeStoreProvider.overrideWithValue(InMemoryThemeModeStore()),
-          draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
-          workoutCacheStoreProvider
-              .overrideWithValue(InMemoryWorkoutCacheStore()),
-          chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
-          _apiOverride(fake),
-        ],
-        child: const MayosApp(),
-      ),
-    );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: <Override>[
+            tokenStoreProvider.overrideWithValue(tokens),
+            appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
+            themeModeStoreProvider.overrideWithValue(InMemoryThemeModeStore()),
+            draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
+            workoutCacheStoreProvider
+                .overrideWithValue(InMemoryWorkoutCacheStore()),
+            chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
+            _apiOverride(fake),
+          ],
+          child: const MayosApp(),
+        ),
+      );
 
-    await _pumpUntilFound(tester, find.byKey(const Key('onboarding_confirm')));
-    await tester.tap(find.byKey(const Key('onboarding_confirm')));
-    await _pumpUntilFound(tester, find.textContaining('Next session'));
-
-    expect(find.textContaining('Next session'), findsOneWidget);
-    expect(fake.intakeStatus, 'confirmed');
-    expect(fake.profileExists, isTrue);
-  });
+      await _pumpUntilFound(tester, find.byKey(const Key('onboarding_confirm')));
+      await tester.tap(find.byKey(const Key('onboarding_confirm')));
+      if (noProgram) {
+        await _pumpUntilFound(
+          tester,
+          find.text(
+            'يتحكم مدربك المعيّن في برنامجك التدريبي. '
+            'اطلب من مدربك إجراء التغييرات.',
+          ),
+        );
+        expect(
+          find.text(
+            'يتحكم مدربك المعيّن في برنامجك التدريبي. '
+            'اطلب من مدربك إجراء التغييرات.',
+          ),
+          findsOneWidget,
+        );
+      } else {
+        final String nextSession =
+            languageCode == 'ar' ? 'الحصة التالية' : 'Next session';
+        await _pumpUntilFound(tester, find.textContaining(nextSession));
+        expect(find.textContaining(nextSession), findsOneWidget);
+      }
+      expect(fake.intakeStatus, 'confirmed');
+      expect(fake.profileExists, isTrue);
+    });
+  }
 
   for (final Size size in const <Size>[
     Size(360, 640),

@@ -350,7 +350,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _copy.profileFieldName(field.name, optionLabel('', field.name)),
       );
     }
-    return field.hint ??
+    return field.hint?.resolve(_copy.languageCode) ??
         _copy.checkFieldAndRetry(
           _copy.profileFieldName(
               field.name, optionLabel('', field.name).toLowerCase()),

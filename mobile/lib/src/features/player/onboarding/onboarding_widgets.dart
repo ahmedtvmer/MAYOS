@@ -37,32 +37,22 @@ String optionLabel(String fieldName, String value) =>
 String onboardingOptionLabel(
   IntakeField field,
   String value, {
-  OnboardingCopy? copy,
+  required OnboardingCopy copy,
 }) {
-  final OnboardingCopy activeCopy = copy ?? const OnboardingCopy('en');
-  final String? localized = activeCopy.option(field.name, value);
+  final String? localized = copy.option(field.name, value);
   if (localized != null) return localized;
-  if (!activeCopy.isArabic) return _readableWireValue(value);
-  return field.optionDescriptions[value] ?? activeCopy.unknownOption;
+  if (!copy.isArabic) return _readableWireValue(value);
+  return field.optionDescriptions[value]?.resolve(copy.languageCode) ??
+      copy.unknownOption;
 }
 
 /// The English editorial question, sourced from the shared onboarding copy.
 String questionFor(String fieldName, {String? serverLabel}) =>
     OnboardingCopy('en').question(fieldName, serverLabel: serverLabel);
 
-/// A short line under the question. The API's own explanation is used verbatim
-/// when it provides one, so the app never invents a training claim.
-String? explanationFor(IntakeField field) {
-  final String? explanation = field.explanation;
-  if (explanation == null || explanation.isEmpty) {
-    return null;
-  }
-  return explanation;
-}
-
 /// How one saved answer reads on the review screen.
-String displayAnswer(IntakeField field, {OnboardingCopy? copy}) {
-  final OnboardingCopy activeCopy = copy ?? const OnboardingCopy('en');
+String displayAnswer(IntakeField field, {required OnboardingCopy copy}) {
+  final OnboardingCopy activeCopy = copy;
   final Object? answer = field.answer;
   if (answer == null) {
     return activeCopy.notAnswered;
@@ -495,6 +485,8 @@ class ProportionSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final String displayLanguage = displayCopyOf(context).languageCode;
+    final OnboardingCopy copy = OnboardingCopy(displayLanguage);
     final double scale = MediaQuery.textScalerOf(context).scale(14) / 14;
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
@@ -507,9 +499,9 @@ class ProportionSelector extends StatelessWidget {
               title: onboardingOptionLabel(
                 field,
                 value,
-                copy: OnboardingCopy(displayCopyOf(context).languageCode),
+                copy: copy,
               ),
-              caption: field.optionDescriptions[value],
+              caption: field.optionDescriptions[value]?.resolve(displayLanguage),
               silhouette: ProportionSilhouette(
                 shape: proportionShapeFor(value),
                 selected: value == selected,

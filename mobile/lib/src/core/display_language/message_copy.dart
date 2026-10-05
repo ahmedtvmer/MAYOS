@@ -1,4 +1,5 @@
 import 'arabic_count.dart';
+import 'intake_copy.dart';
 
 class MessageCopy {
   const MessageCopy(this.languageCode);
@@ -97,6 +98,9 @@ class MessageCopy {
     }
     return translation;
   }
+
+  String? intakeCopy(String code) =>
+      isArabic ? arabicIntakeCopy[code] : null;
 
   String missedExpectedDays(int count, String start, String end) {
     if (!isArabic) return missedExpectedDaysFallback(count, start, end);

@@ -1,4 +1,4 @@
-"""Stable, additive structured messages for API errors and coach alerts."""
+"""Stable structured messages for API errors, coach alerts, and intake copy."""
 
 from __future__ import annotations
 
@@ -115,14 +115,24 @@ ERROR_MESSAGE_PARAM_ALLOWLISTS = {
     "program_request.selection_invalid.v1": frozenset(),
     "intake.structured_active.v1": frozenset(),
     "intake.in_progress.v1": frozenset(),
+    "intake.program_generation_unavailable.v1": frozenset(),
     "coach.ai_unavailable.v1": frozenset(),
     "media.unavailable.v1": frozenset(),
     "media.not_found.v1": frozenset(),
 }
+INTAKE_COPY_MESSAGE_PARAM_ALLOWLISTS: dict[str, frozenset[str]] = {}
 MESSAGE_PARAM_ALLOWLISTS = {
     **COACH_ALERT_MESSAGE_PARAM_ALLOWLISTS,
     **ERROR_MESSAGE_PARAM_ALLOWLISTS,
 }
+
+
+def register_intake_copy_message_allowlists(
+    allowlists: Mapping[str, frozenset[str]],
+) -> None:
+    """Adds intake codes after spec loading without importing intake here."""
+    INTAKE_COPY_MESSAGE_PARAM_ALLOWLISTS.update(allowlists)
+    MESSAGE_PARAM_ALLOWLISTS.update(allowlists)
 
 _HTTP_STATUS_CODES = {
     400: "http.bad_request.v1",

@@ -9,6 +9,7 @@ import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/copy_context.dart';
+import '../../../core/display_language/localized_text.dart';
 import '../../../core/display_language/onboarding_copy.dart';
 import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
@@ -121,7 +122,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         return;
       }
       if (intake.isConfirmed) {
-        _finishToHome();
+        _finishToHome(
+          programMessage: intake.program?.programMessage?.resolve(
+            ref.read(displayLanguageProvider),
+          ),
+        );
         return;
       }
       final String viewedStep = !intake.disclosureAcknowledged
@@ -377,11 +382,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       _confirmProgramBeingGenerated = false;
     });
     try {
-      await _api.confirmIntake();
+      final IntakeConfirmation confirmation = await _api.confirmIntake();
       if (!mounted) {
         return;
       }
-      _finishToHome();
+      _finishToHome(
+        programMessage: confirmation.programMessage?.resolve(
+          ref.read(displayLanguageProvider),
+        ),
+      );
     } on ApiException catch (error) {
       if (!mounted) {
         return;
@@ -427,7 +436,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         ),
       );
 
-  void _finishToHome() {
+  void _finishToHome({String? programMessage}) {
+    if (programMessage != null && programMessage.isNotEmpty) {
+      mayosMessengerKey.currentState?.showSnackBar(
+        SnackBar(content: Text(programMessage)),
+      );
+    }
     ref.read(authControllerProvider.notifier).markOnboarded();
     if (mounted) {
       context.go(homePath);
@@ -453,6 +467,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final String displayLanguage = displayCopyOf(context).languageCode;
     if (_submitting) {
       return const _OnboardingStatusLayout(child: _BuildingProgramContent());
     }
@@ -473,7 +488,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       case _OnboardingPhase.disclosure:
         return _buildDisclosure();
       case _OnboardingPhase.answering:
-        return _buildFlow();
+        return _buildFlow(displayLanguage);
     }
   }
 
@@ -507,7 +522,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   /// The answering/review flow shares one frame so the progress bar and bottom
   /// action stay put while the central content slides between decisions.
-  Widget _buildFlow() {
+  Widget _buildFlow(String displayLanguage) {
     final IntakeField? field = _fieldByName(_currentField);
     final IntakeProgress progress = _intake?.progress ??
         const IntakeProgress(
@@ -533,7 +548,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         ),
         child: KeyedSubtree(
           key: ValueKey<String>(field?.name ?? 'review'),
-          child: field == null ? _reviewContent(progress) : _stepContent(field),
+          child: field == null
+              ? _reviewContent(progress)
+              : _stepContent(field, displayLanguage),
         ),
       ),
     );
@@ -610,20 +627,20 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     );
   }
 
-  Widget _stepContent(IntakeField field) {
+  Widget _stepContent(IntakeField field, String displayLanguage) {
     final Object? value = _valueFor(field);
     return OnboardingStepBody(
       children: <Widget>[
         OnboardingQuestion(
-          question: OnboardingCopy(displayCopyOf(context).languageCode)
+          question: OnboardingCopy(displayLanguage)
               .question(field.name, serverLabel: field.label),
-          explanation: explanationFor(field),
+          explanation: field.explanation?.resolve(displayLanguage),
           note: field.prefilled
               ? displayCopyOf(context).savedFromEarlierSetup
               : null,
         ),
         const SizedBox(height: MayosSpacing.xl),
-        _buildInteraction(field, value),
+        _buildInteraction(field, value, displayLanguage),
         if (_stepError != null || _stepFailure != null) ...<Widget>[
           const SizedBox(height: MayosSpacing.md),
           OnboardingInlineError(
@@ -642,7 +659,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     return value != null && isFieldAnswerValid(field, value);
   }
 
-  Widget _buildInteraction(IntakeField field, Object? value) {
+  Widget _buildInteraction(
+    IntakeField field,
+    Object? value,
+    String displayLanguage,
+  ) {
     switch (field.name) {
       case 'proportions':
         return ProportionSelector(
@@ -664,7 +685,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     if (field.type == 'enum') {
       return OnboardingChoiceList(
         fieldName: field.name,
-        options: _enumOptions(field),
+        options: _enumOptions(field, displayLanguage),
         selected: value is String ? value : null,
         onSelected: (String selected) =>
             setState(() => _draft[field.name] = selected),
@@ -678,8 +699,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         maximum: field.maximum ?? 100,
         integer: field.type == 'int',
         step: _stepFor(field),
-        unit: OnboardingCopy(displayCopyOf(context).languageCode)
-            .unitFor(field.name),
+        unit: OnboardingCopy(displayLanguage).unitFor(field.name),
         value: value is num ? value : null,
         onChanged: (num? next) => setState(() {
           if (next == null) {
@@ -693,8 +713,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     return TextFieldEditor(
       fieldName: field.name,
       controller: _controllerFor(field),
-      hint: field.hint ?? displayCopyOf(context).typeYourAnswer,
-      examples: field.examples,
+      hint: field.hint?.resolve(displayLanguage) ??
+          displayCopyOf(context).typeYourAnswer,
+      examples: field.examples
+          .map((LocalizedText example) => example.resolve(displayLanguage))
+          .toList(growable: false),
       quickOptions: field.name == 'injuries_or_limitations'
           ? <String>[displayCopyOf(context).none]
           : const <String>[],
@@ -707,7 +730,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         _ => 1,
       };
 
-  List<OnboardingChoiceOption> _enumOptions(IntakeField field) {
+  List<OnboardingChoiceOption> _enumOptions(
+    IntakeField field,
+    String displayLanguage,
+  ) {
     return <OnboardingChoiceOption>[
       for (final String value in field.allowedValues)
         OnboardingChoiceOption(
@@ -715,9 +741,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           label: onboardingOptionLabel(
             field,
             value,
-            copy: OnboardingCopy(displayCopyOf(context).languageCode),
+            copy: OnboardingCopy(displayLanguage),
           ),
-          subtitle: field.optionDescriptions[value],
+          subtitle: field.optionDescriptions[value]?.resolve(displayLanguage),
           icon: _iconFor(field.name, value),
         ),
     ];

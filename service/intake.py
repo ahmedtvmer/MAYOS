@@ -31,6 +31,10 @@ from service import analytics
 from service.program_analytics import ProgramAnalyticsActor, capture_program_generated
 from service.profile import PROFILE_REBUILD_FIELDS
 from service._base import ledger_scope
+from service.messages import (
+    register_intake_copy_message_allowlists,
+    structured_message,
+)
 from utils.equipment_access import (
     BODYWEIGHT_ONLY,
     COMMERCIAL_GYM,
@@ -205,6 +209,50 @@ def _range_message(spec: IntakeField) -> str:
     if spec.minimum is not None:
         return f">= {spec.minimum:g}"
     return f"<= {spec.maximum:g}"
+
+
+def _intake_copy_message(code: str, fallback: str | None) -> dict[str, Any] | None:
+    """Adds shared structured metadata without changing the English copy."""
+    if fallback is None:
+        return None
+    return structured_message(code, {}, fallback)
+
+
+def _program_message_metadata(message: str | None) -> dict[str, Any] | None:
+    if message is None:
+        return None
+    return structured_message(
+        "intake.program_generation_unavailable.v1", {}, message
+    )
+
+
+def _intake_option_slug(wire_value: str) -> str:
+    """Maps a stable enum wire value to its readable metadata-code segment."""
+    return re.sub(r"[^a-z0-9]+", "_", wire_value.lower()).strip("_")
+
+
+def _intake_field_copy_codes(spec: IntakeField) -> tuple[str, ...]:
+    codes = []
+    for kind, copy_text in (("explanation", spec.explanation), ("hint", spec.hint)):
+        if copy_text is not None:
+            codes.append(f"intake.{spec.name}.{kind}.v1")
+    codes.extend(
+        f"intake.{spec.name}.example.{index}.v1"
+        for index, _ in enumerate(spec.examples, start=1)
+    )
+    codes.extend(
+        f"intake.{spec.name}.option.{_intake_option_slug(value)}.v1"
+        for value in spec.option_descriptions
+    )
+    return tuple(codes)
+
+
+INTAKE_COPY_MESSAGE_PARAM_ALLOWLISTS = {
+    code: frozenset()
+    for spec in INTAKE_FIELDS
+    for code in _intake_field_copy_codes(spec)
+}
+register_intake_copy_message_allowlists(INTAKE_COPY_MESSAGE_PARAM_ALLOWLISTS)
 
 
 def _validate_enum(spec: IntakeField, raw: Any, *, case_insensitive: bool = False) -> str:
@@ -459,9 +507,28 @@ def build_view(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, 
                 "maximum_length": MAX_TEXT_LENGTH if spec.kind == "text" else None,
                 "profile_field": spec.profile_key,
                 "explanation": spec.explanation,
+                "explanation_message": _intake_copy_message(
+                    f"intake.{spec.name}.explanation.v1", spec.explanation
+                ),
                 "hint": spec.hint,
+                "hint_message": _intake_copy_message(
+                    f"intake.{spec.name}.hint.v1", spec.hint
+                ),
                 "examples": list(spec.examples),
+                "example_messages": [
+                    _intake_copy_message(
+                        f"intake.{spec.name}.example.{index}.v1", example
+                    )
+                    for index, example in enumerate(spec.examples, start=1)
+                ],
                 "option_descriptions": dict(spec.option_descriptions),
+                "option_description_messages": {
+                    option_value: _intake_copy_message(
+                        f"intake.{spec.name}.option.{_intake_option_slug(option_value)}.v1",
+                        option_description,
+                    )
+                    for option_value, option_description in spec.option_descriptions.items()
+                },
                 "answer": entry["value"] if entry else None,
                 "prefilled": bool(entry["prefilled"]) if entry else False,
                 "answered": entry is not None,
@@ -472,10 +539,12 @@ def build_view(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, 
     status = state.get("status", STATUS_IN_PROGRESS)
     program = None
     if status == STATUS_CONFIRMED:
+        program_message = state.get("program_message")
         program = {
             "program_name": state.get("program_name"),
             "weekly_frequency": state.get("weekly_frequency"),
-            "program_message": state.get("program_message"),
+            "program_message": program_message,
+            "program_message_metadata": _program_message_metadata(program_message),
         }
     return {
         "status": status,
@@ -526,11 +595,13 @@ def save_answer(
 
 
 def _confirmation_result(state: dict[str, Any]) -> dict[str, Any]:
+    program_message = state.get("program_message")
     return {
         "status": STATUS_CONFIRMED,
         "program_name": state.get("program_name"),
         "weekly_frequency": state.get("weekly_frequency"),
-        "program_message": state.get("program_message"),
+        "program_message": program_message,
+        "program_message_metadata": _program_message_metadata(program_message),
     }
 
 
@@ -613,6 +684,9 @@ def confirm_intake(
                 "program_name": None,
                 "weekly_frequency": None,
                 "program_message": result.get("program_message"),
+                "program_message_metadata": _program_message_metadata(
+                    result.get("program_message")
+                ),
             }
 
         ledger.save_intake_state(

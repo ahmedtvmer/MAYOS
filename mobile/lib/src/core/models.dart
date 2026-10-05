@@ -5,6 +5,7 @@ library;
 import 'config.dart';
 import 'app_failure.dart';
 import 'display_language/catalog.dart';
+import 'display_language/localized_text.dart';
 import 'effort.dart';
 import 'rest_length.dart';
 
@@ -1373,6 +1374,40 @@ class OnboardingCompletion {
   bool get hasProgram => programName != null && weeklyFrequency != null;
 }
 
+LocalizedText? _localizedIntakeCopy(Object? text, Object? metadata) {
+  if (text == null && metadata == null) return null;
+  return LocalizedText.fromJson(text: text, metadata: metadata);
+}
+
+List<LocalizedText> _localizedIntakeExamples(
+  Object? rawTexts,
+  Object? rawMetadata,
+) {
+  final List<dynamic> texts = rawTexts as List<dynamic>? ?? const [];
+  final List<dynamic> metadata = rawMetadata as List<dynamic>? ?? const [];
+  return <LocalizedText>[
+    for (int index = 0; index < texts.length; index++)
+      LocalizedText.fromJson(
+        text: texts[index].toString(),
+        metadata: index < metadata.length ? metadata[index] : null,
+      ),
+  ];
+}
+
+Map<String, LocalizedText> _localizedIntakeOptions(
+  Object? rawTexts,
+  Object? rawMetadata,
+) {
+  final Map<String, dynamic> texts =
+      rawTexts as Map<String, dynamic>? ?? const <String, dynamic>{};
+  final Map<String, dynamic> metadata =
+      rawMetadata as Map<String, dynamic>? ?? const <String, dynamic>{};
+  return texts.map((String key, dynamic text) => MapEntry<String, LocalizedText>(
+        key,
+        LocalizedText.fromJson(text: text.toString(), metadata: metadata[key]),
+      ));
+}
+
 /// One named decision in the structured onboarding intake (`GET /onboarding/intake`).
 ///
 /// [type] is the domain kind (`enum`/`int`/`float`/`text`); [allowedValues],
@@ -1392,8 +1427,8 @@ class IntakeField {
     this.maximumLength,
     this.explanation,
     this.hint,
-    this.examples = const <String>[],
-    this.optionDescriptions = const <String, String>{},
+    this.examples = const <LocalizedText>[],
+    this.optionDescriptions = const <String, LocalizedText>{},
     this.answer,
     this.prefilled = false,
     this.answered = false,
@@ -1422,16 +1457,19 @@ class IntakeField {
       maximum: (json['maximum'] as num?)?.toDouble(),
       minimumLength: (json['minimum_length'] as num?)?.toInt(),
       maximumLength: (json['maximum_length'] as num?)?.toInt(),
-      explanation: json['explanation'] as String?,
-      hint: json['hint'] as String?,
-      examples: (json['examples'] as List<dynamic>? ?? const [])
-          .map((dynamic v) => v.toString())
-          .toList(growable: false),
-      optionDescriptions:
-          (json['option_descriptions'] as Map<String, dynamic>? ??
-                  const <String, dynamic>{})
-              .map((String key, dynamic v) =>
-                  MapEntry<String, String>(key, v.toString())),
+      explanation: _localizedIntakeCopy(
+        json['explanation'],
+        json['explanation_message'],
+      ),
+      hint: _localizedIntakeCopy(json['hint'], json['hint_message']),
+      examples: _localizedIntakeExamples(
+        json['examples'],
+        json['example_messages'],
+      ),
+      optionDescriptions: _localizedIntakeOptions(
+        json['option_descriptions'],
+        json['option_description_messages'],
+      ),
       answer: json['answer'],
       prefilled: json['prefilled'] as bool? ?? false,
       answered: json['answered'] as bool? ?? false,
@@ -1449,13 +1487,13 @@ class IntakeField {
   final double? maximum;
   final int? minimumLength;
   final int? maximumLength;
-  final String? explanation;
-  final String? hint;
-  final List<String> examples;
+  final LocalizedText? explanation;
+  final LocalizedText? hint;
+  final List<LocalizedText> examples;
 
   /// Player-facing description per allowed value, written from the generation
   /// rule for that value. Empty for fields without enum values.
-  final Map<String, String> optionDescriptions;
+  final Map<String, LocalizedText> optionDescriptions;
   final Object? answer;
   final bool prefilled;
   final bool answered;
@@ -1497,12 +1535,15 @@ class IntakeProgram {
   factory IntakeProgram.fromJson(Map<String, dynamic> json) => IntakeProgram(
         programName: json['program_name'] as String?,
         weeklyFrequency: (json['weekly_frequency'] as num?)?.toInt(),
-        programMessage: json['program_message'] as String?,
+        programMessage: _localizedIntakeCopy(
+          json['program_message'],
+          json['program_message_metadata'],
+        ),
       );
 
   final String? programName;
   final int? weeklyFrequency;
-  final String? programMessage;
+  final LocalizedText? programMessage;
 
   bool get hasProgram => programName != null && weeklyFrequency != null;
 }
@@ -1578,13 +1619,16 @@ class IntakeConfirmation {
         status: json['status'] as String? ?? 'confirmed',
         programName: json['program_name'] as String?,
         weeklyFrequency: (json['weekly_frequency'] as num?)?.toInt(),
-        programMessage: json['program_message'] as String?,
+        programMessage: _localizedIntakeCopy(
+          json['program_message'],
+          json['program_message_metadata'],
+        ),
       );
 
   final String status;
   final String? programName;
   final int? weeklyFrequency;
-  final String? programMessage;
+  final LocalizedText? programMessage;
 
   bool get hasProgram => programName != null && weeklyFrequency != null;
 }

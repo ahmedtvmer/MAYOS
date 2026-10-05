@@ -1,16 +1,31 @@
 import re
 from pathlib import Path
 
-from service import messages
+from service import intake, messages
+
+
+def _intake_copy_codes_from_specs():
+    codes = set()
+    for field in intake.INTAKE_FIELDS:
+        if field.explanation is not None:
+            codes.add(f"intake.{field.name}.explanation.v1")
+        if field.hint is not None:
+            codes.add(f"intake.{field.name}.hint.v1")
+        codes.update(
+            f"intake.{field.name}.example.{index}.v1"
+            for index, _ in enumerate(field.examples, start=1)
+        )
+        codes.update(
+            f"intake.{field.name}.option.{intake._intake_option_slug(value)}.v1"
+            for value in field.option_descriptions
+        )
+    return codes
 
 
 def test_structured_message_codes_match_dart_resolver_and_server_allowlists():
     repository_root = Path(messages.__file__).resolve().parents[1]
     service_source = Path(messages.__file__).read_text(encoding="utf-8")
-    resolver_path = (
-        repository_root
-        / "mobile/lib/src/core/display_language/message_resolver.dart"
-    )
+    resolver_path = repository_root / "mobile/lib/src/core/display_language/message_resolution.dart"
     resolver_source = resolver_path.read_text(encoding="utf-8")
 
     code_prefixes = (
@@ -20,6 +35,7 @@ def test_structured_message_codes_match_dart_resolver_and_server_allowlists():
     service_codes = set(
         re.findall(rf'"((?:{code_prefixes})\.[^"]+)"', service_source)
     )
+    service_codes.update(_intake_copy_codes_from_specs())
     server_allowlist_codes = set(messages.MESSAGE_PARAM_ALLOWLISTS)
     resolver_template_codes = set(
         re.findall(
@@ -93,3 +109,29 @@ def test_untrusted_or_incomplete_message_params_are_rejected():
     assert missing == invalid
     assert malformed_type == invalid
     assert unexpected == invalid
+
+
+def test_intake_message_codes_have_resolver_and_arabic_copy_entries():
+    repository_root = Path(messages.__file__).resolve().parents[1]
+    resolver_source = (
+        repository_root / "mobile/lib/src/core/display_language/message_resolution.dart"
+    ).read_text(encoding="utf-8")
+    copy_source = (
+        repository_root / "mobile/lib/src/core/display_language/intake_copy.dart"
+    ).read_text(encoding="utf-8")
+    generated_codes = _intake_copy_codes_from_specs()
+    resolver_codes = set(
+        re.findall(r"^\s*'(intake\.[^']+)': <String>\{", resolver_source, re.MULTILINE)
+    )
+    arabic_codes = set(
+        re.findall(r"^\s*'(intake\.[^']+)':", copy_source, re.MULTILINE)
+    )
+
+    assert generated_codes == set(intake.INTAKE_COPY_MESSAGE_PARAM_ALLOWLISTS)
+    assert generated_codes <= set(messages.MESSAGE_PARAM_ALLOWLISTS)
+    assert generated_codes <= resolver_codes
+    assert generated_codes <= arabic_codes
+    program_message_code = "intake.program_generation_unavailable.v1"
+    assert program_message_code in messages.MESSAGE_PARAM_ALLOWLISTS
+    assert program_message_code in resolver_codes
+    assert program_message_code in arabic_codes

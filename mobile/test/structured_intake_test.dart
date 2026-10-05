@@ -40,6 +40,28 @@ const Map<String, Object> _answers = <String, Object>{
 };
 
 void main() {
+  test('program generation explanation resolves from confirmation metadata', () {
+    const String fallback =
+        'Your assigned coach controls your program. Ask your coach for changes.';
+    final IntakeConfirmation confirmation = IntakeConfirmation.fromJson(
+      <String, dynamic>{
+        'status': 'confirmed',
+        'program_message': fallback,
+        'program_message_metadata': <String, dynamic>{
+          'message_code': 'intake.program_generation_unavailable.v1',
+          'message_params': <String, dynamic>{},
+          'message_fallback': fallback,
+        },
+      },
+    );
+
+    expect(confirmation.programMessage!.resolve('en'), fallback);
+    expect(
+      confirmation.programMessage!.resolve('ar'),
+      'يتحكم مدربك المعيّن في برنامجك التدريبي. اطلب من مدربك إجراء التغييرات.',
+    );
+  });
+
   test('intake contract, disclosure, answers, and confirmation round-trip',
       () async {
     final FakeMayosApi fake = _signedInFake();
@@ -54,17 +76,30 @@ void main() {
       initial.field('gender')!.optionDescriptions.keys,
       containsAll(<String>['male', 'female']),
     );
+    expect(initial.field('gender')!.explanation!.metadata!.messageCode,
+        'intake.gender.explanation.v1');
+    expect(initial.field('gender')!.explanation!.metadata!.messageFallback,
+        initial.field('gender')!.explanation!.text);
     expect(
-      initial.field('proportions')!.optionDescriptions['balanced'],
+      initial.field('gender')!
+          .optionDescriptions['female']!.metadata!.messageCode,
+      'intake.gender.option.female.v1',
+    );
+    expect(
+      initial.field('proportions')!.optionDescriptions['balanced']!.text,
       isNotEmpty,
     );
     expect(initial.progress.requiredTotal, 12);
     expect(initial.progress.nextUnanswered, 'gender');
     expect(
-      initial.field('injuries_or_limitations')!.hint,
+      initial.field('injuries_or_limitations')!.hint!.text,
       contains('None'),
     );
     expect(initial.field('current_goal')!.examples, isNotEmpty);
+    expect(
+      initial.field('current_goal')!.examples.first.metadata!.messageCode,
+      'intake.current_goal.example.1.v1',
+    );
 
     // Answers are refused until the hosted-processing disclosure is accepted.
     await expectLater(

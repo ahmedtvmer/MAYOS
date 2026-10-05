@@ -245,6 +245,140 @@ def test_intake_contract_lists_fields_and_explanations(api):
     assert _field(view, "current_goal")["hint"]
     assert _field(view, "gender")["hint"] is None
 
+    # Server-owned copy carries the shared stable-message shape alongside its
+    # unchanged English text. Raw player answers never enter translation values.
+    explanation = gender["explanation_message"]
+    assert explanation == {
+        "message_code": "intake.gender.explanation.v1",
+        "message_params": {},
+        "message_fallback": gender["explanation"],
+    }
+    option = gender["option_description_messages"]["female"]
+    assert option == {
+        "message_code": "intake.gender.option.female.v1",
+        "message_params": {},
+        "message_fallback": gender["option_descriptions"]["female"],
+    }
+    goal = _field(view, "current_goal")
+    assert goal["hint_message"]["message_code"] == "intake.current_goal.hint.v1"
+    assert [message["message_code"] for message in goal["example_messages"]] == [
+        "intake.current_goal.example.1.v1",
+        "intake.current_goal.example.2.v1",
+        "intake.current_goal.example.3.v1",
+    ]
+    assert all(message["message_params"] == {} for message in goal["example_messages"])
+
+
+def _intake_copy_contract(view: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "name": field["name"],
+            "explanation_message": field["explanation_message"],
+            "hint_message": field["hint_message"],
+            "example_messages": field["example_messages"],
+            "option_description_messages": field["option_description_messages"],
+        }
+        for field in view["fields"]
+    ]
+
+
+def _intake_copy_messages(field: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        message
+        for message in (
+            field["explanation_message"],
+            field["hint_message"],
+            *field["example_messages"],
+            *field["option_description_messages"].values(),
+        )
+        if message is not None
+    ]
+
+
+def test_intake_copy_contract_survives_disclosure_answers_resume_and_confirm(
+    api, monkeypatch
+):
+    client, _, _ = api
+    headers = _register(client, "alice")
+    original = client.get("/onboarding/intake", headers=headers).json()
+    original_copy = _intake_copy_contract(original)
+    for field in original["fields"]:
+        assert all(
+            message["message_params"] == {}
+            for message in _intake_copy_messages(field)
+        )
+
+    acknowledged = _ack(client, headers)
+    assert _intake_copy_contract(acknowledged) == original_copy
+
+    answers = dict(VALID_ANSWERS)
+    answers["current_goal"] = "Build strength for climbing"
+    for field, value in answers.items():
+        response = _answer(client, headers, field, value)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert _intake_copy_contract(body) == original_copy
+
+    resumed = client.get("/onboarding/intake", headers=headers).json()
+    assert _intake_copy_contract(resumed) == original_copy
+    assert _field(resumed, "current_goal")["answer"] == "Build strength for climbing"
+
+    _spy_generation_from_profile(None, monkeypatch)
+    confirmed = client.post("/onboarding/intake/confirm", headers=headers)
+    assert confirmed.status_code == 200, confirmed.text
+    assert _intake_copy_contract({"fields": confirmed.json()["fields"]}) == original_copy
+    assert _field({"fields": confirmed.json()["fields"]}, "current_goal")["answer"] == (
+        "Build strength for climbing"
+    )
+
+
+def test_display_language_does_not_change_intake_facts_or_program(api, monkeypatch):
+    client, _, _ = api
+    _spy_generation_from_profile(None, monkeypatch)
+    results = {}
+    copy_contracts = {}
+    for username, language in (("english_player", "en"), ("arabic_player", "ar")):
+        headers = _register(client, username)
+        changed = client.put(
+            "/auth/display-language",
+            headers=headers,
+            json={"display_language": language},
+        )
+        assert changed.status_code == 200, changed.text
+        acknowledged = _ack(client, headers)
+        copy_contracts[language] = _intake_copy_contract(acknowledged)
+        _fill(client, headers)
+        confirmed = client.post("/onboarding/intake/confirm", headers=headers)
+        assert confirmed.status_code == 200, confirmed.text
+        profile = client.get("/profile", headers=headers).json()
+        program = client.get("/programs/active", headers=headers).json()
+        results[language] = (
+            {
+                key: profile[key]
+                for key in (
+                    "gender",
+                    "proportions",
+                    "age",
+                    "height_cm",
+                    "weight_kg",
+                    "training_age_years",
+                    "current_goal",
+                    "long_term_goal",
+                    "weekly_frequency",
+                    "equipment_access",
+                    "injuries_or_limitations",
+                    "stress_and_sleep",
+                )
+            },
+            {
+                key: program[key]
+                for key in ("program_name", "split_type", "weekly_frequency", "days")
+            },
+        )
+
+    assert results["en"] == results["ar"]
+    assert copy_contracts["en"] == copy_contracts["ar"]
+
 
 @pytest.mark.parametrize(
     "field,value",
@@ -273,6 +407,8 @@ def test_validation_rejects_bad_answers_per_field(api, field, value):
     resp = _answer(client, headers, field, value)
     assert resp.status_code == 400, resp.text
     assert field in resp.json()["detail"]
+    assert resp.json()["message_code"] == "http.bad_request.v1"
+    assert resp.json()["message_params"] == {}
 
 
 def test_unknown_field_rejected(api):
@@ -392,6 +528,54 @@ def test_confirm_writes_profile_and_creates_program_once(api, monkeypatch):
     assert again.status_code == 200
     assert again.json()["program_name"] == "Player Plan"
     assert calls["n"] == 1
+
+
+def test_generation_unavailable_message_is_structured_on_confirm_and_resume(
+    api, monkeypatch
+):
+    client, _, _ = api
+    headers = _register(client, "alice")
+    _ack(client, headers)
+    _fill(client, headers)
+    fallback = "Your assigned coach controls your program. Ask your coach for changes."
+    metadata = {
+        "message_code": "intake.program_generation_unavailable.v1",
+        "message_params": {},
+        "message_fallback": fallback,
+    }
+
+    def no_program_generation(**kwargs):
+        return None, "Generation returned no program."
+
+    monkeypatch.setattr("service.programs.generate_program_pipeline", no_program_generation)
+    monkeypatch.setattr("agent.program_generator.generate_program_pipeline", no_program_generation)
+    confirmed = client.post("/onboarding/intake/confirm", headers=headers)
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["program_message"] == fallback
+    assert confirmed.json()["program_message_metadata"] == metadata
+
+    replayed = client.post("/onboarding/intake/confirm", headers=headers)
+    resumed = client.get("/onboarding/intake", headers=headers)
+    assert replayed.json()["program_message_metadata"] == metadata
+    assert resumed.json()["program"]["program_message_metadata"] == metadata
+
+
+def test_non_confirmed_confirmation_response_keeps_intake_copy_contract(
+    api, monkeypatch
+):
+    client, _, _ = api
+    headers = _register(client, "alice")
+    _ack(client, headers)
+    original = client.get("/onboarding/intake", headers=headers).json()
+    monkeypatch.setattr(
+        "service.intake.confirm_intake", lambda *args, **kwargs: {"status": "in_progress"}
+    )
+
+    response = client.post("/onboarding/intake/confirm", headers=headers)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "in_progress"
+    assert _intake_copy_contract(response.json()) == _intake_copy_contract(original)
 
 
 def test_editing_before_confirm_flows_into_profile_and_program(api, monkeypatch):
