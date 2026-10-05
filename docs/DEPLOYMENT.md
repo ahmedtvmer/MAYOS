@@ -5,6 +5,8 @@ This document details production deployment procedures, container orchestration,
 > **Android closed trial (Fly.io, FastAPI only):** the §10 runbook targets the
 > API service alone on one always-on Machine with a durable volume. See
 > [§10 Fly.io Closed-Trial API Deployment](#10-flyio-closed-trial-api-deployment-fastapi-only).
+> Use the [closed-trial release gate runbook](TRIAL_RELEASE_GATE.md) to collect
+> automated, operational, and interview evidence before expansion.
 > The Docker Compose topology below supports hosted chat inference and local
 > embeddings; it is not the trial topology.
 
