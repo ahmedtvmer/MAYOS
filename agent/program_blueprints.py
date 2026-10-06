@@ -456,7 +456,7 @@ SLOT_STAPLES: dict[str, tuple[str, ...]] = {
     "upper_back_pull": ("606", "327", "1331", "3156"),  # lever T-bar row; incline DB row; reverse-grip incline row; bodyweight row
     "vertical_pull": ("150", "3563", "2330", "1429", "652"),  # Lat Pulldown; standing single-arm pulldown; Standing Cable Pulldown; wide-grip pull-up; pull-up
     "pullover": ("184", "2285", "375", "1255"),  # cable pullover; machine pullover; DB pullover; BB pullover
-    "shrug": ("mayos:1", "220", "406", "95", "604"),  # MAYOS Kelso shrug; cable; DB; BB; machine shrug
+    "shrug": ("305", "220", "406", "95", "604"),  # dumbbell Kelso shrug; cable; DB; BB; machine shrug
     "shoulder_press": ("869", "587", "405", "766", "91"),  # iso-lateral machine press; plate-loaded machine press; seated DB press; Smith press; BB overhead press
     "side_delts": ("178", "584", "395", "977"),  # cable lateral raise; machine lateral raise; seated DB raise; band raise
     "rear_delts": ("mayos:3", "602", "225", "359", "993"),  # MAYOS cable Y-raise; Reverse Pec Deck; cable fly; DB fly; band fly

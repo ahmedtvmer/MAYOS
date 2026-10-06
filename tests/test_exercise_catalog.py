@@ -59,7 +59,7 @@ def api(tmp_path: Path, monkeypatch):
             ("raw-situp", "3/4 sit-up", "Abs", "abs", "body weight"),
             ("raw-shrug", "lever gripless shrug v. 2", "Back", "traps", "cable"),
             ("raw-parenthetical", "cable seated shrug (male)", "Back", "traps", "cable"),
-            ("mayos:1", "Kelso shrug", "Back", "traps", "cable"),
+            ("mayos:3", "Cable Y-raise", "Back", "traps", "cable"),
         ],
     )
     cat_conn.commit()
@@ -650,8 +650,8 @@ def test_replace_browse_ranks_case_only_reviewed_staple_first(api):
 
     assert resp.status_code == 200, resp.text
     matches = resp.json()["exercises"]
-    assert matches[0]["id"] == "mayos:1"
-    assert matches[0]["name"] == "Kelso Shrug"
+    assert matches[0]["id"] == "mayos:3"
+    assert matches[0]["name"] == "Cable Y-Raise"
 
 
 def test_catalog_search_combines_a_name_query_with_the_muscle(api):

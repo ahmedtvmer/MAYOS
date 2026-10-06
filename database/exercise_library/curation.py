@@ -182,7 +182,7 @@ def apply_exercise_curation(
         record = curation.get(exercise_id)
         display_name = (
             effective_names[record.duplicate_of]
-            if record and record.duplicate_of
+            if record and record.duplicate_of in effective_names
             else effective_names[exercise_id]
         )
         _upsert_exercise_names(cursor, exercise_id, record, display_name)
@@ -252,7 +252,8 @@ def _validate_duplicate_reference(
             f"Exercise curation CSV line {record.line_number} id {exercise_id!r} "
             f"sets duplicate_of to {record.duplicate_of!r} while hidden is false"
         )
-    if record.duplicate_of not in exercise_ids:
+    # A target the curation file knows but a partial seed lacks is not dangling.
+    if record.duplicate_of not in exercise_ids and record.duplicate_of not in curation:
         raise ValueError(
             f"Exercise curation CSV line {record.line_number} id {exercise_id!r} "
             f"has missing duplicate_of value {record.duplicate_of!r}"

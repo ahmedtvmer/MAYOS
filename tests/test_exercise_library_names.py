@@ -115,8 +115,14 @@ def test_mayos_authored_staples_are_searchable_and_have_reviewable_details(seed_
     fresh_store = seed_store
     _seed_minimal_library(fresh_store, tmp_path / "seed.csv")
 
+    # The cable Kelso shrug is hidden as a duplicate of the dumbbell Kelso shrug (305):
+    # still readable by id for existing programs, never offered in search.
+    kelso = fresh_store.get_exercise_library_detail("mayos:1")
+    assert kelso["provenance"] == "MAYOS"
+    assert fresh_store.is_exercise_library_exercise_visible("mayos:1") is False
+    assert all(result["id"] != "mayos:1" for result in fresh_store.find_exercises_by_name("kelso shrug"))
+
     expected = {
-        "mayos:1": ("Kelso Shrug", "kelso shrug", "back", "traps", ("lats", "rhomboids"), "cable"),
         "mayos:2": ("Bayesian Curl", "bayesian curl", "upper arms", "biceps", ("forearms",), "cable"),
         "mayos:3": ("Cable Y-Raise", "cable y raise", "shoulders", "delts", ("traps",), "cable"),
         "mayos:4": ("Machine Hip Thrust", "machine hip thrust", "upper legs", "glutes", ("hamstrings",), "leverage machine"),
@@ -235,10 +241,10 @@ def test_loading_fails_when_a_staple_is_hidden(seed_store, tmp_path):
     curation_path = tmp_path / "curation.csv"
     _write_curated_rows(
         curation_path,
-        [["mayos:1", "Kelso shrug", "", "", "", "", "", "", "true", ""]],
+        [["mayos:2", "Bayesian curl", "", "", "", "", "", "", "true", ""]],
     )
 
-    with pytest.raises(ValueError, match="line 2 id 'mayos:1'.*Staple exercise hidden"):
+    with pytest.raises(ValueError, match="line 2 id 'mayos:2'.*Staple exercise hidden"):
         seed_store.initialize_and_seed(seed_path, curation_path)
 
 
