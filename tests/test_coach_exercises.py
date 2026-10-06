@@ -193,6 +193,12 @@ def test_create_and_search_are_https_only_and_isolated_to_owner(api, seed_exerci
     assert filtered_query.status_code == 200, filtered_query.text
     assert [row["id"] for row in filtered_query.json()["exercises"]] == ["sq"]
     assert client.get("/coach/exercises", headers=first_coach).status_code == 400
+    replacement_only = client.get(
+        "/coach/exercises",
+        headers=first_coach,
+        params={"replacing_exercise_id": "sq"},
+    )
+    assert replacement_only.status_code == 400
 
     invalid = client.get(
         "/coach/exercises",
@@ -206,6 +212,118 @@ def test_create_and_search_are_https_only_and_isolated_to_owner(api, seed_exerci
     second_results = client.get("/coach/exercises", headers=second_coach, params={"query": "pin squat"})
     assert second_results.status_code == 200, second_results.text
     assert second_results.json()["exercises"] == []
+
+
+def test_filter_browse_ranks_replacement_and_keeps_fallback_order(
+    api, seed_exercise_curation
+):
+    client, db = api
+    coach_headers = _make_coach(client, db, "replacement-ranking-coach")
+    library_rows = [
+        ("rank-both-a", "Alpha Press"),
+        ("rank-action", "Bravo Press"),
+        ("rank-muscle", "Charlie Press"),
+        ("rank-rest", "Delta Press"),
+        ("rank-both-z", "Echo Press"),
+        ("rank-reference", "Zulu Press"),
+    ]
+    db.catalog_conn.executemany(
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) "
+        "VALUES (?, ?, 'Chest', 'Chest', 'barbell')",
+        library_rows,
+    )
+    db.catalog_conn.commit()
+    seed_exercise_curation(
+        db,
+        {
+            "rank-reference": {
+                "display_name": "Zulu Press",
+                "primary_action": "Shoulder Horizontal Adduction",
+                "primary_muscle": "Chest",
+            },
+            "rank-both-a": {
+                "display_name": "Alpha Press",
+                "primary_action": "Shoulder Horizontal Adduction",
+                "primary_muscle": "Chest",
+            },
+            "rank-action": {
+                "display_name": "Bravo Press",
+                "primary_action": "Shoulder Horizontal Adduction",
+                "primary_muscle": "Triceps",
+            },
+            "rank-muscle": {
+                "display_name": "Charlie Press",
+                "primary_action": "Shoulder Horizontal Abduction",
+                "primary_muscle": "Chest",
+            },
+            "rank-rest": {
+                "display_name": "Delta Press",
+                "primary_action": "Elbow Flexion",
+                "primary_muscle": "Biceps",
+            },
+            "rank-both-z": {
+                "display_name": "Echo Press",
+                "primary_action": "Shoulder Horizontal Adduction",
+                "primary_muscle": "Chest",
+            },
+        },
+    )
+    owned = _create_exercise(client, coach_headers, "Owned press")
+    params = {"equipment_category": "Free weight"}
+
+    ordinary = client.get("/coach/exercises", headers=coach_headers, params=params)
+    ranked = client.get(
+        "/coach/exercises",
+        headers=coach_headers,
+        params={**params, "replacing_exercise_id": "rank-reference"},
+    )
+
+    assert ordinary.status_code == 200, ordinary.text
+    assert ranked.status_code == 200, ranked.text
+    display_order = [
+        "rank-both-a",
+        "rank-action",
+        "rank-muscle",
+        "rank-rest",
+        "rank-both-z",
+        "rank-reference",
+        "sq",
+        owned["id"],
+    ]
+    assert [row["id"] for row in ordinary.json()["exercises"]] == display_order
+    assert [row["id"] for row in ranked.json()["exercises"]] == [
+        "rank-both-a",
+        "rank-both-z",
+        "rank-reference",
+        "rank-action",
+        "rank-muscle",
+        "rank-rest",
+        "sq",
+        owned["id"],
+    ]
+    assert ranked.json()["exercises"][-1]["is_coach_exercise"] is True
+
+    for replacing_exercise_id in ("unknown", "sq", owned["id"]):
+        fallback = client.get(
+            "/coach/exercises",
+            headers=coach_headers,
+            params={**params, "replacing_exercise_id": replacing_exercise_id},
+        )
+        assert fallback.status_code == 200, fallback.text
+        assert [row["id"] for row in fallback.json()["exercises"]] == display_order
+
+    ordinary_search = client.get(
+        "/coach/exercises", headers=coach_headers, params={"query": "Press"}
+    )
+    ranked_search = client.get(
+        "/coach/exercises",
+        headers=coach_headers,
+        params={"query": "Press", "replacing_exercise_id": "rank-reference"},
+    )
+    assert ordinary_search.status_code == ranked_search.status_code == 200
+    assert [row["id"] for row in ordinary_search.json()["exercises"]] == [
+        row["id"] for row in ranked_search.json()["exercises"]
+    ]
 
 
 def test_coach_search_omits_hidden_exercise_library_rows(api, seed_exercise_curation):

@@ -246,6 +246,121 @@ void main() {
     expect(request.query['load_type'], <String>['selectorized']);
   });
 
+  testWidgets('coach picker sends the replaced exercise id only for Swap',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..programDraft = <String, dynamic>{
+        'program_name': 'Custom program',
+        'split_type': 'custom',
+        'weekly_frequency': 1,
+        'instructions': '',
+        'days': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'day_name': 'Upper A',
+            'day_order': 1,
+            'warmup_exercises': <dynamic>[],
+            'exercises': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'exercise_id': 'bench_press',
+                'exercise_name': 'Bench Press',
+                'target_sets': 3,
+                'target_reps_min': 6,
+                'target_reps_max': 8,
+                'target_rir': 2,
+              },
+            ],
+            'cardio': null,
+          },
+        ],
+      };
+    await _openProgramEditor(tester, fake);
+
+    await tester.tap(
+      find.byKey(const Key('program_draft_exercise_menu_0_0')),
+    );
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('program_draft_exercise_swap_0_0')),
+    );
+    await tester.tap(find.byKey(const Key('program_draft_exercise_swap_0_0')));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_exercise_search')));
+    await tester.enterText(find.byType(TextField).last, 'Machine Row');
+    await tester.tap(find.byKey(const Key('coach_exercise_search')));
+    await _pumpUntilFound(
+      tester,
+      find.descendant(
+        of: find.byType(AlertDialog).last,
+        matching: find.text('Machine Row'),
+      ),
+    );
+    final swapRequest = fake.adapter.requests.lastWhere(
+      (request) => request.path == '/coach/exercises',
+    );
+    expect(swapRequest.query['replacing_exercise_id'], 'bench_press');
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog).last,
+        matching: find.text('Cancel'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('program_draft_add_exercise_0')));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_exercise_search')));
+    await tester.enterText(find.byType(TextField).last, 'Bench Press');
+    await tester.tap(find.byKey(const Key('coach_exercise_search')));
+    await _pumpUntilFound(
+      tester,
+      find.descendant(
+        of: find.byType(AlertDialog).last,
+        matching: find.text('Bench Press'),
+      ),
+    );
+    final addRequest = fake.adapter.requests.lastWhere(
+      (request) => request.path == '/coach/exercises',
+    );
+    expect(addRequest.query.containsKey('replacing_exercise_id'), isFalse);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog).last,
+        matching: find.text('Cancel'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('program_draft_exercise_menu_0_0')),
+    );
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('program_draft_exercise_insert_above_0_0')),
+    );
+    await tester.tap(
+      find.byKey(const Key('program_draft_exercise_insert_above_0_0')),
+    );
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_exercise_search')));
+    await tester.enterText(find.byType(TextField).last, 'Machine Row');
+    await tester.tap(find.byKey(const Key('coach_exercise_search')));
+    await _pumpUntilFound(
+      tester,
+      find.descendant(
+        of: find.byType(AlertDialog).last,
+        matching: find.text('Machine Row'),
+      ),
+    );
+    final insertRequest = fake.adapter.requests.lastWhere(
+      (request) => request.path == '/coach/exercises',
+    );
+    expect(insertRequest.query.containsKey('replacing_exercise_id'), isFalse);
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog).last,
+        matching: find.text('Cancel'),
+      ),
+    );
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('coach player page shows automatic program and pending draft',
       (tester) async {
     final FakeMayosApi fake = _coachFake()

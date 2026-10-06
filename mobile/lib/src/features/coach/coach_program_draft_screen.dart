@@ -224,13 +224,13 @@ class _CoachProgramDraftScreenState
   }
 
   Future<ExerciseCatalogEntry?> _pickExercise({
-    String? currentExerciseId,
+    String? replacingExerciseId,
     String? title,
   }) =>
       showDialog<ExerciseCatalogEntry>(
         context: context,
         builder: (BuildContext context) => CoachExercisePickerDialog(
-          currentExerciseId: currentExerciseId,
+          replacingExerciseId: replacingExerciseId,
           title: title,
         ),
       );
@@ -278,7 +278,7 @@ class _CoachProgramDraftScreenState
   Future<void> _swapExercise(int dayIndex, int index) async {
     final _DraftExerciseEditor exercise = _days[dayIndex].exercises[index];
     final ExerciseCatalogEntry? selected = await _pickExercise(
-      currentExerciseId: exercise.source['exercise_id'] as String?,
+      replacingExerciseId: exercise.source['exercise_id'] as String?,
       title: coachCopyOf(context).swapExercise,
     );
     if (selected == null || !mounted) return;

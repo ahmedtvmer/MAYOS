@@ -18,6 +18,7 @@ def _search_exercise_entries(
     coach_account_id: str,
     query: str,
     filters: ExerciseFilters,
+    replacing_exercise_id: str | None,
 ) -> dict[str, list[dict[str, Any]]]:
     filter_browse = not query and filters.has_curated_filters
     library = db.find_exercises_by_name(
@@ -25,6 +26,7 @@ def _search_exercise_entries(
         limit=None if filter_browse else 10,
         filter_browse=filter_browse,
         filters=filters,
+        replacing_exercise_id=replacing_exercise_id,
     )
     owned = (
         []
@@ -53,8 +55,9 @@ async def search_coach_exercises(
     primary_action: list[str] | None = Query(None),
     equipment_category: list[str] | None = Query(None),
     load_type: list[str] | None = Query(None),
+    replacing_exercise_id: str | None = None,
 ):
-    """Search library rows; filter-only browsing is unbounded and display-name ordered.
+    """Search library rows; filter-only browsing ranks against an optional replacement.
 
     Coach exercises match Equipment category through their Equipment tag and are
     omitted when a Primary muscle, Primary action, or Load type filter is active.
@@ -75,7 +78,12 @@ async def search_coach_exercises(
             ),
         )
     return await asyncio.to_thread(
-        _search_exercise_entries, db, coach.account_id, clean_query, filters
+        _search_exercise_entries,
+        db,
+        coach.account_id,
+        clean_query,
+        filters,
+        replacing_exercise_id,
     )
 
 

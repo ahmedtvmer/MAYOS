@@ -1043,6 +1043,7 @@ class ApiClient {
     List<String> primaryActions = const <String>[],
     List<String> loadTypes = const <String>[],
     List<String> equipmentCategories = const <String>[],
+    String? replacingExerciseId,
   }) async {
     final response = await _send(
       () => _dio.get<dynamic>(
@@ -1054,6 +1055,8 @@ class ApiClient {
           if (loadTypes.isNotEmpty) 'load_type': loadTypes,
           if (equipmentCategories.isNotEmpty)
             'equipment_category': equipmentCategories,
+          if (replacingExerciseId != null)
+            'replacing_exercise_id': replacingExerciseId,
         },
         options: Options(listFormat: ListFormat.multi),
       ),

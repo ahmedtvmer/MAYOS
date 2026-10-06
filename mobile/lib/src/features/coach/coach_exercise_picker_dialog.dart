@@ -23,11 +23,11 @@ import '../../shared/exercise_filter_bar.dart';
 class CoachExercisePickerDialog extends ConsumerStatefulWidget {
   const CoachExercisePickerDialog({
     super.key,
-    this.currentExerciseId,
+    this.replacingExerciseId,
     this.title,
   });
 
-  final String? currentExerciseId;
+  final String? replacingExerciseId;
   final String? title;
 
   @override
@@ -97,6 +97,7 @@ class _CoachExercisePickerDialogState
                 primaryActions: primaryActions,
                 loadTypes: loadTypes,
                 equipmentCategories: equipmentCategories,
+                replacingExerciseId: widget.replacingExerciseId,
               );
       if (!mounted) return;
       setState(() {
