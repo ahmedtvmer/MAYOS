@@ -1638,9 +1638,9 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
     target_unspecific = (
         not resolve_text or len(resolve_text) < 3 or resolve_text.lower() in PRONOUNS | UNSPECIFIC_CHOICE_WORDS
     )
+    # A near-miss name (ADR 053) never resolves to its look-alike row; it refuses
+    # unless the library holds the real exercise under that name or alias.
     near_miss_ids = near_miss_exercise_ids(resolve_text)
-    if near_miss_ids:
-        return _near_miss_refusal(store, resolve_text, near_miss_ids)
 
     name_matches: list[dict[str, Any]] = []
     if not target_unspecific:
@@ -1648,13 +1648,17 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
             match
             for match in store.find_exercises_by_name(resolve_text)
             if str(match["id"]) != str(matched_ex.exercise_id)
+            and str(match["id"]) not in near_miss_ids
         ]
         if not name_matches and resolve_text != target_desc:
             name_matches = [
                 match
                 for match in store.find_exercises_by_name(target_desc)
                 if str(match["id"]) != str(matched_ex.exercise_id)
+                and str(match["id"]) not in near_miss_ids
             ]
+    if near_miss_ids and not name_matches:
+        return _near_miss_refusal(store, resolve_text, near_miss_ids)
     compatible_name_match = _compatible_name_match(
         name_matches, target_muscle, body_part, target_day
     )

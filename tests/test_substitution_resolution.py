@@ -682,8 +682,6 @@ def test_assistant_near_miss_refusal_does_not_name_hidden_exercises(
     ("target", "target_id", "source_id"),
     [
         ("pendulum squat", "744", "3562"),
-        ("kelso shrug", "329", None),
-        ("bayesian curl", "190", "318"),
     ],
 )
 def test_near_miss_substitution_refuses_semantic_sibling(
@@ -861,3 +859,28 @@ def test_unspecified_chat_substitutes_follow_equipment_access(sub_db, monkeypatc
         ) if name in result["response_content"]
     }
     assert shown == expected_names
+
+
+@pytest.mark.parametrize(
+    ("target", "near_miss_id", "source_id", "allowed_ids"),
+    [
+        ("kelso shrug", "329", "406", {"mayos:1", "305"}),
+        ("bayesian curl", "190", "318", {"mayos:2"}),
+    ],
+)
+def test_near_miss_name_installs_the_real_exercise_never_the_look_alike(
+    sub_db, near_miss_id, target, source_id, allowed_ids
+):
+    sub_db.initialize_and_seed()
+    source_name = sub_db.get_exercise_library_entry(source_id)["name"]
+    _save_program_days(sub_db, [("Upper 1", [source_id, CHEST_SLOT, REVERSE_LAT_SLOT])])
+
+    result = exercise_substitution_node(
+        _state(source_name, target),
+        {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
+    )
+
+    assert result["program_updated"] is True, result["response_content"]
+    installed = sub_db.ledger.get_active_program().days[0].exercises[0].exercise_id
+    assert installed in allowed_ids
+    assert installed != near_miss_id
