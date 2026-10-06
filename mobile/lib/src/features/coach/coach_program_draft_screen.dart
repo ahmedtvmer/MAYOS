@@ -223,35 +223,67 @@ class _CoachProgramDraftScreenState
     });
   }
 
+  Future<ExerciseCatalogEntry?> _pickExercise({
+    String? currentExerciseId,
+    String? title,
+  }) =>
+      showDialog<ExerciseCatalogEntry>(
+        context: context,
+        builder: (BuildContext context) => CoachExercisePickerDialog(
+          currentExerciseId: currentExerciseId,
+          title: title,
+        ),
+      );
+
+  _DraftExerciseEditor _newExercise(ExerciseCatalogEntry selected) =>
+      _DraftExerciseEditor(<String, dynamic>{
+        ..._exerciseIdentity(selected),
+        'warmup_sets': 0,
+        'target_sets': ProgramDraftPrescription.defaultSets,
+        'target_reps_min': ProgramDraftPrescription.defaultMinReps,
+        'target_reps_max': ProgramDraftPrescription.defaultMaxReps,
+        'target_rir': ProgramDraftPrescription.defaultRir,
+        'rest_seconds': ProgramDraftPrescription.defaultExerciseRestSeconds,
+        'tempo': null,
+        'notes': null,
+        'suggested_substitutes': <dynamic>[],
+      });
+
   Future<void> _addExercise(int dayIndex) async {
-    final ExerciseCatalogEntry? selected =
-        await showDialog<ExerciseCatalogEntry>(
-      context: context,
-      builder: (BuildContext context) => const CoachExercisePickerDialog(),
+    final ExerciseCatalogEntry? selected = await _pickExercise();
+    if (selected == null || !mounted) return;
+    setState(() {
+      _days[dayIndex].exercises.add(_newExercise(selected));
+      _hasUnsavedChanges = true;
+      _inputError = null;
+      _clearServerErrors();
+    });
+  }
+
+  Future<void> _insertExercise(
+    int dayIndex,
+    int index, {
+    required String title,
+  }) async {
+    final ExerciseCatalogEntry? selected = await _pickExercise(title: title);
+    if (selected == null || !mounted) return;
+    setState(() {
+      _days[dayIndex].exercises.insert(index, _newExercise(selected));
+      _hasUnsavedChanges = true;
+      _inputError = null;
+      _clearServerErrors();
+    });
+  }
+
+  Future<void> _swapExercise(int dayIndex, int index) async {
+    final _DraftExerciseEditor exercise = _days[dayIndex].exercises[index];
+    final ExerciseCatalogEntry? selected = await _pickExercise(
+      currentExerciseId: exercise.source['exercise_id'] as String?,
+      title: coachCopyOf(context).swapExercise,
     );
     if (selected == null || !mounted) return;
     setState(() {
-      _days[dayIndex].exercises.add(
-        _DraftExerciseEditor(<String, dynamic>{
-          'exercise_id': selected.id,
-          'exercise_name': selected.name,
-          'body_part': selected.bodyPart,
-          'equipment': selected.equipment,
-          'note': selected.note,
-          'video_url': selected.videoUrl,
-          'is_coach_exercise': selected.isCoachExercise,
-          'image_path': selected.imagePath,
-          'warmup_sets': 0,
-          'target_sets': ProgramDraftPrescription.defaultSets,
-          'target_reps_min': ProgramDraftPrescription.defaultMinReps,
-          'target_reps_max': ProgramDraftPrescription.defaultMaxReps,
-          'target_rir': ProgramDraftPrescription.defaultRir,
-          'rest_seconds': ProgramDraftPrescription.defaultExerciseRestSeconds,
-          'tempo': null,
-          'notes': null,
-          'suggested_substitutes': <dynamic>[],
-        }),
-      );
+      exercise.swapIdentity(selected);
       _hasUnsavedChanges = true;
       _inputError = null;
       _clearServerErrors();
@@ -433,16 +465,28 @@ class _CoachProgramDraftScreenState
     });
   }
 
+  _DraftWarmupEditor _newWarmupMovement() => _DraftWarmupEditor(
+        <String, dynamic>{
+          'exercise_name': '',
+          'sets': ProgramDraftPrescription.defaultWarmupMovementSets,
+          'reps': ProgramDraftPrescription.defaultWarmupMovementReps,
+          'rest_seconds': ProgramDraftPrescription.defaultWarmupMovementRestSeconds,
+          'notes': null,
+        },
+      );
+
   void _addWarmupMovement(int dayIndex) {
     setState(() {
       _hasUnsavedChanges = true;
-      _days[dayIndex].warmups.add(_DraftWarmupEditor(<String, dynamic>{
-        'exercise_name': '',
-        'sets': ProgramDraftPrescription.defaultWarmupMovementSets,
-        'reps': ProgramDraftPrescription.defaultWarmupMovementReps,
-        'rest_seconds': ProgramDraftPrescription.defaultWarmupMovementRestSeconds,
-        'notes': null,
-      }));
+      _days[dayIndex].warmups.add(_newWarmupMovement());
+      _clearServerErrors();
+    });
+  }
+
+  void _insertWarmupMovement(int dayIndex, int index) {
+    setState(() {
+      _days[dayIndex].warmups.insert(index, _newWarmupMovement());
+      _hasUnsavedChanges = true;
       _clearServerErrors();
     });
   }
@@ -771,6 +815,9 @@ class _CoachProgramDraftScreenState
       }),
       onMove: (int delta) => _moveWarmupMovement(dayIndex, movementIndex, delta),
       onRemove: () => _removeWarmupMovement(dayIndex, movementIndex),
+      onInsertAbove: () => _insertWarmupMovement(dayIndex, movementIndex),
+      onInsertBelow: () =>
+          _insertWarmupMovement(dayIndex, movementIndex + 1),
     );
   }
 
@@ -798,6 +845,17 @@ class _CoachProgramDraftScreenState
         ));
       }),
       onMove: (int delta) => _moveExercise(dayIndex, exerciseIndex, delta),
+      onSwap: () => _swapExercise(dayIndex, exerciseIndex),
+      onInsertAbove: () => _insertExercise(
+        dayIndex,
+        exerciseIndex,
+        title: coachCopyOf(context).insertExerciseAbove,
+      ),
+      onInsertBelow: () => _insertExercise(
+        dayIndex,
+        exerciseIndex + 1,
+        title: coachCopyOf(context).insertExerciseBelow,
+      ),
       onDuplicate: () => _duplicateExercise(dayIndex, exerciseIndex),
       onRemove: () => _removeExercise(dayIndex, exerciseIndex),
     );
@@ -1049,6 +1107,18 @@ int _wholeNumber(TextEditingController controller, CoachCopy copy) {
   return value;
 }
 
+Map<String, dynamic> _exerciseIdentity(ExerciseCatalogEntry selected) =>
+    <String, dynamic>{
+      'exercise_id': selected.id,
+      'exercise_name': selected.name,
+      'body_part': selected.bodyPart,
+      'equipment': selected.equipment,
+      'note': selected.note,
+      'video_url': selected.videoUrl,
+      'is_coach_exercise': selected.isCoachExercise,
+      'image_path': selected.imagePath,
+    };
+
 class _DraftExerciseEditor {
   _DraftExerciseEditor(this.source)
       : sets = TextEditingController(
@@ -1084,6 +1154,11 @@ class _DraftExerciseEditor {
   final TextEditingController notes;
 
   String get exerciseName => source['exercise_name'] as String? ?? '';
+
+  void swapIdentity(ExerciseCatalogEntry selected) {
+    source.addAll(_exerciseIdentity(selected));
+    source['suggested_substitutes'] = <dynamic>[];
+  }
 
   static String _repsText(num lower, num upper) =>
       lower == upper ? '$lower' : '$lower-$upper';

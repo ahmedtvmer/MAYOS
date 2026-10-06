@@ -1,5 +1,7 @@
 part of '../coach_program_draft_screen.dart';
 
+enum _ProgramDraftWarmupAction { insertAbove, insertBelow, remove }
+
 class _ProgramDraftWarmupMovementCard extends StatelessWidget {
   const _ProgramDraftWarmupMovementCard({
     required this.dayIndex,
@@ -11,6 +13,8 @@ class _ProgramDraftWarmupMovementCard extends StatelessWidget {
     required this.onChanged,
     required this.onMove,
     required this.onRemove,
+    required this.onInsertAbove,
+    required this.onInsertBelow,
   });
 
   final int dayIndex;
@@ -22,6 +26,8 @@ class _ProgramDraftWarmupMovementCard extends StatelessWidget {
   final ValueChanged<String> onChanged;
   final ValueChanged<int> onMove;
   final VoidCallback onRemove;
+  final VoidCallback onInsertAbove;
+  final VoidCallback onInsertBelow;
 
   @override
   Widget build(BuildContext context) {
@@ -63,11 +69,47 @@ class _ProgramDraftWarmupMovementCard extends StatelessWidget {
                     : () => onMove(1),
                 icon: const Icon(Icons.arrow_downward),
               ),
-              IconButton(
-                key: Key('program_draft_warmup_remove_${dayIndex}_$movementIndex'),
-                tooltip: copy.removeWarmupMovement,
-                onPressed: busy ? null : onRemove,
-                icon: const Icon(Icons.delete_outline),
+              PopupMenuButton<_ProgramDraftWarmupAction>(
+                key: Key(
+                  'program_draft_warmup_menu_${dayIndex}_$movementIndex',
+                ),
+                tooltip: copy.warmupMovementActions,
+                enabled: !busy,
+                onSelected: (_ProgramDraftWarmupAction action) {
+                  switch (action) {
+                    case _ProgramDraftWarmupAction.insertAbove:
+                      onInsertAbove();
+                    case _ProgramDraftWarmupAction.insertBelow:
+                      onInsertBelow();
+                    case _ProgramDraftWarmupAction.remove:
+                      onRemove();
+                  }
+                },
+                itemBuilder: (BuildContext context) =>
+                    <PopupMenuEntry<_ProgramDraftWarmupAction>>[
+                  PopupMenuItem<_ProgramDraftWarmupAction>(
+                    key: Key(
+                      'program_draft_warmup_insert_above_${dayIndex}_$movementIndex',
+                    ),
+                    value: _ProgramDraftWarmupAction.insertAbove,
+                    child: Text(copy.insertWarmupAbove),
+                  ),
+                  PopupMenuItem<_ProgramDraftWarmupAction>(
+                    key: Key(
+                      'program_draft_warmup_insert_below_${dayIndex}_$movementIndex',
+                    ),
+                    value: _ProgramDraftWarmupAction.insertBelow,
+                    child: Text(copy.insertWarmupBelow),
+                  ),
+                  PopupMenuItem<_ProgramDraftWarmupAction>(
+                    key: Key(
+                      'program_draft_warmup_remove_${dayIndex}_$movementIndex',
+                    ),
+                    value: _ProgramDraftWarmupAction.remove,
+                    child: Text(copy.removeWarmupMovement),
+                  ),
+                ],
+                icon: const Icon(Icons.more_vert),
               ),
             ],
           ),

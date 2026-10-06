@@ -94,6 +94,25 @@ Future<void> _openProgramEditor(WidgetTester tester, FakeMayosApi fake) async {
   await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_day')));
 }
 
+Future<void> _selectCatalogExercise(
+  WidgetTester tester,
+  String name,
+) async {
+  await _pumpUntilFound(tester, find.byKey(const Key('coach_exercise_search')));
+  await tester.enterText(find.byType(TextField).last, name);
+  await tester.tap(find.byKey(const Key('coach_exercise_search')));
+  await _pumpUntilFound(tester, find.text(name));
+  await tester.tap(find.text(name).last);
+}
+
+Future<void> _expectDraftUnsaved(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('Back').hitTestable().last);
+  await _pumpUntilFound(tester, find.text('Unsaved changes'));
+  expect(find.byKey(const Key('program_draft_confirm_cancel')), findsOneWidget);
+  await tester.tap(find.byKey(const Key('program_draft_confirm_cancel')));
+  await tester.pumpAndSettle();
+}
+
 FakeMayosApi _coachFake() {
   final FakeMayosApi fake = FakeMayosApi();
   fake.issuedToken = 'token-alice';
@@ -1039,6 +1058,14 @@ void main() {
     };
     await _openProgramEditor(tester, fake);
 
+    expect(find.byTooltip('Exercise actions'), findsNWidgets(2));
+    await tester.tap(
+      find.byKey(const Key('program_draft_exercise_menu_0_0')),
+    );
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('program_draft_exercise_duplicate_0_0')),
+    );
     await tester.tap(
       find.byKey(const Key('program_draft_exercise_duplicate_0_0')),
     );
@@ -1058,6 +1085,458 @@ void main() {
       exercises.map((dynamic exercise) => (exercise as Map)['exercise_id']),
       <String>['bench_press', 'barbell_row', 'bench_press'],
     );
+  });
+
+  testWidgets('coach swaps an exercise in place and keeps edited prescription',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..programDraft = <String, dynamic>{
+        'program_name': 'Custom program',
+        'split_type': 'custom',
+        'weekly_frequency': 1,
+        'instructions': '',
+        'days': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'day_name': 'Upper A',
+            'day_order': 1,
+            'warmup_exercises': <dynamic>[],
+            'exercises': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'exercise_id': 'bench_press',
+                'exercise_name': 'Bench Press',
+                'body_part': 'Chest',
+                'equipment': 'barbell',
+                'note': 'Old identity note',
+                'video_url': 'https://example.com/old',
+                'is_coach_exercise': true,
+                'image_path': 'old/image.jpg',
+                'target_sets': 3,
+                'target_reps_min': 6,
+                'target_reps_max': 8,
+                'target_rir': 2,
+                'warmup_sets': 2,
+                'rest_seconds': 120,
+                'tempo': '2-0-2',
+                'notes': 'Old prescription note',
+                'suggested_substitutes': <String>['cable_fly'],
+              },
+              <String, dynamic>{
+                'exercise_id': 'cable_fly',
+                'exercise_name': 'Cable Fly',
+                'target_sets': 2,
+                'target_reps_min': 10,
+                'target_reps_max': 12,
+                'target_rir': 2,
+              },
+            ],
+            'cardio': null,
+          },
+        ],
+      };
+    await _openProgramEditor(tester, fake);
+
+    await tester.enterText(
+      find.byKey(const Key('program_draft_sets_0_0')),
+      '5',
+    );
+    await tester.enterText(
+      find.byKey(const Key('program_draft_reps_0_0')),
+      '4-6',
+    );
+    await tester.enterText(
+      find.byKey(const Key('program_draft_rir_0_0')),
+      '1.5',
+    );
+    await tester.enterText(
+      find.byKey(const Key('program_draft_warmup_sets_0_0')),
+      '3',
+    );
+    await tester.enterText(
+      find.byKey(const Key('program_draft_rest_0_0')),
+      '90',
+    );
+    await tester.enterText(
+      find.byKey(const Key('program_draft_tempo_0_0')),
+      '3-1-1',
+    );
+    await tester.enterText(
+      find.byKey(const Key('program_draft_notes_0_0')),
+      'Keep the pause.',
+    );
+    await tester.tap(
+      find.byKey(const Key('program_draft_exercise_menu_0_0')),
+    );
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('program_draft_exercise_swap_0_0')),
+    );
+    await tester.tap(find.byKey(const Key('program_draft_exercise_swap_0_0')));
+    await _selectCatalogExercise(tester, 'Machine Row');
+    await _pumpUntilFound(tester, find.text('Machine Row'));
+    expect(find.byKey(const Key('program_draft_sets_0_0')), findsOneWidget);
+    await _expectDraftUnsaved(tester);
+
+    await tester.tap(find.byKey(const Key('program_draft_save')));
+    await _pumpUntilFound(tester, find.text('Draft saved.'));
+    final List<dynamic> exercises =
+        ((fake.programDraft!['days'] as List<dynamic>).single
+                as Map<String, dynamic>)['exercises']
+            as List<dynamic>;
+    final Map<String, dynamic> swapped =
+        exercises.first as Map<String, dynamic>;
+    expect(exercises, hasLength(2));
+    expect(swapped['exercise_id'], 'machine_row');
+    expect(swapped['exercise_name'], 'Machine Row');
+    expect(swapped['body_part'], 'Back');
+    expect(swapped['equipment'], 'leverage machine');
+    expect(swapped['image_path'], 'images/machine_row.jpg');
+    expect(swapped['video_url'], isNull);
+    expect(swapped['is_coach_exercise'], isFalse);
+    expect(swapped['note'], isNull);
+    expect(swapped['target_sets'], 5);
+    expect(swapped['target_reps_min'], 4);
+    expect(swapped['target_reps_max'], 6);
+    expect(swapped['target_rir'], 1.5);
+    expect(swapped['warmup_sets'], 3);
+    expect(swapped['rest_seconds'], 90);
+    expect(swapped['tempo'], '3-1-1');
+    expect(swapped['notes'], 'Keep the pause.');
+    expect(swapped['suggested_substitutes'], isEmpty);
+    expect((exercises[1] as Map<String, dynamic>)['exercise_id'], 'cable_fly');
+  });
+
+  testWidgets('canceling Swap exercise leaves the Program draft unchanged',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..programDraft = <String, dynamic>{
+        'program_name': 'Custom program',
+        'split_type': 'custom',
+        'weekly_frequency': 1,
+        'instructions': '',
+        'days': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'day_name': 'Upper A',
+            'day_order': 1,
+            'warmup_exercises': <dynamic>[],
+            'exercises': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'exercise_id': 'bench_press',
+                'exercise_name': 'Bench Press',
+                'target_sets': 3,
+                'target_reps_min': 6,
+                'target_reps_max': 8,
+                'target_rir': 2,
+              },
+            ],
+            'cardio': null,
+          },
+        ],
+      };
+    await _openProgramEditor(tester, fake);
+
+    await tester.tap(
+      find.byKey(const Key('program_draft_exercise_menu_0_0')),
+    );
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('program_draft_exercise_swap_0_0')),
+    );
+    await tester.tap(find.byKey(const Key('program_draft_exercise_swap_0_0')));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_exercise_search')));
+    await tester.tap(find.text('Cancel').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bench Press'), findsOneWidget);
+    await tester.tap(find.byTooltip('Back').hitTestable().last);
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('write_program_action')),
+    );
+    expect(find.text('Unsaved changes'), findsNothing);
+    final Map<String, dynamic> originalExercise =
+        (((fake.programDraft!['days'] as List<dynamic>).single
+                    as Map<String, dynamic>)['exercises']
+                as List<dynamic>)
+            .single as Map<String, dynamic>;
+    expect(originalExercise['exercise_id'], 'bench_press');
+    expect(originalExercise['exercise_name'], 'Bench Press');
+  });
+
+  testWidgets('coach inserts exercises above and below and can cancel',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..programDraft = <String, dynamic>{
+        'program_name': 'Custom program',
+        'split_type': 'custom',
+        'weekly_frequency': 1,
+        'instructions': '',
+        'days': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'day_name': 'Upper A',
+            'day_order': 1,
+            'warmup_exercises': <dynamic>[],
+            'exercises': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'exercise_id': 'bench_press',
+                'exercise_name': 'Bench Press',
+                'target_sets': 4,
+                'target_reps_min': 8,
+                'target_reps_max': 10,
+                'target_rir': 2,
+              },
+            ],
+            'cardio': null,
+          },
+        ],
+      };
+    await _openProgramEditor(tester, fake);
+
+    await tester.tap(
+      find.byKey(const Key('program_draft_exercise_menu_0_0')),
+    );
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('program_draft_exercise_insert_above_0_0')),
+    );
+    await tester.tap(
+      find.byKey(const Key('program_draft_exercise_insert_above_0_0')),
+    );
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('coach_exercise_search')),
+    );
+    await tester.tap(find.text('Cancel').last);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('program_draft_exercise_menu_0_1')),
+      findsNothing,
+    );
+
+    await tester.tap(
+      find.byKey(const Key('program_draft_exercise_menu_0_0')),
+    );
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('program_draft_exercise_insert_above_0_0')),
+    );
+    await tester.tap(
+      find.byKey(const Key('program_draft_exercise_insert_above_0_0')),
+    );
+    await _selectCatalogExercise(tester, 'Bicep Curl');
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_sets_0_0')));
+    final Finder originalMenu =
+        find.byKey(const Key('program_draft_exercise_menu_0_1'));
+    await tester.ensureVisible(originalMenu);
+    await tester.tap(
+      originalMenu,
+    );
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('program_draft_exercise_insert_below_0_1')),
+    );
+    await tester.tap(
+      find.byKey(const Key('program_draft_exercise_insert_below_0_1')),
+    );
+    await _selectCatalogExercise(tester, 'Cable Fly');
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_sets_0_2')));
+    await _expectDraftUnsaved(tester);
+    await tester.tap(find.byKey(const Key('program_draft_save')));
+    await _pumpUntilFound(tester, find.text('Draft saved.'));
+
+    final List<dynamic> exercises =
+        ((fake.programDraft!['days'] as List<dynamic>).single
+                as Map<String, dynamic>)['exercises']
+            as List<dynamic>;
+    expect(
+      exercises.map((dynamic exercise) => (exercise as Map)['exercise_id']),
+      <String>['bicep_curl', 'bench_press', 'cable_fly'],
+    );
+    expect(
+      exercises.map((dynamic exercise) => (exercise as Map)['exercise_name']),
+      <String>['Bicep Curl', 'Bench Press', 'Cable Fly'],
+    );
+    expect((exercises.first as Map)['target_sets'], 2);
+    expect((exercises.first as Map)['target_reps_min'], 8);
+    expect((exercises.first as Map)['target_reps_max'], 12);
+    expect((exercises.first as Map)['target_rir'], 2);
+    expect((exercises.first as Map)['warmup_sets'], 0);
+    expect((exercises.first as Map)['rest_seconds'], 180);
+    expect((exercises.first as Map)['suggested_substitutes'], isEmpty);
+  });
+
+  testWidgets('coach exercise menu duplicates and deletes exercises',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..programDraft = <String, dynamic>{
+        'program_name': 'Custom program',
+        'split_type': 'custom',
+        'weekly_frequency': 1,
+        'instructions': '',
+        'days': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'day_name': 'Upper A',
+            'day_order': 1,
+            'warmup_exercises': <dynamic>[],
+            'exercises': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'exercise_id': 'bench_press',
+                'exercise_name': 'Bench Press',
+                'target_sets': 3,
+                'target_reps_min': 6,
+                'target_reps_max': 8,
+                'target_rir': 2,
+              },
+            ],
+            'cardio': null,
+          },
+        ],
+      };
+    await _openProgramEditor(tester, fake);
+
+    await tester.tap(
+      find.byKey(const Key('program_draft_exercise_menu_0_0')),
+    );
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('program_draft_exercise_swap_0_0')),
+    );
+    expect(find.text('Swap exercise'), findsOneWidget);
+    expect(find.text('Insert exercise above'), findsOneWidget);
+    expect(find.text('Insert exercise below'), findsOneWidget);
+    expect(find.text('Duplicate'), findsOneWidget);
+    expect(find.text('Delete'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const Key('program_draft_exercise_duplicate_0_0')),
+    );
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_exercise_menu_0_1')));
+    await tester.tap(
+      find.byKey(const Key('program_draft_exercise_menu_0_1')),
+    );
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('program_draft_remove_0_1')),
+    );
+    await tester.tap(find.byKey(const Key('program_draft_remove_0_1')));
+    await tester.pumpAndSettle();
+    final Finder save = find.byKey(const Key('program_draft_save'));
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await _pumpUntilFound(tester, find.text('Draft saved.'));
+
+    final List<dynamic> exercises =
+        ((fake.programDraft!['days'] as List<dynamic>).single
+                as Map<String, dynamic>)['exercises']
+            as List<dynamic>;
+    expect(exercises, hasLength(1));
+    expect((exercises.single as Map)['exercise_id'], 'bench_press');
+  });
+
+  testWidgets('warm-up menu inserts and removes empty movements in Arabic',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..displayLanguage = 'ar'
+      ..programDraft = <String, dynamic>{
+        'program_name': 'برنامج تدريبي',
+        'split_type': 'custom',
+        'weekly_frequency': 1,
+        'instructions': '',
+        'days': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'day_name': 'Upper A',
+            'day_order': 1,
+            'warmup_exercises': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'exercise_name': 'Cat-Cow',
+                'sets': 2,
+                'reps': 8,
+                'rest_seconds': 30,
+                'notes': null,
+              },
+            ],
+            'exercises': <dynamic>[],
+            'cardio': null,
+          },
+        ],
+      };
+    await _openProgramEditor(tester, fake);
+    tester.view.physicalSize = const Size(720, 1600);
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final Finder firstMovementMenu =
+        find.byKey(const Key('program_draft_warmup_menu_0_0'));
+    expect(find.byTooltip('إجراءات حركة الإحماء'), findsOneWidget);
+    await tester.tap(firstMovementMenu);
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('program_draft_warmup_insert_below_0_0')),
+    );
+    expect(find.text('إضافة حركة إحماء قبل'), findsOneWidget);
+    expect(find.text('إضافة حركة إحماء بعد'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const Key('program_draft_warmup_insert_below_0_0')),
+    );
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('program_draft_warmup_name_0_1')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(firstMovementMenu);
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('program_draft_warmup_insert_above_0_0')),
+    );
+    await tester.tap(
+      find.byKey(const Key('program_draft_warmup_insert_above_0_0')),
+    );
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('program_draft_warmup_name_0_2')),
+    );
+    expect(tester.takeException(), isNull);
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const Key('program_draft_warmup_name_0_0')),
+          )
+          .controller!
+          .text,
+      '',
+    );
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const Key('program_draft_warmup_name_0_1')),
+          )
+          .controller!
+          .text,
+      'Cat-Cow',
+    );
+    await tester.tap(firstMovementMenu);
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('program_draft_warmup_remove_0_0')),
+    );
+    await tester.tap(
+      find.byKey(const Key('program_draft_warmup_remove_0_0')),
+    );
+    await tester.pumpAndSettle();
+    final Finder save = find.byKey(const Key('program_draft_save'));
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await _pumpUntilFound(tester, find.text('تم حفظ المسودة.'));
+
+    final List<dynamic> warmups =
+        ((fake.programDraft!['days'] as List<dynamic>).single
+                as Map<String, dynamic>)['warmup_exercises']
+            as List<dynamic>;
+    expect(
+      warmups.map((dynamic movement) => (movement as Map)['exercise_name']),
+      <String>['Cat-Cow', ''],
+    );
+    expect((warmups.last as Map)['sets'], 2);
+    expect((warmups.last as Map)['reps'], 10);
+    expect((warmups.last as Map)['rest_seconds'], 45);
   });
 
   testWidgets('coach editor localizes prescription fields and follows Arabic RTL',

@@ -21,7 +21,14 @@ import '../../providers.dart';
 import '../../shared/exercise_filter_bar.dart';
 
 class CoachExercisePickerDialog extends ConsumerStatefulWidget {
-  const CoachExercisePickerDialog({super.key});
+  const CoachExercisePickerDialog({
+    super.key,
+    this.currentExerciseId,
+    this.title,
+  });
+
+  final String? currentExerciseId;
+  final String? title;
 
   @override
   ConsumerState<CoachExercisePickerDialog> createState() =>
@@ -128,7 +135,7 @@ class _CoachExercisePickerDialogState
     final CoachCopy coachCopy = coachCopyOf(context);
     final MayosCopy copy = displayCopyOf(context);
     return AlertDialog(
-      title: Text(coachCopy.addExercise),
+      title: Text(widget.title ?? coachCopy.addExercise),
       content: SizedBox(
         width: 360,
         child: _pickerContent(context, coachCopy, copy),

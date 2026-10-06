@@ -1,5 +1,13 @@
 part of '../coach_program_draft_screen.dart';
 
+enum _ProgramDraftExerciseAction {
+  swap,
+  insertAbove,
+  insertBelow,
+  duplicate,
+  delete,
+}
+
 class _ProgramDraftExerciseCard extends StatelessWidget {
   const _ProgramDraftExerciseCard({
     required this.dayIndex,
@@ -10,6 +18,9 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
     required this.errorFor,
     required this.onChanged,
     required this.onMove,
+    required this.onSwap,
+    required this.onInsertAbove,
+    required this.onInsertBelow,
     required this.onDuplicate,
     required this.onRemove,
   });
@@ -22,6 +33,9 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
   final String? Function(String field) errorFor;
   final ValueChanged<String> onChanged;
   final ValueChanged<int> onMove;
+  final VoidCallback onSwap;
+  final VoidCallback onInsertAbove;
+  final VoidCallback onInsertBelow;
   final VoidCallback onDuplicate;
   final VoidCallback onRemove;
 
@@ -61,17 +75,68 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
                       : () => onMove(1),
                   icon: const Icon(Icons.arrow_downward),
                 ),
-                IconButton(
-                  key: Key('program_draft_exercise_duplicate_${dayIndex}_$exerciseIndex'),
-                  tooltip: copy.duplicateExercise,
-                  onPressed: busy ? null : onDuplicate,
-                  icon: const Icon(Icons.copy_outlined),
-                ),
-                IconButton(
-                  key: Key('program_draft_remove_${dayIndex}_$exerciseIndex'),
-                  tooltip: copy.removeExercise,
-                  onPressed: busy ? null : onRemove,
-                  icon: Icon(Icons.delete_outline, color: colors.danger),
+                PopupMenuButton<_ProgramDraftExerciseAction>(
+                  key: Key(
+                    'program_draft_exercise_menu_${dayIndex}_$exerciseIndex',
+                  ),
+                  tooltip: copy.exerciseActions,
+                  enabled: !busy,
+                  onSelected: (_ProgramDraftExerciseAction action) {
+                    switch (action) {
+                      case _ProgramDraftExerciseAction.swap:
+                        onSwap();
+                      case _ProgramDraftExerciseAction.insertAbove:
+                        onInsertAbove();
+                      case _ProgramDraftExerciseAction.insertBelow:
+                        onInsertBelow();
+                      case _ProgramDraftExerciseAction.duplicate:
+                        onDuplicate();
+                      case _ProgramDraftExerciseAction.delete:
+                        onRemove();
+                    }
+                  },
+                  itemBuilder: (BuildContext context) =>
+                      <PopupMenuEntry<_ProgramDraftExerciseAction>>[
+                    PopupMenuItem<_ProgramDraftExerciseAction>(
+                      key: Key(
+                        'program_draft_exercise_swap_${dayIndex}_$exerciseIndex',
+                      ),
+                      value: _ProgramDraftExerciseAction.swap,
+                      child: Text(copy.swapExercise),
+                    ),
+                    PopupMenuItem<_ProgramDraftExerciseAction>(
+                      key: Key(
+                        'program_draft_exercise_insert_above_${dayIndex}_$exerciseIndex',
+                      ),
+                      value: _ProgramDraftExerciseAction.insertAbove,
+                      child: Text(copy.insertExerciseAbove),
+                    ),
+                    PopupMenuItem<_ProgramDraftExerciseAction>(
+                      key: Key(
+                        'program_draft_exercise_insert_below_${dayIndex}_$exerciseIndex',
+                      ),
+                      value: _ProgramDraftExerciseAction.insertBelow,
+                      child: Text(copy.insertExerciseBelow),
+                    ),
+                    PopupMenuItem<_ProgramDraftExerciseAction>(
+                      key: Key(
+                        'program_draft_exercise_duplicate_${dayIndex}_$exerciseIndex',
+                      ),
+                      value: _ProgramDraftExerciseAction.duplicate,
+                      child: Text(copy.duplicateExerciseAction),
+                    ),
+                    PopupMenuItem<_ProgramDraftExerciseAction>(
+                      key: Key(
+                        'program_draft_remove_${dayIndex}_$exerciseIndex',
+                      ),
+                      value: _ProgramDraftExerciseAction.delete,
+                      child: Text(
+                        copy.deleteExercise,
+                        style: TextStyle(color: colors.danger),
+                      ),
+                    ),
+                  ],
+                  icon: const Icon(Icons.more_vert),
                 ),
               ],
             ),
