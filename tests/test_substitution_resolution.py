@@ -259,16 +259,16 @@ def test_catalog_name_resolution_tiers(sub_db):
 def test_chat_substitution_resolves_display_alias(sub_db):
     sub_db.initialize_and_seed()
     result = exercise_substitution_node(
-        _state("reverse grip machine lat pulldown", "frontal lat pulldown"),
+        _state("reverse grip machine lat pulldown", "standing cable pulldown"),
         {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
     )
 
     assert result["program_updated"] is True, result
     active = sub_db.ledger.get_active_program()
     assert active.days[0].exercises[1].exercise_id == "2330"
-    assert active.days[0].exercises[1].exercise_name == "Wide-Grip Lat Pulldown"
+    assert active.days[0].exercises[1].exercise_name == "Standing Cable Pulldown (Cable)"
     assert active.days[0].exercises[2].exercise_id == CABLE_LAT_SLOT
-    assert "wide-grip lat pulldown" in result["response_content"].lower()
+    assert "standing cable pulldown (cable)" in result["response_content"].lower()
 
 
 def test_chat_library_search_returns_alias_matches_with_display_names(sub_db):
@@ -280,8 +280,7 @@ def test_chat_library_search_returns_alias_matches_with_display_names(sub_db):
         state, {"configurable": {"ledger": sub_db.ledger, "store": sub_db}}
     )
 
-    assert "Wide-Grip Lat Pulldown" in result["response_content"]
-    assert "Lat Pulldown" in result["response_content"]
+    assert "**Lat Pulldown**" in result["response_content"]
 
 
 def test_assistant_substitution_suggestions_skip_hidden_rows(sub_db, seed_exercise_curation):
@@ -468,7 +467,7 @@ def test_followup_hint_uses_real_catalog_name(sub_db, monkeypatch):
 @pytest.mark.parametrize(
     "access,expected_names",
     [
-        (COMMERCIAL_GYM, {"Wide-Grip Lat Pulldown", "Twin Handle Parallel-Grip Lat Pulldown"}),
+        (COMMERCIAL_GYM, {"Standing Cable Pulldown (Cable)", "Twin Handle Parallel-Grip Lat Pulldown"}),
         (HOME_GYM, {"Band Underhand Pulldown", "Wide-Grip Pull-Up"}),
         (BODYWEIGHT_ONLY, {"Wide-Grip Pull-Up"}),
     ],
@@ -484,7 +483,7 @@ def test_unspecified_chat_substitutes_follow_equipment_access(sub_db, monkeypatc
     })
     program = sub_db.ledger.get_active_program().model_dump()
     program["days"][0]["exercises"][1]["suggested_substitutes"] = [
-        {"exercise_id": "2330", "exercise_name": "Wide-Grip Lat Pulldown"},
+        {"exercise_id": "2330", "exercise_name": "Standing Cable Pulldown (Cable)"},
         {"exercise_id": "818", "exercise_name": "Twin Handle Parallel-Grip Lat Pulldown"},
         {"exercise_id": "1013", "exercise_name": "Band Underhand Pulldown"},
         {"exercise_id": "1429", "exercise_name": "Wide-Grip Pull-Up"},
@@ -502,7 +501,7 @@ def test_unspecified_chat_substitutes_follow_equipment_access(sub_db, monkeypatc
 
     shown = {
         name for name in (
-            "Wide-Grip Lat Pulldown", "Twin Handle Parallel-Grip Lat Pulldown",
+            "Standing Cable Pulldown (Cable)", "Twin Handle Parallel-Grip Lat Pulldown",
             "Band Underhand Pulldown", "Wide-Grip Pull-Up",
         ) if name in result["response_content"]
     }

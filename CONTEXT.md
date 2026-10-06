@@ -134,7 +134,7 @@ _Arabic_: تمرين من إنشاء المدرب
 _Avoid_: Custom exercise
 
 **Exercise display name**:
-Every Exercise library row has a name shown to the Player. A reviewed row uses its gym-standard name, such as "Wide-Grip Lat Pulldown"; an unreviewed row shows its Exercise source name in Title Case. The source name, id and media stay unchanged.
+Every Exercise library row has a name shown to the Player. A reviewed row uses its gym-standard name, such as "Lat Pulldown"; an unreviewed row shows its Exercise source name in Title Case. The source name, id and media stay unchanged.
 
 **Exercise source name**:
 The name supplied by ExerciseDB or by a MAYOS-authored Exercise library definition. It stays on the source row with its id and media; curation never rewrites it.
@@ -149,7 +149,7 @@ An Exercise library row excluded from Player and Coach search, Replace browse, p
 The MAYOS-owned `data/exercise_curation.csv`, keyed by Exercise library id. It holds reviewed Exercise display names and aliases, with curated fields such as Primary muscle kept beside the source row.
 
 **Staple exercise**:
-An exercise that elite coaches repeatedly choose for a movement, such as the Wide-Grip Lat Pulldown for a vertical pull. Each movement has an ordered list of staples; the first one the player's Equipment access allows is prescribed and the next ones are its suggested substitutes.
+An exercise that elite coaches repeatedly choose for a movement, such as the Lat Pulldown for a vertical pull. Each movement has an ordered list of staples; the first one the player's Equipment access allows is prescribed and the next ones are its suggested substitutes.
 
 **Equipment access**:
 Where a player trains, as one of Commercial gym, Home gym, or Bodyweight only. A Commercial gym player is never prescribed or suggested band or bodyweight working sets, though they may still choose one themselves.

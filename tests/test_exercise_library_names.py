@@ -389,10 +389,7 @@ def test_pulldown_aliases_return_display_names(fresh_store, query):
         query, limit=10, target_muscle="lats"
     )
 
-    assert {match["id"] for match in matches} >= {"2330", "150"}
-    assert {match["name"] for match in matches if match["id"] == "2330"} == {
-        "Wide-Grip Lat Pulldown"
-    }
+    assert "150" in {match["id"] for match in matches}
     assert {match["name"] for match in matches if match["id"] == "150"} == {
         "Lat Pulldown"
     }
@@ -411,7 +408,7 @@ def test_near_miss_names_do_not_resolve(fresh_store, query):
 def test_confirmed_staples_use_display_names_in_library_reads(fresh_store):
     fresh_store.initialize_and_seed()
     expected = {
-        "2330": ("Wide-Grip Lat Pulldown", "frontal lat pulldown"),
+        "2330": ("Standing Cable Pulldown (Cable)", "standing cable pulldown"),
         "150": ("Lat Pulldown", "frontal lat pulldown"),
         "596": ("Pec Deck", "pec deck"),
         "602": ("Reverse Pec Deck", "reverse pec deck"),
@@ -452,10 +449,10 @@ def test_curated_names_are_reapplied_on_catalog_startup(fresh_store, tmp_path: P
         backups_dir=tmp_path / "startup-backups",
     )
     try:
-        assert startup_store.get_exercise_library_entry("2330")["name"] == "Wide-Grip Lat Pulldown"
-        assert {match["id"] for match in startup_store.find_exercises_by_name("frontal lat pulldown")} >= {
-            "2330",
-            "150",
+        assert startup_store.get_exercise_library_entry("2330")["name"] == "Standing Cable Pulldown (Cable)"
+        assert "150" in {match["id"] for match in startup_store.find_exercises_by_name("frontal lat pulldown")}
+        assert "2330" in {
+            match["id"] for match in startup_store.find_exercises_by_name("standing cable pulldown")
         }
     finally:
         if startup_store.ledger_conn is not None:
@@ -496,11 +493,11 @@ def test_program_and_coach_exercise_list_use_display_name(fresh_store):
     fresh_store.ledger.conn.commit()
 
     assert fresh_store.ledger.get_active_program().days[0].exercises[0].exercise_name == (
-        "Wide-Grip Lat Pulldown"
+        "Standing Cable Pulldown (Cable)"
     )
     assert logged_exercises(
         fresh_store, fresh_store.ledger.ledger_id, ledger=fresh_store.ledger
-    ) == [{"id": "2330", "name": "Wide-Grip Lat Pulldown"}]
+    ) == [{"id": "2330", "name": "Standing Cable Pulldown (Cable)"}]
 
 
 def test_reseeding_upserts_source_rows_and_replaces_curated_aliases(fresh_store, tmp_path: Path):
@@ -554,9 +551,9 @@ def test_reseeding_upserts_source_rows_and_replaces_curated_aliases(fresh_store,
     assert fresh_store.catalog_conn.execute(
         "SELECT COUNT(*) FROM exercises WHERE id = 'keep'"
     ).fetchone()[0] == 1
-    assert fresh_store.get_exercise_library_entry("2330")["name"] == "Wide-Grip Lat Pulldown"
+    assert fresh_store.get_exercise_library_entry("2330")["name"] == "Standing Cable Pulldown (Cable)"
     assert "2330" in {
-        match["id"] for match in fresh_store.find_exercises_by_name("frontal lat pulldown")
+        match["id"] for match in fresh_store.find_exercises_by_name("standing cable pulldown")
     }
     assert fresh_store.ledger.conn.execute(
         "SELECT exercise_id FROM workout_sets WHERE id = 'seed-set'"

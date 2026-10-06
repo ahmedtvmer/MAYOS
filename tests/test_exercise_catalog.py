@@ -414,7 +414,7 @@ def test_replace_browse_ranks_display_named_exercises_and_returns_every_match(ap
     db.catalog_conn.executemany(
         "INSERT INTO exercise_display_names (exercise_id, display_name, is_reviewed) "
         "VALUES (?, ?, 1)",
-        [("2330", "Wide-Grip Lat Pulldown"), ("150", "Lat Pulldown")],
+        [("2330", "Standing Cable Pulldown (Cable)"), ("150", "Lat Pulldown")],
     )
     db.catalog_conn.commit()
 

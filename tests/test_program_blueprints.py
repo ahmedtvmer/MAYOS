@@ -189,7 +189,7 @@ def test_incline_and_front_pulldown_reach_programs(gender, frequency):
     assert any(("pulldown" in name or "pull-up" in name or "pull up" in name) for name in names), names
 
 
-def test_commercial_gym_vertical_pull_prescribes_wide_grip_lat_pulldown():
+def test_commercial_gym_vertical_pull_prescribes_lat_pulldown():
     program = _generate("male", 3, preference="Push/Pull/Legs")
     vertical_pulls = [
         exercise
@@ -198,8 +198,8 @@ def test_commercial_gym_vertical_pull_prescribes_wide_grip_lat_pulldown():
         if exercise.slot_key == "vertical_pull"
     ]
     assert vertical_pulls
-    assert all(exercise.exercise_name == "Wide-Grip Lat Pulldown" for exercise in vertical_pulls)
-    assert vertical_pulls[0].suggested_substitutes[0].exercise_name == "Lat Pulldown"
+    assert all(exercise.exercise_name == "Lat Pulldown" for exercise in vertical_pulls)
+    assert vertical_pulls[0].suggested_substitutes[0].exercise_name == "Standing Cable Pulldown (Cable)"
 
 
 def test_generation_is_repeatable_and_offers_ordered_staple_substitutes():
@@ -331,7 +331,7 @@ def test_generated_staples_do_not_use_known_wrong_name_matches(monkeypatch):
         "biceps_preacher": "592",
         "forearm_wrist": "1412",
         "quad_compound": "743",
-        "vertical_pull": "2330",
+        "vertical_pull": "150",
     }
     assert all(
         substitute.exercise_id not in wrong_ids
