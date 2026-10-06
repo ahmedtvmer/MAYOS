@@ -1037,11 +1037,18 @@ class ApiClient {
     );
   }
 
-  Future<List<ExerciseCatalogEntry>> coachSearchExercises(String query) async {
+  Future<List<ExerciseCatalogEntry>> coachSearchExercises(
+    String query, {
+    List<String> primaryMuscles = const <String>[],
+  }) async {
     final response = await _send(
       () => _dio.get<dynamic>(
         '/coach/exercises',
-        queryParameters: <String, dynamic>{'query': query},
+        queryParameters: <String, dynamic>{
+          if (query.trim().isNotEmpty) 'query': query,
+          if (primaryMuscles.isNotEmpty) 'primary_muscle': primaryMuscles,
+        },
+        options: Options(listFormat: ListFormat.multi),
       ),
     );
     final dynamic body = response.data;
@@ -1892,19 +1899,22 @@ class ApiClient {
   /// Catalog exercises matching [query], for picking a real unplanned
   /// exercise (`GET /workouts/exercises?query=`, ADR 020/033, #34).
   ///
-  /// [targetMuscle] (#162) narrows the search to one catalog muscle; with it
-  /// set [query] may be empty, which lists that muscle's exercises so the
-  /// Replace search opens pre-filtered before the player types.
+  /// [targetMuscle] (#162) filters the source target label. [primaryMuscles]
+  /// filters curated labels and may contain several values. Either filter can
+  /// be sent without a name [query].
   Future<List<ExerciseCatalogEntry>> searchExercises(
     String query, {
     String? targetMuscle,
+    List<String> primaryMuscles = const <String>[],
   }) async {
     final response = await _send(
       () => _dio.get<dynamic>('/workouts/exercises',
           queryParameters: <String, dynamic>{
-            'query': query,
+            if (query.trim().isNotEmpty) 'query': query,
             if (targetMuscle != null) 'target_muscle': targetMuscle,
-          }),
+            if (primaryMuscles.isNotEmpty) 'primary_muscle': primaryMuscles,
+          },
+          options: Options(listFormat: ListFormat.multi)),
     );
     final dynamic data = response.data;
     if (data is! Map<String, dynamic> || data['exercises'] is! List) {

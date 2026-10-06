@@ -910,6 +910,10 @@ void main() {
         find.descendant(of: dialog(), matching: find.text(text));
 
     expect(find.text('Replace exercise'), findsOneWidget);
+    expect(
+      find.byKey(const Key('exercise_primary_muscle_filter')),
+      findsOneWidget,
+    );
     // Bench's catalog detail says Chest, so the server's muscle listing is
     // on screen before the player types anything (#162: `target_muscle`)…
     expect(find.text('Muscle: Chest'), findsOneWidget);
@@ -944,6 +948,34 @@ void main() {
     await tester.tap(_muscleFilter());
     await _pumpUntilFound(tester, inDialog('Bicep Curl'));
     expect(inDialog('Bench Press'), findsNothing);
+  });
+
+  testWidgets('player picker filters by selected Primary muscle',
+      (WidgetTester tester) async {
+    final harness = await _openLogger(tester);
+    final Finder add = find.widgetWithText(OutlinedButton, 'Add exercise');
+    await tester.ensureVisible(add);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(add);
+    await _pumpUntilFound(tester, find.byKey(
+      const Key('exercise_primary_muscle_filter'),
+    ));
+
+    await tester.tap(find.byKey(const Key('exercise_primary_muscle_filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(
+      const Key('primary_muscle_option_Biceps'),
+    ));
+    await tester.tap(find.byKey(
+      const Key('exercise_primary_muscle_done'),
+    ));
+    await _pumpUntilFound(tester, find.text('Bicep Curl'));
+
+    expect(find.text('Cable Fly'), findsNothing);
+    final request = harness.fake.adapter.requests
+        .lastWhere((request) =>
+            request.path == '/workouts/exercises');
+    expect(request.query['primary_muscle'], <String>['Biceps']);
   });
 
   testWidgets(

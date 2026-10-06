@@ -7,6 +7,7 @@ import '../../core/api_client.dart';
 import '../../core/app_failure.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/copy_context.dart';
+import '../../core/exercise_filters.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
@@ -15,6 +16,7 @@ import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_settings_tile.dart';
 import '../../core/ui/mayos_text_field.dart';
 import '../../providers.dart';
+import '../../shared/exercise_filter_bar.dart';
 
 const double kExercisePickerDialogWidth = 360;
 
@@ -36,11 +38,8 @@ Future<String?> exerciseTargetMuscle(ApiClient api, String exerciseId) async {
 /// sync (ADR 020/033). It is both the **Add exercise** dialog and the search
 /// **Replace exercise** opens (#162), which passes [targetMuscle].
 ///
-/// The service's search matches names only — `GET /workouts/exercises` has no
-/// muscle parameter — so the pre-filter is applied here: while the chip is on,
-/// only rows whose `target_muscle` equals [targetMuscle] are offered, and
-/// clearing the chip (or any query the player types) searches the whole
-/// catalog again.
+/// The source [targetMuscle] filter remains available for the Replace flow;
+/// the shared filter bar adds curated Primary muscle filters for every picker.
 class ExercisePickerDialog extends ConsumerStatefulWidget {
   const ExercisePickerDialog({
     super.key,
@@ -54,9 +53,8 @@ class ExercisePickerDialog extends ConsumerStatefulWidget {
   /// The dialog's heading: "Add unplanned exercise", or "Replace exercise".
   final String? title;
 
-  /// The planned exercise's target muscle (#162): when present the search
-  /// opens listing that muscle's exercises (server-side `target_muscle`),
-  /// with a pill that turns the pre-filter off to search by name.
+  /// The planned exercise's source target muscle (#162), initially enabled
+  /// when present. The separate shared bar filters curated Primary muscles.
   final String? targetMuscle;
 
   /// Exercise ids already in this workout (#162): the Replace search never
@@ -82,15 +80,16 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
   List<ExerciseCatalogEntry> _results = const <ExerciseCatalogEntry>[];
 
   /// Whether [widget.targetMuscle] narrows the results right now (#162).
-  bool _muscleFilter = false;
+  bool _targetMuscleFilter = false;
+  ExerciseFilterState _filterState = const ExerciseFilterState();
 
   @override
   void initState() {
     super.initState();
     // Replace opens pre-listed with the target muscle; Add exercise never
     // filters and so never searches until the player asks.
-    _muscleFilter = widget.targetMuscle != null;
-    if (_muscleFilter) {
+    _targetMuscleFilter = widget.targetMuscle != null;
+    if (_targetMuscleFilter) {
       // The first listing runs before the player types anything (#162);
       // a microtask keeps setState out of initState.
       Future<void>.microtask(() {
@@ -107,15 +106,19 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
     super.dispose();
   }
 
-  /// The muscle the query is narrowed by right now, or null while the pill
-  /// is off — the one place the two search modes are decided (#162).
-  String? get _activeMuscle => _muscleFilter ? widget.targetMuscle : null;
+  /// The source target muscle selected for this Replace search (#162).
+  String? get _activeTargetMuscle =>
+      _targetMuscleFilter ? widget.targetMuscle : null;
 
   Future<void> _search() async {
     final String query = _query.text.trim();
-    final String? muscle = _activeMuscle;
-    if (query.isEmpty && muscle == null) {
-      setState(() => _error = displayCopyOf(context).typeExerciseName);
+    final String? targetMuscle = _activeTargetMuscle;
+    final ExerciseFilterState filters = _filterState;
+    if (query.isEmpty && targetMuscle == null && !filters.hasCuratedFilters) {
+      setState(() {
+        _results = const <ExerciseCatalogEntry>[];
+        _error = displayCopyOf(context).typeExerciseName;
+      });
       return;
     }
     setState(() {
@@ -124,21 +127,23 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
       _failure = null;
     });
     try {
-      // With a muscle set the server lists or narrows by `target_muscle`, so
-      // the Replace dialog can show that muscle before any typing (#162);
-      // Add exercise passes nothing and searches by name exactly as before.
+      // Filter-only requests browse before the player enters a name.
       final List<ExerciseCatalogEntry> results = await ref
           .read(apiClientProvider)
-          .searchExercises(query, targetMuscle: muscle);
+          .searchExercises(
+            query,
+            targetMuscle: targetMuscle,
+            primaryMuscles: filters.primaryMuscles,
+          );
       if (!mounted) return;
       setState(() {
         _searching = false;
         _results = results;
-        _error = results.isEmpty
-            ? (muscle == null
+        _error = results.isEmpty && targetMuscle != null
+            ? displayCopyOf(context).noMuscleExerciseMatched(targetMuscle)
+            : results.isEmpty
                 ? displayCopyOf(context).noMatchingExercise
-                : displayCopyOf(context).noMuscleExerciseMatched(muscle))
-            : null;
+                : null;
       });
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -151,9 +156,8 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
   }
 
   /// What the player is offered: the search's rows minus every exercise
-  /// already in this workout (#162). The muscle itself is the server's job —
-  /// `GET /workouts/exercises?target_muscle=` — so this list is whatever that
-  /// query returned, minus the workout's own exercises.
+  /// already in this workout (#162). The server applies the source and
+  /// curated muscle filters; this list removes exercises already in the workout.
   List<ExerciseCatalogEntry> get _visible => _results
       .where(
         (ExerciseCatalogEntry entry) =>
@@ -167,22 +171,25 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
               !widget.excludeExerciseIds.contains(item.exerciseId))
           .toList(growable: false);
 
-  /// The pill (#162): on, the server lists the target muscle (no name needed);
-  /// off, the search goes back to the whole catalog by name — which needs a
-  /// query, so an empty one says exactly that instead of showing muscle rows.
-  void _toggleMuscleFilter() {
+  /// Toggle the source target muscle while preserving any curated filters.
+  void _toggleTargetMuscleFilter() {
     setState(() {
-      _muscleFilter = !_muscleFilter;
-      if (!_muscleFilter && _query.text.trim().isEmpty) {
+      _targetMuscleFilter = !_targetMuscleFilter;
+      if (!_targetMuscleFilter &&
+          !_filterState.hasCuratedFilters &&
+          _query.text.trim().isEmpty) {
         _results = const <ExerciseCatalogEntry>[];
         _error = displayCopyOf(context).typeExerciseName;
       }
     });
-    // Re-list the muscle when it turns on; re-search by name when it turns
-    // off and there is a query to search with.
-    if (!_muscleFilter && _query.text.trim().isEmpty) {
-      return;
-    }
+    unawaited(_search());
+  }
+
+  void _filtersChanged(ExerciseFilterState filters) {
+    setState(() {
+      _filterState = filters;
+      if (filters.hasCuratedFilters) _targetMuscleFilter = false;
+    });
     unawaited(_search());
   }
 
@@ -210,12 +217,16 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
             if (widget.targetMuscle != null)
               Padding(
                 padding: const EdgeInsets.only(top: MayosSpacing.xs),
-                child: _ExercisePickerMuscleFilterChip(
+                child: _ExercisePickerTargetMuscleFilterChip(
                   muscle: widget.targetMuscle!,
-                  active: _muscleFilter,
-                  onToggle: _toggleMuscleFilter,
+                  active: _targetMuscleFilter,
+                  onToggle: _toggleTargetMuscleFilter,
                 ),
               ),
+            ExerciseFilterBar(
+              filterState: _filterState,
+              onChanged: _filtersChanged,
+            ),
             if (_searching)
               const Padding(
                 padding: EdgeInsets.only(top: MayosSpacing.sm),
@@ -299,8 +310,8 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
 /// target muscle. On, the dialog lists that muscle straight from
 /// `GET /workouts/exercises?target_muscle=`; the ✕ (or a tap) turns it off so
 /// the same dialog searches the whole catalog by name.
-class _ExercisePickerMuscleFilterChip extends StatelessWidget {
-  const _ExercisePickerMuscleFilterChip({
+class _ExercisePickerTargetMuscleFilterChip extends StatelessWidget {
+  const _ExercisePickerTargetMuscleFilterChip({
     required this.muscle,
     required this.active,
     required this.onToggle,

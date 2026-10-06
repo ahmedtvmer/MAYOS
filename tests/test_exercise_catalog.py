@@ -6,6 +6,7 @@ an authenticated, read-only endpoint that returns the real catalog fields
 instructions, and the stored media paths) without bundling or serving media.
 """
 
+import csv
 import sqlite3
 from pathlib import Path
 
@@ -91,6 +92,30 @@ def _authed(token):
     return {"Authorization": f"Bearer {token}"}
 
 
+def _curate_primary_muscles(db, records):
+    curation_path = db.catalog_path.parent / "primary-muscles.csv"
+    with curation_path.open("w", newline="", encoding="utf-8") as curation_file:
+        writer = csv.writer(curation_file)
+        writer.writerow(
+            [
+                "id", "source_name", "display_name", "aliases", "primary_action",
+                "secondary_actions", "primary_muscle", "load_type", "hidden", "duplicate_of",
+            ]
+        )
+        for exercise_id, primary_muscle in records:
+            source_name = db.catalog_conn.execute(
+                "SELECT name FROM exercises WHERE id = ?", (exercise_id,)
+            ).fetchone()[0]
+            writer.writerow(
+                [exercise_id, source_name, "", "", "", "", primary_muscle, "", "", ""]
+            )
+    from database.exercise_library.curation import apply_exercise_curation
+
+    with db.catalog_locked() as connection:
+        apply_exercise_curation(connection.cursor(), curation_path)
+        connection.commit()
+
+
 def test_exercise_detail_returns_real_catalog_fields(api):
     client, _ = api
     token = _register(client, "player")["access_token"]
@@ -104,6 +129,7 @@ def test_exercise_detail_returns_real_catalog_fields(api):
         "body_part": "Chest",
         "equipment": "barbell",
         "primary_muscles": ["Chest"],
+        "primary_muscle": None,
         "secondary_muscles": ["shoulders", "triceps"],
         "instructions": "Lie on a bench and press the bar up.",
         "image_path": "images/bp.jpg",
@@ -129,10 +155,13 @@ def test_unreviewed_exercises_use_title_case_names_in_search_and_detail(api):
             params={"query": source_name},
         )
         assert search.status_code == 200, search.text
-        assert any(
-            exercise["id"] == exercise_id and exercise["name"] == display_name
+        match = next(
+            exercise
             for exercise in search.json()["exercises"]
+            if exercise["id"] == exercise_id
         )
+        assert match["name"] == display_name
+        assert match["primary_muscle"] is None
 
         detail = client.get(f"/workouts/exercises/{exercise_id}", headers=_authed(token))
         assert detail.status_code == 200, detail.text
@@ -245,6 +274,62 @@ def test_catalog_search_by_muscle_lists_that_muscle_without_a_name_query(api):
     )
     assert resp.status_code == 200, resp.text
     assert [m["id"] for m in resp.json()["exercises"]] == ["sq", "lp"]
+
+
+def test_catalog_search_filters_by_primary_muscles_with_or_and_name(api):
+    client, db = api
+    token = _register(client, "primary-muscle-filter")['access_token']
+    _curate_primary_muscles(
+        db,
+        [("bp", "Chest"), ("ib", "Upper Chest"), ("sq", "Quads"), ("lp", "Quads")],
+    )
+
+    browsed = client.get(
+        "/workouts/exercises",
+        headers=_authed(token),
+        params=[("primary_muscle", "Chest"), ("primary_muscle", "Quads")],
+    )
+    assert browsed.status_code == 200, browsed.text
+    assert {row["id"] for row in browsed.json()["exercises"]} == {"bp", "sq", "lp"}
+    assert {row["primary_muscle"] for row in browsed.json()["exercises"]} == {
+        "Chest",
+        "Quads",
+    }
+
+    queried = client.get(
+        "/workouts/exercises",
+        headers=_authed(token),
+        params={"query": "press", "primary_muscle": "Upper Chest"},
+    )
+    assert queried.status_code == 200, queried.text
+    assert [row["id"] for row in queried.json()["exercises"]] == ["ib"]
+    assert queried.json()["exercises"][0]["primary_muscle"] == "Upper Chest"
+
+    combined = client.get(
+        "/workouts/exercises",
+        headers=_authed(token),
+        params={"target_muscle": "Quads", "primary_muscle": "Chest"},
+    )
+    assert combined.status_code == 200, combined.text
+    assert combined.json()["exercises"] == []
+
+    detail = client.get("/workouts/exercises/bp", headers=_authed(token))
+    assert detail.json()["primary_muscle"] == "Chest"
+    uncurated = client.get("/workouts/exercises/raw-cable", headers=_authed(token))
+    assert uncurated.json()["primary_muscle"] is None
+
+
+def test_catalog_search_rejects_unknown_primary_muscle(api):
+    client, _ = api
+    token = _register(client, "unknown-primary-muscle")['access_token']
+
+    response = client.get(
+        "/workouts/exercises",
+        headers=_authed(token),
+        params={"primary_muscle": "Middle Back"},
+    )
+
+    assert response.status_code == 422
 
 
 def test_replace_browse_ranks_display_named_exercises_and_returns_every_match(api):

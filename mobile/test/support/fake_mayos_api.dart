@@ -3503,6 +3503,7 @@ class FakeMayosApi {
         'name': 'Bicep Curl',
         'equipment': 'dumbbell',
         'target_muscle': 'Biceps',
+        'primary_muscle': 'Biceps',
         'body_part': 'Upper Arms',
         'image_path': 'images/bicep_curl.jpg',
       },
@@ -3511,6 +3512,7 @@ class FakeMayosApi {
         'name': 'Cable Fly',
         'equipment': 'cable',
         'target_muscle': 'Chest',
+        'primary_muscle': 'Chest',
         'body_part': 'Chest',
         'image_path': 'images/cable_fly.jpg',
       },
@@ -3519,6 +3521,7 @@ class FakeMayosApi {
         'name': 'Bench Press',
         'equipment': 'barbell',
         'target_muscle': 'Chest',
+        'primary_muscle': 'Chest',
         'body_part': 'Chest',
         'image_path': 'images/bench_press.jpg',
       },
@@ -3527,20 +3530,33 @@ class FakeMayosApi {
     // never an unfiltered dump, and the muscle listing needs no query.
     final String muscle =
         '${request.query['target_muscle'] ?? ''}'.trim().toLowerCase();
-    if (query.isEmpty && muscle.isEmpty) {
+    final dynamic primaryFilter = request.query['primary_muscle'];
+    final List<String> primaryMuscles = primaryFilter is Iterable<dynamic>
+        ? primaryFilter.map((dynamic value) => '$value').toList()
+        : primaryFilter == null
+            ? <String>[]
+            : <String>['$primaryFilter'];
+    if (query.isEmpty && muscle.isEmpty && primaryMuscles.isEmpty) {
       return const FakeResponse(400, <String, dynamic>{
-        'detail': 'Provide query, target_muscle, or both.'
+        'detail': 'Provide query, target_muscle, primary_muscle, or a combination.'
       });
     }
     bool matchesMuscle(Map<String, dynamic> entry) =>
         muscle.isEmpty ||
         '${entry['target_muscle'] ?? ''}'.trim().toLowerCase() == muscle;
+    bool matchesPrimaryMuscle(Map<String, dynamic> entry) =>
+        primaryMuscles.isEmpty ||
+        primaryMuscles.contains('${entry['primary_muscle'] ?? ''}');
     final List<Map<String, dynamic>> matches = query.isEmpty
-        ? catalog.where(matchesMuscle).toList(growable: false)
+        ? catalog
+            .where((Map<String, dynamic> entry) =>
+                matchesMuscle(entry) && matchesPrimaryMuscle(entry))
+            .toList(growable: false)
         : catalog
             .where((Map<String, dynamic> entry) =>
                 (entry['name'] as String).toLowerCase().contains(query) &&
-                matchesMuscle(entry))
+                matchesMuscle(entry) &&
+                matchesPrimaryMuscle(entry))
             .toList(growable: false);
     // The real SQL orders the LIKE tier by name length (#162's muscle list).
     matches.sort((Map<String, dynamic> a, Map<String, dynamic> b) =>
@@ -3561,6 +3577,7 @@ class FakeMayosApi {
     }
     if (request.method == 'POST') return _createCoachExercise(request);
     final FakeResponse libraryResponse = _searchExercises(request);
+    if (libraryResponse.status != 200) return libraryResponse;
     final List<Map<String, dynamic>> library =
         List<Map<String, dynamic>>.from(
       (libraryResponse.body as Map<String, dynamic>)['exercises'] as List,
@@ -3569,10 +3586,13 @@ class FakeMayosApi {
               'is_coach_exercise': false,
             }).toList(growable: false);
     final String query = '${request.query['query'] ?? ''}'.toLowerCase();
-    final List<Map<String, dynamic>> owned = coachExerciseRows
-        .where((Map<String, dynamic> row) =>
-            '${row['name']}'.toLowerCase().contains(query))
-        .toList(growable: false);
+    final bool hasPrimaryMuscle = request.query['primary_muscle'] != null;
+    final List<Map<String, dynamic>> owned = hasPrimaryMuscle
+        ? <Map<String, dynamic>>[]
+        : coachExerciseRows
+            .where((Map<String, dynamic> row) =>
+                '${row['name']}'.toLowerCase().contains(query))
+            .toList(growable: false);
     return FakeResponse(200, <String, dynamic>{
       'exercises': <Map<String, dynamic>>[...library, ...owned],
     });
@@ -3590,6 +3610,7 @@ class FakeMayosApi {
       'video_url': fields['video_url'],
       'image_path': null,
       'gif_path': null,
+      'primary_muscle': null,
       'is_coach_exercise': true,
     };
     coachExerciseRows.add(exercise);
@@ -3605,6 +3626,7 @@ class FakeMayosApi {
       'category': 'Chest',
       'body_part': 'Chest',
       'equipment': 'barbell',
+      'primary_muscle': 'Chest',
       'primary_muscles': <String>['Chest'],
       'secondary_muscles': <String>['Triceps', 'Shoulders'],
       'instructions': 'Lie on a flat bench with your feet on the floor.\n'

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from agent.program_blueprints import SLOT_STAPLES
 from database.shared import BASE_DIR, _normalize_exercise_name
+from database.exercise_library.vocabulary import PRIMARY_MUSCLES
 
 DEFAULT_CURATION_CSV_PATH = BASE_DIR / "data" / "exercise_curation.csv"
 CURATION_COLUMNS = (
@@ -78,6 +79,8 @@ def _parse_curation_row(line_number: int, row: dict[str, str | None]) -> Exercis
             f"Exercise curation CSV line {line_number} id {exercise_id!r} "
             f"has invalid hidden value {hidden_value!r}"
         )
+    primary_muscle = (row["primary_muscle"] or "").strip()
+    _validate_primary_muscle(line_number, exercise_id, primary_muscle)
     return ExerciseCuration(
         line_number=line_number,
         id=exercise_id,
@@ -86,7 +89,7 @@ def _parse_curation_row(line_number: int, row: dict[str, str | None]) -> Exercis
         aliases=aliases,
         primary_action=(row["primary_action"] or "").strip(),
         secondary_actions=_split_curation_values(row["secondary_actions"]),
-        primary_muscle=(row["primary_muscle"] or "").strip(),
+        primary_muscle=primary_muscle,
         load_type=(row["load_type"] or "").strip(),
         hidden=hidden_value.casefold() == "true",
         duplicate_of=(row["duplicate_of"] or "").strip(),
@@ -97,6 +100,16 @@ def _validate_curation_aliases(line_number: int, aliases: tuple[str, ...]) -> No
     normalized_aliases = [_normalize_exercise_name(alias) for alias in aliases]
     if len(set(normalized_aliases)) != len(normalized_aliases):
         raise ValueError(f"Exercise curation CSV line {line_number} repeats an alias")
+
+
+def _validate_primary_muscle(
+    line_number: int, exercise_id: str, primary_muscle: str
+) -> None:
+    if primary_muscle and primary_muscle not in PRIMARY_MUSCLES:
+        raise ValueError(
+            f"Exercise curation CSV line {line_number} id {exercise_id!r} "
+            f"has invalid primary_muscle {primary_muscle!r}"
+        )
 
 
 def _split_curation_values(cell: str | None) -> tuple[str, ...]:
@@ -222,12 +235,14 @@ def _upsert_curated_fields(
     record: ExerciseCuration | None,
 ) -> None:
     cursor.execute(
-        "INSERT INTO exercise_curated_fields (exercise_id, hidden, duplicate_of) "
-        "VALUES (?, ?, ?) "
+        "INSERT INTO exercise_curated_fields "
+        "(exercise_id, primary_muscle, hidden, duplicate_of) VALUES (?, ?, ?, ?) "
         "ON CONFLICT(exercise_id) DO UPDATE SET "
+        "primary_muscle = excluded.primary_muscle, "
         "hidden = excluded.hidden, duplicate_of = excluded.duplicate_of",
         (
             exercise_id,
+            (record.primary_muscle or None) if record else None,
             int(bool(record and record.hidden)),
             (record.duplicate_of or None) if record else None,
         ),

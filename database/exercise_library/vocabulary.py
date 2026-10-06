@@ -1,0 +1,26 @@
+"""Curated Exercise library vocabulary shared by curation and search."""
+
+PRIMARY_MUSCLES = (
+    "Chest",
+    "Upper Chest",
+    "Front Delts",
+    "Side Delts",
+    "Rear Delts",
+    "Lats",
+    "Upper Back",
+    "Traps",
+    "Lower Back",
+    "Biceps",
+    "Triceps",
+    "Forearms",
+    "Abs",
+    "Obliques",
+    "Quads",
+    "Hamstrings",
+    "Glutes",
+    "Adductors",
+    "Abductors",
+    "Calves",
+    "Neck",
+    "Cardio",
+)

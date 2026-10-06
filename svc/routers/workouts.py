@@ -6,10 +6,11 @@ import json
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from database.exercise_resolution import resolve_exercise_display_row
+from database.exercise_library.filters import exercise_filters_for
 from service import analytics
 from service import sessions as sessions_service
 from service import workouts as workouts_service
@@ -113,25 +114,30 @@ async def search_exercises(
     ledger: Annotated[Any, Depends(get_ledger)],
     query: str | None = None,
     target_muscle: str | None = None,
+    primary_muscle: list[str] | None = Query(None),
 ):
-    """Search the Exercise library by ``query`` (#34), optionally narrowed to one target muscle (#162).
+    """Search the Exercise library by name, target muscle or curated filters.
 
-    ``query`` may be omitted when ``target_muscle`` is given, so the logger's Replace
-    search opens listing that muscle's exercises before the player types. The
-    muscle-only Replace browse returns every matching Exercise library row; name
-    searches remain limited to 10 results.
+    A filter-only browse returns all matching rows in display-name order and
+    applies the player's Equipment access. Name searches remain limited to 10
+    and ignore Equipment access, matching the existing Replace browse behavior.
     """
-    if not (query or target_muscle):
+    try:
+        filters = exercise_filters_for(primary_muscle)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if not (query or target_muscle or filters.has_curated_filters):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Provide query, target_muscle, or both.",
+            detail="Provide query, target_muscle, primary_muscle, or a combination.",
         )
-    muscle_browse = bool(target_muscle and not (query or "").strip())
-    # This is unbounded by design: one muscle has at most a few hundred rows,
-    # and the Replace list must not drop relevant rows because of a page limit.
-    limit = None if muscle_browse else 10
+    filter_browse = bool(
+        (target_muscle or filters.has_curated_filters) and not (query or "").strip()
+    )
+    # Replace filter-only browsing is unbounded so it never drops matching rows.
+    limit = None if filter_browse else 10
     equipment_access = None
-    if muscle_browse:
+    if filter_browse:
         equipment_access = map_equipment_access(
             (ledger.get_player_profile() or {}).get("equipment_access", COMMERCIAL_GYM)
         )
@@ -140,11 +146,11 @@ async def search_exercises(
         limit=limit,
         target_muscle=target_muscle,
         equipment_access=equipment_access,
-        muscle_browse=muscle_browse,
+        muscle_browse=filter_browse,
+        filters=filters,
     )
     return {
-        # A muscle-only Replace browse suggests options, while a typed name is
-        # the player's explicit Exercise library search and remains unfiltered.
+        # Filter-only browsing suggests options; typed searches stay bounded.
         "exercises": exercises,
     }
 
@@ -158,9 +164,9 @@ async def read_exercise_library_detail(
     """One catalog exercise for the read-only exercise-detail view (#53).
 
     Returns name, category (= body_part in the source data), body_part,
-    equipment, primary + secondary muscles, instructions, and the stored media
-    paths. The media paths are exposed so the client can gate display behind its
-    build-time media flag; no media is bundled or served by this endpoint.
+    equipment, curated Primary muscle, source primary + secondary muscles,
+    instructions, and stored media paths. The client gates media display behind
+    its build-time media flag; this endpoint does not serve media.
     """
     detail = db.get_exercise_library_detail(exercise_id)
     if detail is None:

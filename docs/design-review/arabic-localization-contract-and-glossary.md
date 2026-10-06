@@ -75,6 +75,33 @@ Arabic/English mixed input cases.
 | Record a check-in | تسجيل تواصل |
 | Follow-up due | حان موعد المتابعة |
 
+## Primary muscle labels
+
+| English label | Arabic label |
+| --- | --- |
+| Chest | الصدر |
+| Upper Chest | أعلى الصدر |
+| Front Delts | الكتف الأمامي |
+| Side Delts | الكتف الجانبي |
+| Rear Delts | الكتف الخلفي |
+| Lats | العضلات الظهرية العريضة |
+| Upper Back | أعلى الظهر |
+| Traps | العضلة شبه المنحرفة |
+| Lower Back | أسفل الظهر |
+| Biceps | العضلة ذات الرأسين |
+| Triceps | العضلة ثلاثية الرؤوس |
+| Forearms | الساعد |
+| Abs | عضلات البطن |
+| Obliques | العضلات المائلة |
+| Quads | العضلة رباعية الرؤوس |
+| Hamstrings | عضلات الفخذ الخلفية |
+| Glutes | عضلات الألوية |
+| Adductors | العضلات المقربة |
+| Abductors | العضلات المبعدة |
+| Calves | عضلات الساق |
+| Neck | الرقبة |
+| Cardio | تمارين القلب |
+
 Keep the label **RIR** unchanged; do not replace it with an Arabic label.
 Keep **kg** beside numeric weights.
 

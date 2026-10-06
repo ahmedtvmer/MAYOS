@@ -1123,6 +1123,7 @@ class CoachExerciseCreateIn(BaseModel):
 class CoachExerciseOut(BaseModel):
     id: str
     name: str
+    primary_muscle: str | None = None
     body_part: str | None = None
     equipment: str | None = None
     note: str | None = None

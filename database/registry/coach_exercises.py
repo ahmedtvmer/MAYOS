@@ -90,5 +90,6 @@ class RegistryCoachExercisesMixin:
             "video_url": row[5],
             "image_path": None,
             "gif_path": None,
+            "primary_muscle": None,
             "is_coach_exercise": True,
         }

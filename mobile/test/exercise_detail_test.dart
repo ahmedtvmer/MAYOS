@@ -140,6 +140,7 @@ void main() {
     expect(find.text('الأسلوب'), findsOneWidget);
     expect(find.text('السجل'), findsOneWidget);
     expect(find.text('Bench Press'), findsOneWidget);
+    expect(find.text('الصدر'), findsOneWidget);
     expect(find.text('RIR ≥ 2'), findsOneWidget);
     expect(Directionality.of(tester.element(find.text('نظرة عامة'))),
         TextDirection.rtl);

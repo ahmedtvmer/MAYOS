@@ -1,3 +1,4 @@
+import csv
 import sqlite3
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -82,6 +83,30 @@ def _assign(client, coach_headers, player_headers):
     return redeemed.json()["assignment"]["assignment_id"]
 
 
+def _curate_primary_muscles(db, records):
+    curation_path = db.catalog_path.parent / "coach-primary-muscle.csv"
+    with curation_path.open("w", newline="", encoding="utf-8") as curation_file:
+        writer = csv.writer(curation_file)
+        writer.writerow(
+            [
+                "id", "source_name", "display_name", "aliases", "primary_action",
+                "secondary_actions", "primary_muscle", "load_type", "hidden", "duplicate_of",
+            ]
+        )
+        for exercise_id, primary_muscle in records:
+            source_name = db.catalog_conn.execute(
+                "SELECT name FROM exercises WHERE id = ?", (exercise_id,)
+            ).fetchone()[0]
+            writer.writerow(
+                [exercise_id, source_name, "", "", "", "", primary_muscle, "", "", ""]
+            )
+    from database.exercise_library.curation import apply_exercise_curation
+
+    with db.catalog_locked() as connection:
+        apply_exercise_curation(connection.cursor(), curation_path)
+        connection.commit()
+
+
 def _create_exercise(client, headers, name="Pin Squat"):
     response = client.post(
         "/coach/exercises",
@@ -142,9 +167,59 @@ def test_create_and_search_are_https_only_and_isolated_to_owner(api):
     assert first_results.status_code == 200, first_results.text
     assert [row["id"] for row in first_results.json()["exercises"]] == [created["id"]]
     assert first_results.json()["exercises"][0]["is_coach_exercise"] is True
+    assert first_results.json()["exercises"][0]["primary_muscle"] is None
 
     alongside_library = client.get("/coach/exercises", headers=first_coach, params={"query": "squat"})
     assert {row["id"] for row in alongside_library.json()["exercises"]} == {"sq", created["id"]}
+
+    with api[1].catalog_locked() as connection:
+        connection.execute(
+            "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) "
+            "VALUES ('bp', 'Bench Press', 'Chest', 'Chest', 'barbell')"
+        )
+        connection.commit()
+    _curate_primary_muscles(api[1], [("sq", "Quads"), ("bp", "Chest")])
+    filtered = client.get(
+        "/coach/exercises", headers=first_coach, params={"primary_muscle": "Quads"}
+    )
+    assert filtered.status_code == 200, filtered.text
+    assert [row["id"] for row in filtered.json()["exercises"]] == ["sq"]
+    assert filtered.json()["exercises"][0]["primary_muscle"] == "Quads"
+
+    multiple_filters = client.get(
+        "/coach/exercises",
+        headers=first_coach,
+        params=[("primary_muscle", "Quads"), ("primary_muscle", "Chest")],
+    )
+    assert multiple_filters.status_code == 200, multiple_filters.text
+    assert {row["id"] for row in multiple_filters.json()["exercises"]} == {
+        "sq",
+        "bp",
+    }
+
+    empty_query_filter = client.get(
+        "/coach/exercises",
+        headers=first_coach,
+        params={"query": "", "primary_muscle": "Quads"},
+    )
+    assert empty_query_filter.status_code == 200, empty_query_filter.text
+    assert [row["id"] for row in empty_query_filter.json()["exercises"]] == ["sq"]
+
+    filtered_query = client.get(
+        "/coach/exercises",
+        headers=first_coach,
+        params={"query": "squat", "primary_muscle": "Quads"},
+    )
+    assert filtered_query.status_code == 200, filtered_query.text
+    assert [row["id"] for row in filtered_query.json()["exercises"]] == ["sq"]
+    assert client.get("/coach/exercises", headers=first_coach).status_code == 400
+
+    invalid = client.get(
+        "/coach/exercises",
+        headers=first_coach,
+        params={"primary_muscle": "Middle Back"},
+    )
+    assert invalid.status_code == 422
     player_search = client.get("/workouts/exercises", headers=first_coach, params={"query": "pin squat"})
     assert created["id"] not in {row["id"] for row in player_search.json()["exercises"]}
 

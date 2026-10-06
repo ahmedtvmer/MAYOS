@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/app_failure.dart';
 import '../../../core/active_workout.dart';
+import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/api_client.dart';
@@ -269,7 +270,13 @@ class _Hero extends StatelessWidget {
   Widget _typographicHeader(
       BuildContext context, String name, ExerciseCatalogDetail? detail) {
     final MayosThemeExtension c = MayosTheme.of(context);
-    final List<String> primary = detail?.primaryMuscles ?? const <String>[];
+    final MayosCopy copy = displayCopyOf(context);
+    final List<String> primary = <String>[
+      if (detail?.primaryMuscle != null) detail!.primaryMuscle!,
+      for (final String muscle in detail?.primaryMuscles ?? const <String>[])
+        if (muscle.toLowerCase() != detail?.primaryMuscle?.toLowerCase())
+          muscle,
+    ];
     final Set<String> primaryLower =
         primary.map((String m) => m.toLowerCase()).toSet();
     // Secondary muscles only, without repeating a primary muscle.
@@ -307,7 +314,12 @@ class _Hero extends StatelessWidget {
             runSpacing: MayosSpacing.xs,
             children: <Widget>[
               for (final String muscle in primary)
-                _TagChip(label: titleCase(muscle), tone: _ChipTone.primary),
+                _TagChip(
+                  label: muscle == detail?.primaryMuscle
+                      ? copy.primaryMuscleLabel(muscle)
+                      : titleCase(muscle),
+                  tone: _ChipTone.primary,
+                ),
               for (final String muscle in secondary)
                 _TagChip(label: titleCase(muscle), tone: _ChipTone.secondary),
               if (showCategory)

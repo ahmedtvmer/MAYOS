@@ -266,6 +266,10 @@ Future<void> _openSubstitutePicker(WidgetTester tester) async {
   await tester.tap(find.text('Substitute exercise'));
   await tester.pumpAndSettle();
   await _pumpUntilFound(tester, find.text('Cable Fly'));
+  expect(
+    find.byKey(const Key('exercise_primary_muscle_filter')),
+    findsOneWidget,
+  );
   expect(find.text('Muscle: Chest'), findsOneWidget);
   expect(
     find.descendant(

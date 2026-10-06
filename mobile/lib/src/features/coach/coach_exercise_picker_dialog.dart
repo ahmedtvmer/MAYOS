@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,6 +10,7 @@ import '../../core/display_language/catalog.dart';
 import '../../core/display_language/coach_copy.dart';
 import '../../core/display_language/copy_context.dart';
 import '../../core/display_language/feature_copy_context.dart';
+import '../../core/exercise_filters.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_typography.dart';
@@ -15,6 +18,7 @@ import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_settings_tile.dart';
 import '../../core/ui/mayos_text_field.dart';
 import '../../providers.dart';
+import '../../shared/exercise_filter_bar.dart';
 
 class CoachExercisePickerDialog extends ConsumerStatefulWidget {
   const CoachExercisePickerDialog({super.key});
@@ -32,6 +36,7 @@ class _CoachExercisePickerDialogState
   bool _searched = false;
   String? _error;
   FailureMessage? _failure;
+  ExerciseFilterState _filterState = const ExerciseFilterState();
 
   @override
   void dispose() {
@@ -41,12 +46,17 @@ class _CoachExercisePickerDialogState
 
   Future<void> _search() async {
     final String query = _query.text.trim();
-    if (query.isEmpty) {
-      setState(() => _error = coachCopyOf(context).exerciseNameRequired);
+    final ExerciseFilterState filters = _filterState;
+    if (query.isEmpty && !filters.hasCuratedFilters) {
+      setState(() {
+        _results = const <ExerciseCatalogEntry>[];
+        _searched = false;
+        _error = coachCopyOf(context).exerciseNameRequired;
+      });
       return;
     }
     _startSearch();
-    await _loadResults(query);
+    await _loadResults(query, filters.primaryMuscles);
   }
 
   void _startSearch() {
@@ -57,10 +67,12 @@ class _CoachExercisePickerDialogState
     });
   }
 
-  Future<void> _loadResults(String query) async {
+  Future<void> _loadResults(String query, List<String> primaryMuscles) async {
     try {
       final List<ExerciseCatalogEntry> results =
-          await ref.read(apiClientProvider).coachSearchExercises(query);
+          await ref
+              .read(apiClientProvider)
+              .coachSearchExercises(query, primaryMuscles: primaryMuscles);
       if (!mounted) return;
       setState(() {
         _results = results;
@@ -75,6 +87,11 @@ class _CoachExercisePickerDialogState
         _failure = apiFailureMessage(error);
       });
     }
+  }
+
+  void _filtersChanged(ExerciseFilterState filters) {
+    setState(() => _filterState = filters);
+    unawaited(_search());
   }
 
   Future<void> _createExercise() async {
@@ -109,6 +126,10 @@ class _CoachExercisePickerDialogState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           _searchField(copy),
+          ExerciseFilterBar(
+            filterState: _filterState,
+            onChanged: _filtersChanged,
+          ),
           if (_searching) const _ExerciseSearchProgress(),
           if (_error != null || _failure != null) _searchError(copy),
           if (_results.isNotEmpty) _resultList(context, coachCopy),

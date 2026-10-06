@@ -3229,15 +3229,15 @@ class Prescription {
 ///
 /// [imagePath] is the catalog's relative picture path, carried so an exercise
 /// added this way gets its card's picture like any planned one (#161).
-/// [targetMuscle] is the catalog's `target_muscle` column, carried so the
-/// Replace exercise search can pre-filter its results to the planned
-/// exercise's muscle client-side (#162).
+/// [targetMuscle] is the source catalog's `target_muscle` column. The curated
+/// [primaryMuscle] label is separate and can be used by shared search filters.
 class ExerciseCatalogEntry {
   const ExerciseCatalogEntry({
     required this.id,
     required this.name,
     this.imagePath,
     this.targetMuscle,
+    this.primaryMuscle,
     this.equipment,
     this.bodyPart,
     this.note,
@@ -3251,6 +3251,7 @@ class ExerciseCatalogEntry {
         name: json['name'] as String,
         imagePath: json['image_path'] as String?,
         targetMuscle: json['target_muscle'] as String?,
+        primaryMuscle: json['primary_muscle'] as String?,
         equipment: json['equipment'] as String?,
         bodyPart: json['body_part'] as String?,
         note: json['note'] as String?,
@@ -3265,6 +3266,9 @@ class ExerciseCatalogEntry {
   /// The muscle the catalog file trains (`Quads`, `Chest`, …), or null when
   /// the row carries none.
   final String? targetMuscle;
+
+  /// The owner-curated Primary muscle label, or null when not reviewed.
+  final String? primaryMuscle;
 
   /// The Exercise library equipment carried into the Active workout.
   final String? equipment;
@@ -3301,6 +3305,7 @@ class CoachExerciseCreateRequest {
 /// `GET /workouts/exercises/{exercise_id}`: read-only catalog detail for the
 /// exercise-detail view (#53).
 ///
+/// [primaryMuscle] is the curated lifter-facing label, nullable when uncured.
 /// [category] mirrors [bodyPart] in the source data (the same field upstream).
 /// [imagePath]/[gifPath] are the ExerciseDB-derived local file paths stored in
 /// the catalog; they are relative paths (`images/…`, `videos/…`) that resolve
@@ -3316,6 +3321,7 @@ class ExerciseCatalogDetail {
     required this.equipment,
     required this.primaryMuscles,
     required this.secondaryMuscles,
+    this.primaryMuscle,
     this.instructions,
     this.imagePath,
     this.gifPath,
@@ -3330,6 +3336,7 @@ class ExerciseCatalogDetail {
         equipment: json['equipment'] as String? ?? '',
         primaryMuscles: _stringList(json['primary_muscles']),
         secondaryMuscles: _stringList(json['secondary_muscles']),
+        primaryMuscle: json['primary_muscle'] as String?,
         instructions: json['instructions'] as String?,
         imagePath: json['image_path'] as String?,
         gifPath: json['gif_path'] as String?,
@@ -3342,6 +3349,7 @@ class ExerciseCatalogDetail {
   final String equipment;
   final List<String> primaryMuscles;
   final List<String> secondaryMuscles;
+  final String? primaryMuscle;
   final String? instructions;
   final String? imagePath;
   final String? gifPath;
@@ -3351,9 +3359,14 @@ class ExerciseCatalogDetail {
 
   /// All distinct muscle labels (primary then secondary), for the chips.
   List<String> get muscles => <String>[
-        ...primaryMuscles,
+        if (primaryMuscle != null) primaryMuscle!,
+        for (final String muscle in primaryMuscles)
+          if (muscle.toLowerCase() != primaryMuscle?.toLowerCase()) muscle,
         for (final String muscle in secondaryMuscles)
-          if (!primaryMuscles.contains(muscle)) muscle,
+          if (!primaryMuscles
+                  .any((String primary) => primary.toLowerCase() == muscle.toLowerCase()) &&
+              muscle.toLowerCase() != primaryMuscle?.toLowerCase())
+            muscle,
       ];
 
   /// The served address of the animated GIF (`GET /media/videos/…`), null

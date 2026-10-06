@@ -553,6 +553,37 @@ void main() {
 
     await tester.tap(find.byKey(const Key('program_draft_add_exercise_0')));
     await _pumpUntilFound(tester, find.byKey(const Key('coach_exercise_search')));
+    expect(
+      find.byKey(const Key('exercise_primary_muscle_filter')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('exercise_primary_muscle_filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(
+      const Key('primary_muscle_option_Biceps'),
+    ));
+    await tester.tap(find.byKey(
+      const Key('exercise_primary_muscle_done'),
+    ));
+    await _pumpUntilFound(tester, find.text('Bicep Curl'));
+    expect(find.text('Cable Fly'), findsNothing);
+    expect(find.text('Bench Press'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog).last,
+        matching: find.text('Pin Squat'),
+      ),
+      findsNothing,
+    );
+    final coachFilterRequest = fake.adapter.requests.lastWhere(
+      (request) => request.path == '/coach/exercises',
+    );
+    expect(coachFilterRequest.query['primary_muscle'], <String>['Biceps']);
+    await tester.tap(find.text('Cancel').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('program_draft_add_exercise_0')));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_exercise_search')));
     await tester.enterText(find.byType(TextField).last, 'Pin Squat');
     await tester.tap(find.byKey(const Key('coach_exercise_search')));
     await _pumpUntilFound(tester, find.text('Your exercise'));

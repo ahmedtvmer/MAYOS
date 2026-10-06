@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Iterable, Literal
 from database.shared import _normalize_exercise_name
+from database.exercise_library.filters import ExerciseFilters
 from database.exercise_library.names import near_miss_exercise_ids
 from database.exercise_library.schema import (
     EFFECTIVE_EXERCISE_NAME_SQL,
@@ -17,11 +18,10 @@ from utils.equipment_access import equipment_access_sql
 class _NameSearch:
     query: str
     normalized_query: str
-    muscle: str
-    muscle_clause: str
-    muscle_params: tuple[str, ...]
+    filter_clause: str
+    filter_params: tuple[str, ...]
     equipment_clause: str | None
-    muscle_browse: bool
+    filter_browse: bool
     limit: int | None
 
 
@@ -45,9 +45,11 @@ def _exercise_name_rows(
     query = """
         SELECT e.id AS id, {name_expression} AS display_name, e.body_part AS body_part,
                e.target_muscle AS target_muscle, e.equipment AS equipment,
-               e.image_path AS image_path, e.name AS source_name
+               e.image_path AS image_path, e.name AS source_name,
+               cf.primary_muscle AS primary_muscle
         FROM exercises e
         {display_name_join}
+        LEFT JOIN exercise_curated_fields cf ON cf.exercise_id = e.id
         WHERE {where_sql}
         ORDER BY {order_by}
     """.format(
@@ -72,6 +74,7 @@ def _name_match_result(row):
         "target_muscle": row["target_muscle"],
         "equipment": row["equipment"],
         "image_path": row["image_path"],
+        "primary_muscle": row["primary_muscle"],
     }
 
 
@@ -81,17 +84,17 @@ def _name_match_results(rows):
 
 def _exact_name_rows(cursor, search: _NameSearch):
     where = (
-        f"({search.muscle_clause}) AND (LOWER(e.name) = ? "
+        f"({search.filter_clause}) AND (LOWER(e.name) = ? "
         f"OR LOWER({EFFECTIVE_EXERCISE_NAME_SQL}) = ? "
         "OR EXISTS (SELECT 1 FROM exercise_aliases a "
         "WHERE a.exercise_id = e.id AND a.normalized_alias = ?))"
     )
-    params = [*search.muscle_params, search.query, search.query, search.normalized_query]
+    params = [*search.filter_params, search.query, search.query, search.normalized_query]
     return _exercise_name_rows(cursor, where, params, search.limit)
 
 
 def _normalized_name_rows(cursor, search: _NameSearch):
-    rows = _exercise_name_rows(cursor, search.muscle_clause, list(search.muscle_params), None)
+    rows = _exercise_name_rows(cursor, search.filter_clause, list(search.filter_params), None)
     matches = [
         row for row in rows
         if _normalize_exercise_name(row["display_name"]) == search.normalized_query
@@ -104,13 +107,13 @@ def _normalized_name_rows(cursor, search: _NameSearch):
 def _substring_name_rows(cursor, search: _NameSearch):
     like = f"%{search.query}%"
     where = (
-        f"({search.muscle_clause}) AND (LOWER(e.name) LIKE ? "
+        f"({search.filter_clause}) AND (LOWER(e.name) LIKE ? "
         f"OR LOWER({EFFECTIVE_EXERCISE_NAME_SQL}) LIKE ? "
         "OR EXISTS (SELECT 1 FROM exercise_aliases a "
         "WHERE a.exercise_id = e.id AND LOWER(a.alias) LIKE ?))"
     )
     return _exercise_name_rows(
-        cursor, where, [*search.muscle_params, like, like, like], search.limit
+        cursor, where, [*search.filter_params, like, like, like], search.limit
     )
 
 
@@ -124,24 +127,24 @@ def _token_name_rows(cursor, search: _NameSearch):
     )
     alias_pattern = " AND ".join("LOWER(a.alias) LIKE ?" for _ in tokens)
     where = (
-        f"({search.muscle_clause}) AND (({source_pattern}) OR ({display_pattern}) "
+        f"({search.filter_clause}) AND (({source_pattern}) OR ({display_pattern}) "
         "OR EXISTS (SELECT 1 FROM exercise_aliases a "
         f"WHERE a.exercise_id = e.id AND {alias_pattern}))"
     )
     token_values = [f"%{token}%" for token in tokens]
-    params = [*search.muscle_params, *token_values, *token_values, *token_values]
+    params = [*search.filter_params, *token_values, *token_values, *token_values]
     return _exercise_name_rows(cursor, where, params, search.limit)
 
 
 def _find_name_rows(cursor, search: _NameSearch):
-    if search.muscle_browse:
-        where = search.muscle_clause
+    if search.filter_browse:
+        where = search.filter_clause
         if search.equipment_clause:
             where += f" AND ({search.equipment_clause})"
         return _exercise_name_rows(
             cursor,
             where,
-            list(search.muscle_params),
+            list(search.filter_params),
             search.limit,
             ranking="display_name_first",
         )
@@ -183,8 +186,9 @@ class ExerciseLookupMixin:
                 cursor.execute(
                     f"SELECT e.id, {name_expression} AS name, e.body_part, e.target_muscle, "
                     f"e.equipment, e.instructions, e.image_path, e.gif_path, "
-                    "COALESCE(p.provenance, 'ExerciseDB') AS provenance "
+                    "COALESCE(p.provenance, 'ExerciseDB') AS provenance, cf.primary_muscle "
                     f"FROM exercises e {display_name_join} "
+                    "LEFT JOIN exercise_curated_fields cf ON cf.exercise_id = e.id "
                     "LEFT JOIN exercise_provenance p ON p.exercise_id = e.id "
                     f"WHERE e.id IN ({placeholders})",
                     batch,
@@ -201,6 +205,7 @@ class ExerciseLookupMixin:
                         "image_path": row[6],
                         "gif_path": row[7],
                         "provenance": row[8],
+                        "primary_muscle": row[9],
                     }
         return entries
 
@@ -214,8 +219,9 @@ class ExerciseLookupMixin:
             cursor.execute(
                 f"SELECT e.id, {name_expression} AS name, e.body_part, e.target_muscle, "
                 f"e.equipment, e.instructions, e.image_path, e.gif_path, "
-                "COALESCE(p.provenance, 'ExerciseDB') AS provenance "
+                "COALESCE(p.provenance, 'ExerciseDB') AS provenance, cf.primary_muscle "
                 f"FROM exercises e {display_name_join} "
+                "LEFT JOIN exercise_curated_fields cf ON cf.exercise_id = e.id "
                 f"LEFT JOIN exercise_provenance p ON p.exercise_id = e.id WHERE e.id = ?",
                 (str(exercise_id),),
             )
@@ -232,6 +238,7 @@ class ExerciseLookupMixin:
             "image_path": row[6],
             "gif_path": row[7],
             "provenance": row[8],
+            "primary_muscle": row[9],
         }
 
     def is_exercise_library_exercise_visible(self, exercise_id: str) -> bool:
@@ -251,9 +258,9 @@ class ExerciseLookupMixin:
 
         ``name`` uses the Exercise display name when present. ``category`` mirrors
         ``body_part`` in the source data, so the client sees the real value under both names.
-        Primary muscles come from ``target_muscle``; secondary muscles come from
-        the ``exercise_secondary_muscles`` table. Instructions are the catalog's
-        stored (English) text.
+        The curated ``primary_muscle`` is separate from source ``target_muscle``;
+        secondary muscles come from ``exercise_secondary_muscles``. Instructions
+        are the catalog's stored (English) text.
         """
         entry = self.get_exercise_library_entry(exercise_id)
         if entry is None:
@@ -273,6 +280,7 @@ class ExerciseLookupMixin:
             "body_part": entry["body_part"],
             "equipment": entry["equipment"],
             "primary_muscles": [target] if target else [],
+            "primary_muscle": entry.get("primary_muscle"),
             "secondary_muscles": secondary,
             "instructions": entry.get("instructions"),
             "image_path": entry.get("image_path"),
@@ -290,11 +298,10 @@ class ExerciseLookupMixin:
         search = _NameSearch(
             query=clean,
             normalized_query=normalized,
-            muscle="",
-            muscle_clause="1 = 1",
-            muscle_params=(),
+            filter_clause="1 = 1",
+            filter_params=(),
             equipment_clause=None,
-            muscle_browse=False,
+            filter_browse=False,
             limit=None,
         )
         with self._catalog_lock:
@@ -310,6 +317,8 @@ class ExerciseLookupMixin:
         target_muscle: str | None = None,
         equipment_access: str | None = None,
         muscle_browse: bool = False,
+        *,
+        filters: ExerciseFilters | None = None,
     ) -> list[dict[str, Any]]:
         """Ranked Exercise library matches across source names, display names, and aliases.
 
@@ -320,27 +329,30 @@ class ExerciseLookupMixin:
         exercise either resolves by name or refuses — it never falls through to semantic
         (embedding) ranking and installs a lexical sibling.
 
-        ``target_muscle`` (#162) narrows every tier to one target in the Exercise
-        library (case-insensitive ``target_muscle`` column). With a muscle and no name
-        query it lists that muscle's exercises, so the logger's Replace search
-        can open pre-filtered before the player types. ``equipment_access``
-        filters only when ``muscle_browse`` is true; explicit name queries remain
-        unfiltered so players can still find movements outside their usual setup.
+        ``target_muscle`` (#162) narrows results by the source column, while
+        ``filters`` narrows by curated fields. Target and curated filters combine
+        with AND; multiple Primary muscles combine with OR. A filter permits an
+        empty query. ``equipment_access`` applies only to filter-only browse.
         """
         clean = query.strip().lower()
         muscle = (target_muscle or "").strip().lower()
-        if (limit is not None and limit <= 0) or (not clean and not muscle):
+        active_filters = filters if filters is not None else ExerciseFilters()
+        has_filter = bool(muscle or active_filters.has_curated_filters)
+        browse = muscle_browse or (not clean and has_filter)
+        if (limit is not None and limit <= 0) or (not clean and not has_filter):
             return []
+        filter_clause, filter_params = _exercise_filter_predicate(
+            active_filters, muscle
+        )
         search = _NameSearch(
             query=clean,
             normalized_query=_normalize_exercise_name(clean),
-            muscle=muscle,
-            muscle_clause="LOWER(e.target_muscle) = ?" if muscle else "1 = 1",
-            muscle_params=(muscle,) if muscle else (),
-            muscle_browse=muscle_browse,
+            filter_clause=filter_clause,
+            filter_params=filter_params,
+            filter_browse=browse,
             equipment_clause=(
                 equipment_access_sql(equipment_access)
-                if equipment_access and muscle_browse
+                if equipment_access and browse
                 else None
             ),
             limit=limit,
@@ -357,3 +369,18 @@ class ExerciseLookupMixin:
         """Best Exercise library match (exact → punctuation-insensitive → substring → token-AND)."""
         matches = self.find_exercises_by_name(query, limit=1)
         return matches[0] if matches else None
+
+
+def _exercise_filter_predicate(
+    filters: ExerciseFilters, target_muscle: str
+) -> tuple[str, tuple[str, ...]]:
+    clauses: list[str] = []
+    params: list[str] = []
+    if target_muscle:
+        clauses.append("LOWER(e.target_muscle) = ?")
+        params.append(target_muscle)
+    if filters.primary_muscles:
+        placeholders = ", ".join("?" for _ in filters.primary_muscles)
+        clauses.append(f"cf.primary_muscle IN ({placeholders})")
+        params.extend(filters.primary_muscles)
+    return " AND ".join(clauses) or "1 = 1", tuple(params)

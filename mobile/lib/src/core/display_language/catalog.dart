@@ -2,6 +2,7 @@ import '../app_failure.dart';
 import '../password_policy.dart';
 import '../checkpoint_ordinal.dart';
 import '../effort.dart';
+import '../exercise_filters.dart';
 import '../personal_records.dart';
 import 'arabic_count.dart';
 import 'message_resolver.dart';
@@ -431,6 +432,19 @@ class MayosCopy {
       isArabic ? 'التمارين البديلة المقترحة' : 'Suggested substitutes';
   String get searchExerciseCatalog =>
       isArabic ? 'ابحث في مكتبة التمارين' : 'Search the exercise catalog';
+  String get primaryMuscle => isArabic ? 'العضلة الأساسية' : 'Primary muscle';
+  String primaryMuscleFilterLabel(int selectedCount) => selectedCount == 0
+      ? primaryMuscle
+      : '$primaryMuscle ($selectedCount)';
+  String primaryMuscleLabel(String muscle) {
+    for (final PrimaryMuscle primaryMuscle in primaryMuscles) {
+      if (primaryMuscle.apiValue == muscle) {
+        return isArabic ? primaryMuscle.arabicLabel : muscle;
+      }
+    }
+    return muscle;
+  }
+  String get done => isArabic ? 'تم' : 'Done';
   String get addUnplannedExercise =>
       isArabic ? 'إضافة تمرين غير مخطط' : 'Add unplanned exercise';
   String get search => isArabic ? 'بحث' : 'Search';

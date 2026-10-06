@@ -23,9 +23,11 @@ def _write_curation(path, rows):
     with path.open("w", newline="", encoding="utf-8") as curation_file:
         writer = csv.writer(curation_file)
         writer.writerow(CURATION_COLUMNS)
-        for exercise_id, source_name, display_name, aliases in rows:
+        for row in rows:
+            exercise_id, source_name, display_name, aliases = row[:4]
+            primary_muscle = row[4] if len(row) > 4 else ""
             writer.writerow(
-                [exercise_id, source_name, display_name, aliases, "", "", "", "", "", ""]
+                [exercise_id, source_name, display_name, aliases, "", "", primary_muscle, "", "", ""]
             )
 
 
@@ -254,6 +256,38 @@ def test_semantic_search_excludes_hidden_exercises(seed_store, tmp_path, seed_ex
     results = seed_store.search_similar_exercises(query_vector, limit=20)
 
     assert "9001" not in {result["id"] for result in results}
+
+
+def test_primary_muscle_curation_is_searchable_and_returned_in_detail(seed_store, tmp_path):
+    from database.exercise_library.filters import ExerciseFilters
+
+    curation_path = tmp_path / "curation.csv"
+    seed_path = tmp_path / "seed.csv"
+    _write_curation(
+        curation_path,
+        [("9001", "cable row", "", "", "Upper Back")],
+    )
+    _seed_minimal_library(seed_store, seed_path, curation_path)
+
+    matches = seed_store.find_exercises_by_name(
+        "", filters=ExerciseFilters(primary_muscles=("Upper Back",))
+    )
+
+    assert [match["id"] for match in matches] == ["9001"]
+    assert matches[0]["primary_muscle"] == "Upper Back"
+    assert seed_store.get_exercise_library_detail("9001")["primary_muscle"] == "Upper Back"
+
+
+def test_curation_rejects_primary_muscle_outside_vocabulary(seed_store, tmp_path):
+    curation_path = tmp_path / "curation.csv"
+    seed_path = tmp_path / "seed.csv"
+    _write_curation(
+        curation_path,
+        [("9001", "cable row", "", "", "Middle Back")],
+    )
+
+    with pytest.raises(ValueError, match="line 2 id '9001'.*'Middle Back'"):
+        _seed_minimal_library(seed_store, seed_path, curation_path)
 
 
 def test_empty_curation_file_uses_title_case_source_names(seed_store, tmp_path):

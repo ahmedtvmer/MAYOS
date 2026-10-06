@@ -115,6 +115,12 @@ The shared reference set of exercises that programs, substitutions, and search d
 _Arabic_: مكتبة التمارين
 _Avoid_: Exercise catalog
 
+**Primary muscle**:
+The lifter-friendly main-muscle label curated for an Exercise library row.
+Search filters may match one or more Primary muscles; the source row's
+`target_muscle` remains a separate catalog field.
+_Arabic_: العضلة الأساسية
+
 **Coach exercise**:
 An exercise a Coach creates when the Exercise library lacks the movement. It has a Coach-owned id, optional body-part and Equipment tags, an optional note, and an optional HTTPS video link stored as text. It has no media, is searchable only by its owner in Coach mode, and is visible to a Player when prescribed in that Coach's Training program. The Player keeps its logged history after the Assignment ends.
 _Arabic_: تمرين من إنشاء المدرب
@@ -133,7 +139,7 @@ An alternative name a player may search by that resolves to one exercise in the 
 An Exercise library row excluded from Player and Coach search, Replace browse, program generation, and substitution suggestions. Its stable id remains readable in existing Training programs and workout history; when marked as a duplicate, those reads show the kept Exercise's display name.
 
 **Exercise curation file**:
-The MAYOS-owned `data/exercise_curation.csv`, keyed by Exercise library id. It holds reviewed Exercise display names and aliases, with later curated fields kept beside the source row.
+The MAYOS-owned `data/exercise_curation.csv`, keyed by Exercise library id. It holds reviewed Exercise display names and aliases, with curated fields such as Primary muscle kept beside the source row.
 
 **Staple exercise**:
 An exercise that elite coaches repeatedly choose for a movement, such as the Wide-Grip Lat Pulldown for a vertical pull. Each movement has an ordered list of staples; the first one the player's Equipment access allows is prescribed and the next ones are its suggested substitutes.
