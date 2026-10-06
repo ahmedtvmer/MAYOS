@@ -536,6 +536,8 @@ class CoachCopy {
   String get exercises => isArabic ? 'التمارين' : 'Exercises';
   String get noExercisesLogged =>
       isArabic ? 'لم تُسجل تمارين بعد.' : 'No exercises logged yet.';
+  String historyItemCount(int count) =>
+      isArabic ? '(${_ltr('$count')})' : '($count)';
   String get noExerciseSets => isArabic
       ? 'لم تُسجل مجموعات لهذا التمرين.'
       : 'No recorded sets for this exercise.';

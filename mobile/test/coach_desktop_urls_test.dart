@@ -258,7 +258,7 @@ void main() {
     expect(find.text('No active assignment.'), findsOneWidget);
     expect(find.byKey(const Key('coach_roster_master_pane')), findsOneWidget);
     expect(find.byKey(const Key('log_check_in_action')), findsNothing);
-    expect(find.byKey(const Key('player_page_actions')), findsNothing);
+    expect(find.byKey(const Key('coach_assistant_entry')), findsNothing);
   });
 
   testWidgets('desktop requests expose URL-addressable detail and actions',

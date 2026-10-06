@@ -56,6 +56,22 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       tester, find.text(fake.coach ? 'Roster' : 'Home'));
 }
 
+Future<void> _openProgramSegment(
+  WidgetTester tester, {
+  String label = 'Program',
+}) async {
+  await _pumpUntilFound(
+    tester,
+    find.text(
+      label == 'البرنامج التدريبي'
+          ? 'مجموعات محسوبة لكل عضلة'
+          : 'Volume (weighted working sets)',
+    ),
+  );
+  await tester.tap(find.text(label).first);
+  await tester.pump();
+}
+
 Future<void> _openProgramEditor(WidgetTester tester, FakeMayosApi fake) async {
   final bool isArabic = fake.displayLanguage == 'ar';
   await _pumpApp(tester, fake);
@@ -66,12 +82,15 @@ Future<void> _openProgramEditor(WidgetTester tester, FakeMayosApi fake) async {
   await tester.tap(find.text('bob'));
   await _pumpUntilFound(
     tester,
-    find.text(isArabic ? 'مجموعات محسوبة لكل عضلة' : 'Volume (weighted working sets)'),
+    find.text(
+      isArabic ? 'مجموعات محسوبة لكل عضلة' : 'Volume (weighted working sets)',
+    ),
   );
-  await tester.tap(find.byKey(const Key('player_page_actions')));
-  final String writeProgram = isArabic ? 'اكتب برنامجًا تدريبيًا' : 'Write program';
-  await _pumpUntilFound(tester, find.text(writeProgram));
-  await tester.tap(find.text(writeProgram));
+  await _openProgramSegment(
+    tester,
+    label: isArabic ? 'البرنامج التدريبي' : 'Program',
+  );
+  await tester.tap(find.byKey(const Key('write_program_action')));
   await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_day')));
 }
 
@@ -218,15 +237,24 @@ void main() {
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
     await _pumpUntilFound(tester, find.text('Generated automatically'));
 
     expect(find.text('Program draft pending'), findsOneWidget);
+    expect(find.byKey(const Key('coach_program_edit_active')), findsOneWidget);
     expect(find.text('program v7'), findsOneWidget);
     expect(find.text('Active since 2026-10-04'), findsOneWidget);
     expect(find.text('Squat'), findsOneWidget);
     expect(find.text('4 sets · 6–8 reps · RIR ≥ 2 · Rest 150 s'), findsOneWidget);
     expect(find.text('Tempo: 3-1-1'), findsOneWidget);
     expect(find.text('Notes: Brace before each rep.'), findsOneWidget);
+
+    await tester.tap(find.text('History').first);
+    await _pumpUntilFound(tester, find.text('Since 2026-09-24T10:00:00Z'));
+    expect(find.byKey(const Key('coach_program_edit_active')), findsNothing);
+    expect(find.text('program v7'), findsNothing);
+    expect(find.text('Generated automatically'), findsNothing);
+    expect(find.text('Active since 2026-10-04'), findsNothing);
   });
 
   testWidgets('coach player page labels current coach program and player edit',
@@ -239,6 +267,7 @@ void main() {
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
     await _pumpUntilFound(tester, find.text('Published by you'));
 
     expect(find.text('Edited by the player'), findsOneWidget);
@@ -250,6 +279,7 @@ void main() {
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
     await _pumpUntilFound(tester, find.text('No active program.'));
 
     expect(find.text('No active program.'), findsOneWidget);
@@ -262,6 +292,7 @@ void main() {
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
     await _pumpUntilFound(tester, find.byKey(const Key('coach_program_edit_active')));
 
     await tester.tap(find.byKey(const Key('coach_program_edit_active')));
@@ -314,6 +345,7 @@ void main() {
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
     await _pumpUntilFound(tester, find.byKey(const Key('coach_program_edit_active')));
 
     await tester.tap(find.byKey(const Key('coach_program_edit_active')));
@@ -340,6 +372,7 @@ void main() {
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
     await _pumpUntilFound(tester, find.byKey(const Key('coach_program_edit_active')));
 
     await tester.tap(find.byKey(const Key('coach_program_edit_active')));
@@ -366,6 +399,7 @@ void main() {
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
     await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_as_is')));
 
     await tester.tap(find.byKey(const Key('coach_program_approve_as_is')));
@@ -429,6 +463,7 @@ void main() {
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
     await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_as_is')));
 
     await tester.tap(find.byKey(const Key('coach_program_approve_as_is')));
@@ -457,6 +492,7 @@ void main() {
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('قائمة اللاعبين'));
     await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester, label: 'البرنامج التدريبي');
     await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_as_is')));
 
     await tester.tap(find.byKey(const Key('coach_program_approve_as_is')));
@@ -510,6 +546,7 @@ void main() {
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
     await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_as_is')));
 
     await tester.tap(find.byKey(const Key('coach_program_approve_as_is')));
@@ -536,6 +573,7 @@ void main() {
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
     await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_as_is')));
 
     await tester.tap(find.byKey(const Key('coach_program_approve_as_is')));
@@ -565,9 +603,8 @@ void main() {
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
     await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
-    await tester.tap(find.byKey(const Key('player_page_actions')));
-    await _pumpUntilFound(tester, find.text('Write program'));
-    await tester.tap(find.text('Write program'));
+    await _openProgramSegment(tester);
+    await tester.tap(find.byKey(const Key('write_program_action')));
     await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_exercise_0')));
 
     await tester.tap(find.byKey(const Key('program_draft_add_exercise_0')));
@@ -672,9 +709,8 @@ void main() {
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
     await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
-    await tester.tap(find.byKey(const Key('player_page_actions')));
-    await _pumpUntilFound(tester, find.text('Write program'));
-    await tester.tap(find.text('Write program'));
+    await _openProgramSegment(tester);
+    await tester.tap(find.byKey(const Key('write_program_action')));
     await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_exercise_0')));
     await tester.enterText(find.byKey(const Key('program_draft_day_name_0')), 'Full A');
 
@@ -753,9 +789,8 @@ void main() {
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
     await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
-    await tester.tap(find.byKey(const Key('player_page_actions')));
-    await _pumpUntilFound(tester, find.text('Write program'));
-    await tester.tap(find.text('Write program'));
+    await _openProgramSegment(tester);
+    await tester.tap(find.byKey(const Key('write_program_action')));
     await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_exercise_0')));
     await tester.tap(find.byKey(const Key('program_draft_add_exercise_0')));
     await _pumpUntilFound(tester, find.text('Search'));
@@ -946,9 +981,8 @@ void main() {
 
     await tester.tap(find.byTooltip('Back').hitTestable().last);
     await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
-    await tester.tap(find.byKey(const Key('player_page_actions')));
-    await _pumpUntilFound(tester, find.text('Write program'));
-    await tester.tap(find.text('Write program'));
+    await _openProgramSegment(tester);
+    await tester.tap(find.byKey(const Key('write_program_action')));
     await _pumpUntilFound(
       tester,
       find.byKey(const Key('program_draft_warmup_name_0_0')),
@@ -1161,9 +1195,8 @@ void main() {
     await tester.tap(find.text('bob'));
     await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
 
-    await tester.tap(find.byKey(const Key('player_page_actions')));
-    await _pumpUntilFound(tester, find.text('Generate draft'));
-    await tester.tap(find.text('Generate draft'));
+    await _openProgramSegment(tester);
+    await tester.tap(find.byKey(const Key('generate_draft_action')));
     await _pumpUntilFound(tester, find.text('Rep range preference'));
 
     expect(find.text('Days per week'), findsOneWidget);
@@ -1216,9 +1249,8 @@ void main() {
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
     await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
-    await tester.tap(find.byKey(const Key('player_page_actions')));
-    await _pumpUntilFound(tester, find.text('Generate draft'));
-    await tester.tap(find.text('Generate draft'));
+    await _openProgramSegment(tester);
+    await tester.tap(find.byKey(const Key('generate_draft_action')));
     await _pumpUntilFound(tester, find.byKey(const Key('generate_draft_confirm_button')));
     await tester.tap(find.byKey(const Key('generate_draft_confirm_button')));
     await _pumpUntilFound(tester, find.text('Replace the current Program draft?'));
@@ -1258,9 +1290,8 @@ void main() {
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
     await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
-    await tester.tap(find.byKey(const Key('player_page_actions')));
-    await _pumpUntilFound(tester, find.text('Generate draft'));
-    await tester.tap(find.text('Generate draft'));
+    await _openProgramSegment(tester);
+    await tester.tap(find.byKey(const Key('generate_draft_action')));
     await _pumpUntilFound(
       tester,
       find.byKey(const Key('generate_draft_confirm_button')),
@@ -1287,9 +1318,8 @@ void main() {
     await _pumpUntilFound(tester, find.text('علاقات التدريب النشطة'));
     await tester.tap(find.text('bob'));
     await _pumpUntilFound(tester, find.text('مجموعات محسوبة لكل عضلة'));
-    await tester.tap(find.byKey(const Key('player_page_actions')));
-    await _pumpUntilFound(tester, find.text('إنشاء مسودة'));
-    await tester.tap(find.text('إنشاء مسودة'));
+    await _openProgramSegment(tester, label: 'البرنامج التدريبي');
+    await tester.tap(find.byKey(const Key('generate_draft_action')));
     await _pumpUntilFound(tester, find.text('تفضيل نطاق التكرارات'));
 
     expect(find.text('أيام التدريب أسبوعيًا'), findsOneWidget);

@@ -85,6 +85,15 @@ Future<void> _openRosterEntry(WidgetTester tester) async {
   await tester.tap(find.text('bob'));
 }
 
+Future<void> _expandHistorySection(WidgetTester tester, String section) async {
+  final Finder card =
+      find.byKey(Key('coach_history_section_${section}_semantics'));
+  await tester.scrollUntilVisible(card, 300,
+      scrollable: find.byType(Scrollable).first);
+  await tester.tap(card);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('the active assigned player\'s session shows Cardio minutes',
       (WidgetTester tester) async {
@@ -104,7 +113,110 @@ void main() {
     await _openRosterEntry(tester);
     await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
 
+    expect(find.text('Cardio: 25 min'), findsOneWidget);
+    await _expandHistorySection(tester, 'recentSessions');
     expect(find.text('Cardio: 25 min'), findsNWidgets(2));
+  });
+
+  testWidgets('player segments separate Program from History and keep alerts',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachAlerts.add(<String, dynamic>{
+        'alert_id': 'alert-player-page',
+        'assignment_id': 'assignment-1',
+        'player_username': 'bob',
+        'kind': 'missed_expected_days',
+        'streak_start_date': '2026-09-20',
+        'last_missed_date': '2026-09-21',
+        'missed_count': 2,
+        'state': 'new',
+        'created_at': '2026-09-22T08:00:00Z',
+      })
+      ..programRequests.add(<String, dynamic>{
+        'request_id': 'request-1',
+        'assignment_id': 'assignment-1',
+        'kind': 'exercise_substitution',
+        'program_version': 7,
+        'exercise_id': 'sq',
+        'exercise_name': 'Squat',
+        'reason': 'Please change this exercise.',
+        'status': 'pending',
+        'created_at': '2026-10-02T10:00:00Z',
+      });
+    await _pumpApp(tester, fake);
+
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(tester, find.text('Latest session'));
+
+    expect(find.text('Program'), findsOneWidget);
+    expect(find.text('History'), findsOneWidget);
+    expect(find.text('Check-ins'), findsOneWidget);
+    expect(find.text('Requests (1)'), findsOneWidget);
+    expect(find.text('Since 2026-09-24T10:00:00Z'), findsOneWidget);
+    expect(find.text('Latest session'), findsOneWidget);
+    expect(find.text('Volume (weighted working sets)'), findsOneWidget);
+    expect(find.text('No active program.'), findsNothing);
+    expect(find.text('Open alerts'), findsOneWidget);
+
+    await tester.tap(find.text('Program').first);
+    await _pumpUntilFound(tester, find.text('No active program.'));
+    expect(find.byKey(const Key('write_program_action')), findsOneWidget);
+    expect(find.byKey(const Key('generate_draft_action')), findsOneWidget);
+    expect(find.byKey(const Key('coach_assistant_entry')), findsNothing);
+    expect(find.text('Open alerts'), findsOneWidget);
+
+    await tester.tap(find.text('Check-ins'));
+    await _pumpUntilFound(tester, find.text('No check-ins recorded yet.'));
+    expect(find.text('Open alerts'), findsOneWidget);
+
+    await tester.tap(find.text('Requests (1)'));
+    await _pumpUntilFound(tester, find.text('Please change this exercise.'));
+    expect(find.text('Open alerts'), findsOneWidget);
+  });
+
+  testWidgets('history groups start collapsed with counts and expand on tap',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _pumpApp(tester, fake);
+
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+
+    expect(find.text('Lower 1 · 2026-09-23'), findsNothing);
+    expect(find.textContaining('Latest Recorded:'), findsNothing);
+    final Finder recentSessionsControl = find.byKey(const Key(
+      'coach_history_section_recentSessions_semantics',
+    ));
+    expect(
+      tester.getSemantics(recentSessionsControl),
+      isSemantics(
+        label: 'Recent sessions (2)',
+        isButton: true,
+        hasExpandedState: true,
+        isExpanded: false,
+      ),
+    );
+    await _expandHistorySection(tester, 'recentSessions');
+    expect(find.text('Recent sessions (2)'), findsOneWidget);
+    expect(find.text('Lower 1 · 2026-09-23'), findsOneWidget);
+    expect(
+      tester.getSemantics(recentSessionsControl),
+      isSemantics(
+        label: 'Recent sessions (2)',
+        isButton: true,
+        hasExpandedState: true,
+        isExpanded: true,
+      ),
+    );
+
+    await _expandHistorySection(tester, 'records');
+    expect(find.text('Personal records (1)'), findsOneWidget);
+    await _expandHistorySection(tester, 'checkpoints');
+    expect(find.text('Checkpoints (0)'), findsOneWidget);
+    await _expandHistorySection(tester, 'exercises');
+    expect(find.text('Exercises (1)'), findsOneWidget);
+    expect(find.widgetWithText(ExpansionTile, 'Bench Press'), findsOneWidget);
+    expect(find.textContaining('Latest Recorded:'), findsNothing);
   });
 
   testWidgets('roster tap opens the assigned player history drill-down',
@@ -121,13 +233,15 @@ void main() {
     expect(find.text('Since 2026-09-24T10:00:00Z'), findsOneWidget);
     expect(find.text('Chest: 12.5'), findsOneWidget);
     expect(find.textContaining('4200.0'), findsWidgets);
-    expect(find.text('Bench Press'), findsWidgets);
+    expect(find.text('Bench Press'), findsNothing);
     expect(find.textContaining('ASSISTANT-CHAT-SECRET'), findsNothing);
 
     // Drilling into an exercise loads its history inline. The player page's
     // header, actions, and segments sit above the drill-down content (#120),
     // so the Exercises card is scrolled into view first.
+    await _expandHistorySection(tester, 'exercises');
     final Finder benchTile = find.widgetWithText(ExpansionTile, 'Bench Press');
+    expect(find.text('Bench Press'), findsOneWidget);
     await tester.scrollUntilVisible(benchTile, 300,
         scrollable: find.byType(Scrollable).first);
     await tester.ensureVisible(benchTile);
@@ -167,6 +281,7 @@ void main() {
 
     await _openRosterEntry(tester);
     await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _expandHistorySection(tester, 'exercises');
     final Finder bandTile = find.widgetWithText(ExpansionTile, 'Band Pull-Apart');
     await tester.scrollUntilVisible(bandTile, 300,
         scrollable: find.byType(Scrollable).first);
@@ -209,6 +324,7 @@ void main() {
 
     await _openRosterEntry(tester);
     await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _expandHistorySection(tester, 'checkpoints');
     final Finder checkpoint =
         find.byKey(const ValueKey<String>('coach.checkpoint.10'));
     await tester.scrollUntilVisible(checkpoint, 300,
@@ -269,6 +385,7 @@ void main() {
 
     await _openRosterEntry(tester);
     await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _expandHistorySection(tester, 'recentSessions');
 
     expect(find.text('Skipped: Squat'), findsOneWidget);
     expect(find.text('Unplanned: Lat Pulldown'), findsOneWidget);
@@ -317,6 +434,7 @@ void main() {
 
     await _openRosterEntry(tester);
     await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _expandHistorySection(tester, 'recentSessions');
 
     expect(
       find.text('Date corrected from 2026-09-26 to 2026-09-25'),
@@ -335,6 +453,57 @@ void main() {
     expect(find.text('Expected: Mon, Wed, Fri'), findsOneWidget);
     expect(find.text('Timezone: Europe/London'), findsOneWidget);
     expect(find.text('Pause: 2026-09-28 → 2026-10-02'), findsOneWidget);
+  });
+
+  testWidgets('History shows Schedule for either source and omits both empty',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _pumpApp(tester, fake);
+
+    final List<({bool schedule, bool pauses, bool shown})> scenarios =
+        <({bool schedule, bool pauses, bool shown})>[
+      (schedule: true, pauses: false, shown: true),
+      (schedule: false, pauses: true, shown: true),
+      (schedule: false, pauses: false, shown: false),
+    ];
+    for (int index = 0; index < scenarios.length; index++) {
+      final ({bool schedule, bool pauses, bool shown}) scenario =
+          scenarios[index];
+      fake.coachPlayerSummary['schedule'] = scenario.schedule
+          ? <String, dynamic>{
+              'weekdays': <int>[1, 3, 5],
+              'timezone': 'Europe/London',
+            }
+          : null;
+      final List<Map<String, dynamic>> pauses =
+          fake.coachPlayerSummary['pauses'] as List<Map<String, dynamic>>;
+      pauses
+        ..clear()
+        ..addAll(
+          scenario.pauses
+              ? <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'starts_on': '2026-09-28',
+                    'ends_on': '2026-10-02',
+                  },
+                ]
+              : const <Map<String, dynamic>>[],
+        );
+
+      if (index == 0) {
+        await _openRosterEntry(tester);
+      } else {
+        await tester.binding.handlePopRoute();
+        await _pumpUntilFound(tester, find.text('Active assignments'));
+        await _openRosterEntry(tester);
+      }
+      await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+
+      expect(
+        find.text('Training schedule'),
+        scenario.shown ? findsOneWidget : findsNothing,
+      );
+    }
   });
 
   testWidgets('a denied assignment shows the error state with no training data',

@@ -516,10 +516,10 @@ void main() {
     await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
 
     // History is the existing CoachPlayerHistoryScreen content, embedded.
-    expect(find.text('Recent sessions'), findsOneWidget);
-    expect(find.text('Personal records'), findsOneWidget);
+    expect(find.textContaining('Recent sessions'), findsOneWidget);
+    expect(find.textContaining('Personal records'), findsOneWidget);
     // The Exercises section sits below the first viewport (#120).
-    final Finder exercises = find.text('Exercises');
+    final Finder exercises = find.textContaining('Exercises');
     final Finder pageScrollables = find.descendant(
       of: find.byType(CoachPlayerHistoryScreen),
       matching: find.byType(Scrollable),

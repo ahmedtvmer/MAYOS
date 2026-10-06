@@ -165,6 +165,16 @@ void main() {
     await _pumpUntilFound(tester, find.text('السجل'));
     await _pumpUntilFound(tester, find.text('الاستعداد \u20664/5\u2069'));
     expect(find.text('الاستعداد \u20664/5\u2069'), findsOneWidget);
+    expect(find.text('البرنامج التدريبي'), findsOneWidget);
+    expect(find.text('السجل'), findsOneWidget);
+    expect(find.text('التواصل'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(CoachPlayerHistoryScreen),
+        matching: find.text('الطلبات'),
+      ),
+      findsOneWidget,
+    );
     await tester.tap(find.text('التواصل'));
     await _pumpUntilFound(tester, find.text('تسجيل تواصل'));
     await tester.tap(find.byKey(const Key('record_check_in_button')));
@@ -189,6 +199,26 @@ void main() {
     );
   });
 
+  testWidgets('Arabic History section count uses Western numerals',
+      (WidgetTester tester) async {
+    await _pumpApp(tester, _coachFake());
+
+    await tester.tap(find.byKey(const Key('roster_row_assignment-ar')));
+    await _pumpUntilFound(tester, find.text('السجل'));
+    final Finder section =
+        find.byKey(const Key(
+          'coach_history_section_recentSessions_semantics',
+        ));
+    await tester.scrollUntilVisible(section, 300,
+        scrollable: find.byType(Scrollable).first);
+    final Finder title = find.byWidgetPredicate(
+      (Widget widget) =>
+          widget is Text && widget.data?.startsWith('الحصص الأخيرة') == true,
+    );
+
+    expect(tester.widget<Text>(title).data, 'الحصص الأخيرة (\u20662\u2069)');
+  });
+
   testWidgets(
       'Arabic coach assistant keeps mixed reply text verbatim and directs each paragraph',
       (WidgetTester tester) async {
@@ -204,10 +234,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('roster_row_assignment-ar')));
     await _pumpUntilFound(tester, find.byType(CoachPlayerHistoryScreen));
-    await tester.tap(find.byKey(const Key('player_page_actions')));
-    await _pumpUntilFound(
-        tester, find.byKey(const Key('coach_assistant_entry')));
-    expect(find.text('اسأل المساعد'), findsOneWidget);
+    expect(find.byTooltip('اسأل المساعد'), findsOneWidget);
     await tester.tap(find.byKey(const Key('coach_assistant_entry')));
     await _pumpUntilFound(
       tester,

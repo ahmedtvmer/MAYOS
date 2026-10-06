@@ -118,21 +118,18 @@ Future<void> _openRoster(WidgetTester tester) async {
   await _pumpUntilFound(tester, find.text('Active assignments'));
 }
 
-/// Roster row → player history → the coach assistant entry.
+/// Roster row → player history → the coach assistant button.
 Future<void> _openAssistant(WidgetTester tester, String player) async {
   await tester.tap(find.text(player));
   await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
-  // The player page keeps its two actions behind an overflow menu (#G).
-  await tester.tap(find.byKey(const Key('player_page_actions')));
-  await _pumpUntilFound(tester, find.text('Ask assistant'));
-  await tester.tap(find.text('Ask assistant'));
+  await tester.tap(find.byKey(const Key('coach_assistant_entry')));
   await _pumpUntilFound(
       tester, find.byKey(const Key('coach_assistant_question')));
 }
 
-/// Opens the player page's overflow menu so its actions are on screen.
-Future<void> _openPageActions(WidgetTester tester) async {
-  await tester.tap(find.byKey(const Key('player_page_actions')));
+/// Opens the Program segment so its actions are on screen.
+Future<void> _openProgramSegment(WidgetTester tester) async {
+  await tester.tap(find.text('Program').first);
   await _pumpUntilFound(tester, find.text('Generate draft'));
 }
 
@@ -213,8 +210,7 @@ void main() {
     expect(find.byKey(const Key('coach_assistant_entry')), findsNothing);
     expect(find.text('Ask assistant'), findsNothing);
 
-    // The other player action is still offered by the overflow menu (#G).
-    await _openPageActions(tester);
+    await _openProgramSegment(tester);
     expect(find.text('Generate draft'), findsOneWidget);
     expect(find.text('Ask assistant'), findsNothing);
   });
@@ -543,9 +539,7 @@ void main() {
     // Revoked while the coach sits on the now-stale history screen.
     fake.assignments.clear();
 
-    // The entry lives behind the player page's overflow menu (#G).
-    await _openPageActions(tester);
-    await tester.tap(find.text('Ask assistant'));
+    await tester.tap(find.byKey(const Key('coach_assistant_entry')));
     await _pumpUntilFound(tester, find.text('You no longer coach this player'));
 
     expect(find.text('You no longer coach this player'), findsOneWidget);
@@ -752,7 +746,8 @@ void main() {
         tester,
         () =>
             find.byKey(const Key('coach_assistant_entry')).evaluate().isEmpty);
-    await _openPageActions(tester);
+    await tester.tap(find.text('Program').first);
+    await tester.pump();
     expect(find.byKey(const Key('coach_assistant_entry')), findsNothing);
     expect(find.text('Ask assistant'), findsNothing);
   });

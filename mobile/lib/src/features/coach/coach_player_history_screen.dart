@@ -33,13 +33,12 @@ import 'coach_shared.dart';
 import 'program_publish_confirmation.dart';
 
 /// The player page (#120): one assigned player's open coach alerts on top,
-/// then the **History · Check-ins** segments.
+/// then the **Program · History · Check-ins · Requests** segments.
 ///
-/// History carries this drill-down's original content — sessions, volume,
-/// personal records, program requests, and per-exercise history — embedded
-/// here rather than duplicated, so the roster row opens one page instead of a
-/// second screen. Every read is gated by the active assignment server-side, so
-/// a revoked or foreign assignment yields a denial and no training data.
+/// History carries sessions, volume, personal records, Checkpoints, and
+/// per-exercise history in collapsible sections. Every read is gated by the
+/// active assignment server-side, so a revoked or foreign assignment yields a
+/// denial and no training data.
 /// Player-assistant chats never appear here.
 class CoachPlayerHistoryScreen extends ConsumerStatefulWidget {
   const CoachPlayerHistoryScreen({
@@ -171,6 +170,50 @@ class _GenerateDraftDialogState extends State<_GenerateDraftDialog> {
   }
 }
 
+class _CollapsibleHistorySection extends StatelessWidget {
+  const _CollapsibleHistorySection({
+    required this.heading,
+    required this.expanded,
+    required this.onToggle,
+    required this.children,
+  });
+
+  final _HistorySectionHeading heading;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        key: heading.key,
+        button: true,
+        expanded: expanded,
+        label: heading.label,
+        child: MayosCard(
+          onTap: onToggle,
+          padding: const EdgeInsets.all(MayosSpacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Semantics(
+                excludeSemantics: true,
+                child: MayosSectionHeader(
+                  title: heading.label,
+                  padding: EdgeInsets.only(
+                    bottom: expanded ? MayosSpacing.xs : 0,
+                  ),
+                  trailing: Icon(
+                    expanded ? Icons.expand_less : Icons.expand_more,
+                  ),
+                ),
+              ),
+              if (expanded) ...children,
+            ],
+          ),
+        ),
+      );
+}
+
 class _CoachPlayerHistoryScreenState
     extends ConsumerState<CoachPlayerHistoryScreen> {
   late CoachRosterEntry _entry;
@@ -199,6 +242,8 @@ class _CoachPlayerHistoryScreenState
   List<CoachAlert> _alerts = const <CoachAlert>[];
   String? _busyAlertId;
   _PlayerSegment _segment = _PlayerSegment.history;
+  final Map<_HistorySection, bool> _expandedHistorySections =
+      <_HistorySection, bool>{};
 
   /// Sequence numbers so a slower, older response can never overwrite the
   /// result of a newer one when revision bumps start overlapping loads (#120).
@@ -612,9 +657,7 @@ class _CoachPlayerHistoryScreenState
     );
   }
 
-  /// One card of the History segment: a [MayosSectionHeader] over its
-  /// children, so every section heading in this drill-down is the shared
-  /// component (#121).
+  /// One informational card with the shared section heading (#121).
   Widget _section(BuildContext context, String title, List<Widget> children) {
     return MayosCard(
       padding: const EdgeInsets.all(MayosSpacing.md),
@@ -628,6 +671,26 @@ class _CoachPlayerHistoryScreenState
           ...children,
         ],
       ),
+    );
+  }
+
+  Widget _historySection(
+    BuildContext context, {
+    required _HistorySection section,
+    required _HistorySectionContent content,
+  }) {
+    final bool expanded = _expandedHistorySections[section] ?? false;
+    return _CollapsibleHistorySection(
+      heading: (
+        key: Key('coach_history_section_${section.name}_semantics'),
+        label: '${content.title} '
+            '${coachCopyOf(context).historyItemCount(content.count)}',
+      ),
+      expanded: expanded,
+      onToggle: () => setState(() {
+        _expandedHistorySections[section] = !expanded;
+      }),
+      children: content.children,
     );
   }
 
@@ -711,15 +774,19 @@ class _CoachPlayerHistoryScreenState
   Widget _recentSessionsCard(BuildContext context) {
     final copy = coachCopyOf(context);
     final List<CoachPlayerRecentSession> sessions = _summary!.recentSessions;
-    return _section(
+    return _historySection(
       context,
-      copy.recentSessions,
-      sessions.isEmpty
-          ? <Widget>[Text(copy.noSessions)]
-          : <Widget>[
-              for (final CoachPlayerRecentSession session in sessions)
-                _recentSessionTile(session),
-            ],
+      section: _HistorySection.recentSessions,
+      content: (
+        title: copy.recentSessions,
+        count: sessions.length,
+        children: sessions.isEmpty
+            ? <Widget>[Text(copy.noSessions)]
+            : <Widget>[
+                for (final CoachPlayerRecentSession session in sessions)
+                  _recentSessionTile(session),
+              ],
+      ),
     );
   }
 
@@ -756,52 +823,61 @@ class _CoachPlayerHistoryScreenState
 
   Widget _recordsCard(BuildContext context) {
     final copy = coachCopyOf(context);
-    return _section(
+    return _historySection(
       context,
-      copy.personalRecordsTitle,
-      _records.isEmpty
-          ? <Widget>[Text(copy.noPersonalRecords)]
-          : <Widget>[
-              for (final PersonalRecord record in _records)
-                ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(record.name),
-                  subtitle: Text(copy.recordSummary(
-                      record.recordType, '${record.value}', record.reps)),
-                ),
-            ],
+      section: _HistorySection.records,
+      content: (
+        title: copy.personalRecordsTitle,
+        count: _records.length,
+        children: _records.isEmpty
+            ? <Widget>[Text(copy.noPersonalRecords)]
+            : <Widget>[
+                for (final PersonalRecord record in _records)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(record.name),
+                    subtitle: Text(copy.recordSummary(
+                        record.recordType, '${record.value}', record.reps)),
+                  ),
+              ],
+      ),
     );
   }
 
   Widget _checkpointReviewsCard(BuildContext context) {
     final copy = coachCopyOf(context);
-    return _section(
+    return _historySection(
       context,
-      copy.checkpoints,
-      _checkpointReviews.isEmpty
-          ? <Widget>[Text(copy.noCheckpoints)]
-          : <Widget>[
-              for (final CheckpointReviewListItem review in _checkpointReviews)
-                ListTile(
-                  key:
-                      ValueKey<String>('coach.checkpoint.${review.checkpoint}'),
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(copy.checkpointNumber(review.checkpoint)),
-                  subtitle: Text(copy.checkpointPeriod(
-                      review.periodStart, review.periodEnd)),
-                  trailing: Icon(
-                    Directionality.of(context) == TextDirection.rtl
-                        ? Icons.chevron_left
-                        : Icons.chevron_right,
+      section: _HistorySection.checkpoints,
+      content: (
+        title: copy.checkpoints,
+        count: _checkpointReviews.length,
+        children: _checkpointReviews.isEmpty
+            ? <Widget>[Text(copy.noCheckpoints)]
+            : <Widget>[
+                for (final CheckpointReviewListItem review
+                    in _checkpointReviews)
+                  ListTile(
+                    key: ValueKey<String>(
+                        'coach.checkpoint.${review.checkpoint}'),
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(copy.checkpointNumber(review.checkpoint)),
+                    subtitle: Text(copy.checkpointPeriod(
+                        review.periodStart, review.periodEnd)),
+                    trailing: Icon(
+                      Directionality.of(context) == TextDirection.rtl
+                          ? Icons.chevron_left
+                          : Icons.chevron_right,
+                    ),
+                    onTap: () => context.push(
+                      '$checkpointReviewPath/${review.checkpoint}'
+                      '?assignment_id=${_entry.assignmentId}',
+                    ),
                   ),
-                  onTap: () => context.push(
-                    '$checkpointReviewPath/${review.checkpoint}'
-                    '?assignment_id=${_entry.assignmentId}',
-                  ),
-                ),
-            ],
+              ],
+      ),
     );
   }
 
@@ -863,21 +939,25 @@ class _CoachPlayerHistoryScreenState
 
   Widget _exercisesCard(BuildContext context) {
     final copy = coachCopyOf(context);
-    return _section(
+    return _historySection(
       context,
-      copy.exercises,
-      _exercises.isEmpty
-          ? <Widget>[Text(copy.noExercisesLogged)]
-          : <Widget>[
-              for (final CoachPlayerExercise exercise in _exercises)
-                ExpansionTile(
-                  tilePadding: EdgeInsets.zero,
-                  initiallyExpanded: _openExerciseId == exercise.id,
-                  onExpansionChanged: (_) => _toggleExercise(exercise),
-                  title: Text(exercise.name),
-                  children: <Widget>[_exerciseDetail(context, exercise.id)],
-                ),
-            ],
+      section: _HistorySection.exercises,
+      content: (
+        title: copy.exercises,
+        count: _exercises.length,
+        children: _exercises.isEmpty
+            ? <Widget>[Text(copy.noExercisesLogged)]
+            : <Widget>[
+                for (final CoachPlayerExercise exercise in _exercises)
+                  ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    initiallyExpanded: _openExerciseId == exercise.id,
+                    onExpansionChanged: (_) => _toggleExercise(exercise),
+                    title: Text(exercise.name),
+                    children: <Widget>[_exerciseDetail(context, exercise.id)],
+                  ),
+              ],
+      ),
     );
   }
 
@@ -909,7 +989,30 @@ class _CoachPlayerHistoryScreenState
         ),
       ]);
     }
+    children.addAll(_programDraftActions(context));
     return _section(context, copy.program, children);
+  }
+
+  List<Widget> _programDraftActions(BuildContext context) {
+    final copy = coachCopyOf(context);
+    return <Widget>[
+      const SizedBox(height: MayosSpacing.sm),
+      MayosButton(
+        key: const Key('write_program_action'),
+        label: copy.writeProgram,
+        icon: Icons.edit_outlined,
+        variant: MayosButtonVariant.secondary,
+        onPressed: _openProgramDraft,
+      ),
+      const SizedBox(height: MayosSpacing.xs),
+      MayosButton(
+        key: const Key('generate_draft_action'),
+        label: copy.generateDraft,
+        icon: Icons.auto_awesome_outlined,
+        loading: _generatingDraft,
+        onPressed: _generatingDraft ? null : _openGenerateDraftDialog,
+      ),
+    ];
   }
 
   Widget _activeProgramActions(BuildContext context) {
@@ -1066,42 +1169,13 @@ class _CoachPlayerHistoryScreenState
                     onPressed: _loading ? null : _openCheckInSheet,
                     child: Text(copy.logCheckInAction),
                   ),
-                  PopupMenuButton<_PlayerAction>(
-                    key: const Key('player_page_actions'),
-                    icon: const Icon(Icons.more_vert),
-                    onSelected: (_PlayerAction action) {
-                      switch (action) {
-                        case _PlayerAction.writeProgram:
-                          _openProgramDraft();
-                        case _PlayerAction.generateDraft:
-                          if (!_generatingDraft) {
-                            _openGenerateDraftDialog();
-                          }
-                        case _PlayerAction.askAssistant:
-                          _openAssistant();
-                      }
-                    },
-                    itemBuilder: (BuildContext context) =>
-                        <PopupMenuEntry<_PlayerAction>>[
-                      PopupMenuItem<_PlayerAction>(
-                        key: const Key('write_program_action'),
-                        value: _PlayerAction.writeProgram,
-                        child: Text(copy.writeProgram),
-                      ),
-                      PopupMenuItem<_PlayerAction>(
-                        key: const Key('generate_draft_action'),
-                        value: _PlayerAction.generateDraft,
-                        enabled: !_generatingDraft,
-                        child: Text(copy.generateDraft),
-                      ),
-                      if (assistantEnabled)
-                        PopupMenuItem<_PlayerAction>(
-                          key: Key('coach_assistant_entry'),
-                          value: _PlayerAction.askAssistant,
-                          child: Text(copy.askAssistant),
-                        ),
-                    ],
-                  ),
+                  if (assistantEnabled)
+                    IconButton(
+                      key: const Key('coach_assistant_entry'),
+                      tooltip: copy.askAssistant,
+                      icon: const Icon(Icons.auto_awesome_outlined),
+                      onPressed: _openAssistant,
+                    ),
                 ],
         ),
         body: Column(
@@ -1442,9 +1516,17 @@ class _CoachPlayerHistoryScreenState
         MayosSegmentedControl<_PlayerSegment>(
           segments: <MayosSegment<_PlayerSegment>>[
             MayosSegment<_PlayerSegment>(
-                value: _PlayerSegment.history, label: copy.history),
+              value: _PlayerSegment.program,
+              label: copy.program,
+            ),
             MayosSegment<_PlayerSegment>(
-                value: _PlayerSegment.checkIns, label: copy.checkIns),
+              value: _PlayerSegment.history,
+              label: copy.history,
+            ),
+            MayosSegment<_PlayerSegment>(
+              value: _PlayerSegment.checkIns,
+              label: copy.checkIns,
+            ),
             MayosSegment<_PlayerSegment>(
               value: _PlayerSegment.requests,
               label: _pendingRequests > 0
@@ -1456,7 +1538,9 @@ class _CoachPlayerHistoryScreenState
           onChanged: (_PlayerSegment value) => setState(() => _segment = value),
         ),
         const SizedBox(height: MayosSpacing.md),
-        if (_segment == _PlayerSegment.history)
+        if (_segment == _PlayerSegment.program)
+          _programCard(context)
+        else if (_segment == _PlayerSegment.history)
           ..._historyChildren(context)
         else if (_segment == _PlayerSegment.checkIns)
           _checkInsSegment(context)
@@ -1474,7 +1558,7 @@ class _CoachPlayerHistoryScreenState
       Text(coachCopyOf(context).since(summary.startedAt),
           style: MayosTypography.of(context).bodySecondary),
       const SizedBox(height: MayosSpacing.sm),
-      _programCard(context),
+      _latestSessionCard(context),
       const SizedBox(height: MayosSpacing.sm),
       _volumeCard(context),
       const SizedBox(height: MayosSpacing.sm),
@@ -1482,8 +1566,6 @@ class _CoachPlayerHistoryScreenState
         _scheduleCard(context),
         const SizedBox(height: MayosSpacing.sm),
       ],
-      _latestSessionCard(context),
-      const SizedBox(height: MayosSpacing.sm),
       _recentSessionsCard(context),
       const SizedBox(height: MayosSpacing.sm),
       _recordsCard(context),
@@ -1497,17 +1579,25 @@ class _CoachPlayerHistoryScreenState
 
 /// The player page's segments (#120/#121).
 enum _PlayerSegment {
+  program,
   history,
   checkIns,
   requests,
 }
 
-/// The player page's overflow actions (#G).
-enum _PlayerAction {
-  writeProgram,
-  generateDraft,
-  askAssistant,
+enum _HistorySection {
+  recentSessions,
+  records,
+  checkpoints,
+  exercises,
 }
+
+typedef _HistorySectionHeading = ({Key key, String label});
+typedef _HistorySectionContent = ({
+  String title,
+  int count,
+  List<Widget> children,
+});
 
 enum _ExistingDraftChoice {
   copyActive,
