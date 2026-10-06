@@ -1780,6 +1780,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       builder: (BuildContext context) => ExercisePickerDialog(
         title: _copy.replaceExercise,
         targetMuscle: muscle,
+        replacingExerciseId: exercise.exerciseId,
         excludeExerciseIds: inWorkout,
         suggestedSubstitutes: <SuggestedSubstitute>[
           for (final dynamic item in (exercise.exercise['suggested_substitutes']

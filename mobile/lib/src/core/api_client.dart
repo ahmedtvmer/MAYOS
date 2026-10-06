@@ -1908,7 +1908,8 @@ class ApiClient {
   ///
   /// [targetMuscle] (#162) filters the source target label. [primaryMuscles]
   /// filters curated labels and may contain several values. Either filter can
-  /// be sent without a name [query].
+  /// be sent without a name [query]. [replacingExerciseId] ranks filter-only
+  /// Replace browse results against the replaced exercise.
   Future<List<ExerciseCatalogEntry>> searchExercises(
     String query, {
     String? targetMuscle,
@@ -1916,6 +1917,7 @@ class ApiClient {
     List<String> primaryActions = const <String>[],
     List<String> loadTypes = const <String>[],
     List<String> equipmentCategories = const <String>[],
+    String? replacingExerciseId,
   }) async {
     final response = await _send(
       () => _dio.get<dynamic>('/workouts/exercises',
@@ -1927,6 +1929,8 @@ class ApiClient {
             if (loadTypes.isNotEmpty) 'load_type': loadTypes,
             if (equipmentCategories.isNotEmpty)
               'equipment_category': equipmentCategories,
+            if (replacingExerciseId != null)
+              'replacing_exercise_id': replacingExerciseId,
           },
           options: Options(listFormat: ListFormat.multi)),
     );

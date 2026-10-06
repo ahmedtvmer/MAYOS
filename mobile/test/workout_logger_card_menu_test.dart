@@ -893,7 +893,7 @@ void main() {
       'the Replace search opens with the target muscle listed before typing, '
       'and the pill searches the whole catalog (#162)',
       (WidgetTester tester) async {
-    await _openLogger(tester);
+    final harness = await _openLogger(tester);
 
     await _pickMenuItem(tester, 0, _replaceItem(0));
     await tester.pumpAndSettle();
@@ -921,6 +921,14 @@ void main() {
     expect(inDialog('Suggested substitutes'), findsOneWidget);
     expect(inDialog('Incline DB Press'), findsOneWidget);
     expect(inDialog('Cable Fly'), findsOneWidget);
+    expect(
+      tester.getTopLeft(inDialog('Incline DB Press')).dy,
+      lessThan(tester.getTopLeft(inDialog('Cable Fly')).dy),
+    );
+    final browseRequest = harness.fake.adapter.requests.lastWhere(
+      (request) => request.path == '/workouts/exercises',
+    );
+    expect(browseRequest.query['replacing_exercise_id'], 'bench_press');
     // …but Bench Press itself is not offered: it is already in this workout.
     expect(inDialog('Bench Press'), findsNothing);
 

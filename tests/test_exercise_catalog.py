@@ -257,6 +257,135 @@ def test_catalog_search_by_muscle_lists_that_muscle_without_a_name_query(api):
     assert [m["id"] for m in resp.json()["exercises"]] == ["sq", "lp"]
 
 
+def test_replace_browse_ranks_action_and_muscle_and_keeps_access_filters(
+    api, seed_exercise_curation
+):
+    client, db = api
+    token = _register(client, "replace-ranking")['access_token']
+    db.catalog_conn.executemany(
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) "
+        "VALUES (?, ?, 'Chest', 'Chest', ?)",
+        [
+            ("replace-both-a", "Alpha Press", "barbell"),
+            ("replace-both-z", "Zulu Press", "barbell"),
+            ("replace-action", "Action Press", "barbell"),
+            ("replace-muscle", "Muscle Press", "barbell"),
+            ("replace-rest", "Rest Press", "barbell"),
+            ("replace-hidden", "Hidden Press", "barbell"),
+            ("replace-band", "Band Press", "band"),
+        ],
+    )
+    db.catalog_conn.commit()
+    seed_exercise_curation(
+        db,
+        {
+            "bp": {
+                "display_name": "Bench Press",
+                "primary_action": "Shoulder Horizontal Adduction",
+                "primary_muscle": "Chest",
+            },
+            "replace-both-a": {
+                "display_name": "Alpha Press",
+                "primary_action": "Shoulder Horizontal Adduction",
+                "primary_muscle": "Chest",
+            },
+            "replace-both-z": {
+                "display_name": "Zulu Press",
+                "primary_action": "Shoulder Horizontal Adduction",
+                "primary_muscle": "Chest",
+            },
+            "replace-action": {
+                "display_name": "Action Press",
+                "primary_action": "Shoulder Horizontal Adduction",
+                "primary_muscle": "Triceps",
+            },
+            "replace-muscle": {
+                "display_name": "Muscle Press",
+                "primary_action": "Shoulder Horizontal Abduction",
+                "primary_muscle": "Chest",
+            },
+            "replace-rest": {
+                "display_name": "Rest Press",
+                "primary_action": "Elbow Flexion",
+                "primary_muscle": "Biceps",
+            },
+            "replace-hidden": {
+                "primary_action": "Shoulder Horizontal Adduction",
+                "primary_muscle": "Chest",
+                "hidden": True,
+            },
+            "replace-band": {
+                "primary_action": "Shoulder Horizontal Adduction",
+                "primary_muscle": "Chest",
+            },
+        },
+    )
+    with db.open_ledger("replace-ranking") as ledger:
+        ledger.upsert_player_profile({"equipment_access": COMMERCIAL_GYM})
+
+    response = client.get(
+        "/workouts/exercises",
+        headers=_authed(token),
+        params={"target_muscle": "Chest", "replacing_exercise_id": "bp"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert [row["id"] for row in response.json()["exercises"]] == [
+        "replace-both-a",
+        "bp",
+        "replace-both-z",
+        "replace-action",
+        "replace-muscle",
+        "replace-rest",
+        "ib",
+    ]
+
+
+def test_replace_browse_uncurated_source_keeps_existing_order(api, seed_exercise_curation):
+    client, db = api
+    token = _register(client, "replace-uncurated")['access_token']
+    db.catalog_conn.executemany(
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) "
+        "VALUES (?, ?, 'Back', 'lats', 'cable')",
+        [
+            ("replace-fallback-a", "Alpha Candidate",),
+            ("replace-fallback-z", "Zeta Candidate",),
+        ],
+    )
+    db.catalog_conn.commit()
+    seed_exercise_curation(
+        db,
+        {
+            "replace-fallback-a": {
+                "display_name": "Alpha Candidate",
+                "primary_action": "Scapular Retraction",
+                "primary_muscle": "Traps",
+            },
+            "replace-fallback-z": {
+                "display_name": "Zeta Candidate",
+                "primary_action": "Scapular Elevation",
+                "primary_muscle": "Upper Back",
+            },
+        },
+    )
+    params = {"target_muscle": "lats"}
+
+    ordinary = client.get(
+        "/workouts/exercises", headers=_authed(token), params=params
+    )
+    replacement = client.get(
+        "/workouts/exercises",
+        headers=_authed(token),
+        params={**params, "replacing_exercise_id": "raw-cable"},
+    )
+
+    assert ordinary.status_code == 200, ordinary.text
+    assert replacement.status_code == 200, replacement.text
+    expected = ["replace-fallback-a", "replace-fallback-z", "raw-cable"]
+    assert [row["id"] for row in ordinary.json()["exercises"]] == expected
+    assert [row["id"] for row in replacement.json()["exercises"]] == expected
+
+
 def test_catalog_search_filters_by_primary_muscles_with_or_and_name(api, seed_exercise_curation):
     client, db = api
     token = _register(client, "primary-muscle-filter")['access_token']

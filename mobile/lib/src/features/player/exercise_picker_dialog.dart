@@ -46,6 +46,7 @@ class ExercisePickerDialog extends ConsumerStatefulWidget {
     super.key,
     this.title,
     this.targetMuscle,
+    this.replacingExerciseId,
     this.excludeExerciseIds = const <String>{},
     this.suggestedSubstitutes = const <SuggestedSubstitute>[],
     this.emptyFilteredMessage,
@@ -57,6 +58,9 @@ class ExercisePickerDialog extends ConsumerStatefulWidget {
   /// The planned exercise's source target muscle (#162), initially enabled
   /// when present. The separate shared bar filters curated Primary muscles.
   final String? targetMuscle;
+
+  /// The current exercise whose Primary action and muscle rank results.
+  final String? replacingExerciseId;
 
   /// Exercise ids already in this workout (#162): the Replace search never
   /// offers them, planned or unplanned. Empty for Add exercise, which keeps
@@ -138,6 +142,7 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
             primaryActions: filters.primaryActions,
             loadTypes: filters.loadTypes,
             equipmentCategories: filters.equipmentCategories,
+            replacingExerciseId: widget.replacingExerciseId,
           );
       if (!mounted) return;
       setState(() {

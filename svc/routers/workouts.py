@@ -118,12 +118,14 @@ async def search_exercises(
     primary_action: list[str] | None = Query(None),
     equipment_category: list[str] | None = Query(None),
     load_type: list[str] | None = Query(None),
+    replacing_exercise_id: str | None = None,
 ):
     """Search the Exercise library by name, target muscle or curated filters.
 
-    A filter-only browse returns all matching rows in display-name order and
-    applies the player's Equipment access. Name searches remain limited to 10
-    and ignore Equipment access, matching the existing Replace browse behavior.
+    A filter-only browse returns all matching rows and applies the player's
+    Equipment access. Replace can rank it against the exercise being replaced;
+    an uncurated, Coach, or unknown id keeps the existing display-name order.
+    Name searches remain limited to 10 and ignore Equipment access.
     """
     try:
         filters = exercise_filters_for(
@@ -156,6 +158,7 @@ async def search_exercises(
         equipment_access=equipment_access,
         filter_browse=filter_browse,
         filters=filters,
+        replacing_exercise_id=replacing_exercise_id,
     )
     return {
         # Filter-only browsing suggests options; typed searches stay bounded.

@@ -596,6 +596,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       builder: (BuildContext context) => ExercisePickerDialog(
         title: displayCopyOf(context).substituteExercise,
         targetMuscle: targetMuscle,
+        replacingExerciseId: exercise.exerciseId,
         excludeExerciseIds: <String>{
           for (final ProgramExercise item in day.exercises) item.exerciseId,
         },

@@ -7,6 +7,7 @@ from database.shared import _normalize_exercise_name
 from database.exercise_library.filters import ExerciseFilters
 from database.exercise_library.values import split_curation_values
 from database.exercise_library.names import near_miss_exercise_ids
+from database.exercise_library.ranking import replacement_rank_sql
 from database.exercise_library.schema import (
     EFFECTIVE_EXERCISE_NAME_SQL,
     effective_exercise_name_sql,
@@ -25,24 +26,40 @@ class _NameSearch:
     equipment_clause: str | None
     filter_browse: bool
     limit: int | None
+    replacing_exercise_id: str | None = None
+
+
+@dataclass(frozen=True)
+class _NameRowsOptions:
+    limit: int | None
+    ranking: Literal["name_length", "display_name_first"] = "name_length"
+    replacing_exercise_id: str | None = None
 
 
 def _exercise_name_rows(
     cursor,
     where_sql: str,
     params: list[str],
-    limit: int | None,
-    *,
-    ranking: Literal["name_length", "display_name_first"] = "name_length",
+    options: _NameRowsOptions,
 ):
     name_expression, display_name_join = effective_exercise_name_sql()
-    if ranking == "display_name_first":
-        order_by = (
+    if options.ranking == "display_name_first":
+        display_name_order = (
             "CASE WHEN COALESCE(d.is_reviewed, 0) = 1 THEN 0 ELSE 1 END, "
             f"LOWER({name_expression}), e.id"
         )
+        order_by = display_name_order
+        if options.replacing_exercise_id:
+            order_by = f"{replacement_rank_sql()}, {display_name_order}"
     else:
         order_by = "LENGTH(e.name)"
+    replacement_join = ""
+    if options.replacing_exercise_id:
+        replacement_join = (
+            "LEFT JOIN exercise_curated_fields replacement_cf "
+            "ON replacement_cf.exercise_id = ?"
+        )
+        params = [options.replacing_exercise_id, *params]
     where_sql = f"({where_sql}) AND ({exercise_library_visible_sql('e.id')})"
     query = """
         SELECT e.id AS id, {name_expression} AS display_name, e.body_part AS body_part,
@@ -55,17 +72,19 @@ def _exercise_name_rows(
         FROM exercises e
         {display_name_join}
         LEFT JOIN exercise_curated_fields cf ON cf.exercise_id = e.id
+        {replacement_join}
         WHERE {where_sql}
         ORDER BY {order_by}
     """.format(
         name_expression=name_expression,
         display_name_join=display_name_join,
+        replacement_join=replacement_join,
         where_sql=where_sql,
         order_by=order_by,
     )
-    if limit is not None:
+    if options.limit is not None:
         query += " LIMIT ?"
-        params = [*params, limit]
+        params = [*params, options.limit]
     cursor.execute(query, params)
     columns = [column[0] for column in cursor.description]
     return [dict(zip(columns, row)) for row in cursor.fetchall()]
@@ -99,11 +118,18 @@ def _exact_name_rows(cursor, search: _NameSearch):
         "WHERE a.exercise_id = e.id AND a.normalized_alias = ?))"
     )
     params = [*search.filter_params, search.query, search.query, search.normalized_query]
-    return _exercise_name_rows(cursor, where, params, search.limit)
+    return _exercise_name_rows(
+        cursor, where, params, _NameRowsOptions(limit=search.limit)
+    )
 
 
 def _normalized_name_rows(cursor, search: _NameSearch):
-    rows = _exercise_name_rows(cursor, search.filter_clause, list(search.filter_params), None)
+    rows = _exercise_name_rows(
+        cursor,
+        search.filter_clause,
+        list(search.filter_params),
+        _NameRowsOptions(limit=None),
+    )
     matches = [
         row for row in rows
         if _normalize_exercise_name(row["display_name"]) == search.normalized_query
@@ -122,7 +148,10 @@ def _substring_name_rows(cursor, search: _NameSearch):
         "WHERE a.exercise_id = e.id AND LOWER(a.alias) LIKE ?))"
     )
     return _exercise_name_rows(
-        cursor, where, [*search.filter_params, like, like, like], search.limit
+        cursor,
+        where,
+        [*search.filter_params, like, like, like],
+        _NameRowsOptions(limit=search.limit),
     )
 
 
@@ -142,7 +171,9 @@ def _token_name_rows(cursor, search: _NameSearch):
     )
     token_values = [f"%{token}%" for token in tokens]
     params = [*search.filter_params, *token_values, *token_values, *token_values]
-    return _exercise_name_rows(cursor, where, params, search.limit)
+    return _exercise_name_rows(
+        cursor, where, params, _NameRowsOptions(limit=search.limit)
+    )
 
 
 def _find_name_rows(cursor, search: _NameSearch):
@@ -154,8 +185,11 @@ def _find_name_rows(cursor, search: _NameSearch):
             cursor,
             where,
             list(search.filter_params),
-            search.limit,
-            ranking="display_name_first",
+            _NameRowsOptions(
+                limit=search.limit,
+                ranking="display_name_first",
+                replacing_exercise_id=search.replacing_exercise_id,
+            ),
         )
     if not search.normalized_query:
         return []
@@ -342,6 +376,7 @@ class ExerciseLookupMixin:
         filter_browse: bool = False,
         *,
         filters: ExerciseFilters | None = None,
+        replacing_exercise_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Ranked Exercise library matches across source names, display names, and aliases.
 
@@ -356,13 +391,22 @@ class ExerciseLookupMixin:
         ``filters`` narrows by curated fields. Target and distinct filter sections
         combine with AND; multiple values in one section combine with OR. A filter
         permits an empty query. ``equipment_access`` applies only to filter-only browse.
+        An explicit replacement ranking can also browse the full library with an
+        empty query. ``replacing_exercise_id`` ranks candidates by matching Primary
+        action and Primary muscle before the usual display-name order. An
+        uncurated, Coach, or unknown id keeps today's order.
         """
         clean = query.strip().lower()
         muscle = (target_muscle or "").strip().lower()
         active_filters = filters if filters is not None else ExerciseFilters()
         has_filter = bool(muscle or active_filters.has_curated_filters)
-        browse = filter_browse or (not clean and has_filter)
-        if (limit is not None and limit <= 0) or (not clean and not has_filter):
+        has_replacement_reference = bool(replacing_exercise_id)
+        browse = filter_browse or (
+            not clean and (has_filter or has_replacement_reference)
+        )
+        if (limit is not None and limit <= 0) or (
+            not clean and not has_filter and not has_replacement_reference
+        ):
             return []
         filter_clause, filter_params = _exercise_filter_predicate(
             active_filters, muscle
@@ -379,6 +423,7 @@ class ExerciseLookupMixin:
                 else None
             ),
             limit=limit,
+            replacing_exercise_id=(replacing_exercise_id or None),
         )
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()

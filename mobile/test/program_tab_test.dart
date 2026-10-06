@@ -340,6 +340,10 @@ void main() {
     await tester.enterText(find.byType(TextField).last, 'Pin Squat');
     await tester.tap(find.text('Search').last);
     await _pumpUntilFound(tester, find.text('No matching exercise found.'));
+    final request = fake.adapter.requests.lastWhere(
+      (candidateRequest) => candidateRequest.path == '/workouts/exercises',
+    );
+    expect(request.query['replacing_exercise_id'], 'coach:pin-squat');
     expect(
       find.descendant(
         of: find.byType(AlertDialog),
