@@ -148,6 +148,14 @@ An Exercise library row excluded from Player and Coach search, Replace browse, p
 **Exercise curation file**:
 The MAYOS-owned `data/exercise_curation.csv`, keyed by Exercise library id. It holds reviewed Exercise display names and aliases, with curated fields such as Primary muscle kept beside the source row.
 
+**Equipment category**:
+The derived category for an Exercise library row, computed from its Equipment value: Free weight, Machine, Cable, Bodyweight, Band, or Other. It describes the kind of equipment and is separate from Equipment access.
+_Arabic_: فئة المعدات
+
+**Load type**:
+The curated loading mechanism for a Machine exercise: selectorized, plate-loaded, or unknown. The app labels these Pin-loaded, Plate-loaded, or Unknown. Load type does not change Equipment access.
+_Arabic_: نوع التحميل
+
 **Staple exercise**:
 An exercise that elite coaches repeatedly choose for a movement, such as the Lat Pulldown for a vertical pull. Each movement has an ordered list of staples; the first one the player's Equipment access allows is prescribed and the next ones are its suggested substitutes.
 

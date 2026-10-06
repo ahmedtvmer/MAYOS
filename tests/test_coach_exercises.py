@@ -252,8 +252,7 @@ def test_coach_search_filters_primary_action_and_hides_coach_exercises(
     )
 
     action = client.get(
-        "/coach/exercises",
-        headers=coach_headers,
+        "/coach/exercises", headers=coach_headers,
         params={"primary_action": "Shoulder Flexion"},
     )
     assert action.status_code == 200, action.text
@@ -261,32 +260,64 @@ def test_coach_search_filters_primary_action_and_hides_coach_exercises(
     assert action.json()["exercises"][0]["secondary_actions"] == ["Elbow Extension"]
 
     combined = client.get(
-        "/coach/exercises",
-        headers=coach_headers,
+        "/coach/exercises", headers=coach_headers,
         params={"primary_action": "Knee Extension", "primary_muscle": "Quads"},
     )
     assert [row["id"] for row in combined.json()["exercises"]] == ["sq"]
 
     queried = client.get(
-        "/coach/exercises",
-        headers=coach_headers,
+        "/coach/exercises", headers=coach_headers,
         params={"query": "incline", "primary_action": "Shoulder Flexion"},
     )
     assert [row["id"] for row in queried.json()["exercises"]] == ["ib"]
-
     secondary_only = client.get(
-        "/coach/exercises",
-        headers=coach_headers,
+        "/coach/exercises", headers=coach_headers,
         params={"query": "bench", "primary_action": "Shoulder Flexion"},
     )
     assert secondary_only.json()["exercises"] == []
-
     invalid = client.get(
-        "/coach/exercises",
-        headers=coach_headers,
+        "/coach/exercises", headers=coach_headers,
         params={"primary_action": "Knee Curl"},
     )
     assert invalid.status_code == 422
+
+
+def test_coach_equipment_category_matches_equipment_tag_and_load_type_excludes_coach(
+    api, seed_exercise_curation
+):
+    client, db = api
+    coach_headers = _make_coach(client, db, "equipment-category-coach")
+    band_exercise = client.post(
+        "/coach/exercises", headers=coach_headers,
+        json={"name": "Band Coach Exercise", "equipment": "Resistance band"},
+    )
+    assert band_exercise.status_code == 201, band_exercise.text
+
+    category = client.get(
+        "/coach/exercises", headers=coach_headers,
+        params={"equipment_category": "Band"},
+    )
+    assert category.status_code == 200, category.text
+    assert [row["id"] for row in category.json()["exercises"]] == [band_exercise.json()["id"]]
+    assert category.json()["exercises"][0]["equipment_category"] == "Band"
+    assert category.json()["exercises"][0]["load_type"] is None
+
+    with db.catalog_locked() as connection:
+        connection.execute(
+            "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) "
+            "VALUES ('machine-squat', 'Machine Squat', 'Upper Legs', 'Quads', 'leverage machine')"
+        )
+        connection.commit()
+    seed_exercise_curation(
+        db, {"machine-squat": {"primary_muscle": "Quads", "load_type": "selectorized"}}
+    )
+    load_type = client.get(
+        "/coach/exercises", headers=coach_headers,
+        params={"load_type": "selectorized"},
+    )
+    assert load_type.status_code == 200, load_type.text
+    assert [row["id"] for row in load_type.json()["exercises"]] == ["machine-squat"]
+    assert load_type.json()["exercises"][0]["equipment_category"] == "Machine"
 
 
 @pytest.mark.parametrize(

@@ -1041,6 +1041,8 @@ class ApiClient {
     String query, {
     List<String> primaryMuscles = const <String>[],
     List<String> primaryActions = const <String>[],
+    List<String> loadTypes = const <String>[],
+    List<String> equipmentCategories = const <String>[],
   }) async {
     final response = await _send(
       () => _dio.get<dynamic>(
@@ -1049,6 +1051,9 @@ class ApiClient {
           if (query.trim().isNotEmpty) 'query': query,
           if (primaryMuscles.isNotEmpty) 'primary_muscle': primaryMuscles,
           if (primaryActions.isNotEmpty) 'primary_action': primaryActions,
+          if (loadTypes.isNotEmpty) 'load_type': loadTypes,
+          if (equipmentCategories.isNotEmpty)
+            'equipment_category': equipmentCategories,
         },
         options: Options(listFormat: ListFormat.multi),
       ),
@@ -1909,6 +1914,8 @@ class ApiClient {
     String? targetMuscle,
     List<String> primaryMuscles = const <String>[],
     List<String> primaryActions = const <String>[],
+    List<String> loadTypes = const <String>[],
+    List<String> equipmentCategories = const <String>[],
   }) async {
     final response = await _send(
       () => _dio.get<dynamic>('/workouts/exercises',
@@ -1917,6 +1924,9 @@ class ApiClient {
             if (targetMuscle != null) 'target_muscle': targetMuscle,
             if (primaryMuscles.isNotEmpty) 'primary_muscle': primaryMuscles,
             if (primaryActions.isNotEmpty) 'primary_action': primaryActions,
+            if (loadTypes.isNotEmpty) 'load_type': loadTypes,
+            if (equipmentCategories.isNotEmpty)
+              'equipment_category': equipmentCategories,
           },
           options: Options(listFormat: ListFormat.multi)),
     );

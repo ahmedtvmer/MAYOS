@@ -61,3 +61,52 @@ PRIMARY_ACTIONS = (
     "Neck Extension",
     "Conditioning",
 )
+LOAD_TYPES = ("selectorized", "plate_loaded", "unknown")
+
+EQUIPMENT_CATEGORIES = (
+    "Free weight",
+    "Machine",
+    "Cable",
+    "Bodyweight",
+    "Band",
+    "Other",
+)
+
+_EQUIPMENT_CATEGORY_BY_EQUIPMENT = {
+    **{
+        equipment: "Free weight"
+        for equipment in (
+            "barbell",
+            "dumbbell",
+            "ez barbell",
+            "kettlebell",
+            "trap bar",
+            "olympic barbell",
+        )
+    },
+    **{
+        equipment: "Machine"
+        for equipment in ("leverage machine", "sled machine", "smith machine")
+    },
+    "cable": "Cable",
+    **{
+        equipment: "Bodyweight"
+        for equipment in ("body weight", "assisted", "weighted")
+    },
+    **{equipment: "Band" for equipment in ("band", "resistance band")},
+}
+
+
+def equipment_category_for(equipment: object) -> str:
+    """Return the one Equipment category for a source Equipment value."""
+    normalized = str(equipment or "").strip().casefold()
+    return _EQUIPMENT_CATEGORY_BY_EQUIPMENT.get(normalized, "Other")
+
+
+def equipment_category_sql(column: str) -> str:
+    """Build a SQL CASE expression from the same Equipment mapping."""
+    cases = " ".join(
+        f"WHEN '{equipment}' THEN '{category}'"
+        for equipment, category in _EQUIPMENT_CATEGORY_BY_EQUIPMENT.items()
+    )
+    return f"CASE LOWER(TRIM(COALESCE({column}, ''))) {cases} ELSE 'Other' END"

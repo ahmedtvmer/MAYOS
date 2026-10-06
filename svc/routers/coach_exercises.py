@@ -28,8 +28,13 @@ def _search_exercise_entries(
     )
     owned = (
         []
-        if filters.has_curated_filters
-        else db.search_coach_exercises(coach_account_id, query, limit=10)
+        if filters.excludes_coach_exercises
+        else db.search_coach_exercises(
+            coach_account_id,
+            query,
+            limit=None if filter_browse else 10,
+            equipment_categories=filters.equipment_categories,
+        )
     )
     return {
         "exercises": [
@@ -46,21 +51,28 @@ async def search_coach_exercises(
     query: str | None = Query(default=None, max_length=120),
     primary_muscle: list[str] | None = Query(None),
     primary_action: list[str] | None = Query(None),
+    equipment_category: list[str] | None = Query(None),
+    load_type: list[str] | None = Query(None),
 ):
     """Search library rows; filter-only browsing is unbounded and display-name ordered.
 
-    Coach exercises are included for name searches and omitted whenever a
-    Primary muscle or Primary action filter is active.
+    Coach exercises match Equipment category through their Equipment tag and are
+    omitted when a Primary muscle, Primary action, or Load type filter is active.
     """
     try:
-        filters = exercise_filters_for(primary_muscle, primary_action)
+        filters = exercise_filters_for(
+            primary_muscle, primary_action, load_type, equipment_category
+        )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     clean_query = (query or "").strip()
     if not clean_query and not filters.has_curated_filters:
         raise HTTPException(
             status_code=400,
-            detail="Provide query, primary_muscle, primary_action, or a combination.",
+            detail=(
+                "Provide query, primary_muscle, primary_action, equipment_category, "
+                "load_type, or a combination."
+            ),
         )
     return await asyncio.to_thread(
         _search_exercise_entries, db, coach.account_id, clean_query, filters

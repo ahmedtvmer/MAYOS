@@ -150,6 +150,34 @@ void main() {
         TextDirection.rtl);
   });
 
+  testWidgets('exercise detail renders Equipment category and Load type in English',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _pumpDetail(tester, fake, 'machine_row', dayOrder: null);
+
+    expect(find.text('Equipment category'), findsOneWidget);
+    expect(find.text('Machine'), findsOneWidget);
+    expect(find.text('Load type'), findsOneWidget);
+    expect(find.text('Pin-loaded'), findsOneWidget);
+  });
+
+  testWidgets('exercise detail localizes Equipment category and Load type in Arabic',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _pumpDetail(
+      tester,
+      fake,
+      'machine_row',
+      dayOrder: null,
+      languageCode: 'ar',
+    );
+
+    expect(find.text('فئة المعدات'), findsOneWidget);
+    expect(find.text('أجهزة'), findsOneWidget);
+    expect(find.text('نوع التحميل'), findsOneWidget);
+    expect(find.text('محمل بدبوس الأوزان'), findsOneWidget);
+  });
+
   testWidgets('Program exercise opens detail with prescription stats',
       (tester) async {
     final FakeMayosApi fake = _signedInFake();

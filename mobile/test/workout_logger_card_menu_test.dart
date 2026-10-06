@@ -996,6 +996,64 @@ void main() {
     expect(request.query['primary_action'], <String>['Elbow Flexion']);
   });
 
+  testWidgets('player picker sends Equipment category and Load type filters',
+      (WidgetTester tester) async {
+    final harness = await _openLogger(tester);
+    final Finder add = find.widgetWithText(OutlinedButton, 'Add exercise');
+    await tester.ensureVisible(add);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(add);
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('exercise_equipment_category_filter')),
+    );
+
+    await tester.tap(
+      find.byKey(const Key('exercise_equipment_category_filter')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('equipment_category_option_Machine')),
+    );
+    await tester.tap(
+      find.byKey(const Key('exercise_equipment_category_done')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('exercise_load_type_filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('load_type_option_selectorized')));
+    await tester.tap(find.byKey(const Key('exercise_load_type_done')));
+    await _pumpUntilFound(tester, find.text('Machine Row'));
+
+    final request = harness.fake.adapter.requests.lastWhere(
+      (request) => request.path == '/workouts/exercises',
+    );
+    expect(request.query['equipment_category'], <String>['Machine']);
+    expect(request.query['load_type'], <String>['selectorized']);
+
+    await tester.tap(
+      find.byKey(const Key('exercise_equipment_category_filter')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('equipment_category_option_Machine')),
+    );
+    await tester.tap(
+      find.byKey(const Key('exercise_equipment_category_done')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('exercise_load_type_filter')), findsOneWidget);
+    await tester.enterText(find.byType(TextField).last, 'machine');
+    await tester.tap(find.text('Search'));
+    await _pumpUntilFound(tester, find.text('Machine Row'));
+    final unfilteredRequest = harness.fake.adapter.requests.lastWhere(
+      (request) => request.path == '/workouts/exercises',
+    );
+    expect(unfilteredRequest.query['query'], 'machine');
+    expect(unfilteredRequest.query.containsKey('equipment_category'), isFalse);
+    expect(unfilteredRequest.query.containsKey('load_type'), isFalse);
+  });
+
   testWidgets(
       'the Replace search never offers an exercise already in this '
       'workout, planned or unplanned (#162)', (WidgetTester tester) async {

@@ -56,7 +56,13 @@ class _CoachExercisePickerDialogState
       return;
     }
     _startSearch();
-    await _loadResults(query, filters.primaryMuscles, filters.primaryActions);
+    await _loadResults(
+      query,
+      filters.primaryMuscles,
+      filters.primaryActions,
+      filters.loadTypes,
+      filters.equipmentCategories,
+    );
   }
 
   void _startSearch() {
@@ -71,6 +77,8 @@ class _CoachExercisePickerDialogState
     String query,
     List<String> primaryMuscles,
     List<String> primaryActions,
+    List<String> loadTypes,
+    List<String> equipmentCategories,
   ) async {
     try {
       final List<ExerciseCatalogEntry> results =
@@ -80,6 +88,8 @@ class _CoachExercisePickerDialogState
                 query,
                 primaryMuscles: primaryMuscles,
                 primaryActions: primaryActions,
+                loadTypes: loadTypes,
+                equipmentCategories: equipmentCategories,
               );
       if (!mounted) return;
       setState(() {

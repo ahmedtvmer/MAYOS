@@ -8,7 +8,13 @@ from pathlib import Path
 
 from agent.program_blueprints import SLOT_STAPLES
 from database.shared import BASE_DIR, _normalize_exercise_name
-from database.exercise_library.vocabulary import PRIMARY_ACTIONS, PRIMARY_MUSCLES
+from database.exercise_library.values import split_curation_values
+from database.exercise_library.vocabulary import (
+    LOAD_TYPES,
+    PRIMARY_ACTIONS,
+    PRIMARY_MUSCLES,
+    equipment_category_for,
+)
 
 DEFAULT_CURATION_CSV_PATH = BASE_DIR / "data" / "exercise_curation.csv"
 CURATION_COLUMNS = (
@@ -71,11 +77,11 @@ def _parse_curation_row(line_number: int, row: dict[str, str | None]) -> Exercis
     source_name = (row["source_name"] or "").strip()
     if not exercise_id or not source_name:
         raise ValueError(f"Exercise curation CSV line {line_number} needs an id and source_name")
-    aliases = _split_curation_values(row["aliases"])
+    aliases = split_curation_values(row["aliases"])
     _validate_curation_aliases(line_number, aliases)
     primary_action = (row["primary_action"] or "").strip()
     _validate_action(line_number, exercise_id, primary_action, "primary_action")
-    secondary_actions = _split_curation_values(row["secondary_actions"])
+    secondary_actions = split_curation_values(row["secondary_actions"])
     for action in secondary_actions:
         _validate_action(line_number, exercise_id, action, "secondary_actions")
     hidden_value = (row["hidden"] or "").strip()
@@ -86,6 +92,8 @@ def _parse_curation_row(line_number: int, row: dict[str, str | None]) -> Exercis
         )
     primary_muscle = (row["primary_muscle"] or "").strip()
     _validate_primary_muscle(line_number, exercise_id, primary_muscle)
+    load_type = (row["load_type"] or "").strip()
+    _validate_load_type(line_number, exercise_id, load_type)
     return ExerciseCuration(
         line_number=line_number,
         id=exercise_id,
@@ -95,7 +103,7 @@ def _parse_curation_row(line_number: int, row: dict[str, str | None]) -> Exercis
         primary_action=primary_action,
         secondary_actions=secondary_actions,
         primary_muscle=primary_muscle,
-        load_type=(row["load_type"] or "").strip(),
+        load_type=load_type,
         hidden=hidden_value.casefold() == "true",
         duplicate_of=(row["duplicate_of"] or "").strip(),
     )
@@ -127,8 +135,12 @@ def _validate_action(
         )
 
 
-def _split_curation_values(cell: str | None) -> tuple[str, ...]:
-    return tuple(value.strip() for value in (cell or "").split("|") if value.strip())
+def _validate_load_type(line_number: int, exercise_id: str, load_type: str) -> None:
+    if load_type and load_type not in LOAD_TYPES:
+        raise ValueError(
+            f"Exercise curation CSV line {line_number} id {exercise_id!r} "
+            f"has invalid load_type {load_type!r}"
+        )
 
 
 def _title_case_source_name(source_name: str) -> str:
@@ -156,11 +168,16 @@ def apply_exercise_curation(
     curation_path: str | Path = DEFAULT_CURATION_CSV_PATH,
 ) -> None:
     curation = load_exercise_curation(curation_path)
-    exercises = cursor.execute("SELECT id, name FROM exercises").fetchall()
-    exercise_ids = {str(exercise_id) for exercise_id, _ in exercises}
-    _validate_curation_references(curation, exercise_ids)
-    effective_names = _effective_curation_names(exercises, curation)
-    for exercise_id, _ in exercises:
+    exercises = cursor.execute("SELECT id, name, equipment FROM exercises").fetchall()
+    exercise_ids = {str(exercise_id) for exercise_id, _, _ in exercises}
+    equipment_by_id = {
+        str(exercise_id): equipment for exercise_id, _, equipment in exercises
+    }
+    _validate_curation_references(curation, exercise_ids, equipment_by_id)
+    effective_names = _effective_curation_names(
+        [(exercise_id, name) for exercise_id, name, _ in exercises], curation
+    )
+    for exercise_id, _, _ in exercises:
         exercise_id = str(exercise_id)
         record = curation.get(exercise_id)
         display_name = (
@@ -184,12 +201,28 @@ def _effective_curation_names(
 
 
 def _validate_curation_references(
-    curation: dict[str, ExerciseCuration], exercise_ids: set[str]
+    curation: dict[str, ExerciseCuration],
+    exercise_ids: set[str],
+    equipment_by_id: dict[str, str | None],
 ) -> None:
     staples = {exercise_id for staple_ids in SLOT_STAPLES.values() for exercise_id in staple_ids}
     for exercise_id, record in curation.items():
         _validate_hidden_staple(exercise_id, record, staples)
         _validate_duplicate_reference(exercise_id, record, curation, exercise_ids)
+        _validate_load_type_equipment(
+            exercise_id, record, equipment_by_id.get(exercise_id)
+        )
+
+
+def _validate_load_type_equipment(
+    exercise_id: str, record: ExerciseCuration, equipment: str | None
+) -> None:
+    if record.load_type and equipment_category_for(equipment) != "Machine":
+        raise ValueError(
+            f"Exercise curation CSV line {record.line_number} id {exercise_id!r} "
+            f"has load_type {record.load_type!r} for non-Machine Equipment "
+            f"{equipment!r}"
+        )
 
 
 def _validate_hidden_staple(
@@ -251,18 +284,20 @@ def _upsert_curated_fields(
 ) -> None:
     cursor.execute(
         "INSERT INTO exercise_curated_fields "
-        "(exercise_id, primary_action, secondary_actions, primary_muscle, hidden, duplicate_of) "
-        "VALUES (?, ?, ?, ?, ?, ?) "
+        "(exercise_id, primary_action, secondary_actions, primary_muscle, load_type, hidden, duplicate_of) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(exercise_id) DO UPDATE SET "
         "primary_action = excluded.primary_action, "
         "secondary_actions = excluded.secondary_actions, "
         "primary_muscle = excluded.primary_muscle, "
+        "load_type = excluded.load_type, "
         "hidden = excluded.hidden, duplicate_of = excluded.duplicate_of",
         (
             exercise_id,
             (record.primary_action or None) if record else None,
             "|".join(record.secondary_actions) if record else "",
             (record.primary_muscle or None) if record else None,
+            (record.load_type or None) if record else None,
             int(bool(record and record.hidden)),
             (record.duplicate_of or None) if record else None,
         ),

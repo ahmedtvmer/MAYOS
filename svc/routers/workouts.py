@@ -116,6 +116,8 @@ async def search_exercises(
     target_muscle: str | None = None,
     primary_muscle: list[str] | None = Query(None),
     primary_action: list[str] | None = Query(None),
+    equipment_category: list[str] | None = Query(None),
+    load_type: list[str] | None = Query(None),
 ):
     """Search the Exercise library by name, target muscle or curated filters.
 
@@ -124,7 +126,9 @@ async def search_exercises(
     and ignore Equipment access, matching the existing Replace browse behavior.
     """
     try:
-        filters = exercise_filters_for(primary_muscle, primary_action)
+        filters = exercise_filters_for(
+            primary_muscle, primary_action, load_type, equipment_category
+        )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     if not (query or target_muscle or filters.has_curated_filters):
@@ -132,7 +136,7 @@ async def search_exercises(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 "Provide query, target_muscle, primary_muscle, primary_action, "
-                "or a combination."
+                "equipment_category, load_type, or a combination."
             ),
         )
     filter_browse = bool(
@@ -168,8 +172,9 @@ async def read_exercise_library_detail(
     """One catalog exercise for the read-only exercise-detail view (#53).
 
     Returns name, category (= body_part in the source data), body_part,
-    equipment, curated Primary muscle and actions, source primary + secondary muscles,
-    instructions, and stored media paths. The client gates media display behind
+    equipment, derived Equipment category, curated Load type, Primary muscle and
+    actions, source primary and secondary muscles, instructions, and media paths.
+    The client gates media display behind
     its build-time media flag; this endpoint does not serve media.
     """
     detail = db.get_exercise_library_detail(exercise_id)

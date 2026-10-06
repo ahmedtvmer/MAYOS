@@ -39,7 +39,8 @@ Future<String?> exerciseTargetMuscle(ApiClient api, String exerciseId) async {
 /// **Replace exercise** opens (#162), which passes [targetMuscle].
 ///
 /// The source [targetMuscle] filter remains available for the Replace flow;
-/// the shared filter bar adds curated Primary muscle filters for every picker.
+/// the shared filter bar adds Primary muscle, Primary action, Equipment category,
+/// and Load type filters.
 class ExercisePickerDialog extends ConsumerStatefulWidget {
   const ExercisePickerDialog({
     super.key,
@@ -135,6 +136,8 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
             targetMuscle: targetMuscle,
             primaryMuscles: filters.primaryMuscles,
             primaryActions: filters.primaryActions,
+            loadTypes: filters.loadTypes,
+            equipmentCategories: filters.equipmentCategories,
           );
       if (!mounted) return;
       setState(() {
@@ -157,8 +160,8 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
   }
 
   /// What the player is offered: the search's rows minus every exercise
-  /// already in this workout (#162). The server applies the source and
-  /// curated muscle filters; this list removes exercises already in the workout.
+  /// already in this workout (#162). The server applies the source and selected
+  /// catalog filters; this list removes exercises already in the workout.
   List<ExerciseCatalogEntry> get _visible => _results
       .where(
         (ExerciseCatalogEntry entry) =>

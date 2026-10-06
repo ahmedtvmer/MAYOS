@@ -3241,6 +3241,8 @@ class ExerciseCatalogEntry {
     this.primaryAction,
     this.secondaryActions = const <String>[],
     this.equipment,
+    this.equipmentCategory = 'Other',
+    this.loadType,
     this.bodyPart,
     this.note,
     this.videoUrl,
@@ -3257,6 +3259,9 @@ class ExerciseCatalogEntry {
         primaryAction: json['primary_action'] as String?,
         secondaryActions: _stringList(json['secondary_actions']),
         equipment: json['equipment'] as String?,
+        equipmentCategory:
+            json['equipment_category'] as String? ?? 'Other',
+        loadType: json['load_type'] as String?,
         bodyPart: json['body_part'] as String?,
         note: json['note'] as String?,
         videoUrl: json['video_url'] as String?,
@@ -3280,6 +3285,8 @@ class ExerciseCatalogEntry {
 
   /// The Exercise library equipment carried into the Active workout.
   final String? equipment;
+  final String equipmentCategory;
+  final String? loadType;
   final String? bodyPart;
   final String? note;
   final String? videoUrl;
@@ -3332,6 +3339,8 @@ class ExerciseCatalogDetail {
     this.primaryMuscle,
     this.primaryAction,
     this.secondaryActions = const <String>[],
+    this.equipmentCategory = 'Other',
+    this.loadType,
     this.instructions,
     this.imagePath,
     this.gifPath,
@@ -3344,6 +3353,9 @@ class ExerciseCatalogDetail {
         category: json['category'] as String? ?? '',
         bodyPart: json['body_part'] as String? ?? '',
         equipment: json['equipment'] as String? ?? '',
+        equipmentCategory:
+            json['equipment_category'] as String? ?? 'Other',
+        loadType: json['load_type'] as String?,
         primaryMuscles: _stringList(json['primary_muscles']),
         secondaryMuscles: _stringList(json['secondary_muscles']),
         primaryMuscle: json['primary_muscle'] as String?,
@@ -3359,6 +3371,8 @@ class ExerciseCatalogDetail {
   final String category;
   final String bodyPart;
   final String equipment;
+  final String equipmentCategory;
+  final String? loadType;
   final List<String> primaryMuscles;
   final List<String> secondaryMuscles;
   final String? primaryMuscle;

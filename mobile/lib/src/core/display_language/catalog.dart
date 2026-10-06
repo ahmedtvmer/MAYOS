@@ -444,21 +444,54 @@ class MayosCopy {
     }
     return muscle;
   }
-  String get action => isArabic ? 'الحركة' : 'Action';
-  String actionFilterLabel(int selectedCount) => selectedCount == 0
-      ? action
-      : '$action ($selectedCount)';
   String get primaryAction => isArabic ? 'الحركة الأساسية' : 'Primary action';
+  String primaryActionFilterLabel(int selectedCount) => selectedCount == 0
+      ? primaryAction
+      : '$primaryAction ($selectedCount)';
+
   String get secondaryActions =>
       isArabic ? 'الحركات الثانوية' : 'Secondary actions';
   String primaryActionLabel(String action) {
-    for (final PrimaryAction primaryAction in primaryActions) {
-      if (primaryAction.apiValue == action) {
-        return isArabic ? primaryAction.arabicLabel : action;
+    for (final PrimaryAction item in primaryActions) {
+      if (item.apiValue == action) {
+        return isArabic ? item.arabicLabel : action;
       }
     }
     return action;
   }
+
+  String get equipmentCategory => isArabic ? 'فئة المعدات' : 'Equipment category';
+  String get equipmentCategoryFilterShort => isArabic ? 'الفئة' : 'Category';
+
+  String equipmentCategoryLabel(String category) {
+    for (final EquipmentCategory item in equipmentCategories) {
+      if (item.apiValue == category) {
+        return isArabic ? item.arabicLabel : item.apiValue;
+      }
+    }
+    return category;
+  }
+
+  String get loadType => isArabic ? 'نوع التحميل' : 'Load type';
+  String get loadTypeFilterShort => isArabic ? 'التحميل' : 'Load';
+
+  String loadTypeLabel(String value) {
+    for (final LoadType item in loadTypes) {
+      if (item.apiValue == value) {
+        if (isArabic) return item.arabicLabel;
+        switch (value) {
+          case 'selectorized':
+            return 'Pin-loaded';
+          case 'plate_loaded':
+            return 'Plate-loaded';
+          case 'unknown':
+            return 'Unknown';
+        }
+      }
+    }
+    return value;
+  }
+
   String get done => isArabic ? 'تم' : 'Done';
   String get addUnplannedExercise =>
       isArabic ? 'إضافة تمرين غير مخطط' : 'Add unplanned exercise';

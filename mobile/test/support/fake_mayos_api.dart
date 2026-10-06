@@ -4,6 +4,33 @@ import 'package:mayos_mobile/src/core/models.dart';
 
 import 'fake_api_adapter.dart';
 
+String _equipmentCategoryForFake(Object? equipment) {
+  switch ('$equipment'.trim().toLowerCase()) {
+    case 'barbell':
+    case 'dumbbell':
+    case 'ez barbell':
+    case 'kettlebell':
+    case 'trap bar':
+    case 'olympic barbell':
+      return 'Free weight';
+    case 'leverage machine':
+    case 'sled machine':
+    case 'smith machine':
+      return 'Machine';
+    case 'cable':
+      return 'Cable';
+    case 'body weight':
+    case 'assisted':
+    case 'weighted':
+      return 'Bodyweight';
+    case 'band':
+    case 'resistance band':
+      return 'Band';
+    default:
+      return 'Other';
+  }
+}
+
 /// In-memory stand-in for the FastAPI service, mimicking the real route
 /// contracts: paths, the legacy `trainee_id` wire field, capability JSON, and
 /// the fail-closed 401 behavior of the registry-backed auth dependency.
@@ -3502,6 +3529,8 @@ class FakeMayosApi {
         'id': 'bicep_curl',
         'name': 'Bicep Curl',
         'equipment': 'dumbbell',
+        'equipment_category': 'Free weight',
+        'load_type': null,
         'target_muscle': 'Biceps',
         'primary_muscle': 'Biceps',
         'primary_action': 'Elbow Flexion',
@@ -3513,6 +3542,8 @@ class FakeMayosApi {
         'id': 'cable_fly',
         'name': 'Cable Fly',
         'equipment': 'cable',
+        'equipment_category': 'Cable',
+        'load_type': null,
         'target_muscle': 'Chest',
         'primary_muscle': 'Chest',
         'primary_action': 'Shoulder Horizontal Adduction',
@@ -3524,12 +3555,25 @@ class FakeMayosApi {
         'id': 'bench_press',
         'name': 'Bench Press',
         'equipment': 'barbell',
+        'equipment_category': 'Free weight',
+        'load_type': null,
         'target_muscle': 'Chest',
         'primary_muscle': 'Chest',
         'primary_action': 'Shoulder Horizontal Adduction',
         'secondary_actions': <String>['Elbow Extension'],
         'body_part': 'Chest',
         'image_path': 'images/bench_press.jpg',
+      },
+      <String, dynamic>{
+        'id': 'machine_row',
+        'name': 'Machine Row',
+        'equipment': 'leverage machine',
+        'equipment_category': 'Machine',
+        'load_type': 'selectorized',
+        'target_muscle': 'Back',
+        'primary_muscle': 'Upper Back',
+        'body_part': 'Back',
+        'image_path': 'images/machine_row.jpg',
       },
     ];
     // Mirrors the real endpoint (#162): a name query, a muscle, or both —
@@ -3542,15 +3586,26 @@ class FakeMayosApi {
         : primaryFilter == null
             ? <String>[]
             : <String>['$primaryFilter'];
-    final dynamic actionFilter = request.query['primary_action'];
-    final List<String> primaryActions = actionFilter is Iterable<dynamic>
-        ? actionFilter.map((dynamic value) => '$value').toList()
-        : actionFilter == null
-            ? <String>[]
-            : <String>['$actionFilter'];
-    if (query.isEmpty && muscle.isEmpty && primaryMuscles.isEmpty && primaryActions.isEmpty) {
+    List<String> valuesFor(String key) {
+      final dynamic value = request.query[key];
+      return value is Iterable<dynamic>
+          ? value.map((dynamic item) => '$item').toList()
+          : value == null
+              ? <String>[]
+              : <String>['$value'];
+    }
+
+    final List<String> primaryActions = valuesFor('primary_action');
+    final List<String> categories = valuesFor('equipment_category');
+    final List<String> loadTypes = valuesFor('load_type');
+    if (query.isEmpty &&
+        muscle.isEmpty &&
+        primaryMuscles.isEmpty &&
+        primaryActions.isEmpty &&
+        categories.isEmpty &&
+        loadTypes.isEmpty) {
       return const FakeResponse(400, <String, dynamic>{
-        'detail': 'Provide query, target_muscle, primary_muscle, primary_action, or a combination.'
+        'detail': 'Provide query, target_muscle, primary_muscle, primary_action, equipment_category, load_type, or a combination.'
       });
     }
     bool matchesMuscle(Map<String, dynamic> entry) =>
@@ -3562,19 +3617,28 @@ class FakeMayosApi {
     bool matchesPrimaryAction(Map<String, dynamic> entry) =>
         primaryActions.isEmpty ||
         primaryActions.contains('${entry['primary_action'] ?? ''}');
+    bool matchesEquipmentCategory(Map<String, dynamic> entry) =>
+        categories.isEmpty ||
+        categories.contains('${entry['equipment_category'] ?? 'Other'}');
+    bool matchesLoadType(Map<String, dynamic> entry) =>
+        loadTypes.isEmpty || loadTypes.contains('${entry['load_type'] ?? ''}');
     final List<Map<String, dynamic>> matches = query.isEmpty
         ? catalog
             .where((Map<String, dynamic> entry) =>
                 matchesMuscle(entry) &&
                 matchesPrimaryMuscle(entry) &&
-                matchesPrimaryAction(entry))
+                matchesPrimaryAction(entry) &&
+                matchesEquipmentCategory(entry) &&
+                matchesLoadType(entry))
             .toList(growable: false)
         : catalog
             .where((Map<String, dynamic> entry) =>
                 (entry['name'] as String).toLowerCase().contains(query) &&
                 matchesMuscle(entry) &&
                 matchesPrimaryMuscle(entry) &&
-                matchesPrimaryAction(entry))
+                matchesPrimaryAction(entry) &&
+                matchesEquipmentCategory(entry) &&
+                matchesLoadType(entry))
             .toList(growable: false);
     // The real SQL orders the LIKE tier by name length (#162's muscle list).
     matches.sort((Map<String, dynamic> a, Map<String, dynamic> b) =>
@@ -3605,12 +3669,26 @@ class FakeMayosApi {
             }).toList(growable: false);
     final String query = '${request.query['query'] ?? ''}'.toLowerCase();
     final bool hasPrimaryMuscle = request.query['primary_muscle'] != null;
-    final bool hasPrimaryAction = request.query['primary_action'] != null;
-    final List<Map<String, dynamic>> owned = hasPrimaryMuscle || hasPrimaryAction
+    final dynamic rawPrimaryActions = request.query['primary_action'];
+    final bool hasPrimaryAction = rawPrimaryActions != null &&
+        (rawPrimaryActions is! Iterable<dynamic> || rawPrimaryActions.isNotEmpty);
+    final dynamic rawLoadTypes = request.query['load_type'];
+    final bool hasLoadType = rawLoadTypes != null &&
+        (rawLoadTypes is! Iterable<dynamic> || rawLoadTypes.isNotEmpty);
+    final dynamic rawCategories = request.query['equipment_category'];
+    final List<String> categories = rawCategories is Iterable<dynamic>
+        ? rawCategories.map((dynamic value) => '$value').toList()
+        : rawCategories == null
+            ? <String>[]
+            : <String>['$rawCategories'];
+    final List<Map<String, dynamic>> owned =
+        hasPrimaryMuscle || hasPrimaryAction || hasLoadType
         ? <Map<String, dynamic>>[]
         : coachExerciseRows
             .where((Map<String, dynamic> row) =>
-                '${row['name']}'.toLowerCase().contains(query))
+                '${row['name']}'.toLowerCase().contains(query) &&
+                (categories.isEmpty ||
+                    categories.contains('${row['equipment_category'] ?? 'Other'}')))
             .toList(growable: false);
     return FakeResponse(200, <String, dynamic>{
       'exercises': <Map<String, dynamic>>[...library, ...owned],
@@ -3625,6 +3703,8 @@ class FakeMayosApi {
       'name': fields['name'],
       'body_part': fields['body_part'],
       'equipment': fields['equipment'],
+      'equipment_category': _equipmentCategoryForFake(fields['equipment']),
+      'load_type': null,
       'note': fields['note'],
       'video_url': fields['video_url'],
       'image_path': null,
@@ -3647,6 +3727,8 @@ class FakeMayosApi {
       'category': 'Chest',
       'body_part': 'Chest',
       'equipment': 'barbell',
+      'equipment_category': 'Free weight',
+      'load_type': null,
       'primary_muscle': 'Chest',
       'primary_action': 'Shoulder Horizontal Adduction',
       'secondary_actions': <String>['Shoulder Flexion'],
@@ -3664,6 +3746,8 @@ class FakeMayosApi {
       'category': 'Shoulders',
       'body_part': 'Shoulders',
       'equipment': 'barbell',
+      'equipment_category': 'Free weight',
+      'load_type': null,
       'primary_muscles': <String>['Shoulders'],
       'secondary_muscles': <String>['Triceps'],
       'instructions': 'Press the bar overhead from shoulder height.',
@@ -3676,6 +3760,8 @@ class FakeMayosApi {
       'category': 'Back',
       'body_part': 'Back',
       'equipment': 'barbell',
+      'equipment_category': 'Free weight',
+      'load_type': null,
       'primary_muscles': <String>['Back'],
       'secondary_muscles': <String>['Biceps'],
       'instructions': 'Hinge at the hips and row the bar to your torso.',
@@ -3688,6 +3774,8 @@ class FakeMayosApi {
       'category': 'Back',
       'body_part': 'Back',
       'equipment': 'cable',
+      'equipment_category': 'Cable',
+      'load_type': null,
       'primary_muscles': <String>['Back'],
       'secondary_muscles': <String>['Biceps'],
       'instructions': 'Pull the bar down to your upper chest.',
@@ -3700,6 +3788,8 @@ class FakeMayosApi {
       'category': 'Shoulders',
       'body_part': 'Shoulders',
       'equipment': 'band',
+      'equipment_category': 'Band',
+      'load_type': null,
       'primary_muscles': <String>['Shoulders'],
       'secondary_muscles': <String>['Upper Back'],
       'instructions': 'Hold a band in front and pull the ends apart.',
@@ -3712,6 +3802,8 @@ class FakeMayosApi {
       'category': 'Upper Arms',
       'body_part': 'Upper Arms',
       'equipment': 'dumbbell',
+      'equipment_category': 'Free weight',
+      'load_type': null,
       'primary_muscles': <String>['Biceps'],
       'secondary_muscles': <String>[],
       'instructions': 'Curl the weight up and lower it under control.',
@@ -3724,6 +3816,8 @@ class FakeMayosApi {
       'category': 'Chest',
       'body_part': 'Chest',
       'equipment': 'cable',
+      'equipment_category': 'Cable',
+      'load_type': null,
       'primary_muscles': <String>['Chest'],
       'secondary_muscles': <String>[],
       'instructions': 'Bring the cable handles together in front of you.',
@@ -3735,7 +3829,9 @@ class FakeMayosApi {
       'name': 'Machine Row',
       'category': 'Back',
       'body_part': 'Back',
-      'equipment': 'machine',
+      'equipment': 'leverage machine',
+      'equipment_category': 'Machine',
+      'load_type': 'selectorized',
       'primary_muscles': <String>['Back'],
       'secondary_muscles': <String>[],
       'instructions': '',

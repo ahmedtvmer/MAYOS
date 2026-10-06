@@ -18,11 +18,6 @@ class ExerciseFilterBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MayosCopy copy = displayCopyOf(context);
-    final ButtonStyle filterButtonStyle = OutlinedButton.styleFrom(
-      minimumSize: const Size(0, 48),
-      padding: const EdgeInsets.symmetric(horizontal: MayosSpacing.xs),
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    );
     return Padding(
       padding: const EdgeInsets.only(top: MayosSpacing.xs),
       child: Column(
@@ -30,140 +25,270 @@ class ExerciseFilterBar extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              Expanded(
-                child: OutlinedButton(
-                  key: const Key('exercise_primary_muscle_filter'),
-                  onPressed: () => _chooseMuscles(context),
-                  style: filterButtonStyle,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      const Icon(Icons.filter_list),
-                      const SizedBox(width: MayosSpacing.xs),
-                      Flexible(
-                        child: Text(
-                          copy.primaryMuscleFilterLabel(
-                            filterState.primaryMuscles.length,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: MayosSpacing.xs),
-              Expanded(
-                child: OutlinedButton(
-                  key: const Key('exercise_primary_action_filter'),
-                  onPressed: () => _chooseActions(context),
-                  style: filterButtonStyle,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      const Icon(Icons.filter_list),
-                      const SizedBox(width: MayosSpacing.xs),
-                      Flexible(
-                        child: Text(
-                          copy.actionFilterLabel(
-                            filterState.primaryActions.length,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              Expanded(child: _primaryMuscleButton(copy)),
+              const SizedBox(width: MayosSpacing.xxs),
+              Expanded(child: _primaryActionButton(copy)),
+              const SizedBox(width: MayosSpacing.xxs),
+              Expanded(child: _equipmentCategoryButton(copy)),
+              if (filterState.showsLoadTypeFilter) ...<Widget>[
+                const SizedBox(width: MayosSpacing.xxs),
+                Expanded(child: _loadTypeButton(copy)),
+              ],
             ],
           ),
           if (filterState.primaryMuscles.isNotEmpty ||
-              filterState.primaryActions.isNotEmpty)
-            _selectedFilterChips(copy),
+              filterState.primaryActions.isNotEmpty ||
+              filterState.equipmentCategories.isNotEmpty ||
+              filterState.loadTypes.isNotEmpty)
+            _selectedChips(copy),
         ],
       ),
     );
   }
 
-  Widget _selectedFilterChips(MayosCopy copy) => SizedBox(
+  Widget _primaryMuscleButton(MayosCopy copy) => _FilterSectionButton(
+        title: copy.primaryMuscle,
+        buttonLabel: copy.primaryMuscleFilterLabel(
+          filterState.primaryMuscles.length,
+        ),
+        options: <_FilterOption>[
+          for (final PrimaryMuscle muscle in primaryMuscles)
+            _FilterOption(
+              muscle.apiValue,
+              copy.primaryMuscleLabel(muscle.apiValue),
+            ),
+        ],
+        selectedValues: filterState.primaryMuscles,
+        buttonKey: const Key('exercise_primary_muscle_filter'),
+        keyPrefix: 'primary_muscle',
+        doneKey: 'exercise_primary_muscle_done',
+        onSelected: (List<String> values) => onChanged(
+          filterState.copyWith(primaryMuscles: values),
+        ),
+      );
+
+  Widget _primaryActionButton(MayosCopy copy) => _FilterSectionButton(
+        title: copy.primaryAction,
+        buttonLabel: copy.primaryActionFilterLabel(
+          filterState.primaryActions.length,
+        ),
+        options: <_FilterOption>[
+          for (final PrimaryAction action in primaryActions)
+            _FilterOption(
+              action.apiValue,
+              copy.primaryActionLabel(action.apiValue),
+            ),
+        ],
+        selectedValues: filterState.primaryActions,
+        buttonKey: const Key('exercise_primary_action_filter'),
+        keyPrefix: 'primary_action',
+        doneKey: 'exercise_primary_action_done',
+        onSelected: (List<String> values) => onChanged(
+          filterState.copyWith(primaryActions: values),
+        ),
+      );
+
+  Widget _equipmentCategoryButton(MayosCopy copy) => _FilterSectionButton(
+        title: copy.equipmentCategory,
+        buttonLabel: _countedLabel(
+          copy.equipmentCategoryFilterShort,
+          filterState.equipmentCategories.length,
+        ),
+        options: <_FilterOption>[
+          for (final EquipmentCategory category in equipmentCategories)
+            _FilterOption(
+              category.apiValue,
+              copy.equipmentCategoryLabel(category.apiValue),
+            ),
+        ],
+        selectedValues: filterState.equipmentCategories,
+        buttonKey: const Key('exercise_equipment_category_filter'),
+        keyPrefix: 'equipment_category',
+        doneKey: 'exercise_equipment_category_done',
+        onSelected: (List<String> values) => onChanged(
+          filterState.copyWith(equipmentCategories: values),
+        ),
+      );
+
+  Widget _loadTypeButton(MayosCopy copy) => _FilterSectionButton(
+        title: copy.loadType,
+        buttonLabel: _countedLabel(
+          copy.loadTypeFilterShort,
+          filterState.loadTypes.length,
+        ),
+        options: <_FilterOption>[
+          for (final LoadType loadType in loadTypes)
+            _FilterOption(
+              loadType.apiValue,
+              copy.loadTypeLabel(loadType.apiValue),
+            ),
+        ],
+        selectedValues: filterState.loadTypes,
+        buttonKey: const Key('exercise_load_type_filter'),
+        keyPrefix: 'load_type',
+        doneKey: 'exercise_load_type_done',
+        onSelected: (List<String> values) => onChanged(
+          filterState.copyWith(loadTypes: values),
+        ),
+      );
+
+  Widget _selectedChips(MayosCopy copy) => SizedBox(
         height: 48,
         child: ListView(
           scrollDirection: Axis.horizontal,
           children: <Widget>[
             for (final String muscle in filterState.primaryMuscles)
-              InputChip(
-                key: ValueKey<String>('primary_muscle_$muscle'),
-                label: Text(copy.primaryMuscleLabel(muscle)),
-                onDeleted: () => _removeMuscle(muscle),
+              _selectedFilterChip(
+                'primary_muscle',
+                muscle,
+                copy.primaryMuscleLabel(muscle),
+                () => onChanged(
+                  filterState.copyWith(
+                    primaryMuscles: filterState.primaryMuscles
+                        .where((String selected) => selected != muscle)
+                        .toList(growable: false),
+                  ),
+                ),
               ),
             for (final String action in filterState.primaryActions)
-              InputChip(
-                key: ValueKey<String>('primary_action_$action'),
-                label: Text(copy.primaryActionLabel(action)),
-                onDeleted: () => _removeAction(action),
+              _selectedFilterChip(
+                'primary_action',
+                action,
+                copy.primaryActionLabel(action),
+                () => onChanged(
+                  filterState.copyWith(
+                    primaryActions: filterState.primaryActions
+                        .where((String selected) => selected != action)
+                        .toList(growable: false),
+                  ),
+                ),
+              ),
+            for (final String category in filterState.equipmentCategories)
+              _selectedFilterChip(
+                'equipment_category',
+                category,
+                copy.equipmentCategoryLabel(category),
+                () => onChanged(
+                  filterState.copyWith(
+                    equipmentCategories: filterState.equipmentCategories
+                        .where((String selected) => selected != category)
+                        .toList(growable: false),
+                  ),
+                ),
+              ),
+            for (final String loadType in filterState.loadTypes)
+              _selectedFilterChip(
+                'load_type',
+                loadType,
+                copy.loadTypeLabel(loadType),
+                () => onChanged(
+                  filterState.copyWith(
+                    loadTypes: filterState.loadTypes
+                        .where((String selected) => selected != loadType)
+                        .toList(growable: false),
+                  ),
+                ),
               ),
           ],
         ),
       );
 
-  Future<void> _chooseMuscles(BuildContext context) async {
-    final List<String>? selection = await showModalBottomSheet<List<String>>(
-      context: context,
-      isScrollControlled: true,
-      builder: (BuildContext context) => _PrimaryMusclePickerSheet(
-        initialSelection: filterState.primaryMuscles,
-      ),
-    );
-    if (selection != null) {
-      onChanged(filterState.copyWith(primaryMuscles: selection));
-    }
-  }
-
-  Future<void> _chooseActions(BuildContext context) async {
-    final List<String>? selection = await showModalBottomSheet<List<String>>(
-      context: context,
-      isScrollControlled: true,
-      builder: (BuildContext context) => _PrimaryActionPickerSheet(
-        initialSelection: filterState.primaryActions,
-      ),
-    );
-    if (selection != null) {
-      onChanged(filterState.copyWith(primaryActions: selection));
-    }
-  }
-
-  void _removeMuscle(String muscle) => onChanged(
-        filterState.copyWith(
-          primaryMuscles: filterState.primaryMuscles
-              .where((String candidateMuscle) => candidateMuscle != muscle)
-              .toList(growable: false),
-        ),
+  Widget _selectedFilterChip(
+    String keyPrefix,
+    String apiValue,
+    String label,
+    VoidCallback onDeleted,
+  ) =>
+      InputChip(
+        key: ValueKey<String>('${keyPrefix}_$apiValue'),
+        label: Text(label),
+        onDeleted: onDeleted,
       );
 
-  void _removeAction(String action) => onChanged(
-        filterState.copyWith(
-          primaryActions: filterState.primaryActions
-              .where((String candidateAction) => candidateAction != action)
-              .toList(growable: false),
-        ),
-      );
 }
 
-class _PrimaryMusclePickerSheet extends StatefulWidget {
-  const _PrimaryMusclePickerSheet({required this.initialSelection});
+String _countedLabel(String label, int selectedCount) =>
+    selectedCount == 0 ? label : '$label ($selectedCount)';
 
-  final List<String> initialSelection;
+class _FilterOption {
+  const _FilterOption(this.apiValue, this.label);
+
+  final String apiValue;
+  final String label;
+}
+
+class _FilterSectionButton extends StatelessWidget {
+  const _FilterSectionButton({
+    required this.title,
+    required this.buttonLabel,
+    required this.options,
+    required this.selectedValues,
+    required this.buttonKey,
+    required this.keyPrefix,
+    required this.doneKey,
+    required this.onSelected,
+  });
+
+  final String title;
+  final String buttonLabel;
+  final List<_FilterOption> options;
+  final List<String> selectedValues;
+  final Key buttonKey;
+  final String keyPrefix;
+  final String doneKey;
+  final ValueChanged<List<String>> onSelected;
+
+  Future<void> _choose(BuildContext context) async {
+    final List<String>? selection = await showModalBottomSheet<List<String>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext context) => _MultiSelectFilterSheet(
+        title: title,
+        options: options,
+        initialSelection: selectedValues,
+        keyPrefix: keyPrefix,
+        doneKey: doneKey,
+      ),
+    );
+    if (selection != null) onSelected(selection);
+  }
 
   @override
-  State<_PrimaryMusclePickerSheet> createState() =>
-      _PrimaryMusclePickerSheetState();
+  Widget build(BuildContext context) => Tooltip(
+        message: title,
+        child: OutlinedButton(
+          key: buttonKey,
+          onPressed: () => _choose(context),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: MayosSpacing.xxs),
+            minimumSize: const Size(0, 40),
+          ),
+          child: Text(buttonLabel, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+      );
 }
 
-class _PrimaryMusclePickerSheetState extends State<_PrimaryMusclePickerSheet> {
-  late final Set<String> _selectedMuscles =
-      Set<String>.of(widget.initialSelection);
+class _MultiSelectFilterSheet extends StatefulWidget {
+  const _MultiSelectFilterSheet({
+    required this.title,
+    required this.options,
+    required this.initialSelection,
+    required this.keyPrefix,
+    required this.doneKey,
+  });
+
+  final String title;
+  final List<_FilterOption> options;
+  final List<String> initialSelection;
+  final String keyPrefix;
+  final String doneKey;
+
+  @override
+  State<_MultiSelectFilterSheet> createState() => _MultiSelectFilterSheetState();
+}
+
+class _MultiSelectFilterSheetState extends State<_MultiSelectFilterSheet> {
+  late final Set<String> _selected = Set<String>.of(widget.initialSelection);
 
   @override
   Widget build(BuildContext context) {
@@ -177,153 +302,58 @@ class _PrimaryMusclePickerSheetState extends State<_PrimaryMusclePickerSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text(copy.primaryMuscle,
-                  style: Theme.of(context).textTheme.titleLarge),
+              Text(widget.title, style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: MayosSpacing.sm),
-              Expanded(child: _muscleOptions(copy)),
-              _actions(copy),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: MayosSpacing.xs,
+                    runSpacing: MayosSpacing.xs,
+                    children: <Widget>[
+                      for (final _FilterOption option in widget.options)
+                        FilterChip(
+                          key: ValueKey<String>(
+                            '${widget.keyPrefix}_option_${option.apiValue}',
+                          ),
+                          label: Text(option.label),
+                          selected: _selected.contains(option.apiValue),
+                          onSelected: (bool selected) => setState(() {
+                            if (selected) {
+                              _selected.add(option.apiValue);
+                            } else {
+                              _selected.remove(option.apiValue);
+                            }
+                          }),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: <Widget>[
+                  TextButton(
+                    onPressed: () => setState(_selected.clear),
+                    child: Text(copy.clear),
+                  ),
+                  const SizedBox(width: MayosSpacing.xs),
+                  FilledButton(
+                    key: Key(widget.doneKey),
+                    onPressed: () => Navigator.of(context).pop(
+                      <String>[
+                        for (final _FilterOption option in widget.options)
+                          if (_selected.contains(option.apiValue))
+                            option.apiValue,
+                      ],
+                    ),
+                    child: Text(copy.done),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
       ),
     );
-  }
-
-  Widget _muscleOptions(MayosCopy copy) => SingleChildScrollView(
-        child: Wrap(
-          spacing: MayosSpacing.xs,
-          runSpacing: MayosSpacing.xs,
-          children: <Widget>[
-            for (final PrimaryMuscle muscle in primaryMuscles)
-              FilterChip(
-                key: ValueKey<String>(
-                  'primary_muscle_option_${muscle.apiValue}',
-                ),
-                label: Text(copy.primaryMuscleLabel(muscle.apiValue)),
-                selected: _selectedMuscles.contains(muscle.apiValue),
-                onSelected: (bool isSelected) =>
-                    _toggleMuscle(muscle.apiValue, isSelected),
-              ),
-          ],
-        ),
-      );
-
-  Widget _actions(MayosCopy copy) => Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: <Widget>[
-          TextButton(
-            onPressed: () => setState(_selectedMuscles.clear),
-            child: Text(copy.clear),
-          ),
-          const SizedBox(width: MayosSpacing.xs),
-          FilledButton(
-            key: const Key('exercise_primary_muscle_done'),
-            onPressed: () => Navigator.of(context).pop(_orderedSelection),
-            child: Text(copy.done),
-          ),
-        ],
-      );
-
-  List<String> get _orderedSelection => primaryMuscles
-      .map((PrimaryMuscle muscle) => muscle.apiValue)
-      .where(_selectedMuscles.contains)
-      .toList(growable: false);
-
-  void _toggleMuscle(String muscle, bool isSelected) {
-    setState(() {
-      if (isSelected) {
-        _selectedMuscles.add(muscle);
-      } else {
-        _selectedMuscles.remove(muscle);
-      }
-    });
-  }
-}
-
-class _PrimaryActionPickerSheet extends StatefulWidget {
-  const _PrimaryActionPickerSheet({required this.initialSelection});
-
-  final List<String> initialSelection;
-
-  @override
-  State<_PrimaryActionPickerSheet> createState() =>
-      _PrimaryActionPickerSheetState();
-}
-
-class _PrimaryActionPickerSheetState extends State<_PrimaryActionPickerSheet> {
-  late final Set<String> _selectedActions =
-      Set<String>.of(widget.initialSelection);
-
-  @override
-  Widget build(BuildContext context) {
-    final MayosCopy copy = displayCopyOf(context);
-    final double sheetHeight = MediaQuery.of(context).size.height * .72;
-    return SafeArea(
-      child: SizedBox(
-        height: sheetHeight,
-        child: Padding(
-          padding: const EdgeInsets.all(MayosSpacing.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(copy.action, style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: MayosSpacing.sm),
-              Expanded(child: _actionOptions(copy)),
-              _actions(copy),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _actionOptions(MayosCopy copy) => SingleChildScrollView(
-        child: Wrap(
-          spacing: MayosSpacing.xs,
-          runSpacing: MayosSpacing.xs,
-          children: <Widget>[
-            for (final PrimaryAction action in primaryActions)
-              FilterChip(
-                key: ValueKey<String>(
-                  'primary_action_option_${action.apiValue}',
-                ),
-                label: Text(copy.primaryActionLabel(action.apiValue)),
-                selected: _selectedActions.contains(action.apiValue),
-                onSelected: (bool isSelected) =>
-                    _toggleAction(action.apiValue, isSelected),
-              ),
-          ],
-        ),
-      );
-
-  Widget _actions(MayosCopy copy) => Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: <Widget>[
-          TextButton(
-            onPressed: () => setState(_selectedActions.clear),
-            child: Text(copy.clear),
-          ),
-          const SizedBox(width: MayosSpacing.xs),
-          FilledButton(
-            key: const Key('exercise_primary_action_done'),
-            onPressed: () => Navigator.of(context).pop(_orderedSelection),
-            child: Text(copy.done),
-          ),
-        ],
-      );
-
-  List<String> get _orderedSelection => primaryActions
-      .map((PrimaryAction action) => action.apiValue)
-      .where(_selectedActions.contains)
-      .toList(growable: false);
-
-  void _toggleAction(String action, bool isSelected) {
-    setState(() {
-      if (isSelected) {
-        _selectedActions.add(action);
-      } else {
-        _selectedActions.remove(action);
-      }
-    });
   }
 }

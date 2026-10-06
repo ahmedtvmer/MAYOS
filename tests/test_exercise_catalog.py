@@ -48,7 +48,7 @@ def api(tmp_path: Path, monkeypatch):
         "INSERT INTO exercises (id, name, body_part, target_muscle, equipment, instructions, image_path, gif_path)"
         " VALUES ('ib', 'Incline Bench Press', 'Chest', 'Chest', 'barbell', '', 'images/ib.jpg', NULL),"
         " ('sq', 'Back Squat', 'Upper Legs', 'Quads', 'barbell', '', 'images/sq.jpg', NULL),"
-        " ('lp', 'Leg Press', 'Upper Legs', 'Quads', 'machine', '', 'images/lp.jpg', NULL),"
+        " ('lp', 'Leg Press', 'Upper Legs', 'Quads', 'leverage machine', '', 'images/lp.jpg', NULL),"
         " ('op', 'Overhead Press', 'Shoulders', 'Shoulders', 'barbell', '', 'images/op.jpg', NULL);"
     )
     cat_conn.executemany(
@@ -103,6 +103,8 @@ def test_exercise_detail_returns_real_catalog_fields(api):
         "category": "Chest",
         "body_part": "Chest",
         "equipment": "barbell",
+        "equipment_category": "Free weight",
+        "load_type": None,
         "primary_muscles": ["Chest"],
         "primary_muscle": None,
         "primary_action": None,
@@ -341,10 +343,8 @@ def test_catalog_search_filters_by_primary_action_and_returns_actions(
             },
         },
     )
-
     action = client.get(
-        "/workouts/exercises",
-        headers=_authed(token),
+        "/workouts/exercises", headers=_authed(token),
         params={"primary_action": "Shoulder Flexion"},
     )
     assert action.status_code == 200, action.text
@@ -352,30 +352,21 @@ def test_catalog_search_filters_by_primary_action_and_returns_actions(
     assert action.json()["exercises"][0]["primary_action"] == "Shoulder Flexion"
     assert action.json()["exercises"][0]["secondary_actions"] == ["Elbow Extension"]
 
-    multiple_actions = client.get(
-        "/workouts/exercises",
-        headers=_authed(token),
-        params=[
-            ("primary_action", "Shoulder Flexion"),
-            ("primary_action", "Knee Extension"),
-        ],
+    multiple = client.get(
+        "/workouts/exercises", headers=_authed(token),
+        params=[("primary_action", "Shoulder Flexion"), ("primary_action", "Knee Extension")],
     )
-    assert {row["id"] for row in multiple_actions.json()["exercises"]} == {"ib", "sq"}
-
+    assert {row["id"] for row in multiple.json()["exercises"]} == {"ib", "sq"}
     combined = client.get(
-        "/workouts/exercises",
-        headers=_authed(token),
+        "/workouts/exercises", headers=_authed(token),
         params={"primary_action": "Shoulder Flexion", "primary_muscle": "Upper Chest"},
     )
     assert [row["id"] for row in combined.json()["exercises"]] == ["ib"]
-
     queried = client.get(
-        "/workouts/exercises",
-        headers=_authed(token),
+        "/workouts/exercises", headers=_authed(token),
         params={"query": "incline", "primary_action": "Shoulder Flexion"},
     )
     assert [row["id"] for row in queried.json()["exercises"]] == ["ib"]
-
     detail = client.get("/workouts/exercises/bp", headers=_authed(token))
     assert detail.json()["primary_action"] == "Shoulder Horizontal Adduction"
     assert detail.json()["secondary_actions"] == ["Shoulder Flexion"]
@@ -384,14 +375,101 @@ def test_catalog_search_filters_by_primary_action_and_returns_actions(
 def test_catalog_search_rejects_unknown_primary_action(api):
     client, _ = api
     token = _register(client, "unknown-primary-action")["access_token"]
-
     response = client.get(
-        "/workouts/exercises",
-        headers=_authed(token),
+        "/workouts/exercises", headers=_authed(token),
         params={"primary_action": "Knee Curl"},
     )
-
     assert response.status_code == 422
+
+
+def test_catalog_search_filters_by_equipment_category_and_load_type(api, seed_exercise_curation):
+    client, db = api
+    token = _register(client, "equipment-filters")["access_token"]
+    seed_exercise_curation(db, {"lp": {"primary_muscle": "Quads", "load_type": "selectorized"}})
+
+    category = client.get(
+        "/workouts/exercises", headers=_authed(token),
+        params=[("equipment_category", "Free weight"), ("equipment_category", "Machine")],
+    )
+    assert category.status_code == 200, category.text
+    category_rows = category.json()["exercises"]
+    assert {row["equipment_category"] for row in category_rows} <= {"Free weight", "Machine"}
+    assert "lp" in {row["id"] for row in category_rows}
+    assert next(row for row in category_rows if row["id"] == "lp")["equipment_category"] == "Machine"
+
+    load_type = client.get(
+        "/workouts/exercises", headers=_authed(token), params={"load_type": "selectorized"}
+    )
+    assert load_type.status_code == 200, load_type.text
+    assert [row["id"] for row in load_type.json()["exercises"]] == ["lp"]
+    assert load_type.json()["exercises"][0]["load_type"] == "selectorized"
+    combined = client.get(
+        "/workouts/exercises", headers=_authed(token),
+        params={
+            "query": "press", "target_muscle": "Quads", "primary_muscle": "Quads",
+            "equipment_category": "Machine", "load_type": "selectorized",
+        },
+    )
+    assert combined.status_code == 200, combined.text
+    assert [row["id"] for row in combined.json()["exercises"]] == ["lp"]
+    detail = client.get("/workouts/exercises/lp", headers=_authed(token))
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["equipment_category"] == "Machine"
+    assert detail.json()["load_type"] == "selectorized"
+
+
+@pytest.mark.parametrize(
+    "params", [{"equipment_category": "Garage"}, {"load_type": "hydraulic"}]
+)
+def test_catalog_search_rejects_unknown_equipment_filters(api, params):
+    client, _ = api
+    token = _register(client, "unknown-equipment-filter")["access_token"]
+    response = client.get("/workouts/exercises", headers=_authed(token), params=params)
+    assert response.status_code == 422
+
+
+def test_replace_browse_with_load_type_keeps_equipment_access_filter(api, seed_exercise_curation):
+    client, db = api
+    token = _register(client, "load-filter-bodyweight-only")["access_token"]
+    seed_exercise_curation(db, {"lp": {"primary_muscle": "Quads", "load_type": "plate_loaded"}})
+    with db.open_ledger("load-filter-bodyweight-only") as ledger:
+        ledger.upsert_player_profile({"equipment_access": BODYWEIGHT_ONLY})
+    response = client.get(
+        "/workouts/exercises", headers=_authed(token), params={"load_type": "plate_loaded"}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["exercises"] == []
+
+
+@pytest.mark.parametrize(
+    ("equipment", "expected"),
+    [
+        ("barbell", "Free weight"), ("dumbbell", "Free weight"),
+        ("EZ barbell", "Free weight"), ("kettlebell", "Free weight"),
+        ("trap bar", "Free weight"), ("Olympic barbell", "Free weight"),
+        ("leverage machine", "Machine"), ("sled machine", "Machine"),
+        ("smith machine", "Machine"), ("cable", "Cable"),
+        ("body weight", "Bodyweight"), ("assisted", "Bodyweight"),
+        ("weighted", "Bodyweight"), ("band", "Band"),
+        ("resistance band", "Band"), ("stability ball", "Other"),
+        ("medicine ball", "Other"), ("rope", "Other"), ("roller", "Other"),
+        ("bosu ball", "Other"), ("wheel roller", "Other"),
+        ("upper body ergometer", "Other"), ("tire", "Other"),
+        ("stepmill machine", "Other"), ("stationary bike", "Other"),
+        ("skierg machine", "Other"), ("hammer", "Other"),
+        ("elliptical machine", "Other"),
+    ],
+)
+def test_equipment_category_mapping_covers_source_equipment(equipment, expected):
+    from database.exercise_library.vocabulary import equipment_category_for
+    assert equipment_category_for(equipment) == expected
+    assert equipment_category_for(equipment.upper()) == expected
+
+
+@pytest.mark.parametrize("equipment", ["", None, "unknown equipment"])
+def test_equipment_category_unknown_values_are_other(equipment):
+    from database.exercise_library.vocabulary import equipment_category_for
+    assert equipment_category_for(equipment) == "Other"
 
 
 def test_replace_browse_ranks_display_named_exercises_and_returns_every_match(api):

@@ -600,6 +600,18 @@ class _OverviewTab extends StatelessWidget {
         (displayCopyOf(context).bodyPart, titleCase(bodyPart)),
       if (detail != null && detail.equipment.isNotEmpty)
         (displayCopyOf(context).equipment, titleCase(detail.equipment)),
+      if (detail != null)
+        (
+          displayCopyOf(context).equipmentCategory,
+          displayCopyOf(context).equipmentCategoryLabel(
+            detail.equipmentCategory,
+          ),
+        ),
+      if (detail?.loadType != null)
+        (
+          displayCopyOf(context).loadType,
+          displayCopyOf(context).loadTypeLabel(detail!.loadType!),
+        ),
       if (ex != null && ex.hasNotes) (displayCopyOf(context).notes, ex.notes),
     ];
 

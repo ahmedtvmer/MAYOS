@@ -172,6 +172,42 @@ Future<void> _openSettings(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('coach picker sends Equipment category and Load type filters',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _openProgramEditor(tester, fake);
+    await tester.tap(find.byKey(const Key('program_draft_add_day')));
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('program_draft_add_exercise_0')),
+    );
+    await tester.tap(find.byKey(const Key('program_draft_add_exercise_0')));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_exercise_search')));
+
+    await tester.tap(
+      find.byKey(const Key('exercise_equipment_category_filter')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('equipment_category_option_Machine')),
+    );
+    await tester.tap(
+      find.byKey(const Key('exercise_equipment_category_done')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('exercise_load_type_filter')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('load_type_option_selectorized')));
+    await tester.tap(find.byKey(const Key('exercise_load_type_done')));
+    await _pumpUntilFound(tester, find.text('Machine Row'));
+
+    final request = fake.adapter.requests.lastWhere(
+      (request) => request.path == '/coach/exercises',
+    );
+    expect(request.query['equipment_category'], <String>['Machine']);
+    expect(request.query['load_type'], <String>['selectorized']);
+  });
+
   testWidgets('coach player page shows automatic program and pending draft',
       (tester) async {
     final FakeMayosApi fake = _coachFake()

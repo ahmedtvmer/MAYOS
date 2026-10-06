@@ -304,6 +304,59 @@ def test_curation_rejects_action_outside_vocabulary(
         seed_exercise_curation(seed_store, {"9001": fields})
 
 
+def test_curation_rejects_unknown_load_type_with_source_row_context(seed_store, tmp_path):
+    curation_path = tmp_path / "bad-load-type.csv"
+    seed_path = tmp_path / "seed.csv"
+    _write_curated_rows(
+        curation_path,
+        [["9001", "cable row", "", "", "", "", "", "hydraulic", "", ""]],
+    )
+
+    with pytest.raises(ValueError, match="line 2 id '9001'.*'hydraulic'"):
+        _seed_minimal_library(seed_store, seed_path, curation_path)
+
+
+def test_curation_rejects_load_type_for_non_machine_equipment(seed_store, tmp_path):
+    curation_path = tmp_path / "non-machine-load-type.csv"
+    seed_path = tmp_path / "seed.csv"
+    _write_curated_rows(
+        curation_path,
+        [["9001", "cable row", "", "", "", "", "", "selectorized", "", ""]],
+    )
+
+    with pytest.raises(ValueError, match="line 2 id '9001'.*'selectorized'.*non-Machine"):
+        _seed_minimal_library(seed_store, seed_path, curation_path)
+
+
+def test_machine_load_type_is_curated_and_returned_by_search_and_detail(seed_store, tmp_path):
+    from database.exercise_library.filters import ExerciseFilters
+
+    seed_path = tmp_path / "machine-seed.csv"
+    with seed_path.open("w", newline="", encoding="utf-8") as seed_file:
+        writer = csv.writer(seed_file)
+        writer.writerow(
+            ["id", "name", "bodyPart", "target", "equipment", "image_path", "gif_path", "instructions"]
+        )
+        writer.writerow(["9100", "Machine press", "Chest", "Chest", "Leverage Machine", "", "", ""])
+    curation_path = tmp_path / "machine-curation.csv"
+    _write_curated_rows(
+        curation_path,
+        [["9100", "Machine press", "", "", "", "", "", "plate_loaded", "", ""]],
+    )
+    seed_store.initialize_and_seed(seed_path, curation_path)
+
+    matches = seed_store.find_exercises_by_name(
+        "", filters=ExerciseFilters(load_types=("plate_loaded",))
+    )
+
+    assert [match["id"] for match in matches] == ["9100"]
+    assert matches[0]["equipment_category"] == "Machine"
+    assert matches[0]["load_type"] == "plate_loaded"
+    detail = seed_store.get_exercise_library_detail("9100")
+    assert detail["equipment_category"] == "Machine"
+    assert detail["load_type"] == "plate_loaded"
+
+
 def test_empty_curation_file_uses_title_case_source_names(seed_store, tmp_path):
     fresh_store = seed_store
     curation_path = tmp_path / "empty-curation.csv"

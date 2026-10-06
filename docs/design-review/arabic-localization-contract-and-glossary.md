@@ -75,6 +75,22 @@ Arabic/English mixed input cases.
 | Record a check-in | تسجيل تواصل |
 | Follow-up due | حان موعد المتابعة |
 
+## Equipment category and Load type labels
+
+| English | Arabic |
+| --- | --- |
+| Equipment category | فئة المعدات |
+| Free weight | أوزان حرة |
+| Machine | أجهزة |
+| Cable | كابل |
+| Bodyweight | وزن الجسم |
+| Band | أشرطة مقاومة |
+| Other | أخرى |
+| Load type | نوع التحميل |
+| Pin-loaded | محمل بدبوس الأوزان |
+| Plate-loaded | محمل بالأقراص |
+| Unknown | غير معروف |
+
 ## Primary muscle labels
 
 | English label | Arabic label |
@@ -115,9 +131,9 @@ Arabic/English mixed input cases.
 | Shoulder External Rotation | الدوران الخارجي للكتف |
 | Shoulder Internal Rotation | الدوران الداخلي للكتف |
 | Scapular Elevation | رفع لوح الكتف |
-| Scapular Retraction | تقريب لوحي الكتف |
+| Scapular Retraction | سحب لوح الكتف للخلف |
 | Scapular Depression | خفض لوح الكتف |
-| Scapular Protraction | إبعاد لوحي الكتف |
+| Scapular Protraction | دفع لوح الكتف للأمام |
 | Elbow Flexion | ثني المرفق |
 | Elbow Extension | بسط المرفق |
 | Wrist Flexion | ثني الرسغ |
@@ -125,21 +141,21 @@ Arabic/English mixed input cases.
 | Spinal Flexion | ثني العمود الفقري |
 | Spinal Extension | بسط العمود الفقري |
 | Spinal Rotation | دوران العمود الفقري |
-| Spinal Lateral Flexion | الانثناء الجانبي للعمود الفقري |
+| Spinal Lateral Flexion | الثني الجانبي للعمود الفقري |
 | Anti-Extension | مقاومة بسط الجذع |
 | Anti-Rotation | مقاومة دوران الجذع |
-| Anti-Lateral Flexion | مقاومة الانثناء الجانبي للجذع |
+| Anti-Lateral Flexion | مقاومة الثني الجانبي للجذع |
 | Hip Flexion | ثني الورك |
 | Hip Extension | بسط الورك |
 | Hip Abduction | إبعاد الورك |
 | Hip Adduction | تقريب الورك |
 | Knee Flexion | ثني الركبة |
 | Knee Extension | بسط الركبة |
-| Ankle Plantar Flexion | العطف الأخمصي للكاحل |
-| Ankle Dorsiflexion | العطف الظهري للكاحل |
+| Ankle Plantar Flexion | الثني الأخمصي للكاحل |
+| Ankle Dorsiflexion | الثني الظهري للكاحل |
 | Neck Flexion | ثني الرقبة |
 | Neck Extension | بسط الرقبة |
-| Conditioning | اللياقة البدنية |
+| Conditioning | تمارين التحمل |
 
 Keep the label **RIR** unchanged; do not replace it with an Arabic label.
 Keep **kg** beside numeric weights.

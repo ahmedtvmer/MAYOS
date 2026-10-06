@@ -1128,6 +1128,8 @@ class CoachExerciseOut(BaseModel):
     secondary_actions: list[str] = Field(default_factory=list)
     body_part: str | None = None
     equipment: str | None = None
+    equipment_category: str = "Other"
+    load_type: str | None = None
     note: str | None = None
     video_url: str | None = None
     image_path: str | None = None

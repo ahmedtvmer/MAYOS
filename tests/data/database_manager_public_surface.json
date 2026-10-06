@@ -503,7 +503,7 @@
     },
     "search_coach_exercises": {
       "kind": "method",
-      "signature": "(self, coach_account_id: str, query: str, limit: int = 10) -> list[dict[str, typing.Any]]"
+      "signature": "(self, coach_account_id: str, query: str, limit: int | None = 10, equipment_categories: tuple[str, ...] = ()) -> list[dict[str, typing.Any]]"
     },
     "search_similar_exercises": {
       "kind": "method",
