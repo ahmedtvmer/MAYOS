@@ -632,7 +632,7 @@ def test_no_staple_suggestions_follow_replace_ranking_and_access(
     hidden_name = sub_db.get_exercise_library_entry(MACHINE_LAT_VARIANT)["name"]
     assert hidden_name not in result["response_content"]
     if access == COMMERCIAL_GYM:
-        assert "Band Underhand Pulldown" not in result["response_content"]
+        assert "Underhand Pulldown (Band)" not in result["response_content"]
         assert "Wide-Grip Pull-Up" not in result["response_content"]
 
 
@@ -823,7 +823,7 @@ def test_followup_hint_uses_real_catalog_name(sub_db, monkeypatch):
     "access,expected_names",
     [
         (COMMERCIAL_GYM, {"Standing Cable Pulldown (Cable)", "Parallel-Grip Lat Pulldown (Cable)"}),
-        (HOME_GYM, {"Band Underhand Pulldown", "Wide-Grip Pull-Up"}),
+        (HOME_GYM, {"Underhand Pulldown (Band)", "Wide-Grip Pull-Up"}),
         (BODYWEIGHT_ONLY, {"Wide-Grip Pull-Up"}),
     ],
 )
@@ -840,7 +840,7 @@ def test_unspecified_chat_substitutes_follow_equipment_access(sub_db, monkeypatc
     program["days"][0]["exercises"][1]["suggested_substitutes"] = [
         {"exercise_id": "2330", "exercise_name": "Standing Cable Pulldown (Cable)"},
         {"exercise_id": "818", "exercise_name": "Parallel-Grip Lat Pulldown (Cable)"},
-        {"exercise_id": "1013", "exercise_name": "Band Underhand Pulldown"},
+        {"exercise_id": "1013", "exercise_name": "Underhand Pulldown (Band)"},
         {"exercise_id": "1429", "exercise_name": "Wide-Grip Pull-Up"},
     ]
     sub_db.ledger.save_training_program(program)
@@ -857,7 +857,7 @@ def test_unspecified_chat_substitutes_follow_equipment_access(sub_db, monkeypatc
     shown = {
         name for name in (
             "Standing Cable Pulldown (Cable)", "Parallel-Grip Lat Pulldown (Cable)",
-            "Band Underhand Pulldown", "Wide-Grip Pull-Up",
+            "Underhand Pulldown (Band)", "Wide-Grip Pull-Up",
         ) if name in result["response_content"]
     }
     assert shown == expected_names

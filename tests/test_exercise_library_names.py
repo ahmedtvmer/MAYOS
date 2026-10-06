@@ -715,3 +715,41 @@ def test_every_curation_file_id_exists_in_the_exercise_library():
     library_ids |= {exercise["id"] for exercise in MAYOS_AUTHORED_EXERCISES}
 
     assert set(load_exercise_curation()) - library_ids == set()
+
+
+def test_saved_program_shows_current_names_for_substitutes_and_warmups(fresh_store):
+    fresh_store.initialize_and_seed()
+    fresh_store.ledger.save_training_program(
+        {
+            "program_name": "Snapshot names",
+            "weekly_frequency": 1,
+            "split_type": "custom",
+            "days": [
+                {
+                    "day_name": "Day 1",
+                    "day_order": 1,
+                    "warmup_exercises": [
+                        {"exercise_id": "276", "exercise_name": "dead bug"},
+                        {"exercise_id": None, "exercise_name": "Arm circles"},
+                    ],
+                    "exercises": [
+                        {
+                            "exercise_id": "150",
+                            "suggested_substitutes": [
+                                {"exercise_id": "2330", "exercise_name": "Wide-Grip Lat Pulldown"},
+                                {"exercise_id": "unknown-id", "exercise_name": "Kept as stored"},
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    day = fresh_store.ledger.get_active_program().days[0]
+
+    assert [(s.exercise_id, s.exercise_name) for s in day.exercises[0].suggested_substitutes] == [
+        ("2330", "Standing Cable Pulldown (Cable)"),
+        ("unknown-id", "Kept as stored"),
+    ]
+    assert [w.exercise_name for w in day.warmup_exercises] == ["Dead Bug", "Arm circles"]

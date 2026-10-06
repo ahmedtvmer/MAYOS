@@ -6,6 +6,7 @@ Extracted from DatabaseManager; behaviour is unchanged.
 import json
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 from agent.ProgramState import PersistedProgramDaySchema
 from agent.ProgramState import PersistedProgramExerciseSchema
 from agent.ProgramState import PersistedProgramSchema
@@ -16,6 +17,12 @@ from database.exercise_resolution import exercise_display_join, exercise_display
 from utils.logger import MyosLogger
 
 logger = MyosLogger().get_logger(__name__)
+
+
+def _with_current_name(movement: Any, current_names: dict[str, str]) -> Any:
+    """Copy of a stored substitute or warm-up movement carrying its current name, when known."""
+    name = current_names.get(str(movement.exercise_id))
+    return movement.model_copy(update={"exercise_name": name}) if name else movement
 
 
 class LedgerTrainingProgramMixin:
@@ -144,6 +151,19 @@ class LedgerTrainingProgramMixin:
             if getattr(self._local, "ledger_tx_depth", 0) == 0:
                 self.conn.rollback()
             raise RuntimeError(f"Database error while saving program: {e}")
+
+    def _current_exercise_names(self, exercise_ids: list[str]) -> dict[str, str]:
+        """Current display names for library or Coach exercise ids; unknown ids are omitted."""
+        ids = sorted({str(exercise_id) for exercise_id in exercise_ids if exercise_id})
+        if not ids:
+            return {}
+        rows = self.conn.execute(
+            f"SELECT ids.id, COALESCE(e.name, ce.name) FROM "
+            f"(SELECT value AS id FROM json_each(?)) ids {exercise_display_join('ids.id')} "
+            "WHERE COALESCE(e.name, ce.name) IS NOT NULL",
+            (json.dumps(ids),),
+        ).fetchall()
+        return {str(row[0]): row[1] for row in rows}
 
     def _load_program(self, where_sql: str, params: tuple = ()) -> PersistedProgramSchema | None:
         """Loads one stored program, its days and exercises, by an arbitrary predicate.
@@ -277,6 +297,21 @@ class LedgerTrainingProgramMixin:
                         warmup_exercises = [WarmupExerciseSchema(**item) for item in json.loads(warmup_json)]
                     except (TypeError, ValueError) as exc:
                         logger.warning(f"Skipping malformed warm-up block on day '{d_name}': {exc}")
+                # Substitute and warm-up names are stored snapshots; show the current
+                # library or Coach exercise name, like the exercises themselves.
+                current_names = self._current_exercise_names(
+                    [sub.exercise_id for ex in exercises for sub in ex.suggested_substitutes]
+                    + [warmup.exercise_id for warmup in warmup_exercises if warmup.exercise_id]
+                )
+                exercises = [
+                    ex.model_copy(update={"suggested_substitutes": [
+                        _with_current_name(sub, current_names) for sub in ex.suggested_substitutes
+                    ]})
+                    for ex in exercises
+                ]
+                warmup_exercises = [
+                    _with_current_name(warmup, current_names) for warmup in warmup_exercises
+                ]
 
                 days.append(
                     PersistedProgramDaySchema(
