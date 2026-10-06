@@ -1,5 +1,6 @@
 """Swap target resolution: catalog-name-first installs, hallucinated-name refusals, muscle mismatches."""
 
+import re
 import shutil
 from types import SimpleNamespace
 
@@ -9,6 +10,7 @@ from langchain_core.messages import HumanMessage
 from agent import assistant_graph
 from agent.assistant_graph import exercise_substitution_node
 from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
+from tests.fakes.chat_model import ScriptedChatModel
 from utils.equipment_access import BODYWEIGHT_ONLY, COMMERCIAL_GYM, HOME_GYM
 
 CHEST_SLOT = "577"  # machine chest press (pectorals | chest)
@@ -281,6 +283,343 @@ def test_chat_library_search_returns_alias_matches_with_display_names(sub_db):
     )
 
     assert "**Lat Pulldown**" in result["response_content"]
+
+
+def test_catalog_lookup_model_context_includes_curated_exercise_facts(
+    sub_db, seed_exercise_curation, monkeypatch
+):
+    sub_db.initialize_and_seed()
+    seed_exercise_curation(
+        sub_db,
+        {
+            CHEST_SLOT: {
+                "display_name": "Machine Chest Press",
+                "primary_action": "Shoulder Horizontal Adduction",
+                "secondary_actions": ["Elbow Extension"],
+                "primary_muscle": "Chest",
+                "load_type": "selectorized",
+            }
+        },
+    )
+    model = ScriptedChatModel(["The machine chest press is a chest exercise."])
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    query = "machine chest press"
+    lookup_state = _state("", "")
+    lookup_state["messages"] = [HumanMessage(content=query)]
+    lookup_state["intent_metadata"] = {
+        "raw_query": query,
+        "sub_intents": [
+            {"intent": "catalog_search", "query": query, "intent_metadata": {"search_query": query}},
+            {"intent": "coaching_qa", "query": "What are these movements?"},
+        ],
+    }
+    result = assistant_graph.composite_intent_node(
+        lookup_state,
+        {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
+    )
+    assert "Primary action:" not in result["response_content"]
+
+    model_context = "\n".join(message.content for message in model.calls[0]["messages"])
+    for field in (
+        "Machine Chest Press",
+        "Primary action: Shoulder Horizontal Adduction",
+        "Secondary actions: Elbow Extension",
+        "Primary muscle: Chest",
+        "Load type: Pin-loaded",
+        "Equipment category: Machine",
+    ):
+        assert field in model_context
+
+
+def test_uncurated_catalog_lookup_has_only_name_in_player_reply(
+    sub_db, seed_exercise_curation
+):
+    sub_db.initialize_and_seed()
+    seed_exercise_curation(sub_db, {CHEST_SLOT: {}})
+
+    lookup_state = _state("", "")
+    lookup_state["intent_metadata"] = {"search_query": "machine chest press"}
+    result = assistant_graph.catalog_search_node(
+        lookup_state,
+        {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
+    )
+
+    assert "Machine Chest Press" in result["response_content"]
+    assert "Equipment category:" not in result["response_content"]
+    assert "Primary action:" not in result["response_content"]
+    assert "Secondary actions:" not in result["response_content"]
+    assert "Primary muscle:" not in result["response_content"]
+    assert "Load type:" not in result["response_content"]
+    assert "None" not in result["response_content"]
+    assert "null" not in result["response_content"]
+    assert "Machine Chest Press — Equipment category: Machine" in result["model_context_content"]
+    assert "Primary action:" not in result["model_context_content"]
+
+
+def test_uncurated_no_staple_substitution_keeps_similarity_and_names(
+    sub_db, seed_exercise_curation, monkeypatch
+):
+    sub_db.initialize_and_seed()
+    seed_exercise_curation(sub_db, {CHEST_SLOT: {}})
+    _save_program_days(sub_db, [("Upper 1", [CHEST_SLOT])])
+    sub_db.ledger.upsert_player_profile(
+        {
+            "gender": "male", "proportions": "balanced", "age": 30,
+            "weight_kg": 80, "height_cm": 180, "rep_preference": "balanced",
+            "current_goal": "hypertrophy", "long_term_goal": "strength",
+            "weekly_frequency": 3, "training_age_years": 3,
+            "equipment_access": BODYWEIGHT_ONLY,
+            "injuries_or_limitations": "None", "stress_and_sleep": "normal",
+        }
+    )
+    candidate = sub_db.get_exercise_library_entry(PUSH_UP)
+    monkeypatch.setattr(
+        assistant_graph,
+        "EMBED_MODEL",
+        SimpleNamespace(embed_query=lambda _query: [], embed_documents=lambda _documents: []),
+    )
+    monkeypatch.setattr(sub_db, "search_similar_exercises", lambda *_args, **_kwargs: [candidate])
+
+    result = exercise_substitution_node(
+        _state("machine chest press", ""),
+        {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
+    )
+
+    assert "Machine Chest Press" in result["response_content"]
+    assert "Push-Up" in result["response_content"]
+    assert "Equipment category:" not in result["response_content"]
+    assert "Primary action:" not in result["response_content"]
+    assert "Primary muscle:" not in result["response_content"]
+    assert "Load type:" not in result["response_content"]
+    assert "None" not in result["response_content"]
+    assert "Machine Chest Press — Equipment category: Machine" in result["model_context_content"]
+
+
+def test_active_program_sent_to_coreference_model_includes_curated_exercise_facts(
+    sub_db, seed_exercise_curation, monkeypatch
+):
+    sub_db.initialize_and_seed()
+    seed_exercise_curation(
+        sub_db,
+        {
+            REVERSE_LAT_SLOT: {
+                "primary_action": "Shoulder Extension",
+                "secondary_actions": ["Elbow Flexion"],
+                "primary_muscle": "Lats",
+                "load_type": "selectorized",
+            }
+        },
+    )
+    model = ScriptedChatModel(
+        [{"source_exercise": "reverse grip machine lat pulldown", "target_exercise": ""}]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    state = _state("it", "")
+    state["messages"] = [HumanMessage(content="swap it for something else")]
+
+    exercise_substitution_node(
+        state,
+        {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
+    )
+
+    model_context = model.calls[0]["messages"][0].content
+    for field in (
+        "Primary action: Shoulder Extension",
+        "Secondary actions: Elbow Flexion",
+        "Primary muscle: Lats",
+        "Load type: Pin-loaded",
+        "Equipment category: Machine",
+    ):
+        assert field in model_context
+
+
+def test_exercise_history_reply_keeps_display_name_and_model_context_has_curated_facts(
+    sub_db, seed_exercise_curation, monkeypatch
+):
+    sub_db.initialize_and_seed()
+    seed_exercise_curation(
+        sub_db,
+        {
+            CHEST_SLOT: {
+                "display_name": "Machine Chest Press",
+                "primary_action": "Shoulder Horizontal Adduction",
+                "primary_muscle": "Chest",
+                "load_type": "plate_loaded",
+            }
+        },
+    )
+    model = ScriptedChatModel(["The last logged movement was a chest press."])
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    query = f"last logged occurrence of {CHEST_SLOT}"
+    request = _state("", "")
+    request["messages"] = [HumanMessage(content=query)]
+    request["intent_metadata"] = {
+        "raw_query": query,
+        "sub_intents": [
+            {
+                "intent": "exercise_history",
+                "query": query,
+                "intent_metadata": {"raw_query": query},
+            },
+            {"intent": "coaching_qa", "query": "What movement did I ask about?"},
+        ],
+    }
+    result = assistant_graph.composite_intent_node(
+        request,
+        {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
+    )
+    model_context = "\n".join(message.content for message in model.calls[0]["messages"])
+
+    assert "machine chest press" in result["response_content"].lower()
+    assert "Primary action:" not in result["response_content"]
+    assert "Equipment category:" not in result["response_content"]
+    assert "Primary action: Shoulder Horizontal Adduction" in model_context
+    assert "Load type: Plate-loaded" in model_context
+    assert "Equipment category: Machine" in model_context
+
+
+def test_substitution_model_context_includes_curated_source_and_candidates(
+    sub_db, seed_exercise_curation, monkeypatch
+):
+    sub_db.initialize_and_seed()
+    seed_exercise_curation(
+        sub_db,
+        {
+            REVERSE_LAT_SLOT: {
+                "primary_action": "Shoulder Extension",
+                "secondary_actions": ["Elbow Flexion"],
+                "primary_muscle": "Lats",
+                "load_type": "selectorized",
+            },
+            "2330": {
+                "display_name": "Wide-Grip Lat Pulldown",
+                "primary_action": "Shoulder Extension",
+                "secondary_actions": ["Elbow Extension"],
+                "primary_muscle": "Lats",
+            },
+        },
+    )
+    model = ScriptedChatModel(["The first option keeps the same main movement."])
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    query = "show me alternatives for reverse grip machine lat pulldown"
+    state = _state("", "")
+    state["messages"] = [HumanMessage(content=query)]
+    state["intent_metadata"] = {
+        "raw_query": query,
+        "sub_intents": [
+            {
+                "intent": "exercise_substitution",
+                "query": query,
+                "intent_metadata": {
+                    "source_exercise": "reverse grip machine lat pulldown",
+                    "target_exercise": "",
+                },
+            },
+            {"intent": "coaching_qa", "query": "Which option has the same action?"},
+        ],
+    }
+
+    result = assistant_graph.composite_intent_node(
+        state,
+        {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
+    )
+
+    model_context = "\n".join(
+        message.content for message in model.calls[0]["messages"]
+    )
+    for field in (
+        "Primary action: Shoulder Extension",
+        "Secondary actions: Elbow Flexion",
+        "Primary muscle: Lats",
+        "Load type: Pin-loaded",
+        "Equipment category: Machine",
+        "Wide-Grip Lat Pulldown",
+        "Secondary actions: Elbow Extension",
+        "Equipment category: Cable",
+    ):
+        assert field in model_context
+    assert "Primary action:" not in result["response_content"]
+    assert "Secondary actions:" not in result["response_content"]
+    assert "Equipment category:" not in result["response_content"]
+
+
+@pytest.mark.parametrize("access", [COMMERCIAL_GYM, HOME_GYM, BODYWEIGHT_ONLY])
+def test_no_staple_suggestions_follow_replace_ranking_and_access(
+    sub_db, seed_exercise_curation, access
+):
+    sub_db.initialize_and_seed()
+    seed_exercise_curation(
+        sub_db,
+        {
+            REVERSE_LAT_SLOT: {
+                "primary_action": "Shoulder Extension",
+                "primary_muscle": "Lats",
+                "secondary_actions": ["Elbow Flexion"],
+                "load_type": "selectorized",
+            },
+            "2330": {
+                "display_name": "Wide-Grip Lat Pulldown",
+                "primary_action": "Shoulder Extension",
+                "primary_muscle": "Lats",
+                "secondary_actions": ["Elbow Extension"],
+            },
+            "818": {"primary_action": "Shoulder Horizontal Adduction", "primary_muscle": "Upper Back"},
+            PULL_THROUGH: {"primary_action": "Knee Flexion", "primary_muscle": "Glutes"},
+            HIP_THRUST: {"primary_action": "Hip Extension", "primary_muscle": "Glutes"},
+            MACHINE_LAT_VARIANT: {
+                "primary_action": "Shoulder Extension",
+                "primary_muscle": "Lats",
+                "hidden": True,
+            },
+            "1013": {"primary_action": "Elbow Flexion", "primary_muscle": "Biceps"},
+            "1429": {"primary_action": "Shoulder Flexion", "primary_muscle": "Chest"},
+        },
+    )
+    sub_db.ledger.upsert_player_profile(
+        {
+            "gender": "male", "proportions": "balanced", "age": 30,
+            "weight_kg": 80, "height_cm": 180, "rep_preference": "balanced",
+            "current_goal": "hypertrophy", "long_term_goal": "strength",
+            "weekly_frequency": 3, "training_age_years": 3,
+            "equipment_access": access, "injuries_or_limitations": "None",
+            "stress_and_sleep": "normal",
+        }
+    )
+    program = sub_db.ledger.get_active_program()
+    source = next(
+        exercise
+        for day in program.days
+        for exercise in day.exercises
+        if exercise.exercise_id == REVERSE_LAT_SLOT
+    )
+    assert not source.suggested_substitutes
+    expected_names_by_access = {
+        COMMERCIAL_GYM: [
+            "Wide-Grip Lat Pulldown",
+            "Machine One Arm Lateral Wide Pulldown",
+            "Machine Pullover",
+        ],
+        HOME_GYM: [],
+        BODYWEIGHT_ONLY: [],
+    }
+
+    result = exercise_substitution_node(
+        _state("reverse grip machine lat pulldown", ""),
+        {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
+    )
+
+    numbered_lines = [
+        line for line in result["response_content"].splitlines()
+        if re.match(r"^\d+\. \*\*", line)
+    ]
+    shown_names = [line.split("**", 2)[1].split(" — ", 1)[0] for line in numbered_lines]
+    assert shown_names == expected_names_by_access[access]
+    assert len(shown_names) <= 3
+    hidden_name = sub_db.get_exercise_library_entry(MACHINE_LAT_VARIANT)["name"]
+    assert hidden_name not in result["response_content"]
+    if access == COMMERCIAL_GYM:
+        assert "Band Underhand Pulldown" not in result["response_content"]
+        assert "Wide-Grip Pull-Up" not in result["response_content"]
 
 
 def test_assistant_substitution_suggestions_skip_hidden_rows(sub_db, seed_exercise_curation):

@@ -108,8 +108,9 @@ IDENTITY_REFUSAL_MARKERS = (
 
 #: Whole dates (``2026-09-17``) are excluded from figure matching: they are
 #: timestamps, not figures, and splitting one into ``2026``/``09``/``17`` used
-#: to make any day-of-month look grounded.
-DATE_TOKEN_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+#: to make any day-of-month look grounded. Digit lookarounds instead of ``\b``
+#: so a date glued to an Arabic prefix (``و2026-09-21``) is still one token.
+DATE_TOKEN_RE = re.compile(r"(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)")
 MONTH_YEAR_DATE_RE = re.compile(
     r"\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
     r"Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?|tember)?|Oct(?:ober)?|"

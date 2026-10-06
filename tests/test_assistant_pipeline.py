@@ -303,6 +303,8 @@ def test_phase3_substitution_lookup_candidates(fresh_store):
     with (
         patch.object(fresh_store.ledger, "get_active_program", return_value=mock_prog),
         patch.object(fresh_store, "catalog_conn", mock_conn),
+        patch.object(fresh_store, "get_exercise_library_entry", return_value=None),
+        patch.object(fresh_store, "get_exercise_library_entries", return_value={}),
         patch.object(fresh_store, "search_similar_exercises") as mock_search,
         patch("agent.assistant_graph.substitute_program_exercise") as mock_substitute,
     ):
@@ -378,6 +380,8 @@ def test_phase3_substitution_direct_swap(fresh_store):
     with (
         patch.object(fresh_store.ledger, "get_active_program", return_value=mock_prog),
         patch.object(fresh_store, "catalog_conn", mock_conn),
+        patch.object(fresh_store, "get_exercise_library_entry", return_value=None),
+        patch.object(fresh_store, "get_exercise_library_entries", return_value={}),
         patch.object(fresh_store, "find_exercises_by_name") as mock_find,
         patch.object(fresh_store, "search_similar_exercises") as mock_search,
         patch("agent.assistant_graph.substitute_program_exercise") as mock_substitute,

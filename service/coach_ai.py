@@ -42,6 +42,7 @@ from service import coach_history as coach_history_service
 from service import dashboard as dashboard_service
 from service import check_ins as check_ins_service
 from service import program_requests as program_requests_service
+from service.exercise_context import describe_exercises
 from service import evaluation_report_gate
 from service.evaluation_report_gate import EvaluationReportConfig, GateStatus, evaluate_gate
 from service.assignments import authorized_player_ledger
@@ -56,7 +57,7 @@ logger = logging.getLogger(__name__)
 
 #: Bumped whenever the prompt or the context shape changes; the eval report's
 #: ``prompt_hash`` must match :func:`prompt_version_hash` for the flag to enable.
-CONTEXT_VERSION = "coach-context-v4"
+CONTEXT_VERSION = "coach-context-v5"
 
 BODYWEIGHT_TREND_WEEKS = 8
 E1RM_TREND_WEEKS = 12
@@ -135,7 +136,15 @@ CANONICAL_FIXTURE: dict[str, Any] = {
             {
                 "order": 1,
                 "day": "Upper A",
-                "exercises": [{"name": "Bench Press", "sets": 3, "reps": "5-8", "rpe": 8.5}],
+                "exercises": [
+                    {
+                        "name": "Bench Press",
+                        "description": "Bench Press — Primary action: Shoulder Horizontal Adduction; Primary muscle: Chest; Equipment category: Free weight",
+                        "sets": 3,
+                        "reps": "5-8",
+                        "rpe": 8.5,
+                    }
+                ],
             }
         ],
     },
@@ -345,10 +354,17 @@ def _session_facts(sessions: list[dict[str, Any]]) -> tuple[list[dict[str, Any]]
     return kept, totals
 
 
-def _program_facts(program: Any) -> dict[str, Any] | None:
+def _program_facts(program: Any, store: Any) -> dict[str, Any] | None:
     """The active program reduced to structure; no provenance ids or free text."""
     if program is None:
         return None
+    exercises = [exercise for day in program.days for exercise in day.exercises]
+    descriptions = iter(
+        describe_exercises(
+            store,
+            ((exercise.exercise_id, exercise.exercise_name) for exercise in exercises),
+        )
+    )
     return {
         "name": program.program_name,
         "split": program.split_type,
@@ -361,6 +377,7 @@ def _program_facts(program: Any) -> dict[str, Any] | None:
                 "exercises": [
                     {
                         "name": exercise.exercise_name,
+                        "description": next(descriptions),
                         "sets": exercise.target_sets,
                         "reps": f"{exercise.target_reps_min}-{exercise.target_reps_max}",
                         "rpe": exercise.target_rpe,
@@ -371,7 +388,6 @@ def _program_facts(program: Any) -> dict[str, Any] | None:
             for day in program.days
         ],
     }
-
 
 def _training_profile_facts(ledger: Any) -> dict[str, Any]:
     profile = ledger.get_player_profile() or {}
@@ -547,7 +563,7 @@ def gather_player_context(
                 "started_on": str(context["assignment"].get("started_at", ""))[:10],
                 "status": context["assignment"].get("status", "active"),
             },
-            "program": _program_facts(program),
+            "program": _program_facts(program, db),
             "training_profile": _training_profile_facts(ledger),
             "volume": {
                 "last_7_days_kg": volumes[7],
@@ -607,7 +623,8 @@ def _render_program(facts: dict[str, Any]) -> list[str]:
     lines.append(f"  version: {format_number(program.get('version'))}")
     for day in program.get("days", []):
         prescriptions = ", ".join(
-            f"{exercise.get('name')} {format_number(exercise.get('sets'))}x{exercise.get('reps')}"
+            f"{exercise.get('description') or exercise.get('name')} "
+            f"{format_number(exercise.get('sets'))}x{exercise.get('reps')}"
             f" @RIR {min_rir_label(exercise.get('rpe'))}"
             for exercise in day.get("exercises", [])
         )

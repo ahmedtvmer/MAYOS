@@ -6,6 +6,7 @@ import sqlite3
 import sys
 import time
 from collections.abc import Generator, Sequence
+from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Annotated, Any, Dict, Literal
@@ -55,6 +56,7 @@ from agent.telemetry_reconciler import (
     reconcile_telemetry_query,
 )
 from database.exercise_library.schema import exercise_library_visible_sql
+from service.exercise_context import describe_exercise, describe_exercises
 from service.player_weight_context import (
     is_weight_context_relevant,
     render_player_weight_context,
@@ -400,7 +402,7 @@ def hydrate_context_node(state: AssistantState, config: dict[str, Any] | None = 
     recent = " ".join(_get_message_text(m) for m in state.get("messages", [])[-TAIL_WINDOW_SIZE:])
     comparison = _session_comparison_context(ledger) if re.search(r"\b(?:session|workout|performance|compare|comparison|progress|sets?|reps?|rpe|load|heavier|improve)\b", recent, re.IGNORECASE) else None
     if comparison is not None:
-        telemetry = _comparison_text(comparison, compact=True) + "\n" + str(telemetry or "")
+        telemetry = _comparison_text(comparison, compact=True, store=store) + "\n" + str(telemetry or "")
     messages = state.get("messages", [])
     latest_user = next(
         (message for message in reversed(messages) if isinstance(message, HumanMessage)),
@@ -831,23 +833,26 @@ def _set_text(value: dict[str, Any] | None) -> str:
     )
 
 
-def _exercise_comparison_text(exercise: dict[str, Any], compact: bool = False) -> str:
+def _exercise_comparison_text(
+    exercise: dict[str, Any], compact: bool = False, description: str | None = None
+) -> str:
     current = exercise.get("current") or {}
     previous = exercise.get("previous")
     best = current.get("best_set") or {}
+    description = description or exercise["name"]
     if compact:
         deltas = exercise.get("deltas") or {}
         baseline = (previous.get("session") or {}).get("session_date", "missing") if previous else "missing"
         status = exercise.get("status", "insufficient_data")
         return (
-            f"{exercise['name']} [{exercise['exercise_id']}]: best {_set_text(best)}; "
+            f"{description} [{exercise['exercise_id']}]: best {_set_text(best)}; "
             f"sets={_metric(current.get('sets_count'))}, volume={_metric(current.get('volume_kg'))}kg; "
             f"baseline={baseline}; Δkg/reps/sets/volume/e1RM="
             + "/".join(_metric(deltas.get(key), signed=True) for key in ("load_kg", "reps", "sets", "volume_kg", "e1rm"))
             + f"; {status}."
         )
     content = (
-        f"{exercise['name']} [{exercise['exercise_id']}]: best {_set_text(best)}; "
+        f"{description} [{exercise['exercise_id']}]: best {_set_text(best)}; "
         f"{_metric(current.get('sets_count'))} sets, {_metric(current.get('total_reps'))} total reps, "
         f"{_metric(current.get('volume_kg'))} kg volume."
     )
@@ -869,7 +874,9 @@ def _exercise_comparison_text(exercise: dict[str, Any], compact: bool = False) -
     return content
 
 
-def _comparison_text(context: dict[str, Any], compact: bool = False, exercises=None) -> str:
+def _comparison_text(
+    context: dict[str, Any], compact: bool = False, exercises=None, store: Any = None,
+) -> str:
     session = context.get("session") or {}
     entries = context.get("exercises") or []
     sets_count = sum((ex.get("current") or {}).get("sets_count", 0) for ex in entries)
@@ -880,17 +887,28 @@ def _comparison_text(context: dict[str, Any], compact: bool = False, exercises=N
         f"Best set: {context.get('best_set_convention') or 'heaviest weight, then most reps, then earliest set_index'}. "
         "Each baseline is that exercise's previous logged occurrence, not necessarily the previous session."
     )
-    for exercise in entries if exercises is None else exercises:
-        content += "\n- " + _exercise_comparison_text(exercise, compact)
+    selected = entries if exercises is None else exercises
+    descriptions = (
+        describe_exercises(
+            store,
+            ((exercise["exercise_id"], exercise["name"]) for exercise in selected),
+        )
+        if store is not None
+        else [exercise["name"] for exercise in selected]
+    )
+    for exercise, description in zip(selected, descriptions):
+        content += "\n- " + _exercise_comparison_text(exercise, compact, description)
     if not entries:
         content += "\nNo completed working sets recorded in this session; no progress assessment available."
     return content
 
 
-def _session_summary_response(ledger: Any) -> dict[str, Any]:
+def _session_summary_response(ledger: Any, store: Any) -> dict[str, Any]:
     comparison = _session_comparison_context(ledger)
     if comparison is not None:
-        return _response(_comparison_text(comparison))
+        player_text = _comparison_text(comparison)
+        model_text = _comparison_text(comparison, store=store)
+        return _response_with_model_context(player_text, model_text)
     getter = getattr(ledger, "get_latest_session_summary", None)
     summary = getter() if callable(getter) else None
     if not isinstance(summary, dict) or not summary:
@@ -908,16 +926,32 @@ def _session_summary_response(ledger: Any) -> dict[str, Any]:
         f"{number(summary.get('total_volume_kg'))} kg total volume. "
         f"Readiness: {number(summary.get('readiness_score'))}/5."
     )
+    model_content = content
     exercises = summary.get("exercises")
+    model_exercises = []
     if isinstance(exercises, list):
-        for exercise in exercises:
-            if not isinstance(exercise, dict) or not isinstance(exercise.get("name"), str):
-                continue
+        valid_exercises = [
+            exercise for exercise in exercises
+            if isinstance(exercise, dict) and isinstance(exercise.get("name"), str)
+        ]
+        described = describe_exercises(
+            store,
+            (
+                (str(exercise.get("exercise_id") or ""), exercise["name"])
+                for exercise in valid_exercises
+            ),
+        )
+        for exercise, description in zip(valid_exercises, described):
             content += (
                 f"\n- {exercise['name'][:100]}: {number(exercise.get('sets'))} sets, "
                 f"{number(exercise.get('reps'))} total reps, {number(exercise.get('volume_kg'))} kg volume."
             )
-    return _response(content + "\n\nThis is a session snapshot; a comparison is needed to assess progress.")
+            model_exercises.append(
+                f"\n- {description[:300]}: {number(exercise.get('sets'))} sets, "
+                f"{number(exercise.get('reps'))} total reps, {number(exercise.get('volume_kg'))} kg volume."
+            )
+    ending = "\n\nThis is a session snapshot; a comparison is needed to assess progress."
+    return _response_with_model_context(content + ending, model_content + "".join(model_exercises) + ending)
 
 
 def _history_name(name: str) -> str:
@@ -949,7 +983,7 @@ def exercise_history_node(state: AssistantState, config: dict[str, Any] | None =
     raw_query = state.get("intent_metadata", {}).get("raw_query")
     raw_query = _get_message_text(raw_query) if raw_query else (_get_message_text(messages[-1]) if messages else "")
     if _whole_session_query(raw_query):
-        return _session_summary_response(ledger)
+        return _session_summary_response(ledger, store)
     lookup_query = _supported_history_query(raw_query)
     if RE_HISTORY_SCOPE.search(lookup_query):
         return _response("The requested time period is unavailable in this history lookup. I can compare the latest session with each exercise's previous logged occurrence, but cannot answer that date range.")
@@ -983,19 +1017,53 @@ def exercise_history_node(state: AssistantState, config: dict[str, Any] | None =
         entries = comparison.get("exercises") or []
         matches = _history_exercise_matches(target_name, entries)
         if len(matches) == 1:
-            return _response(_comparison_text(comparison, exercises=matches))
+            player_text = _comparison_text(
+                comparison, exercises=matches,
+            )
+            model_text = _comparison_text(comparison, exercises=matches, store=store)
+            return _response_with_model_context(player_text, model_text)
         if len(matches) > 1:
-            return _response("Which exercise variant do you mean? " + ", ".join(f"{ex['name']} [{ex['exercise_id']}]" for ex in matches))
+            player_text = "Which exercise variant do you mean? " + ", ".join(
+                f"{ex['name']} [{ex['exercise_id']}]" for ex in matches
+            )
+            descriptions = describe_exercises(
+                store, ((ex["exercise_id"], ex["name"]) for ex in matches)
+            )
+            model_text = "Which exercise variant do you mean? " + ", ".join(
+                f"{description} [{ex['exercise_id']}]"
+                for ex, description in zip(matches, descriptions)
+            )
+            return _response_with_model_context(player_text, model_text)
         catalog = _history_catalog_matches(store, target_name)
         if len(catalog) > 1:
-            return _response("Which exercise variant do you mean? " + ", ".join(f"{ex['name']} [{ex['exercise_id']}]" for ex in catalog))
+            player_text = "Which exercise variant do you mean? " + ", ".join(
+                f"{ex['name']} [{ex['exercise_id']}]" for ex in catalog
+            )
+            descriptions = describe_exercises(
+                store, ((ex["exercise_id"], ex["name"]) for ex in catalog)
+            )
+            model_text = "Which exercise variant do you mean? " + ", ".join(
+                f"{description} [{ex['exercise_id']}]"
+                for ex, description in zip(catalog, descriptions)
+            )
+            return _response_with_model_context(player_text, model_text)
         date = (comparison.get("session") or {}).get("session_date", "unknown date")
         return _response(f"No completed working sets for '{target_name}' in your latest session ({date}). This does not mean it was never logged. Ask for its last logged occurrence to look beyond that session.")
     if not occurrence:
         return _response("Latest-session exercise comparisons are unavailable. Ask explicitly for the last logged occurrence of an exercise to search older records.")
     candidates = _history_catalog_matches(store, target_name)
     if len(candidates) > 1:
-        return _response("Which exercise variant do you mean? " + ", ".join(f"{ex['name']} [{ex['exercise_id']}]" for ex in candidates))
+        player_text = "Which exercise variant do you mean? " + ", ".join(
+            f"{ex['name']} [{ex['exercise_id']}]" for ex in candidates
+        )
+        descriptions = describe_exercises(
+            store, ((ex["exercise_id"], ex["name"]) for ex in candidates)
+        )
+        model_text = "Which exercise variant do you mean? " + ", ".join(
+            f"{description} [{ex['exercise_id']}]"
+            for ex, description in zip(candidates, descriptions)
+        )
+        return _response_with_model_context(player_text, model_text)
     exercise = {"id": candidates[0]["exercise_id"], "name": candidates[0]["name"]} if candidates else None
     if not exercise:
         msg = f"I couldn't find '{target_name}' in your movement catalog."
@@ -1004,21 +1072,41 @@ def exercise_history_node(state: AssistantState, config: dict[str, Any] | None =
     sets = ledger.get_last_performance(str(exercise["id"]))
 
     if not sets:
+        description = describe_exercise(store, exercise["id"], exercise["name"])
         msg = f"You haven't logged any completed working sets for **{exercise['name']}** yet."
-        return {"response_content": msg, "messages": [AIMessage(content=msg)]}
+        model_text = f"You haven't logged any completed working sets for **{description}** yet."
+        return _response_with_model_context(msg, model_text)
 
+    description = describe_exercise(store, exercise["id"], exercise["name"])
     set_lines = [f"- Set {s['set_index']}: {_set_text(s)}" for s in sets]
     content = (
         f"**Last logged occurrence for {exercise['name']}:**\n" + "\n".join(set_lines)
         + "\nThis may predate your latest session. This occurrence lookup does not provide a date or comparison; no progress assessment available."
     )
-    return {"response_content": content, "messages": [AIMessage(content=content)]}
+    model_content = content.replace(
+        f"**Last logged occurrence for {exercise['name']}:**",
+        f"**Last logged occurrence for {description}:**",
+        1,
+    )
+    return _response_with_model_context(content, model_content)
 
 
 def resolve_coreference_with_llm(
-    query: str, messages: Sequence[BaseMessage], active_program
+    query: str, messages: Sequence[BaseMessage], active_program, store: Any
 ) -> tuple[str | None, str | None]:
-    routine_names = [f"- {ex.exercise_name} (Day: {day.day_name})" for day in active_program.days for ex in day.exercises]
+    routine_exercises = [
+        (day, exercise)
+        for day in active_program.days
+        for exercise in day.exercises
+    ]
+    descriptions = describe_exercises(
+        store,
+        ((exercise.exercise_id, exercise.exercise_name) for _, exercise in routine_exercises),
+    )
+    routine_names = [
+        f"- {description} (Day: {day.day_name})"
+        for (day, _), description in zip(routine_exercises, descriptions)
+    ]
     tail = [m for m in messages if isinstance(m, (HumanMessage, AIMessage))][-3:]
     chat_lines = [f"{'Trainee' if isinstance(m, HumanMessage) else 'Coach'}: {_get_message_text(m)}" for m in tail]
 
@@ -1039,6 +1127,101 @@ def resolve_coreference_with_llm(
     except Exception as e:
         logger.warning(f"Coreference LLM fallback failed: {e}")
         return None, None
+
+
+@dataclass(frozen=True)
+class _AlternativeSuggestionRequest:
+    source_id: str
+    source_name: str
+    source_entry: dict[str, Any]
+    equipment_access: str
+    prescribed_ids: frozenset[str]
+    target_muscle: str
+    body_part: str
+
+
+def _matching_replace_alternatives(
+    store: Any, request: _AlternativeSuggestionRequest
+) -> list[dict[str, Any]]:
+    matches = store.find_exercises_by_name(
+        "",
+        limit=1 + len(request.prescribed_ids) + 3,
+        equipment_access=request.equipment_access,
+        filter_browse=True,
+        replacing_exercise_id=request.source_id,
+    )
+    source_action = request.source_entry.get("primary_action")
+    source_muscle = request.source_entry.get("primary_muscle")
+    return [
+        match
+        for match in matches
+        if match["id"] != request.source_id
+        and match["id"] not in request.prescribed_ids
+        and (
+            (source_action and match.get("primary_action") == source_action)
+            or (source_muscle and match.get("primary_muscle") == source_muscle)
+        )
+    ][:3]
+
+
+def _similar_candidate_is_compatible(
+    candidate: dict[str, Any],
+    request: _AlternativeSuggestionRequest,
+    excluded_ids: set[str],
+) -> bool:
+    candidate_id = str(candidate["id"])
+    target_hit = bool(
+        request.target_muscle
+        and request.target_muscle.lower()
+        in (candidate.get("target_muscle") or "").lower()
+    )
+    candidate_body = (candidate.get("body_part") or "").lower()
+    body_hit = bool(
+        candidate_body
+        and request.body_part
+        and candidate_body == request.body_part.lower()
+    )
+    return (
+        candidate_id != request.source_id
+        and candidate_id not in request.prescribed_ids
+        and candidate_id not in excluded_ids
+        and equipment_access_allows(request.equipment_access, candidate.get("equipment"))
+        and (target_hit or body_hit)
+    )
+
+
+def _similar_alternatives(
+    store: Any,
+    request: _AlternativeSuggestionRequest,
+    excluded_ids: set[str],
+    limit: int,
+) -> list[dict[str, Any]]:
+    if limit <= 0:
+        return []
+    query_vec = EMBED_MODEL.embed_query(
+        f"{request.target_muscle} {request.source_name}"
+    )
+    candidates = []
+    for candidate in store.search_similar_exercises(query_vec, limit=12):
+        if not _similar_candidate_is_compatible(candidate, request, excluded_ids):
+            continue
+        candidates.append(candidate)
+        if len(candidates) == limit:
+            break
+    return candidates
+
+
+def _replace_ranked_alternative_candidates(
+    store: Any, request: _AlternativeSuggestionRequest
+) -> list[dict[str, Any]]:
+    ranked = _matching_replace_alternatives(store, request)
+    fallback = _similar_alternatives(
+        store,
+        request,
+        {str(candidate["id"]) for candidate in ranked},
+        3 - len(ranked),
+    )
+    return ranked + fallback
 
 
 def _muscle_compatible(candidate: dict[str, Any], target_muscle: str, body_part: str) -> bool:
@@ -1287,7 +1470,9 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
     )
 
     if needs_llm_resolution:
-        resolved_src, resolved_tgt = resolve_coreference_with_llm(query, state.get("messages", []), active_program)
+        resolved_src, resolved_tgt = resolve_coreference_with_llm(
+            query, state.get("messages", []), active_program, store
+        )
         if resolved_src:
             source_name = expand_fitness_abbreviations(resolved_src)
         if resolved_tgt:
@@ -1312,29 +1497,60 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
             return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
     if not matched_ex or best_similarity < 0.70:
+        routine_exercises = [
+            (day, exercise)
+            for day in active_program.days
+            for exercise in day.exercises
+        ]
+        descriptions = describe_exercises(
+            store,
+            ((exercise.exercise_id, exercise.exercise_name) for _, exercise in routine_exercises),
+        )
         routine_list = [
-            f"- {ex.exercise_name.title()} (Day {d.day_order}: {d.day_name})"
-            for d in active_program.days
-            for ex in d.exercises
+            f"- {exercise.exercise_name.title()} (Day {day.day_order}: {day.day_name})"
+            for day, exercise in routine_exercises
+        ]
+        model_routine_list = [
+            f"- {description} (Day {day.day_order}: {day.day_name})"
+            for (day, _), description in zip(routine_exercises, descriptions)
         ]
         if requested_day_name:
             msg = f"Could not identify **'{raw_source or source_name or query}'** in {requested_day_name}."
+            model_msg = msg
         else:
             msg = f"Could not identify **'{raw_source or source_name or query}'** in your active split.\n\n**Active Movements:**\n" + "\n".join(routine_list)
-        return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
+            model_msg = f"Could not identify **'{raw_source or source_name or query}'** in your active split.\n\n**Active Movements:**\n" + "\n".join(model_routine_list)
+        return _response_with_model_context(msg, model_msg)
 
     with store.catalog_locked() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT body_part, target_muscle, equipment FROM exercises WHERE id = ?", (matched_ex.exercise_id,))
         target_meta = cursor.fetchone()
     body_part, target_muscle, _ = target_meta if target_meta else ("", "", "")
+    source_entry = store.get_exercise_library_entry(str(matched_ex.exercise_id))
+    source_description = describe_exercise(
+        store, str(matched_ex.exercise_id), matched_ex.exercise_name, entry=source_entry
+    )
 
     if not target_desc:
         valid_candidates = []
         suggested_staples = getattr(matched_ex, "suggested_substitutes", [])
         has_suggested_staples = isinstance(suggested_staples, list) and bool(suggested_staples)
+        prescribed_ids = {str(ex.exercise_id) for ex in target_day.exercises}
+        suggestion_request = _AlternativeSuggestionRequest(
+            source_id=str(matched_ex.exercise_id),
+            source_name=matched_ex.exercise_name,
+            source_entry=(
+                source_entry
+                if isinstance(source_entry, dict)
+                else {"name": matched_ex.exercise_name}
+            ),
+            equipment_access=equipment_access,
+            prescribed_ids=frozenset(prescribed_ids),
+            target_muscle=target_muscle,
+            body_part=body_part,
+        )
         if has_suggested_staples:
-            prescribed_ids = {str(ex.exercise_id) for ex in target_day.exercises}
             for staple in suggested_staples:
                 staple_id = str(staple.exercise_id)
                 if staple_id == str(matched_ex.exercise_id) or staple_id in prescribed_ids:
@@ -1352,33 +1568,54 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
                     continue
                 candidate["name"] = staple.exercise_name
                 valid_candidates.append(candidate)
+        elif isinstance(source_entry, dict) and (
+            source_entry.get("primary_action") or source_entry.get("primary_muscle")
+        ):
+            # Curated sources use Replace ranking; uncurated sources keep the semantic order
+            # because display-name order has no movement signal for them.
+            valid_candidates = _replace_ranked_alternative_candidates(
+                store, suggestion_request,
+            )
         else:
-            # Older saved programs have no Staple suggestions; preserve their
-            # existing semantic alternative flow until a new program is generated.
-            query_vec = EMBED_MODEL.embed_query(f"{target_muscle} {matched_ex.exercise_name}")
-            raw_candidates = store.search_similar_exercises(query_vec, limit=12)
+            valid_candidates = _similar_alternatives(
+                store, suggestion_request, set(), 3
+            )
+
+        if valid_candidates:
+            entries = store.get_exercise_library_entries(
+                [str(candidate["id"]) for candidate in valid_candidates]
+            )
+            entries = entries if isinstance(entries, dict) else {}
             valid_candidates = [
-                c for c in raw_candidates
-                if str(c["id"]) != str(matched_ex.exercise_id)
-                and equipment_access_allows(equipment_access, c.get("equipment"))
-                and (
-                    (target_muscle and target_muscle.lower() in c.get("target_muscle", "").lower())
-                    or ((cand_body := c.get("body_part", "").lower()) and body_part and cand_body == body_part.lower())
-                )
-            ][:3]
+                {
+                    **candidate,
+                    "description": describe_exercise(
+                        store,
+                        str(candidate["id"]),
+                        candidate["name"],
+                        entry=entries.get(str(candidate["id"])),
+                    ),
+                }
+                for candidate in valid_candidates
+            ]
 
         if not valid_candidates:
             msg = f"No direct biomechanical alternatives found for **{matched_ex.exercise_name.title()}**."
             return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
         heading = "Suggested Staple substitutes" if has_suggested_staples else "Biomechanical Alternatives"
-        lines = [f"**{heading} for {matched_ex.exercise_name.title()}** (`{target_muscle.title()}` | `{target_day.day_name}`):"]
+        header = f"**{heading} for {matched_ex.exercise_name.title()}** (`{target_muscle.title()}` | `{target_day.day_name}`):"
+        model_header = f"**{heading} for {source_description}** (`{target_muscle.title()}` | `{target_day.day_name}`):"
+        lines = [header]
+        model_lines = [model_header]
         for i, c in enumerate(valid_candidates, start=1):
             is_comp = any(kw in c["name"].lower() for kw in COMPOUND_KEYWORDS) and "calf" not in c["name"].lower()
             cue = get_biomechanical_cue(c["name"], "compound" if is_comp else "isolation", experience_level)
             lines.append(f"{i}. **{c['name'].title()}** (`{c['equipment']}`)\n   *Cue:* {cue}")
+            model_lines.append(f"{i}. **{c['description']}**\n   *Cue:* {cue}")
         lines.append(f"\n*To commit a swap, reply:* `swap {matched_ex.exercise_name} for [Choice]`")
-        return {"program_updated": False, "response_content": "\n".join(lines), "messages": [AIMessage(content="\n".join(lines))]}
+        model_lines.append(f"\n*To commit a swap, reply:* `swap {matched_ex.exercise_name} for [Choice]`")
+        return _response_with_model_context("\n".join(lines), "\n".join(model_lines))
 
     # Layer 1: deterministic catalog name resolution. An explicitly named movement must
     # resolve by name — it never silently falls through to its nearest embedding sibling.
@@ -1639,7 +1876,8 @@ def _catalog_search_candidates(store: Any, query: str) -> tuple[list[dict[str, A
     candidates = _library_search_details(store, name_matches)
     if candidates:
         return candidates, True
-    return store.search_similar_exercises(EMBED_MODEL.embed_query(query), limit=4), False
+    similar = store.search_similar_exercises(EMBED_MODEL.embed_query(query), limit=4)
+    return _library_search_details(store, similar), False
 
 
 def _catalog_search_has_matches(
@@ -1653,21 +1891,39 @@ def _catalog_search_has_matches(
 
 
 def _catalog_search_response(query: str, candidates: list[dict[str, Any]]) -> dict[str, Any]:
-    formatted = [
+    player_lines = [
         f"- **{candidate['name'].title()}** (`{candidate['target_muscle']}` | "
         f"`{candidate['equipment']}`)\n  *{candidate['instructions'][:120]}...*"
         for candidate in candidates
     ]
-    content = f"**Catalog Matches for '{query}':**\n\n" + "\n\n".join(formatted)
-    return {"response_content": content, "messages": [AIMessage(content=content)]}
+    model_lines = [
+        f"- **{candidate['description']}** (`{candidate['target_muscle']}` | "
+        f"`{candidate['equipment']}`)\n  *{candidate['instructions'][:120]}...*"
+        for candidate in candidates
+    ]
+    heading = f"**Catalog Matches for '{query}':**\n\n"
+    return _response_with_model_context(
+        heading + "\n\n".join(player_lines),
+        heading + "\n\n".join(model_lines),
+    )
 
 
 def _library_search_details(store: Any, matches: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    entries = store.get_exercise_library_entries([str(match["id"]) for match in matches])
+    entries = entries if isinstance(entries, dict) else {}
     candidates = []
     for match in matches:
-        exercise = store.get_exercise_library_entry(match["id"])
+        exercise = entries.get(str(match["id"]))
         if exercise is not None:
-            candidates.append({**match, "instructions": exercise["instructions"] or ""})
+            candidates.append(
+                {
+                    **match,
+                    "description": describe_exercise(
+                        store, str(match["id"]), match["name"], entry=exercise
+                    ),
+                    "instructions": exercise["instructions"] or "",
+                }
+            )
     return candidates
 
 
@@ -1771,6 +2027,11 @@ def _response(
     }
 
 
+def _response_with_model_context(content: str, model_context_content: str) -> dict[str, Any]:
+    """Keep player text clean while retaining a fact-rich internal model context."""
+    return {**_response(content), "model_context_content": model_context_content}
+
+
 def _finish_limited(message: Any) -> bool:
     metadata = getattr(message, "response_metadata", {}) or {}
     info = getattr(message, "generation_info", {}) or {}
@@ -1845,7 +2106,10 @@ def composite_intent_node(state: AssistantState, config: dict[str, Any] | None =
             content = res.get("response_content", "")
             if content and content.strip():
                 responses.append(content.strip())
-                preceding.extend([HumanMessage(content=sub_query), AIMessage(content=content.strip())])
+                model_context = res.get("model_context_content", content)
+                preceding.extend(
+                    [HumanMessage(content=sub_query), AIMessage(content=str(model_context).strip())]
+                )
         except Exception as e:
             logger.error(f"Error handling sub-intent {sub_intent}: {e}")
             responses.append(f"Could not complete action for: '{sub_query}'.")

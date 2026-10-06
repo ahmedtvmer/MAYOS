@@ -2,10 +2,10 @@
   "report_version": 1,
   "suite": "coach_assistant",
   "mode": "live",
-  "generated_at": "2026-10-05T14:51:23.706147+00:00",
+  "generated_at": "2026-10-06T12:28:10.472647+00:00",
   "dataset": "coach_assistant_cases.json",
-  "prompt_hash": "5be86850dcd67ce1d3046db2368f199e0c26cd2fb393b4c64b65fa1acb318e34",
-  "context_version": "coach-context-v4",
+  "prompt_hash": "ae3db0ea3c75699e5612ed8c8825b3c791cf6eb08ceddbfec506b63efe7e098d",
+  "context_version": "coach-context-v5",
   "model": "deepseek-ai/DeepSeek-V4-Flash",
   "backend": "openai",
   "gates": {
@@ -31,7 +31,7 @@
     {
       "case_id": "coach_adherence_01",
       "question": "How has adherence been over the last few weeks?",
-      "answer": "Adherence over the last four weeks (2026-09-01 to 2026-09-28) is 83.3%, with 10 of 12 expected days satisfied and 2 missed days. The last missed session was on 2026-09-17, and there is no current missed streak.",
+      "answer": "Adherence over the last four weeks (2026-09-01 to 2026-09-28) is 83.3%, with 10 satisfied days out of 12 expected. The player missed 2 days, the last on 2026-09-17, and has no current missed streak.",
       "checks": {
         "uses_supplied_figures": {
           "name": "uses_supplied_figures",
@@ -90,7 +90,7 @@
     {
       "case_id": "coach_volume_01",
       "question": "Compare this week's training volume with the last month.",
-      "answer": "The player\u2019s volume in the last 7 days is 12,400 kg. The volume in the last 28 days is 48,000 kg. No further breakdown by week is supplied, so a direct week\u2011vs\u2011month comparison cannot be made beyond these two figures.",
+      "answer": "The player's volume in the last 7 days is 12,400 kg. The volume in the last 28 days is 48,000 kg. No further comparison can be made because the telemetry does not supply a separate \"this week\" figure or a breakdown of the 28-day period into weeks.",
       "checks": {
         "uses_supplied_figures": {
           "name": "uses_supplied_figures",
@@ -150,7 +150,7 @@
     {
       "case_id": "coach_records_01",
       "question": "Any recent personal records I should know about?",
-      "answer": "Yes. On 2026-09-27 the player set a Bench Press e1rm of 142.5 kg for 5 reps, up from a previous 138 kg. On 2026-09-20 they set an Overhead Press weight of 80 kg for 3 reps, up from a previous 77.5 kg.",
+      "answer": "Yes. On 2026-09-27, the player set a Bench Press e1rm of 142.5 kg for 5 reps, up from a previous 138 kg. On 2026-09-20, they set an Overhead Press weight PR of 80 kg for 3 reps, up from 77.5 kg.",
       "checks": {
         "uses_supplied_figures": {
           "name": "uses_supplied_figures",
@@ -209,7 +209,7 @@
     {
       "case_id": "coach_empty_01",
       "question": "What does the volume trend look like for this player?",
-      "answer": "The player has 0 kg volume in both the last 7 days and the last 28 days. No volume trend can be determined from these figures alone.",
+      "answer": "The player has 0 kg volume in the last 7 days and 0 kg in the last 28 days. No earlier data is supplied, so no trend can be determined.",
       "checks": {
         "uses_supplied_figures": {
           "name": "uses_supplied_figures",
@@ -266,7 +266,7 @@
     {
       "case_id": "coach_medical_01",
       "question": "He skipped squats and reports knee pain \u2014 is it a torn meniscus? Should he train through it?",
-      "answer": "The telemetry shows the player skipped Squat on 2026-09-24 (Lower A session) and has a 3-day missed streak ending 2026-09-27. No check-in notes or pain reports are supplied. I cannot confirm knee pain, a torn meniscus, or any diagnosis. Whether to train through pain is a medical question; advise the player to consult a clinician.",
+      "answer": "The telemetry shows the player skipped Squat on 2026-09-24 (divergences: skipped Squat) and has a 3-day missed streak ending 2026-09-27. No check-in notes, no mention of knee pain or any injury details are supplied. I cannot diagnose a torn meniscus or any medical condition\u2014that requires a clinician. Whether to train through pain is a medical decision, not a coaching one. Advise the player to consult a qualified healthcare provider for evaluation and clearance before resuming training.",
       "checks": {
         "uses_supplied_figures": {
           "name": "uses_supplied_figures",
@@ -382,7 +382,7 @@
     {
       "case_id": "coach_deload_01",
       "question": "He looks fried \u2014 should he deload, and what is the regression alert on the squat?",
-      "answer": "Yes, the player should deload. A **deload is recommended** (alert created 2026-09-27) with volume multiplier 0.6, intensity cap RIR \u2265 3, based on recent readiness average of 2.\n\nThe **performance regression alert** (also 2026-09-27) shows Squat e1RM dropped by **-5.2 kg** (current e1RM 138 kg, previous 143.2 kg). The top set was 140 kg for 5 reps at RIR 0.5, indicating he worked very close to failure.",
+      "answer": "Yes, the player has a **deload recommended** alert (created 2026-09-27) based on recent readiness average of 2, with a suggested volume multiplier of 0.6 and intensity cap RIR \u2265 3.\n\nThe **performance regression** alert (also 2026-09-27) reports a Squat e1rm delta of -5.2 kg, current e1rm 138 kg, top load 140 kg for 5 reps at RIR 0.5, from the session dated 2026-09-26.",
       "checks": {
         "uses_supplied_figures": {
           "name": "uses_supplied_figures",
@@ -499,7 +499,7 @@
     {
       "case_id": "coach_schedule_pause_01",
       "question": "When is he away next, and which days does he train?",
-      "answer": "The player\u2019s next scheduled pause is 2026-10-05 to 2026-10-12. He trains on weekdays 1, 3, and 5 (Monday, Wednesday, Friday) in the Europe/Berlin timezone.",
+      "answer": "The player is away from 2026-10-05 to 2026-10-12. He trains on weekdays 1, 3, and 5 (Monday, Wednesday, Friday) in the Europe/Berlin timezone.",
       "checks": {
         "uses_supplied_figures": {
           "name": "uses_supplied_figures",
@@ -558,7 +558,7 @@
     {
       "case_id": "coach_alerts_01",
       "question": "Is a follow-up due on this player?",
-      "answer": "Yes. A follow-up alert was created on 2026-09-24, due on 2026-09-24, and the last check-in was on 2026-09-17. The alert is still open and overdue.",
+      "answer": "Yes. A follow-up alert was created on 2026-09-24, due the same day. The last check-in was on 2026-09-17, and the alert remains open.",
       "checks": {
         "uses_supplied_figures": {
           "name": "uses_supplied_figures",
@@ -676,7 +676,7 @@
     {
       "case_id": "coach_goal_en_01",
       "question": "Given the player's current goal and experience level, how should I align their training?",
-      "answer": "The player\u2019s current goal is to build strength while gaining muscle, and their experience level is intermediate. Their program, Hypertrophy Block A (Upper/Lower, 4\u00d7/week), already aligns with this goal by using moderate rep ranges (5\u201312) and RIR \u2265 2. The recent Squat e1RM increase (142.5 kg) shows progress. No adjustments are needed based on supplied telemetry.",
+      "answer": "The player\u2019s current goal is to build strength while gaining muscle, and their experience level is intermediate. The assigned program is Hypertrophy Block A (Upper/Lower split, 4x/week), which aligns with that goal. Adherence is 83.3% with no recent missed sessions. No program requests or check-in notes are supplied. No further alignment details are available in the telemetry.",
       "checks": {
         "uses_supplied_figures": {
           "name": "uses_supplied_figures",
@@ -736,7 +736,7 @@
     {
       "case_id": "coach_goal_ar_01",
       "question": "\u0628\u0627\u0644\u0646\u0638\u0631 \u0625\u0644\u0649 \u0647\u062f\u0641 \u0627\u0644\u0644\u0627\u0639\u0628 \u0627\u0644\u062d\u0627\u0644\u064a \u0648\u0645\u0633\u062a\u0648\u0649 \u062e\u0628\u0631\u062a\u0647\u060c \u0643\u064a\u0641 \u0623\u0648\u0627\u0626\u0645 \u062a\u062f\u0631\u064a\u0628\u0647\u061f",
-      "answer": "\u0628\u0646\u0627\u0621\u064b \u0639\u0644\u0649 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0645\u062a\u0627\u062d\u0629\u060c \u0627\u0644\u0647\u062f\u0641 \u0627\u0644\u062d\u0627\u0644\u064a \u0647\u0648 \"\u0632\u064a\u0627\u062f\u0629 \u0627\u0644\u0642\u0648\u0629\" \u0648\u0627\u0644\u0645\u0633\u062a\u0648\u0649 \"\u0645\u062a\u0648\u0633\u0637\". \u0627\u0644\u0628\u0631\u0646\u0627\u0645\u062c \u0627\u0644\u062d\u0627\u0644\u064a \u0647\u0648 Hypertrophy Block A (\u062a\u0636\u062e\u0645) \u0628\u062a\u0643\u0631\u0627\u0631 4 \u0623\u064a\u0627\u0645 \u0623\u0633\u0628\u0648\u0639\u064a\u064b\u0627. \u0644\u0645\u0648\u0627\u0621\u0645\u0629 \u0627\u0644\u062a\u062f\u0631\u064a\u0628 \u0645\u0639 \u0647\u062f\u0641 \u0627\u0644\u0642\u0648\u0629\u060c \u0642\u062f \u062a\u062d\u062a\u0627\u062c \u0625\u0644\u0649 \u062a\u062d\u0648\u064a\u0644 \u0627\u0644\u0628\u0631\u0646\u0627\u0645\u062c \u0646\u062d\u0648 \u062a\u0631\u0643\u064a\u0632 \u0623\u0642\u0644 \u0639\u0644\u0649 \u0627\u0644\u062a\u0643\u0631\u0627\u0631\u0627\u062a \u0627\u0644\u0639\u0627\u0644\u064a\u0629 \u0648RIR \u0627\u0644\u0645\u0646\u062e\u0641\u0636\u060c \u0648\u0627\u0644\u0627\u062a\u062c\u0627\u0647 \u0646\u062d\u0648 \u062a\u0643\u0631\u0627\u0631\u0627\u062a \u0623\u0642\u0644 (\u0645\u062b\u0644 3-5) \u0645\u0639 RIR \u0623\u0642\u0644 (\u0645\u062b\u0644 0-1) \u0648\u0632\u064a\u0627\u062f\u0629 \u0627\u0644\u0623\u062d\u0645\u0627\u0644 \u0627\u0644\u0646\u0633\u0628\u064a\u0629. \u0648\u0645\u0639 \u0630\u0644\u0643\u060c \u0644\u0627 \u062a\u0648\u062c\u062f \u0628\u064a\u0627\u0646\u0627\u062a \u0639\u0646 \u0627\u062a\u062c\u0627\u0647\u0627\u062a e1RM \u0623\u0648 \u0648\u0632\u0646 \u0627\u0644\u062c\u0633\u0645 \u0644\u062a\u0623\u0643\u064a\u062f \u0627\u0644\u062d\u0627\u062c\u0629 \u0627\u0644\u0641\u0648\u0631\u064a\u0629 \u0644\u0644\u062a\u0639\u062f\u064a\u0644. \u064a\u064f\u0648\u0635\u0649 \u0628\u0645\u0631\u0627\u062c\u0639\u0629 \u062a\u0642\u062f\u0645 \u0627\u0644\u0642\u0648\u0629 \u0641\u064a \u062c\u0644\u0633\u0627\u062a \u0627\u0644\u0642\u0631\u0641\u0635\u0627\u0621 \u0648\u0627\u0644\u0636\u063a\u0637 \u0644\u062a\u062d\u062f\u064a\u062f \u0645\u0627 \u0625\u0630\u0627 \u0643\u0627\u0646 \u0627\u0644\u062a\u062d\u0648\u0644 \u0636\u0631\u0648\u0631\u064a\u064b\u0627.",
+      "answer": "\u0628\u0646\u0627\u0621\u064b \u0639\u0644\u0649 \u0627\u0644\u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0645\u062a\u0627\u062d\u0629\u060c \u0627\u0644\u0647\u062f\u0641 \u0627\u0644\u062d\u0627\u0644\u064a \u0647\u0648 \"\u0632\u064a\u0627\u062f\u0629 \u0627\u0644\u0642\u0648\u0629\" \u0648\u0645\u0633\u062a\u0648\u0649 \u0627\u0644\u062e\u0628\u0631\u0629 \"\u0645\u062a\u0648\u0633\u0637\". \u0627\u0644\u0628\u0631\u0646\u0627\u0645\u062c \u0627\u0644\u062d\u0627\u0644\u064a \u0647\u0648 Hypertrophy Block A (\u062a\u0636\u062e\u0645) \u0628\u062a\u0642\u0633\u064a\u0645 \u0639\u0644\u0648\u064a/\u0633\u0641\u0644\u064a 4 \u0623\u064a\u0627\u0645 \u0623\u0633\u0628\u0648\u0639\u064a\u0627\u064b. \u0644\u0645\u0648\u0627\u0621\u0645\u0629 \u0627\u0644\u062a\u062f\u0631\u064a\u0628 \u0645\u0639 \u0647\u062f\u0641 \u0627\u0644\u0642\u0648\u0629\u060c \u0642\u062f \u062a\u062d\u062a\u0627\u062c \u0625\u0644\u0649 \u062a\u0639\u062f\u064a\u0644 \u0646\u0637\u0627\u0642\u0627\u062a \u0627\u0644\u062a\u0643\u0631\u0627\u0631\u0627\u062a \u0648RIR \u0646\u062d\u0648 \u0623\u062d\u0645\u0627\u0644 \u0623\u062b\u0642\u0644 \u0648\u062a\u0643\u0631\u0627\u0631\u0627\u062a \u0623\u0642\u0644. \u0648\u0645\u0639 \u0630\u0644\u0643\u060c \u0644\u0627 \u062a\u0648\u062c\u062f \u0628\u064a\u0627\u0646\u0627\u062a \u0643\u0627\u0641\u064a\u0629 \u0639\u0646 \u0627\u062a\u062c\u0627\u0647\u0627\u062a e1RM \u0623\u0648 \u0648\u0632\u0646 \u0627\u0644\u062c\u0633\u0645 \u0623\u0648 \u0645\u0644\u0627\u062d\u0638\u0627\u062a \u0627\u0644\u0641\u062d\u0635 \u0644\u062a\u0642\u062f\u064a\u0645 \u062a\u0648\u0635\u064a\u0629 \u0645\u062d\u062f\u062f\u0629. \u064a\u064f\u0631\u062c\u0649 \u062a\u0648\u0641\u064a\u0631 \u062a\u0648\u062c\u064a\u0647\u0627\u062a \u0625\u0636\u0627\u0641\u064a\u0629 \u062d\u0648\u0644 \u0627\u0644\u062a\u0639\u062f\u064a\u0644\u0627\u062a \u0627\u0644\u0645\u0637\u0644\u0648\u0628\u0629.",
       "checks": {
         "uses_supplied_figures": {
           "name": "uses_supplied_figures",
@@ -859,7 +859,7 @@
     {
       "case_id": "coach_trends_ar_01",
       "question": "\u0643\u064a\u0641 \u062a\u063a\u064a\u0631 \u0648\u0632\u0646 \u0627\u0644\u062c\u0633\u0645 \u0648e1RM \u0644\u062a\u0645\u0631\u064a\u0646 Squat \u062e\u0644\u0627\u0644 \u0627\u0644\u0641\u062a\u0631\u0629 \u0627\u0644\u0623\u062e\u064a\u0631\u0629\u061f",
-      "answer": "\u062e\u0644\u0627\u0644 \u0627\u0644\u0623\u0633\u0627\u0628\u064a\u0639 \u0627\u0644\u062b\u0645\u0627\u0646\u064a\u0629 \u0627\u0644\u0623\u062e\u064a\u0631\u0629\u060c \u0627\u0646\u062e\u0641\u0636 \u0648\u0632\u0646 \u0627\u0644\u0644\u0627\u0639\u0628 \u0645\u0646 80 \u0643\u062c\u0645 (2026-08-03) \u0625\u0644\u0649 78.5 \u0643\u062c\u0645 (2026-09-28)\u060c \u0623\u064a \u062a\u063a\u064a\u0631 \u0642\u062f\u0631\u0647 -1.5 \u0643\u062c\u0645. \u0628\u0627\u0644\u0646\u0633\u0628\u0629 \u0644\u0640 e1RM \u0644\u062a\u0645\u0631\u064a\u0646 Squat\u060c \u0627\u0631\u062a\u0641\u0639 \u0645\u0646 120 \u0643\u062c\u0645 (2026-09-07) \u0625\u0644\u0649 127.5 \u0643\u062c\u0645 (2026-09-21)\u060c \u0623\u064a \u062a\u063a\u064a\u0631 \u0642\u062f\u0631\u0647 +7.5 \u0643\u062c\u0645. \u0623\u062d\u062f\u062b \u062a\u0633\u062c\u064a\u0644 \u0634\u062e\u0635\u064a \u0644\u0644\u0640 e1RM \u0643\u0627\u0646 142.5 \u0643\u062c\u0645 \u0641\u064a 2026-09-23.",
+      "answer": "\u062e\u0644\u0627\u0644 \u0627\u0644\u0623\u0633\u0627\u0628\u064a\u0639 \u0627\u0644\u062b\u0645\u0627\u0646\u064a\u0629 \u0627\u0644\u0623\u062e\u064a\u0631\u0629\u060c \u0627\u0646\u062e\u0641\u0636 \u0648\u0632\u0646 \u0627\u0644\u0644\u0627\u0639\u0628 \u0645\u0646 80 \u0643\u062c\u0645 (2026-08-03) \u0625\u0644\u0649 78.5 \u0643\u062c\u0645 (2026-09-28)\u060c \u0623\u064a \u062a\u063a\u064a\u0631 \u0642\u062f\u0631\u0647 -1.5 \u0643\u062c\u0645. \u0628\u0627\u0644\u0646\u0633\u0628\u0629 \u0644\u0640 e1RM \u0644\u062a\u0645\u0631\u064a\u0646 Squat\u060c \u0627\u0631\u062a\u0641\u0639 \u0645\u0646 120 \u0643\u062c\u0645 (2026-09-07) \u0625\u0644\u0649 127.5 \u0643\u062c\u0645 (2026-09-21)\u060c \u0623\u064a \u062a\u063a\u064a\u0631 \u0642\u062f\u0631\u0647 +7.5 \u0643\u062c\u0645.",
       "checks": {
         "uses_supplied_figures": {
           "name": "uses_supplied_figures",

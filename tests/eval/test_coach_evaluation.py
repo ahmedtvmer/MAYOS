@@ -284,6 +284,8 @@ def test_dates_are_whole_tokens_and_never_ground_a_bare_day_number():
     assert check["fabricated"] == [17.0]
     # The date itself is not a fabricated figure.
     assert coach_rubric.check_no_fabricated_numbers("Checked in on 2026-09-17.", allowed)["passed"]
+    # A date glued to an Arabic conjunction is still a whole date token.
+    assert coach_rubric.check_no_fabricated_numbers("بين 2026-08-03 و2026-09-17", allowed)["passed"]
 
 
 def test_month_and_year_dates_do_not_make_the_year_a_fabricated_figure():

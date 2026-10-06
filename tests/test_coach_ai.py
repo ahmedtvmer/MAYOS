@@ -65,9 +65,10 @@ def api(tmp_path: Path, monkeypatch):
     )
     cat_conn.execute("CREATE TABLE exercise_secondary_muscles (exercise_id TEXT, muscle TEXT);")
     cat_conn.execute(
-        "INSERT INTO exercises (id, name, body_part, target_muscle) VALUES"
-        " ('sq', 'Squat', 'Upper Legs', 'Quads'), ('bp', 'Bench Press', 'Chest', 'Chest'),"
-        " ('row', 'Row', 'Back', 'Back');"
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) VALUES"
+        " ('sq', 'Squat', 'Upper Legs', 'Quads', 'barbell'),"
+        " ('bp', 'Bench Press', 'Chest', 'Chest', 'barbell'),"
+        " ('row', 'Row', 'Back', 'Back', 'barbell');"
     )
     cat_conn.commit()
     cat_conn.close()
@@ -623,12 +624,52 @@ def test_render_context_speaks_effort_as_rir_never_rpe():
     assert "intensity_cap_rpe" not in rendered
 
 
+def test_active_coach_program_model_context_includes_curated_exercise_facts(
+    api, seed_exercise_curation
+):
+    _client, db, _ledger_dir = api
+    _coach_headers, _player_headers, assignment_id = _assigned_player(api)
+    seed_exercise_curation(
+        db,
+        {
+            "bp": {
+                "primary_action": "Shoulder Horizontal Adduction",
+                "secondary_actions": ["Elbow Extension"],
+                "primary_muscle": "Chest",
+            }
+        },
+    )
+    program = _program_with_lifts([[_program_lift("bp", "Bench Press", "flat_press")]])
+    program_data = program.model_dump()
+    program_data.pop("created_at", None)
+    db.switch_user("p1")
+    db.ledger.save_training_program(program_data)
+    facts = coach_ai.gather_player_context(db, _account_id(db, "coach"), assignment_id)
+    assert facts is not None
+    model = ScriptedChatModel(["The program includes a bench press."])
+
+    model.invoke(
+        coach_ai.build_messages(
+            coach_ai.render_context(facts), "What is in the program?", []
+        )
+    )
+
+    model_context = model.calls[0]["messages"][0].content
+    for field in (
+        "Primary action: Shoulder Horizontal Adduction",
+        "Secondary actions: Elbow Extension",
+        "Primary muscle: Chest",
+        "Equipment category: Free weight",
+    ):
+        assert field in model_context
+
+
 
 def test_system_prompt_forbids_computation_and_medical_advice():
     assert "Never compute, estimate, or invent" in coach_ai.SYSTEM_PROMPT
     assert "no diagnosis" in coach_ai.SYSTEM_PROMPT
     assert '"the player"' in coach_ai.SYSTEM_PROMPT
-    assert coach_ai.CONTEXT_VERSION == "coach-context-v4"
+    assert coach_ai.CONTEXT_VERSION == "coach-context-v5"
 
 
 def test_issue_148_messages_have_one_leading_system_message():
