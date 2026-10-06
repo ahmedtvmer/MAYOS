@@ -204,12 +204,12 @@ def test_substitution_db_rdl_explicit_variant(db_with_good_morning):
         state, {"configurable": {"ledger": db_with_good_morning.ledger, "store": db_with_good_morning}}
     )
     assert res["program_updated"] is True, f"Failed swap: {res.get('response_content')}"
-    assert "dumbbell romanian deadlift" in res["response_content"].lower()
+    assert "romanian deadlift (dumbbell)" in res["response_content"].lower()
 
     # Check database program slot
     active_after = db_with_good_morning.ledger.get_active_program()
     lower_day = next(day for day in active_after.days if day.day_name == "Lower 2")
-    assert any(ex.exercise_name.lower() == "dumbbell romanian deadlift" for ex in lower_day.exercises)
+    assert any(ex.exercise_name.lower() == "romanian deadlift (dumbbell)" for ex in lower_day.exercises)
     assert any(ex.exercise_name.lower() == "romanian deadlift (barbell)" for ex in active_after.days[0].exercises)
 
 

@@ -508,8 +508,8 @@ def test_confirmed_staples_use_display_names_in_library_reads(fresh_store):
         "3562": ("Hip Thrust (Barbell)", "barbell hip thrust"),
         "757": ("Incline Bench Press (Smith Machine)", "smith incline press"),
         "175": ("Kneeling Crunch (Cable)", "cable crunch"),
-        "3541": ("Incline DB Y-Raise", "incline db y raise"),
-        "318": ("Incline DB Curl", "incline db curl"),
+        "3541": ("Incline Y-Raise (Dumbbell)", "incline db y raise"),
+        "318": ("Incline Curl (Dumbbell)", "incline db curl"),
         "598": ("Hip Adduction (Machine)", "hip adduction"),
     }
 
