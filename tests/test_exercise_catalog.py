@@ -51,6 +51,17 @@ def api(tmp_path: Path, monkeypatch):
         " ('lp', 'Leg Press', 'Upper Legs', 'Quads', 'machine', '', 'images/lp.jpg', NULL),"
         " ('op', 'Overhead Press', 'Shoulders', 'Shoulders', 'barbell', '', 'images/op.jpg', NULL);"
     )
+    cat_conn.executemany(
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment, instructions) "
+        "VALUES (?, ?, ?, ?, ?, '')",
+        [
+            ("raw-cable", "cable row", "Back", "lats", "cable"),
+            ("raw-situp", "3/4 sit-up", "Abs", "abs", "body weight"),
+            ("raw-shrug", "lever gripless shrug v. 2", "Back", "traps", "cable"),
+            ("raw-parenthetical", "cable seated shrug (male)", "Back", "traps", "cable"),
+            ("mayos:1", "Kelso shrug", "Back", "traps", "cable"),
+        ],
+    )
     cat_conn.commit()
     cat_conn.close()
     db = DatabaseManager(
@@ -99,6 +110,33 @@ def test_exercise_detail_returns_real_catalog_fields(api):
         "gif_path": "videos/bp.gif",
         "provenance": "ExerciseDB",
     }
+
+
+def test_unreviewed_exercises_use_title_case_names_in_search_and_detail(api):
+    client, _ = api
+    token = _register(client, "unreviewed")["access_token"]
+
+    expected_names = (
+        ("raw-cable", "cable row", "Cable Row"),
+        ("raw-situp", "3/4 sit-up", "3/4 Sit-Up"),
+        ("raw-shrug", "lever gripless shrug v. 2", "Lever Gripless Shrug V. 2"),
+        ("raw-parenthetical", "cable seated shrug (male)", "Cable Seated Shrug (Male)"),
+    )
+    for exercise_id, source_name, display_name in expected_names:
+        search = client.get(
+            "/workouts/exercises",
+            headers=_authed(token),
+            params={"query": source_name},
+        )
+        assert search.status_code == 200, search.text
+        assert any(
+            exercise["id"] == exercise_id and exercise["name"] == display_name
+            for exercise in search.json()["exercises"]
+        )
+
+        detail = client.get(f"/workouts/exercises/{exercise_id}", headers=_authed(token))
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["name"] == display_name
 
 
 def test_exercise_detail_unknown_id_is_404(api):
@@ -174,7 +212,8 @@ def test_replace_browse_ranks_display_named_exercises_and_returns_every_match(ap
         rows,
     )
     db.catalog_conn.executemany(
-        "INSERT INTO exercise_display_names (exercise_id, display_name) VALUES (?, ?)",
+        "INSERT INTO exercise_display_names (exercise_id, display_name, is_reviewed) "
+        "VALUES (?, ?, 1)",
         [("2330", "Wide-Grip Lat Pulldown"), ("150", "Lat Pulldown")],
     )
     db.catalog_conn.commit()
@@ -188,8 +227,24 @@ def test_replace_browse_ranks_display_named_exercises_and_returns_every_match(ap
     matches = resp.json()["exercises"]
     ids = [match["id"] for match in matches]
     assert ids[:2] == ["150", "2330"]
-    assert len(matches) == 32
+    assert len(matches) == 33
     assert "lat-29" in ids
+
+
+def test_replace_browse_ranks_case_only_reviewed_staple_first(api):
+    client, _ = api
+    token = _register(client, "reviewed-traps")["access_token"]
+
+    resp = client.get(
+        "/workouts/exercises",
+        headers=_authed(token),
+        params={"target_muscle": "traps"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    matches = resp.json()["exercises"]
+    assert matches[0]["id"] == "mayos:1"
+    assert matches[0]["name"] == "Kelso Shrug"
 
 
 def test_catalog_search_combines_a_name_query_with_the_muscle(api):

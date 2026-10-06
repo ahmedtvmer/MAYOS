@@ -6,8 +6,6 @@ from typing import TypedDict
 class AuthoredExercise(TypedDict):
     id: str
     name: str
-    display_name: str
-    aliases: tuple[str, ...]
     body_part: str
     target_muscle: str
     secondary_muscles: tuple[str, ...]
@@ -15,14 +13,12 @@ class AuthoredExercise(TypedDict):
     instructions: str
 
 
-# Keep additions as rows here so each new MAYOS-authored exercise gets the same
-# upsert, provenance, alias, and embedding behavior during Exercise library loading.
+# Keep authored definitions here; display names and aliases live in the
+# Exercise curation file so reviewed names have a single source.
 MAYOS_AUTHORED_EXERCISES: tuple[AuthoredExercise, ...] = (
     {
         "id": "mayos:1",
         "name": "Kelso shrug",
-        "display_name": "Kelso Shrug",
-        "aliases": ("kelso shrug", "chest-supported shrug"),
         "body_part": "back",
         "target_muscle": "traps",
         "secondary_muscles": ("rhomboids", "lats"),
@@ -36,8 +32,6 @@ MAYOS_AUTHORED_EXERCISES: tuple[AuthoredExercise, ...] = (
     {
         "id": "mayos:2",
         "name": "Bayesian curl",
-        "display_name": "Bayesian Curl",
-        "aliases": ("bayesian curl", "behind-the-body cable curl"),
         "body_part": "upper arms",
         "target_muscle": "biceps",
         "secondary_muscles": ("forearms",),
@@ -51,8 +45,6 @@ MAYOS_AUTHORED_EXERCISES: tuple[AuthoredExercise, ...] = (
     {
         "id": "mayos:3",
         "name": "Cable Y-raise",
-        "display_name": "Cable Y-Raise",
-        "aliases": ("cable y raise", "standing cable y raise"),
         "body_part": "shoulders",
         "target_muscle": "delts",
         "secondary_muscles": ("traps",),
@@ -66,8 +58,6 @@ MAYOS_AUTHORED_EXERCISES: tuple[AuthoredExercise, ...] = (
     {
         "id": "mayos:4",
         "name": "machine hip thrust",
-        "display_name": "Machine Hip Thrust",
-        "aliases": ("machine hip thrust", "hip thrust machine"),
         "body_part": "upper legs",
         "target_muscle": "glutes",
         "secondary_muscles": ("hamstrings",),

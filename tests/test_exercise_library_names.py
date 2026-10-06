@@ -5,8 +5,31 @@ from pathlib import Path
 
 import pytest
 
+CURATION_COLUMNS = [
+    "id",
+    "source_name",
+    "display_name",
+    "aliases",
+    "primary_action",
+    "secondary_actions",
+    "primary_muscle",
+    "load_type",
+    "hidden",
+    "duplicate_of",
+]
 
-def _seed_minimal_library(store, path):
+
+def _write_curation(path, rows):
+    with path.open("w", newline="", encoding="utf-8") as curation_file:
+        writer = csv.writer(curation_file)
+        writer.writerow(CURATION_COLUMNS)
+        for exercise_id, source_name, display_name, aliases in rows:
+            writer.writerow(
+                [exercise_id, source_name, display_name, aliases, "", "", "", "", "", ""]
+            )
+
+
+def _seed_minimal_library(store, path, curation_path=None):
     with path.open("w", newline="", encoding="utf-8") as seed_file:
         writer = csv.writer(seed_file)
         writer.writerow(
@@ -15,10 +38,14 @@ def _seed_minimal_library(store, path):
         writer.writerow(
             ["9001", "cable row", "back", "lats", "cable", None, None, "Pull the handle to your ribs."]
         )
-    store.initialize_and_seed(path)
+    if curation_path is None:
+        store.initialize_and_seed(path)
+    else:
+        store.initialize_and_seed(path, curation_path)
 
 
-def test_unique_exact_exercise_id_lookup_uses_names_and_rejects_ambiguity(tmp_path, monkeypatch):
+@pytest.fixture
+def seed_store(tmp_path, monkeypatch):
     from database.database_manager import DatabaseManager
     from database.exercise_library import embeddings
     from database.schema.definitions import EMBEDDING_DIM
@@ -34,12 +61,22 @@ def test_unique_exact_exercise_id_lookup_uses_names_and_rejects_ambiguity(tmp_pa
             return [1.0] + [0.0] * (EMBEDDING_DIM - 1)
 
     monkeypatch.setattr(embeddings, "_load_embedding_model", lambda: LocalEmbeddingStub())
+    try:
+        yield fresh_store
+    finally:
+        if fresh_store.ledger_conn is not None:
+            fresh_store.ledger_conn.close()
+        fresh_store.catalog_conn.close()
+
+
+def test_unique_exact_exercise_id_lookup_uses_names_and_rejects_ambiguity(seed_store, tmp_path):
+    fresh_store = seed_store
     _seed_minimal_library(fresh_store, tmp_path / "seed.csv")
 
     assert fresh_store.find_unique_exercise_id_by_exact_name("Cable Row") == "9001"
     with fresh_store.catalog_locked() as conn:
         conn.execute(
-            "INSERT INTO exercise_display_names (display_name, exercise_id) VALUES (?, ?)",
+            "UPDATE exercise_display_names SET display_name = ? WHERE exercise_id = ?",
             ("Cable Row Display", "9001"),
         )
         conn.execute(
@@ -62,25 +99,12 @@ def test_unique_exact_exercise_id_lookup_uses_names_and_rejects_ambiguity(tmp_pa
         )
         conn.commit()
     assert fresh_store.find_unique_exercise_id_by_exact_name("Cable Row Alias") is None
-    fresh_store.catalog_conn.close()
 
 
-def test_mayos_authored_staples_are_searchable_and_have_reviewable_details(tmp_path, monkeypatch):
-    from database.database_manager import DatabaseManager
-    from database.exercise_library import embeddings
+def test_mayos_authored_staples_are_searchable_and_have_reviewable_details(seed_store, tmp_path):
     from database.schema.definitions import EMBEDDING_DIM
 
-    fresh_store = DatabaseManager(
-        catalog_path=tmp_path / "catalog.db",
-        ledgers_dir=tmp_path / "users",
-        backups_dir=tmp_path / "backups",
-    )
-
-    class LocalEmbeddingStub:
-        def embed_query(self, text):
-            return [1.0] + [0.0] * (EMBEDDING_DIM - 1)
-
-    monkeypatch.setattr(embeddings, "_load_embedding_model", lambda: LocalEmbeddingStub())
+    fresh_store = seed_store
     _seed_minimal_library(fresh_store, tmp_path / "seed.csv")
 
     expected = {
@@ -108,42 +132,20 @@ def test_mayos_authored_staples_are_searchable_and_have_reviewable_details(tmp_p
             result["id"] == exercise_id
             for result in fresh_store.search_similar_exercises(query_vector, limit=20)
         )
-    fresh_store.catalog_conn.close()
 
 
-def test_mayos_authored_staples_are_upserted_and_keep_their_exercise_ids(tmp_path, monkeypatch):
-    from database.database_manager import DatabaseManager
-    from database.exercise_library import authored
-    from database.exercise_library import embeddings
-    from database.schema.definitions import EMBEDDING_DIM
+def test_curation_names_and_aliases_are_upserted_on_each_seed(seed_store, tmp_path):
+    fresh_store = seed_store
+    seed_path = tmp_path / "seed.csv"
+    curation_path = tmp_path / "curation.csv"
+    _write_curation(curation_path, [("mayos:1", "Kelso shrug", "Older Kelso", "older kelso")])
+    _seed_minimal_library(fresh_store, seed_path, curation_path)
 
-    fresh_store = DatabaseManager(
-        catalog_path=tmp_path / "catalog.db",
-        ledgers_dir=tmp_path / "users",
-        backups_dir=tmp_path / "backups",
-    )
+    assert fresh_store.get_exercise_library_entry("mayos:1")["name"] == "Older Kelso"
+    assert any(match["id"] == "mayos:1" for match in fresh_store.find_exercises_by_name("older kelso"))
 
-    class LocalEmbeddingStub:
-        def embed_query(self, text):
-            return [1.0] + [0.0] * (EMBEDDING_DIM - 1)
-
-    monkeypatch.setattr(embeddings, "_load_embedding_model", lambda: LocalEmbeddingStub())
-    current_seed = authored.MAYOS_AUTHORED_EXERCISES
-    older_seed = tuple(
-        {
-            **exercise,
-            "name": "kelso shrug old wording" if exercise["id"] == "mayos:1" else exercise["name"],
-            "display_name": "Old Kelso Shrug" if exercise["id"] == "mayos:1" else exercise["display_name"],
-            "aliases": ("old kelso shrug",) if exercise["id"] == "mayos:1" else exercise["aliases"],
-        }
-        for exercise in current_seed
-    )
-    monkeypatch.setattr(authored, "MAYOS_AUTHORED_EXERCISES", older_seed)
-    _seed_minimal_library(fresh_store, tmp_path / "seed.csv")
-    assert fresh_store.get_exercise_library_entry("mayos:1")["name"] == "Old Kelso Shrug"
-
-    monkeypatch.setattr(authored, "MAYOS_AUTHORED_EXERCISES", current_seed)
-    fresh_store.initialize_and_seed(tmp_path / "seed.csv")
+    _write_curation(curation_path, [("mayos:1", "Kelso shrug", "Kelso Shrug", "kelso shrug")])
+    fresh_store.initialize_and_seed(seed_path, curation_path)
 
     assert fresh_store.get_exercise_library_entry("mayos:1")["name"] == "Kelso Shrug"
     assert any(
@@ -152,27 +154,27 @@ def test_mayos_authored_staples_are_upserted_and_keep_their_exercise_ids(tmp_pat
     )
     assert all(
         match["id"] != "mayos:1"
-        for match in fresh_store.find_exercises_by_name("old kelso shrug", limit=10)
+        for match in fresh_store.find_exercises_by_name("older kelso", limit=10)
     )
-    fresh_store.catalog_conn.close()
 
 
-def test_existing_vectors_backfill_tracking_without_loading_embedding_model(tmp_path, monkeypatch):
-    from database.database_manager import DatabaseManager
+def test_empty_curation_file_uses_title_case_source_names(seed_store, tmp_path):
+    fresh_store = seed_store
+    curation_path = tmp_path / "empty-curation.csv"
+    _write_curation(curation_path, [])
+    _seed_minimal_library(fresh_store, tmp_path / "seed.csv", curation_path)
+
+    assert fresh_store.get_exercise_library_entry("9001")["name"] == "Cable Row"
+    assert any(
+        match["id"] == "9001" and match["name"] == "Cable Row"
+        for match in fresh_store.find_exercises_by_name("cable row")
+    )
+
+
+def test_existing_vectors_backfill_tracking_without_loading_embedding_model(seed_store, monkeypatch, tmp_path):
     from database.exercise_library import embeddings
-    from database.schema.definitions import EMBEDDING_DIM
 
-    fresh_store = DatabaseManager(
-        catalog_path=tmp_path / "catalog.db",
-        ledgers_dir=tmp_path / "users",
-        backups_dir=tmp_path / "backups",
-    )
-
-    class LocalEmbeddingStub:
-        def embed_query(self, text):
-            return [1.0] + [0.0] * (EMBEDDING_DIM - 1)
-
-    monkeypatch.setattr(embeddings, "_load_embedding_model", lambda: LocalEmbeddingStub())
+    fresh_store = seed_store
     _seed_minimal_library(fresh_store, tmp_path / "seed.csv")
     fresh_store.catalog_conn.execute("DROP TABLE exercise_embedding_sources")
     fresh_store.catalog_conn.commit()
@@ -184,7 +186,50 @@ def test_existing_vectors_backfill_tracking_without_loading_embedding_model(tmp_
     fresh_store.initialize_and_seed(tmp_path / "seed.csv")
 
     assert fresh_store.get_exercise_library_entry("mayos:1")["name"] == "Kelso Shrug"
-    fresh_store.catalog_conn.close()
+
+
+def test_existing_display_name_schema_is_upgraded_on_catalog_startup(tmp_path):
+    import sqlite3
+
+    from database.database_manager import DatabaseManager
+
+    catalog_path = tmp_path / "old-catalog.db"
+    conn = sqlite3.connect(catalog_path)
+    conn.executescript("""
+        CREATE TABLE exercises (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            body_part TEXT NOT NULL,
+            target_muscle TEXT NOT NULL,
+            equipment TEXT NOT NULL,
+            image_path TEXT,
+            gif_path TEXT,
+            instructions TEXT
+        );
+        CREATE TABLE exercise_display_names (
+            exercise_id TEXT PRIMARY KEY,
+            display_name TEXT NOT NULL
+        );
+        INSERT INTO exercises (id, name, body_part, target_muscle, equipment)
+        VALUES ('legacy', 'cable row', 'Back', 'lats', 'cable');
+        INSERT INTO exercise_display_names (exercise_id, display_name)
+        VALUES ('legacy', 'Legacy Display');
+    """)
+    conn.commit()
+    conn.close()
+
+    store = DatabaseManager(
+        catalog_path=catalog_path,
+        ledgers_dir=tmp_path / "users",
+        backups_dir=tmp_path / "backups",
+    )
+    try:
+        store.create_catalog_schema()
+        assert store.get_exercise_library_entry("legacy")["name"] == "Cable Row"
+    finally:
+        if store.ledger_conn is not None:
+            store.ledger_conn.close()
+        store.catalog_conn.close()
 
 
 @pytest.mark.parametrize(

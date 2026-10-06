@@ -121,10 +121,16 @@ _Arabic_: تمرين من إنشاء المدرب
 _Avoid_: Custom exercise
 
 **Exercise display name**:
-The gym-standard name a player sees for an exercise in the Exercise library, such as "Wide-Grip Lat Pulldown". The library's source name stays underneath and is never shown when a display name exists.
+Every Exercise library row has a name shown to the Player. A reviewed row uses its gym-standard name, such as "Wide-Grip Lat Pulldown"; an unreviewed row shows its Exercise source name in Title Case. The source name, id and media stay unchanged.
+
+**Exercise source name**:
+The name supplied by ExerciseDB or by a MAYOS-authored Exercise library definition. It stays on the source row with its id and media; curation never rewrites it.
 
 **Exercise alias**:
 An alternative name a player may search by that resolves to one exercise in the Exercise library, such as "frontal lat pulldown" or "lat pull-down".
+
+**Exercise curation file**:
+The MAYOS-owned `data/exercise_curation.csv`, keyed by Exercise library id. It holds reviewed Exercise display names and aliases, with later curated fields kept beside the source row.
 
 **Staple exercise**:
 An exercise that elite coaches repeatedly choose for a movement, such as the Wide-Grip Lat Pulldown for a vertical pull. Each movement has an ordered list of staples; the first one the player's Equipment access allows is prescribed and the next ones are its suggested substitutes.

@@ -35,7 +35,7 @@ def _exercise_name_rows(
     name_expression, display_name_join = effective_exercise_name_sql()
     if ranking == "display_name_first":
         order_by = (
-            f"CASE WHEN {name_expression} = e.name THEN 1 ELSE 0 END, "
+            "CASE WHEN COALESCE(d.is_reviewed, 0) = 1 THEN 0 ELSE 1 END, "
             f"LOWER({name_expression}), e.id"
         )
     else:

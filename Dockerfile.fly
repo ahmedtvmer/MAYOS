@@ -36,10 +36,11 @@ RUN python -c "from langchain_huggingface import HuggingFaceEmbeddings; \
     HuggingFaceEmbeddings(model_name='BAAI/bge-small-en-v1.5', model_kwargs={'device': 'cpu'}, \
     encode_kwargs={'normalize_embeddings': True})"
 
-# The production catalog seed CSV is operator-provided and is not tracked in
-# this repository. Copying it explicitly fails the build fast when it is absent,
-# instead of producing an image that cannot seed the catalog.
+# Keep explicit COPY instructions so the Fly build fails fast if either seed
+# file is missing. The production catalog CSV is operator-provided and ignored;
+# the curation CSV is tracked and accompanies it for seeding.
 COPY data/processed_exercises.csv /app/data/processed_exercises.csv
+COPY data/exercise_curation.csv /app/data/exercise_curation.csv
 
 COPY . .
 

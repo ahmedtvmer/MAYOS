@@ -247,11 +247,11 @@ def test_catalog_name_resolution_tiers(sub_db):
     db = sub_db
     assert db.find_exercises_by_name("machine chest press")[0]["id"] == "577"
     # Punctuation-insensitive exact: "push up" ≡ "push-up".
-    assert db.find_exercises_by_name("push up")[0]["name"] == "push-up"
+    assert db.find_exercises_by_name("push up")[0]["name"] == "Push-Up"
     # Substring: partial name resolves to the full catalog name.
-    assert db.find_exercises_by_name("romanian deadlift")[0]["name"] == "barbell romanian deadlift"
+    assert db.find_exercises_by_name("romanian deadlift")[0]["name"] == "Barbell Romanian Deadlift"
     # Token-AND: scrambled tokens still resolve.
-    assert db.find_exercises_by_name("press chest machine")[0]["name"] == "machine chest press"
+    assert db.find_exercises_by_name("press chest machine")[0]["name"] == "Machine Chest Press"
     # The hallucinated transcript target matches nothing.
     assert db.find_exercises_by_name(HALLUCINATED_TARGET) == []
 
@@ -396,15 +396,15 @@ def test_followup_hint_uses_real_catalog_name(sub_db, monkeypatch):
     variants = [
         {
             "id": MACHINE_LAT_VARIANT,
-            "name": "machine reverse grip lateral pulldown",
+            "name": "Machine Reverse Grip Lateral Pulldown",
             "target_muscle": "lats",
             "body_part": "back",
             "equipment": "leverage machine",
             "distance": 0.10,
         },
         {
-            "id": CABLE_LAT_SLOT,
-            "name": "cable bar lateral pulldown",
+            "id": "7",
+            "name": "Alternate Lateral Pulldown",
             "target_muscle": "lats",
             "body_part": "back",
             "equipment": "cable",
@@ -415,7 +415,7 @@ def test_followup_hint_uses_real_catalog_name(sub_db, monkeypatch):
 
     res = exercise_substitution_node(_state("reverse grip machine lat pulldown", "something easier on my elbows"), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
     assert res["program_updated"] is True
-    assert "swap reverse grip machine lat pulldown for cable bar lateral pulldown" in res["response_content"]
+    assert "swap Reverse Grip Machine Lat Pulldown for Alternate Lateral Pulldown" in res["response_content"]
     assert "swap for cable machine" not in res["response_content"]
     assert _slot_name(sub_db, 1) == "machine reverse grip lateral pulldown"
     active = sub_db.ledger.get_active_program()

@@ -1,12 +1,13 @@
-"""Exercise library upserts and curated names (ADR 053, #225)."""
+"""Exercise library upserts with curation from MAYOS-owned data (ADR 070)."""
 
 import re
 
 import pandas as pd
 from database.shared import DEFAULT_CSV_PATH
 from database.exercise_library import authored
+from database.exercise_library.curation import DEFAULT_CURATION_CSV_PATH
+from database.exercise_library.curation import apply_exercise_curation
 from database.exercise_library.embeddings import sync_exercise_embeddings
-from database.exercise_library.names import apply_curated_exercise_names
 from database.exercise_library.schema import EXERCISE_COLUMNS
 
 from utils.logger import MyosLogger
@@ -15,7 +16,11 @@ logger = MyosLogger().get_logger(__name__)
 
 
 class ExerciseSeedingMixin:
-    def initialize_and_seed(self, csv_path=DEFAULT_CSV_PATH) -> None:
+    def initialize_and_seed(
+        self,
+        csv_path=DEFAULT_CSV_PATH,
+        curation_path=DEFAULT_CURATION_CSV_PATH,
+    ) -> None:
         # The catalog schema only: any per-ledger schema is created by
         # ``open_ledger`` when a handle is actually opened (ADR 041).
         self.create_catalog_schema()
@@ -40,7 +45,7 @@ class ExerciseSeedingMixin:
             _replace_secondary_muscles(cursor, authored_rows, authored_muscles)
             _upsert_provenance(cursor, exercise_rows, "ExerciseDB")
             _upsert_provenance(cursor, authored_rows, "MAYOS")
-            apply_curated_exercise_names(cursor)
+            apply_exercise_curation(cursor, curation_path)
             sync_exercise_embeddings(cursor, all_rows)
 
     EXCLUDED_BIOMECHANICAL_PATTERNS = ("behind neck", "behind the neck", "upright row")

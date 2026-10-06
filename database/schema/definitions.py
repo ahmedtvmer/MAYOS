@@ -7,7 +7,7 @@ import json
 from typing import Any
 
 from agent.prompts import DEFAULT_ASSISTANT_STYLE
-from database.exercise_library.names import apply_curated_exercise_names
+from database.exercise_library.curation import apply_exercise_curation
 from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION
 from database.migration_manager import EQUIPMENT_ACCESS_DDL
 from database.migration_manager import CHECKPOINT_REVIEWS_DDL
@@ -32,9 +32,18 @@ class SchemaMixin:
                 CREATE TABLE IF NOT EXISTS exercise_display_names (
                     exercise_id TEXT PRIMARY KEY,
                     display_name TEXT NOT NULL,
+                    is_reviewed INTEGER NOT NULL DEFAULT 0 CHECK (is_reviewed IN (0, 1)),
                     FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
                 )
             """)
+            display_name_columns = self._table_columns(
+                self.catalog_conn.cursor(), "exercise_display_names"
+            )
+            if "is_reviewed" not in display_name_columns:
+                self.catalog_conn.execute(
+                    "ALTER TABLE exercise_display_names ADD COLUMN "
+                    "is_reviewed INTEGER NOT NULL DEFAULT 0 CHECK (is_reviewed IN (0, 1))"
+                )
             self.catalog_conn.execute("""
                 CREATE TABLE IF NOT EXISTS exercise_aliases (
                     exercise_id TEXT NOT NULL,
@@ -52,7 +61,7 @@ class SchemaMixin:
                 "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'exercises'"
             ).fetchone()
             if exercise_table_exists is not None:
-                apply_curated_exercise_names(self.catalog_conn.cursor())
+                apply_exercise_curation(self.catalog_conn.cursor())
 
     def create_catalog_schema(self) -> None:
         with self._catalog_lock:

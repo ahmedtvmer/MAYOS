@@ -287,7 +287,9 @@ def test_program_request_responses_include_library_display_names_on_every_route(
     assert _publish(client, coach_headers, assignment_id).status_code == 200
     with db.catalog_locked() as conn:
         conn.execute(
-            "INSERT INTO exercise_display_names (exercise_id, display_name) VALUES (?, ?)",
+            "INSERT INTO exercise_display_names (exercise_id, display_name, is_reviewed) VALUES (?, ?, 1) "
+            "ON CONFLICT(exercise_id) DO UPDATE SET "
+            "display_name = excluded.display_name, is_reviewed = excluded.is_reviewed",
             ("sq", "Barbell Squat"),
         )
         conn.commit()

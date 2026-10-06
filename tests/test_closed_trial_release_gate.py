@@ -476,6 +476,9 @@ def test_closed_trial_release_gate_story(api, monkeypatch, scripted_chat_model):
     assert reconciled.json()["program_version"] == captured_old_version
     assert reconciled.json()["active_program_version_at_sync"] == active_before_sync.json()["version"]
     assert {row["kind"] for row in reconciled.json()["divergences"]} == {"skipped", "unplanned"}
+    assert ("unplanned", "1", "3/4 Sit-Up") in _divergence_tuples(
+        reconciled.json()["divergences"]
+    )
     retry = client.post("/workouts/sessions", headers=player_headers, json=offline)
     assert retry.status_code == 200
     assert retry.json()["session_id"] == reconciled.json()["session_id"]

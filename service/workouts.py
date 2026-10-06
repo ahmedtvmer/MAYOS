@@ -691,15 +691,17 @@ def _persist_session(
         for ex in day_plan.exercises
         if str(ex.exercise_id) not in performed_ids
     ]
-    divergences.extend(
-        {
-            "kind": "unplanned",
-            "exercise_id": entry["exercise_id"],
-            "exercise_name": entry["exercise_name"],
-        }
-        for entry in performed
-        if entry["exercise_id"] not in prescribed_ids
-    )
+    for entry in performed:
+        if entry["exercise_id"] in prescribed_ids:
+            continue
+        exercise = resolve_exercise_display_row(db, entry["exercise_id"])
+        divergences.append(
+            {
+                "kind": "unplanned",
+                "exercise_id": entry["exercise_id"],
+                "exercise_name": (exercise or {}).get("name") or entry["exercise_name"],
+            }
+        )
     seen_divergences: set[tuple[str, str]] = set()
     deduped_divergences: list[dict[str, str]] = []
     for divergence in divergences:

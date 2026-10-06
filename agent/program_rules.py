@@ -257,8 +257,13 @@ def resolve_split(
 
 
 def clean_exercise_name(name: str, replace_with_machine: bool = True) -> str:
-    replacement = "machine " if replace_with_machine else ""
-    cleaned = re.sub(r"^lever\s+", replacement, name, flags=re.IGNORECASE)
+    def replace_lever(match: re.Match[str]) -> str:
+        if not replace_with_machine:
+            return ""
+        return "Machine " if match.group(0)[0].isupper() else "machine "
+
+    # Display names arrive in Title Case, so preserve the case of "Lever".
+    cleaned = re.sub(r"^lever\s+", replace_lever, name, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+v\.\s*\d+", "", cleaned, flags=re.IGNORECASE)
     return cleaned.strip()
 

@@ -5,8 +5,8 @@ the mounted volume and a real SQLite catalog/ledger is created on it. Register
 and login touch only SQLite, so no LLM or external service is involved.
 
 Also pins the build context of the Fly image (issue #165): catalog pictures
-and GIFs are served from R2, and nothing under ``data/`` ships except the seed
-CSV required to initialize the catalog.
+and GIFs are served from R2, and only the seed and curation CSVs ship under
+``data/``.
 """
 
 import os
@@ -211,14 +211,15 @@ def _in_build_context(path: str, rules: list[tuple[bool, re.Pattern]]) -> bool:
     return not excluded
 
 
-def test_build_context_excludes_catalog_media_and_only_ships_seed_csv():
-    """R2 serves media, so only the catalog seed CSV remains under data/."""
+def test_build_context_excludes_catalog_media_and_ships_required_csvs():
+    """R2 serves media; catalog seeding needs its seed and curation CSVs."""
     rules = _dockerignore_rules()
 
     assert not _in_build_context("data/images/0001-2gPfomN.jpg", rules)
     assert not _in_build_context("data/images/nested/one.jpg", rules)
     assert not _in_build_context("data/videos/0001-2gPfomN.gif", rules)
     assert _in_build_context("data/processed_exercises.csv", rules)
+    assert _in_build_context("data/exercise_curation.csv", rules)
 
     assert not _in_build_context("data/catalog.db", rules)
     assert not _in_build_context("data/exercises.json", rules)
@@ -247,6 +248,7 @@ def test_dockerfile_fly_does_not_copy_catalog_media():
     assert not re.search(r"^COPY data/videos(?:\s|$)", dockerfile, re.M)
     assert re.search(r"^COPY \. \.$", dockerfile, re.M)
     assert re.search(r"^COPY data/processed_exercises\.csv ", dockerfile, re.M)
+    assert re.search(r"^COPY data/exercise_curation\.csv ", dockerfile, re.M)
 
 
 def test_real_checkout_catalog_media_are_excluded_from_the_context():

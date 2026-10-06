@@ -30,6 +30,7 @@ data/*
 data/images/
 data/videos/
 !data/processed_exercises.csv
+!data/exercise_curation.csv
 
 # Future Flutter client (not part of the API image)
 mobile/
