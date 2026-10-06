@@ -3238,6 +3238,8 @@ class ExerciseCatalogEntry {
     this.imagePath,
     this.targetMuscle,
     this.primaryMuscle,
+    this.primaryAction,
+    this.secondaryActions = const <String>[],
     this.equipment,
     this.bodyPart,
     this.note,
@@ -3252,6 +3254,8 @@ class ExerciseCatalogEntry {
         imagePath: json['image_path'] as String?,
         targetMuscle: json['target_muscle'] as String?,
         primaryMuscle: json['primary_muscle'] as String?,
+        primaryAction: json['primary_action'] as String?,
+        secondaryActions: _stringList(json['secondary_actions']),
         equipment: json['equipment'] as String?,
         bodyPart: json['body_part'] as String?,
         note: json['note'] as String?,
@@ -3269,6 +3273,10 @@ class ExerciseCatalogEntry {
 
   /// The owner-curated Primary muscle label, or null when not reviewed.
   final String? primaryMuscle;
+
+  /// The owner-curated Primary action, or null when not reviewed.
+  final String? primaryAction;
+  final List<String> secondaryActions;
 
   /// The Exercise library equipment carried into the Active workout.
   final String? equipment;
@@ -3322,6 +3330,8 @@ class ExerciseCatalogDetail {
     required this.primaryMuscles,
     required this.secondaryMuscles,
     this.primaryMuscle,
+    this.primaryAction,
+    this.secondaryActions = const <String>[],
     this.instructions,
     this.imagePath,
     this.gifPath,
@@ -3337,6 +3347,8 @@ class ExerciseCatalogDetail {
         primaryMuscles: _stringList(json['primary_muscles']),
         secondaryMuscles: _stringList(json['secondary_muscles']),
         primaryMuscle: json['primary_muscle'] as String?,
+        primaryAction: json['primary_action'] as String?,
+        secondaryActions: _stringList(json['secondary_actions']),
         instructions: json['instructions'] as String?,
         imagePath: json['image_path'] as String?,
         gifPath: json['gif_path'] as String?,
@@ -3350,6 +3362,8 @@ class ExerciseCatalogDetail {
   final List<String> primaryMuscles;
   final List<String> secondaryMuscles;
   final String? primaryMuscle;
+  final String? primaryAction;
+  final List<String> secondaryActions;
   final String? instructions;
   final String? imagePath;
   final String? gifPath;

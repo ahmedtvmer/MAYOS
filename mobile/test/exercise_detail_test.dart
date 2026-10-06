@@ -141,6 +141,10 @@ void main() {
     expect(find.text('السجل'), findsOneWidget);
     expect(find.text('Bench Press'), findsOneWidget);
     expect(find.text('الصدر'), findsOneWidget);
+    expect(find.text('الحركة الأساسية'), findsOneWidget);
+    expect(find.text('التقريب الأفقي للكتف'), findsOneWidget);
+    expect(find.text('الحركات الثانوية'), findsOneWidget);
+    expect(find.text('ثني الكتف'), findsOneWidget);
     expect(find.text('RIR ≥ 2'), findsOneWidget);
     expect(Directionality.of(tester.element(find.text('نظرة عامة'))),
         TextDirection.rtl);

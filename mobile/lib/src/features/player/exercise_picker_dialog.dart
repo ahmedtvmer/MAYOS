@@ -134,6 +134,7 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
             query,
             targetMuscle: targetMuscle,
             primaryMuscles: filters.primaryMuscles,
+            primaryActions: filters.primaryActions,
           );
       if (!mounted) return;
       setState(() {

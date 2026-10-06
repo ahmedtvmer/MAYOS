@@ -23,7 +23,7 @@ def _search_exercise_entries(
     library = db.find_exercises_by_name(
         query,
         limit=None if filter_browse else 10,
-        muscle_browse=filter_browse,
+        filter_browse=filter_browse,
         filters=filters,
     )
     owned = (
@@ -45,21 +45,22 @@ async def search_coach_exercises(
     db: Annotated[Any, Depends(get_db)],
     query: str | None = Query(default=None, max_length=120),
     primary_muscle: list[str] | None = Query(None),
+    primary_action: list[str] | None = Query(None),
 ):
     """Search library rows; filter-only browsing is unbounded and display-name ordered.
 
     Coach exercises are included for name searches and omitted whenever a
-    Primary muscle filter is active.
+    Primary muscle or Primary action filter is active.
     """
     try:
-        filters = exercise_filters_for(primary_muscle)
+        filters = exercise_filters_for(primary_muscle, primary_action)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     clean_query = (query or "").strip()
     if not clean_query and not filters.has_curated_filters:
         raise HTTPException(
             status_code=400,
-            detail="Provide query, primary_muscle, or both.",
+            detail="Provide query, primary_muscle, primary_action, or a combination.",
         )
     return await asyncio.to_thread(
         _search_exercise_entries, db, coach.account_id, clean_query, filters

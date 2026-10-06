@@ -102,6 +102,45 @@ Arabic/English mixed input cases.
 | Neck | الرقبة |
 | Cardio | تمارين القلب |
 
+## Exercise action labels
+
+| English label | Arabic label |
+| --- | --- |
+| Shoulder Flexion | ثني الكتف |
+| Shoulder Extension | بسط الكتف |
+| Shoulder Abduction | إبعاد الكتف |
+| Shoulder Adduction | تقريب الكتف |
+| Shoulder Horizontal Adduction | التقريب الأفقي للكتف |
+| Shoulder Horizontal Abduction | الإبعاد الأفقي للكتف |
+| Shoulder External Rotation | الدوران الخارجي للكتف |
+| Shoulder Internal Rotation | الدوران الداخلي للكتف |
+| Scapular Elevation | رفع لوح الكتف |
+| Scapular Retraction | تقريب لوحي الكتف |
+| Scapular Depression | خفض لوح الكتف |
+| Scapular Protraction | إبعاد لوحي الكتف |
+| Elbow Flexion | ثني المرفق |
+| Elbow Extension | بسط المرفق |
+| Wrist Flexion | ثني الرسغ |
+| Wrist Extension | بسط الرسغ |
+| Spinal Flexion | ثني العمود الفقري |
+| Spinal Extension | بسط العمود الفقري |
+| Spinal Rotation | دوران العمود الفقري |
+| Spinal Lateral Flexion | الانثناء الجانبي للعمود الفقري |
+| Anti-Extension | مقاومة بسط الجذع |
+| Anti-Rotation | مقاومة دوران الجذع |
+| Anti-Lateral Flexion | مقاومة الانثناء الجانبي للجذع |
+| Hip Flexion | ثني الورك |
+| Hip Extension | بسط الورك |
+| Hip Abduction | إبعاد الورك |
+| Hip Adduction | تقريب الورك |
+| Knee Flexion | ثني الركبة |
+| Knee Extension | بسط الركبة |
+| Ankle Plantar Flexion | العطف الأخمصي للكاحل |
+| Ankle Dorsiflexion | العطف الظهري للكاحل |
+| Neck Flexion | ثني الرقبة |
+| Neck Extension | بسط الرقبة |
+| Conditioning | اللياقة البدنية |
+
 Keep the label **RIR** unchanged; do not replace it with an Arabic label.
 Keep **kg** beside numeric weights.
 

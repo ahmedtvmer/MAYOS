@@ -212,26 +212,18 @@ def seed_exercise_curation(tmp_path, monkeypatch):
             for exercise_id, fields in records.items():
                 entry = store.get_exercise_library_entry(exercise_id)
                 assert entry is not None, f"Unknown Exercise library id {exercise_id!r}"
-                aliases = fields.get("aliases", "")
-                if isinstance(aliases, (list, tuple)):
-                    aliases = "|".join(aliases)
-                hidden = fields.get("hidden", "")
-                if isinstance(hidden, bool):
-                    hidden = str(hidden).lower()
-                writer.writerow(
-                    [
-                        exercise_id,
-                        fields.get("source_name", entry["name"]),
-                        fields.get("display_name", ""),
-                        aliases,
-                        fields.get("primary_action", ""),
-                        fields.get("secondary_actions", ""),
-                        fields.get("primary_muscle", ""),
-                        fields.get("load_type", ""),
-                        hidden,
-                        fields.get("duplicate_of", ""),
-                    ]
-                )
+                row = {"id": exercise_id, "source_name": entry["name"]}
+                row.update(fields)
+                for column in curation_columns:
+                    field_value = row.get(column, "")
+                    if column in {"aliases", "secondary_actions"} and isinstance(
+                        field_value, (list, tuple)
+                    ):
+                        field_value = "|".join(field_value)
+                    elif column == "hidden" and isinstance(field_value, bool):
+                        field_value = str(field_value).lower()
+                    row[column] = field_value
+                writer.writerow([row[column] for column in curation_columns])
 
         store.initialize_and_seed(seed_path, curation_path)
 

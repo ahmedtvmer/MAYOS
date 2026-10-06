@@ -121,6 +121,13 @@ Search filters may match one or more Primary muscles; the source row's
 `target_muscle` remains a separate catalog field.
 _Arabic_: العضلة الأساسية
 
+**Primary action**:
+The main joint action curated for an Exercise library row, such as Knee
+Extension or Shoulder Flexion. Search filters match the Primary action only;
+Secondary actions describe additional joint actions and do not match a Primary
+action filter.
+_Arabic_: الحركة الأساسية
+
 **Coach exercise**:
 An exercise a Coach creates when the Exercise library lacks the movement. It has a Coach-owned id, optional body-part and Equipment tags, an optional note, and an optional HTTPS video link stored as text. It has no media, is searchable only by its owner in Coach mode, and is visible to a Player when prescribed in that Coach's Training program. The Player keeps its logged history after the Assignment ends.
 _Arabic_: تمرين من إنشاء المدرب

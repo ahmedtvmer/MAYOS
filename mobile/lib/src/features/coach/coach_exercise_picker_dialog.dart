@@ -56,7 +56,7 @@ class _CoachExercisePickerDialogState
       return;
     }
     _startSearch();
-    await _loadResults(query, filters.primaryMuscles);
+    await _loadResults(query, filters.primaryMuscles, filters.primaryActions);
   }
 
   void _startSearch() {
@@ -67,12 +67,20 @@ class _CoachExercisePickerDialogState
     });
   }
 
-  Future<void> _loadResults(String query, List<String> primaryMuscles) async {
+  Future<void> _loadResults(
+    String query,
+    List<String> primaryMuscles,
+    List<String> primaryActions,
+  ) async {
     try {
       final List<ExerciseCatalogEntry> results =
           await ref
               .read(apiClientProvider)
-              .coachSearchExercises(query, primaryMuscles: primaryMuscles);
+              .coachSearchExercises(
+                query,
+                primaryMuscles: primaryMuscles,
+                primaryActions: primaryActions,
+              );
       if (!mounted) return;
       setState(() {
         _results = results;

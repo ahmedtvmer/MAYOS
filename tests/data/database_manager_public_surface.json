@@ -127,7 +127,7 @@
     },
     "find_exercises_by_name": {
       "kind": "method",
-      "signature": "(self, query: str, limit: int | None = 5, target_muscle: str | None = None, equipment_access: str | None = None, muscle_browse: bool = False, *, filters: database.exercise_library.filters.ExerciseFilters | None = None) -> list[dict[str, typing.Any]]"
+      "signature": "(self, query: str, limit: int | None = 5, target_muscle: str | None = None, equipment_access: str | None = None, filter_browse: bool = False, *, filters: database.exercise_library.filters.ExerciseFilters | None = None) -> list[dict[str, typing.Any]]"
     },
     "find_unique_exercise_id_by_exact_name": {
       "kind": "method",

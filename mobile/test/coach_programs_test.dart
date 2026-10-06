@@ -579,6 +579,30 @@ void main() {
       (request) => request.path == '/coach/exercises',
     );
     expect(coachFilterRequest.query['primary_muscle'], <String>['Biceps']);
+
+    final Finder actionFilter =
+        find.byKey(const Key('exercise_primary_action_filter'));
+    await tester.ensureVisible(actionFilter);
+    await tester.tap(actionFilter);
+    await tester.pumpAndSettle();
+    final Finder elbowFlexion = find.byKey(
+      const Key('primary_action_option_Elbow Flexion'),
+    );
+    await tester.ensureVisible(elbowFlexion);
+    await tester.tap(elbowFlexion);
+    await tester.tap(find.byKey(const Key('exercise_primary_action_done')));
+    await _pumpUntilFound(tester, find.text('Bicep Curl'));
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog).last,
+        matching: find.text('Pin Squat'),
+      ),
+      findsNothing,
+    );
+    final actionRequest = fake.adapter.requests.lastWhere(
+      (request) => request.path == '/coach/exercises',
+    );
+    expect(actionRequest.query['primary_action'], <String>['Elbow Flexion']);
     await tester.tap(find.text('Cancel').last);
     await tester.pumpAndSettle();
 

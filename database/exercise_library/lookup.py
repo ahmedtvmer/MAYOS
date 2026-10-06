@@ -46,7 +46,9 @@ def _exercise_name_rows(
         SELECT e.id AS id, {name_expression} AS display_name, e.body_part AS body_part,
                e.target_muscle AS target_muscle, e.equipment AS equipment,
                e.image_path AS image_path, e.name AS source_name,
-               cf.primary_muscle AS primary_muscle
+               cf.primary_muscle AS primary_muscle,
+               cf.primary_action AS primary_action,
+               COALESCE(cf.secondary_actions, '') AS secondary_actions
         FROM exercises e
         {display_name_join}
         LEFT JOIN exercise_curated_fields cf ON cf.exercise_id = e.id
@@ -75,7 +77,13 @@ def _name_match_result(row):
         "equipment": row["equipment"],
         "image_path": row["image_path"],
         "primary_muscle": row["primary_muscle"],
+        "primary_action": row["primary_action"],
+        "secondary_actions": _split_secondary_actions(row["secondary_actions"]),
     }
+
+
+def _split_secondary_actions(value: str | None) -> list[str]:
+    return [action for action in (value or "").split("|") if action]
 
 
 def _name_match_results(rows):
@@ -186,7 +194,8 @@ class ExerciseLookupMixin:
                 cursor.execute(
                     f"SELECT e.id, {name_expression} AS name, e.body_part, e.target_muscle, "
                     f"e.equipment, e.instructions, e.image_path, e.gif_path, "
-                    "COALESCE(p.provenance, 'ExerciseDB') AS provenance, cf.primary_muscle "
+                    "COALESCE(p.provenance, 'ExerciseDB') AS provenance, cf.primary_muscle, "
+                    "cf.primary_action, COALESCE(cf.secondary_actions, '') "
                     f"FROM exercises e {display_name_join} "
                     "LEFT JOIN exercise_curated_fields cf ON cf.exercise_id = e.id "
                     "LEFT JOIN exercise_provenance p ON p.exercise_id = e.id "
@@ -206,6 +215,8 @@ class ExerciseLookupMixin:
                         "gif_path": row[7],
                         "provenance": row[8],
                         "primary_muscle": row[9],
+                        "primary_action": row[10],
+                        "secondary_actions": _split_secondary_actions(row[11]),
                     }
         return entries
 
@@ -219,7 +230,8 @@ class ExerciseLookupMixin:
             cursor.execute(
                 f"SELECT e.id, {name_expression} AS name, e.body_part, e.target_muscle, "
                 f"e.equipment, e.instructions, e.image_path, e.gif_path, "
-                "COALESCE(p.provenance, 'ExerciseDB') AS provenance, cf.primary_muscle "
+                "COALESCE(p.provenance, 'ExerciseDB') AS provenance, cf.primary_muscle, "
+                "cf.primary_action, COALESCE(cf.secondary_actions, '') "
                 f"FROM exercises e {display_name_join} "
                 "LEFT JOIN exercise_curated_fields cf ON cf.exercise_id = e.id "
                 f"LEFT JOIN exercise_provenance p ON p.exercise_id = e.id WHERE e.id = ?",
@@ -239,6 +251,8 @@ class ExerciseLookupMixin:
             "gif_path": row[7],
             "provenance": row[8],
             "primary_muscle": row[9],
+            "primary_action": row[10],
+            "secondary_actions": _split_secondary_actions(row[11]),
         }
 
     def is_exercise_library_exercise_visible(self, exercise_id: str) -> bool:
@@ -281,6 +295,8 @@ class ExerciseLookupMixin:
             "equipment": entry["equipment"],
             "primary_muscles": [target] if target else [],
             "primary_muscle": entry.get("primary_muscle"),
+            "primary_action": entry.get("primary_action"),
+            "secondary_actions": entry.get("secondary_actions", []),
             "secondary_muscles": secondary,
             "instructions": entry.get("instructions"),
             "image_path": entry.get("image_path"),
@@ -316,7 +332,7 @@ class ExerciseLookupMixin:
         limit: int | None = 5,
         target_muscle: str | None = None,
         equipment_access: str | None = None,
-        muscle_browse: bool = False,
+        filter_browse: bool = False,
         *,
         filters: ExerciseFilters | None = None,
     ) -> list[dict[str, Any]]:
@@ -330,15 +346,16 @@ class ExerciseLookupMixin:
         (embedding) ranking and installs a lexical sibling.
 
         ``target_muscle`` (#162) narrows results by the source column, while
-        ``filters`` narrows by curated fields. Target and curated filters combine
-        with AND; multiple Primary muscles combine with OR. A filter permits an
-        empty query. ``equipment_access`` applies only to filter-only browse.
+        ``filters`` narrows by curated fields. Target and different curated filters
+        combine with AND; multiple values in one curated filter combine with OR.
+        A filter permits an empty query. ``equipment_access`` applies only to
+        filter-only browse.
         """
         clean = query.strip().lower()
         muscle = (target_muscle or "").strip().lower()
         active_filters = filters if filters is not None else ExerciseFilters()
         has_filter = bool(muscle or active_filters.has_curated_filters)
-        browse = muscle_browse or (not clean and has_filter)
+        browse = filter_browse or (not clean and has_filter)
         if (limit is not None and limit <= 0) or (not clean and not has_filter):
             return []
         filter_clause, filter_params = _exercise_filter_predicate(
@@ -383,4 +400,8 @@ def _exercise_filter_predicate(
         placeholders = ", ".join("?" for _ in filters.primary_muscles)
         clauses.append(f"cf.primary_muscle IN ({placeholders})")
         params.extend(filters.primary_muscles)
+    if filters.primary_actions:
+        placeholders = ", ".join("?" for _ in filters.primary_actions)
+        clauses.append(f"cf.primary_action IN ({placeholders})")
+        params.extend(filters.primary_actions)
     return " AND ".join(clauses) or "1 = 1", tuple(params)

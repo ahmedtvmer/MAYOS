@@ -444,6 +444,21 @@ class MayosCopy {
     }
     return muscle;
   }
+  String get action => isArabic ? 'الحركة' : 'Action';
+  String actionFilterLabel(int selectedCount) => selectedCount == 0
+      ? action
+      : '$action ($selectedCount)';
+  String get primaryAction => isArabic ? 'الحركة الأساسية' : 'Primary action';
+  String get secondaryActions =>
+      isArabic ? 'الحركات الثانوية' : 'Secondary actions';
+  String primaryActionLabel(String action) {
+    for (final PrimaryAction primaryAction in primaryActions) {
+      if (primaryAction.apiValue == action) {
+        return isArabic ? primaryAction.arabicLabel : action;
+      }
+    }
+    return action;
+  }
   String get done => isArabic ? 'تم' : 'Done';
   String get addUnplannedExercise =>
       isArabic ? 'إضافة تمرين غير مخطط' : 'Add unplanned exercise';

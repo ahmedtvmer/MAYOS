@@ -1040,6 +1040,7 @@ class ApiClient {
   Future<List<ExerciseCatalogEntry>> coachSearchExercises(
     String query, {
     List<String> primaryMuscles = const <String>[],
+    List<String> primaryActions = const <String>[],
   }) async {
     final response = await _send(
       () => _dio.get<dynamic>(
@@ -1047,6 +1048,7 @@ class ApiClient {
         queryParameters: <String, dynamic>{
           if (query.trim().isNotEmpty) 'query': query,
           if (primaryMuscles.isNotEmpty) 'primary_muscle': primaryMuscles,
+          if (primaryActions.isNotEmpty) 'primary_action': primaryActions,
         },
         options: Options(listFormat: ListFormat.multi),
       ),
@@ -1906,6 +1908,7 @@ class ApiClient {
     String query, {
     String? targetMuscle,
     List<String> primaryMuscles = const <String>[],
+    List<String> primaryActions = const <String>[],
   }) async {
     final response = await _send(
       () => _dio.get<dynamic>('/workouts/exercises',
@@ -1913,6 +1916,7 @@ class ApiClient {
             if (query.trim().isNotEmpty) 'query': query,
             if (targetMuscle != null) 'target_muscle': targetMuscle,
             if (primaryMuscles.isNotEmpty) 'primary_muscle': primaryMuscles,
+            if (primaryActions.isNotEmpty) 'primary_action': primaryActions,
           },
           options: Options(listFormat: ListFormat.multi)),
     );

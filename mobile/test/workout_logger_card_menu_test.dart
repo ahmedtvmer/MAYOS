@@ -950,7 +950,7 @@ void main() {
     expect(inDialog('Bench Press'), findsNothing);
   });
 
-  testWidgets('player picker filters by selected Primary muscle',
+  testWidgets('player picker filters by selected Primary muscle and action',
       (WidgetTester tester) async {
     final harness = await _openLogger(tester);
     final Finder add = find.widgetWithText(OutlinedButton, 'Add exercise');
@@ -972,10 +972,28 @@ void main() {
     await _pumpUntilFound(tester, find.text('Bicep Curl'));
 
     expect(find.text('Cable Fly'), findsNothing);
-    final request = harness.fake.adapter.requests
+    final muscleRequest = harness.fake.adapter.requests
         .lastWhere((request) =>
             request.path == '/workouts/exercises');
-    expect(request.query['primary_muscle'], <String>['Biceps']);
+    expect(muscleRequest.query['primary_muscle'], <String>['Biceps']);
+
+    final Finder actionFilter =
+        find.byKey(const Key('exercise_primary_action_filter'));
+    await tester.ensureVisible(actionFilter);
+    await tester.tap(actionFilter);
+    await tester.pumpAndSettle();
+    final Finder elbowFlexion = find.byKey(
+      const Key('primary_action_option_Elbow Flexion'),
+    );
+    await tester.ensureVisible(elbowFlexion);
+    await tester.tap(elbowFlexion);
+    await tester.tap(find.byKey(const Key('exercise_primary_action_done')));
+    await _pumpUntilFound(tester, find.text('Bicep Curl'));
+
+    final request = harness.fake.adapter.requests.lastWhere(
+      (request) => request.path == '/workouts/exercises',
+    );
+    expect(request.query['primary_action'], <String>['Elbow Flexion']);
   });
 
   testWidgets(

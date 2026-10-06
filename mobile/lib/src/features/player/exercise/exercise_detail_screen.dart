@@ -293,6 +293,9 @@ class _Hero extends StatelessWidget {
             .map((String m) => m.toLowerCase())
             .contains(category.toLowerCase());
     final String equipment = detail?.equipment ?? '';
+    final String? primaryAction = detail?.primaryAction;
+    final List<String> secondaryActions =
+        detail?.secondaryActions ?? const <String>[];
     final bool hasChips = primary.isNotEmpty ||
         secondary.isNotEmpty ||
         showCategory ||
@@ -330,6 +333,30 @@ class _Hero extends StatelessWidget {
                   tone: _ChipTone.equipment,
                   icon: Icons.fitness_center,
                 ),
+            ],
+          ),
+        ],
+        if (primaryAction != null || secondaryActions.isNotEmpty) ...<Widget>[
+          const SizedBox(height: MayosSpacing.sm),
+          Wrap(
+            spacing: MayosSpacing.xs,
+            runSpacing: MayosSpacing.xs,
+            children: <Widget>[
+              if (primaryAction != null) ...<Widget>[
+                Text(copy.primaryAction),
+                _TagChip(
+                  label: copy.primaryActionLabel(primaryAction),
+                  tone: _ChipTone.primary,
+                ),
+              ],
+              if (secondaryActions.isNotEmpty) ...<Widget>[
+                Text(copy.secondaryActions),
+                for (final String action in secondaryActions)
+                  _TagChip(
+                    label: copy.primaryActionLabel(action),
+                    tone: _ChipTone.secondary,
+                  ),
+              ],
             ],
           ),
         ],
@@ -466,9 +493,13 @@ class _TagChip extends StatelessWidget {
             Icon(icon, size: 13, color: foreground),
             const SizedBox(width: 4),
           ],
-          Text(
-            label,
-            style: MayosTypography.of(context).caption.copyWith(color: foreground),
+          Flexible(
+            child: Text(
+              label,
+              style: MayosTypography.of(context)
+                  .caption
+                  .copyWith(color: foreground),
+            ),
           ),
         ],
       ),

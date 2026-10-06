@@ -1,4 +1,3 @@
-import csv
 import sqlite3
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -83,30 +82,6 @@ def _assign(client, coach_headers, player_headers):
     return redeemed.json()["assignment"]["assignment_id"]
 
 
-def _curate_primary_muscles(db, records):
-    curation_path = db.catalog_path.parent / "coach-primary-muscle.csv"
-    with curation_path.open("w", newline="", encoding="utf-8") as curation_file:
-        writer = csv.writer(curation_file)
-        writer.writerow(
-            [
-                "id", "source_name", "display_name", "aliases", "primary_action",
-                "secondary_actions", "primary_muscle", "load_type", "hidden", "duplicate_of",
-            ]
-        )
-        for exercise_id, primary_muscle in records:
-            source_name = db.catalog_conn.execute(
-                "SELECT name FROM exercises WHERE id = ?", (exercise_id,)
-            ).fetchone()[0]
-            writer.writerow(
-                [exercise_id, source_name, "", "", "", "", primary_muscle, "", "", ""]
-            )
-    from database.exercise_library.curation import apply_exercise_curation
-
-    with db.catalog_locked() as connection:
-        apply_exercise_curation(connection.cursor(), curation_path)
-        connection.commit()
-
-
 def _create_exercise(client, headers, name="Pin Squat"):
     response = client.post(
         "/coach/exercises",
@@ -146,7 +121,7 @@ def _one_exercise_draft(exercise_id):
     }
 
 
-def test_create_and_search_are_https_only_and_isolated_to_owner(api):
+def test_create_and_search_are_https_only_and_isolated_to_owner(api, seed_exercise_curation):
     client, _ = api
     first_coach = _make_coach(client, api[1], "first-coach")
     second_coach = _make_coach(client, api[1], "second-coach")
@@ -168,6 +143,8 @@ def test_create_and_search_are_https_only_and_isolated_to_owner(api):
     assert [row["id"] for row in first_results.json()["exercises"]] == [created["id"]]
     assert first_results.json()["exercises"][0]["is_coach_exercise"] is True
     assert first_results.json()["exercises"][0]["primary_muscle"] is None
+    assert first_results.json()["exercises"][0]["primary_action"] is None
+    assert first_results.json()["exercises"][0]["secondary_actions"] == []
 
     alongside_library = client.get("/coach/exercises", headers=first_coach, params={"query": "squat"})
     assert {row["id"] for row in alongside_library.json()["exercises"]} == {"sq", created["id"]}
@@ -178,7 +155,10 @@ def test_create_and_search_are_https_only_and_isolated_to_owner(api):
             "VALUES ('bp', 'Bench Press', 'Chest', 'Chest', 'barbell')"
         )
         connection.commit()
-    _curate_primary_muscles(api[1], [("sq", "Quads"), ("bp", "Chest")])
+    seed_exercise_curation(
+        api[1],
+        {"sq": {"primary_muscle": "Quads"}, "bp": {"primary_muscle": "Chest"}},
+    )
     filtered = client.get(
         "/coach/exercises", headers=first_coach, params={"primary_muscle": "Quads"}
     )
@@ -239,6 +219,74 @@ def test_coach_search_omits_hidden_exercise_library_rows(api, seed_exercise_cura
 
     assert response.status_code == 200, response.text
     assert response.json()["exercises"] == []
+
+
+def test_coach_search_filters_primary_action_and_hides_coach_exercises(
+    api, seed_exercise_curation
+):
+    client, db = api
+    coach_headers = _make_coach(client, db, "primary-action-coach")
+    with db.catalog_locked() as connection:
+        connection.execute(
+            "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) "
+            "VALUES ('bp', 'Bench Press', 'Chest', 'Chest', 'barbell'), "
+            "('ib', 'Incline Press', 'Chest', 'Chest', 'barbell')"
+        )
+        connection.commit()
+    _create_exercise(client, coach_headers, "Pin Squat")
+    seed_exercise_curation(
+        db,
+        {
+            "sq": {"primary_action": "Knee Extension", "primary_muscle": "Quads"},
+            "bp": {
+                "primary_action": "Shoulder Horizontal Adduction",
+                "secondary_actions": ["Shoulder Flexion"],
+                "primary_muscle": "Chest",
+            },
+            "ib": {
+                "primary_action": "Shoulder Flexion",
+                "secondary_actions": ["Elbow Extension"],
+                "primary_muscle": "Upper Chest",
+            },
+        },
+    )
+
+    action = client.get(
+        "/coach/exercises",
+        headers=coach_headers,
+        params={"primary_action": "Shoulder Flexion"},
+    )
+    assert action.status_code == 200, action.text
+    assert [row["id"] for row in action.json()["exercises"]] == ["ib"]
+    assert action.json()["exercises"][0]["secondary_actions"] == ["Elbow Extension"]
+
+    combined = client.get(
+        "/coach/exercises",
+        headers=coach_headers,
+        params={"primary_action": "Knee Extension", "primary_muscle": "Quads"},
+    )
+    assert [row["id"] for row in combined.json()["exercises"]] == ["sq"]
+
+    queried = client.get(
+        "/coach/exercises",
+        headers=coach_headers,
+        params={"query": "incline", "primary_action": "Shoulder Flexion"},
+    )
+    assert [row["id"] for row in queried.json()["exercises"]] == ["ib"]
+
+    secondary_only = client.get(
+        "/coach/exercises",
+        headers=coach_headers,
+        params={"query": "bench", "primary_action": "Shoulder Flexion"},
+    )
+    assert secondary_only.json()["exercises"] == []
+
+    invalid = client.get(
+        "/coach/exercises",
+        headers=coach_headers,
+        params={"primary_action": "Knee Curl"},
+    )
+    assert invalid.status_code == 422
 
 
 @pytest.mark.parametrize(

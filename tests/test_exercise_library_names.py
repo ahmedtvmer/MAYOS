@@ -25,9 +25,8 @@ def _write_curation(path, rows):
         writer.writerow(CURATION_COLUMNS)
         for row in rows:
             exercise_id, source_name, display_name, aliases = row[:4]
-            primary_muscle = row[4] if len(row) > 4 else ""
             writer.writerow(
-                [exercise_id, source_name, display_name, aliases, "", "", primary_muscle, "", "", ""]
+                [exercise_id, source_name, display_name, aliases, "", "", "", "", "", ""]
             )
 
 
@@ -258,16 +257,14 @@ def test_semantic_search_excludes_hidden_exercises(seed_store, tmp_path, seed_ex
     assert "9001" not in {result["id"] for result in results}
 
 
-def test_primary_muscle_curation_is_searchable_and_returned_in_detail(seed_store, tmp_path):
+def test_primary_muscle_curation_is_searchable_and_returned_in_detail(
+    seed_store, tmp_path, seed_exercise_curation
+):
     from database.exercise_library.filters import ExerciseFilters
 
-    curation_path = tmp_path / "curation.csv"
     seed_path = tmp_path / "seed.csv"
-    _write_curation(
-        curation_path,
-        [("9001", "cable row", "", "", "Upper Back")],
-    )
-    _seed_minimal_library(seed_store, seed_path, curation_path)
+    _seed_minimal_library(seed_store, seed_path)
+    seed_exercise_curation(seed_store, {"9001": {"primary_muscle": "Upper Back"}})
 
     matches = seed_store.find_exercises_by_name(
         "", filters=ExerciseFilters(primary_muscles=("Upper Back",))
@@ -278,16 +275,33 @@ def test_primary_muscle_curation_is_searchable_and_returned_in_detail(seed_store
     assert seed_store.get_exercise_library_detail("9001")["primary_muscle"] == "Upper Back"
 
 
-def test_curation_rejects_primary_muscle_outside_vocabulary(seed_store, tmp_path):
-    curation_path = tmp_path / "curation.csv"
-    seed_path = tmp_path / "seed.csv"
-    _write_curation(
-        curation_path,
-        [("9001", "cable row", "", "", "Middle Back")],
-    )
-
+def test_curation_rejects_primary_muscle_outside_vocabulary(
+    seed_store, tmp_path, seed_exercise_curation
+):
+    _seed_minimal_library(seed_store, tmp_path / "seed.csv")
     with pytest.raises(ValueError, match="line 2 id '9001'.*'Middle Back'"):
-        _seed_minimal_library(seed_store, seed_path, curation_path)
+        seed_exercise_curation(
+            seed_store, {"9001": {"primary_muscle": "Middle Back"}}
+        )
+
+
+@pytest.mark.parametrize(
+    "fields, invalid_action",
+    [
+        ({"primary_action": "Knee Curl"}, "Knee Curl"),
+        ({"secondary_actions": ["Knee Curl"]}, "Knee Curl"),
+    ],
+)
+def test_curation_rejects_action_outside_vocabulary(
+    seed_store, tmp_path, seed_exercise_curation, fields, invalid_action
+):
+    _seed_minimal_library(seed_store, tmp_path / "seed.csv")
+
+    with pytest.raises(
+        ValueError,
+        match=f"line 2 id '9001'.*{invalid_action!r}",
+    ):
+        seed_exercise_curation(seed_store, {"9001": fields})
 
 
 def test_empty_curation_file_uses_title_case_source_names(seed_store, tmp_path):

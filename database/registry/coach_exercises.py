@@ -91,5 +91,7 @@ class RegistryCoachExercisesMixin:
             "image_path": None,
             "gif_path": None,
             "primary_muscle": None,
+            "primary_action": None,
+            "secondary_actions": [],
             "is_coach_exercise": True,
         }

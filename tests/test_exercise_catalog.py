@@ -6,7 +6,6 @@ an authenticated, read-only endpoint that returns the real catalog fields
 instructions, and the stored media paths) without bundling or serving media.
 """
 
-import csv
 import sqlite3
 from pathlib import Path
 
@@ -92,30 +91,6 @@ def _authed(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def _curate_primary_muscles(db, records):
-    curation_path = db.catalog_path.parent / "primary-muscles.csv"
-    with curation_path.open("w", newline="", encoding="utf-8") as curation_file:
-        writer = csv.writer(curation_file)
-        writer.writerow(
-            [
-                "id", "source_name", "display_name", "aliases", "primary_action",
-                "secondary_actions", "primary_muscle", "load_type", "hidden", "duplicate_of",
-            ]
-        )
-        for exercise_id, primary_muscle in records:
-            source_name = db.catalog_conn.execute(
-                "SELECT name FROM exercises WHERE id = ?", (exercise_id,)
-            ).fetchone()[0]
-            writer.writerow(
-                [exercise_id, source_name, "", "", "", "", primary_muscle, "", "", ""]
-            )
-    from database.exercise_library.curation import apply_exercise_curation
-
-    with db.catalog_locked() as connection:
-        apply_exercise_curation(connection.cursor(), curation_path)
-        connection.commit()
-
-
 def test_exercise_detail_returns_real_catalog_fields(api):
     client, _ = api
     token = _register(client, "player")["access_token"]
@@ -130,6 +105,8 @@ def test_exercise_detail_returns_real_catalog_fields(api):
         "equipment": "barbell",
         "primary_muscles": ["Chest"],
         "primary_muscle": None,
+        "primary_action": None,
+        "secondary_actions": [],
         "secondary_muscles": ["shoulders", "triceps"],
         "instructions": "Lie on a bench and press the bar up.",
         "image_path": "images/bp.jpg",
@@ -162,6 +139,8 @@ def test_unreviewed_exercises_use_title_case_names_in_search_and_detail(api):
         )
         assert match["name"] == display_name
         assert match["primary_muscle"] is None
+        assert match["primary_action"] is None
+        assert match["secondary_actions"] == []
 
         detail = client.get(f"/workouts/exercises/{exercise_id}", headers=_authed(token))
         assert detail.status_code == 200, detail.text
@@ -276,12 +255,17 @@ def test_catalog_search_by_muscle_lists_that_muscle_without_a_name_query(api):
     assert [m["id"] for m in resp.json()["exercises"]] == ["sq", "lp"]
 
 
-def test_catalog_search_filters_by_primary_muscles_with_or_and_name(api):
+def test_catalog_search_filters_by_primary_muscles_with_or_and_name(api, seed_exercise_curation):
     client, db = api
     token = _register(client, "primary-muscle-filter")['access_token']
-    _curate_primary_muscles(
+    seed_exercise_curation(
         db,
-        [("bp", "Chest"), ("ib", "Upper Chest"), ("sq", "Quads"), ("lp", "Quads")],
+        {
+            "bp": {"primary_muscle": "Chest"},
+            "ib": {"primary_muscle": "Upper Chest"},
+            "sq": {"primary_muscle": "Quads"},
+            "lp": {"primary_muscle": "Quads"},
+        },
     )
 
     browsed = client.get(
@@ -327,6 +311,84 @@ def test_catalog_search_rejects_unknown_primary_muscle(api):
         "/workouts/exercises",
         headers=_authed(token),
         params={"primary_muscle": "Middle Back"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_catalog_search_filters_by_primary_action_and_returns_actions(
+    api, seed_exercise_curation
+):
+    client, db = api
+    token = _register(client, "primary-action-filter")["access_token"]
+    seed_exercise_curation(
+        db,
+        {
+            "bp": {
+                "primary_action": "Shoulder Horizontal Adduction",
+                "secondary_actions": ["Shoulder Flexion"],
+                "primary_muscle": "Chest",
+            },
+            "ib": {
+                "primary_action": "Shoulder Flexion",
+                "secondary_actions": ["Elbow Extension"],
+                "primary_muscle": "Upper Chest",
+            },
+            "sq": {
+                "primary_action": "Knee Extension",
+                "secondary_actions": ["Hip Extension"],
+                "primary_muscle": "Quads",
+            },
+        },
+    )
+
+    action = client.get(
+        "/workouts/exercises",
+        headers=_authed(token),
+        params={"primary_action": "Shoulder Flexion"},
+    )
+    assert action.status_code == 200, action.text
+    assert [row["id"] for row in action.json()["exercises"]] == ["ib"]
+    assert action.json()["exercises"][0]["primary_action"] == "Shoulder Flexion"
+    assert action.json()["exercises"][0]["secondary_actions"] == ["Elbow Extension"]
+
+    multiple_actions = client.get(
+        "/workouts/exercises",
+        headers=_authed(token),
+        params=[
+            ("primary_action", "Shoulder Flexion"),
+            ("primary_action", "Knee Extension"),
+        ],
+    )
+    assert {row["id"] for row in multiple_actions.json()["exercises"]} == {"ib", "sq"}
+
+    combined = client.get(
+        "/workouts/exercises",
+        headers=_authed(token),
+        params={"primary_action": "Shoulder Flexion", "primary_muscle": "Upper Chest"},
+    )
+    assert [row["id"] for row in combined.json()["exercises"]] == ["ib"]
+
+    queried = client.get(
+        "/workouts/exercises",
+        headers=_authed(token),
+        params={"query": "incline", "primary_action": "Shoulder Flexion"},
+    )
+    assert [row["id"] for row in queried.json()["exercises"]] == ["ib"]
+
+    detail = client.get("/workouts/exercises/bp", headers=_authed(token))
+    assert detail.json()["primary_action"] == "Shoulder Horizontal Adduction"
+    assert detail.json()["secondary_actions"] == ["Shoulder Flexion"]
+
+
+def test_catalog_search_rejects_unknown_primary_action(api):
+    client, _ = api
+    token = _register(client, "unknown-primary-action")["access_token"]
+
+    response = client.get(
+        "/workouts/exercises",
+        headers=_authed(token),
+        params={"primary_action": "Knee Curl"},
     )
 
     assert response.status_code == 422

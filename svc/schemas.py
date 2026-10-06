@@ -1124,6 +1124,8 @@ class CoachExerciseOut(BaseModel):
     id: str
     name: str
     primary_muscle: str | None = None
+    primary_action: str | None = None
+    secondary_actions: list[str] = Field(default_factory=list)
     body_part: str | None = None
     equipment: str | None = None
     note: str | None = None

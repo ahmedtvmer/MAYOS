@@ -8,7 +8,7 @@ from pathlib import Path
 
 from agent.program_blueprints import SLOT_STAPLES
 from database.shared import BASE_DIR, _normalize_exercise_name
-from database.exercise_library.vocabulary import PRIMARY_MUSCLES
+from database.exercise_library.vocabulary import PRIMARY_ACTIONS, PRIMARY_MUSCLES
 
 DEFAULT_CURATION_CSV_PATH = BASE_DIR / "data" / "exercise_curation.csv"
 CURATION_COLUMNS = (
@@ -73,6 +73,11 @@ def _parse_curation_row(line_number: int, row: dict[str, str | None]) -> Exercis
         raise ValueError(f"Exercise curation CSV line {line_number} needs an id and source_name")
     aliases = _split_curation_values(row["aliases"])
     _validate_curation_aliases(line_number, aliases)
+    primary_action = (row["primary_action"] or "").strip()
+    _validate_action(line_number, exercise_id, primary_action, "primary_action")
+    secondary_actions = _split_curation_values(row["secondary_actions"])
+    for action in secondary_actions:
+        _validate_action(line_number, exercise_id, action, "secondary_actions")
     hidden_value = (row["hidden"] or "").strip()
     if hidden_value.casefold() not in {"", "true", "false"}:
         raise ValueError(
@@ -87,8 +92,8 @@ def _parse_curation_row(line_number: int, row: dict[str, str | None]) -> Exercis
         source_name=source_name,
         display_name=(row["display_name"] or "").strip(),
         aliases=aliases,
-        primary_action=(row["primary_action"] or "").strip(),
-        secondary_actions=_split_curation_values(row["secondary_actions"]),
+        primary_action=primary_action,
+        secondary_actions=secondary_actions,
         primary_muscle=primary_muscle,
         load_type=(row["load_type"] or "").strip(),
         hidden=hidden_value.casefold() == "true",
@@ -109,6 +114,16 @@ def _validate_primary_muscle(
         raise ValueError(
             f"Exercise curation CSV line {line_number} id {exercise_id!r} "
             f"has invalid primary_muscle {primary_muscle!r}"
+        )
+
+
+def _validate_action(
+    line_number: int, exercise_id: str, action: str, field_name: str
+) -> None:
+    if action and action not in PRIMARY_ACTIONS:
+        raise ValueError(
+            f"Exercise curation CSV line {line_number} id {exercise_id!r} "
+            f"has invalid {field_name} value {action!r}"
         )
 
 
@@ -236,12 +251,17 @@ def _upsert_curated_fields(
 ) -> None:
     cursor.execute(
         "INSERT INTO exercise_curated_fields "
-        "(exercise_id, primary_muscle, hidden, duplicate_of) VALUES (?, ?, ?, ?) "
+        "(exercise_id, primary_action, secondary_actions, primary_muscle, hidden, duplicate_of) "
+        "VALUES (?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(exercise_id) DO UPDATE SET "
+        "primary_action = excluded.primary_action, "
+        "secondary_actions = excluded.secondary_actions, "
         "primary_muscle = excluded.primary_muscle, "
         "hidden = excluded.hidden, duplicate_of = excluded.duplicate_of",
         (
             exercise_id,
+            (record.primary_action or None) if record else None,
+            "|".join(record.secondary_actions) if record else "",
             (record.primary_muscle or None) if record else None,
             int(bool(record and record.hidden)),
             (record.duplicate_of or None) if record else None,
