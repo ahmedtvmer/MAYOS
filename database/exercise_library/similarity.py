@@ -24,7 +24,7 @@ class ExerciseSimilarityMixin:
                     WHERE embedding MATCH ? AND k = ?
                 )
                 SELECT e.id, {name_expression}, e.body_part,
-                       e.target_muscle, e.equipment, e.instructions, m.distance
+                       e.target_muscle, e.equipment, e.instructions, m.distance, e.name
                 FROM knn_matches m
                 JOIN exercises e ON e.id = {exercise_id_expression}
                 {display_name_join}
@@ -37,11 +37,16 @@ class ExerciseSimilarityMixin:
                 visible_sql=visible_sql,
             )
             cursor.execute(query, (serialized_vector, limit * 3))
-            columns = ["id", "name", "body_part", "target_muscle", "equipment", "instructions", "distance"]
+            columns = [
+                "id", "name", "body_part", "target_muscle", "equipment", "instructions", "distance",
+                "source_name",
+            ]
             candidates = []
             for row in cursor.fetchall():
                 record = dict(zip(columns, row))
-                if any(p in record["name"].lower() for p in self.EXCLUDED_BIOMECHANICAL_PATTERNS):
+                # Patterns match source names; a curated display name may spell them differently.
+                names = f"{record['name']} {record['source_name']}".lower()
+                if any(p in names for p in self.EXCLUDED_BIOMECHANICAL_PATTERNS):
                     continue
                 candidates.append(record)
                 if len(candidates) >= limit:

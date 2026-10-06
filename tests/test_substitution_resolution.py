@@ -15,6 +15,7 @@ from utils.equipment_access import BODYWEIGHT_ONLY, COMMERCIAL_GYM, HOME_GYM
 
 CHEST_SLOT = "577"  # machine chest press (pectorals | chest)
 REVERSE_LAT_SLOT = "673"  # reverse grip machine lat pulldown (lats | back)
+REVERSE_LAT_DISPLAY_NAME = "Reverse-Grip Pulldown (Machine)"
 CABLE_LAT_SLOT = "150"  # cable bar lateral pulldown (lats | back)
 MACHINE_LAT_VARIANT = "2736"  # machine reverse grip lateral pulldown (lats | back)
 PULL_THROUGH = "196"  # cable pull through (with rope)
@@ -233,7 +234,7 @@ def test_ambiguous_source_asks_which_day_without_publishing(sub_db):
     )
     before = sub_db.ledger.get_active_program()
     result = exercise_substitution_node(
-        _state("reverse grip machine lat pulldown", "machine front pulldown"),
+        _state(REVERSE_LAT_DISPLAY_NAME, "Front Pulldown (Machine)"),
         {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
     )
 
@@ -251,9 +252,9 @@ def test_catalog_name_resolution_tiers(sub_db):
     # Punctuation-insensitive exact: "push up" ≡ "push-up".
     assert db.find_exercises_by_name("push up")[0]["name"] == "Push-Up"
     # Substring: partial name resolves to the full catalog name.
-    assert db.find_exercises_by_name("romanian deadlift")[0]["name"] == "Barbell Romanian Deadlift"
+    assert db.find_exercises_by_name("romanian deadlift")[0]["name"] == "Romanian Deadlift (Barbell)"
     # Token-AND: scrambled tokens still resolve.
-    assert db.find_exercises_by_name("press chest machine")[0]["name"] == "Machine Chest Press"
+    assert db.find_exercises_by_name("press chest machine")[0]["name"] == "Chest Press (Machine)"
     # The hallucinated transcript target matches nothing.
     assert db.find_exercises_by_name(HALLUCINATED_TARGET) == []
 
@@ -261,7 +262,7 @@ def test_catalog_name_resolution_tiers(sub_db):
 def test_chat_substitution_resolves_display_alias(sub_db):
     sub_db.initialize_and_seed()
     result = exercise_substitution_node(
-        _state("reverse grip machine lat pulldown", "standing cable pulldown"),
+        _state(REVERSE_LAT_DISPLAY_NAME, "standing cable pulldown"),
         {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
     )
 
@@ -273,6 +274,19 @@ def test_chat_substitution_resolves_display_alias(sub_db):
     assert "standing cable pulldown (cable)" in result["response_content"].lower()
 
 
+def test_chat_substitution_resolves_a_target_named_by_its_source_name(sub_db):
+    sub_db.initialize_and_seed()
+    result = exercise_substitution_node(
+        _state(REVERSE_LAT_DISPLAY_NAME, "cable lat pulldown full range of motion"),
+        {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
+    )
+
+    assert result["program_updated"] is True, result
+    active = sub_db.ledger.get_active_program()
+    assert active.days[0].exercises[1].exercise_id == "2330"
+    assert active.days[0].exercises[1].exercise_name == "Standing Cable Pulldown (Cable)"
+
+
 def test_chat_library_search_returns_alias_matches_with_display_names(sub_db):
     sub_db.initialize_and_seed()
     state = _state("", "")
@@ -282,7 +296,7 @@ def test_chat_library_search_returns_alias_matches_with_display_names(sub_db):
         state, {"configurable": {"ledger": sub_db.ledger, "store": sub_db}}
     )
 
-    assert "**Lat Pulldown**" in result["response_content"]
+    assert "**Lat Pulldown (Cable)**" in result["response_content"]
 
 
 def test_catalog_lookup_model_context_includes_curated_exercise_facts(
@@ -411,7 +425,7 @@ def test_active_program_sent_to_coreference_model_includes_curated_exercise_fact
         },
     )
     model = ScriptedChatModel(
-        [{"source_exercise": "reverse grip machine lat pulldown", "target_exercise": ""}]
+        [{"source_exercise": REVERSE_LAT_DISPLAY_NAME, "target_exercise": ""}]
     )
     monkeypatch.setattr(assistant_graph, "llm", model)
     state = _state("it", "")
@@ -501,7 +515,7 @@ def test_substitution_model_context_includes_curated_source_and_candidates(
     )
     model = ScriptedChatModel(["The first option keeps the same main movement."])
     monkeypatch.setattr(assistant_graph, "llm", model)
-    query = "show me alternatives for reverse grip machine lat pulldown"
+    query = f"show me alternatives for {REVERSE_LAT_DISPLAY_NAME}"
     state = _state("", "")
     state["messages"] = [HumanMessage(content=query)]
     state["intent_metadata"] = {
@@ -511,7 +525,7 @@ def test_substitution_model_context_includes_curated_source_and_candidates(
                 "intent": "exercise_substitution",
                 "query": query,
                 "intent_metadata": {
-                    "source_exercise": "reverse grip machine lat pulldown",
+                    "source_exercise": REVERSE_LAT_DISPLAY_NAME,
                     "target_exercise": "",
                 },
             },
@@ -604,7 +618,7 @@ def test_no_staple_suggestions_follow_replace_ranking_and_access(
     }
 
     result = exercise_substitution_node(
-        _state("reverse grip machine lat pulldown", ""),
+        _state(REVERSE_LAT_DISPLAY_NAME, ""),
         {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
     )
 
@@ -640,7 +654,7 @@ def test_assistant_substitution_suggestions_skip_hidden_rows(sub_db, seed_exerci
     seed_exercise_curation(sub_db, {MACHINE_LAT_VARIANT: {"hidden": True}})
 
     result = exercise_substitution_node(
-        _state("reverse grip machine lat pulldown", ""),
+        _state(REVERSE_LAT_DISPLAY_NAME, ""),
         {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
     )
 
@@ -655,7 +669,7 @@ def test_assistant_near_miss_refusal_does_not_name_hidden_exercises(
     seed_exercise_curation(sub_db, {"744": {"hidden": True}})
 
     result = exercise_substitution_node(
-        _state("reverse grip machine lat pulldown", "pendulum squat"),
+        _state(REVERSE_LAT_DISPLAY_NAME, "pendulum squat"),
         {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
     )
 
@@ -712,10 +726,10 @@ def test_near_miss_substitution_refuses_semantic_sibling(
 
 def test_hallucinated_target_refuses_instead_of_installing_sibling(sub_db):
     db = sub_db
-    res = exercise_substitution_node(_state("reverse grip machine lat pulldown", HALLUCINATED_TARGET), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
+    res = exercise_substitution_node(_state(REVERSE_LAT_DISPLAY_NAME, HALLUCINATED_TARGET), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
     assert res["program_updated"] is False
     assert "could not find a biomechanically suitable match" in res["response_content"].lower()
-    assert _slot_name(db, 1) == "reverse grip machine lat pulldown"
+    assert _slot_name(db, 1) == REVERSE_LAT_DISPLAY_NAME.lower()
 
 
 def test_named_catalog_target_installs_without_semantic_search(sub_db, monkeypatch):
@@ -723,10 +737,10 @@ def test_named_catalog_target_installs_without_semantic_search(sub_db, monkeypat
         raise AssertionError("EMBED_MODEL must not be used for a named catalog match")
 
     monkeypatch.setattr(assistant_graph, "EMBED_MODEL", SimpleNamespace(embed_query=_boom, embed_documents=_boom))
-    res = exercise_substitution_node(_state("reverse grip machine lat pulldown", "machine front pulldown"), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
+    res = exercise_substitution_node(_state(REVERSE_LAT_DISPLAY_NAME, "Front Pulldown (Machine)"), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
     assert res["program_updated"] is True
-    assert "machine front pulldown" in res["response_content"].lower()
-    assert _slot_name(sub_db, 1) == "machine front pulldown"
+    assert "Front Pulldown (Machine)" in res["response_content"]
+    assert _slot_name(sub_db, 1) == "front pulldown (machine)"
 
 
 def test_punctuation_normalized_target_installs(sub_db):
@@ -738,37 +752,37 @@ def test_punctuation_normalized_target_installs(sub_db):
 
 def test_transcript_replay_second_commit_refuses(sub_db):
     db = sub_db
-    first = exercise_substitution_node(_state("reverse grip machine lat pulldown", "machine front pulldown"), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
+    first = exercise_substitution_node(_state(REVERSE_LAT_DISPLAY_NAME, "Front Pulldown (Machine)"), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
     assert first["program_updated"] is True
 
-    second = exercise_substitution_node(_state("machine front pulldown", HALLUCINATED_TARGET), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
+    second = exercise_substitution_node(_state("Front Pulldown (Machine)", HALLUCINATED_TARGET), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
     assert second["program_updated"] is False
-    assert _slot_name(db, 1) == "machine front pulldown"
+    assert _slot_name(db, 1) == "front pulldown (machine)"
 
 
 def test_muscle_incompatible_named_target_refuses(sub_db):
     db = sub_db
-    res = exercise_substitution_node(_state("reverse grip machine lat pulldown", "barbell bench press"), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
+    res = exercise_substitution_node(_state(REVERSE_LAT_DISPLAY_NAME, "barbell bench press"), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
     assert res["program_updated"] is False
     assert "is in the exercise database" in res["response_content"]
     assert "pectorals" in res["response_content"].lower()
-    assert _slot_name(db, 1) == "reverse grip machine lat pulldown"
+    assert _slot_name(db, 1) == REVERSE_LAT_DISPLAY_NAME.lower()
 
 
 def test_self_swap_refuses(sub_db):
     db = sub_db
-    res = exercise_substitution_node(_state("reverse grip machine lat pulldown", "reverse grip machine lat pulldown"), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
+    res = exercise_substitution_node(_state(REVERSE_LAT_DISPLAY_NAME, REVERSE_LAT_DISPLAY_NAME), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
     assert res["program_updated"] is False
-    assert _slot_name(db, 1) == "reverse grip machine lat pulldown"
+    assert _slot_name(db, 1) == REVERSE_LAT_DISPLAY_NAME.lower()
 
 
 @pytest.mark.parametrize("target", ["it", "choice", "one", "two", "three", "first"])
 def test_unspecific_target_refuses_without_junk_match(sub_db, target):
     db = sub_db
-    res = exercise_substitution_node(_state("reverse grip machine lat pulldown", target), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
+    res = exercise_substitution_node(_state(REVERSE_LAT_DISPLAY_NAME, target), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
     assert res["program_updated"] is False
     assert "could not find a biomechanically suitable match" in res["response_content"].lower()
-    assert _slot_name(db, 1) == "reverse grip machine lat pulldown"
+    assert _slot_name(db, 1) == REVERSE_LAT_DISPLAY_NAME.lower()
 
 
 def test_followup_hint_uses_real_catalog_name(sub_db, monkeypatch):
@@ -776,7 +790,8 @@ def test_followup_hint_uses_real_catalog_name(sub_db, monkeypatch):
     variants = [
         {
             "id": MACHINE_LAT_VARIANT,
-            "name": "Machine Reverse Grip Lateral Pulldown",
+            "name": "Reverse-Grip Pulldown (Plate-Loaded)",
+            "source_name": "lever reverse grip lateral pulldown",
             "target_muscle": "lats",
             "body_part": "back",
             "equipment": "leverage machine",
@@ -784,7 +799,8 @@ def test_followup_hint_uses_real_catalog_name(sub_db, monkeypatch):
         },
         {
             "id": "7",
-            "name": "Alternate Lateral Pulldown",
+            "name": "Single-Arm Lat Pulldown (Cable)",
+            "source_name": "alternate lateral pulldown",
             "target_muscle": "lats",
             "body_part": "back",
             "equipment": "cable",
@@ -793,11 +809,11 @@ def test_followup_hint_uses_real_catalog_name(sub_db, monkeypatch):
     ]
     monkeypatch.setattr(DatabaseManager, "search_similar_exercises", lambda self, vec, limit=5: variants)
 
-    res = exercise_substitution_node(_state("reverse grip machine lat pulldown", "something easier on my elbows"), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
+    res = exercise_substitution_node(_state(REVERSE_LAT_DISPLAY_NAME, "something easier on my elbows"), {"configurable": {"ledger": sub_db.ledger, "store": sub_db}})
     assert res["program_updated"] is True
-    assert "swap Reverse Grip Machine Lat Pulldown for Alternate Lateral Pulldown" in res["response_content"]
+    assert f"swap {REVERSE_LAT_DISPLAY_NAME} for Single-Arm Lat Pulldown (Cable)" in res["response_content"]
     assert "swap for cable machine" not in res["response_content"]
-    assert _slot_name(sub_db, 1) == "machine reverse grip lateral pulldown"
+    assert _slot_name(sub_db, 1) == "reverse-grip pulldown (plate-loaded)"
     active = sub_db.ledger.get_active_program()
     assert active.version == 2
     assert active.published_by_coach_account_id is None
@@ -806,7 +822,7 @@ def test_followup_hint_uses_real_catalog_name(sub_db, monkeypatch):
 @pytest.mark.parametrize(
     "access,expected_names",
     [
-        (COMMERCIAL_GYM, {"Standing Cable Pulldown (Cable)", "Twin Handle Parallel-Grip Lat Pulldown"}),
+        (COMMERCIAL_GYM, {"Standing Cable Pulldown (Cable)", "Parallel-Grip Lat Pulldown (Cable)"}),
         (HOME_GYM, {"Band Underhand Pulldown", "Wide-Grip Pull-Up"}),
         (BODYWEIGHT_ONLY, {"Wide-Grip Pull-Up"}),
     ],
@@ -823,7 +839,7 @@ def test_unspecified_chat_substitutes_follow_equipment_access(sub_db, monkeypatc
     program = sub_db.ledger.get_active_program().model_dump()
     program["days"][0]["exercises"][1]["suggested_substitutes"] = [
         {"exercise_id": "2330", "exercise_name": "Standing Cable Pulldown (Cable)"},
-        {"exercise_id": "818", "exercise_name": "Twin Handle Parallel-Grip Lat Pulldown"},
+        {"exercise_id": "818", "exercise_name": "Parallel-Grip Lat Pulldown (Cable)"},
         {"exercise_id": "1013", "exercise_name": "Band Underhand Pulldown"},
         {"exercise_id": "1429", "exercise_name": "Wide-Grip Pull-Up"},
     ]
@@ -834,13 +850,13 @@ def test_unspecified_chat_substitutes_follow_equipment_access(sub_db, monkeypatc
     )
 
     result = exercise_substitution_node(
-        _state("reverse grip machine lat pulldown", None),
+        _state(REVERSE_LAT_DISPLAY_NAME, None),
         {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
     )
 
     shown = {
         name for name in (
-            "Standing Cable Pulldown (Cable)", "Twin Handle Parallel-Grip Lat Pulldown",
+            "Standing Cable Pulldown (Cable)", "Parallel-Grip Lat Pulldown (Cable)",
             "Band Underhand Pulldown", "Wide-Grip Pull-Up",
         ) if name in result["response_content"]
     }

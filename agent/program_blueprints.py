@@ -454,15 +454,15 @@ SLOT_STAPLES: dict[str, tuple[str, ...]] = {
     "chest_fly": ("596", "171", "1278", "1286"),  # Pec Deck; cable incline fly; DB incline fly; DB chest fly
     "horizontal_row": ("1350", "606", "327", "2298"),  # machine seated row; lever T-bar row; incline DB row; inverted row
     "upper_back_pull": ("606", "327", "1331", "3156"),  # lever T-bar row; incline DB row; reverse-grip incline row; bodyweight row
-    "vertical_pull": ("150", "2330", "1429", "652"),  # Lat Pulldown; Standing Cable Pulldown; wide-grip pull-up; pull-up
+    "vertical_pull": ("150", "3563", "2330", "1429", "652"),  # Lat Pulldown; standing single-arm pulldown; Standing Cable Pulldown; wide-grip pull-up; pull-up
     "pullover": ("184", "2285", "375", "1255"),  # cable pullover; machine pullover; DB pullover; BB pullover
     "shrug": ("mayos:1", "220", "406", "95", "604"),  # MAYOS Kelso shrug; cable; DB; BB; machine shrug
-    "shoulder_press": ("603", "405", "766", "91"),  # machine shoulder press; seated DB press; Smith press; BB overhead press
+    "shoulder_press": ("869", "587", "405", "766", "91"),  # iso-lateral machine press; plate-loaded machine press; seated DB press; Smith press; BB overhead press
     "side_delts": ("178", "584", "395", "977"),  # cable lateral raise; machine lateral raise; seated DB raise; band raise
     "rear_delts": ("mayos:3", "602", "225", "359", "993"),  # MAYOS cable Y-raise; Reverse Pec Deck; cable fly; DB fly; band fly
     "biceps_preacher": ("592", "372", "70", "1633"),  # machine preacher curl; DB preacher curl; BB preacher curl; cable preacher curl
     "biceps_alt": ("318", "mayos:2", "1630", "31", "1769"),  # Incline DB Curl; MAYOS Bayesian curl; cable/BB curl; bodyweight curl
-    "triceps_pushdown": ("201", "200", "241", "1723"),  # cable pushdown; rope pushdown; V-bar pushdown; one-arm pushdown
+    "triceps_pushdown": ("1723", "201", "200", "241"),  # one-arm pushdown; cable pushdown; rope pushdown; V-bar pushdown
     "triceps_overhead": ("194", "92", "2188", "453", "1771"),  # overhead cable extension; BB/DB/EZ extensions; bodyweight extension
     "forearm_wrist": ("1412", "401", "247", "125"),  # palms-up BB curl; seated DB curl; cable curl; BB curl
     "forearm_reverse": ("1411", "385", "210", "82"),  # palms-down BB curl; DB reverse curl; cable reverse curl; BB reverse curl

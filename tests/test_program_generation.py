@@ -213,3 +213,17 @@ def test_persisted_program_schema_accepts_coach_authored_prescription():
 
 if __name__ == "__main__":
     run_test()
+
+
+def test_machine_suffix_never_reads_as_a_chin_up_cue():
+    from agent.program_generator import MECHANIC_CUES, get_biomechanical_cue
+
+    assert get_biomechanical_cue("Squat (Smith Machine)", "compound", "intermediate") == MECHANIC_CUES["compound_lower"]
+    assert get_biomechanical_cue("Assisted Chin-Up (Machine)", "compound", "intermediate") == MECHANIC_CUES["compound_pull"]
+
+
+def test_straight_arm_pulldown_is_an_isolation_movement():
+    from agent.program_rules import is_compound_name
+
+    assert is_compound_name("Lat Pulldown (Cable)")
+    assert not is_compound_name("Incline Straight-Arm Pulldown (Cable)")

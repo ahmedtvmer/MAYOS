@@ -89,9 +89,10 @@ class ProgramGenerationRequest:
 def get_biomechanical_cue(name: str, mechanic: str, experience_level: ExperienceLevel) -> str:
     name_lower = name.lower()
     if mechanic == "compound":
-        if any(w in name_lower for w in ["press", "push", "dip"]):
+        # Word starts only: "chin" must not match "Machine", nor "row" match "Narrow".
+        if re.search(r"\b(?:press|push|dip)", name_lower):
             return MECHANIC_CUES["compound_press"]
-        if any(w in name_lower for w in ["row", "pull", "chin"]):
+        if re.search(r"\b(?:row|pull|chin)", name_lower):
             return MECHANIC_CUES["compound_pull"]
         return MECHANIC_CUES["compound_lower"]
     cue_key = "isolation_beginner" if experience_level == "beginner" else "isolation_technical_failure"

@@ -257,6 +257,30 @@ def test_semantic_search_excludes_hidden_exercises(seed_store, tmp_path, seed_ex
     assert "9001" not in {result["id"] for result in results}
 
 
+def test_semantic_search_keeps_excluding_behind_the_neck_rows_with_display_names(seed_store, tmp_path):
+    from database.schema.definitions import EMBEDDING_DIM
+
+    seed_path = tmp_path / "seed.csv"
+    with seed_path.open("w", newline="", encoding="utf-8") as seed_file:
+        writer = csv.writer(seed_file)
+        writer.writerow(
+            ["id", "name", "bodyPart", "target", "equipment", "image_path", "gif_path", "instructions"]
+        )
+        writer.writerow(
+            ["9201", "smith behind neck press", "shoulders", "delts", "smith machine", None, None, "Press."]
+        )
+    curation_path = tmp_path / "curation.csv"
+    _write_curated_rows(
+        curation_path,
+        [["9201", "smith behind neck press", "Behind-the-Neck Press (Smith Machine)", "", "", "", "", "", "", ""]],
+    )
+    seed_store.initialize_and_seed(seed_path, curation_path)
+
+    results = seed_store.search_similar_exercises([1.0] + [0.0] * (EMBEDDING_DIM - 1), limit=20)
+
+    assert "9201" not in {result["id"] for result in results}
+
+
 def test_primary_muscle_curation_is_searchable_and_returned_in_detail(
     seed_store, tmp_path, seed_exercise_curation
 ):
@@ -326,6 +350,22 @@ def test_curation_rejects_load_type_for_non_machine_equipment(seed_store, tmp_pa
 
     with pytest.raises(ValueError, match="line 2 id '9001'.*'selectorized'.*non-Machine"):
         _seed_minimal_library(seed_store, seed_path, curation_path)
+
+
+def test_curation_rows_for_exercises_outside_the_library_are_ignored(seed_store, tmp_path):
+    curation_path = tmp_path / "rows-outside-library.csv"
+    _write_curated_rows(
+        curation_path,
+        [
+            ["9101", "lever chest press", "Chest Press (Machine)", "", "", "", "", "selectorized", "", ""],
+            ["9102", "lever chest press v. 2", "", "", "", "", "", "", "true", "9103"],
+        ],
+    )
+
+    _seed_minimal_library(seed_store, tmp_path / "seed.csv", curation_path)
+
+    assert seed_store.get_exercise_library_entry("9001")["name"] == "Cable Row"
+    assert seed_store.get_exercise_library_entry("9101") is None
 
 
 def test_machine_load_type_is_curated_and_returned_by_search_and_detail(seed_store, tmp_path):
@@ -444,7 +484,7 @@ def test_pulldown_aliases_return_display_names(fresh_store, query):
 
     assert "150" in {match["id"] for match in matches}
     assert {match["name"] for match in matches if match["id"] == "150"} == {
-        "Lat Pulldown"
+        "Lat Pulldown (Cable)"
     }
 
 
@@ -462,15 +502,15 @@ def test_confirmed_staples_use_display_names_in_library_reads(fresh_store):
     fresh_store.initialize_and_seed()
     expected = {
         "2330": ("Standing Cable Pulldown (Cable)", "standing cable pulldown"),
-        "150": ("Lat Pulldown", "frontal lat pulldown"),
-        "596": ("Pec Deck", "pec deck"),
-        "602": ("Reverse Pec Deck", "reverse pec deck"),
-        "3562": ("Barbell Hip Thrust", "barbell hip thrust"),
-        "757": ("Smith Incline Press", "smith incline press"),
-        "175": ("Cable Crunch", "cable crunch"),
+        "150": ("Lat Pulldown (Cable)", "frontal lat pulldown"),
+        "596": ("Pec Deck (Machine)", "pec deck"),
+        "602": ("Reverse Pec Deck (Machine)", "reverse pec deck"),
+        "3562": ("Hip Thrust (Barbell)", "barbell hip thrust"),
+        "757": ("Incline Bench Press (Smith Machine)", "smith incline press"),
+        "175": ("Kneeling Crunch (Cable)", "cable crunch"),
         "3541": ("Incline DB Y-Raise", "incline db y raise"),
         "318": ("Incline DB Curl", "incline db curl"),
-        "598": ("Hip Adduction", "hip adduction"),
+        "598": ("Hip Adduction (Machine)", "hip adduction"),
     }
 
     for exercise_id, (display_name, alias) in expected.items():
@@ -663,3 +703,15 @@ def test_seed_normalizes_source_names_and_preserves_ids_and_media(fresh_store, t
     assert fresh_store.catalog_conn.execute(
         "SELECT id, image_path, gif_path FROM exercises WHERE id = '2330'"
     ).fetchone() == existing_media
+
+
+def test_every_curation_file_id_exists_in_the_exercise_library():
+    from database.exercise_library.authored import MAYOS_AUTHORED_EXERCISES
+    from database.exercise_library.curation import load_exercise_curation
+    from database.shared import DEFAULT_CSV_PATH
+
+    with open(DEFAULT_CSV_PATH, newline="", encoding="utf-8") as seed_file:
+        library_ids = {row["id"] for row in csv.DictReader(seed_file)}
+    library_ids |= {exercise["id"] for exercise in MAYOS_AUTHORED_EXERCISES}
+
+    assert set(load_exercise_curation()) - library_ids == set()

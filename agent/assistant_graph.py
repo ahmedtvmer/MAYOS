@@ -40,7 +40,7 @@ from agent.program_generator import (
     get_biomechanical_cue,
 )
 from agent.program_blueprints import experience_level_for_training_age
-from agent.program_rules import COMPOUND_KEYWORDS
+from agent.program_rules import is_compound_name
 from agent.prompts import (
     render_assistant_style,
     DEFAULT_ASSISTANT_STYLE,
@@ -1284,6 +1284,11 @@ def _slot_alternative_lines(
     ][:3]
 
 
+def _movement_tail(candidate: dict[str, Any]) -> list[str]:
+    """Last two words of the source name ("... lateral pulldown"), which variants of one movement share."""
+    return (candidate.get("source_name") or candidate["name"]).lower().split()[-2:]
+
+
 def _target_is_name_like(target_desc: str, candidates: list[dict[str, Any]]) -> bool:
     """True when the target reads like a specific exercise name that failed to resolve by name.
 
@@ -1294,9 +1299,11 @@ def _target_is_name_like(target_desc: str, candidates: list[dict[str, Any]]) -> 
     if len(target_tokens) < 2:
         return False
     for candidate in candidates[:5]:
-        candidate_tokens = set(re.findall(r"[a-z0-9]+", (candidate.get("name") or "").lower()))
-        if len(target_tokens & candidate_tokens) / len(target_tokens) >= 0.6:
-            return True
+        # Players may name an exercise by its display name or its source name.
+        for name in (candidate.get("name"), candidate.get("source_name")):
+            candidate_tokens = set(re.findall(r"[a-z0-9]+", (name or "").lower()))
+            if len(target_tokens & candidate_tokens) / len(target_tokens) >= 0.6:
+                return True
     return False
 
 
@@ -1609,7 +1616,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
         lines = [header]
         model_lines = [model_header]
         for i, c in enumerate(valid_candidates, start=1):
-            is_comp = any(kw in c["name"].lower() for kw in COMPOUND_KEYWORDS) and "calf" not in c["name"].lower()
+            is_comp = is_compound_name(c["name"])
             cue = get_biomechanical_cue(c["name"], "compound" if is_comp else "isolation", experience_level)
             lines.append(f"{i}. **{c['name'].title()}** (`{c['equipment']}`)\n   *Cue:* {cue}")
             model_lines.append(f"{i}. **{c['description']}**\n   *Cue:* {cue}")
@@ -1750,13 +1757,16 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
     )
     if substitution["ok"]:
         replacement = substitution["replacement"]
-        is_compound = any(kw in replacement["name"].lower() for kw in COMPOUND_KEYWORDS) and "calf" not in replacement["name"].lower()
+        is_compound = is_compound_name(replacement["name"])
         new_notes = replacement.get("instructions") or get_biomechanical_cue(
             replacement["name"], "compound" if is_compound else "isolation", experience_level
         )
         note_suffix = ""
+        # Variants of one movement share the end of their source name ("... lateral pulldown");
+        # display names end in an equipment suffix, so compare source names when known.
+        installed = next((c for c in valid_replacements if str(c["id"]) == str(replacement["id"])), replacement)
         alt_variant = next(
-            (c for c in valid_replacements if str(c["id"]) != str(replacement["id"]) and c["name"].split()[-2:] == replacement["name"].split()[-2:]),
+            (c for c in valid_replacements if str(c["id"]) != str(replacement["id"]) and _movement_tail(c) == _movement_tail(installed)),
             None,
         )
         if alt_variant and ("dumbbell" not in query.lower() and "barbell" not in query.lower()):

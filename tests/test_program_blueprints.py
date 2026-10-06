@@ -198,8 +198,8 @@ def test_commercial_gym_vertical_pull_prescribes_lat_pulldown():
         if exercise.slot_key == "vertical_pull"
     ]
     assert vertical_pulls
-    assert all(exercise.exercise_name == "Lat Pulldown" for exercise in vertical_pulls)
-    assert vertical_pulls[0].suggested_substitutes[0].exercise_name == "Standing Cable Pulldown (Cable)"
+    assert all(exercise.exercise_name == "Lat Pulldown (Cable)" for exercise in vertical_pulls)
+    assert vertical_pulls[0].suggested_substitutes[0].exercise_name == "Standing Single-Arm Pulldown (Cable)"
 
 
 def test_generation_is_repeatable_and_offers_ordered_staple_substitutes():
@@ -215,7 +215,7 @@ def test_generation_is_repeatable_and_offers_ordered_staple_substitutes():
     ham_curls = [exercise for exercise in exercises if exercise.slot_key == "ham_curl"]
     assert ham_curls and "seated leg curl" in ham_curls[0].exercise_name.lower()
     triceps_overhead = [exercise for exercise in exercises if exercise.slot_key == "triceps_overhead"]
-    assert triceps_overhead and "cable overhead" in triceps_overhead[0].exercise_name.lower()
+    assert triceps_overhead and triceps_overhead[0].exercise_name == "Overhead Rope Triceps Extension (Cable)"
     biceps_alternatives = [exercise for exercise in exercises if exercise.slot_key == "biceps_alt"]
     assert biceps_alternatives and biceps_alternatives[0].exercise_id == "318"
 

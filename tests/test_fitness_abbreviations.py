@@ -155,13 +155,13 @@ def test_substitution_rdls_confident_install(db_with_good_morning):
         state, {"configurable": {"ledger": db_with_good_morning.ledger, "store": db_with_good_morning}}
     )
     assert res["program_updated"] is True, f"Failed swap: {res.get('response_content')}"
-    assert "barbell romanian deadlift" in res["response_content"].lower()
+    assert "romanian deadlift (barbell)" in res["response_content"].lower()
     assert "low glute bridge" not in res["response_content"].lower()
 
     # Check database program slot
     active_after = db_with_good_morning.ledger.get_active_program()
     first_ex = active_after.days[0].exercises[0]
-    assert first_ex.exercise_name.lower() == "barbell romanian deadlift"
+    assert first_ex.exercise_name.lower() == "romanian deadlift (barbell)"
 
 
 def test_substitution_db_rdl_explicit_variant(db_with_good_morning):
@@ -192,7 +192,7 @@ def test_substitution_db_rdl_explicit_variant(db_with_good_morning):
         "intent": "exercise_substitution",
         "intent_metadata": {
             "mode": "direct_swap",
-            "source_exercise": "barbell romanian deadlift",
+            "source_exercise": "romanian deadlift (barbell)",
             "target_exercise": "dumbbell RDL",
         },
         "active_intents": None,
@@ -210,7 +210,7 @@ def test_substitution_db_rdl_explicit_variant(db_with_good_morning):
     active_after = db_with_good_morning.ledger.get_active_program()
     lower_day = next(day for day in active_after.days if day.day_name == "Lower 2")
     assert any(ex.exercise_name.lower() == "dumbbell romanian deadlift" for ex in lower_day.exercises)
-    assert any(ex.exercise_name.lower() == "barbell romanian deadlift" for ex in active_after.days[0].exercises)
+    assert any(ex.exercise_name.lower() == "romanian deadlift (barbell)" for ex in active_after.days[0].exercises)
 
 
 def test_substitution_unknown_abbreviation_asks_illustration(db_with_good_morning):

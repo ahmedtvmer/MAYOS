@@ -207,6 +207,10 @@ def _validate_curation_references(
 ) -> None:
     staples = {exercise_id for staple_ids in SLOT_STAPLES.values() for exercise_id in staple_ids}
     for exercise_id, record in curation.items():
+        # Rows for ids this library does not hold are never applied, so they
+        # are not validated against it either (e.g. a partial seed).
+        if exercise_id not in exercise_ids:
+            continue
         _validate_hidden_staple(exercise_id, record, staples)
         _validate_duplicate_reference(exercise_id, record, curation, exercise_ids)
         _validate_load_type_equipment(

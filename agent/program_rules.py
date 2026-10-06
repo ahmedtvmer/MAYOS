@@ -56,6 +56,17 @@ COMPOUND_KEYWORDS = [
     "pulldown",
 ]
 
+#: Single-joint movements whose names contain a compound keyword ("pulldown").
+ISOLATION_NAME_MARKERS = ("calf", "straight-arm", "straight arm")
+
+
+def is_compound_name(name: str) -> bool:
+    name_lower = name.lower()
+    return any(kw in name_lower for kw in COMPOUND_KEYWORDS) and not any(
+        marker in name_lower for marker in ISOLATION_NAME_MARKERS
+    )
+
+
 EXCLUDED_TERMS = [
     "stretch",
     "yoga",
@@ -287,7 +298,7 @@ def _name_rank_sql(name_rank: tuple[str, ...]) -> str:
     for index, pattern in enumerate(name_rank, start=1):
         if not re.fullmatch(r"[a-z0-9 -]+", pattern):
             raise ValueError(f"Unsafe name pattern: {pattern!r}")
-        whens.append(f"WHEN LOWER(name) LIKE '%{pattern}%' THEN {index}")
+        whens.append(f"WHEN LOWER(e.name) LIKE '%{pattern}%' THEN {index}")
     return f"CASE {' '.join(whens)} ELSE {len(name_rank) + 1} END ASC, "
 
 
@@ -323,7 +334,8 @@ def _fetch_by_sql(
 
     rank_sql = _equipment_rank_sql(equipment_pref)
     query = f"""
-        SELECT e.id, COALESCE(edn.display_name, e.name) AS name, e.body_part, e.target_muscle,
+        SELECT e.id, COALESCE(edn.display_name, e.name) AS name, e.name AS source_name,
+               e.body_part, e.target_muscle,
                e.equipment, e.instructions, e.image_path, e.gif_path
         FROM exercises e
         LEFT JOIN exercise_display_names edn ON edn.exercise_id = e.id
@@ -337,11 +349,14 @@ def _fetch_by_sql(
     candidates = []
     for row in rows:
         item = dict(zip(cols, row))
-        if _is_excluded(item["name"]):
+        # Exclusion terms were written against source names; a display name such as
+        # "Behind-the-Neck Press (Smith Machine)" must not slip past them.
+        source_name = item.pop("source_name")
+        if _is_excluded(item["name"]) or _is_excluded(source_name):
             continue
         item["name"] = clean_exercise_name(item["name"], replace_with_machine=True)
         name_lower = item["name"].lower()
-        is_compound = any(kw in name_lower for kw in COMPOUND_KEYWORDS) and "calf" not in name_lower
+        is_compound = is_compound_name(name_lower)
         item["mechanic"] = "compound" if is_compound else "isolation"
         candidates.append(item)
         if len(candidates) >= limit:
@@ -462,7 +477,7 @@ def fetch_filtered_candidates(
             continue
         item["name"] = clean_exercise_name(item["name"], replace_with_machine=True)
         name_lower = item["name"].lower()
-        is_compound = any(kw in name_lower for kw in COMPOUND_KEYWORDS) and "calf" not in name_lower
+        is_compound = is_compound_name(name_lower)
         item["mechanic"] = "compound" if is_compound else "isolation"
         candidates.append(item)
         if len(candidates) >= limit:
