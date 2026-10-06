@@ -284,6 +284,48 @@ def test_chat_library_search_returns_alias_matches_with_display_names(sub_db):
     assert "Lat Pulldown" in result["response_content"]
 
 
+def test_assistant_substitution_suggestions_skip_hidden_rows(sub_db, seed_exercise_curation):
+    sub_db.initialize_and_seed()
+    program = sub_db.ledger.get_active_program().model_dump()
+    program.pop("created_at", None)
+    source = next(
+        exercise
+        for exercise in program["days"][0]["exercises"]
+        if exercise["exercise_id"] == REVERSE_LAT_SLOT
+    )
+    suggested = sub_db.get_exercise_library_entry(MACHINE_LAT_VARIANT)
+    assert suggested is not None
+    source["suggested_substitutes"] = [
+        {"exercise_id": MACHINE_LAT_VARIANT, "exercise_name": suggested["name"]}
+    ]
+    sub_db.ledger.save_training_program(program)
+    seed_exercise_curation(sub_db, {MACHINE_LAT_VARIANT: {"hidden": True}})
+
+    result = exercise_substitution_node(
+        _state("reverse grip machine lat pulldown", ""),
+        {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
+    )
+
+    assert result["program_updated"] is False
+    assert suggested["name"] not in result["response_content"]
+
+
+def test_assistant_near_miss_refusal_does_not_name_hidden_exercises(
+    sub_db, seed_exercise_curation
+):
+    sub_db.initialize_and_seed()
+    seed_exercise_curation(sub_db, {"744": {"hidden": True}})
+
+    result = exercise_substitution_node(
+        _state("reverse grip machine lat pulldown", "pendulum squat"),
+        {"configurable": {"ledger": sub_db.ledger, "store": sub_db}},
+    )
+
+    assert result["program_updated"] is False
+    assert "pendulum squat" in result["response_content"].lower()
+    assert "sled lying squat" not in result["response_content"].lower()
+
+
 @pytest.mark.parametrize(
     ("target", "target_id", "source_id"),
     [

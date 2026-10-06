@@ -3,7 +3,10 @@
 import sqlite_vec
 from typing import Any
 from database.exercise_library.embeddings import exercise_id_for_vector_sql
-from database.exercise_library.schema import effective_exercise_name_sql
+from database.exercise_library.schema import (
+    effective_exercise_name_sql,
+    exercise_library_visible_sql,
+)
 
 
 class ExerciseSimilarityMixin:
@@ -12,6 +15,7 @@ class ExerciseSimilarityMixin:
             cursor = self.catalog_conn.cursor()
             serialized_vector = sqlite_vec.serialize_float32(query_vector)
             name_expression, display_name_join = effective_exercise_name_sql()
+            visible_sql = exercise_library_visible_sql("e.id")
             exercise_id_expression = exercise_id_for_vector_sql("m.exercise_id")
             query = """
                 WITH knn_matches AS (
@@ -24,11 +28,13 @@ class ExerciseSimilarityMixin:
                 FROM knn_matches m
                 JOIN exercises e ON e.id = {exercise_id_expression}
                 {display_name_join}
+                WHERE {visible_sql}
                 ORDER BY m.distance ASC;
             """.format(
                 name_expression=name_expression,
                 display_name_join=display_name_join,
                 exercise_id_expression=exercise_id_expression,
+                visible_sql=visible_sql,
             )
             cursor.execute(query, (serialized_vector, limit * 3))
             columns = ["id", "name", "body_part", "target_muscle", "equipment", "instructions", "distance"]

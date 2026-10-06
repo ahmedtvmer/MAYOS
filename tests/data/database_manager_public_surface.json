@@ -269,6 +269,10 @@
       "kind": "method",
       "signature": "(self, account_id: str) -> bool"
     },
+    "is_exercise_library_exercise_visible": {
+      "kind": "method",
+      "signature": "(self, exercise_id: str) -> bool"
+    },
     "is_live_account": {
       "kind": "staticmethod",
       "signature": "(account: dict[str, typing.Any] | None) -> bool"

@@ -64,6 +64,32 @@ def test_rules(fresh_store):
     logger.info("\nAll deterministic and dynamic program rules passed.")
 
 
+def test_filtered_generation_candidates_omit_hidden_exercises(fresh_store, seed_exercise_curation):
+    from agent.program_blueprints import SLOT_STAPLES
+
+    staple_ids = {exercise_id for staple_ids in SLOT_STAPLES.values() for exercise_id in staple_ids}
+    candidates = fetch_filtered_candidates(
+        muscle_group="chest",
+        equipment_access="commercial gym",
+        limit=100,
+        ledger=fresh_store.ledger,
+    )
+    hidden_id = next(
+        str(candidate["id"])
+        for candidate in candidates
+        if str(candidate["id"]) not in staple_ids
+    )
+    seed_exercise_curation(fresh_store, {hidden_id: {"hidden": True}})
+
+    candidates = fetch_filtered_candidates(
+        muscle_group="chest",
+        equipment_access="commercial gym",
+        limit=100,
+        ledger=fresh_store.ledger,
+    )
+    assert hidden_id not in {str(candidate["id"]) for candidate in candidates}
+
+
 def test_dynamic_split_plan_uses_its_own_output_budget(monkeypatch):
     model = ScriptedChatModel([get_default_split(3)])
     monkeypatch.setattr("agent.program_rules.llm", model)

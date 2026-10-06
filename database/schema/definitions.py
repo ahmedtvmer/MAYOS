@@ -54,6 +54,18 @@ class SchemaMixin:
                 )
             """)
             self.catalog_conn.execute("""
+                CREATE TABLE IF NOT EXISTS exercise_curated_fields (
+                    exercise_id TEXT PRIMARY KEY,
+                    primary_muscle TEXT,
+                    primary_action TEXT,
+                    secondary_actions TEXT NOT NULL DEFAULT '',
+                    load_type TEXT,
+                    hidden INTEGER NOT NULL DEFAULT 0 CHECK (hidden IN (0, 1)),
+                    duplicate_of TEXT,
+                    FOREIGN KEY(exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
+                )
+            """)
+            self.catalog_conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_exercise_alias_normalized
                 ON exercise_aliases(normalized_alias)
             """)

@@ -129,6 +129,9 @@ The name supplied by ExerciseDB or by a MAYOS-authored Exercise library definiti
 **Exercise alias**:
 An alternative name a player may search by that resolves to one exercise in the Exercise library, such as "frontal lat pulldown" or "lat pull-down".
 
+**Hidden exercise**:
+An Exercise library row excluded from Player and Coach search, Replace browse, program generation, and substitution suggestions. Its stable id remains readable in existing Training programs and workout history; when marked as a duplicate, those reads show the kept Exercise's display name.
+
 **Exercise curation file**:
 The MAYOS-owned `data/exercise_curation.csv`, keyed by Exercise library id. It holds reviewed Exercise display names and aliases, with later curated fields kept beside the source row.
 

@@ -146,6 +146,59 @@ def test_exercise_detail_unknown_id_is_404(api):
     assert resp.status_code == 404
 
 
+def test_hidden_duplicate_stays_readable_by_id_but_is_absent_from_search_and_program(
+    api, seed_exercise_curation
+):
+    client, db = api
+    token = _register(client, "hidden-duplicate-player")["access_token"]
+    seed_exercise_curation(
+        db,
+        {
+            "bp": {"hidden": True, "duplicate_of": "ib", "aliases": ["hidden bench alias"]},
+            "ib": {"display_name": "Incline Bench Press"},
+        },
+    )
+
+    for query in ("Bench Press", "hidden bench alias"):
+        response = client.get(
+            "/workouts/exercises", headers=_authed(token), params={"query": query}
+        )
+        assert response.status_code == 200, response.text
+        assert "bp" not in {exercise["id"] for exercise in response.json()["exercises"]}
+
+    browse = client.get(
+        "/workouts/exercises",
+        headers=_authed(token),
+        params={"target_muscle": "Chest"},
+    )
+    assert browse.status_code == 200, browse.text
+    assert "bp" not in {exercise["id"] for exercise in browse.json()["exercises"]}
+
+    detail = client.get("/workouts/exercises/bp", headers=_authed(token))
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["id"] == "bp"
+    assert detail.json()["name"] == "Incline Bench Press"
+
+    db.switch_user("hidden-duplicate-player")
+    db.ledger.save_training_program(
+        {
+            "program_name": "Existing program",
+            "weekly_frequency": 1,
+            "split_type": "custom",
+            "days": [
+                {
+                    "day_name": "Day 1",
+                    "day_order": 1,
+                    "exercises": [{"exercise_id": "bp", "exercise_name": "Bench Press"}],
+                }
+            ],
+        }
+    )
+    program = client.get("/programs/active", headers=_authed(token))
+    assert program.status_code == 200, program.text
+    assert program.json()["days"][0]["exercises"][0]["exercise_name"] == "Incline Bench Press"
+
+
 def test_exercise_detail_requires_auth(api):
     client, _ = api
     resp = client.get("/workouts/exercises/bp")

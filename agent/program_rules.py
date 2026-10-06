@@ -17,6 +17,7 @@ from agent.program_blueprints import (
     resolve_split_type,
 )
 from agent.ProgramState import CustomDayPlan, DynamicSplitPlan
+from database.exercise_library.schema import exercise_library_visible_sql
 from utils.equipment_access import COMMERCIAL_GYM, equipment_access_sql
 from utils.model_downloader import llm
 
@@ -314,6 +315,7 @@ def _fetch_by_sql(
     if extra_exclude:
         where.append(f"({extra_exclude})")
     where.append("LOWER(body_part) != 'cardio'")
+    where.append(exercise_library_visible_sql("e.id", schema="catalog"))
     if filter_equipment_access:
         where.append(equipment_access_sql(equipment_access))
     if any(w in limitations.lower() for w in ["back", "lumbar", "spine"]):
@@ -420,11 +422,13 @@ def fetch_filtered_candidates(
     )
 
     query = f"""
-        SELECT id, name, body_part, target_muscle, equipment, instructions, image_path, gif_path
-        FROM exercises
+        SELECT e.id, e.name, e.body_part, e.target_muscle, e.equipment,
+               e.instructions, e.image_path, e.gif_path
+        FROM exercises e
         WHERE ({where_clause})
           AND LOWER(body_part) != 'cardio'
           AND {equipment_access_sql(equipment_access)}
+          AND {exercise_library_visible_sql('e.id', schema='catalog')}
     """
     if any(w in limitations.lower() for w in ["back", "lumbar", "spine"]):
         query += " AND LOWER(name) NOT LIKE '%deadlift%' AND LOWER(name) NOT LIKE '%good morning%'"

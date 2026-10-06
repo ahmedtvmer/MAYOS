@@ -8,6 +8,7 @@ from database.exercise_library.names import near_miss_exercise_ids
 from database.exercise_library.schema import (
     EFFECTIVE_EXERCISE_NAME_SQL,
     effective_exercise_name_sql,
+    exercise_library_visible_sql,
 )
 from utils.equipment_access import equipment_access_sql
 
@@ -40,6 +41,7 @@ def _exercise_name_rows(
         )
     else:
         order_by = "LENGTH(e.name)"
+    where_sql = f"({where_sql}) AND ({exercise_library_visible_sql('e.id')})"
     query = """
         SELECT e.id AS id, {name_expression} AS display_name, e.body_part AS body_part,
                e.target_muscle AS target_muscle, e.equipment AS equipment,
@@ -231,6 +233,18 @@ class ExerciseLookupMixin:
             "gif_path": row[7],
             "provenance": row[8],
         }
+
+    def is_exercise_library_exercise_visible(self, exercise_id: str) -> bool:
+        """Whether an Exercise library id may be offered as a new candidate."""
+        if not isinstance(exercise_id, str) or not exercise_id:
+            return False
+        visible_sql = exercise_library_visible_sql("e.id")
+        with self._catalog_lock:
+            row = self.catalog_conn.execute(
+                f"SELECT 1 FROM exercises e WHERE e.id = ? AND {visible_sql}",
+                (exercise_id,),
+            ).fetchone()
+        return row is not None
 
     def get_exercise_library_detail(self, exercise_id: str) -> dict[str, Any] | None:
         """One catalog exercise for the read-only exercise-detail view (#53).

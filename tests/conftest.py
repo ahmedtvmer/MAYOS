@@ -4,6 +4,7 @@ Environment pins precede dotenv loading because ``load_dotenv()`` preserves
 values that are already present in the process environment.
 """
 
+import csv
 import os
 import re
 
@@ -170,6 +171,71 @@ def fresh_store(tmp_path):
         yield db
     finally:
         db.catalog_conn.close()
+
+
+@pytest.fixture
+def seed_exercise_curation(tmp_path, monkeypatch):
+    """Apply a small curation CSV through the public Exercise library seeder."""
+    from database.exercise_library import embeddings
+    from database.schema.definitions import EMBEDDING_DIM
+
+    class LocalEmbeddingStub:
+        def embed_query(self, _text):
+            return [1.0] + [0.0] * (EMBEDDING_DIM - 1)
+
+    monkeypatch.setattr(embeddings, "_load_embedding_model", lambda: LocalEmbeddingStub())
+
+    def apply(store, records):
+        seed_path = tmp_path / "curation-seed.csv"
+        with seed_path.open("w", newline="", encoding="utf-8") as seed_file:
+            writer = csv.writer(seed_file)
+            writer.writerow(
+                ["id", "name", "bodyPart", "target", "equipment", "image_path", "gif_path", "instructions"]
+            )
+
+        curation_path = tmp_path / "exercise-curation.csv"
+        curation_columns = [
+            "id",
+            "source_name",
+            "display_name",
+            "aliases",
+            "primary_action",
+            "secondary_actions",
+            "primary_muscle",
+            "load_type",
+            "hidden",
+            "duplicate_of",
+        ]
+        with curation_path.open("w", newline="", encoding="utf-8") as curation_file:
+            writer = csv.writer(curation_file)
+            writer.writerow(curation_columns)
+            for exercise_id, fields in records.items():
+                entry = store.get_exercise_library_entry(exercise_id)
+                assert entry is not None, f"Unknown Exercise library id {exercise_id!r}"
+                aliases = fields.get("aliases", "")
+                if isinstance(aliases, (list, tuple)):
+                    aliases = "|".join(aliases)
+                hidden = fields.get("hidden", "")
+                if isinstance(hidden, bool):
+                    hidden = str(hidden).lower()
+                writer.writerow(
+                    [
+                        exercise_id,
+                        fields.get("source_name", entry["name"]),
+                        fields.get("display_name", ""),
+                        aliases,
+                        fields.get("primary_action", ""),
+                        fields.get("secondary_actions", ""),
+                        fields.get("primary_muscle", ""),
+                        fields.get("load_type", ""),
+                        hidden,
+                        fields.get("duplicate_of", ""),
+                    ]
+                )
+
+        store.initialize_and_seed(seed_path, curation_path)
+
+    return apply
 
 
 @pytest.fixture

@@ -14,6 +14,10 @@ class FakeCatalog:
     def get_exercise_library_entry(self, exercise_id):
         return self.entries.get(exercise_id)
 
+    def is_exercise_library_exercise_visible(self, exercise_id):
+        exercise = self.entries.get(exercise_id)
+        return exercise is not None and not exercise.get("hidden", False)
+
 
 class FakeLedger:
     def __init__(self):
@@ -131,6 +135,22 @@ def test_substitution_default_changes_only_first_matching_slot(program_data, rep
     saved = ledger.saved[0][0]
     assert [exercise["exercise_id"] for exercise in saved["days"][0]["exercises"]] == ["leg_press", "squat"]
     assert saved["days"][1]["exercises"][0]["exercise_id"] == "squat"
+
+
+def test_substitution_rejects_hidden_replacement_without_publishing(program_data, replacement):
+    ledger = FakeLedger()
+    hidden_replacement = {**replacement, "hidden": True}
+
+    result = substitute_program_exercise(
+        ledger,
+        FakeCatalog({"leg_press": hidden_replacement}),
+        program_data,
+        ProgramSubstitution("Full A", "squat", "leg_press"),
+    )
+
+    assert result["ok"] is False
+    assert result["code"] is SubstitutionErrorCode.REPLACEMENT_NOT_FOUND
+    assert ledger.saved == []
 
 
 @pytest.mark.parametrize(

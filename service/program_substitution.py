@@ -197,6 +197,8 @@ def _replacement(catalog: Any, source_id: str, replacement_id: str) -> dict[str,
     replacement_id = str(replacement_id)
     if source_id == replacement_id:
         return _failure(SubstitutionErrorCode.REPLACEMENT_IS_SOURCE)
+    if not catalog.is_exercise_library_exercise_visible(replacement_id):
+        return _failure(SubstitutionErrorCode.REPLACEMENT_NOT_FOUND)
     entry = catalog.get_exercise_library_entry(replacement_id)
     if entry is None:
         return _failure(SubstitutionErrorCode.REPLACEMENT_NOT_FOUND)

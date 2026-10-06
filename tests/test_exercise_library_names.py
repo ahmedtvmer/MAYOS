@@ -29,6 +29,13 @@ def _write_curation(path, rows):
             )
 
 
+def _write_curated_rows(path, rows):
+    with path.open("w", newline="", encoding="utf-8") as curation_file:
+        writer = csv.writer(curation_file)
+        writer.writerow(CURATION_COLUMNS)
+        writer.writerows(rows)
+
+
 def _seed_minimal_library(store, path, curation_path=None):
     with path.open("w", newline="", encoding="utf-8") as seed_file:
         writer = csv.writer(seed_file)
@@ -156,6 +163,97 @@ def test_curation_names_and_aliases_are_upserted_on_each_seed(seed_store, tmp_pa
         match["id"] != "mayos:1"
         for match in fresh_store.find_exercises_by_name("older kelso", limit=10)
     )
+
+
+def test_hidden_duplicate_resolves_to_kept_display_name_and_is_not_searchable(seed_store, tmp_path):
+    seed_path = tmp_path / "seed.csv"
+    with seed_path.open("w", newline="", encoding="utf-8") as seed_file:
+        writer = csv.writer(seed_file)
+        writer.writerow(
+            ["id", "name", "bodyPart", "target", "equipment", "image_path", "gif_path", "instructions"]
+        )
+        writer.writerows([
+            ["9001", "cable row duplicate", "back", "lats", "cable", None, None, "Duplicate row."],
+            ["9002", "seated cable row", "back", "lats", "cable", None, None, "Kept row."],
+        ])
+    curation_path = tmp_path / "curation.csv"
+    _write_curated_rows(
+        curation_path,
+        [
+            ["9001", "cable row duplicate", "", "duplicate cable row", "", "", "", "", "TRUE", "9002"],
+            ["9002", "seated cable row", "Seated Cable Row", "", "", "", "", "", "False", ""],
+        ],
+    )
+
+    seed_store.initialize_and_seed(seed_path, curation_path)
+
+    assert seed_store.get_exercise_library_entry("9001")["name"] == "Seated Cable Row"
+    assert seed_store.get_exercise_library_detail("9001")["name"] == "Seated Cable Row"
+    assert seed_store.is_exercise_library_exercise_visible("9001") is False
+    assert seed_store.is_exercise_library_exercise_visible("9002") is True
+    assert all(match["id"] != "9001" for match in seed_store.find_exercises_by_name("duplicate cable row"))
+
+
+@pytest.mark.parametrize(
+    ("hidden", "duplicate_of", "extra_rows", "message"),
+    [
+        ("maybe", "", [], "invalid hidden value 'maybe'"),
+        ("true", "missing-id", [], "missing duplicate_of value 'missing-id'"),
+        ("", "9002", [], "while hidden is false"),
+        (
+            "true",
+            "9002",
+            [["9002", "other row", "", "", "", "", "", "", "true", "9001"]],
+            "hidden duplicate_of target '9002'",
+        ),
+    ],
+)
+def test_invalid_hidden_duplicate_curation_fails_load(
+    seed_store, tmp_path, hidden, duplicate_of, extra_rows, message
+):
+    seed_path = tmp_path / "seed.csv"
+    _seed_minimal_library(seed_store, seed_path)
+    seed_store.catalog_conn.execute(
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) "
+        "VALUES ('9002', 'other row', 'back', 'lats', 'cable')"
+    )
+    seed_store.catalog_conn.commit()
+    curation_path = tmp_path / "curation.csv"
+    _write_curated_rows(
+        curation_path,
+        [["9001", "cable row", "", "", "", "", "", "", hidden, duplicate_of], *extra_rows],
+    )
+
+    with pytest.raises(ValueError, match=message):
+        seed_store.initialize_and_seed(seed_path, curation_path)
+
+
+def test_loading_fails_when_a_staple_is_hidden(seed_store, tmp_path):
+    seed_path = tmp_path / "seed.csv"
+    _seed_minimal_library(seed_store, seed_path)
+    curation_path = tmp_path / "curation.csv"
+    _write_curated_rows(
+        curation_path,
+        [["mayos:1", "Kelso shrug", "", "", "", "", "", "", "true", ""]],
+    )
+
+    with pytest.raises(ValueError, match="line 2 id 'mayos:1'.*Staple exercise hidden"):
+        seed_store.initialize_and_seed(seed_path, curation_path)
+
+
+def test_semantic_search_excludes_hidden_exercises(seed_store, tmp_path, seed_exercise_curation):
+    from database.schema.definitions import EMBEDDING_DIM
+
+    _seed_minimal_library(seed_store, tmp_path / "seed.csv")
+    query_vector = [1.0] + [0.0] * (EMBEDDING_DIM - 1)
+    visible_results = seed_store.search_similar_exercises(query_vector, limit=20)
+    assert "9001" in {result["id"] for result in visible_results}
+
+    seed_exercise_curation(seed_store, {"9001": {"hidden": True}})
+
+    results = seed_store.search_similar_exercises(query_vector, limit=20)
+
+    assert "9001" not in {result["id"] for result in results}
 
 
 def test_empty_curation_file_uses_title_case_source_names(seed_store, tmp_path):

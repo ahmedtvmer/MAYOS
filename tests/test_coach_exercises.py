@@ -153,6 +153,19 @@ def test_create_and_search_are_https_only_and_isolated_to_owner(api):
     assert second_results.json()["exercises"] == []
 
 
+def test_coach_search_omits_hidden_exercise_library_rows(api, seed_exercise_curation):
+    client, db = api
+    coach_headers = _make_coach(client, db, "hidden-library-coach")
+    seed_exercise_curation(db, {"sq": {"hidden": True}})
+
+    response = client.get(
+        "/coach/exercises", headers=coach_headers, params={"query": "squat"}
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["exercises"] == []
+
+
 @pytest.mark.parametrize(
     "video_url",
     [

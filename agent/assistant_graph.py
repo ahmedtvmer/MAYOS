@@ -54,6 +54,7 @@ from agent.telemetry_reconciler import (
     clean_movement_stem,
     reconcile_telemetry_query,
 )
+from database.exercise_library.schema import exercise_library_visible_sql
 from service.player_weight_context import (
     is_weight_context_relevant,
     render_player_weight_context,
@@ -1071,6 +1072,7 @@ def _near_miss_refusal(store: Any, target: str, exercise_ids: frozenset[str]) ->
     similar_names = [
         entry["name"]
         for exercise_id in exercise_ids
+        if store.is_exercise_library_exercise_visible(exercise_id)
         if (entry := store.get_exercise_library_entry(exercise_id)) is not None
     ]
     if similar_names:
@@ -1339,7 +1341,8 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
                     continue
                 with store.catalog_locked() as conn:
                     row = conn.execute(
-                        "SELECT id, name, equipment, target_muscle, body_part FROM exercises WHERE id = ?",
+                        "SELECT e.id, e.name, e.equipment, e.target_muscle, e.body_part "
+                        f"FROM exercises e WHERE e.id = ? AND {exercise_library_visible_sql('e.id')}",
                         (staple_id,),
                     ).fetchone()
                 if not row:

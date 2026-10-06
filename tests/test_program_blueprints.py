@@ -82,6 +82,25 @@ def test_every_blueprint_slot_resolves_to_a_catalog_exercise(blueprint):
         assert candidates, f"Slot '{slot_key}' ({blueprint.name}) resolved no catalog exercises"
 
 
+def test_hidden_exercise_is_not_a_program_slot_candidate(seed_exercise_curation):
+    staple_ids = {exercise_id for ids in SLOT_STAPLES.values() for exercise_id in ids}
+    candidates = fetch_slot_candidates(
+        "incline_press", "commercial gym", "None", limit=100, ledger=db.ledger
+    )
+    hidden_id = next(
+        str(candidate["id"])
+        for candidate in candidates
+        if str(candidate["id"]) not in staple_ids
+    )
+    seed_exercise_curation(db, {hidden_id: {"hidden": True}})
+
+    candidates = fetch_slot_candidates(
+        "incline_press", "commercial gym", "None", limit=100, ledger=db.ledger
+    )
+
+    assert hidden_id not in {str(candidate["id"]) for candidate in candidates}
+
+
 @pytest.mark.parametrize("warmup_key", list(WARMUP_SPECS))
 def test_every_warmup_spec_resolves(warmup_key):
     candidates = fetch_warmup_candidates(warmup_key, "commercial gym", "None", limit=2, ledger=db.ledger)

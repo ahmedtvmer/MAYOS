@@ -318,6 +318,22 @@ def test_substitution_validation_returns_clear_client_error(api, body, status_co
     assert db.ledger.get_active_program().version == 1
 
 
+def test_substitution_cannot_install_a_hidden_exercise_id(api, seed_exercise_curation):
+    client, db = api
+    headers = _make_player_with_program(client, db)
+    seed_exercise_curation(db, {"ohp": {"hidden": True}})
+
+    response = client.post(
+        "/programs/active/substitutions",
+        headers=headers,
+        json={"day_name": "Full A", "exercise_id": "sq", "replacement_exercise_id": "ohp"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "That replacement exercise was not found."
+    assert db.ledger.get_active_program().version == 1
+
+
 def test_substitution_refuses_a_coach_controlled_program(api):
     client, db = api
     coach = _register(client, "coach")
