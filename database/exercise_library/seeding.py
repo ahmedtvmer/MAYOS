@@ -120,7 +120,8 @@ def _authored_seed_rows():
     for exercise in authored.MAYOS_AUTHORED_EXERCISES:
         rows.append((
             exercise["id"], exercise["name"], exercise["body_part"],
-            exercise["target_muscle"], exercise["equipment"], None, None,
+            exercise["target_muscle"], exercise["equipment"],
+            exercise.get("image_path"), exercise.get("gif_path"),
             exercise["instructions"],
         ))
         muscles.extend((exercise["id"], muscle) for muscle in exercise["secondary_muscles"])

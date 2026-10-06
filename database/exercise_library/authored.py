@@ -1,6 +1,6 @@
 """MAYOS-authored rows for the shared Exercise library (ADR 053)."""
 
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 
 class AuthoredExercise(TypedDict):
@@ -11,6 +11,9 @@ class AuthoredExercise(TypedDict):
     secondary_muscles: tuple[str, ...]
     equipment: str
     instructions: str
+    # Owner-reviewed demo media in the media store (ADR 053); absent until reviewed.
+    image_path: NotRequired[str]
+    gif_path: NotRequired[str]
 
 
 # Keep authored definitions here; display names and aliases live in the
@@ -41,6 +44,8 @@ MAYOS_AUTHORED_EXERCISES: tuple[AuthoredExercise, ...] = (
             "2. Keep your upper arm still as you curl the handle toward your shoulder.\n"
             "3. Lower it until the elbow is straight without letting the shoulder roll forward."
         ),
+        "image_path": "images/mayos-2-bayesian-curl.jpg",
+        "gif_path": "videos/mayos-2-bayesian-curl.gif",
     },
     {
         "id": "mayos:3",

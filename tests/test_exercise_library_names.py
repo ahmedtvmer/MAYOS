@@ -109,6 +109,12 @@ def test_unique_exact_exercise_id_lookup_uses_names_and_rejects_ambiguity(seed_s
     assert fresh_store.find_unique_exercise_id_by_exact_name("Cable Row Alias") is None
 
 
+#: Owner-supplied demo media for authored exercises (uploaded to the media store).
+AUTHORED_MEDIA = {
+    "mayos:2": ("images/mayos-2-bayesian-curl.jpg", "videos/mayos-2-bayesian-curl.gif"),
+}
+
+
 def test_mayos_authored_staples_are_searchable_and_have_reviewable_details(seed_store, tmp_path):
     from database.schema.definitions import EMBEDDING_DIM
 
@@ -137,8 +143,8 @@ def test_mayos_authored_staples_are_searchable_and_have_reviewable_details(seed_
         assert detail["equipment"] == equipment
         assert detail["instructions"]
         assert len(detail["instructions"].splitlines()) in (3, 4)
-        assert detail["image_path"] is None
-        assert detail["gif_path"] is None
+        expected_media = AUTHORED_MEDIA.get(exercise_id, (None, None))
+        assert (detail["image_path"], detail["gif_path"]) == expected_media
         assert detail["provenance"] == "MAYOS"
         assert any(result["id"] == exercise_id for result in fresh_store.find_exercises_by_name(alias))
 
