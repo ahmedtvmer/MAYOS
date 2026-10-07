@@ -39,6 +39,7 @@ PURPOSE_PROGRAM_REQUEST_NOTICE = "program_request_notice"
 PURPOSE_MODEL_SPEND_ALERT = "model_spend_alert"
 PURPOSE_OWNER_LOGIN_ALERT = "owner_login_alert"
 PURPOSE_ACCOUNT_DELETED = "account_deleted"
+PURPOSE_ANNOUNCEMENT = "announcement"
 
 
 @dataclass(frozen=True)
@@ -235,6 +236,22 @@ def send_program_request_email(
         subject,
         body,
         delivery=DeliveryContext(PURPOSE_PROGRAM_REQUEST_NOTICE, account_id, to_email),
+    )
+
+
+def send_announcement_email(
+    to_email: str,
+    subject: str,
+    body: str,
+    *,
+    account_id: str | None = None,
+) -> bool:
+    """Sends one announcement to one Account."""
+    return _deliver(
+        to_email,
+        subject,
+        body,
+        delivery=DeliveryContext(PURPOSE_ANNOUNCEMENT, account_id, to_email),
     )
 
 
