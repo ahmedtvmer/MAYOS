@@ -4,6 +4,7 @@ import io
 import fcntl
 import hashlib
 import json
+import logging
 import os
 import sqlite3
 import sys
@@ -161,6 +162,8 @@ def test_r2_deletion_removes_ledger_from_every_snapshot_and_manifest(tmp_path):
     current = _snapshot(tmp_path, "20260929")
     for snapshot, day in ((older, "20260928"), (current, "20260929")):
         store.upload_snapshot(snapshot, day)
+    replica_prefix = "litestream/users/alice.db/"
+    client.objects[replica_prefix + "ltx/0000/0000000000000001-0000000000000001.ltx"] = b"replica"
 
     store.remove_ledger("alice")
     for day in ("20260928", "20260929"):
@@ -169,6 +172,7 @@ def test_r2_deletion_removes_ledger_from_every_snapshot_and_manifest(tmp_path):
         assert "ledgers/alice.db" not in {entry["path"] for entry in marker["files"]}
         assert f"daily/{day}/ledgers/bob.db" in client.objects
         assert f"daily/{day}/catalog.db" in client.objects
+    assert not any(key.startswith(replica_prefix) for key in client.objects)
 
 
 def test_r2_download_requires_a_complete_manifest_and_fetches_to_staging(tmp_path):
@@ -497,11 +501,13 @@ def test_deletion_replay_retries_r2_cleanup(r2_api):
     assert "ledgers/alice.db" not in {entry["path"] for entry in json.loads(r2.objects[marker])["files"]}
 
 
-def test_r2_deletion_failure_keeps_record_pending_until_replay_succeeds(r2_api, monkeypatch):
+def test_r2_deletion_failure_keeps_record_pending_until_replay_succeeds(r2_api, monkeypatch, caplog):
     db, r2, _ = r2_api
     registered = _register(db, "alice")
     summary = create_daily_backup(db, now=datetime(2026, 9, 29, tzinfo=UTC))
     ledger_key = f"daily/{summary['date']}/ledgers/alice.db"
+    litestream_key = "litestream/users/alice.db/ltx/0000/0000000000000001-0000000000000001.ltx"
+    r2.objects[litestream_key] = b"replica"
     offsite = db.offsite_backup
     remove_remote_ledger = offsite.remove_ledger
 
@@ -514,13 +520,59 @@ def test_r2_deletion_failure_keeps_record_pending_until_replay_succeeds(r2_api, 
     deletion = delete_account(db, registered["account_id"], "correct-horse-1")
     assert deletion["ok"] is True
     assert ledger_key in r2.objects
+    assert litestream_key in r2.objects
     assert db.list_account_deletions()[0]["applied_at"] is None
     assert db.replay_deletions() == 0
+    assert any(
+        record.levelno >= logging.WARNING and record.name == "myos.database.account_deletion"
+        for record in caplog.records
+    )
 
     monkeypatch.setattr(offsite, "remove_ledger", remove_remote_ledger)
     assert db.replay_deletions() >= 1
     assert ledger_key not in r2.objects
+    assert litestream_key not in r2.objects
     assert db.list_account_deletions()[0]["applied_at"] is not None
+
+
+def test_litestream_restore_listing_includes_only_ledger_replica_prefixes(r2_api, monkeypatch):
+    db, r2, _ = r2_api
+    monkeypatch.setenv("LITESTREAM_R2_PREFIX", "rehearsal/litestream")
+    r2.objects.update(
+        {
+            "rehearsal/litestream/users/alice.db/ltx/0001.ltx": b"alice",
+            "rehearsal/litestream/users/bob-123abc.db/ltx/0002.ltx": b"bob",
+            "rehearsal/litestream/users/not a username.db/ltx/0003.ltx": b"invalid",
+            "rehearsal/litestream/catalog.db/ltx/0004.ltx": b"catalog",
+        }
+    )
+
+    assert db.offsite_backup.list_litestream_ledger_ids() == ["alice", "bob-123abc"]
+
+
+def test_external_deletion_and_username_reuse_keep_replica_paths_separate(r2_api):
+    db, r2, _ = r2_api
+    old = _register(db, "alice")
+    old_prefix = f"litestream/users/{old['ledger_id']}.db/"
+    old_key = old_prefix + "ltx/0000/old.ltx"
+    r2.objects[old_key] = b"old account"
+
+    from service.account_deletion import delete_account_by_username
+
+    assert delete_account_by_username(db, "alice", "correct-horse-1")["ok"] is True
+    assert old_key in r2.objects
+    assert db.replay_deletions() == 1
+    assert old_key not in r2.objects
+
+    new = _register(db, "alice")
+    new_prefix = f"litestream/users/{new['ledger_id']}.db/"
+    new_key = new_prefix + "ltx/0000/new.ltx"
+    r2.objects[new_key] = b"new account"
+    assert new["ledger_id"] != old["ledger_id"]
+    assert new_prefix != old_prefix
+
+    assert db.replay_deletions() == 0
+    assert new_key in r2.objects
 
 
 def test_account_delete_returns_while_r2_flock_is_held_then_replay_cleans(r2_api):

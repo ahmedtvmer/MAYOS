@@ -5,12 +5,12 @@ Extracted from DatabaseManager; behaviour is unchanged.
 
 import os
 import shutil
-import sqlite3
 import threading
 from datetime import UTC, datetime
 from typing import Any
 
 from database.backup import remove_ledger_from_daily_backups
+from database.sqlite_connection import connect_api_sqlite
 from database.program_drafts import discard_assignment_program_draft
 from database.registry.assignments import EndedAssignmentSnapshot
 from utils.logger import MyosLogger
@@ -25,9 +25,8 @@ class AccountDeletionMixin:
         """Opens the external deletion ledger and ensures its schema exists."""
         os.makedirs(self.deletions_path.parent, exist_ok=True)
         self._deletions_lock = threading.Lock()
-        self.deletions_conn = sqlite3.connect(self.deletions_path, check_same_thread=False)
+        self.deletions_conn = connect_api_sqlite(self.deletions_path)
         self.deletions_conn.execute("PRAGMA journal_mode = WAL;")
-        self.deletions_conn.execute("PRAGMA busy_timeout = 5000;")
         with self._deletions_lock:
             self.deletions_conn.execute(
                 "CREATE TABLE IF NOT EXISTS account_deletions ("
@@ -500,7 +499,7 @@ class AccountDeletionMixin:
                 # the normal replay path; provider errors never undo deletion.
                 remote_cleanup_complete = False
                 logger.warning(
-                    "Failed to remove off-site snapshot copies for a deleted ledger (%s); deletion replay will retry.",
+                    "Failed to remove off-site snapshot and Litestream copies for a deleted ledger (%s); deletion replay will retry.",
                     type(exc).__name__,
                 )
         return remote_cleanup_complete

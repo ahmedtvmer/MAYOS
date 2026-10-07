@@ -21,6 +21,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterator
 
 from database.backup import OffsiteBackupStore, clamp_backup_retention_days
+from database.litestream import LEDGER_ID_RE, litestream_ledger_replica_path, litestream_replica_path
 from utils.logger import MyosLogger
 from utils.r2 import R2_ENV_NAMES as _R2_ENV_NAMES
 from utils.r2 import create_r2_client_from_environment as _create_r2_client_from_environment
@@ -80,20 +81,36 @@ class R2BackupStore:
             return manifest is not None and manifest.get("version") == 2
 
     def remove_ledger(self, ledger_id: str) -> None:
-        """Deletes one account's ledger copy from every R2 snapshot.
+        """Deletes one account's ledger copies from snapshots and Litestream.
 
         Completed manifests are updated after object deletion so valid snapshots
         remain restorable without the deleted ledger. A failed marker update is
         safe: restore rejects the missing listed object and deletion replay can
-        retry the cleanup.
+        retry the cleanup. Litestream uses one exact prefix per database file.
         """
-        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", str(ledger_id)):
+        if not LEDGER_ID_RE.fullmatch(str(ledger_id)):
             return
         with self._operation_lock():
             keys = self._list_keys(DAILY_PREFIX)
             targets = self._ledger_object_keys(keys, ledger_id)
             self._delete_keys(targets)
             self._remove_ledger_from_manifests(keys, ledger_id)
+            replica_prefix = f"{litestream_ledger_replica_path(ledger_id)}/"
+            self._delete_keys(self._list_keys(replica_prefix))
+
+    def list_litestream_ledger_ids(self) -> list[str]:
+        """List ledger ids with a Litestream replica beneath the watched directory."""
+        directory_prefix = f"{litestream_replica_path('users')}/"
+        with self._operation_lock():
+            keys = self._list_keys(directory_prefix)
+        ledger_ids = set()
+        for key in keys:
+            remainder = key[len(directory_prefix) :]
+            filename, separator, replica_object = remainder.partition("/")
+            ledger_id = filename.removesuffix(".db")
+            if separator and replica_object and filename.endswith(".db") and LEDGER_ID_RE.fullmatch(ledger_id):
+                ledger_ids.add(ledger_id)
+        return sorted(ledger_ids)
 
     def prune_snapshots(self, *, retention_days: int, now: datetime | None = None) -> list[str]:
         """Deletes every R2 snapshot older than the local bounded retention."""

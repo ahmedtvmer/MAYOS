@@ -436,6 +436,7 @@ This document records the architectural, algorithmic, and heuristic decisions im
 
 ---
 * **Amendment (2026-10-07, #369)**: After the move to Hetzner (ADR 072) the daily snapshot job keeps running in-process in the single API container on the Hetzner server instead of the Fly Machine, as a second layer beside Litestream's continuous replication to R2. SQLite automatic checkpoints are disabled so Litestream controls them (#372).
+* **Amendment (2026-10-07, #372)**: The API disables SQLite automatic checkpoints only when `MAYOS_LITESTREAM` is truthy (the shared `utils/env_flags.py` rule) and its Litestream replicator is running. Litestream's catalog and deletion-log replicas use their paths relative to `/data`; watched ledger replicas append each `users/<ledger>.db` filename beneath the same R2 prefix. The restore script restores each replica into an empty directory, then the existing full deletion replay removes any ledger belonging to a deleted Account.
 
 ### ADR 045: Opt-in import mechanics, claim codes, and audit deletion
 

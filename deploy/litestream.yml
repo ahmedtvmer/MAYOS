@@ -1,0 +1,35 @@
+# Litestream v0.5.4+; set LITESTREAM_R2_PREFIX in Compose (litestream in production).
+# Use the same R2 credentials as the API's off-site backups.
+
+dbs:
+  - path: /data/catalog.db
+    replica:
+      type: s3
+      bucket: ${R2_BUCKET}
+      path: ${LITESTREAM_R2_PREFIX}/catalog.db
+      endpoint: ${R2_ENDPOINT}
+      region: auto
+      access-key-id: ${R2_ACCESS_KEY_ID}
+      secret-access-key: ${R2_SECRET_ACCESS_KEY}
+
+  - path: /data/deletions.db
+    replica:
+      type: s3
+      bucket: ${R2_BUCKET}
+      path: ${LITESTREAM_R2_PREFIX}/deletions.db
+      endpoint: ${R2_ENDPOINT}
+      region: auto
+      access-key-id: ${R2_ACCESS_KEY_ID}
+      secret-access-key: ${R2_SECRET_ACCESS_KEY}
+
+  - dir: /data/users
+    pattern: "*.db"
+    watch: true
+    replica:
+      type: s3
+      bucket: ${R2_BUCKET}
+      path: ${LITESTREAM_R2_PREFIX}/users
+      endpoint: ${R2_ENDPOINT}
+      region: auto
+      access-key-id: ${R2_ACCESS_KEY_ID}
+      secret-access-key: ${R2_SECRET_ACCESS_KEY}

@@ -1185,3 +1185,86 @@ separate "MAYOS dev" project's key) so local runs never send into trial data;
 | `MAYOS_ENV` | `fly.toml` `[env]` | `production` |
 | `MAYOS_RELEASE_PHASE` | env | `closed_trial` now, `public` at launch |
 | `POSTHOG_CLIENT_KEY` | release build define | Same `phc_…` key |
+
+## 13. Litestream replication and restore on Hetzner (#372)
+
+The Hetzner Compose stack runs one Litestream v0.5.4+ process beside the single
+API writer. Mount the same local `/data` volume read/write in the API and
+Litestream containers, and mount [`deploy/litestream.yml`](../deploy/litestream.yml)
+as Litestream's config. Set `MAYOS_DATA_DIR=/data` and keep the deletion log at
+`/data/deletions.db` (the default). The Litestream config reuses the API's R2
+settings: `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, and
+`R2_SECRET_ACCESS_KEY`. Set `LITESTREAM_R2_PREFIX=litestream` in production;
+the checked-in `.env.example` has a commented example. Litestream expands an
+unset variable to an empty string, so the Compose environment must pass this
+value explicitly; deletion and restore code default to `litestream` when it is
+unset.
+Configure the Hetzner Compose API service with `MAYOS_LITESTREAM=true` only
+while its Litestream replicator is running. Never enable this setting without
+Litestream: the API then leaves automatic WAL checkpoints disabled.
+
+Replica paths follow one mapping: prefix the SQLite path relative to `/data`.
+The catalog is at `<prefix>/catalog.db/`, the deletion log at
+`<prefix>/deletions.db/`, and the watched directory maps each ledger to
+`<prefix>/users/<ledger-id>.db/`. Litestream's v0.5 directory watcher appends
+the matched filename to its configured directory replica path. The deletion
+replay removes the exact old ledger prefix, including all LTX objects.
+Litestream may still upload a final sync for a ledger it held open when the
+file was unlinked; the #377 rehearsal must delete a test Account and then list
+`<prefix>/users/<ledger-id>.db/` a few minutes later to confirm it stays empty.
+
+Only one Litestream process may replicate a given bucket and prefix at a time.
+Do not run a second process against the same database paths and R2 prefixes:
+Litestream v0.5 assigns local metadata and remote LTX state to each database
+path. A rehearsal must use a separate prefix such as
+`LITESTREAM_R2_PREFIX=rehearsal/litestream`, then delete that prefix after the
+rehearsal. The #377 rehearsal must confirm that R2 contains the documented
+per-database prefixes and complete one restore with this script before
+production uses the config.
+
+Deleting an Account removes its replica during the existing durable deletion
+replay. An R2 failure leaves the deletion record pending, is logged, and the
+startup/hourly replay retries it. This applies to the in-app endpoint and the
+external deletion form because both call the same deletion service. Reused
+usernames get a fresh ledger id (the new id includes part of the new immutable
+account id); the old and new files therefore have different replica prefixes.
+The restore script restores each exact ledger path and the full deletion replay
+removes any restored prefix whose Account was deleted.
+
+### Litestream disaster restore
+
+Run this while the API and Litestream writer are stopped. Use a maintenance
+environment that has the project Python dependencies, the `litestream` v0.5.4+
+binary, and the four R2 environment variables above. The destination may be a
+new path or an existing empty directory; the script refuses a non-empty target
+and stages all files before publishing the restored directory.
+
+```bash
+set -euo pipefail
+
+export MAYOS_DATA_DIR=/data-restore
+export MAYOS_DELETIONS_DB="$MAYOS_DATA_DIR/deletions.db"
+export LITESTREAM_R2_PREFIX=litestream
+python scripts/litestream_restore.py "$MAYOS_DATA_DIR"
+
+# Reapply the current replicated deletion log before starting the API.
+unset MAYOS_REQUIRE_PERSISTENT_DATA  # /data-restore is a staging directory, not the mounted volume.
+python scripts/reapply_deletions.py \
+  --catalog "$MAYOS_DATA_DIR/catalog.db" \
+  --users-dir "$MAYOS_DATA_DIR/users" \
+  --backups-dir "$MAYOS_DATA_DIR/backups"
+
+sqlite3 "$MAYOS_DATA_DIR/catalog.db" 'PRAGMA integrity_check;'
+sqlite3 "$MAYOS_DATA_DIR/deletions.db" 'PRAGMA integrity_check;'
+for database in "$MAYOS_DATA_DIR"/users/*.db; do
+  sqlite3 "$database" 'PRAGMA integrity_check;'
+done
+```
+
+The script enumerates ledger replica directories from R2 and runs one
+`litestream restore` command for the catalog, deletion log, and each ledger;
+Litestream does not batch restore. It writes into a sibling staging directory
+and publishes it only after every restore succeeds. If any command fails, the
+staging directory is removed and the target stays empty. Keep
+`deletions.db` with the restored catalog and run the full replay before serving
+traffic so a pre-deletion catalog cannot recreate a deleted Account.

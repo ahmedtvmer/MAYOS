@@ -14,6 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
 from database.storage import configured_data_root, resolve_data_root, validate_data_root
+from database.sqlite_connection import connect_api_sqlite
 
 #: Catalog, ledgers and backups all hang off one data root (``MAYOS_DATA_DIR``).
 _DATA_ROOT = resolve_data_root()
@@ -111,10 +112,9 @@ class DatabaseManager(
         os.makedirs(self.ledgers_dir, exist_ok=True)
         os.makedirs(self.backups_dir, exist_ok=True)
 
-        self.catalog_conn = sqlite3.connect(self.catalog_path, check_same_thread=False)
+        self.catalog_conn = connect_api_sqlite(self.catalog_path)
         self.catalog_conn.execute("PRAGMA foreign_keys = ON;")
         self.catalog_conn.execute("PRAGMA journal_mode = WAL;")
-        self.catalog_conn.execute("PRAGMA busy_timeout = 5000;")
         self.catalog_conn.execute("PRAGMA synchronous = NORMAL;")
         self.catalog_conn.enable_load_extension(True)
         sqlite_vec.load(self.catalog_conn)
@@ -138,11 +138,10 @@ class DatabaseManager(
         wraps the result in a :class:`~database.ledger.handle.TrainingLedger`.
         """
         ledger_db_path = self.ledgers_dir / f"{sanitized}.db"
-        new_conn = sqlite3.connect(ledger_db_path, check_same_thread=False)
+        new_conn = connect_api_sqlite(ledger_db_path)
         new_conn.row_factory = sqlite3.Row
         new_conn.execute("PRAGMA foreign_keys = ON;")
         new_conn.execute("PRAGMA journal_mode = WAL;")
-        new_conn.execute("PRAGMA busy_timeout = 5000;")
         new_conn.execute("PRAGMA synchronous = NORMAL;")
 
         escaped_path = str(self.catalog_path.resolve()).replace("'", "''")
