@@ -1391,11 +1391,12 @@ def _live_account_row(account: dict[str, Any]) -> str:
     username = html.escape(account["username"])
     created = html.escape(account["created_at"])
     last_seen = html.escape(account["last_seen_at"] or "Never")
+    last_build = html.escape(_last_app_build(account))
     return (
         "<li>"
         f'<p><a href="/admin/accounts/{account_id}">{username}</a></p>'
         f"<p>Account id: {account_id}</p><p>Created: {created}</p>"
-        f"<p>Last active day: {last_seen}</p>"
+        f"<p>Last active day: {last_seen}</p><p>Last app build: {last_build}</p>"
         f"<p>Capabilities: {html.escape(', '.join(_capability_labels(account)))}</p>"
         "</li>"
     )
@@ -1681,12 +1682,18 @@ def _account_metadata_fields(account: dict[str, Any], metadata: dict[str, Any]) 
         + _metadata_field("Immutable id", account["account_id"])
         + _metadata_field("Created", account["created_at"])
         + _metadata_field("Last active day", account["last_seen_at"] or "Never")
+        + _metadata_field("Last app build", _last_app_build(account))
         + _metadata_field("Capabilities", ", ".join(_capability_labels(account)) or "None")
         + _metadata_field("Plans", ", ".join(_plan_labels(metadata["plans"])) or "None")
         + _metadata_field("Onboarded", "Yes" if metadata["onboarded"] else "No")
         + _metadata_field("Active assignment", _assignment_summary(metadata["assignments"]))
         + _metadata_field("Recovery email", metadata["recovery_email"])
     )
+
+
+def _last_app_build(account: dict[str, Any]) -> str:
+    build = account.get("last_seen_build")
+    return "—" if build is None else str(build)
 
 
 def _capability_labels(account: dict[str, Any]) -> list[str]:

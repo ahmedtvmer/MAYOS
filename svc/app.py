@@ -20,6 +20,13 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from database.storage import storage_status
+from service.app_version import (
+    ANDROID_BUILD_HEADER,
+    android_store_url,
+    is_web_client,
+    minimum_android_build,
+    parse_android_build,
+)
 from service.admin_auth import AdminSecurity, partial_secret_configuration
 from service.messages import MessageMetadata, ai_limit_message, http_error_message
 from service import account_deletion as account_deletion_service
@@ -57,6 +64,50 @@ from svc.schemas import HealthOut
 
 logger = logging.getLogger(__name__)
 REQUEST_FAILURE_DETAIL = "Request failed. Please try again."
+_APP_VERSION_POLICY_EXEMPT_PATHS = frozenset(
+    {
+        "/healthz",
+        "/readyz",
+        "/privacy",
+        "/account/delete-request",
+        "/reset-password",
+        "/.well-known/assetlinks.json",
+        "/app/version-policy",
+    }
+)
+
+
+def _android_build_policy_exempts(request: Request) -> bool:
+    path = request.url.path
+    return (
+        request.method == "OPTIONS"
+        or path in _APP_VERSION_POLICY_EXEMPT_PATHS
+        or path == "/admin"
+        or path.startswith("/admin/")
+        or is_web_client(request.headers.get("X-MAYOS-Client"))
+    )
+
+
+def _app_update_required_response(min_build: int) -> JSONResponse:
+    detail = "An app update is required before you can continue."
+    message_fields = http_error_message(
+        426,
+        detail,
+        message_metadata=MessageMetadata(
+            code="app.update_required.v1",
+            params={"min_build": min_build},
+        ),
+    )
+    return JSONResponse(
+        status_code=426,
+        content={
+            "error": "app_update_required",
+            "detail": detail,
+            "min_build": min_build,
+            "store_url": android_store_url(),
+            **message_fields,
+        },
+    )
 
 
 def web_origins() -> list[str]:
@@ -375,13 +426,6 @@ def create_app() -> FastAPI:
             background=_ai_analytics_background_tasks(request),
         )
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=web_origins(),
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
 
     @app.middleware("http")
@@ -406,6 +450,26 @@ def create_app() -> FastAPI:
             response = await call_next(request)
         _apply_admin_security_headers(response)
         return response
+
+    @app.middleware("http")
+    async def enforce_android_build_policy(request: Request, call_next):
+        min_build = minimum_android_build()
+        if min_build == 0 or _android_build_policy_exempts(request):
+            return await call_next(request)
+        build = parse_android_build(request.headers.get(ANDROID_BUILD_HEADER))
+        if build is None or build >= min_build:
+            return await call_next(request)
+        return _app_update_required_response(min_build)
+
+    # CORS wraps the build-policy middleware so browsers can read the structured
+    # 426 response. Registering this last makes it the outermost user middleware.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=web_origins(),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.exception_handler(Exception)
     async def unhandled_handler(request: Request, exc: Exception):
@@ -435,6 +499,11 @@ def create_app() -> FastAPI:
     app.include_router(chat.router)
     app.include_router(dashboard.router)
     app.include_router(checkpoint_reviews.router)
+
+    @app.get("/app/version-policy", tags=["app"])
+    async def app_version_policy():
+        """Returns the Android minimum build and store link without authentication."""
+        return {"min_build": minimum_android_build(), "store_url": android_store_url()}
 
     @app.get("/healthz", response_model=HealthOut, tags=["ops"])
     async def healthz():

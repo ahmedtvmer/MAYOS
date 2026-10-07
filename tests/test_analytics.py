@@ -755,6 +755,7 @@ def test_analytics_boundary_fails_closed_when_registry_preference_cannot_be_read
 
 def test_server_events_resolve_android_web_and_missing_client_dimensions(analytics_api):
     client, db, sink = analytics_api
+    assert analytics.resolve_dimensions("web", role="player")["platform"] == "unknown"
     preflight = client.options(
         "/auth/me",
         headers={

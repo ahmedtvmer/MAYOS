@@ -21,6 +21,7 @@ from fastapi import Request
 
 from database.registry.accounts import FIRST_TOUCH_ACQUISITION_FIELDS
 from service import acquisition
+from service.app_version import parse_client_header
 from utils.model_metering import FINISH_REASONS as AI_FINISH_REASONS
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,6 @@ _APP_VERSION = re.compile(
     r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)$"
 )
 _ENVIRONMENTS = frozenset({"development", "production", "test"})
-_CLIENT_HEADER = re.compile(r"^(android|web)/([0-9][0-9A-Za-z.+_-]{0,31})$")
 
 
 @dataclass(frozen=True)
@@ -650,12 +650,11 @@ def resolve_dimensions(client_header: str | None, *, role: str) -> dict[str, str
     """Resolves the safe request dimensions in one place."""
     platform = "unknown"
     app_version = "unknown"
-    if client_header:
-        match = _CLIENT_HEADER.fullmatch(client_header.strip())
-        if match:
-            platform, app_version = match.groups()
-            if not PROPERTY_TYPES["app_version"].validate(app_version):
-                app_version = "unknown"
+    parsed = parse_client_header(client_header)
+    if parsed is not None:
+        platform, app_version = parsed
+        if not PROPERTY_TYPES["app_version"].validate(app_version):
+            app_version = "unknown"
     return {
         "role": role if role in _DIMENSION_VALUES["role"] else "unknown",
         "platform": platform,

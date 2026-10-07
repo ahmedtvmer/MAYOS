@@ -41,6 +41,7 @@ COACH_ALERT_MESSAGE_PARAM_ALLOWLISTS = {
     ),
 }
 ERROR_MESSAGE_PARAM_ALLOWLISTS = {
+    "app.update_required.v1": frozenset({"min_build"}),
     "http.bad_request.v1": frozenset(),
     "http.unauthorized.v1": frozenset(),
     "http.forbidden.v1": frozenset(),

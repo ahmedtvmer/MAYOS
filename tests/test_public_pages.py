@@ -83,6 +83,136 @@ def _delete_form(client: TestClient, username: str, password: str, confirm: bool
     return client.post("/account/delete-request", data=data)
 
 
+def test_app_version_policy_is_public_and_uses_configured_values(api, monkeypatch):
+    client, _db = api
+    monkeypatch.delenv("MIN_ANDROID_BUILD", raising=False)
+    monkeypatch.delenv("ANDROID_STORE_URL", raising=False)
+    defaults = client.get("/app/version-policy")
+    assert defaults.status_code == 200
+    assert defaults.json() == {
+        "min_build": 0,
+        "store_url": "https://play.google.com/store/apps/details?id=com.mayos.mayos_mobile",
+    }
+
+    monkeypatch.setenv("MIN_ANDROID_BUILD", "321")
+    monkeypatch.setenv("ANDROID_STORE_URL", "https://play.example.test/mayos")
+
+    response = client.get("/app/version-policy")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "min_build": 321,
+        "store_url": "https://play.example.test/mayos",
+    }
+
+
+def test_android_build_below_policy_gets_structured_upgrade_required(api, monkeypatch):
+    client, _db = api
+    monkeypatch.setenv("MIN_ANDROID_BUILD", "50")
+    monkeypatch.setenv("ANDROID_STORE_URL", "https://play.example.test/mayos")
+
+    response = client.get(
+        "/auth/me",
+        headers={"X-MAYOS-Build": "49", "Origin": "http://localhost:7357"},
+    )
+
+    assert response.status_code == 426
+    assert response.headers["access-control-allow-origin"] == "http://localhost:7357"
+    body = response.json()
+    assert body["error"] == "app_update_required"
+    assert body["message_code"] == "app.update_required.v1"
+    assert body["message_params"] == {"min_build": 50}
+    assert body["message_fallback"]
+    assert body["min_build"] == 50
+    assert body["store_url"] == "https://play.example.test/mayos"
+
+
+@pytest.mark.parametrize(
+    ("build_header", "client_header"),
+    [
+        ("50", "android/1.0.0"),
+        (None, "android/1.0.0"),
+        ("not-a-build", "android/1.0.0"),
+        ("1", "web/1.0.0"),
+    ],
+    ids=("at-minimum", "missing-build", "malformed-build", "web-client"),
+)
+def test_build_policy_allows_requests_without_an_old_android_build(
+    api, monkeypatch, build_header, client_header
+):
+    client, _db = api
+    monkeypatch.setenv("MIN_ANDROID_BUILD", "50")
+    registered = _register(client, "buildpolicy")
+    base_headers = {"Authorization": f"Bearer {registered['access_token']}"}
+    request_headers = {**base_headers, "X-MAYOS-Client": client_header}
+    if build_header is not None:
+        request_headers["X-MAYOS-Build"] = build_header
+
+    response = client.get("/auth/me", headers=request_headers)
+
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize("configured", ("0", "invalid", "-4"))
+def test_zero_or_invalid_minimum_disables_build_policy(api, monkeypatch, configured):
+    client, _db = api
+    monkeypatch.setenv("MIN_ANDROID_BUILD", configured)
+    response = client.get("/auth/me", headers={"X-MAYOS-Build": "-1"})
+    assert response.status_code == 401
+
+
+@pytest.mark.parametrize("build_header", ("+49", "-49"))
+def test_signed_build_headers_are_treated_as_absent(api, monkeypatch, build_header):
+    client, _db = api
+    monkeypatch.setenv("MIN_ANDROID_BUILD", "50")
+    response = client.get("/auth/me", headers={"X-MAYOS-Build": build_header})
+    assert response.status_code == 401
+
+
+def test_upgrade_policy_exempt_routes_and_cors_preflight(api, monkeypatch):
+    client, _db = api
+    monkeypatch.setenv("MIN_ANDROID_BUILD", "50")
+    headers = {"X-MAYOS-Build": "1"}
+    requests = (
+        ("GET", "/healthz"),
+        ("GET", "/readyz"),
+        ("GET", "/privacy"),
+        ("GET", "/account/delete-request"),
+        ("GET", "/reset-password"),
+        ("GET", "/.well-known/assetlinks.json"),
+        ("GET", "/app/version-policy"),
+        ("GET", "/admin"),
+        ("GET", "/admin/accounts"),
+    )
+
+    for method, path in requests:
+        assert client.request(method, path, headers=headers).status_code != 426, path
+
+    delete_request = client.post(
+        "/account/delete-request",
+        data={"username": "nobody", "password": "not-a-password", "confirm": "yes"},
+        headers=headers,
+    )
+    assert delete_request.status_code != 426
+
+    invalid_web_value = client.get(
+        "/auth/me",
+        headers={**headers, "X-MAYOS-Client": "web"},
+    )
+    assert invalid_web_value.status_code == 426
+
+    preflight = client.options(
+        "/auth/me",
+        headers={
+            **headers,
+            "Origin": "http://localhost:7357",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert preflight.status_code == 200
+    assert preflight.headers.get("access-control-allow-origin") == "http://localhost:7357"
+
+
 # --------------------------------------------------------------------------
 # GET /privacy
 # --------------------------------------------------------------------------
@@ -97,6 +227,7 @@ def test_privacy_page_is_public_and_cacheable(api):
     assert "MAYOS Privacy Policy" in response.text
     assert f"Effective date: {POLICY_EFFECTIVE_DATE}" in response.text
     assert f"Policy version {POLICY_VERSION}" in response.text
+    assert "the app build you last used" in response.text
 
 
 def test_privacy_page_discloses_coach_access_hosted_ai_and_retention(api):

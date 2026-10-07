@@ -13,6 +13,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from service.google_sign_in import GoogleIdentity
+from service.app_version import ANDROID_BUILD_HEADER, parse_android_build
 from service.messages import MessageMetadata
 from svc.auth import signup_ticket_subject, token_claims, token_version_of
 from svc.errors import message_http_exception
@@ -23,6 +24,8 @@ _monotonic = time.monotonic
 _last_seen_lock = threading.Lock()
 _last_seen_cache_day: str | None = None
 _last_seen_retry_after_by_account: dict[str, float | None] = {}
+_last_seen_build_by_account: dict[str, int] = {}
+_last_seen_write_in_flight: set[str] = set()
 _LAST_SEEN_RETRY_BACKOFF_SECONDS = 10 * 60
 
 #: Config read **by name only** — never hard-coded, never logged (#113).
@@ -188,31 +191,71 @@ def _utc_day() -> str:
     return datetime.now(UTC).date().isoformat()
 
 
-def _record_last_seen(db: Any, account_id: str) -> None:
-    """Writes activity once per account and UTC day without failing the request."""
+def _record_last_seen(db: Any, account_id: str, build: int | None = None) -> None:
+    """Writes activity daily, and when the account's last app build increases."""
     day = _utc_day()
     now = _monotonic()
+    if not _claim_last_seen_write(account_id, day, now, build):
+        return
+    try:
+        db.set_account_last_seen_at(account_id, day, build)
+    except Exception:
+        logger.exception("Failed to update last-seen day for account %s", account_id)
+        _retry_last_seen_write(account_id, day)
+    else:
+        _finish_last_seen_write(account_id, build)
+
+
+def _claim_last_seen_write(
+    account_id: str, day: str, now: float, build: int | None
+) -> bool:
     global _last_seen_cache_day
     with _last_seen_lock:
         if _last_seen_cache_day != day:
             _last_seen_retry_after_by_account.clear()
+            _last_seen_build_by_account.clear()
             _last_seen_cache_day = day
         retry_after = _last_seen_retry_after_by_account.get(account_id, -1.0)
-        if retry_after is None or now < retry_after:
-            return
+        cached_build = _last_seen_build_by_account.get(account_id)
+        build_increased = build is not None and (cached_build is None or build > cached_build)
+        if account_id in _last_seen_write_in_flight:
+            return False
+        if retry_after is None and not build_increased:
+            return False
+        if retry_after is not None and retry_after != -1.0 and now < retry_after:
+            return False
         _last_seen_retry_after_by_account[account_id] = None
-    try:
-        db.set_account_last_seen_at(account_id, day)
-    except Exception:
-        logger.exception("Failed to update last-seen day for account %s", account_id)
-        with _last_seen_lock:
-            if _last_seen_cache_day == day and _last_seen_retry_after_by_account.get(account_id) is None:
-                _last_seen_retry_after_by_account[account_id] = _monotonic() + _LAST_SEEN_RETRY_BACKOFF_SECONDS
+        _last_seen_write_in_flight.add(account_id)
+    return True
+
+
+def _retry_last_seen_write(account_id: str, day: str) -> None:
+    """Releases a failed write and applies the existing retry backoff."""
+    with _last_seen_lock:
+        _last_seen_write_in_flight.discard(account_id)
+        if _last_seen_cache_day == day and _last_seen_retry_after_by_account.get(account_id) is None:
+            _last_seen_retry_after_by_account[account_id] = _monotonic() + _LAST_SEEN_RETRY_BACKOFF_SECONDS
+
+
+def _finish_last_seen_write(account_id: str, build: int | None) -> None:
+    """Caches the submitted build after its catalog write succeeds."""
+    with _last_seen_lock:
+        _last_seen_write_in_flight.discard(account_id)
+        if build is not None:
+            _last_seen_build_by_account[account_id] = build
+
+
+def _request_build(request: Request | None) -> int | None:
+    """Reads a well-formed Android build header when a request is available."""
+    if request is None:
+        return None
+    return parse_android_build(request.headers.get(ANDROID_BUILD_HEADER))
 
 
 async def get_verified_player(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     db: Annotated[Any, Depends(get_db)],
+    request: Request = None,
 ) -> VerifiedPlayer:
     """Resolves a verified, active player, refusing a revoked token before returning.
 
@@ -221,20 +264,21 @@ async def get_verified_player(
     """
     player = _verified_player(_resolve_registry_identity(credentials, db))
     _reject_revoked_token(db, player)
-    _record_last_seen(db, player.account_id)
+    _record_last_seen(db, player.account_id, _request_build(request))
     return player
 
 
 async def get_verified_account(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     db: Annotated[Any, Depends(get_db)],
+    request: Request = None,
 ) -> VerifiedAccount:
     """Authenticates an Account-level preference independent of its capabilities."""
     account = _verified_account(
         _resolve_registry_identity(credentials, db, require_player=False)
     )
     _reject_revoked_token(db, account)
-    _record_last_seen(db, account.account_id)
+    _record_last_seen(db, account.account_id, _request_build(request))
     return account
 
 
@@ -255,6 +299,7 @@ async def get_ledger(
 async def get_current_player(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     db: Annotated[Any, Depends(get_db)],
+    request: Request = None,
 ) -> str:
     """Resolves a verified, active player account to its ledger id. Never trusts the body.
 
@@ -263,13 +308,14 @@ async def get_current_player(
     """
     player = _verified_player(_resolve_registry_identity(credentials, db))
     _reject_revoked_token(db, player)
-    _record_last_seen(db, player.account_id)
+    _record_last_seen(db, player.account_id, _request_build(request))
     return player
 
 
 async def get_current_coach(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     db: Annotated[Any, Depends(get_db)],
+    request: Request = None,
 ) -> VerifiedPlayer:
     """Resolves a verified account that currently holds the coach capability.
 
@@ -282,7 +328,7 @@ async def get_current_coach(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Coach capability required.")
     player = _verified_player(identity)
     _reject_revoked_token(db, player)
-    _record_last_seen(db, player.account_id)
+    _record_last_seen(db, player.account_id, _request_build(request))
     return player
 
 

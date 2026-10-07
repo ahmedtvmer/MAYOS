@@ -529,6 +529,7 @@ async def update_analytics_preference(
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(
+    request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     db: Annotated[Any, Depends(get_db)],
 ):
@@ -545,7 +546,7 @@ async def logout(
 
     # Registry gate: the shared dependency verifies live account, player
     # capability, and current session epoch before the jti is revoked.
-    await get_current_player(credentials, db)
+    await get_current_player(credentials, db, request)
 
     def _run():
         revoke_token(db, credentials.credentials)

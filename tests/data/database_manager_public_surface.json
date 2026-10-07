@@ -523,7 +523,7 @@
     },
     "set_account_last_seen_at": {
       "kind": "method",
-      "signature": "(self, account_id: str, day: str) -> None"
+      "signature": "(self, account_id: str, day: str, build: int | None = None) -> None"
     },
     "set_plan": {
       "kind": "method",

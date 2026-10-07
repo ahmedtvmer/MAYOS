@@ -1853,6 +1853,43 @@ def test_accounts_pages_paginate_at_fifty_rows(admin_api):
     assert second.text.count("<li>") == 1
 
 
+def test_authenticated_last_build_is_shown_on_admin_accounts(admin_api, monkeypatch):
+    from svc import dependencies
+
+    client, db, now, _ = admin_api
+    monkeypatch.setenv("MIN_ANDROID_BUILD", "0")
+    monkeypatch.setattr(dependencies, "_utc_day", lambda: "2066-10-07")
+    account, headers = _register_account(client, db, "buildseen")
+    unknown, _ = _register_account(client, db, "buildunknown")
+    db.catalog_conn.executescript(
+        "CREATE TABLE last_build_writes (account_id TEXT, app_build INTEGER);"
+        "CREATE TRIGGER observe_last_build_write AFTER UPDATE OF last_seen_build ON accounts "
+        "BEGIN INSERT INTO last_build_writes VALUES (NEW.account_id, NEW.last_seen_build); END;"
+    )
+
+    first = client.get("/auth/me", headers={**headers, "X-MAYOS-Build": "106"})
+    repeated = client.get("/auth/me", headers={**headers, "X-MAYOS-Build": "106"})
+    upgraded = client.get("/auth/me", headers={**headers, "X-MAYOS-Build": "107"})
+    alternating_lower = client.get("/auth/me", headers={**headers, "X-MAYOS-Build": "106"})
+    alternating_higher = client.get("/auth/me", headers={**headers, "X-MAYOS-Build": "107"})
+
+    assert all(
+        response.status_code == 200
+        for response in (first, repeated, upgraded, alternating_lower, alternating_higher)
+    )
+    assert db.get_account(account["account_id"])["last_seen_build"] == 107
+    assert db.get_account(unknown["account_id"])["last_seen_build"] is None
+    writes = db.catalog_conn.execute(
+        "SELECT account_id, app_build FROM last_build_writes ORDER BY rowid"
+    ).fetchall()
+    assert writes == [(account["account_id"], 106), (account["account_id"], 107)]
+
+    page = _accounts_page(client, now[0])
+
+    assert "Last app build: 107" in page.text
+    assert "Last app build: —" in page.text
+
+
 def test_authenticated_activity_updates_last_seen_once_per_utc_day(admin_api, monkeypatch):
     from svc import dependencies
 
@@ -1910,7 +1947,7 @@ def test_last_seen_catalog_write_does_not_hold_process_lock(monkeypatch):
     second_done = threading.Event()
 
     class BlockingStore:
-        def set_account_last_seen_at(self, account_id, seen_day):
+        def set_account_last_seen_at(self, account_id, seen_day, build=None):
             if account_id == "slow":
                 started.set()
                 assert release.wait(5)
@@ -1940,7 +1977,7 @@ def test_failed_last_seen_write_waits_for_retry_backoff(monkeypatch):
     attempts = []
 
     class FailingStore:
-        def set_account_last_seen_at(self, account_id, seen_day):
+        def set_account_last_seen_at(self, account_id, seen_day, build=None):
             attempts.append((account_id, seen_day))
             raise OSError("catalog unavailable")
 
@@ -1978,6 +2015,7 @@ def test_existing_catalog_gets_nullable_last_seen_column(tmp_path):
     )
     try:
         assert db.get_account("legacy-account")["last_seen_at"] is None
+        assert db.get_account("legacy-account")["last_seen_build"] is None
     finally:
         db.catalog_conn.close()
 

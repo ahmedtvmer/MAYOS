@@ -133,7 +133,8 @@ and are kept after deletion for cost reconciliation.
 ### Owner access
 
 The owner can see account metadata — your username, account dates, capabilities,
-plan, masked recovery email, and model usage — through an owner-only admin page.
+plan, masked recovery email, model usage, and the app build you last used —
+through an owner-only admin page.
 Recovery-email lookups and owner actions are audited. That page never shows your
 training content or chats.
 

@@ -70,6 +70,8 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `ANDROID_APP_PACKAGE` | `com.mayos.mayos_mobile` | App Link `assetlinks.json` package |
 | `ANDROID_APP_SHA256_CERT_FINGERPRINTS` | unset (⇒ 404) | App Link signing-cert SHA-256 fingerprints (case/colons optional; normalised) |
 | `MAYOS_CLIENT_IP_HEADER` | unset | Single trusted caller-IP header; set to `cf-connecting-ip` behind Cloudflare Tunnel |
+| `MIN_ANDROID_BUILD` | `0` | Minimum Android `versionCode` accepted by the API; `0` disables forced updates |
+| `ANDROID_STORE_URL` | `https://play.google.com/store/apps/details?id=com.mayos.mayos_mobile` | Play Store link returned by `/app/version-policy` and HTTP 426 responses |
 | `RESET_TOKEN_TTL_MINUTES` | `30` | Reset-link lifetime (clamped 5–120) |
 | `EMAIL_VERIFICATION_CODE_TTL_MINUTES` | `10` | Recovery-email code lifetime (clamped 5–60) |
 | `SMTP_HOST` | unset | **Unset ⇒ console-dev backend** (reset links and verification codes logged, not sent). Configure for real deployments |
@@ -113,6 +115,15 @@ to the socket if that header is missing or invalid. With neither setting,
 forwarding headers are ignored and the socket address is used. Rate-limit keys
 and owner login lockouts group IPv6 addresses by their `/64` network; IPv4
 addresses remain per-address. Admin audit entries retain the full caller IP.
+
+### Android minimum-build policy (#371)
+
+Set `MIN_ANDROID_BUILD` to the lowest Android `versionCode` that may use the
+API. The default `0` disables the policy; malformed or negative values also
+disable it. Android requests with a lower `X-MAYOS-Build` receive HTTP 426 and
+the configured `ANDROID_STORE_URL`. Health and readiness checks, public account
+pages, `assetlinks.json`, `/app/version-policy`, and `/admin` are exempt.
+Requests without that build header and web clients are not rejected by this policy.
 
 ---
 

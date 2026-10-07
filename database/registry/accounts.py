@@ -29,7 +29,7 @@ class RegistryAccountsMixin:
         return (self.ledgers_dir / f"{sanitized}.db").is_file() if sanitized else False
 
     _ACCOUNT_COLUMNS = (
-        "account_id, username, ledger_id, status, is_player, is_coach, session_epoch, created_at, deleted_at, last_seen_at, display_language, "
+        "account_id, username, ledger_id, status, is_player, is_coach, session_epoch, created_at, deleted_at, last_seen_at, last_seen_build, display_language, "
         + _ANALYTICS_ALLOWED_SQL
     )
 
@@ -48,8 +48,9 @@ class RegistryAccountsMixin:
             "created_at": str(row[7]),
             "deleted_at": row[8],
             "last_seen_at": row[9],
-            "display_language": row[10] or "en",
-            "analytics_allowed": bool(row[11]),
+            "last_seen_build": row[10],
+            "display_language": row[11] or "en",
+            "analytics_allowed": bool(row[12]),
         }
 
     @staticmethod
@@ -276,19 +277,35 @@ class RegistryAccountsMixin:
             )
             return [self._account_from_row(row) for row in cursor.fetchall()]
 
-    def set_account_last_seen_at(self, account_id: str, day: str) -> None:
-        """Stores one UTC activity day without reading the current value first."""
+    def set_account_last_seen_at(
+        self, account_id: str, day: str, build: int | None = None
+    ) -> None:
+        """Stores the UTC activity day and, when supplied, the current app build."""
         if not account_id:
             return
         self.ensure_account_schema()
         with self._catalog_lock:
+            self._update_account_last_seen(account_id, day, build)
+            self._commit_catalog()
+
+    def _update_account_last_seen(self, account_id: str, day: str, build: int | None) -> None:
+        if build is None:
             self.catalog_conn.execute(
                 "UPDATE accounts SET last_seen_at = ?"
                 " WHERE account_id = ? AND status = 'active' AND deleted_at IS NULL"
                 " AND (last_seen_at IS NULL OR last_seen_at < ?)",
                 (str(day), str(account_id), str(day)),
             )
-            self._commit_catalog()
+            return
+        self.catalog_conn.execute(
+            "UPDATE accounts SET last_seen_at = CASE"
+            " WHEN last_seen_at IS NULL OR last_seen_at < ? THEN ? ELSE last_seen_at END,"
+            " last_seen_build = ?"
+            " WHERE account_id = ? AND status = 'active' AND deleted_at IS NULL"
+            " AND ((last_seen_at IS NULL OR last_seen_at < ?)"
+            " OR last_seen_build IS NULL OR last_seen_build < ?)",
+            (str(day), str(day), int(build), str(account_id), str(day), int(build)),
+        )
 
     def get_active_account_by_username(self, username: str) -> dict[str, Any] | None:
         """Reads the live account owning ``username``.

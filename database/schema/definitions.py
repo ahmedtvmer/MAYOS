@@ -395,6 +395,7 @@ class SchemaMixin:
                     created_at TEXT NOT NULL,
                     deleted_at TEXT,
                     last_seen_at TEXT,
+                    last_seen_build INTEGER,
                     display_language TEXT NOT NULL DEFAULT 'en' CHECK (display_language IN ('en', 'ar'))
                 );
                 CREATE TABLE IF NOT EXISTS account_analytics_preferences (
@@ -761,6 +762,7 @@ class SchemaMixin:
             self._ensure_email_verification_attempts_column()
             self._ensure_pending_recovery_email_address_is_not_unique()
             self._ensure_accounts_last_seen_at()
+            self._ensure_accounts_last_seen_build()
             self._ensure_accounts_display_language()
             self._ensure_assignment_notice_summary_column()
             self._ensure_assignment_notice_summary_dismissed_at_column()
@@ -1035,6 +1037,13 @@ class SchemaMixin:
         columns = self._table_columns(cursor, "accounts")
         if columns and "last_seen_at" not in columns:
             cursor.execute("ALTER TABLE accounts ADD COLUMN last_seen_at TEXT")
+
+    def _ensure_accounts_last_seen_build(self) -> None:
+        """Add the last Android app build to existing account catalogs (#371)."""
+        cursor = self.catalog_conn.cursor()
+        columns = self._table_columns(cursor, "accounts")
+        if columns and "last_seen_build" not in columns:
+            cursor.execute("ALTER TABLE accounts ADD COLUMN last_seen_build INTEGER")
 
     def _ensure_accounts_display_language(self) -> None:
         """Add account-owned Display language; legacy accounts retain English (#250)."""
