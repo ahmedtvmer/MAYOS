@@ -2,11 +2,12 @@
 
 This document details production deployment procedures, container orchestration, database provisioning, and disaster recovery for the MAYOS service.
 
-> **Android closed trial (Fly.io, FastAPI only):** the §10 runbook targets the
-> API service alone on one always-on Machine with a durable volume. See
-> [§10 Fly.io Closed-Trial API Deployment](#10-flyio-closed-trial-api-deployment-fastapi-only).
-> Use the [closed-trial release gate runbook](TRIAL_RELEASE_GATE.md) to collect
-> automated, operational, and interview evidence before expansion.
+> **Android closed trial (Fly.io, FastAPI only):** use the [§10 Fly.io
+> runbook](#10-flyio-closed-trial-api-deployment-fastapi-only) for its
+> always-on API Machine and durable volume. Use the
+> [closed-trial release gate runbook](TRIAL_RELEASE_GATE.md) before expansion.
+> **Hetzner production:** follow [§14](#14-hetzner-production-deployment-375)
+> and its owner checklist for the Cloudflare Tunnel deployment.
 > The Docker Compose topology below supports hosted chat inference and local
 > embeddings; it is not the trial topology.
 
@@ -1268,3 +1269,21 @@ and publishes it only after every restore succeeds. If any command fails, the
 staging directory is removed and the target stays empty. Keep
 `deletions.db` with the restored catalog and run the full replay before serving
 traffic so a pre-deletion catalog cannot recreate a deleted Account.
+
+## 14. Hetzner production deployment (#375)
+
+The production API runs on one Hetzner server behind a Cloudflare Tunnel. The
+Hetzner volume is mounted on the host at `/mnt/mayos-data`; application data
+lives in `/mnt/mayos-data/data`, which Compose bind-mounts at `/data` in both
+the API and Litestream containers. The long-syntax bind disables host-path
+creation, so the containers fail to start if that data directory is absent.
+The host fstab entry uses `nofail` and a 30-second device timeout so a missing
+volume does not block boot or SSH.
+
+The API image builds from the rsynced checkout with `Dockerfile.fly`. Deploy
+access uses the root-only `/opt/mayos/.env` for Compose interpolation and runs
+Docker commands through `sudo`; the `deploy` account is not in the Docker group.
+Follow the [Hetzner setup checklist](HETZNER_SETUP.md) for owner-only account,
+DNS, secret migration, provisioning, first deployment, restore/copy target, and
+live verification steps. The Fly.io runbook in §10 remains for the existing
+closed-trial deployment.

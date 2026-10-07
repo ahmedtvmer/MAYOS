@@ -1,0 +1,66 @@
+services:
+  api:
+    image: "mayos-api:${MAYOS_IMAGE_TAG:?set MAYOS_IMAGE_TAG in /opt/mayos/.env}"
+    build:
+      context: ..
+      dockerfile: Dockerfile.fly
+    env_file:
+      - /opt/mayos/.env
+    environment:
+      JWT_SECRET: "${JWT_SECRET:?set JWT_SECRET in /opt/mayos/.env}"
+      LLM_API_KEY: "${LLM_API_KEY:?set LLM_API_KEY in /opt/mayos/.env}"
+      MAYOS_DATA_DIR: /data
+      MAYOS_REQUIRE_PERSISTENT_DATA: "true"
+      MAYOS_CLIENT_IP_HEADER: cf-connecting-ip
+      MAYOS_LITESTREAM: "true"
+      RESET_LINK_BASE_URL: "https://${MAYOS_API_HOSTNAME:?set MAYOS_API_HOSTNAME in /opt/mayos/.env}"
+    expose:
+      - "8000"
+    volumes:
+      - type: bind
+        source: /mnt/mayos-data/data
+        target: /data
+        bind:
+          create_host_path: false
+    command:
+      - uvicorn
+      - svc.app:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --workers
+      - "1"
+    restart: unless-stopped
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/readyz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.0
+    environment:
+      TUNNEL_TOKEN: "${TUNNEL_TOKEN:?set TUNNEL_TOKEN in /opt/mayos/.env}"
+    command: ["tunnel", "--no-autoupdate", "run"]
+    restart: unless-stopped
+
+  litestream:
+    image: litestream/litestream:0.5.17
+    environment:
+      R2_ENDPOINT: "${R2_ENDPOINT:?set R2_ENDPOINT in /opt/mayos/.env}"
+      R2_BUCKET: "${R2_BUCKET:?set R2_BUCKET in /opt/mayos/.env}"
+      R2_ACCESS_KEY_ID: "${R2_ACCESS_KEY_ID:?set R2_ACCESS_KEY_ID in /opt/mayos/.env}"
+      R2_SECRET_ACCESS_KEY: "${R2_SECRET_ACCESS_KEY:?set R2_SECRET_ACCESS_KEY in /opt/mayos/.env}"
+      LITESTREAM_R2_PREFIX: "${LITESTREAM_R2_PREFIX:?set LITESTREAM_R2_PREFIX in /opt/mayos/.env}"
+    command: ["replicate", "-config", "/etc/litestream.yml"]
+    volumes:
+      - type: bind
+        source: /mnt/mayos-data/data
+        target: /data
+        bind:
+          create_host_path: false
+      - ./litestream.yml:/etc/litestream.yml:ro
+    restart: unless-stopped
