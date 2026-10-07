@@ -1,6 +1,6 @@
 services:
   api:
-    image: "mayos-api:${MAYOS_IMAGE_TAG:?set MAYOS_IMAGE_TAG in /opt/mayos/.env}"
+    image: "mayos-api:${MAYOS_IMAGE_TAG:?set MAYOS_IMAGE_TAG in deploy/.image.env}"
     build:
       context: ..
       dockerfile: Dockerfile.fly

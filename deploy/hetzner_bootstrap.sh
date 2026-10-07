@@ -122,6 +122,7 @@ mount_data_volume() {
 prepare_mayos_paths() {
   install -d -o root -g root -m 0755 /opt/mayos
   install -d -o deploy -g deploy -m 0755 /opt/mayos/app
+  install -d -o deploy -g deploy -m 0755 /opt/mayos/state
   if [[ -L /opt/mayos/.env || ( -e /opt/mayos/.env && ! -f /opt/mayos/.env ) ]]; then
     echo "/opt/mayos/.env must be a regular file" >&2
     exit 1

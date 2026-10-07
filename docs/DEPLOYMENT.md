@@ -1283,7 +1283,59 @@ volume does not block boot or SSH.
 The API image builds from the rsynced checkout with `Dockerfile.fly`. Deploy
 access uses the root-only `/opt/mayos/.env` for Compose interpolation and runs
 Docker commands through `sudo`; the `deploy` account is not in the Docker group.
+The deploy script writes the required image tag to the deploy-owned
+`/opt/mayos/app/deploy/.image.env` and supplies both env files to Compose.
 Follow the [Hetzner setup checklist](HETZNER_SETUP.md) for owner-only account,
 DNS, secret migration, provisioning, first deployment, restore/copy target, and
 live verification steps. The Fly.io runbook in §10 remains for the existing
 closed-trial deployment.
+
+### Deploy (#376)
+
+Run the deploy command from the main checkout, never from a linked git worktree.
+Set `MAYOS_DEPLOY_HOST` in the owner machine's environment or the checkout's
+ignored `.env` file:
+
+```bash
+export MAYOS_DEPLOY_HOST=YOUR_SERVER_IPV4
+./deploy/deploy_hetzner.sh
+```
+
+The command records the full commit and tags the server-built image with its
+short commit SHA. If that tag already exists, it adds a UTC timestamp suffix so
+it cannot replace a kept rollback image. It warns when the checkout has
+uncommitted changes. `rsync --delete --delete-excluded` uploads the build
+input to `/opt/mayos/app`, including `data/processed_exercises.csv` and
+`data/exercise_curation.csv`, while excluding runtime data, local environments,
+mobile outputs, caches, worktrees, and secrets. It never runs `git pull` on the
+server.
+
+Docker builds `api` on the server and reuses its layer cache. The script then
+runs `compose up -d --no-deps api`, leaving the existing `cloudflared` and
+Litestream services running. It polls the API container's `/readyz` for up to
+three minutes and prints the successful response. The last three image tags
+are kept in `/opt/mayos/state/deploy-history.tsv`; older `mayos-api` images are
+removed while the running image is retained.
+
+If readiness fails, the script reads `CURRENT_LEDGER_SCHEMA_VERSION` from both
+images. It automatically restores the previous image when its schema version
+is at least the new image's version, then checks readiness again. If the new
+version is higher, or either version cannot be read safely, it leaves the new
+image running and explains that Training ledgers may have migrated.
+
+`status` prints the current tag, the kept tags, and the `/readyz` response:
+
+```bash
+./deploy/deploy_hetzner.sh status
+```
+
+### Rollback (#376)
+
+Pass a full commit SHA or an unambiguous SHA prefix for one of the last three
+kept images. The command restarts that image only when its ledger schema version
+is at least the currently running image's version; otherwise the schema guard
+refuses the rollback. It then checks `/readyz`:
+
+```bash
+./deploy/deploy_hetzner.sh rollback COMMIT_SHA
+```

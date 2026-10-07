@@ -13,7 +13,7 @@ All hostnames are configuration; this guide does not choose a domain.
    Falkenstein (`fsn1`) or Nuremberg (`nbg1`). The server and volume must use
    the same location.
 3. Install the [Hetzner Cloud CLI](https://github.com/hetznercloud/cli),
-   `jq`, OpenSSH, `nc`, and the AWS CLI (for the R2 object listing) on the
+   `jq`, OpenSSH, `rsync`, `nc`, and the AWS CLI (for the R2 object listing) on the
    machine that has this checkout.
 4. Create an API token with Read & Write permissions in the Cloud project.
    Add it to the ignored repository-root `.env` as an unquoted line, and keep
@@ -26,6 +26,10 @@ All hostnames are configuration; this guide does not choose a domain.
    The setup script reads this value without sourcing or printing the file.
    For the later manual `hcloud firewall describe` check, configure the CLI
    context or set `HCLOUD_TOKEN` in that shell without echoing it.
+
+   Add `MAYOS_DEPLOY_HOST=YOUR_SERVER_IPV4` to this checkout's ignored `.env`
+   after provisioning, or export it when running the deploy script. This is
+   owner-machine configuration; it does not belong in `/opt/mayos/.env`.
 
 5. Create an SSH key if needed. The setup script defaults to
    `~/.ssh/id_ed25519.pub` and its matching private key. It uploads only the
@@ -75,11 +79,14 @@ Save the server's IPv4 address printed at the end. The Compose command and
 layout are fixed for the deploy script in #376:
 
 - `/opt/mayos/app`: rsynced checkout/build input, owned by `deploy`.
+- `/opt/mayos/app/deploy/.image.env`: deploy-owned Compose interpolation env file containing
+  the selected `MAYOS_IMAGE_TAG`.
+- `/opt/mayos/state`: deploy-owned deployment history, outside the rsynced tree.
 - `/opt/mayos/.env`: root-owned, mode `0600`.
 - `/mnt/mayos-data`: Hetzner volume mount root; application files live in
   `/mnt/mayos-data/data`.
 - Run Compose with
-  `sudo docker compose -f /opt/mayos/app/deploy/compose.hetzner.yaml --env-file /opt/mayos/.env -p mayos ...`.
+  `sudo docker compose -f /opt/mayos/app/deploy/compose.hetzner.yaml --env-file /opt/mayos/.env --env-file /opt/mayos/app/deploy/.image.env -p mayos ...`.
 
 ### 3. Create the Cloudflare Tunnel
 
@@ -164,14 +171,14 @@ configuration also sets `MAYOS_ENV=production`,
 `COACH_AI_EVAL_REPORT=/app/reports/coach_ai_eval.json`; carry these over if they
 remain the intended production settings.
 
-Add the Hetzner-specific values below. Set `MAYOS_IMAGE_TAG` to the full commit
-that #376 is deploying; it is required and has no implicit `latest` fallback.
-Keep `LITESTREAM_R2_PREFIX=litestream` unless the existing R2 namespace has a
+Add the Hetzner-specific values below. The #376 deploy script writes
+`MAYOS_IMAGE_TAG` to `/opt/mayos/app/deploy/.image.env` for each Compose command;
+do not set it in the root-owned secrets file. Keep
+`LITESTREAM_R2_PREFIX=litestream` unless the existing R2 namespace has a
 different production prefix. The same prefix must be used by Litestream,
 account-deletion cleanup, and restore tooling.
 
 ```dotenv
-MAYOS_IMAGE_TAG=FULL_GIT_COMMIT
 LITESTREAM_R2_PREFIX=litestream
 TUNNEL_TOKEN=YOUR_CLOUDFLARE_TUNNEL_TOKEN
 ```
@@ -190,11 +197,14 @@ context as well.
 
 ### 5. Deploy and verify
 
-Use the deploy command in the [deployment runbook](DEPLOYMENT.md) after #376 is
-available. Compose builds `mayos-api:${MAYOS_IMAGE_TAG}` on the server from the
-rsynced checkout using `Dockerfile.fly`. The API runs one Uvicorn worker and
-publishes no host port; `cloudflared` sends requests to `api:8000`, and
-Litestream reads `deploy/litestream.yml` from the checkout.
+From the main checkout at `/mnt/work/MAYOS`, run
+`./deploy/deploy_hetzner.sh`. The script refuses linked worktrees and warns if
+the checkout has uncommitted changes. See the [deployment runbook](DEPLOYMENT.md)
+for deploy, status, and rollback commands. Compose builds
+`mayos-api:${MAYOS_IMAGE_TAG}` on the server from the rsynced checkout using
+`Dockerfile.fly`. The API runs one Uvicorn worker and publishes no host port;
+`cloudflared` sends requests to `api:8000`, and Litestream reads
+`deploy/litestream.yml` from the checkout.
 
 Before deploying, ensure the checkout has `data/processed_exercises.csv`;
 `Dockerfile.fly` copies this operator-provided seed file into the image.
@@ -215,9 +225,9 @@ curl -fsS "https://${MAYOS_STAGING_HOSTNAME}/readyz"
 ssh -i "$SSH_PRIVATE_KEY_PATH" "deploy@$MAYOS_SERVER_IP" \
   'findmnt --output SOURCE,UUID,TARGET --mountpoint /mnt/mayos-data'
 ssh -i "$SSH_PRIVATE_KEY_PATH" "deploy@$MAYOS_SERVER_IP" \
-  'sudo docker compose -f /opt/mayos/app/deploy/compose.hetzner.yaml --env-file /opt/mayos/.env -p mayos ps'
+  'sudo docker compose -f /opt/mayos/app/deploy/compose.hetzner.yaml --env-file /opt/mayos/.env --env-file /opt/mayos/app/deploy/.image.env -p mayos ps'
 ssh -i "$SSH_PRIVATE_KEY_PATH" "deploy@$MAYOS_SERVER_IP" \
-  'sudo docker compose -f /opt/mayos/app/deploy/compose.hetzner.yaml --env-file /opt/mayos/.env -p mayos logs --since=30m litestream'
+  'sudo docker compose -f /opt/mayos/app/deploy/compose.hetzner.yaml --env-file /opt/mayos/.env --env-file /opt/mayos/app/deploy/.image.env -p mayos logs --since=30m litestream'
 ssh -i "$SSH_PRIVATE_KEY_PATH" "deploy@$MAYOS_SERVER_IP" 'sudo ss -tlnp'
 ```
 
