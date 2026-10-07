@@ -9,11 +9,13 @@ import 'core/active_program.dart';
 import 'core/active_workout.dart';
 import 'core/analytics_client.dart';
 import 'core/api_client.dart';
+import 'core/app_update_required.dart';
 import 'core/app_mode.dart';
 import 'core/baseline_service.dart';
 import 'core/baselines.dart';
 import 'core/browser_key_value_store.dart';
 import 'core/chat_storage.dart';
+import 'core/client_dimensions.dart';
 import 'core/config.dart';
 import 'core/display_language/controller.dart';
 import 'core/display_language/store.dart';
@@ -75,8 +77,27 @@ final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
   );
   client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
   client.onAccountDeleted = ref.watch(accountDeletedEventsProvider).signal;
+  client.onAppUpdateRequired = (AppVersionPolicy policy) {
+    ref
+        .read(appUpdateRequiredProvider.notifier)
+        .requireUpdate(policy);
+  };
   return client;
 });
+
+/// Null on web and non-Android platforms, where no Android build policy applies.
+final Provider<int?> androidBuildNumberProvider = Provider<int?>(
+  (ref) => clientAndroidBuildNumber,
+);
+
+final StateNotifierProvider<AppUpdateRequiredController, AppVersionPolicy?>
+    appUpdateRequiredProvider =
+    StateNotifierProvider<AppUpdateRequiredController, AppVersionPolicy?>(
+  (ref) => AppUpdateRequiredController(
+    api: ref.read(apiClientProvider),
+    androidBuildNumber: () => ref.read(androidBuildNumberProvider),
+  ),
+);
 
 final Provider<AnalyticsClient> analyticsClientProvider =
     Provider<AnalyticsClient>(

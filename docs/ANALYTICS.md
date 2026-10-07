@@ -345,7 +345,7 @@ those definitions.
 | `days_per_week` | Integer from 0 to 7 | Number of weekdays in the newly committed Training schedule. Weekday identities are not sent. |
 | `length_days` | Integer from 1 to 14 | Inclusive length of a committed prospective Training schedule pause. Dates and reason text are never sent. |
 | `attempt` | Integer from 1 to 100 | Bounded sync attempt number reported by the client. |
-| `sync_failure_reason` | `network`, `server`, `conflict`, or `rejected` | Coded reason for a failed Workout draft sync. No response text or workout identifier is sent. |
+| `sync_failure_reason` | `network`, `server`, `conflict`, `rejected`, or `app_update_required` (HTTP 426; the draft stays pending) | Coded reason for a failed Workout draft sync. No response text or workout identifier is sent. |
 | `use_case` | `chat`, `onboarding`, `onboarding_complete`, `program_active`, `program_generate`, `profile_rebuild`, `coach_generate_draft`, `coach_program_request`, `coach_assistant`, `checkpoint_review`, or `other` | Allowlisted ADR 038 metering purpose category. Unknown purpose labels map to `other`. |
 | `plan` | `free`, `pro`, or `unknown` | Current plan for the capability matching the event role: Lifter plan for Player inference, Coach plan for Coach inference. |
 | `models` | List of 1–5 configured model ids or `other` | Distinct model ids found in the committed metering rows, bounded to five; any id not in the model factory's current configuration maps to `other`. A zero-row turn uses `other`. |

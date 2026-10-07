@@ -67,6 +67,28 @@ class WorkoutCommitResult {
   bool get created => statusCode == 201;
 }
 
+/// Public Android release policy returned by GET /app/version-policy.
+class AppVersionPolicy {
+  const AppVersionPolicy._({required this.minBuild, required this.storeUrl});
+
+  static AppVersionPolicy? tryParse(Object? minBuild, Object? storeUrl) {
+    if (minBuild is! int || minBuild < 0 || storeUrl is! String) {
+      return null;
+    }
+    final Uri? uri = Uri.tryParse(storeUrl);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        !uri.hasAuthority ||
+        uri.host.isEmpty) {
+      return null;
+    }
+    return AppVersionPolicy._(minBuild: minBuild, storeUrl: storeUrl);
+  }
+
+  final int minBuild;
+  final String storeUrl;
+}
+
 /// What `POST /auth/google` answered for one ID token (#113/#174).
 sealed class GoogleAuthStart {
   const GoogleAuthStart();
@@ -108,9 +130,11 @@ class ApiClient {
     required String baseUrl,
     HttpClientAdapter? adapter,
     String Function()? clientHeaderLoader,
+    String? Function()? buildHeaderLoader,
     String Function()? displayLanguageLoader,
   })  : _tokens = tokens,
         _clientHeader = (clientHeaderLoader ?? _loadClientHeader)(),
+        _buildHeader = (buildHeaderLoader ?? _loadBuildHeader)(),
         _displayLanguageLoader = displayLanguageLoader ?? (() => 'en') {
     _dio = Dio(
       BaseOptions(
@@ -185,6 +209,7 @@ class ApiClient {
 
   final TokenStore _tokens;
   final String _clientHeader;
+  final String? _buildHeader;
   final String Function() _displayLanguageLoader;
   late final Dio _dio;
 
@@ -196,6 +221,9 @@ class ApiClient {
   /// local data without the logout keep/discard prompt (ADR 039).
   void Function()? onAccountDeleted;
 
+  /// Invoked when any service request is blocked by the Android minimum build.
+  void Function(AppVersionPolicy policy)? onAppUpdateRequired;
+
   Dio get dio => _dio;
 
   Future<void> _attachToken(
@@ -203,6 +231,10 @@ class ApiClient {
     RequestInterceptorHandler handler,
   ) async {
     options.headers['X-MAYOS-Client'] = _clientHeader;
+    final String? buildHeader = _buildHeader;
+    if (buildHeader != null) {
+      options.headers['X-MAYOS-Build'] = buildHeader;
+    }
     options.headers['Accept-Language'] =
         _displayLanguageLoader() == 'ar' ? 'ar' : 'en';
     if (options.extra[_skipAuth] != true) {
@@ -222,6 +254,8 @@ class ApiClient {
     return clientHeaderFor(platform: platform, version: clientAppVersion);
   }
 
+  static String? _loadBuildHeader() => clientAppBuildHeader;
+
   static String clientPlatformLabel({
     required bool isWeb,
     required TargetPlatform platform,
@@ -235,10 +269,20 @@ class ApiClient {
       '$platform/$version';
 
   void _handleError(DioException error, ErrorInterceptorHandler handler) {
+    final dynamic responseBody = error.response?.data;
+    if (error.response?.statusCode == 426 &&
+        responseBody is Map &&
+        responseBody['error'] == 'app_update_required') {
+      final AppVersionPolicy? policy = AppVersionPolicy.tryParse(
+        responseBody['min_build'],
+        responseBody['store_url'],
+      );
+      if (policy != null) onAppUpdateRequired?.call(policy);
+    }
     final bool skipped = error.requestOptions.extra[_skipAuth] == true;
     if (!skipped && error.response?.statusCode == 401) {
-      final dynamic data = error.response?.data;
-      if (data is Map && data['error'] == 'account_deleted') {
+      if (responseBody is Map &&
+          responseBody['error'] == 'account_deleted') {
         onAccountDeleted?.call();
       } else {
         onUnauthorized?.call();
@@ -254,6 +298,28 @@ class ApiClient {
     } on DioException catch (error) {
       throw _toApiException(error);
     }
+  }
+
+  /// Reads the public minimum Android build policy. A malformed or failed
+  /// response is surfaced to the caller, which treats the check as best-effort.
+  Future<AppVersionPolicy> appVersionPolicy() async {
+    final Response<dynamic> response = await _send(
+      () => _dio.get<dynamic>(
+        '/app/version-policy',
+        options: Options(extra: <String, dynamic>{_skipAuth: true}),
+      ),
+    );
+    return _parseAppVersionPolicy(response.data);
+  }
+
+  static AppVersionPolicy _parseAppVersionPolicy(dynamic body) {
+    final AppVersionPolicy? policy = body is Map
+        ? AppVersionPolicy.tryParse(body['min_build'], body['store_url'])
+        : null;
+    if (policy == null) {
+      throw const ApiException('The service returned invalid app policy data.');
+    }
+    return policy;
   }
 
   static ApiException _toApiException(DioException error) {

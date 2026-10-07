@@ -406,6 +406,43 @@ void main() {
       ]);
     });
 
+    test('426 update refusal stays pending and syncs immediately after restart',
+        () async {
+      final FakeMayosApi fake = FakeMayosApi()
+        ..commitRequiresAppUpdate = true
+        ..programVersion = 1;
+      final TokenStore tokens = await _authedTokens(fake);
+      final InMemoryDraftStore store = InMemoryDraftStore();
+      DateTime now = _fixedNow;
+      final DraftSyncService service =
+          _service(fake: fake, tokens: tokens, store: store, now: () => now);
+      service.startFor(_accountA, syncImmediately: false);
+      final WorkoutDraft draft = _draft(accountId: _accountA);
+
+      await service.saveDraft(draft);
+
+      WorkoutDraft pending = (await store.read(_accountA)).single;
+      expect(pending.status, DraftStatus.pending);
+      expect(pending.attempt, 1);
+      expect(pending.nextAttemptAt, isNotNull);
+      expect(pending.lastReportedSyncFailureReason, 'app_update_required');
+      expect(fake.committedSessions, isEmpty);
+      final int commitsWhileBlocked = fake.commitRequests;
+      await service.syncNow();
+      expect(fake.commitRequests, commitsWhileBlocked);
+
+      fake.commitRequiresAppUpdate = false;
+      final DraftSyncService restarted =
+          _service(fake: fake, tokens: tokens, store: store, now: () => now);
+      restarted.startFor(_accountA);
+      await pumpEventQueue();
+
+      pending = (await store.read(_accountA)).single;
+      expect(pending.status, DraftStatus.synced);
+      expect(fake.committedSessions, hasLength(1));
+      expect(fake.commitRequests, commitsWhileBlocked + 1);
+    });
+
     test('marks a committed draft synced before applying its status', () async {
       final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
       fake.trainingStatusBody = <String, dynamic>{

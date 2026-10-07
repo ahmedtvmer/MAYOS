@@ -58,6 +58,7 @@ class DraftSyncService extends ChangeNotifier {
   List<WorkoutDraft> _drafts = <WorkoutDraft>[];
   bool _syncing = false;
   bool _resyncRequested = false;
+  bool _preparedAppUpdateRetries = false;
   Timer? _timer;
   Future<void> _mutex = Future<void>.value();
 
@@ -86,12 +87,37 @@ class DraftSyncService extends ChangeNotifier {
   void startFor(String accountId, {bool syncImmediately = true}) {
     _generation++;
     _accountId = accountId;
+    final int generation = _generation;
+    final bool prepareAppUpdateRetries = !_preparedAppUpdateRetries;
+    _preparedAppUpdateRetries = true;
     _startTimer();
     scheduleMicrotask(() {
-      unawaited(refresh());
-      if (syncImmediately) {
-        unawaited(syncNow());
-      }
+      final Future<void> preparation = prepareAppUpdateRetries
+          ? _prepareAppUpdateRetries(accountId, generation)
+          : Future<void>.value();
+      unawaited(preparation.then((_) async {
+        if (!_stillCurrent(accountId, generation)) return;
+        await refresh();
+        if (syncImmediately) await syncNow();
+      }));
+    });
+  }
+
+  Future<void> _prepareAppUpdateRetries(String accountId, int generation) async {
+    if (!_stillCurrent(accountId, generation)) return;
+    await _mutateDrafts(accountId, (List<WorkoutDraft> current) {
+      return <WorkoutDraft>[
+        for (final WorkoutDraft draft in current)
+          if (draft.status == DraftStatus.pending &&
+              draft.lastReportedSyncFailureReason == 'app_update_required')
+            draft.copyWith(
+              attempt: 0,
+              clearNextAttempt: true,
+              updatedAt: _iso(),
+            )
+          else
+            draft,
+      ];
     });
   }
 
@@ -564,13 +590,16 @@ class DraftSyncService extends ChangeNotifier {
     }
   }
 
-  String _syncFailureReason(ApiException error) => switch (error.statusCode) {
-        null => 'network',
-        408 => 'network',
-        409 => 'conflict',
-        >= 500 => 'server',
-        _ => 'rejected',
-      };
+  String _syncFailureReason(ApiException error) =>
+      error.statusCode == 426 && error.errorCode == 'app_update_required'
+          ? 'app_update_required'
+          : switch (error.statusCode) {
+              null => 'network',
+              408 => 'network',
+              409 => 'conflict',
+              >= 500 => 'server',
+              _ => 'rejected',
+            };
 
   void _reportSyncFailureIfCurrent(
     String accountId,
@@ -650,11 +679,15 @@ class DraftSyncService extends ChangeNotifier {
     );
   }
 
-  /// A 4xx (except a client timeout) is a refusal that will not fix itself;
-  /// network failures and 5xx stay pending for a later retry.
+  /// A 4xx (except timeout and required app update) cannot fix itself; network
+  /// failures, 5xx, and 426 stay pending for a later retry.
   static bool _isTerminal(ApiException error) {
     final int? status = error.statusCode;
-    return status != null && status >= 400 && status < 500 && status != 408;
+    return status != null &&
+        status >= 400 &&
+        status < 500 &&
+        status != 408 &&
+        status != 426;
   }
 
   String _iso() => _now().toIso8601String();

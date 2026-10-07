@@ -583,13 +583,33 @@ def test_sync_failure_report_is_authenticated_and_catalogued(api, recording_anal
     assert events[0]["distinct_id"] == db.get_active_account_by_username("p1")["account_id"]
     assert events[0]["properties"]["sync_failure_reason"] == "network"
     assert events[0]["properties"]["attempt"] == 2
+    update_reported = client.post(
+        "/workouts/sync-failures",
+        headers=headers,
+        json={"reason_code": "app_update_required", "attempt": 1},
+    )
+    assert update_reported.status_code == 204, update_reported.text
+    events = [
+        event
+        for event in recording_analytics.events
+        if event["event"] == "workout_sync_failed"
+    ]
+    assert len(events) == 2
+    assert events[1]["properties"]["sync_failure_reason"] == "app_update_required"
+    assert events[1]["properties"]["attempt"] == 1
     rejected = client.post(
         "/workouts/sync-failures",
         headers=headers,
         json={"reason_code": "private details", "attempt": 2},
     )
     assert rejected.status_code == 422
-    assert len([event for event in recording_analytics.events if event["event"] == "workout_sync_failed"]) == 1
+    assert len(
+        [
+            event
+            for event in recording_analytics.events
+            if event["event"] == "workout_sync_failed"
+        ]
+    ) == 2
 
     class RaisingSink:
         def capture(self, *_args):

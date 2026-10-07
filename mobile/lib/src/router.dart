@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/app_mode.dart';
+import 'core/api_client.dart';
 import 'core/display_language/assignment_copy.dart';
 import 'core/display_language/catalog.dart';
 import 'core/display_language/controller.dart';
@@ -37,6 +38,7 @@ import 'features/player/workout/workout_logger_screen.dart';
 import 'features/settings/personalization_screen.dart';
 import 'features/settings/recovery_email_settings_screen.dart';
 import 'features/settings/settings_screen.dart';
+import 'features/shared/app_update_required_screen.dart';
 import 'features/shared/not_found_screen.dart';
 import 'features/shared/splash_screen.dart';
 import 'providers.dart';
@@ -77,6 +79,7 @@ const String exerciseDetailPath = '/exercise';
 const String checkpointReviewPath = '/checkpoint-review';
 const String chatPath = '/chat';
 const String splashPath = '/splash';
+const String appUpdateRequiredPath = '/update-required';
 
 /// Pure routing decision, kept separate so capability gating is unit-testable.
 ///
@@ -320,6 +323,8 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   ref.listen<AppModeState>(
       appModeControllerProvider, (_, __) => refresh.value++);
   ref.listen<AuthState>(authControllerProvider, (_, __) => refresh.value++);
+  ref.listen<AppVersionPolicy?>(
+      appUpdateRequiredProvider, (_, __) => refresh.value++);
   ref.onDispose(refresh.dispose);
 
   return GoRouter(
@@ -331,6 +336,14 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       // (#127). A platform-reported absolute URL (an app link) keeps only its
       // path and query, as `matchedLocation` did before.
       final Uri uri = state.uri;
+      final bool updateRequired =
+          ref.read(appUpdateRequiredProvider) != null;
+      if (updateRequired) {
+        return uri.path == appUpdateRequiredPath
+            ? null
+            : appUpdateRequiredPath;
+      }
+      if (uri.path == appUpdateRequiredPath) return splashPath;
       final String location =
           uri.hasQuery ? '${uri.path}?${uri.query}' : uri.path;
       return redirectFor(ref.read(authControllerProvider), location,
@@ -345,6 +358,11 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         path: splashPath,
         builder: (BuildContext context, GoRouterState state) =>
             const SplashScreen(),
+      ),
+      GoRoute(
+        path: appUpdateRequiredPath,
+        builder: (BuildContext context, GoRouterState state) =>
+            const AppUpdateRequiredScreen(),
       ),
       GoRoute(
         path: loginPath,

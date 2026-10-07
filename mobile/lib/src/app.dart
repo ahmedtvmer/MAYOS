@@ -44,6 +44,9 @@ class _MayosAppState extends ConsumerState<MayosApp>
       fireImmediately: true,
     );
     WidgetsBinding.instance.addObserver(this);
+    // The release policy is public and best-effort. Build its controller
+    // before auth or draft traffic can receive a 426 response.
+    unawaited(ref.read(appUpdateRequiredProvider.notifier).checkPolicy());
     // Keep API and browser signals alive during splash and auth startup, before
     // either shared screen frame has mounted its banner slot. Android remains
     // outside the provider because the banner flag is false there.
@@ -110,6 +113,7 @@ class _MayosAppState extends ConsumerState<MayosApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      unawaited(ref.read(appUpdateRequiredProvider.notifier).checkPolicy());
       // Grants/revocations can happen elsewhere; refresh live capabilities.
       unawaited(ref.read(authControllerProvider.notifier).refreshAccount());
       ref.read(draftSyncServiceProvider).resumeForeground();

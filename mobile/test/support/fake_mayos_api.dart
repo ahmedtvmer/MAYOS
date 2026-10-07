@@ -41,6 +41,13 @@ class FakeMayosApi {
 
   late final FakeApiAdapter adapter;
 
+  int appVersionPolicyRequests = 0;
+  int appMinBuild = 0;
+  String appStoreUrl =
+      'https://play.google.com/store/apps/details?id=com.mayos.app';
+  bool appVersionPolicyFails = false;
+  bool appUpdateRequiredForRequests = false;
+  bool commitRequiresAppUpdate = false;
   final Map<String, String> passwords = <String, String>{};
   String? issuedToken;
   String? currentUsername;
@@ -379,6 +386,25 @@ class FakeMayosApi {
 
   FakeResponse _handle(FakeRequest request) {
     final String path = request.path;
+    if (path == '/app/version-policy') {
+      appVersionPolicyRequests++;
+      if (appVersionPolicyFails) {
+        return const FakeResponse(
+            503, <String, dynamic>{'detail': 'The service is unavailable.'});
+      }
+      return FakeResponse(200, <String, dynamic>{
+        'min_build': appMinBuild,
+        'store_url': appStoreUrl,
+      });
+    }
+    if (appUpdateRequiredForRequests) {
+      return FakeResponse(426, <String, dynamic>{
+        'error': 'app_update_required',
+        'min_build': appMinBuild,
+        'store_url': appStoreUrl,
+        'message_code': 'app.update_required.v1',
+      });
+    }
     if (_isOfflineRequest(request)) {
       return const FakeResponse.networkFailure();
     }
@@ -3925,6 +3951,14 @@ class FakeMayosApi {
           401, <String, dynamic>{'detail': 'Token has been revoked.'});
     }
     commitRequests++;
+    if (commitRequiresAppUpdate) {
+      return FakeResponse(426, <String, dynamic>{
+        'error': 'app_update_required',
+        'min_build': appMinBuild,
+        'store_url': appStoreUrl,
+        'message_code': 'app.update_required.v1',
+      });
+    }
     if (commitFails) {
       return const FakeResponse(
           500, <String, dynamic>{'detail': 'The service is unavailable.'});

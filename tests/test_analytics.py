@@ -1809,7 +1809,13 @@ def test_onboarding_step_viewed_is_a_client_event_with_allowlisted_identifiers()
 
 def test_workout_sync_failure_reason_does_not_widen_invite_reason_code():
     assert analytics.PROPERTY_TYPES["sync_failure_reason"].validate("network")
+    assert analytics.PROPERTY_TYPES["sync_failure_reason"].validate(
+        "app_update_required"
+    )
     assert not analytics.PROPERTY_TYPES["reason_code"].validate("network")
+    assert not analytics.PROPERTY_TYPES["reason_code"].validate(
+        "app_update_required"
+    )
 
 
 def test_catalogued_properties_reject_private_values_and_property_names():

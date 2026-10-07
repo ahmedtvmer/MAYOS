@@ -34,6 +34,11 @@ ProviderContainer authContainerFor(
           adapter: fake.adapter,
         );
         client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
+        client.onAppUpdateRequired = (AppVersionPolicy policy) {
+          ref
+              .read(appUpdateRequiredProvider.notifier)
+              .requireUpdate(policy);
+        };
         return client;
       }),
     ],
@@ -47,13 +52,15 @@ ProviderContainer authContainerFor(
 /// harness.
 Widget authApp(FakeMayosApi fake, InMemoryTokenStore tokens,
     {List<Override> extraOverrides = const <Override>[],
-    FakeAnalyticsClient? analytics}) {
+    FakeAnalyticsClient? analytics,
+    InMemoryAppModeStore? modeStore}) {
   final FakeAnalyticsClient fakeAnalytics = analytics ?? FakeAnalyticsClient();
   return ProviderScope(
     overrides: <Override>[
       tokenStoreProvider.overrideWithValue(tokens),
       analyticsClientProvider.overrideWithValue(fakeAnalytics),
-      appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
+      appModeStoreProvider
+          .overrideWithValue(modeStore ?? InMemoryAppModeStore()),
       displayLanguageStoreProvider
           .overrideWithValue(InMemoryDisplayLanguageStore()),
       chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
@@ -64,6 +71,11 @@ Widget authApp(FakeMayosApi fake, InMemoryTokenStore tokens,
           adapter: fake.adapter,
         );
         client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
+        client.onAppUpdateRequired = (AppVersionPolicy policy) {
+          ref
+              .read(appUpdateRequiredProvider.notifier)
+              .requireUpdate(policy);
+        };
         return client;
       }),
       ...extraOverrides,

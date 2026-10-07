@@ -238,7 +238,13 @@ AI_USE_CASES = frozenset(
 AI_PLANS = frozenset({"free", "pro", "unknown"})
 AI_LIMITS = frozenset({"requests_per_minute", "daily_tokens"})
 AI_OUTCOMES = frozenset({"ok", "error", "interrupted"})
-WORKOUT_SYNC_FAILURE_REASONS = ("network", "server", "conflict", "rejected")
+WORKOUT_SYNC_FAILURE_REASONS = (
+    "network",
+    "server",
+    "conflict",
+    "rejected",
+    "app_update_required",
+)
 _DIMENSION_VALUES: dict[str, frozenset[str]] = {
     "role": frozenset({"player", "coach", "unknown"}),
     "platform": frozenset({"android", "web", "unknown"}),

@@ -76,6 +76,15 @@ class MayosCopy {
   String get offline => isArabic ? 'غير متصل' : 'Offline';
   String get offlineBanner =>
       isArabic ? 'أنت غير متصل بالإنترنت' : "You're offline";
+  String get updateRequiredTitle =>
+      isArabic ? 'حدّث MAYOS' : 'Update MAYOS';
+  String get updateRequiredMessage => isArabic
+      ? 'يلزم تحديث MAYOS للمتابعة. ستبقى حصصك التدريبية المحفوظة على هذا الهاتف، وستتم مزامنتها تلقائيًا بعد التحديث.'
+      : 'Update MAYOS to continue. Your saved workouts will stay on this phone and sync automatically after the update.';
+  String get updateRequiredButton =>
+      isArabic ? 'التحديث من Google Play' : 'Update on Google Play';
+  String get updateStoreUnavailable =>
+      isArabic ? 'تعذّر فتح Google Play.' : 'Could not open Google Play.';
   String get offlineChatSaved => isArabic
       ? 'غير متصل — يعرض سجل المحادثة المحفوظ. يتطلب الإرسال اتصالًا بالإنترنت.'
       : 'Offline — showing saved chat history. Sending needs a connection.';
