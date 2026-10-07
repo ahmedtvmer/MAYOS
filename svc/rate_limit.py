@@ -9,34 +9,63 @@ from starlette.requests import Request
 
 
 def client_ip(request: Request) -> str:
-    """The client address a limit is keyed on.
+    """The full caller address from the one trusted source.
 
-    On Fly every request reaches the app from the proxy, so ``get_remote_address``
-    would collapse every caller into one bucket — a single visitor could spend
-    the whole password budget for everyone. When ``FLY_APP_NAME`` is set (Fly
-    injects it into every Machine), the proxy-set ``Fly-Client-IP`` header is the
-    real caller and is used instead; off Fly the socket address is used and that
-    header — which any client could forge — is ignored.
+    Behind a proxy (Fly, or a Cloudflare Tunnel on Hetzner) every request reaches
+    the app from the proxy, so the socket address would collapse every caller
+    into one bucket. ``MAYOS_CLIENT_IP_HEADER`` names the single proxy-set header
+    to trust; when unset and ``FLY_APP_NAME`` is present, Fly's ``Fly-Client-IP``
+    is used. With neither, forwarding headers — which any client could forge —
+    are ignored. A missing or unparsable trusted header falls back to the socket.
     """
-    if os.getenv("FLY_APP_NAME"):
-        forwarded = request.headers.get("fly-client-ip", "")
-        if forwarded:
-            address = forwarded.strip()
-        else:
-            address = get_remote_address(request)
-    else:
-        address = get_remote_address(request)
-    try:
-        return ipaddress.ip_address(address).compressed
-    except ValueError:
+    forwarded_ip = _request_ip(request, _trusted_header())
+    if forwarded_ip is not None:
+        return forwarded_ip
+    socket_ip = get_remote_address(request)
+    return _normalize_ip(socket_ip) or socket_ip
+
+
+def _trusted_header() -> str | None:
+    configured = os.getenv("MAYOS_CLIENT_IP_HEADER", "").strip()
+    if configured:
+        return configured
+    return "fly-client-ip" if os.getenv("FLY_APP_NAME") else None
+
+
+def client_ip_bucket(address: str) -> str:
+    """Use one bucket per IPv4 address or IPv6 /64 network."""
+    normalized = _normalize_ip(address)
+    if normalized is None:
         return address
+    parsed = ipaddress.ip_address(normalized)
+    if isinstance(parsed, ipaddress.IPv6Address):
+        return ipaddress.ip_network(f"{parsed}/64", strict=False).with_prefixlen
+    return parsed.compressed
+
+
+def _request_ip(request: Request, header_name: str | None) -> str | None:
+    if header_name is None:
+        return None
+    forwarded = request.headers.get(header_name, "").strip()
+    return _normalize_ip(forwarded) if forwarded else None
+
+
+def _normalize_ip(value: str) -> str | None:
+    try:
+        address = ipaddress.ip_address(value.strip())
+    except ValueError:
+        return None
+    mapped_address = getattr(address, "ipv4_mapped", None)
+    if mapped_address is not None:
+        return mapped_address.compressed
+    return address.compressed
 
 
 _client_ip = client_ip
 
 
 def _key(request: Request) -> str:
-    ip = client_ip(request)
+    ip = client_ip_bucket(client_ip(request))
     auth = request.headers.get("authorization", "")
     if auth.lower().startswith("bearer ") and len(auth) > 20:
         return f"{ip}:{auth[-12:]}"

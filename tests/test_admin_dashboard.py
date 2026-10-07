@@ -47,6 +47,7 @@ def admin_api(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("TESTING", "1")
     monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
     monkeypatch.setenv("FLY_APP_NAME", "admin-tests")
+    monkeypatch.delenv("MAYOS_CLIENT_IP_HEADER", raising=False)
     monkeypatch.setenv("ADMIN_USERNAME", ADMIN_USERNAME)
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", ADMIN_PASSWORD_HASH)
     monkeypatch.setenv("ADMIN_TOTP_SECRET", TOTP_SECRET_BASE32)
@@ -532,6 +533,35 @@ def test_per_ip_lockout_logs_once_and_does_not_block_another_ip(admin_api):
     assert audit.text.count("<strong>Action:</strong> login_failed") == 4
     assert audit.text.count("<strong>Action:</strong> login_locked_out") == 1
     assert "203.0.113.8" in audit.text
+
+
+def test_ipv6_admin_lockout_uses_network_and_audit_keeps_full_address(admin_api, monkeypatch):
+    client, _, now, _ = admin_api
+    monkeypatch.setenv("MAYOS_CLIENT_IP_HEADER", "fly-client-ip")
+    for _ in range(5):
+        assert _login(
+            client,
+            now[0],
+            password="incorrect-password",
+            client_ip="2001:db8:1:2::1",
+        ).status_code == 401
+
+    limiter.reset()
+    same_network = _login(
+        client,
+        now[0],
+        client_ip="2001:db8:1:2::abcd",
+    )
+    assert same_network.status_code == 401
+
+    limiter.reset()
+    other_network = _login(
+        client,
+        now[0],
+        client_ip="2001:db8:1:3::1",
+    )
+    assert other_network.status_code == 303
+    assert "2001:db8:1:2::1" in client.get("/admin/audit").text
 
 
 def test_admin_login_is_rate_limited(admin_api):

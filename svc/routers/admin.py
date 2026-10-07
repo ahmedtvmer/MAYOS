@@ -25,7 +25,7 @@ from service import model_metering as model_metering_service
 from service import admin_auth, audit_log, email_sender, password_reset as password_reset_service, periodic_status
 from svc.dependencies import get_db
 from svc.html import self_contained_html
-from svc.rate_limit import LOGIN_LIMIT, client_ip, limiter
+from svc.rate_limit import LOGIN_LIMIT, client_ip, client_ip_bucket, limiter
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 AccountListQuery = admin_accounts_service.AccountListQuery
@@ -123,7 +123,7 @@ async def admin_login_submit(request: Request, db: Annotated[Any, Depends(get_db
         _form_text(form, "username"),
         _form_text(form, "password"),
         _form_text(form, "totp_code"),
-        source_ip or "unavailable",
+        client_ip_bucket(source_ip or "unavailable"),
     )
     result = await asyncio.to_thread(security.verify_login, attempt)
     if result is not admin_auth.AdminLoginResult.SUCCESS:
@@ -418,7 +418,7 @@ async def admin_account_delete_submit(
     source_ip = deletion_request.source_ip
 
     def verify_step_up(code: str) -> account_deletion_service.StepUpResult:
-        result = security.verify_step_up_totp(code, source_ip or "unavailable")
+        result = security.verify_step_up_totp(code, client_ip_bucket(source_ip or "unavailable"))
         return account_deletion_service.StepUpResult(result.value)
 
     outcome = await asyncio.to_thread(

@@ -69,6 +69,7 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `RESET_LINK_BASE_URL` | `http://localhost:8000` | Reset-link / App Link base; must match the App Link host |
 | `ANDROID_APP_PACKAGE` | `com.mayos.mayos_mobile` | App Link `assetlinks.json` package |
 | `ANDROID_APP_SHA256_CERT_FINGERPRINTS` | unset (⇒ 404) | App Link signing-cert SHA-256 fingerprints (case/colons optional; normalised) |
+| `MAYOS_CLIENT_IP_HEADER` | unset | Single trusted caller-IP header; set to `cf-connecting-ip` behind Cloudflare Tunnel |
 | `RESET_TOKEN_TTL_MINUTES` | `30` | Reset-link lifetime (clamped 5–120) |
 | `EMAIL_VERIFICATION_CODE_TTL_MINUTES` | `10` | Recovery-email code lifetime (clamped 5–60) |
 | `SMTP_HOST` | unset | **Unset ⇒ console-dev backend** (reset links and verification codes logged, not sent). Configure for real deployments |
@@ -98,16 +99,20 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `OWNER_ALERT_EMAIL` | unset | Recipient for model-spend and `/admin` login alerts. Model-spend alerts retry on the sweep; an admin login still succeeds if this is unset or email delivery fails, and the dashboard shows a red banner and audit event |
 | `COACH_EXTRA_BODY` | unset | Coach sends no extra body by default and ignores the player and judge body settings; a JSON object replaces its body, and `{}` sends none |
 
-**Rate-limit keying on Fly.** Every route limit (`RATE_LIMIT_*`) is keyed by
-client address — plus a bearer-token suffix for authenticated calls — in
-`svc/rate_limit.py::_key`. Behind Fly's proxy the socket address is the proxy
-for *every* request, so when `FLY_APP_NAME` is set (Fly injects it into each
-Machine; no configuration needed) the key uses the proxy-set `Fly-Client-IP`
-header instead. Without it all callers would share one bucket, and a single
-visitor could spend the whole `PASSWORD_LIMIT` budget that protects sign-in,
-password change, and the public `GET|POST /account/delete-request` form.
-Outside Fly the socket address is used and that header — which any client could
-forge — is ignored.
+**Caller IP and rate-limit keying.** Every route limit (`RATE_LIMIT_*`) is keyed
+by caller address — plus a bearer-token suffix for authenticated calls — in
+`svc/rate_limit.py::_key`. Set `MAYOS_CLIENT_IP_HEADER` to the single proxy-set
+header that identifies callers. The Hetzner production setup behind Cloudflare
+Tunnel uses `MAYOS_CLIENT_IP_HEADER=cf-connecting-ip`. Header names are matched
+case-insensitively; if the selected header is missing or does not contain an IP
+address, the socket address is used.
+
+When `MAYOS_CLIENT_IP_HEADER` is unset, Fly keeps its existing behavior: if
+`FLY_APP_NAME` is set, the API uses Fly's `Fly-Client-IP` header and falls back
+to the socket if that header is missing or invalid. With neither setting,
+forwarding headers are ignored and the socket address is used. Rate-limit keys
+and owner login lockouts group IPv6 addresses by their `/64` network; IPv4
+addresses remain per-address. Admin audit entries retain the full caller IP.
 
 ---
 

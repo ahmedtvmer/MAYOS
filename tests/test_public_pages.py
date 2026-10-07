@@ -39,6 +39,7 @@ def api(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("SKIP_LLM_LOAD", "true")
     monkeypatch.setenv("TESTING", "1")
     monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
+    monkeypatch.delenv("MAYOS_CLIENT_IP_HEADER", raising=False)
     monkeypatch.delenv("PRIVACY_CONTACT_EMAIL", raising=False)
     monkeypatch.delenv("FLY_APP_NAME", raising=False)
     limiter._storage.reset()

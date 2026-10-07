@@ -18,6 +18,8 @@ TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
 def client(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("SKIP_LLM_LOAD", "true")
     monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
+    monkeypatch.delenv("MAYOS_CLIENT_IP_HEADER", raising=False)
+    monkeypatch.delenv("FLY_APP_NAME", raising=False)
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
@@ -127,6 +129,98 @@ def test_rate_limit_error_has_structured_metadata(client):
     assert limited.json()["message_code"] == "http.rate_limited.v1"
     assert limited.json()["message_params"] == {}
     assert limited.json()["message_fallback"] == "Rate limit exceeded: 5 per 1 minute"
+
+
+@pytest.mark.parametrize(
+    ("header_name", "environment", "setting"),
+    [
+        ("x-caller-ip", "MAYOS_CLIENT_IP_HEADER", " X-Caller-IP "),
+        ("fly-client-ip", "FLY_APP_NAME", "mayos-api"),
+    ],
+)
+def test_login_rate_limit_uses_trusted_caller_header(
+    client, monkeypatch, header_name, environment, setting
+):
+    monkeypatch.delenv("MAYOS_CLIENT_IP_HEADER", raising=False)
+    monkeypatch.delenv("FLY_APP_NAME", raising=False)
+    monkeypatch.setenv(environment, setting)
+
+    def failed_login(caller_ip):
+        return client.post(
+            "/auth/login",
+            json={"trainee_id": "alice", "password": "wrong-password"},
+            headers={header_name: caller_ip},
+        )
+
+    for _ in range(5):
+        assert failed_login("198.51.100.10").status_code == 401
+    assert failed_login("198.51.100.11").status_code == 401
+    assert failed_login("198.51.100.10").status_code == 429
+
+
+def test_login_rate_limit_ignores_forwarded_headers_without_configuration(client, monkeypatch):
+    monkeypatch.delenv("MAYOS_CLIENT_IP_HEADER", raising=False)
+    monkeypatch.delenv("FLY_APP_NAME", raising=False)
+
+    def failed_login(headers):
+        return client.post(
+            "/auth/login",
+            json={"trainee_id": "alice", "password": "wrong-password"},
+            headers=headers,
+        )
+
+    for _ in range(5):
+        assert failed_login({"CF-Connecting-IP": "198.51.100.10"}).status_code == 401
+    assert failed_login(
+        {"X-Forwarded-For": "198.51.100.11", "Fly-Client-IP": "198.51.100.11"}
+    ).status_code == 429
+
+
+def test_configured_header_missing_or_invalid_falls_back_to_socket(client, monkeypatch):
+    monkeypatch.setenv("MAYOS_CLIENT_IP_HEADER", "x-caller-ip")
+    monkeypatch.setenv("FLY_APP_NAME", "mayos-api")
+
+    def failed_login(headers):
+        return client.post(
+            "/auth/login",
+            json={"trainee_id": "alice", "password": "wrong-password"},
+            headers=headers,
+        )
+
+    for attempt in range(5):
+        assert failed_login(
+            {
+                "x-caller-ip": f"invalid-{attempt}",
+                "fly-client-ip": f"198.51.100.{attempt + 10}",
+            }
+        ).status_code == 401
+    assert failed_login({"fly-client-ip": "198.51.100.99"}).status_code == 429
+
+
+@pytest.mark.parametrize(
+    ("first_ip", "same_bucket_ip", "other_bucket_ip"),
+    [
+        ("2001:db8:1:2::1", "2001:db8:1:2::abcd", "2001:db8:1:3::1"),
+        ("::ffff:192.0.2.1", "192.0.2.1", "192.0.2.2"),
+    ],
+)
+def test_login_rate_limit_groups_callers_by_network(
+    client, monkeypatch, first_ip, same_bucket_ip, other_bucket_ip
+):
+    monkeypatch.setenv("MAYOS_CLIENT_IP_HEADER", "x-caller-ip")
+    monkeypatch.delenv("FLY_APP_NAME", raising=False)
+
+    def failed_login(caller_ip):
+        return client.post(
+            "/auth/login",
+            json={"trainee_id": "alice", "password": "wrong-password"},
+            headers={"x-caller-ip": caller_ip},
+        )
+
+    for _ in range(5):
+        assert failed_login(first_ip).status_code == 401
+    assert failed_login(same_bucket_ip).status_code == 429
+    assert failed_login(other_bucket_ip).status_code == 401
 
 
 def test_model_limit_refusal_has_structured_metadata_before_chat_stream(client, monkeypatch):
