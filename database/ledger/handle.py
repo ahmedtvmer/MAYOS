@@ -78,7 +78,9 @@ class TrainingLedger(
         original_isolation = conn.isolation_level
         if outermost:
             conn.isolation_level = None
-            conn.execute("BEGIN IMMEDIATE")
+            conn.execute("BEGIN")
+            # Reserve this ledger's writer slot without locking attached catalog.
+            conn.execute("UPDATE main.user_profile SET id = id WHERE 0")
         try:
             yield
         except Exception:
