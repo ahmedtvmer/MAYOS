@@ -30,7 +30,7 @@ def test_structured_message_codes_match_dart_resolver_and_server_allowlists():
 
     code_prefixes = (
         "coach_alert|http|ai_limit|chat|google|workout|auth|assignment|"
-        "program|program_request|intake|coach|media|recovery|coach_invite"
+        "program|program_request|intake|coach|media|recovery|coach_invite|app"
     )
     service_codes = set(
         re.findall(rf'"((?:{code_prefixes})\.[^"]+)"', service_source)

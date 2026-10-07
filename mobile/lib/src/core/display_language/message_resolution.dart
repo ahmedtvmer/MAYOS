@@ -74,6 +74,7 @@ const Map<String, Set<String>> _paramKeys = <String, Set<String>>{
     'window_days',
     'threshold_kg',
   },
+  'app.update_required.v1': <String>{'min_build'},
   'http.bad_request.v1': <String>{},
   'http.unauthorized.v1': <String>{},
   'http.forbidden.v1': <String>{},
@@ -192,6 +193,7 @@ final Map<String, _MessageTemplate> _templates = <String, _MessageTemplate>{
   'coach_alert.performance_regression.v1': _regression,
   'coach_alert.profile_change.v1': _profileChange,
   'coach_alert.weight_off_target_trend.v1': _weightOffTargetTrend,
+  'app.update_required.v1': _appUpdateRequired,
   'http.bad_request.v1': _badRequest,
   'http.unauthorized.v1': _unauthorized,
   'http.forbidden.v1': _forbidden,
@@ -246,6 +248,9 @@ String? _unauthorized(Map<String, dynamic> params, MessageCopy copy) =>
 
 String? _forbidden(Map<String, dynamic> params, MessageCopy copy) =>
     copy.forbidden;
+
+String? _appUpdateRequired(Map<String, dynamic> params, MessageCopy copy) =>
+    copy.appUpdateRequired;
 
 String? _notFound(Map<String, dynamic> params, MessageCopy copy) =>
     copy.notFound;

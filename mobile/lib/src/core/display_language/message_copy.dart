@@ -22,6 +22,10 @@ class MessageCopy {
       ? 'لا تملك صلاحية تنفيذ هذا الإجراء.'
       : 'You do not have permission to do that.';
 
+  String get appUpdateRequired => isArabic
+      ? 'يلزم تحديث MAYOS للمتابعة.'
+      : 'Update MAYOS to continue.';
+
   String get notFound => isArabic ? 'لم يُعثر على المطلوب.' : 'Not found.';
 
   String get conflict => isArabic
