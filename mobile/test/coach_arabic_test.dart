@@ -204,19 +204,54 @@ void main() {
     await _pumpApp(tester, _coachFake());
 
     await tester.tap(find.byKey(const Key('roster_row_assignment-ar')));
-    await _pumpUntilFound(tester, find.text('السجل'));
+    await _pumpUntilFound(tester, find.text('مجموعات التدريب آخر ٧ أيام'));
+    expect(find.text('يتدرب معك منذ'), findsOneWidget);
+    expect(find.text('\u20662026-09-24\u2069'), findsOneWidget);
+    expect(find.text('آخر حصة'), findsOneWidget);
+    expect(find.text('مجموعات التدريب آخر ٧ أيام'), findsOneWidget);
+    expect(find.text('الأرقام القياسية الشخصية'), findsOneWidget);
+    expect(
+      Directionality.of(
+        tester.element(find.text('مجموعات التدريب آخر ٧ أيام')),
+      ),
+      TextDirection.rtl,
+    );
     final Finder section =
         find.byKey(const Key(
           'coach_history_section_recentSessions_semantics',
         ));
     await tester.scrollUntilVisible(section, 300,
         scrollable: find.byType(Scrollable).first);
+    await tester.ensureVisible(section);
     final Finder title = find.byWidgetPredicate(
       (Widget widget) =>
           widget is Text && widget.data?.startsWith('الحصص الأخيرة') == true,
     );
 
     expect(tester.widget<Text>(title).data, 'الحصص الأخيرة (\u20662\u2069)');
+  });
+
+  testWidgets('Arabic History has no overflow at 360dp through Exercises',
+      (WidgetTester tester) async {
+    await _pumpApp(tester, _coachFake());
+    tester.view.physicalSize = const Size(720, 2400);
+    tester.view.devicePixelRatio = 2;
+
+    await tester.tap(find.byKey(const Key('roster_row_assignment-ar')));
+    await _pumpUntilFound(tester, find.text('مجموعات التدريب آخر ٧ أيام'));
+
+    final Finder exercises =
+        find.byKey(const Key('coach_history_section_exercises_semantics'));
+    await tester.scrollUntilVisible(
+      exercises,
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.ensureVisible(exercises);
+    await tester.pump();
+
+    expect(Directionality.of(tester.element(exercises)), TextDirection.rtl);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(

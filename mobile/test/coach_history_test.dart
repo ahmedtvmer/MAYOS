@@ -7,6 +7,7 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/connectivity.dart';
+import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
@@ -90,6 +91,8 @@ Future<void> _expandHistorySection(WidgetTester tester, String section) async {
       find.byKey(Key('coach_history_section_${section}_semantics'));
   await tester.scrollUntilVisible(card, 300,
       scrollable: find.byType(Scrollable).first);
+  await tester.ensureVisible(card);
+  await tester.pumpAndSettle();
   await tester.tap(card);
   await tester.pumpAndSettle();
 }
@@ -152,7 +155,8 @@ void main() {
     expect(find.text('History'), findsOneWidget);
     expect(find.text('Check-ins'), findsOneWidget);
     expect(find.text('Requests (1)'), findsOneWidget);
-    expect(find.text('Since 2026-09-24T10:00:00Z'), findsOneWidget);
+    expect(find.text('Coaching since'), findsOneWidget);
+    expect(find.text('2026-09-24'), findsOneWidget);
     expect(find.text('Latest session'), findsOneWidget);
     expect(find.text('Volume (weighted working sets)'), findsOneWidget);
     expect(find.text('No active program.'), findsNothing);
@@ -219,6 +223,107 @@ void main() {
     expect(find.textContaining('Latest Recorded:'), findsNothing);
   });
 
+  testWidgets('history header stats match the displayed volume and records',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachPlayerRecords = <Map<String, dynamic>>[
+        for (int index = 0; index < 3; index++)
+          <String, dynamic>{
+            'exercise_id': 'exercise-$index',
+            'name': 'Exercise $index',
+            'record_type': 'e1RM',
+            'reps': 5,
+            'value': 100.0 + index,
+            'achieved_at': '2026-09-20T10:00:00Z',
+          },
+      ];
+    await _pumpApp(tester, fake);
+
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+
+    expect(find.text('Coaching since'), findsOneWidget);
+    expect(find.text('2026-09-24'), findsOneWidget);
+    expect(find.text('Last session'), findsOneWidget);
+    expect(find.text('2026-09-25'), findsOneWidget);
+    expect(find.text('Weekly working sets'), findsOneWidget);
+    expect(find.text('21.5'), findsOneWidget);
+    expect(find.text('Personal records'), findsOneWidget);
+    expect(find.text('3'), findsOneWidget);
+
+    final Finder chest = find.text('Chest');
+    final Finder back = find.text('Back');
+    expect(tester.getTopLeft(chest).dy, lessThan(tester.getTopLeft(back).dy));
+    expect(find.text('12.5'), findsOneWidget);
+    expect(find.text('9'), findsOneWidget);
+  });
+
+  testWidgets('history omits the last-session stat when there are no sessions',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachPlayerSummary['latest_session'] = null
+      ..coachPlayerSummary['volume'] = <String, dynamic>{};
+    await _pumpApp(tester, fake);
+
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+
+    expect(find.text('Last session'), findsNothing);
+    expect(find.text('No sessions logged yet.'), findsOneWidget);
+    expect(find.text('No volume recorded yet.'), findsOneWidget);
+    expect(find.text('0'), findsOneWidget);
+  });
+
+  testWidgets('history header and volume values round float noise once',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachPlayerSummary['volume'] = <String, dynamic>{
+        'Chest': 1.1,
+        'Back': 2.2,
+      };
+    await _pumpApp(tester, fake);
+
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+
+    expect(find.text('Weekly working sets'), findsOneWidget);
+    expect(find.text('3.3'), findsOneWidget);
+    expect(find.text('2.2'), findsOneWidget);
+    expect(find.text('1.1'), findsOneWidget);
+    expect(find.text('3.3000000000000003'), findsNothing);
+  });
+
+  testWidgets('History renders without overflow at 360dp in dark theme',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _pumpApp(
+      tester,
+      fake,
+      extraOverrides: <Override>[
+        themeModeStoreProvider.overrideWithValue(
+          InMemoryThemeModeStore(ThemeMode.dark),
+        ),
+      ],
+    );
+    tester.view.physicalSize = const Size(720, 2400);
+    tester.view.devicePixelRatio = 2;
+
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+
+    expect(
+      Theme.of(tester.element(find.text('Coaching since'))).brightness,
+      Brightness.dark,
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('coach_history_section_exercises_semantics')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('roster tap opens the assigned player history drill-down',
       (tester) async {
     final FakeMayosApi fake = _coachFake();
@@ -230,8 +335,10 @@ void main() {
     await _openRosterEntry(tester);
     await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
 
-    expect(find.text('Since 2026-09-24T10:00:00Z'), findsOneWidget);
-    expect(find.text('Chest: 12.5'), findsOneWidget);
+    expect(find.text('Coaching since'), findsOneWidget);
+    expect(find.text('2026-09-24'), findsOneWidget);
+    expect(find.text('Chest'), findsOneWidget);
+    expect(find.text('12.5'), findsOneWidget);
     expect(find.textContaining('4200.0'), findsWidgets);
     expect(find.text('Bench Press'), findsNothing);
     expect(find.textContaining('ASSISTANT-CHAT-SECRET'), findsNothing);

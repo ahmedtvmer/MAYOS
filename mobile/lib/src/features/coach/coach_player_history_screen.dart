@@ -22,11 +22,11 @@ import '../../core/ui/mayos_section_header.dart';
 import '../../core/ui/mayos_segmented_control.dart';
 import '../../core/ui/mayos_settings_tile.dart';
 import '../../core/ui/first_strong_direction.dart';
-import '../../core/workout_equipment.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import 'coach_assistant_screen.dart';
 import 'coach_check_in_sheet.dart';
+import 'coach_history_segment.dart';
 import 'coach_program_draft_screen.dart';
 import 'program_import_files.dart';
 import 'program_import_screen.dart';
@@ -172,50 +172,6 @@ class _GenerateDraftDialogState extends State<_GenerateDraftDialog> {
   }
 }
 
-class _CollapsibleHistorySection extends StatelessWidget {
-  const _CollapsibleHistorySection({
-    required this.heading,
-    required this.expanded,
-    required this.onToggle,
-    required this.children,
-  });
-
-  final _HistorySectionHeading heading;
-  final bool expanded;
-  final VoidCallback onToggle;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-        key: heading.key,
-        button: true,
-        expanded: expanded,
-        label: heading.label,
-        child: MayosCard(
-          onTap: onToggle,
-          padding: const EdgeInsets.all(MayosSpacing.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Semantics(
-                excludeSemantics: true,
-                child: MayosSectionHeader(
-                  title: heading.label,
-                  padding: EdgeInsets.only(
-                    bottom: expanded ? MayosSpacing.xs : 0,
-                  ),
-                  trailing: Icon(
-                    expanded ? Icons.expand_less : Icons.expand_more,
-                  ),
-                ),
-              ),
-              if (expanded) ...children,
-            ],
-          ),
-        ),
-      );
-}
-
 class _CoachPlayerHistoryScreenState
     extends ConsumerState<CoachPlayerHistoryScreen> {
   late CoachRosterEntry _entry;
@@ -245,8 +201,8 @@ class _CoachPlayerHistoryScreenState
   List<CoachAlert> _alerts = const <CoachAlert>[];
   String? _busyAlertId;
   _PlayerSegment _segment = _PlayerSegment.history;
-  final Map<_HistorySection, bool> _expandedHistorySections =
-      <_HistorySection, bool>{};
+  final Map<CoachHistorySection, bool> _expandedHistorySections =
+      <CoachHistorySection, bool>{};
 
   /// Sequence numbers so a slower, older response can never overwrite the
   /// result of a newer one when revision bumps start overlapping loads (#120).
@@ -673,293 +629,6 @@ class _CoachPlayerHistoryScreenState
           ),
           ...children,
         ],
-      ),
-    );
-  }
-
-  Widget _historySection(
-    BuildContext context, {
-    required _HistorySection section,
-    required _HistorySectionContent content,
-  }) {
-    final bool expanded = _expandedHistorySections[section] ?? false;
-    return _CollapsibleHistorySection(
-      heading: (
-        key: Key('coach_history_section_${section.name}_semantics'),
-        label: '${content.title} '
-            '${coachCopyOf(context).historyItemCount(content.count)}',
-      ),
-      expanded: expanded,
-      onToggle: () => setState(() {
-        _expandedHistorySections[section] = !expanded;
-      }),
-      children: content.children,
-    );
-  }
-
-  Widget _volumeCard(BuildContext context) {
-    final copy = coachCopyOf(context);
-    final Map<String, double> volume = _summary!.volume;
-    final List<MapEntry<String, double>> entries = volume.entries
-        .where((MapEntry<String, double> entry) => entry.value > 0)
-        .toList(growable: false);
-    return _section(
-      context,
-      copy.playerVolume,
-      entries.isEmpty
-          ? <Widget>[Text(copy.noVolume)]
-          : <Widget>[
-              for (final MapEntry<String, double> entry in entries)
-                Text(copy.volumeValue(entry.key, '${entry.value}')),
-            ],
-    );
-  }
-
-  Widget _scheduleCard(BuildContext context) {
-    final copy = coachCopyOf(context);
-    final CoachPlayerSchedule? schedule = _summary!.schedule;
-    final List<Widget> children = <Widget>[];
-    if (schedule != null) {
-      final String days = schedule.weekdays.map(copy.weekday).join(', ');
-      children.add(Text(copy.expectedDays(days)));
-      children.add(Text(copy.timezone(schedule.timezone)));
-    }
-    for (final CoachPlayerPause pause in _summary!.pauses) {
-      children.add(Text(copy.pauseDates(pause.startsOn, pause.endsOn)));
-    }
-    return _section(context, copy.trainingSchedule, children);
-  }
-
-  Widget _latestSessionCard(BuildContext context) {
-    final copy = coachCopyOf(context);
-    final CoachPlayerLatestSession? latest = _summary!.latestSession;
-    if (latest == null) {
-      return _section(
-          context, copy.latestSession, <Widget>[Text(copy.noSessions)]);
-    }
-    final String? versionNote = copy.historicalProgramIfNeeded(
-      latest.programVersion,
-      latest.activeProgramVersionAtSync,
-      latest.isHistoricalProgram,
-    );
-    return _section(context, copy.latestSession, <Widget>[
-      Text(copy.sessionTitle(latest.splitName, latest.sessionDate)),
-      Text(copy.setsAndVolume(
-          latest.setsCount, latest.totalVolumeKg.toStringAsFixed(1))),
-      if (latest.warmupMovements.isNotEmpty)
-        Text(copy.movementCount(latest.warmupMovements.length)),
-      if (latest.cardio != null)
-        Text(copy.cardioMinutes(latest.cardio!.minutes)),
-      if (latest.readinessScore != null)
-        Text(copy.readiness(latest.readinessScore!)),
-      if (versionNote != null) Text(versionNote),
-      for (final PerformedDateCorrection correction in latest.corrections)
-        Text(copy.correctedDate(
-            correction.previousDate, correction.correctedDate)),
-      const SizedBox(height: MayosSpacing.xs),
-      for (final CoachPlayerSessionExercise exercise in latest.exercises)
-        Text(copy.sessionExercise(exercise.name, exercise.sets,
-            exercise.volumeKg.toStringAsFixed(1))),
-      for (final CoachPlayerDivergence divergence in latest.divergences)
-        Text(_divergenceLabel(divergence)),
-    ]);
-  }
-
-  String _divergenceLabel(CoachPlayerDivergence divergence) {
-    final String kind = switch (divergence.kind) {
-      'skipped' => 'Skipped',
-      'unplanned' => 'Unplanned',
-      _ => divergence.kind,
-    };
-    return coachCopyOf(context).divergence(kind, divergence.exerciseName);
-  }
-
-  Widget _recentSessionsCard(BuildContext context) {
-    final copy = coachCopyOf(context);
-    final List<CoachPlayerRecentSession> sessions = _summary!.recentSessions;
-    return _historySection(
-      context,
-      section: _HistorySection.recentSessions,
-      content: (
-        title: copy.recentSessions,
-        count: sessions.length,
-        children: sessions.isEmpty
-            ? <Widget>[Text(copy.noSessions)]
-            : <Widget>[
-                for (final CoachPlayerRecentSession session in sessions)
-                  _recentSessionTile(session),
-              ],
-      ),
-    );
-  }
-
-  Widget _recentSessionTile(CoachPlayerRecentSession session) {
-    final copy = coachCopyOf(context);
-    final String? versionNote = copy.historicalProgramIfNeeded(
-      session.programVersion,
-      session.activeProgramVersionAtSync,
-      session.isHistoricalProgram,
-    );
-    return ListTile(
-      dense: true,
-      contentPadding: EdgeInsets.zero,
-      title: Text(copy.sessionTitle(session.splitName, session.sessionDate)),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(copy.setsAndVolume(
-              session.setsCount, session.totalVolumeKg.toStringAsFixed(1))),
-          if (session.warmupMovements.isNotEmpty)
-            Text(copy.movementCount(session.warmupMovements.length)),
-          if (session.cardio != null)
-            Text(copy.cardioMinutes(session.cardio!.minutes)),
-          if (versionNote != null) Text(versionNote),
-          for (final PerformedDateCorrection correction in session.corrections)
-            Text(copy.correctedDate(
-                correction.previousDate, correction.correctedDate)),
-          for (final CoachPlayerDivergence divergence in session.divergences)
-            Text(_divergenceLabel(divergence)),
-        ],
-      ),
-    );
-  }
-
-  Widget _recordsCard(BuildContext context) {
-    final copy = coachCopyOf(context);
-    return _historySection(
-      context,
-      section: _HistorySection.records,
-      content: (
-        title: copy.personalRecordsTitle,
-        count: _records.length,
-        children: _records.isEmpty
-            ? <Widget>[Text(copy.noPersonalRecords)]
-            : <Widget>[
-                for (final PersonalRecord record in _records)
-                  ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(record.name),
-                    subtitle: Text(copy.recordSummary(
-                        record.recordType, '${record.value}', record.reps)),
-                  ),
-              ],
-      ),
-    );
-  }
-
-  Widget _checkpointReviewsCard(BuildContext context) {
-    final copy = coachCopyOf(context);
-    return _historySection(
-      context,
-      section: _HistorySection.checkpoints,
-      content: (
-        title: copy.checkpoints,
-        count: _checkpointReviews.length,
-        children: _checkpointReviews.isEmpty
-            ? <Widget>[Text(copy.noCheckpoints)]
-            : <Widget>[
-                for (final CheckpointReviewListItem review
-                    in _checkpointReviews)
-                  ListTile(
-                    key: ValueKey<String>(
-                        'coach.checkpoint.${review.checkpoint}'),
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(copy.checkpointNumber(review.checkpoint)),
-                    subtitle: Text(copy.checkpointPeriod(
-                        review.periodStart, review.periodEnd)),
-                    trailing: Icon(
-                      Directionality.of(context) == TextDirection.rtl
-                          ? Icons.chevron_left
-                          : Icons.chevron_right,
-                    ),
-                    onTap: () => context.push(
-                      '$checkpointReviewPath/${review.checkpoint}'
-                      '?assignment_id=${_entry.assignmentId}',
-                    ),
-                  ),
-              ],
-      ),
-    );
-  }
-
-  Widget _exerciseDetail(BuildContext context, String exerciseId) {
-    final copy = coachCopyOf(context);
-    if (_loadingHistory) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 12),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-    final CoachExerciseHistory? history = _histories[exerciseId];
-    if (history == null) {
-      return const SizedBox.shrink();
-    }
-    final CoachExerciseHistoryPoint? latest =
-        history.history.isEmpty ? null : history.history.last;
-    final bool latestZeroLoadUsesEquipmentLabel = latest != null &&
-        zeroLoadLabelKind(latest.weightKg, history.equipment) != null;
-
-    Widget historyPoint(CoachExerciseHistoryPoint point) {
-      final WorkoutEquipmentKind? labelKind =
-          zeroLoadLabelKind(point.weightKg, history.equipment);
-      return Text(copy.exerciseHistoryPoint(
-        point.date,
-        labelKind == null
-            ? '${point.weightKg}'
-            : workoutCopyOf(context).zeroLoadWeightLabel(labelKind),
-        point.reps,
-        weightUnit: exerciseWeightUnit(point.weightKg, history.equipment),
-        rir: point.rpe == null ? null : rirLabel(point.rpe!),
-        e1rm: labelKind == null ? '${point.e1rm}' : null,
-      ));
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        if (history.caption != null && !latestZeroLoadUsesEquipmentLabel)
-          Text(history.caption!),
-        const SizedBox(height: MayosSpacing.xxs),
-        if (history.history.isEmpty)
-          Text(copy.noExerciseSets)
-        else
-          for (final CoachExerciseHistoryPoint point in history.history)
-            // Effort is hidden when nobody rated the set, as this line always
-            // was; a rated one reads as RIR (#111).
-            historyPoint(point),
-        if (history.records.isNotEmpty) ...<Widget>[
-          const SizedBox(height: MayosSpacing.xs),
-          Text(copy.records),
-          for (final CoachExerciseRecord record in history.records)
-            Text(copy.recordHistory(record.recordType, '${record.value}',
-                record.reps, record.achievedAt)),
-        ],
-      ],
-    );
-  }
-
-  Widget _exercisesCard(BuildContext context) {
-    final copy = coachCopyOf(context);
-    return _historySection(
-      context,
-      section: _HistorySection.exercises,
-      content: (
-        title: copy.exercises,
-        count: _exercises.length,
-        children: _exercises.isEmpty
-            ? <Widget>[Text(copy.noExercisesLogged)]
-            : <Widget>[
-                for (final CoachPlayerExercise exercise in _exercises)
-                  ExpansionTile(
-                    tilePadding: EdgeInsets.zero,
-                    initiallyExpanded: _openExerciseId == exercise.id,
-                    onExpansionChanged: (_) => _toggleExercise(exercise),
-                    title: Text(exercise.name),
-                    children: <Widget>[_exerciseDetail(context, exercise.id)],
-                  ),
-              ],
       ),
     );
   }
@@ -1586,7 +1255,7 @@ class _CoachPlayerHistoryScreenState
         if (_segment == _PlayerSegment.program)
           _programCard(context)
         else if (_segment == _PlayerSegment.history)
-          ..._historyChildren(context)
+          _historySegment(context)
         else if (_segment == _PlayerSegment.checkIns)
           _checkInsSegment(context)
         else
@@ -1595,30 +1264,32 @@ class _CoachPlayerHistoryScreenState
     );
   }
 
-  /// The original drill-down content (#25), embedded as the History segment
-  /// of the player page (#120) instead of being duplicated here.
-  List<Widget> _historyChildren(BuildContext context) {
-    final CoachPlayerSummary summary = _summary!;
-    return <Widget>[
-      Text(coachCopyOf(context).since(summary.startedAt),
-          style: MayosTypography.of(context).bodySecondary),
-      const SizedBox(height: MayosSpacing.sm),
-      _latestSessionCard(context),
-      const SizedBox(height: MayosSpacing.sm),
-      _volumeCard(context),
-      const SizedBox(height: MayosSpacing.sm),
-      if (summary.schedule != null || summary.pauses.isNotEmpty) ...<Widget>[
-        _scheduleCard(context),
-        const SizedBox(height: MayosSpacing.sm),
-      ],
-      _recentSessionsCard(context),
-      const SizedBox(height: MayosSpacing.sm),
-      _recordsCard(context),
-      const SizedBox(height: MayosSpacing.sm),
-      _checkpointReviewsCard(context),
-      const SizedBox(height: MayosSpacing.sm),
-      _exercisesCard(context),
-    ];
+  Widget _historySegment(BuildContext context) {
+    return CoachHistorySegment(
+      data: CoachHistorySegmentData(
+        summary: _summary!,
+        records: _records,
+        checkpointReviews: _checkpointReviews,
+        exercises: _exercises,
+        histories: _histories,
+        openExerciseId: _openExerciseId,
+        loadingHistory: _loadingHistory,
+        expandedSections: _expandedHistorySections,
+      ),
+      onToggleSection: _toggleHistorySection,
+      onExerciseToggle: _toggleExercise,
+      onCheckpointTap: (CheckpointReviewListItem review) => context.push(
+        '$checkpointReviewPath/${review.checkpoint}'
+        '?assignment_id=${_entry.assignmentId}',
+      ),
+    );
+  }
+
+  void _toggleHistorySection(CoachHistorySection section) {
+    setState(() {
+      final bool expanded = _expandedHistorySections[section] ?? false;
+      _expandedHistorySections[section] = !expanded;
+    });
   }
 }
 
@@ -1629,20 +1300,6 @@ enum _PlayerSegment {
   checkIns,
   requests,
 }
-
-enum _HistorySection {
-  recentSessions,
-  records,
-  checkpoints,
-  exercises,
-}
-
-typedef _HistorySectionHeading = ({Key key, String label});
-typedef _HistorySectionContent = ({
-  String title,
-  int count,
-  List<Widget> children,
-});
 
 enum _ExistingDraftChoice {
   copyActive,

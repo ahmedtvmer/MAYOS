@@ -776,11 +776,14 @@ class CoachCopy {
 
   String get noPlayersHistory =>
       isArabic ? 'لا يوجد سجل تدريب بعد.' : 'No training history yet.';
-  String since(String date) => isArabic ? 'منذ ${_ltr(date)}' : 'Since $date';
+  String get coachingSince =>
+      isArabic ? 'يتدرب معك منذ' : 'Coaching since';
+  String coachingSinceDate(String date) => isArabic ? _ltr(date) : date;
+  String get lastSession => isArabic ? 'آخر حصة' : 'Last session';
+  String get weeklyWorkingSets =>
+      isArabic ? 'مجموعات التدريب آخر ٧ أيام' : 'Weekly working sets';
   String get playerVolume =>
       isArabic ? 'مجموعات محسوبة لكل عضلة' : 'Volume (weighted working sets)';
-  String volumeValue(String muscle, String value) =>
-      isArabic ? '${_ltr(muscle)}: ${_ltr(value)}' : '$muscle: $value';
   String expectedDays(String value) =>
       isArabic ? 'أيام التدريب المتوقعة: $value' : 'Expected: $value';
   String sessionTitle(String split, String date) =>

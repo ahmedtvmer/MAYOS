@@ -517,7 +517,7 @@ void main() {
 
     // History is the existing CoachPlayerHistoryScreen content, embedded.
     expect(find.textContaining('Recent sessions'), findsOneWidget);
-    expect(find.textContaining('Personal records'), findsOneWidget);
+    expect(find.text('Personal records (1)'), findsOneWidget);
     // The Exercises section sits below the first viewport (#120).
     final Finder exercises = find.textContaining('Exercises');
     final Finder pageScrollables = find.descendant(
