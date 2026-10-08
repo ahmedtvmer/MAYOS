@@ -93,15 +93,84 @@ def _enrich_program_exercises(db: Any, program_content: dict[str, Any]) -> None:
         )
 
 
-def recent_sessions(ledger: Any, limit: int) -> list[dict[str, Any]]:
+def _add_session_working_set(exercises: dict[str, dict[str, Any]], row: dict[str, Any]) -> None:
+    exercise_id = str(row["exercise_id"])
+    exercise = exercises.get(exercise_id)
+    if exercise is None:
+        exercise = {
+            "exercise_id": exercise_id,
+            "name": row["exercise_name"],
+            "sets": 0,
+            "reps": 0,
+            "volume_kg": 0.0,
+        }
+        exercises[exercise_id] = exercise
+    exercise["sets"] += 1
+    exercise["reps"] += int(row["reps"])
+    exercise["volume_kg"] += float(row["weight_kg"]) * int(row["reps"])
+
+
+def _group_session_exercises(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Group working sets by session and exercise for coach history responses."""
+    grouped: dict[str, dict[str, dict[str, Any]]] = {}
+    for row in rows:
+        exercises = grouped.setdefault(str(row["session_id"]), {})
+        if not row["is_warmup"]:
+            _add_session_working_set(exercises, row)
+    return {
+        session_id: sorted(
+            exercises.values(),
+            key=lambda exercise: (str(exercise["name"]).casefold(), exercise["exercise_id"]),
+        )
+        for session_id, exercises in grouped.items()
+    }
+
+
+def _apply_session_exercise_labels(db: Any, exercises: list[dict[str, Any]]) -> None:
+    labels_by_id = exercise_labels(db, (exercise["exercise_id"] for exercise in exercises))
+    for exercise in exercises:
+        labels = labels_by_id.get(exercise["exercise_id"])
+        exercise.update(
+            {
+                "image_path": labels.image_path if labels else None,
+                "primary_muscle": labels.primary_muscle if labels else None,
+                "primary_action": labels.primary_action if labels else None,
+            }
+        )
+
+
+def _enrich_session_exercises(
+    db: Any,
+    latest_session: dict[str, Any] | None,
+    sessions: list[dict[str, Any]],
+) -> None:
+    exercises = []
+    if latest_session:
+        exercises.extend(latest_session.get("exercises", []))
+    for session in sessions:
+        exercises.extend(session.get("exercises", []))
+    _apply_session_exercise_labels(db, exercises)
+
+
+def recent_sessions(
+    ledger: Any,
+    limit: int,
+    *,
+    session_rows: list[dict[str, Any]] | None = None,
+    exercises_by_session: dict[str, list[dict[str, Any]]] | None = None,
+) -> list[dict[str, Any]]:
     """Newest-first working-set summaries grouped from the ledger session log."""
+    if session_rows is None:
+        session_rows = ledger.get_session_log()
+    if exercises_by_session is None:
+        exercises_by_session = _group_session_exercises(session_rows)
     divergences_by_session = ledger.list_divergences_by_session()
     warmup_movements_by_session = ledger.list_warmup_movements_by_session()
     cardio_by_session = ledger.list_session_cardio_by_session()
     version_by_session = ledger.get_session_program_versions()
     audit_by_session = ledger.get_session_audit_metadata()
     sessions: dict[str, dict[str, Any]] = {}
-    for row in ledger.get_session_log():
+    for row in session_rows:
         summary = sessions.get(row["session_id"])
         if summary is None:
             version_info = version_by_session.get(row["session_id"], {})
@@ -120,6 +189,7 @@ def recent_sessions(ledger: Any, limit: int) -> list[dict[str, Any]]:
                 "uploaded_at": audit.get("uploaded_at"),
                 "edited_at": audit.get("edited_at"),
                 "corrections": audit.get("corrections", []),
+                "exercises": exercises_by_session.get(row["session_id"], []),
                 "sets_count": 0,
                 "total_volume_kg": 0.0,
                 "divergences": divergences_by_session.get(row["session_id"], []),
@@ -151,12 +221,24 @@ def player_summary(
     with ledger:
         ledger_id = context["player"]["ledger_id"]
         schedule, pauses = schedule_and_pauses(db, ledger, ledger_id)
+        session_rows = ledger.get_session_log()
+        exercises_by_session = _group_session_exercises(session_rows)
         latest_session = ledger.get_latest_session_summary()
         if latest_session is not None:
             latest_session["is_historical_program"] = is_historical_program(
                 latest_session.get("program_version"),
                 latest_session.get("active_program_version_at_sync"),
             )
+            latest_session["exercises"] = exercises_by_session.get(
+                str(latest_session["session_id"]), []
+            )
+        recent = recent_sessions(
+            ledger,
+            DEFAULT_RECENT_SESSIONS,
+            session_rows=session_rows,
+            exercises_by_session=exercises_by_session,
+        )
+        _enrich_session_exercises(db, latest_session, recent)
         summary = {
             "player_username": context["player"]["username"],
             "started_at": context["assignment"]["started_at"],
@@ -165,7 +247,7 @@ def player_summary(
                 db, ledger_id, days_lookback=days_lookback, ledger=ledger
             ),
             "latest_session": latest_session,
-            "recent_sessions": recent_sessions(ledger, DEFAULT_RECENT_SESSIONS),
+            "recent_sessions": recent,
             "schedule": schedule,
             "pauses": pauses,
         }
@@ -195,6 +277,15 @@ def player_personal_records(
         records = dashboard_service.recent_personal_records(
             db, context["player"]["ledger_id"], limit=limit, ledger=ledger
         )
+    labels_by_id = exercise_labels(db, (record["exercise_id"] for record in records))
+    for record in records:
+        labels = labels_by_id.get(record["exercise_id"])
+        record.update(
+            {
+                "image_path": labels.image_path if labels else None,
+                "primary_muscle": labels.primary_muscle if labels else None,
+            }
+        )
     coach_analytics.capture_player_history_viewed(
         db,
         coach_analytics.CoachDailyView(
@@ -210,7 +301,7 @@ def player_exercises(
     assignment_id: Any,
     *,
     client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
-) -> list[dict[str, str]] | None:
+) -> list[dict[str, Any]] | None:
     """The distinct exercises the assigned player has logged."""
     authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
     if authorized is None:
@@ -219,6 +310,15 @@ def player_exercises(
     with ledger:
         exercises = dashboard_service.logged_exercises(
             db, context["player"]["ledger_id"], ledger=ledger
+        )
+    labels_by_id = exercise_labels(db, (exercise["id"] for exercise in exercises))
+    for exercise in exercises:
+        labels = labels_by_id.get(exercise["id"])
+        exercise.update(
+            {
+                "image_path": labels.image_path if labels else None,
+                "primary_muscle": labels.primary_muscle if labels else None,
+            }
         )
     coach_analytics.capture_player_history_viewed(
         db,

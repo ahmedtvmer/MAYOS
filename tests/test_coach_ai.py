@@ -579,6 +579,44 @@ def test_render_context_states_every_deterministic_figure():
         assert expected in rendered, expected
 
 
+def test_history_exercise_enrichment_does_not_change_coach_ai_session_facts():
+    session = {
+        "session_date": "2026-09-24",
+        "split_name": "Upper A",
+        "sets_count": 18,
+        "total_volume_kg": 12400.0,
+        "readiness_score": 4,
+        "program_version": 3,
+        "divergences": [{"kind": "skipped", "exercise_name": "Row"}],
+    }
+    enriched_session = {
+        **session,
+        "exercises": [
+            {
+                "exercise_id": "sq",
+                "name": "Squat",
+                "sets": 3,
+                "reps": 15,
+                "volume_kg": 1500.0,
+                "image_path": "images/squat.jpg",
+                "primary_muscle": "Quads",
+                "primary_action": "Knee Extension",
+            }
+        ],
+    }
+
+    session_facts, session_totals = coach_ai._session_facts([session])
+    enriched_facts, enriched_totals = coach_ai._session_facts([enriched_session])
+    assert enriched_facts == session_facts
+    assert enriched_totals == session_totals
+
+    facts = _sample_facts()
+    facts_with_enrichment = _sample_facts()
+    facts["recent_sessions"] = session_facts
+    facts_with_enrichment["recent_sessions"] = enriched_facts
+    assert coach_ai.render_context(facts_with_enrichment) == coach_ai.render_context(facts)
+
+
 def test_render_context_states_missing_sections_as_insufficient_data():
     rendered = coach_ai.render_context({"as_of": "2026-09-28"})
     for marker in (

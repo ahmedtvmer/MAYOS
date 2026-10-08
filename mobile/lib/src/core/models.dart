@@ -894,6 +894,10 @@ class CoachPlayerSessionExercise {
     required this.sets,
     required this.reps,
     required this.volumeKg,
+    this.exerciseId,
+    this.imagePath,
+    this.primaryMuscle,
+    this.primaryAction,
   });
 
   factory CoachPlayerSessionExercise.fromJson(Map<String, dynamic> json) =>
@@ -902,12 +906,20 @@ class CoachPlayerSessionExercise {
         sets: (json['sets'] as num).toInt(),
         reps: (json['reps'] as num).toInt(),
         volumeKg: (json['volume_kg'] as num).toDouble(),
+        exerciseId: json['exercise_id'] as String?,
+        imagePath: json['image_path'] as String?,
+        primaryMuscle: json['primary_muscle'] as String?,
+        primaryAction: json['primary_action'] as String?,
       );
 
   final String name;
   final int sets;
   final int reps;
   final double volumeKg;
+  final String? exerciseId;
+  final String? imagePath;
+  final String? primaryMuscle;
+  final String? primaryAction;
 }
 
 /// A factual skipped or unplanned exercise recorded in a player's session.
@@ -1075,6 +1087,7 @@ class CoachPlayerRecentSession {
     this.uploadedAt,
     this.editedAt,
     this.corrections = const <PerformedDateCorrection>[],
+    this.exercises = const <CoachPlayerSessionExercise>[],
     this.divergences = const <CoachPlayerDivergence>[],
     this.warmupMovements = const <WarmupMovementLog>[],
     this.cardio,
@@ -1095,6 +1108,10 @@ class CoachPlayerRecentSession {
         corrections: _correctionsFromJson(json['corrections']),
         setsCount: (json['sets_count'] as num).toInt(),
         totalVolumeKg: (json['total_volume_kg'] as num).toDouble(),
+        exercises: (json['exercises'] as List<dynamic>? ?? const [])
+            .map((dynamic e) =>
+                CoachPlayerSessionExercise.fromJson(e as Map<String, dynamic>))
+            .toList(growable: false),
         divergences: (json['divergences'] as List<dynamic>? ?? const [])
             .map((dynamic d) =>
                 CoachPlayerDivergence.fromJson(d as Map<String, dynamic>))
@@ -1121,6 +1138,7 @@ class CoachPlayerRecentSession {
   final List<PerformedDateCorrection> corrections;
   final int setsCount;
   final double totalVolumeKg;
+  final List<CoachPlayerSessionExercise> exercises;
   final List<CoachPlayerDivergence> divergences;
   final List<WarmupMovementLog> warmupMovements;
   final WorkoutCardio? cardio;
@@ -1224,16 +1242,25 @@ class CoachActiveProgram {
 
 /// One exercise the assigned player has logged.
 class CoachPlayerExercise {
-  const CoachPlayerExercise({required this.id, required this.name});
+  const CoachPlayerExercise({
+    required this.id,
+    required this.name,
+    this.imagePath,
+    this.primaryMuscle,
+  });
 
   factory CoachPlayerExercise.fromJson(Map<String, dynamic> json) =>
       CoachPlayerExercise(
         id: json['id'] as String,
         name: json['name'] as String,
+        imagePath: json['image_path'] as String?,
+        primaryMuscle: json['primary_muscle'] as String?,
       );
 
   final String id;
   final String name;
+  final String? imagePath;
+  final String? primaryMuscle;
 }
 
 /// One progression point in an exercise's history.
@@ -2502,6 +2529,8 @@ class PersonalRecord {
     required this.reps,
     required this.value,
     required this.achievedAt,
+    this.imagePath,
+    this.primaryMuscle,
   });
 
   factory PersonalRecord.fromJson(Map<String, dynamic> json) => PersonalRecord(
@@ -2511,6 +2540,8 @@ class PersonalRecord {
         reps: (json['reps'] as num?)?.toInt() ?? 0,
         value: (json['value'] as num?)?.toDouble() ?? 0,
         achievedAt: json['achieved_at'] as String? ?? '',
+        imagePath: json['image_path'] as String?,
+        primaryMuscle: json['primary_muscle'] as String?,
       );
 
   final String exerciseId;
@@ -2519,6 +2550,8 @@ class PersonalRecord {
   final int reps;
   final double value;
   final String achievedAt;
+  final String? imagePath;
+  final String? primaryMuscle;
 }
 
 /// One entered set in the offline workout logger (ADR 020/033).

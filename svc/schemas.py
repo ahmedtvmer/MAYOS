@@ -557,6 +557,10 @@ class CoachPlayerSessionExerciseOut(BaseModel):
     sets: int
     reps: int
     volume_kg: float
+    exercise_id: str | None = None
+    image_path: str | None = None
+    primary_muscle: str | None = None
+    primary_action: str | None = None
 
 
 class WarmupMovementSetOut(BaseModel):
@@ -641,6 +645,7 @@ class CoachPlayerRecentSessionOut(BaseModel):
     uploaded_at: str | None = None
     edited_at: str | None = None
     corrections: list[PerformedDateCorrectionOut] = []
+    exercises: list[CoachPlayerSessionExerciseOut] = []
     divergences: list[CoachPlayerDivergenceOut] = []
     warmup_movements: list[WarmupMovementOut] = []
     cardio: CardioOut | None = None
@@ -676,6 +681,8 @@ class CoachPlayerSummaryOut(BaseModel):
 class CoachPlayerExerciseOut(BaseModel):
     id: str
     name: str
+    image_path: str | None = None
+    primary_muscle: str | None = None
 
 
 class CoachPlayerExercisesOut(BaseModel):
@@ -685,6 +692,8 @@ class CoachPlayerExercisesOut(BaseModel):
 class CoachPersonalRecordOut(BaseModel):
     exercise_id: str
     name: str
+    image_path: str | None = None
+    primary_muscle: str | None = None
     record_type: str
     reps: int
     value: float

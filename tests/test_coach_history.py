@@ -221,6 +221,165 @@ def test_coach_reads_all_drill_downs_for_active_assignment(api):
         assert not _contains_chat_field(response.json()), response.text
 
 
+def test_history_reads_enrich_exercises_and_group_recent_working_sets(
+    api, seed_exercise_curation
+):
+    client, db, _ = api
+    coach_headers, _, assignment_id = _assigned_player(api)
+    created = client.post(
+        "/coach/exercises",
+        headers=coach_headers,
+        json={"name": "Coach Press", "body_part": "Shoulders"},
+    )
+    assert created.status_code == 201, created.text
+    coach_exercise_id = created.json()["id"]
+
+    with db.catalog_locked() as connection:
+        connection.execute(
+            "UPDATE exercises SET image_path = 'images/squat.jpg' WHERE id = 'sq'"
+        )
+        connection.commit()
+    seed_exercise_curation(
+        db,
+        {"sq": {"primary_muscle": "Quads", "primary_action": "Knee Extension"}},
+    )
+
+    exercises = [
+        ProgramExerciseSchema(
+            exercise_id="sq", exercise_name="Squat", target_reps_min=5, target_reps_max=8
+        ),
+        ProgramExerciseSchema(
+            exercise_id=coach_exercise_id,
+            exercise_name="Coach Press",
+            target_reps_min=5,
+            target_reps_max=8,
+        ),
+        ProgramExerciseSchema(
+            exercise_id="unknown:lift",
+            exercise_name="Unknown Lift",
+            target_reps_min=5,
+            target_reps_max=8,
+        ),
+    ]
+    outcome = workouts_service.commit_session(
+        db,
+        "p1",
+        ProgramDaySchema(day_name="Full A", day_order=1, exercises=exercises),
+        readiness=4,
+        session_notes="",
+        sets_by_exercise=[
+            {
+                "exercise": exercises[0],
+                "sets": [
+                    {"weight_kg": 40.0, "reps": 10, "rpe": 7.0, "is_warmup": True},
+                    {"weight_kg": 100.0, "reps": 5, "rpe": 8.0},
+                    {"weight_kg": 105.0, "reps": 4, "rpe": 9.0},
+                ],
+                "previous_perf": [],
+            },
+            {
+                "exercise": exercises[1],
+                "sets": [{"weight_kg": 50.0, "reps": 8, "rpe": 8.0}],
+                "previous_perf": [],
+            },
+            {
+                "exercise": exercises[2],
+                "sets": [{"weight_kg": 0.0, "reps": 12, "rpe": None}],
+                "previous_perf": [],
+            },
+        ],
+        now_iso="2026-09-26T10:00:00+00:00",
+    )
+    session_id = outcome.body["session_id"]
+    with db.open_ledger("p1") as ledger:
+        ledger.conn.executemany(
+            "INSERT INTO personal_records "
+            "(id, exercise_id, record_type, reps, value, prev_value, achieved_at, session_id) "
+            "VALUES (?, ?, 'max_weight', 5, 100.0, 90.0, '2026-09-26', ?)",
+            [
+                ("pr-sq", "sq", session_id),
+                ("pr-coach", coach_exercise_id, session_id),
+                ("pr-unknown", "unknown:lift", session_id),
+            ],
+        )
+        ledger.conn.commit()
+        before = {
+            table: [tuple(row) for row in ledger.conn.execute(f"SELECT * FROM {table} ORDER BY rowid")]
+            for table in ("workout_sessions", "workout_sets", "personal_records")
+        }
+
+    base = f"/coach/assignments/{assignment_id}/player"
+    summary_response = client.get(f"{base}/summary", headers=coach_headers)
+    records_response = client.get(f"{base}/personal-records", headers=coach_headers)
+    exercises_response = client.get(f"{base}/exercises", headers=coach_headers)
+    assert summary_response.status_code == 200, summary_response.text
+    assert records_response.status_code == 200, records_response.text
+    assert exercises_response.status_code == 200, exercises_response.text
+
+    summary = summary_response.json()
+    latest = summary["latest_session"]
+    recent = summary["recent_sessions"][0]
+    expected_ids = {"sq", coach_exercise_id, "unknown:lift"}
+    for session in (latest, recent):
+        assert {exercise["exercise_id"] for exercise in session["exercises"]} == expected_ids
+        assert session["sets_count"] == sum(exercise["sets"] for exercise in session["exercises"]) == 4
+        assert session["total_volume_kg"] == sum(
+            exercise["volume_kg"] for exercise in session["exercises"]
+        ) == 1320.0
+        assert {exercise["exercise_id"]: exercise["sets"] for exercise in session["exercises"]} == {
+            "sq": 2,
+            coach_exercise_id: 1,
+            "unknown:lift": 1,
+        }
+
+    by_id = {exercise["exercise_id"]: exercise for exercise in latest["exercises"]}
+    assert by_id["sq"] == {
+        "exercise_id": "sq",
+        "name": "Squat",
+        "sets": 2,
+        "reps": 9,
+        "volume_kg": 920.0,
+        "image_path": "images/squat.jpg",
+        "primary_muscle": "Quads",
+        "primary_action": "Knee Extension",
+    }
+    assert by_id[coach_exercise_id]["primary_muscle"] == "Shoulders"
+    assert by_id[coach_exercise_id]["image_path"] is None
+    assert by_id[coach_exercise_id]["primary_action"] is None
+    assert by_id["unknown:lift"]["primary_muscle"] is None
+    assert by_id["unknown:lift"]["image_path"] is None
+    assert by_id["unknown:lift"]["primary_action"] is None
+
+    records_by_id = {
+        record["exercise_id"]: record for record in records_response.json()
+    }
+    assert set(records_by_id) == expected_ids
+    assert records_by_id["sq"]["image_path"] == "images/squat.jpg"
+    assert records_by_id["sq"]["primary_muscle"] == "Quads"
+    assert records_by_id[coach_exercise_id]["primary_muscle"] == "Shoulders"
+    assert records_by_id[coach_exercise_id]["image_path"] is None
+    assert records_by_id["unknown:lift"]["primary_muscle"] is None
+    assert records_by_id["unknown:lift"]["image_path"] is None
+
+    listed_by_id = {
+        exercise["id"]: exercise for exercise in exercises_response.json()["exercises"]
+    }
+    assert set(listed_by_id) == expected_ids
+    assert listed_by_id["sq"]["image_path"] == "images/squat.jpg"
+    assert listed_by_id["sq"]["primary_muscle"] == "Quads"
+    assert listed_by_id[coach_exercise_id]["primary_muscle"] == "Shoulders"
+    assert listed_by_id[coach_exercise_id]["image_path"] is None
+    assert listed_by_id["unknown:lift"]["primary_muscle"] is None
+    assert listed_by_id["unknown:lift"]["image_path"] is None
+
+    with db.open_ledger("p1") as ledger:
+        after = {
+            table: [tuple(row) for row in ledger.conn.execute(f"SELECT * FROM {table} ORDER BY rowid")]
+            for table in ("workout_sessions", "workout_sets", "personal_records")
+        }
+    assert after == before
+
+
 def test_coach_checkpoint_review_reads_do_not_open_player_review(api):
     client, db, _ = api
     coach_headers, player_headers, assignment_id = _assigned_player(api)
