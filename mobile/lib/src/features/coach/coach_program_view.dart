@@ -29,7 +29,7 @@ class CoachProgramView extends StatefulWidget {
 class _CoachProgramViewState extends State<CoachProgramView> {
   static const int _collapsedExerciseCount = 8;
   static const CoachTableColumns _columns = CoachTableColumns(
-    <double>[40, 160, 175, 125, 115, 95, 80, 80],
+    <double>[40, 105, 230, 125, 115, 95, 80, 80],
     1,
   );
 

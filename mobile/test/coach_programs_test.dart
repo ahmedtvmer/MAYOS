@@ -22,6 +22,7 @@ import 'package:mayos_mobile/src/providers.dart';
 import 'support/fake_api_adapter.dart';
 import 'support/fake_media_http.dart';
 import 'support/fake_mayos_api.dart';
+import 'support/test_fonts.dart';
 
 const List<String> _programActionKeys = <String>[
   'coach_program_approve_as_is',
@@ -512,8 +513,17 @@ void main() {
 
   testWidgets('Program table fills its desktop width and widens Action and Sets',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
-      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
+    await loadInterTestFont();
+    final Map<String, dynamic> activeProgram =
+        _coachActiveProgram(provenance: 'automatic');
+    final Map<String, dynamic> program =
+        activeProgram['program'] as Map<String, dynamic>;
+    final List<Map<String, dynamic>> days =
+        program['days'] as List<Map<String, dynamic>>;
+    final List<Map<String, dynamic>> exercises =
+        days.first['exercises'] as List<Map<String, dynamic>>;
+    exercises.first['primary_action'] = 'Shoulder Horizontal Adduction';
+    final FakeMayosApi fake = _coachFake()..coachActiveProgram = activeProgram;
     await _pumpApp(tester, fake, logicalWidth: 1440);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob').first);
@@ -531,6 +541,20 @@ void main() {
       final Rect frameRect = tester.getRect(frame);
       final Rect parentRect = tester.getRect(parentColumn);
       expect(frameRect.right, closeTo(parentRect.right, 1));
+      final Finder actionValue = find.descendant(
+        of: frame,
+        matching: find.text('Shoulder Horizontal Adduction'),
+      );
+      expect(actionValue, findsOneWidget);
+      final RenderParagraph actionParagraph =
+          tester.renderObject<RenderParagraph>(actionValue);
+      final Text actionLabel = tester.widget<Text>(actionValue);
+      final double actionLineHeight =
+          actionLabel.style!.fontSize! * actionLabel.style!.height!;
+      expect(
+        actionParagraph.textSize.height,
+        closeTo(actionLineHeight, 0.5),
+      );
 
       final Finder header = find.descendant(
         of: frame,
@@ -541,7 +565,7 @@ void main() {
           ).width;
       final double expectedExerciseWidth = frameRect.width -
           40 -
-          175 -
+          230 -
           125 -
           115 -
           95 -
@@ -550,9 +574,9 @@ void main() {
           (MayosSpacing.xs * 2 + 2);
       // The base widths fit the 1440 detail pane, so the table fills it and
       // Exercise still gets the remaining width.
-      expect(expectedExerciseWidth, greaterThan(160));
+      expect(expectedExerciseWidth, greaterThan(105));
       expect(headerWidth('Exercise'), closeTo(expectedExerciseWidth, 1));
-      expect(headerWidth('Action'), 175);
+      expect(headerWidth('Action'), 230);
       expect(headerWidth('Equipment'), 125);
       expect(headerWidth('Sets'), 115);
       expect(headerWidth('Reps'), 95);

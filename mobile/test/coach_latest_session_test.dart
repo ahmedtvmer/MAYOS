@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
@@ -15,6 +16,7 @@ import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/auth_harness.dart';
 import 'support/fake_mayos_api.dart';
+import 'support/test_fonts.dart';
 
 Future<void> _pumpUntilFound(
   WidgetTester tester,
@@ -237,6 +239,7 @@ void main() {
   testWidgets(
       'Latest session table fills desktop cards and widens Action and Sets',
       (WidgetTester tester) async {
+    await loadInterTestFont();
     final FakeMayosApi fake = _coachFake();
     _setExercise(fake);
     await _pumpApp(
@@ -265,6 +268,18 @@ void main() {
           1,
         ),
       );
+      final Finder actionValue = find.descendant(
+        of: frame,
+        matching: find.text('Shoulder Horizontal Adduction'),
+      );
+      expect(actionValue, findsOneWidget);
+      final Text actionLabel = tester.widget<Text>(actionValue);
+      final double actionLineHeight =
+          actionLabel.style!.fontSize! * actionLabel.style!.height!;
+      expect(
+        tester.renderObject<RenderParagraph>(actionValue).textSize.height,
+        closeTo(actionLineHeight, 0.5),
+      );
 
       final Finder header = find.descendant(
         of: frame,
@@ -274,7 +289,7 @@ void main() {
             find.descendant(of: header, matching: find.text(label)),
           ).width;
       expect(headerWidth('Exercise'), greaterThan(290));
-      expect(headerWidth('Action'), 185);
+      expect(headerWidth('Action'), 230);
       expect(headerWidth('Sets'), 95);
       expect(headerWidth('Reps'), 70);
       expect(headerWidth('Volume (kg)'), 120);

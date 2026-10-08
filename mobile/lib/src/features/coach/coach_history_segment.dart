@@ -847,7 +847,7 @@ String _sessionDivergenceLabel(
 }
 
 const CoachTableColumns _sessionExerciseColumns =
-    CoachTableColumns(<double>[290, 185, 95, 70, 120], 0);
+    CoachTableColumns(<double>[290, 230, 95, 70, 120], 0);
 
 Widget _sessionExerciseTable(
   BuildContext context,
