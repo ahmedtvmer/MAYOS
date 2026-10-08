@@ -193,6 +193,10 @@
       "kind": "method",
       "signature": "(self, exercise_id: str) -> dict[str, typing.Any] | None"
     },
+    "get_coach_exercises_unscoped": {
+      "kind": "method",
+      "signature": "(self, exercise_ids: Iterable[str]) -> dict[str, dict[str, typing.Any]]"
+    },
     "get_coach_profile": {
       "kind": "method",
       "signature": "(self, account_id: str) -> dict[str, typing.Any] | None"

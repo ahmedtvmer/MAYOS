@@ -31,6 +31,7 @@ class _CoachProgramViewState extends State<CoachProgramView> {
   static const List<double> _columnWidths = <double>[
     40,
     330,
+    150,
     125,
     90,
     95,
@@ -344,6 +345,7 @@ class _CoachProgramViewState extends State<CoachProgramView> {
                   TextAlign.start,
                   TextAlign.start,
                   TextAlign.start,
+                  TextAlign.start,
                 ],
               ),
               _desktopExerciseRows(context, copy, day, shownCount),
@@ -361,6 +363,7 @@ class _CoachProgramViewState extends State<CoachProgramView> {
   List<String> _tableLabels(CoachCopy copy) => <String>[
         copy.programNumberColumn,
         copy.programExerciseColumn,
+        copy.programActionColumn,
         copy.programEquipmentColumn,
         copy.programSetsColumn,
         copy.programRepsColumn,
@@ -394,10 +397,12 @@ class _CoachProgramViewState extends State<CoachProgramView> {
           CoachExerciseCell(
             imagePath: exercise.imagePath,
             name: exercise.exerciseName,
+            muscleLine: coachExerciseMuscleLabel(context, exercise),
             secondaryLine: _secondaryLine(copy, exercise),
           ),
-          for (final String cellText
-              in _programTableValues(context, copy, exercise))
+          CoachExerciseActionCell(primaryAction: exercise.primaryAction),
+          for (final String cellText in
+              _programTableValues(context, copy, exercise))
             _tableValue(context, cellText),
         ],
       );
@@ -408,9 +413,7 @@ class _CoachProgramViewState extends State<CoachProgramView> {
     ProgramExercise exercise,
   ) =>
       <String>[
-        copy.programEquipmentValue(
-          exercise.equipment ?? copy.missingProgramEquipment,
-        ),
+        coachExerciseEquipmentLabel(context, exercise),
         copy.programSetsCell(exercise.targetSets, exercise.warmupSets),
         copy.programExerciseRepRange(
           exercise.targetRepsMin,
@@ -452,8 +455,9 @@ class _CoachProgramViewState extends State<CoachProgramView> {
       CoachCompactExerciseRow(
         imagePath: exercise.imagePath,
         name: exercise.exerciseName,
+        muscleLine: coachExerciseMuscleLabel(context, exercise),
         prescription: _compactPrescription(copy, exercise),
-        secondaryLine: _secondaryLine(copy, exercise),
+        secondaryLine: _phoneSecondaryLine(context, copy, exercise),
       );
 
   String _compactPrescription(CoachCopy copy, ProgramExercise exercise) =>
@@ -465,19 +469,30 @@ class _CoachProgramViewState extends State<CoachProgramView> {
         ),
         rir: copy.programRirCell(minRirLabel(exercise.targetRpe)),
         rest: displayCopyOf(context).restTime(exercise.restSecondsOrDefault),
-        equipment: copy.programEquipmentValue(
-          exercise.equipment ?? copy.missingProgramEquipment,
-        ),
+        equipment: coachExerciseEquipmentLabel(context, exercise),
       ));
 
-  String? _secondaryLine(CoachCopy copy, ProgramExercise exercise) {
+  String _phoneSecondaryLine(
+    BuildContext context,
+    CoachCopy copy,
+    ProgramExercise exercise,
+  ) {
+    final String secondaryLine = _secondaryLine(copy, exercise);
+    final String actionLine =
+        coachExerciseActionDetailLine(context, exercise.primaryAction);
+    return secondaryLine.isEmpty
+        ? actionLine
+        : '$actionLine${copy.programDetailSeparator}$secondaryLine';
+  }
+
+  String _secondaryLine(CoachCopy copy, ProgramExercise exercise) {
     final List<String> details = <String>[
       if (exercise.tempo != null && exercise.tempo!.isNotEmpty)
         copy.programTempo(exercise.tempo!),
       if (exercise.notes != null && exercise.notes!.isNotEmpty)
         copy.programNotes(exercise.notes!),
     ];
-    return details.isEmpty ? null : details.join(copy.programDetailSeparator);
+    return details.join(copy.programDetailSeparator);
   }
 
   Widget _showRemainingButton(

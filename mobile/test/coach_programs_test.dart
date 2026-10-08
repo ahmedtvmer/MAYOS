@@ -258,6 +258,21 @@ Map<String, dynamic> _coachActiveProgram({
       },
     };
 
+Map<String, dynamic> _programExerciseRow(
+  String exerciseId,
+  String exerciseName, {
+  Map<String, dynamic> metadata = const <String, dynamic>{},
+}) =>
+    <String, dynamic>{
+      'exercise_id': exerciseId,
+      'exercise_name': exerciseName,
+      'target_sets': 2,
+      'target_reps_min': 8,
+      'target_reps_max': 10,
+      'target_rpe': 9,
+      ...metadata,
+    };
+
 Map<String, dynamic> _pendingSubstitutionRequest(
   String requestId, {
   String? exerciseName = 'Squat',
@@ -494,6 +509,184 @@ void main() {
     expect(find.text('Active since 2026-10-04'), findsNothing);
   });
 
+  testWidgets('program table enriches muscle, action, and equipment labels',
+      (tester) async {
+    final Map<String, dynamic> active =
+        _coachActiveProgram(provenance: 'automatic');
+    final Map<String, dynamic> program =
+        active['program'] as Map<String, dynamic>;
+    final List<Map<String, dynamic>> days =
+        program['days'] as List<Map<String, dynamic>>;
+    days.first['exercises'] = <Map<String, dynamic>>[
+      _programExerciseRow(
+        'machine-pin',
+        'Pin Machine',
+        metadata: <String, dynamic>{
+          'equipment': 'leverage machine',
+          'equipment_category': 'Machine',
+          'load_type': 'selectorized',
+          'primary_muscle': 'Chest',
+          'primary_action': 'Knee Extension',
+        },
+      ),
+      _programExerciseRow(
+        'machine-plate',
+        'Plate Machine',
+        metadata: <String, dynamic>{
+          'equipment': 'smith machine',
+          'equipment_category': 'Machine',
+          'load_type': 'plate_loaded',
+        },
+      ),
+      _programExerciseRow(
+        'machine-unknown',
+        'Unknown Machine',
+        metadata: <String, dynamic>{
+          'equipment': 'sled machine',
+          'equipment_category': 'Machine',
+          'load_type': 'unknown',
+        },
+      ),
+      _programExerciseRow(
+        'dumbbell',
+        'Dumbbell Lift',
+        metadata: <String, dynamic>{
+          'equipment': 'dumbbell',
+          'equipment_category': 'Free weight',
+        },
+      ),
+      _programExerciseRow(
+        'barbell',
+        'Barbell Lift',
+        metadata: <String, dynamic>{
+          'equipment': 'barbell',
+          'equipment_category': 'Free weight',
+        },
+      ),
+      _programExerciseRow(
+        'cable',
+        'Cable Lift',
+        metadata: <String, dynamic>{
+          'equipment': 'cable',
+          'equipment_category': 'Cable',
+        },
+      ),
+      _programExerciseRow(
+        'bodyweight',
+        'Bodyweight Lift',
+        metadata: <String, dynamic>{
+          'equipment': 'body weight',
+          'equipment_category': 'Bodyweight',
+        },
+      ),
+      _programExerciseRow(
+        'band',
+        'Band Lift',
+        metadata: <String, dynamic>{
+          'equipment': 'band',
+          'equipment_category': 'Band',
+        },
+      ),
+    ];
+    days.add(<String, dynamic>{
+      'day_name': 'Lower B',
+      'day_order': 2,
+      'exercises': <Map<String, dynamic>>[
+        _programExerciseRow(
+          'other',
+          'Other Lift',
+          metadata: <String, dynamic>{
+            'equipment': 'unknown tool',
+            'equipment_category': 'Other',
+          },
+        ),
+        _programExerciseRow(
+          'coach:1',
+          'Coach Lift',
+          metadata: <String, dynamic>{
+            'is_coach_exercise': true,
+            'coach_equipment': 'Kettlebell',
+            'body_part': 'Glutes',
+          },
+        ),
+        _programExerciseRow(
+          'older',
+          'Older Response',
+          metadata: <String, dynamic>{'equipment': 'ez barbell'},
+        ),
+        _programExerciseRow('unknown', 'Unknown Exercise'),
+      ],
+    });
+    final FakeMayosApi fake = _coachFake()..coachActiveProgram = active;
+    await _pumpApp(tester, fake, logicalWidth: 1440);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await _pumpUntilFound(tester, find.text('Pin Machine'));
+
+    expect(find.text('Chest'), findsOneWidget);
+    expect(find.textContaining('Knee Extension'), findsOneWidget);
+    expect(find.text('Pin-loaded'), findsOneWidget);
+    expect(find.text('Plate-loaded'), findsOneWidget);
+    expect(find.text('Machine'), findsOneWidget);
+    expect(find.text('Dumbbell'), findsOneWidget);
+    expect(find.text('Barbell'), findsOneWidget);
+    expect(find.text('Cable'), findsOneWidget);
+    expect(find.text('Bodyweight'), findsOneWidget);
+    expect(find.text('Band'), findsOneWidget);
+    expect(find.text('Exercise'), findsOneWidget);
+    expect(find.text('Action'), findsOneWidget);
+    expect(find.text('Equipment'), findsOneWidget);
+    expect(
+      tester.getRect(find.text('Action')).left,
+      greaterThan(tester.getRect(find.text('Exercise')).left),
+    );
+    expect(
+      tester.getRect(find.text('Equipment')).left,
+      greaterThan(tester.getRect(find.text('Action')).left),
+    );
+
+    await tester.tap(find.text('Lower B').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Other'), findsOneWidget);
+    expect(find.text('Kettlebell'), findsOneWidget);
+    expect(find.text('Glutes'), findsOneWidget);
+    expect(find.text('ez barbell'), findsOneWidget);
+    for (final String exerciseName in <String>[
+      'Coach Lift',
+      'Unknown Exercise',
+    ]) {
+      final Finder row = find.ancestor(
+        of: find.text(exerciseName),
+        matching: find.byType(CoachExerciseTableRow),
+      );
+      final Finder actionCell = find.descendant(
+        of: row,
+        matching: find.byType(CoachExerciseActionCell),
+      );
+      expect(row, findsOneWidget);
+      expect(actionCell, findsOneWidget);
+      expect(
+        find.descendant(of: actionCell, matching: find.text('—')),
+        findsOneWidget,
+      );
+    }
+  });
+
+  testWidgets('program hides the muscle line when metadata is absent',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
+    await _pumpApp(tester, fake, logicalWidth: 1440);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await _pumpUntilFound(tester, find.text('Squat'));
+
+    expect(find.text('Chest'), findsNothing);
+    expect(find.text('Quads'), findsNothing);
+  });
+
   testWidgets('coach player page labels current coach program and player edit',
       (tester) async {
     final FakeMayosApi fake = _coachFake()
@@ -649,8 +842,27 @@ void main() {
   });
 
   testWidgets('program compact rows fit a 360dp phone', (tester) async {
-    final FakeMayosApi fake = _coachFake()
-      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
+    final Map<String, dynamic> active =
+        _coachActiveProgram(provenance: 'automatic');
+    final Map<String, dynamic> exercise =
+        ((active['program'] as Map<String, dynamic>)['days'] as List<dynamic>)
+            .first['exercises'][0] as Map<String, dynamic>;
+    exercise['primary_muscle'] = 'Quads';
+    final List<Map<String, dynamic>> exercises =
+        ((active['program'] as Map<String, dynamic>)['days'] as List<dynamic>)
+            .first['exercises'] as List<Map<String, dynamic>>;
+    exercises.add(
+      _programExerciseRow(
+        'no-muscle',
+        'No muscle',
+        metadata: <String, dynamic>{
+          'body_part': 'Ignored catalog body part',
+          'primary_action': 'Knee Flexion',
+        },
+      ),
+    );
+    exercise['primary_action'] = 'Knee Extension';
+    final FakeMayosApi fake = _coachFake()..coachActiveProgram = active;
     await _pumpApp(tester, fake, logicalWidth: 360);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.ensureVisible(find.text('bob'));
@@ -659,6 +871,29 @@ void main() {
     await _pumpUntilFound(tester, find.text('Squat'));
 
     expect(find.text('4 × 6 – 8 · RIR ≥ 2 · rest 150s · —'), findsOneWidget);
+    expect(find.text('Quads'), findsOneWidget);
+    expect(
+      find.text(
+        'Action: Knee Extension · Tempo: 3-1-1 · '
+        'Notes: Brace before each rep.',
+      ),
+      findsOneWidget,
+    );
+    final Finder noMuscleRow = find.ancestor(
+      of: find.text('No muscle'),
+      matching: find.byType(CoachCompactExerciseRow),
+    );
+    expect(
+      find.descendant(of: noMuscleRow, matching: find.text('No muscle')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: noMuscleRow,
+        matching: find.text('Ignored catalog body part'),
+      ),
+      findsNothing,
+    );
     expect(find.text('Equipment'), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -761,8 +996,17 @@ void main() {
       (tester) async {
     tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
     addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
-    final FakeMayosApi fake = _coachFake()
-      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
+    final Map<String, dynamic> active =
+        _coachActiveProgram(provenance: 'automatic');
+    final Map<String, dynamic> exercise =
+        ((active['program'] as Map<String, dynamic>)['days'] as List<dynamic>)
+            .first['exercises'][0] as Map<String, dynamic>;
+    exercise
+      ..['primary_muscle'] = 'Quads'
+      ..['primary_action'] = 'Knee Extension'
+      ..['equipment_category'] = 'Machine'
+      ..['load_type'] = 'selectorized';
+    final FakeMayosApi fake = _coachFake()..coachActiveProgram = active;
     await _pumpApp(tester, fake, logicalWidth: 1440);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.ensureVisible(find.text('bob'));
@@ -775,6 +1019,9 @@ void main() {
       Brightness.dark,
     );
     expect(find.text('Squat'), findsOneWidget);
+    expect(find.text('Quads'), findsOneWidget);
+    expect(find.textContaining('Knee Extension'), findsOneWidget);
+    expect(find.textContaining('Pin-loaded'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

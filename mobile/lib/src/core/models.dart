@@ -2101,6 +2101,11 @@ class ProgramExercise {
     this.isCoachExercise = false,
     this.suggestedSubstitutes = const <SuggestedSubstitute>[],
     this.imagePath,
+    this.primaryMuscle,
+    this.primaryAction,
+    this.equipmentCategory,
+    this.loadType,
+    this.coachEquipment,
   });
 
   factory ProgramExercise.fromJson(Map<String, dynamic> json) =>
@@ -2133,6 +2138,11 @@ class ProgramExercise {
         // build its public `/media` URL (#161). Null when the program carried
         // none, which is what an older stored program looks like.
         imagePath: json['image_path'] as String?,
+        primaryMuscle: json['primary_muscle'] as String?,
+        primaryAction: json['primary_action'] as String?,
+        equipmentCategory: json['equipment_category'] as String?,
+        loadType: json['load_type'] as String?,
+        coachEquipment: json['coach_equipment'] as String?,
       );
 
   final String exerciseId;
@@ -2165,6 +2175,11 @@ class ProgramExercise {
   /// (`images/0001-2gPfomN.jpg`), never a served URL: the logger builds the
   /// public `/media` address from the API base.
   final String? imagePath;
+  final String? primaryMuscle;
+  final String? primaryAction;
+  final String? equipmentCategory;
+  final String? loadType;
+  final String? coachEquipment;
 
   int get restSecondsOrDefault => restSeconds ?? kDefaultRestSeconds;
 

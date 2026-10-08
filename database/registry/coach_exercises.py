@@ -3,7 +3,7 @@
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Iterable
 
 from database.exercise_library.vocabulary import (
     equipment_category_for,
@@ -12,6 +12,11 @@ from database.exercise_library.vocabulary import (
 
 
 COACH_EXERCISE_COLUMNS = "id, name, body_part, equipment, note, video_url"
+COACH_EXERCISE_ID_PREFIX = "coach:"
+
+
+def is_coach_exercise_id(exercise_id: str) -> bool:
+    return exercise_id.startswith(COACH_EXERCISE_ID_PREFIX)
 
 
 @dataclass(frozen=True)
@@ -27,7 +32,7 @@ class RegistryCoachExercisesMixin:
     def create_coach_exercise(
         self, coach_account_id: str, fields: CoachExerciseCreate
     ) -> dict[str, Any]:
-        exercise_id = f"coach:{uuid.uuid4()}"
+        exercise_id = f"{COACH_EXERCISE_ID_PREFIX}{uuid.uuid4()}"
         created_at = datetime.now(UTC).isoformat()
         with self.catalog_transaction(immediate=True):
             self.catalog_conn.execute(
@@ -65,6 +70,29 @@ class RegistryCoachExercisesMixin:
                 (str(exercise_id),),
             ).fetchone()
         return self._coach_exercise_from_row(row)
+
+    def get_coach_exercises_unscoped(
+        self, exercise_ids: Iterable[str]
+    ) -> dict[str, dict[str, Any]]:
+        """Resolves Coach exercise ids in one catalog query per batch."""
+        ids = list(dict.fromkeys(exercise_id for exercise_id in exercise_ids if exercise_id))
+        if not ids:
+            return {}
+        entries: dict[str, dict[str, Any]] = {}
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            for start in range(0, len(ids), 500):
+                batch = ids[start : start + 500]
+                placeholders = ", ".join("?" for _ in batch)
+                cursor.execute(
+                    f"SELECT {COACH_EXERCISE_COLUMNS} FROM coach_exercises "
+                    f"WHERE id IN ({placeholders})",
+                    batch,
+                )
+                for row in cursor.fetchall():
+                    entry = self._coach_exercise_from_row(row)
+                    entries[entry["id"]] = entry
+        return entries
 
     def search_coach_exercises(
         self,

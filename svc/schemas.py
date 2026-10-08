@@ -13,6 +13,7 @@ from service.program_import_constants import (
 from agent.ProgramState import (
     GeneratedProgramSchema,
     PersistedProgramDaySchema,
+    PersistedProgramExerciseSchema,
     PersistedProgramSchema,
     ProgramExerciseSchema,
     SuggestedSubstitute,
@@ -24,6 +25,7 @@ from agent.program_prescription import (
     DEFAULT_TARGET_SETS,
     MAX_REPS,
     MAX_TARGET_RIR,
+    MAX_EXERCISES_PER_DAY,
     DEFAULT_EXERCISE_REST_SECONDS,
     DEFAULT_WARMUP_MOVEMENT_REPS,
     DEFAULT_WARMUP_MOVEMENT_REST_SECONDS,
@@ -71,6 +73,8 @@ __all__ = [
     "CoachAssistantOut",
     "CoachAssistantTurn",
     "CoachActiveProgramDetailsOut",
+    "CoachActiveProgramDayOut",
+    "CoachActiveProgramExerciseOut",
     "CoachActiveProgramOut",
     "CoachAssignmentsOut",
     "CoachCapabilityDisableOut",
@@ -1104,6 +1108,23 @@ class ProgramImportCreateIn(BaseModel):
     rows: list[ProgramImportDraftRowIn] = Field(min_length=1, max_length=MAX_PROGRAM_IMPORT_ROWS)
 
 
+class CoachActiveProgramExerciseOut(PersistedProgramExerciseSchema):
+    """Coach-only Exercise library labels resolved when the response is built."""
+
+    primary_muscle: str | None = None
+    primary_action: str | None = None
+    equipment_category: str | None = None
+    load_type: str | None = None
+    coach_equipment: str | None = None
+
+
+class CoachActiveProgramDayOut(PersistedProgramDaySchema):
+    exercises: list[CoachActiveProgramExerciseOut] = Field(
+        min_length=1,
+        max_length=MAX_EXERCISES_PER_DAY,
+    )
+
+
 class CoachActiveProgramDetailsOut(BaseModel):
     """Active Training program content without account identity fields."""
 
@@ -1111,7 +1132,7 @@ class CoachActiveProgramDetailsOut(BaseModel):
     split_type: str
     weekly_frequency: int
     instructions: str
-    days: list[PersistedProgramDaySchema]
+    days: list[CoachActiveProgramDayOut]
     version: int | None = None
     provenance: Literal["automatic", "coach"]
     active_since: str | None = None

@@ -401,6 +401,7 @@ def test_approving_active_program_publishes_next_version_and_keeps_workouts(api,
     initial = client.get(
         f"/coach/assignments/{assignment_id}/program", headers=coach_headers
     ).json()["program"]
+    initial = _without_coach_program_labels(initial)
     draft_path = _program_draft_path(assignment_id)
     existing_draft = client.post(
         draft_path, headers=coach_headers, json=_one_day_draft("row")
@@ -1165,7 +1166,7 @@ def test_copy_active_program_to_draft_preserves_the_complete_program(api):
     )
 
     assert copied.status_code == 200, copied.text
-    expected_draft = copy.deepcopy(active)
+    expected_draft = _without_coach_program_labels(active)
     for metadata in ("version", "provenance", "active_since"):
         expected_draft.pop(metadata, None)
     for day in expected_draft["days"]:
@@ -1854,6 +1855,192 @@ def test_coach_reads_active_program_without_account_ids(api):
     assert coach_account_id not in serialized
     assert player_account_id not in serialized
     assert "published_by_coach_account_id" not in serialized
+
+
+def test_coach_active_program_batches_labels_without_writing_program_rows(api):
+    client, db, _ = api
+    coach_headers, _, assignment_id, _, player_account_id = _assigned_player(api)
+    coach_account_id = db.get_active_account_by_username("coach")["account_id"]
+    coach_exercises = [
+        db.create_coach_exercise(
+            coach_account_id,
+            CoachExerciseCreate(
+                f"Coach Exercise {index}",
+                body_part="Quads",
+                equipment="Safety bar",
+            ),
+        )
+        for index in range(4)
+    ]
+    with db.catalog_locked() as conn:
+        conn.executemany(
+            "UPDATE exercises SET equipment = ? WHERE id = ?",
+            [("Smith machine", "sq"), ("Dumbbell", "bp"), ("Cable", "row")],
+        )
+        conn.executemany(
+            "INSERT OR REPLACE INTO exercise_curated_fields "
+            "(exercise_id, primary_muscle, primary_action, load_type) VALUES (?, ?, ?, ?)",
+            [
+                ("sq", "Quads", "Knee Extension", "selectorized"),
+                ("bp", "Chest", "Shoulder Horizontal Adduction", None),
+                ("row", "Back", "Shoulder Extension", None),
+            ],
+        )
+
+    program_data = _program().model_dump()
+    catalog_exercises = list(program_data["days"][0]["exercises"])
+    extra_catalog_ids = [f"extra-catalog-{index}" for index in range(4)]
+    with db.catalog_locked() as conn:
+        conn.executemany(
+            "INSERT INTO exercises (id, name, body_part, target_muscle, "
+            "equipment) VALUES (?, ?, ?, ?, ?)",
+            [
+                (
+                    exercise_id,
+                    f"Extra Exercise {index}",
+                    "Back",
+                    "Lats",
+                    "Cable",
+                )
+                for index, exercise_id in enumerate(extra_catalog_ids)
+            ],
+        )
+    for index, exercise_id in enumerate(extra_catalog_ids):
+        extra_exercise = dict(catalog_exercises[index % len(catalog_exercises)])
+        extra_exercise.update(
+            exercise_id=exercise_id,
+            exercise_name=f"Extra Exercise {index}",
+        )
+        program_data["days"][0]["exercises"].append(extra_exercise)
+    for coach_exercise in coach_exercises:
+        program_data["days"][0]["exercises"].append(
+            {
+                "exercise_id": coach_exercise["id"],
+                "exercise_name": coach_exercise["name"],
+                "target_reps_min": 5,
+                "target_reps_max": 8,
+            }
+        )
+    program_data["days"][0]["exercises"].extend(
+        [
+            {
+                "exercise_id": f"missing:exercise-{index}",
+                "exercise_name": f"Removed exercise {index}",
+                "target_reps_min": 5,
+                "target_reps_max": 8,
+            }
+            for index in range(3)
+        ]
+    )
+    with db.open_ledger(db.get_account(player_account_id)["ledger_id"]) as ledger:
+        ledger.save_training_program(program_data)
+        ledger.save_training_program(program_data)
+
+        before = _stored_program_rows(ledger)
+
+    catalog_statements = []
+    db.catalog_conn.set_trace_callback(catalog_statements.append)
+    try:
+        response = client.get(
+            f"/coach/assignments/{assignment_id}/program",
+            headers=coach_headers,
+        )
+    finally:
+        db.catalog_conn.set_trace_callback(None)
+
+    assert response.status_code == 200, response.text
+    exercise_queries = [
+        statement
+        for statement in catalog_statements
+        if "FROM exercises e" in statement and "WHERE e.id IN (" in statement
+    ]
+    coach_exercise_queries = [
+        statement
+        for statement in catalog_statements
+        if "FROM coach_exercises" in statement and "WHERE id IN (" in statement
+    ]
+    assert len(exercise_queries) == 1
+    assert len(coach_exercise_queries) == 1
+    exercises = response.json()["program"]["days"][0]["exercises"]
+    assert len(exercises) == 14
+    expected_muscles = {"sq": "Quads", "bp": "Chest", "row": "Back"}
+    assert all(
+        exercise["primary_muscle"] == expected_muscles[exercise["exercise_id"]]
+        for exercise in exercises
+        if exercise["exercise_id"] in expected_muscles
+    )
+    by_id = {exercise["exercise_id"]: exercise for exercise in exercises}
+    assert {
+        field: by_id["sq"][field]
+        for field in (
+            "primary_muscle",
+            "primary_action",
+            "equipment_category",
+            "load_type",
+            "coach_equipment",
+        )
+    } == {
+        "primary_muscle": "Quads",
+        "primary_action": "Knee Extension",
+        "equipment_category": "Machine",
+        "load_type": "selectorized",
+        "coach_equipment": None,
+    }
+    assert by_id["bp"]["primary_muscle"] == "Chest"
+    assert by_id["bp"]["primary_action"] == "Shoulder Horizontal Adduction"
+    assert by_id["bp"]["equipment_category"] == "Free weight"
+    assert by_id["bp"]["load_type"] is None
+    assert by_id["bp"]["coach_equipment"] is None
+    assert by_id["row"]["primary_muscle"] == "Back"
+    assert by_id["row"]["primary_action"] == "Shoulder Extension"
+    assert by_id["row"]["equipment_category"] == "Cable"
+    assert by_id["row"]["load_type"] is None
+    for coach_exercise in coach_exercises:
+        assert by_id[coach_exercise["id"]]["primary_muscle"] == "Quads"
+        assert by_id[coach_exercise["id"]]["primary_action"] is None
+        assert by_id[coach_exercise["id"]]["equipment_category"] is None
+        assert by_id[coach_exercise["id"]]["load_type"] is None
+        assert by_id[coach_exercise["id"]]["coach_equipment"] == "Safety bar"
+    for index in range(3):
+        assert all(
+            by_id[f"missing:exercise-{index}"][field] is None
+            for field in (
+                "primary_muscle",
+                "primary_action",
+                "equipment_category",
+                "load_type",
+                "coach_equipment",
+            )
+        )
+
+    with db.open_ledger(db.get_account(player_account_id)["ledger_id"]) as ledger:
+        assert _stored_program_rows(ledger) == before
+
+
+def _stored_program_rows(ledger):
+    return tuple(
+        tuple(
+            tuple(row)
+            for row in ledger.conn.execute(f"SELECT * FROM {table} ORDER BY rowid").fetchall()
+        )
+        for table in ("training_programs", "program_days", "program_exercises")
+    )
+
+
+def _without_coach_program_labels(program):
+    stripped = copy.deepcopy(program)
+    display_fields = (
+        "primary_muscle",
+        "primary_action",
+        "equipment_category",
+        "load_type",
+        "coach_equipment",
+    )
+    for day in stripped["days"]:
+        for exercise in day["exercises"]:
+            for field in display_fields:
+                exercise.pop(field, None)
+    return stripped
 
 
 def test_coach_reads_program_as_published_by_current_coach(api, monkeypatch):

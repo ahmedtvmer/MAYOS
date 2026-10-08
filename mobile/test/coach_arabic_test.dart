@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_markdown.dart';
+import 'package:mayos_mobile/src/features/coach/coach_exercise_table.dart'
+    show CoachCompactExerciseRow;
 import 'package:mayos_mobile/src/features/coach/coach_player_history_screen.dart';
 
 import 'support/auth_harness.dart';
@@ -86,6 +88,7 @@ void main() {
   test('Arabic Coach program counts localize singular, dual and plural forms',
       () {
     const CoachCopy arabic = CoachCopy('ar');
+    expect(arabic.programActionColumn, 'الحركة');
     expect(arabic.showRemainingProgramExercises(1), 'عرض تمرين واحد إضافي');
     expect(arabic.showRemainingProgramExercises(2), 'عرض تمرينان إضافيان');
     expect(arabic.showRemainingProgramExercises(3),
@@ -380,5 +383,95 @@ void main() {
       TextDirection.ltr,
     );
     expect(paragraphDirection('المصدر'), TextDirection.rtl);
+  });
+
+  testWidgets('Arabic Coach program localizes exercise metadata and action',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    fake.coachActiveProgram = <String, dynamic>{
+      'has_draft': false,
+      'program': <String, dynamic>{
+        'program_name': 'Full Body',
+        'split_type': 'Full Body',
+        'weekly_frequency': 1,
+        'instructions': '',
+        'version': 7,
+        'provenance': 'coach',
+        'active_since': '2026-10-04T10:00:00Z',
+        'days': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'day_name': 'Full A',
+            'day_order': 1,
+            'exercises': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'exercise_id': 'press',
+                'exercise_name': 'Press',
+                'target_sets': 2,
+                'target_reps_min': 8,
+                'target_reps_max': 10,
+                'target_rpe': 9,
+                'equipment': 'leverage machine',
+                'equipment_category': 'Machine',
+                'load_type': 'selectorized',
+                'primary_muscle': 'Chest',
+                'primary_action': 'Shoulder Flexion',
+              },
+              <String, dynamic>{
+                'exercise_id': 'cable',
+                'exercise_name': 'Cable Row',
+                'target_sets': 2,
+                'target_reps_min': 8,
+                'target_reps_max': 10,
+                'target_rpe': 9,
+                'equipment': 'cable',
+                'equipment_category': 'Cable',
+              },
+              <String, dynamic>{
+                'exercise_id': 'dumbbell',
+                'exercise_name': 'Dumbbell Press',
+                'target_sets': 2,
+                'target_reps_min': 8,
+                'target_reps_max': 10,
+                'target_rpe': 9,
+                'equipment': 'dumbbell',
+                'equipment_category': 'Free weight',
+              },
+            ],
+          },
+        ],
+      },
+    };
+    await _pumpApp(tester, fake);
+    await tester.tap(find.byKey(const Key('roster_row_assignment-ar')));
+    await _pumpUntilFound(tester, find.byType(CoachPlayerHistoryScreen));
+    await _pumpUntilFound(tester, find.text('السجل'));
+    await tester.tap(find.text('البرنامج التدريبي').first);
+    await _pumpUntilFound(tester, find.text('Press'));
+
+    expect(find.text('الصدر'), findsOneWidget);
+    expect(find.textContaining('ثني الكتف'), findsWidgets);
+    expect(
+      find.textContaining('محمل بدبوس الأوزان'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('كابل'), findsOneWidget);
+    expect(find.textContaining('\u2066Dumbbell\u2069'), findsOneWidget);
+    expect(find.text('الحركة: ثني الكتف'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.ancestor(
+          of: find.text('Cable Row'),
+          matching: find.byType(CoachCompactExerciseRow),
+        ),
+        matching: find.text('الحركة: —'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      Directionality.of(
+        tester.element(find.text('الحركة: ثني الكتف')),
+      ),
+      TextDirection.rtl,
+    );
   });
 }

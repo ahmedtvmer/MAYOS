@@ -15,6 +15,7 @@ from service.assignments import (  # noqa: F401  (DENIED_ERROR re-exported for r
     DENIED_ERROR,
     authorized_player_ledger,
 )
+from service.exercise_labels import ExerciseLabels, exercise_labels
 from service.schedule import current_schedule
 from service.workouts import is_historical_program
 
@@ -47,18 +48,19 @@ def active_program(db: Any, coach_account_id: str, assignment_id: Any) -> dict[s
         program = ledger.get_active_program()
         has_draft = ledger.get_program_draft(str(assignment_id)) is not None
     return _active_program_response(
-        program, has_draft, context["assignment"]["coach_account_id"]
+        db, program, has_draft, context["assignment"]["coach_account_id"]
     )
 
 
 def _active_program_response(
-    program: Any, has_draft: bool, assignment_coach_id: str
+    db: Any, program: Any, has_draft: bool, assignment_coach_id: str
 ) -> dict[str, Any]:
     if program is None:
         return {"program": None, "has_draft": has_draft}
     content = program.model_dump(
         exclude={"published_by_coach_account_id", "created_at"}
     )
+    _enrich_program_exercises(db, content)
     content["provenance"] = (
         "coach"
         if program.published_by_coach_account_id == assignment_coach_id
@@ -66,6 +68,29 @@ def _active_program_response(
     )
     content["active_since"] = program.created_at
     return {"program": content, "has_draft": has_draft}
+
+
+def _enrich_program_exercises(db: Any, program_content: dict[str, Any]) -> None:
+    exercises = [
+        exercise
+        for day in program_content["days"]
+        for exercise in day["exercises"]
+    ]
+    labels_by_id = exercise_labels(
+        db,
+        (exercise["exercise_id"] for exercise in exercises),
+    )
+    for exercise in exercises:
+        labels = labels_by_id.get(exercise["exercise_id"]) or ExerciseLabels()
+        exercise.update(
+            {
+                "primary_muscle": labels.primary_muscle,
+                "primary_action": labels.primary_action,
+                "equipment_category": labels.equipment_category,
+                "load_type": labels.load_type,
+                "coach_equipment": labels.coach_equipment,
+            }
+        )
 
 
 def recent_sessions(ledger: Any, limit: int) -> list[dict[str, Any]]:

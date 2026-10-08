@@ -405,6 +405,9 @@ class CoachCopy {
       : '$count $label';
   String get programNumberColumn => '#';
   String get programExerciseColumn => isArabic ? 'التمرين' : 'Exercise';
+  String get programActionColumn => isArabic ? 'الحركة' : 'Action';
+  String programActionDetail(String action) =>
+      isArabic ? 'الحركة: $action' : 'Action: $action';
   String get programEquipmentColumn => isArabic ? 'المعدات' : 'Equipment';
   String get programSetsColumn => isArabic ? 'المجموعات' : 'Sets';
   String get programRepsColumn => isArabic ? 'التكرارات' : 'Reps';
@@ -453,8 +456,12 @@ class CoachCopy {
   String compactProgramPrescription((
     {String sets, String reps, String rir, String rest, String equipment}
   ) prescription) => isArabic
-      ? '${_ltr(prescription.sets)} × ${_ltr(prescription.reps)} · RIR ${_ltr(prescription.rir)} · ${prescription.rest} · ${_ltr(prescription.equipment)}'
-      : '${prescription.sets} × ${prescription.reps} · RIR ${prescription.rir} · ${prescription.rest} · ${prescription.equipment}';
+      ? '${_ltr(prescription.sets)} × ${_ltr(prescription.reps)} · '
+          'RIR ${_ltr(prescription.rir)} · ${prescription.rest} · '
+          '${prescription.equipment}'
+      : '${prescription.sets} × ${prescription.reps} · '
+          'RIR ${prescription.rir} · ${prescription.rest} · '
+          '${prescription.equipment}';
 
   String get noActiveProgram =>
       isArabic ? 'لا يوجد برنامج تدريبي نشط.' : 'No active program.';
