@@ -129,12 +129,12 @@ def _group_session_exercises(rows: list[dict[str, Any]]) -> dict[str, list[dict[
 def _apply_session_exercise_labels(db: Any, exercises: list[dict[str, Any]]) -> None:
     labels_by_id = exercise_labels(db, (exercise["exercise_id"] for exercise in exercises))
     for exercise in exercises:
-        labels = labels_by_id.get(exercise["exercise_id"])
+        labels = labels_by_id.get(exercise["exercise_id"]) or ExerciseLabels()
         exercise.update(
             {
-                "image_path": labels.image_path if labels else None,
-                "primary_muscle": labels.primary_muscle if labels else None,
-                "primary_action": labels.primary_action if labels else None,
+                "image_path": labels.image_path,
+                "primary_muscle": labels.primary_muscle,
+                "primary_action": labels.primary_action,
             }
         )
 
@@ -279,11 +279,11 @@ def player_personal_records(
         )
     labels_by_id = exercise_labels(db, (record["exercise_id"] for record in records))
     for record in records:
-        labels = labels_by_id.get(record["exercise_id"])
+        labels = labels_by_id.get(record["exercise_id"]) or ExerciseLabels()
         record.update(
             {
-                "image_path": labels.image_path if labels else None,
-                "primary_muscle": labels.primary_muscle if labels else None,
+                "image_path": labels.image_path,
+                "primary_muscle": labels.primary_muscle,
             }
         )
     coach_analytics.capture_player_history_viewed(
@@ -313,11 +313,11 @@ def player_exercises(
         )
     labels_by_id = exercise_labels(db, (exercise["id"] for exercise in exercises))
     for exercise in exercises:
-        labels = labels_by_id.get(exercise["id"])
+        labels = labels_by_id.get(exercise["id"]) or ExerciseLabels()
         exercise.update(
             {
-                "image_path": labels.image_path if labels else None,
-                "primary_muscle": labels.primary_muscle if labels else None,
+                "image_path": labels.image_path,
+                "primary_muscle": labels.primary_muscle,
             }
         )
     coach_analytics.capture_player_history_viewed(

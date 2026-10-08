@@ -72,13 +72,45 @@ String coachExerciseActionDetailLine(
 
 String? coachExerciseMuscleLabel(
   BuildContext context,
-  ProgramExercise exercise,
+  String? muscle,
 ) {
-  final String? muscle = exercise.primaryMuscle ??
-      (exercise.isCoachExercise ? exercise.bodyPart : null);
   final String? normalizedMuscle = muscle?.trim();
   if (normalizedMuscle == null || normalizedMuscle.isEmpty) return null;
   return displayCopyOf(context).primaryMuscleLabel(normalizedMuscle);
+}
+
+/// Keeps the Program and History table frames consistent as columns evolve.
+class CoachExerciseTableFrame extends StatelessWidget {
+  const CoachExerciseTableFrame({
+    super.key,
+    required this.widths,
+    required this.child,
+  });
+
+  final List<double> widths;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final double tableWidth = widths.fold<double>(
+          0,
+          (double total, double width) => total + width,
+        ) +
+        MayosSpacing.xs * 2 +
+        2;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Container(
+        width: tableWidth,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          border: Border.all(color: MayosTheme.of(context).border),
+          borderRadius: MayosRadii.smallRadius,
+        ),
+        child: child,
+      ),
+    );
+  }
 }
 
 /// Keeps the catalog image fixed while the exercise name and cue wrap beside it.

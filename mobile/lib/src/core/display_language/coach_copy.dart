@@ -842,6 +842,19 @@ class CoachCopy {
   String get lastSession => isArabic ? 'آخر حصة' : 'Last session';
   String get weeklyWorkingSets =>
       isArabic ? 'مجموعات التدريب آخر ٧ أيام' : 'Weekly working sets';
+  String get sessionVolumeColumn => isArabic ? 'الحجم (كجم)' : 'Volume (kg)';
+  String formatVolume(num volume) {
+    final String fixed = volume.toStringAsFixed(1);
+    final List<String> parts = fixed.split('.');
+    final String whole = parts.first.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (Match match) => ',',
+    );
+    final String formatted = parts.last == '0' ? whole : '$whole.${parts.last}';
+    return isArabic ? _ltr(formatted) : formatted;
+  }
+
+  String get volumeUnit => isArabic ? 'كجم' : 'kg';
   String get playerVolume =>
       isArabic ? 'مجموعات محسوبة لكل عضلة' : 'Volume (weighted working sets)';
   String expectedDays(String value) =>
@@ -851,6 +864,14 @@ class CoachCopy {
   String setsAndVolume(int sets, String volume) => isArabic
       ? '${_count(sets, ArabicCountNoun.trainingSet)} · إجمالي الوزن المرفوع ${_ltr('$volume kg')}'
       : '$sets sets · $volume kg';
+  String latestSessionTotals(int sets, num volume) => isArabic
+      ? '${_count(sets, ArabicCountNoun.trainingSet)} · إجمالي الوزن المرفوع ${formatVolume(volume)} $volumeUnit'
+      : '$sets sets · ${formatVolume(volume)} $volumeUnit';
+  String sessionExerciseCompact(int sets, int reps, num volume) => isArabic
+      ? '${_count(sets, ArabicCountNoun.trainingSet)} · '
+          '${_count(reps, ArabicCountNoun.repetition)} · '
+          'إجمالي الوزن المرفوع ${formatVolume(volume)} $volumeUnit'
+      : '$sets sets · $reps reps · ${formatVolume(volume)} $volumeUnit';
   String movementCount(int count) => isArabic
       ? 'حركات الإحماء: ${_count(count, ArabicCountNoun.warmupMovement)}'
       : 'Warm-up: $count movements';
@@ -868,9 +889,6 @@ class CoachCopy {
         ? '${_ltr(type)} · ${_ltr('$value kg')} × ${_count(reps, ArabicCountNoun.repetition)}'
         : '$type · $value kg × $reps reps';
   }
-  String sessionExercise(String name, int sets, String volume) => isArabic
-      ? '${_ltr(name)}: ${_count(sets, ArabicCountNoun.trainingSet)} · إجمالي الوزن المرفوع ${_ltr('$volume kg')}'
-      : '$name: $sets sets · $volume kg';
   String exerciseHistoryPoint(String date, String weight, int reps,
           {String weightUnit = 'kg', String? rir, String? e1rm}) {
     final String value = weightUnit.isEmpty ? weight : '$weight $weightUnit';

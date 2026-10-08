@@ -20,6 +20,7 @@ from agent.ProgramState import (
     PersistedProgramSchema,
 )
 from database.database_manager import DatabaseManager
+from database.registry.coach_exercises import CoachExerciseCreate
 from service import coach as coach_service
 from service import coach_ai
 from service import weight_history
@@ -579,42 +580,82 @@ def test_render_context_states_every_deterministic_figure():
         assert expected in rendered, expected
 
 
-def test_history_exercise_enrichment_does_not_change_coach_ai_session_facts():
-    session = {
-        "session_date": "2026-09-24",
-        "split_name": "Upper A",
-        "sets_count": 18,
-        "total_volume_kg": 12400.0,
-        "readiness_score": 4,
-        "program_version": 3,
-        "divergences": [{"kind": "skipped", "exercise_name": "Row"}],
-    }
-    enriched_session = {
-        **session,
-        "exercises": [
-            {
-                "exercise_id": "sq",
-                "name": "Squat",
-                "sets": 3,
-                "reps": 15,
-                "volume_kg": 1500.0,
-                "image_path": "images/squat.jpg",
-                "primary_muscle": "Quads",
-                "primary_action": "Knee Extension",
-            }
-        ],
-    }
+def test_history_exercise_enrichment_does_not_enter_coach_ai_context(
+    api, seed_exercise_curation
+):
+    _client, db, _tmp_path = api
+    _coach_headers, _player_headers, assignment_id = _assigned_player(api)
+    coach_account_id = _account_id(db, "coach")
+    coach_exercise = db.create_coach_exercise(
+        coach_account_id,
+        CoachExerciseCreate(name="Coach Privacy Lift", body_part="Shoulders"),
+    )
+    seed_exercise_curation(
+        db,
+        {"sq": {"primary_muscle": "Quads", "primary_action": "Knee Extension"}},
+    )
+    with db.catalog_locked() as connection:
+        connection.execute(
+            "UPDATE exercises SET image_path = 'images/private-coach-ai.jpg' WHERE id = 'sq'"
+        )
+        connection.commit()
 
-    session_facts, session_totals = coach_ai._session_facts([session])
-    enriched_facts, enriched_totals = coach_ai._session_facts([enriched_session])
-    assert enriched_facts == session_facts
-    assert enriched_totals == session_totals
+    started_at = "2026-10-05T12:00:00+00:00"
+    with db.open_ledger("p1") as ledger:
+        ledger.log_workout_session(
+            "coach-ai-enriched-session",
+            "2026-10-05",
+            "Full Body",
+            started_at,
+            started_at,
+        )
+        ledger.log_workout_set(
+            "coach-ai-catalog-set",
+            "coach-ai-enriched-session",
+            "sq",
+            1,
+            100.0,
+            5,
+            8.0,
+        )
+        ledger.log_workout_set(
+            "coach-ai-coach-set",
+            "coach-ai-enriched-session",
+            coach_exercise["id"],
+            1,
+            40.0,
+            8,
+            8.0,
+        )
 
-    facts = _sample_facts()
-    facts_with_enrichment = _sample_facts()
-    facts["recent_sessions"] = session_facts
-    facts_with_enrichment["recent_sessions"] = enriched_facts
-    assert coach_ai.render_context(facts_with_enrichment) == coach_ai.render_context(facts)
+    facts = coach_ai.gather_player_context(
+        db,
+        coach_account_id,
+        assignment_id,
+        now=datetime(2026, 10, 8, tzinfo=UTC),
+    )
+    assert facts is not None
+    recent_sessions = facts["recent_sessions"]
+    assert len(recent_sessions) == 1
+    assert recent_sessions[0]["sets_count"] == 2
+    for field in (
+        "exercises",
+        "exercise_id",
+        "image_path",
+        "primary_muscle",
+        "primary_action",
+    ):
+        assert all(field not in session for session in recent_sessions)
+
+    rendered = coach_ai.render_context(facts)
+    for label in (
+        "Quads",
+        "Knee Extension",
+        "Shoulders",
+        "images/private-coach-ai.jpg",
+    ):
+        assert label not in rendered
+    assert coach_ai.CONTEXT_VERSION == "coach-context-v5"
 
 
 def test_render_context_states_missing_sections_as_insufficient_data():

@@ -339,8 +339,8 @@ void main() {
     expect(find.text('2026-09-24'), findsOneWidget);
     expect(find.text('Chest'), findsOneWidget);
     expect(find.text('12.5'), findsOneWidget);
-    expect(find.textContaining('4200.0'), findsWidgets);
-    expect(find.text('Bench Press'), findsNothing);
+    expect(find.textContaining('4,200'), findsOneWidget);
+    expect(find.text('Bench Press'), findsOneWidget);
     expect(find.textContaining('ASSISTANT-CHAT-SECRET'), findsNothing);
 
     // Drilling into an exercise loads its history inline. The player page's
@@ -348,7 +348,7 @@ void main() {
     // so the Exercises card is scrolled into view first.
     await _expandHistorySection(tester, 'exercises');
     final Finder benchTile = find.widgetWithText(ExpansionTile, 'Bench Press');
-    expect(find.text('Bench Press'), findsOneWidget);
+    expect(find.text('Bench Press'), findsWidgets);
     await tester.scrollUntilVisible(benchTile, 300,
         scrollable: find.byType(Scrollable).first);
     await tester.ensureVisible(benchTile);
@@ -624,7 +624,7 @@ void main() {
 
     expect(find.text('No active assignment.'), findsOneWidget);
     expect(find.text('Bench Press'), findsNothing);
-    expect(find.textContaining('4200.0'), findsNothing);
+    expect(find.textContaining('4,200'), findsNothing);
     expect(find.textContaining('chat'), findsNothing);
   });
 

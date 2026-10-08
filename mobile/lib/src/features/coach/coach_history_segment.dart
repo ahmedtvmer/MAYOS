@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/display_language/coach_copy.dart';
 import '../../core/display_language/feature_copy_context.dart';
 import '../../core/effort.dart';
 import '../../core/models.dart';
@@ -10,6 +11,7 @@ import '../../core/ui/is_desktop_layout.dart';
 import '../../core/ui/mayos_card.dart';
 import '../../core/ui/mayos_section_header.dart';
 import '../../core/workout_equipment.dart';
+import 'coach_exercise_table.dart';
 
 enum CoachHistorySection {
   recentSessions,
@@ -287,28 +289,169 @@ class CoachHistorySegment extends StatelessWidget {
       latest.activeProgramVersionAtSync,
       latest.isHistoricalProgram,
     );
+    final List<Widget> flags =
+        _latestSessionFlagChips(context, latest, versionNote);
     return _section(context, copy.latestSession, <Widget>[
-      Text(copy.sessionTitle(latest.splitName, latest.sessionDate)),
-      Text(copy.setsAndVolume(
-          latest.setsCount, latest.totalVolumeKg.toStringAsFixed(1))),
-      if (latest.warmupMovements.isNotEmpty)
-        Text(copy.movementCount(latest.warmupMovements.length)),
-      if (latest.cardio != null)
-        Text(copy.cardioMinutes(latest.cardio!.minutes)),
-      if (latest.readinessScore != null)
-        Text(copy.readiness(latest.readinessScore!)),
-      if (versionNote != null) Text(versionNote),
-      for (final PerformedDateCorrection correction in latest.corrections)
-        Text(copy.correctedDate(
-            correction.previousDate, correction.correctedDate)),
-      const SizedBox(height: MayosSpacing.xs),
-      for (final CoachPlayerSessionExercise exercise in latest.exercises)
-        Text(copy.sessionExercise(exercise.name, exercise.sets,
-            exercise.volumeKg.toStringAsFixed(1))),
-      for (final CoachPlayerDivergence divergence in latest.divergences)
-        Text(_divergenceLabel(context, divergence)),
+      Text(
+        copy.sessionTitle(latest.splitName, latest.sessionDate),
+        style: MayosTypography.of(context)
+            .body
+            .copyWith(color: MayosTheme.of(context).textPrimary),
+      ),
+      Text(copy.latestSessionTotals(latest.setsCount, latest.totalVolumeKg)),
+      if (flags.isNotEmpty)
+        ...<Widget>[
+          const SizedBox(height: MayosSpacing.xs),
+          LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) => Wrap(
+              spacing: MayosSpacing.xs,
+              runSpacing: MayosSpacing.xs,
+              children: <Widget>[
+                for (final Widget flag in flags)
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: constraints.maxWidth),
+                    child: flag,
+                  ),
+              ],
+            ),
+          ),
+        ],
+      const SizedBox(height: MayosSpacing.sm),
+      if (isDesktopLayout(context))
+        _latestSessionTable(context, latest)
+      else
+        _latestSessionCompactRows(context, latest),
     ]);
   }
+
+  List<Widget> _latestSessionFlagChips(
+    BuildContext context,
+    CoachPlayerLatestSession latest,
+    String? versionNote,
+  ) {
+    final copy = coachCopyOf(context);
+    return <Widget>[
+      for (final CoachPlayerDivergence divergence in latest.divergences)
+        CoachStatusChip(label: _divergenceLabel(context, divergence)),
+      if (latest.warmupMovements.isNotEmpty)
+        CoachStatusChip(
+          label: copy.warmupMovements(latest.warmupMovements.length),
+        ),
+      if (latest.cardio != null)
+        CoachStatusChip(label: copy.cardioMinutes(latest.cardio!.minutes)),
+      if (latest.readinessScore != null)
+        CoachStatusChip(label: copy.readiness(latest.readinessScore!)),
+      if (versionNote != null) CoachStatusChip(label: versionNote),
+      for (final PerformedDateCorrection correction in latest.corrections)
+        CoachStatusChip(
+          label: copy.correctedDate(
+            correction.previousDate,
+            correction.correctedDate,
+          ),
+        ),
+    ];
+  }
+
+  Widget _latestSessionTable(
+    BuildContext context,
+    CoachPlayerLatestSession latest,
+  ) {
+    const List<double> widths = <double>[290, 160, 70, 70, 120];
+    final copy = coachCopyOf(context);
+    return CoachExerciseTableFrame(
+      widths: widths,
+      child: Column(
+        children: <Widget>[
+          CoachExerciseTableHeader(
+            labels: <String>[
+              copy.programExerciseColumn,
+              copy.programActionColumn,
+              copy.programSetsColumn,
+              copy.programRepsColumn,
+              copy.sessionVolumeColumn,
+            ],
+            widths: widths,
+            alignments: <TextAlign>[
+              TextAlign.start,
+              TextAlign.start,
+              TextAlign.center,
+              TextAlign.center,
+              TextAlign.center,
+            ],
+          ),
+          for (final CoachPlayerSessionExercise exercise in latest.exercises)
+            _latestSessionTableRow(context, exercise, widths),
+        ],
+      ),
+    );
+  }
+
+  Widget _latestSessionTableRow(
+    BuildContext context,
+    CoachPlayerSessionExercise exercise,
+    List<double> widths,
+  ) =>
+      CoachExerciseTableRow(
+        widths: widths,
+        cells: <Widget>[
+          CoachExerciseCell(
+            imagePath: exercise.imagePath,
+            name: exercise.name,
+            muscleLine: coachExerciseMuscleLabel(
+              context,
+              exercise.primaryMuscle,
+            ),
+          ),
+          CoachExerciseActionCell(primaryAction: exercise.primaryAction),
+          Text('${exercise.sets}', textAlign: TextAlign.center),
+          Text('${exercise.reps}', textAlign: TextAlign.center),
+          Text(
+            coachCopyOf(context).formatVolume(exercise.volumeKg),
+            textAlign: TextAlign.center,
+            textDirection: TextDirection.ltr,
+          ),
+        ],
+      );
+
+  Widget _latestSessionCompactRows(
+    BuildContext context,
+    CoachPlayerLatestSession latest,
+  ) {
+    final copy = coachCopyOf(context);
+    return Column(
+      children: <Widget>[
+        for (int index = 0;
+            index < latest.exercises.length;
+            index++) ...<Widget>[
+          if (index > 0) const Divider(height: 1),
+          _latestSessionCompactRow(context, copy, latest.exercises[index]),
+        ],
+      ],
+    );
+  }
+
+  Widget _latestSessionCompactRow(
+    BuildContext context,
+    CoachCopy copy,
+    CoachPlayerSessionExercise exercise,
+  ) =>
+      CoachCompactExerciseRow(
+        imagePath: exercise.imagePath,
+        name: exercise.name,
+        muscleLine: coachExerciseMuscleLabel(
+          context,
+          exercise.primaryMuscle,
+        ),
+        prescription: copy.sessionExerciseCompact(
+          exercise.sets,
+          exercise.reps,
+          exercise.volumeKg,
+        ),
+        secondaryLine: coachExerciseActionDetailLine(
+          context,
+          exercise.primaryAction,
+        ),
+      );
 
   String _divergenceLabel(
     BuildContext context,

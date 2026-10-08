@@ -323,42 +323,28 @@ class _CoachProgramViewState extends State<CoachProgramView> {
     ProgramDay day,
     int shownCount,
   ) =>
-      SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Container(
-          width: _tableWidth,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            border: Border.all(color: MayosTheme.of(context).border),
-            borderRadius: MayosRadii.smallRadius,
-          ),
-          child: Column(
-            children: <Widget>[
-              CoachExerciseTableHeader(
-                labels: _tableLabels(copy),
-                widths: _columnWidths,
-                alignments: <TextAlign>[
-                  TextAlign.center,
-                  TextAlign.start,
-                  TextAlign.start,
-                  TextAlign.start,
-                  TextAlign.start,
-                  TextAlign.start,
-                  TextAlign.start,
-                  TextAlign.start,
-                ],
-              ),
-              _desktopExerciseRows(context, copy, day, shownCount),
-            ],
-          ),
+      CoachExerciseTableFrame(
+        widths: _columnWidths,
+        child: Column(
+          children: <Widget>[
+            CoachExerciseTableHeader(
+              labels: _tableLabels(copy),
+              widths: _columnWidths,
+              alignments: <TextAlign>[
+                TextAlign.center,
+                TextAlign.start,
+                TextAlign.start,
+                TextAlign.start,
+                TextAlign.start,
+                TextAlign.start,
+                TextAlign.start,
+                TextAlign.start,
+              ],
+            ),
+            _desktopExerciseRows(context, copy, day, shownCount),
+          ],
         ),
       );
-
-  double get _tableWidth =>
-      _columnWidths.fold<double>(
-          0, (double total, double width) => total + width) +
-      MayosSpacing.xs * 2 +
-      2;
 
   List<String> _tableLabels(CoachCopy copy) => <String>[
         copy.programNumberColumn,
@@ -397,7 +383,11 @@ class _CoachProgramViewState extends State<CoachProgramView> {
           CoachExerciseCell(
             imagePath: exercise.imagePath,
             name: exercise.exerciseName,
-            muscleLine: coachExerciseMuscleLabel(context, exercise),
+            muscleLine: coachExerciseMuscleLabel(
+              context,
+              exercise.primaryMuscle ??
+                  (exercise.isCoachExercise ? exercise.bodyPart : null),
+            ),
             secondaryLine: _secondaryLine(copy, exercise),
           ),
           CoachExerciseActionCell(primaryAction: exercise.primaryAction),
@@ -455,7 +445,11 @@ class _CoachProgramViewState extends State<CoachProgramView> {
       CoachCompactExerciseRow(
         imagePath: exercise.imagePath,
         name: exercise.exerciseName,
-        muscleLine: coachExerciseMuscleLabel(context, exercise),
+        muscleLine: coachExerciseMuscleLabel(
+          context,
+          exercise.primaryMuscle ??
+              (exercise.isCoachExercise ? exercise.bodyPart : null),
+        ),
         prescription: _compactPrescription(copy, exercise),
         secondaryLine: _phoneSecondaryLine(context, copy, exercise),
       );
