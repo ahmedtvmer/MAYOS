@@ -76,9 +76,17 @@ FakeMayosApi _coachFake({bool assistant = false}) {
   return fake;
 }
 
-Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
-  tester.view.physicalSize = const Size(1080, 2400);
-  tester.view.devicePixelRatio = 2;
+Future<void> _pumpApp(
+  WidgetTester tester,
+  FakeMayosApi fake, {
+  Size logicalSize = const Size(540, 1200),
+  double devicePixelRatio = 2,
+}) async {
+  tester.view.physicalSize = Size(
+    logicalSize.width * devicePixelRatio,
+    logicalSize.height * devicePixelRatio,
+  );
+  tester.view.devicePixelRatio = devicePixelRatio;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
@@ -283,6 +291,90 @@ void main() {
       find.text('Missed 2 expected training days (2026-09-20 to 2026-09-21)'),
       findsOneWidget,
     );
+  });
+
+  testWidgets(
+      'issue #390: Arabic roster fits at 360dp with long player details',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    fake.assignments[0]
+      ..['player_username'] = 'player_ar_with_a_very_long_username'
+      ..['last_workout_on'] = '2026-10-07'
+      ..['program_name'] =
+          'برنامج تدريبي طويل للياقة والقوة';
+
+    await _pumpApp(
+      tester,
+      fake,
+      logicalSize: const Size(360, 800),
+      devicePixelRatio: 1,
+    );
+
+    final Finder rosterRow =
+        find.byKey(const Key('roster_row_assignment-ar'));
+    final Finder username = find.descendant(
+      of: rosterRow,
+      matching: find.text('player_ar_with_a_very_long_username'),
+    );
+    final Finder subtitle = find.descendant(
+      of: rosterRow,
+      matching: find.textContaining('2026-10-07'),
+    );
+    final Finder revoke = find.descendant(
+      of: rosterRow,
+      matching: find.text('إنهاء العلاقة'),
+    );
+    expect(username, findsOneWidget);
+    expect(subtitle, findsOneWidget);
+    expect(revoke, findsOneWidget);
+    expect(
+      tester.getRect(revoke).top,
+      greaterThan(tester.getRect(subtitle).bottom),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'issue #390: Arabic desktop Player page renders with roster '
+      'and no overflow',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    fake.assignments[0]
+      ..['player_username'] = 'player_ar_with_a_very_long_username'
+      ..['last_workout_on'] = '2026-10-07'
+      ..['program_name'] =
+          'برنامج تدريبي طويل للياقة والقوة';
+
+    await _pumpApp(
+      tester,
+      fake,
+      logicalSize: const Size(1440, 900),
+      devicePixelRatio: 1,
+    );
+    await tester.tap(find.byKey(const Key('roster_row_assignment-ar')));
+    await _pumpUntilFound(tester, find.byType(CoachPlayerHistoryScreen));
+
+    expect(find.byType(CoachPlayerHistoryScreen), findsOneWidget);
+    expect(find.byKey(const Key('coach_player_detail_pane')), findsOneWidget);
+    final Finder rosterRow = find.descendant(
+      of: find.byKey(const Key('coach_roster_master_pane')),
+      matching: find.byKey(const Key('roster_row_assignment-ar')),
+    );
+    final Finder subtitle = find.descendant(
+      of: rosterRow,
+      matching: find.textContaining('2026-10-07'),
+    );
+    final Finder revoke = find.descendant(
+      of: rosterRow,
+      matching: find.text('إنهاء العلاقة'),
+    );
+    expect(subtitle, findsOneWidget);
+    expect(revoke, findsOneWidget);
+    expect(
+      tester.getRect(revoke).top,
+      greaterThan(tester.getRect(subtitle).bottom),
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('Arabic profile and request screens retain API notices verbatim',

@@ -37,6 +37,9 @@ abstract final class MayosLayout {
   /// Width for the list pane in desktop coach master/detail layouts.
   static const double coachListPaneWidth = 360;
 
+  /// Minimum width kept for player details in an inline coach roster row.
+  static const double coachRosterRowMinimumDetailsWidth = 80;
+
   /// Maximum desktop width for Coach mode modal sheets and SnackBars.
   static const double coachOverlayMaxWidth = 640;
 }

@@ -28,10 +28,15 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
 Future<void> _pumpApp(
   WidgetTester tester,
   FakeMayosApi fake,
-  InMemoryAppModeStore modeStore,
-) async {
-  tester.view.physicalSize = const Size(1080, 2400);
-  tester.view.devicePixelRatio = 2.0;
+  InMemoryAppModeStore modeStore, {
+  Size logicalSize = const Size(540, 1200),
+  double devicePixelRatio = 2.0,
+}) async {
+  tester.view.physicalSize = Size(
+    logicalSize.width * devicePixelRatio,
+    logicalSize.height * devicePixelRatio,
+  );
+  tester.view.devicePixelRatio = devicePixelRatio;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
@@ -176,6 +181,78 @@ Map<String, dynamic> _checkInRow(
 /// row carries the chips that apply to it (#120).
 
 void main() {
+  testWidgets('English roster fits long details at phone and desktop widths',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    fake.assignments.add(_assignment(
+      'assignment-long',
+      'player_with_an_exceptionally_long_username',
+      lastWorkoutOn: '2026-10-07',
+      programName:
+          'UpperLowerStrengthAndConditioningWithAnExceptionallyLongProgramName',
+    ));
+
+    await _pumpApp(
+      tester,
+      fake,
+      InMemoryAppModeStore(),
+      logicalSize: const Size(360, 800),
+      devicePixelRatio: 1,
+    );
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('roster_row_assignment-long')),
+    );
+    final Finder phoneRow =
+        find.byKey(const Key('roster_row_assignment-long'));
+    final Finder phoneUsername = find.descendant(
+      of: phoneRow,
+      matching: find.text('player_with_an_exceptionally_long_username'),
+    );
+    final Finder phoneRevoke = find.descendant(
+      of: phoneRow,
+      matching: find.text('Revoke'),
+    );
+    expect(phoneUsername, findsOneWidget);
+    expect(phoneRevoke, findsOneWidget);
+    expect(
+      tester.getRect(phoneRevoke).top,
+      lessThan(tester.getRect(phoneUsername).bottom),
+    );
+    expect(
+      find.text(
+        'Last workout 2026-10-07 · '
+        'UpperLowerStrengthAndConditioningWithAnExceptionallyLongProgramName',
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+
+    tester.view.physicalSize = const Size(1440, 900);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('roster_row_assignment-long')));
+    await _pumpUntilFound(tester, find.byType(CoachPlayerHistoryScreen));
+    final Finder desktopRow = find.descendant(
+      of: find.byKey(const Key('coach_roster_master_pane')),
+      matching: find.byKey(const Key('roster_row_assignment-long')),
+    );
+    final Finder desktopUsername = find.descendant(
+      of: desktopRow,
+      matching: find.text('player_with_an_exceptionally_long_username'),
+    );
+    final Finder desktopRevoke = find.descendant(
+      of: desktopRow,
+      matching: find.text('Revoke'),
+    );
+    expect(desktopUsername, findsOneWidget);
+    expect(desktopRevoke, findsOneWidget);
+    expect(
+      tester.getRect(desktopRevoke).top,
+      lessThan(tester.getRect(desktopUsername).bottom),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('roster rows keep the server order and show each urgency chip',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _coachFake();

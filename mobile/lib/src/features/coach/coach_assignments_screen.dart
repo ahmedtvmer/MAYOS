@@ -279,6 +279,32 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     ];
   }
 
+  double _rosterActionsWidth(BuildContext context, String label) {
+    final ButtonStyle style =
+        TextButtonTheme.of(context).style ?? const ButtonStyle();
+    const Set<WidgetState> states = <WidgetState>{};
+    final TextStyle textStyle = style.textStyle?.resolve(states) ??
+        Theme.of(context).textTheme.labelLarge!;
+    final EdgeInsetsGeometry padding = style.padding?.resolve(states) ??
+        const EdgeInsets.symmetric(horizontal: MayosSpacing.xs);
+    final double minimumWidth =
+        style.minimumSize?.resolve(states)?.width ?? kMayosMinTapTarget;
+    final TextPainter labelPainter = TextPainter(
+      text: TextSpan(text: label, style: textStyle),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      locale: Localizations.maybeLocaleOf(context),
+      maxLines: 1,
+    )..layout();
+    final double labelAndPaddingWidth = labelPainter.width + padding.horizontal;
+    final double buttonWidth = labelAndPaddingWidth > minimumWidth
+        ? labelAndPaddingWidth
+        : minimumWidth;
+    final double chevronWidth =
+        IconTheme.of(context).size ?? MayosIconSizes.navigation;
+    return buttonWidth + chevronWidth;
+  }
+
   /// One roster row: avatar, username, "Last workout · program", the urgency
   /// chips, and the revoke action. The whole row opens the player page.
   Widget _rosterRow(BuildContext context, CoachRosterEntry entry) {
@@ -299,67 +325,106 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
               },
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: MayosSpacing.sm),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              CircleAvatar(
-                radius: 20,
+          child: LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              const double avatarRadius = 20;
+              final bool busy = _busyAssignmentId == entry.assignmentId;
+              final String actionLabel = busy ? copy.revoking : copy.revoke;
+              final Widget avatar = CircleAvatar(
+                radius: avatarRadius,
                 backgroundColor: c.secondarySurface,
                 child: Text(
                   entry.playerUsername.isEmpty
                       ? '?'
                       : entry.playerUsername.substring(0, 1).toUpperCase(),
-                  style: MayosTypography.of(context).label.copyWith(color: c.textPrimary),
+                  style: MayosTypography.of(context).label
+                      .copyWith(color: c.textPrimary),
                 ),
-              ),
-              const SizedBox(width: MayosSpacing.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      entry.playerUsername,
-                      style: MayosTypography.of(context).exerciseTitle
-                          .copyWith(color: c.textPrimary),
+              );
+              final Widget details = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    entry.playerUsername,
+                    style: MayosTypography.of(context).exerciseTitle
+                        .copyWith(color: c.textPrimary),
+                  ),
+                  const SizedBox(height: MayosSpacing.xxs),
+                  Text(
+                    copy.rosterSubtitle(
+                      lastWorkout: entry.lastWorkoutOn,
+                      program: entry.programName,
                     ),
-                    const SizedBox(height: MayosSpacing.xxs),
-                    Text(
-                      copy.rosterSubtitle(
-                        lastWorkout: entry.lastWorkoutOn,
-                        program: entry.programName,
-                      ),
-                      style: MayosTypography.of(context).caption
-                          .copyWith(color: c.textSecondary),
+                    style: MayosTypography.of(context).caption
+                        .copyWith(color: c.textSecondary),
+                  ),
+                  if (chips.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: MayosSpacing.xs),
+                    Wrap(
+                      spacing: MayosSpacing.xs,
+                      runSpacing: MayosSpacing.xs,
+                      children: chips,
                     ),
-                    if (chips.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: MayosSpacing.xs),
-                      Wrap(
-                        spacing: MayosSpacing.xs,
-                        runSpacing: MayosSpacing.xs,
-                        children: chips,
-                      ),
-                    ],
                   ],
-                ),
-              ),
-              const SizedBox(width: MayosSpacing.xs),
-              MayosButton(
-                label: _busyAssignmentId == entry.assignmentId
-                    ? copy.revoking
-                    : copy.revoke,
-                variant: MayosButtonVariant.tertiary,
-                expand: false,
-                onPressed: _busyAssignmentId == entry.assignmentId
-                    ? null
-                    : () => _revoke(entry),
-              ),
-              Icon(
-                Directionality.of(context) == TextDirection.rtl
-                    ? Icons.chevron_left
-                    : Icons.chevron_right,
-                color: c.textMuted,
-              ),
-            ],
+                ],
+              );
+              final Widget actions = Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  MayosButton(
+                    label: actionLabel,
+                    variant: MayosButtonVariant.tertiary,
+                    expand: false,
+                    onPressed: busy ? null : () => _revoke(entry),
+                  ),
+                  Icon(
+                    Directionality.of(context) == TextDirection.rtl
+                        ? Icons.chevron_left
+                        : Icons.chevron_right,
+                    color: c.textMuted,
+                  ),
+                ],
+              );
+              final double inlineWidth =
+                  avatarRadius * 2 +
+                  MayosSpacing.md +
+                  MayosLayout.coachRosterRowMinimumDetailsWidth +
+                  MayosSpacing.xs +
+                  _rosterActionsWidth(context, actionLabel);
+              final bool compact = constraints.maxWidth < inlineWidth;
+              if (compact) {
+                // Stack only when the action leaves too little room for
+                // player details.
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        avatar,
+                        const SizedBox(width: MayosSpacing.md),
+                        Expanded(child: details),
+                      ],
+                    ),
+                    const SizedBox(height: MayosSpacing.xs),
+                    Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: actions,
+                    ),
+                  ],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  avatar,
+                  const SizedBox(width: MayosSpacing.md),
+                  Expanded(child: details),
+                  const SizedBox(width: MayosSpacing.xs),
+                  actions,
+                ],
+              );
+            },
           ),
         ),
       ),
