@@ -6,8 +6,9 @@ import io
 import math
 import re
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Protocol
+from typing import TYPE_CHECKING, Any, Iterable, Protocol
 
+from fastapi import BackgroundTasks
 from openpyxl import Workbook, load_workbook
 
 from agent.program_prescription import (
@@ -32,12 +33,22 @@ from service.program_import_constants import (
     MAX_PROGRAM_IMPORT_DAY_NAME_LENGTH,
     MAX_PROGRAM_IMPORT_EXERCISE_NAME_LENGTH,
     MAX_PROGRAM_IMPORT_FILE_BYTES,
+    MAX_PROGRAM_IMPORT_CELLS,
     MAX_PROGRAM_IMPORT_REST_SECONDS,
     MAX_PROGRAM_IMPORT_ROWS,
     MAX_PROGRAM_IMPORT_SETS,
     MAX_PROGRAM_IMPORT_TABS,
     MAX_PROGRAM_IMPORT_TAB_PROBE_ROWS,
+    MAX_PROGRAM_IMPORT_GRID_COLUMNS,
+    MAX_PROGRAM_IMPORT_GRID_ROWS,
+    MAX_PROGRAM_IMPORT_GRID_RECTANGLE,
+    MAX_PROGRAM_IMPORT_HEADER_SCAN_ROWS,
+    MIN_PROGRAM_IMPORT_LAYOUT_CONFIDENCE,
 )
+from service import analytics, program_import_ai
+
+if TYPE_CHECKING:
+    from svc.llm import InferenceScope
 
 TEMPLATE_COLUMNS = (
     "day", "day_name", "order", "exercise", "sets", "reps", "rir", "rpe",
@@ -47,15 +58,22 @@ _REP_RANGE = re.compile(r"^(\d+)\s*-\s*(\d+)$")
 _PER_SET_REP_LIST = re.compile(r"^(?:\d+\s*[x×]\s*)?(\d+(?:\s*[,/]\s*\d+)+)$", re.IGNORECASE)
 _EFFORT_VALUE = re.compile(r"^(?:RIR\s*)?(\d+(?:\.\d+)?)$", re.IGNORECASE)
 _EFFORT_RANGE = re.compile(r"^(?:RIR\s*)?(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$", re.IGNORECASE)
-_RPE_VALUE = re.compile(r"^(?:RPE\s*|@\s*)(\d+(?:\.\d+)?)$", re.IGNORECASE)
+_RPE_VALUE = re.compile(r"^(?:RPE\s*|@\s*)?(\d+(?:\.\d+)?)$", re.IGNORECASE)
 _RPE_RANGE = re.compile(r"^(?:RPE\s*|@\s*)?(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$", re.IGNORECASE)
 
 
 class ProgramImportError(Exception):
-    def __init__(self, code: str, message: str, status_code: int = 400):
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        status_code: int = 400,
+        message_params: dict[str, Any] | None = None,
+    ):
         super().__init__(message)
         self.code = code
         self.status_code = status_code
+        self.message_params = message_params or {}
 
 
 @dataclass(frozen=True)
@@ -89,6 +107,8 @@ class ProgramImportRow:
     reps_original: ImportValue = None
     approximation_markers: tuple[Approximation, ...] = ()
     confirmed_exercise_id: str | None = None
+    week: str | None = None
+    suggestion_terms: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -97,6 +117,40 @@ class ReaderOutput:
     selected_tab: str | None
     requires_tab_choice: bool
     rows: list[ProgramImportRow] = field(default_factory=list)
+    detected_weeks: list[str] = field(default_factory=list)
+    selected_week: str | None = None
+    weeks_not_imported: list[str] = field(default_factory=list)
+    confirm_layout: bool = False
+    layout_days: list[dict[str, Any]] = field(default_factory=list)
+    layout_confidence: float | None = None
+    import_mode: str = "template"
+
+
+@dataclass(frozen=True)
+class ReaderDetection:
+    detected_tabs: list[str]
+    selected_tab: str | None
+    requires_tab_choice: bool
+    is_template: bool
+
+
+@dataclass(frozen=True)
+class FreeFormCellGrid:
+    grid: dict[str, Any] | None
+    tabs: list[str]
+    selected_tab: str | None
+
+
+@dataclass(frozen=True)
+class ProgramImportRequest:
+    coach_account_id: str
+    assignment_id: str
+    payload: bytes
+    filename: str
+    selected_tab: str | None = None
+    reader: "ProgramImportReader | None" = None
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT
+    background_tasks: BackgroundTasks | None = None
 
 
 class ProgramImportReader(Protocol):
@@ -118,26 +172,241 @@ class TemplateProgramImportReader:
         raise ProgramImportError("program_import.file_type.v1", "Upload an XLSX or CSV file.")
 
 
-def import_program_sheet(
-    db: Any,
-    coach_account_id: str,
-    assignment_id: str,
-    payload: bytes,
-    filename: str,
-    selected_tab: str | None = None,
-    reader: ProgramImportReader | None = None,
-) -> dict[str, Any] | None:
-    authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
+class FreeFormProgramImportReader:
+    """Translate one bounded, coach-selected sheet through the hosted coach model."""
+
+    def __init__(self, inference_scope: "InferenceScope"):
+        self.inference_scope = inference_scope
+
+    def read(self, prepared: FreeFormCellGrid) -> ReaderOutput:
+        if prepared.grid is None:
+            return ReaderOutput(prepared.tabs, prepared.selected_tab, True, import_mode="freeform")
+        try:
+            reply = program_import_ai.translate_sheet(prepared.grid, self.inference_scope)
+        except program_import_ai.ProgramImportAIError as error:
+            raise ProgramImportError(
+                "program_import.interpretation_failed.v1", str(error), 422
+            ) from None
+        return _freeform_reader_output(reply, prepared.tabs, prepared.selected_tab)
+
+
+def import_program_sheet(db: Any, request: ProgramImportRequest) -> dict[str, Any] | None:
+    authorized = authorized_player_ledger(db, request.coach_account_id, request.assignment_id)
     if authorized is None:
         return None
-    if len(payload) > MAX_PROGRAM_IMPORT_FILE_BYTES:
+    if len(request.payload) > MAX_PROGRAM_IMPORT_FILE_BYTES:
         raise ProgramImportError("program_import.file_too_large.v1", "Trim the file to 1 MB or less.", 413)
     ledger, _ = authorized
     with ledger:
-        draft_exists = ledger.get_program_draft(assignment_id) is not None
-    source = (reader or TemplateProgramImportReader()).read(payload, filename, selected_tab)
-    rows = [] if source.requires_tab_choice else validate_and_resolve_rows(db, coach_account_id, source.rows)
+        draft_exists = ledger.get_program_draft(request.assignment_id) is not None
+    if request.reader is not None:
+        source = request.reader.read(request.payload, request.filename, request.selected_tab)
+    else:
+        detection = _detect_program_reader(
+            request.payload, request.filename, request.selected_tab
+        )
+        if detection.requires_tab_choice:
+            source = ReaderOutput(
+                detection.detected_tabs,
+                detection.selected_tab,
+                True,
+                import_mode="freeform" if not detection.is_template else "template",
+            )
+            return _build_import_result(source, draft_exists, [])
+        source = (
+            TemplateProgramImportReader().read(
+                request.payload,
+                request.filename,
+                detection.selected_tab
+                if request.filename.lower().endswith(".xlsx")
+                else None,
+            )
+            if detection.is_template
+            else None
+        )
+    if source is not None and source.requires_tab_choice:
+        return _build_import_result(source, draft_exists, [])
+    if source is None:
+        freeform_result = _read_freeform_program(db, request)
+        if freeform_result is None:
+            return None
+        source, rows = freeform_result
+    else:
+        rows = validate_and_resolve_rows(db, request.coach_account_id, source.rows)
     return _build_import_result(source, draft_exists, rows)
+
+
+def _read_freeform_program(
+    db: Any, request: ProgramImportRequest
+) -> tuple[ReaderOutput, list[dict[str, Any]]] | None:
+    gate = program_import_ai.resolve_enable_gate()
+    if not gate.enabled:
+        raise ProgramImportError(
+            "program_import.freeform_disabled.v1",
+            "Free-form import is unavailable. Use the MAYOS template.",
+            503,
+        )
+    source, rows = _run_freeform_import(db, request)
+    if db.get_active_assignment_for_coach(
+        request.coach_account_id, request.assignment_id
+    ) is None:
+        return None
+    return source, rows
+
+
+def _run_freeform_import(
+    db: Any, request: ProgramImportRequest
+) -> tuple[ReaderOutput, list[dict[str, Any]]]:
+    prepared = _freeform_cell_grid(
+        request.payload, request.filename, request.selected_tab
+    )
+    if prepared.grid is None:
+        return ReaderOutput(
+            prepared.tabs, prepared.selected_tab, True, import_mode="freeform"
+        ), []
+    from svc.llm import InferenceScope, inference_turn
+
+    scope = InferenceScope(
+        account_id=request.coach_account_id,
+        role="coach",
+        purpose="coach_program_import",
+        store=db,
+        client=request.client,
+    )
+    with inference_turn(scope, background_tasks=request.background_tasks):
+        source = FreeFormProgramImportReader(scope).read(prepared)
+        rows = validate_and_resolve_rows(db, request.coach_account_id, source.rows)
+        _add_model_suggestions(db, rows, scope)
+    return source, rows
+
+
+def _detect_program_reader(
+    payload: bytes, filename: str, selected_tab: str | None
+) -> ReaderDetection:
+    extension = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+    if extension == "csv":
+        if selected_tab:
+            raise ProgramImportError("program_import.tab_invalid.v1", "CSV files have one sheet.")
+        header = _csv_header(payload)
+        return ReaderDetection(["CSV"], "CSV", False, _is_template_header(header))
+    if extension != "xlsx":
+        raise ProgramImportError("program_import.file_type.v1", "Upload an XLSX or CSV file.")
+    workbook = None
+    try:
+        workbook = load_workbook(io.BytesIO(payload), read_only=True, data_only=True)
+        return _detect_xlsx_reader(workbook, selected_tab)
+    except ProgramImportError:
+        raise
+    except Exception as error:
+        raise ProgramImportError(
+            "program_import.file_invalid.v1", "The XLSX file could not be read."
+        ) from error
+    finally:
+        if workbook is not None:
+            workbook.close()
+
+
+def _csv_header(payload: bytes) -> list[str]:
+    try:
+        table = csv.reader(io.StringIO(payload.decode("utf-8-sig")))
+        header = _first_non_empty_header(table)
+    except (UnicodeDecodeError, csv.Error) as error:
+        raise ProgramImportError(
+            "program_import.file_invalid.v1", "The CSV file could not be read."
+        ) from error
+    if not header and not payload.strip():
+        raise ProgramImportError("program_import.sheet_empty.v1", "The CSV sheet is empty.")
+    return header
+
+
+def _detect_xlsx_reader(workbook: Any, selected_tab: str | None) -> ReaderDetection:
+    if len(workbook.worksheets) > MAX_PROGRAM_IMPORT_TABS:
+        raise ProgramImportError(
+            "program_import.too_many_tabs.v1", "Trim the workbook to 20 sheets or fewer.", 413
+        )
+    tabs = [sheet.title for sheet in workbook.worksheets if _sheet_has_values(sheet)]
+    if not tabs:
+        raise ProgramImportError("program_import.sheet_empty.v1", "The workbook has no non-empty sheets.")
+    choice_tabs = [tab for tab in tabs if tab.casefold() != "example"]
+    if len(choice_tabs) > 1 and selected_tab is None:
+        return ReaderDetection(tabs, None, True, False)
+    selected = selected_tab or ("Program" if "Program" in tabs else (choice_tabs or tabs)[0])
+    if selected not in tabs:
+        raise ProgramImportError(
+            "program_import.tab_invalid.v1", "Choose a non-empty sheet from this workbook."
+        )
+    sheet = workbook[selected]
+    header = _first_non_empty_header(
+        sheet.iter_rows(
+            max_row=MAX_PROGRAM_IMPORT_HEADER_SCAN_ROWS,
+            max_col=MAX_PROGRAM_IMPORT_GRID_COLUMNS,
+            values_only=True,
+        )
+    )
+    if not header:
+        if (
+            (sheet.max_row or 0) > MAX_PROGRAM_IMPORT_GRID_ROWS
+            or (sheet.max_column or 0) > MAX_PROGRAM_IMPORT_GRID_COLUMNS
+        ):
+            return ReaderDetection(tabs, selected, False, False)
+        raise ProgramImportError("program_import.sheet_empty.v1", "The selected sheet is empty.")
+    return ReaderDetection(tabs, selected, False, _is_template_header(header))
+
+
+def _first_non_empty_header(table: Iterable[Iterable[Any]]) -> list[str]:
+    for row_number, values in enumerate(table, start=1):
+        if row_number > MAX_PROGRAM_IMPORT_HEADER_SCAN_ROWS:
+            break
+        header = [_cell_text(value).casefold() for value in values]
+        if any(header):
+            return header
+    return []
+
+
+def _is_template_header(header: list[str]) -> bool:
+    required = {"day", "exercise", "sets", "reps"}
+    return required.issubset(set(header))
+
+
+def _add_model_suggestions(
+    db: Any, rows: list[dict[str, Any]], scope: "InferenceScope"
+) -> None:
+    names = list(dict.fromkeys(
+        row["exercise_name"]
+        for row in rows
+        if row["exercise_id"] is None and row["exercise_name"]
+    ))
+    if not names:
+        return
+    search_terms = {
+        row["exercise_name"]: row["suggestion_search_terms"]
+        for row in rows
+        if row["exercise_name"] in names and row["suggestion_search_terms"]
+    }
+    try:
+        suggested = program_import_ai.suggest_exercises(db, names, scope, search_terms)
+    except program_import_ai.ProgramImportAIError:
+        for row in rows:
+            if row["exercise_id"] is None:
+                row["warnings"].append(_row_warning(
+                    "program_import.suggestions_unavailable.v1",
+                    row["source_row"],
+                    "exercise",
+                    "Automated suggestions are unavailable; search the library or create a Coach exercise.",
+                ))
+        return
+    for row in rows:
+        model_matches = suggested.get(row["exercise_name"], [])
+        row["suggestions"] = _merge_suggestions(row["suggestions"], model_matches)
+
+
+def _merge_suggestions(
+    deterministic: list[dict[str, str]], model_suggestions: list[dict[str, str]]
+) -> list[dict[str, str]]:
+    merged: dict[str, dict[str, str]] = {}
+    for candidate in (*deterministic, *model_suggestions):
+        merged.setdefault(candidate["exercise_id"], candidate)
+    return list(merged.values())[:3]
 
 
 def create_imported_program_draft(
@@ -218,19 +487,143 @@ def template_xlsx_bytes() -> bytes:
 
 
 def _build_import_result(source: ReaderOutput, draft_exists: bool, rows: list[dict[str, Any]]) -> dict[str, Any]:
+    public_rows = [
+        {key: value for key, value in row.items() if key != "suggestion_search_terms"}
+        for row in rows
+    ]
+    rows_by_week = {
+        week: [row for row in public_rows if row["week"] == week]
+        for week in source.detected_weeks
+    }
     return {
         "detected_tabs": source.detected_tabs,
         "selected_tab": source.selected_tab,
         "requires_tab_choice": source.requires_tab_choice,
-        "detected_weeks": [],
-        "selected_week": None,
-        "weeks_not_imported": [],
-        "confirm_layout": False,
+        "detected_weeks": source.detected_weeks,
+        "selected_week": source.selected_week,
+        "weeks_not_imported": source.weeks_not_imported,
+        "confirm_layout": source.confirm_layout,
+        "import_mode": source.import_mode,
+        "layout_days": source.layout_days,
+        "layout_confidence": source.layout_confidence,
         "draft_exists": draft_exists,
-        "rows": rows,
+        "freeform_available": program_import_ai.resolve_enable_gate().enabled,
+        "rows": public_rows,
+        "rows_by_week": rows_by_week,
         "errors": [error for row in rows for error in row["errors"]],
         "unresolved_names": _unresolved_names(rows),
     }
+
+
+def _freeform_reader_output(
+    reply: program_import_ai.ProgramImportReply,
+    tabs: list[str],
+    selected_tab: str | None,
+) -> ReaderOutput:
+    weeks = list(dict.fromkeys(week.strip() for week in reply.layout.weeks if week.strip()))
+    selected_week = _default_import_week(weeks)
+    confirm_layout = (
+        reply.layout.confirm_layout
+        or reply.layout.confidence < MIN_PROGRAM_IMPORT_LAYOUT_CONFIDENCE
+    )
+    week_lookup = {week.casefold(): week for week in weeks}
+    rows = [
+        _program_import_row(
+            row,
+            week_lookup.get(row.week.casefold()) if row.week else selected_week,
+        )
+        for row in reply.rows
+    ]
+    return ReaderOutput(
+        tabs,
+        selected_tab,
+        False,
+        rows,
+        detected_weeks=weeks,
+        selected_week=selected_week,
+        weeks_not_imported=[week for week in weeks if week != selected_week],
+        confirm_layout=confirm_layout,
+        layout_days=[day.model_dump() for day in reply.layout.days],
+        layout_confidence=reply.layout.confidence,
+        import_mode="freeform",
+    )
+
+
+def _default_import_week(weeks: list[str]) -> str | None:
+    if not weeks:
+        return None
+    return next(
+        (week for week in weeks if re.search(r"\b(?:week|wk)\s*1\b|^1$", week, re.IGNORECASE)),
+        weeks[0],
+    )
+
+
+def _program_import_row(row: Any, week: str | None) -> ProgramImportRow:
+    markers = [
+        Approximation(_allowed_approximation_code(marker.code), marker.column, marker.original)
+        for marker in row.approximation_markers
+    ]
+    markers.extend(_detect_unsupported_prescriptions(row, markers))
+    return ProgramImportRow(
+        source_row=row.source_row,
+        day=row.day,
+        day_name=row.day_name,
+        order=row.order,
+        exercise=row.exercise,
+        sets=row.sets,
+        reps_min=row.reps_min,
+        reps_max=row.reps_max,
+        reps_original=row.reps_original,
+        rir=row.rir,
+        rpe=_freeform_rpe_value(row.rpe),
+        rest_seconds=row.rest_seconds,
+        tempo=row.tempo,
+        notes=row.notes,
+        original_text=row.original_text,
+        approximation_markers=tuple(markers),
+        week=week,
+        suggestion_terms=tuple(row.exercise_search_terms),
+    )
+
+
+def _freeform_rpe_value(value: Any) -> Any:
+    text = _cell_text(value)
+    if text and re.fullmatch(r"\d+(?:\.\d+)?", text):
+        return f"RPE {text}"
+    return value
+
+
+def _detect_unsupported_prescriptions(row: Any, existing: list[Approximation]) -> list[Approximation]:
+    source = " ".join(part for part in (row.original_text, _cell_text(row.notes)) if part)
+    checks = (
+        (r"\bAMRAP\b|\btop\s+set\b|\bback[ -]?off\b|\bsuperset\b", "prescription"),
+        (r"\d+\s*[x×]\s*\d+(?:\s*[,/]\s*\d+)+", "reps"),
+        (r"\d+(?:\.\d+)?\s*%", "load_pct_e1rm"),
+        (r"weekly\s+(?:progression|increase|increase reps|add reps)", "notes"),
+    )
+    found = []
+    existing_originals = {marker.original.casefold() for marker in existing if marker.original}
+    for pattern, column in checks:
+        match = re.search(pattern, source, re.IGNORECASE)
+        if match and match.group(0).casefold() not in existing_originals:
+            found.append(
+                Approximation(
+                    "program_import.unsupported_preserved_as_note.v1",
+                    column,
+                    match.group(0),
+                )
+            )
+    return found
+
+
+def _allowed_approximation_code(code: str) -> str:
+    allowed = {
+        "program_import.reps_approximated.v1",
+        "program_import.effort_approximated.v1",
+        "program_import.load_preserved_as_note.v1",
+        "program_import.unsupported_preserved_as_note.v1",
+    }
+    return code if code in allowed else "program_import.unsupported_preserved_as_note.v1"
 
 
 def _read_csv(payload: bytes) -> ReaderOutput:
@@ -241,6 +634,103 @@ def _read_csv(payload: bytes) -> ReaderOutput:
         raise
     except Exception as error:
         raise ProgramImportError("program_import.file_invalid.v1", "The CSV file could not be read.") from error
+
+
+def _freeform_cell_grid(
+    payload: bytes, filename: str, selected_tab: str | None
+) -> FreeFormCellGrid:
+    extension = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+    if extension == "csv":
+        if selected_tab:
+            raise ProgramImportError("program_import.tab_invalid.v1", "CSV files have one sheet.")
+        try:
+            table = csv.reader(io.StringIO(payload.decode("utf-8-sig")))
+            cells = _compact_cell_grid(table)
+        except ProgramImportError:
+            raise
+        except (UnicodeDecodeError, csv.Error) as error:
+            raise ProgramImportError("program_import.file_invalid.v1", "The CSV file could not be read.") from error
+        if not cells:
+            raise ProgramImportError("program_import.sheet_empty.v1", "The CSV sheet is empty.")
+        return FreeFormCellGrid({"sheet": "CSV", "cells": cells}, ["CSV"], "CSV")
+    if extension != "xlsx":
+        raise ProgramImportError("program_import.file_type.v1", "Upload an XLSX or CSV file.")
+    workbook = None
+    try:
+        workbook = load_workbook(io.BytesIO(payload), read_only=True, data_only=True)
+        return _xlsx_cell_grid(workbook, selected_tab)
+    except ProgramImportError:
+        raise
+    except Exception as error:
+        raise ProgramImportError("program_import.file_invalid.v1", "The XLSX file could not be read.") from error
+    finally:
+        if workbook is not None:
+            workbook.close()
+
+
+def _xlsx_cell_grid(
+    workbook: Any, selected_tab: str | None
+) -> FreeFormCellGrid:
+    if len(workbook.worksheets) > MAX_PROGRAM_IMPORT_TABS:
+        raise ProgramImportError("program_import.too_many_tabs.v1", "Trim the workbook to 20 sheets or fewer.", 413)
+    tabs = [sheet.title for sheet in workbook.worksheets if _sheet_has_values(sheet)]
+    if not tabs:
+        raise ProgramImportError("program_import.sheet_empty.v1", "The workbook has no non-empty sheets.")
+    if len(tabs) > 1 and selected_tab is None:
+        return FreeFormCellGrid(None, tabs, None)
+    selected = selected_tab or tabs[0]
+    if selected not in tabs:
+        raise ProgramImportError("program_import.tab_invalid.v1", "Choose a non-empty sheet from this workbook.")
+    sheet = workbook[selected]
+    rows, columns = sheet.max_row or 0, sheet.max_column or 0
+    if (
+        rows * columns > MAX_PROGRAM_IMPORT_GRID_RECTANGLE
+        or rows > MAX_PROGRAM_IMPORT_GRID_ROWS
+        or columns > MAX_PROGRAM_IMPORT_GRID_COLUMNS
+    ):
+        raise _cell_limit_error()
+    cells = _compact_cell_grid(
+        sheet.iter_rows(max_row=rows, max_col=columns, values_only=True)
+    )
+    if not cells:
+        raise ProgramImportError("program_import.sheet_empty.v1", "The selected sheet is empty.")
+    return FreeFormCellGrid({"sheet": selected, "cells": cells}, tabs, selected)
+
+
+def _compact_cell_grid(table: Iterable[Iterable[Any]]) -> list[dict[str, str]]:
+    cells: list[dict[str, str]] = []
+    non_empty = 0
+    for row_number, raw_row in enumerate(table, start=1):
+        if row_number > MAX_PROGRAM_IMPORT_GRID_ROWS:
+            raise _cell_limit_error()
+        for column_number, raw_value in enumerate(raw_row, start=1):
+            if column_number > MAX_PROGRAM_IMPORT_GRID_COLUMNS:
+                raise _cell_limit_error()
+            text = _cell_text(raw_value)
+            if not text:
+                continue
+            non_empty += 1
+            if non_empty > MAX_PROGRAM_IMPORT_CELLS:
+                raise _cell_limit_error()
+            cells.append({"address": f"{_column_label(column_number)}{row_number}", "value": text})
+    return cells
+
+
+def _column_label(column_number: int) -> str:
+    letters = ""
+    while column_number:
+        column_number, remainder = divmod(column_number - 1, 26)
+        letters = chr(65 + remainder) + letters
+    return letters
+
+
+def _cell_limit_error() -> ProgramImportError:
+    return ProgramImportError(
+        "program_import.too_many_cells.v1",
+        f"Trim the selected sheet to {MAX_PROGRAM_IMPORT_CELLS} non-empty cells or fewer, then upload it again.",
+        413,
+        {"max_cells": MAX_PROGRAM_IMPORT_CELLS},
+    )
 
 
 def _read_xlsx(payload: bytes, selected_tab: str | None) -> ReaderOutput:
@@ -496,14 +986,21 @@ def _normalise_row(source: ProgramImportRow, order_by_day: dict[int, int]) -> di
     if tempo and len(tempo) > MAX_TEMPO_LENGTH:
         errors.append(_row_error("program_import.tempo_too_long.v1", source.source_row, "tempo", "Tempo is too long."))
 
-    notes = _join_notes(source.notes, reps_note, effort_notes)
+    preserved_notes = [
+        f"{item.column}: {item.original}"
+        for item in source.approximation_markers
+        if item.original and item.column not in {"reps", "rir", "rpe"}
+    ]
+    notes = _join_notes(source.notes, reps_note, effort_notes, *preserved_notes)
     if len(notes) > MAX_PROGRAM_NOTES_LENGTH:
         errors.append(_row_error("program_import.notes_too_long.v1", source.source_row, "notes", "Notes are too long."))
 
     return {
         "source_row": source.source_row,
+        "week": source.week,
         "original_text": source.original_text,
         "approximation_markers": [item.code for item in source.approximation_markers],
+        "suggestion_search_terms": list(source.suggestion_terms),
         "day": day,
         "day_valid": day_valid,
         "day_name": day_name,

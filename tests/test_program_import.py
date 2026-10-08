@@ -3,6 +3,7 @@
 import io
 import csv
 import datetime as dt
+import json
 import sqlite3
 import zipfile
 from pathlib import Path
@@ -111,6 +112,43 @@ def _confirmed_rows(rows):
     return [{field: row[field] for field in CONFIRMED_ROW_FIELDS} for row in rows]
 
 
+def _enable_program_import_ai(monkeypatch, tmp_path, mode="live"):
+    from service import program_import_ai
+
+    model, backend = program_import_ai.coach_model_identity()
+    report = {
+        "report_version": program_import_ai.REPORT_VERSION,
+        "suite": "program_import",
+        "mode": mode,
+        "prompt_hash": program_import_ai.prompt_version_hash(),
+        "model": model,
+        "backend": backend,
+        "gates": {
+            "privacy": {"pass": True},
+            "evaluation": {
+                "pass": True,
+                "threshold": 1,
+                "metrics": {
+                    "expected_rows": 100,
+                    "correct_rows": 96,
+                    "silently_dropped_rows": 0,
+                    "approximations": 4,
+                    "approximations_flagged": 4,
+                    "unresolved_names": 3,
+                    "unresolved_auto_applied": 0,
+                },
+            },
+        },
+        "runs": [{"case_id": "reviewed-samples", "passed": True, "checks": {}}],
+        "pass": True,
+    }
+    report_path = tmp_path / "program-import-report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    monkeypatch.setenv("PROGRAM_IMPORT_AI_ENABLED", "true")
+    monkeypatch.setenv("PROGRAM_IMPORT_AI_EVAL_REPORT", str(report_path))
+    return program_import_ai
+
+
 def test_csv_import_creates_only_program_draft_and_replacement_requires_confirmation(api):
     client, db = api
     coach_headers, player_headers, assignment_id = _assignment(client, db)
@@ -157,6 +195,23 @@ def test_csv_import_creates_only_program_draft_and_replacement_requires_confirma
         headers=coach_headers,
         json={"program_name": "again", "rows": _confirmed_rows(result["rows"])},
     ).status_code == 409
+
+
+def test_csv_bare_rpe_values_convert_to_rir(api):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="bare-rpe")
+    upload = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("plan.csv", _csv([
+            ["1", "Push", "1", "Squat", "3", "6-8", "", "8", "", "", "90", "", ""],
+            ["1", "Push", "2", "Squat", "3", "6-8", "", "7.5", "", "", "90", "", ""],
+        ]), "text/csv")},
+    )
+    assert upload.status_code == 200, upload.text
+    rows = upload.json()["rows"]
+    assert [row["errors"] for row in rows] == [[], []]
+    assert [row["target_rir"] for row in rows] == [2, 2.5]
 
 
 def test_xlsx_requires_tab_choice_and_keeps_rpe_load_and_notes(api):
@@ -279,9 +334,11 @@ def test_unsupported_amrap_is_kept_as_a_warning_and_more_than_500_rows_is_refuse
     assert too_many.status_code == 413
 
 
-def test_upload_limits_and_assignment_gate(api):
+def test_upload_limits_and_assignment_gate(api, monkeypatch, tmp_path, scripted_chat_model):
     client, db = api
     coach_headers, _, assignment_id = _assignment(client, db)
+    _enable_program_import_ai(monkeypatch, tmp_path)
+    freeform_file = ("own-layout.csv", b"Lift,Sets,Reps\nSquat,3,8", "text/csv")
     too_large = client.post(
         f"/coach/assignments/{assignment_id}/program-import",
         headers=coach_headers,
@@ -292,24 +349,48 @@ def test_upload_limits_and_assignment_gate(api):
     foreign = client.post(
         f"/coach/assignments/{foreign_assignment_id}/program-import",
         headers=coach_headers,
-        files={"file": ("plan.csv", _csv([]), "text/csv")},
+        files={"file": freeform_file},
+    )
+    draft_action = client.post(
+        f"/coach/assignments/{foreign_assignment_id}/program-draft/import",
+        headers=coach_headers,
+        json={
+            "program_name": "plan",
+            "rows": [{
+                "source_row": 2,
+                "day": 1,
+                "order": 1,
+                "exercise_name": "Squat",
+                "exercise_id": "sq",
+                "sets": 3,
+                "reps_min": 8,
+                "reps_max": 8,
+                "target_rir": 2,
+                "rest_seconds": 90,
+            }],
+        },
     )
     assert foreign.status_code == 403
+    assert draft_action.status_code == 403
+    assert foreign.json() == draft_action.json()
     unknown = client.post(
         "/coach/assignments/not-an-assignment/program-import",
         headers=coach_headers,
-        files={"file": ("plan.csv", _csv([]), "text/csv")},
+        files={"file": freeform_file},
     )
     assert unknown.status_code == 403
+    assert foreign.json()["message_code"] == unknown.json()["message_code"] == "assignment.none_active.v1"
     assert client.post(
         f"/coach/assignments/{assignment_id}/revoke", headers=coach_headers
     ).status_code == 200
     ended = client.post(
         f"/coach/assignments/{assignment_id}/program-import",
         headers=coach_headers,
-        files={"file": ("plan.csv", _csv([]), "text/csv")},
+        files={"file": freeform_file},
     )
     assert ended.status_code == 403
+    assert ended.json()["message_code"] == "assignment.none_active.v1"
+    assert scripted_chat_model.calls == []
 
 
 def test_template_downloads_are_authenticated(api):
@@ -333,6 +414,9 @@ def test_effort_and_per_set_reps_are_approximated_with_original_text(api):
             ["1", "Day A", "4", "Bench Press", "3", "8", "@8", "", "", "", "90", "", ""],
             ["1", "Day A", "5", "Squat", "3", "8", "hard", "", "", "", "90", "", ""],
             ["1", "Day A", "6", "Bench Press", "3", "3x8,6,4", "2", "", "", "", "90", "", ""],
+            ["1", "Day A", "7", "Squat", "3", "8", "", "8", "", "", "90", "", ""],
+            ["1", "Day A", "8", "Bench Press", "3", "8", "7.5", "", "", "", "90", "", ""],
+            ["1", "Day A", "9", "Squat", "3", "8", "8", "", "", "", "90", "", ""],
         ]), "text/csv")},
     )
     assert response.status_code == 200, response.text
@@ -348,6 +432,394 @@ def test_effort_and_per_set_reps_are_approximated_with_original_text(api):
     assert rows[5]["reps_min"] == 4
     assert rows[5]["reps_max"] == 8
     assert any(warning["code"] == "program_import.reps_approximated.v1" for warning in rows[5]["warnings"])
+    assert rows[6]["valid"] is True
+    assert rows[6]["target_rir"] == 2
+    assert rows[7]["target_rir"] == 5
+    assert any(warning["code"] == "program_import.effort_approximated.v1" for warning in rows[7]["warnings"])
+    assert rows[8]["target_rir"] == 5
+    assert any(warning["code"] == "program_import.effort_approximated.v1" for warning in rows[8]["warnings"])
+
+
+def test_freeform_import_retries_malformed_reply_and_returns_week_review_without_player_data(
+    api, monkeypatch, tmp_path, scripted_chat_model
+):
+    client, db = api
+    coach_headers, player_headers, assignment_id = _assignment(client, db, prefix="freeform")
+    profile_response = client.put(
+        "/profile",
+        headers=player_headers,
+        json={"weekly_frequency": 4, "current_goal": "PRIVATE_PROFILE_MARKER"},
+    )
+    assert profile_response.status_code == 200
+    with db.open_ledger("freeform-player") as player_ledger:
+        player_ledger.log_workout_session(
+            "private-import-session",
+            "2026-10-08",
+            "PRIVATE_SPLIT_MARKER",
+            "2026-10-08T08:00:00+00:00",
+            "2026-10-08T08:30:00+00:00",
+            notes="PRIVATE_LEDGER_MARKER",
+        )
+    _enable_program_import_ai(monkeypatch, tmp_path)
+    from service.model_limits import reset_model_limits
+
+    monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "1")
+    reset_model_limits()
+    scripted_chat_model.script(
+        {"rows": "malformed"},
+        {
+            "rows": [
+                {
+                    "source_row": 2,
+                    "week": "Week 1",
+                    "day": 1,
+                    "day_name": "يوم الدفع",
+                    "order": 1,
+                    "exercise": "Bench Press",
+                    "sets": 3,
+                    "reps_min": 8,
+                    "reps_max": 8,
+                    "reps_original": "8",
+                    "rir": None,
+                    "rpe": 8,
+                    "rest_seconds": 90,
+                    "tempo": None,
+                    "notes": "ملاحظة أصلية",
+                    "original_text": "Bench Press · 3 × 8 · RPE 8",
+                    "approximation_markers": [],
+                },
+                {
+                    "source_row": 3,
+                    "week": "Week 1",
+                    "day": 1,
+                    "day_name": "يوم الدفع",
+                    "order": 2,
+                    "exercise": "Squat",
+                    "sets": 0,
+                    "reps_min": 8,
+                    "reps_max": 8,
+                    "reps_original": "8",
+                    "rir": 2,
+                    "rpe": None,
+                    "rest_seconds": 90,
+                    "tempo": None,
+                    "notes": None,
+                    "original_text": "Squat · 0 × 8",
+                    "approximation_markers": [],
+                },
+            ],
+            "layout": {
+                "days": [{"day": 1, "name": "يوم الدفع"}],
+                "weeks": ["Week 1", "Week 2"],
+                "confidence": 0.98,
+                "confirm_layout": False,
+            },
+        },
+    )
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={
+            "file": (
+                "freeform.csv",
+                b"Exercise,Sets,Reps,Effort,Notes\nBench Press,3,8,RPE 8,\xd9\x85\xd9\x84\xd8\xa7\xd8\xad\xd8\xb8\xd8\xa9 \xd8\xa3\xd8\xb5\xd9\x84\xd9\x8a\xd8\xa9\nSquat,0,8,,",
+                "text/csv",
+            )
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["detected_weeks"] == ["Week 1", "Week 2"]
+    assert result["selected_week"] == "Week 1"
+    assert result["weeks_not_imported"] == ["Week 2"]
+    assert result["confirm_layout"] is False
+    assert result["freeform_available"] is True
+    assert result["layout_days"] == [{"day": 1, "name": "يوم الدفع"}]
+    assert result["layout_confidence"] == 0.98
+    row = result["rows"][0]
+    assert row["day_name"] == "يوم الدفع"
+    assert row["target_rir"] == 2
+    assert "ملاحظة أصلية" in row["notes"]
+    assert any(warning["code"] == "program_import.rpe_converted.v1" for warning in row["warnings"])
+    invalid_row = result["rows"][1]
+    assert invalid_row["valid"] is False
+    assert invalid_row["errors"][0]["code"] == "program_import.invalid_sets.v1"
+    assert invalid_row["errors"][0]["column"] == "sets"
+    model_payloads = [
+        str(message.content)
+        for call in scripted_chat_model.calls
+        for message in call["messages"]
+    ]
+    assert any("Bench Press" in payload for payload in model_payloads)
+    assert all("freeform-player" not in payload for payload in model_payloads)
+    assert all("PRIVATE_PROFILE_MARKER" not in payload for payload in model_payloads)
+    assert all("PRIVATE_LEDGER_MARKER" not in payload for payload in model_payloads)
+    assert all("PRIVATE_SPLIT_MARKER" not in payload for payload in model_payloads)
+    limited = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={
+            "file": (
+                "freeform.csv",
+                b"Exercise,Sets,Reps\nBench Press,3,8",
+                "text/csv",
+            )
+        },
+    )
+    reset_model_limits()
+    assert limited.status_code == 429
+    assert limited.json()["message_code"] == "ai_limit.request_rate.v1"
+
+
+def test_program_import_gate_off_keeps_template_working_and_cell_cap_refuses_freeform(
+    api, monkeypatch, tmp_path, scripted_chat_model
+):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="gate")
+    monkeypatch.setenv("PROGRAM_IMPORT_AI_ENABLED", "false")
+    monkeypatch.delenv("PROGRAM_IMPORT_AI_EVAL_REPORT", raising=False)
+    template = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("plan.csv", _csv([["1", "Push", "1", "Squat", "3", "8", "2", "", "", "", "90", "", ""]]), "text/csv")},
+    )
+    assert template.status_code == 200, template.text
+
+    disabled = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("own-layout.csv", b"Lift,Sets,Reps\nBench Press,3,8", "text/csv")},
+    )
+    assert disabled.status_code == 503
+    assert disabled.json()["message_code"] == "program_import.freeform_disabled.v1"
+    _enable_program_import_ai(monkeypatch, tmp_path, mode="mock")
+    mock_refused = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("own-layout.csv", b"Lift,Sets,Reps\nBench Press,3,8", "text/csv")},
+    )
+    template_while_mocked = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("plan.csv", _csv([["1", "Push", "1", "Squat", "3", "8", "2", "", "", "", "90", "", ""]]), "text/csv")},
+    )
+    assert mock_refused.status_code == 503
+    assert mock_refused.json()["message_code"] == "program_import.freeform_disabled.v1"
+    assert template_while_mocked.status_code == 200, template_while_mocked.text
+    assert template_while_mocked.json()["freeform_available"] is False
+    assert scripted_chat_model.calls == []
+
+    _enable_program_import_ai(monkeypatch, tmp_path)
+    rows = [["Bench Press", "3", "8", "notes"] for _ in range(501)]
+    freeform_csv = io.StringIO(newline="")
+    writer = csv.writer(freeform_csv)
+    writer.writerow(["Exercise", "Sets", "Reps", "Notes"])
+    writer.writerows(rows)
+    capped = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("large.csv", freeform_csv.getvalue().encode(), "text/csv")},
+    )
+    assert capped.status_code == 413
+    assert capped.json()["message_code"] == "program_import.too_many_cells.v1"
+    assert capped.json()["message_params"] == {"max_cells": 2000}
+    assert scripted_chat_model.calls == []
+
+
+def test_partial_template_header_uses_freeform_reader(api, monkeypatch, tmp_path, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="partial-template")
+    _enable_program_import_ai(monkeypatch, tmp_path)
+    scripted_chat_model.script(
+        {
+            "rows": [{
+                "source_row": 602,
+                "week": "Week 1",
+                "day": 1,
+                "day_name": "Push",
+                "order": 1,
+                "exercise": "Bench Press",
+                "sets": 3,
+                "reps_min": 8,
+                "reps_max": 8,
+                "reps_original": "8",
+                "rir": None,
+                "rpe": 8,
+                "rest_seconds": 90,
+                "tempo": None,
+                "notes": None,
+                "original_text": "Bench Press,3,8 @8",
+                "approximation_markers": [],
+            }],
+            "layout": {
+                "days": [{"day": 1, "name": "Push"}],
+                "weeks": ["Week 1"],
+                "confidence": 0.98,
+                "confirm_layout": False,
+            },
+        }
+    )
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("partial.csv", b"\n" * 600 + b"day,exercise,sets,Reps x RPE\n1,Bench Press,3,8 @8", "text/csv")},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["import_mode"] == "freeform"
+    assert response.json()["rows"][0]["target_rir"] == 2
+    assert response.json()["freeform_available"] is True
+
+
+def test_malformed_freeform_reply_retries_then_returns_a_clean_failure(
+    api, monkeypatch, tmp_path, scripted_chat_model
+):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="bad-model")
+    _enable_program_import_ai(monkeypatch, tmp_path)
+    scripted_chat_model.script({"rows": "bad"}, {"rows": "still bad"})
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("own-layout.csv", b"Lift,Sets,Reps\nBench Press,3,8", "text/csv")},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["message_code"] == "program_import.interpretation_failed.v1"
+    assert "malformed" not in response.text.lower()
+
+
+def test_freeform_import_returns_all_weeks_and_defaults_to_week_one(
+    api, monkeypatch, tmp_path, scripted_chat_model
+):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="week-choice")
+    _enable_program_import_ai(monkeypatch, tmp_path)
+    reply = {
+        "rows": [
+            {
+                "source_row": 2,
+                "week": "Week 1",
+                "day": 1,
+                "day_name": "Push",
+                "order": 1,
+                "exercise": "Bench Press",
+                "sets": 3,
+                "reps_min": 8,
+                "reps_max": 8,
+                "reps_original": "8",
+                "rir": 2,
+                "rpe": None,
+                "rest_seconds": 90,
+                "tempo": None,
+                "notes": None,
+                "original_text": "Bench Press, 3, 8",
+                "approximation_markers": [],
+            },
+            {
+                "source_row": 3,
+                "week": "Week 2",
+                "day": 1,
+                "day_name": "Push",
+                "order": 1,
+                "exercise": "Squat",
+                "sets": 3,
+                "reps_min": 8,
+                "reps_max": 8,
+                "reps_original": "8",
+                "rir": 2,
+                "rpe": None,
+                "rest_seconds": 90,
+                "tempo": None,
+                "notes": None,
+                "original_text": "Squat, 3, 8",
+                "approximation_markers": [],
+            },
+        ],
+        "layout": {
+            "days": [{"day": 1, "name": "Push"}],
+            "weeks": ["Week 1", "Week 2"],
+            "confidence": 0.99,
+            "confirm_layout": False,
+        },
+    }
+    scripted_chat_model.script(reply)
+    upload = {
+        "file": (
+            "own-layout.csv",
+            b"Exercise,Sets,Reps\nBench Press,3,8\nSquat,3,8",
+            "text/csv",
+        )
+    }
+
+    default_week = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files=upload,
+    )
+    assert default_week.status_code == 200, default_week.text
+    assert default_week.json()["selected_week"] == "Week 1"
+    assert [row["exercise_name"] for row in default_week.json()["rows"]] == ["Bench Press", "Squat"]
+    assert [row["week"] for row in default_week.json()["rows"]] == ["Week 1", "Week 2"]
+    assert [row["exercise_name"] for row in default_week.json()["rows_by_week"]["Week 1"]] == ["Bench Press"]
+    assert [row["exercise_name"] for row in default_week.json()["rows_by_week"]["Week 2"]] == ["Squat"]
+    assert default_week.json()["weeks_not_imported"] == ["Week 2"]
+
+
+def test_freeform_model_suggestion_is_confirm_only_and_uses_library_candidates(
+    api, monkeypatch, tmp_path, scripted_chat_model
+):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="suggestion")
+    _enable_program_import_ai(monkeypatch, tmp_path)
+    scripted_chat_model.script(
+        {
+            "rows": [
+                {
+                    "source_row": 2,
+                    "week": None,
+                    "day": 1,
+                    "day_name": "Push",
+                    "order": 1,
+                    "exercise": "بنش برس",
+                    "exercise_search_terms": ["bench press"],
+                    "sets": 3,
+                    "reps_min": 8,
+                    "reps_max": 8,
+                    "reps_original": "8",
+                    "rir": 2,
+                    "rpe": None,
+                    "rest_seconds": 90,
+                    "tempo": None,
+                    "notes": None,
+                    "original_text": "بنش برس 3 × 8",
+                    "approximation_markers": [],
+                }
+            ],
+            "layout": {
+                "days": [{"day": 1, "name": "Push"}],
+                "weeks": [],
+                "confidence": 0.95,
+                "confirm_layout": False,
+            },
+        },
+        {"suggestions": [{"exercise_name": "بنش برس", "exercise_ids": ["bp"]}]},
+    )
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("own-layout.csv", b"Lift,Sets,Reps\n\xd8\xa8\xd9\x86\xd8\xb4 \xd8\xa8\xd8\xb1\xd8\xb3,3,8", "text/csv")},
+    )
+
+    assert response.status_code == 200, response.text
+    row = response.json()["rows"][0]
+    assert row["exercise_id"] is None
+    assert row["exercise_name"] == "بنش برس"
+    assert row["suggestions"] == [{"exercise_id": "bp", "name": "Bench Press"}]
 
 
 def test_xlsx_date_reps_and_downloaded_template_sheet_behavior(api):
@@ -390,8 +862,8 @@ def test_xlsx_date_reps_and_downloaded_template_sheet_behavior(api):
             )
         },
     )
-    assert rpe_without_reps.status_code == 400
-    assert rpe_without_reps.json()["message_code"] == "program_import.template_columns.v1"
+    assert rpe_without_reps.status_code == 503
+    assert rpe_without_reps.json()["message_code"] == "program_import.freeform_disabled.v1"
 
     workbook = Workbook()
     sheet = workbook.active

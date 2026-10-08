@@ -97,6 +97,8 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `COACH_CLOSED_TRIAL_OVERRIDE` | `true` | Grants Coach Pro behaviour to every Coach during the closed trial; set to `false` at public launch to use each account's stored Coach plan |
 | `COACH_AI_ENABLED` | `false` | Enables the optional coach AI assistant (#45); refused unless `COACH_AI_EVAL_REPORT` records a passing **live** report for the current prompt version and configured hosted coach model |
 | `COACH_AI_EVAL_REPORT` | unset | Path to the recorded coach privacy + evaluation report JSON (see §4, "Enabling the optional coach AI assistant") |
+| `PROGRAM_IMPORT_AI_ENABLED` | `false` | Enables free-form coach spreadsheet import (#349); refused unless its report records a passing live evaluation for the current prompt/schema and configured hosted coach model |
+| `PROGRAM_IMPORT_AI_EVAL_REPORT` | unset | Path to the recorded free-form Program import evaluation report; template imports do not use this gate |
 | `RATE_LIMIT_COACH_ASSISTANT` | `30/minute` | Per-client limit on `POST /coach/assignments/{id}/assistant`; the per-account model limits (`MODEL_*`) still apply |
 | `PRIVACY_CONTACT_EMAIL` | unset (⇒ placeholder + warning) | Owner contact rendered on the public privacy policy at `GET /privacy`; unset still serves the page |
 | `OWNER_ALERT_EMAIL` | unset | Recipient for model-spend and `/admin` login alerts. Model-spend alerts retry on the sweep; an admin login still succeeds if this is unset or email delivery fails, and the dashboard shows a red banner and audit event |
@@ -192,6 +194,17 @@ canonical fixture, not just the prompt text), and changing `COACH_MODEL`
 changes the model identity the report is bound to and invalidates
 an existing report: re-run step 2 before enabling again. The report is a JSON file, safe
 to commit — it contains fixture questions/answers, never production data.
+
+### Enabling free-form Program import (issue #349)
+
+Free-form CSV/XLSX translation is off unless both `PROGRAM_IMPORT_AI_ENABLED`
+and a passing live report at `PROGRAM_IMPORT_AI_EVAL_REPORT` are configured.
+The report must match the current prompt/schema hash and configured hosted
+coach model. The report gate re-derives the row accuracy, dropped-row,
+approximation, and confirm-only suggestion checks through
+`service.program_import_ai.evaluate_pass_condition`; the reviewed sample set
+and hosted-model runner are supplied by issue #350. Template imports remain
+available with this flag off and make no model call.
 
 ### Enabling model-written Checkpoint reviews (issue #222)
 

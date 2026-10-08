@@ -33,10 +33,28 @@ class _CoachProgramImportScreenState
     extends ConsumerState<CoachProgramImportScreen> {
   PlatformFile? _file;
   Map<String, dynamic>? _result;
-  List<Map<String, dynamic>> _rows = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _allRows = <Map<String, dynamic>>[];
   String? _selectedTab;
+  String? _selectedWeek;
   String? _error;
   bool _busy = false;
+  bool _layoutConfirmed = false;
+  bool _layoutRejected = false;
+
+  List<String> get _detectedWeeks =>
+      (_result?['detected_weeks'] as List<dynamic>? ?? const <dynamic>[])
+          .map((dynamic week) => week.toString())
+          .toList(growable: false);
+
+  List<Map<String, dynamic>> get _rows {
+    if (_selectedWeek == null || _detectedWeeks.isEmpty) return _allRows;
+    return _allRows
+        .where((Map<String, dynamic> row) => row['week'] == _selectedWeek)
+        .toList(growable: false);
+  }
+
+  List<String> get _weeksNotImported =>
+      _detectedWeeks.where((String week) => week != _selectedWeek).toList();
 
   @override
   Widget build(BuildContext context) {
@@ -86,31 +104,150 @@ class _CoachProgramImportScreenState
             ],
             if (_result != null) ...<Widget>[
               const SizedBox(height: MayosSpacing.md),
-              if ((_result!['weeks_not_imported'] as List<dynamic>? ??
-                      const <dynamic>[])
-                  .isNotEmpty)
-                Text(copy.importedWeeksNote),
-              Text(copy.importRowsSummary(_rows.length,
-                  _confirmedRows.length)),
-              if (_confirmedRows.isEmpty) ...<Widget>[
-                const SizedBox(height: MayosSpacing.xs),
-                Text(copy.importNoValidRows),
-              ],
-              const SizedBox(height: MayosSpacing.sm),
-              for (final Map<String, dynamic> row in _rows)
-                _importRow(context, row),
-              const SizedBox(height: MayosSpacing.md),
-              MayosButton(
-                key: const Key('program_import_create_draft'),
-                label: copy.createImportedDraft,
-                icon: Icons.edit_note,
-                loading: _busy,
-                onPressed: _busy || _confirmedRows.isEmpty ? null : _createDraft,
-              ),
+              if (_result?['confirm_layout'] == true)
+                _layoutConfirmation(context),
+              if (!_layoutRejected &&
+                  (_result?['requires_tab_choice'] != true) &&
+                  _layoutCanContinue)
+                _importReview(context),
             ],
             if (_error != null) ...<Widget>[
               const SizedBox(height: MayosSpacing.sm),
               Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  bool get _layoutCanContinue =>
+      _result?['confirm_layout'] != true || _layoutConfirmed;
+
+  Widget _importReview(BuildContext context) {
+    final CoachCopy copy = coachCopyOf(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        if (_detectedWeeks.isNotEmpty)
+          DropdownButtonFormField<String>(
+            key: const Key('program_import_week_picker'),
+            initialValue: _selectedWeek,
+            decoration: InputDecoration(labelText: copy.chooseWeek),
+            items: <DropdownMenuItem<String>>[
+              for (final String week in _detectedWeeks)
+                DropdownMenuItem<String>(value: week, child: Text(week)),
+            ],
+            onChanged: _busy
+                ? null
+                : (String? week) {
+                    if (week == null) return;
+                    setState(() => _selectedWeek = week);
+                  },
+          ),
+        if (_detectedWeeks.isNotEmpty)
+          Text(copy.weeksNotImported(_weeksNotImported, _selectedWeek)),
+        Text(copy.importRowsSummary(_rows.length, _confirmedRows.length)),
+        if (_confirmedRows.isEmpty) ...<Widget>[
+          const SizedBox(height: MayosSpacing.xs),
+          Text(copy.importNoValidRows),
+        ],
+        const SizedBox(height: MayosSpacing.sm),
+        for (final Map<String, dynamic> row in _rows)
+          _importRow(context, row),
+        const SizedBox(height: MayosSpacing.md),
+        MayosButton(
+          key: const Key('program_import_create_draft'),
+          label: copy.createImportedDraft,
+          icon: Icons.edit_note,
+          loading: _busy,
+          onPressed: _busy || _confirmedRows.isEmpty ? null : _createDraft,
+        ),
+      ],
+    );
+  }
+
+  Widget _layoutConfirmation(BuildContext context) {
+    final CoachCopy copy = coachCopyOf(context);
+    final List<String> days = <String>[];
+    for (final dynamic raw in _result?['layout_days'] as List<dynamic>? ??
+        const <dynamic>[]) {
+      if (raw is Map<String, dynamic>) {
+        final String name = raw['name']?.toString() ?? '';
+        if (name.isNotEmpty) days.add(name);
+      }
+    }
+    final Map<String, List<int>> rowsByWeek = <String, List<int>>{};
+    final List<int> unassigned = <int>[];
+    for (final Map<String, dynamic> row in _allRows) {
+      final String? week = row['week'] as String?;
+      final int sourceRow = row['source_row'] as int;
+      if (week == null) {
+        unassigned.add(sourceRow);
+      } else {
+        rowsByWeek.putIfAbsent(week, () => <int>[]).add(sourceRow);
+      }
+    }
+    return Card(
+      key: const Key('program_import_layout_confirmation'),
+      child: Padding(
+        padding: const EdgeInsets.all(MayosSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(copy.importLayoutConfirmTitle,
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: MayosSpacing.xs),
+            Text(copy.importLayoutNeedsConfirmation),
+            const SizedBox(height: MayosSpacing.xs),
+            Text(copy.importLayoutSummary(days, _detectedWeeks, rowsByWeek, unassigned)),
+            if (_layoutRejected) ...<Widget>[
+              const SizedBox(height: MayosSpacing.xs),
+              Text(copy.layoutNotRightGuidance),
+              if ((_result?['detected_tabs'] as List<dynamic>? ??
+                      const <dynamic>[])
+                  .length >
+                  1) ...<Widget>[
+                DropdownButtonFormField<String>(
+                  key: const Key('program_import_layout_tab_picker'),
+                  initialValue: _selectedTab,
+                  decoration: InputDecoration(labelText: copy.chooseAnotherSheet),
+                  items: <DropdownMenuItem<String>>[
+                    for (final dynamic tab
+                        in _result!['detected_tabs'] as List<dynamic>)
+                      DropdownMenuItem<String>(
+                        value: tab as String,
+                        child: Text(tab),
+                      ),
+                  ],
+                  onChanged: (String? tab) => setState(() => _selectedTab = tab),
+                ),
+                MayosButton(
+                  key: const Key('program_import_read_another_sheet'),
+                  label: copy.readAnotherSheet,
+                  loading: _busy,
+                  onPressed: _busy || _selectedTab == null
+                      ? null
+                      : () => _readSelectedFile(sheet: _selectedTab),
+                ),
+              ],
+            ] else if (!_layoutConfirmed) ...<Widget>[
+              const SizedBox(height: MayosSpacing.sm),
+              Wrap(
+                spacing: MayosSpacing.sm,
+                children: <Widget>[
+                  OutlinedButton(
+                    key: const Key('program_import_layout_not_right'),
+                    onPressed: () => setState(() => _layoutRejected = true),
+                    child: Text(copy.layoutNotRight),
+                  ),
+                  FilledButton(
+                    key: const Key('program_import_layout_confirm'),
+                    onPressed: () => setState(() => _layoutConfirmed = true),
+                    child: Text(copy.confirmLayoutAndContinue),
+                  ),
+                ],
+              ),
             ],
           ],
         ),
@@ -207,9 +344,12 @@ class _CoachProgramImportScreenState
     setState(() {
       _file = selected;
       _result = null;
-      _rows = <Map<String, dynamic>>[];
+      _allRows = <Map<String, dynamic>>[];
       _selectedTab = null;
+      _selectedWeek = null;
       _error = null;
+      _layoutConfirmed = false;
+      _layoutRejected = false;
     });
     if (selected.bytes == null) {
       setState(() => _error = coachCopyOf(context).importCreateFailure);
@@ -231,15 +371,20 @@ class _CoachProgramImportScreenState
             widget.assignmentId,
             bytes: file!.bytes!,
             fileName: file.name,
-            sheet: sheet,
+            sheet: file.name.toLowerCase().endsWith('.xlsx')
+                ? (sheet ?? _selectedTab)
+                : null,
           );
       if (!mounted) return;
       setState(() {
         _result = result;
-        _rows = (result['rows'] as List<dynamic>? ?? <dynamic>[])
+        _allRows = (result['rows'] as List<dynamic>? ?? <dynamic>[])
             .map((dynamic row) => Map<String, dynamic>.from(row as Map))
             .toList();
         _selectedTab = result['selected_tab'] as String? ?? _selectedTab;
+        _selectedWeek = result['selected_week'] as String? ?? _selectedWeek;
+        _layoutConfirmed = result['confirm_layout'] != true;
+        _layoutRejected = false;
       });
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = _displayApiFailure(error));
@@ -293,6 +438,7 @@ class _CoachProgramImportScreenState
           .toList();
 
   Future<void> _createDraft() async {
+    if (!_layoutCanContinue || _layoutRejected) return;
     bool replace = _result?['draft_exists'] == true;
     if (replace && !await _confirmReplacement()) return;
     setState(() => _busy = true);
@@ -353,9 +499,11 @@ class _CoachProgramImportScreenState
 
   String _displayApiFailure(ApiException error) {
     final CoachCopy copy = coachCopyOf(context);
-    if (error.statusCode == 413) return copy.programImportError(error.messageCode);
+    if (error.statusCode == 413) {
+      return copy.programImportError(error.messageCode, messageParams: error.messageParams);
+    }
     if (error.messageCode?.startsWith('program_import.') == true) {
-      return copy.programImportError(error.messageCode);
+      return copy.programImportError(error.messageCode, messageParams: error.messageParams);
     }
     return displayCopyOf(context).failureMessage(apiFailureMessage(error));
   }

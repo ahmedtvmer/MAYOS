@@ -98,6 +98,12 @@ ERROR_MESSAGE_PARAM_ALLOWLISTS = {
     "program_import.too_many_rows.v1": frozenset(),
     "program_import.too_many_columns.v1": frozenset(),
     "program_import.template_columns.v1": frozenset(),
+    "program_import.freeform_disabled.v1": frozenset(),
+    "program_import.interpretation_failed.v1": frozenset(),
+    "program_import.too_many_cells.v1": frozenset({"max_cells"}),
+    "program_import.week_invalid.v1": frozenset(),
+    "program_import.unsupported_preserved_as_note.v1": frozenset(),
+    "program_import.suggestions_unavailable.v1": frozenset(),
     "program_import.no_rows.v1": frozenset(),
     "program_import.exercise_invalid.v1": frozenset(),
     "program_import.too_many_exercises.v1": frozenset(),
@@ -198,6 +204,7 @@ _POSITIVE_LIMIT_CODES = frozenset(
         "program_request.reason_too_long.v1",
         "program_request.split_too_long.v1",
         "program_request.response_too_long.v1",
+        "program_import.too_many_cells.v1",
     }
 )
 
@@ -232,8 +239,10 @@ def structured_message(
 
 def _valid_message_params(code: str, params: Mapping[str, Any]) -> bool:
     if code in _POSITIVE_LIMIT_CODES:
-        limit = params.get("limit")
-        return type(limit) is int and 0 < limit <= 10000
+        key = "max_cells" if code == "program_import.too_many_cells.v1" else "limit"
+        limit = params.get(key)
+        maximum = 10000 if key == "limit" else 100_000
+        return type(limit) is int and 0 < limit <= maximum
     return True
 
 

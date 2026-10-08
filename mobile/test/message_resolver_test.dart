@@ -11,13 +11,19 @@ String _resolve(String code, Map<String, dynamic> params) =>
       displayLanguage: 'ar',
       ).replaceAll('\u2066', '').replaceAll('\u2069', '');
 
-String _resolveProgramImport(String code, String language) =>
+String _resolveProgramImport(
+  String code,
+  String language, {
+  Map<String, dynamic> params = const <String, dynamic>{},
+  int? maxCells,
+}) =>
     resolveStructuredMessage(
       messageCode: code,
-      messageParams: const <String, dynamic>{},
-      englishFallback: const MessageCopy('en').programImportMessage(code),
+      messageParams: params,
+      englishFallback: const MessageCopy('en')
+          .programImportMessage(code, maxCells: maxCells),
       displayLanguage: language,
-    );
+    ).replaceAll('\u2066', '').replaceAll('\u2069', '');
 
 void main() {
   test('supported coach alert codes render their typed evidence in Arabic', () {
@@ -198,6 +204,24 @@ void main() {
     expect(
       _resolveProgramImport('program_import.too_many_tabs.v1', 'ar'),
       'يحتوي الملف على أوراق كثيرة. قلّل عدد الأوراق ثم أعد المحاولة.',
+    );
+    expect(
+      _resolveProgramImport(
+        'program_import.too_many_cells.v1',
+        'en',
+        params: const <String, dynamic>{'max_cells': 2000},
+        maxCells: 2000,
+      ),
+      'The selected sheet is too large to interpret. Trim it to 2,000 non-empty cells or fewer.',
+    );
+    expect(
+      _resolveProgramImport(
+        'program_import.too_many_cells.v1',
+        'ar',
+        params: const <String, dynamic>{'max_cells': 2000},
+        maxCells: 2000,
+      ),
+      'الورقة المحددة كبيرة جدًا لفهمها. قلّلها إلى 2,000 خلية غير فارغة أو أقل.',
     );
   });
 

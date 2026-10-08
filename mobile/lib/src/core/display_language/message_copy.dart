@@ -39,6 +39,30 @@ const Map<String, ({String english, String arabic})> _programImportMessages =
     english: 'Required columns are missing. Download the MAYOS template and add your data.',
     arabic: 'الأعمدة المطلوبة غير موجودة. نزّل قالب MAYOS وأضف بياناتك إليه.',
   ),
+  'program_import.freeform_disabled.v1': (
+    english: 'Free-form import is unavailable right now. Use the MAYOS template.',
+    arabic: 'الاستيراد بالتنسيق الحر غير متاح الآن. استخدم قالب MAYOS.',
+  ),
+  'program_import.interpretation_failed.v1': (
+    english: 'The sheet could not be interpreted. Try the MAYOS template or simplify the layout.',
+    arabic: 'تعذر فهم الورقة. جرّب قالب MAYOS أو بسّط تنسيق الورقة.',
+  ),
+  'program_import.too_many_cells.v1': (
+    english: 'The selected sheet is too large to interpret. Trim it to {max_cells} non-empty cells or fewer.',
+    arabic: 'الورقة المحددة كبيرة جدًا لفهمها. قلّلها إلى {max_cells} خلية غير فارغة أو أقل.',
+  ),
+  'program_import.week_invalid.v1': (
+    english: 'Choose a week detected in the sheet.',
+    arabic: 'اختر أسبوعًا اكتُشف في الورقة.',
+  ),
+  'program_import.unsupported_preserved_as_note.v1': (
+    english: 'This prescription was approximated and its original text was kept in the exercise notes.',
+    arabic: 'تم تقريب هذا الوصف مع إبقاء نصه الأصلي في ملاحظات التمرين.',
+  ),
+  'program_import.suggestions_unavailable.v1': (
+    english: 'Automated exercise suggestions are unavailable. Search the library or create a Coach exercise.',
+    arabic: 'اقتراحات التمارين غير متاحة الآن. ابحث في المكتبة أو أنشئ تمرينًا للمدرب.',
+  ),
   'program_import.no_rows.v1': (
     english: 'There are no valid rows ready to import.',
     arabic: 'لا توجد صفوف صالحة للاستيراد بعد.',
@@ -212,10 +236,19 @@ class MessageCopy {
       ? 'سُجلت هذه الحصة على إصدار أقدم من البرنامج.'
       : 'This workout was logged against an older program version.';
 
-  String? programImportMessage(String code) {
+  String? programImportMessage(String code, {int? maxCells}) {
     final message = _programImportMessages[code];
     if (message == null) return null;
-    return isArabic ? message.arabic : message.english;
+    final String text = isArabic ? message.arabic : message.english;
+    if (code == 'program_import.too_many_cells.v1') {
+      final String limit = maxCells == null
+          ? (isArabic ? 'الحد المسموح' : 'the allowed limit')
+          : (isArabic
+              ? _ltr(_groupLimit(maxCells))
+              : _groupLimit(maxCells));
+      return text.replaceAll('{max_cells}', limit);
+    }
+    return text;
   }
 
   String? specificError(String code, {int? limit}) {
@@ -243,6 +276,16 @@ class MessageCopy {
       );
     }
     return translation;
+  }
+
+  String _groupLimit(int value) {
+    final String digits = value.toString();
+    final StringBuffer grouped = StringBuffer();
+    for (int index = 0; index < digits.length; index++) {
+      if (index > 0 && (digits.length - index) % 3 == 0) grouped.write(',');
+      grouped.write(digits[index]);
+    }
+    return grouped.toString();
   }
 
   String? intakeCopy(String code) =>

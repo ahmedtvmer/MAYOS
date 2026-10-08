@@ -126,7 +126,7 @@ def _program_import_error(error: program_import_service.ProgramImportError) -> H
     return message_http_exception(
         error.status_code,
         str(error),
-        MessageMetadata(error.code),
+        MessageMetadata(error.code, error.message_params),
     )
 
 
@@ -160,22 +160,28 @@ async def _run_program_draft_action(action, *args, **kwargs):
 @limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
 async def import_assigned_player_program_sheet(
     request: Request,
+    background_tasks: BackgroundTasks,
     assignment_id: str,
     coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
     file: UploadFile = File(...),
     sheet: str | None = Form(default=None),
 ):
+    register_ai_analytics_background_tasks(request, background_tasks)
     payload = await file.read(program_import_service.MAX_PROGRAM_IMPORT_FILE_BYTES + 1)
     try:
         imported = await asyncio.to_thread(
             program_import_service.import_program_sheet,
             db,
-            coach.account_id,
-            assignment_id,
-            payload,
-            file.filename or "",
-            sheet,
+            program_import_service.ProgramImportRequest(
+                coach_account_id=coach.account_id,
+                assignment_id=assignment_id,
+                payload=payload,
+                filename=file.filename or "",
+                selected_tab=sheet,
+                client=analytics_service.client_context(request),
+                background_tasks=background_tasks,
+            ),
         )
     except program_import_service.ProgramImportError as error:
         raise _program_import_error(error) from error

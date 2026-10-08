@@ -138,6 +138,12 @@ const Map<String, Set<String>> _paramKeys = <String, Set<String>>{
   'program_import.too_many_rows.v1': <String>{},
   'program_import.too_many_columns.v1': <String>{},
   'program_import.template_columns.v1': <String>{},
+  'program_import.freeform_disabled.v1': <String>{},
+  'program_import.interpretation_failed.v1': <String>{},
+  'program_import.too_many_cells.v1': <String>{'max_cells'},
+  'program_import.week_invalid.v1': <String>{},
+  'program_import.unsupported_preserved_as_note.v1': <String>{},
+  'program_import.suggestions_unavailable.v1': <String>{},
   'program_import.no_rows.v1': <String>{},
   'program_import.exercise_invalid.v1': <String>{},
   'program_import.too_many_exercises.v1': <String>{},
@@ -240,6 +246,12 @@ final Map<String, _MessageTemplate> _templates = <String, _MessageTemplate>{
   'program_import.too_many_rows.v1': _programImport,
   'program_import.too_many_columns.v1': _programImport,
   'program_import.template_columns.v1': _programImport,
+  'program_import.freeform_disabled.v1': _programImport,
+  'program_import.interpretation_failed.v1': _programImport,
+  'program_import.too_many_cells.v1': _programImport,
+  'program_import.week_invalid.v1': _programImport,
+  'program_import.unsupported_preserved_as_note.v1': _programImport,
+  'program_import.suggestions_unavailable.v1': _programImport,
   'program_import.no_rows.v1': _programImport,
   'program_import.exercise_invalid.v1': _programImport,
   'program_import.too_many_exercises.v1': _programImport,
@@ -458,5 +470,7 @@ double? _number(Object? value) {
 
 String? _programImport(Map<String, dynamic> params, MessageCopy copy) {
   final Object? code = params['_message_code'];
-  return code is String ? copy.programImportMessage(code) : null;
+  return code is String
+      ? copy.programImportMessage(code, maxCells: _count(params['max_cells']))
+      : null;
 }

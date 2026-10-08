@@ -111,6 +111,26 @@ def test_untrusted_or_incomplete_message_params_are_rejected():
     assert unexpected == invalid
 
 
+def test_program_import_cell_limit_message_requires_a_bounded_limit():
+    valid = messages.structured_message(
+        "program_import.too_many_cells.v1",
+        {"max_cells": 2000},
+        "Trim the sheet.",
+    )
+    malformed = messages.structured_message(
+        "program_import.too_many_cells.v1",
+        {"max_cells": True},
+        "Trim the sheet.",
+    )
+
+    assert valid == {
+        "message_code": "program_import.too_many_cells.v1",
+        "message_params": {"max_cells": 2000},
+        "message_fallback": "Trim the sheet.",
+    }
+    assert malformed["message_code"] is None
+
+
 def test_intake_message_codes_have_resolver_and_arabic_copy_entries():
     repository_root = Path(messages.__file__).resolve().parents[1]
     resolver_source = (

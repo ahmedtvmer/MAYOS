@@ -479,6 +479,114 @@ void main() {
     expect(fake.programImportRequests, 2);
   });
 
+  for (final bool arabic in <bool>[false, true]) {
+    testWidgets(
+        'spreadsheet weeks switch locally after layout confirmation in ${arabic ? 'Arabic' : 'English'}',
+        (tester) async {
+      final FakeMayosApi fake = _coachFake();
+      fake.displayLanguage = arabic ? 'ar' : 'en';
+      final Map<String, dynamic> weekOne = Map<String, dynamic>.from(
+        (fake.programImportResult['rows'] as List<Map<String, dynamic>>).single,
+      )..['week'] = 'Week 1';
+      final Map<String, dynamic> weekTwo = Map<String, dynamic>.from(weekOne)
+        ..['source_row'] = 3
+        ..['week'] = 'Week 2'
+        ..['exercise_name'] = 'Squat'
+        ..['exercise_id'] = 'squat'
+        ..['day_name'] = 'Pull';
+      fake.programImportResult['rows'] = <Map<String, dynamic>>[
+        weekOne,
+        weekTwo,
+      ];
+      fake.programImportResult.addAll(<String, dynamic>{
+        'freeform_available': false,
+        'detected_weeks': <String>['Week 1', 'Week 2'],
+        'selected_week': 'Week 1',
+        'weeks_not_imported': <String>['Week 2'],
+        'confirm_layout': true,
+        'layout_days': <Map<String, dynamic>>[
+          <String, dynamic>{'day': 1, 'name': 'Push'},
+          <String, dynamic>{'day': 2, 'name': 'Pull'},
+        ],
+      });
+      await _pumpApp(tester, fake);
+      await _pumpUntilFound(
+          tester, find.text(arabic ? 'علاقات التدريب النشطة' : 'Active assignments'));
+      await tester.tap(find.text('bob'));
+      await _openProgramSegment(tester,
+          label: arabic ? 'البرنامج التدريبي' : 'Program');
+      await tester.tap(find.byKey(const Key('program_import_action')));
+      await _pumpUntilFound(
+          tester, find.byKey(const Key('program_import_pick_file')));
+      await tester.tap(find.byKey(const Key('program_import_pick_file')));
+      await _pumpUntilFound(
+          tester, find.byKey(const Key('program_import_layout_confirmation')));
+
+      expect(find.byKey(const Key('program_import_row_2')), findsNothing);
+      expect(find.textContaining(arabic ? 'الأيام المكتشفة' : 'Days found'), findsOneWidget);
+      expect(find.textContaining(arabic ? 'توزيع الصفوف' : 'Week 1: rows 2'), findsOneWidget);
+      expect(find.text(arabic ? 'تأكيد ومتابعة' : 'Confirm and continue'), findsOneWidget);
+      expect(find.text(arabic
+          ? 'الاستيراد بالتنسيق الحر غير متاح الآن. استخدم قالب MAYOS.'
+          : 'Free-form import is unavailable right now. Use the MAYOS template.'), findsNothing);
+      await tester.tap(find.byKey(const Key('program_import_layout_confirm')));
+      await _pumpUntilFound(tester, find.byKey(const Key('program_import_week_picker')));
+      expect(find.text('Week 1'), findsWidgets);
+      expect(find.textContaining('Week 2'), findsWidgets);
+      expect(find.byKey(const Key('program_import_row_2')), findsOneWidget);
+      expect(find.byKey(const Key('program_import_row_3')), findsNothing);
+
+      final Finder weekPicker = find.byKey(const Key('program_import_week_picker'));
+      await tester.ensureVisible(weekPicker);
+      await tester.tap(weekPicker);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Week 2').last);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('program_import_row_2')), findsNothing);
+      expect(find.byKey(const Key('program_import_row_3')), findsOneWidget);
+      expect(find.textContaining('Week 1'), findsWidgets);
+
+      final Finder createDraft =
+          find.byKey(const Key('program_import_create_draft'));
+      await tester.ensureVisible(createDraft);
+      await tester.tap(createDraft);
+      await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_day')));
+      final List<dynamic> createdRows =
+          fake.programImportDraftRequests.single['rows'] as List<dynamic>;
+      expect(createdRows, hasLength(1));
+      expect((createdRows.single as Map<String, dynamic>)['exercise_name'], 'Squat');
+    });
+  }
+
+  for (final bool arabic in <bool>[false, true]) {
+    testWidgets('uncertain layout can be rejected in ${arabic ? 'Arabic' : 'English'}',
+        (tester) async {
+      final FakeMayosApi fake = _coachFake()..displayLanguage = arabic ? 'ar' : 'en';
+      fake.programImportResult['confirm_layout'] = true;
+      fake.programImportResult['layout_days'] = <Map<String, dynamic>>[
+        <String, dynamic>{'day': 1, 'name': 'Push'},
+      ];
+      await _pumpApp(tester, fake);
+      await _pumpUntilFound(
+          tester, find.text(arabic ? 'علاقات التدريب النشطة' : 'Active assignments'));
+      await tester.tap(find.text('bob'));
+      await _openProgramSegment(tester,
+          label: arabic ? 'البرنامج التدريبي' : 'Program');
+      await tester.tap(find.byKey(const Key('program_import_action')));
+      await _pumpUntilFound(tester, find.byKey(const Key('program_import_pick_file')));
+      await tester.tap(find.byKey(const Key('program_import_pick_file')));
+      await _pumpUntilFound(tester, find.byKey(const Key('program_import_layout_not_right')));
+      await tester.tap(find.byKey(const Key('program_import_layout_not_right')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(arabic
+          ? 'ألغِ هذا الاستيراد وعدّل الورقة أو اختر ورقة عمل أخرى.'
+          : 'Import cancelled. Adjust the sheet or choose another tab before trying again.'), findsOneWidget);
+      expect(find.byKey(const Key('program_import_create_draft')), findsNothing);
+    });
+  }
+
   testWidgets('spreadsheet row errors use Arabic display copy', (tester) async {
     final FakeMayosApi fake = _coachFake()..displayLanguage = 'ar';
     final Map<String, dynamic> original =

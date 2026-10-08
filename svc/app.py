@@ -273,6 +273,11 @@ async def lifespan(app: FastAPI):
     gate = log_enable_gate_at_startup()
     if gate.enabled:
         logger.info("Coach AI enabled: %s", gate.reason)
+    from service.program_import_ai import log_enable_gate_at_startup as log_program_import_gate
+
+    program_import_gate = log_program_import_gate()
+    if program_import_gate.enabled:
+        logger.info("Free-form Program import enabled: %s", program_import_gate.reason)
     from service.checkpoint_review_ai import log_enable_gate_at_startup as log_checkpoint_review_gate
 
     checkpoint_gate = log_checkpoint_review_gate()

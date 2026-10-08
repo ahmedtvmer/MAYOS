@@ -240,6 +240,7 @@ class CoachCopy {
       ? 'تُقرأ الورقة لإنشاء مسودة غير منشورة. لن تُرسل بيانات سجل اللاعب التدريبي مع الملف.'
       : 'The sheet is read to create an unpublished draft. The player’s Training ledger is not sent with the file.';
   String get chooseSheet => isArabic ? 'اختر ورقة العمل' : 'Choose a sheet';
+  String get chooseWeek => isArabic ? 'اختر الأسبوع' : 'Choose a week';
   String get reviewImport => isArabic ? 'مراجعة الاستيراد' : 'Review import';
   String importRowsSummary(int total, int valid) => isArabic
       ? 'الصفوف: ${_ltr('$total')} · الصالحة: ${_ltr('$valid')}'
@@ -256,9 +257,46 @@ class CoachCopy {
       isArabic ? 'إنشاء كتمرين من إنشاء المدرب' : 'Create as your exercise';
   String get unresolvedExercise =>
       isArabic ? 'اختر تمرينًا لهذه التسمية' : 'Choose a match for this exercise';
-  String get importedWeeksNote => isArabic
-      ? 'سيتم استيراد أسبوع واحد فقط. الأسابيع الأخرى لن تُستورد.'
-      : 'Only one week will be imported. The other weeks were not imported.';
+  String weeksNotImported(List<String> weeks, String? selectedWeek) => isArabic
+      ? 'سيتم استيراد ${_ltr(selectedWeek ?? '')} فقط. لم تُستورد هذه الأسابيع: ${_ltr(weeks.join(', '))}.'
+      : 'Only ${selectedWeek ?? 'one week'} will be imported. These weeks were not imported: ${weeks.join(', ')}.';
+  String get importLayoutNeedsConfirmation => isArabic
+      ? 'راجع تقسيم الأيام والأسابيع قبل إنشاء المسودة.'
+      : 'Review the detected day and week layout before creating the draft.';
+  String importLayoutSummary(
+    List<String> days,
+    List<String> weeks,
+    Map<String, List<int>> rowsByWeek,
+    List<int> unassigned,
+  ) {
+    final String dayText = days.isEmpty ? (isArabic ? 'غير محددة' : 'none detected') : days.join('، ');
+    final String weekText = weeks.isEmpty ? (isArabic ? 'غير محددة' : 'none detected') : weeks.join(', ');
+    final String assignments = <String>[
+      for (final String week in weeks)
+        isArabic
+            ? '${_ltr(week)}: الصفوف ${_ltr((rowsByWeek[week] ?? <int>[]).join(', '))}'
+            : '$week: rows ${(rowsByWeek[week] ?? <int>[]).join(', ')}',
+      if (unassigned.isNotEmpty)
+        isArabic
+            ? 'غير محدد: الصفوف ${_ltr(unassigned.join(', '))}'
+            : 'Unassigned: rows ${unassigned.join(', ')}',
+    ].join(' · ');
+    return isArabic
+        ? 'الأيام المكتشفة: $dayText. الأسابيع المكتشفة: ${_ltr(weekText)}. توزيع الصفوف: ${assignments.isEmpty ? 'لا توجد صفوف' : assignments}.'
+        : 'Days found: $dayText. Weeks found: $weekText. Row assignments: ${assignments.isEmpty ? 'no rows' : assignments}.';
+  }
+  String get confirmLayoutAndContinue =>
+      isArabic ? 'تأكيد ومتابعة' : 'Confirm and continue';
+  String get layoutNotRight => isArabic ? 'التنسيق غير صحيح' : 'Not right';
+  String get layoutNotRightGuidance => isArabic
+      ? 'ألغِ هذا الاستيراد وعدّل الورقة أو اختر ورقة عمل أخرى.'
+      : 'Import cancelled. Adjust the sheet or choose another tab before trying again.';
+  String get chooseAnotherSheet =>
+      isArabic ? 'اختر ورقة عمل أخرى' : 'Choose another sheet';
+  String get readAnotherSheet =>
+      isArabic ? 'قراءة الورقة الأخرى' : 'Read another sheet';
+  String get importLayoutConfirmTitle =>
+      isArabic ? 'تأكيد تنسيق البرنامج' : 'Confirm the program layout';
   String get importNoValidRows => isArabic
       ? 'لا توجد صفوف صالحة للاستيراد بعد.'
       : 'There are no valid rows ready to import.';
@@ -293,15 +331,18 @@ class CoachCopy {
   String get importCreateFailure => isArabic
       ? 'تعذر إنشاء مسودة البرنامج من هذا الاستيراد.'
       : 'Could not create a Program draft from this import.';
-  String programImportError(String? code) {
+  String programImportError(String? code, {Map<String, dynamic>? messageParams}) {
     if (code == 'assignment.program_draft_exists.v1') return importReplacePrompt;
     if (code == null) return importCreateFailure;
     final String? englishFallback =
-        const MessageCopy('en').programImportMessage(code);
+        const MessageCopy('en').programImportMessage(
+          code,
+          maxCells: messageParams?['max_cells'] as int?,
+        );
     if (englishFallback == null) return importCreateFailure;
     return resolveStructuredMessage(
       messageCode: code,
-      messageParams: const <String, dynamic>{},
+      messageParams: messageParams ?? const <String, dynamic>{},
       englishFallback: englishFallback,
       displayLanguage: languageCode,
     );

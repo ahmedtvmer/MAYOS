@@ -229,6 +229,7 @@ AI_USE_CASES = frozenset(
         "program_generate",
         "profile_rebuild",
         "coach_generate_draft",
+        "coach_program_import",
         "coach_program_request",
         "coach_assistant",
         "checkpoint_review",
