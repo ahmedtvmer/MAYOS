@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mayos_mobile/src/core/display_language/message_copy.dart';
 import 'package:mayos_mobile/src/core/display_language/message_resolver.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 
@@ -8,7 +9,15 @@ String _resolve(String code, Map<String, dynamic> params) =>
       messageParams: params,
       englishFallback: 'Safe English fallback.',
       displayLanguage: 'ar',
-    ).replaceAll('\u2066', '').replaceAll('\u2069', '');
+      ).replaceAll('\u2066', '').replaceAll('\u2069', '');
+
+String _resolveProgramImport(String code, String language) =>
+    resolveStructuredMessage(
+      messageCode: code,
+      messageParams: const <String, dynamic>{},
+      englishFallback: const MessageCopy('en').programImportMessage(code),
+      displayLanguage: language,
+    );
 
 void main() {
   test('supported coach alert codes render their typed evidence in Arabic', () {
@@ -174,6 +183,21 @@ void main() {
         displayLanguage: 'ar',
       ),
       contains('حان موعد المتابعة'),
+    );
+  });
+
+  test('Program import messages resolve from the shared English and Arabic copy', () {
+    expect(
+      _resolveProgramImport('program_import.invalid_reps.v1', 'en'),
+      'Enter repetitions from 4 to 30.',
+    );
+    expect(
+      _resolveProgramImport('program_import.invalid_reps.v1', 'ar'),
+      'أدخل تكرارات من 4 إلى 30.',
+    );
+    expect(
+      _resolveProgramImport('program_import.too_many_tabs.v1', 'ar'),
+      'يحتوي الملف على أوراق كثيرة. قلّل عدد الأوراق ثم أعد المحاولة.',
     );
   });
 

@@ -16,7 +16,7 @@ selects an account, and no raw invite code is ever logged.
 import asyncio
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import JSONResponse, Response
 
 from service import analytics
@@ -27,6 +27,7 @@ from service import checkpoint_reviews as checkpoint_reviews_service
 from service import coach_history as coach_history_service
 from service import coach_programs as coach_programs_service
 from service import coach_program_drafts as coach_program_drafts_service
+from service import program_import as program_import_service
 from service import program_requests as program_requests_service
 from service.messages import (
     MessageMetadata,
@@ -90,6 +91,7 @@ from svc.schemas import (
     PlayerProgramRequestIn,
     PlayerProgramRequestListOut,
     ProgramGenerateIn,
+    ProgramImportCreateIn,
     ProgramRequestDeclineIn,
     ProgramRequestOut,
 )
@@ -120,6 +122,14 @@ def _no_active_assignment() -> HTTPException:
     )
 
 
+def _program_import_error(error: program_import_service.ProgramImportError) -> HTTPException:
+    return message_http_exception(
+        error.status_code,
+        str(error),
+        MessageMetadata(error.code),
+    )
+
+
 def _assignment_out(assignment: dict[str, Any]) -> AssignmentOut:
     return AssignmentOut(
         assignment_id=assignment["assignment_id"],
@@ -144,6 +154,81 @@ async def _run_program_draft_action(action, *args, **kwargs):
 # --------------------------------------------------------------------------
 # Coach side
 # --------------------------------------------------------------------------
+
+
+@coach_router.post("/{assignment_id}/program-import")
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def import_assigned_player_program_sheet(
+    request: Request,
+    assignment_id: str,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+    file: UploadFile = File(...),
+    sheet: str | None = Form(default=None),
+):
+    payload = await file.read(program_import_service.MAX_PROGRAM_IMPORT_FILE_BYTES + 1)
+    try:
+        imported = await asyncio.to_thread(
+            program_import_service.import_program_sheet,
+            db,
+            coach.account_id,
+            assignment_id,
+            payload,
+            file.filename or "",
+            sheet,
+        )
+    except program_import_service.ProgramImportError as error:
+        raise _program_import_error(error) from error
+    if imported is None:
+        raise _no_active_assignment()
+    return imported
+
+
+@coach_router.post("/{assignment_id}/program-draft/import")
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def create_imported_program_draft(
+    request: Request,
+    assignment_id: str,
+    body: ProgramImportCreateIn,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+    replace: bool = False,
+):
+    try:
+        created = await asyncio.to_thread(
+            program_import_service.create_imported_program_draft,
+            db,
+            coach.account_id,
+            assignment_id,
+            body.program_name,
+            [row.model_dump() for row in body.rows],
+            replace=replace,
+        )
+    except program_import_service.ProgramImportError as error:
+        raise _program_import_error(error) from error
+    if created is None:
+        raise _no_active_assignment()
+    return created
+
+
+@coach_roster_router.get("/program-import/template.{file_format}")
+async def download_program_import_template(
+    file_format: str,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+):
+    if file_format == "csv":
+        content = program_import_service.template_csv_bytes()
+        media_type = "text/csv; charset=utf-8"
+    elif file_format == "xlsx":
+        content = program_import_service.template_xlsx_bytes()
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Template format not found.")
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="mayos-program-template.{file_format}"'},
+    )
 
 
 @coach_router.get("/{assignment_id}/program", response_model=CoachActiveProgramOut)

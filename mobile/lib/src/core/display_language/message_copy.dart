@@ -1,6 +1,142 @@
 import 'arabic_count.dart';
 import 'intake_copy.dart';
 
+const Map<String, ({String english, String arabic})> _programImportMessages =
+    <String, ({String english, String arabic})>{
+  'program_import.file_too_large.v1': (
+    english: 'This file is too large. Trim the sheet or remove extra rows, then try again.',
+    arabic: 'الملف كبير جدًا. قلّل حجم الورقة أو احذف الصفوف الزائدة ثم أعد المحاولة.',
+  ),
+  'program_import.file_type.v1': (
+    english: 'The file could not be read. Choose a valid XLSX or CSV file.',
+    arabic: 'تعذر قراءة الملف. اختر ملف XLSX أو CSV صالحًا.',
+  ),
+  'program_import.file_invalid.v1': (
+    english: 'The file could not be read. Choose a valid XLSX or CSV file.',
+    arabic: 'تعذر قراءة الملف. اختر ملف XLSX أو CSV صالحًا.',
+  ),
+  'program_import.too_many_tabs.v1': (
+    english: 'The workbook has too many sheets. Remove sheets and try again.',
+    arabic: 'يحتوي الملف على أوراق كثيرة. قلّل عدد الأوراق ثم أعد المحاولة.',
+  ),
+  'program_import.sheet_empty.v1': (
+    english: 'The file could not be read. Choose a valid XLSX or CSV file.',
+    arabic: 'تعذر قراءة الملف. اختر ملف XLSX أو CSV صالحًا.',
+  ),
+  'program_import.tab_invalid.v1': (
+    english: 'Choose a non-empty sheet from the workbook.',
+    arabic: 'اختر ورقة عمل غير فارغة من الملف.',
+  ),
+  'program_import.too_many_rows.v1': (
+    english: 'The sheet has more than 500 rows. Remove the extra rows and try again.',
+    arabic: 'تحتوي الورقة على أكثر من 500 صف. احذف الصفوف الزائدة ثم أعد المحاولة.',
+  ),
+  'program_import.too_many_columns.v1': (
+    english: 'The sheet has too many columns. Remove extra columns and try again.',
+    arabic: 'تحتوي الورقة على أعمدة كثيرة. احذف الأعمدة الزائدة ثم أعد المحاولة.',
+  ),
+  'program_import.template_columns.v1': (
+    english: 'Required columns are missing. Download the MAYOS template and add your data.',
+    arabic: 'الأعمدة المطلوبة غير موجودة. نزّل قالب MAYOS وأضف بياناتك إليه.',
+  ),
+  'program_import.no_rows.v1': (
+    english: 'There are no valid rows ready to import.',
+    arabic: 'لا توجد صفوف صالحة للاستيراد بعد.',
+  ),
+  'program_import.exercise_invalid.v1': (
+    english: 'Choose an Exercise library item or your own Coach exercise.',
+    arabic: 'اختر تمرينًا من المكتبة أو تمرينًا أنشأته أنت.',
+  ),
+  'program_import.too_many_exercises.v1': (
+    english: 'A training day can contain at most 14 exercises.',
+    arabic: 'لا يمكن أن يزيد عدد التمارين في اليوم عن 14.',
+  ),
+  'program_import.invalid_day.v1': (
+    english: 'Choose a training day from 1 to 5.',
+    arabic: 'اختر يومًا تدريبيًا من 1 إلى 5.',
+  ),
+  'program_import.invalid_order.v1': (
+    english: 'Enter an exercise order from 1 to 500.',
+    arabic: 'أدخل ترتيبًا للتمرين من 1 إلى 500.',
+  ),
+  'program_import.invalid_sets.v1': (
+    english: 'Working sets must be from 1 to 4.',
+    arabic: 'يجب أن تكون مجموعات العمل من 1 إلى 4.',
+  ),
+  'program_import.invalid_reps.v1': (
+    english: 'Enter repetitions from 4 to 30.',
+    arabic: 'أدخل تكرارات من 4 إلى 30.',
+  ),
+  'program_import.reps_required.v1': (
+    english: 'Enter a repetition target or range.',
+    arabic: 'أدخل هدفًا أو نطاقًا للتكرارات.',
+  ),
+  'program_import.reps_as_date.v1': (
+    english: 'This looks like a date. Format the reps column as text and type the value again.',
+    arabic: 'تبدو هذه القيمة تاريخًا. نسّق عمود التكرارات كنص ثم أعد كتابة القيمة.',
+  ),
+  'program_import.reps_approximated.v1': (
+    english: 'The repetition prescription was approximated; check the note.',
+    arabic: 'تم تقريب وصف التكرارات؛ راجع الملاحظة.',
+  ),
+  'program_import.invalid_effort.v1': (
+    english: 'Enter a numeric RIR or RPE value.',
+    arabic: 'أدخل قيمة رقمية لـ RIR أو RPE.',
+  ),
+  'program_import.rpe_converted.v1': (
+    english: 'RPE was converted to RIR; check the note.',
+    arabic: 'تم تحويل RPE إلى RIR؛ راجع الملاحظة.',
+  ),
+  'program_import.effort_approximated.v1': (
+    english: 'Effort was approximated using the midpoint, then clamped to the supported range.',
+    arabic: 'تم تقريب الجهد باستخدام المتوسط ثم حصره في النطاق المدعوم.',
+  ),
+  'program_import.conflicting_effort.v1': (
+    english: 'The RIR and RPE values do not agree.',
+    arabic: 'قيمة RIR لا تتفق مع قيمة RPE.',
+  ),
+  'program_import.invalid_rest.v1': (
+    english: 'Rest must be from 0 to 3600 seconds.',
+    arabic: 'يجب أن تكون الراحة من 0 إلى 3600 ثانية.',
+  ),
+  'program_import.exercise_required.v1': (
+    english: 'Enter an exercise name.',
+    arabic: 'أدخل اسم التمرين.',
+  ),
+  'program_import.exercise_name_too_long.v1': (
+    english: 'Exercise names must be 120 characters or fewer.',
+    arabic: 'يجب ألا يتجاوز اسم التمرين 120 حرفًا.',
+  ),
+  'program_import.day_name_too_long.v1': (
+    english: 'Day names must be 100 characters or fewer.',
+    arabic: 'يجب ألا يتجاوز اسم اليوم 100 حرف.',
+  ),
+  'program_import.tempo_too_long.v1': (
+    english: 'Tempo must be 50 characters or fewer.',
+    arabic: 'يجب ألا يتجاوز الإيقاع 50 حرفًا.',
+  ),
+  'program_import.notes_too_long.v1': (
+    english: 'Notes must be 2000 characters or fewer.',
+    arabic: 'يجب ألا تتجاوز الملاحظات 2000 حرف.',
+  ),
+  'program_import.conflicting_day_name.v1': (
+    english: 'Use the same day name for each row with this day number.',
+    arabic: 'استخدم اسم اليوم نفسه لكل الصفوف التي تحمل رقم اليوم هذا.',
+  ),
+  'program_import.load_preserved_as_note.v1': (
+    english: 'Load is not supported yet; it was kept in the exercise notes.',
+    arabic: 'وصف الحمل غير مدعوم بعد؛ أُبقي في ملاحظات التمرين.',
+  ),
+  'program_import.exercise_unresolved.v1': (
+    english: 'No exact exercise match was found. Choose a suggestion or create your exercise.',
+    arabic: 'لم يُعثر على تمرين مطابق تمامًا. اختر اقتراحًا أو أنشئ تمرينك.',
+  ),
+  'program_import.exercise_ambiguous.v1': (
+    english: 'Several exercises match. Choose the correct suggestion.',
+    arabic: 'تطابق عدة تمارين. اختر الاقتراح الصحيح.',
+  ),
+};
+
 class MessageCopy {
   const MessageCopy(this.languageCode);
 
@@ -75,6 +211,12 @@ class MessageCopy {
   String get programVersionMismatch => isArabic
       ? 'سُجلت هذه الحصة على إصدار أقدم من البرنامج.'
       : 'This workout was logged against an older program version.';
+
+  String? programImportMessage(String code) {
+    final message = _programImportMessages[code];
+    if (message == null) return null;
+    return isArabic ? message.arabic : message.english;
+  }
 
   String? specificError(String code, {int? limit}) {
     if (!isArabic) return null;

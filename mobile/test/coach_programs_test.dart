@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +9,7 @@ import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/features/coach/program_import_files.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_api_adapter.dart';
@@ -47,6 +51,17 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
           );
           client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
           return client;
+        }),
+        programSpreadsheetPickerProvider.overrideWithValue(() async =>
+            PlatformFile(
+              name: 'plan.csv',
+              size: 4,
+              bytes: Uint8List.fromList(<int>[100, 97, 121, 10]),
+            )),
+        programTemplateSaverProvider
+            .overrideWithValue((Uint8List bytes, String name) async {
+          fake.savedProgramTemplateNames.add(name);
+          return name;
         }),
       ],
       child: const MayosApp(),
@@ -417,6 +432,254 @@ void main() {
     await _pumpUntilFound(tester, find.text('No active program.'));
 
     expect(find.text('No active program.'), findsOneWidget);
+  });
+
+  testWidgets('spreadsheet import reviews rows and opens the Program editor',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await tester.tap(find.byKey(const Key('program_import_action')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_pick_file')));
+    await tester.tap(find.byKey(const Key('program_import_pick_file')));
+    await _pumpUntilFound(tester, find.text('Rows: 1 · valid: 1'));
+
+    expect(find.textContaining('Push · 3 sets · 6-8 reps · RIR 2.0'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('program_import_create_draft')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_day')));
+
+    expect(fake.programImportRequests, 1);
+    expect(fake.programImportDraftRequests, hasLength(1));
+    expect(fake.programDraft!['program_name'], 'plan');
+  });
+
+  testWidgets('spreadsheet import asks for a workbook tab before review',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..programImportRequiresTabChoice = true;
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await tester.tap(find.byKey(const Key('program_import_action')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_pick_file')));
+    await tester.tap(find.byKey(const Key('program_import_pick_file')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_tab_picker')));
+
+    await tester.tap(find.byKey(const Key('program_import_tab_picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Notes').last);
+    await tester.pumpAndSettle();
+    final Finder readSheet = find.byKey(const Key('program_import_read_sheet'));
+    await tester.ensureVisible(readSheet);
+    await tester.tap(readSheet);
+    await _pumpUntilFound(tester, find.text('Rows: 1 · valid: 1'));
+    expect(fake.programImportRequests, 2);
+  });
+
+  testWidgets('spreadsheet row errors use Arabic display copy', (tester) async {
+    final FakeMayosApi fake = _coachFake()..displayLanguage = 'ar';
+    final Map<String, dynamic> original =
+        (fake.programImportResult['rows'] as List<Map<String, dynamic>>).single;
+    fake.programImportResult['rows'] = <Map<String, dynamic>>[
+      <String, dynamic>{
+        ...original,
+        'valid': false,
+        'exercise_id': null,
+        'errors': <Map<String, dynamic>>[
+          <String, dynamic>{'source_row': 2, 'column': 'reps', 'code': 'program_import.invalid_reps.v1'},
+        ],
+      },
+    ];
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('علاقات التدريب النشطة'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester, label: 'البرنامج التدريبي');
+    await tester.tap(find.byKey(const Key('program_import_action')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_pick_file')));
+    await tester.tap(find.byKey(const Key('program_import_pick_file')));
+    await _pumpUntilFound(tester, find.textContaining('الصف 2'));
+
+    expect(find.textContaining('التكرارات'), findsOneWidget);
+    expect(find.text('لا توجد صفوف صالحة للاستيراد بعد.'), findsOneWidget);
+  });
+
+  testWidgets('import result can create an unresolved Coach exercise',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    final Map<String, dynamic> row = Map<String, dynamic>.from(
+      (fake.programImportResult['rows'] as List<Map<String, dynamic>>).single,
+    )
+      ..['exercise_name'] = 'Floor press'
+      ..['exercise_id'] = null
+      ..['resolution'] = 'unresolved'
+      ..['suggestions'] = <dynamic>[]
+      ..['warnings'] = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'source_row': 2,
+          'column': 'exercise',
+          'code': 'program_import.exercise_unresolved.v1',
+        },
+      ];
+    fake.programImportResult['rows'] = <Map<String, dynamic>>[row];
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await tester.tap(find.byKey(const Key('program_import_action')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_pick_file')));
+    await tester.tap(find.byKey(const Key('program_import_pick_file')));
+    await _pumpUntilFound(tester,
+        find.byKey(const Key('program_import_create_exercise_2')));
+    await tester.tap(find.byKey(const Key('program_import_create_exercise_2')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_create_draft')));
+    await tester.tap(find.byKey(const Key('program_import_create_draft')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_day')));
+
+    final Map<String, dynamic> sentRow =
+        (fake.programImportDraftRequests.single['rows'] as List<dynamic>).single
+            as Map<String, dynamic>;
+    expect(sentRow['exercise_id'], startsWith('coach:'));
+    expect(sentRow.containsKey('raw_cells'), isFalse);
+  });
+
+  testWidgets('import result lets the coach choose an ambiguous suggestion',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    final Map<String, dynamic> row = Map<String, dynamic>.from(
+      (fake.programImportResult['rows'] as List<Map<String, dynamic>>).single,
+    )
+      ..['exercise_name'] = 'Smith incline'
+      ..['exercise_id'] = null
+      ..['resolution'] = 'ambiguous'
+      ..['suggestions'] = <Map<String, dynamic>>[
+        <String, dynamic>{'exercise_id': 'sq', 'name': 'Squat match'},
+        <String, dynamic>{'exercise_id': 'bp', 'name': 'Bench match'},
+      ]
+      ..['warnings'] = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'source_row': 2,
+          'column': 'exercise',
+          'code': 'program_import.exercise_ambiguous.v1',
+        },
+      ];
+    fake.programImportResult['rows'] = <Map<String, dynamic>>[row];
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await tester.tap(find.byKey(const Key('program_import_action')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_pick_file')));
+    await tester.tap(find.byKey(const Key('program_import_pick_file')));
+    final Finder match = find.byKey(const Key('program_import_match_2'));
+    await _pumpUntilFound(tester, match);
+    await tester.tap(match);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Squat match').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('program_import_create_draft')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_day')));
+
+    final Map<String, dynamic> sentRow =
+        (fake.programImportDraftRequests.single['rows'] as List<dynamic>).single
+            as Map<String, dynamic>;
+    expect(sentRow['exercise_id'], 'sq');
+  });
+
+  testWidgets('import replacement requires confirmation and creates the draft',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()..programImportDraftExists = true;
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await tester.tap(find.byKey(const Key('program_import_action')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_pick_file')));
+    await tester.tap(find.byKey(const Key('program_import_pick_file')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_create_draft')));
+    await tester.tap(find.byKey(const Key('program_import_create_draft')));
+    await _pumpUntilFound(tester, find.text('Replace the current Program draft?'));
+    expect(fake.programImportDraftRequests, isEmpty);
+    await tester.tap(find.text('Replace draft'));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_day')));
+
+    expect(fake.programImportReplaceRequests, <bool>[true]);
+  });
+
+  testWidgets('import warnings use specific row and column copy', (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    final Map<String, dynamic> row = Map<String, dynamic>.from(
+      (fake.programImportResult['rows'] as List<Map<String, dynamic>>).single,
+    )
+      ..['notes'] = 'load: 60'
+      ..['warnings'] = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'source_row': 2,
+          'column': 'load_kg',
+          'code': 'program_import.load_preserved_as_note.v1',
+        },
+      ];
+    fake.programImportResult['rows'] = <Map<String, dynamic>>[row];
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await tester.tap(find.byKey(const Key('program_import_action')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_pick_file')));
+    await tester.tap(find.byKey(const Key('program_import_pick_file')));
+    final Finder rowCard = find.byKey(const Key('program_import_row_2'));
+    await _pumpUntilFound(tester, rowCard);
+    await tester.ensureVisible(rowCard);
+
+    expect(find.textContaining('Row 2 · load:'), findsOneWidget);
+    expect(find.textContaining('Load is not supported yet; it was kept in the exercise notes.'), findsOneWidget);
+  });
+
+  testWidgets('Program template download uses the shared downloader',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    final Finder download = find.byKey(const Key('program_template_download_action'));
+    await tester.ensureVisible(download);
+    await tester.tap(download);
+    await _pumpUntilFound(tester, find.text('The Program template is ready to download.'));
+
+    expect(fake.programTemplateDownloadRequests, 1);
+    expect(fake.savedProgramTemplateNames, <String>['mayos-program-template.xlsx']);
+  });
+
+  testWidgets('Arabic import result localizes the warning and column label',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()..displayLanguage = 'ar';
+    final Map<String, dynamic> row = Map<String, dynamic>.from(
+      (fake.programImportResult['rows'] as List<Map<String, dynamic>>).single,
+    )
+      ..['warnings'] = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'source_row': 2,
+          'column': 'rpe',
+          'code': 'program_import.rpe_converted.v1',
+        },
+      ];
+    fake.programImportResult['rows'] = <Map<String, dynamic>>[row];
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('علاقات التدريب النشطة'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester, label: 'البرنامج التدريبي');
+    await tester.tap(find.byKey(const Key('program_import_action')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_pick_file')));
+    await tester.tap(find.byKey(const Key('program_import_pick_file')));
+    final Finder rowCard = find.byKey(const Key('program_import_row_2'));
+    await _pumpUntilFound(tester, rowCard);
+    await tester.ensureVisible(rowCard);
+
+    expect(find.textContaining('RPE:'), findsOneWidget);
+    expect(find.textContaining('تم تحويل RPE إلى RIR؛ راجع الملاحظة.'), findsOneWidget);
   });
 
   testWidgets('Edit copies the active program into a draft before opening it',

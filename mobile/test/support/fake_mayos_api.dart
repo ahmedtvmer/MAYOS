@@ -185,6 +185,51 @@ class FakeMayosApi {
   int? programVersion;
   String? programPublishedByCoachAccountId;
   Map<String, dynamic>? programDraft;
+  Map<String, dynamic> programImportResult = <String, dynamic>{
+    'detected_tabs': <String>['Program'],
+    'selected_tab': 'Program',
+    'requires_tab_choice': false,
+    'detected_weeks': <dynamic>[],
+    'selected_week': null,
+    'weeks_not_imported': <dynamic>[],
+    'confirm_layout': false,
+    'draft_exists': false,
+    'rows': <Map<String, dynamic>>[
+      <String, dynamic>{
+        'source_row': 2,
+        'raw_cells': <String, String>{},
+        'original_text': 'exercise: Bench Press',
+        'day': 1,
+        'day_name': 'Push',
+        'order': 1,
+        'exercise_name': 'Bench Press',
+        'exercise_id': 'bench_press',
+        'resolution': 'resolved',
+        'suggestions': <dynamic>[],
+        'sets': 3,
+        'reps_min': 6,
+        'reps_max': 8,
+        'target_rir': 2.0,
+        'rest_seconds': 120,
+        'tempo': null,
+        'notes': null,
+        'warnings': <dynamic>[],
+        'errors': <dynamic>[],
+        'valid': true,
+      },
+    ],
+    'errors': <dynamic>[],
+    'unresolved_names': <dynamic>[],
+  };
+  int programImportRequests = 0;
+  bool programImportRequiresTabChoice = false;
+  bool programImportDraftExists = false;
+  List<String> programImportDetectedTabs = <String>['Program', 'Notes'];
+  final List<Map<String, dynamic>> programImportDraftRequests =
+      <Map<String, dynamic>>[];
+  final List<bool> programImportReplaceRequests = <bool>[];
+  int programTemplateDownloadRequests = 0;
+  final List<String> savedProgramTemplateNames = <String>[];
   int programDraftCopyRequests = 0;
   int programApproveRequests = 0;
   int? lastProgramApproveExpectedVersion;
@@ -465,6 +510,18 @@ class FakeMayosApi {
     }
     if (path == '/coach/exercises') {
       return _coachExercises(request);
+    }
+    if (path.startsWith('/coach/program-import/template.')) {
+      if (!_authorized(request)) {
+        return const FakeResponse(
+            401, <String, dynamic>{'detail': 'Token has been revoked.'});
+      }
+      programTemplateDownloadRequests++;
+      return const FakeResponse(200, <int>[80, 75, 3, 4]);
+    }
+    if (path.startsWith('/coach/assignments/') &&
+        path.endsWith('/program-import')) {
+      return _coachProgramImport(request);
     }
     if (path.startsWith('/workouts/exercises/')) {
       return _exerciseDetail(request);
@@ -1919,6 +1976,56 @@ class FakeMayosApi {
       return const FakeResponse(
           403, <String, dynamic>{'detail': 'No active assignment.'});
     }
+    if (request.path.endsWith('/program-draft/import')) {
+      final bool replace = request.query['replace'] == true ||
+          request.query['replace'] == 'true';
+      if (programDraft != null && !replace) {
+        return const FakeResponse(409, <String, dynamic>{
+          'detail': 'A Program draft already exists for this assignment.'
+        });
+      }
+      programImportDraftRequests.add(request.body);
+      programImportReplaceRequests.add(replace);
+      final List<dynamic> importedRows =
+          request.body['rows'] as List<dynamic>? ?? <dynamic>[];
+      programDraft = <String, dynamic>{
+        'program_name': request.body['program_name'] ?? 'Imported program',
+        'split_type': 'custom',
+        'weekly_frequency': 1,
+        'instructions': '',
+        'days': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'day_name': 'Push',
+            'day_order': 1,
+            'warmup_exercises': <dynamic>[],
+            'exercises': importedRows
+                .map((dynamic raw) {
+                  final Map<String, dynamic> row =
+                      Map<String, dynamic>.from(raw as Map);
+                  return <String, dynamic>{
+                    'exercise_id': row['exercise_id'],
+                    'exercise_name': row['exercise_name'],
+                    'warmup_sets': 0,
+                    'target_sets': row['sets'],
+                    'target_reps_min': row['reps_min'],
+                    'target_reps_max': row['reps_max'],
+                    'target_rir': row['target_rir'],
+                    'rest_seconds': row['rest_seconds'],
+                    'notes': row['notes'],
+                  };
+                })
+                .toList(growable: false),
+            'cardio': null,
+          },
+        ],
+      };
+      return FakeResponse(200, <String, dynamic>{
+        'assignment_id': assignmentId,
+        'draft': programDraft,
+        'created_at': '2026-10-04T10:00:00Z',
+        'updated_at': '2026-10-04T10:00:00Z',
+      });
+    }
     if (request.path.endsWith('/program-draft/generate')) {
       programDraftGenerationRequests++;
       final bool replace = request.query['replace'] == true ||
@@ -2060,6 +2167,36 @@ class FakeMayosApi {
       'draft': programDraft,
       'created_at': '2026-10-04T10:00:00Z',
       'updated_at': '2026-10-04T10:00:00Z',
+    });
+  }
+
+  FakeResponse _coachProgramImport(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    if (coachHistoryDenied) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'No active assignment.'});
+    }
+    programImportRequests++;
+    if (programImportRequiresTabChoice && programImportRequests == 1) {
+      return FakeResponse(200, <String, dynamic>{
+        ...programImportResult,
+        'detected_tabs': programImportDetectedTabs,
+        'selected_tab': null,
+        'requires_tab_choice': true,
+        'draft_exists': programImportDraftExists,
+        'rows': <dynamic>[],
+      });
+    }
+    return FakeResponse(200, <String, dynamic>{
+      ...programImportResult,
+      'draft_exists': programImportDraftExists || programImportResult['draft_exists'] == true,
     });
   }
 

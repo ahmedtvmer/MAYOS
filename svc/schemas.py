@@ -6,6 +6,9 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from service.analytics import PROPERTY_TYPES, WORKOUT_SYNC_FAILURE_REASONS
 from service.intake import IntakeValidationError, validate_answer
+from service.program_import_constants import (
+    MAX_PROGRAM_IMPORT_ROWS,
+)
 
 from agent.ProgramState import (
     GeneratedProgramSchema,
@@ -100,6 +103,8 @@ __all__ = [
     "CoachProgramApproveIn",
     "CoachProgramDraftIn",
     "CoachProgramDraftOut",
+    "ProgramImportCreateIn",
+    "ProgramImportDraftRowIn",
     "CoachExerciseCreateIn",
     "CoachExerciseOut",
     "ProgramDraftDayIn",
@@ -1068,6 +1073,35 @@ class CoachProgramDraftOut(BaseModel):
     draft: CoachProgramDraftIn
     created_at: str
     updated_at: str
+
+
+class ProgramImportDraftRowIn(BaseModel):
+    """One Coach-confirmed canonical row sent back without its file or raw cells."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_row: int = Field(ge=1)
+    day: Any
+    day_name: Any = None
+    order: Any
+    exercise_name: str
+    exercise_id: str = Field(min_length=1, max_length=200)
+    sets: Any
+    reps_min: Any
+    reps_max: Any
+    target_rir: Any
+    rest_seconds: Any
+    tempo: Any = None
+    notes: Any = None
+
+
+class ProgramImportCreateIn(BaseModel):
+    """Coach-confirmed import rows; the uploaded file is not retained between steps."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    program_name: str | None = Field(default=None, max_length=120)
+    rows: list[ProgramImportDraftRowIn] = Field(min_length=1, max_length=MAX_PROGRAM_IMPORT_ROWS)
 
 
 class CoachActiveProgramDetailsOut(BaseModel):

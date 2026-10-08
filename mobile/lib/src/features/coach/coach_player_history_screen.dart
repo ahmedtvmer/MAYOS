@@ -28,6 +28,8 @@ import '../../router.dart';
 import 'coach_assistant_screen.dart';
 import 'coach_check_in_sheet.dart';
 import 'coach_program_draft_screen.dart';
+import 'program_import_files.dart';
+import 'program_import_screen.dart';
 import 'coach_request_sheet.dart';
 import 'coach_shared.dart';
 import 'program_publish_confirmation.dart';
@@ -234,6 +236,7 @@ class _CoachPlayerHistoryScreenState
   FailureMessage? _generateError;
   bool _copyingActiveProgram = false;
   bool _approvingActiveProgram = false;
+  bool _downloadingProgramTemplate = false;
   FailureMessage? _programActionError;
   List<ProgramRequest> _programRequests = const <ProgramRequest>[];
   FailureMessage? _requestError;
@@ -1012,8 +1015,50 @@ class _CoachPlayerHistoryScreenState
         loading: _generatingDraft,
         onPressed: _generatingDraft ? null : _openGenerateDraftDialog,
       ),
+      const SizedBox(height: MayosSpacing.xs),
+      MayosButton(
+        key: const Key('program_import_action'),
+        label: copy.importFromSpreadsheet,
+        icon: Icons.upload_file,
+        variant: MayosButtonVariant.secondary,
+        onPressed: _openProgramImport,
+      ),
+      const SizedBox(height: MayosSpacing.xs),
+      MayosButton(
+        key: const Key('program_template_download_action'),
+        label: copy.downloadProgramTemplate,
+        icon: Icons.download_outlined,
+        variant: MayosButtonVariant.secondary,
+        loading: _downloadingProgramTemplate,
+        onPressed: _downloadingProgramTemplate ? null : _downloadProgramTemplate,
+      ),
     ];
   }
+
+  Future<void> _openProgramImport() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => CoachProgramImportScreen(
+          assignmentId: _entry.assignmentId,
+          playerUsername: _entry.playerUsername,
+        ),
+      ),
+    );
+    if (mounted) await _load();
+  }
+
+  Future<void> _downloadProgramTemplate() => runProgramTemplateDownload(
+        ref: ref,
+        extension: 'xlsx',
+        onBusyChanged: (bool busy) =>
+            setState(() => _downloadingProgramTemplate = busy),
+        isMounted: () => mounted,
+        onFailure: (FailureMessage message) =>
+            setState(() => _programActionError = message),
+        onDownloaded: () => ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(coachCopyOf(context).importTemplateSaved)),
+        ),
+      );
 
   Widget _activeProgramActions(BuildContext context) {
     final copy = coachCopyOf(context);

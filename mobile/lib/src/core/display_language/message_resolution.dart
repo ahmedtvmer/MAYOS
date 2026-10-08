@@ -43,7 +43,12 @@ String resolveStructuredMessage({
     return fallback;
   }
   final _MessageTemplate? template = _templates[messageCode];
-  return template?.call(messageParams, copy) ?? fallback;
+  // The shared import handler uses the registry key to select localized copy.
+  return template?.call(
+        <String, dynamic>{...messageParams, '_message_code': messageCode},
+        copy,
+      ) ??
+      fallback;
 }
 
 bool _hasExactKeys(Map<String, dynamic> params, Set<String> allowed) =>
@@ -124,6 +129,39 @@ const Map<String, Set<String>> _paramKeys = <String, Set<String>>{
   'assignment.not_found.v1': <String>{},
   'assignment.program_draft_not_found.v1': <String>{},
   'assignment.notice_not_found.v1': <String>{},
+  'program_import.file_too_large.v1': <String>{},
+  'program_import.file_type.v1': <String>{},
+  'program_import.file_invalid.v1': <String>{},
+  'program_import.too_many_tabs.v1': <String>{},
+  'program_import.sheet_empty.v1': <String>{},
+  'program_import.tab_invalid.v1': <String>{},
+  'program_import.too_many_rows.v1': <String>{},
+  'program_import.too_many_columns.v1': <String>{},
+  'program_import.template_columns.v1': <String>{},
+  'program_import.no_rows.v1': <String>{},
+  'program_import.exercise_invalid.v1': <String>{},
+  'program_import.too_many_exercises.v1': <String>{},
+  'program_import.invalid_day.v1': <String>{},
+  'program_import.invalid_order.v1': <String>{},
+  'program_import.invalid_sets.v1': <String>{},
+  'program_import.invalid_reps.v1': <String>{},
+  'program_import.reps_required.v1': <String>{},
+  'program_import.reps_as_date.v1': <String>{},
+  'program_import.reps_approximated.v1': <String>{},
+  'program_import.invalid_effort.v1': <String>{},
+  'program_import.rpe_converted.v1': <String>{},
+  'program_import.effort_approximated.v1': <String>{},
+  'program_import.conflicting_effort.v1': <String>{},
+  'program_import.invalid_rest.v1': <String>{},
+  'program_import.exercise_required.v1': <String>{},
+  'program_import.exercise_name_too_long.v1': <String>{},
+  'program_import.day_name_too_long.v1': <String>{},
+  'program_import.tempo_too_long.v1': <String>{},
+  'program_import.notes_too_long.v1': <String>{},
+  'program_import.conflicting_day_name.v1': <String>{},
+  'program_import.load_preserved_as_note.v1': <String>{},
+  'program_import.exercise_unresolved.v1': <String>{},
+  'program_import.exercise_ambiguous.v1': <String>{},
   'program.no_active.v1': <String>{},
   'program.coach_controls.v1': <String>{},
   'program.substitution.day_not_found.v1': <String>{},
@@ -193,6 +231,39 @@ final Map<String, _MessageTemplate> _templates = <String, _MessageTemplate>{
   'coach_alert.performance_regression.v1': _regression,
   'coach_alert.profile_change.v1': _profileChange,
   'coach_alert.weight_off_target_trend.v1': _weightOffTargetTrend,
+  'program_import.file_too_large.v1': _programImport,
+  'program_import.file_type.v1': _programImport,
+  'program_import.file_invalid.v1': _programImport,
+  'program_import.too_many_tabs.v1': _programImport,
+  'program_import.sheet_empty.v1': _programImport,
+  'program_import.tab_invalid.v1': _programImport,
+  'program_import.too_many_rows.v1': _programImport,
+  'program_import.too_many_columns.v1': _programImport,
+  'program_import.template_columns.v1': _programImport,
+  'program_import.no_rows.v1': _programImport,
+  'program_import.exercise_invalid.v1': _programImport,
+  'program_import.too_many_exercises.v1': _programImport,
+  'program_import.invalid_day.v1': _programImport,
+  'program_import.invalid_order.v1': _programImport,
+  'program_import.invalid_sets.v1': _programImport,
+  'program_import.invalid_reps.v1': _programImport,
+  'program_import.reps_required.v1': _programImport,
+  'program_import.reps_as_date.v1': _programImport,
+  'program_import.reps_approximated.v1': _programImport,
+  'program_import.invalid_effort.v1': _programImport,
+  'program_import.rpe_converted.v1': _programImport,
+  'program_import.effort_approximated.v1': _programImport,
+  'program_import.conflicting_effort.v1': _programImport,
+  'program_import.invalid_rest.v1': _programImport,
+  'program_import.exercise_required.v1': _programImport,
+  'program_import.exercise_name_too_long.v1': _programImport,
+  'program_import.day_name_too_long.v1': _programImport,
+  'program_import.tempo_too_long.v1': _programImport,
+  'program_import.notes_too_long.v1': _programImport,
+  'program_import.conflicting_day_name.v1': _programImport,
+  'program_import.load_preserved_as_note.v1': _programImport,
+  'program_import.exercise_unresolved.v1': _programImport,
+  'program_import.exercise_ambiguous.v1': _programImport,
   'app.update_required.v1': _appUpdateRequired,
   'http.bad_request.v1': _badRequest,
   'http.unauthorized.v1': _unauthorized,
@@ -333,6 +404,7 @@ String? _deload(Map<String, dynamic> params, MessageCopy copy) {
     'acute_readiness_floor' => copy.acuteReadinessDeload(),
     _ => copy.highExertionDeload(),
   };
+
   return copy.deloadChoice(message, rawChoice as String?);
 }
 
@@ -382,4 +454,9 @@ String? _date(Object? value) {
 double? _number(Object? value) {
   if (value is! num || !value.isFinite) return null;
   return value.toDouble();
+}
+
+String? _programImport(Map<String, dynamic> params, MessageCopy copy) {
+  final Object? code = params['_message_code'];
+  return code is String ? copy.programImportMessage(code) : null;
 }

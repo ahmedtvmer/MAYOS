@@ -1,5 +1,7 @@
 import 'arabic_count.dart';
 import 'catalog.dart' show exerciseNameOrFallback;
+import 'message_copy.dart';
+import 'message_resolution.dart';
 import '../personal_records.dart';
 import '../program_prescription.dart';
 
@@ -226,6 +228,100 @@ class CoachCopy {
 
   String get generateDraft =>
       isArabic ? 'إنشاء مسودة' : 'Generate draft';
+  String get importFromSpreadsheet =>
+      isArabic ? 'استيراد من جدول بيانات' : 'Import from spreadsheet';
+  String get downloadProgramTemplate =>
+      isArabic ? 'تنزيل قالب البرنامج' : 'Download program template';
+  String get downloadProgramTemplateCsv =>
+      isArabic ? 'تنزيل قالب CSV' : 'Download CSV template';
+  String get chooseSpreadsheet =>
+      isArabic ? 'اختيار ملف XLSX أو CSV' : 'Choose XLSX or CSV file';
+  String get importPrivacyNote => isArabic
+      ? 'تُقرأ الورقة لإنشاء مسودة غير منشورة. لن تُرسل بيانات سجل اللاعب التدريبي مع الملف.'
+      : 'The sheet is read to create an unpublished draft. The player’s Training ledger is not sent with the file.';
+  String get chooseSheet => isArabic ? 'اختر ورقة العمل' : 'Choose a sheet';
+  String get reviewImport => isArabic ? 'مراجعة الاستيراد' : 'Review import';
+  String importRowsSummary(int total, int valid) => isArabic
+      ? 'الصفوف: ${_ltr('$total')} · الصالحة: ${_ltr('$valid')}'
+      : 'Rows: $total · valid: $valid';
+  String rowLabel(int row) =>
+      isArabic ? 'الصف ${_ltr('$row')}' : 'Row $row';
+  String importPrescription(String day, int sets, int repsMin, int repsMax, double rir) =>
+      isArabic
+          ? '$day · ${_ltr('$sets')} مجموعات · ${_ltr('$repsMin-$repsMax')} تكرارات · RIR ${_ltr('$rir')}'
+          : '$day · $sets sets · $repsMin-$repsMax reps · RIR $rir';
+  String get createImportedDraft =>
+      isArabic ? 'إنشاء مسودة البرنامج' : 'Create Program draft';
+  String get createAsCoachExercise =>
+      isArabic ? 'إنشاء كتمرين من إنشاء المدرب' : 'Create as your exercise';
+  String get unresolvedExercise =>
+      isArabic ? 'اختر تمرينًا لهذه التسمية' : 'Choose a match for this exercise';
+  String get importedWeeksNote => isArabic
+      ? 'سيتم استيراد أسبوع واحد فقط. الأسابيع الأخرى لن تُستورد.'
+      : 'Only one week will be imported. The other weeks were not imported.';
+  String get importNoValidRows => isArabic
+      ? 'لا توجد صفوف صالحة للاستيراد بعد.'
+      : 'There are no valid rows ready to import.';
+  String programImportRowMessage(String code, int row, String column) {
+    final String label = _importColumn(column);
+    final String fallback = const MessageCopy('en').programImportMessage(code) ??
+        (isArabic
+            ? 'راجع هذه القيمة وصححها في الورقة.'
+            : 'Review this value and correct it in the sheet.');
+    final String explanation = resolveStructuredMessage(
+      messageCode: code,
+      messageParams: const <String, dynamic>{},
+      englishFallback: fallback,
+      displayLanguage: languageCode,
+    );
+    return isArabic
+        ? 'الصف ${_ltr('$row')} · $label: $explanation'
+        : 'Row $row · $label: $explanation';
+  }
+  String get importReplaceTitle => isArabic
+      ? 'استبدال مسودة البرنامج الحالية؟'
+      : 'Replace the current Program draft?';
+  String get importReplacePrompt => isArabic
+      ? 'سيؤدي الاستيراد إلى استبدال المسودة الحالية وتعديلاتها المحفوظة.'
+      : 'Importing will replace the current draft and its saved edits.';
+  String get importReplaceAction =>
+      isArabic ? 'استبدال المسودة' : 'Replace draft';
+  String get importTemplateSaved => isArabic
+      ? 'تم تجهيز قالب البرنامج للتنزيل.'
+      : 'The Program template is ready to download.';
+  String get importCancelled => isArabic ? 'إلغاء' : 'Cancel';
+  String get importCreateFailure => isArabic
+      ? 'تعذر إنشاء مسودة البرنامج من هذا الاستيراد.'
+      : 'Could not create a Program draft from this import.';
+  String programImportError(String? code) {
+    if (code == 'assignment.program_draft_exists.v1') return importReplacePrompt;
+    if (code == null) return importCreateFailure;
+    final String? englishFallback =
+        const MessageCopy('en').programImportMessage(code);
+    if (englishFallback == null) return importCreateFailure;
+    return resolveStructuredMessage(
+      messageCode: code,
+      messageParams: const <String, dynamic>{},
+      englishFallback: englishFallback,
+      displayLanguage: languageCode,
+    );
+  }
+
+  String _importColumn(String column) => switch (column) {
+        'reps' => isArabic ? 'التكرارات' : 'reps',
+        'rir' => 'RIR',
+        'rpe' => 'RPE',
+        'sets' => isArabic ? 'المجموعات' : 'sets',
+        'load_kg' || 'load_pct_e1rm' => isArabic ? 'الحمل' : 'load',
+        'day' => isArabic ? 'اليوم' : 'day',
+        'day_name' => isArabic ? 'اسم اليوم' : 'day name',
+        'order' => isArabic ? 'الترتيب' : 'order',
+        'exercise' => isArabic ? 'التمرين' : 'exercise',
+        'rest_seconds' => isArabic ? 'الراحة بالثواني' : 'rest',
+        'tempo' => isArabic ? 'إيقاع الحركة' : 'tempo',
+        'notes' => isArabic ? 'الملاحظات' : 'notes',
+        _ => isArabic ? 'القيمة' : 'value',
+      };
   String get generate => isArabic ? 'إنشاء' : 'Generate';
   String get split => isArabic ? 'التقسيمة' : 'Split';
   String get repRangePreference =>

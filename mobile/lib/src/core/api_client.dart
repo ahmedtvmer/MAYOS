@@ -1021,6 +1021,60 @@ class ApiClient {
     return _parseCoachProgramDraft(response.data);
   }
 
+  /// Reads an XLSX or CSV into a stateless Program import review result.
+  Future<Map<String, dynamic>> coachImportProgramSheet(
+    String assignmentId, {
+    required Uint8List bytes,
+    required String fileName,
+    String? sheet,
+  }) async {
+    final FormData form = FormData.fromMap(<String, dynamic>{
+      'file': MultipartFile.fromBytes(bytes, filename: fileName),
+      if (sheet != null) 'sheet': sheet,
+    });
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/assignments/$assignmentId/program-import',
+        data: form,
+      ),
+    );
+    if (response.data is! Map<String, dynamic>) {
+      throw const ApiException('The service returned invalid import data.');
+    }
+    return Map<String, dynamic>.from(response.data as Map<String, dynamic>);
+  }
+
+  /// Creates or replaces a Program draft from the Coach-confirmed import rows.
+  Future<Map<String, dynamic>> coachCreateImportedProgramDraft(
+    String assignmentId, {
+    String? programName,
+    required List<Map<String, dynamic>> rows,
+    bool replace = false,
+  }) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/assignments/$assignmentId/program-draft/import',
+        queryParameters: replace ? <String, dynamic>{'replace': true} : null,
+        data: <String, dynamic>{if (programName != null) 'program_name': programName, 'rows': rows},
+      ),
+    );
+    return _parseCoachProgramDraft(response.data);
+  }
+
+  /// Downloads the generated XLSX or CSV Program import template.
+  Future<Uint8List> coachProgramImportTemplate(String extension) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+        '/coach/program-import/template.$extension',
+        options: Options(responseType: ResponseType.bytes),
+      ),
+    );
+    final dynamic payload = response.data;
+    if (payload is Uint8List) return payload;
+    if (payload is List<int>) return Uint8List.fromList(payload);
+    throw const ApiException('The service returned invalid template data.');
+  }
+
   /// Copies the assigned player's active Training program into a new draft.
   Future<Map<String, dynamic>> coachCopyActiveProgramToDraft(
     String assignmentId, {

@@ -20,6 +20,7 @@ import '../../core/ui/mayos_card.dart';
 import '../../providers.dart';
 import 'coach_exercise_picker_dialog.dart';
 import 'program_publish_confirmation.dart';
+import 'program_import_files.dart';
 
 part 'program_editor/day_card.dart';
 part 'program_editor/exercise_card.dart';
@@ -55,6 +56,7 @@ class _CoachProgramDraftScreenState
   bool _saving = false;
   bool _publishing = false;
   bool _discarding = false;
+  bool _downloadingTemplate = false;
   bool _hasUnsavedChanges = false;
   bool _allowPop = false;
   FailureMessage? _failure;
@@ -640,6 +642,20 @@ class _CoachProgramDraftScreenState
       appBar: AppBar(
         leading: BackButton(onPressed: _requestPop),
         title: Text(copy.writeProgram),
+        actions: <Widget>[
+          IconButton(
+            key: const Key('program_template_xlsx_download'),
+            tooltip: copy.downloadProgramTemplate,
+            onPressed: _downloadingTemplate ? null : () => _downloadTemplate('xlsx'),
+            icon: const Icon(Icons.download_outlined),
+          ),
+          IconButton(
+            key: const Key('program_template_csv_download'),
+            tooltip: copy.downloadProgramTemplateCsv,
+            onPressed: _downloadingTemplate ? null : () => _downloadTemplate('csv'),
+            icon: const Icon(Icons.table_view_outlined),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -728,6 +744,14 @@ class _CoachProgramDraftScreenState
       ),
     );
   }
+
+  Future<void> _downloadTemplate(String extension) => runProgramTemplateDownload(
+        ref: ref,
+        extension: extension,
+        onBusyChanged: (bool busy) => setState(() => _downloadingTemplate = busy),
+        isMounted: () => mounted,
+        onFailure: (FailureMessage message) => setState(() => _failure = message),
+      );
 
   Widget _loadError(BuildContext context) {
     final String message = _failure == null
