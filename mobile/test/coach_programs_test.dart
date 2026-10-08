@@ -1,11 +1,14 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
@@ -14,6 +17,24 @@ import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_api_adapter.dart';
 import 'support/fake_mayos_api.dart';
+
+const List<String> _programActionKeys = <String>[
+  'coach_program_approve_as_is',
+  'coach_program_edit_active',
+  'generate_draft_action',
+  'write_program_action',
+  'program_import_action',
+  'program_template_download_action',
+];
+
+const List<String> _programActionLabels = <String>[
+  'Approve as is',
+  'Edit',
+  'Generate draft',
+  'Write program',
+  'Import',
+  'Download template',
+];
 
 /// Pumps finite frames until [finder] matches, then a few more so transitions
 /// settle without depending on `pumpAndSettle` (indeterminate spinners never settle).
@@ -30,8 +51,12 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   }
 }
 
-Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
-  tester.view.physicalSize = const Size(1080, 2400);
+Future<void> _pumpApp(
+  WidgetTester tester,
+  FakeMayosApi fake, {
+  double logicalWidth = 540,
+}) async {
+  tester.view.physicalSize = Size(logicalWidth * 2, 2400);
   tester.view.devicePixelRatio = 2.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -69,6 +94,49 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
   );
   await _pumpUntilFound(
       tester, find.text(fake.coach ? 'Roster' : 'Home'));
+}
+
+Future<void> _expectProgramActionsAtWidth(
+  WidgetTester tester,
+  double logicalWidth,
+) async {
+  tester.view.physicalSize = Size(logicalWidth * 2, 2400);
+  await tester.pump(const Duration(milliseconds: 100));
+
+  final List<MapEntry<String, Rect>> actions = _programActionKeys
+      .map(
+        (String key) =>
+            MapEntry<String, Rect>(key, tester.getRect(find.byKey(Key(key)))),
+      )
+      .toList();
+  actions.sort((MapEntry<String, Rect> first, MapEntry<String, Rect> second) {
+    final double verticalDelta = first.value.top - second.value.top;
+    return verticalDelta.abs() > 1
+        ? first.value.top.compareTo(second.value.top)
+        : first.value.left.compareTo(second.value.left);
+  });
+  expect(
+    actions.map((MapEntry<String, Rect> action) => action.key),
+    orderedEquals(_programActionKeys),
+  );
+
+  for (int i = 0; i < _programActionKeys.length; i++) {
+    final Finder action = find.byKey(Key(_programActionKeys[i]));
+    final Rect actionRect = tester.getRect(action);
+    final Finder label = find.descendant(
+      of: action,
+      matching: find.text(_programActionLabels[i]),
+    );
+    expect(label, findsOneWidget);
+    expect(
+      tester.renderObject<RenderParagraph>(label).didExceedMaxLines,
+      isFalse,
+    );
+    expect(actionRect.left, greaterThanOrEqualTo(0));
+    expect(actionRect.right, lessThanOrEqualTo(logicalWidth));
+    expect(actionRect.height, greaterThanOrEqualTo(48));
+  }
+  expect(tester.takeException(), isNull);
 }
 
 Future<void> _openProgramSegment(
@@ -432,6 +500,212 @@ void main() {
     await _pumpUntilFound(tester, find.text('No active program.'));
 
     expect(find.text('No active program.'), findsOneWidget);
+    expect(find.byKey(const Key('coach_program_edit_active')), findsNothing);
+    expect(find.byKey(const Key('coach_program_approve_as_is')), findsNothing);
+    expect(find.byKey(const Key('write_program_action')), findsOneWidget);
+    expect(find.byKey(const Key('generate_draft_action')), findsOneWidget);
+    expect(find.byKey(const Key('program_import_action')), findsOneWidget);
+    expect(find.byKey(const Key('program_template_download_action')), findsOneWidget);
+    expect(
+      tester.widget<MayosButton>(
+        find.byKey(const Key('generate_draft_action')),
+      ).variant,
+      MayosButtonVariant.primary,
+    );
+  });
+
+  testWidgets('Program actions wrap naturally at desktop widths',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
+    await _pumpApp(tester, fake, logicalWidth: 1440);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.ensureVisible(find.text('bob'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await _pumpUntilFound(tester, find.text('Program actions'));
+    expect(find.text("Manage this Player's Training program"), findsOneWidget);
+    expect(find.text('Import'), findsOneWidget);
+    expect(find.text('Download template'), findsOneWidget);
+
+    await _expectProgramActionsAtWidth(tester, 1440);
+    await _expectProgramActionsAtWidth(tester, 1024);
+  });
+
+  testWidgets('Program actions wrap on a 360dp phone without shrinking targets',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
+    await _pumpApp(tester, fake, logicalWidth: 360);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.ensureVisible(find.text('bob'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await _pumpUntilFound(tester, find.text('Program actions'));
+
+    final List<Rect> rects = _programActionKeys
+        .map((String key) => tester.getRect(find.byKey(Key(key))))
+        .toList(growable: false);
+    expect((rects[0].center.dy - rects[1].center.dy).abs(), lessThan(1));
+    expect(rects.skip(2).every((Rect rect) => rect.center.dy > rects[0].center.dy), isTrue);
+    expect((rects[2].center.dy - rects[3].center.dy).abs(), lessThan(1));
+    expect((rects[4].center.dy - rects[5].center.dy).abs(), lessThan(1));
+    expect(rects.every((Rect rect) => rect.height >= 48), isTrue);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Approve is disabled without an active program version',
+      (tester) async {
+    final Map<String, dynamic> active =
+        _coachActiveProgram(provenance: 'automatic');
+    (active['program'] as Map<String, dynamic>)['version'] = null;
+    final FakeMayosApi fake = _coachFake()..coachActiveProgram = active;
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.ensureVisible(find.text('bob'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_as_is')));
+
+    await tester.tap(find.byKey(const Key('coach_program_approve_as_is')));
+    expect(find.byKey(const Key('coach_program_approve_confirm')), findsNothing);
+    expect(fake.programApproveRequests, 0);
+
+    await tester.tap(find.byKey(const Key('coach_program_edit_active')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_day')));
+    expect(fake.programDraftCopyRequests, 1);
+  });
+
+  testWidgets('Edit and Approve are locked while the active program is copied',
+      (tester) async {
+    final Completer<void> copyResponse = Completer<void>();
+    final FakeMayosApi fake = _coachFake()
+      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
+    fake.adapter.beforeRespond = (FakeRequest request) async {
+      if (request.path.endsWith('/program-draft/copy-active')) {
+        await copyResponse.future;
+      }
+    };
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.ensureVisible(find.text('bob'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await tester.tap(find.byKey(const Key('coach_program_edit_active')));
+
+    final Finder editSpinner = find.descendant(
+      of: find.byKey(const Key('coach_program_edit_active')),
+      matching: find.byType(CircularProgressIndicator),
+    );
+    await _pumpUntilFound(tester, editSpinner);
+    await tester.tap(find.byKey(const Key('coach_program_approve_as_is')));
+    await tester.tap(find.byKey(const Key('coach_program_edit_active')));
+    expect(
+      fake.adapter.requests.where(
+        (FakeRequest request) =>
+            request.path.endsWith('/program-draft/copy-active'),
+      ),
+      hasLength(1),
+    );
+    expect(
+      fake.adapter.requests.where(
+        (FakeRequest request) => request.path.endsWith('/program/approve'),
+      ),
+      isEmpty,
+    );
+
+    copyResponse.complete();
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_day')));
+  });
+
+  testWidgets('Approve and Edit are locked while approval is in progress',
+      (tester) async {
+    final Completer<void> approveResponse = Completer<void>();
+    final FakeMayosApi fake = _coachFake()
+      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
+    fake.adapter.beforeRespond = (FakeRequest request) async {
+      if (request.path.endsWith('/program/approve')) {
+        await approveResponse.future;
+      }
+    };
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.ensureVisible(find.text('bob'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await tester.tap(find.byKey(const Key('coach_program_approve_as_is')));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_program_approve_confirm')));
+    await tester.tap(find.byKey(const Key('coach_program_approve_confirm')));
+
+    final Finder approveSpinner = find.descendant(
+      of: find.byKey(const Key('coach_program_approve_as_is')),
+      matching: find.byType(CircularProgressIndicator),
+    );
+    await _pumpUntilFound(tester, approveSpinner);
+    await tester.tap(find.byKey(const Key('coach_program_edit_active')));
+    await tester.tap(find.byKey(const Key('coach_program_approve_as_is')));
+    expect(
+      fake.adapter.requests.where(
+        (FakeRequest request) => request.path.endsWith('/program-draft/copy-active'),
+      ),
+      isEmpty,
+    );
+    expect(
+      fake.adapter.requests.where(
+        (FakeRequest request) => request.path.endsWith('/program/approve'),
+      ),
+      hasLength(1),
+    );
+
+    approveResponse.complete();
+    await _pumpUntilFound(tester, find.text('Published program version 8'));
+  });
+
+  testWidgets('Program actions are localized and mirror in Arabic',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..displayLanguage = 'ar'
+      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('علاقات التدريب النشطة'));
+    await tester.ensureVisible(find.text('bob'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester, label: 'البرنامج التدريبي');
+    await _pumpUntilFound(tester, find.text('إجراءات البرنامج'));
+
+    expect(find.text('إدارة البرنامج التدريبي لهذا اللاعب'), findsOneWidget);
+    expect(find.text('استيراد'), findsOneWidget);
+    expect(
+      Directionality.of(tester.element(find.text('إجراءات البرنامج'))),
+      TextDirection.rtl,
+    );
+    final Rect approveRect = tester.getRect(
+      find.byKey(const Key('coach_program_approve_as_is')),
+    );
+    final Rect editRect = tester.getRect(
+      find.byKey(const Key('coach_program_edit_active')),
+    );
+    expect(approveRect.center.dx, greaterThan(editRect.center.dx));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Program actions render with the dark theme', (tester) async {
+    tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+    final FakeMayosApi fake = _coachFake()
+      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.ensureVisible(find.text('bob'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await _pumpUntilFound(tester, find.text('Program actions'));
+
+    expect(
+      Theme.of(tester.element(find.text('Program actions'))).brightness,
+      Brightness.dark,
+    );
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('spreadsheet import reviews rows and opens the Program editor',

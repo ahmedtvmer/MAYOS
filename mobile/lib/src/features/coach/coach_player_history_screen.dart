@@ -10,7 +10,6 @@ import '../../core/display_language/copy_context.dart';
 import '../../core/display_language/controller.dart';
 import '../../core/display_language/feature_copy_context.dart';
 import '../../core/display_language/message_resolver.dart';
-import '../../core/effort.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
@@ -27,6 +26,7 @@ import '../../router.dart';
 import 'coach_assistant_screen.dart';
 import 'coach_check_in_sheet.dart';
 import 'coach_history_segment.dart';
+import 'coach_program_card.dart';
 import 'coach_program_draft_screen.dart';
 import 'program_import_files.dart';
 import 'program_import_screen.dart';
@@ -616,92 +616,27 @@ class _CoachPlayerHistoryScreenState
     );
   }
 
-  /// One informational card with the shared section heading (#121).
-  Widget _section(BuildContext context, String title, List<Widget> children) {
-    return MayosCard(
-      padding: const EdgeInsets.all(MayosSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          MayosSectionHeader(
-            title: title,
-            padding: const EdgeInsets.only(bottom: MayosSpacing.xs),
-          ),
-          ...children,
-        ],
+  Widget _programCard(BuildContext context) {
+    return CoachProgramCard(
+      active: _activeProgram!,
+      busyState: (
+        generatingDraft: _generatingDraft,
+        copyingActiveProgram: _copyingActiveProgram,
+        approvingActiveProgram: _approvingActiveProgram,
+        downloadingProgramTemplate: _downloadingProgramTemplate,
+      ),
+      actionError: _programActionError == null
+          ? null
+          : displayCopyOf(context).failureMessage(_programActionError!),
+      callbacks: (
+        writeProgram: _openProgramDraft,
+        generateDraft: _openGenerateDraftDialog,
+        importProgram: _openProgramImport,
+        downloadTemplate: _downloadProgramTemplate,
+        editActiveProgram: _editActiveProgram,
+        approveActiveProgram: _approveActiveProgramAsIs,
       ),
     );
-  }
-
-  Widget _programCard(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    final copy = coachCopyOf(context);
-    final CoachActiveProgram active = _activeProgram!;
-    final List<Widget> children = <Widget>[
-      if (active.hasDraft) _pendingProgramDraftBadge(context),
-    ];
-    if (active.program == null) {
-      children.add(
-        Text(
-          copy.noActiveProgram,
-          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
-        ),
-      );
-    } else {
-      children.addAll(_programDetails(context, active, active.program!));
-      children.add(const SizedBox(height: MayosSpacing.sm));
-      children.add(_activeProgramActions(context));
-    }
-    if (_programActionError != null) {
-      children.addAll(<Widget>[
-        const SizedBox(height: MayosSpacing.sm),
-        Text(
-          displayCopyOf(context).failureMessage(_programActionError!),
-          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
-        ),
-      ]);
-    }
-    children.addAll(_programDraftActions(context));
-    return _section(context, copy.program, children);
-  }
-
-  List<Widget> _programDraftActions(BuildContext context) {
-    final copy = coachCopyOf(context);
-    return <Widget>[
-      const SizedBox(height: MayosSpacing.sm),
-      MayosButton(
-        key: const Key('write_program_action'),
-        label: copy.writeProgram,
-        icon: Icons.edit_outlined,
-        variant: MayosButtonVariant.secondary,
-        onPressed: _openProgramDraft,
-      ),
-      const SizedBox(height: MayosSpacing.xs),
-      MayosButton(
-        key: const Key('generate_draft_action'),
-        label: copy.generateDraft,
-        icon: Icons.auto_awesome_outlined,
-        loading: _generatingDraft,
-        onPressed: _generatingDraft ? null : _openGenerateDraftDialog,
-      ),
-      const SizedBox(height: MayosSpacing.xs),
-      MayosButton(
-        key: const Key('program_import_action'),
-        label: copy.importFromSpreadsheet,
-        icon: Icons.upload_file,
-        variant: MayosButtonVariant.secondary,
-        onPressed: _openProgramImport,
-      ),
-      const SizedBox(height: MayosSpacing.xs),
-      MayosButton(
-        key: const Key('program_template_download_action'),
-        label: copy.downloadProgramTemplate,
-        icon: Icons.download_outlined,
-        variant: MayosButtonVariant.secondary,
-        loading: _downloadingProgramTemplate,
-        onPressed: _downloadingProgramTemplate ? null : _downloadProgramTemplate,
-      ),
-    ];
   }
 
   Future<void> _openProgramImport() async {
@@ -728,114 +663,6 @@ class _CoachPlayerHistoryScreenState
           SnackBar(content: Text(coachCopyOf(context).importTemplateSaved)),
         ),
       );
-
-  Widget _activeProgramActions(BuildContext context) {
-    final copy = coachCopyOf(context);
-    final bool busy = _copyingActiveProgram || _approvingActiveProgram;
-    final bool canApprove = _activeProgram?.program?.version != null;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        MayosButton(
-          key: const Key('coach_program_edit_active'),
-          label: copy.editActiveProgram,
-          icon: Icons.edit_outlined,
-          variant: MayosButtonVariant.secondary,
-          loading: _copyingActiveProgram,
-          onPressed: busy ? null : _editActiveProgram,
-        ),
-        const SizedBox(height: MayosSpacing.xs),
-        MayosButton(
-          key: const Key('coach_program_approve_as_is'),
-          label: copy.approveProgramAsIs,
-          icon: Icons.check,
-          loading: _approvingActiveProgram,
-          onPressed: busy || !canApprove ? null : _approveActiveProgramAsIs,
-        ),
-      ],
-    );
-  }
-
-  Widget _pendingProgramDraftBadge(BuildContext context) => Align(
-        alignment: AlignmentDirectional.centerStart,
-        child: Chip(
-          key: const Key('coach_program_pending_draft'),
-          label: Text(coachCopyOf(context).pendingProgramDraft),
-        ),
-      );
-
-  List<Widget> _programDetails(
-    BuildContext context,
-    CoachActiveProgram active,
-    TrainingProgram program,
-  ) {
-    final copy = coachCopyOf(context);
-    final String? activeDate = active.activeSince?.split('T').first;
-    return <Widget>[
-      Text(active.provenance == 'coach'
-          ? copy.publishedByYou
-          : copy.generatedAutomatically),
-      if (active.editedByPlayer) Text(copy.editedByPlayer),
-      if (program.version != null) Text(copy.programVersion(program.version!)),
-      if (activeDate != null) Text(copy.activeProgramSince(activeDate)),
-      Text(program.programName),
-      for (final ProgramDay day in program.days) _programDay(context, day),
-    ];
-  }
-
-  Widget _programDay(BuildContext context, ProgramDay day) {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: MayosSpacing.xs),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            day.dayName,
-            style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
-          ),
-          for (final ProgramExercise exercise in day.exercises)
-            _programExercise(context, exercise),
-        ],
-      ),
-    );
-  }
-
-  Widget _programExercise(BuildContext context, ProgramExercise exercise) {
-    return Padding(
-      padding: const EdgeInsetsDirectional.only(start: MayosSpacing.sm),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: _programExerciseDetails(context, exercise),
-      ),
-    );
-  }
-
-  List<Widget> _programExerciseDetails(
-    BuildContext context,
-    ProgramExercise exercise,
-  ) {
-    final copy = coachCopyOf(context);
-    return <Widget>[
-      Text(exercise.exerciseName),
-      Text(
-        copy.programPrescription(
-          copy.programWorkingSets(exercise.targetSets),
-          copy.programRepRange(
-            exercise.targetRepsMin,
-            exercise.targetRepsMax,
-          ),
-          minRirLabel(exercise.targetRpe),
-          exercise.restSecondsOrDefault,
-        ),
-        style: MayosTypography.of(context).bodySecondary,
-      ),
-      if (exercise.tempo != null && exercise.tempo!.isNotEmpty)
-        Text(copy.programTempo(exercise.tempo!)),
-      if (exercise.notes != null && exercise.notes!.isNotEmpty)
-        Text(copy.programNotes(exercise.notes!)),
-    ];
-  }
 
   /// The segment label counts what still needs the coach (#121): the pending
   /// requests, or no number once nothing is waiting.

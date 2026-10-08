@@ -228,6 +228,14 @@ class CoachCopy {
 
   String get generateDraft =>
       isArabic ? 'إنشاء مسودة' : 'Generate draft';
+  String get programActions =>
+      isArabic ? 'إجراءات البرنامج' : 'Program actions';
+  String get programActionsSubtitle => isArabic
+      ? 'إدارة البرنامج التدريبي لهذا اللاعب'
+      : "Manage this Player's Training program";
+  String get importProgramAction => isArabic ? 'استيراد' : 'Import';
+  String get downloadProgramTemplateAction =>
+      isArabic ? 'تنزيل القالب' : 'Download template';
   String get importFromSpreadsheet =>
       isArabic ? 'استيراد من جدول بيانات' : 'Import from spreadsheet';
   String get downloadProgramTemplate =>
