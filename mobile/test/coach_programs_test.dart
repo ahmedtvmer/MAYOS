@@ -510,7 +510,7 @@ void main() {
     expect(find.text('Active since 2026-10-04'), findsNothing);
   });
 
-  testWidgets('Program table fills its desktop width and preserves number columns',
+  testWidgets('Program table fills its desktop width and widens Action and Sets',
       (tester) async {
     final FakeMayosApi fake = _coachFake()
       ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
@@ -541,20 +541,20 @@ void main() {
           ).width;
       final double expectedExerciseWidth = frameRect.width -
           40 -
-          150 -
+          175 -
           125 -
-          90 -
+          115 -
           95 -
           80 -
           80 -
           (MayosSpacing.xs * 2 + 2);
       // The base widths fit the 1440 detail pane, so the table fills it and
-      // only Exercise grows (#391).
-      expect(expectedExerciseWidth, greaterThan(200));
+      // Exercise still gets the remaining width.
+      expect(expectedExerciseWidth, greaterThan(160));
       expect(headerWidth('Exercise'), closeTo(expectedExerciseWidth, 1));
-      expect(headerWidth('Action'), 150);
+      expect(headerWidth('Action'), 175);
       expect(headerWidth('Equipment'), 125);
-      expect(headerWidth('Sets'), 90);
+      expect(headerWidth('Sets'), 115);
       expect(headerWidth('Reps'), 95);
       expect(headerWidth('RIR'), 80);
       expect(headerWidth('Rest'), 80);

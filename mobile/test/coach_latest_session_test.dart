@@ -234,7 +234,8 @@ void main() {
     },
   );
 
-  testWidgets('Latest session table fills desktop cards and keeps number columns',
+  testWidgets(
+      'Latest session table fills desktop cards and widens Action and Sets',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _coachFake();
     _setExercise(fake);
@@ -273,8 +274,8 @@ void main() {
             find.descendant(of: header, matching: find.text(label)),
           ).width;
       expect(headerWidth('Exercise'), greaterThan(290));
-      expect(headerWidth('Action'), 160);
-      expect(headerWidth('Sets'), 70);
+      expect(headerWidth('Action'), 185);
+      expect(headerWidth('Sets'), 95);
       expect(headerWidth('Reps'), 70);
       expect(headerWidth('Volume (kg)'), 120);
       expect(tester.takeException(), isNull);
