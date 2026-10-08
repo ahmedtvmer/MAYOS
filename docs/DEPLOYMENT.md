@@ -6,7 +6,7 @@ This document details production deployment procedures, container orchestration,
 > runbook](#10-flyio-closed-trial-api-deployment-fastapi-only) for its
 > always-on API Machine and durable volume. Use the
 > [closed-trial release gate runbook](TRIAL_RELEASE_GATE.md) before expansion.
-> **Hetzner production:** follow [§14](#14-hetzner-production-deployment-375)
+> **OVHcloud production:** follow [§14](#14-production-server-deployment-380)
 > and its owner checklist for the Cloudflare Tunnel deployment.
 > The Docker Compose topology below supports hosted chat inference and local
 > embeddings; it is not the trial topology.
@@ -105,10 +105,10 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 **Caller IP and rate-limit keying.** Every route limit (`RATE_LIMIT_*`) is keyed
 by caller address — plus a bearer-token suffix for authenticated calls — in
 `svc/rate_limit.py::_key`. Set `MAYOS_CLIENT_IP_HEADER` to the single proxy-set
-header that identifies callers. The Hetzner production setup behind Cloudflare
-Tunnel uses `MAYOS_CLIENT_IP_HEADER=cf-connecting-ip`. Header names are matched
-case-insensitively; if the selected header is missing or does not contain an IP
-address, the socket address is used.
+header that identifies callers. The OVHcloud production setup behind
+Cloudflare Tunnel uses `MAYOS_CLIENT_IP_HEADER=cf-connecting-ip`. Header names
+are matched case-insensitively; if the selected header is missing or does not
+contain an IP address, the socket address is used.
 
 When `MAYOS_CLIENT_IP_HEADER` is unset, Fly keeps its existing behavior: if
 `FLY_APP_NAME` is set, the API uses Fly's `Fly-Client-IP` header and falls back
@@ -244,7 +244,10 @@ Check an existing report without loading a model:
   --check-report reports/checkpoint_review_eval.json
 ```
 
-### Production `docker-compose.yaml` (actual — abridged formatting)
+### Standalone `docker-compose.yaml` topology
+
+This root Compose file is separate from the OVH production stack. Production
+uses `deploy/compose.server.yaml` as described in §14.
 
 ```yaml
 services:
@@ -1187,12 +1190,13 @@ separate "MAYOS dev" project's key) so local runs never send into trial data;
 | `MAYOS_RELEASE_PHASE` | env | `closed_trial` now, `public` at launch |
 | `POSTHOG_CLIENT_KEY` | release build define | Same `phc_…` key |
 
-## 13. Litestream replication and restore on Hetzner (#372)
+## 13. Litestream replication and restore on the production VPS (#372)
 
-The Hetzner Compose stack runs one Litestream v0.5.4+ process beside the single
-API writer. Mount the same local `/data` volume read/write in the API and
-Litestream containers, and mount [`deploy/litestream.yml`](../deploy/litestream.yml)
-as Litestream's config. Set `MAYOS_DATA_DIR=/data` and keep the deletion log at
+The production Compose stack runs one Litestream v0.5.4+ process beside the
+single API writer. Bind the same host data directory to `/data` read/write in
+the API and Litestream containers, and mount
+[`deploy/litestream.yml`](../deploy/litestream.yml) as Litestream's config. Set
+`MAYOS_DATA_DIR=/data` and keep the deletion log at
 `/data/deletions.db` (the default). The Litestream config reuses the API's R2
 settings: `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, and
 `R2_SECRET_ACCESS_KEY`. Set `LITESTREAM_R2_PREFIX=litestream` in production;
@@ -1200,7 +1204,7 @@ the checked-in `.env.example` has a commented example. Litestream expands an
 unset variable to an empty string, so the Compose environment must pass this
 value explicitly; deletion and restore code default to `litestream` when it is
 unset.
-Configure the Hetzner Compose API service with `MAYOS_LITESTREAM=true` only
+Configure the production Compose API service with `MAYOS_LITESTREAM=true` only
 while its Litestream replicator is running. Never enable this setting without
 Litestream: the API then leaves automatic WAL checkpoints disabled.
 
@@ -1270,26 +1274,29 @@ staging directory is removed and the target stays empty. Keep
 `deletions.db` with the restored catalog and run the full replay before serving
 traffic so a pre-deletion catalog cannot recreate a deleted Account.
 
-## 14. Hetzner production deployment (#375)
+## 14. Production server deployment (#380)
 
-The production API runs on one Hetzner server behind a Cloudflare Tunnel. The
-Hetzner volume is mounted on the host at `/mnt/mayos-data`; application data
-lives in `/mnt/mayos-data/data`, which Compose bind-mounts at `/data` in both
-the API and Litestream containers. The long-syntax bind disables host-path
-creation, so the containers fail to start if that data directory is absent.
-The host fstab entry uses `nofail` and a 30-second device timeout so a missing
-volume does not block boot or SSH.
+The production API runs on one OVHcloud VPS-1 2027 in London (Erith): 2 vCores,
+4 GB RAM, 40 GB NVMe, about $5.35/month, with no commitment. Application data
+lives in `/mnt/mayos-data/data` on the server's local disk; Compose
+bind-mounts it at `/data` in both the API and Litestream containers. The
+long-syntax bind disables host-path creation, so the containers fail to start
+if the bootstrap-created data directory is absent.
+
+Durability rests on the local disk and Litestream's continuous replication to
+R2, which bounds loss on server loss to about one second; daily R2 snapshots
+remain the second backup layer. The server is ordered in OVH's console and
+prepared by the provider-neutral `deploy/setup_vps.sh` bootstrap. Follow the
+[server setup checklist](SERVER_SETUP.md#2-provision-the-server) for
+provisioning, UFW and Docker port guidance, SSH hardening, secret migration,
+first deployment, restore/copy rehearsal, and verification. The Fly.io runbook
+in §10 remains for the existing closed-trial deployment.
 
 The API image builds from the rsynced checkout with `Dockerfile.fly`. Deploy
 access uses the root-only `/opt/mayos/.env` for Compose interpolation and runs
 Docker commands through `sudo`; the `deploy` account is not in the Docker group.
 The deploy script writes the required image tag to the deploy-owned
 `/opt/mayos/app/deploy/.image.env` and supplies both env files to Compose.
-Follow the [Hetzner setup checklist](HETZNER_SETUP.md) for owner-only account,
-DNS, secret migration, provisioning, first deployment, restore/copy target, and
-live verification steps. The Fly.io runbook in §10 remains for the existing
-closed-trial deployment.
-
 ### Deploy (#376)
 
 Run the deploy command from the main checkout, never from a linked git worktree.
@@ -1298,7 +1305,7 @@ ignored `.env` file:
 
 ```bash
 export MAYOS_DEPLOY_HOST=YOUR_SERVER_IPV4
-./deploy/deploy_hetzner.sh
+./deploy/deploy_server.sh
 ```
 
 The command records the full commit and tags the server-built image with its
@@ -1315,7 +1322,10 @@ runs `compose up -d --no-deps api`, leaving the existing `cloudflared` and
 Litestream services running. It polls the API container's `/readyz` for up to
 three minutes and prints the successful response. The last three image tags
 are kept in `/opt/mayos/state/deploy-history.tsv`; older `mayos-api` images are
-removed while the running image is retained.
+removed while the running image is retained. After a successful deploy, the
+script also prunes Docker build cache older than 168 hours and prints `df -h /`;
+it warns if less than 5 GB is free. Images are several GB each, so this cleanup
+helps preserve space on the 40 GB disk.
 
 If readiness fails, the script reads `CURRENT_LEDGER_SCHEMA_VERSION` from both
 images. It automatically restores the previous image when its schema version
@@ -1326,7 +1336,7 @@ image running and explains that Training ledgers may have migrated.
 `status` prints the current tag, the kept tags, and the `/readyz` response:
 
 ```bash
-./deploy/deploy_hetzner.sh status
+./deploy/deploy_server.sh status
 ```
 
 ### Rollback (#376)
@@ -1337,5 +1347,5 @@ is at least the currently running image's version; otherwise the schema guard
 refuses the rollback. It then checks `/readyz`:
 
 ```bash
-./deploy/deploy_hetzner.sh rollback COMMIT_SHA
+./deploy/deploy_server.sh rollback COMMIT_SHA
 ```

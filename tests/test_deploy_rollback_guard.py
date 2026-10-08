@@ -37,7 +37,7 @@ def test_guard_cli_exit_codes(arguments, expected_code):
 
 
 def test_deploy_script_resolves_guard_path_from_another_working_directory(tmp_path):
-    script = Path(__file__).parents[1] / "deploy" / "deploy_hetzner.sh"
+    script = Path(__file__).parents[1] / "deploy" / "deploy_server.sh"
     result = subprocess.run(
         [str(script), "__selftest-paths"],
         capture_output=True,

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deploy from the main checkout or restart one of the last three kept images.
-# Usage: deploy/deploy_hetzner.sh [deploy|rollback <commit>|status]
+# Usage: deploy/deploy_server.sh [deploy|rollback <commit>|status]
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,14 +10,14 @@ if [[ "${1:-}" == __selftest-paths ]]; then
 fi
 
 readonly IMAGE_TAG_RE='^[0-9a-f]{7,64}(-[0-9]{14}-[0-9]{1,5})?$'
-readonly REMOTE_PREAMBLE=$'set -euo pipefail\nreadonly IMAGE_TAG_RE="^[0-9a-f]{7,64}(-[0-9]{14}-[0-9]{1,5})?$"\ncompose=(sudo docker compose -f /opt/mayos/app/deploy/compose.hetzner.yaml --env-file /opt/mayos/.env --env-file /opt/mayos/app/deploy/.image.env -p mayos)\n'
+readonly REMOTE_PREAMBLE=$'set -euo pipefail\nreadonly IMAGE_TAG_RE="^[0-9a-f]{7,64}(-[0-9]{14}-[0-9]{1,5})?$"\ncompose=(sudo docker compose -f /opt/mayos/app/deploy/compose.server.yaml --env-file /opt/mayos/.env --env-file /opt/mayos/app/deploy/.image.env -p mayos)\n'
 
 usage() {
   cat <<'USAGE'
 Usage:
-  deploy/deploy_hetzner.sh [deploy]
-  deploy/deploy_hetzner.sh rollback <commit>
-  deploy/deploy_hetzner.sh status
+  deploy/deploy_server.sh [deploy]
+  deploy/deploy_server.sh rollback <commit>
+  deploy/deploy_server.sh status
 
 MAYOS_DEPLOY_HOST may be set in the environment or in the checkout's .env.
 Run from the main checkout; a linked git worktree is refused.
@@ -25,7 +25,7 @@ USAGE
 }
 
 die() {
-  printf 'deploy_hetzner: %s\n' "$1" >&2
+  printf 'deploy_server: %s\n' "$1" >&2
   exit 1
 }
 
@@ -78,7 +78,7 @@ read_history() {
   remote_bash <<'REMOTE'
 history=/opt/mayos/state/deploy-history.tsv
 [[ -d /opt/mayos/state && -w /opt/mayos/state ]] || {
-  echo "/opt/mayos/state is missing or not writable; rerun deploy/hetzner_bootstrap.sh." >&2
+  echo "/opt/mayos/state is missing or not writable; rerun deploy/setup_vps.sh. If its setup marker was lost after bootstrap SSH access was removed, use the OVH console recovery steps in docs/SERVER_SETUP.md." >&2
   exit 1
 }
 if [[ -f "$history" ]]; then cat "$history"; fi
@@ -235,6 +235,21 @@ done < <(sudo docker image ls --format '{{.Repository}}:{{.Tag}}' mayos-api)
 REMOTE
 }
 
+prune_build_cache_and_report_disk() {
+  remote_bash <<'REMOTE'
+sudo docker builder prune -f --filter until=168h
+available_bytes="$(df -B1 --output=avail / | awk 'NR == 2 { print $1 }')"
+[[ "$available_bytes" =~ ^[0-9]+$ ]] || {
+  echo "could not read free space for /" >&2
+  exit 1
+}
+df -h /
+if (( available_bytes < 5000000000 )); then
+  printf 'Warning: less than 5 GB is free on /.\n' >&2
+fi
+REMOTE
+}
+
 upload_build_input() {
   rsync -az --delete --delete-excluded -e ssh \
     --exclude='/.git/' --exclude='/.venv/' --exclude='/venv/' \
@@ -352,6 +367,7 @@ deploy_release() {
   if check_readiness; then
     remember_image "$full_commit" "$tag" "$previous_tag"
     prune_images "$previous_tag"
+    prune_build_cache_and_report_disk
     printf 'Deployment %s is ready.\n' "$tag"
     return 0
   fi

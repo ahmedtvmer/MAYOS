@@ -1,30 +1,34 @@
 #!/usr/bin/env bash
-# Bootstrap an Ubuntu MAYOS host with Docker, a required data mount, and deploy access.
-# Usage: run as root from setup_hetzner.sh with a volume ID and base64 public key.
+# Bootstrap an Ubuntu VPS with Docker, a local data directory, and deploy access.
+# Usage: run as root with the owner's base64-encoded public SSH key.
 set -euo pipefail
 
-if [[ $# -ne 2 || "$EUID" -ne 0 ]]; then
-  printf 'Run as root with volume ID and base64 SSH public key arguments.\n' >&2
+if [[ $# -ne 1 || "$EUID" -ne 0 ]]; then
+  printf 'Run as root with one base64-encoded public SSH key argument.\n' >&2
   exit 2
 fi
 
-volume_id="$1"
-owner_public_key="$(printf '%s' "$2" | base64 -d)"
-mount_path=/mnt/mayos-data
-volume_device="/dev/disk/by-id/scsi-0HC_Volume_${volume_id}"
+owner_public_key="$(printf '%s' "$1" | base64 -d | awk 'NF { print; exit }')"
+[[ -n "$owner_public_key" ]] || { echo "owner SSH public key is empty" >&2; exit 1; }
 export DEBIAN_FRONTEND=noninteractive
 
 setup_docker_repository() {
   local ubuntu_suite
   local docker_arch
 
-  install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-  chmod a+r /etc/apt/keyrings/docker.asc
   # shellcheck source=/dev/null
   . /etc/os-release
   ubuntu_suite="${UBUNTU_CODENAME:-$VERSION_CODENAME}"
   docker_arch="$(dpkg --print-architecture)"
+  if ! curl -fsI --max-time 15 \
+    "https://download.docker.com/linux/ubuntu/dists/$ubuntu_suite/Release" >/dev/null; then
+    printf "Docker's Ubuntu apt repository has no Release file for '%s'; use Ubuntu 24.04 or another supported image.\n" \
+      "$ubuntu_suite" >&2
+    return 1
+  fi
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  chmod a+r /etc/apt/keyrings/docker.asc
   cat > /etc/apt/sources.list.d/docker.sources <<DOCKER_REPO
 Types: deb
 URIs: https://download.docker.com/linux/ubuntu
@@ -35,10 +39,26 @@ Signed-By: /etc/apt/keyrings/docker.asc
 DOCKER_REPO
 }
 
+configure_host_firewall() {
+  local ssh_port
+
+  ssh_port="$(sshd -T | awk '$1 == "port" { print $2; exit }')"
+  ssh_port="${ssh_port:-22}"
+  [[ "$ssh_port" =~ ^[0-9]{1,5}$ ]] || {
+    echo "could not determine a valid SSH port from sshd -T" >&2
+    return 1
+  }
+  ufw default deny incoming
+  ufw default allow outgoing
+  ufw allow "$ssh_port/tcp"
+  ufw --force enable
+}
+
 install_docker() {
   apt-get update
-  apt-get install -y ca-certificates curl sudo unattended-upgrades
+  apt-get install -y ca-certificates curl sudo unattended-upgrades ufw
   setup_docker_repository
+  configure_host_firewall
   apt-get update
   apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   systemctl enable --now docker
@@ -70,56 +90,9 @@ install_deploy_key() {
   chmod 0600 /home/deploy/.ssh/authorized_keys
 }
 
-write_volume_fstab_entry() {
-  local volume_uuid="$1"
-  local previous_mount_path="$2"
-  local fstab_tmp
-
-  fstab_tmp="$(mktemp)"
-  awk -v uuid="UUID=$volume_uuid" -v device="$volume_device" \
-    -v target="$mount_path" -v previous_target="$previous_mount_path" \
-    '$1 != uuid && $1 != device && $2 != target && $2 != previous_target { print }' \
-    /etc/fstab > "$fstab_tmp"
-  printf 'UUID=%s %s ext4 defaults,nofail,x-systemd.device-timeout=30s 0 2\n' \
-    "$volume_uuid" "$mount_path" >> "$fstab_tmp"
-  chmod 0644 "$fstab_tmp"
-  mv "$fstab_tmp" /etc/fstab
-}
-
-mount_data_volume() {
-  local volume_uuid
-  local mounted_target
-  local mounted_uuid
-
-  for _ in {1..30}; do
-    [[ -b "$volume_device" ]] && break
-    sleep 2
-  done
-  [[ -b "$volume_device" ]] || { echo "volume device not found: $volume_device" >&2; exit 1; }
-  volume_uuid="$(blkid -s UUID -o value "$volume_device")"
-  [[ -n "$volume_uuid" ]] || { echo "volume has no filesystem UUID" >&2; exit 1; }
-  install -d -o root -g root -m 0755 "$mount_path"
-  mounted_target="$(findmnt -rn -S "$volume_device" -o TARGET || true)"
-  if [[ -n "$mounted_target" && "$mounted_target" != "$mount_path" ]]; then
-    umount "$mounted_target"
-  fi
-  mounted_uuid="$(findmnt -rn -o UUID --mountpoint "$mount_path" 2>/dev/null || true)"
-  if [[ -n "$mounted_uuid" && "$mounted_uuid" != "$volume_uuid" ]]; then
-    echo "$mount_path is mounted from an unexpected volume" >&2
-    exit 1
-  fi
-  write_volume_fstab_entry "$volume_uuid" "$mounted_target"
-  [[ -n "$mounted_uuid" ]] || mount "$mount_path"
-  mounted_uuid="$(findmnt -rn -o UUID --mountpoint "$mount_path" 2>/dev/null || true)"
-  [[ "$mounted_uuid" == "$volume_uuid" ]] || {
-    echo "expected volume UUID $volume_uuid at $mount_path, found ${mounted_uuid:-nothing}" >&2
-    exit 1
-  }
-  # Dockerfile.fly has no USER directive, so both containers run as root.
-  install -d -o root -g root -m 0755 "$mount_path/data"
-}
-
 prepare_mayos_paths() {
+  # Dockerfile.fly has no USER directive, so both containers run as root.
+  install -d -o root -g root -m 0755 /mnt/mayos-data/data
   install -d -o root -g root -m 0755 /opt/mayos
   install -d -o deploy -g deploy -m 0755 /opt/mayos/app
   install -d -o deploy -g deploy -m 0755 /opt/mayos/state
@@ -153,6 +126,6 @@ install_docker
 enable_security_updates
 create_deploy_user
 install_deploy_key
-mount_data_volume
 prepare_mayos_paths
 configure_deploy_sudo
+install -o root -g root -m 0644 /dev/null /opt/mayos/state/.bootstrap-complete

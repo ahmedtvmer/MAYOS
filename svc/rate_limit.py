@@ -11,7 +11,7 @@ from starlette.requests import Request
 def client_ip(request: Request) -> str:
     """The full caller address from the one trusted source.
 
-    Behind a proxy (Fly, or a Cloudflare Tunnel on Hetzner) every request reaches
+    Behind a proxy (Fly, or a Cloudflare Tunnel) every request reaches
     the app from the proxy, so the socket address would collapse every caller
     into one bucket. ``MAYOS_CLIENT_IP_HEADER`` names the single proxy-set header
     to trust; when unset and ``FLY_APP_NAME`` is present, Fly's ``Fly-Client-IP``
