@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_markdown.dart';
 import 'package:mayos_mobile/src/features/coach/coach_player_history_screen.dart';
@@ -82,6 +83,23 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
 }
 
 void main() {
+  test('Arabic Coach program counts localize singular, dual and plural forms',
+      () {
+    const CoachCopy arabic = CoachCopy('ar');
+    expect(arabic.showRemainingProgramExercises(1), 'عرض تمرين واحد إضافي');
+    expect(arabic.showRemainingProgramExercises(2), 'عرض تمرينان إضافيان');
+    expect(arabic.showRemainingProgramExercises(3),
+        'عرض \u20663\u2069 تمارين إضافية');
+    expect(arabic.showRemainingProgramExercises(11),
+        'عرض \u206611\u2069 تمرينًا إضافيًا');
+    expect(arabic.programDaySummary(1, 1), 'تمرين واحد • مجموعة عمل واحدة');
+    expect(arabic.programDaySummary(2, 2), 'تمرينان • مجموعتا عمل');
+    expect(arabic.programDaySummary(3, 3),
+        '\u20663\u2069 تمارين • \u20663\u2069 مجموعات عمل');
+    expect(arabic.programDaySummary(11, 11),
+        '\u206611\u2069 تمرينًا • \u206611\u2069 مجموعة عمل');
+  });
+
   testWidgets('Arabic coach roster localizes a connection failure',
       (WidgetTester tester) async {
     await _pumpApp(

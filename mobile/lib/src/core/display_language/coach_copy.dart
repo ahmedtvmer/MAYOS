@@ -391,8 +391,71 @@ class CoachCopy {
   String get editedByPlayer =>
       isArabic ? 'عدّله اللاعب' : 'Edited by the player';
   String get pendingProgramDraft => isArabic
-      ? 'مسودة البرنامج التدريبي قيد الانتظار'
-      : 'Program draft pending';
+      ? 'مسودة بانتظار المراجعة'
+      : 'Draft pending';
+  String programVersionChip(int version) =>
+      isArabic ? 'إصدار ${_ltr('$version')}' : 'v$version';
+  String get activeProgramStatus => isArabic ? 'نشط' : 'Active';
+  String get trainingDaysSummary => isArabic ? 'أيام التدريب' : 'Training days';
+  String get totalExercisesSummary =>
+      isArabic ? 'إجمالي التمارين' : 'Total exercises';
+  String get workingSetsSummary => isArabic ? 'مجموعات العمل' : 'Working sets';
+  String programStatSemantics(int count, String label) => isArabic
+      ? '${_ltr('$count')} $label'
+      : '$count $label';
+  String get programNumberColumn => '#';
+  String get programExerciseColumn => isArabic ? 'التمرين' : 'Exercise';
+  String get programEquipmentColumn => isArabic ? 'المعدات' : 'Equipment';
+  String get programSetsColumn => isArabic ? 'المجموعات' : 'Sets';
+  String get programRepsColumn => isArabic ? 'التكرارات' : 'Reps';
+  String get programRirColumn => 'RIR';
+  String get programRestColumn => isArabic ? 'الراحة' : 'Rest';
+  String programSetsCell(int sets, int warmupSets) {
+    if (warmupSets == 0) return isArabic ? _ltr('$sets') : '$sets';
+    final String value = isArabic
+        ? '$sets (+$warmupSets إحماء)'
+        : '$sets (+$warmupSets warm-up)';
+    return isArabic ? _ltr(value) : value;
+  }
+
+  String programExerciseRepRange(int minimum, int maximum) {
+    final String value = minimum == maximum
+        ? '$minimum'
+        : '$minimum – $maximum';
+    return isArabic ? _ltr(value) : value;
+  }
+
+  String programRirCell(String label) => isArabic ? _ltr(label) : label;
+
+  String programEquipmentValue(String equipment) =>
+      isArabic ? _ltr(equipment) : equipment;
+
+  String get missingProgramEquipment => '—';
+  String get programDetailSeparator => ' · ';
+
+  String programDaySummary(int exerciseCount, int setCount) => isArabic
+      ? '${_count(exerciseCount, ArabicCountNoun.exercise)} • ${_count(setCount, ArabicCountNoun.workingSet)}'
+      : '$exerciseCount ${exerciseCount == 1 ? 'exercise' : 'exercises'} • $setCount ${setCount == 1 ? 'working set' : 'working sets'}';
+
+  String showRemainingProgramExercises(int count) {
+    if (!isArabic) {
+      return 'Show remaining $count ${count == 1 ? 'exercise' : 'exercises'}';
+    }
+    final String suffix = switch (count) {
+      1 => ' إضافي',
+      2 => ' إضافيان',
+      >= 3 && <= 10 => ' إضافية',
+      _ => ' إضافيًا',
+    };
+    return 'عرض ${_count(count, ArabicCountNoun.exercise)}$suffix';
+  }
+
+  String compactProgramPrescription((
+    {String sets, String reps, String rir, String rest, String equipment}
+  ) prescription) => isArabic
+      ? '${_ltr(prescription.sets)} × ${_ltr(prescription.reps)} · RIR ${_ltr(prescription.rir)} · ${prescription.rest} · ${_ltr(prescription.equipment)}'
+      : '${prescription.sets} × ${prescription.reps} · RIR ${prescription.rir} · ${prescription.rest} · ${prescription.equipment}';
+
   String get noActiveProgram =>
       isArabic ? 'لا يوجد برنامج تدريبي نشط.' : 'No active program.';
   String get editActiveProgram => isArabic ? 'تعديل' : 'Edit';
@@ -434,24 +497,6 @@ class CoachCopy {
   String activeProgramSince(String date) => isArabic
       ? 'بدأ البرنامج في ${_ltr(date)}'
       : 'Active since $date';
-  String programWorkingSets(int count) =>
-      isArabic ? _count(count, ArabicCountNoun.trainingSet) : '$count sets';
-  String programRepRange(int minimum, int maximum) => minimum == maximum
-      ? isArabic
-          ? _count(minimum, ArabicCountNoun.repetition)
-          : '$minimum reps'
-      : isArabic
-          ? '${_ltr('$minimum–$maximum')} تكرار'
-          : '$minimum–$maximum reps';
-  String programPrescription(
-    String sets,
-    String reps,
-    String rir,
-    int rest,
-  ) =>
-      isArabic
-          ? '$sets · $reps · RIR ${_ltr(rir)} · الراحة ${_ltr('$rest s')}'
-          : '$sets · $reps · RIR $rir · Rest $rest s';
   String programTempo(String tempo) =>
       isArabic ? 'الإيقاع: ${_ltr(tempo)}' : 'Tempo: $tempo';
   String programNotes(String notes) =>

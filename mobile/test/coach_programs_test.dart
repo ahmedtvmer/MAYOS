@@ -13,9 +13,13 @@ import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/features/coach/program_import_files.dart';
+import 'package:mayos_mobile/src/features/coach/coach_exercise_table.dart';
+import 'package:mayos_mobile/src/features/player/workout/logger_card_widgets.dart'
+    show ExerciseCatalogThumbnail;
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_api_adapter.dart';
+import 'support/fake_media_http.dart';
 import 'support/fake_mayos_api.dart';
 
 const List<String> _programActionKeys = <String>[
@@ -55,6 +59,7 @@ Future<void> _pumpApp(
   WidgetTester tester,
   FakeMayosApi fake, {
   double logicalWidth = 540,
+  List<Override> providerOverrides = const <Override>[],
 }) async {
   tester.view.physicalSize = Size(logicalWidth * 2, 2400);
   tester.view.devicePixelRatio = 2.0;
@@ -66,6 +71,7 @@ Future<void> _pumpApp(
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
+        ...providerOverrides,
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
         apiClientProvider.overrideWith((ref) {
@@ -451,25 +457,39 @@ void main() {
         provenance: 'automatic',
         hasDraft: true,
       );
-    await _pumpApp(tester, fake);
+    await _pumpApp(tester, fake, logicalWidth: 1440);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
     await _openProgramSegment(tester);
     await _pumpUntilFound(tester, find.text('Generated automatically'));
 
-    expect(find.text('Program draft pending'), findsOneWidget);
+    expect(find.text('Draft pending'), findsOneWidget);
     expect(find.byKey(const Key('coach_program_edit_active')), findsOneWidget);
-    expect(find.text('program v7'), findsOneWidget);
+    expect(find.text('v7'), findsOneWidget);
+    expect(find.text('Active'), findsOneWidget);
     expect(find.text('Active since 2026-10-04'), findsOneWidget);
     expect(find.text('Squat'), findsOneWidget);
-    expect(find.text('4 sets · 6–8 reps · RIR ≥ 2 · Rest 150 s'), findsOneWidget);
-    expect(find.text('Tempo: 3-1-1'), findsOneWidget);
-    expect(find.text('Notes: Brace before each rep.'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('coach_program_stat_working_sets')),
+        matching: find.text('4'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('6 – 8'), findsOneWidget);
+    expect(find.text('≥ 2'), findsOneWidget);
+    expect(find.text('rest 150s'), findsOneWidget);
+    expect(find.text('Equipment'), findsOneWidget);
+    expect(find.text('Sets'), findsOneWidget);
+    expect(find.text('Reps'), findsOneWidget);
+    expect(find.text('RIR'), findsOneWidget);
+    expect(find.text('Rest'), findsOneWidget);
+    expect(find.text('Tempo: 3-1-1 · Notes: Brace before each rep.'), findsOneWidget);
 
     await tester.tap(find.text('History').first);
     await _pumpUntilFound(tester, find.text('Since 2026-09-24T10:00:00Z'));
     expect(find.byKey(const Key('coach_program_edit_active')), findsNothing);
-    expect(find.text('program v7'), findsNothing);
+    expect(find.text('v7'), findsNothing);
     expect(find.text('Generated automatically'), findsNothing);
     expect(find.text('Active since 2026-10-04'), findsNothing);
   });
@@ -488,7 +508,274 @@ void main() {
     await _pumpUntilFound(tester, find.text('Published by you'));
 
     expect(find.text('Edited by the player'), findsOneWidget);
-    expect(find.text('Program draft pending'), findsNothing);
+    expect(find.text('Draft pending'), findsNothing);
+  });
+
+  testWidgets('program header counts rows and day tabs switch exercises',
+      (tester) async {
+    final Map<String, dynamic> active =
+        _coachActiveProgram(provenance: 'coach', hasDraft: true);
+    final Map<String, dynamic> program =
+        active['program'] as Map<String, dynamic>;
+    final List<Map<String, dynamic>> days =
+        program['days'] as List<Map<String, dynamic>>;
+    (days.first['exercises'] as List<Map<String, dynamic>>).first
+      ..['warmup_sets'] = 1
+      ..['image_path'] = null;
+    days.add(<String, dynamic>{
+      'day_name': 'Lower B',
+      'day_order': 2,
+      'exercises': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'exercise_id': 'deadlift',
+          'exercise_name': 'Deadlift',
+          'target_sets': 3,
+          'target_reps_min': 5,
+          'target_reps_max': 7,
+          'target_rpe': 9,
+          'equipment': 'Barbell',
+        },
+      ],
+    });
+    final FakeMayosApi fake = _coachFake()..coachActiveProgram = active;
+    await _pumpApp(tester, fake, logicalWidth: 1440);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.ensureVisible(find.text('bob'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await _pumpUntilFound(tester, find.text('Full A'));
+
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('coach_program_stat_training_days')),
+        matching: find.text('2'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('coach_program_stat_total_exercises')),
+        matching: find.text('2'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('coach_program_stat_working_sets')),
+        matching: find.text('7'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Training days'), findsOneWidget);
+    expect(find.text('Total exercises'), findsOneWidget);
+    expect(find.text('Working sets'), findsOneWidget);
+    expect(find.byKey(const Key('coach_program_pending_draft')), findsOneWidget);
+    expect(find.text('4 (+1 warm-up)'), findsOneWidget);
+    expect(find.bySemanticsLabel('No picture'), findsOneWidget);
+    expect(find.text('Equipment'), findsOneWidget);
+    expect(find.text('#'), findsOneWidget);
+    expect(find.text('Exercise'), findsOneWidget);
+    expect(find.text('Sets'), findsOneWidget);
+    expect(find.text('Reps'), findsOneWidget);
+    expect(find.text('RIR'), findsOneWidget);
+    expect(find.text('Rest'), findsOneWidget);
+    expect(find.text('1 exercise • 4 working sets'), findsOneWidget);
+    expect(
+      find.byKey(const Key('coach_program_show_remaining')),
+      findsNothing,
+    );
+    expect(find.text('Deadlift'), findsNothing);
+
+    await tester.tap(find.text('Lower B').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Deadlift'), findsOneWidget);
+    expect(find.text('Barbell'), findsOneWidget);
+    expect(find.text('rest 120s'), findsOneWidget);
+    expect(find.text('Full A'), findsOneWidget);
+  });
+
+  testWidgets('long program day expands the remaining exercise rows',
+      (tester) async {
+    final Map<String, dynamic> active =
+        _coachActiveProgram(provenance: 'automatic');
+    final List<Map<String, dynamic>> exercises =
+        (active['program'] as Map<String, dynamic>)['days']![0]['exercises']
+            as List<Map<String, dynamic>>;
+    for (int index = 1; index < 10; index++) {
+      exercises.add(<String, dynamic>{
+        'exercise_id': 'exercise-$index',
+        'exercise_name': 'Exercise $index',
+        'target_sets': 1,
+        'target_reps_min': 8,
+        'target_reps_max': 8,
+        'target_rpe': 9,
+      });
+    }
+    ((active['program'] as Map<String, dynamic>)['days']
+            as List<Map<String, dynamic>>)
+        .add(<String, dynamic>{
+      'day_name': 'Short Day',
+      'day_order': 2,
+      'exercises': <Map<String, dynamic>>[],
+    });
+    final FakeMayosApi fake = _coachFake()..coachActiveProgram = active;
+    await _pumpApp(tester, fake, logicalWidth: 1440);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.ensureVisible(find.text('bob'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await _pumpUntilFound(tester, find.text('Show remaining 2 exercises'));
+
+    expect(find.text('Exercise 8'), findsNothing);
+    await tester.tap(find.text('Show remaining 2 exercises'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('coach_program_show_remaining')), findsNothing);
+    expect(find.text('Squat'), findsOneWidget);
+    for (int index = 1; index < 10; index++) {
+      expect(find.text('Exercise $index'), findsOneWidget);
+    }
+    expect(find.text('Exercise 8'), findsOneWidget);
+    expect(find.text('Exercise 9'), findsOneWidget);
+    await tester.tap(find.text('Short Day').first);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('coach_program_show_remaining')), findsNothing);
+    await tester.tap(find.text('Full A').first);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('coach_program_show_remaining')),
+      findsOneWidget,
+    );
+    expect(find.text('Exercise 8'), findsNothing);
+  });
+
+  testWidgets('program compact rows fit a 360dp phone', (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
+    await _pumpApp(tester, fake, logicalWidth: 360);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.ensureVisible(find.text('bob'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await _pumpUntilFound(tester, find.text('Squat'));
+
+    expect(find.text('4 × 6 – 8 · RIR ≥ 2 · rest 150s · —'), findsOneWidget);
+    expect(find.text('Equipment'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('failed program picture keeps the catalog thumbnail layout',
+      (tester) async {
+    final FakeMediaCatalog media = FakeMediaCatalog()..install();
+    try {
+    final Map<String, dynamic> active =
+        _coachActiveProgram(provenance: 'automatic');
+    final List<Map<String, dynamic>> exercises =
+        (active['program'] as Map<String, dynamic>)['days']![0]['exercises']
+            as List<Map<String, dynamic>>;
+    exercises.first['image_path'] = 'images/program_failed.jpg';
+    exercises.add(<String, dynamic>{
+      'exercise_id': 'missing-image',
+      'exercise_name': 'Press',
+      'target_sets': 4,
+      'target_reps_min': 6,
+      'target_reps_max': 8,
+      'target_rpe': 8.0,
+      'tempo': '3-1-1',
+      'notes': 'Brace before each rep.',
+    });
+    final FakeMayosApi fake = _coachFake()..coachActiveProgram = active;
+    await _pumpApp(
+      tester,
+      fake,
+      logicalWidth: 1440,
+      providerOverrides: <Override>[
+        offlineWorkoutDraftsEnabledProvider.overrideWithValue(false),
+      ],
+    );
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.ensureVisible(find.text('bob'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await _pumpUntilFound(tester, find.text('Squat'));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 150)),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final Finder thumbnails = find.byType(ExerciseCatalogThumbnail);
+    final Finder rows = find.byType(CoachExerciseTableRow);
+    expect(media.requestCount('images/program_failed.jpg'), 1);
+    expect(
+      find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is Icon && widget.semanticLabel == 'Picture unavailable',
+      ),
+      findsOneWidget,
+    );
+    expect(tester.getSize(thumbnails.first), const Size(48, 48));
+    expect(tester.getSize(thumbnails.last), const Size(48, 48));
+    expect(tester.getSize(rows.first).height, tester.getSize(rows.last).height);
+    expect(tester.takeException(), isNull);
+    } finally {
+      FakeMediaCatalog.uninstall();
+    }
+  });
+
+  testWidgets('program header and day tabs mirror in Arabic',
+      (tester) async {
+    final Map<String, dynamic> active =
+        _coachActiveProgram(provenance: 'automatic');
+    (active['program'] as Map<String, dynamic>)['days'].add(<String, dynamic>{
+      'day_name': 'Lower B',
+      'day_order': 2,
+      'exercises': <Map<String, dynamic>>[],
+    });
+    final FakeMayosApi fake = _coachFake()
+      ..displayLanguage = 'ar'
+      ..coachActiveProgram = active;
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('علاقات التدريب النشطة'));
+    await tester.ensureVisible(find.text('bob'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester, label: 'البرنامج التدريبي');
+    await _pumpUntilFound(tester, find.text('أيام التدريب'));
+
+    expect(find.text('نشط'), findsOneWidget);
+    expect(find.text('إجمالي التمارين'), findsOneWidget);
+    expect(find.text('مجموعات العمل'), findsOneWidget);
+    expect(
+      Directionality.of(tester.element(find.text('Squat'))),
+      TextDirection.rtl,
+    );
+    expect(
+      tester.getRect(find.text('Full A').first).center.dx,
+      greaterThan(tester.getRect(find.text('Lower B').first).center.dx),
+    );
+    expect(
+      tester.getRect(find.byIcon(Icons.fitness_center).first).center.dx,
+      greaterThan(tester.getRect(find.text('Squat')).center.dx),
+    );
+  });
+
+  testWidgets('program summary and table render with dark theme',
+      (tester) async {
+    tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+    addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+    final FakeMayosApi fake = _coachFake()
+      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
+    await _pumpApp(tester, fake, logicalWidth: 1440);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.ensureVisible(find.text('bob'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await _pumpUntilFound(tester, find.text('Training days'));
+
+    expect(
+      Theme.of(tester.element(find.text('Training days'))).brightness,
+      Brightness.dark,
+    );
+    expect(find.text('Squat'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('coach player page shows an empty program state', (tester) async {

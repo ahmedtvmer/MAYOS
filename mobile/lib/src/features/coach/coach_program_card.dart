@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../core/display_language/coach_copy.dart';
 import '../../core/display_language/feature_copy_context.dart';
-import '../../core/effort.dart';
 import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
@@ -11,6 +10,8 @@ import '../../core/ui/is_desktop_layout.dart';
 import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_card.dart';
 import '../../core/ui/mayos_section_header.dart';
+import 'coach_exercise_table.dart';
+import 'coach_program_view.dart';
 
 typedef CoachProgramCardBusyState = ({
   bool generatingDraft,
@@ -66,7 +67,8 @@ class CoachProgramCard extends StatelessWidget {
 
   List<Widget> _programContent(BuildContext context, CoachCopy copy) =>
       <Widget>[
-        if (active.hasDraft) _pendingProgramDraftBadge(context),
+        if (active.hasDraft && active.program == null)
+          _pendingProgramDraftBadge(context),
         ..._activeProgramContent(context, copy),
         if (actionError != null) ...<Widget>[
           const SizedBox(height: MayosSpacing.sm),
@@ -88,7 +90,7 @@ class CoachProgramCard extends StatelessWidget {
         ),
       ];
     }
-    return _programDetails(context, program);
+    return <Widget>[CoachProgramView(active: active, program: program)];
   }
 
   Widget _actionErrorText(BuildContext context) => Text(
@@ -276,83 +278,10 @@ class CoachProgramCard extends StatelessWidget {
 
   Widget _pendingProgramDraftBadge(BuildContext context) => Align(
         alignment: AlignmentDirectional.centerStart,
-        child: Chip(
+        child: CoachStatusChip(
           key: const Key('coach_program_pending_draft'),
-          label: Text(coachCopyOf(context).pendingProgramDraft),
+          label: coachCopyOf(context).pendingProgramDraft,
+          tone: CoachStatusChipTone.pending,
         ),
-      );
-
-  List<Widget> _programDetails(
-    BuildContext context,
-    TrainingProgram program,
-  ) {
-    final CoachCopy copy = coachCopyOf(context);
-    final String? activeDate = active.activeSince?.split('T').first;
-    return <Widget>[
-      Text(active.provenance == 'coach'
-          ? copy.publishedByYou
-          : copy.generatedAutomatically),
-      if (active.editedByPlayer) Text(copy.editedByPlayer),
-      if (program.version != null) Text(copy.programVersion(program.version!)),
-      if (activeDate != null) Text(copy.activeProgramSince(activeDate)),
-      Text(program.programName),
-      for (final ProgramDay day in program.days) _programDay(context, day),
-    ];
-  }
-
-  Widget _programDay(BuildContext context, ProgramDay day) {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: MayosSpacing.xs),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            day.dayName,
-            style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
-          ),
-          for (final ProgramExercise exercise in day.exercises)
-            _programExercise(context, exercise),
-        ],
-      ),
-    );
-  }
-
-  Widget _programExercise(BuildContext context, ProgramExercise exercise) =>
-      Padding(
-        padding: const EdgeInsetsDirectional.only(start: MayosSpacing.sm),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: _programExerciseDetails(context, exercise),
-        ),
-      );
-
-  List<Widget> _programExerciseDetails(
-    BuildContext context,
-    ProgramExercise exercise,
-  ) {
-    final CoachCopy copy = coachCopyOf(context);
-    return <Widget>[
-      Text(exercise.exerciseName),
-      Text(
-        _programPrescription(copy, exercise),
-        style: MayosTypography.of(context).bodySecondary,
-      ),
-      if (exercise.tempo != null && exercise.tempo!.isNotEmpty)
-        Text(copy.programTempo(exercise.tempo!)),
-      if (exercise.notes != null && exercise.notes!.isNotEmpty)
-        Text(copy.programNotes(exercise.notes!)),
-    ];
-  }
-
-  String _programPrescription(CoachCopy copy, ProgramExercise exercise) =>
-      copy.programPrescription(
-        copy.programWorkingSets(exercise.targetSets),
-        copy.programRepRange(
-          exercise.targetRepsMin,
-          exercise.targetRepsMax,
-        ),
-        minRirLabel(exercise.targetRpe),
-        exercise.restSecondsOrDefault,
       );
 }
