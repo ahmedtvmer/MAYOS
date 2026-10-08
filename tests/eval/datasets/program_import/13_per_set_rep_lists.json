@@ -1,0 +1,510 @@
+{
+  "id": "13_per_set_rep_lists",
+  "description": "Three-day plan with coach-written 10/8/6 and similar descending per-set rep lists.",
+  "tags": [
+    "english",
+    "per_set_reps",
+    "approximation"
+  ],
+  "format": "csv",
+  "expected_tabs": [
+    "CSV"
+  ],
+  "expected_requires_tab_choice": false,
+  "expected_selected_tab": "CSV",
+  "expected_weeks": [],
+  "expected_chosen_week": null,
+  "expected_confirm_layout": false,
+  "expected_unresolved_names": [],
+  "expected_rows": [
+    {
+      "source_row": 3,
+      "week": null,
+      "day": 1,
+      "day_name": "Lower A",
+      "exercise_name": "Back Squat (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "43",
+      "sets": 3,
+      "reps_min": 6,
+      "reps_max": 10,
+      "rir": "1-2",
+      "rpe": null,
+      "rest_seconds": 120,
+      "tempo": null,
+      "notes": "Keep the bar over mid-foot and finish each rep before your brace starts to soften.",
+      "original_text": "10/8/6 per set",
+      "input_exercise_name": "Back Squat (Barbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.reps_approximated.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.reps_approximated.v1": "Per-set rep targets are not stored separately; use the min–max range and keep the list in notes."
+      },
+      "edge_cases": [
+        "per_set_reps"
+      ]
+    },
+    {
+      "source_row": 4,
+      "week": null,
+      "day": 1,
+      "day_name": "Lower A",
+      "exercise_name": "Romanian Deadlift (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "85",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 12,
+      "rir": "3",
+      "rpe": null,
+      "rest_seconds": 180,
+      "tempo": null,
+      "notes": "Keep the ribs stacked over the hips through the hinge and avoid reaching at lockout.",
+      "original_text": "12/10/8 per set",
+      "input_exercise_name": "Romanian Deadlift (Barbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.reps_approximated.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.reps_approximated.v1": "Per-set rep targets are not stored separately; use the min–max range and keep the list in notes."
+      },
+      "edge_cases": [
+        "per_set_reps"
+      ]
+    },
+    {
+      "source_row": 5,
+      "week": null,
+      "day": 1,
+      "day_name": "Lower A",
+      "exercise_name": "Bulgarian Split Squat (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "410",
+      "sets": 3,
+      "reps_min": 6,
+      "reps_max": 8,
+      "rir": null,
+      "rpe": "8",
+      "rest_seconds": 75,
+      "tempo": null,
+      "notes": "Use the rail for balance if needed; let the working leg do the work.",
+      "original_text": "8/7/6 per set",
+      "input_exercise_name": "Bulgarian Split Squat (Dumbbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.reps_approximated.v1",
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.reps_approximated.v1": "Per-set rep targets are not stored separately; use the min–max range and keep the list in notes.",
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": [
+        "per_set_reps"
+      ]
+    },
+    {
+      "source_row": 6,
+      "week": null,
+      "day": 1,
+      "day_name": "Lower A",
+      "exercise_name": "Lying Leg Curl (Machine)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "586",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 10,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 120,
+      "tempo": null,
+      "notes": "Keep the toes relaxed and make the lowering phase match the curl.",
+      "original_text": "10/9/8 per set",
+      "input_exercise_name": "Lying Leg Curl (Machine)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.reps_approximated.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.reps_approximated.v1": "Per-set rep targets are not stored separately; use the min–max range and keep the list in notes."
+      },
+      "edge_cases": [
+        "per_set_reps"
+      ]
+    },
+    {
+      "source_row": 7,
+      "week": null,
+      "day": 2,
+      "day_name": "Push A",
+      "exercise_name": "Bench Press (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "25",
+      "sets": 3,
+      "reps_min": 6,
+      "reps_max": 10,
+      "rir": "3",
+      "rpe": null,
+      "rest_seconds": 120,
+      "tempo": null,
+      "notes": "Keep wrists stacked over elbows and press the bar back toward the rack.",
+      "original_text": "10/8/6 per set",
+      "input_exercise_name": "Bench Press (Barbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.reps_approximated.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.reps_approximated.v1": "Per-set rep targets are not stored separately; use the min–max range and keep the list in notes."
+      },
+      "edge_cases": [
+        "per_set_reps"
+      ]
+    },
+    {
+      "source_row": 8,
+      "week": null,
+      "day": 2,
+      "day_name": "Push A",
+      "exercise_name": "Incline Bench Press (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "314",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 12,
+      "rir": null,
+      "rpe": "8",
+      "rest_seconds": 180,
+      "tempo": null,
+      "notes": "Keep the shoulder blades supported and finish each rep without clanging the bells.",
+      "original_text": "12/10/8 per set",
+      "input_exercise_name": "Incline Bench Press (Dumbbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.reps_approximated.v1",
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.reps_approximated.v1": "Per-set rep targets are not stored separately; use the min–max range and keep the list in notes.",
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": [
+        "per_set_reps"
+      ]
+    },
+    {
+      "source_row": 9,
+      "week": null,
+      "day": 2,
+      "day_name": "Push A",
+      "exercise_name": "Arnold Press (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "2137",
+      "sets": 3,
+      "reps_min": 6,
+      "reps_max": 8,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 75,
+      "tempo": null,
+      "notes": "Press in a comfortable arc and stop short of any pinching at the top.",
+      "original_text": "8/7/6 per set",
+      "input_exercise_name": "Arnold Press (Dumbbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.reps_approximated.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.reps_approximated.v1": "Per-set rep targets are not stored separately; use the min–max range and keep the list in notes."
+      },
+      "edge_cases": [
+        "per_set_reps"
+      ]
+    },
+    {
+      "source_row": 10,
+      "week": null,
+      "day": 2,
+      "day_name": "Push A",
+      "exercise_name": "Lateral Raise (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "178",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 10,
+      "rir": "1-2",
+      "rpe": null,
+      "rest_seconds": 120,
+      "tempo": null,
+      "notes": "Use a light enough load to avoid swinging the hips or shrugging the shoulders.",
+      "original_text": "10/9/8 per set",
+      "input_exercise_name": "Lateral Raise (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.reps_approximated.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.reps_approximated.v1": "Per-set rep targets are not stored separately; use the min–max range and keep the list in notes."
+      },
+      "edge_cases": [
+        "per_set_reps"
+      ]
+    },
+    {
+      "source_row": 11,
+      "week": null,
+      "day": 3,
+      "day_name": "Pull A",
+      "exercise_name": "Lat Pulldown (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "150",
+      "sets": 3,
+      "reps_min": 6,
+      "reps_max": 10,
+      "rir": null,
+      "rpe": "8",
+      "rest_seconds": 120,
+      "tempo": null,
+      "notes": "Let the arms reach at the top while keeping control of the weight stack.",
+      "original_text": "10/8/6 per set",
+      "input_exercise_name": "Lat Pulldown (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.reps_approximated.v1",
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.reps_approximated.v1": "Per-set rep targets are not stored separately; use the min–max range and keep the list in notes.",
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": [
+        "per_set_reps"
+      ]
+    },
+    {
+      "source_row": 12,
+      "week": null,
+      "day": 3,
+      "day_name": "Pull A",
+      "exercise_name": "Seated Row (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "180",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 12,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 180,
+      "tempo": null,
+      "notes": "Drive the elbows back; stop the pull before the chest starts to rotate.",
+      "original_text": "12/10/8 per set",
+      "input_exercise_name": "Seated Row (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.reps_approximated.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.reps_approximated.v1": "Per-set rep targets are not stored separately; use the min–max range and keep the list in notes."
+      },
+      "edge_cases": [
+        "per_set_reps"
+      ]
+    },
+    {
+      "source_row": 13,
+      "week": null,
+      "day": 3,
+      "day_name": "Pull A",
+      "exercise_name": "Pull-Up",
+      "expected_resolution": "library",
+      "expected_exercise_id": "652",
+      "sets": 3,
+      "reps_min": 6,
+      "reps_max": 8,
+      "rir": "1-2",
+      "rpe": null,
+      "rest_seconds": 75,
+      "tempo": null,
+      "notes": "Lower to a full comfortable reach rather than dropping into the next rep.",
+      "original_text": "8/7/6 per set",
+      "input_exercise_name": "Pull-Up",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.reps_approximated.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.reps_approximated.v1": "Per-set rep targets are not stored separately; use the min–max range and keep the list in notes."
+      },
+      "edge_cases": [
+        "per_set_reps"
+      ]
+    },
+    {
+      "source_row": 14,
+      "week": null,
+      "day": 3,
+      "day_name": "Pull A",
+      "exercise_name": "Reverse Pec Deck (Machine)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "602",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 10,
+      "rir": "3",
+      "rpe": null,
+      "rest_seconds": 120,
+      "tempo": null,
+      "notes": "Use a light load and hold the rear-delt squeeze for a brief count.",
+      "original_text": "10/9/8 per set",
+      "input_exercise_name": "Reverse Pec Deck (Machine)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.reps_approximated.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.reps_approximated.v1": "Per-set rep targets are not stored separately; use the min–max range and keep the list in notes."
+      },
+      "edge_cases": [
+        "per_set_reps"
+      ]
+    }
+  ],
+  "grid": [
+    [
+      "Top-to-back-off rep pattern"
+    ],
+    [
+      "Day",
+      "Session",
+      "Exercise",
+      "Sets",
+      "Reps by set",
+      "Effort",
+      "Rest",
+      "Coach note"
+    ],
+    [
+      1,
+      "Lower A",
+      "Back Squat (Barbell)",
+      3,
+      "10/8/6",
+      "RIR 1-2",
+      "120",
+      "Keep the bar over mid-foot and finish each rep before your brace starts to soften."
+    ],
+    [
+      1,
+      "Lower A",
+      "Romanian Deadlift (Barbell)",
+      3,
+      "12/10/8",
+      "3 RIR",
+      "3 min",
+      "Keep the ribs stacked over the hips through the hinge and avoid reaching at lockout."
+    ],
+    [
+      1,
+      "Lower A",
+      "Bulgarian Split Squat (Dumbbell)",
+      3,
+      "8/7/6",
+      "@8",
+      "75s",
+      "Use the rail for balance if needed; let the working leg do the work."
+    ],
+    [
+      1,
+      "Lower A",
+      "Lying Leg Curl (Machine)",
+      3,
+      "10/9/8",
+      "2 RIR",
+      "2 min",
+      "Keep the toes relaxed and make the lowering phase match the curl."
+    ],
+    [
+      2,
+      "Push A",
+      "Bench Press (Barbell)",
+      3,
+      "10/8/6",
+      "3 RIR",
+      "120",
+      "Keep wrists stacked over elbows and press the bar back toward the rack."
+    ],
+    [
+      2,
+      "Push A",
+      "Incline Bench Press (Dumbbell)",
+      3,
+      "12/10/8",
+      "@8",
+      "3 min",
+      "Keep the shoulder blades supported and finish each rep without clanging the bells."
+    ],
+    [
+      2,
+      "Push A",
+      "Arnold Press (Dumbbell)",
+      3,
+      "8/7/6",
+      "2 RIR",
+      "75s",
+      "Press in a comfortable arc and stop short of any pinching at the top."
+    ],
+    [
+      2,
+      "Push A",
+      "Lateral Raise (Cable)",
+      3,
+      "10/9/8",
+      "RIR 1-2",
+      "2 min",
+      "Use a light enough load to avoid swinging the hips or shrugging the shoulders."
+    ],
+    [
+      3,
+      "Pull A",
+      "Lat Pulldown (Cable)",
+      3,
+      "10/8/6",
+      "@8",
+      "120",
+      "Let the arms reach at the top while keeping control of the weight stack."
+    ],
+    [
+      3,
+      "Pull A",
+      "Seated Row (Cable)",
+      3,
+      "12/10/8",
+      "2 RIR",
+      "3 min",
+      "Drive the elbows back; stop the pull before the chest starts to rotate."
+    ],
+    [
+      3,
+      "Pull A",
+      "Pull-Up",
+      3,
+      "8/7/6",
+      "RIR 1-2",
+      "75s",
+      "Lower to a full comfortable reach rather than dropping into the next rep."
+    ],
+    [
+      3,
+      "Pull A",
+      "Reverse Pec Deck (Machine)",
+      3,
+      "10/9/8",
+      "3 RIR",
+      "2 min",
+      "Use a light load and hold the rear-delt squeeze for a brief count."
+    ]
+  ]
+}

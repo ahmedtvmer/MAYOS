@@ -202,9 +202,98 @@ and a passing live report at `PROGRAM_IMPORT_AI_EVAL_REPORT` are configured.
 The report must match the current prompt/schema hash and configured hosted
 coach model. The report gate re-derives the row accuracy, dropped-row,
 approximation, and confirm-only suggestion checks through
-`service.program_import_ai.evaluate_pass_condition`; the reviewed sample set
-and hosted-model runner are supplied by issue #350. Template imports remain
+`service.program_import_ai.evaluate_pass_condition`. Template imports remain
 available with this flag off and make no model call.
+
+The 19 synthetic fixture definitions live as one human-readable JSON file per
+sheet in `tests/eval/datasets/program_import/`. Together they contain 316
+expected exercise rows across full programs, including three- and four-day
+splits, notes and max-tracker tabs, and side-by-side or stacked training weeks.
+Each file has a short description, the coach-authored grid, expected rows,
+approximation reasons, unresolved names, and chosen week. `REVIEW.json` stores
+the owner, review date, and SHA-256 hash of the canonical fixture JSON files
+(the review file is excluded from the hash). The checked-in set is pending
+review.
+
+The owner must inspect every fixture before recording review. Run this command
+after review; it records the current content hash and date. Any later fixture
+edit changes the hash, so the runner refuses another live run until the owner
+reviews and records the new fixture set:
+
+```bash
+.venv/bin/python tests/eval/run_program_import_evaluation.py \
+  --record-review --reviewer "Owner name"
+```
+
+Run the plumbing path with the scripted fake model. The CLI prints a prominent
+`NOT A MODEL EVALUATION` banner. This verifies the upload route, result scorer,
+and report structure; it records the fake model identity with backend `scripted`, writes
+`mode: "mock"`, `model_run: "scripted_fake"`, and `pass: false`, which the shared report validator refuses:
+
+```bash
+.venv/bin/python tests/eval/run_program_import_evaluation.py --mock --no-privacy
+.venv/bin/python tests/eval/run_program_import_evaluation.py \
+  --mock --write-report /tmp/program_import_mock.json --no-privacy
+```
+
+After the owner records review, run the sample set against the configured
+hosted Coach model and write the report. The runner also executes
+`tests/test_program_import.py` as the privacy gate. It creates a temporary
+catalog retaining the Exercise library, clears copied account and Assignment
+records, and creates a temporary Coach, Player, Assignment, and empty Training
+ledger. It uploads each synthetic sheet through the normal import HTTP route.
+Only the selected sheet grid and bounded Exercise library vocabulary can reach
+the Coach model.
+
+```bash
+.venv/bin/python tests/eval/run_program_import_evaluation.py \
+  --write-report reports/program_import_eval.json
+```
+
+The live report records `model`, `backend`, `prompt_hash`, `report_version`,
+the canonical fixture content, `dataset_hash`, the matching
+`reviewed_dataset_hash`, the complete owner-review record, privacy result, and
+per-sheet/per-row evidence. The runner verifies the current `REVIEW.json` hash
+before a live run. Production validation is self-contained: it hashes the
+fixture content embedded in the report and checks it against the embedded
+owner review, without reading `tests/` or any fixture path. `--check-report`
+uses that same validator; if local fixture files have changed, it prints a
+separate notice without changing the report verdict.
+
+A report is accepted only when the validator recomputes its metrics from the
+recorded row evidence and confirms at least 95% correct day/sets/reps, no
+silently dropped rows, every expected approximation flagged, no unresolved
+exercise applied, correct tab and week selection, and a passing privacy gate.
+Each sheet's pass status is recomputed from its own row and layout checks.
+Rows invented by the model are counted as `extra_rows` per sheet and in the
+report; this is diagnostic and is not a separate pass condition. A row-level
+error only reports the same physical row and week, so one error cannot cover
+other weeks in a side-by-side layout. A whole-sheet HTTP failure marks every
+expected row as reported-not-silent, but the sheet still fails because none of
+its rows has a correct prescription. `--no-privacy` records that gate as
+failed, so the report cannot enable the feature. The live runner validates the
+written report immediately and uses that verdict for its pass banner and exit
+code. No live report is committed with the implementation; the owner produces
+it after reviewing the fixtures and running the hosted evaluation.
+
+An expected row counts as reported when its matching exercise/week row appears
+in the result, a row error has the same physical `source_row` and week, or a
+whole-sheet HTTP failure is recorded for the import. The whole-sheet failure
+still fails the sheet because the expected prescriptions were not returned.
+
+Re-check the report without loading a model:
+
+```bash
+.venv/bin/python tests/eval/run_program_import_evaluation.py \
+  --check-report reports/program_import_eval.json
+```
+
+Point the service at the accepted live report when enabling free-form import:
+
+```bash
+export PROGRAM_IMPORT_AI_ENABLED=true
+export PROGRAM_IMPORT_AI_EVAL_REPORT=reports/program_import_eval.json
+```
 
 ### Enabling model-written Checkpoint reviews (issue #222)
 

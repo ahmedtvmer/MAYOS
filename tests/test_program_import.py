@@ -114,34 +114,60 @@ def _confirmed_rows(rows):
 
 def _enable_program_import_ai(monkeypatch, tmp_path, mode="live"):
     from service import program_import_ai
+    from service.program_import_evaluation import fixture_entries_hash
+    from tests.eval import run_program_import_evaluation as evaluation_runner
 
     model, backend = program_import_ai.coach_model_identity()
-    report = {
-        "report_version": program_import_ai.REPORT_VERSION,
-        "suite": "program_import",
-        "mode": mode,
-        "prompt_hash": program_import_ai.prompt_version_hash(),
-        "model": model,
-        "backend": backend,
-        "gates": {
-            "privacy": {"pass": True},
-            "evaluation": {
-                "pass": True,
-                "threshold": 1,
-                "metrics": {
-                    "expected_rows": 100,
-                    "correct_rows": 96,
-                    "silently_dropped_rows": 0,
-                    "approximations": 4,
-                    "approximations_flagged": 4,
-                    "unresolved_names": 3,
-                    "unresolved_auto_applied": 0,
-                },
-            },
-        },
-        "runs": [{"case_id": "reviewed-samples", "passed": True, "checks": {}}],
-        "pass": True,
+    fixture = {
+        "id": "test-sample",
+        "description": "One synthetic row used to exercise the production enable gate.",
+        "format": "csv",
+        "tags": ["test"],
+        "expected_tabs": ["CSV"],
+        "expected_requires_tab_choice": False,
+        "expected_selected_tab": "CSV",
+        "expected_weeks": [],
+        "expected_chosen_week": None,
+        "expected_confirm_layout": False,
+        "expected_rows": [{
+            "source_row": 2, "week": None, "day": 1, "day_name": "Push",
+            "input_exercise_name": "Squat", "exercise_name": "Squat",
+            "expected_exercise_id": "sq", "expected_resolution": "library",
+            "sets": 3, "reps_min": 6, "reps_max": 8, "approximation_codes": [],
+        }],
     }
+    entries = [{"filename": "01_sample.json", "fixture": fixture}]
+    dataset_hash = fixture_entries_hash(entries)
+    review = {
+        "reviewed": True,
+        "reviewed_by": "test owner",
+        "reviewed_on": "2026-10-08",
+        "reviewed_dataset_hash": dataset_hash,
+    }
+    actual = {
+        "source_row": 2, "week": None, "day": 1, "day_name": "Push",
+        "exercise_name": "Squat", "exercise_id": "sq", "sets": 3,
+        "reps_min": 6, "reps_max": 8, "warnings": [],
+    }
+    import_result = {
+        "rows": [actual], "errors": [], "detected_tabs": ["CSV"],
+        "selected_tab": "CSV", "detected_weeks": [], "selected_week": None,
+        "weeks_not_imported": [], "confirm_layout": False,
+        "import_mode": "freeform",
+    }
+    scored = evaluation_runner.score_import_result(
+        fixture, import_result, http_status=200, preflight=import_result
+    )
+    report = evaluation_runner.build_report(
+        [scored], mode="live", privacy_pass=True, dataset_review=review,
+        dataset_entries=entries, model_instance=None,
+    )
+    report["mode"] = mode
+    report["model_run"] = "hosted_coach"
+    report["model"] = model
+    report["backend"] = backend
+    report["pass"] = True
+    assert report["model"] == model and report["backend"] == backend
     report_path = tmp_path / "program-import-report.json"
     report_path.write_text(json.dumps(report), encoding="utf-8")
     monkeypatch.setenv("PROGRAM_IMPORT_AI_ENABLED", "true")

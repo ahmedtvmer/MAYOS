@@ -1,0 +1,592 @@
+{
+  "id": "10_reps_times_rpe",
+  "description": "Three-day strength plan using the coach’s Reps x RPE header and @8, RPE 7-8 and decimal targets.",
+  "tags": [
+    "english",
+    "rpe",
+    "reps_x_rpe",
+    "tempo"
+  ],
+  "format": "csv",
+  "expected_tabs": [
+    "CSV"
+  ],
+  "expected_requires_tab_choice": false,
+  "expected_selected_tab": "CSV",
+  "expected_weeks": [],
+  "expected_chosen_week": null,
+  "expected_confirm_layout": false,
+  "expected_unresolved_names": [],
+  "expected_rows": [
+    {
+      "source_row": 3,
+      "week": null,
+      "day": 1,
+      "day_name": "Lower A",
+      "exercise_name": "Back Squat (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "43",
+      "sets": 4,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": null,
+      "rpe": "7-8",
+      "rest_seconds": 90,
+      "tempo": "2-0-2-0",
+      "notes": "Take one breath at the top, reset your feet, then repeat the same unrushed setup.",
+      "original_text": "6 x RPE 7-8",
+      "input_exercise_name": "Back Squat (Barbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    },
+    {
+      "source_row": 4,
+      "week": null,
+      "day": 1,
+      "day_name": "Lower A",
+      "exercise_name": "Romanian Deadlift (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "85",
+      "sets": 3,
+      "reps_min": 6,
+      "reps_max": 6,
+      "rir": null,
+      "rpe": "8.5",
+      "rest_seconds": 120,
+      "tempo": null,
+      "notes": "Reset each rep and pull the slack out before you lift.",
+      "original_text": "10 x RPE 8.5",
+      "input_exercise_name": "Romanian Deadlift (Barbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    },
+    {
+      "source_row": 5,
+      "week": null,
+      "day": 1,
+      "day_name": "Lower A",
+      "exercise_name": "Bulgarian Split Squat (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "410",
+      "sets": 3,
+      "reps_min": 10,
+      "reps_max": 10,
+      "rir": null,
+      "rpe": "7",
+      "rest_seconds": 180,
+      "tempo": "3-0-1-0",
+      "notes": "Pause briefly at the bottom and stand without bouncing out of the front knee.",
+      "original_text": "8 x @7",
+      "input_exercise_name": "Bulgarian Split Squat (Dumbbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    },
+    {
+      "source_row": 6,
+      "week": null,
+      "day": 1,
+      "day_name": "Lower A",
+      "exercise_name": "Lying Leg Curl (Machine)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "586",
+      "sets": 4,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": null,
+      "rpe": "9.5",
+      "rest_seconds": 75,
+      "tempo": null,
+      "notes": "Pause at the squeeze, then let the knee open without losing tension.",
+      "original_text": "6 x RPE 9.5",
+      "input_exercise_name": "Lying Leg Curl (Machine)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    },
+    {
+      "source_row": 7,
+      "week": null,
+      "day": 1,
+      "day_name": "Lower A",
+      "exercise_name": "Standing Calf Raise (Machine)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "605",
+      "sets": 2,
+      "reps_min": 6,
+      "reps_max": 6,
+      "rir": null,
+      "rpe": "8",
+      "rest_seconds": 120,
+      "tempo": "2-1-1-0",
+      "notes": "Hold the top for a beat instead of shortening the last few reps.",
+      "original_text": "8 x @8",
+      "input_exercise_name": "Standing Calf Raise (Machine)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    },
+    {
+      "source_row": 8,
+      "week": null,
+      "day": 2,
+      "day_name": "Push A",
+      "exercise_name": "Bench Press (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "25",
+      "sets": 4,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": null,
+      "rpe": "8.5",
+      "rest_seconds": 90,
+      "tempo": "2-0-2-0",
+      "notes": "Drive through the floor as the bar leaves the chest; keep the hips on the bench.",
+      "original_text": "10 x RPE 8.5",
+      "input_exercise_name": "Bench Press (Barbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    },
+    {
+      "source_row": 9,
+      "week": null,
+      "day": 2,
+      "day_name": "Push A",
+      "exercise_name": "Incline Bench Press (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "314",
+      "sets": 3,
+      "reps_min": 6,
+      "reps_max": 6,
+      "rir": null,
+      "rpe": "7",
+      "rest_seconds": 120,
+      "tempo": null,
+      "notes": "Keep the elbows slightly under the wrists as the dumbbells come down.",
+      "original_text": "8 x @7",
+      "input_exercise_name": "Incline Bench Press (Dumbbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    },
+    {
+      "source_row": 10,
+      "week": null,
+      "day": 2,
+      "day_name": "Push A",
+      "exercise_name": "Arnold Press (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "2137",
+      "sets": 3,
+      "reps_min": 10,
+      "reps_max": 10,
+      "rir": null,
+      "rpe": "9",
+      "rest_seconds": 180,
+      "tempo": "3-0-1-0",
+      "notes": "Squeeze the glutes lightly so the low back stays quiet during the press.",
+      "original_text": "6 x RPE 9",
+      "input_exercise_name": "Arnold Press (Dumbbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    },
+    {
+      "source_row": 11,
+      "week": null,
+      "day": 2,
+      "day_name": "Push A",
+      "exercise_name": "Lateral Raise (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "178",
+      "sets": 4,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": null,
+      "rpe": "8",
+      "rest_seconds": 75,
+      "tempo": null,
+      "notes": "Start each rep from the same position and hold the top briefly.",
+      "original_text": "8 x @8",
+      "input_exercise_name": "Lateral Raise (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    },
+    {
+      "source_row": 12,
+      "week": null,
+      "day": 2,
+      "day_name": "Push A",
+      "exercise_name": "Triceps Pushdown (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "201",
+      "sets": 2,
+      "reps_min": 6,
+      "reps_max": 6,
+      "rir": null,
+      "rpe": "7-8",
+      "rest_seconds": 120,
+      "tempo": "2-1-1-0",
+      "notes": "Pause at lockout, then bend the elbows under control.",
+      "original_text": "6 x RPE 7-8",
+      "input_exercise_name": "Triceps Pushdown (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    },
+    {
+      "source_row": 13,
+      "week": null,
+      "day": 3,
+      "day_name": "Pull A",
+      "exercise_name": "Lat Pulldown (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "150",
+      "sets": 4,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": null,
+      "rpe": "7",
+      "rest_seconds": 90,
+      "tempo": "2-0-2-0",
+      "notes": "Match the grip width from set to set and finish without shrugging.",
+      "original_text": "8 x @7",
+      "input_exercise_name": "Lat Pulldown (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    },
+    {
+      "source_row": 14,
+      "week": null,
+      "day": 3,
+      "day_name": "Pull A",
+      "exercise_name": "Seated Row (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "180",
+      "sets": 3,
+      "reps_min": 6,
+      "reps_max": 6,
+      "rir": null,
+      "rpe": "9",
+      "rest_seconds": 120,
+      "tempo": null,
+      "notes": "Use a brief squeeze at the back, then return the arms slowly.",
+      "original_text": "6 x RPE 9",
+      "input_exercise_name": "Seated Row (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    },
+    {
+      "source_row": 15,
+      "week": null,
+      "day": 3,
+      "day_name": "Pull A",
+      "exercise_name": "Pull-Up",
+      "expected_resolution": "library",
+      "expected_exercise_id": "652",
+      "sets": 3,
+      "reps_min": 10,
+      "reps_max": 10,
+      "rir": null,
+      "rpe": "8",
+      "rest_seconds": 180,
+      "tempo": "3-0-1-0",
+      "notes": "Use the same grip each set and finish each rep with the chin clearly over the bar.",
+      "original_text": "8 x @8",
+      "input_exercise_name": "Pull-Up",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    },
+    {
+      "source_row": 16,
+      "week": null,
+      "day": 3,
+      "day_name": "Pull A",
+      "exercise_name": "Reverse Pec Deck (Machine)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "602",
+      "sets": 4,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": null,
+      "rpe": "7-8",
+      "rest_seconds": 75,
+      "tempo": null,
+      "notes": "Set the seat so the handles start in line with the shoulders.",
+      "original_text": "6 x RPE 7-8",
+      "input_exercise_name": "Reverse Pec Deck (Machine)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    },
+    {
+      "source_row": 17,
+      "week": null,
+      "day": 3,
+      "day_name": "Pull A",
+      "exercise_name": "Curl (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "31",
+      "sets": 2,
+      "reps_min": 6,
+      "reps_max": 6,
+      "rir": null,
+      "rpe": "8.5",
+      "rest_seconds": 120,
+      "tempo": "2-1-1-0",
+      "notes": "Squeeze at the top without bringing the elbows forward.",
+      "original_text": "10 x RPE 8.5",
+      "input_exercise_name": "Barbell Curl",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    }
+  ],
+  "grid": [
+    [
+      "Week A / primary work"
+    ],
+    [
+      "Day",
+      "Session",
+      "Exercise",
+      "Reps x RPE",
+      "Sets",
+      "Rest",
+      "Tempo",
+      "Notes"
+    ],
+    [
+      1,
+      "Lower A",
+      "Back Squat (Barbell)",
+      "6 x RPE 7-8",
+      4,
+      "90s",
+      "2-0-2-0",
+      "Take one breath at the top, reset your feet, then repeat the same unrushed setup."
+    ],
+    [
+      1,
+      "Lower A",
+      "Romanian Deadlift (Barbell)",
+      "10 x RPE 8.5",
+      3,
+      "120",
+      "",
+      "Reset each rep and pull the slack out before you lift."
+    ],
+    [
+      1,
+      "Lower A",
+      "Bulgarian Split Squat (Dumbbell)",
+      "8 x @7",
+      3,
+      "3 min",
+      "3-0-1-0",
+      "Pause briefly at the bottom and stand without bouncing out of the front knee."
+    ],
+    [
+      1,
+      "Lower A",
+      "Lying Leg Curl (Machine)",
+      "6 x RPE 9.5",
+      4,
+      "75s",
+      "",
+      "Pause at the squeeze, then let the knee open without losing tension."
+    ],
+    [
+      1,
+      "Lower A",
+      "Standing Calf Raise (Machine)",
+      "8 x @8",
+      2,
+      "2 min",
+      "2-1-1-0",
+      "Hold the top for a beat instead of shortening the last few reps."
+    ],
+    [
+      2,
+      "Push A",
+      "Bench Press (Barbell)",
+      "10 x RPE 8.5",
+      4,
+      "90s",
+      "2-0-2-0",
+      "Drive through the floor as the bar leaves the chest; keep the hips on the bench."
+    ],
+    [
+      2,
+      "Push A",
+      "Incline Bench Press (Dumbbell)",
+      "8 x @7",
+      3,
+      "120",
+      "",
+      "Keep the elbows slightly under the wrists as the dumbbells come down."
+    ],
+    [
+      2,
+      "Push A",
+      "Arnold Press (Dumbbell)",
+      "6 x RPE 9",
+      3,
+      "3 min",
+      "3-0-1-0",
+      "Squeeze the glutes lightly so the low back stays quiet during the press."
+    ],
+    [
+      2,
+      "Push A",
+      "Lateral Raise (Cable)",
+      "8 x @8",
+      4,
+      "75s",
+      "",
+      "Start each rep from the same position and hold the top briefly."
+    ],
+    [
+      2,
+      "Push A",
+      "Triceps Pushdown (Cable)",
+      "6 x RPE 7-8",
+      2,
+      "2 min",
+      "2-1-1-0",
+      "Pause at lockout, then bend the elbows under control."
+    ],
+    [
+      3,
+      "Pull A",
+      "Lat Pulldown (Cable)",
+      "8 x @7",
+      4,
+      "90s",
+      "2-0-2-0",
+      "Match the grip width from set to set and finish without shrugging."
+    ],
+    [
+      3,
+      "Pull A",
+      "Seated Row (Cable)",
+      "6 x RPE 9",
+      3,
+      "120",
+      "",
+      "Use a brief squeeze at the back, then return the arms slowly."
+    ],
+    [
+      3,
+      "Pull A",
+      "Pull-Up",
+      "8 x @8",
+      3,
+      "3 min",
+      "3-0-1-0",
+      "Use the same grip each set and finish each rep with the chin clearly over the bar."
+    ],
+    [
+      3,
+      "Pull A",
+      "Reverse Pec Deck (Machine)",
+      "6 x RPE 7-8",
+      4,
+      "75s",
+      "",
+      "Set the seat so the handles start in line with the shoulders."
+    ],
+    [
+      3,
+      "Pull A",
+      "Barbell Curl",
+      "10 x RPE 8.5",
+      2,
+      "2 min",
+      "2-1-1-0",
+      "Squeeze at the top without bringing the elbows forward."
+    ]
+  ]
+}

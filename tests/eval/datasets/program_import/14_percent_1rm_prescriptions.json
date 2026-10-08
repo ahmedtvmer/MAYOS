@@ -1,0 +1,574 @@
+{
+  "id": "14_percent_1rm_prescriptions",
+  "description": "Three-day strength plan with 4x5 @ 75% and other percentages in a separate load column.",
+  "tags": [
+    "english",
+    "percent_load",
+    "load_column",
+    "approximation"
+  ],
+  "format": "csv",
+  "expected_tabs": [
+    "CSV"
+  ],
+  "expected_requires_tab_choice": false,
+  "expected_selected_tab": "CSV",
+  "expected_weeks": [],
+  "expected_chosen_week": null,
+  "expected_confirm_layout": false,
+  "expected_unresolved_names": [],
+  "expected_rows": [
+    {
+      "source_row": 3,
+      "week": null,
+      "day": 1,
+      "day_name": "Lower A",
+      "exercise_name": "Back Squat (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "43",
+      "sets": 4,
+      "reps_min": 5,
+      "reps_max": 5,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": null,
+      "tempo": null,
+      "notes": "Use the same stance and depth each set; lower the load if you start folding forward.",
+      "original_text": "4x5 @ 75% 1RM",
+      "input_exercise_name": "Back Squat (Barbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.unsupported_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.unsupported_preserved_as_note.v1": "Percent-of-1RM load is not a supported Program field; preserve it in notes."
+      },
+      "edge_cases": [
+        "percent_1rm"
+      ]
+    },
+    {
+      "source_row": 4,
+      "week": null,
+      "day": 1,
+      "day_name": "Lower A",
+      "exercise_name": "Romanian Deadlift (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "85",
+      "sets": 3,
+      "reps_min": 6,
+      "reps_max": 6,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": null,
+      "tempo": null,
+      "notes": "Let the hamstrings set the depth while your back position stays unchanged.",
+      "original_text": "3x6 @ 72.5% 1RM",
+      "input_exercise_name": "Romanian Deadlift (Barbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.unsupported_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.unsupported_preserved_as_note.v1": "Percent-of-1RM load is not a supported Program field; preserve it in notes."
+      },
+      "edge_cases": [
+        "percent_1rm"
+      ]
+    },
+    {
+      "source_row": 5,
+      "week": null,
+      "day": 1,
+      "day_name": "Lower A",
+      "exercise_name": "Bulgarian Split Squat (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "410",
+      "sets": 4,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": null,
+      "tempo": null,
+      "notes": "Find a stride that keeps the front heel down and finish both sides evenly.",
+      "original_text": "4x8",
+      "input_exercise_name": "Bulgarian Split Squat (Dumbbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 6,
+      "week": null,
+      "day": 1,
+      "day_name": "Lower A",
+      "exercise_name": "Lying Leg Curl (Machine)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "586",
+      "sets": 3,
+      "reps_min": 5,
+      "reps_max": 5,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": null,
+      "tempo": null,
+      "notes": "Set the pad just above the heel and keep your hips still for every rep.",
+      "original_text": "3x5",
+      "input_exercise_name": "Lying Leg Curl (Machine)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 7,
+      "week": null,
+      "day": 1,
+      "day_name": "Lower A",
+      "exercise_name": "Standing Calf Raise (Machine)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "605",
+      "sets": 4,
+      "reps_min": 10,
+      "reps_max": 10,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": null,
+      "tempo": null,
+      "notes": "Keep the knees softly extended and use the same range each rep.",
+      "original_text": "4x10",
+      "input_exercise_name": "Standing Calf Raise (Machine)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 8,
+      "week": null,
+      "day": 2,
+      "day_name": "Push A",
+      "exercise_name": "Bench Press (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "25",
+      "sets": 4,
+      "reps_min": 5,
+      "reps_max": 5,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": null,
+      "tempo": null,
+      "notes": "Use a controlled descent and ask for a handoff if the setup feels rushed.",
+      "original_text": "4x5 @ 75% 1RM",
+      "input_exercise_name": "Bench Press (Barbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.unsupported_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.unsupported_preserved_as_note.v1": "Percent-of-1RM load is not a supported Program field; preserve it in notes."
+      },
+      "edge_cases": [
+        "percent_1rm"
+      ]
+    },
+    {
+      "source_row": 9,
+      "week": null,
+      "day": 2,
+      "day_name": "Push A",
+      "exercise_name": "Incline Bench Press (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "314",
+      "sets": 3,
+      "reps_min": 6,
+      "reps_max": 6,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": null,
+      "tempo": null,
+      "notes": "Use a smooth touch at the bottom and press up on the same path each time.",
+      "original_text": "3x6 @ 72.5% 1RM",
+      "input_exercise_name": "Incline Bench Press (Dumbbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.unsupported_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.unsupported_preserved_as_note.v1": "Percent-of-1RM load is not a supported Program field; preserve it in notes."
+      },
+      "edge_cases": [
+        "percent_1rm"
+      ]
+    },
+    {
+      "source_row": 10,
+      "week": null,
+      "day": 2,
+      "day_name": "Push A",
+      "exercise_name": "Arnold Press (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "2137",
+      "sets": 4,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": null,
+      "tempo": null,
+      "notes": "Keep the neck relaxed and lower the weight until the upper arm is comfortable.",
+      "original_text": "4x8",
+      "input_exercise_name": "Arnold Press (Dumbbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 11,
+      "week": null,
+      "day": 2,
+      "day_name": "Push A",
+      "exercise_name": "Lateral Raise (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "178",
+      "sets": 3,
+      "reps_min": 5,
+      "reps_max": 5,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": null,
+      "tempo": null,
+      "notes": "Keep a soft bend in the elbow and make both sides move at the same speed.",
+      "original_text": "3x5 @ 70% 1RM",
+      "input_exercise_name": "Lateral Raise (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.unsupported_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.unsupported_preserved_as_note.v1": "Percent-of-1RM load is not a supported Program field; preserve it in notes."
+      },
+      "edge_cases": [
+        "percent_1rm"
+      ]
+    },
+    {
+      "source_row": 12,
+      "week": null,
+      "day": 2,
+      "day_name": "Push A",
+      "exercise_name": "Triceps Pushdown (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "201",
+      "sets": 4,
+      "reps_min": 10,
+      "reps_max": 10,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": null,
+      "tempo": null,
+      "notes": "Stand tall and brace lightly so the cable does not pull you forward.",
+      "original_text": "4x10",
+      "input_exercise_name": "Triceps Pushdown (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 13,
+      "week": null,
+      "day": 3,
+      "day_name": "Pull A",
+      "exercise_name": "Lat Pulldown (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "150",
+      "sets": 4,
+      "reps_min": 5,
+      "reps_max": 5,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": null,
+      "tempo": null,
+      "notes": "Pull to the upper chest and keep the wrists relaxed around the handle.",
+      "original_text": "4x5 @ 75% 1RM",
+      "input_exercise_name": "Lat Pulldown (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.unsupported_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.unsupported_preserved_as_note.v1": "Percent-of-1RM load is not a supported Program field; preserve it in notes."
+      },
+      "edge_cases": [
+        "percent_1rm"
+      ]
+    },
+    {
+      "source_row": 14,
+      "week": null,
+      "day": 3,
+      "day_name": "Pull A",
+      "exercise_name": "Seated Row (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "180",
+      "sets": 3,
+      "reps_min": 6,
+      "reps_max": 6,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": null,
+      "tempo": null,
+      "notes": "Keep the handle path consistent and lower the weight without losing posture.",
+      "original_text": "3x6 @ 72.5% 1RM",
+      "input_exercise_name": "Seated Row (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.unsupported_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.unsupported_preserved_as_note.v1": "Percent-of-1RM load is not a supported Program field; preserve it in notes."
+      },
+      "edge_cases": [
+        "percent_1rm"
+      ]
+    },
+    {
+      "source_row": 15,
+      "week": null,
+      "day": 3,
+      "day_name": "Pull A",
+      "exercise_name": "Pull-Up",
+      "expected_resolution": "library",
+      "expected_exercise_id": "652",
+      "sets": 4,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": null,
+      "tempo": null,
+      "notes": "Keep the ribcage down and avoid kicking to clear the bar.",
+      "original_text": "4x8",
+      "input_exercise_name": "Pull-Up",
+      "suggestion_search_terms": [],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 16,
+      "week": null,
+      "day": 3,
+      "day_name": "Pull A",
+      "exercise_name": "Reverse Pec Deck (Machine)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "602",
+      "sets": 3,
+      "reps_min": 5,
+      "reps_max": 5,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": null,
+      "tempo": null,
+      "notes": "Keep a soft elbow bend and return the handles slowly.",
+      "original_text": "3x5",
+      "input_exercise_name": "Reverse Pec Deck (Machine)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 17,
+      "week": null,
+      "day": 3,
+      "day_name": "Pull A",
+      "exercise_name": "Curl (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "31",
+      "sets": 4,
+      "reps_min": 10,
+      "reps_max": 10,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": null,
+      "tempo": null,
+      "notes": "Let the elbows stay close to your sides through the whole set.",
+      "original_text": "4x10",
+      "input_exercise_name": "Barbell Curl",
+      "suggestion_search_terms": [],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    }
+  ],
+  "grid": [
+    [
+      "Use current tested maxes; percentages are work-set loads"
+    ],
+    [
+      "Day",
+      "Session",
+      "Exercise",
+      "Sets",
+      "Reps",
+      "Load (% 1RM)",
+      "Effort",
+      "Notes"
+    ],
+    [
+      1,
+      "Lower A",
+      "Back Squat (Barbell)",
+      4,
+      5,
+      "75%",
+      "2 RIR",
+      "Use the same stance and depth each set; lower the load if you start folding forward."
+    ],
+    [
+      1,
+      "Lower A",
+      "Romanian Deadlift (Barbell)",
+      3,
+      6,
+      "72.5%",
+      "2 RIR",
+      "Let the hamstrings set the depth while your back position stays unchanged."
+    ],
+    [
+      1,
+      "Lower A",
+      "Bulgarian Split Squat (Dumbbell)",
+      4,
+      8,
+      "",
+      "2 RIR",
+      "Find a stride that keeps the front heel down and finish both sides evenly."
+    ],
+    [
+      1,
+      "Lower A",
+      "Lying Leg Curl (Machine)",
+      3,
+      5,
+      "",
+      "2 RIR",
+      "Set the pad just above the heel and keep your hips still for every rep."
+    ],
+    [
+      1,
+      "Lower A",
+      "Standing Calf Raise (Machine)",
+      4,
+      10,
+      "",
+      "2 RIR",
+      "Keep the knees softly extended and use the same range each rep."
+    ],
+    [
+      2,
+      "Push A",
+      "Bench Press (Barbell)",
+      4,
+      5,
+      "75%",
+      "2 RIR",
+      "Use a controlled descent and ask for a handoff if the setup feels rushed."
+    ],
+    [
+      2,
+      "Push A",
+      "Incline Bench Press (Dumbbell)",
+      3,
+      6,
+      "72.5%",
+      "2 RIR",
+      "Use a smooth touch at the bottom and press up on the same path each time."
+    ],
+    [
+      2,
+      "Push A",
+      "Arnold Press (Dumbbell)",
+      4,
+      8,
+      "",
+      "2 RIR",
+      "Keep the neck relaxed and lower the weight until the upper arm is comfortable."
+    ],
+    [
+      2,
+      "Push A",
+      "Lateral Raise (Cable)",
+      3,
+      5,
+      "70%",
+      "2 RIR",
+      "Keep a soft bend in the elbow and make both sides move at the same speed."
+    ],
+    [
+      2,
+      "Push A",
+      "Triceps Pushdown (Cable)",
+      4,
+      10,
+      "",
+      "2 RIR",
+      "Stand tall and brace lightly so the cable does not pull you forward."
+    ],
+    [
+      3,
+      "Pull A",
+      "Lat Pulldown (Cable)",
+      4,
+      5,
+      "75%",
+      "2 RIR",
+      "Pull to the upper chest and keep the wrists relaxed around the handle."
+    ],
+    [
+      3,
+      "Pull A",
+      "Seated Row (Cable)",
+      3,
+      6,
+      "72.5%",
+      "2 RIR",
+      "Keep the handle path consistent and lower the weight without losing posture."
+    ],
+    [
+      3,
+      "Pull A",
+      "Pull-Up",
+      4,
+      8,
+      "",
+      "2 RIR",
+      "Keep the ribcage down and avoid kicking to clear the bar."
+    ],
+    [
+      3,
+      "Pull A",
+      "Reverse Pec Deck (Machine)",
+      3,
+      5,
+      "",
+      "2 RIR",
+      "Keep a soft elbow bend and return the handles slowly."
+    ],
+    [
+      3,
+      "Pull A",
+      "Barbell Curl",
+      4,
+      10,
+      "",
+      "2 RIR",
+      "Let the elbows stay close to your sides through the whole set."
+    ]
+  ]
+}

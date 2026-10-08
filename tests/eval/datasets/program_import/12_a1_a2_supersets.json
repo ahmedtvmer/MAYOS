@@ -1,0 +1,637 @@
+{
+  "id": "12_a1_a2_supersets",
+  "description": "Four-day upper/lower block with paired A1/A2 and B1/B2 order labels on push and pull accessories.",
+  "tags": [
+    "english",
+    "superset",
+    "order_labels",
+    "approximation"
+  ],
+  "format": "csv",
+  "expected_tabs": [
+    "CSV"
+  ],
+  "expected_requires_tab_choice": false,
+  "expected_selected_tab": "CSV",
+  "expected_weeks": [],
+  "expected_chosen_week": null,
+  "expected_confirm_layout": false,
+  "expected_unresolved_names": [],
+  "expected_rows": [
+    {
+      "source_row": 3,
+      "week": null,
+      "day": 1,
+      "day_name": "Push A",
+      "exercise_name": "Bench Press (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "25",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "Drive through the floor as the bar leaves the chest; keep the hips on the bench. Pair this with A2, then take the full rest after both lifts.",
+      "original_text": "A1 3x8",
+      "input_exercise_name": "Bench Press (Barbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.unsupported_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.unsupported_preserved_as_note.v1": "Superset grouping is not represented in the draft; keep the A1/A2 label in notes."
+      },
+      "edge_cases": [
+        "superset"
+      ]
+    },
+    {
+      "source_row": 4,
+      "week": null,
+      "day": 1,
+      "day_name": "Push A",
+      "exercise_name": "Lateral Raise (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "178",
+      "sets": 3,
+      "reps_min": 10,
+      "reps_max": 10,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "Lead with the elbows and stop around shoulder height; keep the torso still. Move to A1 next and rest after the pair, not between exercises.",
+      "original_text": "A2 3x10",
+      "input_exercise_name": "Lateral Raise (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.unsupported_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.unsupported_preserved_as_note.v1": "Superset grouping is not represented in the draft; keep the A1/A2 label in notes."
+      },
+      "edge_cases": [
+        "superset"
+      ]
+    },
+    {
+      "source_row": 5,
+      "week": null,
+      "day": 1,
+      "day_name": "Push A",
+      "exercise_name": "Incline Bench Press (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "314",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "Lower the dumbbells beside the upper chest; do not let them drift toward the face. Pair this with B2, then take the full rest after both lifts.",
+      "original_text": "B1 3x8",
+      "input_exercise_name": "Incline Bench Press (Dumbbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.unsupported_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.unsupported_preserved_as_note.v1": "Superset grouping is not represented in the draft; keep the A1/A2 label in notes."
+      },
+      "edge_cases": [
+        "superset"
+      ]
+    },
+    {
+      "source_row": 6,
+      "week": null,
+      "day": 1,
+      "day_name": "Push A",
+      "exercise_name": "Triceps Pushdown (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "201",
+      "sets": 3,
+      "reps_min": 10,
+      "reps_max": 10,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "Spread the rope at the bottom only as far as the wrists stay comfortable. Move to B1 next and rest after the pair, not between exercises.",
+      "original_text": "B2 3x10",
+      "input_exercise_name": "Triceps Pushdown (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.unsupported_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.unsupported_preserved_as_note.v1": "Superset grouping is not represented in the draft; keep the A1/A2 label in notes."
+      },
+      "edge_cases": [
+        "superset"
+      ]
+    },
+    {
+      "source_row": 7,
+      "week": null,
+      "day": 2,
+      "day_name": "Pull A",
+      "exercise_name": "Lat Pulldown (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "150",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "Pull to the upper chest and keep the wrists relaxed around the handle. Pair this with A2, then take the full rest after both lifts.",
+      "original_text": "A1 3x8",
+      "input_exercise_name": "Lat Pulldown (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.unsupported_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.unsupported_preserved_as_note.v1": "Superset grouping is not represented in the draft; keep the A1/A2 label in notes."
+      },
+      "edge_cases": [
+        "superset"
+      ]
+    },
+    {
+      "source_row": 8,
+      "week": null,
+      "day": 2,
+      "day_name": "Pull A",
+      "exercise_name": "Curl (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "31",
+      "sets": 3,
+      "reps_min": 10,
+      "reps_max": 10,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "Squeeze at the top without bringing the elbows forward. Move to A1 next and rest after the pair, not between exercises.",
+      "original_text": "A2 3x10",
+      "input_exercise_name": "Barbell Curl",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.unsupported_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.unsupported_preserved_as_note.v1": "Superset grouping is not represented in the draft; keep the A1/A2 label in notes."
+      },
+      "edge_cases": [
+        "superset"
+      ]
+    },
+    {
+      "source_row": 9,
+      "week": null,
+      "day": 2,
+      "day_name": "Pull A",
+      "exercise_name": "Seated Row (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "180",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "Pull toward the lower ribs and pause without lifting the shoulders. Pair this with B2, then take the full rest after both lifts.",
+      "original_text": "B1 3x8",
+      "input_exercise_name": "Seated Row (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.unsupported_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.unsupported_preserved_as_note.v1": "Superset grouping is not represented in the draft; keep the A1/A2 label in notes."
+      },
+      "edge_cases": [
+        "superset"
+      ]
+    },
+    {
+      "source_row": 10,
+      "week": null,
+      "day": 2,
+      "day_name": "Pull A",
+      "exercise_name": "Reverse Pec Deck (Machine)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "602",
+      "sets": 3,
+      "reps_min": 10,
+      "reps_max": 10,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "Let the arms travel wide and stop before the shoulder rolls forward. Move to B1 next and rest after the pair, not between exercises.",
+      "original_text": "B2 3x10",
+      "input_exercise_name": "Reverse Pec Deck (Machine)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.unsupported_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.unsupported_preserved_as_note.v1": "Superset grouping is not represented in the draft; keep the A1/A2 label in notes."
+      },
+      "edge_cases": [
+        "superset"
+      ]
+    },
+    {
+      "source_row": 11,
+      "week": null,
+      "day": 3,
+      "day_name": "Lower A",
+      "exercise_name": "Back Squat (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "43",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "Keep the bar over mid-foot and finish each rep before your brace starts to soften. Finish the sets here before moving to the next movement.",
+      "original_text": "1 3x8",
+      "input_exercise_name": "Back Squat (Barbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 12,
+      "week": null,
+      "day": 3,
+      "day_name": "Lower A",
+      "exercise_name": "Romanian Deadlift (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "85",
+      "sets": 3,
+      "reps_min": 10,
+      "reps_max": 10,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "Let the hamstrings set the depth while your back position stays unchanged. Finish the sets here before moving to the next movement.",
+      "original_text": "2 3x10",
+      "input_exercise_name": "Romanian Deadlift (Barbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 13,
+      "week": null,
+      "day": 3,
+      "day_name": "Lower A",
+      "exercise_name": "Bulgarian Split Squat (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "410",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "Lower slowly with the hips square, then drive through the whole front foot.",
+      "original_text": "3 3x8",
+      "input_exercise_name": "Bulgarian Split Squat (Dumbbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 14,
+      "week": null,
+      "day": 3,
+      "day_name": "Lower A",
+      "exercise_name": "Lying Leg Curl (Machine)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "586",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "Keep the hips heavy on the pad and squeeze the hamstrings through the full curl. Finish the sets here before moving to the next movement.",
+      "original_text": "4 3x8",
+      "input_exercise_name": "Lying Leg Curl (Machine)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 15,
+      "week": null,
+      "day": 4,
+      "day_name": "Upper Push",
+      "exercise_name": "Chest Press (Machine)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "577",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "Touch the same spot on the chest each rep; pause without relaxing your upper back. Pair this with A2, then take the full rest after both lifts.",
+      "original_text": "A1 3x8",
+      "input_exercise_name": "Chest Press (Machine)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.unsupported_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.unsupported_preserved_as_note.v1": "Superset grouping is not represented in the draft; keep the A1/A2 label in notes."
+      },
+      "edge_cases": [
+        "superset"
+      ]
+    },
+    {
+      "source_row": 16,
+      "week": null,
+      "day": 4,
+      "day_name": "Upper Push",
+      "exercise_name": "Lateral Raise (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "334",
+      "sets": 3,
+      "reps_min": 10,
+      "reps_max": 10,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "Use a light enough load to avoid swinging the hips or shrugging the shoulders. Move to A1 next and rest after the pair, not between exercises.",
+      "original_text": "A2 3x10",
+      "input_exercise_name": "Lateral Raise (Dumbbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.unsupported_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.unsupported_preserved_as_note.v1": "Superset grouping is not represented in the draft; keep the A1/A2 label in notes."
+      },
+      "edge_cases": [
+        "superset"
+      ]
+    },
+    {
+      "source_row": 17,
+      "week": null,
+      "day": 4,
+      "day_name": "Upper Push",
+      "exercise_name": "Bench Press (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "289",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "Use a controlled descent and ask for a handoff if the setup feels rushed. Pair this with B2, then take the full rest after both lifts.",
+      "original_text": "B1 3x8",
+      "input_exercise_name": "Bench Press (Dumbbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.unsupported_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.unsupported_preserved_as_note.v1": "Superset grouping is not represented in the draft; keep the A1/A2 label in notes."
+      },
+      "edge_cases": [
+        "superset"
+      ]
+    },
+    {
+      "source_row": 18,
+      "week": null,
+      "day": 4,
+      "day_name": "Upper Push",
+      "exercise_name": "Triceps Pushdown (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "201",
+      "sets": 3,
+      "reps_min": 10,
+      "reps_max": 10,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "Pause at lockout, then bend the elbows under control. Move to B1 next and rest after the pair, not between exercises.",
+      "original_text": "B2 3x10",
+      "input_exercise_name": "Triceps Pushdown (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.unsupported_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.unsupported_preserved_as_note.v1": "Superset grouping is not represented in the draft; keep the A1/A2 label in notes."
+      },
+      "edge_cases": [
+        "superset"
+      ]
+    }
+  ],
+  "grid": [
+    [
+      "Accessories paired to save time"
+    ],
+    [
+      "Day",
+      "Session",
+      "Slot",
+      "Exercise",
+      "Prescription",
+      "RIR",
+      "Rest",
+      "Notes"
+    ],
+    [
+      1,
+      "Push A",
+      "A1",
+      "Bench Press (Barbell)",
+      "3x8",
+      "2 RIR",
+      "90s",
+      "Drive through the floor as the bar leaves the chest; keep the hips on the bench. Pair this with A2, then take the full rest after both lifts."
+    ],
+    [
+      1,
+      "Push A",
+      "A2",
+      "Lateral Raise (Cable)",
+      "3x10",
+      "2 RIR",
+      "90s",
+      "Lead with the elbows and stop around shoulder height; keep the torso still. Move to A1 next and rest after the pair, not between exercises."
+    ],
+    [
+      1,
+      "Push A",
+      "B1",
+      "Incline Bench Press (Dumbbell)",
+      "3x8",
+      "2 RIR",
+      "90s",
+      "Lower the dumbbells beside the upper chest; do not let them drift toward the face. Pair this with B2, then take the full rest after both lifts."
+    ],
+    [
+      1,
+      "Push A",
+      "B2",
+      "Triceps Pushdown (Cable)",
+      "3x10",
+      "2 RIR",
+      "90s",
+      "Spread the rope at the bottom only as far as the wrists stay comfortable. Move to B1 next and rest after the pair, not between exercises."
+    ],
+    [
+      2,
+      "Pull A",
+      "A1",
+      "Lat Pulldown (Cable)",
+      "3x8",
+      "2 RIR",
+      "90s",
+      "Pull to the upper chest and keep the wrists relaxed around the handle. Pair this with A2, then take the full rest after both lifts."
+    ],
+    [
+      2,
+      "Pull A",
+      "A2",
+      "Barbell Curl",
+      "3x10",
+      "2 RIR",
+      "90s",
+      "Squeeze at the top without bringing the elbows forward. Move to A1 next and rest after the pair, not between exercises."
+    ],
+    [
+      2,
+      "Pull A",
+      "B1",
+      "Seated Row (Cable)",
+      "3x8",
+      "2 RIR",
+      "90s",
+      "Pull toward the lower ribs and pause without lifting the shoulders. Pair this with B2, then take the full rest after both lifts."
+    ],
+    [
+      2,
+      "Pull A",
+      "B2",
+      "Reverse Pec Deck (Machine)",
+      "3x10",
+      "2 RIR",
+      "90s",
+      "Let the arms travel wide and stop before the shoulder rolls forward. Move to B1 next and rest after the pair, not between exercises."
+    ],
+    [
+      3,
+      "Lower A",
+      "1",
+      "Back Squat (Barbell)",
+      "3x8",
+      "2 RIR",
+      "90s",
+      "Keep the bar over mid-foot and finish each rep before your brace starts to soften. Finish the sets here before moving to the next movement."
+    ],
+    [
+      3,
+      "Lower A",
+      "2",
+      "Romanian Deadlift (Barbell)",
+      "3x10",
+      "2 RIR",
+      "90s",
+      "Let the hamstrings set the depth while your back position stays unchanged. Finish the sets here before moving to the next movement."
+    ],
+    [
+      3,
+      "Lower A",
+      "3",
+      "Bulgarian Split Squat (Dumbbell)",
+      "3x8",
+      "2 RIR",
+      "90s",
+      "Lower slowly with the hips square, then drive through the whole front foot."
+    ],
+    [
+      3,
+      "Lower A",
+      "4",
+      "Lying Leg Curl (Machine)",
+      "3x8",
+      "2 RIR",
+      "90s",
+      "Keep the hips heavy on the pad and squeeze the hamstrings through the full curl. Finish the sets here before moving to the next movement."
+    ],
+    [
+      4,
+      "Upper Push",
+      "A1",
+      "Chest Press (Machine)",
+      "3x8",
+      "2 RIR",
+      "90s",
+      "Touch the same spot on the chest each rep; pause without relaxing your upper back. Pair this with A2, then take the full rest after both lifts."
+    ],
+    [
+      4,
+      "Upper Push",
+      "A2",
+      "Lateral Raise (Dumbbell)",
+      "3x10",
+      "2 RIR",
+      "90s",
+      "Use a light enough load to avoid swinging the hips or shrugging the shoulders. Move to A1 next and rest after the pair, not between exercises."
+    ],
+    [
+      4,
+      "Upper Push",
+      "B1",
+      "Bench Press (Dumbbell)",
+      "3x8",
+      "2 RIR",
+      "90s",
+      "Use a controlled descent and ask for a handoff if the setup feels rushed. Pair this with B2, then take the full rest after both lifts."
+    ],
+    [
+      4,
+      "Upper Push",
+      "B2",
+      "Triceps Pushdown (Cable)",
+      "3x10",
+      "2 RIR",
+      "90s",
+      "Pause at lockout, then bend the elbows under control. Move to B1 next and rest after the pair, not between exercises."
+    ]
+  ]
+}

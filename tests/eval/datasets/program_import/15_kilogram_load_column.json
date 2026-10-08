@@ -1,0 +1,620 @@
+{
+  "id": "15_kilogram_load_column",
+  "description": "Three-day plan with separate kg loads, rest prescriptions and row-specific notes.",
+  "tags": [
+    "english",
+    "kg_load",
+    "load_column",
+    "approximation"
+  ],
+  "format": "csv",
+  "expected_tabs": [
+    "CSV"
+  ],
+  "expected_requires_tab_choice": false,
+  "expected_selected_tab": "CSV",
+  "expected_weeks": [],
+  "expected_chosen_week": null,
+  "expected_confirm_layout": false,
+  "expected_unresolved_names": [],
+  "expected_rows": [
+    {
+      "source_row": 3,
+      "week": null,
+      "day": 1,
+      "day_name": "Lower A",
+      "exercise_name": "Back Squat (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "43",
+      "sets": 4,
+      "reps_min": 6,
+      "reps_max": 6,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 150,
+      "tempo": null,
+      "notes": "Take one breath at the top, reset your feet, then repeat the same unrushed setup.",
+      "original_text": "4x6 @ 65 kg",
+      "input_exercise_name": "Back Squat (Barbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.load_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.load_preserved_as_note.v1": "Kilogram load is not a stored Program prescription; preserve it in exercise notes."
+      },
+      "edge_cases": [
+        "kg_load"
+      ]
+    },
+    {
+      "source_row": 4,
+      "week": null,
+      "day": 1,
+      "day_name": "Lower A",
+      "exercise_name": "Romanian Deadlift (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "85",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "Reset each rep and pull the slack out before you lift.",
+      "original_text": "3x8 @ 24 kg",
+      "input_exercise_name": "Romanian Deadlift (Barbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.load_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.load_preserved_as_note.v1": "Kilogram load is not a stored Program prescription; preserve it in exercise notes."
+      },
+      "edge_cases": [
+        "kg_load"
+      ]
+    },
+    {
+      "source_row": 5,
+      "week": null,
+      "day": 1,
+      "day_name": "Lower A",
+      "exercise_name": "Bulgarian Split Squat (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "410",
+      "sets": 3,
+      "reps_min": 10,
+      "reps_max": 10,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 120,
+      "tempo": null,
+      "notes": "Pause briefly at the bottom and stand without bouncing out of the front knee.",
+      "original_text": "3x10",
+      "input_exercise_name": "Bulgarian Split Squat (Dumbbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 6,
+      "week": null,
+      "day": 1,
+      "day_name": "Lower A",
+      "exercise_name": "Lying Leg Curl (Machine)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "586",
+      "sets": 3,
+      "reps_min": 12,
+      "reps_max": 12,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 180,
+      "tempo": null,
+      "notes": "Pause at the squeeze, then let the knee open without losing tension.",
+      "original_text": "3x12 @ 32.5 kg",
+      "input_exercise_name": "Lying Leg Curl (Machine)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.load_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.load_preserved_as_note.v1": "Kilogram load is not a stored Program prescription; preserve it in exercise notes."
+      },
+      "edge_cases": [
+        "kg_load"
+      ]
+    },
+    {
+      "source_row": 7,
+      "week": null,
+      "day": 1,
+      "day_name": "Lower A",
+      "exercise_name": "Standing Calf Raise (Machine)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "605",
+      "sets": 4,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 75,
+      "tempo": null,
+      "notes": "Hold the top for a beat instead of shortening the last few reps.",
+      "original_text": "4x8 @ 92.5 kg",
+      "input_exercise_name": "Standing Calf Raise (Machine)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.load_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.load_preserved_as_note.v1": "Kilogram load is not a stored Program prescription; preserve it in exercise notes."
+      },
+      "edge_cases": [
+        "kg_load"
+      ]
+    },
+    {
+      "source_row": 8,
+      "week": null,
+      "day": 2,
+      "day_name": "Push A",
+      "exercise_name": "Bench Press (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "25",
+      "sets": 4,
+      "reps_min": 6,
+      "reps_max": 6,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 150,
+      "tempo": null,
+      "notes": "Drive through the floor as the bar leaves the chest; keep the hips on the bench.",
+      "original_text": "4x6 @ 24 kg",
+      "input_exercise_name": "Bench Press (Barbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.load_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.load_preserved_as_note.v1": "Kilogram load is not a stored Program prescription; preserve it in exercise notes."
+      },
+      "edge_cases": [
+        "kg_load"
+      ]
+    },
+    {
+      "source_row": 9,
+      "week": null,
+      "day": 2,
+      "day_name": "Push A",
+      "exercise_name": "Incline Bench Press (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "314",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "Keep the elbows slightly under the wrists as the dumbbells come down.",
+      "original_text": "3x8",
+      "input_exercise_name": "Incline Bench Press (Dumbbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 10,
+      "week": null,
+      "day": 2,
+      "day_name": "Push A",
+      "exercise_name": "Arnold Press (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "2137",
+      "sets": 3,
+      "reps_min": 10,
+      "reps_max": 10,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 120,
+      "tempo": null,
+      "notes": "Squeeze the glutes lightly so the low back stays quiet during the press.",
+      "original_text": "3x10 @ 32.5 kg",
+      "input_exercise_name": "Arnold Press (Dumbbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.load_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.load_preserved_as_note.v1": "Kilogram load is not a stored Program prescription; preserve it in exercise notes."
+      },
+      "edge_cases": [
+        "kg_load"
+      ]
+    },
+    {
+      "source_row": 11,
+      "week": null,
+      "day": 2,
+      "day_name": "Push A",
+      "exercise_name": "Lateral Raise (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "178",
+      "sets": 3,
+      "reps_min": 12,
+      "reps_max": 12,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 180,
+      "tempo": null,
+      "notes": "Start each rep from the same position and hold the top briefly.",
+      "original_text": "3x12 @ 92.5 kg",
+      "input_exercise_name": "Lateral Raise (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.load_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.load_preserved_as_note.v1": "Kilogram load is not a stored Program prescription; preserve it in exercise notes."
+      },
+      "edge_cases": [
+        "kg_load"
+      ]
+    },
+    {
+      "source_row": 12,
+      "week": null,
+      "day": 2,
+      "day_name": "Push A",
+      "exercise_name": "Triceps Pushdown (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "201",
+      "sets": 4,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 75,
+      "tempo": null,
+      "notes": "Pause at lockout, then bend the elbows under control.",
+      "original_text": "4x8 @ 65 kg",
+      "input_exercise_name": "Triceps Pushdown (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.load_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.load_preserved_as_note.v1": "Kilogram load is not a stored Program prescription; preserve it in exercise notes."
+      },
+      "edge_cases": [
+        "kg_load"
+      ]
+    },
+    {
+      "source_row": 13,
+      "week": null,
+      "day": 3,
+      "day_name": "Pull A",
+      "exercise_name": "Lat Pulldown (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "150",
+      "sets": 4,
+      "reps_min": 6,
+      "reps_max": 6,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 150,
+      "tempo": null,
+      "notes": "Match the grip width from set to set and finish without shrugging.",
+      "original_text": "4x6",
+      "input_exercise_name": "Lat Pulldown (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 14,
+      "week": null,
+      "day": 3,
+      "day_name": "Pull A",
+      "exercise_name": "Seated Row (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "180",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "Use a brief squeeze at the back, then return the arms slowly.",
+      "original_text": "3x8 @ 32.5 kg",
+      "input_exercise_name": "Seated Row (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.load_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.load_preserved_as_note.v1": "Kilogram load is not a stored Program prescription; preserve it in exercise notes."
+      },
+      "edge_cases": [
+        "kg_load"
+      ]
+    },
+    {
+      "source_row": 15,
+      "week": null,
+      "day": 3,
+      "day_name": "Pull A",
+      "exercise_name": "Pull-Up",
+      "expected_resolution": "library",
+      "expected_exercise_id": "652",
+      "sets": 3,
+      "reps_min": 10,
+      "reps_max": 10,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 120,
+      "tempo": null,
+      "notes": "Use the same grip each set and finish each rep with the chin clearly over the bar.",
+      "original_text": "3x10 @ 92.5 kg",
+      "input_exercise_name": "Pull-Up",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.load_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.load_preserved_as_note.v1": "Kilogram load is not a stored Program prescription; preserve it in exercise notes."
+      },
+      "edge_cases": [
+        "kg_load"
+      ]
+    },
+    {
+      "source_row": 16,
+      "week": null,
+      "day": 3,
+      "day_name": "Pull A",
+      "exercise_name": "Reverse Pec Deck (Machine)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "602",
+      "sets": 3,
+      "reps_min": 12,
+      "reps_max": 12,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 180,
+      "tempo": null,
+      "notes": "Set the seat so the handles start in line with the shoulders.",
+      "original_text": "3x12 @ 65 kg",
+      "input_exercise_name": "Reverse Pec Deck (Machine)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.load_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.load_preserved_as_note.v1": "Kilogram load is not a stored Program prescription; preserve it in exercise notes."
+      },
+      "edge_cases": [
+        "kg_load"
+      ]
+    },
+    {
+      "source_row": 17,
+      "week": null,
+      "day": 3,
+      "day_name": "Pull A",
+      "exercise_name": "Curl (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "31",
+      "sets": 4,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 75,
+      "tempo": null,
+      "notes": "Squeeze at the top without bringing the elbows forward.",
+      "original_text": "4x8 @ 24 kg",
+      "input_exercise_name": "Barbell Curl",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.load_preserved_as_note.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.load_preserved_as_note.v1": "Kilogram load is not a stored Program prescription; preserve it in exercise notes."
+      },
+      "edge_cases": [
+        "kg_load"
+      ]
+    }
+  ],
+  "grid": [
+    [
+      "Working weights are last week’s successful loads"
+    ],
+    [
+      "Day",
+      "Session",
+      "Exercise",
+      "Sets",
+      "Reps",
+      "Load (kg)",
+      "RIR",
+      "Rest",
+      "Coach note"
+    ],
+    [
+      1,
+      "Lower A",
+      "Back Squat (Barbell)",
+      4,
+      6,
+      "65",
+      "2 RIR",
+      "2-3 min",
+      "Take one breath at the top, reset your feet, then repeat the same unrushed setup."
+    ],
+    [
+      1,
+      "Lower A",
+      "Romanian Deadlift (Barbell)",
+      3,
+      8,
+      "24",
+      "2 RIR",
+      "90s",
+      "Reset each rep and pull the slack out before you lift."
+    ],
+    [
+      1,
+      "Lower A",
+      "Bulgarian Split Squat (Dumbbell)",
+      3,
+      10,
+      "—",
+      "2 RIR",
+      "120",
+      "Pause briefly at the bottom and stand without bouncing out of the front knee."
+    ],
+    [
+      1,
+      "Lower A",
+      "Lying Leg Curl (Machine)",
+      3,
+      12,
+      "32.5",
+      "2 RIR",
+      "3 min",
+      "Pause at the squeeze, then let the knee open without losing tension."
+    ],
+    [
+      1,
+      "Lower A",
+      "Standing Calf Raise (Machine)",
+      4,
+      8,
+      "92.5",
+      "2 RIR",
+      "75s",
+      "Hold the top for a beat instead of shortening the last few reps."
+    ],
+    [
+      2,
+      "Push A",
+      "Bench Press (Barbell)",
+      4,
+      6,
+      "24",
+      "2 RIR",
+      "2-3 min",
+      "Drive through the floor as the bar leaves the chest; keep the hips on the bench."
+    ],
+    [
+      2,
+      "Push A",
+      "Incline Bench Press (Dumbbell)",
+      3,
+      8,
+      "—",
+      "2 RIR",
+      "90s",
+      "Keep the elbows slightly under the wrists as the dumbbells come down."
+    ],
+    [
+      2,
+      "Push A",
+      "Arnold Press (Dumbbell)",
+      3,
+      10,
+      "32.5",
+      "2 RIR",
+      "120",
+      "Squeeze the glutes lightly so the low back stays quiet during the press."
+    ],
+    [
+      2,
+      "Push A",
+      "Lateral Raise (Cable)",
+      3,
+      12,
+      "92.5",
+      "2 RIR",
+      "3 min",
+      "Start each rep from the same position and hold the top briefly."
+    ],
+    [
+      2,
+      "Push A",
+      "Triceps Pushdown (Cable)",
+      4,
+      8,
+      "65",
+      "2 RIR",
+      "75s",
+      "Pause at lockout, then bend the elbows under control."
+    ],
+    [
+      3,
+      "Pull A",
+      "Lat Pulldown (Cable)",
+      4,
+      6,
+      "—",
+      "2 RIR",
+      "2-3 min",
+      "Match the grip width from set to set and finish without shrugging."
+    ],
+    [
+      3,
+      "Pull A",
+      "Seated Row (Cable)",
+      3,
+      8,
+      "32.5",
+      "2 RIR",
+      "90s",
+      "Use a brief squeeze at the back, then return the arms slowly."
+    ],
+    [
+      3,
+      "Pull A",
+      "Pull-Up",
+      3,
+      10,
+      "92.5",
+      "2 RIR",
+      "120",
+      "Use the same grip each set and finish each rep with the chin clearly over the bar."
+    ],
+    [
+      3,
+      "Pull A",
+      "Reverse Pec Deck (Machine)",
+      3,
+      12,
+      "65",
+      "2 RIR",
+      "3 min",
+      "Set the seat so the handles start in line with the shoulders."
+    ],
+    [
+      3,
+      "Pull A",
+      "Barbell Curl",
+      4,
+      8,
+      "24",
+      "2 RIR",
+      "75s",
+      "Squeeze at the top without bringing the elbows forward."
+    ]
+  ]
+}

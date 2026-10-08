@@ -1,0 +1,470 @@
+{
+  "id": "18_arabic_exercise_names_and_cues",
+  "description": "Arabic lower, push and pull days with three Arabic exercise names and athlete notes in Arabic.",
+  "tags": [
+    "arabic",
+    "mixed",
+    "arabic_exercises",
+    "suggestions"
+  ],
+  "format": "csv",
+  "expected_tabs": [
+    "CSV"
+  ],
+  "expected_requires_tab_choice": false,
+  "expected_selected_tab": "CSV",
+  "expected_weeks": [],
+  "expected_chosen_week": null,
+  "expected_confirm_layout": false,
+  "expected_unresolved_names": [
+    "سحب أمامي",
+    "سكوات",
+    "ضغط بنش"
+  ],
+  "expected_rows": [
+    {
+      "source_row": 3,
+      "week": null,
+      "day": 1,
+      "day_name": "اليوم السفلي",
+      "exercise_name": "سكوات",
+      "expected_resolution": "unresolved",
+      "expected_exercise_id": null,
+      "sets": 4,
+      "reps_min": 6,
+      "reps_max": 6,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 150,
+      "tempo": null,
+      "notes": "استخدم نفس الوقفة والعمق؛ خفّف الوزن لو الظهر بدأ يميل لقدّام.",
+      "original_text": "4x6 RIR 2",
+      "input_exercise_name": "سكوات",
+      "suggestion_search_terms": [
+        "سكوات",
+        "سكوات"
+      ],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 4,
+      "week": null,
+      "day": 1,
+      "day_name": "اليوم السفلي",
+      "exercise_name": "Romanian Deadlift (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "85",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": null,
+      "rpe": "8",
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "سيب الركبة مرتاحة وخلي الشد في خلفية الفخذ طول النزول.",
+      "original_text": "3x8 RPE 8",
+      "input_exercise_name": "Romanian Deadlift (Barbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    },
+    {
+      "source_row": 5,
+      "week": null,
+      "day": 1,
+      "day_name": "اليوم السفلي",
+      "exercise_name": "Bulgarian Split Squat (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "410",
+      "sets": 3,
+      "reps_min": 10,
+      "reps_max": 10,
+      "rir": "1",
+      "rpe": null,
+      "rest_seconds": 120,
+      "tempo": null,
+      "notes": "ظبّط طول الخطوة بحيث الكعب يفضل على الأرض وخلّص الناحيتين بالتساوي.",
+      "original_text": "3x10 1 RIR",
+      "input_exercise_name": "Bulgarian Split Squat (Dumbbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 6,
+      "week": null,
+      "day": 1,
+      "day_name": "اليوم السفلي",
+      "exercise_name": "Lying Leg Curl (Machine)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "586",
+      "sets": 3,
+      "reps_min": 12,
+      "reps_max": 12,
+      "rir": null,
+      "rpe": "7-8",
+      "rest_seconds": 180,
+      "tempo": null,
+      "notes": "ظبّط الوسادة فوق الكعب بشوية وما تحركش الحوض أثناء المجموعة.",
+      "original_text": "3x12 RPE 7-8",
+      "input_exercise_name": "Lying Leg Curl (Machine)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    },
+    {
+      "source_row": 7,
+      "week": null,
+      "day": 2,
+      "day_name": "يوم الدفع",
+      "exercise_name": "ضغط بنش",
+      "expected_resolution": "unresolved",
+      "expected_exercise_id": null,
+      "sets": 4,
+      "reps_min": 6,
+      "reps_max": 6,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 150,
+      "tempo": null,
+      "notes": "ادفع الأرض برجلك والبار طالع، وخلي الحوض ثابت على البنش.",
+      "original_text": "4x6 RIR 2",
+      "input_exercise_name": "ضغط بنش",
+      "suggestion_search_terms": [
+        "ضغط بنش",
+        "ضغط بنش"
+      ],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 8,
+      "week": null,
+      "day": 2,
+      "day_name": "يوم الدفع",
+      "exercise_name": "Incline Bench Press (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "314",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": null,
+      "rpe": "8",
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "خلّي الكوع تحت الرسغ بشوية وانت نازل.",
+      "original_text": "3x8 RPE 8",
+      "input_exercise_name": "Incline Bench Press (Dumbbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    },
+    {
+      "source_row": 9,
+      "week": null,
+      "day": 2,
+      "day_name": "يوم الدفع",
+      "exercise_name": "Arnold Press (Dumbbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "2137",
+      "sets": 3,
+      "reps_min": 10,
+      "reps_max": 10,
+      "rir": "1",
+      "rpe": null,
+      "rest_seconds": 120,
+      "tempo": null,
+      "notes": "شد المؤخرة خفيف عشان أسفل الظهر يفضل ثابت.",
+      "original_text": "3x10 1 RIR",
+      "input_exercise_name": "Arnold Press (Dumbbell)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 10,
+      "week": null,
+      "day": 2,
+      "day_name": "يوم الدفع",
+      "exercise_name": "Triceps Pushdown (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "201",
+      "sets": 3,
+      "reps_min": 12,
+      "reps_max": 12,
+      "rir": null,
+      "rpe": "7-8",
+      "rest_seconds": 180,
+      "tempo": null,
+      "notes": "اثبت عند الفرد لحظة وارجع بثني الكوع بهدوء.",
+      "original_text": "3x12 RPE 7-8",
+      "input_exercise_name": "Triceps Pushdown (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    },
+    {
+      "source_row": 11,
+      "week": null,
+      "day": 3,
+      "day_name": "يوم السحب",
+      "exercise_name": "سحب أمامي",
+      "expected_resolution": "unresolved",
+      "expected_exercise_id": null,
+      "sets": 4,
+      "reps_min": 6,
+      "reps_max": 6,
+      "rir": "2",
+      "rpe": null,
+      "rest_seconds": 150,
+      "tempo": null,
+      "notes": "ابدأ بنزول لوح الكتف وبعدها اسحب الكوع ناحية الضلوع.",
+      "original_text": "4x6 RIR 2",
+      "input_exercise_name": "سحب أمامي",
+      "suggestion_search_terms": [
+        "سحب أمامي",
+        "سحب أمامي"
+      ],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 12,
+      "week": null,
+      "day": 3,
+      "day_name": "يوم السحب",
+      "exercise_name": "Seated Row (Cable)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "180",
+      "sets": 3,
+      "reps_min": 8,
+      "reps_max": 8,
+      "rir": null,
+      "rpe": "8",
+      "rest_seconds": 90,
+      "tempo": null,
+      "notes": "اسحب ناحية أسفل الضلوع واثبت لحظة من غير ما ترفع كتفك.",
+      "original_text": "3x8 RPE 8",
+      "input_exercise_name": "Seated Row (Cable)",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    },
+    {
+      "source_row": 13,
+      "week": null,
+      "day": 3,
+      "day_name": "يوم السحب",
+      "exercise_name": "Pull-Up",
+      "expected_resolution": "library",
+      "expected_exercise_id": "652",
+      "sets": 3,
+      "reps_min": 10,
+      "reps_max": 10,
+      "rir": "1",
+      "rpe": null,
+      "rest_seconds": 120,
+      "tempo": null,
+      "notes": "ابدأ من تعليق متحكم فيه وخلي الرجلين هاديين وانت بتسحب.",
+      "original_text": "3x10 1 RIR",
+      "input_exercise_name": "Pull-Up",
+      "suggestion_search_terms": [],
+      "approximation_codes": [],
+      "approximation_reasons": {},
+      "edge_cases": []
+    },
+    {
+      "source_row": 14,
+      "week": null,
+      "day": 3,
+      "day_name": "يوم السحب",
+      "exercise_name": "Curl (Barbell)",
+      "expected_resolution": "library",
+      "expected_exercise_id": "31",
+      "sets": 3,
+      "reps_min": 12,
+      "reps_max": 12,
+      "rir": null,
+      "rpe": "7-8",
+      "rest_seconds": 180,
+      "tempo": null,
+      "notes": "ثبّت العضد جنب جسمك وانزل بالوزن على عدّة كاملة.",
+      "original_text": "3x12 RPE 7-8",
+      "input_exercise_name": "Barbell Curl",
+      "suggestion_search_terms": [],
+      "approximation_codes": [
+        "program_import.rpe_converted.v1"
+      ],
+      "approximation_reasons": {
+        "program_import.rpe_converted.v1": "The source specifies RPE; MAYOS stores the equivalent RIR target."
+      },
+      "edge_cases": []
+    }
+  ],
+  "grid": [
+    [
+      "برنامج أسبوعي — أربع مجموعات تدريبية"
+    ],
+    [
+      "Day / اليوم",
+      "Session / الحصة",
+      "Exercise / التمرين",
+      "Sets",
+      "Reps",
+      "Effort",
+      "Rest",
+      "ملاحظات المدرب"
+    ],
+    [
+      1,
+      "اليوم السفلي",
+      "سكوات",
+      4,
+      6,
+      "RIR 2",
+      "2-3 min",
+      "استخدم نفس الوقفة والعمق؛ خفّف الوزن لو الظهر بدأ يميل لقدّام."
+    ],
+    [
+      1,
+      "اليوم السفلي",
+      "Romanian Deadlift (Barbell)",
+      3,
+      8,
+      "RPE 8",
+      "90s",
+      "سيب الركبة مرتاحة وخلي الشد في خلفية الفخذ طول النزول."
+    ],
+    [
+      1,
+      "اليوم السفلي",
+      "Bulgarian Split Squat (Dumbbell)",
+      3,
+      10,
+      "1 RIR",
+      "120",
+      "ظبّط طول الخطوة بحيث الكعب يفضل على الأرض وخلّص الناحيتين بالتساوي."
+    ],
+    [
+      1,
+      "اليوم السفلي",
+      "Lying Leg Curl (Machine)",
+      3,
+      12,
+      "RPE 7-8",
+      "3 min",
+      "ظبّط الوسادة فوق الكعب بشوية وما تحركش الحوض أثناء المجموعة."
+    ],
+    [
+      2,
+      "يوم الدفع",
+      "ضغط بنش",
+      4,
+      6,
+      "RIR 2",
+      "2-3 min",
+      "ادفع الأرض برجلك والبار طالع، وخلي الحوض ثابت على البنش."
+    ],
+    [
+      2,
+      "يوم الدفع",
+      "Incline Bench Press (Dumbbell)",
+      3,
+      8,
+      "RPE 8",
+      "90s",
+      "خلّي الكوع تحت الرسغ بشوية وانت نازل."
+    ],
+    [
+      2,
+      "يوم الدفع",
+      "Arnold Press (Dumbbell)",
+      3,
+      10,
+      "1 RIR",
+      "120",
+      "شد المؤخرة خفيف عشان أسفل الظهر يفضل ثابت."
+    ],
+    [
+      2,
+      "يوم الدفع",
+      "Triceps Pushdown (Cable)",
+      3,
+      12,
+      "RPE 7-8",
+      "3 min",
+      "اثبت عند الفرد لحظة وارجع بثني الكوع بهدوء."
+    ],
+    [
+      3,
+      "يوم السحب",
+      "سحب أمامي",
+      4,
+      6,
+      "RIR 2",
+      "2-3 min",
+      "ابدأ بنزول لوح الكتف وبعدها اسحب الكوع ناحية الضلوع."
+    ],
+    [
+      3,
+      "يوم السحب",
+      "Seated Row (Cable)",
+      3,
+      8,
+      "RPE 8",
+      "90s",
+      "اسحب ناحية أسفل الضلوع واثبت لحظة من غير ما ترفع كتفك."
+    ],
+    [
+      3,
+      "يوم السحب",
+      "Pull-Up",
+      3,
+      10,
+      "1 RIR",
+      "120",
+      "ابدأ من تعليق متحكم فيه وخلي الرجلين هاديين وانت بتسحب."
+    ],
+    [
+      3,
+      "يوم السحب",
+      "Barbell Curl",
+      3,
+      12,
+      "RPE 7-8",
+      "3 min",
+      "ثبّت العضد جنب جسمك وانزل بالوزن على عدّة كاملة."
+    ]
+  ]
+}
