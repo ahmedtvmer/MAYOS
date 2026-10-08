@@ -29,6 +29,9 @@ enum CoachHistorySection {
   exercises,
 }
 
+const List<double> _recentSessionColumnWidths =
+    <double>[120, 190, 70, 110, 350];
+
 class CoachHistorySegmentData {
   const CoachHistorySegmentData({
     required this.summary,
@@ -308,13 +311,16 @@ class CoachHistorySegment extends StatelessWidget {
       return _section(
           context, copy.latestSession, <Widget>[Text(copy.noSessions)]);
     }
-    final String? versionNote = copy.historicalProgramIfNeeded(
-      latest.programVersion,
-      latest.activeProgramVersionAtSync,
-      latest.isHistoricalProgram,
-    );
-    final List<Widget> flags =
-        _latestSessionFlagChips(context, latest, versionNote);
+    final List<Widget> flags = _SessionFlagData.fromSession(context, (
+      divergences: latest.divergences,
+      warmupMovementCount: latest.warmupMovements.length,
+      cardio: latest.cardio,
+      readinessScore: latest.readinessScore,
+      programVersion: latest.programVersion,
+      activeProgramVersionAtSync: latest.activeProgramVersionAtSync,
+      isHistoricalProgram: latest.isHistoricalProgram,
+      corrections: latest.corrections,
+    )).chips;
     return _section(context, copy.latestSession, <Widget>[
       Text(
         copy.sessionTitle(latest.splitName, latest.sessionDate),
@@ -326,167 +332,14 @@ class CoachHistorySegment extends StatelessWidget {
       if (flags.isNotEmpty)
         ...<Widget>[
           const SizedBox(height: MayosSpacing.xs),
-          LayoutBuilder(
-            builder: (BuildContext context, BoxConstraints constraints) => Wrap(
-              spacing: MayosSpacing.xs,
-              runSpacing: MayosSpacing.xs,
-              children: <Widget>[
-                for (final Widget flag in flags)
-                  ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: constraints.maxWidth),
-                    child: flag,
-                  ),
-              ],
-            ),
-          ),
+          _wrappedSessionFlagChips(context, flags),
         ],
       const SizedBox(height: MayosSpacing.sm),
       if (isDesktopLayout(context))
-        _latestSessionTable(context, latest)
+        _sessionExerciseTable(context, latest.exercises)
       else
-        _latestSessionCompactRows(context, latest),
+        _sessionExerciseCompactRows(context, latest.exercises),
     ]);
-  }
-
-  List<Widget> _latestSessionFlagChips(
-    BuildContext context,
-    CoachPlayerLatestSession latest,
-    String? versionNote,
-  ) {
-    final copy = coachCopyOf(context);
-    return <Widget>[
-      for (final CoachPlayerDivergence divergence in latest.divergences)
-        CoachStatusChip(label: _divergenceLabel(context, divergence)),
-      if (latest.warmupMovements.isNotEmpty)
-        CoachStatusChip(
-          label: copy.warmupMovements(latest.warmupMovements.length),
-        ),
-      if (latest.cardio != null)
-        CoachStatusChip(label: copy.cardioMinutes(latest.cardio!.minutes)),
-      if (latest.readinessScore != null)
-        CoachStatusChip(label: copy.readiness(latest.readinessScore!)),
-      if (versionNote != null) CoachStatusChip(label: versionNote),
-      for (final PerformedDateCorrection correction in latest.corrections)
-        CoachStatusChip(
-          label: copy.correctedDate(
-            correction.previousDate,
-            correction.correctedDate,
-          ),
-        ),
-    ];
-  }
-
-  Widget _latestSessionTable(
-    BuildContext context,
-    CoachPlayerLatestSession latest,
-  ) {
-    const List<double> widths = <double>[290, 160, 70, 70, 120];
-    final copy = coachCopyOf(context);
-    return CoachExerciseTableFrame(
-      widths: widths,
-      child: Column(
-        children: <Widget>[
-          CoachExerciseTableHeader(
-            labels: <String>[
-              copy.programExerciseColumn,
-              copy.programActionColumn,
-              copy.programSetsColumn,
-              copy.programRepsColumn,
-              copy.sessionVolumeColumn,
-            ],
-            widths: widths,
-            alignments: <TextAlign>[
-              TextAlign.start,
-              TextAlign.start,
-              TextAlign.center,
-              TextAlign.center,
-              TextAlign.center,
-            ],
-          ),
-          for (final CoachPlayerSessionExercise exercise in latest.exercises)
-            _latestSessionTableRow(context, exercise, widths),
-        ],
-      ),
-    );
-  }
-
-  Widget _latestSessionTableRow(
-    BuildContext context,
-    CoachPlayerSessionExercise exercise,
-    List<double> widths,
-  ) =>
-      CoachExerciseTableRow(
-        widths: widths,
-        cells: <Widget>[
-          CoachExerciseCell(
-            imagePath: exercise.imagePath,
-            name: exercise.name,
-            muscleLine: coachExerciseMuscleLabel(
-              context,
-              exercise.primaryMuscle,
-            ),
-          ),
-          CoachExerciseActionCell(primaryAction: exercise.primaryAction),
-          Text('${exercise.sets}', textAlign: TextAlign.center),
-          Text('${exercise.reps}', textAlign: TextAlign.center),
-          Text(
-            coachCopyOf(context).formatVolume(exercise.volumeKg),
-            textAlign: TextAlign.center,
-            textDirection: TextDirection.ltr,
-          ),
-        ],
-      );
-
-  Widget _latestSessionCompactRows(
-    BuildContext context,
-    CoachPlayerLatestSession latest,
-  ) {
-    final copy = coachCopyOf(context);
-    return Column(
-      children: <Widget>[
-        for (int index = 0;
-            index < latest.exercises.length;
-            index++) ...<Widget>[
-          if (index > 0) const Divider(height: 1),
-          _latestSessionCompactRow(context, copy, latest.exercises[index]),
-        ],
-      ],
-    );
-  }
-
-  Widget _latestSessionCompactRow(
-    BuildContext context,
-    CoachCopy copy,
-    CoachPlayerSessionExercise exercise,
-  ) =>
-      CoachCompactExerciseRow(
-        imagePath: exercise.imagePath,
-        name: exercise.name,
-        muscleLine: coachExerciseMuscleLabel(
-          context,
-          exercise.primaryMuscle,
-        ),
-        prescription: copy.sessionExerciseCompact(
-          exercise.sets,
-          exercise.reps,
-          exercise.volumeKg,
-        ),
-        secondaryLine: coachExerciseActionDetailLine(
-          context,
-          exercise.primaryAction,
-        ),
-      );
-
-  String _divergenceLabel(
-    BuildContext context,
-    CoachPlayerDivergence divergence,
-  ) {
-    final String kind = switch (divergence.kind) {
-      'skipped' => 'Skipped',
-      'unplanned' => 'Unplanned',
-      _ => divergence.kind,
-    };
-    return coachCopyOf(context).divergence(kind, divergence.exerciseName);
   }
 
   Widget _recentSessionsCard(BuildContext context) {
@@ -502,42 +355,37 @@ class CoachHistorySegment extends StatelessWidget {
         children: sessions.isEmpty
             ? <Widget>[Text(copy.noSessions)]
             : <Widget>[
-                for (final CoachPlayerRecentSession session in sessions)
-                  _recentSessionTile(context, session),
+                if (isDesktopLayout(context))
+                  _recentSessionsTable(context, sessions)
+                else
+                  for (final CoachPlayerRecentSession session in sessions)
+                    _RecentSessionRow(
+                      key: ValueKey<String>(
+                        'coach_history_recent_session_${session.sessionId}',
+                      ),
+                      session: session,
+                    ),
               ],
       ),
     );
   }
 
-  Widget _recentSessionTile(
+  Widget _recentSessionsTable(
     BuildContext context,
-    CoachPlayerRecentSession session,
+    List<CoachPlayerRecentSession> sessions,
   ) {
-    final copy = coachCopyOf(context);
-    final String? versionNote = copy.historicalProgramIfNeeded(
-      session.programVersion,
-      session.activeProgramVersionAtSync,
-      session.isHistoricalProgram,
-    );
-    return ListTile(
-      dense: true,
-      contentPadding: EdgeInsets.zero,
-      title: Text(copy.sessionTitle(session.splitName, session.sessionDate)),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return CoachExerciseTableFrame(
+      widths: _recentSessionColumnWidths,
+      child: Column(
         children: <Widget>[
-          Text(copy.setsAndVolume(
-              session.setsCount, session.totalVolumeKg.toStringAsFixed(1))),
-          if (session.warmupMovements.isNotEmpty)
-            Text(copy.movementCount(session.warmupMovements.length)),
-          if (session.cardio != null)
-            Text(copy.cardioMinutes(session.cardio!.minutes)),
-          if (versionNote != null) Text(versionNote),
-          for (final PerformedDateCorrection correction in session.corrections)
-            Text(copy.correctedDate(
-                correction.previousDate, correction.correctedDate)),
-          for (final CoachPlayerDivergence divergence in session.divergences)
-            Text(_divergenceLabel(context, divergence)),
+          _recentSessionTableHeader(context),
+          for (final CoachPlayerRecentSession session in sessions)
+            _RecentSessionRow(
+              key: ValueKey<String>(
+                'coach_history_recent_session_${session.sessionId}',
+              ),
+              session: session,
+            ),
         ],
       ),
     );
@@ -961,6 +809,363 @@ class CoachHistorySegment extends StatelessWidget {
       ),
     );
   }
+}
+
+Widget _recentSessionTableHeader(BuildContext context) {
+  final copy = coachCopyOf(context);
+  return CoachExerciseTableHeader(
+    labels: <String>[
+      copy.sessionDateColumn,
+      copy.sessionSplitColumn,
+      copy.programSetsColumn,
+      copy.sessionVolumeColumn,
+      copy.sessionFlagsColumn,
+    ],
+    widths: _recentSessionColumnWidths,
+    alignments: <TextAlign>[
+      TextAlign.start,
+      TextAlign.start,
+      TextAlign.center,
+      TextAlign.center,
+      TextAlign.start,
+    ],
+  );
+}
+
+Widget _wrappedSessionFlagChips(BuildContext context, List<Widget> flags) =>
+    LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) => Wrap(
+        spacing: MayosSpacing.xs,
+        runSpacing: MayosSpacing.xs,
+        children: <Widget>[
+          for (final Widget flag in flags)
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: constraints.maxWidth),
+              child: flag,
+            ),
+        ],
+      ),
+    );
+
+String _sessionDivergenceLabel(
+  BuildContext context,
+  CoachPlayerDivergence divergence,
+) {
+  final String kind = switch (divergence.kind) {
+    'skipped' => 'Skipped',
+    'unplanned' => 'Unplanned',
+    _ => divergence.kind,
+  };
+  return coachCopyOf(context).divergence(kind, divergence.exerciseName);
+}
+
+const List<double> _sessionExerciseColumnWidths =
+    <double>[290, 160, 70, 70, 120];
+
+Widget _sessionExerciseTable(
+  BuildContext context,
+  List<CoachPlayerSessionExercise> exercises,
+) =>
+    CoachExerciseTableFrame(
+      widths: _sessionExerciseColumnWidths,
+      child: _sessionExerciseTableContent(context, exercises),
+    );
+
+Widget _sessionExerciseTableContent(
+  BuildContext context,
+  List<CoachPlayerSessionExercise> exercises,
+) =>
+    Column(
+      children: <Widget>[
+        _sessionExerciseTableHeader(context),
+        for (final CoachPlayerSessionExercise exercise in exercises)
+          _sessionExerciseTableRow(context, exercise),
+      ],
+    );
+
+Widget _sessionExerciseTableHeader(BuildContext context) {
+  final copy = coachCopyOf(context);
+  return CoachExerciseTableHeader(
+    labels: <String>[
+      copy.programExerciseColumn,
+      copy.programActionColumn,
+      copy.programSetsColumn,
+      copy.programRepsColumn,
+      copy.sessionVolumeColumn,
+    ],
+    widths: _sessionExerciseColumnWidths,
+    alignments: <TextAlign>[
+      TextAlign.start,
+      TextAlign.start,
+      TextAlign.center,
+      TextAlign.center,
+      TextAlign.center,
+    ],
+  );
+}
+
+Widget _sessionExerciseTableRow(
+  BuildContext context,
+  CoachPlayerSessionExercise exercise,
+) =>
+    CoachExerciseTableRow(
+      widths: _sessionExerciseColumnWidths,
+      cells: _sessionExerciseTableCells(context, exercise),
+    );
+
+List<Widget> _sessionExerciseTableCells(
+  BuildContext context,
+  CoachPlayerSessionExercise exercise,
+) {
+  final copy = coachCopyOf(context);
+  return <Widget>[
+    CoachExerciseCell(
+      imagePath: exercise.imagePath,
+      name: exercise.name,
+      muscleLine: coachExerciseMuscleLabel(context, exercise.primaryMuscle),
+    ),
+    CoachExerciseActionCell(primaryAction: exercise.primaryAction),
+    Text('${exercise.sets}', textAlign: TextAlign.center),
+    Text('${exercise.reps}', textAlign: TextAlign.center),
+    Text(
+      copy.formatVolume(exercise.volumeKg),
+      textAlign: TextAlign.center,
+      textDirection: TextDirection.ltr,
+    ),
+  ];
+}
+
+Widget _sessionExerciseCompactRows(
+  BuildContext context,
+  List<CoachPlayerSessionExercise> exercises,
+) {
+  return Column(
+    children: <Widget>[
+      for (int index = 0; index < exercises.length; index++) ...<Widget>[
+        if (index > 0) const Divider(height: 1),
+        _sessionExerciseCompactRow(context, exercises[index]),
+      ],
+    ],
+  );
+}
+
+Widget _sessionExerciseCompactRow(
+  BuildContext context,
+  CoachPlayerSessionExercise exercise,
+) {
+  final copy = coachCopyOf(context);
+  return CoachCompactExerciseRow(
+    imagePath: exercise.imagePath,
+    name: exercise.name,
+    muscleLine: coachExerciseMuscleLabel(context, exercise.primaryMuscle),
+    prescription: copy.sessionExerciseCompact(
+      exercise.sets,
+      exercise.reps,
+      exercise.volumeKg,
+    ),
+    secondaryLine: coachExerciseActionDetailLine(
+      context,
+      exercise.primaryAction,
+    ),
+  );
+}
+
+class _RecentSessionRow extends StatefulWidget {
+  const _RecentSessionRow({super.key, required this.session});
+
+  final CoachPlayerRecentSession session;
+
+  @override
+  State<_RecentSessionRow> createState() => _RecentSessionRowState();
+}
+
+class _RecentSessionRowState extends State<_RecentSessionRow> {
+  bool _expanded = false;
+
+  CoachPlayerRecentSession get session => widget.session;
+
+  @override
+  Widget build(BuildContext context) {
+    final _SessionFlagData flagData = _SessionFlagData.fromSession(context, (
+        divergences: session.divergences,
+        warmupMovementCount: session.warmupMovements.length,
+        cardio: session.cardio,
+        readinessScore: session.readinessScore,
+        programVersion: session.programVersion,
+        activeProgramVersionAtSync: session.activeProgramVersionAtSync,
+        isHistoricalProgram: session.isHistoricalProgram,
+        corrections: session.corrections,
+      ));
+    final List<Widget> flags = flagData.chips;
+    return Column(
+      children: <Widget>[
+        isDesktopLayout(context)
+            ? _desktopSummary(context, flags)
+            : _compactSummary(context, flags),
+        if (_expanded) _expandedDetails(context),
+      ],
+    );
+  }
+
+  void _toggle() => setState(() => _expanded = !_expanded);
+
+  Widget _desktopSummary(BuildContext context, List<Widget> flags) {
+    return _rowToggle(
+      context,
+      CoachExerciseTableRow(
+        widths: _recentSessionColumnWidths,
+        cells: _desktopCells(context, flags),
+      ),
+    );
+  }
+
+  List<Widget> _desktopCells(BuildContext context, List<Widget> flags) =>
+      <Widget>[
+        Text(session.sessionDate, textDirection: TextDirection.ltr),
+        Text(session.splitName, maxLines: 2, overflow: TextOverflow.ellipsis),
+        Text('${session.setsCount}', textAlign: TextAlign.center),
+        Text(
+          coachCopyOf(context).formatVolume(session.totalVolumeKg),
+          textAlign: TextAlign.center,
+          textDirection: TextDirection.ltr,
+        ),
+        _desktopFlagsCell(context, flags),
+      ];
+
+  Widget _desktopFlagsCell(BuildContext context, List<Widget> flags) => Row(
+        children: <Widget>[
+          Expanded(
+            child: flags.isEmpty
+                ? const SizedBox.shrink()
+                : _wrappedSessionFlagChips(context, flags),
+          ),
+          _expandCollapseIcon(context),
+        ],
+      );
+
+  Widget _compactSummary(BuildContext context, List<Widget> flags) {
+    return _rowToggle(
+      context,
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: MayosSpacing.xs),
+        child: Row(
+          children: <Widget>[
+            _expandCollapseIcon(context),
+            const SizedBox(width: MayosSpacing.xs),
+            Expanded(child: _compactContent(context, flags)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _compactContent(BuildContext context, List<Widget> flags) {
+    final copy = coachCopyOf(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(copy.sessionTitle(session.splitName, session.sessionDate)),
+        Text(
+          copy.latestSessionTotals(session.setsCount, session.totalVolumeKg),
+        ),
+        if (flags.isNotEmpty) ...<Widget>[
+          const SizedBox(height: MayosSpacing.xxs),
+          _wrappedSessionFlagChips(context, flags),
+        ],
+      ],
+    );
+  }
+
+  Widget _rowToggle(BuildContext context, Widget child) => Semantics(
+        button: true,
+        expanded: _expanded,
+        child: InkWell(
+          key: Key('coach_history_recent_session_${session.sessionId}_toggle'),
+          onTap: _toggle,
+          child: child,
+        ),
+      );
+
+  Widget _expandCollapseIcon(BuildContext context) => Icon(
+        _expanded ? Icons.expand_less : Icons.expand_more,
+        color: MayosTheme.of(context).textSecondary,
+        size: MayosIconSizes.small,
+      );
+
+  Widget _expandedDetails(BuildContext context) =>
+      Padding(
+        padding: const EdgeInsets.only(
+          left: MayosSpacing.sm,
+          right: MayosSpacing.sm,
+          bottom: MayosSpacing.sm,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              coachCopyOf(context).sessionExerciseCompact(
+                session.setsCount,
+                session.exercises.fold<int>(
+                  0,
+                  (int total, CoachPlayerSessionExercise exercise) =>
+                      total + exercise.reps,
+                ),
+                session.totalVolumeKg,
+              ),
+            ),
+            const SizedBox(height: MayosSpacing.xs),
+            _exerciseBreakdown(context),
+          ],
+        ),
+      );
+
+  Widget _exerciseBreakdown(BuildContext context) => isDesktopLayout(context)
+      ? _sessionExerciseTableContent(context, session.exercises)
+      : _sessionExerciseCompactRows(context, session.exercises);
+}
+
+typedef _SessionFlagFields = ({
+  List<CoachPlayerDivergence> divergences,
+  int warmupMovementCount,
+  WorkoutCardio? cardio,
+  int? readinessScore,
+  int? programVersion,
+  int? activeProgramVersionAtSync,
+  bool isHistoricalProgram,
+  List<PerformedDateCorrection> corrections,
+});
+
+class _SessionFlagData {
+  const _SessionFlagData(this.labels);
+
+  final List<String> labels;
+
+  factory _SessionFlagData.fromSession(
+    BuildContext context,
+    _SessionFlagFields fields,
+  ) {
+    final copy = coachCopyOf(context);
+    final String? versionNote = copy.historicalProgramIfNeeded(
+      fields.programVersion,
+      fields.activeProgramVersionAtSync,
+      fields.isHistoricalProgram,
+    );
+    return _SessionFlagData(<String>[
+      for (final CoachPlayerDivergence divergence in fields.divergences)
+        _sessionDivergenceLabel(context, divergence),
+      if (fields.warmupMovementCount > 0)
+        copy.warmupMovements(fields.warmupMovementCount),
+      if (fields.cardio != null) copy.cardioMinutes(fields.cardio!.minutes),
+      if (fields.readinessScore != null) copy.readiness(fields.readinessScore!),
+      if (versionNote != null) versionNote,
+      for (final PerformedDateCorrection correction in fields.corrections)
+        copy.correctedDate(correction.previousDate, correction.correctedDate),
+    ]);
+  }
+
+  List<Widget> get chips => <Widget>[
+        for (final String label in labels) CoachStatusChip(label: label),
+      ];
 }
 
 class _HistoryStatTile extends StatelessWidget {

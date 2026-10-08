@@ -106,6 +106,39 @@ void _setSessionFlags(FakeMayosApi fake) {
   ];
 }
 
+Map<String, dynamic> _recentSession(FakeMayosApi fake) =>
+    (fake.coachPlayerSummary['recent_sessions'] as List<dynamic>)
+        .first as Map<String, dynamic>;
+
+Future<void> _expandRecentSessions(WidgetTester tester) async {
+  final Finder section = find.byKey(const Key(
+    'coach_history_section_recentSessions_semantics',
+  ));
+  await tester.scrollUntilVisible(
+    section,
+    300,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.ensureVisible(section);
+  await tester.pump();
+  await tester.tap(section);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _expandFirstRecentSession(WidgetTester tester) async {
+  final Finder row = find.byKey(
+    const Key('coach_history_recent_session_s2_toggle'),
+  );
+  await tester.scrollUntilVisible(
+    row,
+    250,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.ensureVisible(row);
+  await tester.tap(row);
+  await tester.pumpAndSettle();
+}
+
 Future<void> _pumpApp(
   WidgetTester tester,
   FakeMayosApi fake, {
@@ -213,6 +246,211 @@ void main() {
       );
       expect(find.text('Skipped: Squat'), findsOneWidget);
       expect(find.text('Unplanned: Cable Row'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'desktop Recent sessions show a table and expand to session details',
+    (WidgetTester tester) async {
+      final FakeMayosApi fake = _coachFake();
+      final Map<String, dynamic> session = _recentSession(fake)
+        ..['readiness_score'] = 2
+        ..['warmup_movements'] = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'exercise_name': 'Band Pull Apart',
+            'sets': <dynamic>[],
+          },
+        ]
+        ..['cardio'] = <String, dynamic>{
+          'prescription': 'Bike',
+          'minutes': 25,
+        }
+        ..['program_version'] = 4
+        ..['active_program_version_at_sync'] = 5
+        ..['is_historical_program'] = true
+        ..['corrections'] = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'previous_date': '2026-09-26',
+            'corrected_date': '2026-09-25',
+            'corrected_at': '2026-09-26T12:00:00Z',
+          },
+        ]
+        ..['exercises'] = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'exercise_id': 'bench_press',
+            'name': 'Recent Cable Row',
+            'sets': 3,
+            'reps': 15,
+            'volume_kg': 2000.0,
+            'image_path': 'images/bench-press.jpg',
+            'primary_muscle': 'Chest',
+            'primary_action': 'Elbow Flexion',
+          },
+          <String, dynamic>{
+            'exercise_id': 'lat_pulldown',
+            'name': 'Lat Pulldown',
+            'sets': 9,
+            'reps': 45,
+            'volume_kg': 2200.0,
+            'image_path': 'images/lat-pulldown.jpg',
+            'primary_muscle': 'Back',
+            'primary_action': 'Shoulder Extension',
+          },
+        ];
+      session['divergences'] = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'kind': 'unplanned',
+          'exercise_id': 'lat_pulldown',
+          'exercise_name': 'Lat Pulldown',
+        },
+      ];
+      await _pumpApp(tester, fake, themeMode: ThemeMode.dark);
+      await _expandRecentSessions(tester);
+      await _expandFirstRecentSession(tester);
+
+      expect(find.text('Date'), findsOneWidget);
+      expect(find.text('Split'), findsOneWidget);
+      expect(find.text('Sets'), findsWidgets);
+      expect(find.text('Volume (kg)'), findsWidgets);
+      expect(find.text('2026-09-25'), findsWidgets);
+      expect(find.text('Upper 1'), findsOneWidget);
+      expect(find.text('12'), findsOneWidget);
+      expect(find.text('4,200'), findsOneWidget);
+      expect(find.text('Unplanned: Lat Pulldown'), findsOneWidget);
+      expect(find.text('12 sets · 60 reps · 4,200 kg'), findsOneWidget);
+      expect(find.text('Recent Cable Row'), findsOneWidget);
+      expect(find.text('Action'), findsWidgets);
+      expect(find.text('Elbow Flexion'), findsOneWidget);
+      expect(find.text('2,000'), findsWidgets);
+      expect(find.text('Warm-up: 1 movements'), findsOneWidget);
+      expect(find.text('Cardio: 25 min'), findsOneWidget);
+      expect(find.text('Readiness 2/5'), findsOneWidget);
+      expect(
+        find.text('Logged against program v4 (current v5)'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Date corrected from 2026-09-26 to 2026-09-25'),
+        findsOneWidget,
+      );
+      expect(
+        Theme.of(tester.element(find.text('Unplanned: Lat Pulldown').first))
+            .brightness,
+        Brightness.dark,
+      );
+      await tester.tap(find.byKey(
+        const Key('coach_history_recent_session_s2_toggle'),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.text('Recent Cable Row'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'phone Recent sessions expand to compact exercise rows at 360dp',
+    (WidgetTester tester) async {
+      final FakeMayosApi fake = _coachFake();
+      _recentSession(fake)
+        ..['sets_count'] = 3
+        ..['total_volume_kg'] = 2000.0
+        ..['exercises'] = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'exercise_id': 'bench_press',
+            'name': 'Recent Phone Row',
+            'sets': 1,
+            'reps': 7,
+            'volume_kg': 800.0,
+            'image_path': null,
+            'primary_muscle': 'Back',
+            'primary_action': 'Shoulder Extension',
+          },
+          <String, dynamic>{
+            'exercise_id': 'lat_pulldown',
+            'name': 'Recent Phone Row 2',
+            'sets': 2,
+            'reps': 10,
+            'volume_kg': 1200.0,
+            'image_path': null,
+            'primary_muscle': 'Back',
+            'primary_action': 'Elbow Flexion',
+          },
+        ];
+      await _pumpApp(tester, fake, logicalSize: const Size(360, 1200));
+      await _expandRecentSessions(tester);
+      await _expandFirstRecentSession(tester);
+
+      expect(find.text('Recent Phone Row'), findsOneWidget);
+      expect(find.text('3 sets · 17 reps · 2,000 kg'), findsOneWidget);
+      expect(find.text('Action: Shoulder Extension'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'Arabic phone Recent sessions expand and collapse at 360dp in RTL',
+    (WidgetTester tester) async {
+      final FakeMayosApi fake = _coachFake(language: 'ar');
+      _recentSession(fake)
+        ..['sets_count'] = 3
+        ..['total_volume_kg'] = 2000.0
+        ..['exercises'] = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'exercise_id': 'cable_row',
+            'name': 'Arabic Phone Row',
+            'sets': 1,
+            'reps': 7,
+            'volume_kg': 800.0,
+            'image_path': null,
+            'primary_muscle': 'Back',
+            'primary_action': 'Shoulder Extension',
+          },
+          <String, dynamic>{
+            'exercise_id': 'lat_pulldown',
+            'name': 'Arabic Phone Row 2',
+            'sets': 2,
+            'reps': 10,
+            'volume_kg': 1200.0,
+            'image_path': null,
+            'primary_muscle': 'Back',
+            'primary_action': 'Elbow Flexion',
+          },
+        ];
+      await _pumpApp(
+        tester,
+        fake,
+        logicalSize: const Size(540, 1200),
+      );
+      tester.view.physicalSize = const Size(720, 2400);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: 'phone layout');
+      await _expandRecentSessions(tester);
+      expect(tester.takeException(), isNull, reason: 'expanded section layout');
+      await _expandFirstRecentSession(tester);
+      expect(tester.takeException(), isNull, reason: 'expanded session layout');
+
+      const CoachCopy copy = CoachCopy('ar');
+      final Finder exercise = find.text('Arabic Phone Row');
+      expect(exercise, findsOneWidget);
+      expect(
+        find.text(copy.sessionExerciseCompact(3, 17, 2000)),
+        findsOneWidget,
+      );
+      expect(
+        Directionality.of(tester.element(exercise)),
+        TextDirection.rtl,
+      );
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byKey(
+        const Key('coach_history_recent_session_s2_toggle'),
+      ));
+      await tester.pumpAndSettle();
+      expect(exercise, findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -334,6 +572,27 @@ void main() {
           status: 'active',
           volume: const <String, double>{},
           latestSession: latest,
+          recentSessions: const <CoachPlayerRecentSession>[
+            CoachPlayerRecentSession(
+              sessionId: 'arabic-recent',
+              sessionDate: '2026-10-03',
+              splitName: 'Full B',
+              setsCount: 3,
+              totalVolumeKg: 1840,
+              readinessScore: 3,
+              exercises: <CoachPlayerSessionExercise>[
+                CoachPlayerSessionExercise(
+                  exerciseId: 'cable_row',
+                  name: 'Recent Cable Row',
+                  sets: 3,
+                  reps: 24,
+                  volumeKg: 1840,
+                  primaryMuscle: 'Back',
+                  primaryAction: 'Shoulder Extension',
+                ),
+              ],
+            ),
+          ],
         ),
         records: const <PersonalRecord>[],
         checkpointReviews: const <CheckpointReviewListItem>[],
@@ -341,7 +600,9 @@ void main() {
         histories: const <String, CoachExerciseHistory>{},
         openExerciseId: null,
         loadingHistory: false,
-        expandedSections: const <CoachHistorySection, bool>{},
+        expandedSections: const <CoachHistorySection, bool>{
+          CoachHistorySection.recentSessions: true,
+        },
       ),
       onToggleSection: (_) {},
       onExerciseToggle: (_) {},
@@ -363,13 +624,33 @@ void main() {
 
     const CoachCopy copy = CoachCopy('ar');
     for (final String header in <String>[
+      copy.sessionDateColumn,
+      copy.sessionSplitColumn,
+      copy.sessionFlagsColumn,
+    ]) {
+      expect(find.text(header), findsOneWidget);
+    }
+    final Finder recentRow = find.byKey(
+      const Key('coach_history_recent_session_arabic-recent_toggle'),
+    );
+    await tester.tap(recentRow);
+    await tester.pumpAndSettle();
+    expect(find.text('Recent Cable Row'), findsOneWidget);
+    expect(find.text(copy.readiness(3)), findsOneWidget);
+    expect(
+      Directionality.of(
+        tester.element(find.text(copy.sessionDateColumn).first),
+      ),
+      TextDirection.rtl,
+    );
+    for (final String header in <String>[
       copy.programExerciseColumn,
       copy.programActionColumn,
       copy.programSetsColumn,
       copy.programRepsColumn,
       copy.sessionVolumeColumn,
     ]) {
-      expect(find.text(header), findsOneWidget);
+      expect(find.text(header), findsWidgets);
     }
     for (final String flag in <String>[
       copy.divergence('Skipped', 'Squat'),
@@ -384,7 +665,9 @@ void main() {
     }
     expect(find.text(copy.latestSessionTotals(3, 1840)), findsOneWidget);
     expect(
-      Directionality.of(tester.element(find.text(copy.sessionVolumeColumn))),
+      Directionality.of(
+        tester.element(find.text(copy.sessionVolumeColumn).first),
+      ),
       TextDirection.rtl,
     );
     expect(tester.takeException(), isNull);

@@ -845,6 +845,9 @@ class CoachCopy {
   String get weeklyWorkingSets =>
       isArabic ? 'مجموعات التدريب آخر ٧ أيام' : 'Weekly working sets';
   String get sessionVolumeColumn => isArabic ? 'الحجم (كجم)' : 'Volume (kg)';
+  String get sessionDateColumn => isArabic ? 'التاريخ' : 'Date';
+  String get sessionSplitColumn => isArabic ? 'التقسيمة' : 'Split';
+  String get sessionFlagsColumn => isArabic ? 'العلامات' : 'Flags';
   String formatVolume(num volume) {
     final String fixed = volume.toStringAsFixed(1);
     final List<String> parts = fixed.split('.');
@@ -863,9 +866,6 @@ class CoachCopy {
       isArabic ? 'أيام التدريب المتوقعة: $value' : 'Expected: $value';
   String sessionTitle(String split, String date) =>
       isArabic ? '${_ltr(split)} · ${_ltr(date)}' : '$split · $date';
-  String setsAndVolume(int sets, String volume) => isArabic
-      ? '${_count(sets, ArabicCountNoun.trainingSet)} · إجمالي الوزن المرفوع ${_ltr('$volume kg')}'
-      : '$sets sets · $volume kg';
   String latestSessionTotals(int sets, num volume) => isArabic
       ? '${_count(sets, ArabicCountNoun.trainingSet)} · إجمالي الوزن المرفوع ${formatVolume(volume)} $volumeUnit'
       : '$sets sets · ${formatVolume(volume)} $volumeUnit';
@@ -874,9 +874,6 @@ class CoachCopy {
           '${_count(reps, ArabicCountNoun.repetition)} · '
           'إجمالي الوزن المرفوع ${formatVolume(volume)} $volumeUnit'
       : '$sets sets · $reps reps · ${formatVolume(volume)} $volumeUnit';
-  String movementCount(int count) => isArabic
-      ? 'حركات الإحماء: ${_count(count, ArabicCountNoun.warmupMovement)}'
-      : 'Warm-up: $count movements';
   String get noVolume =>
       isArabic ? 'لم تُسجل مجموعات تدريب بعد.' : 'No volume recorded yet.';
   String get personalRecordsTitle =>

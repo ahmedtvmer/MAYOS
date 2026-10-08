@@ -760,10 +760,16 @@ void main() {
     await _openRosterEntry(tester);
     await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
     await _expandHistorySection(tester, 'recentSessions');
+    final Finder upperSession = find.byKey(
+      const Key('coach_history_recent_session_s2_toggle'),
+    );
+    await tester.ensureVisible(upperSession);
+    await tester.tap(upperSession);
+    await tester.pumpAndSettle();
 
     expect(find.text('Skipped: Squat'), findsOneWidget);
     expect(find.text('Unplanned: Lat Pulldown'), findsOneWidget);
-    // The Lower 1 session carries no divergences, so only one of each renders.
+    // The Lower 1 session carries no divergences.
     expect(find.text('Lower 1 · 2026-09-23'), findsOneWidget);
     expect(find.textContaining('Skipped:'), findsOneWidget);
     expect(find.textContaining('Unplanned:'), findsOneWidget);
