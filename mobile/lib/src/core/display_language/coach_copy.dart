@@ -660,8 +660,6 @@ class CoachCopy {
       : 'No program requests yet.';
   String get noRecordedVolume =>
       isArabic ? 'لم تُسجل مجموعات تدريب بعد.' : 'No volume recorded yet.';
-  String get weightedWorkingSets =>
-      isArabic ? 'مجموعات محسوبة لكل عضلة' : 'Volume (weighted working sets)';
   String get trainingSchedule =>
       isArabic ? 'جدول التدريب' : 'Training schedule';
   String get expected => isArabic ? 'أيام التدريب المتوقعة' : 'Expected';
@@ -842,8 +840,7 @@ class CoachCopy {
       isArabic ? 'يتدرب معك منذ' : 'Coaching since';
   String coachingSinceDate(String date) => isArabic ? _ltr(date) : date;
   String get lastSession => isArabic ? 'آخر حصة' : 'Last session';
-  String get weeklyWorkingSets =>
-      isArabic ? 'مجموعات التدريب آخر ٧ أيام' : 'Weekly working sets';
+  String get weeklyVolume => isArabic ? 'الحجم الأسبوعي' : 'Weekly volume';
   String get sessionVolumeColumn => isArabic ? 'الحجم (كجم)' : 'Volume (kg)';
   String get sessionDateColumn => isArabic ? 'التاريخ' : 'Date';
   String get sessionSplitColumn => isArabic ? 'التقسيمة' : 'Split';
@@ -860,8 +857,6 @@ class CoachCopy {
   }
 
   String get volumeUnit => isArabic ? 'كجم' : 'kg';
-  String get playerVolume =>
-      isArabic ? 'مجموعات محسوبة لكل عضلة' : 'Volume (weighted working sets)';
   String expectedDays(String value) =>
       isArabic ? 'أيام التدريب المتوقعة: $value' : 'Expected: $value';
   String sessionTitle(String split, String date) =>

@@ -121,7 +121,7 @@ Future<void> _openRoster(WidgetTester tester) async {
 /// Roster row → player history → the coach assistant button.
 Future<void> _openAssistant(WidgetTester tester, String player) async {
   await tester.tap(find.text(player));
-  await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+  await _pumpUntilFound(tester, find.text('Weekly volume'));
   await tester.tap(find.byKey(const Key('coach_assistant_entry')));
   await _pumpUntilFound(
       tester, find.byKey(const Key('coach_assistant_question')));
@@ -205,7 +205,7 @@ void main() {
 
     await _openRoster(tester);
     await tester.tap(find.text('bob'));
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
 
     expect(find.byKey(const Key('coach_assistant_entry')), findsNothing);
     expect(find.text('Ask assistant'), findsNothing);

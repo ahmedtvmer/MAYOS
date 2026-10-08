@@ -29,8 +29,8 @@ enum CoachHistorySection {
   exercises,
 }
 
-const List<double> _recentSessionColumnWidths =
-    <double>[120, 190, 70, 110, 350];
+const CoachTableColumns _recentSessionColumns =
+    CoachTableColumns(<double>[120, 190, 70, 110, 350], 4);
 
 class CoachHistorySegmentData {
   const CoachHistorySegmentData({
@@ -55,20 +55,14 @@ class CoachHistorySegmentData {
 }
 
 class CoachHistorySegment extends StatelessWidget {
-  static const List<double> _recordColumnWidths = <double>[
-    250,
-    110,
-    110,
-    65,
-    115,
-  ];
-  static const List<double> _historyColumnWidths = <double>[
-    105,
-    135,
-    65,
-    70,
-    95,
-  ];
+  static const CoachTableColumns _recordColumns = CoachTableColumns(
+    <double>[250, 110, 110, 65, 115],
+    0,
+  );
+  static const CoachTableColumns _historyColumns = CoachTableColumns(
+    <double>[105, 135, 65, 70, 95],
+    0,
+  );
 
   const CoachHistorySegment({
     super.key,
@@ -160,7 +154,7 @@ class CoachHistorySegment extends StatelessWidget {
       if (latest != null)
         _HistoryStatTile(label: copy.lastSession, value: latest.sessionDate),
       _HistoryStatTile(
-        label: copy.weeklyWorkingSets,
+        label: copy.weeklyVolume,
         value: _formatWorkingSets(weeklySets),
       ),
       _HistoryStatTile(
@@ -210,13 +204,13 @@ class CoachHistorySegment extends StatelessWidget {
   ) {
     final copy = coachCopyOf(context);
     if (entries.isEmpty) {
-      return _section(context, copy.playerVolume, <Widget>[Text(copy.noVolume)]);
+      return _section(context, copy.weeklyVolume, <Widget>[Text(copy.noVolume)]);
     }
     final MayosThemeExtension c = MayosTheme.of(context);
     final double largestVolume = entries.first.value;
     return _section(
       context,
-      copy.playerVolume,
+      copy.weeklyVolume,
       <Widget>[
         for (final MapEntry<String, double> entry in entries)
           Padding(
@@ -375,7 +369,7 @@ class CoachHistorySegment extends StatelessWidget {
     List<CoachPlayerRecentSession> sessions,
   ) {
     return CoachExerciseTableFrame(
-      widths: _recentSessionColumnWidths,
+      columns: _recentSessionColumns,
       child: Column(
         children: <Widget>[
           _recentSessionTableHeader(context),
@@ -432,7 +426,7 @@ class CoachHistorySegment extends StatelessWidget {
 
   Widget _recordsDesktopTable(BuildContext context, CoachCopy copy) =>
       CoachExerciseTableFrame(
-        widths: _recordColumnWidths,
+        columns: _recordColumns,
         child: Column(
           children: <Widget>[
             _tableHeader(
@@ -444,7 +438,6 @@ class CoachHistorySegment extends StatelessWidget {
                 copy.programRepsColumn,
                 copy.dateColumn,
               ],
-              _recordColumnWidths,
             ),
             for (final PersonalRecord record in data.records)
               _recordTableRow(context, copy, record),
@@ -458,7 +451,6 @@ class CoachHistorySegment extends StatelessWidget {
     PersonalRecord record,
   ) =>
       CoachExerciseTableRow(
-        widths: _recordColumnWidths,
         cells: <Widget>[
           CoachExerciseCell(
             imagePath: record.imagePath,
@@ -482,11 +474,9 @@ class CoachHistorySegment extends StatelessWidget {
   Widget _tableHeader(
     BuildContext context,
     List<String> labels,
-    List<double> widths,
   ) =>
       CoachExerciseTableHeader(
         labels: labels,
-        widths: widths,
         alignments: List<TextAlign>.filled(labels.length, TextAlign.start),
       );
 
@@ -685,7 +675,7 @@ class CoachHistorySegment extends StatelessWidget {
     List<_ExerciseHistoryDisplay> points,
   ) =>
       CoachExerciseTableFrame(
-        widths: _historyColumnWidths,
+        columns: _historyColumns,
         child: Column(
           children: <Widget>[
             _tableHeader(
@@ -697,7 +687,6 @@ class CoachHistorySegment extends StatelessWidget {
                 copy.programRirColumn,
                 copy.e1rmColumn,
               ],
-              _historyColumnWidths,
             ),
             for (final _ExerciseHistoryDisplay point in points)
               _historyTableRow(context, copy, point),
@@ -711,7 +700,6 @@ class CoachHistorySegment extends StatelessWidget {
     _ExerciseHistoryDisplay point,
   ) =>
       CoachExerciseTableRow(
-        widths: _historyColumnWidths,
         cells: _historyTableCells(context, copy, point),
       );
 
@@ -821,7 +809,6 @@ Widget _recentSessionTableHeader(BuildContext context) {
       copy.sessionVolumeColumn,
       copy.sessionFlagsColumn,
     ],
-    widths: _recentSessionColumnWidths,
     alignments: <TextAlign>[
       TextAlign.start,
       TextAlign.start,
@@ -859,15 +846,15 @@ String _sessionDivergenceLabel(
   return coachCopyOf(context).divergence(kind, divergence.exerciseName);
 }
 
-const List<double> _sessionExerciseColumnWidths =
-    <double>[290, 160, 70, 70, 120];
+const CoachTableColumns _sessionExerciseColumns =
+    CoachTableColumns(<double>[290, 160, 70, 70, 120], 0);
 
 Widget _sessionExerciseTable(
   BuildContext context,
   List<CoachPlayerSessionExercise> exercises,
 ) =>
     CoachExerciseTableFrame(
-      widths: _sessionExerciseColumnWidths,
+      columns: _sessionExerciseColumns,
       child: _sessionExerciseTableContent(context, exercises),
     );
 
@@ -893,7 +880,6 @@ Widget _sessionExerciseTableHeader(BuildContext context) {
       copy.programRepsColumn,
       copy.sessionVolumeColumn,
     ],
-    widths: _sessionExerciseColumnWidths,
     alignments: <TextAlign>[
       TextAlign.start,
       TextAlign.start,
@@ -909,7 +895,6 @@ Widget _sessionExerciseTableRow(
   CoachPlayerSessionExercise exercise,
 ) =>
     CoachExerciseTableRow(
-      widths: _sessionExerciseColumnWidths,
       cells: _sessionExerciseTableCells(context, exercise),
     );
 
@@ -1013,7 +998,6 @@ class _RecentSessionRowState extends State<_RecentSessionRow> {
     return _rowToggle(
       context,
       CoachExerciseTableRow(
-        widths: _recentSessionColumnWidths,
         cells: _desktopCells(context, flags),
       ),
     );
@@ -1092,35 +1076,57 @@ class _RecentSessionRowState extends State<_RecentSessionRow> {
         size: MayosIconSizes.small,
       );
 
-  Widget _expandedDetails(BuildContext context) =>
-      Padding(
-        padding: const EdgeInsets.only(
-          left: MayosSpacing.sm,
-          right: MayosSpacing.sm,
-          bottom: MayosSpacing.sm,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              coachCopyOf(context).sessionExerciseCompact(
-                session.setsCount,
-                session.exercises.fold<int>(
-                  0,
-                  (int total, CoachPlayerSessionExercise exercise) =>
-                      total + exercise.reps,
-                ),
-                session.totalVolumeKg,
-              ),
+  Widget _expandedDetails(BuildContext context) {
+    final bool desktop = isDesktopLayout(context);
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(bottom: MayosSpacing.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsetsDirectional.only(
+              start: MayosSpacing.sm,
+              end: MayosSpacing.sm,
             ),
-            const SizedBox(height: MayosSpacing.xs),
-            _exerciseBreakdown(context),
-          ],
-        ),
+            child: _expandedSummary(context),
+          ),
+          Padding(
+            padding: EdgeInsetsDirectional.only(
+              start: MayosSpacing.sm,
+              end: desktop ? 0 : MayosSpacing.sm,
+            ),
+            child: _exerciseBreakdown(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _expandedSummary(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            coachCopyOf(context).sessionExerciseCompact(
+              session.setsCount,
+              session.exercises.fold<int>(
+                0,
+                (int total, CoachPlayerSessionExercise exercise) =>
+                    total + exercise.reps,
+              ),
+              session.totalVolumeKg,
+            ),
+          ),
+          const SizedBox(height: MayosSpacing.xs),
+        ],
       );
 
   Widget _exerciseBreakdown(BuildContext context) => isDesktopLayout(context)
-      ? _sessionExerciseTableContent(context, session.exercises)
+      ? CoachExerciseTableFrame(
+          columns: _sessionExerciseColumns,
+          decorated: false,
+          scrollable: false,
+          child: _sessionExerciseTableContent(context, session.exercises),
+        )
       : _sessionExerciseCompactRows(context, session.exercises);
 }
 

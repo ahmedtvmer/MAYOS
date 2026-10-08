@@ -297,6 +297,10 @@ A run of consecutive missed expected days, measured over the sequence of expecte
 A run of consecutive weeks, starting Saturday in the player's timezone, in each of which the player completed at least as many workouts as they had expected training days, or as their program's weekly frequency when they keep no Training schedule. Fully paused weeks neither break nor extend it, and the week in progress never breaks it. It is the player-facing counterpart of the Missed-day streak.
 _Arabic_: أسابيع الالتزام المتتالية
 
+**Weekly volume**:
+A player's working sets per muscle group over the last 7 days, each set counting fully toward its exercise's target muscle and partly toward its secondary muscles. Warm-up sets never count.
+_Arabic_: الحجم الأسبوعي
+
 **Checkpoint**:
 A workout-count landmark in a player's training: the 10th, 25th, 50th and 100th workout, then every 100th. Only workouts completed in MAYOS count; imported history does not.
 _Arabic_: محطة تقدم

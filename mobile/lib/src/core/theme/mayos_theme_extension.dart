@@ -14,6 +14,7 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
     required this.surfaceElevated,
     required this.surfaceSunken,
     required this.secondarySurface,
+    required this.tableHeader,
     required this.border,
     required this.borderStrong,
     required this.textPrimary,
@@ -50,6 +51,7 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
   final Color surfaceElevated;
   final Color surfaceSunken;
   final Color secondarySurface;
+  final Color tableHeader;
 
   final Color border;
   final Color borderStrong;
@@ -102,6 +104,7 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
     surfaceElevated: MayosPalette.darkSurfaceElevated,
     surfaceSunken: MayosPalette.darkSurfaceSunken,
     secondarySurface: MayosPalette.darkSecondarySurface,
+    tableHeader: MayosPalette.darkSurfaceElevated,
     border: MayosPalette.darkBorder,
     borderStrong: MayosPalette.darkBorderStrong,
     textPrimary: MayosPalette.darkTextPrimary,
@@ -138,6 +141,7 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
     surfaceElevated: MayosPalette.lightSurfaceElevated,
     surfaceSunken: MayosPalette.lightSurfaceSunken,
     secondarySurface: MayosPalette.lightSecondarySurface,
+    tableHeader: MayosPalette.lightSecondarySurface,
     border: MayosPalette.lightBorder,
     borderStrong: MayosPalette.lightBorderStrong,
     textPrimary: MayosPalette.lightTextPrimary,
@@ -195,6 +199,7 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
     Color? surfaceElevated,
     Color? surfaceSunken,
     Color? secondarySurface,
+    Color? tableHeader,
     Color? border,
     Color? borderStrong,
     Color? textPrimary,
@@ -229,6 +234,7 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
       surfaceElevated: surfaceElevated ?? this.surfaceElevated,
       surfaceSunken: surfaceSunken ?? this.surfaceSunken,
       secondarySurface: secondarySurface ?? this.secondarySurface,
+      tableHeader: tableHeader ?? this.tableHeader,
       border: border ?? this.border,
       borderStrong: borderStrong ?? this.borderStrong,
       textPrimary: textPrimary ?? this.textPrimary,
@@ -272,6 +278,7 @@ class MayosThemeExtension extends ThemeExtension<MayosThemeExtension> {
       surfaceSunken: Color.lerp(surfaceSunken, other.surfaceSunken, t)!,
       secondarySurface:
           Color.lerp(secondarySurface, other.secondarySurface, t)!,
+      tableHeader: Color.lerp(tableHeader, other.tableHeader, t)!,
       border: Color.lerp(border, other.border, t)!,
       borderStrong: Color.lerp(borderStrong, other.borderStrong, t)!,
       textPrimary: Color.lerp(textPrimary, other.textPrimary, t)!,

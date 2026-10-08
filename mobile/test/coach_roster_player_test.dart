@@ -590,7 +590,7 @@ void main() {
 
     await tester.tap(find.text('bob'));
     await _pumpUntilFound(tester, find.text('History'));
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
 
     // History is the existing CoachPlayerHistoryScreen content, embedded.
     expect(find.textContaining('Recent sessions'), findsOneWidget);
@@ -620,6 +620,6 @@ void main() {
       tester.getTopLeft(find.text('2026-09-20 · Message')).dy,
       lessThan(tester.getTopLeft(find.text('2026-09-01 · Phone')).dy),
     );
-    expect(find.text('Volume (weighted working sets)'), findsNothing);
+    expect(find.text('Weekly volume'), findsNothing);
   });
 }

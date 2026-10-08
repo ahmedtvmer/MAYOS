@@ -9,6 +9,7 @@ import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/connectivity.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/features/coach/coach_exercise_table.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_media_http.dart';
@@ -123,7 +124,7 @@ void main() {
     await _pumpApp(tester, fake);
 
     await _openRosterEntry(tester);
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
 
     expect(find.text('Cardio: 25 min'), findsOneWidget);
     await _expandHistorySection(tester, 'recentSessions');
@@ -167,7 +168,7 @@ void main() {
     expect(find.text('Coaching since'), findsOneWidget);
     expect(find.text('2026-09-24'), findsOneWidget);
     expect(find.text('Latest session'), findsOneWidget);
-    expect(find.text('Volume (weighted working sets)'), findsOneWidget);
+    expect(find.text('Weekly volume'), findsNWidgets(2));
     expect(find.text('No active program.'), findsNothing);
     expect(find.text('Open alerts'), findsOneWidget);
 
@@ -193,7 +194,7 @@ void main() {
     await _pumpApp(tester, fake);
 
     await _openRosterEntry(tester);
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
 
     expect(find.text('Lower 1 · 2026-09-23'), findsNothing);
     expect(find.textContaining('Latest Recorded:'), findsNothing);
@@ -249,13 +250,13 @@ void main() {
     await _pumpApp(tester, fake);
 
     await _openRosterEntry(tester);
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
 
     expect(find.text('Coaching since'), findsOneWidget);
     expect(find.text('2026-09-24'), findsOneWidget);
     expect(find.text('Last session'), findsOneWidget);
     expect(find.text('2026-09-25'), findsOneWidget);
-    expect(find.text('Weekly working sets'), findsOneWidget);
+    expect(find.text('Weekly volume'), findsNWidgets(2));
     expect(find.text('21.5'), findsOneWidget);
     expect(find.text('Personal records'), findsOneWidget);
     expect(find.text('3'), findsOneWidget);
@@ -296,7 +297,7 @@ void main() {
       );
 
       await _openRosterEntry(tester);
-      await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+      await _pumpUntilFound(tester, find.text('Weekly volume'));
       await _expandHistorySection(tester, 'records');
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 150)),
@@ -375,7 +376,7 @@ void main() {
       );
 
       await _openRosterEntry(tester);
-      await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+      await _pumpUntilFound(tester, find.text('Weekly volume'));
       await _expandHistorySection(tester, 'exercises');
       final Finder benchTile =
           find.widgetWithText(ExpansionTile, 'Bench Press');
@@ -400,6 +401,20 @@ void main() {
       expect(find.text('Band'), findsOneWidget);
       expect(find.text('0.0'), findsNothing);
       expect(find.textContaining('Latest Recorded:'), findsOneWidget);
+
+      final Finder historyFrame = find.byType(CoachExerciseTableFrame).last;
+      final Finder historyHeader = find.descendant(
+        of: historyFrame,
+        matching: find.byType(CoachExerciseTableHeader),
+      );
+      double columnWidth(String label) => tester.getSize(
+            find.descendant(of: historyHeader, matching: find.text(label)),
+          ).width;
+      expect(columnWidth('Date'), greaterThan(105));
+      expect(columnWidth('Weight'), 135);
+      expect(columnWidth('Reps'), 65);
+      expect(columnWidth('RIR'), 70);
+      expect(columnWidth('e1RM'), 95);
       expect(find.text('Records'), findsOneWidget);
       expect(
         find.text('Max weight · 100.0 kg × 5 reps (2026-09-20)'),
@@ -419,7 +434,7 @@ void main() {
     await _pumpApp(tester, fake);
 
     await _openRosterEntry(tester);
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
 
     expect(find.text('Last session'), findsNothing);
     expect(find.text('No sessions logged yet.'), findsOneWidget);
@@ -437,9 +452,9 @@ void main() {
     await _pumpApp(tester, fake);
 
     await _openRosterEntry(tester);
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
 
-    expect(find.text('Weekly working sets'), findsOneWidget);
+    expect(find.text('Weekly volume'), findsNWidgets(2));
     expect(find.text('3.3'), findsOneWidget);
     expect(find.text('2.2'), findsOneWidget);
     expect(find.text('1.1'), findsOneWidget);
@@ -482,7 +497,7 @@ void main() {
     tester.view.devicePixelRatio = 2;
 
     await _openRosterEntry(tester);
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
 
     expect(
       Theme.of(tester.element(find.text('Coaching since'))).brightness,
@@ -508,7 +523,7 @@ void main() {
     await _pumpApp(tester, fake);
 
     await _openRosterEntry(tester);
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
 
     expect(find.text('Coaching since'), findsOneWidget);
     expect(find.text('2026-09-24'), findsOneWidget);
@@ -568,7 +583,7 @@ void main() {
     await _pumpApp(tester, fake);
 
     await _openRosterEntry(tester);
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
     await _expandHistorySection(tester, 'exercises');
     final Finder bandTile = find.widgetWithText(ExpansionTile, 'Band Pull-Apart');
     await tester.scrollUntilVisible(
@@ -638,7 +653,7 @@ void main() {
     await _pumpApp(tester, fake, logicalHeight: 1500);
 
     await _openRosterEntry(tester);
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
     await _expandHistorySection(tester, 'exercises');
     final Finder tile = find.widgetWithText(ExpansionTile, 'Weighted Pull-Up');
     await tester.ensureVisible(tile);
@@ -691,7 +706,7 @@ void main() {
     await _pumpApp(tester, fake);
 
     await _openRosterEntry(tester);
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
     await _expandHistorySection(tester, 'checkpoints');
     final Finder checkpoint =
         find.byKey(const ValueKey<String>('coach.checkpoint.10'));
@@ -736,7 +751,7 @@ void main() {
     );
 
     await _openRosterEntry(tester);
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
     browserEvents.add(false);
     await tester.pump();
     await tester.pump();
@@ -758,7 +773,7 @@ void main() {
     await _pumpApp(tester, fake);
 
     await _openRosterEntry(tester);
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
     await _expandHistorySection(tester, 'recentSessions');
     final Finder upperSession = find.byKey(
       const Key('coach_history_recent_session_s2_toggle'),
@@ -788,7 +803,7 @@ void main() {
     await _pumpApp(tester, fake);
 
     await _openRosterEntry(tester);
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
 
     expect(find.textContaining('Skipped:'), findsNothing);
     expect(find.textContaining('Unplanned:'), findsNothing);
@@ -813,7 +828,7 @@ void main() {
     await _pumpApp(tester, fake);
 
     await _openRosterEntry(tester);
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
     await _expandHistorySection(tester, 'recentSessions');
 
     expect(
@@ -828,7 +843,7 @@ void main() {
     await _pumpApp(tester, fake);
 
     await _openRosterEntry(tester);
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
 
     expect(find.text('Expected: Mon, Wed, Fri'), findsOneWidget);
     expect(find.text('Timezone: Europe/London'), findsOneWidget);
@@ -877,7 +892,7 @@ void main() {
         await _pumpUntilFound(tester, find.text('Active assignments'));
         await _openRosterEntry(tester);
       }
-      await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+      await _pumpUntilFound(tester, find.text('Weekly volume'));
 
       expect(
         find.text('Training schedule'),

@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
+import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
@@ -153,8 +154,8 @@ Future<void> _openProgramSegment(
     tester,
     find.text(
       label == 'البرنامج التدريبي'
-          ? 'مجموعات محسوبة لكل عضلة'
-          : 'Volume (weighted working sets)',
+          ? 'الحجم الأسبوعي'
+          : 'Weekly volume',
     ),
   );
   await tester.tap(find.text(label).first);
@@ -172,7 +173,7 @@ Future<void> _openProgramEditor(WidgetTester tester, FakeMayosApi fake) async {
   await _pumpUntilFound(
     tester,
     find.text(
-      isArabic ? 'مجموعات محسوبة لكل عضلة' : 'Volume (weighted working sets)',
+      isArabic ? 'الحجم الأسبوعي' : 'Weekly volume',
     ),
   );
   await _openProgramSegment(
@@ -507,6 +508,58 @@ void main() {
     expect(find.text('v7'), findsNothing);
     expect(find.text('Generated automatically'), findsNothing);
     expect(find.text('Active since 2026-10-04'), findsNothing);
+  });
+
+  testWidgets('Program table fills its desktop width and preserves number columns',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
+    await _pumpApp(tester, fake, logicalWidth: 1440);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob').first);
+    await _openProgramSegment(tester);
+
+    for (final double width in <double>[1440, 1920]) {
+      tester.view.physicalSize = Size(width * 2, 2400);
+      tester.view.devicePixelRatio = 2;
+      await tester.pump(const Duration(milliseconds: 100));
+      final Finder frame = find.byType(CoachExerciseTableFrame).first;
+      final Finder parentColumn = find.ancestor(
+        of: frame,
+        matching: find.byType(Column),
+      ).first;
+      final Rect frameRect = tester.getRect(frame);
+      final Rect parentRect = tester.getRect(parentColumn);
+      expect(frameRect.right, closeTo(parentRect.right, 1));
+
+      final Finder header = find.descendant(
+        of: frame,
+        matching: find.byType(CoachExerciseTableHeader),
+      ).first;
+      double headerWidth(String label) => tester.getSize(
+            find.descendant(of: header, matching: find.text(label)),
+          ).width;
+      final double expectedExerciseWidth = frameRect.width -
+          40 -
+          150 -
+          125 -
+          90 -
+          95 -
+          80 -
+          80 -
+          (MayosSpacing.xs * 2 + 2);
+      // The base widths fit the 1440 detail pane, so the table fills it and
+      // only Exercise grows (#391).
+      expect(expectedExerciseWidth, greaterThan(200));
+      expect(headerWidth('Exercise'), closeTo(expectedExerciseWidth, 1));
+      expect(headerWidth('Action'), 150);
+      expect(headerWidth('Equipment'), 125);
+      expect(headerWidth('Sets'), 90);
+      expect(headerWidth('Reps'), 95);
+      expect(headerWidth('RIR'), 80);
+      expect(headerWidth('Rest'), 80);
+      expect(tester.takeException(), isNull);
+    }
   });
 
   testWidgets('program table enriches muscle, action, and equipment labels',
@@ -1915,7 +1968,7 @@ void main() {
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
     await _openProgramSegment(tester);
     await tester.tap(find.byKey(const Key('write_program_action')));
     await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_exercise_0')));
@@ -2021,7 +2074,7 @@ void main() {
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
     await _openProgramSegment(tester);
     await tester.tap(find.byKey(const Key('write_program_action')));
     await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_exercise_0')));
@@ -2101,7 +2154,7 @@ void main() {
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
     await _openProgramSegment(tester);
     await tester.tap(find.byKey(const Key('write_program_action')));
     await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_exercise_0')));
@@ -2208,7 +2261,7 @@ void main() {
       find.byKey(const Key('program_draft_confirm_action')),
     );
     await tester.tap(find.byKey(const Key('program_draft_confirm_action')));
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
   });
 
   testWidgets('coach reorders and duplicates training days', (tester) async {
@@ -2293,7 +2346,7 @@ void main() {
     expect(day['cardio'], 'Cycle for 10 minutes');
 
     await tester.tap(find.byTooltip('Back').hitTestable().last);
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
     await _openProgramSegment(tester);
     await tester.tap(find.byKey(const Key('write_program_action')));
     await _pumpUntilFound(
@@ -2966,7 +3019,7 @@ void main() {
     // The coach shell opens on the Roster tab (#119).
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
 
     await _openProgramSegment(tester);
     await tester.tap(find.byKey(const Key('generate_draft_action')));
@@ -3021,7 +3074,7 @@ void main() {
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
     await _openProgramSegment(tester);
     await tester.tap(find.byKey(const Key('generate_draft_action')));
     await _pumpUntilFound(tester, find.byKey(const Key('generate_draft_confirm_button')));
@@ -3062,7 +3115,7 @@ void main() {
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
-    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
     await _openProgramSegment(tester);
     await tester.tap(find.byKey(const Key('generate_draft_action')));
     await _pumpUntilFound(
@@ -3090,7 +3143,7 @@ void main() {
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('علاقات التدريب النشطة'));
     await tester.tap(find.text('bob'));
-    await _pumpUntilFound(tester, find.text('مجموعات محسوبة لكل عضلة'));
+    await _pumpUntilFound(tester, find.text('الحجم الأسبوعي'));
     await _openProgramSegment(tester, label: 'البرنامج التدريبي');
     await tester.tap(find.byKey(const Key('generate_draft_action')));
     await _pumpUntilFound(tester, find.text('تفضيل نطاق التكرارات'));

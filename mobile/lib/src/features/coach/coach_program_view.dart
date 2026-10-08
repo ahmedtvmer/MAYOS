@@ -28,16 +28,10 @@ class CoachProgramView extends StatefulWidget {
 
 class _CoachProgramViewState extends State<CoachProgramView> {
   static const int _collapsedExerciseCount = 8;
-  static const List<double> _columnWidths = <double>[
-    40,
-    330,
-    150,
-    125,
-    90,
-    95,
-    80,
-    80
-  ];
+  static const CoachTableColumns _columns = CoachTableColumns(
+    <double>[40, 200, 150, 125, 90, 95, 80, 80],
+    1,
+  );
 
   int _selectedDayIndex = 0;
   bool _showAllExercises = false;
@@ -324,12 +318,11 @@ class _CoachProgramViewState extends State<CoachProgramView> {
     int shownCount,
   ) =>
       CoachExerciseTableFrame(
-        widths: _columnWidths,
+        columns: _columns,
         child: Column(
           children: <Widget>[
             CoachExerciseTableHeader(
               labels: _tableLabels(copy),
-              widths: _columnWidths,
               alignments: <TextAlign>[
                 TextAlign.center,
                 TextAlign.start,
@@ -377,7 +370,6 @@ class _CoachProgramViewState extends State<CoachProgramView> {
     int index,
   ) =>
       CoachExerciseTableRow(
-        widths: _columnWidths,
         cells: <Widget>[
           Text('${index + 1}', textAlign: TextAlign.center),
           CoachExerciseCell(

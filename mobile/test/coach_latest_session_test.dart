@@ -5,8 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_card.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
+import 'package:mayos_mobile/src/features/coach/coach_exercise_table.dart';
 import 'package:mayos_mobile/src/features/coach/coach_history_segment.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
@@ -171,7 +174,7 @@ Future<void> _pumpApp(
       ? 'علاقات التدريب النشطة'
       : 'Active assignments';
   await _pumpUntilFound(tester, find.text(rosterLabel));
-  await tester.tap(find.text('bob'));
+  await tester.tap(find.text('bob').first);
   await _pumpUntilFound(
     tester,
     find.text(
@@ -230,6 +233,53 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('Latest session table fills desktop cards and keeps number columns',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    _setExercise(fake);
+    await _pumpApp(
+      tester,
+      fake,
+      logicalSize: const Size(1440, 1600),
+    );
+
+    for (final double width in <double>[1440, 1920]) {
+      tester.view.physicalSize = Size(width * 2, 3200);
+      tester.view.devicePixelRatio = 2;
+      await tester.pump(const Duration(milliseconds: 100));
+      final Finder frame = find.byType(CoachExerciseTableFrame).first;
+      final Finder card = find.ancestor(
+        of: frame,
+        matching: find.byType(MayosCard),
+      ).first;
+      final Rect frameRect = tester.getRect(frame);
+      final Rect cardRect = tester.getRect(card);
+      expect(
+        frameRect.right,
+        closeTo(
+          cardRect.right -
+              MayosSpacing.md -
+              MayosBorderWidths.hairline,
+          1,
+        ),
+      );
+
+      final Finder header = find.descendant(
+        of: frame,
+        matching: find.byType(CoachExerciseTableHeader),
+      ).first;
+      double headerWidth(String label) => tester.getSize(
+            find.descendant(of: header, matching: find.text(label)),
+          ).width;
+      expect(headerWidth('Exercise'), greaterThan(290));
+      expect(headerWidth('Action'), 160);
+      expect(headerWidth('Sets'), 70);
+      expect(headerWidth('Reps'), 70);
+      expect(headerWidth('Volume (kg)'), 120);
+      expect(tester.takeException(), isNull);
+    }
+  });
 
   testWidgets(
     'phone Latest session wraps flags and shows compact exercise values',
@@ -307,7 +357,29 @@ void main() {
       ];
       await _pumpApp(tester, fake, themeMode: ThemeMode.dark);
       await _expandRecentSessions(tester);
+      final int horizontalScrollersBeforeExpansion = find
+          .byWidgetPredicate(
+            (Widget widget) =>
+                widget is Scrollable &&
+                (widget.axisDirection == AxisDirection.left ||
+                    widget.axisDirection == AxisDirection.right),
+          )
+          .evaluate()
+          .length;
       await _expandFirstRecentSession(tester);
+      final int horizontalScrollersAfterExpansion = find
+          .byWidgetPredicate(
+            (Widget widget) =>
+                widget is Scrollable &&
+                (widget.axisDirection == AxisDirection.left ||
+                    widget.axisDirection == AxisDirection.right),
+          )
+          .evaluate()
+          .length;
+      expect(
+        horizontalScrollersAfterExpansion,
+        horizontalScrollersBeforeExpansion,
+      );
 
       expect(find.text('Date'), findsOneWidget);
       expect(find.text('Split'), findsOneWidget);

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../../core/display_language/catalog.dart';
@@ -80,37 +81,99 @@ String? coachExerciseMuscleLabel(
 }
 
 /// Keeps the Program and History table frames consistent as columns evolve.
+class CoachTableColumns {
+  const CoachTableColumns(this.widths, this.flexibleIndex);
+
+  final List<double> widths;
+  final int flexibleIndex;
+}
+
 class CoachExerciseTableFrame extends StatelessWidget {
   const CoachExerciseTableFrame({
     super.key,
-    required this.widths,
+    required this.columns,
     required this.child,
+    this.decorated = true,
+    this.scrollable = true,
   });
 
-  final List<double> widths;
+  final CoachTableColumns columns;
   final Widget child;
+  final bool decorated;
+  final bool scrollable;
 
   @override
   Widget build(BuildContext context) {
-    final double tableWidth = widths.fold<double>(
+    assert(columns.flexibleIndex >= 0 &&
+        columns.flexibleIndex < columns.widths.length);
+    final double minimumWidth = columns.widths.fold<double>(
           0,
           (double total, double width) => total + width,
         ) +
         MayosSpacing.xs * 2 +
-        2;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Container(
-        width: tableWidth,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          border: Border.all(color: MayosTheme.of(context).border),
-          borderRadius: MayosRadii.smallRadius,
-        ),
-        child: child,
-      ),
+        (decorated ? 2 : 0);
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double viewportWidth = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : minimumWidth;
+        final double tableWidth =
+            viewportWidth < minimumWidth ? minimumWidth : viewportWidth;
+        final List<double> resolvedWidths = List<double>.of(columns.widths);
+        resolvedWidths[columns.flexibleIndex] += tableWidth - minimumWidth;
+        final Widget table = Container(
+          width: tableWidth,
+          clipBehavior: decorated ? Clip.antiAlias : Clip.none,
+          decoration: decorated
+              ? BoxDecoration(
+                  border: Border.all(color: MayosTheme.of(context).border),
+                  borderRadius: MayosRadii.largeRadius,
+                )
+              : null,
+          child: decorated
+              ? Material(
+                  type: MaterialType.transparency,
+                  child: _CoachExerciseTableLayout(
+                    widths: resolvedWidths,
+                    child: child,
+                  ),
+                )
+              : _CoachExerciseTableLayout(
+                  widths: resolvedWidths,
+                  child: child,
+                ),
+        );
+        if (!scrollable) return table;
+        return SizedBox(
+          width: viewportWidth,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: table,
+          ),
+        );
+      },
     );
   }
+}
+
+class _CoachExerciseTableLayout extends InheritedWidget {
+  const _CoachExerciseTableLayout({
+    required this.widths,
+    required super.child,
+  });
+
+  final List<double> widths;
+
+  static List<double> widthsOf(BuildContext context) {
+    final _CoachExerciseTableLayout? layout =
+        context.dependOnInheritedWidgetOfExactType<_CoachExerciseTableLayout>();
+    assert(layout != null, 'Coach table cells must be inside a table frame.');
+    return layout!.widths;
+  }
+
+  @override
+  bool updateShouldNotify(_CoachExerciseTableLayout oldWidget) =>
+      !listEquals(widths, oldWidget.widths);
 }
 
 /// Keeps the catalog image fixed while the exercise name and cue wrap beside it.
@@ -209,25 +272,24 @@ class CoachExerciseTableHeader extends StatelessWidget {
   const CoachExerciseTableHeader({
     super.key,
     required this.labels,
-    required this.widths,
     required this.alignments,
-  })  : assert(labels.length == widths.length),
-        assert(labels.length == alignments.length);
+  }) : assert(labels.length == alignments.length);
 
   final List<String> labels;
-  final List<double> widths;
   final List<TextAlign> alignments;
 
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension colors = MayosTheme.of(context);
+    final List<double> widths = _CoachExerciseTableLayout.widthsOf(context);
+    assert(labels.length == widths.length);
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: MayosSpacing.xs,
         vertical: MayosSpacing.xs,
       ),
       decoration: BoxDecoration(
-        color: colors.surfaceSunken,
+        color: colors.tableHeader,
         border: Border(bottom: BorderSide(color: colors.border)),
       ),
       child: Row(
@@ -254,15 +316,15 @@ class CoachExerciseTableRow extends StatelessWidget {
   const CoachExerciseTableRow({
     super.key,
     required this.cells,
-    required this.widths,
-  }) : assert(cells.length == widths.length);
+  });
 
   final List<Widget> cells;
-  final List<double> widths;
 
   @override
   Widget build(BuildContext context) {
     final MayosThemeExtension colors = MayosTheme.of(context);
+    final List<double> widths = _CoachExerciseTableLayout.widthsOf(context);
+    assert(cells.length == widths.length);
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: MayosSpacing.xs,

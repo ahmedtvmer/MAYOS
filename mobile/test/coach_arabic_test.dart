@@ -445,15 +445,15 @@ void main() {
     await _pumpApp(tester, _coachFake());
 
     await tester.tap(find.byKey(const Key('roster_row_assignment-ar')));
-    await _pumpUntilFound(tester, find.text('مجموعات التدريب آخر ٧ أيام'));
+    await _pumpUntilFound(tester, find.text('الحجم الأسبوعي'));
     expect(find.text('يتدرب معك منذ'), findsOneWidget);
     expect(find.text('\u20662026-09-24\u2069'), findsOneWidget);
     expect(find.text('آخر حصة'), findsOneWidget);
-    expect(find.text('مجموعات التدريب آخر ٧ أيام'), findsOneWidget);
+    expect(find.text('الحجم الأسبوعي'), findsNWidgets(2));
     expect(find.text('الأرقام القياسية الشخصية'), findsOneWidget);
     expect(
       Directionality.of(
-        tester.element(find.text('مجموعات التدريب آخر ٧ أيام')),
+        tester.element(find.text('الحجم الأسبوعي').first),
       ),
       TextDirection.rtl,
     );
@@ -523,7 +523,7 @@ void main() {
     tester.view.devicePixelRatio = 2;
 
     await tester.tap(find.byKey(const Key('roster_row_assignment-ar')));
-    await _pumpUntilFound(tester, find.text('مجموعات التدريب آخر ٧ أيام'));
+    await _pumpUntilFound(tester, find.text('الحجم الأسبوعي'));
 
     final Finder records =
         find.byKey(const Key('coach_history_section_records_semantics'));
