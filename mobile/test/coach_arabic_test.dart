@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
+import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_markdown.dart';
 import 'package:mayos_mobile/src/features/coach/coach_exercise_table.dart'
     show CoachCompactExerciseRow;
+import 'package:mayos_mobile/src/features/coach/coach_history_segment.dart';
 import 'package:mayos_mobile/src/features/coach/coach_player_history_screen.dart';
 
 import 'support/auth_harness.dart';
@@ -84,7 +88,131 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
   await _pumpUntilFound(tester, find.text('علاقات التدريب النشطة'));
 }
 
+Future<void> _pumpArabicHistorySegment(WidgetTester tester) async {
+  tester.view.physicalSize = const Size(2880, 4800);
+  tester.view.devicePixelRatio = 2;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+
+  final List<PersonalRecord> records = <PersonalRecord>[
+    const PersonalRecord(
+      exerciseId: 'squat_weight',
+      name: 'Squat',
+      recordType: 'max_weight',
+      reps: 5,
+      value: 95,
+      achievedAt: '2026-10-01T10:00:00Z',
+      primaryMuscle: 'Quads',
+    ),
+    const PersonalRecord(
+      exerciseId: 'squat_e1rm',
+      name: 'Squat',
+      recordType: 'max_e1rm',
+      reps: 3,
+      value: 120,
+      achievedAt: '2026-10-02T10:00:00Z',
+    ),
+    for (final int reps in <int>[1, 2, 11])
+      PersonalRecord(
+        exerciseId: 'band_reps_$reps',
+        name: 'Band Pull-Apart',
+        recordType: 'most_reps',
+        reps: reps,
+        value: reps.toDouble(),
+        achievedAt: '2026-10-03T10:00:00Z',
+      ),
+  ];
+  final CoachHistorySegment segment = CoachHistorySegment(
+    data: CoachHistorySegmentData(
+      summary: const CoachPlayerSummary(
+        playerUsername: 'player_ar',
+        startedAt: '2026-09-24T10:00:00Z',
+        status: 'active',
+        volume: <String, double>{},
+      ),
+      records: records,
+      checkpointReviews: const <CheckpointReviewListItem>[],
+      exercises: const <CoachPlayerExercise>[
+        CoachPlayerExercise(
+          id: 'squat',
+          name: 'Squat',
+          primaryMuscle: 'Quads',
+        ),
+      ],
+      histories: const <String, CoachExerciseHistory>{
+        'squat': CoachExerciseHistory(
+          equipment: 'barbell',
+          history: <CoachExerciseHistoryPoint>[
+            CoachExerciseHistoryPoint(
+              date: '2026-10-03',
+              weightKg: 100,
+              reps: 8,
+              rpe: 8,
+              e1rm: 120,
+            ),
+          ],
+          records: <CoachExerciseRecord>[
+            CoachExerciseRecord(
+              recordType: 'max_weight',
+              reps: 8,
+              value: 90,
+              achievedAt: '2026-10-03T10:00:00Z',
+            ),
+          ],
+        ),
+      },
+      openExerciseId: 'squat',
+      loadingHistory: false,
+      expandedSections: <CoachHistorySection, bool>{
+        CoachHistorySection.records: true,
+        CoachHistorySection.exercises: true,
+      },
+    ),
+    onToggleSection: (_) {},
+    onExerciseToggle: (_) {},
+    onCheckpointTap: (_) {},
+  );
+
+  await tester.pumpWidget(
+    MaterialApp(
+      locale: const Locale('ar'),
+      supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      theme: MayosTheme.lightForLanguage('ar'),
+      home: MediaQuery(
+        data: const MediaQueryData(size: Size(1440, 2400)),
+        child: SingleChildScrollView(child: segment),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
+  test('Personal-record rep values use localized singular and plural counts',
+      () {
+    const CoachCopy english = CoachCopy('en');
+    const CoachCopy arabic = CoachCopy('ar');
+
+    expect(english.recordValueLabel('most_reps', '1', 1), '1 rep');
+    expect(english.recordValueLabel('most_reps', '2', 2), '2 reps');
+    expect(arabic.recordValueLabel('most_reps', '1', 1), 'تكرار واحد');
+    expect(arabic.recordValueLabel('most_reps', '2', 2), 'تكراران');
+    expect(arabic.recordValueLabel('most_reps', '11', 11),
+        '\u206611\u2069 تكرارًا');
+    expect(english.recordTypeLabel('future_kind'), 'future_kind');
+    expect(arabic.recordTypeLabel('future_kind'), 'future_kind');
+    expect(
+      english.recordCompactSummary('most_reps', '2', 2, '2026-10-03'),
+      'Type: Most reps · Value: 2 reps · Date: 2026-10-03',
+    );
+    expect(
+      arabic.recordCompactSummary('most_reps', '2', 2, '2026-10-03'),
+      'النوع: أكبر عدد من التكرارات · القيمة: تكراران · التاريخ: '
+          '\u20662026-10-03\u2069',
+    );
+  });
+
   test('Arabic Coach program counts localize singular, dual and plural forms',
       () {
     const CoachCopy arabic = CoachCopy('ar');
@@ -252,26 +380,108 @@ void main() {
     expect(tester.widget<Text>(title).data, 'الحصص الأخيرة (\u20662\u2069)');
   });
 
+  testWidgets('Arabic desktop History records and exercise tables localize',
+      (WidgetTester tester) async {
+    await _pumpArabicHistorySegment(tester);
+
+    expect(find.text('النوع'), findsOneWidget);
+    expect(find.text('أقصى وزن'), findsWidgets);
+    expect(find.text('e1RM'), findsWidgets);
+    expect(find.text('أكبر عدد من التكرارات'), findsWidgets);
+    expect(find.text('تكرار واحد'), findsOneWidget);
+    expect(find.text('تكراران'), findsOneWidget);
+    expect(find.text('\u206611\u2069 تكرارًا'), findsOneWidget);
+    expect(find.text('التاريخ'), findsWidgets);
+    expect(find.text('الوزن'), findsOneWidget);
+    expect(find.text('\u2066100.0 kg\u2069'), findsOneWidget);
+    expect(find.textContaining('max_weight'), findsNothing);
+
+    final Finder weightCell = find.text('\u2066100.0 kg\u2069');
+    expect(tester.widget<Text>(weightCell).textDirection, TextDirection.ltr);
+    expect(
+      Directionality.of(tester.element(weightCell)),
+      TextDirection.rtl,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Arabic History has no overflow at 360dp through Exercises',
       (WidgetTester tester) async {
-    await _pumpApp(tester, _coachFake());
-    tester.view.physicalSize = const Size(720, 2400);
+    final FakeMayosApi fake = _coachFake()
+      ..coachPlayerRecords = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'exercise_id': 'front_squat',
+          'name': 'Front Squat',
+          'record_type': 'max_e1rm',
+          'reps': 5,
+          'value': 120.5,
+          'achieved_at': '2026-09-20T10:00:00Z',
+          'primary_muscle': 'Quads',
+        },
+      ]
+      ..coachPlayerExercises = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': 'front_squat',
+          'name': 'Front Squat',
+          'primary_muscle': 'Quads',
+        },
+      ];
+    await _pumpApp(tester, fake);
+    tester.view.physicalSize = const Size(720, 6000);
     tester.view.devicePixelRatio = 2;
 
     await tester.tap(find.byKey(const Key('roster_row_assignment-ar')));
     await _pumpUntilFound(tester, find.text('مجموعات التدريب آخر ٧ أيام'));
+
+    final Finder records =
+        find.byKey(const Key('coach_history_section_records_semantics'));
+    await tester.scrollUntilVisible(
+      records,
+      300,
+      scrollable: find.ancestor(
+        of: records,
+        matching: find.byType(Scrollable),
+      ).first,
+    );
+    await tester.ensureVisible(records);
+    await tester.tap(records);
+    await tester.pumpAndSettle();
+    expect(find.text('Front Squat'), findsOneWidget);
+    expect(find.textContaining('النوع: e1RM'), findsOneWidget);
+    expect(
+      Directionality.of(tester.element(find.text('Front Squat'))),
+      TextDirection.rtl,
+    );
 
     final Finder exercises =
         find.byKey(const Key('coach_history_section_exercises_semantics'));
     await tester.scrollUntilVisible(
       exercises,
       300,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: find.ancestor(
+        of: exercises,
+        matching: find.byType(Scrollable),
+      ).first,
     );
     await tester.ensureVisible(exercises);
     await tester.pump();
 
-    expect(Directionality.of(tester.element(exercises)), TextDirection.rtl);
+    await tester.tap(exercises);
+    await tester.pumpAndSettle();
+    final Finder exerciseTile =
+        find.widgetWithText(ExpansionTile, 'Front Squat');
+    await tester.scrollUntilVisible(
+      exerciseTile,
+      300,
+      scrollable: find.ancestor(
+        of: exerciseTile,
+        matching: find.byType(Scrollable),
+      ).first,
+    );
+    await tester.ensureVisible(exerciseTile);
+    await tester.tap(exerciseTile);
+    await tester.pumpAndSettle();
+
     expect(tester.takeException(), isNull);
   });
 

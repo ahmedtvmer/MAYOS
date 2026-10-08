@@ -13,6 +13,15 @@ import '../../core/ui/mayos_section_header.dart';
 import '../../core/workout_equipment.dart';
 import 'coach_exercise_table.dart';
 
+typedef _ExerciseHistoryDisplay = ({
+  CoachExerciseHistoryPoint point,
+  WorkoutEquipmentKind? zeroLoadKind,
+  String weight,
+  String weightUnit,
+  String? rir,
+  String? e1rm,
+});
+
 enum CoachHistorySection {
   recentSessions,
   records,
@@ -43,6 +52,21 @@ class CoachHistorySegmentData {
 }
 
 class CoachHistorySegment extends StatelessWidget {
+  static const List<double> _recordColumnWidths = <double>[
+    250,
+    110,
+    110,
+    65,
+    115,
+  ];
+  static const List<double> _historyColumnWidths = <double>[
+    105,
+    135,
+    65,
+    70,
+    95,
+  ];
+
   const CoachHistorySegment({
     super.key,
     required this.data,
@@ -529,19 +553,111 @@ class CoachHistorySegment extends StatelessWidget {
         count: data.records.length,
         children: data.records.isEmpty
             ? <Widget>[Text(copy.noPersonalRecords)]
-            : <Widget>[
-                for (final PersonalRecord record in data.records)
-                  ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(record.name),
-                    subtitle: Text(copy.recordSummary(
-                        record.recordType, '${record.value}', record.reps)),
-                  ),
-              ],
+            : <Widget>[_recordsContent(context, copy)],
       ),
     );
   }
+
+  Widget _recordsContent(BuildContext context, CoachCopy copy) {
+    return isDesktopLayout(context)
+        ? _recordsDesktopTable(context, copy)
+        : _recordsPhoneRows(context, copy);
+  }
+
+  Widget _recordsPhoneRows(BuildContext context, CoachCopy copy) => Column(
+        children: <Widget>[
+          for (final PersonalRecord record in data.records)
+            CoachCompactExerciseRow(
+              imagePath: record.imagePath,
+              name: record.name,
+              muscleLine:
+                  coachExerciseMuscleLabel(context, record.primaryMuscle),
+              prescription: copy.recordCompactSummary(
+                record.recordType,
+                '${record.value}',
+                record.reps,
+                _achievedDate(record.achievedAt),
+              ),
+            ),
+        ],
+      );
+
+  Widget _recordsDesktopTable(BuildContext context, CoachCopy copy) =>
+      CoachExerciseTableFrame(
+        widths: _recordColumnWidths,
+        child: Column(
+          children: <Widget>[
+            _tableHeader(
+              context,
+              <String>[
+                copy.programExerciseColumn,
+                copy.recordTypeColumn,
+                copy.valueColumn,
+                copy.programRepsColumn,
+                copy.dateColumn,
+              ],
+              _recordColumnWidths,
+            ),
+            for (final PersonalRecord record in data.records)
+              _recordTableRow(context, copy, record),
+          ],
+        ),
+      );
+
+  Widget _recordTableRow(
+    BuildContext context,
+    CoachCopy copy,
+    PersonalRecord record,
+  ) =>
+      CoachExerciseTableRow(
+        widths: _recordColumnWidths,
+        cells: <Widget>[
+          CoachExerciseCell(
+            imagePath: record.imagePath,
+            name: record.name,
+            muscleLine:
+                coachExerciseMuscleLabel(context, record.primaryMuscle),
+          ),
+          _tableText(context, copy.recordTypeLabel(record.recordType)),
+          _tableText(context, copy.recordValueLabel(
+            record.recordType,
+            '${record.value}',
+            record.reps,
+          )),
+          _tableText(context, copy.recordRepsCell(record.reps),
+              textDirection: TextDirection.ltr),
+          _tableText(context, _achievedDate(record.achievedAt),
+              textDirection: TextDirection.ltr),
+        ],
+      );
+
+  Widget _tableHeader(
+    BuildContext context,
+    List<String> labels,
+    List<double> widths,
+  ) =>
+      CoachExerciseTableHeader(
+        labels: labels,
+        widths: widths,
+        alignments: List<TextAlign>.filled(labels.length, TextAlign.start),
+      );
+
+  String _achievedDate(String achievedAt) => achievedAt.split('T').first;
+
+  Widget _tableText(
+    BuildContext context,
+    String text, {
+    TextDirection? textDirection,
+  }) =>
+      Text(
+        text,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        textDirection: textDirection,
+        style: MayosTypography.of(context)
+            .bodySecondary
+            .copyWith(color: MayosTheme.of(context).textPrimary),
+      );
 
   Widget _checkpointReviewsCard(BuildContext context) {
     final copy = coachCopyOf(context);
@@ -604,7 +720,6 @@ class CoachHistorySegment extends StatelessWidget {
   }
 
   Widget _exerciseDetail(BuildContext context, String exerciseId) {
-    final copy = coachCopyOf(context);
     if (data.loadingHistory) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 12),
@@ -615,49 +730,204 @@ class CoachHistorySegment extends StatelessWidget {
     if (history == null) {
       return const SizedBox.shrink();
     }
-    final CoachExerciseHistoryPoint? latest =
-        history.history.isEmpty ? null : history.history.last;
-    final bool latestZeroLoadUsesEquipmentLabel = latest != null &&
-        zeroLoadLabelKind(latest.weightKg, history.equipment) != null;
+    return _exerciseHistoryContent(context, history);
+  }
 
-    Widget historyPoint(CoachExerciseHistoryPoint point) {
-      final WorkoutEquipmentKind? labelKind =
-          zeroLoadLabelKind(point.weightKg, history.equipment);
-      return Text(copy.exerciseHistoryPoint(
-        point.date,
-        labelKind == null
-            ? '${point.weightKg}'
-            : workoutCopyOf(context).zeroLoadWeightLabel(labelKind),
-        point.reps,
-        weightUnit: exerciseWeightUnit(point.weightKg, history.equipment),
-        rir: point.rpe == null ? null : rirLabel(point.rpe!),
-        e1rm: labelKind == null ? '${point.e1rm}' : null,
-      ));
-    }
-
+  Widget _exerciseHistoryContent(
+    BuildContext context,
+    CoachExerciseHistory history,
+  ) {
+    final CoachCopy copy = coachCopyOf(context);
+    final List<_ExerciseHistoryDisplay> points =
+        _exerciseHistoryDisplays(context, copy, history);
+    final String? caption = _historyCaption(history.caption, points);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        if (history.caption != null && !latestZeroLoadUsesEquipmentLabel)
-          Text(history.caption!),
+        if (caption != null) Text(caption),
         const SizedBox(height: MayosSpacing.xxs),
-        if (history.history.isEmpty)
-          Text(copy.noExerciseSets)
-        else
-          for (final CoachExerciseHistoryPoint point in history.history)
-            // Effort is hidden when nobody rated the set, as this line always
-            // was; a rated one reads as RIR (#111).
-            historyPoint(point),
-        if (history.records.isNotEmpty) ...<Widget>[
-          const SizedBox(height: MayosSpacing.xs),
-          Text(copy.records),
-          for (final CoachExerciseRecord record in history.records)
-            Text(copy.recordHistory(record.recordType, '${record.value}',
-                record.reps, record.achievedAt)),
-        ],
+        _exerciseHistoryPoints(context, copy, history, points),
+        if (history.records.isNotEmpty)
+          ..._historyRecordRows(context, copy, history),
       ],
     );
   }
+
+  List<_ExerciseHistoryDisplay> _exerciseHistoryDisplays(
+    BuildContext context,
+    CoachCopy copy,
+    CoachExerciseHistory history,
+  ) =>
+      <_ExerciseHistoryDisplay>[
+        for (final CoachExerciseHistoryPoint point in history.history)
+          _exerciseHistoryDisplay(context, copy, point, history.equipment),
+      ];
+
+  _ExerciseHistoryDisplay _exerciseHistoryDisplay(
+    BuildContext context,
+    CoachCopy copy,
+    CoachExerciseHistoryPoint point,
+    String? equipment,
+  ) {
+    final WorkoutEquipmentKind? zeroLoadKind =
+        zeroLoadLabelKind(point.weightKg, equipment);
+    final String weight = zeroLoadKind == null
+        ? '${point.weightKg}'
+        : workoutCopyOf(context).zeroLoadWeightLabel(zeroLoadKind);
+    final String weightUnit = exerciseWeightUnit(point.weightKg, equipment);
+    return (
+      point: point,
+      zeroLoadKind: zeroLoadKind,
+      weight: weight,
+      weightUnit: weightUnit,
+      rir: _historyRirLabel(point),
+      e1rm: zeroLoadKind == null ? '${point.e1rm}' : null,
+    );
+  }
+
+  String? _historyRirLabel(CoachExerciseHistoryPoint point) {
+    // Effort is hidden when nobody rated the set, as this line always
+    // was; a rated one reads as RIR (#111).
+    return point.rpe == null ? null : rirLabel(point.rpe!);
+  }
+
+  String? _historyCaption(
+    String? caption,
+    List<_ExerciseHistoryDisplay> points,
+  ) {
+    if (caption == null || points.isEmpty) return caption;
+    return points.last.zeroLoadKind == null ? caption : null;
+  }
+
+  Widget _exerciseHistoryPoints(
+    BuildContext context,
+    CoachCopy copy,
+    CoachExerciseHistory history,
+    List<_ExerciseHistoryDisplay> points,
+  ) {
+    if (history.history.isEmpty) return Text(copy.noExerciseSets);
+    if (isDesktopLayout(context)) {
+      return _exerciseHistoryTable(context, copy, points);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        for (final _ExerciseHistoryDisplay point in points)
+          _exerciseHistoryCompactRow(copy, point),
+      ],
+    );
+  }
+
+  Widget _exerciseHistoryCompactRow(
+    CoachCopy copy,
+    _ExerciseHistoryDisplay display,
+  ) =>
+      Text(copy.exerciseHistoryCompactPoint(
+        display.point.date,
+        display.weight,
+        display.point.reps,
+        weightUnit: display.weightUnit,
+        rir: display.rir,
+        e1rm: display.e1rm,
+      ));
+
+  Widget _exerciseHistoryTable(
+    BuildContext context,
+    CoachCopy copy,
+    List<_ExerciseHistoryDisplay> points,
+  ) =>
+      CoachExerciseTableFrame(
+        widths: _historyColumnWidths,
+        child: Column(
+          children: <Widget>[
+            _tableHeader(
+              context,
+              <String>[
+                copy.dateColumn,
+                copy.weightColumn,
+                copy.programRepsColumn,
+                copy.programRirColumn,
+                copy.e1rmColumn,
+              ],
+              _historyColumnWidths,
+            ),
+            for (final _ExerciseHistoryDisplay point in points)
+              _historyTableRow(context, copy, point),
+          ],
+        ),
+      );
+
+  Widget _historyTableRow(
+    BuildContext context,
+    CoachCopy copy,
+    _ExerciseHistoryDisplay point,
+  ) =>
+      CoachExerciseTableRow(
+        widths: _historyColumnWidths,
+        cells: _historyTableCells(context, copy, point),
+      );
+
+  List<Widget> _historyTableCells(
+    BuildContext context,
+    CoachCopy copy,
+    _ExerciseHistoryDisplay display,
+  ) =>
+      <Widget>[
+        _tableText(
+          context,
+          display.point.date,
+          textDirection: TextDirection.ltr,
+        ),
+        _historyWeightCell(context, copy, display),
+        _tableText(
+          context,
+          '${display.point.reps}',
+          textDirection: TextDirection.ltr,
+        ),
+        _tableText(
+          context,
+          display.rir ?? '',
+          textDirection: TextDirection.ltr,
+        ),
+        _tableText(
+          context,
+          display.e1rm ?? '',
+          textDirection: TextDirection.ltr,
+        ),
+      ];
+
+  Widget _historyWeightCell(
+    BuildContext context,
+    CoachCopy copy,
+    _ExerciseHistoryDisplay display,
+  ) {
+    final String weight = copy.exerciseHistoryWeight(
+      display.weight,
+      weightUnit: display.weightUnit,
+    );
+    return _tableText(
+      context,
+      weight,
+      textDirection: display.zeroLoadKind == null ? TextDirection.ltr : null,
+    );
+  }
+
+  List<Widget> _historyRecordRows(
+    BuildContext context,
+    CoachCopy copy,
+    CoachExerciseHistory history,
+  ) =>
+      <Widget>[
+        const SizedBox(height: MayosSpacing.xs),
+        Text(copy.records),
+        for (final CoachExerciseRecord record in history.records)
+          Text(copy.recordHistory(
+            record.recordType,
+            '${record.value}',
+            record.reps,
+            _achievedDate(record.achievedAt),
+          )),
+      ];
 
   Widget _exercisesCard(BuildContext context) {
     final copy = coachCopyOf(context);
@@ -675,7 +945,14 @@ class CoachHistorySegment extends StatelessWidget {
                     tilePadding: EdgeInsets.zero,
                     initiallyExpanded: data.openExerciseId == exercise.id,
                     onExpansionChanged: (_) => onExerciseToggle(exercise),
-                    title: Text(exercise.name),
+                    title: CoachExerciseCell(
+                      imagePath: exercise.imagePath,
+                      name: exercise.name,
+                      muscleLine: coachExerciseMuscleLabel(
+                        context,
+                        exercise.primaryMuscle,
+                      ),
+                    ),
                     children: <Widget>[
                       _exerciseDetail(context, exercise.id),
                     ],

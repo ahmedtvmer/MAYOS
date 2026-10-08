@@ -11,6 +11,7 @@ import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
+import 'support/fake_media_http.dart';
 import 'support/fake_mayos_api.dart';
 
 /// Pumps finite frames until [finder] matches, then a few more so transitions
@@ -31,9 +32,11 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
 Future<void> _pumpApp(
   WidgetTester tester,
   FakeMayosApi fake, {
+  double logicalWidth = 540,
+  double logicalHeight = 1200,
   List<Override> extraOverrides = const <Override>[],
 }) async {
-  tester.view.physicalSize = const Size(1080, 2400);
+  tester.view.physicalSize = Size(logicalWidth * 2, logicalHeight * 2);
   tester.view.devicePixelRatio = 2.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -89,8 +92,14 @@ Future<void> _openRosterEntry(WidgetTester tester) async {
 Future<void> _expandHistorySection(WidgetTester tester, String section) async {
   final Finder card =
       find.byKey(Key('coach_history_section_${section}_semantics'));
-  await tester.scrollUntilVisible(card, 300,
-      scrollable: find.byType(Scrollable).first);
+  await tester.scrollUntilVisible(
+    card,
+    300,
+    scrollable: find.ancestor(
+      of: card,
+      matching: find.byType(Scrollable),
+    ).first,
+  );
   await tester.ensureVisible(card);
   await tester.pumpAndSettle();
   await tester.tap(card);
@@ -258,6 +267,150 @@ void main() {
     expect(find.text('9'), findsOneWidget);
   });
 
+  testWidgets('desktop Personal records table shows identity and achieved date',
+      (WidgetTester tester) async {
+    final FakeMediaCatalog media = FakeMediaCatalog()..install();
+    media.serve('images/front_squat.jpg');
+    try {
+      final FakeMayosApi fake = _coachFake()
+        ..coachPlayerRecords = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'exercise_id': 'front_squat',
+            'name': 'Front Squat',
+            'record_type': 'max_e1rm',
+            'reps': 5,
+            'value': 120.5,
+            'achieved_at': '2026-09-20T10:00:00Z',
+            'image_path': 'images/front_squat.jpg',
+            'primary_muscle': 'Quads',
+          },
+        ];
+      await _pumpApp(
+        tester,
+        fake,
+        logicalWidth: 1200,
+        logicalHeight: 1500,
+        extraOverrides: <Override>[
+          offlineWorkoutDraftsEnabledProvider.overrideWithValue(false),
+        ],
+      );
+
+      await _openRosterEntry(tester);
+      await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+      await _expandHistorySection(tester, 'records');
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 150)),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Exercise'), findsWidgets);
+      expect(find.text('Type'), findsOneWidget);
+      expect(find.text('Value'), findsOneWidget);
+      expect(find.text('Reps'), findsWidgets);
+      expect(find.text('Date'), findsOneWidget);
+      expect(find.text('Front Squat'), findsOneWidget);
+      expect(find.text('Quads'), findsOneWidget);
+      expect(find.text('e1RM'), findsOneWidget);
+      expect(find.text('120.5 kg'), findsOneWidget);
+      expect(find.text('5'), findsWidgets);
+      expect(find.text('2026-09-20'), findsOneWidget);
+      expect(media.requestCount('images/front_squat.jpg'), 1);
+    } finally {
+      FakeMediaCatalog.uninstall();
+    }
+  });
+
+  testWidgets('desktop Exercises rows expand to the labeled history table',
+      (WidgetTester tester) async {
+    final FakeMediaCatalog media = FakeMediaCatalog()..install();
+    media.serve('images/bench_press.jpg');
+    try {
+      final FakeMayosApi fake = _coachFake()
+        ..coachPlayerExercises = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'id': 'bench_press',
+            'name': 'Bench Press',
+            'image_path': 'images/bench_press.jpg',
+            'primary_muscle': 'Chest',
+          },
+        ]
+        ..coachPlayerHistories = <String, Map<String, dynamic>>{
+          'bench_press': <String, dynamic>{
+            'equipment': 'resistance band',
+            'history': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'date': '2026-09-19',
+                'weight_kg': 0.0,
+                'reps': 12,
+                'rpe': null,
+                'e1rm': 0.0,
+              },
+              <String, dynamic>{
+                'date': '2026-09-20',
+                'weight_kg': 100.0,
+                'reps': 5,
+                'rpe': 8.0,
+                'e1rm': 120.0,
+              },
+            ],
+            'caption': 'Latest Recorded: **100.0 kg × 5 reps @ RIR 2**',
+            'records': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'record_type': 'max_weight',
+                'reps': 5,
+                'value': 100.0,
+                'achieved_at': '2026-09-20T10:00:00Z',
+              },
+            ],
+          },
+        };
+      await _pumpApp(
+        tester,
+        fake,
+        logicalWidth: 1200,
+        logicalHeight: 1500,
+        extraOverrides: <Override>[
+          offlineWorkoutDraftsEnabledProvider.overrideWithValue(false),
+        ],
+      );
+
+      await _openRosterEntry(tester);
+      await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+      await _expandHistorySection(tester, 'exercises');
+      final Finder benchTile =
+          find.widgetWithText(ExpansionTile, 'Bench Press');
+      await tester.ensureVisible(benchTile);
+      await tester.tap(benchTile);
+      await _pumpUntilFound(tester, find.text('Date'));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 150)),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Bench Press'), findsWidgets);
+      expect(find.text('Chest'), findsWidgets);
+      expect(media.requestCount('images/bench_press.jpg'), 1);
+      expect(find.text('Date'), findsOneWidget);
+      expect(find.text('Weight'), findsOneWidget);
+      expect(find.text('Reps'), findsWidgets);
+      expect(find.text('RIR'), findsOneWidget);
+      expect(find.text('e1RM'), findsOneWidget);
+      expect(find.text('100.0 kg'), findsOneWidget);
+      expect(find.text('120.0'), findsOneWidget);
+      expect(find.text('Band'), findsOneWidget);
+      expect(find.text('0.0'), findsNothing);
+      expect(find.textContaining('Latest Recorded:'), findsOneWidget);
+      expect(find.text('Records'), findsOneWidget);
+      expect(
+        find.text('Max weight · 100.0 kg × 5 reps (2026-09-20)'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    } finally {
+      FakeMediaCatalog.uninstall();
+    }
+  });
+
   testWidgets('history omits the last-session stat when there are no sessions',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _coachFake()
@@ -295,7 +448,27 @@ void main() {
 
   testWidgets('History renders without overflow at 360dp in dark theme',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMayosApi fake = _coachFake()
+      ..coachPlayerRecords = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'exercise_id': 'bench_press',
+          'name': 'Bench Press',
+          'record_type': 'max_weight',
+          'reps': 5,
+          'value': 100.0,
+          'achieved_at': '2026-09-20T10:00:00Z',
+          'image_path': 'images/bench_press.jpg',
+          'primary_muscle': 'Chest',
+        },
+      ]
+      ..coachPlayerExercises = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': 'bench_press',
+          'name': 'Bench Press',
+          'image_path': 'images/bench_press.jpg',
+          'primary_muscle': 'Chest',
+        },
+      ];
     await _pumpApp(
       tester,
       fake,
@@ -305,7 +478,7 @@ void main() {
         ),
       ],
     );
-    tester.view.physicalSize = const Size(720, 2400);
+    tester.view.physicalSize = const Size(720, 4800);
     tester.view.devicePixelRatio = 2;
 
     await _openRosterEntry(tester);
@@ -315,12 +488,14 @@ void main() {
       Theme.of(tester.element(find.text('Coaching since'))).brightness,
       Brightness.dark,
     );
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('coach_history_section_exercises_semantics')),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pump();
+    await _expandHistorySection(tester, 'records');
+    expect(find.text('Bench Press'), findsWidgets);
+    expect(find.textContaining('Date: 2026-09-20'), findsOneWidget);
+    await _expandHistorySection(tester, 'exercises');
+    final Finder benchTile = find.widgetWithText(ExpansionTile, 'Bench Press');
+    await tester.ensureVisible(benchTile);
+    await tester.tap(benchTile);
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
 
@@ -349,13 +524,19 @@ void main() {
     await _expandHistorySection(tester, 'exercises');
     final Finder benchTile = find.widgetWithText(ExpansionTile, 'Bench Press');
     expect(find.text('Bench Press'), findsWidgets);
-    await tester.scrollUntilVisible(benchTile, 300,
-        scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(
+      benchTile,
+      300,
+      scrollable: find.ancestor(
+        of: benchTile,
+        matching: find.byType(Scrollable),
+      ).first,
+    );
     await tester.ensureVisible(benchTile);
     await tester.pump();
     await tester.tap(benchTile);
-    await _pumpUntilFound(tester, find.textContaining('e1RM 120.0'));
-    expect(find.textContaining('e1RM 120.0'), findsOneWidget);
+    await _pumpUntilFound(tester, find.textContaining('e1RM: 120.0'));
+    expect(find.textContaining('e1RM: 120.0'), findsOneWidget);
   });
 
   testWidgets('coach history labels zero-load resistance band sets',
@@ -390,16 +571,96 @@ void main() {
     await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
     await _expandHistorySection(tester, 'exercises');
     final Finder bandTile = find.widgetWithText(ExpansionTile, 'Band Pull-Apart');
-    await tester.scrollUntilVisible(bandTile, 300,
-        scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(
+      bandTile,
+      300,
+      scrollable: find.ancestor(
+        of: bandTile,
+        matching: find.byType(Scrollable),
+      ).first,
+    );
     await tester.ensureVisible(bandTile);
     await tester.pump();
     await tester.tap(bandTile);
-    await _pumpUntilFound(tester, find.textContaining('Band × 12'));
+    await _pumpUntilFound(
+      tester,
+      find.text('Date: 2026-09-20 · Weight: Band · Reps: 12 · RIR: 2'),
+    );
 
-    expect(find.textContaining('Band × 12'), findsOneWidget);
+    expect(
+      find.text('Date: 2026-09-20 · Weight: Band · Reps: 12 · RIR: 2'),
+      findsOneWidget,
+    );
     expect(find.textContaining('0.0 kg × 12'), findsNothing);
-    expect(find.textContaining('Band × 12 (e1RM'), findsNothing);
+    expect(find.textContaining('e1RM:'), findsNothing);
+  });
+
+  testWidgets('coach history keeps caption and hides RIR for unrated sets',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachPlayerExercises = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': 'weighted_bodyweight',
+          'name': 'Weighted Pull-Up',
+          'primary_muscle': 'Back',
+        },
+      ]
+      ..coachPlayerHistories = <String, Map<String, dynamic>>{
+        'weighted_bodyweight': <String, dynamic>{
+          'equipment': 'body weight',
+          'history': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'date': '2026-09-20',
+              'weight_kg': 0.0,
+              'reps': 12,
+              'rpe': null,
+              'e1rm': 0.0,
+            },
+            <String, dynamic>{
+              'date': '2026-09-21',
+              'weight_kg': 30.0,
+              'reps': 8,
+              'rpe': null,
+              'e1rm': 38.0,
+            },
+            <String, dynamic>{
+              'date': '2026-09-22',
+              'weight_kg': 40.0,
+              'reps': 8,
+              'rpe': 8.0,
+              'e1rm': 50.0,
+            },
+          ],
+          'caption': 'Latest recorded progress is available.',
+          'records': <dynamic>[],
+        },
+      };
+    await _pumpApp(tester, fake, logicalHeight: 1500);
+
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(tester, find.text('Volume (weighted working sets)'));
+    await _expandHistorySection(tester, 'exercises');
+    final Finder tile = find.widgetWithText(ExpansionTile, 'Weighted Pull-Up');
+    await tester.ensureVisible(tile);
+    await tester.tap(tile);
+    await _pumpUntilFound(
+      tester,
+      find.text('Latest recorded progress is available.'),
+    );
+
+    expect(find.text('Latest recorded progress is available.'), findsOneWidget);
+    expect(find.text('Date: 2026-09-20 · Weight: BW · Reps: 12'), findsOneWidget);
+    expect(
+      find.text('Date: 2026-09-21 · Weight: 30.0 kg · Reps: 8 · e1RM: 38.0'),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'Date: 2026-09-22 · Weight: 40.0 kg · Reps: 8 · RIR: 2 · e1RM: 50.0',
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Weight: 0.0 kg'), findsNothing);
   });
 
   testWidgets('coach history lists and opens Checkpoints for the assignment',
@@ -434,8 +695,14 @@ void main() {
     await _expandHistorySection(tester, 'checkpoints');
     final Finder checkpoint =
         find.byKey(const ValueKey<String>('coach.checkpoint.10'));
-    await tester.scrollUntilVisible(checkpoint, 300,
-        scrollable: find.byType(Scrollable).first);
+    await tester.scrollUntilVisible(
+      checkpoint,
+      300,
+      scrollable: find.ancestor(
+        of: checkpoint,
+        matching: find.byType(Scrollable),
+      ).first,
+    );
     await tester.ensureVisible(checkpoint);
     await tester.pumpAndSettle();
     await tester.tap(checkpoint);

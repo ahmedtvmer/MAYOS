@@ -706,14 +706,16 @@ class CoachCopy {
   String checkpointPeriod(String start, String end) =>
       isArabic ? '${_ltr(start)} – ${_ltr(end)}' : '$start – $end';
   String recordHistory(String type, String value, int reps, String date) {
+    final String label = recordTypeLabel(type);
     if (PrRecordKind.fromRecordType(type) == PrRecordKind.mostReps) {
       return isArabic
-          ? 'أكبر عدد من التكرارات · ${_count(reps, ArabicCountNoun.repetition)} (${_ltr(date)})'
-          : 'Most reps · $reps reps ($date)';
+          ? '$label · ${_count(reps, ArabicCountNoun.repetition)} (${_ltr(date)})'
+          : '$label · ${_englishRepetitions(reps)} ($date)';
     }
     return isArabic
-        ? '${_ltr(type)} · ${_ltr('$value kg')} × ${_count(reps, ArabicCountNoun.repetition)} (${_ltr(date)})'
-        : '$type · $value kg × $reps reps ($date)';
+        ? '${_ltr(label)} · ${_ltr('$value kg')} × '
+            '${_count(reps, ArabicCountNoun.repetition)} (${_ltr(date)})'
+        : '$label · $value kg × ${_englishRepetitions(reps)} ($date)';
   }
   String weekday(int weekday) {
     const List<String> english = <String>[
@@ -879,23 +881,103 @@ class CoachCopy {
       isArabic ? 'لم تُسجل مجموعات تدريب بعد.' : 'No volume recorded yet.';
   String get personalRecordsTitle =>
       isArabic ? 'الأرقام القياسية الشخصية' : 'Personal records';
-  String recordSummary(String type, String value, int reps) {
+  String get recordTypeColumn => isArabic ? 'النوع' : 'Type';
+  String get valueColumn => isArabic ? 'القيمة' : 'Value';
+  String get dateColumn => isArabic ? 'التاريخ' : 'Date';
+  String get weightColumn => isArabic ? 'الوزن' : 'Weight';
+  String get e1rmColumn => 'e1RM';
+  String recordTypeLabel(String type) =>
+      switch (PrRecordKind.fromRecordType(type)) {
+        PrRecordKind.weight => isArabic ? 'أقصى وزن' : 'Max weight',
+        PrRecordKind.e1rm => 'e1RM',
+        PrRecordKind.mostReps =>
+          isArabic ? 'أكبر عدد من التكرارات' : 'Most reps',
+        null => type,
+      };
+
+  String recordValueLabel(String type, String value, int reps) {
     if (PrRecordKind.fromRecordType(type) == PrRecordKind.mostReps) {
       return isArabic
-          ? 'أكبر عدد من التكرارات · ${_count(reps, ArabicCountNoun.repetition)}'
-          : 'Most reps · $reps reps';
+          ? _count(reps, ArabicCountNoun.repetition)
+          : _englishRepetitions(reps);
+    }
+    return isArabic ? _ltr('$value kg') : '$value kg';
+  }
+
+  String recordRepsCell(int reps) => isArabic ? _ltr('$reps') : '$reps';
+
+  String recordCompactSummary(
+    String type,
+    String value,
+    int reps,
+    String date,
+  ) {
+    final String recordType = recordTypeLabel(type);
+    final String recordValue = recordValueLabel(type, value, reps);
+    if (isArabic) {
+      final String repetitions =
+          PrRecordKind.fromRecordType(type) == PrRecordKind.mostReps
+              ? ''
+              : ' · التكرارات: ${_count(reps, ArabicCountNoun.repetition)}';
+      return 'النوع: $recordType · القيمة: $recordValue$repetitions · '
+          'التاريخ: ${_ltr(date)}';
+    }
+    final String repetitions =
+        PrRecordKind.fromRecordType(type) == PrRecordKind.mostReps
+            ? ''
+            : ' · Reps: ${_englishRepetitions(reps)}';
+    return 'Type: $recordType · Value: $recordValue$repetitions · Date: $date';
+  }
+
+  String recordSummary(String type, String value, int reps) {
+    final String label = recordTypeLabel(type);
+    if (PrRecordKind.fromRecordType(type) == PrRecordKind.mostReps) {
+      return isArabic
+          ? '$label · ${_count(reps, ArabicCountNoun.repetition)}'
+          : '$label · ${_englishRepetitions(reps)}';
     }
     return isArabic
-        ? '${_ltr(type)} · ${_ltr('$value kg')} × ${_count(reps, ArabicCountNoun.repetition)}'
-        : '$type · $value kg × $reps reps';
+        ? '${_ltr(label)} · ${_ltr('$value kg')} × '
+            '${_count(reps, ArabicCountNoun.repetition)}'
+        : '$label · $value kg × ${_englishRepetitions(reps)}';
   }
-  String exerciseHistoryPoint(String date, String weight, int reps,
-          {String weightUnit = 'kg', String? rir, String? e1rm}) {
+
+  String exerciseHistoryWeight(String weight, {required String weightUnit}) {
     final String value = weightUnit.isEmpty ? weight : '$weight $weightUnit';
-    return isArabic
-        ? '${_ltr(date)}: ${_ltr(value)} × ${_count(reps, ArabicCountNoun.repetition)}${rir == null ? '' : ' · RIR ${_ltr(rir)}'}${e1rm == null ? '' : ' (e1RM ${_ltr(e1rm)})'}'
-        : '$date: $value × $reps${rir == null ? '' : ' @ RIR $rir'}${e1rm == null ? '' : ' (e1RM $e1rm)'}';
+    return isArabic && weightUnit.isNotEmpty ? _ltr(value) : value;
   }
+
+  String exerciseHistoryCompactPoint(
+    String date,
+    String weight,
+    int reps, {
+    required String weightUnit,
+    String? rir,
+    String? e1rm,
+  }) {
+    final List<String> fields = <String>[
+      isArabic ? '$dateColumn: ${_ltr(date)}' : '$dateColumn: $date',
+      '$weightColumn: '
+          '${exerciseHistoryWeight(weight, weightUnit: weightUnit)}',
+      isArabic
+          ? '$programRepsColumn: ${_count(reps, ArabicCountNoun.repetition)}'
+          : '$programRepsColumn: $reps',
+    ];
+    if (rir != null) {
+      fields.add(
+        isArabic ? '$programRirColumn: ${_ltr(rir)}' : '$programRirColumn: $rir',
+      );
+    }
+    if (e1rm != null) {
+      fields.add(
+        isArabic ? '$e1rmColumn: ${_ltr(e1rm)}' : '$e1rmColumn: $e1rm',
+      );
+    }
+    return fields.join(' · ');
+  }
+
+  String _englishRepetitions(int reps) =>
+      '$reps ${reps == 1 ? 'rep' : 'reps'}';
   String historicalProgram(int captured, int current) => isArabic
       ? 'سُجلت الحصة على إصدار البرنامج ${_ltr('$captured')} (الحالي ${_ltr('$current')})'
       : 'Logged against program v$captured (current v$current)';
