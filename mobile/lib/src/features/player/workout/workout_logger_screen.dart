@@ -897,6 +897,13 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   }
 
   Future<void> _removeSet(int exerciseIndex, int setIndex) async {
+    final ActiveWorkout? workout = _workout;
+    if (workout == null) return;
+    final ActiveWorkoutExercise? exercise =
+        _exerciseHoldingRemovableSet(workout, exerciseIndex, setIndex);
+    if (exercise == null) return;
+    final ActiveWorkoutSet removedSet = exercise.sets[setIndex];
+    final String siblingSetId = exercise.sets[setIndex == 0 ? 1 : 0].id;
     // A delete recalculates badges; it never vibrates, so the focused cell's
     // snapshot goes with the focus (#124).
     setState(() {
@@ -904,6 +911,66 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       _focus = null;
     });
     await _controller.removeSet(exerciseIndex, setIndex);
+    if (!mounted ||
+        !_setWasRemoved(workout.id, siblingSetId, removedSet.id)) {
+      return;
+    }
+    _showSetDeletedUndo(workout.id, siblingSetId, setIndex, removedSet);
+  }
+
+  ActiveWorkoutExercise? _exerciseHoldingRemovableSet(
+    ActiveWorkout workout,
+    int exerciseIndex,
+    int setIndex,
+  ) {
+    if (exerciseIndex < 0 || exerciseIndex >= workout.exercises.length) {
+      return null;
+    }
+    final ActiveWorkoutExercise exercise = workout.exercises[exerciseIndex];
+    if (exercise.sets.length <= 1 ||
+        setIndex < 0 ||
+        setIndex >= exercise.sets.length) {
+      return null;
+    }
+    return exercise;
+  }
+
+  bool _setWasRemoved(String workoutId, String siblingSetId, String setId) {
+    final ActiveWorkout? workout = _workout;
+    if (workout == null || workout.id != workoutId) return false;
+    final Iterable<String> setIds = workout.exercises.expand(
+      (ActiveWorkoutExercise exercise) =>
+          exercise.sets.map((ActiveWorkoutSet set) => set.id),
+    );
+    return setIds.contains(siblingSetId) && !setIds.contains(setId);
+  }
+
+  void _showSetDeletedUndo(
+    String workoutId,
+    String siblingSetId,
+    int setIndex,
+    ActiveWorkoutSet removedSet,
+  ) {
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(_copy.setDeleted),
+          persist: false,
+          action: SnackBarAction(
+            label: _copy.undo,
+            onPressed: () => unawaited(
+              _controller.restoreSetAtIndex(
+                workoutId,
+                siblingSetId,
+                setIndex,
+                removedSet,
+              ),
+            ),
+          ),
+        ),
+      );
   }
 
   // ---- finish / summary ----------------------------------------------------

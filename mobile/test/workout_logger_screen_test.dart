@@ -554,6 +554,29 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
   return store;
 }
 
+Future<void> _reloadLogger(
+  WidgetTester tester, {
+  required FakeMayosApi fake,
+  required InMemoryActiveWorkoutStore store,
+  String? languageCode,
+}) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pumpAndSettle();
+  final String effectiveLanguage = languageCode ?? fake.displayLanguage;
+  final InMemoryTokenStore tokens = InMemoryTokenStore();
+  await tokens.save('token-alice');
+  await _pumpApp(
+    tester,
+    overrides: _appOverrides(
+      fake: fake,
+      tokens: tokens,
+      store: store,
+      languageCode: effectiveLanguage,
+    ),
+  );
+  await _resumeFromPrompt(tester, languageCode: effectiveLanguage);
+}
+
 Future<void> _finishAndOpenSummary(WidgetTester tester) async {
   Finder finish = find.widgetWithText(FilledButton, 'Finish workout');
   if (finish.evaluate().isEmpty) {
@@ -1870,29 +1893,158 @@ void main() {
         MayosThemeExtension.dark.textPrimary);
   });
 
-  testWidgets('swiping a middle set row deletes that row only',
+  testWidgets('swiping a set deletes it and keeps the last set',
       (WidgetTester tester) async {
-    await _openLogger(tester);
+    final FakeMayosApi fake = _signedInFake();
+    final InMemoryActiveWorkoutStore store =
+        await _openLogger(tester, fakeApi: fake);
 
-    final Finder rows = find.byType(Dismissible);
-    expect(rows, findsNWidgets(3)); // three bench rows; incline has one
-    final List<String> keysBefore = rows
-        .evaluate()
-        .map(
-            (Element element) => (element.widget as Dismissible).key.toString())
-        .toList();
+    final ActiveWorkout beforeDelete = (await store.read(_account))!;
 
-    await tester.drag(rows.at(1), const Offset(-600, 0));
+    await tester.drag(_row(1, 0), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Set deleted'), findsNothing);
+    expect((await store.read(_account))!.exercises[1].sets, hasLength(1));
+
+    await tester.drag(_row(0, 1), const Offset(-600, 0));
     await tester.pumpAndSettle();
 
-    final List<Element> remaining = rows.evaluate().toList();
-    expect(remaining, hasLength(2));
-    // The survivors keep their own identities: the first and the last row.
-    final List<String> keysAfter = remaining
-        .map(
-            (Element element) => (element.widget as Dismissible).key.toString())
-        .toList();
-    expect(keysAfter, <String>[keysBefore.first, keysBefore.last]);
+    expect(find.text('Set deleted'), findsOneWidget);
+    expect(find.text('Undo'), findsOneWidget);
+    expect(_row(0, 1), findsOneWidget);
+    expect(_row(0, 2), findsNothing);
+
+    final ActiveWorkout deleted = (await store.read(_account))!;
+    expect(deleted.exercises.first.sets, hasLength(2));
+    expect(
+      deleted.exercises.first.sets.map((ActiveWorkoutSet set) => set.id),
+      <String>[
+        beforeDelete.exercises.first.sets[0].id,
+        beforeDelete.exercises.first.sets[2].id,
+      ],
+    );
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    expect(find.text('Set deleted'), findsNothing);
+    expect((await store.read(_account))!.exercises.first.sets, hasLength(2));
+    await _reloadLogger(tester, fake: fake, store: store);
+    expect((await store.read(_account))!.exercises.first.sets, hasLength(2));
+  });
+
+  testWidgets('Undo restores the same set, fields, position, and saved state',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    final InMemoryActiveWorkoutStore store =
+        await _openLogger(tester, fakeApi: fake);
+
+    await tester.tap(_tick(0, 0));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await _typeCell(tester, 0, 1, 'kg', '105');
+    await _typeCell(tester, 0, 1, 'reps', '8');
+    await tester.tap(_cell(0, 1, 'rir'));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byKey(const ValueKey<String>('logger.rir.3')));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(_tick(0, 1));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(_badge(0, 1, PrRecordKind.weight), findsOneWidget);
+    expect(_badge(0, 1, PrRecordKind.e1rm), findsOneWidget);
+
+    final ActiveWorkout beforeDelete = (await store.read(_account))!;
+    final ActiveWorkoutSet expected = beforeDelete.exercises.first.sets[1];
+    expect(expected.weightKg, 105);
+    expect(expected.reps, 8);
+    expect(expected.rir, 3);
+    expect(expected.weightExplicitlyEntered, isTrue);
+    expect(expected.isWarmup, isFalse);
+    expect(expected.ticked, isTrue);
+    expect(find.text('0/2 exercises · 2/4 sets'), findsOneWidget);
+    expect(
+      _rowColor(tester, _row(0, 2)),
+      MayosThemeExtension.light.accentSubtle,
+    );
+
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.hide')));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.drag(_row(0, 1), const Offset(-600, 0));
+    await tester.pumpAndSettle();
+
+    final ActiveWorkout deleted = (await store.read(_account))!;
+    expect(deleted.exercises.first.sets, hasLength(2));
+    expect(
+      deleted.exercises.first.sets.map((ActiveWorkoutSet set) => set.id),
+      <String>[
+        beforeDelete.exercises.first.sets[0].id,
+        beforeDelete.exercises.first.sets[2].id,
+      ],
+    );
+    expect(find.text('0/2 exercises · 1/3 sets'), findsOneWidget);
+    expect(
+      _rowColor(tester, _row(0, 1)),
+      MayosThemeExtension.light.accentSubtle,
+    );
+    expect(find.text('PR kg'), findsNothing);
+    expect(find.text('PR e1RM'), findsNothing);
+    expect(find.text('Set deleted'), findsOneWidget);
+
+    await tester.tap(find.text('Undo'));
+    await tester.pumpAndSettle();
+    final ActiveWorkout restored = (await store.read(_account))!;
+    expect(restored.exercises.first.sets, hasLength(3));
+    expect(restored.exercises.first.sets[1].toJson(), expected.toJson());
+    expect(find.text('0/2 exercises · 2/4 sets'), findsOneWidget);
+    expect(
+      _rowColor(tester, _row(0, 2)),
+      MayosThemeExtension.light.accentSubtle,
+    );
+    expect(_badge(0, 1, PrRecordKind.weight), findsOneWidget);
+    expect(_badge(0, 1, PrRecordKind.e1rm), findsOneWidget);
+
+    await _reloadLogger(tester, fake: fake, store: store);
+    final ActiveWorkout reloaded = (await store.read(_account))!;
+    expect(reloaded.exercises.first.sets[1].toJson(), expected.toJson());
+    expect(find.text('0/2 exercises · 2/4 sets'), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('logger.row.0.2')), findsOneWidget);
+    expect(
+      _rowColor(tester, _row(0, 2)),
+      MayosThemeExtension.light.accentSubtle,
+    );
+    expect(_badge(0, 1, PrRecordKind.weight), findsOneWidget);
+    expect(_badge(0, 1, PrRecordKind.e1rm), findsOneWidget);
+  });
+
+  testWidgets('set deletion undo message follows the Display language',
+      (WidgetTester tester) async {
+    for (final (String language, String message, String undo, Offset offset)
+        in <(String, String, String, Offset)>[
+      ('en', 'Set deleted', 'Undo', const Offset(-600, 0)),
+      ('ar', 'تم حذف المجموعة', 'تراجع', const Offset(600, 0)),
+    ]) {
+      await tester.pumpWidget(const SizedBox.shrink());
+      final InMemoryActiveWorkoutStore store = await _openLogger(
+        tester,
+        languageCode: language,
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('logger.setlabel.0.0')),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      final ActiveWorkoutSet expected =
+          (await store.read(_account))!.exercises.first.sets.first;
+      expect(expected.isWarmup, isTrue);
+      await tester.drag(_row(0, 0), offset);
+      await tester.pumpAndSettle();
+      expect(find.text(message), findsOneWidget);
+      expect(find.text(undo), findsOneWidget);
+      await tester.tap(find.text(undo));
+      await tester.pumpAndSettle();
+      final ActiveWorkout restored = (await store.read(_account))!;
+      expect(restored.exercises.first.sets, hasLength(3));
+      expect(restored.exercises.first.sets.first.toJson(), expected.toJson());
+      expect(find.text(undo), findsNothing);
+    }
   });
 
   testWidgets(

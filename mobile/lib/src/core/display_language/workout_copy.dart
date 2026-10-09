@@ -70,6 +70,8 @@ class WorkoutCopy {
   String get removeExercise => isArabic ? 'إزالة التمرين' : 'Remove exercise';
   String get removeAction => isArabic ? 'إزالة' : 'Remove';
   String get undoReplace => isArabic ? 'تراجع عن الاستبدال' : 'Undo replace';
+  String get setDeleted => isArabic ? 'تم حذف المجموعة' : 'Set deleted';
+  String get undo => isArabic ? 'تراجع' : 'Undo';
   String get exerciseMenu => isArabic ? 'خيارات التمرين' : 'Exercise menu';
   String get viewExerciseDetails =>
       isArabic ? 'عرض تفاصيل التمرين' : 'View exercise details';

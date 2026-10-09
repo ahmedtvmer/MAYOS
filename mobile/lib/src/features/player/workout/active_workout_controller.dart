@@ -493,6 +493,32 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     await _updateExerciseAt(exerciseIndex, exercise.copyWith(sets: sets));
   }
 
+  /// Restores one removed set row at its original position. The same set
+  /// object is retained so its identity and every entered field survive Undo.
+  /// The exercise is found through [siblingSetId], a set still in it, so the
+  /// restore lands in the right card even when an exercise appears twice or
+  /// the cards were reordered.
+  Future<void> restoreSetAtIndex(
+    String workoutId,
+    String siblingSetId,
+    int setIndex,
+    ActiveWorkoutSet removedSet,
+  ) async {
+    final ActiveWorkout? current = state.workout;
+    if (current == null || current.id != workoutId) return;
+    final int exerciseIndex = current.exercises.indexWhere(
+      (ActiveWorkoutExercise exercise) => exercise.sets.any(
+        (ActiveWorkoutSet set) => set.id == siblingSetId,
+      ),
+    );
+    if (exerciseIndex < 0) return;
+    final ActiveWorkoutExercise exercise = current.exercises[exerciseIndex];
+    if (!_canRestoreSet(exercise, setIndex, removedSet)) return;
+    final List<ActiveWorkoutSet> sets = List<ActiveWorkoutSet>.of(exercise.sets)
+      ..insert(setIndex, removedSet);
+    await _updateExerciseAt(exerciseIndex, exercise.copyWith(sets: sets));
+  }
+
   /// Edits one cell: whichever of [weightKg] / [reps] / [rir] is non-null is
   /// applied (weight 0 and reps 0 are how a cell is cleared), and [unrated]
   /// clears the effort back to "not rated" (#111).
@@ -1120,6 +1146,15 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
 
   static bool _validSet(ActiveWorkoutExercise exercise, int setIndex) =>
       setIndex >= 0 && setIndex < exercise.sets.length;
+
+  static bool _canRestoreSet(
+    ActiveWorkoutExercise exercise,
+    int setIndex,
+    ActiveWorkoutSet set,
+  ) =>
+      setIndex >= 0 &&
+      setIndex <= exercise.sets.length &&
+      !exercise.sets.any((ActiveWorkoutSet existing) => existing.id == set.id);
 
   /// The one place every set-row mutation goes through: [fn] maps the current
   /// row to its next value and the result is persisted (#123 item 12).
