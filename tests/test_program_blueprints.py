@@ -35,7 +35,7 @@ from agent.program_blueprints import (
 )
 from agent.program_rules import fetch_slot_candidates, fetch_warmup_candidates, get_split_plan, resolve_split
 from agent.program_rules import get_default_split
-from utils.equipment_access import COMMERCIAL_GYM, EQUIPMENT_ACCESS_VALUES
+from utils.equipment_access import BODYWEIGHT_ONLY, COMMERCIAL_GYM, EQUIPMENT_ACCESS_VALUES, HOME_GYM
 
 db = None
 
@@ -107,6 +107,16 @@ def test_every_warmup_spec_resolves(warmup_key):
     assert candidates, f"Warm-up '{warmup_key}' resolved no catalog exercises"
 
 
+def test_rotation_and_pallof_warmup_specs_reach_curated_movements():
+    internal_rotation = fetch_warmup_candidates("internal_rotation", limit=100, ledger=db.ledger)
+    external_rotation = fetch_warmup_candidates("external_rotation", limit=100, ledger=db.ledger)
+    pallof_press = fetch_warmup_candidates("pallof_press", limit=100, ledger=db.ledger)
+
+    assert "216" in {str(candidate["id"]) for candidate in internal_rotation}
+    assert {"235", "864"}.issubset({str(candidate["id"]) for candidate in external_rotation})
+    assert {"979", "1015"}.issubset({str(candidate["id"]) for candidate in pallof_press})
+
+
 def test_all_slot_keys_are_referenced_by_a_blueprint():
     referenced = {slot for blueprint in ALL_BLUEPRINTS for slot in blueprint.slots}
     assert referenced == set(SLOT_SPECS), f"Unused slots: {set(SLOT_SPECS) - referenced}"
@@ -165,6 +175,47 @@ def test_generated_programs_have_belghamdi_day_sizes(gender, frequency):
     for day in program.days:
         assert len(day.exercises) >= minimum, f"{day.day_name} only has {len(day.exercises)} exercises"
         assert 2 <= len(day.warmup_exercises) <= 3, f"{day.day_name} warm-up block is missing"
+
+
+@pytest.mark.parametrize(
+    ("equipment_access", "allowed_equipment"),
+    [
+        (COMMERCIAL_GYM, {"cable", "band", "body weight"}),
+        (HOME_GYM, {"dumbbell", "band", "body weight"}),
+        (BODYWEIGHT_ONLY, {"body weight"}),
+    ],
+    ids=["commercial-gym", "home-gym", "bodyweight-only"],
+)
+def test_generated_upper_and_full_warmups_follow_equipment_access(equipment_access, allowed_equipment):
+    upper_program = _generate("male", 4, preference="Upper/Lower", equipment_access=equipment_access)
+    full_program = _generate("male", 3, preference="Full Body", equipment_access=equipment_access)
+    upper_days = [day for day in upper_program.days if "upper" in day.day_name.lower()]
+
+    assert upper_days
+    for day in [*upper_days, *full_program.days]:
+        warmup_ids = {movement.exercise_id for movement in day.warmup_exercises}
+        equipment_categories = {
+            db.get_exercise_library_entry(movement.exercise_id)["equipment"].casefold()
+            for movement in day.warmup_exercises
+        }
+        assert len(day.warmup_exercises) == 3
+        assert len(warmup_ids) == 3
+        assert equipment_categories <= allowed_equipment
+
+    if equipment_access == COMMERCIAL_GYM:
+        for day in upper_days:
+            warmup_ids = {movement.exercise_id for movement in day.warmup_exercises}
+            assert {"216", "235"}.issubset(warmup_ids)
+            assert warmup_ids & {"979", "1015"}
+    elif equipment_access == HOME_GYM:
+        for day in upper_days:
+            warmup_ids = {movement.exercise_id for movement in day.warmup_exercises}
+            assert "864" in warmup_ids
+            assert warmup_ids & {"3011", "3021"}
+    else:
+        for day in upper_days:
+            warmup_ids = {movement.exercise_id for movement in day.warmup_exercises}
+            assert {"3011", "3021", "3699"}.issubset(warmup_ids)
 
 
 @pytest.mark.parametrize("gender,frequency", [("male", 3), ("male", 4), ("female", 3)])

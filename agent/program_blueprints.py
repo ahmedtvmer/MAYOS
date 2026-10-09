@@ -484,16 +484,37 @@ SLOT_STAPLES: dict[str, tuple[str, ...]] = {
 WARMUP_SPECS: dict[str, dict[str, object]] = {
     "scapula_push_plus": {
         "sql": "LOWER(name) LIKE '%scapula push%'",
+        "equipment_access_aware": True,
     },
     "y_raise_rear": {
         "sql": "(LOWER(name) LIKE '%y-raise%' OR LOWER(name) LIKE '%reverse fly%' "
         "OR LOWER(name) LIKE '%rear delt fly%' OR LOWER(name) LIKE '%rear lateral%')",
+        "equipment_access_aware": True,
+        "fallbacks": ("scapula_push_plus",),
     },
     "pallof_press": {
         "sql": "LOWER(name) LIKE '%pallof%'",
+        "equipment_pref": ("band", "resistance band", "body weight", "cable", "dumbbell", "leverage machine"),
+        "equipment_access_aware": True,
+        "fallbacks": ("shoulder_tap",),
+    },
+    "shoulder_tap": {
+        "sql": "LOWER(name) = 'shoulder tap'",
+        "equipment_access_aware": True,
     },
     "external_rotation": {
         "sql": "LOWER(name) LIKE '%external rotation%'",
+        "equipment_access_aware": True,
+        "fallbacks": ("y_raise_rear", "scapula_push_plus"),
+        "equipment_pref_by_access": {
+            HOME_GYM: ("dumbbell", "band", "body weight", "cable", "leverage machine"),
+        },
+        "name_rank_by_access": {HOME_GYM: ("standing",)},
+    },
+    "internal_rotation": {
+        "sql": "LOWER(body_part) = 'shoulders' AND LOWER(name) LIKE '%internal rotation%'",
+        "equipment_access_aware": True,
+        "fallbacks": ("scapula_push_plus",),
     },
     "dead_bug": {
         "sql": "LOWER(name) = 'dead bug'",
@@ -507,9 +528,9 @@ WARMUP_SPECS: dict[str, dict[str, object]] = {
 }
 
 WARMUP_FAMILIES: dict[str, tuple[str, ...]] = {
-    "upper": ("scapula_push_plus", "y_raise_rear", "pallof_press"),
+    "upper": ("internal_rotation", "external_rotation", "pallof_press"),
     "lower": ("glute_bridge", "dead_bug", "reverse_hyper"),
-    "full": ("scapula_push_plus", "glute_bridge", "pallof_press"),
+    "full": ("external_rotation", "glute_bridge", "pallof_press"),
     "arms": ("y_raise_rear", "external_rotation", "pallof_press"),
 }
 

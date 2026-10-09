@@ -14,6 +14,7 @@ from agent.program_blueprints import (
     SLOT_SPECS,
     SlotSpec,
     WARMUP_FAMILIES,
+    WARMUP_SPECS,
     WARMUP_REPS,
     WARMUP_REST_SECONDS,
     WARMUP_SETS,
@@ -141,10 +142,21 @@ def build_warmup_block(
     warmups: list[WarmupExerciseSchema] = []
     seen_ids: set[str] = set()
     for key in keys:
-        for candidate in fetch_warmup_candidates(key, equipment_access, limitations, limit=3, ledger=ledger):
-            candidate_id = str(candidate["id"])
-            if candidate_id in seen_ids:
+        fallback_keys = WARMUP_SPECS[key].get("fallbacks", ())
+        for candidate_key in (key, *fallback_keys):
+            candidate = next(
+                (
+                    option
+                    for option in fetch_warmup_candidates(
+                        candidate_key, equipment_access, limitations, limit=3, ledger=ledger
+                    )
+                    if str(option["id"]) not in seen_ids
+                ),
+                None,
+            )
+            if candidate is None:
                 continue
+            candidate_id = str(candidate["id"])
             seen_ids.add(candidate_id)
             warmups.append(
                 WarmupExerciseSchema(

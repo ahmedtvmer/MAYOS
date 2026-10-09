@@ -18,7 +18,7 @@ from agent.program_blueprints import (
 )
 from agent.ProgramState import CustomDayPlan, DynamicSplitPlan
 from database.exercise_library.schema import exercise_library_visible_sql
-from utils.equipment_access import COMMERCIAL_GYM, equipment_access_sql
+from utils.equipment_access import COMMERCIAL_GYM, equipment_access_sql, map_equipment_access
 from utils.model_downloader import llm
 
 load_dotenv()
@@ -404,15 +404,24 @@ def fetch_warmup_candidates(
     spec = WARMUP_SPECS.get(warmup_key)
     if spec is None:
         return []
-    preference = ("body weight", "band", "cable", "dumbbell", "leverage machine")
+    access = map_equipment_access(equipment_access)
+    preference = tuple(
+        spec.get("equipment_pref_by_access", {}).get(
+            access, spec.get("equipment_pref", ("body weight", "band", "cable", "dumbbell", "leverage machine"))
+        )
+    )
+    name_rank = tuple(spec.get("name_rank_by_access", {}).get(access, ()))
     candidates = _fetch_by_sql(
         str(spec["sql"]),
         preference,
         equipment_access,
         limitations,
         limit,
+        name_rank=name_rank,
         ledger=ledger,
-        filter_equipment_access=False,
+        filter_equipment_access=(
+            bool(spec.get("equipment_access_aware")) and access != COMMERCIAL_GYM
+        ),
     )
     for item in candidates:
         item["warmup_key"] = warmup_key
