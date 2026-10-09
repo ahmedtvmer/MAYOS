@@ -2353,6 +2353,25 @@ class WarmupExercise {
       };
 }
 
+class ProgramEditExerciseEntry {
+  const ProgramEditExerciseEntry({
+    required this.sourceIndex,
+    required this.exercise,
+    required this.prescribedSets,
+  });
+
+  final int sourceIndex;
+  final ProgramExercise exercise;
+  final int prescribedSets;
+
+  ProgramEditExerciseEntry copyWith({ProgramExercise? exercise}) =>
+      ProgramEditExerciseEntry(
+        sourceIndex: sourceIndex,
+        exercise: exercise ?? this.exercise,
+        prescribedSets: prescribedSets,
+      );
+}
+
 class ProgramDay {
   const ProgramDay({
     required this.dayName,

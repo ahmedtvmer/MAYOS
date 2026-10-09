@@ -1902,7 +1902,7 @@ class ApiClient {
   Future<TrainingProgram> editProgramDay({
     required String dayName,
     required int expectedActiveVersion,
-    required List<ProgramExercise> exercises,
+    required List<ProgramEditExerciseEntry> exercises,
   }) async {
     final List<Map<String, dynamic>> requestedExercises =
         _programEditExercisePayload(exercises);
@@ -1924,13 +1924,14 @@ class ApiClient {
   }
 
   List<Map<String, dynamic>> _programEditExercisePayload(
-    List<ProgramExercise> exercises,
+    List<ProgramEditExerciseEntry> exercises,
   ) =>
       <Map<String, dynamic>>[
-        for (final ProgramExercise exercise in exercises)
+        for (final ProgramEditExerciseEntry entry in exercises)
           <String, dynamic>{
-            'exercise_id': exercise.exerciseId,
-            'target_sets': exercise.targetSets,
+            'source_index': entry.sourceIndex,
+            'exercise_id': entry.exercise.exerciseId,
+            'target_sets': entry.exercise.targetSets,
           },
       ];
 

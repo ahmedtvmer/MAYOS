@@ -3548,25 +3548,32 @@ class FakeMayosApi {
     final List<dynamic> requested = payload['exercises'] as List<dynamic>;
     for (final Map<String, dynamic> day in programDays) {
       if (day['day_name'] != dayName) continue;
-      final Map<String, Map<String, dynamic>> currentExercisesById =
-          <String, Map<String, dynamic>>{
-        for (final dynamic rawExercise in day['exercises'] as List<dynamic>)
-          (rawExercise as Map<String, dynamic>)['exercise_id'] as String:
-              Map<String, dynamic>.from(rawExercise),
-      };
+      final List<dynamic> currentExercises = day['exercises'] as List<dynamic>;
+      final bool unchanged = requested.length == currentExercises.length &&
+          requested.asMap().entries.every((MapEntry<int, dynamic> entry) {
+            final Map<String, dynamic> edit =
+                Map<String, dynamic>.from(entry.value as Map);
+            final Map<String, dynamic> current =
+                currentExercises[entry.key] as Map<String, dynamic>;
+            return edit['source_index'] == entry.key &&
+                edit['exercise_id'] == current['exercise_id'] &&
+                edit['target_sets'] == current['target_sets'];
+          });
       final List<Map<String, dynamic>> editedExercises = <Map<String, dynamic>>[];
       for (final dynamic rawEdit in requested) {
         final Map<String, dynamic> edit = Map<String, dynamic>.from(rawEdit as Map);
-        final Map<String, dynamic>? currentExercise =
-            currentExercisesById[edit['exercise_id'] as String];
-        if (currentExercise == null) continue;
+        final int sourceIndex = edit['source_index'] as int;
+        if (sourceIndex < 0 || sourceIndex >= currentExercises.length) continue;
+        final Map<String, dynamic> currentExercise =
+            currentExercises[sourceIndex] as Map<String, dynamic>;
+        if (currentExercise['exercise_id'] != edit['exercise_id']) continue;
         editedExercises.add(Map<String, dynamic>.from(currentExercise)
           ..['target_sets'] = edit['target_sets']);
       }
       day['exercises'] = editedExercises;
+      if (!unchanged) programVersion = previousVersion + 1;
       break;
     }
-    programVersion = previousVersion + 1;
     return FakeResponse(200, <String, dynamic>{
       ..._activeProgramBody(),
       'previous_version': previousVersion,

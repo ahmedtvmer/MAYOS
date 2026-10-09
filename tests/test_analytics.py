@@ -1244,7 +1244,7 @@ def test_program_edit_analytics_follows_committed_player_version(analytics_api):
         json={
             "day_name": "Day 1",
             "expected_active_version": 1,
-            "exercises": [{"exercise_id": "ex1", "target_sets": 1}],
+            "exercises": [{"source_index": 0, "exercise_id": "ex1", "target_sets": 1}],
         },
     )
 

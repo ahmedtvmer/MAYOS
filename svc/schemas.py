@@ -1224,6 +1224,7 @@ class ProgramSubstitutionUndoIn(BaseModel):
 
 
 class ProgramEditExerciseIn(BaseModel):
+    source_index: int
     exercise_id: str = Field(min_length=1, max_length=200)
     target_sets: int
 

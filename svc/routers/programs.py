@@ -88,7 +88,11 @@ def _program_edit_command(body: ProgramEditIn, player: Any, request: Request) ->
         day_name=body.day_name,
         expected_active_version=body.expected_active_version,
         exercises=[
-            ProgramEditExercise(exercise_id=exercise.exercise_id, target_sets=exercise.target_sets)
+            ProgramEditExercise(
+                source_index=exercise.source_index,
+                exercise_id=exercise.exercise_id,
+                target_sets=exercise.target_sets,
+            )
             for exercise in body.exercises
         ],
         player_account_id=account_id,

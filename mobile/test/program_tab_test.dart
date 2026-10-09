@@ -1189,10 +1189,10 @@ void main() {
       'day_name': 'Upper 1',
       'expected_active_version': 1,
       'exercises': <Map<String, dynamic>>[
-        <String, dynamic>{'exercise_id': 'overhead_press', 'target_sets': 3},
-        <String, dynamic>{'exercise_id': 'barbell_row', 'target_sets': 3},
-        <String, dynamic>{'exercise_id': 'lat_pulldown', 'target_sets': 3},
-        <String, dynamic>{'exercise_id': 'bench_press', 'target_sets': 2},
+        <String, dynamic>{'source_index': 1, 'exercise_id': 'overhead_press', 'target_sets': 3},
+        <String, dynamic>{'source_index': 2, 'exercise_id': 'barbell_row', 'target_sets': 3},
+        <String, dynamic>{'source_index': 3, 'exercise_id': 'lat_pulldown', 'target_sets': 3},
+        <String, dynamic>{'source_index': 0, 'exercise_id': 'bench_press', 'target_sets': 2},
       ],
     });
     expect(
@@ -1209,6 +1209,93 @@ void main() {
     );
     expect(find.textContaining('2 × 5–8'), findsOneWidget);
     semantics.dispose();
+  });
+
+  testWidgets('Edit day keeps duplicate rows within their own set caps',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..programVersion = 1
+      ..programDaysOverride = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'day_name': 'Upper 1',
+          'day_order': 1,
+          'warmup_exercises': <dynamic>[],
+          'exercises': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'exercise_id': 'bench_press',
+              'exercise_name': 'Bench Press',
+              'warmup_sets': 1,
+              'target_sets': 2,
+              'target_reps_min': 5,
+              'target_reps_max': 8,
+              'target_rpe': 8.5,
+              'rest_seconds': 90,
+              'notes': 'First copy.',
+            },
+            <String, dynamic>{
+              'exercise_id': 'overhead_press',
+              'exercise_name': 'Overhead Press',
+              'warmup_sets': 1,
+              'target_sets': 3,
+              'target_reps_min': 6,
+              'target_reps_max': 10,
+              'target_rpe': 8,
+              'rest_seconds': 150,
+              'notes': null,
+            },
+            <String, dynamic>{
+              'exercise_id': 'bench_press',
+              'exercise_name': 'Bench Press',
+              'warmup_sets': 2,
+              'target_sets': 4,
+              'target_reps_min': 8,
+              'target_reps_max': 12,
+              'target_rpe': 7,
+              'rest_seconds': 180,
+              'notes': 'Second copy.',
+            },
+          ],
+        },
+      ];
+    await _pumpProgram(tester, fake);
+
+    await tester.tap(find.byKey(const Key('program_edit_day_1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('program_edit_decrease_0')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('program_edit_increase_0')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('program_edit_increase_0')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('program_edit_decrease_2')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('program_edit_increase_2')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('program_edit_increase_2')));
+    await tester.pump();
+
+    expect(find.bySemanticsLabel('Bench Press: 2 working sets'), findsOneWidget);
+    expect(find.bySemanticsLabel('Bench Press: 4 working sets'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('program_edit_save_button')));
+    await tester.pumpAndSettle();
+
+    expect(fake.programEditRequests.single['exercises'], <Map<String, dynamic>>[
+      <String, dynamic>{
+        'source_index': 0,
+        'exercise_id': 'bench_press',
+        'target_sets': 2,
+      },
+      <String, dynamic>{
+        'source_index': 1,
+        'exercise_id': 'overhead_press',
+        'target_sets': 3,
+      },
+      <String, dynamic>{
+        'source_index': 2,
+        'exercise_id': 'bench_press',
+        'target_sets': 4,
+      },
+    ]);
   });
 
   testWidgets('Edit day Cancel discards changes and the last row cannot be removed',

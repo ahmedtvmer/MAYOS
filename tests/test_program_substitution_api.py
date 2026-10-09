@@ -117,11 +117,11 @@ def _days_with_library_equipment(
     return expected
 
 
-def _make_player_with_program(client, db):
+def _make_player_with_program(client, db, program=None):
     registered = _register(client, "player")
     headers = _headers(registered["access_token"])
     db.switch_user("player")
-    db.ledger.save_training_program(_program().model_dump())
+    db.ledger.save_training_program((program or _program()).model_dump())
     return headers
 
 
@@ -443,6 +443,41 @@ def _program_edit_request(exercises, *, day_name="Full A", version=1):
     }
 
 
+def _program_with_duplicate_bench():
+    program = _program()
+    first_bench = _exercise("bp", "Bench Press").model_copy(
+        update={
+            "target_sets": 2,
+            "target_reps_min": 5,
+            "target_reps_max": 8,
+            "target_rpe": 8.5,
+            "rest_seconds": 90,
+            "notes": "First bench prescription.",
+        }
+    )
+    second_bench = _exercise("bp", "Bench Press").model_copy(
+        update={
+            "target_sets": 4,
+            "target_reps_min": 8,
+            "target_reps_max": 12,
+            "target_rpe": 7.0,
+            "rest_seconds": 180,
+            "notes": "Second bench prescription.",
+        }
+    )
+    first_day = program.days[0].model_copy(
+        update={
+            "exercises": [
+                program.days[0].exercises[0],
+                first_bench,
+                second_bench,
+                program.days[0].exercises[2],
+            ]
+        }
+    )
+    return program.model_copy(update={"days": [first_day, program.days[1]]})
+
+
 def test_program_edit_removes_reorders_and_trims_one_day_once(api, recording_analytics):
     client, db = api
     headers = _make_player_with_program(client, db)
@@ -457,8 +492,8 @@ def test_program_edit_removes_reorders_and_trims_one_day_once(api, recording_ana
         headers=headers,
         json=_program_edit_request(
             [
-                {"exercise_id": "row", "target_sets": 2},
-                {"exercise_id": "bp", "target_sets": 3},
+                {"source_index": 2, "exercise_id": "row", "target_sets": 2},
+                {"source_index": 1, "exercise_id": "bp", "target_sets": 3},
             ]
         ),
     )
@@ -481,13 +516,132 @@ def test_program_edit_removes_reorders_and_trims_one_day_once(api, recording_ana
     assert events[0]["distinct_id"] == db.get_active_account_by_username("player")["account_id"]
 
 
+def test_program_edit_keeps_duplicate_entries_when_another_exercise_changes(api):
+    client, db = api
+    headers = _make_player_with_program(client, db, _program_with_duplicate_bench())
+    original = db.ledger.get_active_program().days[0].model_dump()
+
+    response = client.post(
+        "/programs/active/edits",
+        headers=headers,
+        json=_program_edit_request(
+            [
+                {"source_index": 0, "exercise_id": "sq", "target_sets": 2},
+                {"source_index": 1, "exercise_id": "bp", "target_sets": 2},
+                {"source_index": 2, "exercise_id": "bp", "target_sets": 4},
+                {"source_index": 3, "exercise_id": "row", "target_sets": 3},
+            ]
+        ),
+    )
+
+    assert response.status_code == 200, response.text
+    edited = response.json()["days"][0]["exercises"]
+    assert [exercise["exercise_id"] for exercise in edited] == ["sq", "bp", "bp", "row"]
+    assert edited[0] == {**original["exercises"][0], "target_sets": 2}
+    assert edited[1]["notes"] == "First bench prescription."
+    assert edited[1]["target_reps_min"] == 5
+    assert edited[1]["target_rpe"] == 8.5
+    assert edited[1]["rest_seconds"] == 90
+    assert edited[2]["notes"] == "Second bench prescription."
+    assert edited[2]["target_reps_min"] == 8
+    assert edited[2]["target_rpe"] == 7.0
+    assert edited[2]["rest_seconds"] == 180
+
+
+def test_program_edit_removing_one_duplicate_keeps_the_selected_prescription(api):
+    client, db = api
+    headers = _make_player_with_program(client, db, _program_with_duplicate_bench())
+
+    response = client.post(
+        "/programs/active/edits",
+        headers=headers,
+        json=_program_edit_request(
+            [
+                {"source_index": 0, "exercise_id": "sq", "target_sets": 3},
+                {"source_index": 2, "exercise_id": "bp", "target_sets": 4},
+                {"source_index": 3, "exercise_id": "row", "target_sets": 3},
+            ]
+        ),
+    )
+
+    assert response.status_code == 200, response.text
+    edited = response.json()["days"][0]["exercises"]
+    assert [exercise["exercise_id"] for exercise in edited] == ["sq", "bp", "row"]
+    assert edited[1]["notes"] == "Second bench prescription."
+    assert edited[1]["target_reps_min"] == 8
+    assert edited[1]["target_rpe"] == 7.0
+    assert edited[1]["rest_seconds"] == 180
+
+
+def test_program_edit_reorders_duplicate_entries_with_prescriptions(api):
+    client, db = api
+    headers = _make_player_with_program(client, db, _program_with_duplicate_bench())
+
+    response = client.post(
+        "/programs/active/edits",
+        headers=headers,
+        json=_program_edit_request(
+            [
+                {"source_index": 0, "exercise_id": "sq", "target_sets": 3},
+                {"source_index": 2, "exercise_id": "bp", "target_sets": 4},
+                {"source_index": 1, "exercise_id": "bp", "target_sets": 2},
+                {"source_index": 3, "exercise_id": "row", "target_sets": 3},
+            ]
+        ),
+    )
+
+    assert response.status_code == 200, response.text
+    edited = response.json()["days"][0]["exercises"]
+    assert [exercise["exercise_id"] for exercise in edited] == ["sq", "bp", "bp", "row"]
+    assert [exercise["notes"] for exercise in edited[1:3]] == [
+        "Second bench prescription.",
+        "First bench prescription.",
+    ]
+    assert [exercise["target_reps_min"] for exercise in edited[1:3]] == [8, 5]
+
+
+def test_program_edit_caps_duplicate_entry_at_its_own_prescription(api):
+    client, db = api
+    headers = _make_player_with_program(client, db, _program_with_duplicate_bench())
+
+    response = client.post(
+        "/programs/active/edits",
+        headers=headers,
+        json=_program_edit_request(
+            [{"source_index": 1, "exercise_id": "bp", "target_sets": 3}]
+        ),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "invalid_set_count"
+    assert db.ledger.get_active_program().version == 1
+
+
+def test_program_edit_requires_source_index(api):
+    client, db = api
+    headers = _make_player_with_program(client, db)
+
+    response = client.post(
+        "/programs/active/edits",
+        headers=headers,
+        json=_program_edit_request([{"exercise_id": "sq", "target_sets": 3}]),
+    )
+
+    assert response.status_code == 422
+    assert db.ledger.get_active_program().version == 1
+
+
 def test_program_edit_no_op_returns_current_version_without_analytics(api, recording_analytics):
     client, db = api
     headers = _make_player_with_program(client, db)
     active = db.ledger.get_active_program()
     exercises = [
-        {"exercise_id": item.exercise_id, "target_sets": item.target_sets}
-        for item in active.days[0].exercises
+        {
+            "source_index": index,
+            "exercise_id": exercise.exercise_id,
+            "target_sets": exercise.target_sets,
+        }
+        for index, exercise in enumerate(active.days[0].exercises)
     ]
 
     response = client.post(
@@ -507,20 +661,42 @@ def test_program_edit_no_op_returns_current_version_without_analytics(api, recor
     ("payload", "status_code", "code"),
     [
         (_program_edit_request([], day_name="Missing"), 400, "day_not_found"),
-        (_program_edit_request([{"exercise_id": "added", "target_sets": 1}]), 400, "exercise_not_on_day"),
+        (
+            _program_edit_request([{"source_index": 99, "exercise_id": "added", "target_sets": 1}]),
+            400,
+            "exercise_not_on_day",
+        ),
+        (
+            _program_edit_request([{"source_index": -1, "exercise_id": "bp", "target_sets": 1}]),
+            400,
+            "exercise_not_on_day",
+        ),
+        (
+            _program_edit_request([{"source_index": 0, "exercise_id": "bp", "target_sets": 3}]),
+            400,
+            "exercise_not_on_day",
+        ),
         (
             _program_edit_request(
                 [
-                    {"exercise_id": "sq", "target_sets": 3},
-                    {"exercise_id": "sq", "target_sets": 2},
+                    {"source_index": 0, "exercise_id": "sq", "target_sets": 3},
+                    {"source_index": 0, "exercise_id": "sq", "target_sets": 2},
                 ]
             ),
             400,
             "duplicate_exercise",
         ),
         (_program_edit_request([]), 400, "empty_day"),
-        (_program_edit_request([{"exercise_id": "sq", "target_sets": 0}]), 400, "invalid_set_count"),
-        (_program_edit_request([{"exercise_id": "sq", "target_sets": 4}]), 400, "invalid_set_count"),
+        (
+            _program_edit_request([{"source_index": 0, "exercise_id": "sq", "target_sets": 0}]),
+            400,
+            "invalid_set_count",
+        ),
+        (
+            _program_edit_request([{"source_index": 0, "exercise_id": "sq", "target_sets": 4}]),
+            400,
+            "invalid_set_count",
+        ),
         (_program_edit_request([], version=2), 409, "program_changed"),
     ],
 )
@@ -564,7 +740,7 @@ def test_program_edit_refuses_when_a_coach_holds_program_authority(api):
     response = client.post(
         "/programs/active/edits",
         headers=player_headers,
-        json=_program_edit_request([{"exercise_id": "bp", "target_sets": 3}]),
+        json=_program_edit_request([{"source_index": 1, "exercise_id": "bp", "target_sets": 3}]),
     )
 
     assert response.status_code == 403

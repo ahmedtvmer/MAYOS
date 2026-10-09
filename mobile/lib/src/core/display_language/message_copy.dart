@@ -497,7 +497,7 @@ const Map<String, String> _specificArabicErrors = <String, String>{
   'program.substitution.changed.v1': 'تغير البرنامج منذ هذا الاستبدال. حدّث البرنامج ثم أعد المحاولة.',
   'program.edit.day_not_found.v1': 'هذا اليوم غير موجود في برنامجك التدريبي الحالي.',
   'program.edit.exercise_not_on_day.v1': 'هذا التمرين غير موجود في ذلك اليوم من برنامجك الحالي.',
-  'program.edit.duplicate_exercise.v1': 'لا يمكن أن يظهر التمرين أكثر من مرة في تعديل البرنامج.',
+  'program.edit.duplicate_exercise.v1': 'لا يمكن أن يظهر أي تمرين من اليوم أكثر من مرة في تعديل البرنامج.',
   'program.edit.empty_day.v1': 'يجب أن يحتفظ اليوم التدريبي بتمرين واحد على الأقل ضمن مجموعات التدريب.',
   'program.edit.invalid_set_count.v1': 'يجب أن يكون عدد مجموعات التدريب من 1 إلى العدد المحدد حاليًا.',
   'program.edit.changed.v1': 'تغير البرنامج منذ بدء التعديل. حدّث البرنامج ثم حاول مرة أخرى.',

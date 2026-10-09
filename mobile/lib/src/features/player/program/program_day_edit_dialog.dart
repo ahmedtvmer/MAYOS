@@ -11,11 +11,11 @@ class ProgramDayEditDialog extends StatefulWidget {
 
   final ProgramDay day;
 
-  static Future<List<ProgramExercise>?> show(
+  static Future<List<ProgramEditExerciseEntry>?> show(
     BuildContext context,
     ProgramDay day,
   ) =>
-      showDialog<List<ProgramExercise>>(
+      showDialog<List<ProgramEditExerciseEntry>>(
         context: context,
         builder: (BuildContext context) => ProgramDayEditDialog(day: day),
       );
@@ -25,12 +25,16 @@ class ProgramDayEditDialog extends StatefulWidget {
 }
 
 class _ProgramDayEditDialogState extends State<ProgramDayEditDialog> {
-  late final List<ProgramExercise> _exercises =
-      List<ProgramExercise>.of(widget.day.exercises);
-  late final Map<String, int> _prescribedCounts = <String, int>{
-    for (final ProgramExercise exercise in widget.day.exercises)
-      exercise.exerciseId: exercise.targetSets,
-  };
+  late final List<ProgramEditExerciseEntry> _exercises =
+      <ProgramEditExerciseEntry>[
+    for (final (int index, ProgramExercise exercise)
+        in widget.day.exercises.indexed)
+      ProgramEditExerciseEntry(
+        sourceIndex: index,
+        exercise: exercise,
+        prescribedSets: exercise.targetSets,
+      ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -62,23 +66,24 @@ class _ProgramDayEditDialogState extends State<ProgramDayEditDialog> {
   }
 
   Widget _exerciseRow(BuildContext context, int index) {
-    final ProgramExercise exercise = _exercises[index];
+    final ProgramEditExerciseEntry entry = _exercises[index];
+    final ProgramExercise exercise = entry.exercise;
     return Column(
-      key: ObjectKey(exercise),
+      key: ObjectKey(entry),
       children: <Widget>[
         Row(
           children: <Widget>[
-            _reorderHandle(context, exercise, index),
+            _reorderHandle(context, entry, index),
             Expanded(child: Text(exercise.exerciseName)),
-            _removeButton(context, exercise),
+            _removeButton(context, entry),
           ],
         ),
         Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: <Widget>[
-            _decreaseSetButton(context, exercise),
+            _decreaseSetButton(context, entry),
             _setCount(context, exercise),
-            _increaseSetButton(context, exercise),
+            _increaseSetButton(context, entry),
           ],
         ),
         if (index < _exercises.length - 1) const Divider(height: 1),
@@ -88,13 +93,13 @@ class _ProgramDayEditDialogState extends State<ProgramDayEditDialog> {
 
   Widget _reorderHandle(
     BuildContext context,
-    ProgramExercise exercise,
+    ProgramEditExerciseEntry entry,
     int index,
   ) =>
       Semantics(
         container: true,
         label: displayCopyOf(context).reorderProgramExercise(
-              exercise.exerciseName,
+              entry.exercise.exerciseName,
             ),
         child: ReorderableDragStartListener(
           index: index,
@@ -108,14 +113,16 @@ class _ProgramDayEditDialogState extends State<ProgramDayEditDialog> {
 
   Widget _decreaseSetButton(
     BuildContext context,
-    ProgramExercise exercise,
+    ProgramEditExerciseEntry entry,
   ) {
+    final ProgramExercise exercise = entry.exercise;
     final MayosCopy copy = displayCopyOf(context);
     return IconButton(
+      key: Key('program_edit_decrease_${entry.sourceIndex}'),
       tooltip: copy.decreaseProgramExerciseSets(exercise.exerciseName),
       onPressed: exercise.targetSets <= 1
           ? null
-          : () => _changeSetCount(exercise, exercise.targetSets - 1),
+          : () => _changeSetCount(entry, exercise.targetSets - 1),
       icon: const Icon(Icons.remove),
     );
   }
@@ -142,45 +149,49 @@ class _ProgramDayEditDialogState extends State<ProgramDayEditDialog> {
 
   Widget _increaseSetButton(
     BuildContext context,
-    ProgramExercise exercise,
+    ProgramEditExerciseEntry entry,
   ) {
     final MayosCopy copy = displayCopyOf(context);
-    final int prescribedCount = _prescribedCounts[exercise.exerciseId]!;
+    final ProgramExercise exercise = entry.exercise;
     return IconButton(
+      key: Key('program_edit_increase_${entry.sourceIndex}'),
       tooltip: copy.increaseProgramExerciseSets(exercise.exerciseName),
-      onPressed: exercise.targetSets >= prescribedCount
+      onPressed: exercise.targetSets >= entry.prescribedSets
           ? null
-          : () => _changeSetCount(exercise, exercise.targetSets + 1),
+          : () => _changeSetCount(entry, exercise.targetSets + 1),
       icon: const Icon(Icons.add),
     );
   }
 
-  Widget _removeButton(BuildContext context, ProgramExercise exercise) {
+  Widget _removeButton(BuildContext context, ProgramEditExerciseEntry entry) {
     final MayosCopy copy = displayCopyOf(context);
+    final ProgramExercise exercise = entry.exercise;
     return IconButton(
       tooltip: copy.removeExerciseNamed(exercise.exerciseName),
       onPressed: _exercises.length == 1
           ? null
           : () => setState(() => _exercises.removeWhere(
-                (ProgramExercise pending) => identical(pending, exercise),
+                (ProgramEditExerciseEntry pending) => identical(pending, entry),
               )),
       icon: const Icon(Icons.remove_circle_outline),
     );
   }
 
-  void _changeSetCount(ProgramExercise exercise, int targetSets) {
+  void _changeSetCount(ProgramEditExerciseEntry entry, int targetSets) {
     setState(() {
       final int index = _exercises.indexWhere(
-        (ProgramExercise pending) => identical(pending, exercise),
+        (ProgramEditExerciseEntry pending) => identical(pending, entry),
       );
-      _exercises[index] = exercise.copyWith(targetSets: targetSets);
+      _exercises[index] = entry.copyWith(
+        exercise: entry.exercise.copyWith(targetSets: targetSets),
+      );
     });
   }
 
   void _reorderExercise(int oldIndex, int newIndex) {
     setState(() {
-      final ProgramExercise exercise = _exercises.removeAt(oldIndex);
-      _exercises.insert(newIndex, exercise);
+      final ProgramEditExerciseEntry entry = _exercises.removeAt(oldIndex);
+      _exercises.insert(newIndex, entry);
     });
   }
 

@@ -770,7 +770,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
 
   Future<void> _editProgramDay(ProgramDay day, int? expectedVersion) async {
     if (_editingProgramDay || expectedVersion == null) return;
-    final List<ProgramExercise>? exercises =
+    final List<ProgramEditExerciseEntry>? exercises =
         await ProgramDayEditDialog.show(context, day);
     if (exercises == null || !mounted) return;
     setState(() {
@@ -789,7 +789,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   Future<void> _submitProgramDayEdit(
     ProgramDay day,
     int expectedVersion,
-    List<ProgramExercise> exercises,
+    List<ProgramEditExerciseEntry> exercises,
   ) async {
     final TrainingProgram updated =
         await ref.read(apiClientProvider).editProgramDay(

@@ -24,7 +24,7 @@ class ProgramEditErrorCode(str, Enum):
 PROGRAM_EDIT_ERRORS = {
     ProgramEditErrorCode.DAY_NOT_FOUND: "That day is not part of your current program.",
     ProgramEditErrorCode.EXERCISE_NOT_ON_DAY: "That exercise is not in that day of your current program.",
-    ProgramEditErrorCode.DUPLICATE_EXERCISE: "An exercise can appear only once in a Program edit.",
+    ProgramEditErrorCode.DUPLICATE_EXERCISE: "Each exercise entry can appear only once in a Program edit.",
     ProgramEditErrorCode.EMPTY_DAY: "A training day must keep at least one working-set exercise.",
     ProgramEditErrorCode.INVALID_SET_COUNT: "Working sets must be from 1 to the current prescription.",
     ProgramEditErrorCode.COACH_CONTROLLED: COACH_CONTROLLED_ERROR,
@@ -45,6 +45,7 @@ PROGRAM_EDIT_MESSAGE_CODES = {
 
 @dataclass(frozen=True)
 class ProgramEditExercise:
+    source_index: int
     exercise_id: str
     target_sets: int
 
@@ -63,7 +64,6 @@ class ProgramEdit:
 class _PreparedProgramEdit:
     program_copy: dict[str, Any]
     day: dict[str, Any]
-    exercises_by_id: dict[str, dict[str, Any]]
 
 
 def edit_active_program_day(db: Any, ledger: Any, edit_request: ProgramEdit) -> dict[str, Any]:
@@ -109,25 +109,29 @@ def _prepare_program_edit(
         return None, _failure(ProgramEditErrorCode.DAY_NOT_FOUND)
     if not edit_request.exercises:
         return None, _failure(ProgramEditErrorCode.EMPTY_DAY)
-    existing = {str(exercise["exercise_id"]): exercise for exercise in day["exercises"]}
-    failure = _validate_program_edit(existing, edit_request.exercises)
+    failure = _validate_program_edit(day["exercises"], edit_request.exercises)
     if failure:
         return None, failure
-    return _PreparedProgramEdit(program_copy, day, existing), None
+    return _PreparedProgramEdit(program_copy, day), None
 
 
 def _validate_program_edit(
-    current_exercises: dict[str, dict[str, Any]],
+    current_exercises: list[dict[str, Any]],
     requested_exercises: list[ProgramEditExercise],
 ) -> dict[str, Any] | None:
-    requested_ids = [exercise.exercise_id for exercise in requested_exercises]
-    if len(set(requested_ids)) != len(requested_ids):
+    requested_indexes = [exercise.source_index for exercise in requested_exercises]
+    if len(set(requested_indexes)) != len(requested_indexes):
         return _failure(ProgramEditErrorCode.DUPLICATE_EXERCISE)
-    if any(exercise_id not in current_exercises for exercise_id in requested_ids):
+    if any(
+        exercise.source_index < 0
+        or exercise.source_index >= len(current_exercises)
+        or str(current_exercises[exercise.source_index]["exercise_id"]) != exercise.exercise_id
+        for exercise in requested_exercises
+    ):
         return _failure(ProgramEditErrorCode.EXERCISE_NOT_ON_DAY)
     if any(
         exercise.target_sets < 1
-        or exercise.target_sets > int(current_exercises[exercise.exercise_id]["target_sets"])
+        or exercise.target_sets > int(current_exercises[exercise.source_index]["target_sets"])
         for exercise in requested_exercises
     ):
         return _failure(ProgramEditErrorCode.INVALID_SET_COUNT)
@@ -139,9 +143,9 @@ def _is_unchanged(
     requested_exercises: list[ProgramEditExercise],
 ) -> bool:
     return len(current_exercises) == len(requested_exercises) and all(
-        str(current["exercise_id"]) == requested.exercise_id
+        requested.source_index == index
         and int(current["target_sets"]) == requested.target_sets
-        for current, requested in zip(current_exercises, requested_exercises)
+        for index, (current, requested) in enumerate(zip(current_exercises, requested_exercises))
     )
 
 
@@ -149,9 +153,10 @@ def _apply_program_edit(
     prepared: _PreparedProgramEdit,
     requested_exercises: list[ProgramEditExercise],
 ) -> None:
+    current_exercises = prepared.day["exercises"]
     prepared.day["exercises"] = []
     for requested in requested_exercises:
-        exercise_copy = deepcopy(prepared.exercises_by_id[requested.exercise_id])
+        exercise_copy = deepcopy(current_exercises[requested.source_index])
         exercise_copy["target_sets"] = requested.target_sets
         prepared.day["exercises"].append(exercise_copy)
 
