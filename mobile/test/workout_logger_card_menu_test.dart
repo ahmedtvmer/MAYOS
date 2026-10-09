@@ -10,6 +10,7 @@ import 'package:mayos_mobile/src/core/baselines.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/connectivity.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
+import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/rest_length.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
@@ -207,6 +208,9 @@ Future<
   String? startedAt,
   DateTime Function()? clock,
   FakeMayosApi? fakeApi,
+  InMemoryActiveWorkoutStore? existingStore,
+  InMemoryDraftStore? drafts,
+  String languageCode = 'en',
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -214,15 +218,17 @@ Future<
   addTearDown(tester.view.resetDevicePixelRatio);
 
   final FakeMayosApi fake = fakeApi ?? _signedInFake();
+  fake.displayLanguage = languageCode;
   fake.coachControlsProgram = coachControlled;
   fake.programVersion = liveProgramVersion;
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
   // Seeding talks to the (fake) API on real timers, so it runs outside the
   // test's fake-async zone.
-  final InMemoryActiveWorkoutStore store = (await tester.runAsync(
-    () => _seedThroughController(fake: fake, startedAt: startedAt),
-  ))!;
+  final InMemoryActiveWorkoutStore store = existingStore ??
+      (await tester.runAsync(
+        () => _seedThroughController(fake: fake, startedAt: startedAt),
+      ))!;
   final InMemoryRestLengthStore restLengths = InMemoryRestLengthStore();
 
   await tester.pumpWidget(
@@ -231,7 +237,8 @@ Future<
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
         themeModeStoreProvider.overrideWithValue(InMemoryThemeModeStore(mode)),
-        draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
+        systemDisplayLanguageProvider.overrideWithValue(languageCode),
+        draftStoreProvider.overrideWithValue(drafts ?? InMemoryDraftStore()),
         workoutCacheStoreProvider
             .overrideWithValue(InMemoryWorkoutCacheStore()),
         chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
@@ -262,11 +269,15 @@ Future<
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text('Home'));
+  final bool arabic = languageCode == 'ar';
+  await _pumpUntilFound(tester, find.text(arabic ? 'الرئيسية' : 'Home'));
   await tester.pumpAndSettle();
-  expect(find.text('Unfinished workout'), findsOneWidget);
+  expect(
+    find.text(arabic ? 'حصة غير مكتملة' : 'Unfinished workout'),
+    findsOneWidget,
+  );
   if (failActiveProgramFetch) fake.activeProgramFails = true;
-  await tester.tap(find.text('Resume'));
+  await tester.tap(find.text(arabic ? 'استئناف' : 'Resume'));
   await _pumpUntilFound(tester, find.byType(WorkoutLoggerScreen));
   await tester.pumpAndSettle();
   return (fake: fake, store: store, restLengths: restLengths);
@@ -282,6 +293,9 @@ Finder _cardMenu(int exerciseIndex) =>
 
 Finder _replaceItem(int exerciseIndex) =>
     find.byKey(ValueKey<String>('logger.cardMenu.$exerciseIndex.replace'));
+
+Finder _reorderItem(int exerciseIndex) =>
+    find.byKey(ValueKey<String>('logger.cardMenu.$exerciseIndex.reorder'));
 
 Finder _restItem(int exerciseIndex) =>
     find.byKey(ValueKey<String>('logger.cardMenu.$exerciseIndex.rest'));
@@ -493,11 +507,12 @@ void main() {
   });
 
   testWidgets(
-      'the card menu offers Replace exercise and Rest time…, and Remove only '
+      'the card menu offers Reorder exercises and Replace exercise, and Remove '
       'for an unplanned exercise (#162)', (WidgetTester tester) async {
     await _openLogger(tester);
 
     await _openMenu(tester, 0);
+    expect(find.text('Reorder exercises'), findsOneWidget);
     expect(find.text('Replace exercise'), findsOneWidget);
     expect(find.text('Rest time…'), findsOneWidget);
     // Planned exercise: nothing to undo.
@@ -529,10 +544,139 @@ void main() {
 
     // The day has two planned exercises, so the added one is card 2.
     await _openMenu(tester, 2);
+    expect(find.text('Reorder exercises'), findsOneWidget);
     expect(find.text('Replace exercise'), findsOneWidget);
     expect(find.text('Rest time…'), findsOneWidget);
     expect(find.text('Remove exercise'), findsOneWidget);
     expect(_removeItem(2), findsOneWidget);
+  });
+
+  testWidgets('reordering applies locally, moves Current set and restores',
+      (WidgetTester tester) async {
+    final SemanticsHandle semantics = tester.ensureSemantics();
+    final harness = await _openLogger(tester);
+    final Color? firstCurrentRow = _rowColor(tester, 0, 0);
+
+    await _openMenu(tester, 0);
+    await tester.tap(_reorderItem(0));
+    await tester.pumpAndSettle();
+    expect(find.text('Reorder exercises'), findsOneWidget);
+    expect(find.text('Bench Press').last, findsOneWidget);
+    expect(find.text('Incline Press').last, findsOneWidget);
+    final Finder benchHandle = find.bySemanticsLabel('Reorder Bench Press');
+    expect(benchHandle, findsOneWidget);
+
+    final Offset benchStart = tester.getCenter(benchHandle);
+    await tester.dragFrom(benchStart, benchStart + const Offset(0, 120));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.text('Bench Press')).dy,
+      lessThan(tester.getTopLeft(find.text('Incline Press')).dy),
+    );
+    expect((await harness.store.read(_account))!.exercises[0].exerciseId,
+        'bench_press');
+
+    await _openMenu(tester, 0);
+    await tester.tap(_reorderItem(0));
+    await tester.pumpAndSettle();
+    final Finder nextBenchHandle = find.bySemanticsLabel('Reorder Bench Press');
+    final Offset nextStart = tester.getCenter(nextBenchHandle);
+    await tester.dragFrom(nextStart, nextStart + const Offset(0, 120));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Apply order'));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getTopLeft(find.text('Incline Press')).dy,
+      lessThan(tester.getTopLeft(find.text('Bench Press')).dy),
+    );
+    expect(_rowColor(tester, 0, 0), firstCurrentRow);
+    expect(_rowColor(tester, 1, 0), isNull);
+    final ActiveWorkout saved = (await harness.store.read(_account))!;
+    expect(
+      saved.exercises
+          .map((ActiveWorkoutExercise exercise) => exercise.exerciseId),
+      <String>['incline_press', 'bench_press'],
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _openLogger(
+      tester,
+      existingStore: harness.store,
+      fakeApi: harness.fake,
+    );
+    expect(
+      tester.getTopLeft(find.text('Incline Press')).dy,
+      lessThan(tester.getTopLeft(find.text('Bench Press')).dy),
+    );
+    expect(_rowColor(tester, 0, 0), firstCurrentRow);
+    semantics.dispose();
+  });
+
+  testWidgets('reorder menu and drag labels use Arabic copy',
+      (WidgetTester tester) async {
+    final SemanticsHandle semantics = tester.ensureSemantics();
+    await _openLogger(tester, languageCode: 'ar');
+    await _openMenu(tester, 0);
+    expect(find.text('إعادة ترتيب التمارين'), findsOneWidget);
+    await tester.tap(_reorderItem(0));
+    await tester.pumpAndSettle();
+    expect(find.bySemanticsLabel('إعادة ترتيب Bench Press'), findsOneWidget);
+    expect(find.text('تطبيق الترتيب'), findsOneWidget);
+    expect(find.text('إلغاء'), findsOneWidget);
+    semantics.dispose();
+  });
+
+  testWidgets('reordering keeps replacement and skipped exercise facts in draft',
+      (WidgetTester tester) async {
+    final SemanticsHandle semantics = tester.ensureSemantics();
+    final FakeMayosApi fake = _signedInFake()..commitFails = true;
+    final InMemoryDraftStore drafts = InMemoryDraftStore();
+    await _openLogger(tester, fakeApi: fake, drafts: drafts);
+
+    await _pickMenuItem(tester, 0, _replaceItem(0));
+    await _searchAndPick(tester, 'fly', 'Cable Fly');
+    await _tickSet(tester, 1, 0);
+    await _openMenu(tester, 1);
+    await tester.tap(_reorderItem(1));
+    await tester.pumpAndSettle();
+    expect(find.text('Bench Press'), findsNothing);
+    expect(find.text('Incline Press').last, findsOneWidget);
+    expect(find.text('Cable Fly').last, findsOneWidget);
+    final Finder cableFlyHandle = find.bySemanticsLabel('Reorder Cable Fly');
+    final Offset cableFlyStart = tester.getCenter(cableFlyHandle);
+    await tester.dragFrom(
+      cableFlyStart,
+      cableFlyStart + const Offset(0, 120),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Apply order'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Finish workout'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discard unticked sets and finish'));
+    await tester.pumpAndSettle();
+    expect(find.text('Workout summary'), findsOneWidget);
+    await tester.tap(find.text('Save workout'));
+    await _pumpUntilFound(tester, find.text('Workout saved to your drafts.'));
+
+    final WorkoutDraft draft = (await drafts.read(_account)).single;
+    expect(
+      draft.exercises.map((DraftExercise exercise) => exercise.exerciseId),
+      <String>['incline_press', 'bench_press', 'cable_fly'],
+    );
+    final Map<String, DraftExercise> draftByExercise = <String, DraftExercise>{
+      for (final DraftExercise exercise in draft.exercises)
+        exercise.exerciseId: exercise,
+    };
+    expect(draftByExercise['bench_press']!.skipped, isTrue);
+    expect(draftByExercise['incline_press']!.skipped, isTrue);
+    expect(draftByExercise['cable_fly']!.skipped, isFalse);
+    expect(draftByExercise['cable_fly']!.sets, hasLength(1));
+    semantics.dispose();
   });
 
   testWidgets(

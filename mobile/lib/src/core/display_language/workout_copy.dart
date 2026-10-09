@@ -65,6 +65,12 @@ class WorkoutCopy {
   String get addExercise => isArabic ? 'إضافة تمرين' : 'Add exercise';
   String get addUnplannedExercise =>
       isArabic ? 'إضافة تمرين غير مخطط' : 'Add unplanned exercise';
+  String get reorderExercises =>
+      isArabic ? 'إعادة ترتيب التمارين' : 'Reorder exercises';
+  String reorderExerciseHandle(String name) =>
+      isArabic ? 'إعادة ترتيب $name' : 'Reorder $name';
+  String get applyExerciseOrder =>
+      isArabic ? 'تطبيق الترتيب' : 'Apply order';
   String get replaceExercise =>
       isArabic ? 'استبدال تمرين لهذه الحصة' : 'Replace exercise';
   String get removeExercise => isArabic ? 'إزالة التمرين' : 'Remove exercise';

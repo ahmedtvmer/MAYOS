@@ -62,6 +62,38 @@ ActiveWorkout _workout({
       baselines: <String, BaselineExercise>{},
     );
 
+ActiveWorkout _reorderWorkout() {
+  final ActiveWorkout original = _workout();
+  return original.copyWith(
+    exercises: <ActiveWorkoutExercise>[
+      original.exercises.single.copyWith(
+        sets: <ActiveWorkoutSet>[ActiveWorkoutSet()],
+      ),
+      ActiveWorkoutExercise(
+        exercise: <String, dynamic>{
+          'exercise_id': 'incline_press',
+          'exercise_name': 'Incline Press',
+          'target_sets': 1,
+          'target_reps_min': 8,
+          'target_reps_max': 12,
+          'target_rpe': 8.0,
+          'warmup_sets': 0,
+          'rest_seconds': 120,
+        },
+        sets: <ActiveWorkoutSet>[ActiveWorkoutSet()],
+      ),
+    ],
+    warmupMovements: <ActiveWarmupMovement>[
+      ActiveWarmupMovement(
+        exerciseId: 'arm_circles',
+        exerciseName: 'Arm Circles',
+        sets: const <ActiveWarmupSet>[ActiveWarmupSet(reps: 10)],
+      ),
+    ],
+    cardio: const WorkoutCardio(prescription: 'Bike', minutes: 10),
+  );
+}
+
 FakeMayosApi _fake() => FakeMayosApi()
   ..issuedToken = 'token-alice'
   ..currentUsername = 'alice'
@@ -336,6 +368,102 @@ void main() {
     await tester.tap(find.text('Resume'));
     await _pumpUntil(tester, find.byType(WorkoutLoggerScreen));
     expect(find.byType(WorkoutLoggerScreen), findsOneWidget);
+  });
+
+  testWidgets('exercise order and Current set survive a browser reload',
+      (WidgetTester tester) async {
+    final SemanticsHandle semantics = tester.ensureSemantics();
+    final FakeMayosApi fake = _fake();
+    final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
+    final WebActiveWorkoutStore store = WebActiveWorkoutStore(storage: browser);
+    await _pumpWebApp(
+      tester,
+      fake: fake,
+      browser: browser,
+      store: store,
+      initialWorkout: _reorderWorkout(),
+    );
+    await _resumeLogger(tester);
+    final Color? currentRowColor =
+        (tester.widget<Container>(find.byKey(
+          const ValueKey<String>('logger.row.0.0'),
+        )).decoration as BoxDecoration).color;
+
+    await tester.tap(find.byKey(const ValueKey<String>('logger.cardMenu.0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(
+      const ValueKey<String>('logger.cardMenu.0.reorder'),
+    ));
+    await tester.pumpAndSettle();
+    final Finder benchHandle = find.bySemanticsLabel('Reorder Bench Press');
+    final Offset benchStart = tester.getCenter(benchHandle);
+    await tester.dragFrom(benchStart, benchStart + const Offset(0, 120));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Apply order'));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getTopLeft(find.text('Incline Press').last).dy,
+      lessThan(tester.getTopLeft(find.text('Bench Press').last).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Arm Circles')).dy,
+      lessThan(tester.getTopLeft(find.text('Incline Press').last).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Bench Press').last).dy,
+      lessThan(tester.getTopLeft(find.text('Bike')).dy),
+    );
+    expect(
+      (tester.widget<Container>(find.byKey(
+        const ValueKey<String>('logger.row.0.0'),
+      )).decoration as BoxDecoration).color,
+      currentRowColor,
+    );
+    final ActiveWorkout reordered = (await store.read(_account))!;
+    expect(
+      reordered.exercises
+          .map((ActiveWorkoutExercise exercise) => exercise.exerciseId),
+      <String>['incline_press', 'bench_press'],
+    );
+    expect(reordered.warmupMovements.single.exerciseName, 'Arm Circles');
+    expect(reordered.cardio!.prescription, 'Bike');
+    expect(reordered.programVersion, 3);
+    expect(
+      fake.adapter.requests.where((request) =>
+          request.method != 'GET' && request.path.contains('/program')),
+      isEmpty,
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    final WebActiveWorkoutStore afterReload =
+        WebActiveWorkoutStore(storage: browser);
+    await _pumpWebApp(
+      tester,
+      fake: fake,
+      browser: browser,
+      store: afterReload,
+    );
+    await _resumeLogger(tester);
+    expect(
+      tester.getTopLeft(find.text('Incline Press').last).dy,
+      lessThan(tester.getTopLeft(find.text('Bench Press').last).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Arm Circles')).dy,
+      lessThan(tester.getTopLeft(find.text('Incline Press').last).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Bench Press').last).dy,
+      lessThan(tester.getTopLeft(find.text('Bike')).dy),
+    );
+    expect(
+      (tester.widget<Container>(find.byKey(
+        const ValueKey<String>('logger.row.0.0'),
+      )).decoration as BoxDecoration).color,
+      currentRowColor,
+    );
+    semantics.dispose();
   });
 
   testWidgets('retry keeps the original id and commits after a 5xx',

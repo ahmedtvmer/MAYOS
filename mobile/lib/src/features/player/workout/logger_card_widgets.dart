@@ -378,9 +378,9 @@ class LoggerExerciseName extends StatelessWidget {
 /// One compact exercise card (#158, plan §2): the name in primary text
 /// colour, the catalog picture (#161), the prescription line, the `Last:`
 /// line when there is history, the leaner table, a full-width "+ Add set"
-/// and the card's ⋮ menu (#162) — **Replace exercise**, **Rest time…**, and
-/// **Remove exercise** for a plain unplanned exercise or **Undo replace** for
-/// a replacement. The rest length is no
+/// and the card's ⋮ menu (#162) — **Reorder exercises**, **Replace
+/// exercise**, **Rest time…**, and **Remove exercise** for a plain unplanned
+/// exercise or **Undo replace** for a replacement. The rest length is no
 /// longer a chip beside the title: it stays visible at the end of the
 /// prescription line, and the picker opens from the menu (#125). Nothing here
 /// decides anything — rows and callbacks arrive from the logger.
@@ -393,12 +393,14 @@ class ExerciseLoggingCard extends StatelessWidget {
     required this.rows,
     required this.onPickRest,
     required this.onAddSet,
+    required this.onReorder,
     required this.onReplace,
     this.onOpenDetail,
     this.onRemove,
     this.onUndoReplace,
     this.unplanned = false,
     this.menuKey,
+    this.reorderKey,
     this.replaceKey,
     this.restKey,
     this.removeKey,
@@ -421,6 +423,7 @@ class ExerciseLoggingCard extends StatelessWidget {
 
   final VoidCallback onPickRest;
   final VoidCallback onAddSet;
+  final VoidCallback onReorder;
 
   /// Opens the exercise's library entry, carrying a day only for planned work.
   final VoidCallback? onOpenDetail;
@@ -442,6 +445,7 @@ class ExerciseLoggingCard extends StatelessWidget {
 
   /// Keys for the menu and its entries, so tests open what a player opens.
   final Key? menuKey;
+  final Key? reorderKey;
   final Key? replaceKey;
   final Key? restKey;
   final Key? removeKey;
@@ -480,6 +484,8 @@ class ExerciseLoggingCard extends StatelessWidget {
                   tooltip: copy.exerciseMenu,
                   onSelected: (String value) {
                     switch (value) {
+                      case 'reorder':
+                        onReorder();
                       case 'replace':
                         onReplace();
                       case 'rest':
@@ -492,6 +498,14 @@ class ExerciseLoggingCard extends StatelessWidget {
                   },
                   itemBuilder: (BuildContext context) =>
                       <PopupMenuItem<String>>[
+                    PopupMenuItem<String>(
+                      key: reorderKey,
+                      value: 'reorder',
+                      child: Text(
+                        copy.reorderExercises,
+                        style: MayosTypography.of(context).body,
+                      ),
+                    ),
                     PopupMenuItem<String>(
                       key: replaceKey,
                       value: 'replace',

@@ -1712,6 +1712,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       // The card's ⋮ menu and its entries (#162), keyed the way the rows are,
       // so a test opens exactly what a player opens.
       menuKey: ValueKey<String>('logger.cardMenu.$exerciseIndex'),
+      reorderKey:
+          ValueKey<String>('logger.cardMenu.$exerciseIndex.reorder'),
       replaceKey: ValueKey<String>('logger.cardMenu.$exerciseIndex.replace'),
       restKey: ValueKey<String>('logger.cardMenu.$exerciseIndex.rest'),
       removeKey: ValueKey<String>('logger.cardMenu.$exerciseIndex.remove'),
@@ -1735,6 +1737,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       addSetKey: ValueKey<String>('logger.addSet.$exerciseIndex'),
       onPickRest: () => unawaited(_pickRest(exerciseIndex)),
       onAddSet: () => _controller.addSet(exerciseIndex),
+      onReorder: () => unawaited(_openExerciseReorderSheet()),
       // Replace is for every player whatever the Program authority (#162);
       // a replacement is undone, any other unplanned exercise is removed.
       onReplace: () => unawaited(_onReplaceExercise(exerciseIndex)),
@@ -1753,6 +1756,75 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       onUndoReplace:
           isReplacement ? () => unawaited(_onUndoReplace(exerciseIndex)) : null,
     );
+  }
+
+  Future<void> _openExerciseReorderSheet() async {
+    final ActiveWorkout? workout = _workout;
+    if (workout == null) return;
+    final List<int>? visibleOrder = await showModalBottomSheet<List<int>>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (BuildContext context) => _ExerciseReorderSheet(
+        workout: workout,
+        copy: _copy,
+      ),
+    );
+    if (visibleOrder != null && mounted) {
+      await _controller.reorderExercises(visibleOrder: visibleOrder);
+      if (!mounted) return;
+      final ActiveWorkout? reordered = _workout;
+      if (reordered != null) {
+        setState(() => _reindexFocusAfterExerciseReorder(workout, reordered));
+      }
+    }
+  }
+
+  void _reindexFocusAfterExerciseReorder(
+    ActiveWorkout previous,
+    ActiveWorkout reordered,
+  ) {
+    _reindexCellFocus(previous, reordered);
+    _reindexRecordFocus(reordered);
+  }
+
+  void _reindexCellFocus(ActiveWorkout previous, ActiveWorkout reordered) {
+    final LoggerCellFocus? focus = _focus;
+    if (focus == null) return;
+    final String setId =
+        previous.exercises[focus.exerciseIndex].sets[focus.setIndex].id;
+    final int? exerciseIndex = _exerciseIndexForSet(reordered, setId);
+    if (exerciseIndex != null) {
+      _focus = LoggerCellFocus(exerciseIndex, focus.setIndex, focus.field);
+    }
+  }
+
+  void _reindexRecordFocus(ActiveWorkout reordered) {
+    final ({int exerciseIndex, String setId, Set<PrRecordKind> before})?
+        recordFocus = _recordFocus;
+    if (recordFocus == null) return;
+    final int? exerciseIndex =
+        _exerciseIndexForSet(reordered, recordFocus.setId);
+    if (exerciseIndex != null) {
+      _recordFocus = (
+        exerciseIndex: exerciseIndex,
+        setId: recordFocus.setId,
+        before: recordFocus.before,
+      );
+    }
+  }
+
+  int? _exerciseIndexForSet(ActiveWorkout workout, String setId) {
+    for (int exerciseIndex = 0;
+        exerciseIndex < workout.exercises.length;
+        exerciseIndex++) {
+      if (workout.exercises[exerciseIndex]
+          .sets
+          .any((ActiveWorkoutSet set) => set.id == setId)) {
+        return exerciseIndex;
+      }
+    }
+    return null;
   }
 
   /// **Replace exercise** (#162/#171): pick a catalog entry, persist the
@@ -2591,5 +2663,113 @@ class _OfflineLoggerNotice extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _ExerciseReorderSheet extends StatefulWidget {
+  const _ExerciseReorderSheet({
+    required this.workout,
+    required this.copy,
+  });
+
+  final ActiveWorkout workout;
+  final WorkoutCopy copy;
+
+  @override
+  State<_ExerciseReorderSheet> createState() => _ExerciseReorderSheetState();
+}
+
+class _ExerciseReorderSheetState extends State<_ExerciseReorderSheet> {
+  late final List<int> _visibleWorkoutIndexes =
+      visibleExerciseIndexes(widget.workout);
+  late final List<int> _visibleOrder =
+      List<int>.generate(_visibleWorkoutIndexes.length, (int i) => i);
+
+  @override
+  Widget build(BuildContext context) {
+    return FractionallySizedBox(
+      heightFactor: 0.7,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsetsDirectional.fromSTEB(
+            MayosSpacing.md,
+            MayosSpacing.md,
+            MayosSpacing.md,
+            MayosSpacing.sm,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Text(
+                widget.copy.reorderExercises,
+                style: MayosTypography.of(context).sectionHeading,
+              ),
+              const SizedBox(height: MayosSpacing.sm),
+              Expanded(child: _buildExerciseList()),
+              const SizedBox(height: MayosSpacing.sm),
+              _buildActions(context),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExerciseList() => ReorderableListView.builder(
+        buildDefaultDragHandles: false,
+        itemCount: _visibleOrder.length,
+        onReorderItem: _reorder,
+        itemBuilder: (BuildContext context, int index) =>
+            _buildExerciseRow(index),
+      );
+
+  Widget _buildExerciseRow(int index) {
+    final int workoutIndex = _visibleWorkoutIndexes[_visibleOrder[index]];
+    final ActiveWorkoutExercise exercise =
+        widget.workout.exercises[workoutIndex];
+    return ListTile(
+      key: ValueKey<String>('logger.reorderExercise.$workoutIndex'),
+      title: Text(exercise.exerciseName),
+      trailing: ReorderableDragStartListener(
+        index: index,
+        child: Semantics(
+          label: widget.copy.reorderExerciseHandle(exercise.exerciseName),
+          container: true,
+          child: const Padding(
+            padding: EdgeInsets.all(MayosSpacing.sm),
+            child: Icon(Icons.drag_handle),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActions(BuildContext context) => Row(
+        children: <Widget>[
+          Expanded(
+            child: MayosButton(
+              label: widget.copy.cancel,
+              variant: MayosButtonVariant.tertiary,
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ),
+          const SizedBox(width: MayosSpacing.sm),
+          Expanded(
+            child: MayosButton(
+              label: widget.copy.applyExerciseOrder,
+              onPressed: () => Navigator.of(context).pop(
+                List<int>.of(_visibleOrder),
+              ),
+            ),
+          ),
+        ],
+      );
+
+  void _reorder(int oldIndex, int newIndex) {
+    setState(() {
+      final int exerciseIndex = _visibleOrder.removeAt(oldIndex);
+      _visibleOrder.insert(newIndex, exerciseIndex);
+    });
   }
 }

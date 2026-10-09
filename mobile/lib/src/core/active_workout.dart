@@ -470,6 +470,13 @@ bool isReplacementExerciseAt(ActiveWorkout workout, int exerciseIndex) {
   return replacement.unplanned && planned.replaced;
 }
 
+/// Indexes of the exercises the logger shows as cards, in workout order: a
+/// planned exercise hidden by **Replace exercise** is left out.
+List<int> visibleExerciseIndexes(ActiveWorkout workout) => <int>[
+      for (int i = 0; i < workout.exercises.length; i++)
+        if (!workout.exercises[i].replaced) i,
+    ];
+
 /// The **Current set** (CONTEXT.md, #158): the first unticked working set in
 /// workout order — warm-ups skipped, moving across exercises. Null when
 /// every working set is ticked.

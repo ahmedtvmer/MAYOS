@@ -790,6 +790,61 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     await _persist(current.copyWith(exercises: exercises));
   }
 
+  /// Applies a permutation of visible working-set exercises to this workout.
+  /// Replaced prescribed exercises travel with their replacement so the
+  /// Workout draft still records the prescribed exercise as skipped.
+  Future<void> reorderExercises({required List<int> visibleOrder}) async {
+    final ActiveWorkout? current = state.workout;
+    if (current == null) return;
+    final List<int> visibleIndexes = visibleExerciseIndexes(current);
+    if (!_validVisibleOrder(visibleIndexes, visibleOrder)) return;
+    if (visibleOrder.indexed.every(
+      ((int, int) pair) => pair.$1 == pair.$2,
+    )) {
+      return;
+    }
+    await _persist(
+      current.copyWith(
+        exercises: _reorderedExercises(
+          current,
+          visibleIndexes,
+          visibleOrder,
+        ),
+      ),
+    );
+  }
+
+  bool _validVisibleOrder(List<int> visibleIndexes, List<int> visibleOrder) {
+    return visibleOrder.length == visibleIndexes.length &&
+        visibleOrder.toSet().length == visibleIndexes.length &&
+        visibleOrder.every(
+          (int index) => index >= 0 && index < visibleIndexes.length,
+        );
+  }
+
+  List<ActiveWorkoutExercise> _reorderedExercises(
+    ActiveWorkout workout,
+    List<int> visibleIndexes,
+    List<int> visibleOrder,
+  ) {
+    final List<List<ActiveWorkoutExercise>> exerciseGroups =
+        <List<ActiveWorkoutExercise>>[
+      for (final int exerciseIndex in visibleIndexes)
+        if (exerciseIndex > 0 &&
+            workout.exercises[exerciseIndex - 1].replaced)
+          <ActiveWorkoutExercise>[
+            workout.exercises[exerciseIndex - 1],
+            workout.exercises[exerciseIndex],
+          ]
+        else
+          <ActiveWorkoutExercise>[workout.exercises[exerciseIndex]],
+    ];
+    return <ActiveWorkoutExercise>[
+      for (final int visibleIndex in visibleOrder)
+        ...exerciseGroups[visibleIndex],
+    ];
+  }
+
   // ---- rest timer (#125) ---------------------------------------------------
 
   /// The rest length exercise [exerciseIndex] uses right now: the player's
