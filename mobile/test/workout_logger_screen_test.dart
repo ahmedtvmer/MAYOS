@@ -776,7 +776,7 @@ void main() {
     final Finder exercisesSection =
         find.byKey(const ValueKey<String>('logger.exercises.section'));
     expect(exercisesSection, findsOneWidget);
-    expect(find.text('Exercises'), findsOneWidget);
+    expect(find.text('Working sets'), findsOneWidget);
     expect(find.byType(WarmupMovementLoggingCard), findsNWidgets(2));
     expect(
       tester.getRect(exercisesSection).top,
@@ -897,7 +897,7 @@ void main() {
       expect(find.byKey(const ValueKey<String>('logger.exercises.section')),
           findsNothing);
       expect(
-        find.text(languageCode == 'ar' ? 'التمارين' : 'Exercises'),
+        find.text(languageCode == 'ar' ? 'مجموعات التدريب' : 'Working sets'),
         findsNothing,
       );
       expect(find.byType(WarmupMovementLoggingCard), findsNothing);
@@ -912,19 +912,21 @@ void main() {
     final Finder exercisesSection =
         find.byKey(const ValueKey<String>('logger.exercises.section'));
     expect(exercisesSection, findsOneWidget);
-    expect(find.text('التمارين'), findsOneWidget);
+    expect(find.text('مجموعات التدريب'), findsOneWidget);
     expect(
       Directionality.of(tester.element(exercisesSection)),
       TextDirection.rtl,
     );
     expect(
       tester
-          .renderObject<RenderParagraph>(find.text('التمارين'))
+          .renderObject<RenderParagraph>(find.text('مجموعات التدريب'))
           .textDirection,
       TextDirection.rtl,
     );
     expect(
-      tester.renderObject<RenderParagraph>(find.text('التمارين')).textAlign,
+      tester
+          .renderObject<RenderParagraph>(find.text('مجموعات التدريب'))
+          .textAlign,
       TextAlign.start,
     );
 
@@ -933,7 +935,8 @@ void main() {
     expect(find.text('الإحماء'), findsOneWidget);
   });
 
-  testWidgets('Exercises header precedes the first visible card after replace',
+  testWidgets(
+      'Working sets header precedes the first visible card after replace',
       (WidgetTester tester) async {
     await _openLogger(
       tester,

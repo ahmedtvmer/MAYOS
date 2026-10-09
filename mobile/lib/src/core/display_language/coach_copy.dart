@@ -399,7 +399,7 @@ class CoachCopy {
   String get trainingDaysSummary => isArabic ? 'أيام التدريب' : 'Training days';
   String get totalExercisesSummary =>
       isArabic ? 'إجمالي التمارين' : 'Total exercises';
-  String get workingSetsSummary => isArabic ? 'مجموعات العمل' : 'Working sets';
+  String get workingSetsSummary => isArabic ? 'مجموعات التدريب' : 'Working sets';
   String programStatSemantics(int count, String label) => isArabic
       ? '${_ltr('$count')} $label'
       : '$count $label';
@@ -437,7 +437,7 @@ class CoachCopy {
   String get programDetailSeparator => ' · ';
 
   String programDaySummary(int exerciseCount, int setCount) => isArabic
-      ? '${_count(exerciseCount, ArabicCountNoun.exercise)} • ${_count(setCount, ArabicCountNoun.workingSet)}'
+      ? '${_count(exerciseCount, ArabicCountNoun.exercise)} • ${_count(setCount, ArabicCountNoun.trainingSet)}'
       : '$exerciseCount ${exerciseCount == 1 ? 'exercise' : 'exercises'} • $setCount ${setCount == 1 ? 'working set' : 'working sets'}';
 
   String showRemainingProgramExercises(int count) {
@@ -588,7 +588,7 @@ class CoachCopy {
   String get exerciseNameRequired => isArabic ? 'أدخل اسم التمرين.' : 'Enter an exercise name.';
   String get videoLinkMustUseHttps => isArabic ? 'يجب أن يبدأ رابط الفيديو بـ https.' : 'The video link must use https.';
   String get saveExercise => isArabic ? 'حفظ التمرين' : 'Save exercise';
-  String get workingSets => isArabic ? 'مجموعات العمل' : 'Working sets';
+  String get workingSets => isArabic ? 'مجموعات التدريب' : 'Working sets';
   String get repsOrRange => isArabic ? 'التكرارات أو النطاق' : 'Reps or range';
   String get targetRir => isArabic ? 'RIR المستهدف' : 'Target RIR';
   String get saveDraft => isArabic ? 'حفظ المسودة' : 'Save draft';
@@ -602,7 +602,7 @@ class CoachCopy {
       : 'Discard this Program draft? This cannot be undone.';
   String get draftSaved => isArabic ? 'تم حفظ المسودة.' : 'Draft saved.';
   String get invalidSetCount => isArabic
-      ? 'أدخل مجموعة عمل واحدة على الأقل لكل تمرين.'
+      ? 'أدخل مجموعة تدريب واحدة على الأقل لكل تمرين.'
       : 'Enter at least one working set for each exercise.';
   String get invalidRepTarget => isArabic
       ? 'أدخل عددًا من ${_ltr('${ProgramDraftPrescription.minReps}')} إلى ${_ltr('${ProgramDraftPrescription.maxReps}')} أو نطاقًا مثل 6-8.'

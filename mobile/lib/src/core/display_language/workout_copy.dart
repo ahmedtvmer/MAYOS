@@ -26,7 +26,7 @@ class WorkoutCopy {
   String warmupSetCount(int count) => isArabic
       ? '${_ltr('$count')} مجموعات إحماء متدرجة'
       : '$count ramped warm-up sets';
-  String get exercises => isArabic ? 'التمارين' : 'Exercises';
+  String get workingSetsHeading => isArabic ? 'مجموعات التدريب' : 'Working sets';
   String get warmupMovementTag => isArabic ? 'حركة إحماء' : 'Warm-up';
   String get unplanned => isArabic ? 'غير مخطط' : 'Unplanned';
   String get cardio => isArabic ? 'تمارين اللياقة' : 'Cardio';

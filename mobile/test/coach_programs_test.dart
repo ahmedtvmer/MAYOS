@@ -1030,7 +1030,7 @@ void main() {
 
     expect(find.text('نشط'), findsOneWidget);
     expect(find.text('إجمالي التمارين'), findsOneWidget);
-    expect(find.text('مجموعات العمل'), findsOneWidget);
+    expect(find.text('مجموعات التدريب'), findsOneWidget);
     expect(
       Directionality.of(tester.element(find.text('Squat'))),
       TextDirection.rtl,
@@ -2886,46 +2886,65 @@ void main() {
     expect((warmups.last as Map)['rest_seconds'], 45);
   });
 
-  testWidgets('coach editor localizes prescription fields and follows Arabic RTL',
+  for (final String languageCode in <String>['en', 'ar']) {
+    testWidgets(
+      '$languageCode coach editor labels working sets and localizes fields',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()..displayLanguage = 'ar';
-    fake.programDraft = <String, dynamic>{
-      'program_name': 'برنامج تدريبي',
-      'split_type': 'custom',
-      'weekly_frequency': 1,
-      'instructions': '',
-      'days': <Map<String, dynamic>>[
-        <String, dynamic>{
-          'day_name': 'Upper A',
-          'day_order': 1,
-          'warmup_exercises': <dynamic>[],
-          'exercises': <Map<String, dynamic>>[
+        final bool isArabic = languageCode == 'ar';
+        final FakeMayosApi fake = _coachFake()..displayLanguage = languageCode;
+        fake.programDraft = <String, dynamic>{
+          'program_name': 'Custom program',
+          'split_type': 'custom',
+          'weekly_frequency': 1,
+          'instructions': '',
+          'days': <Map<String, dynamic>>[
             <String, dynamic>{
-              'exercise_id': 'bench_press',
-              'exercise_name': 'Bench Press',
-              'target_sets': 2,
-              'target_reps_min': 8,
-              'target_reps_max': 10,
-              'target_rir': 2,
+              'day_name': 'Upper A',
+              'day_order': 1,
+              'warmup_exercises': <dynamic>[],
+              'exercises': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'exercise_id': 'bench_press',
+                  'exercise_name': 'Bench Press',
+                  'target_sets': 2,
+                  'target_reps_min': 8,
+                  'target_reps_max': 10,
+                  'target_rir': 2,
+                },
+              ],
+              'cardio': null,
             },
           ],
-          'cardio': null,
-        },
-      ],
-    };
-    await _openProgramEditor(tester, fake);
+        };
+        await _openProgramEditor(tester, fake);
 
-    expect(find.text('مجموعات العمل'), findsOneWidget);
-    expect(find.text('التكرارات أو النطاق'), findsOneWidget);
-    expect(find.text('RIR المستهدف'), findsOneWidget);
-    expect(find.text('ملاحظة اللياقة (اختيارية)'), findsOneWidget);
-    expect(
-      Directionality.of(
-        tester.element(find.byKey(const Key('program_draft_day_name_0'))),
-      ),
-      TextDirection.rtl,
+        expect(
+          find.text(isArabic ? 'مجموعات التدريب' : 'Working sets'),
+          findsNWidgets(2),
+        );
+        expect(
+          find.text(isArabic ? 'التكرارات أو النطاق' : 'Reps or range'),
+          findsOneWidget,
+        );
+        expect(
+          find.text(isArabic ? 'RIR المستهدف' : 'Target RIR'),
+          findsOneWidget,
+        );
+        expect(
+          find.text(
+            isArabic ? 'ملاحظة اللياقة (اختيارية)' : 'Cardio note (optional)',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          Directionality.of(
+            tester.element(find.byKey(const Key('program_draft_day_name_0'))),
+          ),
+          isArabic ? TextDirection.rtl : TextDirection.ltr,
+        );
+      },
     );
-  });
+  }
 
   testWidgets('coach editor lays out at phone and desktop widths',
       (tester) async {

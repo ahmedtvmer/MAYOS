@@ -231,12 +231,12 @@ void main() {
         'عرض \u20663\u2069 تمارين إضافية');
     expect(arabic.showRemainingProgramExercises(11),
         'عرض \u206611\u2069 تمرينًا إضافيًا');
-    expect(arabic.programDaySummary(1, 1), 'تمرين واحد • مجموعة عمل واحدة');
-    expect(arabic.programDaySummary(2, 2), 'تمرينان • مجموعتا عمل');
+    expect(arabic.programDaySummary(1, 1), 'تمرين واحد • مجموعة تدريب واحدة');
+    expect(arabic.programDaySummary(2, 2), 'تمرينان • مجموعتا تدريب');
     expect(arabic.programDaySummary(3, 3),
-        '\u20663\u2069 تمارين • \u20663\u2069 مجموعات عمل');
+        '\u20663\u2069 تمارين • \u20663\u2069 مجموعات تدريب');
     expect(arabic.programDaySummary(11, 11),
-        '\u206611\u2069 تمرينًا • \u206611\u2069 مجموعة عمل');
+        '\u206611\u2069 تمرينًا • \u206611\u2069 مجموعة تدريب');
   });
 
   testWidgets('Arabic coach roster localizes a connection failure',

@@ -1587,7 +1587,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
               ),
             MayosSectionHeader(
               key: const ValueKey<String>('logger.exercises.section'),
-              title: _copy.exercises,
+              title: _copy.workingSetsHeading,
               padding: EdgeInsets.zero,
             ),
             const SizedBox(height: MayosSpacing.xs),

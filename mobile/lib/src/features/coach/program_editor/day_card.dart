@@ -111,7 +111,10 @@ class _ProgramDraftDayCard extends StatelessWidget {
               onPressed: busy ? null : onAddWarmup,
             ),
             const SizedBox(height: MayosSpacing.md),
-            Text(copy.exercises, style: MayosTypography.of(context).sectionHeading),
+            Text(
+              copy.workingSets,
+              style: MayosTypography.of(context).sectionHeading,
+            ),
             const SizedBox(height: MayosSpacing.xs),
             for (int exerciseIndex = 0;
                 exerciseIndex < day.exercises.length;

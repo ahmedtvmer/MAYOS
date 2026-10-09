@@ -85,7 +85,7 @@ const Map<String, ({String english, String arabic})> _programImportMessages =
   ),
   'program_import.invalid_sets.v1': (
     english: 'Working sets must be from 1 to 4.',
-    arabic: 'يجب أن تكون مجموعات العمل من 1 إلى 4.',
+    arabic: 'يجب أن تكون مجموعات التدريب من 1 إلى 4.',
   ),
   'program_import.invalid_reps.v1': (
     english: 'Enter repetitions from 4 to 30.',

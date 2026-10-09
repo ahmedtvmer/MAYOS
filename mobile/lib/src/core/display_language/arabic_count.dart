@@ -21,13 +21,6 @@ enum ArabicCountNoun {
     dualOblique: 'مجموعتي تدريب',
     many: 'مجموعة تدريب',
   ),
-  workingSet(
-    zeroAndFew: 'مجموعات عمل',
-    one: 'مجموعة عمل واحدة',
-    dualNominative: 'مجموعتا عمل',
-    dualOblique: 'مجموعتي عمل',
-    many: 'مجموعة عمل',
-  ),
   exercise(
     zeroAndFew: 'تمارين',
     one: 'تمرين واحد',
