@@ -2214,6 +2214,31 @@ class ProgramExercise {
 
   bool get hasWarmupSets => warmupSets > 0;
 
+  ProgramExercise copyWith({int? targetSets}) => ProgramExercise(
+        exerciseId: exerciseId,
+        exerciseName: exerciseName,
+        targetSets: targetSets ?? this.targetSets,
+        targetRepsMin: targetRepsMin,
+        targetRepsMax: targetRepsMax,
+        targetRpe: targetRpe,
+        equipment: equipment,
+        warmupSets: warmupSets,
+        restSeconds: restSeconds,
+        tempo: tempo,
+        notes: notes,
+        bodyPart: bodyPart,
+        note: note,
+        videoUrl: videoUrl,
+        isCoachExercise: isCoachExercise,
+        suggestedSubstitutes: suggestedSubstitutes,
+        imagePath: imagePath,
+        primaryMuscle: primaryMuscle,
+        primaryAction: primaryAction,
+        equipmentCategory: equipmentCategory,
+        loadType: loadType,
+        coachEquipment: coachEquipment,
+      );
+
   String get prescription =>
       '$targetSets × $targetRepsMin–$targetRepsMax @ RIR ${minRirLabel(targetRpe)}';
 

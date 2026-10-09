@@ -50,6 +50,18 @@ class MayosCopy {
   String get editDay => isArabic ? 'تعديل اليوم' : 'Edit day';
   String removeExerciseNamed(String name) =>
       isArabic ? 'إزالة $name' : 'Remove $name';
+  String decreaseProgramExerciseSets(String name) => isArabic
+      ? 'تقليل مجموعات التدريب لتمرين $name'
+      : 'Decrease working sets for $name';
+  String increaseProgramExerciseSets(String name) => isArabic
+      ? 'زيادة مجموعات التدريب لتمرين $name'
+      : 'Increase working sets for $name';
+  String programExerciseSetCount(String name, int count) => isArabic
+      ? 'عدد مجموعات التدريب لتمرين $name: '
+          '${arabicCountPhrase(count, ArabicCountNoun.trainingSet, isolateCount: true)}'
+      : '$name: $count ${count == 1 ? 'working set' : 'working sets'}';
+  String reorderProgramExercise(String name) =>
+      isArabic ? 'إعادة ترتيب $name' : 'Reorder $name';
   String get programEditSaved => isArabic
       ? 'تم تحديث اليوم التدريبي في برنامجك.'
       : 'Training day updated in your program.';

@@ -5,6 +5,7 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/active_workout.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/display_language/controller.dart';
+import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/baselines.dart';
@@ -14,6 +15,7 @@ import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/providers.dart';
 import 'package:mayos_mobile/src/features/player/workout/active_workout_controller.dart';
+import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.dart';
 
 import 'support/fake_mayos_api.dart';
 
@@ -75,6 +77,8 @@ Future<void> _pumpProgram(
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
         systemDisplayLanguageProvider.overrideWithValue(languageCode),
         themeModeStoreProvider.overrideWithValue(InMemoryThemeModeStore(mode)),
+        deviceTimezoneOrNullProvider
+            .overrideWith((ref) => Future<String?>.value('UTC')),
         draftStoreProvider.overrideWithValue(InMemoryDraftStore()),
         if (activeWorkoutStore != null)
           activeWorkoutStoreProvider.overrideWithValue(activeWorkoutStore),
@@ -1157,7 +1161,8 @@ void main() {
     );
   });
 
-  testWidgets('Edit day removes exercises in one save request', (tester) async {
+  testWidgets('Edit day saves reordered exercises and counts once', (tester) async {
+    final SemanticsHandle semantics = tester.ensureSemantics();
     final FakeMayosApi fake = _signedInFake()..programVersion = 1;
     await _pumpProgram(tester, fake);
 
@@ -1165,7 +1170,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Edit day'), findsOneWidget);
     expect(find.text('Bench Press'), findsWidgets);
-    await tester.tap(find.byTooltip('Remove Bench Press'));
+    await tester.tap(find.byTooltip('Increase working sets for Bench Press'));
+    await tester.pump();
+    expect(find.bySemanticsLabel('Bench Press: 3 working sets'), findsOneWidget);
+    await tester.tap(find.byTooltip('Decrease working sets for Bench Press'));
+    await tester.pump();
+    expect(find.bySemanticsLabel('Bench Press: 2 working sets'), findsOneWidget);
+    final Finder benchHandle = find.bySemanticsLabel('Reorder Bench Press');
+    final Offset benchStart = tester.getCenter(benchHandle);
+    await tester.dragFrom(benchStart, benchStart + const Offset(0, 120));
+    await tester.pumpAndSettle();
     await tester.pump();
     await tester.tap(find.byKey(const Key('program_edit_save_button')));
     await tester.pumpAndSettle();
@@ -1178,41 +1192,56 @@ void main() {
         <String, dynamic>{'exercise_id': 'overhead_press', 'target_sets': 3},
         <String, dynamic>{'exercise_id': 'barbell_row', 'target_sets': 3},
         <String, dynamic>{'exercise_id': 'lat_pulldown', 'target_sets': 3},
+        <String, dynamic>{'exercise_id': 'bench_press', 'target_sets': 2},
       ],
     });
     expect(
-      (fake.programDaysOverride!.first['exercises'] as List<dynamic>)
-          .map((dynamic item) => (item as Map<String, dynamic>)['exercise_id']),
-      <String>['overhead_press', 'barbell_row', 'lat_pulldown'],
+      tester.getTopLeft(find.text('Overhead Press')).dy,
+      lessThan(tester.getTopLeft(find.text('Barbell Row')).dy),
     );
+    expect(
+      tester.getTopLeft(find.text('Barbell Row')).dy,
+      lessThan(tester.getTopLeft(find.text('Lat Pulldown')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Lat Pulldown')).dy,
+      lessThan(tester.getTopLeft(find.text('Bench Press').last).dy),
+    );
+    expect(find.textContaining('2 × 5–8'), findsOneWidget);
+    semantics.dispose();
   });
 
   testWidgets('Edit day Cancel discards changes and the last row cannot be removed',
       (tester) async {
+    final SemanticsHandle semantics = tester.ensureSemantics();
     final FakeMayosApi fake = _signedInFake()..programVersion = 1;
     await _pumpProgram(tester, fake);
 
     await tester.tap(find.byKey(const Key('program_edit_day_1')));
     await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Decrease working sets for Bench Press'));
+    await tester.pump();
+    final Finder benchHandle = find.bySemanticsLabel('Reorder Bench Press');
+    final Offset benchStart = tester.getCenter(benchHandle);
+    await tester.dragFrom(benchStart, benchStart + const Offset(0, 120));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Remove Bench Press'));
     await tester.tap(find.byTooltip('Remove Overhead Press'));
     await tester.tap(find.byTooltip('Remove Barbell Row'));
     await tester.pump();
-    final Finder lastRow = find.descendant(
-      of: find.byType(AlertDialog),
-      matching: find.byType(ListTile),
-    );
-    expect(
-      tester.widget<IconButton>(
-        find.descendant(of: lastRow.last, matching: find.byType(IconButton)),
-      ).onPressed,
-      isNull,
-    );
+    await tester.tap(find.byTooltip('Remove Lat Pulldown'));
+    await tester.pump();
+    expect(find.text('Lat Pulldown'), findsWidgets);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
 
     expect(fake.programEditRequests, isEmpty);
-    expect(fake.programDaysOverride, isNull);
+    expect(
+      tester.getTopLeft(find.text('Bench Press')).dy,
+      lessThan(tester.getTopLeft(find.text('Overhead Press')).dy),
+    );
+    expect(find.textContaining('3 × 5–8'), findsOneWidget);
+    semantics.dispose();
   });
 
   testWidgets('Edit day is hidden when a coach controls the program',
@@ -1224,6 +1253,117 @@ void main() {
     await _pumpProgram(tester, fake);
 
     expect(find.byKey(const Key('program_edit_day_1')), findsNothing);
+  });
+
+  testWidgets('Edit day count controls and reorder handle are accessible in Arabic',
+      (tester) async {
+    final SemanticsHandle semantics = tester.ensureSemantics();
+    final FakeMayosApi fake = _signedInFake()..programVersion = 1;
+    await _pumpProgram(tester, fake, languageCode: 'ar');
+
+    await tester.tap(find.byKey(const Key('program_edit_day_1')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byTooltip('تقليل مجموعات التدريب لتمرين Bench Press'),
+      findsOneWidget,
+    );
+    expect(
+      find.byTooltip('زيادة مجموعات التدريب لتمرين Bench Press'),
+      findsOneWidget,
+    );
+    expect(find.bySemanticsLabel('إعادة ترتيب Bench Press'), findsOneWidget);
+    await tester.tap(
+      find.byTooltip('تقليل مجموعات التدريب لتمرين Bench Press'),
+    );
+    await tester.pump();
+    expect(
+      find.bySemanticsLabel(
+        'عدد مجموعات التدريب لتمرين Bench Press: مجموعتا تدريب',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byTooltip('تقليل مجموعات التدريب لتمرين Bench Press'),
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byTooltip('تقليل مجموعات التدريب لتمرين Bench Press'),
+    );
+    await tester.pump();
+    expect(
+      find.bySemanticsLabel(
+        'عدد مجموعات التدريب لتمرين Bench Press: مجموعة تدريب واحدة',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(
+      find.byTooltip('زيادة مجموعات التدريب لتمرين Bench Press'),
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byTooltip('زيادة مجموعات التدريب لتمرين Bench Press'),
+    );
+    await tester.pump();
+    await tester.tap(
+      find.byTooltip('زيادة مجموعات التدريب لتمرين Bench Press'),
+    );
+    await tester.pump();
+    expect(
+      find.bySemanticsLabel(
+        'عدد مجموعات التدريب لتمرين Bench Press: '
+        '\u20663\u2069 مجموعات تدريب',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('إلغاء'));
+    await tester.pumpAndSettle();
+    expect(fake.programEditRequests, isEmpty);
+    semantics.dispose();
+  });
+
+  testWidgets('the next workout starts with the edited order and counts',
+      (tester) async {
+    final SemanticsHandle semantics = tester.ensureSemantics();
+    final FakeMayosApi fake = _signedInFake()..programVersion = 1;
+    final InMemoryActiveWorkoutStore activeWorkouts =
+        InMemoryActiveWorkoutStore();
+    await _pumpProgram(tester, fake, activeWorkoutStore: activeWorkouts);
+
+    await tester.tap(find.byKey(const Key('program_edit_day_1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Decrease working sets for Bench Press'));
+    await tester.pump();
+    final Finder benchHandle = find.bySemanticsLabel('Reorder Bench Press');
+    final Offset benchStart = tester.getCenter(benchHandle);
+    await tester.dragFrom(benchStart, benchStart + const Offset(0, 120));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('program_edit_save_button')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Log workout'));
+    await _pumpUntilFound(tester, find.byType(WorkoutLoggerScreen));
+    expect(find.byType(WorkoutLoggerScreen), findsOneWidget);
+
+    expect(find.text('Overhead Press'), findsOneWidget);
+    expect(find.text('Bench Press'), findsOneWidget);
+    expect(find.text('Barbell Row'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Overhead Press')).dy,
+      lessThan(tester.getTopLeft(find.text('Barbell Row')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Barbell Row')).dy,
+      lessThan(tester.getTopLeft(find.text('Lat Pulldown')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Lat Pulldown')).dy,
+      lessThan(tester.getTopLeft(find.text('Bench Press')).dy),
+    );
+    expect(find.text('0/11 sets'), findsOneWidget);
+    expect(fake.programEditRequests, hasLength(1));
+    semantics.dispose();
   });
 
   testWidgets('Edit day stale version reloads the program and explains in English',
