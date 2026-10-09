@@ -47,6 +47,18 @@ class MayosCopy {
   String get programChangeRequestSent => isArabic
       ? 'أُرسل طلب تغيير البرنامج التدريبي إلى مدربك.'
       : 'Your program change request was sent to your coach.';
+  String get editDay => isArabic ? 'تعديل اليوم' : 'Edit day';
+  String removeExerciseNamed(String name) =>
+      isArabic ? 'إزالة $name' : 'Remove $name';
+  String get programEditSaved => isArabic
+      ? 'تم تحديث اليوم التدريبي في برنامجك.'
+      : 'Training day updated in your program.';
+  String get programEditChanged => isArabic
+      ? 'تغير برنامجك أثناء التعديل. لم تُحفظ تغييراتك.'
+      : 'Your program changed while you were editing. Your changes were not saved.';
+  String get programEditAuthorityChanged => isArabic
+      ? 'يتحكم مدربك الآن في هذا البرنامج. لم تُحفظ تغييراتك.'
+      : 'Your coach now controls this program. Your changes were not saved.';
   String get back => isArabic ? 'رجوع' : 'Back';
   String get retry => isArabic ? 'إعادة المحاولة' : 'Retry';
   String get cancel => isArabic ? 'إلغاء' : 'Cancel';

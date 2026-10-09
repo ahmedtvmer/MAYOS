@@ -252,6 +252,7 @@ class FakeMayosApi {
       <Map<String, dynamic>>[];
   final List<Map<String, dynamic>> programSubstitutionUndoRequests =
       <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> programEditRequests = <Map<String, dynamic>>[];
   final Map<int, List<Map<String, dynamic>>> _programDaysByVersion =
       <int, List<Map<String, dynamic>>>{};
   // When true, `GET /programs/active` fails with a transient 500 (offline
@@ -261,6 +262,7 @@ class FakeMayosApi {
   bool coachControlsProgram = false;
   bool? coachPreparingProgram;
   bool substitutionVersionConflict = false;
+  bool programEditVersionConflict = false;
   // When true `GET /programs/active` returns an empty body (no active program).
   bool noActiveProgram = false;
 
@@ -664,6 +666,8 @@ class FakeMayosApi {
         return _completeOnboarding(request);
       case '/programs/active':
         return _activeProgram(request);
+      case '/programs/active/edits':
+        return _editActiveProgramDay(request);
       case '/programs/active/substitutions':
         return _substituteActiveProgram(request);
       case '/programs/active/substitutions/undo':
@@ -3508,6 +3512,65 @@ class FakeMayosApi {
       return const FakeResponse(200);
     }
     return FakeResponse(200, _activeProgramBody());
+  }
+
+  FakeResponse _editActiveProgramDay(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (coachControlsProgram) {
+      return const FakeResponse(403, <String, dynamic>{
+        'detail':
+            'Your assigned coach controls your program. Ask your coach for changes.',
+        'code': 'coach_controlled',
+      });
+    }
+    if (programEditVersionConflict) {
+      return const FakeResponse(409, <String, dynamic>{
+        'detail': 'The program changed since this edit was opened.',
+        'code': 'program_changed',
+      });
+    }
+    final Map<String, dynamic> payload =
+        Map<String, dynamic>.from(request.body);
+    programEditRequests.add(payload);
+    final int previousVersion = programVersion ?? 1;
+    final List<Map<String, dynamic>> programDays =
+        (programDaysOverride ??
+                _activeProgramBody()['days'] as List<Map<String, dynamic>>)
+            .map((Map<String, dynamic> day) => Map<String, dynamic>.from(
+                  jsonDecode(jsonEncode(day)) as Map<String, dynamic>,
+                ))
+            .toList(growable: true);
+    programDaysOverride = programDays;
+    final String dayName = '${payload['day_name'] ?? ''}';
+    final List<dynamic> requested = payload['exercises'] as List<dynamic>;
+    for (final Map<String, dynamic> day in programDays) {
+      if (day['day_name'] != dayName) continue;
+      final Map<String, Map<String, dynamic>> currentExercisesById =
+          <String, Map<String, dynamic>>{
+        for (final dynamic rawExercise in day['exercises'] as List<dynamic>)
+          (rawExercise as Map<String, dynamic>)['exercise_id'] as String:
+              Map<String, dynamic>.from(rawExercise),
+      };
+      final List<Map<String, dynamic>> editedExercises = <Map<String, dynamic>>[];
+      for (final dynamic rawEdit in requested) {
+        final Map<String, dynamic> edit = Map<String, dynamic>.from(rawEdit as Map);
+        final Map<String, dynamic>? currentExercise =
+            currentExercisesById[edit['exercise_id'] as String];
+        if (currentExercise == null) continue;
+        editedExercises.add(Map<String, dynamic>.from(currentExercise)
+          ..['target_sets'] = edit['target_sets']);
+      }
+      day['exercises'] = editedExercises;
+      break;
+    }
+    programVersion = previousVersion + 1;
+    return FakeResponse(200, <String, dynamic>{
+      ..._activeProgramBody(),
+      'previous_version': previousVersion,
+    });
   }
 
   FakeResponse _substituteActiveProgram(FakeRequest request) {

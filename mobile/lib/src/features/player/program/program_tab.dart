@@ -29,6 +29,7 @@ import '../workout/active_workout_prompt.dart';
 import '../workout/deload_banner.dart';
 import 'program_authority_recovery.dart';
 import 'program_change_summary_card.dart';
+import 'program_day_edit_dialog.dart';
 import 'preparing_program_banner.dart';
 
 enum _SwapDirection { apply, undo }
@@ -75,6 +76,7 @@ class ProgramTab extends ConsumerStatefulWidget {
 class _ProgramTabState extends ConsumerState<ProgramTab> {
   bool _loading = true;
   bool _substituting = false;
+  bool _editingProgramDay = false;
   bool _requestingProgramChange = false;
   bool _pickerBusy = false;
   FailureMessage? _loadError;
@@ -766,6 +768,89 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     );
   }
 
+  Future<void> _editProgramDay(ProgramDay day, int? expectedVersion) async {
+    if (_editingProgramDay || expectedVersion == null) return;
+    final List<ProgramExercise>? exercises =
+        await ProgramDayEditDialog.show(context, day);
+    if (exercises == null || !mounted) return;
+    setState(() {
+      _editingProgramDay = true;
+      _actionError = null;
+    });
+    try {
+      await _submitProgramDayEdit(day, expectedVersion, exercises);
+    } on ApiException catch (error) {
+      await _handleProgramEditFailure(error);
+    } finally {
+      if (mounted) setState(() => _editingProgramDay = false);
+    }
+  }
+
+  Future<void> _submitProgramDayEdit(
+    ProgramDay day,
+    int expectedVersion,
+    List<ProgramExercise> exercises,
+  ) async {
+    final TrainingProgram updated =
+        await ref.read(apiClientProvider).editProgramDay(
+              dayName: day.dayName,
+              expectedActiveVersion: expectedVersion,
+              exercises: exercises,
+            );
+    if (!mounted) return;
+    final String? accountId = _accountId;
+    if (accountId != null) {
+      unawaited(cacheActiveProgram(
+        ref.read(workoutCacheStoreProvider),
+        accountId,
+        updated,
+      ));
+    }
+    _updateProgram(updated, accountId, fromCache: false);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(displayCopyOf(context).programEditSaved),
+      ));
+  }
+
+  Future<void> _handleProgramEditFailure(ApiException error) async {
+    if (error.errorCode != 'program_changed' &&
+        error.errorCode != 'coach_controlled') {
+      if (mounted) _showProgramEditError(error);
+      return;
+    }
+    try {
+      await _refreshAfterProgramEditRefusal(error);
+    } on ApiException catch (refreshError) {
+      if (mounted) _showProgramEditError(refreshError);
+    }
+  }
+
+  Future<void> _refreshAfterProgramEditRefusal(ApiException error) async {
+    final ProgramAuthorityRefresh refresh = await ProgramAuthorityRecovery(
+      api: ref.read(apiClientProvider),
+      cache: ref.read(workoutCacheStoreProvider),
+      accountId: _accountId,
+    ).refreshAfterRefusal(error);
+    if (!mounted) return;
+    _updateProgram(refresh.program, _accountId, fromCache: false);
+    final String message = error.errorCode == 'program_changed'
+        ? displayCopyOf(context).programEditChanged
+        : displayCopyOf(context).programEditAuthorityChanged;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _showProgramEditError(ApiException error) {
+    final FailureMessage failure = mutationFailureMessage(error);
+    setState(() => _actionError = failure);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(displayCopyOf(context).failureMessage(failure))),
+    );
+  }
+
   void _openExercise(ProgramDay day, ProgramExercise exercise) {
     context
         .push('$exerciseDetailPath/${exercise.exerciseId}?day=${day.dayOrder}');
@@ -939,11 +1024,28 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
                       MayosSpacing.md, 0, MayosSpacing.md, MayosSpacing.md),
                   shape: const Border(),
                   collapsedShape: const Border(),
-                  title: Text(
-                    displayCopyOf(context)
-                        .dayHeading(day.dayOrder, day.dayName),
-                    style: MayosTypography.of(context).sectionHeading
-                        .copyWith(color: c.textPrimary),
+                  title: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: Text(
+                          displayCopyOf(context)
+                              .dayHeading(day.dayOrder, day.dayName),
+                          style: MayosTypography.of(context).sectionHeading
+                              .copyWith(color: c.textPrimary),
+                        ),
+                      ),
+                      if (program.playerControlsProgram)
+                        IconButton(
+                          key: Key('program_edit_day_${day.dayOrder}'),
+                          tooltip: displayCopyOf(context).editDay,
+                          onPressed: _editingProgramDay || _substituting
+                              ? null
+                              : () => unawaited(
+                                    _editProgramDay(day, program.version),
+                                  ),
+                          icon: const Icon(Icons.edit_outlined),
+                        ),
+                    ],
                   ),
                   children: <Widget>[
                     ..._deloadBannerFor(day),

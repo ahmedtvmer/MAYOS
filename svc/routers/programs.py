@@ -10,6 +10,12 @@ from service import analytics, programs as programs_service
 from service.messages import MessageMetadata, http_error_message
 from svc.errors import message_http_exception
 from service.program_analytics import ProgramAnalyticsActor
+from service.program_edit import (
+    ProgramEdit,
+    ProgramEditErrorCode,
+    ProgramEditExercise,
+    edit_active_program_day,
+)
 from service.program_substitution import (
     ProgramSubstitution,
     ProgramSubstitutionUndo,
@@ -22,6 +28,8 @@ from svc.llm import InferenceScope, inference_turn, register_ai_analytics_backgr
 from svc.rate_limit import PROGRAM_MUTATE_LIMIT, limiter
 from svc.schemas import (
     ActiveProgramOut,
+    ProgramEditIn,
+    ProgramEditOut,
     ProgramGenerateIn,
     ProgramSubstitutionIn,
     ProgramSubstitutionOut,
@@ -31,26 +39,61 @@ from svc.schemas import (
 router = APIRouter(prefix="/programs", tags=["programs"])
 
 
-def _substitution_error_response(substitution: dict[str, Any]) -> JSONResponse:
-    code = substitution["code"]
-    http_status = {
-        SubstitutionErrorCode.COACH_CONTROLLED: status.HTTP_403_FORBIDDEN,
-        SubstitutionErrorCode.NO_ACTIVE_PROGRAM: status.HTTP_404_NOT_FOUND,
-        SubstitutionErrorCode.RESTORE_VERSION_NOT_FOUND: status.HTTP_404_NOT_FOUND,
-        SubstitutionErrorCode.REPLACEMENT_NOT_FOUND: status.HTTP_404_NOT_FOUND,
-        SubstitutionErrorCode.PROGRAM_CHANGED: status.HTTP_409_CONFLICT,
-    }.get(code, status.HTTP_400_BAD_REQUEST)
+def _program_mutation_error_response(
+    result: dict[str, Any], statuses: dict[Any, int]
+) -> JSONResponse:
+    code = result["code"]
+    http_status = statuses.get(code, status.HTTP_400_BAD_REQUEST)
     return JSONResponse(
         status_code=http_status,
         content={
-            "detail": substitution["error"],
+            "detail": result["error"],
             "code": code.value,
             **http_error_message(
                 http_status,
-                substitution["error"],
-                message_metadata=MessageMetadata(substitution.get("message_code")),
+                result["error"],
+                message_metadata=MessageMetadata(result.get("message_code")),
             ),
         },
+    )
+
+
+def _substitution_error_response(substitution: dict[str, Any]) -> JSONResponse:
+    return _program_mutation_error_response(
+        substitution,
+        {
+            SubstitutionErrorCode.COACH_CONTROLLED: status.HTTP_403_FORBIDDEN,
+            SubstitutionErrorCode.NO_ACTIVE_PROGRAM: status.HTTP_404_NOT_FOUND,
+            SubstitutionErrorCode.RESTORE_VERSION_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+            SubstitutionErrorCode.REPLACEMENT_NOT_FOUND: status.HTTP_404_NOT_FOUND,
+            SubstitutionErrorCode.PROGRAM_CHANGED: status.HTTP_409_CONFLICT,
+        },
+    )
+
+
+def _program_edit_error_response(edit: dict[str, Any]) -> JSONResponse:
+    return _program_mutation_error_response(
+        edit,
+        {
+            ProgramEditErrorCode.COACH_CONTROLLED: status.HTTP_403_FORBIDDEN,
+            ProgramEditErrorCode.NO_ACTIVE_PROGRAM: status.HTTP_404_NOT_FOUND,
+            ProgramEditErrorCode.PROGRAM_CHANGED: status.HTTP_409_CONFLICT,
+        },
+    )
+
+
+def _program_edit_command(body: ProgramEditIn, player: Any, request: Request) -> ProgramEdit:
+    account_id = account_id_of(player)
+    return ProgramEdit(
+        day_name=body.day_name,
+        expected_active_version=body.expected_active_version,
+        exercises=[
+            ProgramEditExercise(exercise_id=exercise.exercise_id, target_sets=exercise.target_sets)
+            for exercise in body.exercises
+        ],
+        player_account_id=account_id,
+        actor=ProgramAnalyticsActor(account_id, "player"),
+        client=analytics.client_context(request),
     )
 
 
@@ -192,6 +235,29 @@ async def substitute_active_program_exercise(
     if "code" in substitution:
         return _substitution_error_response(substitution)
     return substitution
+
+
+@router.post("/active/edits", response_model=ProgramEditOut)
+@limiter.limit(PROGRAM_MUTATE_LIMIT)
+async def edit_active_program_day_route(
+    request: Request,
+    body: ProgramEditIn,
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Apply one complete working-set edit to a day of the active program."""
+    account_id = account_id_of(player)
+    edit = await asyncio.to_thread(
+        edit_active_program_day,
+        db,
+        ledger,
+        _program_edit_command(body, player, request),
+    )
+    if "code" in edit:
+        return _program_edit_error_response(edit)
+    edit["player_controls_program"] = programs_service.player_controls_program(db, ledger, account_id)
+    return programs_service.with_library_equipment(edit, db)
 
 
 @router.post("/active/substitutions/undo", response_model=ProgramSubstitutionOut)

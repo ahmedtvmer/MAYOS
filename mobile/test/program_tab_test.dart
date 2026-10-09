@@ -1156,4 +1156,161 @@ void main() {
       isEmpty,
     );
   });
+
+  testWidgets('Edit day removes exercises in one save request', (tester) async {
+    final FakeMayosApi fake = _signedInFake()..programVersion = 1;
+    await _pumpProgram(tester, fake);
+
+    await tester.tap(find.byKey(const Key('program_edit_day_1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit day'), findsOneWidget);
+    expect(find.text('Bench Press'), findsWidgets);
+    await tester.tap(find.byTooltip('Remove Bench Press'));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('program_edit_save_button')));
+    await tester.pumpAndSettle();
+
+    expect(fake.programEditRequests, hasLength(1));
+    expect(fake.programEditRequests.single, <String, dynamic>{
+      'day_name': 'Upper 1',
+      'expected_active_version': 1,
+      'exercises': <Map<String, dynamic>>[
+        <String, dynamic>{'exercise_id': 'overhead_press', 'target_sets': 3},
+        <String, dynamic>{'exercise_id': 'barbell_row', 'target_sets': 3},
+        <String, dynamic>{'exercise_id': 'lat_pulldown', 'target_sets': 3},
+      ],
+    });
+    expect(
+      (fake.programDaysOverride!.first['exercises'] as List<dynamic>)
+          .map((dynamic item) => (item as Map<String, dynamic>)['exercise_id']),
+      <String>['overhead_press', 'barbell_row', 'lat_pulldown'],
+    );
+  });
+
+  testWidgets('Edit day Cancel discards changes and the last row cannot be removed',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()..programVersion = 1;
+    await _pumpProgram(tester, fake);
+
+    await tester.tap(find.byKey(const Key('program_edit_day_1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Remove Bench Press'));
+    await tester.tap(find.byTooltip('Remove Overhead Press'));
+    await tester.tap(find.byTooltip('Remove Barbell Row'));
+    await tester.pump();
+    final Finder lastRow = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(ListTile),
+    );
+    expect(
+      tester.widget<IconButton>(
+        find.descendant(of: lastRow.last, matching: find.byType(IconButton)),
+      ).onPressed,
+      isNull,
+    );
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(fake.programEditRequests, isEmpty);
+    expect(fake.programDaysOverride, isNull);
+  });
+
+  testWidgets('Edit day is hidden when a coach controls the program',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..programVersion = 1
+      ..coachControlsProgram = true
+      ..programPublishedByCoachAccountId = 'account-coach-1';
+    await _pumpProgram(tester, fake);
+
+    expect(find.byKey(const Key('program_edit_day_1')), findsNothing);
+  });
+
+  testWidgets('Edit day stale version reloads the program and explains in English',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..programVersion = 1
+      ..programEditVersionConflict = true;
+    await _pumpProgram(tester, fake);
+    final int initialReads = fake.activeProgramRequests;
+
+    await tester.tap(find.byKey(const Key('program_edit_day_1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('program_edit_save_button')));
+    await tester.pumpAndSettle();
+    await _pumpUntilFound(
+      tester,
+      find.text('Your program changed while you were editing. Your changes were not saved.'),
+    );
+
+    expect(fake.activeProgramRequests, initialReads + 1);
+    expect(fake.programEditRequests, isEmpty);
+  });
+
+  testWidgets('Edit day lost authority reloads the program and explains in Arabic',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()..programVersion = 1;
+    await _pumpProgram(tester, fake, languageCode: 'ar');
+    final int initialReads = fake.activeProgramRequests;
+
+    expect(find.byTooltip('تعديل اليوم'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('program_edit_day_1')));
+    await tester.pumpAndSettle();
+    expect(find.text('تعديل اليوم'), findsOneWidget);
+    expect(find.text('حفظ'), findsOneWidget);
+    expect(find.byTooltip('إزالة Bench Press'), findsOneWidget);
+    fake.coachControlsProgram = true;
+    await tester.tap(find.byKey(const Key('program_edit_save_button')));
+    await tester.pumpAndSettle();
+    await _pumpUntilFound(
+      tester,
+      find.text('يتحكم مدربك الآن في هذا البرنامج. لم تُحفظ تغييراتك.'),
+    );
+
+    expect(fake.activeProgramRequests, initialReads + 1);
+    expect(fake.programEditRequests, isEmpty);
+    expect(find.byKey(const Key('program_edit_day_1')), findsNothing);
+  });
+
+  testWidgets('Program edit leaves an open workout unchanged', (tester) async {
+    final FakeMayosApi fake = _signedInFake()..programVersion = 1;
+    final InMemoryActiveWorkoutStore activeWorkouts =
+        InMemoryActiveWorkoutStore();
+    await _pumpProgram(tester, fake, activeWorkoutStore: activeWorkouts);
+    final ProviderContainer container = ProviderScope.containerOf(
+      tester.element(find.text('Day 1: Upper 1')),
+      listen: false,
+    );
+    final TrainingProgram initialProgram =
+        (await _waitWithPumps(tester, container.read(apiClientProvider).activeProgram()))!;
+    final ActiveWorkoutController controller =
+        container.read(activeWorkoutControllerProvider.notifier);
+    expect(
+      await _waitWithPumps(
+        tester,
+        controller.startFromDay(
+          accountId: 'account-alice',
+          day: initialProgram.days.first,
+          programVersion: initialProgram.version,
+        ),
+      ),
+      StartWorkoutOutcome.started,
+    );
+    final ActiveWorkout before = (await activeWorkouts.read('account-alice'))!;
+
+    await tester.tap(find.byKey(const Key('program_edit_day_1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Remove Bench Press'));
+    await tester.tap(find.byKey(const Key('program_edit_save_button')));
+    await tester.pumpAndSettle();
+
+    final ActiveWorkout after = (await activeWorkouts.read('account-alice'))!;
+    expect(after.id, before.id);
+    expect(
+      after.exercises.map((ActiveWorkoutExercise item) => item.exerciseId),
+      before.exercises.map((ActiveWorkoutExercise item) => item.exerciseId),
+    );
+    expect(after.programVersion, before.programVersion);
+    expect(fake.programEditRequests, hasLength(1));
+  });
 }

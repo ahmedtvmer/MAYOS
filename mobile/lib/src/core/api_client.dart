@@ -1898,6 +1898,42 @@ class ApiClient {
     return TrainingProgram.fromJson(data as Map<String, dynamic>);
   }
 
+  /// Saves one complete working-set list as a Program edit.
+  Future<TrainingProgram> editProgramDay({
+    required String dayName,
+    required int expectedActiveVersion,
+    required List<ProgramExercise> exercises,
+  }) async {
+    final List<Map<String, dynamic>> requestedExercises =
+        _programEditExercisePayload(exercises);
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/programs/active/edits',
+        data: <String, dynamic>{
+          'day_name': dayName,
+          'expected_active_version': expectedActiveVersion,
+          'exercises': requestedExercises,
+        },
+      ),
+    );
+    return _parseBody(
+      response.data,
+      TrainingProgram.fromJson,
+      'The service returned invalid program data.',
+    );
+  }
+
+  List<Map<String, dynamic>> _programEditExercisePayload(
+    List<ProgramExercise> exercises,
+  ) =>
+      <Map<String, dynamic>>[
+        for (final ProgramExercise exercise in exercises)
+          <String, dynamic>{
+            'exercise_id': exercise.exerciseId,
+            'target_sets': exercise.targetSets,
+          },
+      ];
+
   /// Permanently substitutes a program slot and returns version metadata.
   Future<ProgramSubstitutionResult> substituteProgramExercise({
     required String dayName,

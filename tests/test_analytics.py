@@ -160,7 +160,7 @@ def _assert_authoritative_write_committed(
     if event in {"program_request_created", "program_request_resolved"}:
         assert not db.catalog_conn.in_transaction
         assert db.catalog_conn.execute("SELECT COUNT(*) FROM program_requests").fetchone()[0] > 0
-    if event in {"program_generated", "coach_program_published", "program_exercise_swapped"}:
+    if event in {"program_generated", "coach_program_published", "program_exercise_swapped", "program_edited"}:
         owner_ledger_id = _program_ledger_id_for_event(db, account_id, event, properties["role"])
         with db.open_ledger(owner_ledger_id) as ledger:
             assert not ledger.conn.in_transaction
@@ -1228,6 +1228,32 @@ def test_program_and_request_events_follow_committed_api_operations(analytics_ap
     with db.open_ledger(player_account["ledger_id"]) as ledger:
         assert not ledger.conn.in_transaction
         assert ledger.get_active_program().version == 8
+    assert not db.catalog_conn.in_transaction
+
+
+def test_program_edit_analytics_follows_committed_player_version(analytics_api):
+    client, db, sink = analytics_api
+    headers = _register(client, "analytics-program-edit")
+    player = db.get_active_account_by_username("analytics-program-edit")
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        ledger.save_training_program(_test_program().model_dump())
+
+    edited = client.post(
+        "/programs/active/edits",
+        headers=headers,
+        json={
+            "day_name": "Day 1",
+            "expected_active_version": 1,
+            "exercises": [{"exercise_id": "ex1", "target_sets": 1}],
+        },
+    )
+
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["version"] == 2
+    events = [event for event in sink.events if event["event"] == "program_edited"]
+    assert len(events) == 1
+    assert events[0]["distinct_id"] == player["account_id"]
+    assert events[0]["properties"]["role"] == "player"
     assert not db.catalog_conn.in_transaction
 
 

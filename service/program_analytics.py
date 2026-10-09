@@ -94,6 +94,25 @@ def capture_program_exercise_swapped(
     )
 
 
+def capture_program_edited(
+    actor: ProgramAnalyticsActor,
+    program: Any,
+    *,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+) -> None:
+    owner_id = _program_owner_id(actor, None)
+    version = _program_version(program)
+    analytics.capture(
+        analytics.AnalyticsEvent(
+            account_id=actor.account_id,
+            event="program_edited",
+            domain_key=f"{owner_id}:program:{version}:edited",
+            role=actor.role,
+        ),
+        client,
+    )
+
+
 def capture_program_request_created(
     actor: ProgramAnalyticsActor,
     request_row: dict[str, Any],

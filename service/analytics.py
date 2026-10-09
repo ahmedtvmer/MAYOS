@@ -387,6 +387,7 @@ EVENT_CATALOGUE: dict[str, EventContract] = {
         },
     ),
     "program_exercise_swapped": EventContract("server", dict(_COMMON_PROPERTIES)),
+    "program_edited": EventContract("server", dict(_COMMON_PROPERTIES)),
     "program_request_created": EventContract(
         "server", {**_COMMON_PROPERTIES, "kind": PROPERTY_TYPES["kind"]}
     ),

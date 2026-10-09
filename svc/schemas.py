@@ -142,6 +142,9 @@ __all__ = [
     "PlayerProgramRequestListOut",
     "ProfileUpdate",
     "ProgramExerciseSchema",
+    "ProgramEditIn",
+    "ProgramEditOut",
+    "ProgramEditExerciseIn",
     "ProgramGenerateIn",
     "ProgramSubstitutionIn",
     "ProgramSubstitutionUndoIn",
@@ -1220,6 +1223,21 @@ class ProgramSubstitutionUndoIn(BaseModel):
     expected_active_version: int = Field(ge=1)
 
 
+class ProgramEditExerciseIn(BaseModel):
+    exercise_id: str = Field(min_length=1, max_length=200)
+    target_sets: int
+
+
+class ProgramEditIn(BaseModel):
+    """One complete ordered working-set list for a player-owned day."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    day_name: str = Field(min_length=1, max_length=100)
+    expected_active_version: int = Field(ge=1)
+    exercises: list[ProgramEditExerciseIn] = Field(max_length=MAX_EXERCISES_PER_DAY)
+
+
 class ActiveProgramOut(PersistedProgramSchema):
     """An active program plus the server's current Program-authority decision."""
 
@@ -1227,6 +1245,11 @@ class ActiveProgramOut(PersistedProgramSchema):
 
 
 class ProgramSubstitutionOut(PersistedProgramSchema):
+    previous_version: int
+    player_controls_program: bool
+
+
+class ProgramEditOut(PersistedProgramSchema):
     previous_version: int
     player_controls_program: bool
 

@@ -433,3 +433,141 @@ def test_issue_170_authority_flag_tracks_current_assigned_publisher(api):
     previous_coach_program = client.get("/programs/active", headers=player_headers)
     assert previous_coach_program.status_code == 200, previous_coach_program.text
     assert previous_coach_program.json()["player_controls_program"] is True
+
+
+def _program_edit_request(exercises, *, day_name="Full A", version=1):
+    return {
+        "day_name": day_name,
+        "expected_active_version": version,
+        "exercises": exercises,
+    }
+
+
+def test_program_edit_removes_reorders_and_trims_one_day_once(api, recording_analytics):
+    client, db = api
+    headers = _make_player_with_program(client, db)
+    original = db.ledger.get_active_program()
+    original_data = original.model_dump()
+    original_first_day = original_data["days"][0]
+    row = next(item for item in original_first_day["exercises"] if item["exercise_id"] == "row")
+    bench = next(item for item in original_first_day["exercises"] if item["exercise_id"] == "bp")
+
+    response = client.post(
+        "/programs/active/edits",
+        headers=headers,
+        json=_program_edit_request(
+            [
+                {"exercise_id": "row", "target_sets": 2},
+                {"exercise_id": "bp", "target_sets": 3},
+            ]
+        ),
+    )
+
+    assert response.status_code == 200, response.text
+    edited = response.json()
+    assert edited["version"] == 2
+    assert edited["previous_version"] == 1
+    assert edited["player_controls_program"] is True
+    assert [item["exercise_id"] for item in edited["days"][0]["exercises"]] == ["row", "bp"]
+    assert edited["days"][0]["exercises"][0] == {**row, "target_sets": 2}
+    assert edited["days"][0]["exercises"][1] == bench
+    assert edited["days"][0]["warmup_exercises"] == original_first_day["warmup_exercises"]
+    assert edited["days"][0]["cardio"] == original_first_day["cardio"]
+    assert edited["days"][1] == original_data["days"][1]
+    assert db.ledger.get_program_by_version(1).model_dump() == original_data
+    events = [event for event in recording_analytics.events if event["event"] == "program_edited"]
+    assert len(events) == 1
+    assert events[0]["properties"]["role"] == "player"
+    assert events[0]["distinct_id"] == db.get_active_account_by_username("player")["account_id"]
+
+
+def test_program_edit_no_op_returns_current_version_without_analytics(api, recording_analytics):
+    client, db = api
+    headers = _make_player_with_program(client, db)
+    active = db.ledger.get_active_program()
+    exercises = [
+        {"exercise_id": item.exercise_id, "target_sets": item.target_sets}
+        for item in active.days[0].exercises
+    ]
+
+    response = client.post(
+        "/programs/active/edits",
+        headers=headers,
+        json=_program_edit_request(exercises),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["version"] == 1
+    assert response.json()["previous_version"] == 1
+    assert db.ledger.get_active_program().version == 1
+    assert not [event for event in recording_analytics.events if event["event"] == "program_edited"]
+
+
+@pytest.mark.parametrize(
+    ("payload", "status_code", "code"),
+    [
+        (_program_edit_request([], day_name="Missing"), 400, "day_not_found"),
+        (_program_edit_request([{"exercise_id": "added", "target_sets": 1}]), 400, "exercise_not_on_day"),
+        (
+            _program_edit_request(
+                [
+                    {"exercise_id": "sq", "target_sets": 3},
+                    {"exercise_id": "sq", "target_sets": 2},
+                ]
+            ),
+            400,
+            "duplicate_exercise",
+        ),
+        (_program_edit_request([]), 400, "empty_day"),
+        (_program_edit_request([{"exercise_id": "sq", "target_sets": 0}]), 400, "invalid_set_count"),
+        (_program_edit_request([{"exercise_id": "sq", "target_sets": 4}]), 400, "invalid_set_count"),
+        (_program_edit_request([], version=2), 409, "program_changed"),
+    ],
+)
+def test_program_edit_rejects_invalid_full_day_lists(api, payload, status_code, code):
+    client, db = api
+    headers = _make_player_with_program(client, db)
+
+    response = client.post("/programs/active/edits", headers=headers, json=payload)
+
+    assert response.status_code == status_code
+    assert response.json()["code"] == code
+    assert "message_code" in response.json()
+    assert db.ledger.get_active_program().version == 1
+
+
+def test_program_edit_refuses_when_a_coach_holds_program_authority(api):
+    client, db = api
+    coach = _register(client, "coach")
+    coach_headers = _headers(coach["access_token"])
+    issued = coach_service.issue_coach_invite(db, "coach", actor="cli")
+    assert issued["ok"]
+    assert client.post("/coach/invite/redeem", headers=coach_headers, json={"token": issued["token"]}).status_code == 200
+    assert client.put(
+        "/coach/profile",
+        headers=coach_headers,
+        json={"display_name": "Coach", "bio": "", "specialization": "Strength", "capacity": 5},
+    ).status_code == 200
+    invite = client.post("/coach/assignments/invites", headers=coach_headers)
+    player = _register(client, "player")
+    player_headers = _headers(player["access_token"])
+    joined = client.post(
+        "/assignments/invites/redeem",
+        headers=player_headers,
+        json={"token": invite.json()["token"], "consent": True},
+    )
+    assert joined.status_code == 200, joined.text
+    coach_account_id = db.get_active_account_by_username("coach")["account_id"]
+    db.switch_user("player")
+    db.ledger.save_training_program(_program().model_dump(), published_by_coach_account_id=coach_account_id)
+
+    response = client.post(
+        "/programs/active/edits",
+        headers=player_headers,
+        json=_program_edit_request([{"exercise_id": "bp", "target_sets": 3}]),
+    )
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "coach_controlled"
+    assert response.json()["detail"] == "Your assigned coach controls your program. Ask your coach for changes."
+    assert db.ledger.get_active_program().version == 1
