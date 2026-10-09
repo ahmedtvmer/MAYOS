@@ -2380,7 +2380,15 @@ void main() {
         <String, dynamic>{
           'day_name': 'Upper A',
           'day_order': 1,
-          'warmup_exercises': <dynamic>[],
+          'warmup_exercises': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'exercise_name': 'Cat-Cow',
+              'sets': 2,
+              'reps': 8,
+              'rest_seconds': 30,
+              'notes': 'Easy pace',
+            },
+          ],
           'exercises': <Map<String, dynamic>>[
             <String, dynamic>{
               'exercise_id': 'bench_press',
@@ -2399,13 +2407,14 @@ void main() {
               'target_rir': 2,
             },
           ],
-          'cardio': null,
+          'cardio': 'Cycle for 10 minutes',
         },
       ],
     };
     await _openProgramEditor(tester, fake);
 
     expect(find.byTooltip('Exercise actions'), findsNWidgets(2));
+    expect(find.byTooltip('Reorder exercise'), findsNWidgets(2));
     await tester.tap(
       find.byKey(const Key('program_draft_exercise_menu_0_0')),
     );
@@ -2416,11 +2425,25 @@ void main() {
     await tester.tap(
       find.byKey(const Key('program_draft_exercise_duplicate_0_0')),
     );
-    final Finder moveDuplicateDown =
-        find.byKey(const Key('program_draft_exercise_down_0_1'));
-    await _pumpUntilFound(tester, moveDuplicateDown);
-    await tester.ensureVisible(moveDuplicateDown);
-    await tester.tap(moveDuplicateDown);
+    final Finder thirdExerciseHandle =
+        find.byKey(const Key('program_draft_exercise_reorder_0_2'));
+    final Finder firstExerciseHandle =
+        find.byKey(const Key('program_draft_exercise_reorder_0_0'));
+    await _pumpUntilFound(tester, thirdExerciseHandle);
+    tester.view.physicalSize = const Size(1080, 7200);
+    await tester.pump();
+    final Offset dragDelta =
+        tester.getCenter(firstExerciseHandle) - tester.getCenter(thirdExerciseHandle);
+    await tester.drag(
+      thirdExerciseHandle,
+      dragDelta,
+    );
+    await tester.pumpAndSettle();
+    expect(
+      tester.getTopLeft(find.text('Barbell Row')).dy,
+      lessThan(tester.getTopLeft(find.text('Bench Press').first).dy),
+    );
+    await _expectDraftUnsaved(tester);
     await tester.tap(find.byKey(const Key('program_draft_save')));
     await _pumpUntilFound(tester, find.text('Draft saved.'));
 
@@ -2430,8 +2453,17 @@ void main() {
             as List<dynamic>;
     expect(
       exercises.map((dynamic exercise) => (exercise as Map)['exercise_id']),
-      <String>['bench_press', 'barbell_row', 'bench_press'],
+      <String>['barbell_row', 'bench_press', 'bench_press'],
     );
+    final Map<String, dynamic> savedDay =
+        (fake.programDraft!['days'] as List<dynamic>).single
+            as Map<String, dynamic>;
+    expect(
+      (savedDay['warmup_exercises'] as List<dynamic>)
+          .map((dynamic movement) => (movement as Map)['exercise_name']),
+      <String>['Cat-Cow'],
+    );
+    expect(savedDay['cardio'], 'Cycle for 10 minutes');
   });
 
   testWidgets('coach swaps an exercise in place and keeps edited prescription',
@@ -2934,6 +2966,10 @@ void main() {
           find.text(
             isArabic ? 'ملاحظة اللياقة (اختيارية)' : 'Cardio note (optional)',
           ),
+          findsOneWidget,
+        );
+        expect(
+          find.byTooltip(isArabic ? 'إعادة ترتيب التمرين' : 'Reorder exercise'),
           findsOneWidget,
         );
         expect(

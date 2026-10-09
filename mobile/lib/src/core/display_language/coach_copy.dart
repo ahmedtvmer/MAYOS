@@ -531,8 +531,7 @@ class CoachCopy {
   String get insertExerciseBelow => isArabic ? 'إضافة تمرين بعد' : 'Insert exercise below';
   String get deleteExercise => isArabic ? 'حذف التمرين' : 'Delete';
   String get exerciseActions => isArabic ? 'إجراءات التمرين' : 'Exercise actions';
-  String get moveExerciseUp => isArabic ? 'نقل التمرين لأعلى' : 'Move exercise up';
-  String get moveExerciseDown => isArabic ? 'نقل التمرين لأسفل' : 'Move exercise down';
+  String get reorderExercise => isArabic ? 'إعادة ترتيب التمرين' : 'Reorder exercise';
   String get addWarmupMovement => isArabic ? 'إضافة حركة إحماء' : 'Add warm-up movement';
   String get removeWarmupMovement => isArabic ? 'حذف حركة الإحماء' : 'Remove warm-up movement';
   String get insertWarmupAbove => isArabic ? 'إضافة حركة إحماء قبل' : 'Insert above';

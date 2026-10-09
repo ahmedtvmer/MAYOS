@@ -12,12 +12,10 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
   const _ProgramDraftExerciseCard({
     required this.dayIndex,
     required this.exerciseIndex,
-    required this.exerciseCount,
     required this.exercise,
     required this.busy,
     required this.errorFor,
     required this.onChanged,
-    required this.onMove,
     required this.onSwap,
     required this.onInsertAbove,
     required this.onInsertBelow,
@@ -27,12 +25,10 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
 
   final int dayIndex;
   final int exerciseIndex;
-  final int exerciseCount;
   final _DraftExerciseEditor exercise;
   final bool busy;
   final String? Function(String field) errorFor;
   final ValueChanged<String> onChanged;
-  final ValueChanged<int> onMove;
   final VoidCallback onSwap;
   final VoidCallback onInsertAbove;
   final VoidCallback onInsertBelow;
@@ -59,21 +55,19 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
                   child: Text(exercise.exerciseName,
                       style: MayosTypography.of(context).sectionHeading),
                 ),
-                IconButton(
-                  key: Key('program_draft_exercise_up_${dayIndex}_$exerciseIndex'),
-                  tooltip: copy.moveExerciseUp,
-                  onPressed: busy || exerciseIndex == 0
-                      ? null
-                      : () => onMove(-1),
-                  icon: const Icon(Icons.arrow_upward),
-                ),
-                IconButton(
-                  key: Key('program_draft_exercise_down_${dayIndex}_$exerciseIndex'),
-                  tooltip: copy.moveExerciseDown,
-                  onPressed: busy || exerciseIndex == exerciseCount - 1
-                      ? null
-                      : () => onMove(1),
-                  icon: const Icon(Icons.arrow_downward),
+                ReorderableDragStartListener(
+                  index: exerciseIndex,
+                  enabled: !busy,
+                  child: Tooltip(
+                    key: Key(
+                      'program_draft_exercise_reorder_${dayIndex}_$exerciseIndex',
+                    ),
+                    message: copy.reorderExercise,
+                    child: const Padding(
+                      padding: EdgeInsets.all(MayosSpacing.sm),
+                      child: Icon(Icons.drag_handle),
+                    ),
+                  ),
                 ),
                 PopupMenuButton<_ProgramDraftExerciseAction>(
                   key: Key(

@@ -439,9 +439,10 @@ class _CoachProgramDraftScreenState
     }
   }
 
-  void _moveExercise(int dayIndex, int index, int delta) {
+  void _reorderExercises(int dayIndex, int oldIndex, int newIndex) {
     final List<_DraftExerciseEditor> exercises = _days[dayIndex].exercises;
-    if (!_moveListItem(exercises, index, delta)) return;
+    if (oldIndex == newIndex) return;
+    exercises.insert(newIndex, exercises.removeAt(oldIndex));
     setState(() {
       _hasUnsavedChanges = true;
       _clearServerErrors();
@@ -798,6 +799,8 @@ class _CoachProgramDraftScreenState
           _warmupMovementCard(index, movementIndex),
       buildExerciseCard: (int exerciseIndex) =>
           _exerciseCard(index, exerciseIndex),
+      onReorderExercises: (int oldIndex, int newIndex) =>
+          _reorderExercises(index, oldIndex, newIndex),
       onChanged: (String field) => setState(() {
         _hasUnsavedChanges = true;
         _serverErrors.remove((
@@ -851,7 +854,6 @@ class _CoachProgramDraftScreenState
     return _ProgramDraftExerciseCard(
       dayIndex: dayIndex,
       exerciseIndex: exerciseIndex,
-      exerciseCount: _days[dayIndex].exercises.length,
       exercise: exercise,
       busy: _busy,
       errorFor: (String field) => _serverError(
@@ -868,7 +870,6 @@ class _CoachProgramDraftScreenState
           field: field,
         ));
       }),
-      onMove: (int delta) => _moveExercise(dayIndex, exerciseIndex, delta),
       onSwap: () => _swapExercise(dayIndex, exerciseIndex),
       onInsertAbove: () => _insertExercise(
         dayIndex,

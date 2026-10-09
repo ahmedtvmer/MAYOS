@@ -1466,6 +1466,68 @@ def test_program_draft_preserves_fractional_rir_as_target_rpe(api):
     assert published.json()["days"][0]["exercises"][0]["target_rpe"] == 8.5
 
 
+def test_program_draft_keeps_exercise_order_through_save_and_publish(api):
+    client, _, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+    path = _program_draft_path(assignment_id)
+    draft = _one_day_draft()
+    draft_day = draft["days"][0]
+    draft_day["warmup_exercises"] = [
+        {
+            "exercise_id": "row",
+            "exercise_name": "Light cable row",
+            "equipment": "Cable",
+            "sets": 2,
+            "reps": 12,
+            "rest_seconds": 30,
+            "notes": "Keep this easy.",
+        }
+    ]
+    draft_day["cardio"] = "Cycle for 10 minutes."
+    draft_day["exercises"].extend(
+        [
+            {
+                "exercise_id": "bp",
+                "target_sets": 4,
+                "target_reps_min": 6,
+                "target_reps_max": 8,
+                "target_rir": 1.5,
+            },
+            {
+                "exercise_id": "row",
+                "target_sets": 2,
+                "target_reps_min": 10,
+                "target_reps_max": 12,
+                "target_rir": 2,
+            },
+        ]
+    )
+    by_id = {
+        exercise["exercise_id"]: exercise
+        for exercise in draft_day["exercises"]
+    }
+    desired_order = ["row", "bp", "sq"]
+    draft_day["exercises"] = [by_id[exercise_id] for exercise_id in desired_order]
+
+    created = client.post(path, headers=coach_headers, json=draft)
+    assert created.status_code == 200, created.text
+    saved = client.put(path, headers=coach_headers, json=created.json()["draft"])
+    assert saved.status_code == 200, saved.text
+    reopened = client.get(path, headers=coach_headers)
+    assert reopened.status_code == 200, reopened.text
+    saved_day = reopened.json()["draft"]["days"][0]
+    assert [exercise["exercise_id"] for exercise in saved_day["exercises"]] == desired_order
+    assert [exercise["target_sets"] for exercise in saved_day["exercises"]] == [2, 4, 3]
+
+    published = client.post(f"{path}/publish", headers=coach_headers)
+    assert published.status_code == 200, published.text
+    published_day = published.json()["days"][0]
+    assert [exercise["exercise_id"] for exercise in published_day["exercises"]] == desired_order
+    assert [exercise["target_sets"] for exercise in published_day["exercises"]] == [2, 4, 3]
+    assert published_day["warmup_exercises"][0]["notes"] == "Keep this easy."
+    assert published_day["cardio"] == "Cycle for 10 minutes."
+
+
 def test_multi_day_program_draft_round_trips_every_field_through_publish(api):
     client, _, _ = api
     coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)

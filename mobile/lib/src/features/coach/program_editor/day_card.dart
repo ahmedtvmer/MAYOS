@@ -11,6 +11,7 @@ class _ProgramDraftDayCard extends StatelessWidget {
     required this.dayError,
     required this.buildWarmupCard,
     required this.buildExerciseCard,
+    required this.onReorderExercises,
     required this.onChanged,
     required this.onMove,
     required this.onDuplicate,
@@ -28,6 +29,7 @@ class _ProgramDraftDayCard extends StatelessWidget {
   final String? dayError;
   final Widget Function(int movementIndex) buildWarmupCard;
   final Widget Function(int exerciseIndex) buildExerciseCard;
+  final void Function(int oldIndex, int newIndex) onReorderExercises;
   final ValueChanged<String> onChanged;
   final ValueChanged<int> onMove;
   final VoidCallback onDuplicate;
@@ -116,10 +118,18 @@ class _ProgramDraftDayCard extends StatelessWidget {
               style: MayosTypography.of(context).sectionHeading,
             ),
             const SizedBox(height: MayosSpacing.xs),
-            for (int exerciseIndex = 0;
-                exerciseIndex < day.exercises.length;
-                exerciseIndex++)
-              buildExerciseCard(exerciseIndex),
+            ReorderableListView.builder(
+              buildDefaultDragHandles: false,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: day.exercises.length,
+              onReorderItem: onReorderExercises,
+              itemBuilder: (BuildContext context, int exerciseIndex) =>
+                  KeyedSubtree(
+                key: ObjectKey(day.exercises[exerciseIndex]),
+                child: buildExerciseCard(exerciseIndex),
+              ),
+            ),
             MayosButton(
               key: Key('program_draft_add_exercise_$index'),
               label: copy.addExercise,
