@@ -235,7 +235,8 @@ def test_phase2_streaming_generator_qa(fresh_store, monkeypatch):
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     generator = stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store)
     first = next(generator)
-    assert first == "Keep your elbows tucked."
+    # Text is released word by word (#395), not held to the sentence boundary.
+    assert first == "Keep"
     yielded_tokens = [first, *generator]
     assert "".join(yielded_tokens) == "Keep your elbows tucked. Use controlled reps."
     assert len(model.calls) == 1
