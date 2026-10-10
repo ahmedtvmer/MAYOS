@@ -18,6 +18,16 @@ subprojects {
 subprojects {
     project.evaluationDependsOn(":app")
 }
+// file_picker 11 skips the Kotlin plugin on AGP 9+ and relies on built-in
+// Kotlin, which this project keeps off (android.builtInKotlin=false); without
+// this its Kotlin sources never compile and FilePickerPlugin is missing.
+subprojects {
+    if (project.name == "file_picker") {
+        pluginManager.withPlugin("com.android.library") {
+            pluginManager.apply("org.jetbrains.kotlin.android")
+        }
+    }
+}
 
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
