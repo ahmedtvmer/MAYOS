@@ -105,6 +105,25 @@ def test_whole_session_summary(graph, query):
     assert graph.llm.calls == []
 
 
+def test_unresolved_history_graph_uses_generation_with_comparison(graph, comparison):
+    graph.llm = ScriptedChatModel(["MODEL HISTORY ANSWER"])
+    request = {**state("give me my last session summary"), "telemetry_context": None}
+
+    result = graph.assistant_graph.invoke(
+        request, config={"configurable": {"ledger": graph.db, "store": graph.db}}
+    )
+
+    assert result["intent"] == "exercise_history_fallback"
+    assert result["response_content"] == "MODEL HISTORY ANSWER"
+    assert len(graph.llm.calls) == 1
+    prompt = "\n".join(
+        str(getattr(message, "content", message))
+        for message in graph.llm.calls[0]["messages"]
+    )
+    assert "2026-09-17" in prompt
+    assert "Barbell Bench Press" in prompt
+
+
 def test_missing_session_is_not_an_exercise_clarification(graph):
     graph.db.get_latest_session_summary.return_value = None
     response = graph.exercise_history_node(state("my last session"), {"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]
@@ -114,6 +133,9 @@ def test_missing_session_is_not_an_exercise_clarification(graph):
 
 @pytest.mark.parametrize("query", ["what about leg curl", "what about the leg curl", "how about squats"])
 def test_history_followup_routes_to_exercise_history(graph, comparison, query):
+    graph.db.catalog_conn.cursor.return_value.fetchall.return_value = [
+        ("leg-curl", "Lying Leg Curl"), ("squat", "Squat")
+    ]
     request = state(query, [HumanMessage(content="how was my perfomance last session?"), AIMessage(content="Your last logged session: ...")])
     routed = graph.router_node(request)
     assert routed["intent"] == "exercise_history"
@@ -397,7 +419,13 @@ def test_exercise_latest_scope_uses_current_ids_first(graph, comparison, target)
 def test_latest_scope_never_substitutes_old_or_wrong_variant(graph, comparison, target):
     graph.db.catalog_conn.cursor.return_value.fetchall.return_value = [("old", "Incline Barbell Bench Press"), ("squat", "Squat")]
     graph.db.get_last_performance.return_value = [{"set_index": 1, "weight_kg": 900, "reps": 10, "rpe": 8}]
-    result = graph.exercise_history_node(state(f"how did I do on {target} last session?"), {"configurable": {"ledger": graph.db, "store": graph.db}})["response_content"]
+    outcome = graph.exercise_history_node(state(f"how did I do on {target} last session?"), {"configurable": {"ledger": graph.db, "store": graph.db}})
+    if target == "bench pres":
+        assert outcome["intent"] == "exercise_history_fallback"
+        assert "response_content" not in outcome
+        graph.db.get_last_performance.assert_not_called()
+        return
+    result = outcome["response_content"]
     assert "No completed working sets" in result
     assert "latest session (2026-09-17)" in result
     assert "900" not in result

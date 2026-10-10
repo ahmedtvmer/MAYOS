@@ -11,6 +11,7 @@ Proves the stated guarantees through the real HTTP surface:
 4. ``GET /chat/history`` labels the session-commit pointer as a ``debrief``.
 """
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -39,6 +40,15 @@ def _last_rendered(llm: ScriptedChatModel) -> str:
     return "\n".join(
         str(getattr(message, "content", message)) for message in llm.calls[-1]["messages"]
     )
+
+
+def _done_content(body: str) -> str:
+    payloads = [
+        json.loads(line.removeprefix("data: "))
+        for line in body.splitlines()
+        if line.startswith("data: ")
+    ]
+    return next(payload["response_content"] for payload in payloads if payload.get("done"))
 
 
 @pytest.fixture
@@ -200,6 +210,84 @@ def test_player_model_input_excludes_identifying_fields(api, monkeypatch):
     assert username not in rendered
     assert email not in rendered
     assert "secretpineapple" not in rendered
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "give me my last session summary",
+        "summary of my last session",
+        "how was my last session?",
+        "what did I do last session",
+        "my last workout summary please",
+        "how did I do on moonwalking curls last session?",
+    ],
+)
+def test_unresolved_history_reads_fall_back_to_model_with_comparison(api, monkeypatch, content):
+    client, db = api
+    registered = _register(client, "history-fallback")
+    headers = _authed(registered["access_token"])
+    _seed_session(db, "history-fallback", "2026-09-24T10:00:00+00:00")
+
+    model = ScriptedChatModel(["MODEL HISTORY ANSWER"])
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    monkeypatch.setattr(assistant_graph, "_prompt_budget", lambda: 100_000)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": content}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    assert _done_content(body) == "MODEL HISTORY ANSWER"
+    assert "Which exercise do you mean?" not in body
+    assert "Which exercise and variant should I look up" not in body
+    assert "I couldn't find" not in body
+    assert len(model.calls) == 1
+    prompt = _last_rendered(model)
+    assert "baseline=" in prompt
+    assert "Squat" in prompt
+
+
+def test_all_exercises_followup_reaches_model_with_session_comparison(api, monkeypatch):
+    client, db = api
+    registered = _register(client, "history-followup")
+    headers = _authed(registered["access_token"])
+    _seed_session(db, "history-followup", "2026-09-24T10:00:00+00:00")
+
+    model = ScriptedChatModel(
+        ["Here is your session summary.", "Here are all the exercises from it."]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    monkeypatch.setattr(assistant_graph, "_prompt_budget", lambda: 100_000)
+    catalog_targets = []
+    real_catalog_matches = assistant_graph._history_catalog_matches
+
+    def record_catalog_target(store, target):
+        catalog_targets.append(target)
+        return real_catalog_matches(store, target)
+
+    monkeypatch.setattr(assistant_graph, "_history_catalog_matches", record_catalog_target)
+
+    for content, answer in (
+        ("how did I perform last session", "Here is your session summary."),
+        ("all of them", "Here are all the exercises from it."),
+    ):
+        with client.stream(
+            "POST", "/chat/messages", headers=headers, json={"content": content}
+        ) as response:
+            body = response.read().decode("utf-8")
+            assert response.status_code == 200
+        assert _done_content(body) == answer
+
+    assert len(model.calls) == 2
+    second_prompt = "\n".join(
+        str(getattr(message, "content", message))
+        for message in model.calls[1]["messages"]
+    )
+    assert "baseline=" in second_prompt
+    assert "Squat" in second_prompt
+    assert "all of them" not in catalog_targets
 
 
 @pytest.mark.parametrize("content", ["x" * 400, "ا" * 400])

@@ -93,6 +93,7 @@ IntentType = Literal[
     "banned_movement",
     "telemetry_intercept",
     "exercise_history",
+    "exercise_history_fallback",
     "exercise_substitution",
     "program_mutation",
     "deload_choice",
@@ -400,9 +401,16 @@ def hydrate_context_node(state: AssistantState, config: dict[str, Any] | None = 
     name = _valid_preferred_name(memory.get("preferred_name")) if isinstance(memory, dict) else None
     telemetry = state.get("telemetry_context") or ledger.get_compact_telemetry()
     recent = " ".join(_get_message_text(m) for m in state.get("messages", [])[-TAIL_WINDOW_SIZE:])
-    comparison = _session_comparison_context(ledger) if re.search(r"\b(?:session|workout|performance|compare|comparison|progress|sets?|reps?|rpe|load|heavier|improve)\b", recent, re.IGNORECASE) else None
+    needs_comparison = state.get("intent") == "exercise_history_fallback" or re.search(
+        r"\b(?:session|workout|performance|compare|comparison|progress|sets?|reps?|rpe|load|heavier|improve)\b",
+        recent,
+        re.IGNORECASE,
+    )
+    comparison = _session_comparison_context(ledger) if needs_comparison else None
     if comparison is not None:
-        telemetry = _comparison_text(comparison, compact=True, store=store) + "\n" + str(telemetry or "")
+        comparison_text = _comparison_text(comparison, compact=True, store=store)
+        if not str(telemetry or "").startswith(comparison_text):
+            telemetry = comparison_text + "\n" + str(telemetry or "")
     messages = state.get("messages", [])
     latest_user = next(
         (message for message in reversed(messages) if isinstance(message, HumanMessage)),
@@ -977,6 +985,14 @@ def _history_catalog_matches(store: Any, target: str) -> list[dict[str, Any]]:
     return _history_exercise_matches(target, entries)
 
 
+def _history_model_fallback(state: AssistantState, config: dict[str, Any] | None) -> dict[str, Any]:
+    fallback_state = {**state, "intent": "exercise_history_fallback"}
+    return {
+        **hydrate_context_node(fallback_state, config),
+        "intent": "exercise_history_fallback",
+    }
+
+
 def exercise_history_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     ledger, store = _graph_context(config)
     messages = state.get("messages", [])
@@ -1003,14 +1019,14 @@ def exercise_history_node(state: AssistantState, config: dict[str, Any] | None =
         if not match and occurrence:
             target_name = lookup_query
         elif not match:
-            return _response("Which exercise do you mean? Please provide its full name and variant for a ledger lookup.")
+            return _history_model_fallback(state, config)
         else:
             target_name = match.group(1).strip(" ?.")
     target_name = re.sub(r"\b(?:my|session|workout|sets?)\b", "", target_name, flags=re.IGNORECASE).strip(" ?.")
     target_name = expand_fitness_abbreviations(target_name)
     target_name = re.sub(r"\b(squat|deadlift|curl|row|press|lunge)(?:s|es)\b", r"\1", target_name, flags=re.IGNORECASE)
     if not target_name or target_name.lower() in {"load", "weight", "it", "that", "lifts", "training"}:
-        return _response("Which exercise and variant should I look up in your ledger?")
+        return _history_model_fallback(state, config)
 
     comparison = _session_comparison_context(ledger)
     if not occurrence and comparison is not None:
@@ -1035,6 +1051,8 @@ def exercise_history_node(state: AssistantState, config: dict[str, Any] | None =
             )
             return _response_with_model_context(player_text, model_text)
         catalog = _history_catalog_matches(store, target_name)
+        if not catalog:
+            return _history_model_fallback(state, config)
         if len(catalog) > 1:
             player_text = "Which exercise variant do you mean? " + ", ".join(
                 f"{ex['name']} [{ex['exercise_id']}]" for ex in catalog
@@ -1066,8 +1084,7 @@ def exercise_history_node(state: AssistantState, config: dict[str, Any] | None =
         return _response_with_model_context(player_text, model_text)
     exercise = {"id": candidates[0]["exercise_id"], "name": candidates[0]["name"]} if candidates else None
     if not exercise:
-        msg = f"I couldn't find '{target_name}' in your movement catalog."
-        return {"response_content": msg, "messages": [AIMessage(content=msg)]}
+        return _history_model_fallback(state, config)
 
     sets = ledger.get_last_performance(str(exercise["id"]))
 
@@ -2199,10 +2216,16 @@ builder.add_conditional_edges(
 
 for node in [
     "clinical_intercept", "banned_movement", "telemetry_intercept",
-    "exercise_history", "exercise_substitution", "program_mutation",
+    "exercise_substitution", "program_mutation",
     "catalog_search", "composite_intent", "generation",
 ]:
     builder.add_edge(node, END)
+
+builder.add_conditional_edges(
+    "exercise_history",
+    lambda state: "generation" if state.get("intent") == "exercise_history_fallback" else END,
+    {"generation": "generation", END: END},
+)
 
 assistant_graph = builder.compile()
 
@@ -2278,16 +2301,24 @@ def stream_assistant_turn(
             "telemetry_intercept": telemetry_intercept_node,
             "clinical_intercept": clinical_intercept_node,
             "banned_movement": banned_movement_node,
-            "exercise_history": exercise_history_node,
             "exercise_substitution": exercise_substitution_node,
             "program_mutation": program_mutation_node,
             "deload_choice": deload_choice_node,
             "catalog_search": catalog_search_node,
             "composite_intent": composite_intent_node,
         }
-        if intent in handlers:
+        if intent == "exercise_history":
+            result = exercise_history_node(state, config)
+            if result.get("intent") == "exercise_history_fallback":
+                state.update(result)
+                intent = "exercise_history_fallback"
+                state["intent"] = intent
+                result = None
+        if result is not None:
+            telemetry = {}
+        elif intent in handlers:
             result = handlers[intent](state, config)
-            telemetry: dict[str, Any] = {}
+            telemetry = {}
         else:
             payload = build_prompt_payload(state)
             scrubber = CoachOutputScrubber()
