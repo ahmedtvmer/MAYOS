@@ -1,4 +1,5 @@
 import re
+import regex as partial_regex
 
 UNSAFE_MEDICAL_PATTERNS = [
     re.compile(
@@ -29,6 +30,20 @@ BANNED_TRAIL_PATTERNS = [
 ]
 
 
+_PARTIAL_UNSAFE_PATTERNS = tuple(
+    partial_regex.compile(pattern.pattern, pattern.flags) for pattern in UNSAFE_MEDICAL_PATTERNS
+)
+_PARTIAL_LEAD_PATTERNS = tuple(
+    partial_regex.compile(pattern.pattern, pattern.flags) for pattern in BANNED_LEAD_PATTERNS
+)
+_PARTIAL_TRAIL_PATTERNS = tuple(
+    partial_regex.compile(pattern.pattern, pattern.flags) for pattern in BANNED_TRAIL_PATTERNS
+)
+_TRAIL_CONTINUATION_PATTERNS = tuple(
+    re.compile(pattern.pattern.removesuffix("$"), pattern.flags) for pattern in BANNED_TRAIL_PATTERNS
+)
+
+
 EMPTY_RESPONSE_FALLBACK = "I couldn't produce a clear answer. Could you rephrase your question?"
 PIPELINE_ERROR_RESPONSE = "I couldn't complete that request. Please try again."
 
@@ -49,44 +64,165 @@ class CoachOutputScrubber:
         self.stopped = False
         self.started = False
         self.spacing = ""
+        # A guarded prefix historically kept one scrub segment open to its sentence boundary.
+        self.guarded_segment = False
+        self.guarded_segment_cleaned = False
 
     def _clean(self, text: str) -> str:
-        cleaned = _scrub_segment(text, capitalize=not self.started)
+        leading_patterns = () if self.guarded_segment_cleaned else BANNED_LEAD_PATTERNS
+        cleaned = _scrub_segment(text, capitalize=not self.started, leading_patterns=leading_patterns)
         if not cleaned:
             return ""
         prefix = re.sub(r"\n{3,}", "\n\n", self.spacing) if self.started else ""
         self.spacing = text[len(text.rstrip()):]
         self.started = True
+        if self.guarded_segment:
+            self.guarded_segment_cleaned = True
         return prefix + cleaned
+
+    def _possible_pattern_start(self, patterns):
+        for start in range(len(self.buffer)):
+            if self._matches_pattern_suffix(patterns, self.buffer[start:]):
+                return start
+        return None
+
+    @staticmethod
+    def _matches_pattern_suffix(patterns, suffix):
+        return any(
+            (match := pattern.fullmatch(suffix, partial=True)) is not None and match.end() == len(suffix)
+            for pattern in patterns
+        )
+
+    def _possible_opening_start(self):
+        text = self.buffer.lstrip()
+        offset = len(self.buffer) - len(text)
+        return offset if self._matches_pattern_suffix(_PARTIAL_LEAD_PATTERNS, text) else None
+
+    def _possible_trail_start(self):
+        for start in range(len(self.buffer)):
+            suffix = self.buffer[start:]
+            skipped = len(suffix) - len(suffix.lstrip())
+            suffix = suffix[skipped:]
+            if not suffix:
+                continue
+            start += skipped
+            if self._matches_pattern_suffix(_PARTIAL_TRAIL_PATTERNS, suffix):
+                return start
+            trimmed = suffix.rstrip()
+            if trimmed != suffix and self._complete_pattern_match(_PARTIAL_TRAIL_PATTERNS, trimmed):
+                return start
+        return None
+
+    @staticmethod
+    def _complete_pattern_match(patterns, text):
+        return any(
+            (match := pattern.fullmatch(text, partial=True)) is not None
+            and not match.partial
+            and match.end() == len(text)
+            for pattern in patterns
+        )
+
+    def _guard_start(self):
+        starts = [
+            self._possible_pattern_start(_PARTIAL_UNSAFE_PATTERNS),
+            self._possible_opening_start(),
+            self._possible_trail_start(),
+        ]
+        prefix = self.GUARDED_PREFIX.match(self.buffer)
+        if prefix is not None and not self.buffer[prefix.end():].strip():
+            starts.append(0)
+        starts = [start for start in starts if start is not None]
+        return min(starts) if starts else None
+
+    def _unfinished_trail_start(self):
+        starts = []
+        for pattern in _TRAIL_CONTINUATION_PATTERNS:
+            for match in pattern.finditer(self.buffer):
+                suffix = self.buffer[match.end():]
+                if suffix.strip() and not re.search(r"\S+\s+", suffix):
+                    starts.append(match.start())
+        return min(starts) if starts else None
+
+    def _word_ends(self, limit: int):
+        ends = []
+        cursor = 0
+        while cursor < limit:
+            word = re.match(r"\s*\S+\s+", self.buffer[cursor:limit])
+            if not word:
+                break
+            cursor += word.end()
+            ends.append(cursor)
+        return ends
+
+    def _expand_unsafe_matches(self, end: int, word_ends):
+        while end:
+            expanded = end
+            for pattern in UNSAFE_MEDICAL_PATTERNS:
+                for match in pattern.finditer(self.buffer):
+                    if match.start() < end < match.end():
+                        next_end = next((word_end for word_end in word_ends if word_end >= match.end()), None)
+                        if next_end is None:
+                            return 0
+                        expanded = max(expanded, next_end)
+            if expanded == end:
+                return end
+            end = expanded
+        return 0
+
+    def _release_end(self, limit=None):
+        guard_start = self._guard_start()
+        safe_limit = len(self.buffer) if guard_start is None else guard_start
+        trail_start = self._unfinished_trail_start()
+        if trail_start is not None:
+            safe_limit = min(safe_limit, trail_start)
+        if limit is not None:
+            safe_limit = min(safe_limit, limit)
+        word_ends = self._word_ends(safe_limit)
+        if not word_ends:
+            return 0
+        end = word_ends[-1]
+        lead_end = self._opening_match_end()
+        if lead_end is not None and lead_end < len(self.buffer):
+            safe_lead_end = next((word_end for word_end in word_ends if word_end >= lead_end), None)
+            if safe_lead_end is not None:
+                end = max(end, safe_lead_end)
+        return self._expand_unsafe_matches(end, word_ends)
+
+    def _opening_match_end(self):
+        leading_text = self.buffer.lstrip()
+        offset = len(self.buffer) - len(leading_text)
+        for pattern in BANNED_LEAD_PATTERNS:
+            match = pattern.match(leading_text)
+            if match is not None:
+                return match.end() + offset
+        return None
 
     def _drain(self, final: bool = False) -> str:
         output = []
         while self.buffer:
             boundary = re.search(r"[.!?](?=\s)", self.buffer)
+            forced_boundary = False
             if boundary:
                 end = boundary.end()
-            elif len(self.buffer) >= self.MAX_BUFFER:
-                end = self.MAX_BUFFER - 128
-                space = self.buffer.rfind(" ", 0, end)
-                if space > 0:
-                    end = space + 1
-                for pattern in UNSAFE_MEDICAL_PATTERNS:
-                    for match in pattern.finditer(self.buffer):
-                        if match.start() < end < match.end():
-                            end = match.start() or match.end()
             elif final:
                 end = len(self.buffer)
-            elif not self.GUARDED_PREFIX.search(self.buffer):
-                word = re.match(r"\s*\S+\s+", self.buffer)
-                if not word:
-                    break
-                end = word.end()
             else:
-                break
+                if self.GUARDED_PREFIX.search(self.buffer):
+                    self.guarded_segment = True
+                limit = self.MAX_BUFFER - 128 if len(self.buffer) >= self.MAX_BUFFER else None
+                end = self._release_end(limit)
+                if not end and limit is not None:
+                    end = self._release_end()
+                if not end:
+                    break
+                forced_boundary = limit is not None
             segment, self.buffer = self.buffer[:end], self.buffer[end:]
             if self.started:
                 self.spacing += segment[:len(segment) - len(segment.lstrip())]
             output.append(self._clean(segment))
+            if boundary or forced_boundary:
+                self.guarded_segment = False
+                self.guarded_segment_cleaned = False
         return "".join(output)
 
     def feed(self, text: str) -> str:
@@ -128,18 +264,20 @@ def finalize_coach_output(text: str) -> str:
     return scrub_coach_output(text) or EMPTY_RESPONSE_FALLBACK
 
 
-def _scrub_segment(text: str, capitalize: bool = True) -> str:
+def _scrub_segment(text: str, capitalize: bool = True, leading_patterns=None) -> str:
     """Sanitizes generation by removing medical diagnostics and conversational padding."""
     if not text:
         return ""
 
+    if leading_patterns is None:
+        leading_patterns = BANNED_LEAD_PATTERNS
     cleaned = text.strip()
     for pattern in UNSAFE_MEDICAL_PATTERNS:
         cleaned = pattern.sub("[Consult a sports physician regarding joint pain]", cleaned)
 
     while True:
         prev = cleaned
-        for pattern in BANNED_LEAD_PATTERNS:
+        for pattern in leading_patterns:
             cleaned = pattern.sub("", cleaned).strip()
         for pattern in BANNED_TRAIL_PATTERNS:
             cleaned = pattern.sub("", cleaned).strip()

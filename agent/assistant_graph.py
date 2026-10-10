@@ -2305,10 +2305,11 @@ def stream_assistant_turn(
                     contract_warned = True
                 piece = chunk.content if hasattr(chunk, "content") else str(chunk)
                 raw_pieces.append(str(piece))
-                cleaned = scrubber.feed(piece)
-                if cleaned:
-                    visible.append(cleaned)
-                    yield cleaned
+                for char in piece:
+                    cleaned = scrubber.feed(char)
+                    if cleaned:
+                        visible.append(cleaned)
+                        yield cleaned
             cleaned = scrubber.finish()
             if cleaned:
                 visible.append(cleaned)

@@ -1,3 +1,5 @@
+import random
+import re
 from unittest.mock import MagicMock
 
 import pytest
@@ -5,7 +7,16 @@ from langchain_core.messages import AIMessage
 
 from tests.fakes.chat_model import StreamErrorTurn
 from tests.test_context_management import graph as graph_fixture, state
-from utils.text_scrubber import CoachOutputScrubber, EMPTY_RESPONSE_FALLBACK, PIPELINE_ERROR_RESPONSE, finalize_coach_output, scrub_coach_output
+from utils.text_scrubber import (
+    BANNED_LEAD_PATTERNS,
+    BANNED_TRAIL_PATTERNS,
+    UNSAFE_MEDICAL_PATTERNS,
+    CoachOutputScrubber,
+    EMPTY_RESPONSE_FALLBACK,
+    PIPELINE_ERROR_RESPONSE,
+    finalize_coach_output,
+    scrub_coach_output,
+)
 
 
 @pytest.fixture
@@ -98,6 +109,136 @@ def test_words_visible_before_sentence_or_generation_finishes(graph):
     output = first + second + "".join(stream)
     assert output == "Use controlled reps."
     assert output == request["response_content"] == request["messages"][-1].content
+
+
+def test_stream_subdivides_a_sentence_sized_model_chunk(graph):
+    raw = "Use controlled reps while keeping each repetition smooth and balanced."
+    graph.llm.reset([raw])
+    graph.llm.chunk_size = len(raw)
+    request = state("How many squat reps?")
+    stream = graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db)
+
+    first = next(stream)
+    assert graph.llm.streamed_chunk_count == 1
+    second = next(stream)
+    assert (first, second) == ("Use", " controlled")
+    assert graph.llm.streamed_chunk_count == 1
+    tail = "".join(stream)
+    assert first + second + tail == raw
+
+
+def test_long_sentence_releases_complete_words_before_its_end():
+    words = "Build strength with controlled repetitions and steady breathing while keeping every movement smooth".split()
+    scrubber = CoachOutputScrubber()
+    emitted = []
+    guarded_samples = [
+        "You have tendonitis",
+        "Train through the sharp pain",
+        "Take ibuprofen",
+        "Sure thing!",
+        "Here's the answer.",
+        "As an AI assistant.",
+        "Welcome back!",
+        "Let me know if you have any other questions",
+    ]
+    longest_guard_words = max(len(sample.split()) for sample in guarded_samples)
+
+    for word in words[:-1]:
+        piece = scrubber.feed(word + " ")
+        emitted.append(piece)
+        assert piece.strip() == word
+        assert len(scrubber.buffer.split()) <= longest_guard_words
+
+    assert scrubber.feed(words[-1]) == ""
+    assert "".join(emitted).strip().split() == words[:-1]
+    assert "smooth" not in "".join(emitted)
+    assert scrubber.finish() == " smooth"
+
+
+@pytest.mark.parametrize(
+    ("pattern", "phrase", "kind"),
+    [
+        (UNSAFE_MEDICAL_PATTERNS[0], "You have tendonitis", "unsafe"),
+        (UNSAFE_MEDICAL_PATTERNS[1], "Train through the sharp pain", "unsafe"),
+        (UNSAFE_MEDICAL_PATTERNS[2], "Take ibuprofen", "unsafe"),
+        (BANNED_LEAD_PATTERNS[0], "Sure thing!", "lead"),
+        (BANNED_LEAD_PATTERNS[1], "Here's the answer.", "lead"),
+        (BANNED_LEAD_PATTERNS[2], "As an AI assistant.", "lead"),
+        (BANNED_LEAD_PATTERNS[3], "Welcome back!", "lead"),
+        (BANNED_TRAIL_PATTERNS[0], "Hope this helps!", "trail"),
+        (BANNED_TRAIL_PATTERNS[1], "Keep crushing it!", "trail"),
+        (BANNED_TRAIL_PATTERNS[2], "Let me know if you have any other questions.", "trail"),
+        (BANNED_TRAIL_PATTERNS[3], "Remember, consistency is key.", "trail"),
+    ],
+)
+def test_guarded_phrases_never_leak_across_any_chunk_split(pattern, phrase, kind):
+    assert pattern.match(phrase) if kind == "lead" else pattern.search(phrase)
+    before = "" if kind == "lead" else "Do controlled reps. "
+    after = " Use careful form." if kind == "lead" else "." if kind == "unsafe" else ""
+    expected = (
+        "Use careful form." if kind == "lead"
+        else "Do controlled reps. [Consult a sports physician regarding joint pain]." if kind == "unsafe"
+        else "Do controlled reps."
+    )
+    raw = before + phrase + after
+    phrase_words = [word.strip("!.,:") for word in phrase.split()]
+
+    for split in range(1, len(raw)):
+        scrubber = CoachOutputScrubber()
+        visible = scrubber.feed(raw[:split])
+        visible += scrubber.feed(raw[split:])
+        visible += scrubber.finish()
+        assert visible == expected
+        assert phrase.casefold() not in visible.casefold()
+
+    scrubber = CoachOutputScrubber()
+    early_visible = scrubber.feed(before + phrase)
+    for word in phrase_words:
+        assert not re.search(rf"\b{re.escape(word)}\b", early_visible, re.IGNORECASE)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Sure thing! Here is the breakdown: Romanian deadlifts overload the lengthened hamstrings. Hope this helps!", "Romanian deadlifts overload the lengthened hamstrings."),
+        ("Great question! In terms of biomechanics, the hack squat stabilizes the spine. Keep crushing it!", "The hack squat stabilizes the spine."),
+        ("Certainly. As an AI, I suggest high-bar squats over low-bar for quad bias. Let me know if you have any other questions.", "I suggest high-bar squats over low-bar for quad bias."),
+        ("Direct technical answer.", "Direct technical answer."),
+        ("", ""),
+        ("Sure thing! Hope this helps!", ""),
+        ("Certainly.", ""),
+        ("Sure thing! Use controlled reps. Hope this helps!", "Use controlled reps."),
+        ("<think>private reasoning</think>Sure! Use controlled reps. You have tendonitis", "Use controlled reps. [Consult a sports physician regarding joint pain]"),
+        ("Use controlled reps.", "Use controlled reps."),
+        ("Cut off", "Cut off"),
+        ("<think>private</think>Use controlled reps.<|im_end|>hidden", "Use controlled reps."),
+        ("Use controlled reps. You have tendonitis", "Use controlled reps. [Consult a sports physician regarding joint pain]"),
+        ("Please do not train through the sharp pain.", "Please do not [Consult a sports physician regarding joint pain]."),
+        ("Use controlled reps and try ibuprofen.", "Use controlled reps and [Consult a sports physician regarding joint pain]."),
+        ("Use controlled reps\n\nRest between sets.", "Use controlled reps\n\nRest between sets."),
+    ],
+)
+def test_streamed_chunks_match_existing_scrubbed_text(raw, expected):
+    chunkings = [[1] * len(raw), [max(1, len(raw))]]
+    rng = random.Random(len(raw))
+    for _ in range(20):
+        chunk_sizes = []
+        remaining = len(raw)
+        while remaining:
+            size = rng.randint(1, min(17, remaining))
+            chunk_sizes.append(size)
+            remaining -= size
+        chunkings.append(chunk_sizes)
+
+    for chunk_sizes in chunkings:
+        scrubber = CoachOutputScrubber()
+        visible = []
+        cursor = 0
+        for size in chunk_sizes:
+            visible.append(scrubber.feed(raw[cursor:cursor + size]))
+            cursor += size
+        visible.append(scrubber.finish())
+        assert "".join(visible) == expected
 
 
 @pytest.mark.parametrize("raw,expected", [
