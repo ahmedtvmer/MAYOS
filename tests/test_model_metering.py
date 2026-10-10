@@ -653,25 +653,32 @@ def test_exception_mid_turn_keeps_earlier_call_rows_and_one_completion(api, reco
 
 
 def test_coach_ai_analysis_emits_metered_turn_after_http_answer(api, monkeypatch, recording_analytics):
-    from utils.model_metering import record_usage
-
     client, db = api
     coach_headers, _player_headers, assignment_id = _assigned_player(client, db)
     coach_account_id = _account_id(db, "coach")
     monkeypatch.setattr("service.coach_ai.coach_ai_enabled", lambda: True)
 
-    def invoke(_messages):
-        record_usage("deepseek-ai/DeepSeek-V4-Flash", 29, 9, False)
-        return "Keep the same training load."
-
-    monkeypatch.setattr("service.coach_ai._invoke_coach_model", invoke)
+    model_id = "deepseek-ai/DeepSeek-V4-Flash"
+    model = ScriptedChatModel(
+        ["Keep the same training load."],
+        model_name=model_id,
+        usage_metadata={"input_tokens": 29, "output_tokens": 9, "total_tokens": 38},
+        callbacks=[MeteringCallback(model_id)],
+    )
+    monkeypatch.setattr("utils.model_downloader.get_coach_llm", lambda *args, **kwargs: model)
     response = client.post(
         f"/coach/assignments/{assignment_id}/assistant",
         headers=coach_headers,
         json={"question": "How has training changed?"},
     )
     assert response.status_code == 200, response.text
-    assert response.json() == {"answer": "Keep the same training load."}
+    # The answer streams over SSE (#396); the done frame carries the final answer.
+    done = [
+        json.loads(line[len("data: "):])
+        for line in response.text.splitlines()
+        if line.startswith("data: ") and '"done"' in line
+    ]
+    assert done == [{"done": True, "answer": "Keep the same training load."}]
     _assert_ai_usage_event(recording_analytics, db, coach_account_id, "coach_assistant", 1)
 
 
