@@ -191,11 +191,13 @@ void main() {
   test('the coach assistant disclosure is translated for Arabic Display language', () {
     final String disclosure = const CoachCopy('ar').assistantNote('bob');
 
+    expect(disclosure, contains('اسم'));
+    expect(disclosure, contains('اسمك كمدرب ونبذتك'));
     expect(disclosure, contains('المعدات المتاحة'));
     expect(disclosure, contains('\u2066e1RM\u2069'));
     expect(disclosure, contains('آخر 5 ملاحظات'));
     expect(disclosure, contains('300 حرف'));
-    expect(disclosure, contains('قد تكشف الملاحظات الهوية'));
+    expect(disclosure, contains('الملاحظات والنبذة'));
   });
 
   testWidgets('the Ask assistant entry is hidden while the feature is off',
@@ -225,9 +227,10 @@ void main() {
 
     expect(
       find.text(
-        "The hosted model receives bob's goal, Experience level, Equipment access, "
+        "The hosted model receives bob's name (preferred name if set), "
+        "your coach display name and bio, bob's goal, Experience level, Equipment access, "
         'bodyweight and e1RM trends, and your last 5 check-in notes '
-        '(up to 300 characters each). Notes may contain identifying details. '
+        '(up to 300 characters each). Notes and your bio may contain identifying details. '
         "This exchange isn't saved.",
       ),
       findsOneWidget,

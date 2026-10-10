@@ -254,17 +254,19 @@ When it is enabled, each question sends to the model:
   weekly best e1RM trend for the main lifts in your active Training program
   for the last 12 weeks.
 
-These added facts describe coaching and training rather than identity.
-Check-in notes are free text and may contain identifying details; their length
-is capped and their use in hosted processing is disclosed here and in the
-coach console. The model does **not** receive your username or any account id,
-your recovery email, your coach's name or bio, your conversation with the MAYOS
-assistant, your Assistant style or custom instructions, your preferred name,
-the reason or response on a program request, or other program-request free
-text. Every number (volume, e1RM and bodyweight trends, adherence, and
-streaks) is calculated by the service before the call; the model is told to
-rely on those figures and to say when data is not available. It gives no
-medical advice.
+The model also receives your roster username and your preferred name when you
+have set one, along with your coach's display name and bio. These names identify
+the selected player and coach in the conversation; the bio is treated as data,
+not as instructions. Your coach's bio is capped at 500 characters before it is sent. Check-in
+notes are free text and may contain identifying details; their length is
+capped and their use in hosted processing is disclosed here and in the coach
+console. The model does **not** receive any account id, your recovery email,
+your conversation with the MAYOS assistant, your Assistant style or custom
+instructions, the reason or response on a program request, or other
+program-request free text. Every number (volume, e1RM and bodyweight trends,
+adherence, and streaks) is calculated by the service before the call; the model
+is told to rely on those figures and to say when data is not available. It gives
+no medical advice and does not disclose contact details or account information.
 
 Nothing about the exchange is stored. The app keeps the short conversation in
 memory for the one selected player and clears it when the player is switched,

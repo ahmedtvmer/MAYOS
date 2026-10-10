@@ -115,13 +115,15 @@ class CoachCopy {
       : 'Ask about $player\'s training figures: volume, sessions, records, and schedule.';
   String get assistantThinking => isArabic ? 'جارٍ التفكير…' : 'Thinking…';
   String assistantNote(String player) => isArabic
-      ? 'يتلقى النموذج المستضاف هدف ${_ltr(player)} ومستوى خبرته والمعدات المتاحة '
-          'واتجاهات وزن الجسم و\u2066e1RM\u2069 وآخر 5 ملاحظات تواصل كتبتها '
-          '(حتى 300 حرف لكل ملاحظة). قد تكشف الملاحظات الهوية. لا تُحفظ المحادثة.'
-      : "The hosted model receives $player's goal, Experience level, Equipment access, "
+      ? 'يتلقى النموذج المستضاف اسم ${_ltr(player)} (والاسم المفضل إن وُجد)، واسمك كمدرب ونبذتك، '
+          'وهدف اللاعب ومستوى خبرته والمعدات المتاحة واتجاهات وزن الجسم و\u2066e1RM\u2069، '
+          'وآخر 5 ملاحظات تواصل كتبتها (حتى 300 حرف لكل ملاحظة). '
+          'قد تحتوي الملاحظات والنبذة على تفاصيل تكشف الهوية. لا تُحفظ المحادثة.'
+      : "The hosted model receives $player's name (preferred name if set), "
+          "your coach display name and bio, $player's goal, Experience level, Equipment access, "
           'bodyweight and e1RM trends, and your last 5 check-in notes '
-          '(up to 300 characters each). Notes may contain identifying details. '
-          "This exchange isn't saved.";
+          '(up to 300 characters each). Notes and your bio may contain '
+          "identifying details. This exchange isn't saved.";
   String get askAboutPlayer =>
       isArabic ? 'اسأل عن هذا اللاعب' : 'Ask about this player';
   String get send => isArabic ? 'إرسال' : 'Send';

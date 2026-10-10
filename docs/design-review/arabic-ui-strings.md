@@ -797,7 +797,7 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 | Open alerts | التنبيهات المفتوحة |
 | Ask about {player}'s training figures: volume, sessions, records, and schedule. | اسأل عن أرقام تدريب {player}: مجموعات التدريب، والحصص، والأرقام القياسية، والجدول. |
 | Thinking… | جارٍ التفكير… |
-| The hosted model receives {player}'s goal, Experience level, Equipment access, bodyweight and e1RM trends, and your last 5 check-in notes (up to 300 characters each). Notes may contain identifying details. This exchange isn't saved. | يتلقى النموذج المستضاف هدف {player} ومستوى خبرته والمعدات المتاحة واتجاهات وزن الجسم و⁦e1RM⁩ وآخر 5 ملاحظات تواصل كتبتها (حتى 300 حرف لكل ملاحظة). قد تكشف الملاحظات الهوية. لا تُحفظ المحادثة. |
+| The hosted model receives {player}'s name (preferred name if set), your coach display name and bio, {player}'s goal, Experience level, Equipment access, bodyweight and e1RM trends, and your last 5 check-in notes (up to 300 characters each). Notes and your bio may contain identifying details. This exchange isn't saved. | يتلقى النموذج المستضاف اسم {player} (والاسم المفضل إن وُجد)، واسمك كمدرب ونبذتك، وهدف اللاعب ومستوى خبرته والمعدات المتاحة واتجاهات وزن الجسم و⁦e1RM⁩، وآخر 5 ملاحظات تواصل كتبتها (حتى 300 حرف لكل ملاحظة). قد تحتوي الملاحظات والنبذة على تفاصيل تكشف الهوية. لا تُحفظ المحادثة. |
 | Ask about this player | اسأل عن هذا اللاعب |
 | You no longer coach this player | لم تعد مدربًا لهذا اللاعب. |
 | Log check-in | تسجيل تواصل |

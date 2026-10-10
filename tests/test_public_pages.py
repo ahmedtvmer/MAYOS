@@ -241,6 +241,10 @@ def test_privacy_page_discloses_coach_access_hosted_ai_and_retention(api):
     assert "hosted, OpenAI-compatible model provider" in body
     assert "Free text you type can contain identifying information" in body
     assert "never receives your assistant chat" in body
+    assert "your preferred name when you have set one" in body
+    assert "display name and bio" in body
+    assert "any account id, your recovery email" in body
+    assert "does not receive your username" not in body
     # Earlier opted-in history imports left an audit record. New imports are no
     # longer accepted, but existing records remain until account deletion.
     assert "Imported history (existing records only)" in body
