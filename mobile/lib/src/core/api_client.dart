@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart'
 import 'app_failure.dart';
 import 'baselines.dart';
 import 'chat_models.dart';
+import 'chat_stream_fetch.dart';
 import 'client_dimensions.dart';
 import 'models.dart';
 import 'sse.dart';
@@ -129,10 +130,13 @@ class ApiClient {
     required TokenStore tokens,
     required String baseUrl,
     HttpClientAdapter? adapter,
+    ChatStreamFetch? chatStreamFetch,
     String Function()? clientHeaderLoader,
     String? Function()? buildHeaderLoader,
     String Function()? displayLanguageLoader,
   })  : _tokens = tokens,
+        _baseUrl = baseUrl,
+        _chatStreamFetch = chatStreamFetch ?? createChatStreamFetch(),
         _clientHeader = (clientHeaderLoader ?? _loadClientHeader)(),
         _buildHeader = (buildHeaderLoader ?? _loadBuildHeader)(),
         _displayLanguageLoader = displayLanguageLoader ?? (() => 'en') {
@@ -208,6 +212,8 @@ class ApiClient {
       AppFailureMessage(AppFailureId.invalidServiceData, message);
 
   final TokenStore _tokens;
+  final String _baseUrl;
+  final ChatStreamFetch? _chatStreamFetch;
   final String _clientHeader;
   final String? _buildHeader;
   final String Function() _displayLanguageLoader;
@@ -2289,7 +2295,13 @@ class ApiClient {
   /// as an [ApiException] (network failures have a null status code) so the
   /// caller can show a needs-connection/refusal state and never treat a
   /// partial reply as finished.
-  Stream<ChatStreamEvent> streamChatMessage(String content) async* {
+  Stream<ChatStreamEvent> streamChatMessage(String content) {
+    final ChatStreamFetch? fetch = _chatStreamFetch;
+    if (fetch != null) return _streamChatWithFetch(content, fetch);
+    return _streamChatWithDio(content);
+  }
+
+  Stream<ChatStreamEvent> _streamChatWithDio(String content) async* {
     final Response<ResponseBody> response;
     try {
       response = await _dio.post<ResponseBody>(
@@ -2321,22 +2333,8 @@ class ApiClient {
       throw _errorFromResponse(status, raw);
     }
 
-    final SseDecoder decoder = SseDecoder();
     try {
-      await for (final String chunk in _decodeUtf8(bytes)) {
-        for (final SseEvent event in decoder.addChunk(chunk)) {
-          final ChatStreamEvent? parsed = _parseChatEvent(event);
-          if (parsed != null) {
-            yield parsed;
-          }
-        }
-      }
-      for (final SseEvent event in decoder.close()) {
-        final ChatStreamEvent? parsed = _parseChatEvent(event);
-        if (parsed != null) {
-          yield parsed;
-        }
-      }
+      yield* _decodeChatBytes(bytes);
     } on DioException catch (error) {
       // The connection dropped mid-stream: treat it as a transient failure so
       // the screen enters its error/offline state and can retry.
@@ -2349,15 +2347,179 @@ class ApiClient {
     }
   }
 
+  Stream<ChatStreamEvent> _streamChatWithFetch(
+    String content,
+    ChatStreamFetch fetch,
+  ) =>
+      Stream<ChatStreamEvent>.multi(
+          (MultiStreamController<ChatStreamEvent> events) {
+        unawaited(_runFetchChatStream(content, fetch, events));
+      });
+
+  Future<void> _runFetchChatStream(
+    String content,
+    ChatStreamFetch fetch,
+    MultiStreamController<ChatStreamEvent> events,
+  ) async {
+    try {
+      await _startFetchChatStream(content, fetch, events);
+    } on Object catch (error, stackTrace) {
+      _forwardFetchFailure(events, error, stackTrace);
+    }
+  }
+
+  Future<void> _startFetchChatStream(
+    String content,
+    ChatStreamFetch fetch,
+    MultiStreamController<ChatStreamEvent> events,
+  ) async {
+    final Map<String, String> headers = await _chatStreamHeaders();
+    if (events.isClosed) return;
+    final ChatStreamFetchRequest request = fetch(
+      // Relative resolve against a slash-terminated base keeps any path
+      // prefix, matching how Dio joins baseUrl and path.
+      url: Uri.parse(_baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/')
+          .resolve('chat/messages'),
+      headers: headers,
+      body: jsonEncode(<String, dynamic>{'content': content}),
+    );
+    events.onCancel = request.abort;
+    await _pipeFetchChatResponse(request, events);
+  }
+
+  void _forwardFetchFailure(
+    MultiStreamController<ChatStreamEvent> events,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    if (events.isClosed) return;
+    if (error is ApiException) return _closeFetchStream(events, error);
+    if (error is ChatStreamTransportException) {
+      return _closeFetchStream(events, _networkFailure());
+    }
+    if (error is FormatException) {
+      return _closeFetchStream(
+        events,
+        const ApiException(
+            'The service sent an unreadable chat stream. Please retry.'),
+      );
+    }
+    events.addError(error, stackTrace);
+    events.close();
+  }
+
+  Future<Map<String, String>> _chatStreamHeaders() async {
+    final Map<String, String> headers = <String, String>{
+      'Content-Type': Headers.jsonContentType,
+      'X-MAYOS-Client': _clientHeader,
+      'Accept-Language': _displayLanguageLoader() == 'ar' ? 'ar' : 'en',
+    };
+    final String? buildHeader = _buildHeader;
+    if (buildHeader != null) headers['X-MAYOS-Build'] = buildHeader;
+    final String? token = await _tokens.read();
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    return headers;
+  }
+
+  Future<void> _pipeFetchChatResponse(
+    ChatStreamFetchRequest request,
+    MultiStreamController<ChatStreamEvent> events,
+  ) async {
+    final ChatStreamFetchResponse response = await request.response;
+    if (events.isClosed) return;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      await _throwFetchResponseFailure(response);
+    }
+    await for (final ChatStreamEvent event in _decodeChatBytes(response.body)) {
+      if (events.isClosed) return;
+      events.add(event);
+    }
+    if (!events.isClosed) events.close();
+  }
+
+  Future<void> _throwFetchResponseFailure(
+      ChatStreamFetchResponse response) async {
+    final String raw = await _readStream(response.body);
+    _handleFetchErrorResponse(response.statusCode, raw);
+    throw _errorFromResponse(response.statusCode, raw);
+  }
+
+  void _closeFetchStream(
+    MultiStreamController<ChatStreamEvent> events,
+    ApiException error,
+  ) {
+    if (events.isClosed) return;
+    events.addError(error);
+    events.close();
+  }
+
+  ApiException _networkFailure() => const ApiException(
+        'Cannot reach the service. Check your connection.',
+        failureMessage: AppFailureMessage(
+          AppFailureId.cannotReachService,
+          'Cannot reach the service. Check your connection.',
+        ),
+      );
+
+  void _handleFetchErrorResponse(int status, String raw) {
+    final Map<String, dynamic>? body = _fetchErrorBody(raw);
+    _notifyFetchAppUpdate(status, body);
+    _notifyFetchUnauthorized(status, body);
+  }
+
+  Map<String, dynamic>? _fetchErrorBody(String raw) {
+    try {
+      final dynamic decoded = jsonDecode(raw);
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } on FormatException {
+      // A status callback only needs a structured JSON body.
+    }
+    return null;
+  }
+
+  void _notifyFetchAppUpdate(int status, Map<String, dynamic>? body) {
+    if (status != 426 || body?['error'] != 'app_update_required') return;
+    final AppVersionPolicy? policy = AppVersionPolicy.tryParse(
+      body?['min_build'],
+      body?['store_url'],
+    );
+    if (policy != null) onAppUpdateRequired?.call(policy);
+  }
+
+  void _notifyFetchUnauthorized(int status, Map<String, dynamic>? body) {
+    if (status != 401) return;
+    if (body?['error'] == 'account_deleted') {
+      onAccountDeleted?.call();
+    } else {
+      onUnauthorized?.call();
+    }
+  }
+
+  Stream<ChatStreamEvent> _decodeChatBytes(Stream<List<int>> bytes) async* {
+    final SseDecoder decoder = SseDecoder();
+    await for (final String chunk in _decodeUtf8(bytes)) {
+      for (final SseEvent event in decoder.addChunk(chunk)) {
+        final ChatStreamEvent? parsed = _parseChatEvent(event);
+        if (parsed != null) yield parsed;
+      }
+    }
+    for (final SseEvent event in decoder.close()) {
+      final ChatStreamEvent? parsed = _parseChatEvent(event);
+      if (parsed != null) yield parsed;
+    }
+  }
+
   /// Decodes [bytes] as streaming UTF-8 so a multibyte character split across
   /// two network chunks is reassembled rather than mangled. [utf8.decoder] is
   /// a chunked converter, so it carries partial sequence state across chunks.
   Stream<String> _decodeUtf8(Stream<List<int>> bytes) =>
       utf8.decoder.bind(bytes);
 
-  Future<String> _readStream(Stream<Uint8List> bytes) async {
+  Future<String> _readStream(Stream<List<int>> bytes) async {
     final List<int> collected = <int>[];
-    await for (final Uint8List chunk in bytes) {
+    await for (final List<int> chunk in bytes) {
       collected.addAll(chunk);
     }
     return utf8.decode(collected, allowMalformed: true);
