@@ -57,6 +57,8 @@ typedef RecoveryEmailDetails = ({
   String? pendingEmail,
 });
 
+typedef _AssistantDoneParser = ChatDone Function(Map<String, dynamic> frame);
+
 /// The result of `POST /workouts/sessions`, carrying whether this call created
 /// the session (201) or replayed an already-committed one (200).
 class WorkoutCommitResult {
@@ -1388,38 +1390,31 @@ class ApiClient {
     );
   }
 
-  /// One coach question about [assignmentId] with the client-held transcript
-  /// (`POST /coach/assignments/{id}/assistant`, issue #45, ADR 049).
+  /// Streams one coach question about [assignmentId] and its client-held
+  /// transcript (`POST /coach/assignments/{id}/assistant`, ADR 049).
   ///
   /// [history] is the in-memory transcript trimmed to the last turns: the
   /// service persists nothing about the exchange. A 404 means the feature is
   /// off server-side, a 403 that the assignment is no longer active.
-  Future<String> coachAssistantAsk({
+  Stream<ChatStreamEvent> streamCoachAssistant({
     required String assignmentId,
     required String question,
     required List<CoachAssistantTurn> history,
-  }) async {
-    final response = await _send(
-      () => _dio.post<dynamic>(
+  }) =>
+      _streamSse(
         '/coach/assignments/$assignmentId/assistant',
-        data: <String, dynamic>{
+        <String, dynamic>{
           'question': question,
           'history': <Map<String, dynamic>>[
             for (final CoachAssistantTurn turn in history) turn.toJson(),
           ],
         },
-      ),
-    );
-    final dynamic data = response.data;
-    if (data is! Map<String, dynamic> || data['answer'] is! String) {
-      const String message = 'The service returned an invalid assistant answer.';
-      throw ApiException(
-        message,
-        failureMessage: _invalidServiceDataFailure(message),
+        (Map<String, dynamic> frame) => ChatDone(
+          responseContent:
+              frame['answer'] is String ? frame['answer'] as String : '',
+          programUpdated: false,
+        ),
       );
-    }
-    return data['answer'] as String;
-  }
 
   List<ProgramRequest> _parseProgramRequestList(dynamic data) {
     if (data is! Map<String, dynamic> || data['requests'] is! List<dynamic>) {
@@ -2286,7 +2281,7 @@ class ApiClient {
     await _send(() => _dio.delete<dynamic>('/chat/history'));
   }
 
-  /// Streams one assistant turn as decoded SSE events (`POST /chat/messages`).
+  /// Streams one player-assistant turn as decoded SSE events.
   ///
   /// Tokens arrive incrementally via [ChatToken]; the final [ChatDone] reports
   /// the persisted reply and whether the program changed. A failed turn is a
@@ -2296,17 +2291,48 @@ class ApiClient {
   /// caller can show a needs-connection/refusal state and never treat a
   /// partial reply as finished.
   Stream<ChatStreamEvent> streamChatMessage(String content) {
-    final ChatStreamFetch? fetch = _chatStreamFetch;
-    if (fetch != null) return _streamChatWithFetch(content, fetch);
-    return _streamChatWithDio(content);
+    return _streamSse(
+      '/chat/messages',
+      <String, dynamic>{'content': content},
+      (Map<String, dynamic> frame) => ChatDone(
+        responseContent: frame['response_content'] is String
+            ? frame['response_content'] as String
+            : '',
+        programUpdated: frame['program_updated'] == true,
+        requestSuggestion: _parseRequestSuggestion(frame['request_suggestion']),
+      ),
+    );
   }
 
-  Stream<ChatStreamEvent> _streamChatWithDio(String content) async* {
+  ProgramRequestDraft? _parseRequestSuggestion(dynamic suggestion) =>
+      suggestion is Map<String, dynamic> &&
+              (suggestion['kind'] == 'exercise_substitution' ||
+                  suggestion['kind'] == 'split_change')
+          ? ProgramRequestDraft.fromSuggestionJson(suggestion)
+          : null;
+
+  Stream<ChatStreamEvent> _streamSse(
+    String path,
+    Map<String, dynamic> body,
+    _AssistantDoneParser parseDone,
+  ) {
+    final ChatStreamFetch? fetch = _chatStreamFetch;
+    if (fetch != null) {
+      return _streamSseWithFetch(path, body, parseDone, fetch);
+    }
+    return _streamSseWithDio(path, body, parseDone);
+  }
+
+  Stream<ChatStreamEvent> _streamSseWithDio(
+    String path,
+    Map<String, dynamic> requestBody,
+    _AssistantDoneParser parseDone,
+  ) async* {
     final Response<ResponseBody> response;
     try {
       response = await _dio.post<ResponseBody>(
-        '/chat/messages',
-        data: <String, dynamic>{'content': content},
+        path,
+        data: requestBody,
         options: Options(responseType: ResponseType.stream),
       );
     } on DioException catch (error) {
@@ -2334,7 +2360,7 @@ class ApiClient {
     }
 
     try {
-      yield* _decodeChatBytes(bytes);
+      yield* _decodeSseBytes(bytes, parseDone);
     } on DioException catch (error) {
       // The connection dropped mid-stream: treat it as a transient failure so
       // the screen enters its error/offline state and can retry.
@@ -2347,29 +2373,35 @@ class ApiClient {
     }
   }
 
-  Stream<ChatStreamEvent> _streamChatWithFetch(
-    String content,
+  Stream<ChatStreamEvent> _streamSseWithFetch(
+    String path,
+    Map<String, dynamic> body,
+    _AssistantDoneParser parseDone,
     ChatStreamFetch fetch,
   ) =>
       Stream<ChatStreamEvent>.multi(
           (MultiStreamController<ChatStreamEvent> events) {
-        unawaited(_runFetchChatStream(content, fetch, events));
+        unawaited(_runFetchSse(path, body, parseDone, fetch, events));
       });
 
-  Future<void> _runFetchChatStream(
-    String content,
+  Future<void> _runFetchSse(
+    String path,
+    Map<String, dynamic> body,
+    _AssistantDoneParser parseDone,
     ChatStreamFetch fetch,
     MultiStreamController<ChatStreamEvent> events,
   ) async {
     try {
-      await _startFetchChatStream(content, fetch, events);
+      await _startFetchSse(path, body, parseDone, fetch, events);
     } on Object catch (error, stackTrace) {
       _forwardFetchFailure(events, error, stackTrace);
     }
   }
 
-  Future<void> _startFetchChatStream(
-    String content,
+  Future<void> _startFetchSse(
+    String path,
+    Map<String, dynamic> body,
+    _AssistantDoneParser parseDone,
     ChatStreamFetch fetch,
     MultiStreamController<ChatStreamEvent> events,
   ) async {
@@ -2379,12 +2411,12 @@ class ApiClient {
       // Relative resolve against a slash-terminated base keeps any path
       // prefix, matching how Dio joins baseUrl and path.
       url: Uri.parse(_baseUrl.endsWith('/') ? _baseUrl : '$_baseUrl/')
-          .resolve('chat/messages'),
+          .resolve(path.startsWith('/') ? path.substring(1) : path),
       headers: headers,
-      body: jsonEncode(<String, dynamic>{'content': content}),
+      body: jsonEncode(body),
     );
     events.onCancel = request.abort;
-    await _pipeFetchChatResponse(request, events);
+    await _pipeFetchSseResponse(request, parseDone, events);
   }
 
   void _forwardFetchFailure(
@@ -2423,8 +2455,9 @@ class ApiClient {
     return headers;
   }
 
-  Future<void> _pipeFetchChatResponse(
+  Future<void> _pipeFetchSseResponse(
     ChatStreamFetchRequest request,
+    _AssistantDoneParser parseDone,
     MultiStreamController<ChatStreamEvent> events,
   ) async {
     final ChatStreamFetchResponse response = await request.response;
@@ -2432,7 +2465,8 @@ class ApiClient {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       await _throwFetchResponseFailure(response);
     }
-    await for (final ChatStreamEvent event in _decodeChatBytes(response.body)) {
+    await for (final ChatStreamEvent event
+        in _decodeSseBytes(response.body, parseDone)) {
       if (events.isClosed) return;
       events.add(event);
     }
@@ -2497,16 +2531,19 @@ class ApiClient {
     }
   }
 
-  Stream<ChatStreamEvent> _decodeChatBytes(Stream<List<int>> bytes) async* {
+  Stream<ChatStreamEvent> _decodeSseBytes(
+    Stream<List<int>> bytes,
+    _AssistantDoneParser parseDone,
+  ) async* {
     final SseDecoder decoder = SseDecoder();
     await for (final String chunk in _decodeUtf8(bytes)) {
       for (final SseEvent event in decoder.addChunk(chunk)) {
-        final ChatStreamEvent? parsed = _parseChatEvent(event);
+        final ChatStreamEvent? parsed = _parseSseEvent(event, parseDone);
         if (parsed != null) yield parsed;
       }
     }
     for (final SseEvent event in decoder.close()) {
-      final ChatStreamEvent? parsed = _parseChatEvent(event);
+      final ChatStreamEvent? parsed = _parseSseEvent(event, parseDone);
       if (parsed != null) yield parsed;
     }
   }
@@ -2561,7 +2598,10 @@ class ApiClient {
     );
   }
 
-  ChatStreamEvent? _parseChatEvent(SseEvent event) {
+  ChatStreamEvent? _parseSseEvent(
+    SseEvent event,
+    _AssistantDoneParser parseDone,
+  ) {
     final dynamic decoded = jsonDecode(event.data);
     if (decoded is! Map<String, dynamic>) {
       return null;
@@ -2583,19 +2623,7 @@ class ApiClient {
       );
     }
     if (decoded['done'] == true) {
-      final dynamic suggestion = decoded['request_suggestion'];
-      final ProgramRequestDraft? requestSuggestion = suggestion is Map<String, dynamic> &&
-              (suggestion['kind'] == 'exercise_substitution' ||
-                  suggestion['kind'] == 'split_change')
-          ? ProgramRequestDraft.fromSuggestionJson(suggestion)
-          : null;
-      return ChatDone(
-        responseContent: decoded['response_content'] is String
-            ? decoded['response_content'] as String
-            : '',
-        programUpdated: decoded['program_updated'] == true,
-        requestSuggestion: requestSuggestion,
-      );
+      return parseDone(decoded);
     }
     final dynamic token = decoded['token'];
     return token is String ? ChatToken(token) : null;

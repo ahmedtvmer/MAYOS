@@ -255,6 +255,72 @@ void main() {
     expect(transcript.turns, hasLength(2));
   });
 
+  testWidgets('assistant shows its draft before the done frame',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _pumpApp(tester, fake);
+    await _openRoster(tester);
+    await _openAssistant(tester, 'bob');
+
+    await tester.enterText(
+        find.byKey(const Key('coach_assistant_question')), 'How is training?');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('coach_assistant_send')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 110));
+    await tester.pump();
+
+    expect(find.byKey(const Key('coach_assistant_live_draft')), findsOneWidget);
+    final MayosMarkdown draft = tester.widget<MayosMarkdown>(
+        find.byKey(const Key('coach_assistant_live_draft')));
+    expect(draft.source, isNotEmpty);
+    expect(draft.source, isNot(fake.coachAssistantAnswer));
+    expect(fake.coachAssistantRequests, hasLength(1));
+
+    await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
+    expect(find.byKey(const Key('coach_assistant_live_draft')), findsNothing);
+    expect(_assistantMarkdown(fake.coachAssistantAnswer), findsOneWidget);
+  });
+
+  testWidgets('stream failure shows retry state and a retry can finish',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachAssistantStreamFailuresRemaining = 1;
+    await _pumpApp(tester, fake);
+    await _openRoster(tester);
+    await _openAssistant(tester, 'bob');
+
+    await _ask(tester, 'How is the volume trending?');
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('coach_assistant_error')));
+
+    expect(find.byKey(const Key('coach_assistant_error')), findsOneWidget);
+    expect(find.byKey(const Key('coach_assistant_live_draft')), findsNothing);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('coach_assistant_question')))
+          .controller!
+          .text,
+      'How is the volume trending?',
+    );
+    expect(
+      _container(tester).read(coachAssistantControllerProvider)!.turns,
+      isEmpty,
+    );
+    expect(fake.coachAssistantRequests, hasLength(1));
+
+    await tester.tap(find.byKey(const Key('coach_assistant_send')));
+    await tester.pump(const Duration(milliseconds: 100));
+    await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
+
+    expect(find.byKey(const Key('coach_assistant_error')), findsNothing);
+    expect(fake.coachAssistantRequests, hasLength(2));
+    expect(
+      _container(tester).read(coachAssistantControllerProvider)!.turns,
+      hasLength(2),
+    );
+  });
+
   testWidgets('assistant Markdown fits at 360 dp in light and dark themes',
       (WidgetTester tester) async {
     for (final ThemeMode mode in <ThemeMode>[ThemeMode.light, ThemeMode.dark]) {

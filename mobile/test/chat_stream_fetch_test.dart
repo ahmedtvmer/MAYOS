@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_models.dart';
 import 'package:mayos_mobile/src/core/chat_stream_fetch_types.dart';
+import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 
 import 'support/fake_api_adapter.dart';
@@ -29,6 +30,42 @@ void main() {
     expect(events, hasLength(2));
     expect((events.first as ChatToken).token, 'first');
     expect(events.last, isA<ChatDone>());
+  });
+
+  test('coach assistant reuses fetch transport and answer-frame decoding',
+      () async {
+    final _FakeFetch fetch = _FakeFetch((Uri url, Map<String, String> headers,
+        String body) {
+      return _FakeRequest(ChatStreamFetchResponse(
+        statusCode: 200,
+        body: Stream<List<int>>.fromIterable(<List<int>>[
+          utf8.encode('data: {"token":"Steady "}\n\ndata: {"done":true,'),
+          utf8.encode('"answer":"Steady progress."}\n\n'),
+        ]),
+      ));
+    });
+    final ApiClient api = await _client(fetch);
+
+    final List<ChatStreamEvent> events = await api
+        .streamCoachAssistant(
+          assignmentId: 'assignment-1',
+          question: 'How is training?',
+          history: <CoachAssistantTurn>[
+            const CoachAssistantTurn(role: 'coach', content: 'Earlier?'),
+          ],
+        )
+        .toList();
+
+    expect(fetch.url.toString(),
+        'http://test.local/coach/assignments/assignment-1/assistant');
+    expect(jsonDecode(fetch.body), <String, dynamic>{
+      'question': 'How is training?',
+      'history': <Map<String, dynamic>>[
+        <String, dynamic>{'role': 'coach', 'content': 'Earlier?'},
+      ],
+    });
+    expect((events[0] as ChatToken).token, 'Steady ');
+    expect((events[1] as ChatDone).responseContent, 'Steady progress.');
   });
 
   test('web chat #394 reassembles a multibyte character across chunks',

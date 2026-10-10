@@ -26,7 +26,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -911,6 +912,65 @@ def _invoke_coach_model(messages: list[Any]) -> str:
     return extract_answer(model_downloader.get_coach_llm().invoke(messages))
 
 
+@dataclass(frozen=True)
+class AssistantPrompt:
+    question: str
+    history: list[dict[str, Any]]
+
+
+def prepare_messages(
+    db: Any,
+    coach_account_id: str,
+    assignment_id: Any,
+    prompt: AssistantPrompt,
+) -> list[Any] | None:
+    """Gathers and closes the selected player's ledger before inference."""
+    facts = gather_player_context(db, coach_account_id, assignment_id)
+    if facts is None:
+        return None
+    return build_messages(render_context(facts), prompt.question, prompt.history)
+
+
+def stream_answer(messages: list[Any]) -> Iterator[tuple[str, str]]:
+    """Yields scrubbed token pieces followed by the buffered-contract answer.
+
+    The final ``("done", answer)`` event deliberately goes through
+    :func:`extract_answer`, keeping its contract identical to ``ask`` and the
+    evaluation runner while the public scrubber releases safe text as it is
+    generated.
+    """
+    from utils import model_downloader
+    from utils.text_scrubber import CoachOutputScrubber
+
+    raw_pieces: list[str] = []
+    scrubber = CoachOutputScrubber()
+    visible = False
+    try:
+        for chunk in model_downloader.get_coach_llm().stream(messages):
+            piece = chunk.content if hasattr(chunk, "content") else str(chunk)
+            text = piece if isinstance(piece, str) else str(piece)
+            raw_pieces.append(text)
+            cleaned = scrubber.feed(text)
+            if cleaned:
+                visible = True
+                yield "token", cleaned
+    except Exception:
+        cleaned = scrubber.finish()
+        if cleaned:
+            yield "token", cleaned
+        raise
+
+    cleaned = scrubber.finish()
+    if cleaned:
+        visible = True
+        yield "token", cleaned
+
+    answer = extract_answer("".join(raw_pieces))
+    if not visible:
+        yield "token", answer
+    yield "done", answer
+
+
 def ask(
     db: Any,
     coach_account_id: str,
@@ -928,10 +988,10 @@ def ask(
     handle closed *before* the model call, so no ledger is held during
     inference and nothing about the exchange is written anywhere.
     """
-    facts = gather_player_context(db, coach_account_id, assignment_id)
-    if facts is None:
+    prompt = AssistantPrompt(question, list(history or []))
+    messages = prepare_messages(db, coach_account_id, assignment_id, prompt)
+    if messages is None:
         return None
-    messages = build_messages(render_context(facts), question, list(history or []))
     from svc.llm import InferenceScope, inference_turn, run_inference_sync
 
     scope = InferenceScope(
@@ -949,6 +1009,7 @@ def ask(
 __all__ = [
     "CANONICAL_FIXTURE",
     "CONTEXT_VERSION",
+    "AssistantPrompt",
     "REPORT_VERSION",
     "SYSTEM_PROMPT",
     "GateStatus",
@@ -963,7 +1024,9 @@ __all__ = [
     "gather_player_context",
     "log_enable_gate_at_startup",
     "prompt_version_hash",
+    "prepare_messages",
     "render_context",
     "resolve_enable_gate",
+    "stream_answer",
     "validate_report",
 ]

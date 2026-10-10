@@ -26,7 +26,7 @@ from service import coach_ai
 from service import weight_history
 from svc.app import create_app
 from svc.dependencies import get_db
-from tests.fakes.chat_model import ScriptedChatModel
+from tests.fakes.chat_model import ScriptedChatModel, StreamErrorTurn
 from utils import model_downloader
 from utils.model_metering import MeteringCallback
 
@@ -44,6 +44,23 @@ def _stub_coach_llm(monkeypatch, reply: str = "Volume is steady; keep the curren
     )
     monkeypatch.setattr(model_downloader, "get_coach_llm", lambda *args, **kwargs: stub)
     return stub
+
+
+def _sse_frames(response) -> list[tuple[str, dict[str, Any]]]:
+    frames = []
+    for block in response.text.strip().split("\n\n"):
+        if not block:
+            continue
+        event = "message"
+        data = []
+        for line in block.splitlines():
+            if line.startswith("event: "):
+                event = line[7:]
+            elif line.startswith("data: "):
+                data.append(line[6:])
+        if data:
+            frames.append((event, json.loads("\n".join(data))))
+    return frames
 
 
 @pytest.fixture
@@ -113,6 +130,12 @@ def _account_id(db, username):
     account = db.get_active_account_by_username(username)
     assert account is not None
     return account["account_id"]
+
+
+def test_prompt_version_hash_remains_unchanged_for_streaming():
+    assert coach_ai.prompt_version_hash() == (
+        "ae3db0ea3c75699e5612ed8c8825b3c791cf6eb08ceddbfec506b63efe7e098d"
+    )
 
 
 def _make_coach(client, db, username="coach", capacity=5):
@@ -992,7 +1015,10 @@ def test_empty_model_reply_returns_the_standard_fallback(api, monkeypatch, tmp_p
         f"/coach/assignments/{assignment_id}/assistant", headers=coach_headers, json=QUESTION
     )
     assert response.status_code == 200, response.text
-    assert response.json() == {"answer": EMPTY_RESPONSE_FALLBACK}
+    assert response.headers["content-type"].startswith("text/event-stream")
+    frames = _sse_frames(response)
+    assert frames[-1] == ("message", {"done": True, "answer": EMPTY_RESPONSE_FALLBACK})
+    assert any(frame == ("message", {"token": EMPTY_RESPONSE_FALLBACK}) for frame in frames)
 
 
 # --------------------------------------------------------------------------
@@ -1032,11 +1058,12 @@ def test_flag_off_returns_404_and_never_calls_the_model(api, monkeypatch):
         f"/coach/assignments/{assignment_id}/assistant", headers=coach_headers, json=QUESTION
     )
     assert response.status_code == 404
+    assert response.headers["content-type"].startswith("application/json")
     assert "not available" in response.json()["detail"]
     assert stub.calls == []
 
 
-def test_enabled_turn_answers_and_meters_with_role_coach(api, monkeypatch, tmp_path):
+def test_enabled_turn_streams_answer_and_meters_once_with_role_coach(api, monkeypatch, tmp_path):
     client, db, _tmp = api
     coach_headers, _player_headers, assignment_id = _assigned_player(api)
     _enable(monkeypatch, tmp_path)
@@ -1046,15 +1073,44 @@ def test_enabled_turn_answers_and_meters_with_role_coach(api, monkeypatch, tmp_p
         f"/coach/assignments/{assignment_id}/assistant", headers=coach_headers, json=QUESTION
     )
     assert response.status_code == 200, response.text
-    assert response.json() == {"answer": "No change: 12400 kg in the last 7 days."}
+    assert response.headers["content-type"].startswith("text/event-stream")
+    frames = _sse_frames(response)
+    tokens = [payload["token"] for event, payload in frames if event == "message" and "token" in payload]
+    done = [payload for event, payload in frames if event == "message" and payload.get("done")]
+    assert tokens
+    assert len(done) == 1
+    assert done[0]["answer"] == "No change: 12400 kg in the last 7 days."
+    assert "".join(tokens) == done[0]["answer"]
     assert len(stub.calls) == 1
 
-    rows = [
-        row
-        for row in db.summarize_model_usage("2000-01-01")
-        if row["account_id"] == _account_id(db, "coach")
-    ]
-    assert rows and rows[0]["role"] == "coach"
+    usage_rows = db.catalog_conn.execute(
+        "SELECT role, purpose FROM model_usage WHERE account_id = ?",
+        (_account_id(db, "coach"),),
+    ).fetchall()
+    assert len(usage_rows) == 1
+    assert usage_rows[0][0] == "coach"
+    assert usage_rows[0][1] == "coach_assistant"
+
+
+def test_stream_failure_uses_error_event_after_any_partial_tokens(api, monkeypatch, tmp_path):
+    client, _db, _tmp = api
+    coach_headers, _player_headers, assignment_id = _assigned_player(api)
+    _enable(monkeypatch, tmp_path)
+    stub = ScriptedChatModel([StreamErrorTurn("Partial answer", RuntimeError("model failed"))])
+    monkeypatch.setattr(model_downloader, "get_coach_llm", lambda *args, **kwargs: stub)
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/assistant", headers=coach_headers, json=QUESTION
+    )
+
+    assert response.status_code == 200
+    frames = _sse_frames(response)
+    assert any(event == "message" and "token" in payload for event, payload in frames)
+    assert any(
+        event == "error" and payload["detail"] == "I couldn't complete that request. Please try again."
+        for event, payload in frames
+    )
+    assert not any(event == "message" and payload.get("done") for event, payload in frames)
 
 
 def test_daily_token_limit_refuses_before_the_model_is_called(api, monkeypatch, tmp_path):
@@ -1079,4 +1135,5 @@ def test_daily_token_limit_refuses_before_the_model_is_called(api, monkeypatch, 
         f"/coach/assignments/{assignment_id}/assistant", headers=coach_headers, json=QUESTION
     )
     assert response.status_code == 429
+    assert response.headers["content-type"].startswith("application/json")
     assert stub.calls == []

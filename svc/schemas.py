@@ -70,7 +70,6 @@ __all__ = [
     "CoachAlertListOut",
     "CoachAlertOut",
     "CoachAssistantIn",
-    "CoachAssistantOut",
     "CoachAssistantTurn",
     "CoachActiveProgramDetailsOut",
     "CoachActiveProgramDayOut",
@@ -351,12 +350,6 @@ class CoachAssistantIn(BaseModel):
 
     question: str = Field(min_length=1, max_length=COACH_QUESTION_MAX_CHARS)
     history: list[CoachAssistantTurn] = Field(default_factory=list, max_length=COACH_HISTORY_MAX_TURNS)
-
-
-class CoachAssistantOut(BaseModel):
-    """The model's analysis of the selected player's telemetry."""
-
-    answer: str
 
 
 class CoachIdentityOut(BaseModel):

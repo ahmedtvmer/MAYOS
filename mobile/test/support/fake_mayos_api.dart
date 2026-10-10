@@ -399,6 +399,8 @@ class FakeMayosApi {
   bool coachAssistantDenied = false;
   // When true the assistant route answers the app-wide model-limit 429.
   bool coachAssistantRateLimited = false;
+  // Fail the next N streamed turns after sending a partial draft.
+  int coachAssistantStreamFailuresRemaining = 0;
   String coachAssistantAnswer =
       'Volume is steady and the records are trending up. Keep the current split.';
 
@@ -1462,7 +1464,21 @@ class FakeMayosApi {
           422, <String, dynamic>{'detail': 'Invalid assistant request.'});
     }
     coachAssistantRequests.add(request.body);
-    return FakeResponse(200, <String, dynamic>{'answer': coachAssistantAnswer});
+    if (coachAssistantStreamFailuresRemaining > 0) {
+      coachAssistantStreamFailuresRemaining -= 1;
+      return FakeResponse(200, null, <String>[
+        'data: ${jsonEncode(<String, dynamic>{'token': 'Partial answer'})}\n\n',
+        'event: error\ndata: ${jsonEncode(<String, dynamic>{'detail': "I couldn't complete that request. Please try again."})}\n\n',
+      ]);
+    }
+    final int split = (coachAssistantAnswer.length / 2).floor();
+    final String first = coachAssistantAnswer.substring(0, split);
+    final String second = coachAssistantAnswer.substring(split);
+    return FakeResponse(200, null, <String>[
+      'data: ${jsonEncode(<String, dynamic>{'token': first})}\n\n',
+      'data: ${jsonEncode(<String, dynamic>{'token': second})}\n\n',
+      'data: ${jsonEncode(<String, dynamic>{'done': true, 'answer': coachAssistantAnswer})}\n\n',
+    ]);
   }
 
   FakeResponse _coachPlayerHistory(FakeRequest request) {

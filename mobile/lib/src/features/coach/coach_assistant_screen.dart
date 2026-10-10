@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
 import '../../core/app_failure.dart';
+import '../../core/chat_models.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/copy_context.dart';
 import '../../core/display_language/feature_copy_context.dart';
@@ -42,6 +43,7 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
   final TextEditingController _question = TextEditingController();
   bool _sending = false;
   FailureMessage? _error;
+  String _draftAnswer = '';
 
   String get _assignmentId => widget.entry.assignmentId;
 
@@ -92,51 +94,106 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
     if (question.isEmpty || _sending) {
       return;
     }
-    setState(() {
-      _sending = true;
-      _error = null;
-    });
     final List<CoachAssistantTurn> history = ref
         .read(coachAssistantControllerProvider.notifier)
         .historyFor(_assignmentId);
+    _beginSending();
     try {
-      final String answer = await ref.read(apiClientProvider).coachAssistantAsk(
-            assignmentId: _assignmentId,
-            question: question,
-            history: history,
-          );
-      if (!mounted) return;
-      _question.clear();
-      ref.read(coachAssistantControllerProvider.notifier).recordExchange(
-            _assignmentId,
-            question: question,
-            answer: answer,
-          );
-      setState(() => _sending = false);
+      await _streamAssistant(question, history);
     } on ApiException catch (failure) {
+      _showApiFailure(failure);
+    }
+  }
+
+  void _beginSending() {
+    setState(() {
+      _sending = true;
+      _error = null;
+      _draftAnswer = '';
+    });
+  }
+
+  Future<void> _streamAssistant(
+    String question,
+    List<CoachAssistantTurn> history,
+  ) async {
+    ChatDone? completion;
+    await for (final ChatStreamEvent event
+        in ref.read(apiClientProvider).streamCoachAssistant(
+              assignmentId: _assignmentId,
+              question: question,
+              history: history,
+            )) {
       if (!mounted) return;
-      if (failure.statusCode == 403) {
-        // The assignment ended or was revoked: drop the transcript, tell the
-        // coach, and leave the assistant (issue #45, rule (b)).
-        ref
-            .read(coachAssistantControllerProvider.notifier)
-            .clearFor(_assignmentId);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(coachCopyOf(context).playerAssignmentEnded)),
-        );
-        Navigator.of(context).pop();
+      if (event is ChatToken) {
+        setState(() => _draftAnswer += event.token);
+      } else if (event is ChatDone) {
+        completion = event;
+      } else if (event is ChatError) {
+        _showStreamError(event);
         return;
       }
-      if (failure.statusCode == 404) {
-        // The operator turned the feature off server-side: re-read the account
-        // so `coach_ai_enabled` drops the entry point (issue #45).
-        unawaited(ref.read(authControllerProvider.notifier).refreshAccount());
-      }
-      setState(() {
-        _sending = false;
-        _error = apiFailureMessage(failure);
-      });
     }
+    if (completion == null) {
+      throw const ApiException(
+        'The assistant stream ended before the answer was complete.',
+        failureMessage: AppFailureMessage(
+          AppFailureId.assistantDidNotFinish,
+          'The assistant stream ended before the answer was complete.',
+        ),
+      );
+    }
+    _recordCompletedExchange(question, completion.responseContent);
+  }
+
+  void _recordCompletedExchange(String question, String answer) {
+    _question.clear();
+    ref.read(coachAssistantControllerProvider.notifier).recordExchange(
+          _assignmentId,
+          question: question,
+          answer: answer,
+        );
+    setState(() {
+      _sending = false;
+      _draftAnswer = '';
+    });
+  }
+
+  void _showStreamError(ChatError failure) {
+    setState(() {
+      _sending = false;
+      _draftAnswer = '';
+      _error = ServerFailureMessage(
+        failure.detail,
+        messageCode: failure.messageCode,
+        messageParams: failure.messageParams,
+        messageFallback: failure.messageFallback,
+      );
+    });
+  }
+
+  void _showApiFailure(ApiException failure) {
+    if (!mounted) return;
+    if (failure.statusCode == 403) {
+      _leaveRevokedAssignment();
+      return;
+    }
+    if (failure.statusCode == 404) {
+      unawaited(ref.read(authControllerProvider.notifier).refreshAccount());
+    }
+    setState(() {
+      _sending = false;
+      _draftAnswer = '';
+      _error = apiFailureMessage(failure);
+    });
+  }
+
+  void _leaveRevokedAssignment() {
+    ref.read(coachAssistantControllerProvider.notifier).clearFor(_assignmentId);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(coachCopyOf(context).playerAssignmentEnded)),
+    );
+    Navigator.of(context).pop();
   }
 
   @override
@@ -187,23 +244,7 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
       itemCount: turns.length + (_sending ? 1 : 0),
       itemBuilder: (BuildContext context, int index) {
         if (index >= turns.length) {
-          return _bubble(
-            role: 'assistant',
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                const SizedBox(
-                  height: 14,
-                  width: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                const SizedBox(width: MayosSpacing.sm),
-                Text(coachCopyOf(context).assistantThinking,
-                    style: MayosTypography.of(context).bodySecondary
-                        .copyWith(color: c.textSecondary)),
-              ],
-            ),
-          );
+          return _bubble(role: 'assistant', child: _liveDraft(c));
         }
         final CoachAssistantTurn turn = turns[index];
         return _bubble(
@@ -224,6 +265,42 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
                 ),
         );
       },
+    );
+  }
+
+  Widget _liveDraft(MayosThemeExtension c) {
+    if (_draftAnswer.isEmpty) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          const SizedBox(
+            height: 14,
+            width: 14,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: MayosSpacing.sm),
+          Text(coachCopyOf(context).assistantThinking,
+              style: MayosTypography.of(context).bodySecondary
+                  .copyWith(color: c.textSecondary)),
+        ],
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        MayosMarkdown(
+          key: const Key('coach_assistant_live_draft'),
+          source: _draftAnswer,
+          bodyStyle: MayosTypography.of(context).bodySecondary,
+        ),
+        const SizedBox(height: MayosSpacing.xs),
+        const SizedBox(
+          height: 14,
+          width: 14,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      ],
     );
   }
 

@@ -439,7 +439,12 @@ def test_prompt_carries_only_necessary_telemetry_and_deterministic_figures(api, 
         f"/coach/assignments/{assignment_id}/assistant", headers=coach_headers, json=QUESTION
     )
     assert response.status_code == 200, response.text
-    assert response.json()["answer"] == "Volume is steady; keep the current plan."
+    done_frame = next(
+        json.loads(line[6:])
+        for line in response.text.splitlines()
+        if line.startswith("data: ") and '"done": true' in line
+    )
+    assert done_frame["answer"] == "Volume is steady; keep the current plan."
     assert len(stub.calls) == 1
 
     rendered = "\n".join(
@@ -600,6 +605,7 @@ def test_revoked_assignment_is_denied_without_a_model_call(api, monkeypatch):
         f"/coach/assignments/{assignment_id}/assistant", headers=coach_headers, json=QUESTION
     )
     assert response.status_code == 403
+    assert response.headers["content-type"].startswith("application/json")
     assert response.json()["detail"] == "No active assignment."
     assert stub.calls == []
 
