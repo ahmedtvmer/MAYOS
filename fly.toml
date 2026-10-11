@@ -43,6 +43,9 @@ primary_region = "fra"
   # sheets). A report for another model or prompt version keeps it off.
   PROGRAM_IMPORT_AI_ENABLED = "true"
   PROGRAM_IMPORT_AI_EVAL_REPORT = "/app/reports/program_import_eval.json"
+  # Hosted models only wait on the network, so several calls can overlap; with
+  # the default of 1 a minutes-long Program import blocked every other AI call.
+  LLM_MAX_CONCURRENT = "4"
   MODEL_DEVICE = "cpu"
   HF_HOME = "/app/.cache/huggingface"
   # Password-reset / App Link base: this app's public host. It must be identical

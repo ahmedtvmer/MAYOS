@@ -1155,3 +1155,21 @@ def test_sheet_title_rule_reaches_every_row_source_text():
 
     assert "Back Squat (Barbell)" in source.text
     assert "top set" in source.text
+
+
+def test_full_inference_queue_reports_busy_not_uninterpretable(monkeypatch):
+    import pytest
+
+    from service import program_import, program_import_ai
+
+    def busy(*_args, **_kwargs):
+        raise TimeoutError("Inference queue is full; retry shortly.")
+
+    monkeypatch.setattr(program_import_ai, "translate_sheet", busy)
+    grid = program_import.FreeFormCellGrid({"sheet": "CSV", "cells": [{"address": "A1", "value": "Squat"}]}, ["CSV"], "CSV")
+
+    with pytest.raises(program_import.ProgramImportError) as raised:
+        program_import.FreeFormProgramImportReader(None).read(grid)
+
+    assert raised.value.code == "program_import.model_busy.v1"
+    assert raised.value.status_code == 503

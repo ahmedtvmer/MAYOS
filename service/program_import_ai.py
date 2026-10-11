@@ -732,11 +732,12 @@ def _invoke_structured(
             attempt_scope = scope if attempt == 0 else replace(scope, admit=False)
             reply = run_inference_sync(structured.invoke, retry_messages, scope=attempt_scope)
             return schema.model_validate(reply)
-        except ModelLimitExceeded:
+        except (ModelLimitExceeded, TimeoutError):
             raise
         except (ValidationError, ValueError, TypeError, OutputParserException) as error:
             validation_message = str(error)[:1200]
-        except Exception:
+        except Exception as error:
+            logger.warning("Program import model call failed: %s", type(error).__name__)
             raise ProgramImportAIError(failure_message) from None
     raise ProgramImportAIError(failure_message)
 

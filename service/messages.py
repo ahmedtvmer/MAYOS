@@ -101,6 +101,7 @@ ERROR_MESSAGE_PARAM_ALLOWLISTS = {
     "program_import.template_columns.v1": frozenset(),
     "program_import.freeform_disabled.v1": frozenset(),
     "program_import.interpretation_failed.v1": frozenset(),
+    "program_import.model_busy.v1": frozenset(),
     "program_import.too_many_cells.v1": frozenset({"max_cells"}),
     "program_import.week_invalid.v1": frozenset(),
     "program_import.unsupported_preserved_as_note.v1": frozenset(),

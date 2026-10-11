@@ -47,6 +47,10 @@ const Map<String, ({String english, String arabic})> _programImportMessages =
     english: 'The sheet could not be interpreted. Try the MAYOS template or simplify the layout.',
     arabic: 'تعذر فهم الورقة. جرّب قالب MAYOS أو بسّط تنسيق الورقة.',
   ),
+  'program_import.model_busy.v1': (
+    english: 'The import assistant is busy with another request. Try again in a minute.',
+    arabic: 'مساعد الاستيراد مشغول بطلب آخر. حاول مرة أخرى بعد دقيقة.',
+  ),
   'program_import.too_many_cells.v1': (
     english: 'The selected sheet is too large to interpret. Trim it to {max_cells} non-empty cells or fewer.',
     arabic: 'الورقة المحددة كبيرة جدًا لفهمها. قلّلها إلى {max_cells} خلية غير فارغة أو أقل.',

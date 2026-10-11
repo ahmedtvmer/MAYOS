@@ -231,6 +231,12 @@ class FreeFormProgramImportReader:
             raise ProgramImportError(
                 "program_import.interpretation_failed.v1", str(error), 422
             ) from None
+        except TimeoutError:
+            raise ProgramImportError(
+                "program_import.model_busy.v1",
+                "The import assistant is busy with another request. Try again in a minute.",
+                503,
+            ) from None
         return _freeform_reader_output(reply, prepared.tabs, prepared.selected_tab, prepared.grid)
 
 
@@ -429,7 +435,7 @@ def _add_model_suggestions(
     }
     try:
         suggested = program_import_ai.suggest_exercises(db, names, scope, search_terms)
-    except program_import_ai.ProgramImportAIError:
+    except (program_import_ai.ProgramImportAIError, TimeoutError):
         for row in rows:
             if row["exercise_id"] is None:
                 row["warnings"].append(_row_warning(
