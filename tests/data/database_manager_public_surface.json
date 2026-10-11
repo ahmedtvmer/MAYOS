@@ -201,6 +201,10 @@
       "kind": "method",
       "signature": "(self, account_id: str) -> dict[str, typing.Any] | None"
     },
+    "get_coach_stall_threshold": {
+      "kind": "method",
+      "signature": "(self, account_id: str) -> int | None"
+    },
     "get_exercise_library_detail": {
       "kind": "method",
       "signature": "(self, exercise_id: str) -> dict[str, typing.Any] | None"
@@ -457,9 +461,13 @@
       "kind": "method",
       "signature": "(self, account_id: str | None, role: str, model: str, input_tokens: int, output_tokens: int, cost_usd: float, estimated: bool, purpose: str | None = None, created_at: str | None = None, turn_id: str | None = None) -> None"
     },
+    "record_roster_ai_disclosure": {
+      "kind": "method",
+      "signature": "(self, player_account_id: str, disclosure_version: str, now_iso: str) -> dict[str, str] | None"
+    },
     "redeem_assignment_invite": {
       "kind": "method",
-      "signature": "(self, token_hash: str, player_account_id: str, now_iso: str) -> dict[str, typing.Any]"
+      "signature": "(self, token_hash: str, player_account_id: str, now_iso: str, roster_ai_disclosure_version: str | None = None) -> dict[str, typing.Any]"
     },
     "redeem_coach_invite": {
       "kind": "method",
@@ -528,6 +536,10 @@
     "set_account_last_seen_at": {
       "kind": "method",
       "signature": "(self, account_id: str, day: str, build: int | None = None) -> None"
+    },
+    "set_coach_stall_threshold": {
+      "kind": "method",
+      "signature": "(self, account_id: str, weeks: int) -> bool"
     },
     "set_plan": {
       "kind": "method",
