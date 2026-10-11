@@ -11,13 +11,12 @@ from agent.prompts import ASSISTANT_STYLE_KEYS, DEFAULT_ASSISTANT_STYLE, render_
 from database.registry.model_usage import ALLOWANCE_EXEMPT_PURPOSE
 from service import evaluation_report_gate
 from service.evaluation_report_gate import EvaluationReportConfig, GateStatus, evaluate_gate as _evaluate_gate
+from utils import player_output_budgets
 
 logger = logging.getLogger(__name__)
 
 CONTEXT_VERSION = "checkpoint-review-v2"
 REPORT_VERSION = 1
-MAX_OUTPUT_TOKENS = 200
-
 # TODO(#135): revisit the Arabic dialect. Kept out of the prompt text, which is
 # hashed into every recorded evaluation report.
 SYSTEM_PROMPT = """Write a brief assessment for the player in 2–4 short sentences.
@@ -145,7 +144,7 @@ def checkpoint_review_model_identity() -> tuple[str, str]:
 def bind_review_model(model: Any) -> Any:
     """Bounds review output and disables hosted-model thinking for this call."""
     return model.bind(
-        max_tokens=MAX_OUTPUT_TOKENS,
+        max_completion_tokens=player_output_budgets.player_output_budget("checkpoint_review"),
         extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
 
@@ -246,7 +245,6 @@ __all__ = [
     "AssistantStylePreferences",
     "CANONICAL_FIXTURE",
     "CONTEXT_VERSION",
-    "MAX_OUTPUT_TOKENS",
     "REPORT_VERSION",
     "ReviewGenerationRequest",
     "SYSTEM_PROMPT",

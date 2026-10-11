@@ -2,11 +2,12 @@
 import re
 from typing import Optional
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from utils.logger import MyosLogger
 from utils.model_downloader import llm
+from utils import player_output_budgets
 
 logger = MyosLogger().get_logger(__name__)
 
@@ -111,17 +112,12 @@ def resolve_unknown_abbreviation_with_llm(token: str) -> Optional[str]:
     if not re.fullmatch(r"[a-zA-Z]{2,6}", clean_token):
         return None
 
-    prompt = (
-        "You are an expert strength and conditioning biomechanics engine.\n"
-        "A trainee provided an abbreviation for an exercise.\n"
-        "Identify if this is a known gym exercise abbreviation (e.g., 'SLDL' -> 'Stiff Leg Deadlift', 'GHR' -> 'Glute Ham Raise').\n"
-        "If it is a real gym movement, return canonical_name. If it is gibberish, non-fitness, or ambiguous, return is_fitness_movement=False."
-    )
+    prompt = _abbreviation_prompt(clean_token)
     try:
-        structured_llm = llm.with_structured_output(AbbreviationExpansion)
-        res: AbbreviationExpansion = structured_llm.invoke(
-            [SystemMessage(content=prompt), HumanMessage(content=f"Abbreviation: '{clean_token}'")]
+        structured_llm = llm.with_structured_output(AbbreviationExpansion).bind(
+            max_completion_tokens=player_output_budgets.player_output_budget("abbreviation_expansion")
         )
+        res: AbbreviationExpansion = structured_llm.invoke(prompt)
         if res.is_fitness_movement and res.canonical_name:
             return res.canonical_name.lower().strip()
         return None
@@ -129,3 +125,12 @@ def resolve_unknown_abbreviation_with_llm(token: str) -> Optional[str]:
         logger.warning(f"LLM abbreviation fallback failed for '{token}': {e}")
         return None
 
+
+def _abbreviation_prompt(token: str) -> list[BaseMessage]:
+    prompt = (
+        "You are an expert strength and conditioning biomechanics engine.\n"
+        "A trainee provided an abbreviation for an exercise.\n"
+        "Identify if this is a known gym exercise abbreviation (e.g., 'SLDL' -> 'Stiff Leg Deadlift', 'GHR' -> 'Glute Ham Raise').\n"
+        "If it is a real gym movement, return canonical_name. If it is gibberish, non-fitness, or ambiguous, return is_fitness_movement=False."
+    )
+    return [SystemMessage(content=prompt), HumanMessage(content=f"Abbreviation: '{token}'")]

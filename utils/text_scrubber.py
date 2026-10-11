@@ -46,11 +46,15 @@ _TRAIL_CONTINUATION_PATTERNS = tuple(
 
 EMPTY_RESPONSE_FALLBACK = "I couldn't produce a clear answer. Could you rephrase your question?"
 PIPELINE_ERROR_RESPONSE = "I couldn't complete that request. Please try again."
+DEEPSEEK_END_OF_SENTENCE_TOKEN = "<｜end▁of▁sentence｜>"
 
 
 class CoachOutputScrubber:
     MAX_BUFFER = 512
-    CONTROL_TOKENS = ("<think>", "</think>", "<|im_end|>", "<|eot_id|>", "<|end|>", "<|endoftext|>", "</s>", "[end]")
+    CONTROL_TOKENS = (
+        "<think>", "</think>", "<|im_end|>", "<|eot_id|>", "<|end|>", "<|endoftext|>", "</s>", "[end]",
+        DEEPSEEK_END_OF_SENTENCE_TOKEN,
+    )
     GUARDED_PREFIX = re.compile(
         r"^\s*(?:you|sounds|diagnosed|push|work|train|take|prescribe|try|"
         r"sure|certainly|absolutely|of|great|happy|here|as|in|welcome|let|let's|"

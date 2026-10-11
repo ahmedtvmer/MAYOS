@@ -9,6 +9,8 @@ from typing import Any
 
 from langchain_openai import ChatOpenAI
 
+from utils.player_output_budgets import PLAYER_CHAT_REPLY_MAX_OUTPUT_TOKENS
+
 logger = logging.getLogger(__name__)
 
 CLOUD_MODEL_REGISTRY = {
@@ -16,7 +18,7 @@ CLOUD_MODEL_REGISTRY = {
         "model_env": "LLM_MODEL",
         "default_model": "deepseek-ai/DeepSeek-V4-Flash",
         "max_tokens_env": "LLM_MAX_TOKENS",
-        "default_max_tokens": 200,
+        "default_max_tokens": PLAYER_CHAT_REPLY_MAX_OUTPUT_TOKENS,
         "streaming": True,
     },
     "judge": {

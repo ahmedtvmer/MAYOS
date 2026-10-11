@@ -82,6 +82,7 @@ from service.program_substitution import ProgramSubstitution, substitute_program
 from utils.logger import MyosLogger
 from utils.equipment_access import COMMERCIAL_GYM, equipment_access_allows, map_equipment_access
 from utils.model_downloader import llm
+from utils import player_output_budgets
 from utils.text_scrubber import CoachOutputScrubber, EMPTY_RESPONSE_FALLBACK, PIPELINE_ERROR_RESPONSE, finalize_coach_output
 
 load_dotenv()
@@ -718,6 +719,15 @@ def _classify_single_clause(clause: str, telemetry: str = "", messages: Sequence
     return {"intent": "coaching_qa", "intent_metadata": {}, "query": c}
 
 
+def _classify_intent_with_llm(query: str) -> IntentClassification:
+    structured_llm = llm.with_structured_output(IntentClassification).bind(
+        max_completion_tokens=player_output_budgets.player_output_budget("intent_routing")
+    )
+    return structured_llm.invoke(
+        [SystemMessage(content=ROUTER_PROMPT), HumanMessage(content=query)]
+    )
+
+
 def _clinical_turn_metadata(query: str, sub_intents=()) -> dict[str, Any] | None:
     if is_franco_arabic(query):
         return {"raw_query": query, "franco": True}
@@ -819,19 +829,8 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
         return {"intent": "coaching_qa", "intent_metadata": {}}
 
     # LLM Router Fallback
-    router_prompt = (
-        "Classify the trainee query into EXACTLY one category:\n"
-        "- exercise_substitution: Swapping/changing a specific movement in the routine.\n"
-        "- program_mutation: Rebuilding the split or altering weekly training days.\n"
-        "- catalog_search: Finding or listing movements from the database.\n"
-        "- coaching_qa: Biomechanics, technique cues, session reviews, fatigue, or general gym questions.\n\n"
-        "Extract entities where present."
-    )
     try:
-        structured_llm = llm.with_structured_output(IntentClassification)
-        res: IntentClassification = structured_llm.invoke(
-            [SystemMessage(content=router_prompt), HumanMessage(content=query)]
-        )
+        res = _classify_intent_with_llm(query)
         metadata: dict[str, Any] = {}
         if res.intent not in {"exercise_substitution", "program_mutation", "catalog_search", "coaching_qa"}:
             return {"intent": "coaching_qa", "intent_metadata": {}}
@@ -1210,6 +1209,36 @@ def exercise_history_node(state: AssistantState, config: dict[str, Any] | None =
 def resolve_coreference_with_llm(
     query: str, messages: Sequence[BaseMessage], active_program, store: Any
 ) -> tuple[str | None, str | None]:
+    prompt = _build_coreference_prompt(query, messages, active_program, store)
+    try:
+        structured_llm = llm.with_structured_output(SubstitutionResolution).bind(
+            max_completion_tokens=player_output_budgets.player_output_budget("substitution_resolution")
+        )
+        res: SubstitutionResolution = structured_llm.invoke(prompt)
+        return res.source_exercise, res.target_exercise
+    except Exception as e:
+        logger.warning(f"Coreference LLM fallback failed: {e}")
+        return None, None
+
+
+def _build_coreference_prompt(
+    query: str, messages: Sequence[BaseMessage], active_program: Any, store: Any
+) -> list[BaseMessage]:
+    routine_names, chat_lines = _coreference_context(active_program, store, messages)
+    coreference_prompt = (
+        "You are an entity resolution engine for a fitness app.\n"
+        "The user wants to replace or find alternatives for an exercise, but used a conversational reference.\n\n"
+        f"[Active Routine Exercises]\n{chr(10).join(routine_names)}\n\n"
+        f"[Recent Conversation]\n{chr(10).join(chat_lines)}\n\n"
+        f'User\'s Query: "{query}"\n\n'
+        "Identify source_exercise and target_exercise. Return ONLY valid structured data."
+    )
+    return [SystemMessage(content=coreference_prompt), HumanMessage(content=query)]
+
+
+def _coreference_context(
+    active_program: Any, store: Any, messages: Sequence[BaseMessage]
+) -> tuple[list[str], list[str]]:
     routine_exercises = [
         (day, exercise)
         for day in active_program.days
@@ -1225,24 +1254,7 @@ def resolve_coreference_with_llm(
     ]
     tail = [m for m in messages if isinstance(m, (HumanMessage, AIMessage))][-3:]
     chat_lines = [f"{'Trainee' if isinstance(m, HumanMessage) else 'Coach'}: {_get_message_text(m)}" for m in tail]
-
-    coreference_prompt = (
-        "You are an entity resolution engine for a fitness app.\n"
-        "The user wants to replace or find alternatives for an exercise, but used a conversational reference.\n\n"
-        f"[Active Routine Exercises]\n{chr(10).join(routine_names)}\n\n"
-        f"[Recent Conversation]\n{chr(10).join(chat_lines)}\n\n"
-        f'User\'s Query: "{query}"\n\n'
-        "Identify source_exercise and target_exercise. Return ONLY valid structured data."
-    )
-    try:
-        structured_llm = llm.with_structured_output(SubstitutionResolution)
-        res: SubstitutionResolution = structured_llm.invoke(
-            [SystemMessage(content=coreference_prompt), HumanMessage(content=query)]
-        )
-        return res.source_exercise, res.target_exercise
-    except Exception as e:
-        logger.warning(f"Coreference LLM fallback failed: {e}")
-        return None, None
+    return routine_names, chat_lines
 
 
 @dataclass(frozen=True)

@@ -7,14 +7,10 @@ sys.path.append(str(BASE_DIR))
 
 import pytest
 
-from agent.program_rules import (
-    DYNAMIC_SPLIT_PLAN_MAX_TOKENS,
-    fetch_filtered_candidates,
-    get_default_split,
-    resolve_split,
-)
+from agent.program_rules import fetch_filtered_candidates, get_default_split, resolve_split
 from tests.fakes.chat_model import ScriptedChatModel
 from utils.logger import MyosLogger
+from utils.player_output_budgets import DYNAMIC_SPLIT_PLAN_MAX_OUTPUT_TOKENS
 
 logger = MyosLogger().get_logger(__name__)
 
@@ -137,7 +133,7 @@ def test_dynamic_split_plan_uses_its_own_output_budget(monkeypatch):
     assert len(model.calls) == 1
     assert model.calls[0]["mode"] == "structured"
     assert model.calls[0]["kwargs"]["schema"] == "DynamicSplitPlan"
-    assert model.calls[0]["kwargs"]["max_tokens"] == DYNAMIC_SPLIT_PLAN_MAX_TOKENS
+    assert model.calls[0]["kwargs"]["max_completion_tokens"] == DYNAMIC_SPLIT_PLAN_MAX_OUTPUT_TOKENS
 
 
 def test_dynamic_split_uses_the_generation_metering_scope(monkeypatch):

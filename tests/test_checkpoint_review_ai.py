@@ -11,9 +11,11 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from langchain_core.messages import AIMessage
 from agent.prompts import ASSISTANT_STYLE_DESCRIPTIONS
 from database.database_manager import DatabaseManager
 from service import checkpoint_review_ai
+from utils.player_output_budgets import CHECKPOINT_REVIEW_MAX_OUTPUT_TOKENS
 from service import coach as coach_service
 from svc.app import create_app
 from svc.dependencies import get_db
@@ -191,9 +193,13 @@ def test_review_model_binding_disables_thinking_only_for_cloud():
     model = BindingModel()
     assert checkpoint_review_ai.bind_review_model(model) is model
     assert model.kwargs == {
-        "max_tokens": 200,
+        "max_completion_tokens": CHECKPOINT_REVIEW_MAX_OUTPUT_TOKENS,
         "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
     }
+
+
+def test_194_deepseek_end_token_is_empty_for_checkpoint_review():
+    assert checkpoint_review_ai.extract_text(AIMessage(content="<｜end▁of▁sentence｜>")) == ""
 
 
 def test_gate_binds_the_report_to_the_hosted_player_model(monkeypatch):
