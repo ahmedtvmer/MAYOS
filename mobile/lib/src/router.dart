@@ -11,6 +11,7 @@ import 'core/models.dart';
 import 'core/display_language/settings_copy.dart';
 import 'core/ui/mayos_scaffold.dart';
 import 'features/coach/coach_alerts_screen.dart';
+import 'features/coach/coach_assistant_tab_screen.dart';
 import 'features/coach/coach_invite_screen.dart';
 import 'features/coach/coach_player_history_screen.dart';
 import 'features/coach/coach_profile_screen.dart';
@@ -62,6 +63,7 @@ const String coachRosterRoutePath = 'roster';
 const String coachAssignmentRoutePath = ':assignmentId';
 const String coachAlertsRoutePath = 'alerts';
 const String coachRequestsRoutePath = 'requests';
+const String coachAssistantRoutePath = 'assistant';
 const String coachRequestRoutePath = ':requestId';
 const String coachProfileRoutePath = 'profile';
 const String coachAssignmentParameter = 'assignmentId';
@@ -69,6 +71,7 @@ const String coachRequestParameter = 'requestId';
 const String coachRosterPath = '$coachPath/$coachRosterRoutePath';
 const String coachAlertsPath = '$coachPath/$coachAlertsRoutePath';
 const String coachRequestsPath = '$coachPath/$coachRequestsRoutePath';
+const String coachAssistantPath = '$coachPath/$coachAssistantRoutePath';
 const String coachProfilePath = '$coachPath/$coachProfileRoutePath';
 const String coachInvitePath = '/coach-invite';
 const String playerSetupPath = '/player-setup';
@@ -531,6 +534,11 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
                     ),
                   ),
                 ],
+              ),
+              GoRoute(
+                path: coachAssistantRoutePath,
+                builder: (BuildContext context, GoRouterState state) =>
+                    const CoachAssistantTabScreen(),
               ),
               GoRoute(
                 path: coachProfileRoutePath,

@@ -5,6 +5,7 @@ import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_app_header.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_markdown.dart';
 import 'package:mayos_mobile/src/features/coach/coach_exercise_table.dart'
     show CoachCompactExerciseRow;
@@ -599,10 +600,17 @@ void main() {
       find.byKey(const Key('coach_assistant_question')),
     );
 
-    expect(find.text('المساعد'), findsOneWidget);
+    final Finder assistantTitle = find.descendant(
+      of: find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is MayosAppHeader && widget.title == 'المساعد',
+      ),
+      matching: find.text('المساعد'),
+    );
+    expect(assistantTitle, findsOneWidget);
     expect(find.byTooltip('إرسال'), findsOneWidget);
     expect(
-      Directionality.of(tester.element(find.text('المساعد'))),
+      Directionality.of(tester.element(assistantTitle)),
       TextDirection.rtl,
     );
     final Finder questionField =

@@ -16,6 +16,7 @@ import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_card.dart';
 import '../../providers.dart';
 import '../../router.dart';
+import 'coach_roster_loader.dart';
 import 'coach_shared.dart';
 
 /// Coach-side roster (#24): the assigned players in the order the service
@@ -45,24 +46,11 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
   String? _busyAssignmentId;
   List<CoachRosterEntry> _assignments = <CoachRosterEntry>[];
 
-  /// Bumped by every load so a slower, older response can never overwrite a
-  /// newer one when revision bumps start overlapping loads (#120).
-  int _loadSeq = 0;
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    final List<CoachRosterEntry>? cached = ref.read(coachRosterEntriesProvider);
-    final int? cacheRevision = ref.read(coachRosterEntriesRevisionProvider);
-    if (cached == null ||
-        cacheRevision != ref.read(coachRosterRevisionProvider)) {
-      _load();
-    } else {
-      _assignments = cached;
-      _loading = false;
-      _publishRoster(cached);
-    }
+    _loadCached();
   }
 
   @override
@@ -83,8 +71,20 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
 
   /// [showLoader] blanks the list while fetching; the background refreshes
   /// (app resume, drill-down return) keep the current rows until data lands.
-  Future<void> _load({bool showLoader = true}) async {
-    final int seq = ++_loadSeq;
+  Future<void> _load({bool showLoader = true}) => _requestRoster(
+        ref.read(coachRosterLoaderProvider).refresh,
+        showLoader: showLoader,
+      );
+
+  Future<void> _loadCached() => _requestRoster(
+        ref.read(coachRosterLoaderProvider).load,
+        showLoader: false,
+      );
+
+  Future<void> _requestRoster(
+    Future<List<CoachRosterEntry>?> Function() loadRoster, {
+    required bool showLoader,
+  }) async {
     if (showLoader) {
       setState(() {
         _loading = true;
@@ -92,35 +92,19 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
       });
     }
     try {
-      final List<CoachRosterEntry> assignments =
-          await ref.read(apiClientProvider).coachAssignments();
-      if (!mounted || seq != _loadSeq) return;
+      final List<CoachRosterEntry>? assignments = await loadRoster();
+      if (!mounted || assignments == null) return;
       setState(() {
         _assignments = assignments;
         _loading = false;
       });
-      ref.read(coachRosterEntriesProvider.notifier).state = assignments;
-      ref.read(coachRosterEntriesRevisionProvider.notifier).state =
-          ref.read(coachRosterRevisionProvider);
-      _publishRoster(assignments);
     } on ApiException catch (error) {
-      if (!mounted || seq != _loadSeq) return;
+      if (!mounted) return;
       setState(() {
         _loading = false;
         _error = apiFailureMessage(error);
       });
     }
-  }
-
-  void _publishRoster(List<CoachRosterEntry> assignments) {
-    // The refreshed roster is the authority on what is still assigned: an
-    // assignment that vanished ends the coach assistant's in-memory
-    // transcript for it (issue #45).
-    ref.read(coachAssistantControllerProvider.notifier).clearUnlessAssigned(
-      <String>[
-        for (final CoachRosterEntry row in assignments) row.assignmentId,
-      ],
-    );
   }
 
   Future<void> _revoke(CoachRosterEntry entry) async {
@@ -161,12 +145,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                 row.assignmentId != entry.assignmentId)
             .toList(growable: false);
       });
-      ref.read(coachRosterEntriesProvider.notifier).state = _assignments;
-      // Revocation ends the assistant's in-memory context for that player too
-      // (issue #45): no further question can be asked about them.
-      ref
-          .read(coachAssistantControllerProvider.notifier)
-          .clearFor(entry.assignmentId);
+      ref.read(coachRosterLoaderProvider).publish(_assignments);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(copy.assignmentRevoked(entry.playerUsername))),
       );
@@ -464,9 +443,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     // track it without a restart (#120). Producers bump the revision; this
     // tab never does, so the listener cannot loop.
     ref.listen<int>(coachRosterRevisionProvider, (int? previous, int next) {
-      if (previous != next) {
-        _load(showLoader: false);
-      }
+      if (previous != next) _load(showLoader: false);
     });
     if (_loading) {
       return const Center(child: CircularProgressIndicator());

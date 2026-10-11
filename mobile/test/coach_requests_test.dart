@@ -267,8 +267,8 @@ void main() {
   });
 
   testWidgets(
-      'the shell is Roster · Alerts · Requests · Profile with a pending '
-      'requests badge', (WidgetTester tester) async {
+      'the shell is Roster · Alerts · Requests · Assistant · Profile '
+      'with a pending requests badge', (WidgetTester tester) async {
     final FakeMayosApi fake = _coachFake();
     fake.programRequests.add(_request(id: 'req-1', status: 'pending'));
     fake.programRequests
@@ -279,7 +279,7 @@ void main() {
     final MayosBottomNavigation nav = tester
         .widget<MayosBottomNavigation>(find.byType(MayosBottomNavigation));
     expect(nav.items.map((MayosNavItem item) => item.label).toList(),
-        <String>['Roster', 'Alerts', 'Requests', 'Profile']);
+        <String>['Roster', 'Alerts', 'Requests', 'Assistant', 'Profile']);
     expect(nav.items[CoachShellTab.requests].badge, 2);
 
     await tester.tap(find.text('Requests'));

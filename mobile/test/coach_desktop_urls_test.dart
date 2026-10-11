@@ -142,6 +142,14 @@ void main() {
     await tester.tap(find.text('Requests'));
     await tester.pumpAndSettle();
     expect(_path(tester), coachRequestsPath);
+    await tester.tap(find.text('Assistant'));
+    await tester.pumpAndSettle();
+    expect(_path(tester), coachAssistantPath);
+    expect(find.byKey(const Key('coach_ai_disabled')), findsOneWidget);
+    expect(
+      tester.widget<NavigationRail>(find.byType(NavigationRail)).selectedIndex,
+      CoachShellTab.assistant,
+    );
     await tester.tap(find.text('Profile'));
     await tester.pumpAndSettle();
     expect(_path(tester), coachProfilePath);

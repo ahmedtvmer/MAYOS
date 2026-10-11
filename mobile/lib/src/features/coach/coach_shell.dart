@@ -23,7 +23,8 @@ abstract final class CoachShellTab {
   static const int roster = 0;
   static const int alerts = 1;
   static const int requests = 2;
-  static const int profile = 3;
+  static const int assistant = 3;
+  static const int profile = 4;
 }
 
 /// The Coach mode shell (#119/#121). The browser location selects the active
@@ -54,6 +55,11 @@ class CoachShell extends ConsumerWidget {
           label: copy.requests,
           icon: Icons.inbox_outlined,
           selectedIcon: Icons.inbox,
+        ),
+        MayosNavItem(
+          label: copy.assistant,
+          icon: Icons.auto_awesome_outlined,
+          selectedIcon: Icons.auto_awesome,
         ),
         MayosNavItem(
           label: copy.profile,
@@ -121,6 +127,7 @@ class CoachShell extends ConsumerWidget {
           context.go(switch (selected) {
             CoachShellTab.alerts => coachAlertsPath,
             CoachShellTab.requests => coachRequestsPath,
+            CoachShellTab.assistant => coachAssistantPath,
             CoachShellTab.profile => coachProfilePath,
             _ => coachRosterPath,
           });
@@ -147,6 +154,7 @@ class CoachShell extends ConsumerWidget {
     if (path == coachRequestsPath || path.startsWith('$coachRequestsPath/')) {
       return CoachShellTab.requests;
     }
+    if (path == coachAssistantPath) return CoachShellTab.assistant;
     if (path == coachProfilePath) return CoachShellTab.profile;
     return CoachShellTab.roster;
   }

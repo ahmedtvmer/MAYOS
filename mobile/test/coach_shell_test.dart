@@ -107,8 +107,9 @@ FakeMayosApi _coachFake() {
 
 void main() {
   testWidgets(
-      'the coach shell opens on Roster with Roster · Alerts · Profile tabs '
-      'and an alerts count badge', (WidgetTester tester) async {
+      'the coach shell opens on Roster with Roster · Alerts · Requests · '
+      'Assistant · Profile tabs and an alerts count badge',
+      (WidgetTester tester) async {
     final InMemoryAppModeStore modeStore = InMemoryAppModeStore();
     await _pumpApp(tester, _coachFake(), modeStore);
     await _pumpUntilFound(tester, find.text('Active assignments'));
@@ -116,6 +117,8 @@ void main() {
     // The shell lands on Roster.
     expect(find.text('Roster'), findsOneWidget);
     expect(find.text('Alerts'), findsOneWidget);
+    expect(find.text('Requests'), findsOneWidget);
+    expect(find.text('Assistant'), findsOneWidget);
     expect(find.text('Profile'), findsOneWidget);
     expect(find.text('bob'), findsOneWidget);
     // One new alert drives the badge on the Alerts tab.
@@ -124,6 +127,13 @@ void main() {
         of: find.byType(Badge),
         matching: find.text('1'),
       ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Assistant'));
+    await _pumpUntilFound(tester, find.byKey(const Key('coach_ai_disabled')));
+    expect(
+      find.textContaining('turned off for this deployment'),
       findsOneWidget,
     );
 
@@ -181,7 +191,9 @@ void main() {
     expect(
       find.descendant(
         of: find.widgetWithText(ListTile, 'Coach mode'),
-        matching: find.text('Your roster, alerts, and profile'),
+        matching: find.text(
+          'Your roster, alerts, requests, assistant, and profile',
+        ),
       ),
       findsOneWidget,
     );

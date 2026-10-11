@@ -109,6 +109,21 @@ class CoachCopy {
 
   String get assistant => isArabic ? 'المساعد' : 'Assistant';
   String get askAssistant => isArabic ? 'اسأل المساعد' : 'Ask assistant';
+  String get askAboutOnePlayer =>
+      isArabic ? 'اسأل عن لاعب واحد' : 'Ask about one player';
+  String get assistantPickerLead => isArabic
+      ? 'اختر لاعبًا من علاقة تدريب نشطة لفتح المساعد الخاص به.'
+      : 'Choose a player on an active assignment to open their assistant.';
+  String get chooseAssignedPlayer => isArabic
+      ? 'اختر لاعبًا من علاقات التدريب النشطة'
+      : 'Choose an active player';
+  String get openPlayerAssistant =>
+      isArabic ? 'فتح مساعد اللاعب' : 'Open player assistant';
+  String get coachAiDisabled => isArabic
+      ? 'مساعد المدرب غير متاح لأن الذكاء الاصطناعي للمدرب متوقف في هذا النشر.'
+      : 'The Coach AI assistant is unavailable because Coach AI is turned off for this deployment.';
+  String get loadingPlayers =>
+      isArabic ? 'جارٍ تحميل اللاعبين…' : 'Loading players…';
   String get openAlerts => isArabic ? 'التنبيهات المفتوحة' : 'Open alerts';
   String assistantNoHistory(String player) => isArabic
       ? 'اسأل عن أرقام تدريب ${_ltr(player)}: مجموعات التدريب، والحصص، والأرقام القياسية، والجدول.'

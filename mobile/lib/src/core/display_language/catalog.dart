@@ -161,8 +161,8 @@ class MayosCopy {
   String get switchMode => isArabic ? 'تبديل الوضع' : 'Switch mode';
   String get ownTraining => isArabic ? 'تدريبك الشخصي' : 'Your own training';
   String get rosterAlertsProfile => isArabic
-      ? 'قائمة اللاعبين والتنبيهات والملف الشخصي'
-      : 'Your roster, alerts, and profile';
+      ? 'قائمة اللاعبين والتنبيهات والطلبات والمساعد والملف الشخصي'
+      : 'Your roster, alerts, requests, assistant, and profile';
   String accountMode(bool coach) => isArabic
       ? 'الحساب والوضع. الوضع الحالي: ${coach ? 'وضع المدرب' : 'وضع اللاعب'}'
       : 'Account and mode. Current: ${coach ? 'Coach' : 'Player'} mode';
