@@ -1,0 +1,108 @@
+{
+  "model": "deepseek-ai/DeepSeek-V4-Flash",
+  "endpoint": "https://api.deepinfra.com/v1/openai",
+  "measured_on": "2026-10-11",
+  "base_prompt_tokens": 369,
+  "samples": [
+    {
+      "language": "English",
+      "provider_prompt_tokens": 529,
+      "provider_token_delta": 160,
+      "messages": [
+        {
+          "role": "user",
+          "content": "I can train three days each week, and I want to keep making progress without turning every session into a test. My last two weeks were steady, although the final set of presses felt slower than usual. I had no pain and recovered normally. Should I hold the same weight for a few sessions or change something now?"
+        },
+        {
+          "role": "assistant",
+          "content": "If your reps stayed controlled and you had no pain, keep the load steady for the next session and focus on the same range of motion. Review the next couple of workouts before changing the plan; one slower final set does not require a full adjustment."
+        },
+        {
+          "role": "user",
+          "content": "I also have limited time on Wednesdays. I can keep the main lifts, but I may need to shorten the accessory section. Which accessory should I cut first while keeping the session balanced?"
+        }
+      ]
+    },
+    {
+      "language": "Arabic",
+      "provider_prompt_tokens": 595,
+      "provider_token_delta": 226,
+      "messages": [
+        {
+          "role": "user",
+          "content": "أقدر أتمرن تلات أيام في الأسبوع، وعايز أفضل أتقدم من غير ما أحول كل حصة لاختبار. الأسبوعين اللي فاتوا كانوا منتظمين، مع إن آخر مجموعة ضغط كانت أبطأ من المعتاد. مفيش ألم والتعافي كان طبيعي. أسيب نفس الوزن كام حصة ولا أغير حاجة دلوقتي؟"
+        },
+        {
+          "role": "assistant",
+          "content": "لو التكرارات فضلت متحكم فيها ومفيش ألم، خليك على نفس الوزن في الحصة الجاية وركز على مدى الحركة. راجع الحصتين الجايتين قبل ما تغير البرنامج؛ بطء مجموعة أخيرة مرة واحدة مش محتاج تعديل كامل."
+        },
+        {
+          "role": "user",
+          "content": "عندي وقت محدود يوم الأربعاء كمان. أقدر أحافظ على التمارين الأساسية، بس ممكن أقصر جزء التمارين المساعدة. أشيل أي تمرين مساعد الأول عشان أفضل محافظ على توازن الحصة؟"
+        }
+      ]
+    }
+  ],
+  "history_pair": {
+    "english": [
+      {
+        "role": "user",
+        "content": "I train three days a week, usually starting Monday with a rest day between sessions, and log my loads and reps. I want steady progress without turning every workout into a test. The past two weeks were consistent, though my final press set was slower. I had no pain and recovered normally. Should I keep this weight for a few sessions or adjust now?"
+      },
+      {
+        "role": "assistant",
+        "content": "If your reps stayed controlled and you had no pain, keep the load steady for the next session and focus on the same range of motion. Review the next couple of workouts before changing the plan; one slower final set does not require a full adjustment."
+      },
+      {
+        "role": "user",
+        "content": "I can also train after work on Wednesdays, but I only have about an hour. My upper day includes the main press and row plus two accessory movements, and I want to keep enough rest between the main sets. If time gets tight, should I shorten one accessory or move it to another day? I prefer not to rush any reps."
+      },
+      {
+        "role": "assistant",
+        "content": "Keep the rest periods for the main press and row. If you run short on time, remove one accessory set or move a lower-priority movement, then check that the main work and recovery remain steady. Change one thing at a time."
+      },
+      {
+        "role": "user",
+        "content": "That works. I want to track progress simply. I can note load, reps, and whether the final set stayed controlled, but I do not want a long log or extra calculations. Should I compare each exercise with its previous session, or wait for a pattern across the week before deciding whether to add weight this week?"
+      },
+      {
+        "role": "assistant",
+        "content": "Track load, reps, and how the last set felt. Compare the same lift across several sessions, and add weight only when the planned reps stay controlled. A short note is enough; there is no need for extra calculations or a plan change after one workout."
+      },
+      {
+        "role": "user",
+        "content": "One more thing: next workout, should I keep the press and row as planned and adjust an accessory only if time runs short? I want to use the same loads, rest fully between main sets, and change one thing at a time so I can tell what helped. Is that sensible for this week, without rushing reps to finish sooner?"
+      }
+    ],
+    "arabic": [
+      {
+        "role": "user",
+        "content": "أقدر أتمرن تلات أيام في الأسبوع، وغالبًا ببدأ يوم الاتنين وباخد يوم راحة بين الحصص، وبسجل الأوزان والتكرارات. عايز أفضل أتقدم من غير ما أحول كل حصة لاختبار. الأسبوعين اللي فاتوا كانوا منتظمين، مع إن آخر مجموعة ضغط كانت أبطأ من المعتاد. مفيش ألم والتعافي كان طبيعي. أسيب نفس الوزن كام حصة ولا أغير حاجة دلوقتي؟"
+      },
+      {
+        "role": "assistant",
+        "content": "لو التكرارات فضلت متحكم فيها ومفيش ألم، خليك على نفس الوزن في الحصة الجاية وركز على مدى الحركة. راجع الحصتين الجايتين قبل ما تغير البرنامج؛ بطء مجموعة أخيرة مرة واحدة مش محتاج تعديل كامل. خلي باقي البرنامج زي ما هو دلوقتي."
+      },
+      {
+        "role": "user",
+        "content": "أقدر أتمرن بعد الشغل يوم الأربعاء كمان، بس معايا حوالي ساعة بس. يوم الجزء العلوي عندي فيه تمرين الضغط والتجديف الأساسيين ومعاهم تمرينين مساعدين، وعايز أفضل واخد راحة كفاية بين المجموعات الأساسية. لو الوقت ضاق، أقلل تمرين مساعد ولا أنقله ليوم تاني؟ ومش عايز أستعجل التكرارات ولا أختصر الراحة بين المجموعات الرئيسية."
+      },
+      {
+        "role": "assistant",
+        "content": "حافظ على فترات الراحة بين الضغط والتجديف الأساسيين. لو الوقت ضاق، احذف مجموعة من تمرين مساعد أو انقل حركة أقل أولوية، وبعدها تابع ثبات التمارين الأساسية والتعافي. غيّر حاجة واحدة كل مرة."
+      },
+      {
+        "role": "user",
+        "content": "تمام. عايز كمان أتابع تقدمي بطريقة بسيطة ومن غير ما أسجل كل تفصيلة. أقدر أكتب الوزن والتكرارات وألاحظ إذا كانت آخر مجموعة فضلت متحكم فيها، بس مش عايز سجل طويل أو حسابات زيادة. الأفضل أقارن كل تمرين بالحصة اللي قبله، ولا أستنى وأبص على النمط خلال الأسبوع كله قبل ما أقرر أزود الوزن أو أغيره الأسبوع ده؟"
+      },
+      {
+        "role": "assistant",
+        "content": "سجل الوزن والتكرارات وإحساسك في آخر مجموعة عمل. قارن نفس التمرين على مدار كذا حصة، وزود الوزن لما التكرارات المطلوبة تفضل متحكم فيها. ملاحظة قصيرة كفاية؛ مش محتاج تحسب أرقام زيادة أو تغير البرنامج بسبب حصة واحدة."
+      },
+      {
+        "role": "user",
+        "content": "سؤال أخير: في الحصة الجاية، أسيب تمرين الضغط والتجديف زي ما هما وأعدل تمرين مساعد بس لو الوقت ضاق؟ عايز أستخدم نفس الأوزان دلوقتي، وأخد راحتي كاملة بين المجموعات الأساسية، وأغير حاجة واحدة كل مرة عشان أعرف إيه اللي فرق. هل دي طريقة مناسبة للأسبوع ده من غير ما أستعجل التكرارات أو أختصر الراحة لمجرد إني أخلص أسرع؟"
+      }
+    ]
+  }
+}

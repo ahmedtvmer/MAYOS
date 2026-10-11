@@ -3,13 +3,17 @@ import json
 from pathlib import Path
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+import pytest
 
 from agent.prompts import render_assistant_style
 from agent.player_prompt import (
+    HOSTED_PROMPT_ENGLISH_EQUIVALENT_TOKEN_BUDGET,
+    HOSTED_PROMPT_REAL_TOKEN_SAFETY_CEILING,
     STATIC_SYSTEM_CORE,
     build_player_chat_prompt,
     message_role,
     prompt_token_count,
+    script_neutral_prompt_token_count,
 )
 
 
@@ -76,6 +80,126 @@ def test_history_trims_at_the_exact_budget_edge_and_keeps_orphaned_reply():
     assert prompt_token_count(trimmed) == exact_edge
 
 
+@pytest.fixture
+def held_out_prompt_token_samples():
+    fixture_path = Path(__file__).parent / "fixtures" / "player_prompt_token_samples.json"
+    return json.loads(fixture_path.read_text(encoding="utf-8"))
+
+
+def _chat_messages(messages):
+    return [
+        HumanMessage(content=message["content"])
+        if message["role"] == "user"
+        else AIMessage(content=message["content"])
+        for message in messages
+    ]
+
+
+def _retained_earlier_message_count(prompt, history):
+    system_content = prompt[0].content
+    conversation_content = [message.content for message in prompt[1:]]
+    return sum(
+        message["content"] in system_content
+        or message["content"] in conversation_content
+        for message in history[:-1]
+    )
+
+
+def test_held_out_provider_samples_stay_within_prompt_token_tolerance(
+    held_out_prompt_token_samples,
+):
+    base = [SystemMessage(content=STATIC_SYSTEM_CORE)]
+    estimated_base_tokens = prompt_token_count(base)
+
+    for sample in held_out_prompt_token_samples["samples"]:
+        messages = _chat_messages(sample["messages"])
+        estimated_delta = prompt_token_count([*base, *messages]) - estimated_base_tokens
+        provider_delta = sample["provider_token_delta"]
+
+        assert abs(estimated_delta - provider_delta) / provider_delta <= 0.15, (
+            f"{sample['language']}: estimated {estimated_delta}, "
+            f"provider delta {provider_delta}"
+        )
+
+
+@pytest.mark.parametrize("context_chars", [0, 800, 1600, 2400, 3200, 4000])
+def test_matched_english_arabic_histories_keep_equal_message_counts_as_context_grows(
+    context_chars, held_out_prompt_token_samples
+):
+    history_pair = held_out_prompt_token_samples["history_pair"]
+    telemetry_context = ("Verified training facts. " * 200)[:context_chars]
+    english_prompt = build_player_chat_prompt(
+        {
+            "messages": _chat_messages(history_pair["english"]),
+            "telemetry_context": telemetry_context,
+        }
+    )
+    arabic_prompt = build_player_chat_prompt(
+        {
+            "messages": _chat_messages(history_pair["arabic"]),
+            "telemetry_context": telemetry_context,
+        }
+    )
+    english_earlier_count = _retained_earlier_message_count(
+        english_prompt, history_pair["english"]
+    )
+    arabic_earlier_count = _retained_earlier_message_count(
+        arabic_prompt, history_pair["arabic"]
+    )
+
+    assert english_earlier_count == arabic_earlier_count, (
+        f"context_chars={context_chars}: English kept {english_earlier_count} earlier messages, "
+        f"Arabic kept {arabic_earlier_count}"
+    )
+    assert prompt_token_count(english_prompt) <= HOSTED_PROMPT_REAL_TOKEN_SAFETY_CEILING
+    assert prompt_token_count(arabic_prompt) <= HOSTED_PROMPT_REAL_TOKEN_SAFETY_CEILING
+
+
+def test_real_token_safety_ceiling_trims_only_oversized_arabic_history(
+    held_out_prompt_token_samples,
+):
+    history_pair = held_out_prompt_token_samples["history_pair"]
+    state = {"telemetry_context": "ع" * 1_800}
+    normalized_prompts = {}
+    safety_limited_prompts = {}
+    for language in ("english", "arabic"):
+        history = history_pair[language]
+        state["messages"] = _chat_messages(history)
+        normalized_prompts[language] = build_player_chat_prompt(
+            state,
+            prompt_token_count=script_neutral_prompt_token_count,
+        )
+        safety_limited_prompts[language] = build_player_chat_prompt(state)
+
+    normalized_counts = {
+        language: _retained_earlier_message_count(
+            normalized_prompts[language], history_pair[language]
+        )
+        for language in ("english", "arabic")
+    }
+    safety_limited_counts = {
+        language: _retained_earlier_message_count(
+            safety_limited_prompts[language], history_pair[language]
+        )
+        for language in ("english", "arabic")
+    }
+
+    assert normalized_counts["english"] == normalized_counts["arabic"]
+    assert all(
+        script_neutral_prompt_token_count(prompt)
+        <= HOSTED_PROMPT_ENGLISH_EQUIVALENT_TOKEN_BUDGET
+        for prompt in normalized_prompts.values()
+    )
+    assert prompt_token_count(normalized_prompts["english"]) <= HOSTED_PROMPT_REAL_TOKEN_SAFETY_CEILING
+    assert prompt_token_count(normalized_prompts["arabic"]) > HOSTED_PROMPT_REAL_TOKEN_SAFETY_CEILING
+    assert safety_limited_counts["english"] == normalized_counts["english"]
+    assert safety_limited_counts["arabic"] < normalized_counts["arabic"]
+    assert all(
+        prompt_token_count(prompt) <= HOSTED_PROMPT_REAL_TOKEN_SAFETY_CEILING
+        for prompt in safety_limited_prompts.values()
+    )
+
+
 def test_prompt_budget_drops_assistant_style_before_other_context_sections():
     def prompt_size(messages):
         if "Assistant style (" in messages[0].content:
@@ -92,6 +216,7 @@ def test_prompt_budget_drops_assistant_style_before_other_context_sections():
         },
         prompt_token_count=prompt_size,
         prompt_budget=lambda: 100,
+        prompt_selection_token_count=prompt_size,
     )
 
     assert "Assistant style (" not in payload[0].content

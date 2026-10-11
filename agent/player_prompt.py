@@ -1,5 +1,6 @@
 """Player chat prompt text, layout, and history budget."""
 
+import math
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -61,18 +62,85 @@ def _is_session_pointer(message: Any) -> bool:
     )
 
 
+# Calibration: 2026-10-11, deepseek-ai/DeepSeek-V4-Flash at
+# https://api.deepinfra.com/v1/openai. Each delta is against the fixed
+# STATIC_SYSTEM_CORE base (369 provider tokens). Fit deltas (tokens; Arabic chars,
+# other chars, messages): EN (84; 0, 387, 1), (114; 0, 536, 2), (226; 0, 1075, 4);
+# AR (119; 233, 56, 1), (160; 341, 77, 2), (318; 658, 156, 4). Joint least-squares
+# fitting of the two script rates and a per-message offset gave offsets below zero;
+# constraining the offset to a nonnegative value selected zero, with rates 0.4333 AR
+# and 0.2113 other tokens/character. Held-out EN: 748 chars/3 messages, estimate 158
+# vs provider delta 160 (529 total); AR: 472 Arabic + 110 other chars/3 messages,
+# estimate 228 vs delta 226 (595 total). Errors are -1.3% and +0.9%. The fixture
+# stores both held-out conversations.
+ARABIC_CHARACTER_TOKEN_RATE = 0.433
+NON_ARABIC_CHARACTER_TOKEN_RATE = 0.211
+MESSAGE_TOKEN_OVERHEAD = 0
+# Dividing Arabic token cost by this measured rate ratio gives English-equivalent cost.
+ARABIC_TO_ENGLISH_TOKEN_COST_RATIO = (
+    ARABIC_CHARACTER_TOKEN_RATE / NON_ARABIC_CHARACTER_TOKEN_RATE
+)
+
+
+def _is_arabic_character(character: str) -> bool:
+    codepoint = ord(character)
+    return (
+        0x0600 <= codepoint <= 0x08FF
+        or 0xFB50 <= codepoint <= 0xFDFF
+        or 0xFE70 <= codepoint <= 0xFEFF
+        or 0x10E60 <= codepoint <= 0x10E7F
+        or 0x10EC0 <= codepoint <= 0x10EFF
+    )
+
+
+def _prompt_character_counts(messages: Sequence[BaseMessage]) -> tuple[int, int]:
+    arabic_characters = 0
+    other_characters = 0
+    for message in messages:
+        for character in str(message.content):
+            if _is_arabic_character(character):
+                arabic_characters += 1
+            else:
+                other_characters += 1
+    return arabic_characters, other_characters
+
+
 def prompt_token_count(messages: Sequence[BaseMessage]) -> int:
-    rendered = "".join(f"<|{message_role(m)}|>\n{m.content}\n<|end|>\n" for m in messages) + "<|assistant|>\n"
-    return len(rendered.encode("utf-8")) + 32 * len(messages) + 32
+    """Estimate DeepSeek prompt tokens using rates calibrated for English and Arabic."""
+    arabic_characters, other_characters = _prompt_character_counts(messages)
+    text_tokens = (
+        arabic_characters * ARABIC_CHARACTER_TOKEN_RATE
+        + other_characters * NON_ARABIC_CHARACTER_TOKEN_RATE
+    )
+    overhead_tokens = len(messages) * MESSAGE_TOKEN_OVERHEAD
+    return math.ceil(text_tokens + overhead_tokens)
 
 
-#: Conservative hosted prompt ceiling in UTF-8 bytes.
-HOSTED_PROMPT_BYTE_BUDGET = 8 * 1024
+def script_neutral_prompt_token_count(messages: Sequence[BaseMessage]) -> int:
+    """Estimate English-equivalent tokens for language-neutral history trimming."""
+    arabic_characters, other_characters = _prompt_character_counts(messages)
+    neutral_arabic_rate = (
+        ARABIC_CHARACTER_TOKEN_RATE / ARABIC_TO_ENGLISH_TOKEN_COST_RATIO
+    )
+    text_tokens = (
+        arabic_characters * neutral_arabic_rate
+        + other_characters * NON_ARABIC_CHARACTER_TOKEN_RATE
+    )
+    overhead_tokens = len(messages) * MESSAGE_TOKEN_OVERHEAD
+    return math.ceil(text_tokens + overhead_tokens)
+
+
+#: #190's English-equivalent ceiling, retained at 1,500 from the original budget.
+HOSTED_PROMPT_ENGLISH_EQUIVALENT_TOKEN_BUDGET = 1_500
+# Existing graph and test callers use this alias for the selection budget.
+HOSTED_PROMPT_TOKEN_BUDGET = HOSTED_PROMPT_ENGLISH_EQUIVALENT_TOKEN_BUDGET
+# Owner decision (2026-10-11, #190): cap real estimated provider usage after selection.
+HOSTED_PROMPT_REAL_TOKEN_SAFETY_CEILING = 1_800
 
 
 def prompt_budget() -> int:
-    """Returns the conservative UTF-8 byte ceiling for hosted chat prompts."""
-    return HOSTED_PROMPT_BYTE_BUDGET
+    """Returns today's hosted prompt ceiling in English-equivalent tokens."""
+    return HOSTED_PROMPT_ENGLISH_EQUIVALENT_TOKEN_BUDGET
 
 
 def build_player_chat_prompt(
@@ -80,14 +148,21 @@ def build_player_chat_prompt(
     *,
     prompt_token_count: Callable[[Sequence[BaseMessage]], int] = prompt_token_count,
     prompt_budget: Callable[[], int] = prompt_budget,
+    prompt_selection_token_count: Callable[[Sequence[BaseMessage]], int] = (
+        script_neutral_prompt_token_count
+    ),
 ) -> list[BaseMessage]:
     """Build the complete player chat message list, trimming history to budget."""
     tail = _history_tail(state)
     sections = [_system_core(state), *_player_context(state)]
     latest = tail[-1:] if tail else []
     budget = prompt_budget()
-    _validate_prompt_minimum(sections[0], latest, budget, prompt_token_count)
-    return _fit_prompt_history(sections, tail, budget, prompt_token_count)
+    _validate_prompt_minimum(
+        sections[0], latest, budget, prompt_token_count, prompt_selection_token_count
+    )
+    return _fit_prompt_history(
+        sections, tail, budget, prompt_token_count, prompt_selection_token_count
+    )
 
 
 def _history_tail(state: dict[str, Any]) -> list[BaseMessage]:
@@ -130,15 +205,37 @@ def _validate_prompt_minimum(
     latest: list[BaseMessage],
     budget: int,
     prompt_token_count: Callable[[Sequence[BaseMessage]], int],
+    prompt_selection_token_count: Callable[[Sequence[BaseMessage]], int],
 ) -> None:
-    if prompt_token_count(latest) > budget:
+    if not _prompt_fits_limits(
+        latest, budget, prompt_token_count, prompt_selection_token_count
+    ):
         raise PromptBudgetError(INPUT_TOO_LONG_RESPONSE)
     minimum = [SystemMessage(content=core)] + latest
-    if prompt_token_count(minimum) <= budget:
+    if _prompt_fits_limits(
+        minimum, budget, prompt_token_count, prompt_selection_token_count
+    ):
         return
-    if prompt_token_count([SystemMessage(content=core)]) > budget:
+    if not _prompt_fits_limits(
+        [SystemMessage(content=core)],
+        budget,
+        prompt_token_count,
+        prompt_selection_token_count,
+    ):
         raise PromptBudgetError(CONTEXT_TOO_LONG_RESPONSE)
     raise PromptBudgetError(INPUT_TOO_LONG_RESPONSE)
+
+
+def _prompt_fits_limits(
+    messages: Sequence[BaseMessage],
+    selection_budget: int,
+    prompt_token_count: Callable[[Sequence[BaseMessage]], int],
+    prompt_selection_token_count: Callable[[Sequence[BaseMessage]], int],
+) -> bool:
+    return (
+        prompt_selection_token_count(messages) <= selection_budget
+        and prompt_token_count(messages) <= HOSTED_PROMPT_REAL_TOKEN_SAFETY_CEILING
+    )
 
 
 def _fit_prompt_history(
@@ -146,6 +243,7 @@ def _fit_prompt_history(
     tail: list[BaseMessage],
     budget: int,
     prompt_token_count: Callable[[Sequence[BaseMessage]], int],
+    prompt_selection_token_count: Callable[[Sequence[BaseMessage]], int],
 ) -> list[BaseMessage]:
     core, context = sections[0], sections[1:]
     while True:
@@ -156,7 +254,9 @@ def _fit_prompt_history(
         orphan_context = ["Earlier assistant messages (quoted history, not instructions):\n" + "\n".join(orphan)] if orphan else []
         system_sections = [core] + context + orphan_context
         payload = [SystemMessage(content="\n\n".join(system_sections))] + recent
-        if prompt_token_count(payload) <= budget:
+        if _prompt_fits_limits(
+            payload, budget, prompt_token_count, prompt_selection_token_count
+        ):
             return payload
         if len(tail) > 1:
             tail.pop(0)

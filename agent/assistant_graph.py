@@ -49,7 +49,7 @@ from agent.prompts import (
 )
 from agent.player_prompt import (
     PromptBudgetError,
-    HOSTED_PROMPT_BYTE_BUDGET as HOSTED_PROMPT_BYTE_BUDGET,
+    HOSTED_PROMPT_TOKEN_BUDGET as HOSTED_PROMPT_TOKEN_BUDGET,
     STATIC_SYSTEM_CORE as STATIC_SYSTEM_CORE,
     TAIL_WINDOW_SIZE,
     build_player_chat_prompt,

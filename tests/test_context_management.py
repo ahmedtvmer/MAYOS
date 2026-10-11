@@ -307,7 +307,7 @@ def test_oversized_latest_is_not_truncated(graph):
 
 def test_oversized_context_and_reserve(graph):
     payload = graph.build_prompt_payload({**state("squat reps?"), "telemetry_context": "x" * 20000, "custom_instructions": "y" * 20000})
-    assert graph._prompt_token_count(payload) <= graph.HOSTED_PROMPT_BYTE_BUDGET
+    assert graph._prompt_token_count(payload) <= graph.HOSTED_PROMPT_TOKEN_BUDGET
     assert payload[-1].content == "squat reps?"
 
 
@@ -315,7 +315,7 @@ def test_hosted_short_query_builds_prompt(graph):
     query = "How should I position my elbows and wrists on JM presses to maximize triceps tension safely?"
     payload = graph.build_prompt_payload(state(query))
     assert payload[-1].content == query
-    assert graph._prompt_token_count(payload) <= graph.HOSTED_PROMPT_BYTE_BUDGET
+    assert graph._prompt_token_count(payload) <= graph.HOSTED_PROMPT_TOKEN_BUDGET
 
 
 def test_hosted_genuinely_oversized_query_still_fails(graph):
@@ -468,7 +468,7 @@ def test_comparison_hydration_followup_and_budget(graph, comparison):
     assert "@ RIR not rated" in request["telemetry_context"]
     payload = graph.build_prompt_payload(request)
     assert graph.TAIL_WINDOW_SIZE == 6
-    assert graph._prompt_token_count(payload) <= graph.HOSTED_PROMPT_BYTE_BUDGET
+    assert graph._prompt_token_count(payload) <= graph.HOSTED_PROMPT_TOKEN_BUDGET
     for exercise in comparison["exercises"]:
         assert exercise["name"] in payload[0].content
     assert payload[-1].content == "what should I focus on next?"
