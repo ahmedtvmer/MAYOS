@@ -20,6 +20,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
+from database.exercise_library.vocabulary import PRIMARY_ACTIONS, PRIMARY_MUSCLES
 from utils.equipment_access import BODYWEIGHT_ONLY, HOME_GYM
 
 Archetype = Literal["heavy_compound", "medium_compound", "isolation"]
@@ -87,6 +88,8 @@ class SlotSpec:
     sql: str
     archetype: Archetype
     equipment_pref: tuple[str, ...]
+    primary_actions: tuple[str, ...]
+    primary_muscles: tuple[str, ...]
     reps: tuple[int, int]
     rest_seconds: int
     warmup_sets: int = 0
@@ -104,18 +107,48 @@ def _slot(
     warmup_sets: int = 0,
     exclude_sql: str = "",
     name_rank: tuple[str, ...] = (),
+    primary_actions: tuple[str, ...] = (),
+    primary_muscles: tuple[str, ...] = (),
 ) -> SlotSpec:
     return SlotSpec(
         key=key,
         sql=sql,
         archetype=archetype,
         equipment_pref=equipment_pref,
+        primary_actions=primary_actions,
+        primary_muscles=primary_muscles,
         reps=reps,
         rest_seconds=rest_seconds,
         warmup_sets=warmup_sets,
         exclude_sql=exclude_sql,
         name_rank=name_rank,
     )
+
+
+def validate_slot_signatures(slot_specs: dict[str, SlotSpec]) -> None:
+    for slot_key, spec in slot_specs.items():
+        _validate_slot_signature_values(
+            slot_key, "Primary action", spec.primary_actions, PRIMARY_ACTIONS
+        )
+        _validate_slot_signature_values(
+            slot_key, "Primary muscle", spec.primary_muscles, PRIMARY_MUSCLES
+        )
+
+
+def _validate_slot_signature_values(
+    slot_key: str,
+    value_label: str,
+    signature_values: tuple[str, ...],
+    vocabulary: tuple[str, ...],
+) -> None:
+    if not signature_values:
+        raise ValueError(f"Movement slot {slot_key!r} must declare a {value_label}")
+    unknown_values = sorted(set(signature_values) - set(vocabulary))
+    if unknown_values:
+        raise ValueError(
+            f"Movement slot {slot_key!r} has unknown {value_label}(s): "
+            f"{', '.join(unknown_values)}"
+        )
 
 
 def experience_level_for_training_age(training_age_years: float) -> ExperienceLevel:
@@ -163,6 +196,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         rest_seconds=240,
         warmup_sets=1,
         exclude_sql="LOWER(name) NOT LIKE '%fly%' AND LOWER(name) NOT LIKE '%push-up%' AND LOWER(name) NOT LIKE '%pushup%'",
+        primary_actions=("Shoulder Horizontal Adduction",),
+        primary_muscles=("Upper Chest",),
     ),
     "flat_press": _slot(
         "flat_press",
@@ -175,6 +210,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         warmup_sets=1,
         exclude_sql="LOWER(name) NOT LIKE '%incline%' AND LOWER(name) NOT LIKE '%decline%' "
         "AND LOWER(name) NOT LIKE '%one arm%' AND LOWER(name) NOT LIKE '%push-up%'",
+        primary_actions=("Shoulder Horizontal Adduction",),
+        primary_muscles=("Chest",),
     ),
     "chest_fly": _slot(
         "chest_fly",
@@ -184,6 +221,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         reps=(8, 10),
         rest_seconds=180,
         name_rank=("incline", "middle", "flat", "fly", "pec deck"),
+        primary_actions=("Shoulder Horizontal Adduction",),
+        primary_muscles=("Chest",),
     ),
     # --- Back --------------------------------------------------------------
     "horizontal_row": _slot(
@@ -199,6 +238,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         "AND LOWER(name) NOT LIKE '%single arm%' AND LOWER(name) NOT LIKE '%t bar%' "
         "AND LOWER(name) NOT LIKE '%t-bar%' AND LOWER(name) NOT LIKE '%high row%'"
         " AND LOWER(name) NOT LIKE '%bent over row%' AND LOWER(name) NOT LIKE '%barbell row%'",
+        primary_actions=("Shoulder Extension",),
+        primary_muscles=("Upper Back",),
     ),
     "upper_back_pull": _slot(
         "upper_back_pull",
@@ -212,6 +253,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         reps=(6, 10),
         rest_seconds=240,
         warmup_sets=1,
+        primary_actions=("Shoulder Extension",),
+        primary_muscles=("Upper Back",),
     ),
     "vertical_pull": _slot(
         "vertical_pull",
@@ -226,6 +269,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         exclude_sql="LOWER(name) NOT LIKE '%rear pulldown%' AND LOWER(name) NOT LIKE '%rear pull-up%' "
         "AND LOWER(name) NOT LIKE '%behind neck%' AND LOWER(name) NOT LIKE '%straight arm%'",
         name_rank=("front pulldown", "wide grip", "pulldown", "pull-up", "pull up"),
+        primary_actions=("Shoulder Adduction",),
+        primary_muscles=("Lats",),
     ),
     "pullover": _slot(
         "pullover",
@@ -235,6 +280,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         reps=(8, 10),
         rest_seconds=180,
         exclude_sql="LOWER(name) NOT LIKE '%stretch%'",
+        primary_actions=("Shoulder Extension",),
+        primary_muscles=("Lats",),
     ),
     "shrug": _slot(
         "shrug",
@@ -243,6 +290,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         ("leverage machine", "smith machine", "cable", "dumbbell", "barbell", "band"),
         reps=(6, 10),
         rest_seconds=180,
+        primary_actions=("Scapular Elevation",),
+        primary_muscles=("Traps",),
     ),
     # --- Shoulders ---------------------------------------------------------
     "shoulder_press": _slot(
@@ -254,6 +303,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         reps=(5, 8),
         rest_seconds=240,
         warmup_sets=2,
+        primary_actions=("Shoulder Flexion",),
+        primary_muscles=("Front Delts",),
     ),
     "side_delts": _slot(
         "side_delts",
@@ -264,6 +315,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         reps=(6, 8),
         rest_seconds=180,
         exclude_sql="LOWER(name) NOT LIKE '%rear%' AND LOWER(name) NOT LIKE '%front%'",
+        primary_actions=("Shoulder Abduction",),
+        primary_muscles=("Side Delts",),
     ),
     "rear_delts": _slot(
         "rear_delts",
@@ -276,6 +329,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         rest_seconds=180,
         exclude_sql="LOWER(name) NOT LIKE '%stretch%'",
         name_rank=("reverse fly", "rear lateral", "rear delt", "y-raise", "face pull"),
+        primary_actions=("Shoulder Horizontal Abduction",),
+        primary_muscles=("Rear Delts",),
     ),
     # --- Arms --------------------------------------------------------------
     "biceps_preacher": _slot(
@@ -285,6 +340,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         ("dumbbell", "cable", "leverage machine", "ez barbell", "barbell", "smith machine"),
         reps=(6, 10),
         rest_seconds=180,
+        primary_actions=("Elbow Flexion",),
+        primary_muscles=("Biceps",),
     ),
     "biceps_alt": _slot(
         "biceps_alt",
@@ -296,6 +353,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         exclude_sql="LOWER(name) NOT LIKE '%wrist%' AND LOWER(name) NOT LIKE '%leg%' "
         "AND LOWER(name) NOT LIKE '%preacher%' AND LOWER(name) NOT LIKE '%reverse%' "
         "AND LOWER(name) NOT LIKE '%spider%'",
+        primary_actions=("Elbow Flexion",),
+        primary_muscles=("Biceps",),
     ),
     "triceps_pushdown": _slot(
         "triceps_pushdown",
@@ -304,6 +363,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         ("cable", "leverage machine"),
         reps=(6, 10),
         rest_seconds=180,
+        primary_actions=("Elbow Extension",),
+        primary_muscles=("Triceps",),
     ),
     "triceps_overhead": _slot(
         "triceps_overhead",
@@ -315,6 +376,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         reps=(6, 10),
         rest_seconds=180,
         exclude_sql="LOWER(name) NOT LIKE '%stretch%'",
+        primary_actions=("Elbow Extension",),
+        primary_muscles=("Triceps",),
     ),
     "forearm_wrist": _slot(
         "forearm_wrist",
@@ -323,6 +386,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         ("barbell", "dumbbell", "cable", "band"),
         reps=(6, 10),
         rest_seconds=120,
+        primary_actions=("Wrist Flexion",),
+        primary_muscles=("Forearms",),
     ),
     "forearm_reverse": _slot(
         "forearm_reverse",
@@ -332,6 +397,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         ("dumbbell", "barbell", "ez barbell", "cable", "band"),
         reps=(6, 10),
         rest_seconds=120,
+        primary_actions=("Wrist Extension",),
+        primary_muscles=("Forearms",),
     ),
     # --- Legs --------------------------------------------------------------
     "quad_compound": _slot(
@@ -348,6 +415,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         "AND LOWER(name) NOT LIKE '%jump%' AND LOWER(name) NOT LIKE '%pistol%' "
         "AND LOWER(name) NOT LIKE '%sumo%' AND LOWER(name) NOT LIKE '%front squat%'",
         name_rank=("hack", "leg press", "smith hack", "smith squat", "squat"),
+        primary_actions=("Knee Extension",),
+        primary_muscles=("Quads",),
     ),
     "quad_lunge": _slot(
         "quad_lunge",
@@ -359,6 +428,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         rest_seconds=180,
         warmup_sets=1,
         exclude_sql="LOWER(name) NOT LIKE '%jump%' AND LOWER(name) NOT LIKE '%stretch%'",
+        primary_actions=("Knee Extension",),
+        primary_muscles=("Quads",),
     ),
     "quad_iso": _slot(
         "quad_iso",
@@ -367,6 +438,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         ("leverage machine", "resistance band", "cable"),
         reps=(6, 10),
         rest_seconds=180,
+        primary_actions=("Knee Extension",),
+        primary_muscles=("Quads",),
     ),
     "ham_curl": _slot(
         "ham_curl",
@@ -376,6 +449,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         reps=(6, 10),
         rest_seconds=180,
         name_rank=("seated", "lying", "leaning"),
+        primary_actions=("Knee Flexion",),
+        primary_muscles=("Hamstrings",),
     ),
     "ham_hinge": _slot(
         "ham_hinge",
@@ -389,6 +464,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         warmup_sets=2,
         exclude_sql="LOWER(name) NOT LIKE '%stretch%' AND LOWER(name) NOT LIKE '%cable assisted%'",
         name_rank=("romanian", "stiff leg", "stiff-leg", "deadlift", "good morning"),
+        primary_actions=("Hip Extension",),
+        primary_muscles=("Hamstrings",),
     ),
     "glute_thrust": _slot(
         "glute_thrust",
@@ -400,6 +477,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         rest_seconds=240,
         warmup_sets=2,
         name_rank=("hip thrust", "barbell glute bridge", "glute bridge"),
+        primary_actions=("Hip Extension",),
+        primary_muscles=("Glutes",),
     ),
     "glute_iso": _slot(
         "glute_iso",
@@ -409,6 +488,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         ("cable", "leverage machine", "dumbbell", "band", "body weight", "stability ball"),
         reps=(8, 10),
         rest_seconds=180,
+        primary_actions=("Hip Extension", "Hip Abduction"),
+        primary_muscles=("Glutes", "Abductors"),
     ),
     "adductors": _slot(
         "adductors",
@@ -419,6 +500,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         reps=(8, 10),
         rest_seconds=150,
         exclude_sql="LOWER(name) NOT LIKE '%stretch%'",
+        primary_actions=("Hip Adduction",),
+        primary_muscles=("Adductors",),
     ),
     "calf": _slot(
         "calf",
@@ -430,6 +513,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         rest_seconds=120,
         exclude_sql="LOWER(name) NOT LIKE '%stretch%' AND LOWER(name) NOT LIKE '%tibialis%'",
         name_rank=("calf raise", "calf press", "seated calf", "standing calf"),
+        primary_actions=("Ankle Plantar Flexion",),
+        primary_muscles=("Calves",),
     ),
     # --- Core --------------------------------------------------------------
     "abs": _slot(
@@ -442,8 +527,12 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         rest_seconds=120,
         exclude_sql="LOWER(name) NOT LIKE '%stretch%' AND LOWER(name) NOT LIKE '%twist%'",
         name_rank=("cable", "kneeling", "seated", "machine"),
+        primary_actions=("Spinal Flexion",),
+        primary_muscles=("Abs",),
     ),
 }
+
+validate_slot_signatures(SLOT_SPECS)
 
 # Ordered Staple exercises by movement slot. IDs are the Exercise library's
 # stable ExerciseDB IDs or MAYOS-authored IDs. Names are documented beside

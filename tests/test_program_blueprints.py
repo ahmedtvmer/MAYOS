@@ -1,6 +1,7 @@
 """Blueprint-level guarantees: slot resolution, weekly coverage and Arabic schema."""
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,7 @@ from agent.program_blueprints import (
     is_poor_recovery,
     match_split_keyword,
     prescription_class,
+    validate_slot_signatures,
 )
 from agent.program_rules import fetch_slot_candidates, fetch_warmup_candidates, get_split_plan, resolve_split
 from agent.program_rules import get_default_split
@@ -120,6 +122,22 @@ def test_rotation_and_pallof_warmup_specs_reach_curated_movements():
 def test_all_slot_keys_are_referenced_by_a_blueprint():
     referenced = {slot for blueprint in ALL_BLUEPRINTS for slot in blueprint.slots}
     assert referenced == set(SLOT_SPECS), f"Unused slots: {set(SLOT_SPECS) - referenced}"
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid_signature", "message"),
+    [
+        ("primary_actions", ("Unknown action",), "unknown Primary action"),
+        ("primary_muscles", ("Unknown muscle",), "unknown Primary muscle"),
+    ],
+)
+def test_slot_signature_validation_rejects_values_outside_curated_vocabulary(
+    field, invalid_signature, message
+):
+    invalid_slot = replace(SLOT_SPECS["flat_press"], **{field: invalid_signature})
+
+    with pytest.raises(ValueError, match=f"flat_press.*{message}"):
+        validate_slot_signatures({"flat_press": invalid_slot})
 
 
 def test_warmup_families_reference_known_specs():
