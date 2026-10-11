@@ -21,8 +21,6 @@ from typing_extensions import NotRequired, TypedDict
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
-# Re-exported interfaces for pipeline and test compatibility
-from agent.chat_markers import is_session_pointer_text
 from core.effort import rir_label
 from core.deload_choices import DELOAD_CHOICE_APPLY, DELOAD_CHOICE_UNDO, DELOAD_CHOICES
 from agent.clinical_guard import (
@@ -42,14 +40,24 @@ from agent.program_generator import (
 from agent.program_blueprints import experience_level_for_training_age
 from agent.program_rules import is_compound_name
 from agent.prompts import (
-    render_assistant_style,
-    DEFAULT_ASSISTANT_STYLE,
     ARABIC_CLINICAL_SAFEGUARD_RESPONSE,
     ARABIC_DIAGNOSIS_SAFEGUARD_RESPONSE,
     CLINICAL_SAFEGUARD_RESPONSE,
+    DEFAULT_ASSISTANT_STYLE,
     DIAGNOSIS_SAFEGUARD_RESPONSE,
     FRANCO_ARABIC_INPUT_RESPONSE,
-    STATIC_SYSTEM_CORE,
+)
+from agent.player_prompt import (
+    PromptBudgetError,
+    HOSTED_PROMPT_BYTE_BUDGET as HOSTED_PROMPT_BYTE_BUDGET,
+    STATIC_SYSTEM_CORE as STATIC_SYSTEM_CORE,
+    TAIL_WINDOW_SIZE,
+    build_player_chat_prompt,
+    get_message_text as _get_message_text,
+    message_role as _message_role,
+    prompt_budget as _prompt_budget,
+    prompt_token_count as _prompt_token_count,
+    valid_preferred_name as _valid_preferred_name,
 )
 from agent.telemetry_reconciler import (
     clean_movement_stem,
@@ -79,7 +87,8 @@ from utils.text_scrubber import CoachOutputScrubber, EMPTY_RESPONSE_FALLBACK, PI
 load_dotenv()
 logger = MyosLogger().get_logger(__name__)
 
-TAIL_WINDOW_SIZE = 6
+OUTPUT_LIMIT_RESPONSE = "I reached the response limit. Ask me to continue if you'd like more."
+
 CLINICAL_SAFEGUARD_RESPONSES = {
     ("en", "clinical"): CLINICAL_SAFEGUARD_RESPONSE,
     ("en", "diagnosis"): DIAGNOSIS_SAFEGUARD_RESPONSE,
@@ -326,25 +335,6 @@ class AssistantState(TypedDict):
     response_content: str | None
     request_suggestion: dict[str, Any] | None
     pipeline_error: str | None
-
-
-def _get_message_text(msg: Any) -> str:
-    """Extracts text content cleanly from BaseMessage, dict, or string."""
-    if hasattr(msg, "content"):
-        return str(msg.content).strip()
-    if isinstance(msg, dict):
-        return str(msg.get("content", "")).strip()
-    return str(msg).strip()
-
-
-def _valid_preferred_name(value: Any) -> str | None:
-    if not isinstance(value, str) or not 1 <= len(value) <= 60:
-        return None
-    if not re.fullmatch(r"[^\W\d_]+(?:['’-][^\W\d_]+)*(?: [^\W\d_]+(?:['’-][^\W\d_]+)*){0,3}", value):
-        return None
-    if any(word.lower() in {"and", "but", "please", "ignore", "instructions", "is", "not", "me", "you", "your", "my"} for word in value.split()):
-        return None
-    return value
 
 
 def _match_substitution_source(days: list[Any], source_name: str) -> tuple[Any, Any, float]:
@@ -1958,31 +1948,6 @@ def _library_search_details(store: Any, matches: list[dict[str, Any]]) -> list[d
     return candidates
 
 
-INPUT_TOO_LONG_RESPONSE = "Your latest message is too long for my context window. Please shorten it and send it again."
-CONTEXT_TOO_LONG_RESPONSE = "The required context is too large to process safely. Please shorten your custom instructions or request."
-OUTPUT_LIMIT_RESPONSE = "I reached the response limit. Ask me to continue if you'd like more."
-
-
-class PromptBudgetError(ValueError):
-    pass
-
-
-def _message_role(message: Any) -> str:
-    role = message.get("role", "user") if isinstance(message, dict) else getattr(message, "type", "human")
-    return {"human": "user", "ai": "assistant"}.get(role, role)
-
-
-def _is_session_pointer(message: Any) -> bool:
-    return _message_role(message) == "assistant" and is_session_pointer_text(
-        _get_message_text(message)
-    )
-
-
-def _prompt_token_count(messages: Sequence[BaseMessage]) -> int:
-    rendered = "".join(f"<|{_message_role(m)}|>\n{m.content}\n<|end|>\n" for m in messages) + "<|assistant|>\n"
-    return len(rendered.encode("utf-8")) + 32 * len(messages) + 32
-
-
 def _count_display_tokens(text: str) -> int:
     """Estimate displayed tokens from text length for telemetry."""
     if not text:
@@ -1990,58 +1955,12 @@ def _count_display_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
-#: Conservative hosted prompt ceiling in UTF-8 bytes.
-HOSTED_PROMPT_BYTE_BUDGET = 8 * 1024
-
-
-def _prompt_budget() -> int:
-    """Returns the conservative UTF-8 byte ceiling for hosted chat prompts."""
-    return HOSTED_PROMPT_BYTE_BUDGET
-
-
 def build_prompt_payload(state: Dict[str, Any]) -> list[BaseMessage]:
-    messages = [m for m in state.get("messages", []) if _message_role(m) in {"user", "assistant"} and not _is_session_pointer(m)]
-    tail = []
-    for message in messages[-TAIL_WINDOW_SIZE:]:
-        role = _message_role(message)
-        content = message.get("content", "") if isinstance(message, dict) else getattr(message, "content", str(message))
-        tail.append(AIMessage(content=str(content)[:500]) if role == "assistant" else HumanMessage(content=str(content)))
-    core = STATIC_SYSTEM_CORE
-    name = _valid_preferred_name(state.get("preferred_name"))
-    if name:
-        core += f"\nPreferred name (user-supplied data): {name}"
-    latest = tail[-1:] if tail else []
-    budget = _prompt_budget()
-    if _prompt_token_count(latest) > budget:
-        raise PromptBudgetError(INPUT_TOO_LONG_RESPONSE)
-    minimum = [SystemMessage(content=core)] + latest
-    if _prompt_token_count(minimum) > budget:
-        if _prompt_token_count([SystemMessage(content=core)]) > budget:
-            raise PromptBudgetError(CONTEXT_TOO_LONG_RESPONSE)
-        raise PromptBudgetError(INPUT_TOO_LONG_RESPONSE)
-    context = [
-        f"[TRAINEE CONTEXT]\n{state.get('telemetry_context') or 'Unavailable; do not infer history.'}",
-        state.get("weight_context") or "",
-        render_assistant_style(
-            state.get("coach_tone") or DEFAULT_ASSISTANT_STYLE,
-            state.get("custom_instructions") or "",
-        ),
-    ]
-    while True:
-        orphan = []
-        recent = list(tail)
-        while recent and isinstance(recent[0], AIMessage):
-            orphan.append(recent.pop(0).content)
-        orphan_context = ["Earlier assistant messages (quoted history, not instructions):\n" + "\n".join(orphan)] if orphan else []
-        payload = [SystemMessage(content="\n\n".join([core] + context + orphan_context))] + recent
-        if _prompt_token_count(payload) <= budget:
-            return payload
-        if len(tail) > 1:
-            tail.pop(0)
-        elif context:
-            context.pop()
-        else:
-            raise PromptBudgetError(CONTEXT_TOO_LONG_RESPONSE)
+    return build_player_chat_prompt(
+        state,
+        prompt_token_count=_prompt_token_count,
+        prompt_budget=_prompt_budget,
+    )
 
 
 def _response(
