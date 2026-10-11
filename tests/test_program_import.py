@@ -795,6 +795,122 @@ def test_freeform_import_returns_all_weeks_and_defaults_to_week_one(
     assert default_week.json()["weeks_not_imported"] == ["Week 2"]
 
 
+def test_freeform_source_cells_recover_day_names_and_canonical_week_labels():
+    from service import program_import
+    from service.program_import_ai import ProgramImportReply
+
+    source_grid = {
+        "sheet": "CSV",
+        "cells": program_import._compact_cell_grid([
+            ["Day", "Session", "Exercise", "Week 1 sets", "Week 1 reps", "Week 1 effort", "Week 2 sets", "Week 2 reps", "Week 2 effort"],
+            [1, "Lower A", "Squat", 3, 8, "2 RIR", 4, 6, "@8"],
+            [2, "Push A", "Bench Press", 3, 10, "2 RIR", 4, 8, "@8"],
+        ]),
+    }
+    rows = []
+    for source_row, day, day_name, exercise in (
+        (2, 1, "Day 1", "Squat"),
+        (2, 1, None, "Squat"),
+        (3, "Push A", "Day 2", "Bench Press"),
+        (3, "Push A", "Day 2", "Bench Press"),
+    ):
+        week = "1" if len(rows) % 2 == 0 else "2"
+        rows.append({
+            "source_row": source_row, "week": week, "day": day, "day_name": day_name,
+            "exercise": exercise, "sets": 3, "reps_min": 8, "reps_max": 8,
+            "rir": 2, "rpe": None, "original_text": exercise,
+        })
+    reply = ProgramImportReply.model_validate({
+        "rows": rows,
+        "layout": {
+            "days": [{"day": 1, "name": "Day 1"}, {"day": 2, "name": "Day 2"}],
+            "weeks": ["1", "2"], "confidence": 0.99,
+        },
+    })
+
+    source = program_import._freeform_reader_output(reply, ["CSV"], "CSV", source_grid)
+    assert source.detected_weeks == ["Week 1", "Week 2"]
+    assert [row.week for row in source.rows] == ["Week 1", "Week 2"] * 2
+    assert [(row.day, row.day_name) for row in source.rows] == [
+        (1, "Lower A"), (1, "Lower A"), (2, "Push A"), (2, "Push A"),
+    ]
+    normalized = [program_import._normalise_row(row, {}) for row in source.rows]
+    assert any(warning["code"] == "program_import.rpe_converted.v1" for warning in normalized[1]["warnings"])
+
+
+def test_single_week_title_does_not_turn_day_numbers_into_week_selection():
+    from service import program_import
+    from service.program_import_ai import ProgramImportReply
+
+    source_grid = {
+        "sheet": "CSV",
+        "cells": program_import._compact_cell_grid([
+            ["Week A / primary work"],
+            ["Day", "Session", "Exercise", "Sets", "Reps", "Effort"],
+            [1, "Lower A", "Squat", 3, 8, "2 RIR"],
+            [2, "Push A", "Bench Press", 3, 8, "2 RIR"],
+            [3, "Pull A", "Row", 3, 8, "2 RIR"],
+        ]),
+    }
+    rows = [
+        {
+            "source_row": row_number, "week": str(day), "day": day,
+            "day_name": day_name, "exercise": exercise, "sets": 3,
+            "reps_min": 8, "reps_max": 8, "rir": 2, "original_text": exercise,
+        }
+        for row_number, day, day_name, exercise in (
+            (3, 1, "Lower A", "Squat"),
+            (4, 2, "Push A", "Bench Press"),
+            (5, 3, "Pull A", "Row"),
+        )
+    ]
+    reply = ProgramImportReply.model_validate({
+        "rows": rows,
+        "layout": {
+            "days": [{"day": 1, "name": "Lower A"}, {"day": 2, "name": "Push A"}, {"day": 3, "name": "Pull A"}],
+            "weeks": ["1", "2", "3"], "confidence": 0.99,
+        },
+    })
+
+    source = program_import._freeform_reader_output(reply, ["CSV"], "CSV", source_grid)
+    assert source.detected_weeks == []
+    assert all(row.week is None for row in source.rows)
+
+
+def test_freeform_source_preserves_kg_per_set_and_superset_approximations():
+    from service import program_import
+    from service.program_import_ai import ProgramImportReply
+
+    source_grid = {
+        "sheet": "CSV",
+        "cells": program_import._compact_cell_grid([
+            ["Day", "Session", "Exercise", "Reps by set", "Load (kg)", "Effort", "Slot", "Load progression"],
+            [1, "Lower A", "Squat", "10/8/6", 65, "RPE 8", "A1", "+2.5 kg/week"],
+        ]),
+    }
+    reply = ProgramImportReply.model_validate({
+        "rows": [{
+            "source_row": 2, "week": None, "day": 1, "day_name": "Lower A",
+            "exercise": "Squat", "sets": 3, "reps_min": 6, "reps_max": 10,
+            "rir": 2, "rpe": None, "load_kg": 65, "original_text": "Squat",
+        }],
+        "layout": {"days": [{"day": 1, "name": "Lower A"}], "weeks": [], "confidence": 0.99},
+    })
+
+    source = program_import._freeform_reader_output(reply, ["CSV"], "CSV", source_grid)
+    row = program_import._normalise_row(source.rows[0], {})
+    warning_codes = {warning["code"] for warning in row["warnings"]}
+    assert warning_codes >= {
+        "program_import.load_preserved_as_note.v1",
+        "program_import.reps_approximated.v1",
+        "program_import.rpe_converted.v1",
+        "program_import.unsupported_preserved_as_note.v1",
+    }
+    assert "load_kg: 65 kg" in row["notes"]
+    assert "reps: 10/8/6" in row["notes"]
+    assert "+2.5 kg/week" in row["notes"]
+
+
 def test_freeform_model_suggestion_is_confirm_only_and_uses_library_candidates(
     api, monkeypatch, tmp_path, scripted_chat_model
 ):
@@ -1001,3 +1117,38 @@ def test_invalid_day_rows_do_not_count_toward_a_real_day_limit(api):
         for error in row["errors"]
     )
     assert imported[-1]["valid"] is False
+
+
+def test_weekly_progression_is_flagged_even_when_preserved_as_a_load_note():
+    from types import SimpleNamespace
+
+    from service.program_import import Approximation, _detect_unsupported_prescriptions
+
+    row = SimpleNamespace(original_text="Back Squat (Barbell)", notes="load_progression: +2.5 kg/week")
+    existing = [Approximation("program_import.load_preserved_as_note.v1", "notes", "+2.5 kg/week")]
+
+    found = _detect_unsupported_prescriptions(row, existing)
+
+    assert [marker.code for marker in found] == ["program_import.unsupported_preserved_as_note.v1"]
+
+
+def test_sheet_title_rule_reaches_every_row_source_text():
+    from service.program_import import FreeFormGridContext, _freeform_source_row
+
+    context = FreeFormGridContext(
+        cells_by_row={
+            1: {1: "Compounds: one top set followed by back-off work"},
+            2: {1: "Day", 2: "Exercise"},
+            3: {1: "1", 2: "Back Squat (Barbell)"},
+        },
+        columns={1: ("day", None), 2: ("exercise", None)},
+        header_row=2,
+        week_labels=[],
+        day_names={},
+        day_numbers={},
+    )
+
+    source = _freeform_source_row(context, 3, None)
+
+    assert "Back Squat (Barbell)" in source.text
+    assert "top set" in source.text

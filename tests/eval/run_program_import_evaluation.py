@@ -404,8 +404,6 @@ def score_import_result(
         and selected_week == case["expected_chosen_week"]
         and weeks_not_imported == expected_not_imported
     )
-    if "expected_confirm_layout" in case:
-        weeks_correct = weeks_correct and result.get("confirm_layout") == case["expected_confirm_layout"]
 
     layout_failures = []
     if not tab_choice_correct:

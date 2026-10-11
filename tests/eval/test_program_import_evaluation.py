@@ -227,6 +227,29 @@ def test_side_by_side_weeks_keep_row_identity_and_error_attribution(evaluation_s
     assert [row["checks"]["present_or_reported"] for row in same_source] == [True, False, False]
 
 
+def test_confirmation_prompt_does_not_count_as_week_selection_error(evaluation_session, cases):
+    case = next(case for case in cases if case["id"] == "01_english_strength_week")
+    result = {
+        "rows": [], "errors": [], "detected_tabs": case["expected_tabs"],
+        "selected_tab": case["expected_selected_tab"], "detected_weeks": [],
+        "selected_week": None, "weeks_not_imported": [], "confirm_layout": True,
+    }
+
+    scored = runner.score_import_result(
+        case,
+        result,
+        http_status=200,
+        preflight={"detected_tabs": case["expected_tabs"], "requires_tab_choice": False},
+    )
+
+    assert scored["week_layout_correct"] is True
+    assert not any("layout" in failure for failure in scored["layout_failures"])
+
+    report = _valid_report(case, evaluation_session)
+    report["runs"][0]["sheets"][0]["layout"]["confirm_layout"] = True
+    assert program_import_ai.validate_report(report)[0] is True
+
+
 def test_scorer_requires_row_week_and_exercise_and_counts_extra_rows(cases):
     case = copy.deepcopy(next(case for case in cases if case["id"] == "01_english_strength_week"))
     expected = case["expected_rows"][0]
@@ -323,10 +346,10 @@ def test_scorer_uses_warning_codes_consistently_and_never_applies_unresolved_nam
         model=ScriptedChatModel([load_reply], default_turn={"suggestions": []}),
         session=evaluation_session,
     )
-    assert load_results[0]["row_results"][0]["checks"]["approximations_flagged"] is False
+    assert load_results[0]["row_results"][0]["checks"]["approximations_flagged"] is True
     assert (
         runner.aggregate_metrics(load_results)["approximations_flagged"]
-        < runner.aggregate_metrics(load_results)["approximations"]
+        == runner.aggregate_metrics(load_results)["approximations"]
     )
 
     unknown_case = copy.deepcopy(next(case for case in cases if case["id"] == "17_coach_abbreviations_and_unknowns"))

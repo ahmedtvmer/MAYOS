@@ -60,6 +60,24 @@ _EFFORT_VALUE = re.compile(r"^(?:RIR\s*)?(\d+(?:\.\d+)?)$", re.IGNORECASE)
 _EFFORT_RANGE = re.compile(r"^(?:RIR\s*)?(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$", re.IGNORECASE)
 _RPE_VALUE = re.compile(r"^(?:RPE\s*|@\s*)?(\d+(?:\.\d+)?)$", re.IGNORECASE)
 _RPE_RANGE = re.compile(r"^(?:RPE\s*|@\s*)?(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$", re.IGNORECASE)
+_SOURCE_HEADER_FIELDS = {
+    "day": "day", "day number": "day", "training day": "day",
+    "session": "day_name", "session name": "day_name", "day name": "day_name",
+    "workout": "day_name", "workout name": "day_name",
+    "exercise": "exercise", "movement": "exercise",
+    "exercise as written": "exercise", "lift": "exercise",
+    "slot": "slot", "week": "week", "week number": "week",
+    "training week": "week", "set": "sets", "sets": "sets",
+    "rpe": "rpe", "rir": "rir", "reps": "reps", "rep": "reps",
+    "prescription": "prescription", "reps by set": "reps_by_set",
+    "rep scheme": "reps_by_set",
+}
+_UNSUPPORTED_PRESCRIPTION_PATTERNS = (
+    (r"\bAMRAP\b|\btop\s+set\b|\bback[ -]?off\b|\bsuperset\b", "prescription"),
+    (r"\d+\s*[x×]\s*\d+(?:\s*[,/]\s*\d+)+", "reps"),
+    (r"\d+(?:\.\d+)?\s*%", "load_pct_e1rm"),
+    (r"weekly\s+(?:progression|increase|increase reps|add reps)|[+-]\s*\d+(?:\.\d+)?\s*(?:kg|lb)\s*/\s*(?:week|wk)", "notes"),
+)
 
 
 class ProgramImportError(Exception):
@@ -142,6 +160,32 @@ class FreeFormCellGrid:
 
 
 @dataclass(frozen=True)
+class FreeFormGridContext:
+    cells_by_row: dict[int, dict[int, str]]
+    columns: dict[int, tuple[str, int | None]]
+    header_row: int | None
+    week_labels: list[str]
+    day_names: dict[int, str]
+    day_numbers: dict[str, int]
+
+
+@dataclass(frozen=True)
+class FreeFormSourceRow:
+    fields: dict[str, str]
+    text: str
+
+
+@dataclass(frozen=True)
+class FreeFormRowValues:
+    day: Any
+    day_name: str | None
+    rir: Any
+    rpe: Any
+    reps_original: Any
+    approximation_markers: tuple[Approximation, ...]
+
+
+@dataclass(frozen=True)
 class ProgramImportRequest:
     coach_account_id: str
     assignment_id: str
@@ -187,7 +231,7 @@ class FreeFormProgramImportReader:
             raise ProgramImportError(
                 "program_import.interpretation_failed.v1", str(error), 422
             ) from None
-        return _freeform_reader_output(reply, prepared.tabs, prepared.selected_tab)
+        return _freeform_reader_output(reply, prepared.tabs, prepared.selected_tab, prepared.grid)
 
 
 def import_program_sheet(db: Any, request: ProgramImportRequest) -> dict[str, Any] | None:
@@ -515,38 +559,320 @@ def _build_import_result(source: ReaderOutput, draft_exists: bool, rows: list[di
     }
 
 
+def _freeform_grid_context(
+    grid: dict[str, Any], layout_days: list[Any]
+) -> FreeFormGridContext:
+    cells_by_row = _grid_cells_by_row(grid)
+    header_row, columns = _source_columns(cells_by_row)
+    day_names, day_numbers = _source_day_labels(cells_by_row, header_row, columns)
+    _add_layout_day_labels(layout_days, day_names, day_numbers)
+    weeks = _source_week_labels(cells_by_row, header_row, columns)
+    return FreeFormGridContext(cells_by_row, columns, header_row, weeks, day_names, day_numbers)
+
+
+def _grid_cells_by_row(grid: dict[str, Any]) -> dict[int, dict[int, str]]:
+    rows: dict[int, dict[int, str]] = {}
+    for cell in grid.get("cells", []):
+        match = re.fullmatch(r"([A-Z]+)(\d+)", cell["address"])
+        if match:
+            row_number = int(match.group(2))
+            column_number = _column_number(match.group(1))
+            rows.setdefault(row_number, {})[column_number] = cell["value"]
+    return rows
+
+
+def _source_columns(
+    cells_by_row: dict[int, dict[int, str]],
+) -> tuple[int | None, dict[int, tuple[str, int | None]]]:
+    best_row = None
+    best_columns: dict[int, tuple[str, int | None]] = {}
+    for row_number, cells in cells_by_row.items():
+        columns = {
+            column: field
+            for column, cell_value in cells.items()
+            if (field := _source_header_field(cell_value)) is not None
+        }
+        fields = {field_name for field_name, _week in columns.values()}
+        if "exercise" in fields and fields & {"day", "day_name"} and len(columns) > len(best_columns):
+            best_row, best_columns = row_number, columns
+    return best_row, best_columns
+
+
+def _source_header_field(header_value: str) -> tuple[str, int | None] | None:
+    header = " ".join(header_value.casefold().split())
+    week_prefix = re.match(r"^(?:week|wk|w)\s*(\d+)\s+(.+)$", header)
+    week_number = int(week_prefix.group(1)) if week_prefix else None
+    header = week_prefix.group(2) if week_prefix else header
+    field_name = _source_field_name(header)
+    return (field_name, week_number) if field_name else None
+
+
+def _source_field_name(header: str) -> str | None:
+    if header in _SOURCE_HEADER_FIELDS:
+        return _SOURCE_HEADER_FIELDS[header]
+    if "progression" in header:
+        return "progression"
+    if re.search(r"\b(?:load|weight)\b.*\b(?:kg|kilograms?)\b", header):
+        return "load_kg"
+    if "rep" in header and "rpe" in header:
+        return "reps_effort"
+    if "effort" in header:
+        return "effort"
+    return None
+
+
+def _source_day_labels(
+    cells_by_row: dict[int, dict[int, str]],
+    header_row: int | None,
+    columns: dict[int, tuple[str, int | None]],
+) -> tuple[dict[int, str], dict[str, int]]:
+    row_labels = _day_labels_from_columns(cells_by_row, header_row, columns)
+    title_labels = _day_labels_from_titles(cells_by_row)
+    for day_number, day_name in title_labels[0].items():
+        row_labels[0].setdefault(day_number, day_name)
+    row_labels[1].update({key: number for key, number in title_labels[1].items() if key not in row_labels[1]})
+    return row_labels
+
+
+def _day_labels_from_columns(
+    cells_by_row: dict[int, dict[int, str]],
+    header_row: int | None,
+    columns: dict[int, tuple[str, int | None]],
+) -> tuple[dict[int, str], dict[str, int]]:
+    day_names: dict[int, str] = {}
+    day_numbers: dict[str, int] = {}
+    day_column = next((column for column, spec in columns.items() if spec[0] == "day"), None)
+    name_column = next((column for column, spec in columns.items() if spec[0] == "day_name"), None)
+    for row_number, cells in cells_by_row.items():
+        if row_number == header_row:
+            continue
+        day_number = _parse_integer(cells.get(day_column)) if day_column else None
+        if day_number is None or not 1 <= day_number <= MAX_PROGRAM_DAYS:
+            continue
+        name = _clean_day_name(cells.get(name_column)) if name_column else ""
+        if name and not _is_generic_day_name(name):
+            _store_day_label(day_number, name, day_names, day_numbers)
+    return day_names, day_numbers
+
+
+def _day_labels_from_titles(
+    cells_by_row: dict[int, dict[int, str]],
+) -> tuple[dict[int, str], dict[str, int]]:
+    day_names: dict[int, str] = {}
+    day_numbers: dict[str, int] = {}
+    for cells in cells_by_row.values():
+        for text in cells.values():
+            title = re.match(r"^\s*day\s*(\d+)\s*[-:—–.)]+\s*(.+?)\s*$", text, re.IGNORECASE)
+            if title:
+                _store_day_label(int(title.group(1)), title.group(2), day_names, day_numbers)
+    return day_names, day_numbers
+
+
+def _add_layout_day_labels(
+    layout_days: list[Any], day_names: dict[int, str], day_numbers: dict[str, int]
+) -> None:
+    for index, layout_day in enumerate(layout_days, start=1):
+        day_number = _parse_integer(layout_day.day) or index
+        name = _clean_day_name(layout_day.name)
+        if 1 <= day_number <= MAX_PROGRAM_DAYS and name and not _is_generic_day_name(name):
+            _store_day_label(day_number, name, day_names, day_numbers)
+            day_numbers.setdefault(_day_name_key(layout_day.name), day_number)
+
+
+def _store_day_label(
+    day_number: int,
+    name: str,
+    day_names: dict[int, str],
+    day_numbers: dict[str, int],
+) -> None:
+    clean_name = _clean_day_name(name)
+    if not 1 <= day_number <= MAX_PROGRAM_DAYS or not clean_name:
+        return
+    day_names.setdefault(day_number, clean_name)
+    day_numbers.setdefault(_day_name_key(clean_name), day_number)
+
+
+def _clean_day_name(value: Any) -> str:
+    name = _cell_text(value)
+    return re.sub(r"^\s*day\s*\d+\s*[-:—–.)]+\s*", "", name, flags=re.IGNORECASE).strip()
+
+
+def _day_name_key(value: Any) -> str:
+    return " ".join(_cell_text(value).split()).casefold()
+
+
+def _is_generic_day_name(value: Any) -> bool:
+    return bool(re.fullmatch(r"(?:training\s+)?day\s*\d+", _cell_text(value), re.IGNORECASE))
+
+
+def _source_week_labels(
+    cells_by_row: dict[int, dict[int, str]],
+    header_row: int | None,
+    columns: dict[int, tuple[str, int | None]],
+) -> list[str]:
+    labels: list[str] = []
+    for cells in cells_by_row.values():
+        for text in cells.values():
+            labels.extend(_week_labels_in_cell(text))
+    for _field, week_number in columns.values():
+        if week_number is not None:
+            labels.append(_canonical_week_label(week_number))
+    week_columns = [column for column, spec in columns.items() if spec[0] == "week"]
+    for row_number, cells in cells_by_row.items():
+        if row_number != header_row:
+            labels.extend(_canonical_week_label(cells[column]) for column in week_columns if cells.get(column))
+    return list(dict.fromkeys(label for label in labels if label))
+
+
+def _week_labels_in_cell(value: str) -> list[str]:
+    header_or_title = re.fullmatch(
+        r"(?:week|wk)\s*([0-9]+|[a-z])(?:\s*[-—/:].*)?", value.strip(), re.IGNORECASE
+    )
+    if header_or_title:
+        return [_canonical_week_label(f"Week {header_or_title.group(1)}")]
+    column_label = re.search(
+        r"\b(?:week|wk|w)\s*(\d+)\s+(?:sets?|reps?|effort|rir|rpe|load)\b",
+        value,
+        re.IGNORECASE,
+    )
+    return [_canonical_week_label(column_label.group(1))] if column_label else []
+
+
+def _freeform_source_row(
+    context: FreeFormGridContext, source_row: int, week: str | None
+) -> FreeFormSourceRow:
+    cells = context.cells_by_row.get(source_row, {})
+    fields: dict[str, str] = {}
+    week_fields: dict[int, dict[str, str]] = {}
+    for column, text in cells.items():
+        spec = context.columns.get(column)
+        if spec is None:
+            continue
+        field_name, week_number = spec
+        if week_number is None:
+            fields[field_name] = text
+        else:
+            week_fields.setdefault(week_number, {})[field_name] = text
+    week_number = _week_number(week)
+    if week_number is not None:
+        fields.update(week_fields.get(week_number, {}))
+    row_text = " | ".join(cells[column] for column in sorted(cells))
+    # A title or note above the header can set a rule for the rows below it
+    # (e.g. top sets on compound lifts); every row inherits it so an unsupported
+    # construct there is flagged for the coach instead of silently dropped.
+    preamble = _sheet_preamble_text(context)
+    return FreeFormSourceRow(fields, " | ".join(part for part in (row_text, preamble) if part))
+
+
+def _sheet_preamble_text(context: FreeFormGridContext) -> str:
+    if context.header_row is None:
+        return ""
+    return " | ".join(
+        text
+        for row_number in sorted(context.cells_by_row)
+        if row_number < context.header_row
+        for text in context.cells_by_row[row_number].values()
+        if text
+    )
+
+
 def _freeform_reader_output(
     reply: program_import_ai.ProgramImportReply,
     tabs: list[str],
     selected_tab: str | None,
+    grid: dict[str, Any],
 ) -> ReaderOutput:
-    weeks = list(dict.fromkeys(week.strip() for week in reply.layout.weeks if week.strip()))
+    context = _freeform_grid_context(grid, reply.layout.days)
+    weeks = _resolved_week_labels(reply.layout.weeks, context)
     selected_week = _default_import_week(weeks)
-    confirm_layout = (
-        reply.layout.confirm_layout
-        or reply.layout.confidence < MIN_PROGRAM_IMPORT_LAYOUT_CONFIDENCE
-    )
-    week_lookup = {week.casefold(): week for week in weeks}
-    rows = [
-        _program_import_row(
-            row,
-            week_lookup.get(row.week.casefold()) if row.week else selected_week,
-        )
-        for row in reply.rows
-    ]
+    week_lookup = {_week_identity(week): week for week in weeks}
     return ReaderOutput(
         tabs,
         selected_tab,
         False,
-        rows,
+        _freeform_program_rows(reply.rows, week_lookup, selected_week, context),
         detected_weeks=weeks,
         selected_week=selected_week,
         weeks_not_imported=[week for week in weeks if week != selected_week],
-        confirm_layout=confirm_layout,
+        confirm_layout=_needs_layout_confirmation(reply.layout),
         layout_days=[day.model_dump() for day in reply.layout.days],
         layout_confidence=reply.layout.confidence,
         import_mode="freeform",
     )
+
+
+def _needs_layout_confirmation(layout: Any) -> bool:
+    return (
+        layout.confirm_layout
+        or layout.confidence < MIN_PROGRAM_IMPORT_LAYOUT_CONFIDENCE
+    )
+
+
+def _freeform_program_rows(
+    model_rows: list[Any],
+    week_lookup: dict[str, str],
+    selected_week: str | None,
+    context: FreeFormGridContext,
+) -> list[ProgramImportRow]:
+    return [
+        _program_import_row(
+            model_row,
+            _matched_row_week(model_row.week, week_lookup, selected_week),
+            _freeform_source_row(context, model_row.source_row, model_row.week),
+            context,
+        )
+        for model_row in model_rows
+    ]
+
+
+def _resolved_week_labels(
+    model_weeks: list[str], context: FreeFormGridContext
+) -> list[str]:
+    if len(context.week_labels) > 1:
+        return context.week_labels
+    normalized = list(dict.fromkeys(
+        label for week in model_weeks if (label := _canonical_week_label(week))
+    ))
+    if len(normalized) < 2 or _weeks_mirror_day_numbers(normalized, context):
+        return []
+    return normalized
+
+
+def _weeks_mirror_day_numbers(weeks: list[str], context: FreeFormGridContext) -> bool:
+    week_numbers = {_week_number(week) for week in weeks}
+    week_numbers.discard(None)
+    return bool(context.day_names) and week_numbers == set(context.day_names)
+
+
+def _canonical_week_label(value: Any) -> str:
+    label = _cell_text(value)
+    match = re.fullmatch(r"(?:week|wk|w)?\s*(\d+)", label, re.IGNORECASE)
+    if match:
+        return f"Week {int(match.group(1))}"
+    word_week = re.fullmatch(r"(?:week|wk)\s*([a-z])", label, re.IGNORECASE)
+    return f"Week {word_week.group(1).upper()}" if word_week else label
+
+
+def _week_identity(value: Any) -> str:
+    label = _canonical_week_label(value)
+    number = _week_number(label)
+    if number is not None:
+        return f"number:{number}"
+    word_week = re.fullmatch(r"(?:week|wk)\s*([a-z])|([a-z])", label, re.IGNORECASE)
+    return f"word:{(word_week.group(1) or word_week.group(2)).casefold()}" if word_week else label.casefold()
+
+
+def _week_number(value: Any) -> int | None:
+    match = re.fullmatch(r"(?:week|wk|w)?\s*(\d+)", _cell_text(value), re.IGNORECASE)
+    return int(match.group(1)) if match else None
+
+
+def _matched_row_week(
+    row_week: str | None, week_lookup: dict[str, str], selected_week: str | None
+) -> str | None:
+    if not week_lookup:
+        return None
+    return week_lookup.get(_week_identity(row_week)) if row_week else selected_week
 
 
 def _default_import_week(weeks: list[str]) -> str | None:
@@ -558,32 +884,150 @@ def _default_import_week(weeks: list[str]) -> str | None:
     )
 
 
-def _program_import_row(row: Any, week: str | None) -> ProgramImportRow:
-    markers = [
-        Approximation(_allowed_approximation_code(marker.code), marker.column, marker.original)
-        for marker in row.approximation_markers
-    ]
-    markers.extend(_detect_unsupported_prescriptions(row, markers))
+def _program_import_row(
+    row: Any,
+    week: str | None,
+    source: FreeFormSourceRow,
+    context: FreeFormGridContext,
+) -> ProgramImportRow:
+    values = _freeform_row_values(row, source, context)
     return ProgramImportRow(
         source_row=row.source_row,
-        day=row.day,
-        day_name=row.day_name,
+        day=values.day,
+        day_name=values.day_name,
         order=row.order,
         exercise=row.exercise,
         sets=row.sets,
         reps_min=row.reps_min,
         reps_max=row.reps_max,
-        reps_original=row.reps_original,
-        rir=row.rir,
-        rpe=_freeform_rpe_value(row.rpe),
+        reps_original=values.reps_original,
+        rir=values.rir,
+        rpe=_freeform_rpe_value(values.rpe),
         rest_seconds=row.rest_seconds,
         tempo=row.tempo,
         notes=row.notes,
         original_text=row.original_text,
-        approximation_markers=tuple(markers),
+        approximation_markers=values.approximation_markers,
         week=week,
         suggestion_terms=tuple(row.exercise_search_terms),
     )
+
+
+def _freeform_row_values(
+    row: Any, source: FreeFormSourceRow, context: FreeFormGridContext
+) -> FreeFormRowValues:
+    day, day_name = _freeform_day_values(row, source, context)
+    rir, rpe = _freeform_effort_values(row, source)
+    return FreeFormRowValues(
+        day,
+        day_name,
+        rir,
+        rpe,
+        _freeform_reps_original(row, source),
+        tuple(_freeform_approximation_markers(row, source)),
+    )
+
+
+def _freeform_day_values(
+    row: Any, source: FreeFormSourceRow, context: FreeFormGridContext
+) -> tuple[Any, str | None]:
+    source_day = _parse_integer(source.fields.get("day"))
+    day = source_day if source_day is not None else row.day
+    source_name = source.fields.get("day_name")
+    candidate_name = source_name or row.day_name
+    clean_name = _clean_day_name(candidate_name)
+    mapped_day = context.day_numbers.get(_day_name_key(clean_name)) if clean_name else None
+    if mapped_day is not None and (source_day is None or _is_generic_day_name(source_name)):
+        day = mapped_day
+    day_number = _parse_integer(day)
+    if _is_generic_day_name(clean_name) or not clean_name:
+        clean_name = context.day_names.get(day_number) if day_number is not None else None
+    return day, clean_name
+
+
+def _freeform_effort_values(
+    row: Any, source: FreeFormSourceRow
+) -> tuple[Any, Any]:
+    source_rpe = _source_rpe_value(source.fields)
+    if source_rpe is not None:
+        return None, source_rpe
+    return row.rir, row.rpe
+
+
+def _source_rpe_value(fields: dict[str, str]) -> str | None:
+    column_value = fields.get("rpe")
+    if column_value:
+        if re.fullmatch(r"\d+(?:\.\d+)?", column_value.strip()):
+            return f"RPE {column_value}"
+        match = re.search(r"(?:RPE\s*|@\s*)(\d+(?:\.\d+)?(?:\s*-\s*\d+(?:\.\d+)?)?)", column_value, re.IGNORECASE)
+        if match:
+            return f"RPE {match.group(1)}"
+    for key in ("effort", "reps_effort"):
+        raw = fields.get(key, "")
+        match = re.search(r"(?:RPE\s*|@\s*)(\d+(?:\.\d+)?(?:\s*-\s*\d+(?:\.\d+)?)?)", raw, re.IGNORECASE)
+        if match:
+            return f"RPE {match.group(1)}"
+    return None
+
+
+def _freeform_reps_original(row: Any, source: FreeFormSourceRow) -> Any:
+    raw = (
+        source.fields.get("reps_by_set")
+        or source.fields.get("reps")
+        or source.fields.get("prescription")
+    )
+    if raw and ("/" in raw or "," in raw) and re.search(r"\d+\s*[,/]\s*\d+", raw):
+        return raw
+    return row.reps_original
+
+
+def _freeform_approximation_markers(
+    row: Any, source: FreeFormSourceRow
+) -> list[Approximation]:
+    markers = [
+        Approximation(_allowed_approximation_code(marker.code), marker.column, marker.original)
+        for marker in row.approximation_markers
+    ]
+    markers.extend(_detect_unsupported_prescriptions(row, markers, source.text))
+    markers.extend(_source_approximation_markers(source))
+    if row.load_kg not in (None, "") and not source.fields.get("load_kg"):
+        markers.append(_load_approximation(row.load_kg))
+    return _dedupe_approximation_markers(markers)
+
+
+def _source_approximation_markers(source: FreeFormSourceRow) -> list[Approximation]:
+    markers = []
+    load = source.fields.get("load_kg")
+    if load and load.strip().casefold() not in {"—", "-", "n/a", "none"}:
+        markers.append(_load_approximation(load))
+    slot = source.fields.get("slot", "")
+    if re.fullmatch(r"[A-Z]\d{1,2}", slot.strip(), re.IGNORECASE):
+        markers.append(Approximation(
+            "program_import.unsupported_preserved_as_note.v1", "prescription", f"superset {slot}"
+        ))
+    reps_by_set = source.fields.get("reps_by_set", "")
+    reps = source.fields.get("reps") or source.fields.get("prescription", "")
+    if reps_by_set:
+        markers.append(Approximation("program_import.reps_approximated.v1", "reps", reps_by_set))
+    elif re.search(r"\b(?:per|by)\s+set\b", reps, re.IGNORECASE):
+        markers.append(Approximation("program_import.reps_approximated.v1", "reps", reps))
+    elif re.search(r"\d+\s*[,/]\s*\d+.*\b(?:reps?|sets?)\b", reps, re.IGNORECASE):
+        markers.append(Approximation("program_import.reps_approximated.v1", "reps", reps))
+    return markers
+
+
+def _load_approximation(value: Any) -> Approximation:
+    original = _cell_text(value)
+    if original and not re.search(r"\bkg\b", original, re.IGNORECASE):
+        original = f"{original} kg"
+    return Approximation("program_import.load_preserved_as_note.v1", "load_kg", original)
+
+
+def _dedupe_approximation_markers(markers: list[Approximation]) -> list[Approximation]:
+    unique: dict[tuple[str, str, str], Approximation] = {}
+    for marker in markers:
+        unique.setdefault((marker.code, marker.column, marker.original.casefold()), marker)
+    return list(unique.values())
 
 
 def _freeform_rpe_value(value: Any) -> Any:
@@ -593,19 +1037,23 @@ def _freeform_rpe_value(value: Any) -> Any:
     return value
 
 
-def _detect_unsupported_prescriptions(row: Any, existing: list[Approximation]) -> list[Approximation]:
-    source = " ".join(part for part in (row.original_text, _cell_text(row.notes)) if part)
-    checks = (
-        (r"\bAMRAP\b|\btop\s+set\b|\bback[ -]?off\b|\bsuperset\b", "prescription"),
-        (r"\d+\s*[x×]\s*\d+(?:\s*[,/]\s*\d+)+", "reps"),
-        (r"\d+(?:\.\d+)?\s*%", "load_pct_e1rm"),
-        (r"weekly\s+(?:progression|increase|increase reps|add reps)", "notes"),
+def _detect_unsupported_prescriptions(
+    row: Any, existing: list[Approximation], source_text: str = ""
+) -> list[Approximation]:
+    source = " ".join(
+        part for part in (row.original_text, _cell_text(row.notes), source_text) if part
     )
     found = []
-    existing_originals = {marker.original.casefold() for marker in existing if marker.original}
-    for pattern, column in checks:
+    # Dedupe on (code, text): a weekly load progression the model already
+    # preserved as a load note is still an unsupported construct to flag.
+    existing_unsupported = {
+        marker.original.casefold()
+        for marker in existing
+        if marker.original and marker.code == "program_import.unsupported_preserved_as_note.v1"
+    }
+    for pattern, column in _UNSUPPORTED_PRESCRIPTION_PATTERNS:
         match = re.search(pattern, source, re.IGNORECASE)
-        if match and match.group(0).casefold() not in existing_originals:
+        if match and match.group(0).casefold() not in existing_unsupported:
             found.append(
                 Approximation(
                     "program_import.unsupported_preserved_as_note.v1",
@@ -621,6 +1069,7 @@ def _allowed_approximation_code(code: str) -> str:
         "program_import.reps_approximated.v1",
         "program_import.effort_approximated.v1",
         "program_import.load_preserved_as_note.v1",
+        "program_import.rpe_converted.v1",
         "program_import.unsupported_preserved_as_note.v1",
     }
     return code if code in allowed else "program_import.unsupported_preserved_as_note.v1"
@@ -722,6 +1171,13 @@ def _column_label(column_number: int) -> str:
         column_number, remainder = divmod(column_number - 1, 26)
         letters = chr(65 + remainder) + letters
     return letters
+
+
+def _column_number(label: str) -> int:
+    number = 0
+    for letter in label:
+        number = number * 26 + ord(letter) - ord("A") + 1
+    return number
 
 
 def _cell_limit_error() -> ProgramImportError:
