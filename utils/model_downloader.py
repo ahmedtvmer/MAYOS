@@ -48,6 +48,7 @@ class SafeChatOpenAI(ChatOpenAI):
 _llm_instance: Any = None
 _judge_llm_instance: Any = None
 _coach_llm_instance: Any = None
+_coach_import_llm_instance: Any = None
 _model_build_lock = threading.Lock()
 
 
@@ -182,6 +183,29 @@ def build_player_llm(*, timeout: float, max_retries: int = DEFAULT_CLOUD_MAX_RET
     )
 
 
+# A free-form Program import writes a whole sheet of rows in one call, which
+# takes minutes, and DeepInfra answers 429 engine_overloaded in bursts; the
+# shared 60 s / 1-retry chat settings fail such imports (#350 follow-up).
+COACH_IMPORT_REQUEST_TIMEOUT = 420.0
+COACH_IMPORT_MAX_RETRIES = 6
+
+
+def get_coach_import_llm() -> Any:
+    """Coach model for free-form Program import: same model, longer request budget."""
+    global _coach_import_llm_instance
+    if _coach_import_llm_instance is not None:
+        return _coach_import_llm_instance
+    with _model_build_lock:
+        if _coach_import_llm_instance is None:
+            _coach_import_llm_instance = _build_cloud_llm(
+                "coach",
+                timeout=COACH_IMPORT_REQUEST_TIMEOUT,
+                max_retries=COACH_IMPORT_MAX_RETRIES,
+                stream_chunk_timeout=COACH_IMPORT_REQUEST_TIMEOUT,
+            )
+        return _coach_import_llm_instance
+
+
 def _get_model(role: str) -> Any:
     global _llm_instance, _judge_llm_instance, _coach_llm_instance
     instance_name = {"production": "_llm_instance", "judge": "_judge_llm_instance", "coach": "_coach_llm_instance"}[role]
@@ -223,6 +247,7 @@ def unload_judge_llm() -> None:
 
 def unload_coach_llm() -> None:
     _unload_model("_coach_llm_instance")
+    _unload_model("_coach_import_llm_instance")
 
 
 class _LazyModelProxy:

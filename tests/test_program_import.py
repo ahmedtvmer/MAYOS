@@ -32,6 +32,9 @@ def api(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("SKIP_LLM_LOAD", "true")
     monkeypatch.setenv("TESTING", "1")
     monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
+    # A developer .env may enable free-form import; tests opt in explicitly.
+    monkeypatch.delenv("PROGRAM_IMPORT_AI_ENABLED", raising=False)
+    monkeypatch.delenv("PROGRAM_IMPORT_AI_EVAL_REPORT", raising=False)
     from database.database_manager import DatabaseManager
     from svc.rate_limit import limiter
 

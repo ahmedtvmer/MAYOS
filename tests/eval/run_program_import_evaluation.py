@@ -216,14 +216,17 @@ def _evaluation_path(model: Any | None) -> Iterator[None]:
     from utils import model_downloader
 
     previous_model = model_downloader._coach_llm_instance
+    previous_import_model = model_downloader._coach_import_llm_instance
     previous_gate = program_import_ai.resolve_enable_gate
     if model is not None:
         model_downloader._coach_llm_instance = _model_instance_used(model)
+        model_downloader._coach_import_llm_instance = _model_instance_used(model)
     program_import_ai.resolve_enable_gate = lambda: GateStatus(requested=True, enabled=True, reason="evaluation runner")
     try:
         yield
     finally:
         model_downloader._coach_llm_instance = previous_model
+        model_downloader._coach_import_llm_instance = previous_import_model
         program_import_ai.resolve_enable_gate = previous_gate
 
 
@@ -758,7 +761,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             from utils import model_downloader
 
-            model = model_downloader.get_coach_llm()
+            model = model_downloader.get_coach_import_llm()
         model_instance = _model_instance_used(model)
         results = run_suite(cases, model=model, dataset_path=args.dataset)
     except Exception as error:

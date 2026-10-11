@@ -64,6 +64,7 @@ class ProgramImportEvaluationSession:
         self._previous_cwd: str | None = None
         self._temporary: tempfile.TemporaryDirectory[str] | None = None
         self._previous_coach_model: Any = None
+        self._previous_coach_import_model: Any = None
         self.db: Any = None
         self.client: Any = None
         self.coach_headers: dict[str, str] = {}
@@ -104,6 +105,7 @@ class ProgramImportEvaluationSession:
             from utils import model_downloader
 
             self._previous_coach_model = model_downloader._coach_llm_instance
+            self._previous_coach_import_model = model_downloader._coach_import_llm_instance
             return self
         except BaseException:
             self.__exit__(None, None, None)
@@ -179,6 +181,7 @@ class ProgramImportEvaluationSession:
             from utils import model_downloader
 
             model_downloader._coach_llm_instance = self._previous_coach_model
+            model_downloader._coach_import_llm_instance = self._previous_coach_import_model
             if self._previous_cwd is not None:
                 os.chdir(self._previous_cwd)
                 self._previous_cwd = None

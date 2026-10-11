@@ -1077,6 +1077,9 @@ class ApiClient {
       () => _dio.post<dynamic>(
         '/coach/assignments/$assignmentId/program-import',
         data: form,
+        // A free-form sheet is translated by the coach model in one call,
+        // which can take minutes (provider retries included).
+        options: Options(receiveTimeout: const Duration(minutes: 10)),
       ),
     );
     if (response.data is! Map<String, dynamic>) {

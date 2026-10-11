@@ -720,7 +720,7 @@ def _invoke_structured(
     from svc.llm import run_inference_sync
     from utils import model_downloader
 
-    structured = model_downloader.get_coach_llm().with_structured_output(schema).bind(
+    structured = model_downloader.get_coach_import_llm().with_structured_output(schema).bind(
         max_tokens=IMPORT_MAX_OUTPUT_TOKENS
     )
     validation_message = ""

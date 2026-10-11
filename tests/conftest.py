@@ -37,7 +37,7 @@ _COLLECTION_CHAT_MODEL = ScriptedChatModel(default_turn="Use controlled reps.")
 _ACTIVE_TEST_CHAT_MODEL = _COLLECTION_CHAT_MODEL
 
 
-def _scripted_model_builder(_role):
+def _scripted_model_builder(_role, **_settings):
     return _ACTIVE_TEST_CHAT_MODEL
 
 
@@ -63,6 +63,7 @@ def _install_scripted_chat_model(scripted_chat_model):
     model_downloader._llm_instance = None
     model_downloader._judge_llm_instance = None
     model_downloader._coach_llm_instance = None
+    model_downloader._coach_import_llm_instance = None
     return scripted_chat_model
 
 
