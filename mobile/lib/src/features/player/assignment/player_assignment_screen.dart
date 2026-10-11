@@ -17,7 +17,7 @@ import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_card.dart';
 import '../../../core/ui/mayos_section_header.dart';
 import '../../../core/ui/mayos_text_field.dart';
-import '../program/program_change_summary_card.dart';
+import 'player_assignment_activity.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import 'program_request_dialog.dart';
@@ -41,6 +41,7 @@ class _PlayerAssignmentScreenState
   final TextEditingController _code = TextEditingController();
 
   bool _loading = true;
+  bool _markingNoticesRead = false;
   bool _previewing = false;
   bool _redeeming = false;
   bool _ending = false;
@@ -86,6 +87,18 @@ class _PlayerAssignmentScreenState
       _error = null;
       _localError = null;
     });
+    await _loadContent();
+  }
+
+  Future<void> _refreshInPlace() async {
+    setState(() {
+      _error = null;
+      _localError = null;
+    });
+    await _loadContent();
+  }
+
+  Future<void> _loadContent() async {
     try {
       final ApiClient api = ref.read(apiClientProvider);
       final List<Object?> results =
@@ -247,13 +260,16 @@ class _PlayerAssignmentScreenState
   }
 
   Future<void> _markNoticesRead() async {
+    setState(() => _markingNoticesRead = true);
     try {
       await ref.read(apiClientProvider).markPlayerNoticesRead();
       if (!mounted) return;
-      await _load();
+      await _refreshInPlace();
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() => _error = _rawFailure(error));
+    } finally {
+      if (mounted) setState(() => _markingNoticesRead = false);
     }
   }
 
@@ -285,14 +301,6 @@ class _PlayerAssignmentScreenState
       });
     }
   }
-
-  Widget _noticeCaption(AssignmentNotice notice) => Text(
-        '${notice.kind} · ${notice.createdAt}',
-        textDirection: TextDirection.ltr,
-        style: MayosTypography.of(context).caption.copyWith(
-          color: MayosTheme.of(context).textMuted,
-        ),
-      );
 
   Future<void> _cancelRequest(ProgramRequest request) async {
     setState(() {
@@ -421,62 +429,15 @@ class _PlayerAssignmentScreenState
     if (_notices.isEmpty) {
       return const SizedBox.shrink();
     }
-    final MayosThemeExtension c = MayosTheme.of(context);
-    final AssignmentCopy copy = _copy;
-    final int unread =
-        _notices.where((AssignmentNotice notice) => notice.isUnread).length;
     return Padding(
       padding: const EdgeInsets.only(bottom: MayosSpacing.md),
-      child: MayosCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            MayosSectionHeader(
-              title: copy.notices,
-              padding: EdgeInsets.zero,
-              trailing: unread > 0
-                  ? MayosButton(
-                      label: copy.markAllRead,
-                      variant: MayosButtonVariant.tertiary,
-                      expand: false,
-                      onPressed: _markNoticesRead,
-                    )
-                  : null,
-            ),
-            for (final AssignmentNotice notice in _notices)
-              if (notice.programChangeSummary != null &&
-                  notice.summaryDismissedAt == null)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    ProgramChangeSummaryCard(
-                      summary: notice.programChangeSummary!,
-                      message: notice.message,
-                      onViewProgram: _openProgram,
-                    ),
-                    _noticeCaption(notice),
-                  ],
-                )
-              else
-                ListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(
-                    notice.isUnread
-                        ? Icons.notifications_active
-                        : Icons.notifications_none,
-                    color: notice.isUnread ? c.accent : c.textMuted,
-                  ),
-                  title: FirstStrongDirection(
-                    text: notice.message,
-                    child: Text(
-                      notice.message,
-                      textAlign: TextAlign.start,
-                    ),
-                  ),
-                  subtitle: _noticeCaption(notice),
-                ),
-          ],
+      child: PlayerAssignmentNoticesCard(
+        notices: _notices,
+        copy: _copy,
+        actions: PlayerNoticeActions(
+          onMarkAllRead: _markNoticesRead,
+          onViewProgram: _openProgram,
+          markingRead: _markingNoticesRead,
         ),
       ),
     );
@@ -486,47 +447,14 @@ class _PlayerAssignmentScreenState
     if (_checkIns.isEmpty) {
       return const SizedBox.shrink();
     }
-    final MayosThemeExtension c = MayosTheme.of(context);
-    final AssignmentCopy copy = _copy;
     return Padding(
       padding: const EdgeInsets.only(top: MayosSpacing.lg),
-      child: MayosCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            MayosSectionHeader(title: copy.checkIns, padding: EdgeInsets.zero),
-            for (final CheckIn checkIn in _checkIns)
-              ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.handshake_outlined, color: c.textSecondary),
-                title: Text(
-                  '${copy.isArabic ? '\u2066${checkIn.checkedInOn}\u2069' : checkIn.checkedInOn} · ${copy.checkInChannel(checkIn.channel)}',
-                ),
-                subtitle: Builder(
-                  builder: (BuildContext context) {
-                    final String subtitle = _checkInSubtitle(checkIn, copy);
-                    return FirstStrongDirection(
-                      text: subtitle,
-                      child: Text(subtitle),
-                    );
-                  },
-                ),
-              ),
-          ],
-        ),
+      child: PlayerAssignmentCheckInsCard(
+        checkIns: _checkIns,
+        copy: _copy,
       ),
     );
   }
-
-  String _checkInSubtitle(CheckIn checkIn, AssignmentCopy copy) => <String>[
-        if (checkIn.coachUsername != null)
-          checkIn.coachUsername == 'Former coach'
-              ? copy.formerCoach
-              : copy.coachUsername(checkIn.coachUsername!),
-        if (checkIn.assignmentStatus == 'ended') copy.assignmentEndedStatus,
-        if (checkIn.note != null && checkIn.note!.isNotEmpty) checkIn.note!,
-      ].join(' · ');
 
   Widget _errorBanner(BuildContext context) {
     if (_error == null && _localError == null) {

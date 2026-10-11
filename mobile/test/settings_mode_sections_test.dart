@@ -67,13 +67,15 @@ Future<void> _pumpApp(
   bool coachCapability = true,
   bool playerCapability = true,
   String displayLanguage = 'en',
+  FakeMayosApi? fakeApi,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
-  final FakeMayosApi fake = FakeMayosApi()
+  final FakeMayosApi fake = fakeApi ?? FakeMayosApi();
+  fake
     ..issuedToken = 'token-alice'
     ..currentUsername = 'alice'
     ..tokenValid = true
@@ -136,10 +138,13 @@ void main() {
         'Coach profile',
         'Coach plan',
         'Notifications',
-        'Account',
       ]) {
         await _expectVisible(tester, label);
       }
+      expect(find.byKey(const Key('player_notifications_entry')), findsNothing);
+      await _expectVisible(tester, 'Expiry and attention alerts');
+      expect(find.byKey(const Key('coach_notifications_entry')), findsOneWidget);
+      await _expectVisible(tester, 'Account');
       await _expectVisible(tester, 'Password');
     });
 
@@ -149,7 +154,6 @@ void main() {
 
       expect(find.text('Coach profile'), findsNothing);
       expect(find.text('Coach plan'), findsNothing);
-      expect(find.text('Notifications'), findsNothing);
       for (final String label in <String>[
         'Training profile',
         'Lifter plan',
@@ -216,7 +220,119 @@ void main() {
     await _expectVisible(tester, 'Password');
     expect(find.text('Coach profile'), findsNothing);
     expect(find.text('Coach plan'), findsNothing);
+    expect(find.byKey(const Key('player_notifications_entry')), findsNothing);
     expect(find.text('Notifications'), findsNothing);
+  });
+
+  testWidgets('Player Settings opens the Player notifications surface',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()
+      ..playerNotices.add(<String, dynamic>{
+        'notice_id': 'notice-1',
+        'assignment_id': 'assignment-1',
+        'kind': 'program_published',
+        'message': 'Your coach published a new Training program.',
+        'created_at': '2026-10-10T12:00:00Z',
+        'read_at': null,
+      })
+      ..playerNotices.add(<String, dynamic>{
+        'notice_id': 'notice-2',
+        'assignment_id': 'assignment-1',
+        'kind': 'program_request',
+        'message': 'Your coach responded to your Program request.',
+        'created_at': '2026-10-09T12:00:00Z',
+        'read_at': null,
+      })
+      ..checkIns.add(<String, dynamic>{
+        'check_in_id': 'check-in-1',
+        'assignment_id': 'assignment-1',
+        'checked_in_on': '2026-10-10',
+        'channel': 'in_app',
+        'created_at': '2026-10-10T12:00:00Z',
+        'coach_username': 'coach-alice',
+        'assignment_status': 'active',
+      });
+    await _pumpApp(
+      tester,
+      mode: AppMode.player,
+      size: const Size(390, 844),
+      fakeApi: fake,
+    );
+
+    await _expectVisible(tester, 'Coach updates and Check-ins');
+    expect(find.byKey(const Key('player_notifications_entry')), findsOneWidget);
+    final Finder entry = find.byKey(const Key('player_notifications_entry'));
+    await tester.tap(entry);
+    await _pumpUntilFound(
+      tester,
+      find.text('Your coach published a new Training program.'),
+    );
+
+    expect(
+      tester
+          .widget<Text>(find.byKey(const Key('notice_caption_notice-1')))
+          .textSpan!
+          .toPlainText(),
+      'Training program update · \u20662026-10-10\u2069',
+    );
+    expect(
+      tester
+          .widget<Text>(find.byKey(const Key('notice_caption_notice-2')))
+          .textSpan!
+          .toPlainText(),
+      'Program request update · \u20662026-10-09\u2069',
+    );
+    expect(find.text('2026-10-10 · In app'), findsOneWidget);
+    expect(find.text('My coach'), findsNothing);
+
+    final Finder markAllRead = find.text('Mark all read');
+    await tester.ensureVisible(markAllRead);
+    await tester.tap(markAllRead);
+    expect(find.byKey(const Key('player_notifications_surface')), findsOneWidget);
+    expect(
+      find.text('Your coach published a new Training program.'),
+      findsOneWidget,
+    );
+    await tester.pumpAndSettle();
+    expect(fake.markPlayerNoticesReadRequests, 1);
+    expect(markAllRead, findsNothing);
+  });
+
+  testWidgets('Player notifications use Arabic glossary copy',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()
+      ..playerNotices.add(<String, dynamic>{
+        'notice_id': 'arabic-notice',
+        'assignment_id': 'assignment-1',
+        'kind': 'program_published',
+        'message': 'Coach published an update.',
+        'created_at': '2026-10-10T12:00:00Z',
+        'read_at': null,
+      });
+    await _pumpApp(
+      tester,
+      mode: AppMode.player,
+      size: const Size(390, 844),
+      displayLanguage: 'ar',
+      fakeApi: fake,
+    );
+
+    await _expectVisible(tester, 'تحديثات المدرب وسجلات التواصل');
+    final Finder entry = find.byKey(const Key('player_notifications_entry'));
+    await tester.ensureVisible(entry);
+    await tester.tap(entry);
+    await _pumpUntilFound(tester, find.text('سجلات التواصل'));
+
+    expect(find.text('الإشعارات'), findsWidgets);
+    expect(find.text('لا توجد سجلات تواصل بعد.'), findsOneWidget);
+    final Text noticeCaption = tester.widget<Text>(
+      find.byKey(const Key('notice_caption_arabic-notice')),
+    );
+    expect(noticeCaption.textDirection, isNull);
+    expect(
+      noticeCaption.textSpan!.toPlainText(),
+      'تحديث البرنامج التدريبي · \u20662026-10-10\u2069',
+    );
   });
 
   testWidgets('My coach remains available without a Player profile capability',
@@ -258,7 +374,6 @@ void main() {
     await _expectVisible(tester, 'كلمة المرور');
     expect(find.text('ملف المدرب'), findsNothing);
     expect(find.text('خطة المدرب'), findsNothing);
-    expect(find.text('الإشعارات'), findsNothing);
   });
 
   testWidgets('Coach Settings sections use the Arabic glossary',

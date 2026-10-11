@@ -67,8 +67,24 @@ class AssignmentCopy {
   }
 
   String get notices => isArabic ? 'الإشعارات' : 'Notices';
+  String get playerNotificationsLead => isArabic
+      ? 'تعرض إشعارات المدرب تحديثات البرنامج التدريبي والردود على طلبات '
+          'البرنامج التدريبي. وتظهر سجلات التواصل أدناه.'
+      : 'Coach notices show Training program updates and replies to Program '
+          'requests. Check-ins appear below.';
+  String get noNotices =>
+      isArabic ? 'لا توجد إشعارات من المدرب بعد.' : 'No coach notices yet.';
   String get markAllRead => isArabic ? 'تحديد الكل كمقروء' : 'Mark all read';
+  String noticeType(String kind) => switch (kind) {
+        'program_published' =>
+          isArabic ? 'تحديث البرنامج التدريبي' : 'Training program update',
+        'program_request' =>
+          isArabic ? 'تحديث طلب البرنامج التدريبي' : 'Program request update',
+        _ => isArabic ? 'إشعار من المدرب' : 'Coach notice',
+      };
   String get checkIns => isArabic ? 'سجلات التواصل' : 'Check-ins';
+  String get noCheckIns =>
+      isArabic ? 'لا توجد سجلات تواصل بعد.' : 'No Check-ins yet.';
   String get formerCoach => isArabic ? 'المدرب السابق' : 'Former coach';
   String coachUsername(String username) =>
       isArabic ? 'المدرب ${_ltr(username)}' : 'Coach $username';

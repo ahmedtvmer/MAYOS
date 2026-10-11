@@ -3428,7 +3428,13 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('View program'), findsOneWidget);
-    expect(find.textContaining('program_published'), findsOneWidget);
+    expect(
+      tester
+          .widget<Text>(find.byKey(const Key('notice_caption_notice-1')))
+          .textSpan!
+          .toPlainText(),
+      'Training program update · \u20662026-09-24\u2069',
+    );
 
     await tester.tap(find.text('Mark all read'));
     await _pumpUntilFound(tester, find.byIcon(Icons.notifications_none));

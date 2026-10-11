@@ -253,6 +253,10 @@ void main() {
       coachRosterPath,
     );
     expect(
+      redirectFor(coach, playerNotificationsPath, _mode(AppMode.coach)),
+      coachRosterPath,
+    );
+    expect(
       redirectFor(
           _authenticated(coach: true, onboarded: false), chatPath,
           _mode(AppMode.coach)),

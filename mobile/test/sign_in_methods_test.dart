@@ -131,7 +131,12 @@ Future<void> _reveal(WidgetTester tester, Finder finder) async {
     await tester.scrollUntilVisible(
       finder,
       300,
-      scrollable: find.byType(Scrollable).first,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('settings_section_list')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
   }
   if (finder.evaluate().isNotEmpty) {
@@ -157,7 +162,12 @@ void main() {
       await tester.scrollUntilVisible(
         selector,
         250,
-        scrollable: find.byType(Scrollable).first,
+        scrollable: find
+            .descendant(
+              of: find.byKey(const Key('settings_section_list')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
       );
       expect(selector, findsOneWidget);
       expect(Directionality.of(tester.element(find.byType(SettingsScreen))),
@@ -191,6 +201,7 @@ void main() {
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
       await _pumpSettings(tester, fake, tokens, google: FakeGoogleAuthGateway());
+      await _reveal(tester, find.text('Linked sign-in'));
 
       expect(find.text('Linked sign-in'), findsOneWidget);
       expect(find.text('Password set'), findsOneWidget);
@@ -211,6 +222,7 @@ void main() {
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: false, googleLinked: true);
       await _pumpSettings(tester, fake, tokens, google: FakeGoogleAuthGateway());
+      await _reveal(tester, find.text('Linked sign-in'));
 
       expect(find.text('No password yet'), findsOneWidget);
       expect(find.byKey(const Key('set_password_button')), findsOneWidget);
@@ -233,6 +245,7 @@ void main() {
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: true);
       await _pumpSettings(tester, fake, tokens, google: FakeGoogleAuthGateway());
+      await _reveal(tester, find.text('Linked sign-in'));
 
       expect(find.text('Password set'), findsOneWidget);
       expect(find.text('Change password'), findsOneWidget);
@@ -259,6 +272,7 @@ void main() {
         google:
             FakeGoogleAuthGateway(buttonStyle: GoogleSignInButtonStyle.hidden),
       );
+      await _reveal(tester, find.text('Linked sign-in'));
 
       expect(find.text('Not connected'), findsOneWidget);
       expect(find.text('Connect Google'), findsNothing);

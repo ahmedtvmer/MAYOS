@@ -37,6 +37,7 @@ import 'features/player/workout/logger_top_bar.dart';
 import 'features/player/workout/workout_drafts_screen.dart';
 import 'features/player/workout/workout_logger_screen.dart';
 import 'features/settings/personalization_screen.dart';
+import 'features/settings/player_notifications_screen.dart';
 import 'features/settings/recovery_email_settings_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shared/app_update_required_screen.dart';
@@ -76,6 +77,7 @@ const String coachProfilePath = '$coachPath/$coachProfileRoutePath';
 const String coachInvitePath = '/coach-invite';
 const String playerSetupPath = '/player-setup';
 const String assignmentPath = '/assignment';
+const String playerNotificationsPath = '/player-notifications';
 const String workoutsPath = '/workouts';
 const String logWorkoutPath = '/log-workout';
 const String exerciseDetailPath = '/exercise';
@@ -209,7 +211,9 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
         return coachRosterPath;
       }
       if (coachMode &&
-          (path == chatPath || path.startsWith('$chatPath/'))) {
+          (path == chatPath ||
+              path.startsWith('$chatPath/') ||
+              path == playerNotificationsPath)) {
         return coachRosterPath;
       }
       // The deferred-intake screen is only for a coach in Player mode who has
@@ -561,6 +565,15 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
           title: (String languageCode) =>
               AssignmentCopy(languageCode).myCoach,
           body: const PlayerAssignmentScreen(),
+        ),
+      ),
+      GoRoute(
+        path: playerNotificationsPath,
+        builder: (BuildContext context, GoRouterState state) =>
+            _localizedPlayerPage(
+          title: (String languageCode) =>
+              SettingsCopy(languageCode).notifications,
+          body: const PlayerNotificationsScreen(),
         ),
       ),
       GoRoute(

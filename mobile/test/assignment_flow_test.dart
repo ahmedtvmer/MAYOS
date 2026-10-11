@@ -180,7 +180,27 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await _pumpUntilFound(tester, find.text('المظهر'));
+    await tester.scrollUntilVisible(
+      find.text('تسجيل الدخول المرتبط'),
+      250,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('settings_section_list')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     expect(find.text('تسجيل الدخول المرتبط'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('الملف التدريبي'),
+      -250,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('settings_section_list')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     await tester.tap(find.text('الملف التدريبي'));
     await _pumpUntilFound(tester, find.byKey(const Key('weight_kg_field')));
 

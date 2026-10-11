@@ -205,6 +205,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: MayosSpacing.xl),
             ],
+            if (hasPlayerProfile) ...<Widget>[
+              MayosSectionHeader(title: ui.notifications),
+              MayosCard(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
+                child: MayosSettingsTile(
+                  key: const Key('player_notifications_entry'),
+                  icon: Icons.notifications_outlined,
+                  title: ui.notifications,
+                  subtitle: ui.playerNotificationsSubtitle,
+                  onTap: () => context.push(playerNotificationsPath),
+                ),
+              ),
+              const SizedBox(height: MayosSpacing.xl),
+            ],
           ],
           if (coachMode) ...<Widget>[
             MayosSectionHeader(title: ui.notifications),
@@ -212,6 +227,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               padding: const EdgeInsets.symmetric(
                   horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
               child: MayosSettingsTile(
+                key: const Key('coach_notifications_entry'),
                 icon: Icons.notifications_outlined,
                 title: ui.notificationSettings,
                 subtitle: ui.coachNotificationsSubtitle,

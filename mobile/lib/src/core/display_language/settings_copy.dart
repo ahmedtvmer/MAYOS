@@ -54,6 +54,9 @@ class SettingsCopy {
   String get coachNotificationsSubtitle => isArabic
       ? 'تنبيهات انتهاء الصلاحية واللاعبين الذين يحتاجون إلى متابعة'
       : 'Expiry and attention alerts';
+  String get playerNotificationsSubtitle => isArabic
+      ? 'تحديثات المدرب وسجلات التواصل'
+      : 'Coach updates and Check-ins';
   String get recoveryEmail => isArabic ? 'البريد الإلكتروني للاسترداد' : 'Recovery email';
   String get recoveryEmailVerified => isArabic ? 'تم التحقق' : 'Verified';
   String get recoveryEmailNotVerified => isArabic ? 'لم يتم التحقق' : 'Not verified';
