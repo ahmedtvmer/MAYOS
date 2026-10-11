@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api_client.dart';
 import '../../core/app_failure.dart';
 import '../../core/connectivity_message.dart';
+import '../../core/display_language/coach_copy.dart';
 import '../../core/display_language/copy_context.dart';
 import '../../core/display_language/controller.dart';
 import '../../core/display_language/feature_copy_context.dart';
@@ -44,7 +45,9 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
 
   bool _loading = true;
   bool _saving = false;
+  bool _savingStallThreshold = false;
   bool _issuing = false;
+  int _stallThresholdWeeks = 3;
   FailureMessage? _loadError;
   FailureMessage? _saveError;
   AssignmentInvite? _invite;
@@ -75,11 +78,9 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
       final CoachProfile profile =
           await ref.read(apiClientProvider).coachProfile();
       if (!mounted) return;
-      _displayName.text = profile.displayName;
-      _bio.text = profile.bio;
-      _specialization.text = profile.specialization;
-      _capacity.text = profile.capacity.toString();
+      _applyProfile(profile);
       setState(() => _loading = false);
+      await _loadStallThreshold();
       await _loadExtras();
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -87,6 +88,25 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
         _loading = false;
         _loadError = apiFailureMessage(error);
       });
+    }
+  }
+
+  void _applyProfile(CoachProfile profile) {
+    _displayName.text = profile.displayName;
+    _bio.text = profile.bio;
+    _specialization.text = profile.specialization;
+    _capacity.text = profile.capacity.toString();
+  }
+
+  Future<void> _loadStallThreshold() async {
+    try {
+      final CoachSettings settings =
+          await ref.read(apiClientProvider).coachSettings();
+      if (mounted) {
+        setState(() => _stallThresholdWeeks = settings.stallThresholdWeeks);
+      }
+    } on ApiException {
+      // The default threshold remains usable if settings cannot be loaded.
     }
   }
 
@@ -174,6 +194,42 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
         _saveError = apiFailureMessage(error);
       });
     }
+  }
+
+  Future<void> _saveStallThreshold(int? weeks) async {
+    if (weeks == null || weeks == _stallThresholdWeeks) return;
+    setState(() {
+      _savingStallThreshold = true;
+      _saveError = null;
+    });
+    try {
+      final CoachSettings settings = await ref
+          .read(apiClientProvider)
+          .updateCoachSettings(stallThresholdWeeks: weeks);
+      if (!mounted) return;
+      _showSavedStallThreshold(settings);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      _showStallThresholdSaveError(error);
+    }
+  }
+
+  void _showSavedStallThreshold(CoachSettings settings) {
+    setState(() {
+      _stallThresholdWeeks = settings.stallThresholdWeeks;
+      _savingStallThreshold = false;
+    });
+    ref.read(coachRosterRevisionProvider.notifier).state++;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(coachCopyOf(context).stallThresholdSaved)),
+    );
+  }
+
+  void _showStallThresholdSaveError(ApiException error) {
+    setState(() {
+      _savingStallThreshold = false;
+      _saveError = apiFailureMessage(error);
+    });
   }
 
   String? _validateDisplayName(String? value) {
@@ -305,8 +361,88 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
           _noticesCard(context),
           const SizedBox(height: MayosSpacing.sm),
           _resolvedAlertsCard(context),
+          const SizedBox(height: MayosSpacing.sm),
+          _coachSettingsCard(context),
           const SizedBox(height: MayosSpacing.xl),
         ],
+      ),
+    );
+  }
+
+  Widget _coachSettingsCard(BuildContext context) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final copy = coachCopyOf(context);
+    return MayosCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          _coachSettingsHeading(context, c, copy),
+          const SizedBox(height: MayosSpacing.sm),
+          _stallThresholdSelector(copy),
+          _stallThresholdStatus(context, c),
+        ],
+      ),
+    );
+  }
+
+  Widget _coachSettingsHeading(
+    BuildContext context,
+    MayosThemeExtension colors,
+    CoachCopy copy,
+  ) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            copy.coachSettings,
+            style: MayosTypography.of(context)
+                .sectionHeading
+                .copyWith(color: colors.textPrimary),
+          ),
+          const SizedBox(height: MayosSpacing.xs),
+          Text(
+            copy.stallThresholdDescription,
+            style: MayosTypography.of(context)
+                .bodySecondary
+                .copyWith(color: colors.textSecondary),
+          ),
+        ],
+      );
+
+  Widget _stallThresholdSelector(CoachCopy copy) => DropdownButtonFormField<int>(
+        key: const Key('coach_stall_threshold'),
+        initialValue: _stallThresholdWeeks,
+        decoration: InputDecoration(
+          labelText: copy.stallThreshold,
+          border: const OutlineInputBorder(),
+        ),
+        items: <DropdownMenuItem<int>>[
+          for (int weeks = 1; weeks <= 12; weeks++)
+            DropdownMenuItem<int>(
+              value: weeks,
+              child: Text(copy.stallThresholdOption(weeks)),
+            ),
+        ],
+        onChanged: _savingStallThreshold ? null : _saveStallThreshold,
+      );
+
+  Widget _stallThresholdStatus(
+    BuildContext context,
+    MayosThemeExtension colors,
+  ) {
+    if (_savingStallThreshold) {
+      return const Padding(
+        padding: EdgeInsets.only(top: MayosSpacing.xs),
+        child: LinearProgressIndicator(),
+      );
+    }
+    if (_saveError == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: MayosSpacing.xs),
+      child: Text(
+        displayCopyOf(context).failureMessage(_saveError!),
+        style: MayosTypography.of(context)
+            .bodySecondary
+            .copyWith(color: colors.danger),
       ),
     );
   }

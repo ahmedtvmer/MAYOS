@@ -104,6 +104,8 @@ class FakeMayosApi {
   String coachBio = '';
   String coachSpecialization = '';
   int coachCapacity = 10;
+  int stallThresholdWeeks = 3;
+  final Set<String> coachStalledAssignmentIds = <String>{};
   String? validCoachInviteToken;
   String? validNewAccountCoachInviteCode;
   String? lastRegistrationCoachInviteCode;
@@ -623,6 +625,10 @@ class FakeMayosApi {
         return _redeemCoachInvite(request);
       case '/coach/profile':
         return _coachProfile(request);
+      case '/coach/settings':
+        return _coachSettings(request);
+      case '/coach/roster/snapshot':
+        return _coachRosterSnapshot(request);
       case '/coach/program-requests':
         return _coachCrossRosterProgramRequests(request);
       case '/coach/assignments':
@@ -1204,6 +1210,62 @@ class FakeMayosApi {
     coachSpecialization = request.body['specialization'] as String? ?? '';
     coachCapacity = (request.body['capacity'] as num?)?.toInt() ?? 1;
     return FakeResponse(200, _coachProfileBody());
+  }
+
+  FakeResponse _coachSettings(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    if (request.method == 'PUT') {
+      final int? weeks =
+          (request.body['stall_threshold_weeks'] as num?)?.toInt();
+      if (weeks == null || weeks < 1 || weeks > 12) {
+        return const FakeResponse(
+            422, <String, dynamic>{'detail': 'Invalid threshold.'});
+      }
+      stallThresholdWeeks = weeks;
+    }
+    return FakeResponse(200, <String, dynamic>{
+      'stall_threshold_weeks': stallThresholdWeeks,
+    });
+  }
+
+  FakeResponse _coachRosterSnapshot(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    return FakeResponse(200, <String, dynamic>{
+      'snapshot': <String, dynamic>{
+        'as_of': '2026-10-11',
+        'stall_threshold_weeks': stallThresholdWeeks,
+        'players': <Map<String, dynamic>>[
+          for (int i = 0; i < assignments.length; i++)
+            <String, dynamic>{
+              'player_id': 'opaque-$i',
+              'stall_threshold_met': coachStalledAssignmentIds
+                  .contains(assignments[i]['assignment_id']),
+            },
+        ],
+      },
+      'client_mapping': <Map<String, dynamic>>[
+        for (int i = 0; i < assignments.length; i++)
+          <String, dynamic>{
+            'player_id': 'opaque-$i',
+            'assignment_id': assignments[i]['assignment_id'],
+            'player_username': assignments[i]['player_username'] ?? 'player',
+          },
+      ],
+    });
   }
 
   Map<String, dynamic> _identity(String name, String specialization) =>

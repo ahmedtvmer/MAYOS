@@ -492,6 +492,8 @@ class SchemaMixin:
                     bio TEXT NOT NULL DEFAULT '',
                     specialization TEXT NOT NULL DEFAULT '',
                     capacity INTEGER NOT NULL,
+                    stall_threshold_weeks INTEGER NOT NULL DEFAULT 3
+                        CHECK (stall_threshold_weeks BETWEEN 1 AND 12),
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -770,6 +772,7 @@ class SchemaMixin:
             self._ensure_roster_attendance_last_workout_on()
             self._ensure_roster_attendance_program_name()
             self._ensure_roster_attendance_stall_length()
+            self._ensure_coach_profiles_stall_threshold()
             self._ensure_model_spend_alert_columns()
             self._ensure_model_usage_turn_id_column()
             self._ensure_linked_sign_in_account_provider()
@@ -1021,6 +1024,16 @@ class SchemaMixin:
         columns = self._table_columns(cursor, "roster_attendance")
         if columns and "stall_length" not in columns:
             cursor.execute("ALTER TABLE roster_attendance ADD COLUMN stall_length INTEGER NOT NULL DEFAULT 0")
+
+    def _ensure_coach_profiles_stall_threshold(self) -> None:
+        """Adds the coach's calendar-week Stalling threshold with its default (#310)."""
+        cursor = self.catalog_conn.cursor()
+        columns = self._table_columns(cursor, "coach_profiles")
+        if columns and "stall_threshold_weeks" not in columns:
+            cursor.execute(
+                "ALTER TABLE coach_profiles ADD COLUMN stall_threshold_weeks "
+                "INTEGER NOT NULL DEFAULT 3 CHECK (stall_threshold_weeks BETWEEN 1 AND 12)"
+            )
 
     def _ensure_model_spend_alert_columns(self) -> None:
         """Additive ``fired_at``/``notified_at`` on an existing ``model_spend_alerts`` (ADR 038)."""

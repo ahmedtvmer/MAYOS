@@ -31,6 +31,7 @@ from service.schedule import local_date_in, timezone_for_versions
 
 __all__ = [
     "AttendanceEvaluation",
+    "adherence_percentage",
     "evaluate_attendance",
     "is_expected_day",
     "pause_covers",
@@ -51,6 +52,21 @@ class AttendanceEvaluation:
     trailing_streak_start: date | None
     trailing_streak_last: date | None
     trailing_streak_length: int
+
+
+def adherence_percentage(
+    evaluation: AttendanceEvaluation, *, window_start: date | None = None
+) -> float | None:
+    """Return satisfied expected days as a percentage, optionally since a date."""
+    expected_days = [
+        day for day in evaluation.expected_days if window_start is None or day >= window_start
+    ]
+    if not expected_days:
+        return None
+    satisfied_days = set(evaluation.satisfied_days)
+    return round(
+        100.0 * sum(day in satisfied_days for day in expected_days) / len(expected_days), 1
+    )
 
 
 def _as_date(value: Any) -> date:

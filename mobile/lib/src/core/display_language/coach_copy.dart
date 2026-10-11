@@ -17,6 +17,20 @@ class CoachCopy {
   String get alerts => isArabic ? 'التنبيهات' : 'Alerts';
   String get requests => isArabic ? 'الطلبات' : 'Requests';
   String get profile => isArabic ? 'الملف الشخصي' : 'Profile';
+  String get allPlayers => isArabic ? 'كل اللاعبين' : 'All players';
+  String get stalledFilter => isArabic ? 'المتوقفون' : 'Stalled';
+  String get noStalledPlayers =>
+      isArabic ? 'لا يوجد لاعبون متوقفون.' : 'No stalled players.';
+  String get coachSettings => isArabic ? 'إعدادات المدرب' : 'Coach settings';
+  String get stallThreshold => isArabic ? 'حد التوقف' : 'Stall threshold';
+  String get stallThresholdDescription => isArabic
+      ? 'حدّد عدد الأسابيع دون رقم قياسي شخصي لعرض اللاعب كمتوقف. التنبيه بعد 8 حصص لم يتغير.'
+      : 'Weeks without a Personal record before a player is marked Stalled. The 8-session Coach alert is unchanged.';
+  String stallThresholdOption(int weeks) => isArabic
+      ? '${_ltr(weeks.toString())} أسابيع'
+      : '$weeks week${weeks == 1 ? '' : 's'}';
+  String get stallThresholdSaved =>
+      isArabic ? 'تم حفظ حد التوقف.' : 'Stall threshold saved.';
   String requestPlayerDay(String player, String day) =>
       isArabic ? '${_ltr(player)} · ${_ltr(day)}' : '$player · $day';
   String get activeAssignments =>

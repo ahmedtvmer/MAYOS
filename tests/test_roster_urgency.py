@@ -7,6 +7,7 @@ end (each key and its tie-break), the attendance seed at redemption, and that
 the enriched roster read still mounts no player ledger.
 """
 
+import json
 import sqlite3
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -19,6 +20,7 @@ from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, Program
 from database.database_manager import DatabaseManager
 from service import coach as coach_service
 from service import workouts as workouts_service
+from service import roster_snapshot as roster_snapshot_service
 from svc.app import create_app
 from svc.dependencies import get_db
 
@@ -291,6 +293,151 @@ def test_roster_read_with_new_fields_mounts_no_player_ledger(api, monkeypatch):
     # The program name comes from the catalog cache, not a fresh ledger read.
     assert rows[0]["program_name"] == "Coach Plan"
     assert mounted == ["coach"]
+
+
+def test_roster_snapshot_is_deidentified_and_uses_fresh_opaque_ids(api):
+    client, db, _ = api
+    coach_headers, _ = _make_coach(client, db, "coach", capacity=5)
+    player = _assign(api, "snapshotprivate", coach_headers)
+    db.catalog_conn.execute(
+        "INSERT INTO trainee_emails (trainee_id, email, updated_at) VALUES (?, ?, ?)",
+        ("snapshotprivate", "snapshotprivate@example.com", "2026-10-01T00:00:00+00:00"),
+    )
+    db.catalog_conn.commit()
+
+    first = client.get("/coach/roster/snapshot", headers=coach_headers)
+    second = client.get("/coach/roster/snapshot", headers=coach_headers)
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    first_body = first.json()
+    snapshot_json = json.dumps(first_body["snapshot"])
+    assert first_body["snapshot"]["stall_threshold_weeks"] == 3
+    assert len(first_body["snapshot"]["players"]) == 1
+    signal = first_body["snapshot"]["players"][0]
+    assert signal["urgency_rank"] == 1
+    assert signal["missed_expected_days_7d"] is None
+    assert signal["adherence_pct_28d"] is None
+    assert signal["bodyweight_trend"] is None
+    assert signal["coaching_subscription_end"] is None
+
+    for private_value in (
+        "snapshotprivate",
+        "snapshotprivate@example.com",
+        player["account_id"],
+        player["assignment_id"],
+        "correct-horse-1",
+    ):
+        assert private_value not in snapshot_json
+    assert first_body["client_mapping"][0]["assignment_id"] == player["assignment_id"]
+    assert signal["player_id"] != second.json()["snapshot"]["players"][0]["player_id"]
+
+
+def test_coach_stall_threshold_setting_defaults_validates_and_drives_snapshot(api):
+    client, db, _ = api
+    coach_headers, _ = _make_coach(client, db, "coach", capacity=5)
+
+    settings = client.get("/coach/settings", headers=coach_headers)
+    assert settings.status_code == 200
+    assert settings.json() == {"stall_threshold_weeks": 3}
+    assert client.put(
+        "/coach/settings", headers=coach_headers, json={"stall_threshold_weeks": 0}
+    ).status_code == 422
+    assert client.put(
+        "/coach/settings", headers=coach_headers, json={"stall_threshold_weeks": 13}
+    ).status_code == 422
+
+    updated = client.put(
+        "/coach/settings", headers=coach_headers, json={"stall_threshold_weeks": 6}
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json() == {"stall_threshold_weeks": 6}
+    assert client.get("/coach/roster/snapshot", headers=coach_headers).json()["snapshot"][
+        "stall_threshold_weeks"
+    ] == 6
+
+
+def test_coach_stall_threshold_catalog_migration_preserves_profiles(api):
+    _, db, _ = api
+    _, coach_id = _make_coach(api[0], db, "coach", capacity=5)
+    db.set_coach_stall_threshold(coach_id, 9)
+    with db._catalog_lock:
+        db.catalog_conn.execute("ALTER TABLE coach_profiles DROP COLUMN stall_threshold_weeks")
+        db.catalog_conn.commit()
+        db._account_schema_ready = False
+    db.ensure_account_schema()
+    assert db.get_coach_stall_threshold(coach_id) == 3
+
+
+def test_snapshot_signal_values_reuse_attendance_stalling_and_regression_alerts(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, coach_id = _make_coach(client, db, "coach", capacity=5)
+    player = _assign(api, "signalsplayer", coach_headers)
+    _publish_coach_program(api, coach_headers, player, monkeypatch)
+    _backdate_start(db, player["assignment_id"], 34)
+
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        ledger.append_training_schedule(
+            player["ledger_id"], [1, 2, 3, 4, 5, 6, 7], "UTC", "2026-09-01",
+            "2026-09-01T00:00:00+00:00",
+        )
+    for on in ("2026-09-08", "2026-09-15", "2026-09-22", "2026-09-29", "2026-10-01", "2026-10-03"):
+        _seed_workout(db, player, on)
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        version = ledger.get_active_program().version
+        ledger.conn.execute(
+            "UPDATE workout_sessions SET program_version = ?", (version,)
+        )
+        ledger.conn.commit()
+
+    request = client.post(
+        "/assignments/me/program-requests",
+        headers=player["headers"],
+        json={
+            "kind": "exercise_substitution",
+            "day_name": "Full A",
+            "exercise_id": "sq",
+            "replacement_exercise_id": "ohp",
+            "reason": "private request reason",
+        },
+    )
+    assert request.status_code == 200, request.text
+    db.create_check_in(
+        uuid.uuid4().hex,
+        player["assignment_id"],
+        coach_id,
+        player["account_id"],
+        "2026-09-22",
+        "phone",
+        "private note",
+        "2026-09-22T12:00:00+00:00",
+    )
+    db.insert_coach_alert(
+        uuid.uuid4().hex,
+        player["assignment_id"],
+        coach_id,
+        player["account_id"],
+        "performance_regression",
+        "sq:session-1",
+        {"exercise_id": "sq", "status_badge": "OVERSHOOT"},
+        "2026-10-03T12:00:00+00:00",
+    )
+
+    response = roster_snapshot_service.roster_signal_snapshot(
+        db, coach_id, now=datetime(2026, 10, 5, 12, tzinfo=UTC)
+    )
+    signal = response["snapshot"]["players"][0]
+    assert signal["missed_expected_days_7d"] > 0
+    assert signal["missed_expected_days_14d"] >= signal["missed_expected_days_7d"]
+    assert signal["adherence_pct_28d"] is not None
+    assert signal["weeks_without_personal_record"] == 3
+    assert signal["stall_threshold_met"] is True
+    assert signal["effort_rising_same_load_main_lift"] is True
+    assert signal["days_since_last_check_in"] == 13
+    assert signal["urgency_inputs"]["pending_program_requests"] == 1
+    assert signal["urgency_inputs"]["days_since_last_workout"] == 2
+    serialized = json.dumps(response["snapshot"])
+    assert "private request reason" not in serialized
+    assert "private note" not in serialized
 
 
 def test_one_new_lapsing_alert_ranks_above_two_new_regression_alerts(api):

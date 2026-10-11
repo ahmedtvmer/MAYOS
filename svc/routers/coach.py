@@ -16,6 +16,8 @@ from service import analytics as analytics_service
 from service import auth as auth_service
 from service import coach as coach_service
 from service import coach_ai as coach_ai_service
+from service import coach_settings as coach_settings_service
+from service import roster_snapshot as roster_snapshot_service
 from service.messages import MessageMetadata
 from service import plans as plans_service
 from svc.dependencies import VerifiedPlayer, get_current_coach, get_current_player, get_db
@@ -29,6 +31,9 @@ from svc.schemas import (
     CoachInviteRedeemIn,
     CoachProfileOut,
     CoachProfileUpdate,
+    CoachSettingsOut,
+    CoachSettingsUpdate,
+    CoachRosterSnapshotResponseOut,
 )
 
 router = APIRouter(prefix="/coach", tags=["coach"])
@@ -108,6 +113,50 @@ async def update_coach_profile(
         return result["profile"]
 
     return CoachProfileOut(**await asyncio.to_thread(_run))
+
+
+@router.get("/settings", response_model=CoachSettingsOut)
+async def read_coach_settings(
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Reads Coach mode settings; only the authenticated Coach can access them."""
+    settings = await asyncio.to_thread(
+        coach_settings_service.get_settings, db, coach.account_id
+    )
+    if settings is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Coach settings not found.")
+    return CoachSettingsOut(**settings)
+
+
+@router.put("/settings", response_model=CoachSettingsOut)
+async def update_coach_settings(
+    body: CoachSettingsUpdate,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Updates the bounded calendar-week Stall threshold."""
+    settings = await asyncio.to_thread(
+        coach_settings_service.update_settings,
+        db,
+        coach.account_id,
+        body.stall_threshold_weeks,
+    )
+    if settings is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Coach settings not found.")
+    return CoachSettingsOut(**settings)
+
+
+@router.get("/roster/snapshot", response_model=CoachRosterSnapshotResponseOut)
+async def read_roster_snapshot(
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Returns deterministic roster signals and a separate client-only identity map."""
+    response = await asyncio.to_thread(
+        roster_snapshot_service.roster_signal_snapshot, db, coach.account_id
+    )
+    return CoachRosterSnapshotResponseOut(**response)
 
 
 @router.post("/capability/disable", response_model=CoachCapabilityDisableOut)

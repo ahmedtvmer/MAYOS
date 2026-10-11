@@ -711,6 +711,23 @@ class ApiClient {
     return CoachProfile.fromJson(response.data as Map<String, dynamic>);
   }
 
+  Future<CoachSettings> coachSettings() async {
+    final response = await _send(() => _dio.get<dynamic>('/coach/settings'));
+    return CoachSettings.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<CoachSettings> updateCoachSettings({
+    required int stallThresholdWeeks,
+  }) async {
+    final response = await _send(
+      () => _dio.put<dynamic>(
+        '/coach/settings',
+        data: <String, dynamic>{'stall_threshold_weeks': stallThresholdWeeks},
+      ),
+    );
+    return CoachSettings.fromJson(response.data as Map<String, dynamic>);
+  }
+
   /// Previews a coach assignment invite. The code is sent in the body and is not consumed.
   Future<AssignmentInvitePreview> previewAssignmentInvite(String token) async {
     final response = await _send(
@@ -766,6 +783,15 @@ class ApiClient {
         .map((dynamic item) =>
             CoachRosterEntry.fromJson(item as Map<String, dynamic>))
         .toList(growable: false);
+  }
+
+  Future<CoachRosterSignalSnapshot> coachRosterSignalSnapshot() async {
+    final response = await _send(
+      () => _dio.get<dynamic>('/coach/roster/snapshot'),
+    );
+    return CoachRosterSignalSnapshot.fromJson(
+      response.data as Map<String, dynamic>,
+    );
   }
 
   /// Volume and recent sessions for an actively assigned player.

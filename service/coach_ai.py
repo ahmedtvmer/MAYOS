@@ -41,6 +41,7 @@ from agent.program_blueprints import (
     experience_level_for_training_age,
 )
 from core.effort import min_rir_label, rir_label
+from service import attendance as attendance_service
 from service import analytics
 from service import coach_history as coach_history_service
 from service import dashboard as dashboard_service
@@ -460,7 +461,7 @@ def _bodyweight_trend_facts(
     return {"points": points, "change_kg": _trend_change_kg(points, "weight_kg")}
 
 
-def _main_lift_exercise_names(program: Any) -> dict[str, str]:
+def main_lift_exercise_names(program: Any) -> dict[str, str]:
     if program is None:
         return {}
     exercise_names: dict[str, str] = {}
@@ -548,7 +549,7 @@ def _attendance_facts(
         "expected_days": expected,
         "satisfied_days": satisfied,
         "missed_days": len(evaluation.missed_days),
-        "adherence_pct": round(100.0 * satisfied / expected, 1) if expected else None,
+        "adherence_pct": attendance_service.adherence_percentage(evaluation),
         "trailing_missed_streak": evaluation.trailing_streak_length,
         "last_missed_on": (
             evaluation.missed_days[-1].isoformat() if evaluation.missed_days else None
@@ -622,7 +623,7 @@ def gather_player_context(
             },
             "bodyweight_trend": _bodyweight_trend_facts(db, ledger_id, ledger, now.date()),
             "e1rm_trends": _e1rm_trend_facts(
-                _main_lift_exercise_names(program), ledger, now.date()
+                main_lift_exercise_names(program), ledger, now.date()
             ),
             "recent_sessions": sessions,
             "recent_sessions_totals": session_totals,

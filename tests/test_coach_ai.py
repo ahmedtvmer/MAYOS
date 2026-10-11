@@ -497,7 +497,7 @@ def test_e1rm_trend_facts_use_active_program_sets_and_shared_formula():
             assert end_date == today.isoformat()
             return rows
 
-    selected = coach_ai._main_lift_exercise_names(program)
+    selected = coach_ai.main_lift_exercise_names(program)
     trends = coach_ai._e1rm_trend_facts(selected, RowsLedger(), today)
 
     assert trends == [
@@ -548,7 +548,7 @@ def test_ledger_working_sets_query_filters_exercises_dates_and_warmups(api):
 def test_main_lift_selection_deduplicates_and_caps_at_six():
     compounds = [_program_lift(str(index), f"Lift {index}", "flat_press") for index in range(7)]
     program = _program_with_lifts([compounds, [compounds[0]]])
-    selected = coach_ai._main_lift_exercise_names(program)
+    selected = coach_ai.main_lift_exercise_names(program)
     assert list(selected) == ["0", "1", "2", "3", "4", "5"]
 
 
@@ -559,7 +559,7 @@ def test_main_lift_selection_uses_first_exercise_per_day_without_slots():
             [_program_lift("third", "Third")],
         ]
     )
-    assert coach_ai._main_lift_exercise_names(unclassified) == {
+    assert coach_ai.main_lift_exercise_names(unclassified) == {
         "first": "First",
         "third": "Third",
     }

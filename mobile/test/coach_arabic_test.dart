@@ -222,6 +222,14 @@ void main() {
     );
   });
 
+  test('Coach Stalled filter and setting use Arabic copy', () {
+    const CoachCopy arabic = CoachCopy('ar');
+    expect(arabic.stalledFilter, 'المتوقفون');
+    expect(arabic.coachSettings, 'إعدادات المدرب');
+    expect(arabic.stallThreshold, 'حد التوقف');
+    expect(arabic.stallThresholdOption(3), '\u20663\u2069 أسابيع');
+  });
+
   test('Arabic Coach program counts localize singular, dual and plural forms',
       () {
     const CoachCopy arabic = CoachCopy('ar');

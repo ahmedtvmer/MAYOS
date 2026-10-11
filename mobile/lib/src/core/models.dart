@@ -212,6 +212,64 @@ class CoachProfile {
   final int capacity;
 }
 
+/// Coach-owned roster settings, separate from the Coach's public profile.
+class CoachSettings {
+  const CoachSettings({required this.stallThresholdWeeks});
+
+  factory CoachSettings.fromJson(Map<String, dynamic> json) => CoachSettings(
+        stallThresholdWeeks:
+            (json['stall_threshold_weeks'] as num?)?.toInt() ?? 3,
+      );
+
+  final int stallThresholdWeeks;
+}
+
+/// The client-only join between random snapshot ids and Roster assignments.
+class CoachRosterSignalSnapshot {
+  const CoachRosterSignalSnapshot({
+    required this.stalledAssignmentIds,
+  });
+
+  factory CoachRosterSignalSnapshot.fromJson(Map<String, dynamic> json) {
+    final Map<String, dynamic> snapshot =
+        json['snapshot'] as Map<String, dynamic>;
+    final List<dynamic> players = snapshot['players'] as List<dynamic>;
+    final List<dynamic> mapping = json['client_mapping'] as List<dynamic>;
+    final Map<String, String> assignmentIds = _assignmentIdsByPlayer(mapping);
+    return CoachRosterSignalSnapshot(
+      stalledAssignmentIds: _stalledAssignments(players, assignmentIds),
+    );
+  }
+
+  static Map<String, String> _assignmentIdsByPlayer(List<dynamic> mappings) {
+    final Map<String, String> assignmentByPlayer = <String, String>{};
+    for (final dynamic rawMapping in mappings) {
+      final Map<String, dynamic> mapping = rawMapping as Map<String, dynamic>;
+      assignmentByPlayer[mapping['player_id'] as String] =
+          mapping['assignment_id'] as String;
+    }
+    return assignmentByPlayer;
+  }
+
+  static Set<String> _stalledAssignments(
+    List<dynamic> players,
+    Map<String, String> assignmentIds,
+  ) {
+    final Set<String> stalled = <String>{};
+    for (final dynamic rawSignal in players) {
+      final Map<String, dynamic> signal = rawSignal as Map<String, dynamic>;
+      if (signal['stall_threshold_met'] == true) {
+        final String? assignmentId =
+            assignmentIds[signal['player_id'] as String];
+        if (assignmentId != null) stalled.add(assignmentId);
+      }
+    }
+    return stalled;
+  }
+
+  final Set<String> stalledAssignmentIds;
+}
+
 /// The coach's current, product-facing identity shown before consent.
 class CoachIdentity {
   const CoachIdentity({

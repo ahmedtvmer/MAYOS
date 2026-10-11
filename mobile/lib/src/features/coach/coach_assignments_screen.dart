@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/api_client.dart';
 import '../../core/app_failure.dart';
 import '../../core/connectivity_message.dart';
+import '../../core/display_language/coach_copy.dart';
 import '../../core/display_language/copy_context.dart';
 import '../../core/display_language/controller.dart';
 import '../../core/display_language/feature_copy_context.dart';
@@ -42,9 +43,12 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     with WidgetsBindingObserver {
   bool _loading = true;
   bool _disabling = false;
+  bool _loadingStalledFilter = false;
+  bool _stalledFilterSelected = false;
   FailureMessage? _error;
   String? _busyAssignmentId;
   List<CoachRosterEntry> _assignments = <CoachRosterEntry>[];
+  Set<String> _stalledAssignmentIds = <String>{};
 
   @override
   void initState() {
@@ -94,9 +98,12 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     try {
       final List<CoachRosterEntry>? assignments = await loadRoster();
       if (!mounted || assignments == null) return;
+      final FailureMessage? signalError = await _refreshStalledSnapshot();
+      if (!mounted) return;
       setState(() {
         _assignments = assignments;
         _loading = false;
+        _error = signalError;
       });
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -105,6 +112,45 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
         _error = apiFailureMessage(error);
       });
     }
+  }
+
+  Future<FailureMessage?> _refreshStalledSnapshot() async {
+    if (!_stalledFilterSelected) return null;
+    try {
+      final CoachRosterSignalSnapshot signals = await ref
+          .read(apiClientProvider)
+          .coachRosterSignalSnapshot();
+      _stalledAssignmentIds = signals.stalledAssignmentIds;
+      return null;
+    } on ApiException catch (error) {
+      _stalledAssignmentIds = <String>{};
+      return apiFailureMessage(error);
+    }
+  }
+
+  Future<void> _selectStalledFilter() async {
+    setState(() {
+      _stalledFilterSelected = true;
+      _loadingStalledFilter = true;
+      _stalledAssignmentIds = <String>{};
+      _error = null;
+    });
+    final FailureMessage? error = await _refreshStalledSnapshot();
+    if (!mounted) return;
+    setState(() {
+      _loadingStalledFilter = false;
+      if (error != null) {
+        _stalledFilterSelected = false;
+        _error = error;
+      }
+    });
+  }
+
+  void _selectAllFilter() {
+    setState(() {
+      _stalledFilterSelected = false;
+      _loadingStalledFilter = false;
+    });
   }
 
   Future<void> _revoke(CoachRosterEntry entry) async {
@@ -421,19 +467,112 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
               style: MayosTypography.of(context).sectionHeading
                   .copyWith(color: c.textPrimary)),
           const SizedBox(height: MayosSpacing.xs),
-          if (_assignments.isEmpty)
-            Text(copy.noAssignedPlayers,
-                style: MayosTypography.of(context).bodySecondary
-                    .copyWith(color: c.textSecondary))
-          else
-            for (int i = 0; i < _assignments.length; i++) ...<Widget>[
-              if (i > 0) Divider(height: 1, indent: 52, color: c.border),
-              _rosterRow(context, _assignments[i]),
-            ],
+          _rosterFilters(context, copy),
+          const SizedBox(height: MayosSpacing.xs),
+          _assignmentRows(context, c, copy),
         ],
       ),
     );
   }
+
+  Widget _rosterFilters(BuildContext context, CoachCopy copy) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          _filterOptions(copy),
+          _stalledFilterProgress(),
+        ],
+      );
+
+  Widget _filterOptions(CoachCopy copy) => Wrap(
+        spacing: MayosSpacing.xs,
+        children: <Widget>[
+          _filterChip(
+            key: const Key('roster_filter_all'),
+            label: copy.allPlayers,
+            selected: !_stalledFilterSelected,
+            onSelected: (_) => _selectAllFilter(),
+          ),
+          _filterChip(
+            key: const Key('roster_filter_stalled'),
+            label: copy.stalledFilter,
+            selected: _stalledFilterSelected,
+            onSelected: _loadingStalledFilter
+                ? null
+                : (_) => _selectStalledFilter(),
+          ),
+        ],
+      );
+
+  Widget _filterChip({
+    required Key key,
+    required String label,
+    required bool selected,
+    required ValueChanged<bool>? onSelected,
+  }) => ChoiceChip(
+        key: key,
+        label: Text(label),
+        selected: selected,
+        onSelected: onSelected,
+      );
+
+  Widget _stalledFilterProgress() {
+    if (!_loadingStalledFilter) return const SizedBox.shrink();
+    return const Padding(
+      padding: EdgeInsets.only(top: MayosSpacing.xs),
+      child: LinearProgressIndicator(),
+    );
+  }
+
+  Widget _assignmentRows(
+    BuildContext context,
+    MayosThemeExtension colors,
+    CoachCopy copy,
+  ) {
+    if (_assignments.isEmpty) {
+      return _emptyAssignments(context, colors, copy.noAssignedPlayers);
+    }
+    if (_visibleAssignments.isEmpty) {
+      return _emptyAssignments(context, colors, copy.noStalledPlayers);
+    }
+    return _assignmentRowList(context, colors);
+  }
+
+  Widget _emptyAssignments(
+    BuildContext context,
+    MayosThemeExtension colors,
+    String message,
+  ) => Padding(
+        padding: EdgeInsets.only(
+          top: _assignments.isEmpty ? 0 : MayosSpacing.sm,
+        ),
+        child: Text(
+          message,
+          style: MayosTypography.of(context)
+              .bodySecondary
+              .copyWith(color: colors.textSecondary),
+        ),
+      );
+
+  Widget _assignmentRowList(
+    BuildContext context,
+    MayosThemeExtension colors,
+  ) {
+    return Column(
+      children: <Widget>[
+        for (int i = 0; i < _visibleAssignments.length; i++) ...<Widget>[
+          if (i > 0) Divider(height: 1, indent: 52, color: colors.border),
+          _rosterRow(context, _visibleAssignments[i]),
+        ],
+      ],
+    );
+  }
+
+  List<CoachRosterEntry> get _visibleAssignments => _stalledFilterSelected
+      ? _assignments
+          .where((CoachRosterEntry row) =>
+              _stalledAssignmentIds.contains(row.assignmentId))
+          .toList(growable: false)
+      : _assignments;
 
   @override
   Widget build(BuildContext context) {

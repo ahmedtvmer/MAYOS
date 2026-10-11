@@ -518,7 +518,9 @@ def end_assignment(
     }
 
 
-def list_coach_assignments(db: Any, coach_account_id: str) -> list[dict[str, Any]]:
+def list_coach_assignments(
+    db: Any, coach_account_id: str, *, now: datetime | None = None
+) -> list[dict[str, Any]]:
     """Active assignments for a coach in roster urgency order (ticket #118).
 
     Each row carries the urgency inputs — alert badges including the lapsing
@@ -533,7 +535,7 @@ def list_coach_assignments(db: Any, coach_account_id: str) -> list[dict[str, Any
     follow_ups = db.list_roster_follow_up_basis(coach_account_id)
     pending_requests = db.pending_program_request_counts(coach_account_id)
     workouts = db.list_roster_workout_basis(coach_account_id)
-    today = datetime.now(UTC).date()
+    today = (now or datetime.now(UTC)).astimezone(UTC).date()
     rows = []
     for row in db.list_active_assignments_for_coach(coach_account_id):
         badge = badges.get(row["assignment_id"], {})

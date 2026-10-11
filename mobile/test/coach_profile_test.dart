@@ -127,6 +127,31 @@ void main() {
     expect(fake.coachCapacity, 15);
   });
 
+  testWidgets('coach stall threshold is editable from Coach settings',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake(coach: true);
+    await _pumpApp(tester, fake);
+    await tester.tap(find.text('Profile'));
+    await _pumpUntilFound(tester, find.text('Coach profile'));
+
+    final Finder threshold = find.byKey(const Key('coach_stall_threshold'));
+    await tester.scrollUntilVisible(
+      threshold,
+      300,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Coach settings'), findsOneWidget);
+    expect(find.text('Stall threshold'), findsOneWidget);
+    await tester.tap(threshold);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('6 weeks').last);
+    await tester.pumpAndSettle();
+
+    expect(fake.stallThresholdWeeks, 6);
+    expect(find.text('Stall threshold saved.'), findsOneWidget);
+  });
+
   testWidgets('coach profile surfaces a load error and retries',
       (tester) async {
     final FakeMayosApi fake = _signedInFake(coach: true);

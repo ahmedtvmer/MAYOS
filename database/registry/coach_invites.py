@@ -257,6 +257,31 @@ class RegistryCoachInvitesMixin:
                 "capacity": int(row[4]),
             }
 
+    def get_coach_stall_threshold(self, account_id: str) -> int | None:
+        """Reads a coach's calendar-week stall threshold, or ``None`` without a profile."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "SELECT stall_threshold_weeks FROM coach_profiles WHERE account_id = ?",
+                (str(account_id),),
+            )
+            row = cursor.fetchone()
+            return int(row[0]) if row is not None else None
+
+    def set_coach_stall_threshold(self, account_id: str, weeks: int) -> bool:
+        """Updates the bounded coach setting; returns false when no profile exists."""
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "UPDATE coach_profiles SET stall_threshold_weeks = ?, updated_at = ?"
+                " WHERE account_id = ?",
+                (int(weeks), datetime.now(UTC).isoformat(), str(account_id)),
+            )
+            self._commit_catalog()
+            return cursor.rowcount == 1
+
     def upsert_coach_profile(self, account_id: str, profile: dict[str, Any]) -> None:
         """Writes coach-authored fields; callers validate and bound them first."""
         self.ensure_account_schema()

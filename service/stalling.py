@@ -33,20 +33,9 @@ def stalling_facts(
         return 0, None
     first_program_session = current_version_sessions[0]
     first_order = _session_order(first_program_session)
-    latest_record_session = None
-    for session in ordered:
-        response = session.get("commit_response")
-        if not response:
-            continue
-        try:
-            events = json.loads(response).get("new_prs", [])
-        except (TypeError, ValueError):
-            events = []
-        if any(
-            isinstance(event, dict) and str(event.get("exercise_id")) in exercise_ids
-            for event in events
-        ):
-            latest_record_session = session
+    latest_record_session = _latest_program_record_session(
+        ordered, _session_order(first_program_session), exercise_ids
+    )
     reset_order = (
         _session_order(latest_record_session)
         if latest_record_session is not None and _session_order(latest_record_session) >= first_order
@@ -59,6 +48,49 @@ def stalling_facts(
     length = len(run)
     window_start = str(run[0].get("session_date")) if run and run[0].get("session_date") else None
     return length, window_start
+
+
+def personal_record_reference_date(
+    sessions: list[dict[str, Any]], program_version: int, exercise_ids: set[str]
+) -> str | None:
+    """Return the latest in-program Personal record date, or the program's first session."""
+    ordered = sorted(sessions, key=_session_order)
+    current_version_sessions = [
+        session for session in ordered if session.get("program_version") == program_version
+    ]
+    if not current_version_sessions:
+        return None
+    first_program_session = current_version_sessions[0]
+    record_session = _latest_program_record_session(
+        ordered, _session_order(first_program_session), exercise_ids
+    )
+    reference_session = record_session or first_program_session
+    session_date = reference_session.get("session_date")
+    return str(session_date)[:10] if session_date else None
+
+
+def _latest_program_record_session(
+    ordered_sessions: list[dict[str, Any]],
+    first_program_order: tuple[str, str, int],
+    exercise_ids: set[str],
+) -> dict[str, Any] | None:
+    latest_record_session = None
+    for session in ordered_sessions:
+        if _session_order(session) < first_program_order:
+            continue
+        response = session.get("commit_response")
+        if not response:
+            continue
+        try:
+            events = json.loads(response).get("new_prs", [])
+        except (TypeError, ValueError):
+            events = []
+        if any(
+            isinstance(event, dict) and str(event.get("exercise_id")) in exercise_ids
+            for event in events
+        ):
+            latest_record_session = session
+    return latest_record_session
 
 
 def recount_assignment(db: Any, assignment: dict[str, Any]) -> tuple[int, str | None]:

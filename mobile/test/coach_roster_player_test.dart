@@ -181,6 +181,22 @@ Map<String, dynamic> _checkInRow(
 /// row carries the chips that apply to it (#120).
 
 void main() {
+  testWidgets('Stalled filter uses the threshold signal snapshot',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    fake.assignments
+      ..add(_assignment('assignment-stalled', 'stalled_player'))
+      ..add(_assignment('assignment-progressing', 'progressing_player'));
+    fake.coachStalledAssignmentIds.add('assignment-stalled');
+    await _pumpApp(tester, fake, InMemoryAppModeStore());
+
+    await tester.tap(find.byKey(const Key('roster_filter_stalled')));
+    await _pumpUntilFound(tester, find.text('stalled_player'));
+
+    expect(find.text('progressing_player'), findsNothing);
+    expect(find.text('stalled_player'), findsOneWidget);
+  });
+
   testWidgets('English roster fits long details at phone and desktop widths',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _coachFake();

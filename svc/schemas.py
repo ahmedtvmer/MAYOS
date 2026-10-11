@@ -102,6 +102,13 @@ __all__ = [
     "CoachPlayerSummaryOut",
     "CoachProfileOut",
     "CoachProfileUpdate",
+    "CoachSettingsOut",
+    "CoachSettingsUpdate",
+    "CoachRosterUrgencyInputsOut",
+    "CoachRosterSignalOut",
+    "CoachRosterSignalSnapshotOut",
+    "CoachRosterClientMappingOut",
+    "CoachRosterSnapshotResponseOut",
     "CoachProgramRequestListOut",
     "CoachProgramApproveIn",
     "CoachProgramDraftIn",
@@ -326,6 +333,55 @@ class CoachProfileUpdate(BaseModel):
     bio: str = Field(default="", max_length=1000)
     specialization: str = Field(default="", max_length=200)
     capacity: int = Field(ge=1, le=200)
+
+
+class CoachSettingsOut(BaseModel):
+    stall_threshold_weeks: int = Field(ge=1, le=12)
+
+
+class CoachSettingsUpdate(BaseModel):
+    stall_threshold_weeks: int = Field(ge=1, le=12)
+
+
+class CoachRosterUrgencyInputsOut(BaseModel):
+    new_lapsing_alerts: int
+    other_new_coach_alerts: int
+    pending_program_requests: int
+    missed_day_streak: int
+    follow_up_overdue_days: int
+    days_since_last_workout: int | None
+    stall_length_sessions: int
+
+
+class CoachRosterSignalOut(BaseModel):
+    player_id: str
+    urgency_rank: int
+    urgency_inputs: CoachRosterUrgencyInputsOut
+    missed_expected_days_7d: int | None
+    missed_expected_days_14d: int | None
+    adherence_pct_28d: float | None
+    weeks_without_personal_record: int | None
+    stall_threshold_met: bool
+    effort_rising_same_load_main_lift: bool
+    days_since_last_check_in: int | None
+    bodyweight_trend: None = None
+    coaching_subscription_end: None = None
+
+
+class CoachRosterSignalSnapshotOut(BaseModel):
+    as_of: str
+    stall_threshold_weeks: int
+    players: list[CoachRosterSignalOut]
+
+
+class CoachRosterClientMappingOut(BaseModel):
+    player_id: str
+    assignment_id: str
+
+
+class CoachRosterSnapshotResponseOut(BaseModel):
+    snapshot: CoachRosterSignalSnapshotOut
+    client_mapping: list[CoachRosterClientMappingOut]
 
 
 #: Bounds for the coach assistant request (issue #45). The client holds the
