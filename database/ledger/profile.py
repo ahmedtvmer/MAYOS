@@ -9,6 +9,7 @@ from core.deload_choices import DELOAD_CHOICES
 from utils.equipment_access import map_equipment_access
 
 from agent.prompts import DEFAULT_ASSISTANT_STYLE
+from utils.preferred_name import validate_preferred_name
 
 
 class LedgerProfileMixin:
@@ -71,8 +72,7 @@ class LedgerProfileMixin:
     def set_assistant_memory(self, key: str, value: str) -> None:
         if key != "preferred_name":
             raise ValueError("Unsupported assistant memory key")
-        if not isinstance(value, str) or not 1 <= len(value) <= 60 or not value.strip() or not value.isprintable():
-            raise ValueError("Preferred name must be a nonempty printable string of at most 60 characters")
+        validate_preferred_name(value)
         cursor = self.conn.cursor()
         cursor.execute(
             """
@@ -80,6 +80,12 @@ class LedgerProfileMixin:
             ON CONFLICT(key) DO UPDATE SET value = excluded.value
             """,
             (key, value),
+        )
+        self.conn.commit()
+
+    def clear_preferred_name(self) -> None:
+        self.conn.execute(
+            "DELETE FROM assistant_memory WHERE key = ?", ("preferred_name",)
         )
         self.conn.commit()
 

@@ -1706,6 +1706,7 @@ class PlayerProfile {
     this.targetWeightKg,
     this.assistantStyle = defaultAssistantStyle,
     this.assistantInstructions = '',
+    this.preferredName,
     this.playerControlsProgram = true,
   });
 
@@ -1721,6 +1722,7 @@ class PlayerProfile {
         targetWeightKg: (json['target_weight_kg'] as num?)?.toDouble(),
         assistantStyle: json['coach_tone'] as String? ?? defaultAssistantStyle,
         assistantInstructions: json['custom_instructions'] as String? ?? '',
+        preferredName: json['preferred_name'] as String?,
         playerControlsProgram: json['player_controls_program'] as bool? ?? true,
       );
 
@@ -1733,6 +1735,7 @@ class PlayerProfile {
   final double? targetWeightKg;
   final String assistantStyle;
   final String assistantInstructions;
+  final String? preferredName;
   final bool playerControlsProgram;
 
   PlayerProfile copyWith({double? weightKg, double? targetWeightKg}) => PlayerProfile(
@@ -1745,6 +1748,7 @@ class PlayerProfile {
         targetWeightKg: targetWeightKg ?? this.targetWeightKg,
         assistantStyle: assistantStyle,
         assistantInstructions: assistantInstructions,
+        preferredName: preferredName,
         playerControlsProgram: playerControlsProgram,
       );
 }

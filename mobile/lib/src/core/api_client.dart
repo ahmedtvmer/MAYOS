@@ -1736,6 +1736,22 @@ class ApiClient {
     );
   }
 
+  /// Sets or clears the player's preferred name used in assistant chat.
+  Future<ProfileUpdateResult> updatePreferredName(String? preferredName) async {
+    final response = await _send(
+      () => _dio.put<dynamic>(
+        '/profile',
+        data: <String, dynamic>{'preferred_name': preferredName},
+      ),
+    );
+    return _parseBody(
+      response.data,
+      ProfileUpdateResult.fromJson,
+      _invalidProfile,
+      failureMessage: _invalidProfileFailure,
+    );
+  }
+
   /// Records today's Player weight and updates the latest Training profile value.
   Future<WeightEntryResult> recordWeight({required double weightKg}) async {
     final response = await _send(

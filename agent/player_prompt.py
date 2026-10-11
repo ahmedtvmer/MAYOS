@@ -1,6 +1,5 @@
 """Player chat prompt text, layout, and history budget."""
 
-import re
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -8,6 +7,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 
 from agent.chat_markers import is_session_pointer_text
 from agent.prompts import DEFAULT_ASSISTANT_STYLE, render_assistant_style
+from utils.preferred_name import is_valid_preferred_name
 
 TAIL_WINDOW_SIZE = 6
 
@@ -38,13 +38,7 @@ Output Budget & Structural Constraints:
 """
 
 def valid_preferred_name(value: Any) -> str | None:
-    if not isinstance(value, str) or not 1 <= len(value) <= 60:
-        return None
-    if not re.fullmatch(r"[^\W\d_]+(?:['’-][^\W\d_]+)*(?: [^\W\d_]+(?:['’-][^\W\d_]+)*){0,3}", value):
-        return None
-    if any(word.lower() in {"and", "but", "please", "ignore", "instructions", "is", "not", "me", "you", "your", "my"} for word in value.split()):
-        return None
-    return value
+    return value if is_valid_preferred_name(value) else None
 
 
 def message_role(message: Any) -> str:

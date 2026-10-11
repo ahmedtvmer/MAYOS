@@ -365,6 +365,38 @@ void main() {
     );
   });
 
+  testWidgets('preferred name captured in chat appears in Settings',
+      (tester) async {
+    final FakeMayosApi fake = _fakePlayer('alice');
+    await _pumpChat(tester, fake, store: InMemoryChatCacheStore());
+    await _acceptDisclosure(tester);
+
+    await tester.enterText(
+      find.byKey(const Key('chat_composer')),
+      'my name is Noura',
+    );
+    await tester.tap(find.byKey(const Key('chat_send')));
+    await _pumpUntilFound(tester, _chatMarkdown('Nice to meet you, Noura.'));
+    expect(fake.preferredName, 'Noura');
+
+    await tester.tap(find.byTooltip('Back'));
+    await _pumpUntilFound(tester, find.byIcon(Icons.settings_outlined));
+    await _openSettings(tester);
+    final Finder personalization =
+        find.byKey(const Key('personalization_entry'));
+    await _pumpUntilFound(tester, personalization);
+    await tester.tap(personalization);
+    final Finder preferredName =
+        find.byKey(const Key('preferred_name_field'));
+    await _pumpUntilFound(tester, preferredName);
+
+    expect(
+      tester.widget<TextField>(preferredName).controller!.text,
+      'Noura',
+    );
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('disclosure gates the composer and persists per account',
       (tester) async {
     final InMemoryChatCacheStore store = InMemoryChatCacheStore();

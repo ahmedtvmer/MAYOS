@@ -25,8 +25,10 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder) async {
 
 Future<void> _openSettings(
   WidgetTester tester,
-  FakeMayosApi fake,
-) async {
+  FakeMayosApi fake, {
+  String language = 'en',
+}) async {
+  fake.displayLanguage = language;
   tester.view.physicalSize = const Size(360, 2200);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -53,7 +55,12 @@ Future<void> _openSettings(
       child: const MayosApp(),
     ),
   );
-  await _pumpUntilFound(tester, find.text(fake.coach ? 'Roster' : 'Home'));
+  final String landingTitle = language == 'ar'
+      ? 'الرئيسية'
+      : fake.coach
+          ? 'Roster'
+          : 'Home';
+  await _pumpUntilFound(tester, find.text(landingTitle));
   if (find.byIcon(Icons.settings_outlined).evaluate().isNotEmpty) {
     await tester.tap(find.byIcon(Icons.settings_outlined));
   } else {
@@ -61,19 +68,31 @@ Future<void> _openSettings(
     await _pumpUntilFound(tester, find.text('Settings'));
     await tester.tap(find.text('Settings'));
   }
-  await _pumpUntilFound(tester, find.text('Appearance'));
+  await _pumpUntilFound(
+    tester,
+    find.text(language == 'ar' ? 'المظهر' : 'Appearance'),
+  );
 }
 
 Future<void> _openPersonalization(
   WidgetTester tester,
-  FakeMayosApi fake,
-) async {
-  await _openSettings(tester, fake);
+  FakeMayosApi fake, {
+  String language = 'en',
+}) async {
+  await _openSettings(tester, fake, language: language);
   final Finder entry = find.byKey(const Key('personalization_entry'));
   await _pumpUntilFound(tester, entry);
-  expect(find.text('Personalization'), findsOneWidget);
   expect(
-    find.descendant(of: entry, matching: find.text('Assistant style')),
+    find.text(language == 'ar' ? 'التخصيص' : 'Personalization'),
+    findsOneWidget,
+  );
+  expect(
+    find.descendant(
+      of: entry,
+      matching: find.text(
+        language == 'ar' ? 'أسلوب المساعد' : 'Assistant style',
+      ),
+    ),
     findsOneWidget,
   );
   await tester.tap(entry);
@@ -82,7 +101,10 @@ Future<void> _openPersonalization(
     find.byKey(const Key('assistant_style_direct')),
   );
   await tester.pumpAndSettle();
-  expect(find.text('Personalization'), findsOneWidget);
+  expect(
+    find.text(language == 'ar' ? 'التخصيص' : 'Personalization'),
+    findsOneWidget,
+  );
 }
 
 FakeMayosApi _signedInFake() {
@@ -216,6 +238,66 @@ void main() {
 
     expect(fake.assistantStyle, 'direct');
     expect(fake.assistantInstructions, '');
+  });
+
+  testWidgets('preferred name can be edited and cleared from Settings', (
+    WidgetTester tester,
+  ) async {
+    final FakeMayosApi fake = _signedInFake()..preferredName = 'Current Name';
+    await _openPersonalization(tester, fake);
+
+    final Finder nameField = find.byKey(const Key('preferred_name_field'));
+    expect(tester.widget<TextField>(nameField).controller!.text, 'Current Name');
+    await tester.enterText(nameField, 'Edited Name');
+    await tester.pump();
+    final Finder save = find.byKey(const Key('preferred_name_save'));
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await _pumpUntilFound(tester, find.text('Preferred name saved.'));
+    expect(fake.preferredName, 'Edited Name');
+
+    final Finder clear = find.byKey(const Key('preferred_name_clear'));
+    await tester.ensureVisible(clear);
+    await tester.tap(clear);
+    await _pumpUntilFound(tester, find.text('Preferred name cleared.'));
+    expect(fake.preferredName, isNull);
+    expect(tester.widget<TextField>(nameField).controller!.text, isEmpty);
+  });
+
+  testWidgets('preferred name can be set from empty in Settings', (
+    WidgetTester tester,
+  ) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _openPersonalization(tester, fake);
+
+    final Finder nameField = find.byKey(const Key('preferred_name_field'));
+    expect(tester.widget<TextField>(nameField).controller!.text, isEmpty);
+    await tester.enterText(nameField, 'Noura');
+    await tester.pump();
+    final Finder save = find.byKey(const Key('preferred_name_save'));
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await _pumpUntilFound(tester, find.text('Preferred name saved.'));
+
+    expect(fake.preferredName, 'Noura');
+    expect(tester.widget<TextField>(nameField).controller!.text, 'Noura');
+  });
+
+  testWidgets('preferred name validation and Settings copy use Arabic', (
+    WidgetTester tester,
+  ) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _openPersonalization(tester, fake, language: 'ar');
+
+    expect(find.text('الاسم المفضّل'), findsWidgets);
+    expect(find.text('حفظ الاسم'), findsOneWidget);
+    final Finder save = find.byKey(const Key('preferred_name_save'));
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await tester.pump();
+
+    expect(find.text('اكتب اسمًا أو امسح الاسم الحالي.'), findsOneWidget);
+    expect(fake.preferredName, isNull);
   });
 
   testWidgets('coach-only account does not show Personalization', (

@@ -5,6 +5,7 @@ import re
 import sqlite3
 import sys
 import time
+import unicodedata
 from collections.abc import Generator, Sequence
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -87,6 +88,19 @@ load_dotenv()
 logger = MyosLogger().get_logger(__name__)
 
 OUTPUT_LIMIT_RESPONSE = "I reached the response limit. Ask me to continue if you'd like more."
+ARABIC_PREFERRED_NAME_TRIGGERS = ("اسمي", "ناديني", "قولي يا", "قوللي يا")
+_MAX_PREFERRED_NAME_WORDS = 4
+_PREFERRED_NAME_CLAUSE_BREAK_RE = re.compile(r"[,،.!?؟…;؛\r\n]")
+_PREFERRED_NAME_ARABIC_WAW_RE = re.compile(r"\s+و(?=\s*\w)")
+_PREFERRED_NAME_LEADING_PUNCTUATION = "'\"“”‘’([{«"
+_PREFERRED_NAME_TRAILING_PUNCTUATION = "'\"“”‘’)]}»"
+_NON_NAME_PREFERRED_NAME_PREFIX_RE = re.compile(
+    r"^(?:not\b|no\b|never\b|isn't\b|aren't\b|don't\b|doesn't\b|"
+    r"do\s+not\b|cannot\b|can't\b|back\b|later\b|tomorrow\b|today\b|"
+    r"when\b|whenever\b|if\b|by\b|مش\b|ما\b|لا\b|لم\b|لن\b|ليس\b|مو\b|بكرة\b|"
+    r"غدا\b|لاحق\w*\b|بعدين\b|لما\b|لو\b)",
+    re.IGNORECASE,
+)
 
 CLINICAL_SAFEGUARD_RESPONSES = {
     ("en", "clinical"): CLINICAL_SAFEGUARD_RESPONSE,
@@ -368,11 +382,105 @@ def _substitution_source_similarity(source_name: str, source_stem: str, exercise
     )
 
 
+def _normalize_preferred_name_match_text(text: str) -> tuple[str, list[int]]:
+    normalized_chars: list[str] = []
+    source_offsets: list[int] = []
+    for source_index, character in enumerate(text):
+        for normalized_character in unicodedata.normalize("NFD", character):
+            if unicodedata.category(normalized_character).startswith("M"):
+                continue
+            if normalized_character == "ى":
+                normalized_character = "ي"
+            normalized_chars.append(normalized_character)
+            source_offsets.append(source_index)
+    return "".join(normalized_chars), source_offsets
+
+
+def _arabic_preferred_name_trigger_pattern() -> str:
+    triggers = (
+        r"\s+".join(re.escape(word) for word in trigger.split())
+        for trigger in ARABIC_PREFERRED_NAME_TRIGGERS
+    )
+    return "(?:" + "|".join(triggers) + ")"
+
+
+def _preferred_name_capture_match(
+    query: str,
+) -> tuple[str, list[int], re.Match[str]] | None:
+    normalized, source_offsets = _normalize_preferred_name_match_text(query)
+    pattern = re.compile(
+        rf"\s*(?:(?P<arabic_trigger>{_arabic_preferred_name_trigger_pattern()})|"
+        r"(?P<english_trigger>my\s+name\s+is|call\s+me))\s+(?P<name>[\s\S]+)\Z",
+        re.IGNORECASE,
+    )
+    match = pattern.fullmatch(normalized)
+    return (normalized, source_offsets, match) if match else None
+
+
+def _original_preferred_name_slice(
+    query: str, source_offsets: list[int], start: int, end: int
+) -> str:
+    if start >= end:
+        return ""
+    source_start = source_offsets[start]
+    source_end = source_offsets[end - 1] + 1
+    while source_end < len(query) and unicodedata.category(query[source_end]).startswith("M"):
+        source_end += 1
+    return query[source_start:source_end]
+
+
 def _explicit_preferred_name(query: str) -> str | None:
-    if len(query) > 90:
+    capture = _preferred_name_capture_match(query)
+    if capture is None:
         return None
-    match = re.fullmatch(r"\s*(?:my name is|call me)\s+(.+?)[.!]?\s*", query, re.IGNORECASE)
-    return _valid_preferred_name(match.group(1)) if match else None
+    normalized, source_offsets, match = capture
+
+    start, end = match.span("name")
+    trigger = match.group("arabic_trigger")
+    if trigger == "اسمي":
+        huwa = re.match(r"هو\s+", normalized[start:end])
+        if huwa:
+            start += huwa.end()
+
+    capture_end = _PREFERRED_NAME_CLAUSE_BREAK_RE.search(normalized, start)
+    if capture_end:
+        end = min(end, capture_end.start())
+    waw_clause = _PREFERRED_NAME_ARABIC_WAW_RE.search(normalized, start, end)
+    if waw_clause:
+        end = waw_clause.start()
+
+    while start < end and (
+        normalized[start].isspace()
+        or normalized[start] in _PREFERRED_NAME_LEADING_PUNCTUATION
+    ):
+        start += 1
+    while start < end and (
+        normalized[end - 1].isspace()
+        or normalized[end - 1] in _PREFERRED_NAME_TRAILING_PUNCTUATION
+    ):
+        end -= 1
+
+    words = list(re.finditer(r"\S+", normalized[start:end]))
+    if len(words) > _MAX_PREFERRED_NAME_WORDS:
+        end = start + words[_MAX_PREFERRED_NAME_WORDS - 1].end()
+
+    normalized_name = normalized[start:end].strip()
+    if not normalized_name or _NON_NAME_PREFERRED_NAME_PREFIX_RE.match(normalized_name):
+        return None
+
+    name = _original_preferred_name_slice(query, source_offsets, start, end)
+    name = name.strip().strip(_PREFERRED_NAME_LEADING_PUNCTUATION).strip()
+    name = name.strip(_PREFERRED_NAME_TRAILING_PUNCTUATION).strip()
+    return _valid_preferred_name(name) if name else None
+
+
+def _uses_arabic_preferred_name_trigger(query: str) -> bool:
+    normalized, _ = _normalize_preferred_name_match_text(query)
+    return re.match(
+        rf"\s*{_arabic_preferred_name_trigger_pattern()}(?=\s)",
+        normalized,
+        re.IGNORECASE,
+    ) is not None
 
 
 def _graph_context(config: dict[str, Any] | None) -> tuple[Any, Any]:
@@ -441,6 +549,8 @@ def _name_response(state: AssistantState, ledger: Any = None) -> str | None:
         if callable(setter):
             setter("preferred_name", name)
         state["preferred_name"] = name
+        if _uses_arabic_preferred_name_trigger(query):
+            return f"تمام، هناديك {name}."
         return f"Nice to meet you, {name}."
     if re.fullmatch(r"(?:what(?:'s| is) my name|do you (?:remember|know) my name|what do you call me)[?!.]*", query, re.IGNORECASE):
         name = _valid_preferred_name(state.get("preferred_name"))

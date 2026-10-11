@@ -57,6 +57,8 @@ async def update_profile(
 ):
     register_ai_analytics_background_tasks(request, background_tasks)
     payload = {key: value for key, value in body.model_dump().items() if value is not None}
+    if "preferred_name" in body.model_fields_set:
+        payload["preferred_name"] = body.preferred_name
     if "target_weight_kg" in body.model_fields_set:
         payload["target_weight_kg"] = body.target_weight_kg
     result = await asyncio.to_thread(

@@ -16,6 +16,26 @@ class SettingsCopy {
   String get dark => isArabic ? 'داكن' : 'Dark';
   String get personalization => isArabic ? 'التخصيص' : 'Personalization';
   String get assistantStyle => isArabic ? 'أسلوب المساعد' : 'Assistant style';
+  String get preferredName => isArabic ? 'الاسم المفضّل' : 'Preferred name';
+  String get preferredNameLead => isArabic
+      ? 'الاسم الذي يناديك به المساعد في المحادثة.'
+      : 'Name your assistant uses when it talks to you.';
+  String get preferredNameHint => isArabic
+      ? 'بماذا تريد أن يناديك المساعد؟'
+      : 'What should your assistant call you?';
+  String get savePreferredName => isArabic ? 'حفظ الاسم' : 'Save name';
+  String get clearPreferredName => isArabic ? 'مسح الاسم' : 'Clear name';
+  String get preferredNameSaved => isArabic ? 'حُفظ الاسم المفضّل.' : 'Preferred name saved.';
+  String get preferredNameCleared => isArabic ? 'تم مسح الاسم المفضّل.' : 'Preferred name cleared.';
+  String get preferredNameRequired => isArabic
+      ? 'اكتب اسمًا أو امسح الاسم الحالي.'
+      : 'Enter a name, or clear the current name.';
+  String get preferredNameTooLong => isArabic
+      ? 'يجب ألا يتجاوز الاسم 60 حرفًا.'
+      : 'The name must be 60 characters or fewer.';
+  String get preferredNameInvalid => isArabic
+      ? 'اكتب اسمًا صالحًا من 60 حرفًا أو أقل.'
+      : 'Enter a printable name of 60 characters or fewer.';
   String get account => isArabic ? 'الحساب' : 'Account';
   String get username => isArabic ? 'اسم المستخدم' : 'Username';
   String get linkedSignIn => isArabic ? 'تسجيل الدخول المرتبط' : 'Linked sign-in';

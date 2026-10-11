@@ -98,6 +98,7 @@ class FakeMayosApi {
   int _profileProgramRevision = 0;
   String assistantStyle = defaultAssistantStyle;
   String assistantInstructions = '';
+  String? preferredName;
   // Forces a coach-controlled profile-update response even with no publication.
   bool profileBlocked = false;
   String coachDisplayName = '';
@@ -1763,7 +1764,18 @@ class FakeMayosApi {
             '"message_fallback":"The assistant is temporarily unavailable."}\n\n',
       ]);
     }
-    final String reply = chatReplyChunks.join();
+    final String? capturedName = _preferredNameFromChat(content);
+    if (capturedName != null) preferredName = capturedName;
+    final bool arabicNameForm = RegExp(r'^\s*(?:اسمي|ناديني|قولّ?ي\s+يا)')
+        .hasMatch(content);
+    final String reply = capturedName == null
+        ? chatReplyChunks.join()
+        : arabicNameForm
+            ? 'تمام، هناديك $capturedName.'
+            : 'Nice to meet you, $capturedName.';
+    final List<String> replyChunks = capturedName == null
+        ? chatReplyChunks
+        : <String>[reply];
     final String suggestionJson = chatRequestSuggestion == null
         ? ''
         : ', "request_suggestion": ${jsonEncode(chatRequestSuggestion)}';
@@ -1774,12 +1786,30 @@ class FakeMayosApi {
       'created_at': '2026-09-26T12:00:01Z',
     });
     return FakeResponse(200, null, <String>[
-      for (final String chunk in chatReplyChunks)
+      for (final String chunk in replyChunks)
         'data: {"token": ${jsonEncode(chunk)}}\n\n',
       'data: {"done": true, "response_content": ${jsonEncode(reply)}, '
           '"program_updated": ${chatProgramUpdated ? 'true' : 'false'}'
           '$suggestionJson}\n\n',
     ]);
+  }
+
+  String? _preferredNameFromChat(String content) {
+    final Match? match = RegExp(
+      r'^\s*(?:my name is|call me|اسمي|ناديني|قولّ?ي\s+يا)\s+(.+?)\s*$',
+      caseSensitive: false,
+    ).firstMatch(content);
+    if (match == null) return null;
+    final String name = match.group(1)!.trim().replaceFirst(
+          RegExp(r'[.!?؟،]+$'),
+          '',
+        );
+    if (name.runes.length > 60 ||
+        name.trim().isEmpty ||
+        RegExp(r'[\x00-\x1F\x7F-\x9F\u2028\u2029]').hasMatch(name)) {
+      return null;
+    }
+    return name;
   }
 
   String _addDays(String iso, int days) {
@@ -2800,6 +2830,7 @@ class FakeMayosApi {
         'target_weight_kg': targetWeightKg,
         'coach_tone': assistantStyle,
         'custom_instructions': assistantInstructions,
+        'preferred_name': preferredName,
         'player_controls_program': !coachControlsProgram,
       };
 
@@ -2847,6 +2878,20 @@ class FakeMayosApi {
     if (preference != null) repPreference = preference;
     if (access != null) equipmentAccess = access;
     if (injuries != null) injuriesOrLimitations = injuries;
+    if (request.body.containsKey('preferred_name')) {
+      final String? submittedName = request.body['preferred_name'] as String?;
+      if (submittedName != null &&
+          (submittedName.trim().isEmpty ||
+              submittedName.runes.length > 60 ||
+              RegExp(r'[\x00-\x1F\x7F-\x9F\u2028\u2029]')
+                  .hasMatch(submittedName))) {
+        return const FakeResponse(422, <String, dynamic>{
+          'detail':
+              'Preferred name must be a nonempty printable string of at most 60 characters',
+        });
+      }
+      preferredName = submittedName;
+    }
     final String? goal = request.body['current_goal'] as String?;
     final num? weight = request.body['weight_kg'] as num?;
     if (request.body.containsKey('target_weight_kg')) {

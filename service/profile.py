@@ -14,6 +14,7 @@ from service import weight_history
 from service.profile_fields import PROFILE_REBUILD_FIELDS
 from service.weight_trend_alerts import evaluate_for_player
 from utils.equipment_access import map_equipment_access
+from utils.preferred_name import validate_preferred_name
 
 
 @dataclass(frozen=True)
@@ -36,7 +37,18 @@ def record_weight_entry(db: Any, ledger: Any, command: WeightEntryCommand) -> we
 
 def get_profile(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, Any] | None:
     with ledger_scope(db, ledger, ledger_id) as ledger:
-        return ledger.get_player_profile()
+        return _profile_with_preferred_name(ledger, ledger.get_player_profile())
+
+
+def _profile_with_preferred_name(
+    ledger: Any, profile: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    if profile is None:
+        return None
+    return {
+        **profile,
+        "preferred_name": ledger.get_assistant_memory().get("preferred_name"),
+    }
 
 
 def update_profile(
@@ -58,6 +70,14 @@ def update_profile(
     """
     with ledger_scope(db, ledger, ledger_id) as ledger:
         profile = ledger.get_player_profile() or {}
+        preferred_name_supplied = "preferred_name" in payload
+        preferred_name = payload.get("preferred_name")
+        if preferred_name_supplied and preferred_name is not None:
+            validate_preferred_name(preferred_name)
+        if preferred_name_supplied:
+            payload = {
+                key: value for key, value in payload.items() if key != "preferred_name"
+            }
         if "equipment_access" in payload:
             payload = {**payload, "equipment_access": map_equipment_access(payload["equipment_access"])}
         if isinstance(payload.get("injuries_or_limitations"), str):
@@ -140,8 +160,15 @@ def update_profile(
                     persisted,
                     client=client,
                 )
+        if preferred_name_supplied:
+            if preferred_name is None:
+                ledger.clear_preferred_name()
+            else:
+                ledger.set_assistant_memory("preferred_name", preferred_name)
         return {
-            "profile": ledger.get_player_profile(),
+            "profile": _profile_with_preferred_name(
+                ledger, ledger.get_player_profile()
+            ),
             "program_rebuilt": program is not None,
             "program": program,
             "program_blocked": program_blocked,
@@ -154,4 +181,8 @@ def update_persona(
 ) -> dict[str, Any]:
     with ledger_scope(db, ledger, ledger_id) as ledger:
         ledger.update_player_persona(coach_tone, custom_instructions)
-        return {"profile": ledger.get_player_profile()}
+        return {
+            "profile": _profile_with_preferred_name(
+                ledger, ledger.get_player_profile()
+            )
+        }

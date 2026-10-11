@@ -9,6 +9,7 @@ from service.intake import IntakeValidationError, validate_answer
 from service.program_import_constants import (
     MAX_PROGRAM_IMPORT_ROWS,
 )
+from utils.preferred_name import validate_preferred_name
 
 from agent.ProgramState import (
     GeneratedProgramSchema,
@@ -878,6 +879,12 @@ class ProfileUpdate(BaseModel):
     injuries_or_limitations: str | None = None
     weight_kg: float | None = None
     target_weight_kg: float | None = None
+    preferred_name: str | None = None
+
+    @field_validator("preferred_name")
+    @classmethod
+    def preferred_name_must_be_printable(cls, value: str | None) -> str | None:
+        return None if value is None else validate_preferred_name(value)
 
     @model_validator(mode="before")
     @classmethod
