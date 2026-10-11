@@ -223,7 +223,13 @@ def test_publish_activates_immediately_with_provenance_and_notice(api, monkeypat
     coach_headers, player_headers, assignment_id, coach_account_id, _ = _assigned_player(api)
     _coach_generation(monkeypatch)
 
-    published = _publish(client, coach_headers, assignment_id, frequency_override=3)
+    published = _publish(
+        client,
+        coach_headers,
+        assignment_id,
+        user_split_override="Upper/Lower",
+        frequency_override=3,
+    )
     assert published.status_code == 200, published.text
     body = published.json()
     assert body["version"] == 1
@@ -261,6 +267,50 @@ def test_publish_activates_immediately_with_provenance_and_notice(api, monkeypat
     assert marked.status_code == 200
     assert marked.json()["marked_read"] == 1
     assert client.get("/assignments/notices", headers=player_headers).json()["notices"][0]["read_at"] is not None
+
+
+def test_generate_draft_rejects_unrecognised_split_override_without_writes(api, monkeypatch):
+    """Regression for #288: refused overrides create no draft, version, or notice."""
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, player_account_id = _assigned_player(api)
+    _coach_generation(monkeypatch)
+
+    rejected = _generate_draft(
+        client,
+        coach_headers,
+        assignment_id,
+        user_split_override="Broccoli split",
+        rep_preference_override="high",
+        frequency_override=3,
+    )
+
+    assert rejected.status_code == 400
+    assert rejected.json()["message_code"] == "assignment.split_override_unrecognized.v1"
+    assert rejected.json()["message_params"] == {
+        "accepted_values": [
+            "Upper",
+            "Lower",
+            "PPL",
+            "Push",
+            "Pull",
+            "Legs",
+            "Arnold",
+            "Full Body",
+            "Bro Split",
+            "Anterior",
+            "Posterior",
+            "Glute",
+            "Total Body",
+        ]
+    }
+    assert client.get(
+        f"/coach/assignments/{assignment_id}/program-draft", headers=coach_headers
+    ).status_code == 404
+    assert client.get("/programs/active", headers=player_headers).json() is None
+    player = db.get_account(player_account_id)
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        assert ledger.conn.execute("SELECT COUNT(*) FROM training_programs").fetchone()[0] == 0
+    assert client.get("/assignments/notices", headers=player_headers).json()["notices"] == []
 
 
 def test_publish_notice_summarizes_previous_automatic_program(api):

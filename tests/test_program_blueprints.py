@@ -195,6 +195,15 @@ def test_generated_programs_have_belghamdi_day_sizes(gender, frequency):
         assert 2 <= len(day.warmup_exercises) <= 3, f"{day.day_name} warm-up block is missing"
 
 
+def test_unrecognised_player_split_override_keeps_default_split_behavior():
+    """Regression for #288: coach-only rejection leaves player fallback intact."""
+    default_split = get_default_split(4, gender="male")
+
+    generated = _generate("male", 4, preference="Broccoli split")
+
+    assert generated.split_type == default_split.split_name
+
+
 @pytest.mark.parametrize(
     ("equipment_access", "allowed_equipment"),
     [

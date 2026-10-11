@@ -6,7 +6,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 from agent.ProgramState import GeneratedProgramSchema
-from agent.program_generator import ProgramGenerationRequest, generate_program_draft_pipeline
+from agent.program_generator import (
+    SPLIT_OVERRIDE_VALUES,
+    ProgramGenerationRequest,
+    generate_program_draft_pipeline,
+    has_supported_split_keyword,
+)
 from database.registry.assignments import AssignmentNoticeRecord
 from service.assignments import authorized_player_ledger
 from service.program_analytics import ProgramAnalyticsActor, capture_coach_program_published
@@ -14,6 +19,14 @@ from service import stall_alerts
 from service import analytics
 
 logger = logging.getLogger(__name__)
+
+
+class UnrecognizedSplitOverride(ValueError):
+    """A coach supplied a split that generation cannot honor."""
+
+    def __init__(self) -> None:
+        super().__init__("Unrecognized split override.")
+        self.accepted_values: tuple[str, ...] = SPLIT_OVERRIDE_VALUES
 
 
 @dataclass(frozen=True)
@@ -91,6 +104,8 @@ def generate_program_draft(
     if authorized is None:
         return None
     ledger, _ = authorized
+    if request.user_split_override and not has_supported_split_keyword(request.user_split_override):
+        raise UnrecognizedSplitOverride()
     with ledger:
         coach_program_drafts.ensure_generated_program_draft_available(
             ledger, assignment_id, replace_existing=replace_existing

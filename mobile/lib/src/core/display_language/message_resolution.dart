@@ -34,7 +34,10 @@ String resolveStructuredMessage({
   final String fallback = englishFallback?.trim().isNotEmpty == true
       ? englishFallback!.trim()
       : copy.unavailable;
-  if (displayLanguage != 'ar') return fallback;
+  if (displayLanguage != 'ar' &&
+      messageCode != 'assignment.split_override_unrecognized.v1') {
+    return fallback;
+  }
   if (messageCode is! String || messageParams is! Map<String, dynamic>) {
     return fallback;
   }
@@ -123,6 +126,7 @@ const Map<String, Set<String>> _paramKeys = <String, Set<String>>{
   'assignment.not_participant.v1': <String>{},
   'assignment.already_ended.v1': <String>{},
   'assignment.program_draft_exists.v1': <String>{},
+  'assignment.split_override_unrecognized.v1': <String>{'accepted_values'},
   'assignment.program_draft_changed.v1': <String>{},
   'assignment.program_draft_invalid.v1': <String>{},
   'assignment.check_in_invalid.v1': <String>{},
@@ -320,6 +324,15 @@ String? _specificError(
   Map<String, dynamic> params,
   MessageCopy copy,
 ) {
+  if (code == 'assignment.split_override_unrecognized.v1') {
+    final Object? acceptedValues = params['accepted_values'];
+    if (acceptedValues is! List ||
+        acceptedValues.isEmpty ||
+        !acceptedValues.every((Object? value) => value is String)) {
+      return null;
+    }
+    return copy.unrecognizedSplitOverride(acceptedValues.cast<String>());
+  }
   final String? intakeCopy = copy.intakeCopy(code);
   if (intakeCopy != null) return intakeCopy;
   final int? limit = switch (params['limit']) {

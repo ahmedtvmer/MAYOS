@@ -689,6 +689,12 @@ async def generate_assigned_player_program_draft(
                 client=client,
                 background_tasks=background_tasks,
             )
+        except coach_programs_service.UnrecognizedSplitOverride as exc:
+            raise _bad_request(
+                str(exc),
+                "assignment.split_override_unrecognized.v1",
+                {"accepted_values": list(exc.accepted_values)},
+            ) from exc
         except coach_program_drafts_service.ProgramDraftAlreadyExists as exc:
             raise message_http_exception(
                 status.HTTP_409_CONFLICT,

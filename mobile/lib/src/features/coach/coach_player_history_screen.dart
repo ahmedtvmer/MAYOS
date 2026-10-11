@@ -75,8 +75,18 @@ class _GenerateDraftRequest {
       };
 }
 
+class _GenerateDraftResult {
+  const _GenerateDraftResult({this.completed = false, this.failure});
+
+  final bool completed;
+  final FailureMessage? failure;
+}
+
 class _GenerateDraftDialog extends StatefulWidget {
-  const _GenerateDraftDialog();
+  const _GenerateDraftDialog({required this.onGenerate});
+
+  final Future<_GenerateDraftResult> Function(_GenerateDraftRequest request)
+      onGenerate;
 
   @override
   State<_GenerateDraftDialog> createState() => _GenerateDraftDialogState();
@@ -86,6 +96,8 @@ class _GenerateDraftDialogState extends State<_GenerateDraftDialog> {
   final TextEditingController _split = TextEditingController();
   String _repPreference = 'balanced';
   int _frequency = 4;
+  bool _submitting = false;
+  FailureMessage? _failure;
 
   @override
   void dispose() {
@@ -93,10 +105,34 @@ class _GenerateDraftDialogState extends State<_GenerateDraftDialog> {
     super.dispose();
   }
 
+  Future<void> _submit() async {
+    setState(() {
+      _submitting = true;
+      _failure = null;
+    });
+    late final _GenerateDraftResult result;
+    try {
+      result = await widget.onGenerate(
+        _GenerateDraftRequest(
+          split: _split.text.trim(),
+          repPreference: _repPreference,
+          frequency: _frequency,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+    if (!mounted) return;
+    setState(() => _failure = result.failure);
+    if (result.completed) Navigator.of(context).pop(true);
+  }
+
   @override
   Widget build(BuildContext context) {
     final copy = coachCopyOf(context);
+    final MayosThemeExtension c = MayosTheme.of(context);
     return AlertDialog(
+      scrollable: true,
       title: Text(copy.generateDraft),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -109,6 +145,15 @@ class _GenerateDraftDialogState extends State<_GenerateDraftDialog> {
               border: const OutlineInputBorder(),
             ),
           ),
+          if (_failure != null) ...<Widget>[
+            const SizedBox(height: MayosSpacing.sm),
+            Text(
+              displayCopyOf(context).failureMessage(_failure!),
+              style: MayosTypography.of(context)
+                  .bodySecondary
+                  .copyWith(color: c.danger),
+            ),
+          ],
           const SizedBox(height: MayosSpacing.md),
           DropdownButtonFormField<String>(
             key: const Key('generate_draft_rep_field'),
@@ -152,20 +197,15 @@ class _GenerateDraftDialogState extends State<_GenerateDraftDialog> {
       ),
       actions: <Widget>[
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _submitting ? null : () => Navigator.of(context).pop(),
           child: Text(copy.cancel),
         ),
         MayosButton(
           key: const Key('generate_draft_confirm_button'),
           label: copy.generate,
           expand: false,
-          onPressed: () => Navigator.of(context).pop(
-            _GenerateDraftRequest(
-              split: _split.text.trim(),
-              repPreference: _repPreference,
-              frequency: _frequency,
-            ),
-          ),
+          loading: _submitting,
+          onPressed: _submit,
         ),
       ],
     );
@@ -189,7 +229,6 @@ class _CoachPlayerHistoryScreenState
   String? _openExerciseId;
   bool _loadingHistory = false;
   bool _generatingDraft = false;
-  FailureMessage? _generateError;
   bool _copyingActiveProgram = false;
   bool _approvingActiveProgram = false;
   bool _downloadingProgramTemplate = false;
@@ -378,18 +417,20 @@ class _CoachPlayerHistoryScreenState
   }
 
   Future<void> _openGenerateDraftDialog() async {
-    final _GenerateDraftRequest? request = await showDialog<_GenerateDraftRequest>(
+    final bool? generated = await showDialog<bool>(
       context: context,
-      builder: (BuildContext context) => const _GenerateDraftDialog(),
+      builder: (BuildContext context) => _GenerateDraftDialog(
+        onGenerate: _generateDraft,
+      ),
     );
-    if (request == null || !mounted) return;
-    await _generateDraft(request);
+    if (generated == true && mounted) _openProgramDraft();
   }
 
-  Future<void> _generateDraft(_GenerateDraftRequest request) async {
+  Future<_GenerateDraftResult> _generateDraft(
+    _GenerateDraftRequest request,
+  ) async {
     setState(() {
       _generatingDraft = true;
-      _generateError = null;
     });
     try {
       try {
@@ -400,17 +441,15 @@ class _CoachPlayerHistoryScreenState
       } on ApiException catch (error) {
         if (error.statusCode != 409) rethrow;
         final bool replace = await _confirmProgramDraftReplacement();
-        if (!mounted || !replace) return;
+        if (!mounted || !replace) return const _GenerateDraftResult();
         await ref.read(apiClientProvider).coachReplaceGeneratedProgramDraft(
               _entry.assignmentId,
               generationOverrides: request.toJson(),
             );
       }
-      if (!mounted) return;
-      _openProgramDraft();
+      return const _GenerateDraftResult(completed: true);
     } on ApiException catch (error) {
-      if (!mounted) return;
-      setState(() => _generateError = apiFailureMessage(error));
+      return _GenerateDraftResult(failure: apiFailureMessage(error));
     } finally {
       if (mounted) setState(() => _generatingDraft = false);
     }
@@ -1038,13 +1077,6 @@ class _CoachPlayerHistoryScreenState
     return ListView(
       padding: const EdgeInsets.all(MayosSpacing.md),
       children: <Widget>[
-        if (_generateError != null) ...<Widget>[
-          Text(
-            displayCopyOf(context).failureMessage(_generateError!),
-            style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
-          ),
-          const SizedBox(height: MayosSpacing.sm),
-        ],
         if (_alerts.isNotEmpty) ...<Widget>[
           const SizedBox(height: MayosSpacing.md),
           Text(copy.openAlerts,

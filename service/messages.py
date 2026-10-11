@@ -84,6 +84,7 @@ ERROR_MESSAGE_PARAM_ALLOWLISTS = {
     "assignment.not_participant.v1": frozenset(),
     "assignment.already_ended.v1": frozenset(),
     "assignment.program_draft_exists.v1": frozenset(),
+    "assignment.split_override_unrecognized.v1": frozenset({"accepted_values"}),
     "assignment.program_draft_changed.v1": frozenset(),
     "assignment.program_draft_invalid.v1": frozenset(),
     "assignment.check_in_invalid.v1": frozenset(),

@@ -236,6 +236,13 @@ class MessageCopy {
       ? 'سُجلت هذه الحصة على إصدار أقدم من البرنامج.'
       : 'This workout was logged against an older program version.';
 
+  String unrecognizedSplitOverride(List<String> acceptedValues) {
+    final String values = acceptedValues.join(isArabic ? '، ' : ', ');
+    return isArabic
+        ? 'تقسيمة البرنامج التدريبي غير معروفة. التقسيمات المقبولة: ${_ltr(values)}.'
+        : 'Unrecognized split override. Accepted split values: $values.';
+  }
+
   String? programImportMessage(String code, {int? maxCells}) {
     final message = _programImportMessages[code];
     if (message == null) return null;

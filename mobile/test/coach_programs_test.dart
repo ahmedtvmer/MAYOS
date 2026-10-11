@@ -3133,6 +3133,67 @@ void main() {
     expect(fake.programDaysOverride!.first['day_name'], 'Edited Full A');
   });
 
+  // Regression for #288: the Coach can correct a refused split without losing
+  // the other generation choices.
+  testWidgets('an invalid generated split shows the error and keeps inputs',
+      (tester) async {
+    const String error = 'Unrecognized split override.';
+    const String renderedError =
+        'Unrecognized split override. Accepted split values: Upper, Lower, PPL, Push, Pull, Legs, Arnold, Full Body, Bro Split, Anterior, Posterior, Glute, Total Body.';
+    final FakeMayosApi fake = _coachFake()..programDraftGenerationError = error;
+    await _pumpApp(tester, fake);
+
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
+    await _openProgramSegment(tester);
+    await tester.tap(find.byKey(const Key('generate_draft_action')));
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('generate_draft_confirm_button')),
+    );
+
+    await tester.enterText(
+      find.byKey(const Key('generate_draft_split_field')),
+      'Broccoli split',
+    );
+    tester.testTextInput.hide();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('generate_draft_rep_field')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('High').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('generate_draft_frequency_field')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('3').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('generate_draft_confirm_button')));
+    await _pumpUntilFound(tester, find.text(renderedError));
+
+    expect(find.text(renderedError), findsOneWidget);
+    expect(
+      tester.widget<TextField>(
+        find.byKey(const Key('generate_draft_split_field')),
+      ).controller!.text,
+      'Broccoli split',
+    );
+
+    fake.programDraftGenerationError = null;
+    await tester.tap(find.byKey(const Key('generate_draft_confirm_button')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_draft_save')));
+
+    final List<FakeRequest> generationRequests = fake.adapter.requests
+        .where((FakeRequest request) =>
+            request.path.endsWith('/program-draft/generate'))
+        .toList(growable: false);
+    expect(generationRequests, hasLength(2));
+    for (final FakeRequest request in generationRequests) {
+      expect(request.body, containsPair('user_split_override', 'Broccoli split'));
+      expect(request.body, containsPair('rep_preference_override', 'high'));
+      expect(request.body, containsPair('frequency_override', 3));
+    }
+  });
+
   testWidgets('generating over a draft asks before replacing it', (tester) async {
     final FakeMayosApi fake = _coachFake()
       ..programDraft = <String, dynamic>{

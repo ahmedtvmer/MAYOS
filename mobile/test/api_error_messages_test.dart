@@ -97,6 +97,34 @@ void main() {
     );
   });
 
+  test('unrecognized split errors show accepted values in English and Arabic',
+      () {
+    const Map<String, dynamic> messageParams = <String, dynamic>{
+      'accepted_values': <String>['Upper', 'Lower', 'PPL'],
+    };
+    const String fallback = 'Unrecognized split override.';
+    const String messageCode = 'assignment.split_override_unrecognized.v1';
+
+    expect(
+      MayosCopy('en').failureMessage(ServerFailureMessage(
+        fallback,
+        messageCode: messageCode,
+        messageParams: messageParams,
+        messageFallback: fallback,
+      )),
+      'Unrecognized split override. Accepted split values: Upper, Lower, PPL.',
+    );
+    expect(
+      MayosCopy('ar').failureMessage(ServerFailureMessage(
+        fallback,
+        messageCode: messageCode,
+        messageParams: messageParams,
+        messageFallback: fallback,
+      )),
+      'تقسيمة البرنامج التدريبي غير معروفة. التقسيمات المقبولة: \u2066Upper، Lower، PPL\u2069.',
+    );
+  });
+
   test('network and bodyless service failures use localized generic copy',
       () async {
     final ApiException network = await _expectApiException(

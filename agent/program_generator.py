@@ -60,6 +60,26 @@ MECHANIC_CUES = {
 MIN_EXERCISES_PER_DAY = 3
 SLOT_CANDIDATE_LIMIT = 100
 SUGGESTED_SUBSTITUTE_COUNT = 2
+SPLIT_OVERRIDE_VALUES = (
+    "Upper",
+    "Lower",
+    "PPL",
+    "Push",
+    "Pull",
+    "Legs",
+    "Arnold",
+    "Full Body",
+    "Bro Split",
+    "Anterior",
+    "Posterior",
+    "Glute",
+    "Total Body",
+)
+
+
+def has_supported_split_keyword(preference: str) -> bool:
+    normalized_preference = preference.lower()
+    return any(value.lower() in normalized_preference for value in SPLIT_OVERRIDE_VALUES)
 
 
 @dataclass(frozen=True)
@@ -471,11 +491,7 @@ def _resolve_split_plan(
 ) -> DynamicSplitPlan:
     preference = request.user_split_override
     if preference:
-        keywords = (
-            "upper", "lower", "ppl", "push", "pull", "legs", "arnold", "full body",
-            "bro split", "anterior", "posterior", "glute", "total body",
-        )
-        if not any(keyword in preference.lower() for keyword in keywords):
+        if not has_supported_split_keyword(preference):
             preference = None
     return resolve_split(
         frequency=weekly_frequency,

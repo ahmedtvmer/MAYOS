@@ -239,6 +239,7 @@ class FakeMayosApi {
   int? programApproveMismatchVersion;
   String? programApproveMismatchName;
   int programDraftGenerationRequests = 0;
+  String? programDraftGenerationError;
   Map<String, dynamic>? programDraftPublishError;
   Object? programDraftReplaceError;
   String? _programNameOverride;
@@ -2048,6 +2049,30 @@ class FakeMayosApi {
     }
     if (request.path.endsWith('/program-draft/generate')) {
       programDraftGenerationRequests++;
+      if (programDraftGenerationError != null) {
+        return FakeResponse(400, <String, dynamic>{
+          'detail': programDraftGenerationError,
+          'message_code': 'assignment.split_override_unrecognized.v1',
+          'message_params': <String, dynamic>{
+            'accepted_values': <String>[
+              'Upper',
+              'Lower',
+              'PPL',
+              'Push',
+              'Pull',
+              'Legs',
+              'Arnold',
+              'Full Body',
+              'Bro Split',
+              'Anterior',
+              'Posterior',
+              'Glute',
+              'Total Body',
+            ],
+          },
+          'message_fallback': programDraftGenerationError,
+        });
+      }
       final bool replace = request.query['replace'] == true ||
           request.query['replace'] == 'true';
       if (programDraft != null && !replace) {
