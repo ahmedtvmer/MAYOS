@@ -1434,54 +1434,6 @@ class AuthTokens {
   final String traineeId;
 }
 
-/// `POST /onboarding/start` and `POST /onboarding/step` response body.
-class OnboardingState {
-  const OnboardingState({
-    required this.intakeStep,
-    required this.isComplete,
-    required this.messages,
-  });
-
-  factory OnboardingState.fromJson(Map<String, dynamic> json) =>
-      OnboardingState(
-        intakeStep: (json['intake_step'] as num?)?.toInt() ?? 1,
-        isComplete: json['is_complete'] as bool? ?? false,
-        messages: (json['messages'] as List<dynamic>? ?? const [])
-            .map((dynamic m) => m.toString())
-            .toList(growable: false),
-      );
-
-  final int intakeStep;
-  final bool isComplete;
-  final List<String> messages;
-}
-
-/// `POST /onboarding/complete` response body.
-///
-/// Both program fields are null when no program could be produced (a
-/// coach-controlled completion with nothing saved), and [programMessage] carries
-/// the service's explanation so the client must not announce a routine.
-class OnboardingCompletion {
-  const OnboardingCompletion({
-    required this.programName,
-    required this.weeklyFrequency,
-    this.programMessage,
-  });
-
-  factory OnboardingCompletion.fromJson(Map<String, dynamic> json) =>
-      OnboardingCompletion(
-        programName: json['program_name'] as String?,
-        weeklyFrequency: (json['weekly_frequency'] as num?)?.toInt(),
-        programMessage: json['program_message'] as String?,
-      );
-
-  final String? programName;
-  final int? weeklyFrequency;
-  final String? programMessage;
-
-  bool get hasProgram => programName != null && weeklyFrequency != null;
-}
-
 LocalizedText? _localizedIntakeCopy(Object? text, Object? metadata) {
   if (text == null && metadata == null) return null;
   return LocalizedText.fromJson(text: text, metadata: metadata);

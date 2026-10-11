@@ -69,19 +69,19 @@ origin (for example, `http://localhost:7357`) so CORS permits it, then run
 Web requires a connection; offline workout drafts are Android-only. A release
 web build must point at an HTTPS API on a host that permits its origin.
 
-Onboarding, chat, and program generation need the model backend, so run the
-service normally to exercise the player journey. `SKIP_LLM_LOAD=true` starts
-without warmup and is suitable only for route-level tests; onboarding cannot
-complete in that mode.
+Onboarding uses deterministic rules and can complete without a model backend.
+Chat and model-supported program requests need the hosted model configuration.
+`SKIP_LLM_LOAD=true` starts without model warmup and is suitable for route-level
+tests and the form-based onboarding flow.
 
 ## Testing notes
 
 `test/auth_flow_test.dart` is a mocked HTTP contract test: it drives the real
 `ApiClient`/`AuthController` stack (including the auth interceptor and 401
 re-login) against an in-memory `HttpClientAdapter` that mirrors the service
-routes and JSON shapes. It does not call a live backend. The onboarding resume
-contract is also covered against the real FastAPI app in
-`tests/test_svc_api.py`.
+routes and JSON shapes. It does not call a live backend. The structured intake
+and removed legacy routes are covered against the real FastAPI app in
+`tests/test_structured_intake.py` and `tests/test_svc_api.py`.
 
 ## Auth contract notes
 
@@ -95,11 +95,10 @@ contract is also covered against the real FastAPI app in
   `{"email": string | null}` and `POST /auth/email` accepts `{"email": string}`;
   a missing email routes to the recovery-email screen before dashboard or
   onboarding.
-- ADR 016: onboarding shows a hosted-AI processing disclosure before any
-  `/onboarding/start` or `/onboarding/step` request.
-- `POST /onboarding/start` is load-or-start: it resumes saved progress and
-  returns the assistant prompts so far. Explicit reset is `POST /onboarding/step`
-  with `reset=true`.
+- The named-answer intake is the only onboarding path. It validates and saves
+  answers through `/onboarding/intake/answers/{field}` and creates the first
+  program through `/onboarding/intake/confirm`, using deterministic rules
+  without hosted model inference.
 - The bearer token is stored in the Android Keystore via
   `flutter_secure_storage`. Any authenticated `401` clears the session and
   routes back to login.

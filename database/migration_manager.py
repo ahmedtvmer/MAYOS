@@ -69,7 +69,7 @@ PERFORMED_DATE_CORRECTIONS_DDL: tuple[str, ...] = (
 #: named, validated decision per row (the value as JSON) with the timestamp it
 #: was last written and whether a legacy three-step intake prefilled it.
 #: ``intake_state`` is the single-row status row: in_progress vs confirmed, the
-#: hosted-processing disclosure acknowledgement, and the replayed confirmation
+#: onboarding privacy-notice acknowledgement, and the replayed confirmation
 #: result so a re-confirm never generates a second program. Kept in one place so
 #: the fresh-create path and the v11->v12 migration cannot drift apart.
 INTAKE_DDL: tuple[str, ...] = (

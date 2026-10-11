@@ -1,4 +1,4 @@
-"""Public FastAPI chat/onboarding endpoints obey ``LLM_MAX_CONCURRENT``.
+"""Public FastAPI chat endpoints obey ``LLM_MAX_CONCURRENT``.
 
 Requests go through the real HTTP contract with the real (temporary SQLite)
 ledger; only the model/graph is doubled. Peak active work is measured across
@@ -12,8 +12,6 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from langchain_core.messages import AIMessage
-
 from database.database_manager import DatabaseManager
 from svc.app import create_app
 from svc.dependencies import VerifiedPlayer, get_current_player, get_db, get_verified_player
@@ -147,33 +145,3 @@ def test_chat_endpoint_streaming_is_bounded(client, monkeypatch):
     assert len(responses) == 4
     assert all(response.status_code == 200 for response in responses)
     assert all("pong" in response.text for response in responses)
-
-
-def test_onboarding_endpoint_invoke_is_bounded(client, monkeypatch):
-    from agent import onboarding_graph as onboarding_module
-
-    def install_double(work):
-        def fake_invoke(state, **kwargs):
-            work()
-            return {
-                "messages": [AIMessage(content="Q1?")],
-                "trainee_id": "alice",
-                "intake_step": 1,
-                "is_complete": False,
-                "profile_data": None,
-            }
-
-        monkeypatch.setattr(onboarding_module, "onboarding_graph", type("FakeGraph", (), {"invoke": staticmethod(fake_invoke)})())
-
-    peak, responses = _measure_peak(
-        client,
-        monkeypatch,
-        install_double=install_double,
-        request=lambda: client.post("/onboarding/start"),
-        max_concurrent=2,
-        workers=4,
-    )
-    assert peak == 2
-    assert len(responses) == 4
-    assert all(response.status_code == 200 for response in responses)
-    assert all(response.json()["messages"] == ["Q1?"] for response in responses)

@@ -733,7 +733,7 @@ class AuthController extends StateNotifier<AuthState> {
     );
   }
 
-  /// Called after `POST /onboarding/complete` succeeds.
+  /// Called after `POST /onboarding/intake/confirm` succeeds.
   void markOnboarded() {
     final AccountSession? session = state.session;
     if (state.isAuthenticated && session != null) {

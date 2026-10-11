@@ -8,8 +8,6 @@ prefill, confirmation (once, idempotent), and the unchanged program rules
 
 import sqlite3
 import threading
-import time
-from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -412,6 +410,22 @@ def test_validation_rejects_bad_answers_per_field(api, field, value):
     assert resp.json()["message_params"] == {}
 
 
+@pytest.mark.parametrize("frequency", [0, 6])
+def test_weekly_frequency_bounds_reject_without_persisting(api, frequency):
+    client, db, _ = api
+    player = f"frequency-{frequency}"
+    headers = _register(client, player)
+    _ack(client, headers)
+
+    response = _answer(client, headers, "weekly_frequency", frequency)
+
+    assert response.status_code == 400, response.text
+    assert "weekly_frequency" in response.json()["detail"]
+    with db.open_ledger(player) as ledger:
+        assert "weekly_frequency" not in ledger.load_intake_answers()
+        assert ledger.get_player_profile() is None
+
+
 def test_unknown_field_rejected(api):
     client, _, _ = api
     headers = _register(client, "alice")
@@ -655,65 +669,8 @@ def test_concurrent_confirm_generates_exactly_one_program(api, monkeypatch):
     assert results and results[0].status_code == 200
 
 
-def test_concurrent_legacy_completion_reuses_one_program_and_welcome(api, monkeypatch):
-    client, db, _ = api
-    headers = _register(client, "legacy-racer")
-    with db.open_ledger("legacy-racer") as ledger:
-        ledger.upsert_player_profile({"rep_preference": "balanced", "weekly_frequency": 4})
-        ledger.save_onboarding_state(
-            {"intake_step": 3, "is_complete": True, "profile_data": None, "messages": []}
-        )
-
-    # Keep generation deterministic while the inference gate admits parallel work.
-    monkeypatch.setattr("svc.llm._GATE", threading.Semaphore(2))
-    generation_barrier = threading.Barrier(2)
-
-    def fake_generation(**kwargs):
-        try:
-            generation_barrier.wait(timeout=0.5)
-        except threading.BrokenBarrierError:
-            # The per-ledger lock excludes the second generation call.
-            pass
-        program = _program()
-        write_started = time.monotonic()
-        with db.open_ledger("legacy-racer") as concurrent_ledger:
-            concurrent_ledger.add_chat_message("user", "Ledger writes stay available during generation.")
-        assert time.monotonic() - write_started < 3
-        kwargs["ledger"].save_training_program(program.model_dump())
-        return program, "markdown"
-
-    monkeypatch.setattr("service.programs.generate_program_pipeline", fake_generation)
-    monkeypatch.setattr("agent.program_generator.generate_program_pipeline", fake_generation)
-    request_barrier = threading.Barrier(2)
-
-    def complete():
-        request_barrier.wait(timeout=5)
-        return client.post("/onboarding/complete", headers=headers)
-
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        responses = list(pool.map(lambda _: complete(), range(2)))
-
-    assert all(response.status_code == 200 for response in responses)
-    assert responses[0].json() == responses[1].json()
-
-    with db.open_ledger("legacy-racer") as ledger:
-        programs = ledger.conn.execute(
-            "SELECT id, is_active, version FROM training_programs ORDER BY version"
-        ).fetchall()
-        assert len(programs) == 1
-        assert programs[0]["is_active"] == 1
-        assert programs[0]["version"] == 1
-        welcome_messages = [
-            row
-            for row in ledger.get_chat_history()
-            if row["role"] == "assistant" and row["content"].startswith("Welcome!")
-        ]
-        assert len(welcome_messages) == 1
-
-
 def test_failed_generation_releases_claim_for_retry(api, monkeypatch):
-    """A 429 during generation resets the claim so a retry can still generate."""
-    from service.model_limits import ModelLimitExceeded
+    """A generation failure resets the claim so a retry can still generate."""
 
     client, db, _ = api
     headers = _register(client, "retry")
@@ -725,9 +682,7 @@ def test_failed_generation_releases_claim_for_retry(api, monkeypatch):
     def fake(**kwargs):
         if state["fail"]:
             state["fail"] = False
-            raise ModelLimitExceeded(
-                "Too many AI requests. Please wait a minute and try again.", "rate"
-            )
+            raise RuntimeError("program generation failed")
         program = _program()
         kwargs["ledger"].save_training_program(program.model_dump())
         return program, "markdown"
@@ -735,8 +690,8 @@ def test_failed_generation_releases_claim_for_retry(api, monkeypatch):
     monkeypatch.setattr("service.programs.generate_program_pipeline", fake)
     monkeypatch.setattr("agent.program_generator.generate_program_pipeline", fake)
 
-    first = client.post("/onboarding/intake/confirm", headers=headers)
-    assert first.status_code == 429, first.text
+    with pytest.raises(RuntimeError, match="program generation failed"):
+        client.post("/onboarding/intake/confirm", headers=headers)
     assert client.get("/onboarding/intake", headers=headers).json()["status"] == "in_progress"
 
     second = client.post("/onboarding/intake/confirm", headers=headers)
@@ -895,72 +850,6 @@ def test_profile_without_program_resumes_in_progress_then_confirms(api, monkeypa
     assert confirmed.status_code == 200, confirmed.text
     assert confirmed.json()["program_name"] == "Player Plan"
     assert calls["n"] == 1
-
-
-def test_legacy_complete_marks_structured_intake_confirmed(api, monkeypatch):
-    """2a: legacy /complete confirms an existing structured intake and stores its program."""
-    client, db, _ = api
-    headers = _register(client, "legacycomplete")
-    db.switch_user("legacycomplete")
-    db.ledger.save_onboarding_state(
-        {"intake_step": 3, "is_complete": True, "profile_data": {"gender": "female"}, "messages": []}
-    )
-    _ack(client, headers)
-    assert _answer(client, headers, "gender", "female").status_code == 200
-    calls = _spy_generation(db, monkeypatch)
-
-    completed = client.post("/onboarding/complete", headers=headers)
-    assert completed.status_code == 200, completed.text
-
-    view = client.get("/onboarding/intake", headers=headers).json()
-    assert view["status"] == "confirmed"
-    assert view["program"]["program_name"] == "Player Plan"
-    # Post-confirm edits are refused and confirming replays; no second program.
-    assert _answer(client, headers, "gender", "male").status_code == 409
-    again = client.post("/onboarding/intake/confirm", headers=headers)
-    assert again.status_code == 200
-    assert calls["n"] == 1
-
-
-def test_legacy_routes_refused_while_structured_intake_active(api, monkeypatch):
-    """2b: /start and /step (incl. reset) refuse once a structured intake exists."""
-    from langchain_core.messages import AIMessage
-
-    from service import onboarding as onboarding_service
-
-    def fake_start(db, ledger_id, player_account_id=None, ledger=None, scope=None):
-        return {
-            "messages": [AIMessage(content="Q1?")],
-            "trainee_id": ledger_id,
-            "intake_step": 1,
-            "is_complete": False,
-            "profile_data": None,
-        }
-
-    monkeypatch.setattr(onboarding_service, "start_onboarding", fake_start)
-    client, _, _ = api
-
-    active = _register(client, "active")
-    _ack(client, active)
-    _answer(client, active, "gender", "female")
-    expected_conflict = {
-        "error": "structured_intake_active",
-        "message_code": "intake.structured_active.v1",
-        "message_params": {},
-        "message_fallback": "The service rejected this request.",
-    }
-    for path, body in (
-        ("/onboarding/start", None),
-        ("/onboarding/step", {"content": "x"}),
-        ("/onboarding/step", {"content": "x", "reset": True}),
-    ):
-        resp = client.post(path, headers=active, json=body) if body else client.post(path, headers=active)
-        assert resp.status_code == 409, (path, resp.text)
-        assert resp.json() == expected_conflict
-
-    # An account with no structured row keeps the legacy routes (backward compat).
-    fresh = _register(client, "fresh")
-    assert client.post("/onboarding/start", headers=fresh).status_code == 200
 
 
 # --------------------------------------------------------------------------

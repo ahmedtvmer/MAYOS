@@ -134,6 +134,14 @@ Requests without that build header and web clients are not rejected by this poli
 
 Player, judge, and coach chat use the hosted OpenAI-compatible backend. Each role has a configurable model id and output-token limit; the service fails fast when `LLM_API_KEY` is absent. `LLM_MAX_CONCURRENT` bounds overlapping inference calls. This limit applies to regular and streamed calls.
 
+Player onboarding uses `GET /onboarding/intake`, `POST /onboarding/intake/disclosure`,
+`PUT /onboarding/intake/answers/{field}`, and `POST /onboarding/intake/confirm`.
+Validation and first-program creation are deterministic; onboarding does not
+call the hosted model or consume model-request admission/concurrency capacity.
+The legacy `/onboarding/start`, `/onboarding/step`, and `/onboarding/complete`
+routes are removed. `RATE_LIMIT_ONBOARDING` still limits intake answer and
+confirmation writes.
+
 The evaluation runners use the same hosted model configuration. They require the hosted API credential and do not load local chat weights. The separate BGE embedding model remains local for the clinical guard and Exercise library search.
 
 ### Enabling the optional coach AI assistant (issue #45)

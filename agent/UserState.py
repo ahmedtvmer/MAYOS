@@ -1,18 +1,11 @@
 import re
 from collections.abc import Sequence
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field, field_validator
 from typing_extensions import TypedDict
-
-
-class OnboardingState(TypedDict):
-    messages: Annotated[Sequence[BaseMessage], add_messages]
-    intake_step: int
-    is_complete: bool
-    profile_data: dict[str, Any] | None
 
 
 class PlayerProfileSchema(BaseModel):

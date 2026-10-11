@@ -28,8 +28,8 @@ import 'onboarding_widgets.dart';
 /// The focused, full-screen MAYOS onboarding flow (#51).
 ///
 /// Replaces the former chat-like intake with one composition per named decision
-/// from the structured intake API (#50): the hosted-processing disclosure
-/// gates every answer, each step saves through [ApiClient.saveIntakeAnswer],
+/// from the structured intake API (#50): the privacy notice gates every answer,
+/// each step saves through [ApiClient.saveIntakeAnswer],
 /// earlier answers can be edited until the player confirms, and the first
 /// program is only created by an explicit action on the review screen.
 class OnboardingScreen extends ConsumerStatefulWidget {
@@ -506,7 +506,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         children: <Widget>[
           OnboardingQuestion(question: displayCopyOf(context).beforeWeBegin),
           const SizedBox(height: MayosSpacing.lg),
-          const _HostedProcessingDisclosure(),
+          const _OnboardingPrivacyNotice(),
           if (_disclosureError != null) ...<Widget>[
             const SizedBox(height: MayosSpacing.md),
             OnboardingInlineError(
@@ -840,10 +840,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 }
 
-/// The hosted-processing disclosure (ADR 016/036), shown before any answer is
-/// sent. Nothing is saved until the player acknowledges it.
-class _HostedProcessingDisclosure extends StatelessWidget {
-  const _HostedProcessingDisclosure();
+/// The onboarding privacy notice appears before any answer is saved.
+class _OnboardingPrivacyNotice extends StatelessWidget {
+  const _OnboardingPrivacyNotice();
 
   @override
   Widget build(BuildContext context) {
@@ -866,7 +865,7 @@ class _HostedProcessingDisclosure extends StatelessWidget {
               const SizedBox(width: MayosSpacing.sm),
               Expanded(
                 child: Text(
-                  displayCopyOf(context).hostedAIProcessing,
+                  displayCopyOf(context).onboardingPrivacyNoticeTitle,
                   style: MayosTypography.of(context).sectionHeading
                       .copyWith(color: c.textPrimary),
                 ),
@@ -875,7 +874,7 @@ class _HostedProcessingDisclosure extends StatelessWidget {
           ),
           const SizedBox(height: MayosSpacing.md),
           Text(
-            displayCopyOf(context).onboardingHostedDisclosure,
+            displayCopyOf(context).onboardingPrivacyNotice,
             style:
                 MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           ),

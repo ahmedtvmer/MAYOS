@@ -208,7 +208,8 @@ configured, the following is sent to it:
   contain identifying information. The saved player prose is never rewritten;
   your assigned coach reads a neutral view of the facts and rating instead.
 - **Onboarding**: the answers you type while setting up, so your profile and
-  program can be built.
+  first Training program can be built. The intake and first-program creation
+  use deterministic rules and do not send onboarding answers to a hosted model.
 - **Program generation**: deterministic in the normal case — day templates,
   exercise selection, warm-ups, and progression rules are computed without the
   model. Only a **free-text split request** that the deterministic router
@@ -221,12 +222,14 @@ configured, the following is sent to it:
   attributed to the coach's account. Coach-side AI never receives your
   assistant chat, your username, or any contact details.
 
-**Free text you type can contain identifying information, and it is sent to the
-model exactly as you wrote it.** Chat messages, onboarding answers, custom
-instructions, your preferred name, and any free-text split request are plain
-text: if you put your name, address, phone number or anything else identifying
-in them, it leaves the service and is processed by the model provider. Please
-keep identifying details out of free-text fields.
+**Free text you type can contain identifying information, and it may be sent to
+the model exactly as you wrote it when you use a model-supported feature.** Chat
+messages, custom instructions, your preferred name, and any free-text split
+request are plain text: if you put your name, address, phone number or anything
+else identifying in them, it leaves the service and is processed by the model
+provider. Onboarding answers are not sent during onboarding or first-program
+creation. Your current goal may be included as context in later assistant chat
+requests. Please keep identifying details out of free-text fields.
 
 AI usage is metered per account and rate-limited, so a runaway client cannot
 consume unlimited model capacity.

@@ -78,7 +78,7 @@ void main() {
     expect(_sawOnboardingCall(fake), isFalse);
 
     // A valid email starts verification; the gate stays closed until the code
-    // is entered. The hosted-processing disclosure still gates every answer.
+    // is entered. The onboarding privacy notice still gates every answer.
     await tester.enterText(
         find.byKey(const Key('recovery_email')), 'alice@example.com');
     await tester.tap(find.text('Save email'));
@@ -87,7 +87,7 @@ void main() {
     await tester.enterText(find.byKey(const Key('recovery_verification_code')),
         fake.currentRecoveryEmailCode!);
     await tester.tap(find.text('Verify email'));
-    await _pumpUntilFound(tester, find.text('Hosted AI processing'));
+    await _pumpUntilFound(tester, find.text('Your answers and privacy'));
     expect(fake.intakeAnswers, isEmpty);
     expect(fake.intakeDisclosureAcknowledged, isFalse);
 

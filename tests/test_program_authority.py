@@ -711,10 +711,6 @@ def test_profile_rebuild_allowed_after_unassignment(api, monkeypatch):
 # --------------------------------------------------------------------------
 
 
-def _onboarding_state():
-    return {"messages": [], "trainee_id": "p1", "intake_step": 3, "is_complete": True, "profile_data": None}
-
-
 def test_onboarding_synthesizes_before_publication(api, monkeypatch):
     _, db, _ = api
     _assigned_player(api)
@@ -724,7 +720,7 @@ def test_onboarding_synthesizes_before_publication(api, monkeypatch):
 
     _, calls = _auto_generation(db, monkeypatch)
     result = onboarding_service.complete_onboarding(
-        db, "p1", _onboarding_state(), player_account_id=player_account_id
+        db, "p1", player_account_id=player_account_id
     )
     assert result["program"] is not None
     assert calls["n"] == 1
@@ -743,7 +739,7 @@ def test_onboarding_leaves_coach_program_unchanged_during_control(api, monkeypat
     monkeypatch.setattr("agent.program_generator.generate_program_pipeline", pipeline)
 
     result = onboarding_service.complete_onboarding(
-        db, "p1", _onboarding_state(), player_account_id=player_account_id
+        db, "p1", player_account_id=player_account_id
     )
     assert result["program"] is not None
     assert result["program"].program_name == "Coach Plan"
@@ -763,7 +759,7 @@ def test_onboarding_leaves_retained_program_unchanged_after_unassignment(api, mo
 
     _, calls = _auto_generation(db, monkeypatch)
     result = onboarding_service.complete_onboarding(
-        db, "p1", _onboarding_state(), player_account_id=player_account_id
+        db, "p1", player_account_id=player_account_id
     )
     assert result["program"].version == before.version
     assert calls["n"] == 0
@@ -778,7 +774,7 @@ def test_onboarding_coach_controlled_without_saved_program_writes_welcome(api, m
     monkeypatch.setattr(programs_service, "player_controls_program", lambda *args, **kwargs: False)
 
     result = onboarding_service.complete_onboarding(
-        db, "p1", _onboarding_state(), player_account_id=player_account_id
+        db, "p1", player_account_id=player_account_id
     )
     assert result["program"] is None
     assert result["program_message"] == programs_service.COACH_CONTROLLED_ERROR

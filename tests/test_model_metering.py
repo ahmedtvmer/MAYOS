@@ -14,10 +14,8 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from langchain_core.messages import AIMessage
 
 from agent import assistant_graph
-from agent import onboarding_graph as onboarding_module
 from agent import program_rules
 from agent.program_rules import get_default_split, resolve_split
 from database.database_manager import DatabaseManager
@@ -324,35 +322,6 @@ def test_resolve_split_meters_only_model_path_through_injected_inference(api, mo
     assert _usage_rows(db, account_id)[0]["requests"] == 1
     assert len(fake.calls) == 1
     assert fake.calls[0]["mode"] == "structured"
-
-
-def test_onboarding_step_is_metered(api, monkeypatch, recording_analytics):
-    client, db = api
-    token = _register(client, "player1")
-    fake = _fake_model()
-
-    class _FakeGraph:
-        def invoke(self, state, **kwargs):
-            fake.invoke("intake")
-            messages = list(state.get("messages", [])) + [AIMessage(content="Q1?")]
-            return {
-                "messages": messages,
-                "trainee_id": state.get("trainee_id"),
-                "intake_step": 1,
-                "is_complete": False,
-                "profile_data": None,
-            }
-
-    monkeypatch.setattr(onboarding_module, "onboarding_graph", _FakeGraph())
-
-    resp = client.post("/onboarding/step", headers=_authed(token), json={"content": "25"})
-    assert resp.status_code == 200, resp.text
-
-    rows = _usage_rows(db, _account_id(db, "player1"))
-    assert rows and rows[0]["role"] == "player"
-    assert rows[0]["requests"] >= 1
-    assert rows[0]["input_tokens"] > 0
-    _assert_ai_usage_event(recording_analytics, db, _account_id(db, "player1"), "onboarding", 2)
 
 
 def test_program_generation_emits_metered_ai_event(api, monkeypatch, recording_analytics):
@@ -851,7 +820,7 @@ def test_streamed_request_limit_refuses_with_429(api, monkeypatch):
     assert db.count_model_limit_hits(account_id, month_start.isoformat())["rate"] == 1
 
 
-def test_non_streamed_path_shares_the_account_limit(api, monkeypatch):
+def test_non_streamed_chat_shares_the_account_limit(api, monkeypatch):
     client, _db = api
     token = _register(client, "player1")
     monkeypatch.setattr(assistant_graph, "llm", _fake_model())
@@ -859,8 +828,7 @@ def test_non_streamed_path_shares_the_account_limit(api, monkeypatch):
     reset_model_limits()
 
     assert _post_chat(client, token).status_code == 200
-    onboarding = client.post("/onboarding/step", headers=_authed(token), json={"content": "25"})
-    assert onboarding.status_code == 429
+    assert _post_chat(client, token).status_code == 429
 
 
 def test_limits_are_per_account(api, monkeypatch):

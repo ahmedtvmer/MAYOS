@@ -191,7 +191,7 @@ referrer once per install and sends only parsed UTM labels during registration.
 | **Personal info — email address** (recovery email) | Yes | **Required**: the app blocks dashboard and onboarding until one is added (ADR 007 recovery gate) | App functionality (password recovery), account management | No one |
 | **Health and fitness — body data**: weight, height, age, gender, body proportions, injuries/limitations free text | Yes | Optional — you choose what to enter | App functionality (training) | No one |
 | **Health and fitness — exercise history**: workouts, sets, weights, reps, effort (RIR/RPE), readiness, personal records, training schedule and pauses, check-ins | Yes | Optional — you choose what to log | App functionality (training and coaching) | No one |
-| **User content**: onboarding answers, assistant chat, program-request text | Yes | Optional | App functionality (AI features) | No one |
+| **User content**: onboarding answers, assistant chat, program-request text | Yes | Optional | App functionality (onboarding uses deterministic rules; AI features use the hosted model provider) | No one |
 | **App activity / logs**: operational server logs (IP, path, time) and per-account model-usage records | Yes | Collected automatically (required for operation and security) | Security, app functionality (cost/limits) | No one |
 
 **Questions:**

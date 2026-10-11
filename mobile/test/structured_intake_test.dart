@@ -101,7 +101,7 @@ void main() {
       'intake.current_goal.example.1.v1',
     );
 
-    // Answers are refused until the hosted-processing disclosure is accepted.
+    // Answers are refused until the onboarding privacy notice is acknowledged.
     await expectLater(
       client.saveIntakeAnswer('gender', 'female'),
       throwsA(isA<ApiException>()),

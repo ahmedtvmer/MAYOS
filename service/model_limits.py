@@ -6,10 +6,10 @@ and one account across two IPs/tokens shares one limit. The request window is
 in-process (single API writer); day-to-date tokens are read from the catalog so
 they survive a restart.
 
-A *request* is one admitted user turn: a chat turn that makes several model
-calls, or an onboarding step, counts once for the request limit while every
-call's tokens are metered (ADR 038). The streamed chat route admits before the
-stream starts, so streaming cannot bypass the limit.
+A *request* is one admitted user turn. A chat turn that makes several model
+calls counts once for the request limit while every call's tokens are metered
+(ADR 038). The streamed chat route admits before the stream starts, so
+streaming cannot bypass the limit.
 
 The daily token cap is a **soft cap**: it is checked at admission from tokens
 already recorded, and a turn's tokens land when its calls end, so an in-flight

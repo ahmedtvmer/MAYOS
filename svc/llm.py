@@ -7,8 +7,8 @@ There are two entry surfaces because callers live in two worlds:
 * ``run_inference`` — async callers on the event loop (the asyncio ``_SEMAPHORE``
   bounds overlap and the blocking call runs on a worker thread).
 * ``inference_slot`` / ``run_inference_sync`` / ``bound_stream`` — the blocking
-  sync graph paths used by the chat and onboarding endpoints, which already run
-  on worker threads. They share a thread-safe gate (``_GATE``) sized by
+  sync graph paths used by chat endpoints, which already run on worker threads.
+  They share a thread-safe gate (``_GATE``) sized by
   ``LLM_MAX_CONCURRENT``. ``bound_stream`` holds one slot for the whole streamed
   turn so streaming is bounded too, not just buffered calls.
 

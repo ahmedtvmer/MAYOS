@@ -91,10 +91,13 @@ publish a coach-authored program.
 
 ### Privacy
 - Player↔assistant chat history is **never** exposed to coaches.
-- Hosted AI processing is disclosed before use. Coach model prompts omit player
-  names, contact details, and player-assistant chat; both models receive only
-  the context needed for the request. User-written free text may still contain
-  identifying information.
+- The structured intake and first-program creation use deterministic rules and
+  send no onboarding answers to a hosted model. The app explains that answers
+  are saved in the player's private Training ledger. Hosted AI processing is
+  disclosed before model-supported features run. Coach model prompts omit
+  player names, contact details, and player-assistant chat; both models receive
+  only the context needed for the request. User-written free text may still
+  contain identifying information.
 - During an active assignment, coaches see workouts, telemetry, PRs, alerts,
   and earlier training history. Revocation ends that access immediately.
 - A shared check-in record remains in the player's history after unassignment;
@@ -134,7 +137,8 @@ Two consent paths:
   historical prior art, deleted with Streamlit in #242.
 - Model construction uses the hosted `get_llm()` / `get_judge_llm()` /
   `get_coach_llm()` factories behind a LangChain-standard surface. The
-  `LLM_MAX_CONCURRENT` limit bounds live chat and onboarding inference.
+  `LLM_MAX_CONCURRENT` limit bounds hosted inference. The structured onboarding
+  intake and first-program creation do not use that path.
 - The eval harness (`tests/eval/run_evaluation.py`) uses the same factories, so
   the existing 65-case + 15-case suites can check the player model swap. The
   command still needs a failing exit status when thresholds are missed.

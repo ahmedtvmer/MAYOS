@@ -490,7 +490,7 @@ void main() {
     await tester.enterText(find.byKey(const Key('recovery_verification_code')),
         fake.currentRecoveryEmailCode!);
     await tester.tap(find.byKey(const Key('recovery_submit')));
-    await _pumpUntilFound(tester, find.text('Hosted AI processing'));
+    await _pumpUntilFound(tester, find.text('Your answers and privacy'));
     expect(fake.recoveryEmail, 'alice@example.com');
   });
 

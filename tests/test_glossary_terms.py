@@ -43,14 +43,11 @@ ALLOWED_USER_VISIBLE_TEXT: dict[str, set[str]] = {
     },
 }
 
-#: The only ``trainee_id`` identifiers allowed: the LangGraph state field
-#: annotations. They mirror the persisted checkpointer key ``"trainee_id"`` (and
-#: the request/response JSON field of the same name), so the annotation must
-#: match the stored key. Each regex targets the specific field line, not the
-#: whole file.
+#: The remaining ``trainee_id`` LangGraph state field mirrors the persisted
+#: checkpointer key (and request/response JSON field), so its annotation must
+#: match the stored key.
 ALLOWED_TRAINEE_ID_FIELDS = {
     "agent/assistant_graph.py": re.compile(r"^\s*trainee_id:\s*str\s*$"),
-    "agent/onboarding_graph.py": re.compile(r"^\s*trainee_id:\s*str \| None\s*$"),
 }
 
 #: Identifiers the glossary rename removed: "user" named the player's ledger,

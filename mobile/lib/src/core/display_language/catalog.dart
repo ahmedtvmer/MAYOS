@@ -744,15 +744,15 @@ class MayosCopy {
   String get requiredAnswersMissing => isArabic
       ? 'ما زالت بعض الإجابات المطلوبة ناقصة.'
       : 'Some required answers are still missing.';
-  String get hostedAIProcessing => isArabic
-      ? 'معالجة عبر الذكاء الاصطناعي المستضاف'
-      : 'Hosted AI processing';
-  String get onboardingHostedDisclosure => isArabic
-      ? 'يعتمد إعداد التدريب على مزود ذكاء اصطناعي مستضاف. تُرسل إجاباتك وسياق التدريب اللازم للرد لمعالجتهما. قد يتضمن النص الحر معلومات شخصية، لذا تجنب مشاركة ما لا ترغب في معالجته.'
-      : 'Onboarding is powered by a hosted AI provider. The answers you type and the training context needed to respond are sent for processing. Free text you write may contain personal information, so avoid sharing anything you do not want processed.';
+  String get onboardingPrivacyNoticeTitle => isArabic
+      ? 'إجاباتك وخصوصيتك'
+      : 'Your answers and privacy';
+  String get onboardingPrivacyNotice => isArabic
+      ? 'يستخدم MAYOS إجاباتك لإنشاء برنامجك التدريبي الأول بقواعد محددة. لا يستخدم إعداد التدريب وإنشاء البرنامج أي نموذج ذكاء اصطناعي مستضاف. تُحفظ إجاباتك في سجل التدريب الخاص بحسابك.'
+      : 'MAYOS uses your answers to create your first Training program with fixed rules. Onboarding and program creation do not call a hosted AI model. Your answers are saved in your private Training ledger.';
   String get onboardingPrivacyNote => isArabic
-      ? 'لن يُرسل شيء حتى تتابع. يمكنك تغيير أي إجابة قبل إنشاء برنامجك.'
-      : 'Nothing is sent until you continue. You can change any answer before your program is created.';
+      ? 'يمكنك تعديل أي إجابة قبل إنشاء برنامجك التدريبي الأول.'
+      : 'You can change any answer before your first program is created.';
   String get setupLoadFailed =>
       isArabic ? 'تعذر تحميل إعدادك' : 'Could not load your setup';
   String get buildingYourProgram =>

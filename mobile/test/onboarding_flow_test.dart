@@ -329,7 +329,7 @@ void main() {
     final FakeMayosApi fake = _fake();
     await _pumpOnboarding(tester, fake, languageCode: 'ar');
     expect(find.text('قبل أن نبدأ'), findsOneWidget);
-    expect(find.text('معالجة عبر الذكاء الاصطناعي المستضاف'), findsOneWidget);
+    expect(find.text('إجاباتك وخصوصيتك'), findsOneWidget);
     expect(Directionality.of(tester.element(find.text('قبل أن نبدأ'))),
         TextDirection.rtl);
     await tester.tap(find.byKey(const Key('onboarding_disclosure_continue')));
@@ -361,7 +361,7 @@ void main() {
     expect(find.byKey(const Key('onboarding_disclosure_continue')),
         findsOneWidget);
     expect(find.text("I'm a coach — enter coach code"), findsOneWidget);
-    expect(find.text('Hosted AI processing'), findsOneWidget);
+    expect(find.text('Your answers and privacy'), findsOneWidget);
     expect(find.byKey(const Key('onboarding_continue')), findsNothing);
     expect(fake.intakeAnswers, isEmpty);
     expect(fake.intakeDisclosureAcknowledged, isFalse);

@@ -967,58 +967,7 @@ def test_first_assignment_invite_sets_referring_coach_once_after_commit(analytic
     db.catalog_conn.rollback()
 
 
-def test_legacy_start_captures_once_after_its_first_write(analytics_api):
-    client, db, sink = analytics_api
-    headers = _register(client, "analytics-legacy-start")
-    account = db.get_active_account_by_username("analytics-legacy-start")
-    with db.open_ledger(account["ledger_id"]) as ledger:
-        ledger.save_onboarding_state(
-            {
-                "intake_step": 1,
-                "is_complete": False,
-                "profile_data": None,
-                "messages": [{"role": "assistant", "content": "What is your goal?"}],
-            }
-        )
-
-    for _ in range(2):
-        started = client.post("/onboarding/start", headers=headers)
-        assert started.status_code == 200, started.text
-
-    onboarding_events = [event for event in sink.events if event["event"].startswith("onboarding_")]
-    assert [event["event"] for event in onboarding_events] == ["onboarding_started"]
-
-
-def test_legacy_completion_is_captured_once_across_a_retry(analytics_api, monkeypatch):
-    from agent.onboarding_graph import onboarding_graph
-
-    client, db, sink = analytics_api
-    headers = _register(client, "analytics-legacy-complete")
-    account = db.get_active_account_by_username("analytics-legacy-complete")
-    saved_state = {
-        "intake_step": 3,
-        "is_complete": False,
-        "profile_data": {"gender": "female", "current_goal": "build strength"},
-        "messages": [],
-    }
-    with db.open_ledger(account["ledger_id"]) as ledger:
-        ledger.save_onboarding_state(saved_state)
-
-    monkeypatch.setattr(onboarding_graph, "invoke", lambda state, **_kwargs: state)
-    _install_fake_program_generator(monkeypatch)
-    for _ in range(2):
-        completed = client.post("/onboarding/complete", headers=headers)
-        assert completed.status_code == 200, completed.text
-
-    completions = [event for event in sink.events if event["event"] == "onboarding_completed"]
-    assert len(completions) == 1
-    assert completions[0]["properties"]["prefilled_fields_count"] == 2
-    generated = [event for event in sink.events if event["event"] == "program_generated"]
-    assert len(generated) == 1
-    assert generated[0]["properties"]["trigger"] == "onboarding"
-
-
-def test_raising_sink_does_not_fail_structured_or_legacy_completion(analytics_api, monkeypatch):
+def test_raising_sink_does_not_fail_structured_completion(analytics_api, monkeypatch):
     client, db, _sink = analytics_api
     analytics.set_sink(RaisingAnalyticsSink())
 
@@ -1027,17 +976,6 @@ def test_raising_sink_does_not_fail_structured_or_legacy_completion(analytics_ap
     _install_fake_program_generator(monkeypatch)
     confirmed = client.post("/onboarding/intake/confirm", headers=structured_headers)
     assert confirmed.status_code == 200, confirmed.text
-
-    legacy_headers = _register(client, "analytics-raising-legacy")
-    account = db.get_active_account_by_username("analytics-raising-legacy")
-    with db.open_ledger(account["ledger_id"]) as ledger:
-        ledger.save_training_program(_test_program().model_dump())
-        ledger.save_onboarding_state(
-            {"intake_step": 1, "is_complete": False, "profile_data": None, "messages": []}
-        )
-    completed = client.post("/onboarding/complete", headers=legacy_headers)
-    assert completed.status_code == 200, completed.text
-
 
 def test_program_and_request_events_follow_committed_api_operations(analytics_api, monkeypatch):
     client, db, sink = analytics_api

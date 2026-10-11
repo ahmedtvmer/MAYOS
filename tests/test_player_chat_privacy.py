@@ -9,6 +9,7 @@ Proves the stated guarantees through the real HTTP surface:
    coach program-generation path (deterministic, no model) returns no chat.
 3. A retried failed turn persists exactly one user row and one assistant row.
 4. ``GET /chat/history`` labels the session-commit pointer as a ``debrief``.
+5. Structured intake answers and first-program confirmation do not call a model.
 """
 
 import json
@@ -18,7 +19,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from agent import assistant_graph
-from agent.ProgramState import ProgramDaySchema, ProgramExerciseSchema
+from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
 from database.database_manager import DatabaseManager
 from service import coach as coach_service
 from service import workouts as workouts_service
@@ -98,6 +99,62 @@ def _register(client, username, password="correct-horse-1"):
 
 def _authed(token):
     return {"Authorization": f"Bearer {token}"}
+
+
+def test_structured_intake_confirmation_does_not_call_hosted_model(api, monkeypatch):
+    client, _db = api
+    headers = _authed(_register(client, "private-intake")["access_token"])
+    answers = {
+        "gender": "male",
+        "proportions": "balanced",
+        "age": 30,
+        "height_cm": 180.0,
+        "weight_kg": 80.0,
+        "training_age_years": 2.0,
+        "current_goal": "PRIVATE_INTAKE_GOAL_6b21 build muscle",
+        "long_term_goal": "Stay strong and healthy",
+        "weekly_frequency": 4,
+        "equipment_access": "commercial gym",
+        "injuries_or_limitations": "PRIVATE_INTAKE_NOTE_8c34 none",
+        "stress_and_sleep": "Low stress, 8 hours sleep",
+    }
+
+    assert client.post("/onboarding/intake/disclosure", headers=headers).status_code == 200
+    for field, value in answers.items():
+        response = client.put(
+            f"/onboarding/intake/answers/{field}",
+            headers=headers,
+            json={"value": value},
+        )
+        assert response.status_code == 200, (field, response.text)
+
+    def generate_program(**kwargs):
+        ledger = kwargs["ledger"]
+        days = [
+            _day_plan().model_copy(update={"day_name": f"Full {day}", "day_order": day})
+            for day in range(1, 5)
+        ]
+        program = GeneratedProgramSchema(
+            program_name="Intake Plan",
+            split_type="Full Body",
+            weekly_frequency=4,
+            days=days,
+        )
+        ledger.save_training_program(program.model_dump())
+        return program, "markdown"
+
+    monkeypatch.setattr("service.programs.generate_program_pipeline", generate_program)
+
+    def reject_model_call(*_args, **_kwargs):
+        pytest.fail("structured onboarding entered hosted model inference")
+
+    monkeypatch.setattr("svc.llm.run_inference_sync", reject_model_call)
+    confirmed = client.post("/onboarding/intake/confirm", headers=headers)
+
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["program_name"]
+    with _db.open_ledger("private-intake") as ledger:
+        assert ledger.get_active_program() is not None
 
 
 def _make_coach(client, db, username, capacity=5):

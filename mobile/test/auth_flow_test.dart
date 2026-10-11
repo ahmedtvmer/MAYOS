@@ -21,6 +21,30 @@ Future<void> _seedSignedIn(
   fake.recoveryEmail = 'alice@example.com';
 }
 
+const Map<String, Object> _intakeAnswers = <String, Object>{
+  'gender': 'male',
+  'proportions': 'balanced',
+  'age': 30,
+  'height_cm': 180.0,
+  'weight_kg': 80.0,
+  'training_age_years': 2.0,
+  'current_goal': 'Build muscle',
+  'long_term_goal': 'Stay strong',
+  'weekly_frequency': 4,
+  'equipment_access': 'Commercial gym',
+  'injuries_or_limitations': 'None',
+  'stress_and_sleep': 'Low stress, 8 hours sleep',
+};
+
+Future<IntakeConfirmation> _confirmIntake(ApiClient api) async {
+  await api.onboardingIntake();
+  await api.acknowledgeIntakeDisclosure();
+  for (final MapEntry<String, Object> answer in _intakeAnswers.entries) {
+    await api.saveIntakeAnswer(answer.key, answer.value);
+  }
+  return api.confirmIntake();
+}
+
 void main() {
   test('player journey against the service contract, with 401 re-login',
       () async {
@@ -75,24 +99,8 @@ void main() {
             .recoveryEmailVerified,
         isTrue);
 
-    // Conversational onboarding.
-    final OnboardingState start = await api.startOnboarding();
-    expect(start.messages, isNotEmpty);
-
-    final OnboardingState first =
-        await api.submitOnboardingStep(content: 'Build muscle');
-    expect(first.isComplete, isFalse);
-    final OnboardingState second =
-        await api.submitOnboardingStep(content: 'Four days');
-    expect(second.isComplete, isTrue);
-
-    // Re-entering /onboarding/start, as after an app restart mid-intake, resumes
-    // the assistant prompts instead of resetting them.
-    final OnboardingState resumed = await api.startOnboarding();
-    expect(resumed.messages.length, 3);
-    expect(resumed.messages.first, 'Hi! What is your main goal?');
-
-    final OnboardingCompletion completion = await api.completeOnboarding();
+    // The named-answer intake builds the first program on confirmation.
+    final IntakeConfirmation completion = await _confirmIntake(api);
     expect(completion.programName, 'Upper/Lower 4x');
     auth.markOnboarded();
     expect(container.read(authControllerProvider).session!.onboarded, isTrue);
@@ -127,7 +135,7 @@ void main() {
   });
 
   test(
-      'restart after API onboarding completion resolves onboarded via /profile',
+      'restart after intake confirmation resolves onboarded via /profile',
       () async {
     final FakeMayosApi fake = FakeMayosApi();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
@@ -141,10 +149,7 @@ void main() {
     await auth.sendRecoveryEmailVerificationCode();
     await auth.verifyRecoveryEmail(fake.currentRecoveryEmailCode!);
 
-    await api.startOnboarding();
-    await api.submitOnboardingStep(content: 'Build muscle');
-    await api.submitOnboardingStep(content: 'Four days');
-    await api.completeOnboarding();
+    await _confirmIntake(api);
     // Deliberately do not call markOnboarded: the client has not yet navigated.
 
     // Simulate an app restart: initialize() re-reads the persisted token and

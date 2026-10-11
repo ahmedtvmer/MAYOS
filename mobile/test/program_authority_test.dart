@@ -590,11 +590,16 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  test('OnboardingCompletion parses null program fields without throwing', () {
-    final OnboardingCompletion completion = OnboardingCompletion.fromJson(
-        <String, dynamic>{'program_name': null, 'weekly_frequency': null});
-    expect(completion.hasProgram, isFalse);
-    expect(completion.programName, isNull);
-    expect(completion.weeklyFrequency, isNull);
+  test('IntakeConfirmation parses null program fields without throwing', () {
+    final IntakeConfirmation confirmation = IntakeConfirmation.fromJson(
+      <String, dynamic>{
+        'status': 'confirmed',
+        'program_name': null,
+        'weekly_frequency': null,
+      },
+    );
+    expect(confirmation.hasProgram, isFalse);
+    expect(confirmation.programName, isNull);
+    expect(confirmation.weeklyFrequency, isNull);
   });
 }

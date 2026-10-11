@@ -413,10 +413,7 @@ class FakeMayosApi {
 
   /// When true, `GET /auth/me` fails with a transient 500 (token still valid).
   bool meFails = false;
-  int _answeredSteps = 0;
-  List<String> _assistantMessages = <String>[];
-  bool _onboardingComplete = false;
-  // When true, completion returns null program fields (coach-controlled edge).
+  // When true, intake confirmation returns null program fields (coach-controlled edge).
   bool nullOnboardingProgram = false;
 
   // Structured, resumable onboarding intake (#50).
@@ -667,12 +664,6 @@ class FakeMayosApi {
         return _weightTrend(request);
       case '/profile':
         return _profile(request);
-      case '/onboarding/start':
-        return _startOnboarding(request);
-      case '/onboarding/step':
-        return _onboardingStep(request);
-      case '/onboarding/complete':
-        return _completeOnboarding(request);
       case '/programs/active':
         return _activeProgram(request);
       case '/programs/active/edits':
@@ -3009,62 +3000,6 @@ class FakeMayosApi {
         '${now.day.toString().padLeft(2, '0')}';
   }
 
-  FakeResponse _startOnboarding(FakeRequest request) {
-    if (!_authorized(request)) {
-      return const FakeResponse(
-          401, <String, dynamic>{'detail': 'Token has been revoked.'});
-    }
-    // Load-or-start: a second call (app restart) resumes saved progress and
-    // returns the full assistant conversation, matching the service contract.
-    if (_assistantMessages.isEmpty) {
-      _assistantMessages = <String>['Hi! What is your main goal?'];
-    }
-    return FakeResponse(200, <String, dynamic>{
-      'intake_step': _answeredSteps + 1,
-      'is_complete': _onboardingComplete,
-      'messages': List<String>.from(_assistantMessages),
-    });
-  }
-
-  FakeResponse _onboardingStep(FakeRequest request) {
-    if (!_authorized(request)) {
-      return const FakeResponse(
-          401, <String, dynamic>{'detail': 'Token has been revoked.'});
-    }
-    _answeredSteps++;
-    _onboardingComplete = _answeredSteps >= 2;
-    final String reply = _onboardingComplete
-        ? 'Great, I have what I need.'
-        : 'Got it. How many days per week?';
-    _assistantMessages.add(reply);
-    return FakeResponse(200, <String, dynamic>{
-      'intake_step': _answeredSteps + 1,
-      'is_complete': _onboardingComplete,
-      'messages': <String>[reply],
-    });
-  }
-
-  FakeResponse _completeOnboarding(FakeRequest request) {
-    if (!_authorized(request)) {
-      return const FakeResponse(
-          401, <String, dynamic>{'detail': 'Token has been revoked.'});
-    }
-    profileExists = true;
-    _onboardingComplete = true;
-    if (nullOnboardingProgram) {
-      return const FakeResponse(200, <String, dynamic>{
-        'program_name': null,
-        'weekly_frequency': null,
-        'program_message':
-            'Your assigned coach controls your program. Ask your coach for changes.',
-      });
-    }
-    return const FakeResponse(200, <String, dynamic>{
-      'program_name': 'Upper/Lower 4x',
-      'weekly_frequency': 4,
-    });
-  }
-
   // The named decision contract mirrored from service/intake.py (#50).
   static const List<String> _profileRebuildFields = <String>[
     'injuries_or_limitations',
@@ -3393,7 +3328,7 @@ class FakeMayosApi {
       if (!intakeDisclosureAcknowledged) {
         return const FakeResponse(403, <String, dynamic>{
           'detail':
-              'Acknowledge the hosted-processing disclosure before creating your program.'
+              'Acknowledge the onboarding privacy notice before creating your program.'
         });
       }
       final List<String> missing = _intakeSchema
@@ -3444,7 +3379,7 @@ class FakeMayosApi {
       if (!intakeDisclosureAcknowledged) {
         return const FakeResponse(403, <String, dynamic>{
           'detail':
-              'Acknowledge the hosted-processing disclosure before saving onboarding answers.'
+              'Acknowledge the onboarding privacy notice before saving answers.'
         });
       }
       final String field = Uri.decodeComponent(
@@ -4613,9 +4548,6 @@ class FakeMayosApi {
       coachPlayerRecords = _defaultCoachRecords();
       coachPlayerExercises = _defaultCoachExercises();
       coachPlayerHistories = _defaultCoachHistories();
-      _answeredSteps = 0;
-      _assistantMessages = <String>[];
-      _onboardingComplete = false;
       nullOnboardingProgram = false;
       intakeDisclosureAcknowledged = false;
       intakeStatus = 'in_progress';

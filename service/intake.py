@@ -4,7 +4,7 @@ The module is the single source of truth for the named onboarding decisions the
 domain supports: each field's name, type, allowed values/range, required/optional
 status, the profile column it maps to, and any explanation shown to the player.
 Validation, per-answer persistence, resume/progress, legacy prefill, the
-hosted-processing disclosure gate, and confirmation into the existing profile +
+onboarding privacy notice, and confirmation into the existing profile +
 first-program path all live here.
 
 Two disclosures are deliberately made explicit because the program code, not
@@ -111,7 +111,7 @@ class IntakeValidationError(IntakeError):
 
 
 class IntakeDisclosureRequired(IntakeError):
-    """Answers were submitted before the hosted-processing disclosure -> HTTP 403."""
+    """Answers were submitted before the onboarding privacy notice -> HTTP 403."""
 
 
 class IntakeAlreadyConfirmed(IntakeError):
@@ -120,10 +120,6 @@ class IntakeAlreadyConfirmed(IntakeError):
 
 class IntakeConfirmInProgress(IntakeError):
     """Another confirmation owns the claim; a concurrent caller gets HTTP 409."""
-
-
-class StructuredIntakeActive(IntakeError):
-    """Legacy three-step routes are refused while a structured intake exists -> HTTP 409."""
 
 
 @dataclass(frozen=True)
@@ -407,12 +403,10 @@ def _initialize_confirmed_from_profile(ledger: Any, profile: dict[str, Any], act
 def _initialize_in_progress_from_profile(ledger: Any, profile: dict[str, Any]) -> None:
     """Prefills an editable intake from a profile written before completion.
 
-    The legacy graph persists the profile at step 3, but the first program is
-    only created when ``/onboarding/complete`` runs. An account with a profile
-    and no active program must resume as in_progress with the answered values
-    prefilled, never be synthesized as confirmed-with-no-program. The hosted
-    disclosure is treated as already accepted because a profile can only exist
-    after the player completed the legacy intake, so confirming can generate.
+    A prior intake flow could persist the profile before first-program creation.
+    Such an account resumes as in_progress with its answered values prefilled,
+    never as confirmed-with-no-program. The disclosure is treated as accepted
+    because the profile was saved only after that flow's disclosure step.
     """
     ledger.save_intake_state(status=STATUS_IN_PROGRESS, disclosure_acknowledged=1)
     for spec in INTAKE_FIELDS:
@@ -426,10 +420,9 @@ def ensure_intake(db: Any, ledger_id: str, ledger: Any | None = None) -> None:
 
     Order of resolution: an existing structured state wins; otherwise a profile
     plus an active program means the account already onboarded (confirmed, values
-    from the profile); a profile with no active program (the graph wrote it but
-    ``/complete`` never ran) resumes in_progress with values prefilled; otherwise
-    an incomplete legacy three-step intake prefills the compatible fields;
-    otherwise the intake starts empty.
+    from the profile); a profile with no active program resumes in_progress with
+    values prefilled; otherwise an incomplete legacy intake prefills compatible
+    fields; otherwise the intake starts empty.
 
     This is the only write on ``GET /onboarding/intake`` and it is required:
     legacy accounts have no structured row, so the contract must synthesize their
@@ -450,52 +443,6 @@ def ensure_intake(db: Any, ledger_id: str, ledger: Any | None = None) -> None:
         ledger.save_intake_state(status=STATUS_IN_PROGRESS)
         for name, value in prefilled.items():
             ledger.save_intake_answer(name, value, prefilled=True)
-
-
-def structured_intake_active(db: Any, ledger_id: str, ledger: Any | None = None) -> bool:
-    """True when a structured intake row exists in any in-progress/confirmed status.
-
-    Accounts with no structured row keep the legacy three-step routes unchanged
-    (backward compatibility for the current client until #51 ships).
-    """
-    with ledger_scope(db, ledger, ledger_id) as ledger:
-        state = ledger.get_intake_state()
-    if state is None:
-        return False
-    return state.get("status") in {STATUS_IN_PROGRESS, STATUS_CONFIRMING, STATUS_CONFIRMED}
-
-
-def record_legacy_completion(
-    db: Any,
-    ledger_id: str,
-    program: Any,
-    program_message: str | None,
-    ledger: Any | None = None,
-    *,
-    actor: ProgramAnalyticsActor,
-    program_generated: bool,
-    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
-) -> None:
-    """Marks an existing structured intake confirmed when legacy ``/complete`` runs.
-
-    Stores the same program result the structured confirm stores, so later answer
-    edits are refused 409 and ``POST /intake/confirm`` replays instead of creating
-    a second program.
-    """
-    with ledger_scope(db, ledger, ledger_id) as ledger:
-        if ledger.get_intake_state() is not None:
-            ledger.save_intake_state(
-                status=STATUS_CONFIRMED,
-                confirmed_at=datetime.now(UTC).isoformat(),
-                program_name=program.program_name if program is not None else None,
-                weekly_frequency=program.weekly_frequency if program is not None else None,
-                program_message=program_message,
-            )
-    if program_generated:
-        with ledger_scope(db, ledger, ledger_id) as ledger:
-            persisted = ledger.get_active_program()
-        if persisted is not None:
-            capture_program_generated(actor, "onboarding", persisted, client=client)
 
 
 def build_view(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, Any]:
@@ -576,7 +523,7 @@ def build_view(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, 
 
 
 def acknowledge_disclosure(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, Any]:
-    """Records that the hosted-processing disclosure was accepted before answers."""
+    """Records acknowledgment of the onboarding privacy notice before answers."""
     with ledger_scope(db, ledger, ledger_id) as ledger:
         ensure_intake(db, ledger_id, ledger=ledger)
         ledger.save_intake_state(disclosure_acknowledged=1)
@@ -600,7 +547,7 @@ def save_answer(
             )
         if not state.get("disclosure_acknowledged"):
             raise IntakeDisclosureRequired(
-                "Acknowledge the hosted-processing disclosure before saving onboarding answers."
+                "Acknowledge the onboarding privacy notice before saving answers."
             )
         value = validate_answer(field_name, raw)
         ledger.save_intake_answer(field_name, value, prefilled=False)
@@ -625,7 +572,6 @@ def confirm_intake(
     ledger: Any | None = None,
     *,
     client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
-    scope: Any | None = None,
 ) -> dict[str, Any]:
     """Writes the confirmed profile and creates the first program, exactly once.
 
@@ -633,10 +579,9 @@ def confirm_intake(
     (``in_progress`` -> ``confirming``) before any generation, so a second request
     that arrives while generation is in flight is refused 409 instead of
     generating a second program; once confirmed, both replay the stored result.
-    Generation reuses ``service.onboarding.complete_onboarding`` so it stays
-    metered/admitted (ADR 038) and obeys program authority (ADR 026). If
-    generation fails (including a model-limit 429), the claim is released back to
-    ``in_progress`` and the error re-raised so the player can retry.
+    Generation reuses ``service.onboarding.complete_onboarding`` and obeys
+    program authority (ADR 026). If generation fails, the claim is released back
+    to ``in_progress`` and the error re-raised so the player can retry.
     """
     with ledger_scope(db, ledger, ledger_id) as ledger:
         ensure_intake(db, ledger_id, ledger=ledger)
@@ -647,7 +592,7 @@ def confirm_intake(
             raise IntakeConfirmInProgress("A program is already being generated for this intake.")
         if not state.get("disclosure_acknowledged"):
             raise IntakeDisclosureRequired(
-                "Acknowledge the hosted-processing disclosure before creating your program."
+                "Acknowledge the onboarding privacy notice before creating your program."
             )
 
         answers = ledger.load_intake_answers()
@@ -677,12 +622,8 @@ def confirm_intake(
             result = onboarding_service.complete_onboarding(
                 db,
                 ledger_id,
-                {},
                 player_account_id=player_account_id,
                 ledger=ledger,
-                emit_program_analytics=False,
-                client=client,
-                scope=scope,
             )
         except BaseException:
             ledger.release_intake_confirmation(datetime.now(UTC).isoformat())

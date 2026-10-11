@@ -1,20 +1,15 @@
-"""Onboarding intake steps over the onboarding graph."""
+"""Deterministic first-program creation and onboarding analytics."""
 
 from __future__ import annotations
 
 import logging
 import sqlite3
-import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 from database.ledger.onboarding import OnboardingAnalyticsStart
-from langchain_core.messages import HumanMessage
-from service import analytics
-from service.keyed_locks import KeyedLocks
 
-_ONBOARDING_LOCKS = KeyedLocks()
 logger = logging.getLogger(__name__)
 
 
@@ -45,18 +40,13 @@ def _onboarding_duration_seconds(started_at: str) -> int | None:
     return max(0, int((datetime.now(UTC) - started.astimezone(UTC)).total_seconds()))
 
 
-def _prefilled_fields_count(answers: dict[str, dict[str, Any]], legacy_state: dict[str, Any] | None) -> int:
-    if answers:
-        return sum(1 for answer in answers.values() if answer["prefilled"])
-    from service.intake import legacy_prefill
-
-    return len(legacy_prefill(legacy_state))
+def _prefilled_fields_count(answers: dict[str, dict[str, Any]]) -> int:
+    return sum(1 for answer in answers.values() if answer["prefilled"])
 
 
 def record_onboarding_completion(
     ledger: Any,
     answers: dict[str, dict[str, Any]],
-    legacy_state: dict[str, Any] | None = None,
 ) -> OnboardingCompletionAnalytics | None:
     """Persists the one-time completion fact and returns safe event properties."""
     try:
@@ -66,89 +56,12 @@ def record_onboarding_completion(
         duration_seconds = _onboarding_duration_seconds(started_at)
         if duration_seconds is None:
             return None
-        prefilled_fields_count = _prefilled_fields_count(answers, legacy_state)
+        prefilled_fields_count = _prefilled_fields_count(answers)
         first_completion = ledger.mark_onboarding_analytics_completed(datetime.now(UTC).isoformat())
     except sqlite3.Error:
         logger.exception("Could not persist onboarding analytics completion; onboarding continues.")
         return None
     return OnboardingCompletionAnalytics(duration_seconds, prefilled_fields_count, first_completion)
-
-
-def _onboarding_lock(ledger_id: str) -> threading.Lock:
-    """Get process-local coordination; production uses one Uvicorn worker for SQLite."""
-    return _ONBOARDING_LOCKS.get(ledger_id)
-
-
-def _graph_config(db: Any, ledger: Any) -> dict[str, Any]:
-    """Carries the explicit ledger/store on the LangGraph run config (ADR 041)."""
-    return {"configurable": {"ledger": ledger, "store": db}}
-
-
-def start_onboarding(
-    db: Any,
-    ledger_id: str,
-    player_account_id: str | None = None,
-    ledger: Any | None = None,
-    *,
-    scope: Any | None = None,
-    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
-) -> dict[str, Any]:
-    from agent.onboarding_graph import onboarding_graph
-    from service._base import ledger_scope
-    from svc.llm import InferenceScope, run_inference_sync
-
-    clean_id = db._sanitize_username(ledger_id)
-    with ledger_scope(db, ledger, clean_id) as handle:
-        state = {"messages": [], "trainee_id": clean_id, "intake_step": 1, "is_complete": False, "profile_data": None}
-        inference_scope = scope or InferenceScope(
-            account_id=player_account_id,
-            role="player",
-            purpose="onboarding",
-            store=db,
-            client=client,
-        )
-        return run_inference_sync(
-            onboarding_graph.invoke,
-            state,
-            config=_graph_config(db, handle),
-            scope=inference_scope,
-        )
-
-
-def answer_intake(
-    db: Any,
-    ledger_id: str,
-    state: dict[str, Any],
-    user_input: str,
-    player_account_id: str | None = None,
-    ledger: Any | None = None,
-    *,
-    scope: Any | None = None,
-    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
-) -> dict[str, Any]:
-    from agent.onboarding_graph import onboarding_graph
-    from service._base import ledger_scope
-    from svc.llm import InferenceScope, run_inference_sync
-
-    clean_id = db._sanitize_username(ledger_id)
-    with ledger_scope(db, ledger, clean_id) as handle:
-        state["messages"].append(HumanMessage(content=user_input))
-        state["trainee_id"] = clean_id
-        inference_scope = scope or InferenceScope(
-            account_id=player_account_id,
-            role="player",
-            purpose="onboarding",
-            store=db,
-            client=client,
-        )
-        output = run_inference_sync(
-            onboarding_graph.invoke,
-            state,
-            config=_graph_config(db, handle),
-            scope=inference_scope,
-        )
-        state.update(output)
-        return state
 
 
 def _record_welcome_message_once(ledger: Any, message: str) -> None:
@@ -165,8 +78,6 @@ def _resolve_onboarding_program(
     db: Any,
     ledger: Any,
     player_account_id: str | None,
-    client: analytics.ClientContext,
-    emit_program_analytics: bool,
 ) -> tuple[Any, str, bool]:
     from agent.program_generator import generate_program_pipeline
     from service.programs import COACH_CONTROLLED_ERROR, ensure_active_program, player_controls_program
@@ -178,8 +89,7 @@ def _resolve_onboarding_program(
         player_account_id=player_account_id,
         ledger=ledger,
         trigger="onboarding",
-        emit_analytics=emit_program_analytics,
-        client=client,
+        emit_analytics=False,
     )
     if program is None and player_controls_program(db, ledger, player_account_id):
         program = generate_program_pipeline(ledger=ledger)[0]
@@ -198,42 +108,19 @@ def _resolve_onboarding_program(
 def complete_onboarding(
     db: Any,
     ledger_id: str,
-    state: dict[str, Any],
     player_account_id: str | None = None,
     ledger: Any | None = None,
-    *,
-    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
-    emit_program_analytics: bool = True,
-    scope: Any | None = None,
 ) -> dict[str, Any]:
-    from svc.llm import InferenceScope, run_inference_sync
-
     from service._base import ledger_scope
 
     with ledger_scope(db, ledger, ledger_id) as ledger:
-        # Keep duplicate completions out of the inference gate while they wait here.
-        with _onboarding_lock(ledger.ledger_id):
-            inference_scope = scope or InferenceScope(
-                account_id=player_account_id,
-                role="player",
-                purpose="onboarding_complete",
-                store=db,
-                client=client,
-            )
-            program, program_message, program_generated = run_inference_sync(
-                _resolve_onboarding_program,
-                db,
-                ledger,
-                player_account_id,
-                client,
-                emit_program_analytics,
-                scope=inference_scope,
-            )
+        program, program_message, program_generated = _resolve_onboarding_program(
+            db, ledger, player_account_id
+        )
         if program is None:
             return {
                 "program": None,
-                "state": state,
                 "program_message": program_message,
                 "program_generated": False,
             }
-        return {"program": program, "state": state, "program_generated": program_generated}
+        return {"program": program, "program_generated": program_generated}

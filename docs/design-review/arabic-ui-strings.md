@@ -265,9 +265,9 @@ numbers use Western digits.
 | Review your setup | راجع إعدادك |
 | Check your answers. You can edit anything before MAYOS builds your first program. | راجع إجاباتك. يمكنك تعديلها قبل أن ينشئ MAYOS برنامجك التدريبي الأول. |
 | Some required answers are still missing. | ما زالت بعض الإجابات المطلوبة ناقصة. |
-| Hosted AI processing | معالجة عبر الذكاء الاصطناعي المستضاف |
-| Onboarding is powered by a hosted AI provider. The answers you type and the training context needed to respond are sent for processing. Free text you write may contain personal information, so avoid sharing anything you do not want processed. | يعتمد إعداد التدريب على مزود ذكاء اصطناعي مستضاف. تُرسل إجاباتك وسياق التدريب اللازم للرد لمعالجتهما. قد يتضمن النص الحر معلومات شخصية، لذا تجنب مشاركة ما لا ترغب في معالجته. |
-| Nothing is sent until you continue. You can change any answer before your program is created. | لن يُرسل شيء حتى تتابع. يمكنك تغيير أي إجابة قبل إنشاء برنامجك. |
+| Your answers and privacy | إجاباتك وخصوصيتك |
+| MAYOS uses your answers to create your first Training program with fixed rules. Onboarding and program creation do not call a hosted AI model. Your answers are saved in your private Training ledger. | يستخدم MAYOS إجاباتك لإنشاء برنامجك التدريبي الأول بقواعد محددة. لا يستخدم إعداد التدريب وإنشاء البرنامج أي نموذج ذكاء اصطناعي مستضاف. تُحفظ إجاباتك في سجل التدريب الخاص بحسابك. |
+| You can change any answer before your first program is created. | يمكنك تعديل أي إجابة قبل إنشاء برنامجك التدريبي الأول. |
 | Could not load your setup | تعذر تحميل إعدادك |
 | Building your program | جارٍ إنشاء برنامجك التدريبي |
 | This can take a moment. Your answers are saved. | قد يستغرق هذا بعض الوقت. حُفظت إجاباتك. |

@@ -1852,30 +1852,6 @@ class ApiClient {
     );
   }
 
-  Future<OnboardingState> startOnboarding() async {
-    final response = await _send(() => _dio.post<dynamic>('/onboarding/start'));
-    return OnboardingState.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<OnboardingState> submitOnboardingStep({
-    String? content,
-    bool reset = false,
-  }) async {
-    final response = await _send(
-      () => _dio.post<dynamic>(
-        '/onboarding/step',
-        data: {'content': content, 'reset': reset},
-      ),
-    );
-    return OnboardingState.fromJson(response.data as Map<String, dynamic>);
-  }
-
-  Future<OnboardingCompletion> completeOnboarding() async {
-    final response =
-        await _send(() => _dio.post<dynamic>('/onboarding/complete'));
-    return OnboardingCompletion.fromJson(response.data as Map<String, dynamic>);
-  }
-
   /// The structured, resumable intake contract (`GET /onboarding/intake`, #50).
   Future<OnboardingIntake> onboardingIntake({
     String invalidDataMessage =
@@ -1886,8 +1862,8 @@ class ApiClient {
         response.data, OnboardingIntake.fromJson, invalidDataMessage);
   }
 
-  /// Acknowledges the hosted-processing disclosure before any answer is saved
-  /// (`POST /onboarding/intake/disclosure`, ADR 016/036).
+  /// Acknowledges the onboarding privacy notice before any answer is saved
+  /// (`POST /onboarding/intake/disclosure`).
   Future<OnboardingIntake> acknowledgeIntakeDisclosure() async {
     final response =
         await _send(() => _dio.post<dynamic>('/onboarding/intake/disclosure'));

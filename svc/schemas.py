@@ -135,9 +135,6 @@ __all__ = [
     "IntakeProgressOut",
     "IntakeProgramOut",
     "MessageOut",
-    "OnboardingStartOut",
-    "OnboardingStepIn",
-    "OnboardingStepOut",
     "PasswordChangeIn",
     "PersonaUpdate",
     "PlanStateOut",
@@ -1499,21 +1496,6 @@ class ChatMessageIn(BaseModel):
 class ChatMessageOut(BaseModel):
     response_content: str
     program_updated: bool
-
-
-class OnboardingStepIn(BaseModel):
-    content: str | None = Field(default=None, max_length=5000)
-    reset: bool = False
-
-
-class OnboardingStartOut(BaseModel):
-    intake_step: int
-    is_complete: bool
-    messages: list[str]
-
-
-class OnboardingStepOut(OnboardingStartOut):
-    pass
 
 
 class IntakeAnswerIn(BaseModel):

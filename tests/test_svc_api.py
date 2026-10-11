@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage
 
 from database.database_manager import DatabaseManager
 from svc.app import create_app
@@ -767,110 +767,21 @@ def test_lifespan_skip_mode_and_drain_flag(monkeypatch):
     app_module._ready.update({"model": False, "catalog": False, "draining": False})
 
 
-def test_onboarding_state_is_server_side(client, monkeypatch):
-    from service import onboarding as onboarding_service
+def test_legacy_onboarding_routes_are_absent_from_inventory_and_return_404(client):
+    removed_paths = {
+        "/onboarding/start",
+        "/onboarding/step",
+        "/onboarding/complete",
+    }
+    registered_paths = {
+        getattr(route, "path", "")
+        for route in client.app.routes
+    }
+    assert removed_paths.isdisjoint(registered_paths)
 
-    client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
-    calls = []
-
-    def fake_start(db, ledger_id, player_account_id=None, ledger=None, **_kwargs):
-        calls.append(ledger_id)
-        return {"messages": [AIMessage(content="Q1?")], "trainee_id": ledger_id, "intake_step": 1, "is_complete": False, "profile_data": None}
-
-    def fake_answer(db, ledger_id, state, user_input, player_account_id=None, ledger=None, **_kwargs):
-        calls.append((ledger_id, user_input))
-        state["messages"].append(HumanMessage(content=user_input))
-        state["messages"].append(AIMessage(content="Q2?"))
-        return state
-
-    monkeypatch.setattr(onboarding_service, "start_onboarding", fake_start)
-    monkeypatch.setattr(onboarding_service, "answer_intake", fake_answer)
-    started = client.post("/onboarding/start").json()
-    assert started["messages"] == ["Q1?"]
-    step = client.post("/onboarding/step", json={"content": "25"}).json()
-    assert step["messages"] == ["Q2?"]
-    assert calls[1] == ("alice", "25")
-
-
-def test_onboarding_answer_keeps_assistant_reply_when_prior_messages_exist(client):
-    """Regression: Fly onboarding advanced but returned no assistant replies."""
-    assert client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"}).status_code == 201
-    assert client.post("/onboarding/start").status_code == 200
-
-    for answer, next_step, is_complete in (
-        ("1: lower body 2: male, 30 years, 80 kg, 180 cm", 2, False),
-        ("3: build muscle 4: stay strong 5: 3 days 6: 2 years", 3, False),
-        ("7: full gym 8: no injuries 9: low stress, 8 hours sleep", 3, True),
-    ):
-        response = client.post("/onboarding/step", json={"content": answer})
-        assert response.status_code == 200
-        assert response.json()["intake_step"] == next_step
-        assert response.json()["is_complete"] is is_complete
-        assert response.json()["messages"]
-
-
-def test_onboarding_state_survives_restart(client, monkeypatch):
-    from service import onboarding as onboarding_service
-
-    client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
-    seen_states = []
-
-    def fake_start(db, ledger_id, player_account_id=None, ledger=None, **_kwargs):
-        return {"messages": [AIMessage(content="Q1?")], "trainee_id": ledger_id, "intake_step": 1, "is_complete": False, "profile_data": None}
-
-    def fake_answer(db, ledger_id, state, user_input, player_account_id=None, ledger=None, **_kwargs):
-        seen_states.append((ledger_id, [m.content for m in state["messages"]], user_input))
-        state["messages"].append(HumanMessage(content=user_input))
-        state["messages"].append(AIMessage(content="Q2?"))
-        return state
-
-    monkeypatch.setattr(onboarding_service, "start_onboarding", fake_start)
-    monkeypatch.setattr(onboarding_service, "answer_intake", fake_answer)
-    assert client.post("/onboarding/start").json()["messages"] == ["Q1?"]
-    assert client.post("/onboarding/step", json={"content": "25"}).json()["messages"] == ["Q2?"]
-    # Second step reloads persisted state from the ledger: prior messages present without process memory.
-    assert client.post("/onboarding/step", json={"content": "male"}).json()["messages"] == ["Q2?"]
-    assert seen_states[1][1] == ["Q1?", "25", "Q2?"]
-    assert seen_states[1][2] == "male"
-
-
-def test_onboarding_start_resumes_persisted_progress(client, monkeypatch):
-    """An app restart calls /onboarding/start again: it must resume, not reset."""
-    from service import onboarding as onboarding_service
-
-    client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
-    answered_from = []
-
-    def fake_start(db, ledger_id, player_account_id=None, ledger=None, **_kwargs):
-        return {
-            "messages": [AIMessage(content="Q1?")],
-            "trainee_id": ledger_id,
-            "intake_step": 1,
-            "is_complete": False,
-            "profile_data": None,
-        }
-
-    def fake_answer(db, ledger_id, state, user_input, player_account_id=None, ledger=None, **_kwargs):
-        answered_from.append([m.content for m in state["messages"]])
-        state["messages"].append(HumanMessage(content=user_input))
-        state["messages"].append(AIMessage(content="Q2?"))
-        return state
-
-    monkeypatch.setattr(onboarding_service, "start_onboarding", fake_start)
-    monkeypatch.setattr(onboarding_service, "answer_intake", fake_answer)
-
-    assert client.post("/onboarding/step", json={"content": "25"}).json()["messages"] == ["Q2?"]
-
-    # A fresh /onboarding/start, as after an app restart mid-intake, returns the
-    # full assistant conversation instead of discarding saved progress.
-    resumed = client.post("/onboarding/start")
-    assert resumed.status_code == 200
-    assert resumed.json()["messages"] == ["Q1?", "Q2?"]
-
-    # Explicit reset on /onboarding/step still clears saved progress before answering.
-    reset = client.post("/onboarding/step", json={"content": "restart", "reset": True}).json()
-    assert reset["messages"] == ["Q2?"]
-    assert answered_from[-1] == ["Q1?"]
+    assert client.post("/onboarding/start").status_code == 404
+    assert client.post("/onboarding/step", json={"content": "hello"}).status_code == 404
+    assert client.post("/onboarding/complete").status_code == 404
 
 
 def test_removed_legacy_routes_return_not_found(client):
