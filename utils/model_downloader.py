@@ -142,7 +142,13 @@ def _extra_body(model_type: str) -> dict[str, Any] | None:
     return default
 
 
-def _build_cloud_llm(model_type: str) -> SafeChatOpenAI:
+def _build_cloud_llm(
+    model_type: str,
+    *,
+    timeout: float | None = None,
+    max_retries: int | None = None,
+    stream_chunk_timeout: float | None = None,
+) -> SafeChatOpenAI:
     if model_type not in CLOUD_MODEL_REGISTRY:
         raise ValueError(f"Unknown model_type '{model_type}'. Choose from {list(CLOUD_MODEL_REGISTRY)}")
     api_key = _cloud_api_key()
@@ -161,9 +167,18 @@ def _build_cloud_llm(model_type: str) -> SafeChatOpenAI:
         extra_body=_extra_body(model_type),
         stream_usage=True,
         callbacks=_metering_callbacks(model_id),
-        timeout=_positive_float_env("LLM_REQUEST_TIMEOUT", DEFAULT_CLOUD_REQUEST_TIMEOUT),
-        max_retries=_non_negative_int_env("LLM_MAX_RETRIES", DEFAULT_CLOUD_MAX_RETRIES),
-        stream_chunk_timeout=_positive_float_env("LLM_STREAM_CHUNK_TIMEOUT", DEFAULT_CLOUD_STREAM_CHUNK_TIMEOUT),
+        timeout=timeout if timeout is not None else _positive_float_env("LLM_REQUEST_TIMEOUT", DEFAULT_CLOUD_REQUEST_TIMEOUT),
+        max_retries=max_retries if max_retries is not None else _non_negative_int_env("LLM_MAX_RETRIES", DEFAULT_CLOUD_MAX_RETRIES),
+        stream_chunk_timeout=stream_chunk_timeout if stream_chunk_timeout is not None else _positive_float_env(
+            "LLM_STREAM_CHUNK_TIMEOUT", DEFAULT_CLOUD_STREAM_CHUNK_TIMEOUT
+        ),
+    )
+
+
+def build_player_llm(*, timeout: float, max_retries: int = DEFAULT_CLOUD_MAX_RETRIES) -> SafeChatOpenAI:
+    """Builds an uncached player model with explicit per-run request settings."""
+    return _build_cloud_llm(
+        "production", timeout=timeout, max_retries=max_retries, stream_chunk_timeout=timeout
     )
 
 
@@ -238,6 +253,7 @@ __all__ = [
     "CLOUD_MODEL_REGISTRY",
     "DEFAULT_CLOUD_API_BASE",
     "SafeChatOpenAI",
+    "build_player_llm",
     "coach_llm",
     "configured_model_ids",
     "get_coach_llm",
