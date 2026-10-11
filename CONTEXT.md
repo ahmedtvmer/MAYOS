@@ -128,6 +128,11 @@ Secondary actions describe additional joint actions and do not match a Primary
 action filter.
 _Arabic_: الحركة الأساسية
 
+**Movement signature**:
+The Primary actions and Primary muscles allowed for a movement slot. A curated
+Exercise library row matches only when both its Primary action and Primary
+muscle appear in the slot's signature.
+
 **Coach exercise**:
 An exercise a Coach creates when the Exercise library lacks the movement. It has a Coach-owned id, optional body-part and Equipment tags, an optional note, and an optional HTTPS video link stored as text. It has no media, is searchable only by its owner in Coach mode, and is visible to a Player when prescribed in that Coach's Training program. The Player keeps its logged history after the Assignment ends.
 _Arabic_: تمرين من إنشاء المدرب

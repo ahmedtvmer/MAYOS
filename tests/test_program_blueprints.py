@@ -10,6 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
 from agent import program_generator
+from agent.movement_signatures import matches_movement_signature
 from agent.ProgramState import CustomDayPlan, DynamicSplitPlan
 from core.effort import rir_from_rpe
 from agent.program_blueprints import (
@@ -57,6 +58,17 @@ def _bind_store(fresh_store):
 
 
 ALL_BLUEPRINTS = FB_DAYS + FEMALE_FB_DAYS + UL_DAYS + ARNOLD_DAYS + ARNOLD_X_UL_DAYS + ANTERIOR_POSTERIOR_DAYS + PPL_DAYS
+
+
+def _candidate_matches_slot_signature(slot_key, candidate):
+    spec = SLOT_SPECS[slot_key]
+    entry = db.get_exercise_library_entry(str(candidate["id"]))
+    return (
+        entry is not None
+        and matches_movement_signature(
+            entry.get("primary_action"), entry.get("primary_muscle"), spec
+        )
+    )
 
 EXPECTED_PRESCRIPTION_RANGES = {
     "calf_abs": {"rest_seconds": (90, 120), "warmup_sets": (0, 0)},
@@ -336,7 +348,18 @@ def test_equipment_access_generation_uses_only_ordered_staples_and_next_substitu
                         candidate for staple_id in SLOT_STAPLES[slot]
                         for candidate in candidates if str(candidate["id"]) == staple_id
                     ]
-                    if not allowed:
+                    prior = [item.exercise_id for item in day.exercises if item is not exercise]
+                    expected = next((item for item in allowed if str(item["id"]) not in prior), None)
+                    if expected is None:
+                        signature_matches = [
+                            item for item in candidates
+                            if _candidate_matches_slot_signature(slot, item)
+                        ]
+                        expected = next(
+                            (item for item in signature_matches if str(item["id"]) not in prior),
+                            None,
+                        )
+                    if expected is None:
                         fallback_options = (
                             *SLOT_FALLBACKS.get(slot, {}).get(None, ()),
                             *SLOT_FALLBACKS.get(slot, {}).get(access, ()),
@@ -350,23 +373,32 @@ def test_equipment_access_generation_uses_only_ordered_staples_and_next_substitu
                                 for candidate in fallback_candidates
                                 if str(candidate["id"]) == staple_id
                             ]
-                            if allowed:
+                            expected = next((item for item in allowed if str(item["id"]) not in prior), None)
+                            if expected is not None:
                                 source_slot = fallback_slot
                                 break
-                    assert allowed, f"{access} has no allowed Staple or documented fallback for {slot}"
-                    expected = next((item for item in allowed if str(item["id"]) == exercise.exercise_id), None)
-                    assert expected is not None, f"{access} prescribed non-Staple {exercise.exercise_name} for {slot}"
-                    prior = [item.exercise_id for item in day.exercises if item is not exercise]
-                    first_unused = next((item for item in allowed if item["id"] not in prior), allowed[0])
-                    assert exercise.exercise_id == first_unused["id"]
-                    allowed = [
+                    assert expected is not None, f"{access} has no allowed Staple or signature match for {slot}"
+                    expected_is_staple = any(
+                        str(item["id"]) == str(expected["id"]) for item in allowed
+                    )
+                    if not expected_is_staple:
+                        assert _candidate_matches_slot_signature(slot, expected)
+                        assert not any(str(item["id"]) not in prior for item in allowed), (
+                            f"{access} skipped an unused Staple for {slot}"
+                        )
+                    else:
+                        assert any(str(item["id"]) == exercise.exercise_id for item in allowed), (
+                            f"{access} prescribed non-Staple {exercise.exercise_name} for {slot}"
+                        )
+                    assert exercise.exercise_id == str(expected["id"])
+                    expected_staples = [
                         candidate for staple_id in SLOT_STAPLES[source_slot]
                         for candidate in fetch_slot_candidates(
                             source_slot, access, "None", limit=100, ledger=db.ledger
                         ) if str(candidate["id"]) == staple_id
                     ]
                     expected_substitutes = [
-                        str(item["id"]) for item in allowed
+                        str(item["id"]) for item in expected_staples
                         if str(item["id"]) != exercise.exercise_id and str(item["id"]) not in day_ids
                     ][:2]
                     actual_substitutes = [item.exercise_id for item in exercise.suggested_substitutes]
@@ -376,7 +408,10 @@ def test_equipment_access_generation_uses_only_ordered_staples_and_next_substitu
         for slot in SLOT_SPECS:
             direct = fetch_slot_candidates(slot, access, "None", limit=100, ledger=db.ledger)
             direct_staples = [item for item in direct if str(item["id"]) in SLOT_STAPLES[slot]]
-            if direct_staples:
+            direct_signatures = [
+                item for item in direct if _candidate_matches_slot_signature(slot, item)
+            ]
+            if direct_staples or direct_signatures:
                 continue
             options = (
                 *SLOT_FALLBACKS.get(slot, {}).get(None, ()),
@@ -761,11 +796,14 @@ def test_back_limitation_substitutes_hamstring_alternative():
     program = _generate("male", 4, limitations="lower back tightness")
     names = [e.exercise_name.lower() for d in program.days for e in d.exercises]
     assert not any("deadlift" in name or "good morning" in name for name in names)
+    assert not any("clean" in name or "snatch" in name for name in names)
     for day in program.days:
         assert len(day.exercises) >= 10, f"{day.day_name} shrank to {len(day.exercises)} exercises"
     lower2 = next(d for d in program.days if d.day_name == "Lower 2")
     ham_curls = [e for e in lower2.exercises if e.slot_key == "ham_curl"]
-    assert len(ham_curls) >= 2, "ham_hinge fallback did not add a second leg-curl variant"
+    assert not any(e.slot_key == "ham_hinge" for e in lower2.exercises)
+    assert len(ham_curls) >= 2
+    assert any(e.exercise_id == "599" for e in ham_curls)
 
     full_body = _generate("male", 3, limitations="lower back tightness")
     for day in full_body.days:

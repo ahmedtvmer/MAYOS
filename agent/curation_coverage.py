@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import sqlite3
 
 from agent.program_blueprints import SLOT_SPECS, SLOT_STAPLES, SlotSpec
+from agent.movement_signatures import matches_movement_signature
 from database.exercise_library.schema import exercise_library_visible_sql
 from utils.equipment_access import EQUIPMENT_ACCESS_VALUES, equipment_access_allows
 
@@ -85,6 +86,7 @@ def _matching_signature_ids(
     return {
         exercise_id
         for exercise_id, row in allowed.items()
-        if row["primary_action"] in spec.primary_actions
-        and row["primary_muscle"] in spec.primary_muscles
+        if matches_movement_signature(
+            row["primary_action"], row["primary_muscle"], spec
+        )
     }

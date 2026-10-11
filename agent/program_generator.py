@@ -30,6 +30,8 @@ from agent.program_blueprints import (
     warmup_sets_for_load_class,
 )
 from agent.program_rules import (
+    NO_LIMITATIONS,
+    SLOT_CANDIDATE_SIGNATURE,
     apply_rep_preference,
     exercise_mechanic,
     fetch_slot_candidates,
@@ -207,11 +209,56 @@ def _ordered_staples(candidates: list[dict], slot_key: str) -> list[dict]:
     return [by_id[exercise_id] for exercise_id in SLOT_STAPLES.get(slot_key, ()) if exercise_id in by_id]
 
 
+def _staple_candidate_ids(candidates: list[dict], slot_key: str) -> set[str]:
+    return {str(candidate["id"]) for candidate in _ordered_staples(candidates, slot_key)}
+
+
+def _without_signature_candidates(candidates: list[dict]) -> list[dict]:
+    return [
+        candidate
+        for candidate in candidates
+        if candidate.get("_candidate_source") != SLOT_CANDIDATE_SIGNATURE
+    ]
+
+
 def _pick_candidate(candidates: list[dict], slot_key: str, excluded_ids: set[str]) -> dict | None:
     available = [c for c in _ordered_staples(candidates, slot_key) if str(c["id"]) not in excluded_ids]
-    if not available:
-        return None
-    return available[0]
+    if available:
+        return available[0]
+    return next(
+        (
+            candidate
+            for candidate in candidates
+            if candidate.get("_candidate_source") == SLOT_CANDIDATE_SIGNATURE
+            and str(candidate["id"]) not in excluded_ids
+        ),
+        None,
+    )
+
+
+def _limitation_removed_staples(
+    candidates: list[dict],
+    slot_key: str,
+    context: DayGenerationContext,
+    excluded_ids: set[str],
+    *,
+    ledger: Any,
+) -> bool:
+    """Whether limitations removed Staples and no allowed unused Staple remains."""
+    if str(context.limitations or "").strip().casefold() in {"", NO_LIMITATIONS.casefold()}:
+        return False
+    unrestricted_ids = _staple_candidate_ids(
+        fetch_slot_candidates(
+            slot_key,
+            context.equipment_access,
+            NO_LIMITATIONS,
+            limit=SLOT_CANDIDATE_LIMIT,
+            ledger=ledger,
+        ),
+        slot_key,
+    )
+    limited_ids = _staple_candidate_ids(candidates, slot_key)
+    return bool(unrestricted_ids - limited_ids) and not (limited_ids - excluded_ids)
 
 
 def assemble_deterministic_day(
@@ -234,6 +281,15 @@ def assemble_deterministic_day(
             logger.warning(f"Unknown slot '{slot_key}' in day '{day.day_name}' was skipped.")
             continue
         candidates = fetch_slot_candidates(slot_key, context.equipment_access, context.limitations, limit=SLOT_CANDIDATE_LIMIT, ledger=ledger)
+        limitation_removed_staples = _limitation_removed_staples(
+            candidates,
+            slot_key,
+            context,
+            excluded_ids,
+            ledger=ledger,
+        )
+        if limitation_removed_staples:
+            candidates = _without_signature_candidates(candidates)
         chosen = _pick_candidate(candidates, slot_key, excluded_ids)
         resolved_slot = slot_key
         if chosen is None:
@@ -249,6 +305,15 @@ def assemble_deterministic_day(
                 if fallback_spec is None:
                     continue
                 fallback_candidates = fetch_slot_candidates(fallback_key, context.equipment_access, context.limitations, limit=SLOT_CANDIDATE_LIMIT, ledger=ledger)
+                fallback_limitation_removed_staples = _limitation_removed_staples(
+                    fallback_candidates,
+                    fallback_key,
+                    context,
+                    excluded_ids,
+                    ledger=ledger,
+                )
+                if limitation_removed_staples or fallback_limitation_removed_staples:
+                    fallback_candidates = _without_signature_candidates(fallback_candidates)
                 fallback_chosen = _pick_candidate(fallback_candidates, fallback_key, excluded_ids)
                 if fallback_chosen is not None:
                     logger.info(f"Substituted '{fallback_key}' for limited slot '{slot_key}' (day '{day.day_name}').")
@@ -517,7 +582,7 @@ def _generate_program_days(
 ) -> list[ProgramDaySchema]:
     context = DayGenerationContext(
         equipment_access=map_equipment_access(profile.get("equipment_access", COMMERCIAL_GYM)),
-        limitations=profile.get("injuries_or_limitations", "None"),
+        limitations=profile.get("injuries_or_limitations", NO_LIMITATIONS),
         rep_preference=request.rep_preference_override or profile.get("rep_preference", "balanced"),
         recovery_cut=is_poor_recovery(profile.get("stress_and_sleep")),
         experience_level=experience_level_for_training_age(profile.get("training_age_years", 0.0)),

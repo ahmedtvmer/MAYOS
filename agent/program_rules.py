@@ -9,6 +9,7 @@ from agent.program_blueprints import (
     DEFAULT_SPLIT_BY_FREQUENCY,
     SLOT_SPECS,
     SLOT_STAPLES,
+    SlotSpec,
     SPLIT_DISPLAY_NAMES,
     REST_SECONDS_RANGES_BY_CLASS,
     WARMUP_FAMILIES,
@@ -18,13 +19,17 @@ from agent.program_blueprints import (
     match_split_keyword,
     resolve_split_type,
 )
+from agent.movement_signatures import matches_movement_signature
 from agent.ProgramState import CustomDayPlan, DynamicSplitPlan
+from database.exercise_library.ranking import replacement_rank_sql
 from database.exercise_library.schema import exercise_library_visible_sql
 from database.exercise_library.values import split_curation_values
 from utils.equipment_access import COMMERCIAL_GYM, equipment_access_sql, map_equipment_access
 from utils.model_downloader import llm
 
 load_dotenv()
+
+NO_LIMITATIONS = "None"
 
 SLANG_TO_SQL_MAP = {
     "quads": "LOWER(target_muscle) = 'quads'",
@@ -138,10 +143,25 @@ EXCLUDED_TERMS = [
 
 EXCLUDED_PATTERNS = [re.compile(rf"\b{re.escape(term)}\b", re.IGNORECASE) for term in EXCLUDED_TERMS]
 
+# The curation vocabulary has no field that marks explosive intent. Keep this
+# name check limited to signature substitutions so explicit Staples retain
+# their coach-defined priority and name-pattern behavior stays unchanged.
+EXPLOSIVE_SIGNATURE_PATTERNS = (
+    re.compile(r"\bcleans?(?![ -]grip\b)\b", re.IGNORECASE),
+    re.compile(r"\bsnatch(?:es)?(?![ -]grip\b)\b", re.IGNORECASE),
+    re.compile(r"\bjerks?\b", re.IGNORECASE),
+    re.compile(r"\b(?:high|clean|hang)[ -]pulls?\b", re.IGNORECASE),
+)
+
 
 def _is_excluded(name: str) -> bool:
     """Word-boundary exclusion so 'run' never kills 'crunch' or 'reach' never kills 'preacher'."""
     return any(pattern.search(name) for pattern in EXCLUDED_PATTERNS)
+
+
+def _is_explosive_signature_substitute(name: str) -> bool:
+    """Whether a name describes an Olympic lift that cannot fill a signature slot."""
+    return any(pattern.search(name) for pattern in EXPLOSIVE_SIGNATURE_PATTERNS)
 
 BASE_REP_WINDOWS = {"compound": (6, 10), "isolation": (10, 15)}
 
@@ -334,26 +354,201 @@ def clean_exercise_name(name: str, replace_with_machine: bool = True) -> str:
     return cleaned.strip()
 
 
-def _equipment_rank_sql(preference: tuple[str, ...]) -> str:
+def _equipment_rank_sql(preference: tuple[str, ...], column: str = "equipment") -> str:
     """Builds an ORDER BY CASE ranking catalog equipment against the slot preference."""
     whens = []
     for index, equipment in enumerate(preference, start=1):
         if not re.fullmatch(r"[a-z0-9 ]+", equipment):
             raise ValueError(f"Unsafe equipment token: {equipment!r}")
         whens.append(f"WHEN '{equipment}' THEN {index}")
-    return f"CASE LOWER(equipment) {' '.join(whens)} ELSE {len(preference) + 1} END"
+    return f"CASE LOWER({column}) {' '.join(whens)} ELSE {len(preference) + 1} END"
 
 
 def _name_rank_sql(name_rank: tuple[str, ...]) -> str:
     """Builds an ORDER BY CASE ranking catalog names against preferred movement patterns."""
     if not name_rank:
         return ""
+    return f"{_name_rank_expression(name_rank)} ASC, "
+
+
+def _name_rank_expression(name_rank: tuple[str, ...]) -> str:
+    if not name_rank:
+        return "0"
     whens = []
     for index, pattern in enumerate(name_rank, start=1):
         if not re.fullmatch(r"[a-z0-9 -]+", pattern):
             raise ValueError(f"Unsafe name pattern: {pattern!r}")
         whens.append(f"WHEN LOWER(e.name) LIKE '%{pattern}%' THEN {index}")
-    return f"CASE {' '.join(whens)} ELSE {len(name_rank) + 1} END ASC, "
+    return f"CASE {' '.join(whens)} ELSE {len(name_rank) + 1} END"
+
+
+def _back_limitation_filter(limitations: str, source_name_column: str = "e.name") -> str | None:
+    if any(word in limitations.lower() for word in ("back", "lumbar", "spine")):
+        return (
+            f"LOWER({source_name_column}) NOT LIKE '%deadlift%' "
+            f"AND LOWER({source_name_column}) NOT LIKE '%good morning%'"
+        )
+    return None
+
+
+def _slot_source_filter(
+    spec: SlotSpec, staple_ids: tuple[str, ...]
+) -> str:
+    clauses = ["sp.exercise_id IS NOT NULL"] if staple_ids else []
+    clauses.append(
+        "(cf.primary_action IS NOT NULL AND cf.primary_muscle IS NOT NULL)"
+    )
+    clauses.append(f"({spec.sql})")
+    return " OR ".join(clauses)
+
+
+def _slot_ctes_and_join(
+    spec: SlotSpec, staple_ids: tuple[str, ...]
+) -> tuple[str, str, list[Any]]:
+    ctes = ["replacement_cf AS (SELECT ? AS primary_action, ? AS primary_muscle)"]
+    params: list[Any] = [spec.primary_actions[0], spec.primary_muscles[0]]
+    if staple_ids:
+        value_rows = ", ".join("(?, ?)" for _ in staple_ids)
+        ctes.append(f"staple_priority(exercise_id, staple_rank) AS (VALUES {value_rows})")
+        params.extend(value for rank, exercise_id in enumerate(staple_ids) for value in (exercise_id, rank))
+    else:
+        ctes.append("staple_priority(exercise_id, staple_rank) AS (SELECT NULL, NULL WHERE 0)")
+    join = "LEFT JOIN staple_priority sp ON sp.exercise_id = e.id"
+    return ", ".join(ctes), join, params
+
+
+def _slot_filters(
+    spec: SlotSpec,
+    equipment_access: str,
+    limitations: str,
+    staple_ids: tuple[str, ...],
+) -> list[str]:
+    source_filter = _slot_source_filter(spec, staple_ids)
+    where = [
+        f"({source_filter})",
+        "LOWER(e.body_part) != 'cardio'",
+        exercise_library_visible_sql("e.id", schema="catalog"),
+        equipment_access_sql(equipment_access, "e.equipment"),
+    ]
+    if spec.exclude_sql:
+        where.append(f"({spec.exclude_sql})")
+    back_filter = _back_limitation_filter(limitations)
+    if back_filter:
+        where.append(back_filter)
+    return where
+
+
+SLOT_CANDIDATE_STAPLE_RANK = 0
+SLOT_CANDIDATE_SIGNATURE_RANK = 1
+SLOT_CANDIDATE_NAME_RANK = 2
+SLOT_CANDIDATE_STAPLE = "staple"
+SLOT_CANDIDATE_SIGNATURE = "signature"
+SLOT_CANDIDATE_NAME = "name"
+
+_SLOT_SOURCE_RANK_SQL = (
+    f"CASE WHEN sp.exercise_id IS NOT NULL THEN {SLOT_CANDIDATE_STAPLE_RANK} "
+    f"WHEN cf.primary_action IS NOT NULL AND cf.primary_muscle IS NOT NULL "
+    f"THEN {SLOT_CANDIDATE_SIGNATURE_RANK} ELSE {SLOT_CANDIDATE_NAME_RANK} END"
+)
+
+
+def _slot_rank_select(spec: SlotSpec) -> str:
+    expressions = {
+        "rank_source": _SLOT_SOURCE_RANK_SQL,
+        "rank_staple": "COALESCE(sp.staple_rank, 0)",
+        "rank_signature": replacement_rank_sql(),
+        "rank_equipment": _equipment_rank_sql(spec.equipment_pref, "e.equipment"),
+        "rank_name_pattern": _name_rank_expression(spec.name_rank),
+        "rank_name_review": "CASE WHEN COALESCE(edn.is_reviewed, 0) = 1 THEN 0 ELSE 1 END",
+        "rank_sort_name": "LOWER(COALESCE(edn.display_name, e.name))",
+    }
+    return ", ".join(f"{expression} AS {name}" for name, expression in expressions.items())
+
+
+_SLOT_CANDIDATE_ORDER_SQL = (
+    "rank_source ASC, "
+    f"CASE WHEN rank_source = {SLOT_CANDIDATE_STAPLE_RANK} THEN rank_staple END ASC, "
+    f"CASE WHEN rank_source = {SLOT_CANDIDATE_SIGNATURE_RANK} THEN rank_signature END ASC, "
+    f"CASE WHEN rank_source = {SLOT_CANDIDATE_SIGNATURE_RANK} THEN rank_equipment END ASC, "
+    f"CASE WHEN rank_source = {SLOT_CANDIDATE_SIGNATURE_RANK} THEN rank_name_review END ASC, "
+    f"CASE WHEN rank_source = {SLOT_CANDIDATE_SIGNATURE_RANK} THEN rank_sort_name END ASC, "
+    f"CASE WHEN rank_source = {SLOT_CANDIDATE_NAME_RANK} THEN rank_name_pattern END ASC, "
+    f"CASE WHEN rank_source = {SLOT_CANDIDATE_NAME_RANK} THEN rank_equipment END ASC, e.id ASC"
+)
+
+
+def _slot_candidate_sql(ctes: str, joins: str, where: list[str], rank_select: str) -> str:
+    return f"""
+        WITH {ctes}
+        SELECT e.id, COALESCE(edn.display_name, e.name) AS name,
+               e.name AS source_name, e.body_part, e.target_muscle,
+               e.equipment, e.instructions, e.image_path, e.gif_path,
+               cf.primary_action, cf.primary_muscle,
+               COALESCE(cf.secondary_actions, '') AS secondary_actions,
+               {rank_select}
+        FROM catalog.exercises e
+        LEFT JOIN catalog.exercise_display_names edn ON edn.exercise_id = e.id
+        LEFT JOIN catalog.exercise_curated_fields cf ON cf.exercise_id = e.id
+        {joins}
+        CROSS JOIN replacement_cf
+        WHERE {' AND '.join(where)}
+        ORDER BY {_SLOT_CANDIDATE_ORDER_SQL}
+    """
+
+
+def _slot_candidate_query(
+    spec: SlotSpec,
+    equipment_access: str,
+    limitations: str,
+    staple_ids: tuple[str, ...],
+) -> tuple[str, list[Any]]:
+    ctes, join, cte_params = _slot_ctes_and_join(spec, staple_ids)
+    where = _slot_filters(spec, equipment_access, limitations, staple_ids)
+    rank_select = _slot_rank_select(spec)
+    query = _slot_candidate_sql(ctes, join, where, rank_select)
+    return query, cte_params
+
+
+def _slot_candidate_source(candidate: dict[str, Any], spec: SlotSpec) -> str | None:
+    source_rank = candidate["rank_source"]
+    if source_rank == SLOT_CANDIDATE_SIGNATURE_RANK:
+        if not matches_movement_signature(
+            candidate.get("primary_action"), candidate.get("primary_muscle"), spec
+        ):
+            return None
+        return SLOT_CANDIDATE_SIGNATURE
+    return SLOT_CANDIDATE_STAPLE if source_rank == SLOT_CANDIDATE_STAPLE_RANK else SLOT_CANDIDATE_NAME
+
+
+def _candidate_rows(
+    cursor, limit: int, slot_spec: SlotSpec | None = None
+) -> list[dict[str, Any]]:
+    columns = [column[0] for column in cursor.description]
+    rank_columns = [name for name in columns if name.startswith("rank_")]
+    candidates = []
+    for row in cursor.fetchall():
+        candidate = dict(zip(columns, row))
+        source_name = candidate.pop("source_name")
+        if _is_excluded(source_name):
+            continue
+        candidate["secondary_actions"] = split_curation_values(candidate["secondary_actions"])
+        candidate["mechanic"] = exercise_mechanic(candidate)
+        if slot_spec is not None:
+            candidate_source = _slot_candidate_source(candidate, slot_spec)
+            if candidate_source is None:
+                continue
+            if candidate_source == SLOT_CANDIDATE_SIGNATURE and _is_explosive_signature_substitute(source_name):
+                continue
+            candidate["_candidate_source"] = candidate_source
+            candidate.pop("primary_action", None)
+            candidate.pop("primary_muscle", None)
+        for rank_column in rank_columns:
+            candidate.pop(rank_column, None)
+        candidate["name"] = clean_exercise_name(candidate["name"], replace_with_machine=True)
+        candidates.append(candidate)
+        if len(candidates) >= limit:
+            break
+    return candidates
 
 
 def _fetch_by_sql(
@@ -365,7 +560,6 @@ def _fetch_by_sql(
     extra_exclude: str = "",
     name_rank: tuple[str, ...] = (),
     filter_equipment_access: bool = True,
-    candidate_ids: tuple[str, ...] = (),
     *,
     ledger: Any,
 ) -> list[dict[str, Any]]:
@@ -373,75 +567,54 @@ def _fetch_by_sql(
     cursor = conn.cursor()
 
     where = [f"({sql})"]
-    params: list[Any] = []
-    if candidate_ids:
-        where[-1] = f"(({sql}) OR e.id IN ({', '.join('?' for _ in candidate_ids)}))"
-        params.extend(candidate_ids)
     if extra_exclude:
         where.append(f"({extra_exclude})")
     where.append("LOWER(body_part) != 'cardio'")
     where.append(exercise_library_visible_sql("e.id", schema="catalog"))
     if filter_equipment_access:
         where.append(equipment_access_sql(equipment_access))
-    if any(w in limitations.lower() for w in ["back", "lumbar", "spine"]):
-        where.append("LOWER(name) NOT LIKE '%deadlift%' AND LOWER(name) NOT LIKE '%good morning%'")
+    source_name = "(SELECT source_exercise.name FROM catalog.exercises source_exercise WHERE source_exercise.id = e.id)"
+    back_filter = _back_limitation_filter(limitations, source_name)
+    if back_filter:
+        where.append(back_filter)
 
     rank_sql = _equipment_rank_sql(equipment_pref)
     query = f"""
-        SELECT e.id, COALESCE(edn.display_name, e.name) AS name, e.name AS source_name,
+        SELECT e.id, COALESCE(edn.display_name, e.name) AS name,
+               (SELECT source_exercise.name FROM catalog.exercises source_exercise
+                WHERE source_exercise.id = e.id) AS source_name,
                e.body_part, e.target_muscle,
                e.equipment, e.instructions, e.image_path, e.gif_path,
                cf.primary_action, COALESCE(cf.secondary_actions, '') AS secondary_actions
         FROM exercises e
-        LEFT JOIN exercise_display_names edn ON edn.exercise_id = e.id
+        LEFT JOIN catalog.exercise_display_names edn ON edn.exercise_id = e.id
         LEFT JOIN catalog.exercise_curated_fields cf ON cf.exercise_id = e.id
         WHERE {' AND '.join(where)}
         ORDER BY {_name_rank_sql(name_rank)}{rank_sql} ASC, id ASC
         LIMIT ?
     """
-    cursor.execute(query, (*params, limit * 4))
-    rows = cursor.fetchall()
-    cols = [col[0] for col in cursor.description]
-    candidates = []
-    for row in rows:
-        item = dict(zip(cols, row))
-        # Exclusion terms were written against source names; a display name such as
-        # "Behind-the-Neck Press (Smith Machine)" must not slip past them.
-        source_name = item.pop("source_name")
-        if _is_excluded(item["name"]) or _is_excluded(source_name):
-            continue
-        item["name"] = clean_exercise_name(item["name"], replace_with_machine=True)
-        item["secondary_actions"] = split_curation_values(item["secondary_actions"])
-        item["mechanic"] = exercise_mechanic(item)
-        candidates.append(item)
-        if len(candidates) >= limit:
-            break
-    return candidates
+    cursor.execute(query, (limit * 4,))
+    return _candidate_rows(cursor, limit)
 
 
 def fetch_slot_candidates(
     slot_key: str,
     equipment_access: str = COMMERCIAL_GYM,
-    limitations: str = "None",
+    limitations: str = NO_LIMITATIONS,
     limit: int = 6,
     *,
     ledger: Any,
 ) -> list[dict[str, Any]]:
-    """Resolves a movement slot against the catalog, ranked by the slot's equipment preference."""
+    """Returns ordered Staples, signature matches, and uncurated name matches for a slot."""
     spec = SLOT_SPECS.get(slot_key)
     if spec is None:
         return []
-    candidates = _fetch_by_sql(
-        spec.sql,
-        spec.equipment_pref,
-        equipment_access,
-        limitations,
-        limit,
-        extra_exclude=spec.exclude_sql,
-        name_rank=spec.name_rank,
-        candidate_ids=SLOT_STAPLES.get(slot_key, ()),
-        ledger=ledger,
+    cursor = ledger.conn.cursor()
+    query, params = _slot_candidate_query(
+        spec, equipment_access, limitations, SLOT_STAPLES.get(slot_key, ())
     )
+    cursor.execute(query, params)
+    candidates = _candidate_rows(cursor, limit, spec)
     for item in candidates:
         item["slot_key"] = slot_key
     return candidates
@@ -450,7 +623,7 @@ def fetch_slot_candidates(
 def fetch_warmup_candidates(
     warmup_key: str,
     equipment_access: str = COMMERCIAL_GYM,
-    limitations: str = "None",
+    limitations: str = NO_LIMITATIONS,
     limit: int = 4,
     *,
     ledger: Any,
@@ -486,7 +659,7 @@ def fetch_warmup_candidates(
 def fetch_filtered_candidates(
     muscle_group: str | None = None,
     equipment_access: str = COMMERCIAL_GYM,
-    limitations: str = "None",
+    limitations: str = NO_LIMITATIONS,
     limit: int = 4,
     body_part: str | None = None,
     *,
