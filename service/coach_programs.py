@@ -22,11 +22,17 @@ logger = logging.getLogger(__name__)
 
 
 class UnrecognizedSplitOverride(ValueError):
-    """A coach supplied a split that generation cannot honor."""
+    """A split preference that generation cannot honor."""
+
+    message_code = "assignment.split_override_unrecognized.v1"
 
     def __init__(self) -> None:
         super().__init__("Unrecognized split override.")
         self.accepted_values: tuple[str, ...] = SPLIT_OVERRIDE_VALUES
+
+    @property
+    def message_params(self) -> dict[str, list[str]]:
+        return {"accepted_values": list(self.accepted_values)}
 
 
 @dataclass(frozen=True)

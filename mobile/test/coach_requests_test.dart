@@ -542,6 +542,36 @@ void main() {
     expect(_requestsBadge(tester), 0);
   });
 
+  testWidgets('coach sees localized split refusal when applying a request',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..unrecognizedSplitOverrideOnRequestApply = true;
+    fake.programRequests.add(_request(
+      id: 'req-split',
+      status: 'pending',
+      kind: 'split_change',
+      desiredWeeklyFrequency: 4,
+      desiredSplitPreference: 'Zumba',
+      reason: 'Please change my split.',
+    ));
+    await _pumpApp(tester, fake, InMemoryAppModeStore());
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('Requests'));
+    await _pumpUntilFound(tester, find.text('Split change → 4 days/week'));
+    await tester.tap(find.byKey(const Key('request_card_req-split')));
+    await _pumpUntilFound(tester, find.byKey(const Key('request_apply_button')));
+    await tester.tap(find.byKey(const Key('request_apply_button')));
+
+    const String localizedError =
+        'Unrecognized split override. Accepted split values: Upper, Lower, '
+        'PPL, Push, Pull, Legs, Arnold, Full Body, Bro Split, Anterior, '
+        'Posterior, Glute, Total Body.';
+    await _pumpUntilFound(tester, find.text(localizedError));
+
+    expect(find.text(localizedError), findsOneWidget);
+    expect(fake.programRequests.single['status'], 'pending');
+  });
+
   testWidgets(
       'declining with a reply moves the request to Answered and clears the '
       'badge', (WidgetTester tester) async {

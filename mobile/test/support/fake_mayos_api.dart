@@ -31,6 +31,32 @@ String _equipmentCategoryForFake(Object? equipment) {
   }
 }
 
+const List<String> _splitOverrideAcceptedValues = <String>[
+  'Upper',
+  'Lower',
+  'PPL',
+  'Push',
+  'Pull',
+  'Legs',
+  'Arnold',
+  'Full Body',
+  'Bro Split',
+  'Anterior',
+  'Posterior',
+  'Glute',
+  'Total Body',
+];
+
+Map<String, dynamic> _unrecognizedSplitOverrideResponse(String fallback) =>
+    <String, dynamic>{
+      'detail': fallback,
+      'message_code': 'assignment.split_override_unrecognized.v1',
+      'message_params': <String, dynamic>{
+        'accepted_values': _splitOverrideAcceptedValues,
+      },
+      'message_fallback': fallback,
+    };
+
 /// In-memory stand-in for the FastAPI service, mimicking the real route
 /// contracts: paths, the legacy `trainee_id` wire field, capability JSON, and
 /// the fail-closed 401 behavior of the registry-backed auth dependency.
@@ -328,6 +354,8 @@ class FakeMayosApi {
   // Player program requests and coach resolution (#28).
   final List<Map<String, dynamic>> programRequests = <Map<String, dynamic>>[];
   bool staleProgramRequest = false;
+  bool unrecognizedSplitOverrideOnRequestCreate = false;
+  bool unrecognizedSplitOverrideOnRequestApply = false;
   // When true the coach program-request responses carry a wrong-shaped body,
   // so the client's fail-closed parsing is assertable (#121).
   bool malformedProgramRequests = false;
@@ -2164,28 +2192,10 @@ class FakeMayosApi {
     if (request.path.endsWith('/program-draft/generate')) {
       programDraftGenerationRequests++;
       if (programDraftGenerationError != null) {
-        return FakeResponse(400, <String, dynamic>{
-          'detail': programDraftGenerationError,
-          'message_code': 'assignment.split_override_unrecognized.v1',
-          'message_params': <String, dynamic>{
-            'accepted_values': <String>[
-              'Upper',
-              'Lower',
-              'PPL',
-              'Push',
-              'Pull',
-              'Legs',
-              'Arnold',
-              'Full Body',
-              'Bro Split',
-              'Anterior',
-              'Posterior',
-              'Glute',
-              'Total Body',
-            ],
-          },
-          'message_fallback': programDraftGenerationError,
-        });
+        return FakeResponse(
+          400,
+          _unrecognizedSplitOverrideResponse(programDraftGenerationError!),
+        );
       }
       final bool replace = request.query['replace'] == true ||
           request.query['replace'] == 'true';
@@ -2592,6 +2602,12 @@ class FakeMayosApi {
       row['desired_weekly_frequency'] = frequency;
       row['desired_split_preference'] =
           request.body['desired_split_preference'] as String?;
+      if (unrecognizedSplitOverrideOnRequestCreate) {
+        return FakeResponse(
+          400,
+          _unrecognizedSplitOverrideResponse('Unrecognized split override.'),
+        );
+      }
     } else {
       return const FakeResponse(400, <String, dynamic>{
         'detail': 'Choose an exercise substitution or a split change.'
@@ -2644,6 +2660,13 @@ class FakeMayosApi {
             'detail':
                 'The program changed since this request was created. Ask the player to update it.'
           });
+        }
+        if (unrecognizedSplitOverrideOnRequestApply &&
+            programRequests[index]['kind'] == 'split_change') {
+          return FakeResponse(
+            400,
+            _unrecognizedSplitOverrideResponse('Unrecognized split override.'),
+          );
         }
         programRequests[index]['status'] = 'applied';
         programRequests[index]['resolved_at'] = '2026-09-26T12:30:00Z';

@@ -15,10 +15,14 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from agent.program_generator import generate_program_pipeline
+from agent.program_generator import (
+    generate_program_pipeline,
+    has_supported_split_keyword,
+)
 from database.exercise_resolution import resolve_exercise_display_row
 from service._base import ledger_scope
 from service.assignments import authorized_player_ledger, coach_identity
+from service.coach_programs import UnrecognizedSplitOverride
 from service.email_sender import (
     PURPOSE_PROGRAM_REQUEST_NOTICE,
     DeliveryContext,
@@ -77,6 +81,19 @@ def _refusal(
         **({"message_params": message_params} if message_params is not None else {}),
         **details,
     }
+
+
+def _unrecognized_split_refusal() -> dict[str, Any]:
+    split_override_error = UnrecognizedSplitOverride()
+    return _refusal(
+        split_override_error.message_code,
+        str(split_override_error),
+        message_params=split_override_error.message_params,
+    )
+
+
+def _split_preference_unrecognized(preference: str | None) -> bool:
+    return bool(preference and not has_supported_split_keyword(preference))
 
 
 def _now_iso() -> str:
@@ -338,6 +355,8 @@ def create_request(
                     f"Keep the split preference under {MAX_SPLIT_PREFERENCE_CHARS} characters.",
                     message_params={"limit": MAX_SPLIT_PREFERENCE_CHARS},
                 )
+            if _split_preference_unrecognized(desired_split_preference):
+                return _unrecognized_split_refusal()
 
         now_iso = _now_iso()
         request_id = uuid.uuid4().hex
@@ -456,6 +475,11 @@ def apply_request(
             stale = not _day_contains(active, request["day_name"], request["exercise_id"])
         if stale:
             return _refusal("program_request.stale.v1", STALE_REQUEST_ERROR, stale=True)
+        if (
+            request["kind"] == SPLIT_CHANGE
+            and _split_preference_unrecognized(request["desired_split_preference"])
+        ):
+            return _unrecognized_split_refusal()
 
         claimed = db.resolve_program_request(request_id, "applied", None, coach_account_id, _now_iso())
         if not claimed["ok"]:

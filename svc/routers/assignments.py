@@ -695,8 +695,8 @@ async def generate_assigned_player_program_draft(
         except coach_programs_service.UnrecognizedSplitOverride as exc:
             raise _bad_request(
                 str(exc),
-                "assignment.split_override_unrecognized.v1",
-                {"accepted_values": list(exc.accepted_values)},
+                exc.message_code,
+                exc.message_params,
             ) from exc
         except coach_program_drafts_service.ProgramDraftAlreadyExists as exc:
             raise message_http_exception(
@@ -869,7 +869,9 @@ async def apply_assignment_program_request(
         if result is None:
             raise _no_active_assignment()
         if not result["ok"]:
-            raise _bad_request(result["error"], result.get("message_code"))
+            raise _bad_request(
+                result["error"], result.get("message_code"), result.get("message_params")
+            )
         return result["request"]
 
     return ProgramRequestOut(**await asyncio.to_thread(_run))

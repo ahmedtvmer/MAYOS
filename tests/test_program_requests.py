@@ -504,6 +504,27 @@ def test_create_split_change_records_desired_fields(api, monkeypatch):
     assert body["day_name"] is None
 
 
+def test_create_split_change_rejects_unrecognized_preference_without_storing(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, player_account_id = _assigned_player(api)
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+
+    refused = _create(
+        client,
+        player_headers,
+        kind="split_change",
+        desired_weekly_frequency=3,
+        desired_split_preference="Zumba",
+    )
+
+    assert refused.status_code == 400
+    body = refused.json()
+    assert body["message_code"] == "assignment.split_override_unrecognized.v1"
+    assert {"Upper", "Lower", "PPL"}.issubset(body["message_params"]["accepted_values"])
+    assert db.list_program_requests_for_player(player_account_id) == []
+
+
 def test_create_rejects_reason_longer_than_request_limit(api, monkeypatch):
     client, db, _ = api
     coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
@@ -681,6 +702,47 @@ def test_apply_split_change_publishes_desired_frequency(api, monkeypatch):
     active = db.ledger.get_active_program()
     assert active.version == 2
     assert active.weekly_frequency == 3
+
+
+def test_apply_legacy_unrecognized_split_stays_pending_and_visible(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+    created = _create(
+        client,
+        player_headers,
+        kind="split_change",
+        desired_weekly_frequency=3,
+        desired_split_preference="Upper/Lower",
+        reason="Please make my days Zumba split",
+    )
+    request_id = created.json()["request_id"]
+    db.catalog_conn.execute(
+        "UPDATE program_requests SET desired_split_preference = 'Zumba' WHERE request_id = ?",
+        (request_id,),
+    )
+    db.catalog_conn.commit()
+    _request_generation(db, monkeypatch)
+
+    refused = client.post(
+        f"/coach/assignments/{assignment_id}/program-requests/{request_id}/apply",
+        headers=coach_headers,
+    )
+
+    assert refused.status_code == 400
+    body = refused.json()
+    assert body["message_code"] == "assignment.split_override_unrecognized.v1"
+    assert {"Upper", "Lower", "PPL"}.issubset(body["message_params"]["accepted_values"])
+    assert db.get_program_request(request_id)["status"] == "pending"
+    requests = client.get(
+        f"/coach/assignments/{assignment_id}/program-requests", headers=coach_headers
+    ).json()["requests"]
+    assert requests[0]["request_id"] == request_id
+    assert requests[0]["reason"] == "Please make my days Zumba split"
+    assert requests[0]["desired_split_preference"] == "Zumba"
+    db.switch_user("p1")
+    assert db.ledger.get_active_program().version == 1
 
 
 def test_apply_replacement_missing_after_creation_stays_pending(api, monkeypatch):

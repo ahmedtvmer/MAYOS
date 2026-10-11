@@ -178,6 +178,43 @@ void main() {
     expect(find.text('Reason: Shoulder discomfort.'), findsOneWidget);
   });
 
+  testWidgets('Arabic player sees the localized split refusal with accepted values',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake()
+      ..displayLanguage = 'ar'
+      ..unrecognizedSplitOverrideOnRequestCreate = true;
+    await _pumpApp(tester, fake);
+    await _openPlayerAssignment(tester);
+
+    await tester.tap(find.text('طلب تغيير'));
+    await _pumpUntilFound(tester, find.text('طلب تغيير البرنامج التدريبي'));
+    await tester.tap(find.byKey(const Key('program_request_kind_field')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تغيير تقسيمة البرنامج'));
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('program_request_split_field')),
+    );
+    await tester.enterText(
+      find.byKey(const Key('program_request_split_field')),
+      'Zumba',
+    );
+    await tester.enterText(
+      find.byKey(const Key('program_request_reason_field')),
+      'أريد تغيير التقسيمة.',
+    );
+    await tester.tap(find.byKey(const Key('program_request_submit_button')));
+
+    const String localizedError =
+        'تقسيمة البرنامج التدريبي غير معروفة. التقسيمات المقبولة: '
+        '\u2066Upper، Lower، PPL، Push، Pull، Legs، Arnold، Full Body، '
+        'Bro Split، Anterior، Posterior، Glute، Total Body\u2069.';
+    await _pumpUntilFound(tester, find.text(localizedError));
+
+    expect(find.text(localizedError), findsOneWidget);
+    expect(fake.programRequests, isEmpty);
+  });
+
   testWidgets('player sees the coach decline response', (tester) async {
     final FakeMayosApi fake = _playerFake();
     fake.programRequests.add(_request(
