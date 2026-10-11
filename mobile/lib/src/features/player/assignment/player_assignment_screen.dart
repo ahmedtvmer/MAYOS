@@ -563,6 +563,11 @@ class _PlayerAssignmentScreenState
           const SizedBox(height: MayosSpacing.sm),
           Text(preview.access.description,
               style: MayosTypography.of(context).body.copyWith(color: c.textPrimary)),
+          const SizedBox(height: MayosSpacing.sm),
+          Text(
+            _copy.rosterAiDisclosure,
+            style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
+          ),
           const SizedBox(height: MayosSpacing.md),
           MayosButton(
             label: _copy.acceptAssignment,

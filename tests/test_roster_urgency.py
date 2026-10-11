@@ -368,6 +368,33 @@ def test_coach_stall_threshold_catalog_migration_preserves_profiles(api):
     assert db.get_coach_stall_threshold(coach_id) == 3
 
 
+def test_assignment_disclosure_catalog_migration_preserves_assignments(api):
+    client, db, _ = api
+    coach_headers, _ = _make_coach(client, db, "coach", capacity=5)
+    player = _assign(api, "migrationplayer", coach_headers)
+    with db._catalog_lock:
+        db.catalog_conn.execute(
+            "ALTER TABLE assignments DROP COLUMN roster_ai_disclosed_at"
+        )
+        db.catalog_conn.execute(
+            "ALTER TABLE assignments DROP COLUMN roster_ai_disclosure_version"
+        )
+        db.catalog_conn.commit()
+        db._account_schema_ready = False
+
+    db.ensure_account_schema()
+
+    migrated = db.catalog_conn.execute(
+        "SELECT assignment_id, status, roster_ai_disclosure_version, "
+        "roster_ai_disclosed_at FROM assignments WHERE assignment_id = ?",
+        (player["assignment_id"],),
+    ).fetchone()
+    assert migrated[0] == player["assignment_id"]
+    assert migrated[1] == "active"
+    assert migrated[2] is None
+    assert migrated[3] is None
+
+
 def test_snapshot_signal_values_reuse_attendance_stalling_and_regression_alerts(api, monkeypatch):
     client, db, _ = api
     coach_headers, coach_id = _make_coach(client, db, "coach", capacity=5)

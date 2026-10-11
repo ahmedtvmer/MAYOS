@@ -762,6 +762,13 @@ class ApiClient {
     return Assignment.fromJson(data as Map<String, dynamic>);
   }
 
+  /// Records the legacy player's acknowledgement on their active assignment.
+  Future<void> acknowledgeRosterAiDisclosure() async {
+    await _send(
+      () => _dio.post<dynamic>('/assignments/me/roster-ai-disclosure'),
+    );
+  }
+
   /// Ends the caller's active assignment; access is revoked immediately.
   Future<void> endMyAssignment() async {
     await _send(() => _dio.post<dynamic>('/assignments/me/end'));

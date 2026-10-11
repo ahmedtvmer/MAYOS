@@ -90,6 +90,7 @@ from svc.schemas import (
     PlayerNoticeListOut,
     PlayerProgramRequestIn,
     PlayerProgramRequestListOut,
+    RosterAiDisclosureOut,
     ProgramGenerateIn,
     ProgramImportCreateIn,
     ProgramRequestDeclineIn,
@@ -137,6 +138,8 @@ def _assignment_out(assignment: dict[str, Any]) -> AssignmentOut:
         started_at=assignment["started_at"],
         status=assignment["status"],
         coach_preparing_program=assignment["coach_preparing_program"],
+        roster_ai_disclosure_version=assignment.get("roster_ai_disclosure_version"),
+        roster_ai_disclosed_at=assignment.get("roster_ai_disclosed_at"),
     )
 
 
@@ -976,6 +979,22 @@ async def read_my_assignment(
         assignment_service.get_player_assignment, db, player.account_id
     )
     return _assignment_out(assignment) if assignment is not None else None
+
+
+@player_router.post("/me/roster-ai-disclosure", response_model=RosterAiDisclosureOut)
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def acknowledge_roster_ai_disclosure(
+    request: Request,
+    player: Annotated[VerifiedPlayer, Depends(get_current_player)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Records the legacy player's acknowledgement on their active assignment."""
+    disclosure = await asyncio.to_thread(
+        assignment_service.record_roster_ai_disclosure, db, player.account_id
+    )
+    if disclosure is None:
+        raise _no_active_assignment()
+    return RosterAiDisclosureOut(**disclosure)
 
 
 @player_router.get("/me/check-ins", response_model=PlayerCheckInListOut)

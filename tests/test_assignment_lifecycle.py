@@ -329,6 +329,17 @@ def test_redeem_binds_immediately_and_creates_coach_notice(api, monkeypatch):
     body = redeemed.json()
     assert body["assignment"]["status"] == "active"
     assert body["assignment"]["coach"]["display_name"] == "Coach coach"
+    assert body["assignment"]["roster_ai_disclosure_version"] == assignment_service.ROSTER_AI_DISCLOSURE_VERSION
+    assert body["assignment"]["roster_ai_disclosed_at"]
+    stored_disclosure = db.catalog_conn.execute(
+        "SELECT roster_ai_disclosure_version, roster_ai_disclosed_at "
+        "FROM assignments WHERE assignment_id = ?",
+        (body["assignment"]["assignment_id"],),
+    ).fetchone()
+    assert tuple(stored_disclosure) == (
+        body["assignment"]["roster_ai_disclosure_version"],
+        body["assignment"]["roster_ai_disclosed_at"],
+    )
     assert body["notices_created"] == 1
     assert body["email_sent"] is True
     assert calls == [("coach@example.com", "Coach coach", "p1")]

@@ -264,6 +264,13 @@ void main() {
     await _pumpUntilFound(tester, find.text('Accept assignment'));
     expect(find.text('Your coach will be Coach Bob'), findsOneWidget);
     expect(find.text('Strength'), findsOneWidget);
+    expect(
+      find.text(
+        'Your coach may ask a hosted AI about your training figures alongside '
+        'other players’ figures. The AI does not receive your name or contact details.',
+      ),
+      findsOneWidget,
+    );
     expect(fake.activeAssignmentId, isNull);
 
     // Explicit consent binds immediately and shows the active coach.
@@ -278,6 +285,129 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Leave coach'));
     await _pumpUntilFound(tester, find.text('My coach'));
     expect(fake.activeAssignmentId, isNull);
+  });
+
+  testWidgets('legacy assignment notice records the disclosure when acknowledged',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake(coach: false)
+      ..activeAssignmentId = 'assignment-1'
+      ..activeCoachDisplayName = 'Coach Bob'
+      ..rosterAiDisclosureVersion = null;
+    await _pumpApp(tester, fake);
+
+    const String disclosure =
+        'Your coach may ask a hosted AI about your training figures alongside '
+        'other players’ figures. The AI does not receive your name or contact details.';
+    await _pumpUntilFound(tester, find.text(disclosure));
+    expect(find.text('OK'), findsOneWidget);
+    expect(fake.rosterAiDisclosureRequests, 0);
+
+    await tester.tap(find.text('OK'));
+    for (int attempt = 0;
+        attempt < 40 && fake.rosterAiDisclosureRequests == 0;
+        attempt++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(fake.rosterAiDisclosureRequests, 1);
+    expect(fake.rosterAiDisclosureVersion, '1');
+    for (int attempt = 0;
+        attempt < 40 && find.text(disclosure).evaluate().isNotEmpty;
+        attempt++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.text(disclosure), findsNothing);
+  });
+
+  testWidgets('legacy assignment notice shows ack failure and retries',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake(coach: false)
+      ..activeAssignmentId = 'assignment-1'
+      ..activeCoachDisplayName = 'Coach Bob'
+      ..rosterAiDisclosureVersion = null
+      ..rosterAiDisclosureFailuresRemaining = 1;
+    await _pumpApp(tester, fake);
+
+    const String disclosure =
+        'Your coach may ask a hosted AI about your training figures alongside '
+        'other players’ figures. The AI does not receive your name or contact details.';
+    await _pumpUntilFound(tester, find.text(disclosure));
+
+    await tester.tap(find.text('OK'));
+    await _pumpUntilFound(tester, find.text('The service is unavailable.'));
+    expect(find.text(disclosure), findsOneWidget);
+    expect(find.text('OK'), findsOneWidget);
+    expect(fake.rosterAiDisclosureRequests, 1);
+    expect(fake.rosterAiDisclosureVersion, isNull);
+
+    await tester.tap(find.text('OK'));
+    for (int attempt = 0;
+        attempt < 40 && fake.rosterAiDisclosureRequests < 2;
+        attempt++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(fake.rosterAiDisclosureRequests, 2);
+    expect(fake.rosterAiDisclosureVersion, '1');
+    for (int attempt = 0;
+        attempt < 40 && find.text(disclosure).evaluate().isNotEmpty;
+        attempt++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(find.text(disclosure), findsNothing);
+  });
+
+  testWidgets('legacy assignment notice cannot be dismissed without ack',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake(coach: false)
+      ..activeAssignmentId = 'assignment-1'
+      ..activeCoachDisplayName = 'Coach Bob'
+      ..rosterAiDisclosureVersion = null;
+    await _pumpApp(tester, fake);
+
+    const String disclosure =
+        'Your coach may ask a hosted AI about your training figures alongside '
+        'other players’ figures. The AI does not receive your name or contact details.';
+    await _pumpUntilFound(tester, find.text(disclosure));
+
+    await tester.tapAt(const Offset(12, 12));
+    await tester.pump();
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+
+    expect(find.text(disclosure), findsOneWidget);
+    expect(fake.rosterAiDisclosureRequests, 0);
+    expect(fake.rosterAiDisclosureVersion, isNull);
+  });
+
+  testWidgets('Arabic assignment acceptance shows the roster-AI disclosure',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake(coach: false)
+      ..displayLanguage = 'ar'
+      ..pendingAssignmentToken = 'assignment-invite-token-123456';
+    await _pumpApp(tester, fake);
+
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await _pumpUntilFound(tester, find.text('المظهر'));
+    await tester.tap(find.byIcon(Icons.badge_outlined));
+    await _pumpUntilFound(tester, find.text('مدربي'));
+    await tester.enterText(
+      find.byKey(const Key('assignment_code_field')),
+      'assignment-invite-token-123456',
+    );
+    await tester.tap(find.text('معاينة إمكانية الاطلاع'));
+    await _pumpUntilFound(
+      tester,
+      find.text(
+        'قد يطلب مدربك من ذكاء اصطناعي مستضاف تحليل بيانات تدريبك مع بيانات '
+        'لاعبين آخرين. لا يتلقى هذا الذكاء الاصطناعي اسمك أو بيانات الاتصال الخاصة بك.',
+      ),
+    );
+    expect(
+      find.text(
+        'قد يطلب مدربك من ذكاء اصطناعي مستضاف تحليل بيانات تدريبك مع بيانات '
+        'لاعبين آخرين. لا يتلقى هذا الذكاء الاصطناعي اسمك أو بيانات الاتصال الخاصة بك.',
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('editing the code after preview clears the previewed consent',

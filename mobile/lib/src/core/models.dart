@@ -346,6 +346,8 @@ class Assignment {
     required this.startedAt,
     required this.status,
     this.coachPreparingProgram = false,
+    this.rosterAiDisclosureVersion,
+    this.rosterAiDisclosedAt,
   });
 
   factory Assignment.fromJson(Map<String, dynamic> json) => Assignment(
@@ -354,6 +356,9 @@ class Assignment {
         startedAt: json['started_at'] as String? ?? '',
         status: json['status'] as String? ?? 'active',
         coachPreparingProgram: json['coach_preparing_program'] as bool? ?? false,
+        rosterAiDisclosureVersion:
+            json['roster_ai_disclosure_version'] as String?,
+        rosterAiDisclosedAt: json['roster_ai_disclosed_at'] as String?,
       );
 
   final String assignmentId;
@@ -361,6 +366,8 @@ class Assignment {
   final String startedAt;
   final String status;
   final bool coachPreparingProgram;
+  final String? rosterAiDisclosureVersion;
+  final String? rosterAiDisclosedAt;
 }
 
 /// `POST /coach/assignments/invites`: the one-time code and remaining capacity.

@@ -536,7 +536,9 @@ class SchemaMixin:
                     status TEXT NOT NULL DEFAULT 'active',
                     started_at TEXT NOT NULL,
                     ended_at TEXT,
-                    ended_by TEXT
+                    ended_by TEXT,
+                    roster_ai_disclosure_version TEXT,
+                    roster_ai_disclosed_at TEXT
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_assignments_active_player
                     ON assignments(player_account_id) WHERE status = 'active';
@@ -768,6 +770,7 @@ class SchemaMixin:
             self._ensure_accounts_display_language()
             self._ensure_assignment_notice_summary_column()
             self._ensure_assignment_notice_summary_dismissed_at_column()
+            self._ensure_assignment_roster_ai_disclosure_columns()
             self._ensure_roster_attendance_timezone()
             self._ensure_roster_attendance_last_workout_on()
             self._ensure_roster_attendance_program_name()
@@ -802,6 +805,15 @@ class SchemaMixin:
             self.catalog_conn.execute(
                 "ALTER TABLE assignment_notices ADD COLUMN program_change_summary_json TEXT"
             )
+
+    def _ensure_assignment_roster_ai_disclosure_columns(self) -> None:
+        """Adds roster-AI consent records to existing catalog assignments (#326)."""
+        cursor = self.catalog_conn.cursor()
+        columns = self._table_columns(cursor, "assignments")
+        if "roster_ai_disclosure_version" not in columns:
+            cursor.execute("ALTER TABLE assignments ADD COLUMN roster_ai_disclosure_version TEXT")
+        if "roster_ai_disclosed_at" not in columns:
+            cursor.execute("ALTER TABLE assignments ADD COLUMN roster_ai_disclosed_at TEXT")
 
     def _ensure_assignment_notice_summary_dismissed_at_column(self) -> None:
         columns = self._table_columns(self.catalog_conn.cursor(), "assignment_notices")

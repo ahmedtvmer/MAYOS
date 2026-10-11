@@ -33,7 +33,8 @@ class AssignmentNoticeRecord:
 
 class RegistryAssignmentsMixin:
     _ASSIGNMENT_COLUMNS = (
-        "assignment_id, coach_account_id, player_account_id, status, started_at, ended_at, ended_by"
+        "assignment_id, coach_account_id, player_account_id, status, started_at, ended_at, ended_by, "
+        "roster_ai_disclosure_version, roster_ai_disclosed_at"
     )
 
     @classmethod
@@ -48,6 +49,8 @@ class RegistryAssignmentsMixin:
             "started_at": str(row[4]),
             "ended_at": row[5],
             "ended_by": row[6],
+            "roster_ai_disclosure_version": row[7],
+            "roster_ai_disclosed_at": row[8],
         }
 
     def create_assignment_invite(self, token_hash: str, coach_account_id: str, expires_at: str) -> int:
@@ -242,7 +245,11 @@ class RegistryAssignmentsMixin:
         }
 
     def redeem_assignment_invite(
-        self, token_hash: str, player_account_id: str, now_iso: str
+        self,
+        token_hash: str,
+        player_account_id: str,
+        now_iso: str,
+        roster_ai_disclosure_version: str | None = None,
     ) -> dict[str, Any]:
         """Atomically claims an assignment invite, creates the assignment and the coach notice.
 
@@ -280,9 +287,17 @@ class RegistryAssignmentsMixin:
                     return fail("already_redeemed")
                 cursor.execute(
                     "INSERT INTO assignments"
-                    " (assignment_id, coach_account_id, player_account_id, status, started_at, ended_at, ended_by)"
-                    " VALUES (?, ?, ?, 'active', ?, NULL, NULL)",
-                    (assignment_id, coach_account_id, str(player_account_id), now_iso),
+                    " (assignment_id, coach_account_id, player_account_id, status, started_at, ended_at, ended_by,"
+                    " roster_ai_disclosure_version, roster_ai_disclosed_at)"
+                    " VALUES (?, ?, ?, 'active', ?, NULL, NULL, ?, ?)",
+                    (
+                        assignment_id,
+                        coach_account_id,
+                        str(player_account_id),
+                        now_iso,
+                        roster_ai_disclosure_version,
+                        now_iso if roster_ai_disclosure_version is not None else None,
+                    ),
                 )
                 cursor.execute(
                     "INSERT INTO assignment_notices"
@@ -317,6 +332,34 @@ class RegistryAssignmentsMixin:
                 "invite_created_at": target["invite_created_at"],
                 "roster_size": roster_size,
                 "referring_coach_id": referring_coach_id,
+            }
+
+    def record_roster_ai_disclosure(
+        self, player_account_id: str, disclosure_version: str, now_iso: str
+    ) -> dict[str, str] | None:
+        """Records the current roster-AI disclosure on the player's active assignment."""
+        self.ensure_account_schema()
+        with self.catalog_transaction(immediate=True):
+            cursor = self.catalog_conn.cursor()
+            cursor.execute(
+                "UPDATE assignments SET roster_ai_disclosure_version = ?,"
+                " roster_ai_disclosed_at = CASE"
+                " WHEN roster_ai_disclosure_version = ? AND roster_ai_disclosed_at IS NOT NULL"
+                " THEN roster_ai_disclosed_at ELSE ? END"
+                " WHERE player_account_id = ? AND status = 'active'",
+                (disclosure_version, disclosure_version, now_iso, str(player_account_id)),
+            )
+            cursor.execute(
+                "SELECT roster_ai_disclosure_version, roster_ai_disclosed_at"
+                " FROM assignments WHERE player_account_id = ? AND status = 'active'",
+                (str(player_account_id),),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            return {
+                "roster_ai_disclosure_version": str(row[0]),
+                "roster_ai_disclosed_at": str(row[1]),
             }
 
     def end_assignment(self, assignment_id: str, account_id: str, now_iso: str, ended_by: str) -> dict[str, Any]:

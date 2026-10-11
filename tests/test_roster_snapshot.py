@@ -15,6 +15,7 @@ from agent.ProgramState import (
     ProgramExerciseSchema,
 )
 from database.database_manager import DatabaseManager
+from service import assignments as assignment_service
 from service import coach as coach_service
 from service import roster_snapshot as roster_snapshot_service
 from service import stall_alerts
@@ -215,6 +216,111 @@ def _insert_alert(db, coach_id, player, *, kind, details, state="new", created_a
 
 def _snapshot(db, coach_id, now):
     return roster_snapshot_service.roster_signal_snapshot(db, coach_id, now=now)
+
+
+def test_legacy_assignment_enters_snapshot_only_after_disclosure_and_revokes(api):
+    client, db = api
+    coach_headers, coach_id = _make_coach(client, db)
+    player = _assign(client, db, coach_headers, "legacyrosterplayer")
+    instant = datetime(2026, 10, 11, 12, tzinfo=UTC)
+    with db._catalog_lock:
+        db.catalog_conn.execute(
+            "UPDATE assignments SET roster_ai_disclosure_version = NULL, roster_ai_disclosed_at = NULL "
+            "WHERE assignment_id = ?",
+            (player["assignment_id"],),
+        )
+        db.catalog_conn.commit()
+
+    before = client.get("/coach/roster/snapshot", headers=coach_headers)
+    assert before.status_code == 200, before.text
+    assert before.json()["snapshot"]["players"] == []
+    assert client.get("/assignments/me", headers=player["headers"]).json()["roster_ai_disclosed_at"] is None
+
+    recorded = client.post(
+        "/assignments/me/roster-ai-disclosure", headers=player["headers"]
+    )
+    assert recorded.status_code == 200, recorded.text
+    assert recorded.json()["roster_ai_disclosure_version"] == assignment_service.ROSTER_AI_DISCLOSURE_VERSION
+    assert recorded.json()["roster_ai_disclosed_at"]
+    first_disclosed_at = recorded.json()["roster_ai_disclosed_at"]
+    repeated_record = client.post(
+        "/assignments/me/roster-ai-disclosure", headers=player["headers"]
+    )
+    assert repeated_record.json()["roster_ai_disclosed_at"] == first_disclosed_at
+    after = client.get("/coach/roster/snapshot", headers=coach_headers)
+    assert after.status_code == 200, after.text
+    assert len(after.json()["snapshot"]["players"]) == 1
+
+    ended = client.post("/assignments/me/end", headers=player["headers"])
+    assert ended.status_code == 200, ended.text
+    assert _snapshot(db, coach_id, instant)["snapshot"]["players"] == []
+
+
+def test_deleted_assignment_player_is_not_snapshot_eligible(api):
+    client, db = api
+    coach_headers, coach_id = _make_coach(client, db)
+    player = _assign(client, db, coach_headers, "deletedrosterplayer")
+    instant = datetime(2026, 10, 11, 12, tzinfo=UTC)
+    assert len(_snapshot(db, coach_id, instant)["snapshot"]["players"]) == 1
+
+    deleted = db.delete_account(
+        player["account_id"],
+        now_iso="2026-10-11T12:00:00+00:00",
+        ledger_id=player["ledger_id"],
+    )
+    assert deleted["ok"] is True
+    assert _snapshot(db, coach_id, instant)["snapshot"]["players"] == []
+
+
+def test_redeeming_after_ending_assignment_records_fresh_disclosure_and_eligibility(api):
+    client, db = api
+    coach_headers, coach_id = _make_coach(client, db)
+    player = _assign(client, db, coach_headers, "renewedassignmentplayer")
+    old_disclosed_at = "2000-01-01T00:00:00+00:00"
+    db.catalog_conn.execute(
+        "UPDATE assignments SET roster_ai_disclosed_at = ? WHERE assignment_id = ?",
+        (old_disclosed_at, player["assignment_id"]),
+    )
+    db.catalog_conn.commit()
+
+    ended = client.post("/assignments/me/end", headers=player["headers"])
+    assert ended.status_code == 200, ended.text
+    instant = datetime(2026, 10, 11, 12, tzinfo=UTC)
+    assert _snapshot(db, coach_id, instant)["snapshot"]["players"] == []
+
+    invite = client.post(
+        "/coach/assignments/invites", headers=coach_headers
+    )
+    assert invite.status_code == 200, invite.text
+    redeemed = client.post(
+        "/assignments/invites/redeem",
+        headers=player["headers"],
+        json={"token": invite.json()["token"], "consent": True},
+    )
+    assert redeemed.status_code == 200, redeemed.text
+    new_assignment_id = redeemed.json()["assignment"]["assignment_id"]
+    assert new_assignment_id != player["assignment_id"]
+
+    old_row = db.catalog_conn.execute(
+        "SELECT status, roster_ai_disclosure_version, roster_ai_disclosed_at "
+        "FROM assignments WHERE assignment_id = ?",
+        (player["assignment_id"],),
+    ).fetchone()
+    new_row = db.catalog_conn.execute(
+        "SELECT status, roster_ai_disclosure_version, roster_ai_disclosed_at "
+        "FROM assignments WHERE assignment_id = ?",
+        (new_assignment_id,),
+    ).fetchone()
+    assert old_row[0] == "ended"
+    assert old_row[2] == old_disclosed_at
+    assert new_row[0] == "active"
+    assert (
+        new_row[1]
+        == assignment_service.ROSTER_AI_DISCLOSURE_VERSION
+    )
+    assert new_row[2]
+    assert new_row[2] != old_disclosed_at
+    assert len(_snapshot(db, coach_id, instant)["snapshot"]["players"]) == 1
 
 
 def test_attendance_signals_match_shared_evaluation_exactly(api):

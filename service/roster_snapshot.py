@@ -35,6 +35,12 @@ def _eligible_assignments(
         )
         if assignment is None:
             continue
+        if (
+            assignment.get("roster_ai_disclosure_version")
+            != assignments_service.ROSTER_AI_DISCLOSURE_VERSION
+            or assignment.get("roster_ai_disclosed_at") is None
+        ):
+            continue
         player = db.get_account(assignment["player_account_id"])
         if db.is_live_account(player):
             eligible.append((roster_entry, assignment, player))

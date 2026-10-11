@@ -438,6 +438,8 @@ class AssignmentOut(BaseModel):
     started_at: str
     status: str
     coach_preparing_program: bool
+    roster_ai_disclosure_version: str | None = None
+    roster_ai_disclosed_at: str | None = None
 
 
 class AssignmentInviteIssueOut(BaseModel):
@@ -466,6 +468,11 @@ class AssignmentRedeemOut(BaseModel):
     assignment: AssignmentOut
     notices_created: int
     email_sent: bool
+
+
+class RosterAiDisclosureOut(BaseModel):
+    roster_ai_disclosure_version: str
+    roster_ai_disclosed_at: str
 
 
 class AssignmentEndOut(BaseModel):

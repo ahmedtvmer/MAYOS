@@ -277,6 +277,26 @@ when the assignment ends, on logout, and when the app closes. The service
 keeps no transcript of these questions and answers — only the per-account
 model usage records described above, attributed to your coach's account.
 
+### Roster questions (when enabled)
+
+Your coach may ask a hosted AI a question about the Roster. The model receives
+the coach's question and a bounded set of deterministic training and coaching
+figures for eligible Players, such as the Roster urgency order, missed-day and
+adherence figures, Stalling measures, and current coaching signals. Each Player
+is represented by a random id created for that request; the model does not
+receive your name, username, account id, contact details, raw training history,
+or free text about you. The service keeps the mapping to your Assignment so the
+app can show the answer beside the right Player, and the model cannot choose or
+rank Players from information outside the supplied figures.
+
+Accepting an Assignment after seeing the in-app disclosure records consent to
+this use. If your Assignment began before this disclosure was added, you see a
+one-time in-app notice; your figures are left out of roster questions until you
+tap “OK”. Ending the Assignment or deleting your account removes your
+eligibility. Roster questions are stateless: no conversation transcript is
+stored, and the request is covered by the Coach's model-usage record described
+above.
+
 ## How long we keep your data
 
 - **Live data is kept while your account exists**, and is deleted when you

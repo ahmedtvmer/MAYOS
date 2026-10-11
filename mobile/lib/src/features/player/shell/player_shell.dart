@@ -5,9 +5,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/ui/mayos_app_header.dart';
+import '../../../core/api_client.dart';
+import '../../../core/app_failure.dart';
+import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/assignment_copy.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
+import '../../../core/display_language/copy_context.dart';
+import '../../../core/models.dart';
 import '../../../core/ui/mayos_bottom_navigation.dart';
+import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_scaffold.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
@@ -55,6 +62,8 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
   /// Set once this shell visit has offered Resume / Discard, so the prompt
   /// appears at most once per opening of the app (#123).
   bool _offeredResume = false;
+  bool _rosterAiDisclosureChecked = false;
+  bool _startupNoticesComplete = false;
 
   @override
   void initState() {
@@ -64,16 +73,61 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
     // below for a restore that lands later.
     Future<void>.microtask(() {
       if (mounted) {
-        _offerResume(ref.read(activeWorkoutControllerProvider));
+        _offerStartupNotices();
       }
     });
   }
+
+  Future<void> _offerStartupNotices() async {
+    await _offerRosterAiDisclosure();
+    if (mounted) {
+      _startupNoticesComplete = true;
+      _offerResume(ref.read(activeWorkoutControllerProvider));
+    }
+  }
+
+  Future<void> _offerRosterAiDisclosure() async {
+    if (_rosterAiDisclosureChecked) return;
+    try {
+      final Assignment? assignment =
+          await ref.read(apiClientProvider).myAssignment();
+      if (!mounted) return;
+      _rosterAiDisclosureChecked = true;
+      if (_needsRosterAiDisclosure(assignment)) {
+        await _showRosterAiDisclosure();
+      }
+    } on ApiException {
+      _rosterAiDisclosureChecked = true;
+      // Assignment details may be temporarily unavailable; the server still
+      // excludes this assignment from roster snapshots until acknowledgement.
+    }
+  }
+
+  bool _needsRosterAiDisclosure(Assignment? assignment) =>
+      assignment != null &&
+      (assignment.rosterAiDisclosureVersion != rosterAiDisclosureVersion ||
+          assignment.rosterAiDisclosedAt == null);
+
+  Future<void> _showRosterAiDisclosure() => showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext dialogContext) => PopScope(
+          canPop: false,
+          child: _RosterAiDisclosureDialog(
+            copy: AssignmentCopy(ref.read(displayLanguageProvider)),
+            onAcknowledge: () => ref
+                .read(apiClientProvider)
+                .acknowledgeRosterAiDisclosure(),
+          ),
+        ),
+      );
 
   /// Offers Resume / Discard when this account restored an Active workout
   /// from device storage; a workout the player just started never re-triggers
   /// the offer. Web resumes its browser-stored workout too.
   void _offerResume(ActiveWorkoutState active) {
-    if (_offeredResume ||
+    if (!_startupNoticesComplete ||
+        _offeredResume ||
         !active.ready ||
         !active.restoredFromDevice ||
         active.workout == null) {
@@ -133,4 +187,67 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
       ),
     );
   }
+}
+
+class _RosterAiDisclosureDialog extends StatefulWidget {
+  const _RosterAiDisclosureDialog({
+    required this.copy,
+    required this.onAcknowledge,
+  });
+
+  final AssignmentCopy copy;
+  final Future<void> Function() onAcknowledge;
+
+  @override
+  State<_RosterAiDisclosureDialog> createState() =>
+      _RosterAiDisclosureDialogState();
+}
+
+class _RosterAiDisclosureDialogState
+    extends State<_RosterAiDisclosureDialog> {
+  bool _saving = false;
+  FailureMessage? _error;
+
+  Future<void> _acknowledge() async {
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.onAcknowledge();
+      if (mounted) Navigator.of(context).pop();
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = apiFailureMessage(error);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(widget.copy.rosterAiDisclosure),
+            if (_error != null) ...<Widget>[
+              const SizedBox(height: 12),
+              Text(
+                displayCopyOf(context).failureMessage(_error!),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+          ],
+        ),
+        actions: <Widget>[
+          MayosButton(
+            label: widget.copy.rosterAiDisclosureOk,
+            expand: false,
+            loading: _saving,
+            onPressed: _saving ? null : _acknowledge,
+          ),
+        ],
+      );
 }

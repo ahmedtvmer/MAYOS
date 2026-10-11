@@ -42,6 +42,7 @@ DEFAULT_INVITE_TTL_MINUTES = 3 * 24 * 60
 MIN_INVITE_TTL_MINUTES = 5
 MAX_INVITE_TTL_MINUTES = 43200
 MAX_NOTICES = 50
+ROSTER_AI_DISCLOSURE_VERSION = "1"
 
 GENERIC_INVITE_ERROR = "Invalid or expired invite code."
 SELF_ASSIGNMENT_ERROR = "You cannot assign yourself as your own coach."
@@ -364,7 +365,12 @@ def redeem_assignment_invite(
         return _refusal(GENERIC_INVITE_ERROR, "assignment.invite_invalid.v1")
 
     now_iso = datetime.now(UTC).isoformat()
-    result = db.redeem_assignment_invite(hash_token(token), player_account_id, now_iso)
+    result = db.redeem_assignment_invite(
+        hash_token(token),
+        player_account_id,
+        now_iso,
+        ROSTER_AI_DISCLOSURE_VERSION,
+    )
     if not result["ok"]:
         _capture_redemption_failure(player_account_id, result["reason"], client)
         reason = result["reason"]
@@ -426,6 +432,8 @@ def redeem_assignment_invite(
             "started_at": result["started_at"],
             "status": "active",
             "coach_preparing_program": coach_preparing_program,
+            "roster_ai_disclosure_version": ROSTER_AI_DISCLOSURE_VERSION,
+            "roster_ai_disclosed_at": result["started_at"],
         },
         "notices_created": 1,
         "email_sent": email_sent,
@@ -445,6 +453,8 @@ def get_player_assignment(db: Any, player_account_id: str) -> dict[str, Any] | N
         "coach": coach_identity(db, assignment["coach_account_id"], coach),
         "started_at": assignment["started_at"],
         "status": assignment["status"],
+        "roster_ai_disclosure_version": assignment["roster_ai_disclosure_version"],
+        "roster_ai_disclosed_at": assignment["roster_ai_disclosed_at"],
         "coach_preparing_program": _coach_preparing_program(
             db,
             player_account_id,
@@ -453,6 +463,15 @@ def get_player_assignment(db: Any, player_account_id: str) -> dict[str, Any] | N
         ),
     }
     return assignment_details
+
+
+def record_roster_ai_disclosure(db: Any, player_account_id: str) -> dict[str, str] | None:
+    """Acknowledges the current roster-AI disclosure for the active assignment."""
+    return db.record_roster_ai_disclosure(
+        player_account_id,
+        ROSTER_AI_DISCLOSURE_VERSION,
+        datetime.now(UTC).isoformat(),
+    )
 
 
 def get_active_player_assignment_id(db: Any, player_account_id: str) -> str | None:

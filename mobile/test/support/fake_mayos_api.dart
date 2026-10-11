@@ -171,6 +171,9 @@ class FakeMayosApi {
   String? activeAssignmentId;
   String? activeCoachDisplayName;
   String? activeCoachSpecialization;
+  String? rosterAiDisclosureVersion = '1';
+  int rosterAiDisclosureRequests = 0;
+  int rosterAiDisclosureFailuresRemaining = 0;
   bool myAssignmentFails = false;
   int myAssignmentRequests = 0;
   final List<Map<String, dynamic>> assignmentNotices = <Map<String, dynamic>>[];
@@ -647,6 +650,8 @@ class FakeMayosApi {
         return _redeemAssignment(request);
       case '/assignments/me':
         return _myAssignment(request);
+      case '/assignments/me/roster-ai-disclosure':
+        return _recordRosterAiDisclosure(request);
       case '/assignments/me/end':
         return _endMyAssignment(request);
       case '/assignments/notices':
@@ -1277,7 +1282,33 @@ class FakeMayosApi {
         'status': 'active',
         'coach_preparing_program':
             coachPreparingProgram ?? !coachControlsProgram,
+        'roster_ai_disclosure_version': rosterAiDisclosureVersion,
+        'roster_ai_disclosed_at': rosterAiDisclosureVersion == null
+            ? null
+            : '2026-10-11T10:00:00Z',
       };
+
+  FakeResponse _recordRosterAiDisclosure(FakeRequest request) {
+    rosterAiDisclosureRequests++;
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (activeAssignmentId == null) {
+      return const FakeResponse(
+          400, <String, dynamic>{'detail': 'No active assignment.'});
+    }
+    if (rosterAiDisclosureFailuresRemaining > 0) {
+      rosterAiDisclosureFailuresRemaining--;
+      return const FakeResponse(
+          503, <String, dynamic>{'detail': 'The service is unavailable.'});
+    }
+    rosterAiDisclosureVersion = '1';
+    return FakeResponse(200, <String, dynamic>{
+      'roster_ai_disclosure_version': rosterAiDisclosureVersion,
+      'roster_ai_disclosed_at': '2026-10-11T10:00:00Z',
+    });
+  }
 
   FakeResponse _issueAssignmentInvite(FakeRequest request) {
     if (!_authorized(request)) {
