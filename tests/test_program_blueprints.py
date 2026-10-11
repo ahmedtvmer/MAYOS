@@ -35,8 +35,14 @@ from agent.program_blueprints import (
     prescription_class,
     validate_slot_signatures,
 )
-from agent.program_rules import fetch_slot_candidates, fetch_warmup_candidates, get_split_plan, resolve_split
-from agent.program_rules import get_default_split
+from agent.program_rules import (
+    apply_rep_preference,
+    fetch_slot_candidates,
+    fetch_warmup_candidates,
+    get_default_split,
+    get_split_plan,
+    resolve_split,
+)
 from utils.equipment_access import BODYWEIGHT_ONLY, COMMERCIAL_GYM, EQUIPMENT_ACCESS_VALUES, HOME_GYM
 
 db = None
@@ -444,6 +450,8 @@ def test_prescriptions_follow_reference_scheme():
             assert exercise.target_reps_min >= 4
             assert exercise.target_reps_max <= 30
             spec = SLOT_SPECS[exercise.slot_key]
+            expected_reps = apply_rep_preference(spec.reps, "balanced")
+            assert (exercise.target_reps_min, exercise.target_reps_max) == expected_reps
             assert exercise.rest_seconds == spec.rest_seconds
             assert exercise.warmup_sets == spec.warmup_sets
 
@@ -485,7 +493,7 @@ def test_generation_prescribes_effort_by_experience(training_age_years, expected
 )
 def test_isolation_cue_matches_player_experience(training_age_years, expected_phrase):
     experience = experience_level_for_training_age(training_age_years)
-    cue = program_generator.get_biomechanical_cue("lateral raise", "isolation", experience)
+    cue = program_generator.get_biomechanical_cue("lateral raise", experience)
     assert expected_phrase in cue
 
 

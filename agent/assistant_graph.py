@@ -38,7 +38,6 @@ from agent.program_generator import (
     get_biomechanical_cue,
 )
 from agent.program_blueprints import experience_level_for_training_age
-from agent.program_rules import is_compound_name
 from agent.prompts import (
     ARABIC_CLINICAL_SAFEGUARD_RESPONSE,
     ARABIC_DIAGNOSIS_SAFEGUARD_RESPONSE,
@@ -1603,6 +1602,8 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
             valid_candidates = [
                 {
                     **candidate,
+                    "primary_action": entries.get(str(candidate["id"]), {}).get("primary_action"),
+                    "secondary_actions": entries.get(str(candidate["id"]), {}).get("secondary_actions", []),
                     "description": describe_exercise(
                         store,
                         str(candidate["id"]),
@@ -1623,8 +1624,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
         lines = [header]
         model_lines = [model_header]
         for i, c in enumerate(valid_candidates, start=1):
-            is_comp = is_compound_name(c["name"])
-            cue = get_biomechanical_cue(c["name"], "compound" if is_comp else "isolation", experience_level)
+            cue = get_biomechanical_cue(c, experience_level)
             lines.append(f"{i}. **{c['name'].title()}** (`{c['equipment']}`)\n   *Cue:* {cue}")
             model_lines.append(f"{i}. **{c['description']}**\n   *Cue:* {cue}")
         lines.append(f"\n*To commit a swap, reply:* `swap {matched_ex.exercise_name} for [Choice]`")
@@ -1768,9 +1768,8 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
     )
     if substitution["ok"]:
         replacement = substitution["replacement"]
-        is_compound = is_compound_name(replacement["name"])
         new_notes = replacement.get("instructions") or get_biomechanical_cue(
-            replacement["name"], "compound" if is_compound else "isolation", experience_level
+            replacement, experience_level
         )
         note_suffix = ""
         # Variants of one movement share the end of their source name ("... lateral pulldown");

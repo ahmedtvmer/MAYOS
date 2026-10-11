@@ -1,4 +1,5 @@
 import re
+from collections.abc import Mapping
 from typing import Any, Callable
 
 from dotenv import load_dotenv
@@ -9,6 +10,7 @@ from agent.program_blueprints import (
     SLOT_SPECS,
     SLOT_STAPLES,
     SPLIT_DISPLAY_NAMES,
+    REST_SECONDS_RANGES_BY_CLASS,
     WARMUP_FAMILIES,
     WARMUP_SPECS,
     body_parts_to_slots,
@@ -18,6 +20,7 @@ from agent.program_blueprints import (
 )
 from agent.ProgramState import CustomDayPlan, DynamicSplitPlan
 from database.exercise_library.schema import exercise_library_visible_sql
+from database.exercise_library.values import split_curation_values
 from utils.equipment_access import COMMERCIAL_GYM, equipment_access_sql, map_equipment_access
 from utils.model_downloader import llm
 
@@ -67,6 +70,56 @@ def is_compound_name(name: str) -> bool:
     )
 
 
+def _curation_actions(action_field: Any) -> tuple[str, ...]:
+    if isinstance(action_field, str):
+        return split_curation_values(action_field)
+    return tuple(str(action).strip() for action in (action_field or ()) if str(action).strip())
+
+
+def _action_joint(action: str) -> str:
+    normalized = action.casefold()
+    if normalized.startswith(("shoulder ", "scapular ")):
+        return "shoulder"
+    prefix = normalized.split(" ", 1)[0]
+    return {"spinal": "spine"}.get(prefix, prefix)
+
+
+def _curated_action_mechanic(primary_actions: tuple[str, ...], secondary_actions: tuple[str, ...]) -> str:
+    actions = {
+        action.casefold()
+        for action in (*primary_actions, *secondary_actions)
+        if not action.casefold().startswith("anti-") and action.casefold() != "conditioning"
+    }
+    if not actions:
+        return "isolation"
+
+    primary_normalized = {action.casefold() for action in primary_actions}
+    joints = {_action_joint(action) for action in actions}
+    trunk_work = (
+        {"hip flexion", "spinal flexion"}.issubset(actions)
+        and joints.issubset({"hip", "spine"})
+        and "hip extension" not in actions
+    )
+    if trunk_work:
+        return "isolation"
+    if "hip extension" in primary_normalized:
+        return "compound"
+    return "compound" if len(joints) >= 2 else "isolation"
+
+
+def exercise_mechanic(exercise: Mapping[str, Any] | str) -> str:
+    """Return compound/isolation from curated joints, or legacy name keywords."""
+    if isinstance(exercise, str):
+        return "compound" if is_compound_name(exercise) else "isolation"
+
+    primary_actions = _curation_actions(exercise.get("primary_action"))
+    secondary_actions = _curation_actions(exercise.get("secondary_actions"))
+    if not primary_actions and not secondary_actions:
+        name = str(exercise.get("name") or exercise.get("exercise_name") or "")
+        return "compound" if is_compound_name(name) else "isolation"
+    return _curated_action_mechanic(primary_actions, secondary_actions)
+
+
 EXCLUDED_TERMS = [
     "stretch",
     "yoga",
@@ -90,11 +143,7 @@ def _is_excluded(name: str) -> bool:
     """Word-boundary exclusion so 'run' never kills 'crunch' or 'reach' never kills 'preacher'."""
     return any(pattern.search(name) for pattern in EXCLUDED_PATTERNS)
 
-REP_WINDOWS = {
-    "low": {"compound": (5, 8), "isolation": (8, 12)},
-    "balanced": {"compound": (6, 10), "isolation": (10, 15)},
-    "high": {"compound": (8, 12), "isolation": (12, 20)},
-}
+BASE_REP_WINDOWS = {"compound": (6, 10), "isolation": (10, 15)}
 
 REP_PREFERENCE_OFFSETS = {
     "low": (-1, -1),
@@ -104,8 +153,13 @@ REP_PREFERENCE_OFFSETS = {
 
 
 def get_target_rep_window(mechanic: str, rep_preference: str = "balanced") -> tuple[int, int]:
-    pref = rep_preference.lower() if rep_preference in REP_WINDOWS else "balanced"
-    return REP_WINDOWS[pref].get(mechanic, (8, 12))
+    return apply_rep_preference(BASE_REP_WINDOWS.get(mechanic, (8, 12)), rep_preference)
+
+
+def rest_seconds_for_mechanic(mechanic: str) -> int:
+    prescription_class = "heavy_compound" if mechanic == "compound" else "isolation"
+    minimum, maximum = REST_SECONDS_RANGES_BY_CLASS[prescription_class]
+    return (minimum + maximum) // 2
 
 
 def apply_rep_preference(reps: tuple[int, int], rep_preference: str | None) -> tuple[int, int]:
@@ -336,9 +390,11 @@ def _fetch_by_sql(
     query = f"""
         SELECT e.id, COALESCE(edn.display_name, e.name) AS name, e.name AS source_name,
                e.body_part, e.target_muscle,
-               e.equipment, e.instructions, e.image_path, e.gif_path
+               e.equipment, e.instructions, e.image_path, e.gif_path,
+               cf.primary_action, COALESCE(cf.secondary_actions, '') AS secondary_actions
         FROM exercises e
         LEFT JOIN exercise_display_names edn ON edn.exercise_id = e.id
+        LEFT JOIN catalog.exercise_curated_fields cf ON cf.exercise_id = e.id
         WHERE {' AND '.join(where)}
         ORDER BY {_name_rank_sql(name_rank)}{rank_sql} ASC, id ASC
         LIMIT ?
@@ -355,9 +411,8 @@ def _fetch_by_sql(
         if _is_excluded(item["name"]) or _is_excluded(source_name):
             continue
         item["name"] = clean_exercise_name(item["name"], replace_with_machine=True)
-        name_lower = item["name"].lower()
-        is_compound = is_compound_name(name_lower)
-        item["mechanic"] = "compound" if is_compound else "isolation"
+        item["secondary_actions"] = split_curation_values(item["secondary_actions"])
+        item["mechanic"] = exercise_mechanic(item)
         candidates.append(item)
         if len(candidates) >= limit:
             break
@@ -447,8 +502,10 @@ def fetch_filtered_candidates(
 
     query = f"""
         SELECT e.id, e.name, e.body_part, e.target_muscle, e.equipment,
-               e.instructions, e.image_path, e.gif_path
+               e.instructions, e.image_path, e.gif_path, cf.primary_action,
+               COALESCE(cf.secondary_actions, '') AS secondary_actions
         FROM exercises e
+        LEFT JOIN catalog.exercise_curated_fields cf ON cf.exercise_id = e.id
         WHERE ({where_clause})
           AND LOWER(body_part) != 'cardio'
           AND {equipment_access_sql(equipment_access)}
@@ -485,9 +542,8 @@ def fetch_filtered_candidates(
         if _is_excluded(item["name"]):
             continue
         item["name"] = clean_exercise_name(item["name"], replace_with_machine=True)
-        name_lower = item["name"].lower()
-        is_compound = is_compound_name(name_lower)
-        item["mechanic"] = "compound" if is_compound else "isolation"
+        item["secondary_actions"] = split_curation_values(item["secondary_actions"])
+        item["mechanic"] = exercise_mechanic(item)
         candidates.append(item)
         if len(candidates) >= limit:
             break

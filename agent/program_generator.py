@@ -1,4 +1,5 @@
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -30,6 +31,7 @@ from agent.program_blueprints import (
 )
 from agent.program_rules import (
     apply_rep_preference,
+    exercise_mechanic,
     fetch_slot_candidates,
     fetch_warmup_candidates,
     resolve_split,
@@ -107,9 +109,15 @@ class ProgramGenerationRequest:
     frequency_override: int | None = None
 
 
-def get_biomechanical_cue(name: str, mechanic: str, experience_level: ExperienceLevel) -> str:
-    name_lower = name.lower()
-    if mechanic == "compound":
+def get_biomechanical_cue(
+    exercise_entry: str | Mapping[str, Any], experience_level: ExperienceLevel
+) -> str:
+    if isinstance(exercise_entry, Mapping):
+        exercise_name = str(exercise_entry.get("name") or exercise_entry.get("exercise_name") or "")
+    else:
+        exercise_name = exercise_entry
+    name_lower = exercise_name.lower()
+    if exercise_mechanic(exercise_entry) == "compound":
         # Word starts only: "chin" must not match "Machine", nor "row" match "Narrow".
         if re.search(r"\b(?:press|push|dip)", name_lower):
             return MECHANIC_CUES["compound_press"]

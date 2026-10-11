@@ -5,6 +5,13 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from agent.program_blueprints import SLOT_SPECS, rest_seconds_for_exercise_class
+from agent.program_rules import (
+    apply_rep_preference,
+    exercise_mechanic,
+    get_target_rep_window,
+    rest_seconds_for_mechanic,
+)
 from service import analytics
 from service.program_analytics import ProgramAnalyticsActor, capture_program_exercise_swapped
 from service.programs import COACH_CONTROLLED_ERROR, player_controls_program
@@ -73,9 +80,13 @@ def substitute_program_exercise(
     target_days = prepared["target_days"]
     replacement = prepared["replacement"]
     if request.all_occurrences:
-        replaced_count = _replace_every_slot(target_days, str(request.exercise_id), replacement)
+        replaced_exercises = _replace_every_slot(target_days, str(request.exercise_id), replacement)
     else:
-        replaced_count = _replace_first_slot(target_days[0], str(request.exercise_id), replacement)
+        replaced_exercises = _replace_first_slot(target_days[0], str(request.exercise_id), replacement)
+    profile = ledger.get_player_profile() or {}
+    for exercise in replaced_exercises:
+        _adjust_class_prescription(exercise, replacement, profile)
+    replaced_count = len(replaced_exercises)
     program_data.pop("created_at", None)
     ledger.save_training_program(program_data, published_by_coach_account_id=request.published_by_coach_account_id)
     return {
@@ -84,6 +95,27 @@ def substitute_program_exercise(
         "replaced_count": replaced_count,
         "day_names": [day["day_name"] for day in target_days],
     }
+
+
+def _adjust_class_prescription(
+    exercise: dict[str, Any],
+    replacement: dict[str, Any],
+    profile: dict[str, Any],
+) -> None:
+    spec = SLOT_SPECS.get(str(exercise.get("slot_key") or ""))
+    if spec is None:
+        return
+    replacement_mechanic = exercise_mechanic(replacement)
+    slot_mechanic = "isolation" if spec.archetype == "isolation" else "compound"
+    rep_preference = profile.get("rep_preference", "balanced")
+    if replacement_mechanic == slot_mechanic:
+        reps = apply_rep_preference(spec.reps, rep_preference)
+        rest_seconds = rest_seconds_for_exercise_class(spec)
+    else:
+        reps = get_target_rep_window(replacement_mechanic, rep_preference)
+        rest_seconds = rest_seconds_for_mechanic(replacement_mechanic)
+    exercise["target_reps_min"], exercise["target_reps_max"] = reps
+    exercise["rest_seconds"] = rest_seconds
 
 
 def substitute_active_program_exercise(
@@ -224,23 +256,25 @@ def _day_has_exercise(day: dict[str, Any], exercise_id: str) -> bool:
     return any(str(exercise.get("exercise_id")) == exercise_id for exercise in day.get("exercises", []))
 
 
-def _replace_first_slot(day: dict[str, Any], source_id: str, replacement: dict[str, Any]) -> int:
+def _replace_first_slot(day: dict[str, Any], source_id: str, replacement: dict[str, Any]) -> list[dict[str, Any]]:
     for exercise in day.get("exercises", []):
         if str(exercise.get("exercise_id")) == source_id:
             _set_replacement(exercise, replacement)
-            return 1
-    return 0
+            return [exercise]
+    return []
 
 
-def _replace_every_slot(days: list[dict[str, Any]], source_id: str, replacement: dict[str, Any]) -> int:
-    replaced_count = 0
+def _replace_every_slot(
+    days: list[dict[str, Any]], source_id: str, replacement: dict[str, Any]
+) -> list[dict[str, Any]]:
+    replaced_exercises = []
     for day in days:
         for exercise in day.get("exercises", []):
             if str(exercise.get("exercise_id")) != source_id:
                 continue
             _set_replacement(exercise, replacement)
-            replaced_count += 1
-    return replaced_count
+            replaced_exercises.append(exercise)
+    return replaced_exercises
 
 
 def _set_replacement(exercise: dict[str, Any], replacement: dict[str, Any]) -> None:

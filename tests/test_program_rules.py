@@ -90,6 +90,40 @@ def test_filtered_generation_candidates_omit_hidden_exercises(fresh_store, seed_
     assert hidden_id not in {str(candidate["id"]) for candidate in candidates}
 
 
+def test_mechanics_for_real_curated_exercises_use_joint_actions(fresh_store):
+    from agent.program_generator import MECHANIC_CUES, get_biomechanical_cue
+    from agent.program_rules import exercise_mechanic
+
+    expected = {
+        "85": "compound",       # Romanian Deadlift (Barbell)
+        "116": "compound",      # Stiff-Leg Deadlift (Barbell)
+        "3562": "compound",     # Hip Thrust (Barbell)
+        "mayos:4": "isolation", # Machine Hip Thrust has no action curation; use its name rule.
+        "585": "isolation",     # Leg Extension (Machine)
+        "586": "isolation",     # Lying Leg Curl (Machine)
+        "1638": "isolation",    # Pulldown-Station Curl (Cable)
+        "602": "isolation",     # Reverse Pec Deck (Machine)
+        "225": "isolation",     # High Reverse Fly (Cable)
+        "305": "isolation",     # Kelso Shrug (Dumbbell)
+        "1774": "isolation",    # Side Plank Hip Abduction
+        "237": "isolation",     # Rope Straight-Arm Pulldown (Cable)
+        "43": "compound",       # Back Squat (Barbell)
+        "150": "compound",      # Lat Pulldown (Cable)
+        "274": "isolation",     # Crunch
+        "472": "isolation",     # Hanging Leg Raise
+        "334": "isolation",     # Lateral Raise (Dumbbell)
+    }
+    entries = {exercise_id: fresh_store.get_exercise_library_entry(exercise_id) for exercise_id in expected}
+
+    assert all(entries.values())
+    assert all(fresh_store.is_exercise_library_exercise_visible(exercise_id) for exercise_id in expected)
+    assert {exercise_id: exercise_mechanic(entry) for exercise_id, entry in entries.items()} == expected
+    assert "pulldown" in entries["1638"]["name"].casefold()
+    assert exercise_mechanic("Incline Press") == "compound"
+    assert get_biomechanical_cue(entries["237"], "intermediate") == MECHANIC_CUES["isolation_technical_failure"]
+    assert get_biomechanical_cue(entries["43"], "intermediate") == MECHANIC_CUES["compound_lower"]
+
+
 def test_dynamic_split_plan_uses_its_own_output_budget(monkeypatch):
     model = ScriptedChatModel([get_default_split(3)])
     monkeypatch.setattr("agent.program_rules.llm", model)

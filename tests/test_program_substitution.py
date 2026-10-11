@@ -1,5 +1,6 @@
 import pytest
 
+from agent.program_blueprints import SLOT_SPECS
 from service.program_substitution import (
     ProgramSubstitution,
     SubstitutionErrorCode,
@@ -23,8 +24,38 @@ class FakeLedger:
     def __init__(self):
         self.saved = []
 
+    def get_player_profile(self):
+        return {"rep_preference": "balanced"}
+
     def save_training_program(self, program_data, published_by_coach_account_id=None):
         self.saved.append((program_data, published_by_coach_account_id))
+
+
+def _program_for_slots(slot_keys, exercise_id):
+    exercises = []
+    for slot_key in slot_keys:
+        spec = SLOT_SPECS[slot_key]
+        exercises.append(
+            {
+                "exercise_id": exercise_id,
+                "exercise_name": "Library exercise",
+                "slot_key": slot_key,
+                "warmup_sets": spec.warmup_sets,
+                "target_sets": 2,
+                "target_reps_min": spec.reps[0],
+                "target_reps_max": spec.reps[1],
+                "target_rpe": 8.0,
+                "rest_seconds": spec.rest_seconds,
+                "notes": "Catalog steps",
+                "suggested_substitutes": [],
+            }
+        )
+    return {
+        "program_name": "Plan",
+        "weekly_frequency": 1,
+        "split_type": "Full Body",
+        "days": [{"day_name": "Full A", "day_order": 1, "exercises": exercises}],
+    }
 
 
 @pytest.fixture
@@ -119,6 +150,40 @@ def test_substitution_all_occurrences_preserves_program_structure(program_data, 
     assert saved["days"][0]["warmup_exercises"] == program_data["days"][0]["warmup_exercises"]
 
 
+def test_substitution_class_change_uses_slot_archetype_and_swap_back_restores_slot(fresh_store):
+    ledger = FakeLedger()
+    program = _program_for_slots(["vertical_pull"], "150")
+
+    result = substitute_program_exercise(
+        ledger,
+        fresh_store,
+        program,
+        ProgramSubstitution("Full A", "150", "237"),
+    )
+
+    assert result["ok"] is True
+    changed = ledger.saved[-1][0]
+    exercise = changed["days"][0]["exercises"][0]
+    assert exercise["exercise_id"] == "237"
+    assert (exercise["target_reps_min"], exercise["target_reps_max"], exercise["rest_seconds"]) == (10, 15, 150)
+    assert exercise["warmup_sets"] == SLOT_SPECS["vertical_pull"].warmup_sets
+    assert exercise["target_rpe"] == 8.0
+
+    result = substitute_program_exercise(
+        ledger,
+        fresh_store,
+        changed,
+        ProgramSubstitution("Full A", "237", "150"),
+    )
+
+    assert result["ok"] is True
+    restored = ledger.saved[-1][0]["days"][0]["exercises"][0]
+    spec = SLOT_SPECS["vertical_pull"]
+    assert restored["exercise_id"] == "150"
+    assert (restored["target_reps_min"], restored["target_reps_max"]) == spec.reps
+    assert restored["rest_seconds"] == spec.rest_seconds
+
+
 def test_substitution_default_changes_only_first_matching_slot(program_data, replacement):
     program_data["days"][0]["exercises"].append({"exercise_id": "squat", "exercise_name": "Second Squat"})
     ledger = FakeLedger()
@@ -135,6 +200,53 @@ def test_substitution_default_changes_only_first_matching_slot(program_data, rep
     saved = ledger.saved[0][0]
     assert [exercise["exercise_id"] for exercise in saved["days"][0]["exercises"]] == ["leg_press", "squat"]
     assert saved["days"][1]["exercises"][0]["exercise_id"] == "squat"
+
+
+def test_single_swap_adjusts_only_first_duplicate_exercise_on_day(fresh_store):
+    ledger = FakeLedger()
+    program = _program_for_slots(["vertical_pull", "horizontal_row"], "150")
+
+    result = substitute_program_exercise(
+        ledger,
+        fresh_store,
+        program,
+        ProgramSubstitution("Full A", "150", "237"),
+    )
+
+    assert result["ok"] is True
+    exercises = ledger.saved[-1][0]["days"][0]["exercises"]
+    assert [exercise["exercise_id"] for exercise in exercises] == ["237", "150"]
+    assert (exercises[0]["target_reps_min"], exercises[0]["target_reps_max"], exercises[0]["rest_seconds"]) == (
+        10,
+        15,
+        150,
+    )
+    second_slot = SLOT_SPECS["horizontal_row"]
+    assert (
+        exercises[1]["target_reps_min"],
+        exercises[1]["target_reps_max"],
+        exercises[1]["rest_seconds"],
+    ) == (*second_slot.reps, second_slot.rest_seconds)
+
+
+def test_abs_slot_accepts_real_hanging_leg_raise_with_calf_abs_prescription(fresh_store):
+    ledger = FakeLedger()
+    program = _program_for_slots(["abs"], "274")
+
+    result = substitute_program_exercise(
+        ledger,
+        fresh_store,
+        program,
+        ProgramSubstitution("Full A", "274", "472"),
+    )
+
+    assert result["ok"] is True
+    exercise = ledger.saved[-1][0]["days"][0]["exercises"][0]
+    spec = SLOT_SPECS["abs"]
+    assert exercise["exercise_id"] == "472"
+    assert (exercise["target_reps_min"], exercise["target_reps_max"]) == spec.reps
+    assert exercise["rest_seconds"] == spec.rest_seconds
+    assert exercise["warmup_sets"] == spec.warmup_sets
 
 
 def test_substitution_rejects_hidden_replacement_without_publishing(program_data, replacement):
