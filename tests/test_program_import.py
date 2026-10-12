@@ -454,6 +454,8 @@ def test_effort_and_per_set_reps_are_approximated_with_original_text(api):
     assert "reps: 8,8,6" in rows[0]["notes"]
     assert "effort: 7-8" in rows[0]["notes"]
     assert "reps: 8/8/6" in rows[1]["notes"]
+    assert "[]" not in rows[2]["notes"]
+    assert "effort: RPE 8" in rows[2]["notes"]
     assert any(warning["code"] == "program_import.rpe_converted.v1" for warning in rows[2]["warnings"])
     assert any(warning["code"] == "program_import.effort_approximated.v1" for warning in rows[3]["warnings"])
     assert rows[4]["valid"] is False
@@ -1208,6 +1210,117 @@ def test_unlabeled_week_blocks_expand_model_rows_from_source_values():
     assert [row["target_rir"] for row in normalized] == [
         float(row["rir"]) for row in case["expected_rows"]
     ]
+
+
+@pytest.mark.parametrize(
+    ("order_base", "order_step", "expected_step"),
+    [(0, 1, 1), (1, 1, 1), (1, 2, 2)],
+    ids=["zero-based-renumbered", "one-based-kept", "gapped-in-range-kept"],
+)
+def test_issue_400_unlabeled_week_blocks_normalize_orders_and_preserve_notes(
+    api, monkeypatch, tmp_path, scripted_chat_model, order_base, order_step, expected_step
+):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="week-order")
+
+    fixture_path = (
+        Path(__file__).parent
+        / "eval/datasets/program_import/21_unlabeled_week_blocks.json"
+    )
+    case = json.loads(fixture_path.read_text(encoding="utf-8"))
+    tab_name, fixture_rows = next(iter(case["sheets"].items()))
+    expected_week_one = [row for row in case["expected_rows"] if row["week"] == "Week 1"]
+    exercises = {
+        (row["expected_exercise_id"], row["exercise_name"])
+        for row in expected_week_one
+    }
+    db.catalog_conn.executemany(
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) "
+        "VALUES (?, ?, 'Other', 'Other', 'barbell')",
+        sorted(exercises),
+    )
+    db.catalog_conn.commit()
+    _enable_program_import_ai(monkeypatch, tmp_path)
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = tab_name
+    for row in fixture_rows:
+        sheet.append(row)
+    workbook_bytes = io.BytesIO()
+    workbook.save(workbook_bytes)
+    workbook.close()
+
+    def model_reply():
+        day_orders = {}
+        rows = []
+        for expected in expected_week_one:
+            day = expected["day"]
+            order = day_orders[day] + order_step if day in day_orders else order_base
+            day_orders[day] = order
+            rows.append({
+                "source_row": expected["source_row"],
+                "week": "",
+                "day": day,
+                "day_name": expected["day_name"],
+                "order": order,
+                "exercise": expected["input_exercise_name"],
+                "sets": expected["sets"],
+                "reps_min": expected["reps_min"],
+                "reps_max": expected["reps_max"],
+                "rir": expected["rir"],
+                "rpe": expected["rpe"],
+                "notes": expected["notes"],
+                "original_text": expected["original_text"],
+            })
+        return {
+            "rows": rows,
+            "layout": {
+                "days": [
+                    {"day": 1, "name": "Lower A"},
+                    {"day": 2, "name": "Push A"},
+                    {"day": 3, "name": "Pull A"},
+                ],
+                "weeks": [],
+                "confidence": 0.99,
+                "confirm_layout": True,
+            },
+        }
+
+    scripted_chat_model.script(model_reply())
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": (
+            "blocks.xlsx",
+            workbook_bytes.getvalue(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )},
+    )
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["detected_weeks"] == ["Week 1", "Week 2"]
+    assert result["selected_week"] == "Week 1"
+    assert result["confirm_layout"] is True
+    assert len(result["rows"]) == 24
+    assert {row["week"] for row in result["rows"]} == {"Week 1", "Week 2"}
+    assert all(row["valid"] for row in result["rows"])
+    assert not any("[]" in (row["notes"] or "") for row in result["rows"])
+
+    expected_notes = {row["source_row"]: row["notes"] for row in expected_week_one}
+    grouped_orders = {}
+    for row in result["rows"]:
+        grouped_orders.setdefault((row["week"], row["day"]), []).append(
+            (row["source_row"], row["order"])
+        )
+        note = expected_notes[row["source_row"]]
+        assert row["notes"] == note
+    for rows in grouped_orders.values():
+        ordered = sorted(rows)
+        assert [order for _source_row, order in ordered] == list(
+            range(1, expected_step * len(ordered) + 1, expected_step)
+        )
 
 
 def test_implicit_week_expansion_preserves_model_values_and_normalizes_missing_source_values():

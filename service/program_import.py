@@ -6,7 +6,7 @@ import io
 import math
 import re
 from bisect import bisect_right
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Iterable, Protocol
 
 from fastapi import BackgroundTasks
@@ -1176,7 +1176,7 @@ def _freeform_program_rows(
     context: FreeFormGridContext,
 ) -> list[ProgramImportRow]:
     ordered_model_rows = _expand_implicit_week_rows(model_rows, context)
-    return [
+    return _renumber_out_of_range_orders([
         _program_import_row(
             model_row,
             _matched_row_week(model_row.week, week_lookup, selected_week),
@@ -1184,7 +1184,34 @@ def _freeform_program_rows(
             context,
         )
         for model_row in ordered_model_rows
-    ]
+    ])
+
+
+def _renumber_out_of_range_orders(rows: list[ProgramImportRow]) -> list[ProgramImportRow]:
+    """Renumber a week's day from 1 when the model's orders for it fall outside 1..max (e.g. zero-based)."""
+    rows_by_week_and_day: dict[tuple[str | None, Any], list[int]] = {}
+    for index, row in enumerate(rows):
+        rows_by_week_and_day.setdefault((row.week, row.day), []).append(index)
+
+    renumbered = list(rows)
+    for indexes in rows_by_week_and_day.values():
+        orders = [_parse_integer(rows[index].order) for index in indexes]
+        if all(order is None or 1 <= order <= MAX_PROGRAM_IMPORT_ROWS for order in orders):
+            continue
+        ordered = sorted(indexes, key=lambda index: _model_order_sort_key(rows[index], index))
+        for order, index in enumerate(ordered, start=1):
+            renumbered[index] = replace(rows[index], order=order)
+    return renumbered
+
+
+def _model_order_sort_key(row: ProgramImportRow, index: int) -> tuple[bool, int, int, int]:
+    model_order = _parse_integer(row.order)
+    return (
+        model_order is None,
+        model_order if model_order is not None else 0,
+        row.source_row,
+        index,
+    )
 
 
 def _expand_implicit_week_rows(
@@ -1921,7 +1948,7 @@ def _normalise_row(source: ProgramImportRow, order_by_day: dict[int, int]) -> di
         for item in source.approximation_markers
         if item.original and item.column not in {"reps", "rir", "rpe"}
     ]
-    notes = _join_notes(source.notes, reps_note, effort_notes, *preserved_notes)
+    notes = _join_notes(source.notes, reps_note, *effort_notes, *preserved_notes)
     if len(notes) > MAX_PROGRAM_NOTES_LENGTH:
         errors.append(_row_error("program_import.notes_too_long.v1", source.source_row, "notes", "Notes are too long."))
 
