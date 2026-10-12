@@ -50,7 +50,7 @@ class ScriptedChatModel(BaseChatModel):
     max_tokens: int = 200
     model_name: str = "deepseek-ai/DeepSeek-V4-Flash"
     extra_body: dict[str, Any] | None = None
-    usage_metadata: dict[str, int] | None = None
+    usage_metadata: dict[str, Any] | None = None
     emit_usage: bool = True
     finish_reason: str | None = None
     default_turn: Any = None

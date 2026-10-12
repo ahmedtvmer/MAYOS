@@ -459,7 +459,7 @@
     },
     "record_model_usage": {
       "kind": "method",
-      "signature": "(self, account_id: str | None, role: str, model: str, input_tokens: int, output_tokens: int, cost_usd: float, estimated: bool, purpose: str | None = None, created_at: str | None = None, turn_id: str | None = None) -> None"
+      "signature": "(self, account_id: str | None, role: str, model: str, input_tokens: int, output_tokens: int, cost_usd: float, estimated: bool, purpose: str | None = None, created_at: str | None = None, turn_id: str | None = None, cached_input_tokens: int = 0) -> None"
     },
     "record_roster_ai_disclosure": {
       "kind": "method",

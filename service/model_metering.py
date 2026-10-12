@@ -36,7 +36,8 @@ MIN_MONTH_ELAPSED_FRACTION = 0.1
 
 _USAGE_GROUP_COLUMNS = (
     "SELECT account_id, role, model, COUNT(*),"
-    " COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),"
+    " COALESCE(SUM(input_tokens), 0), COALESCE(SUM({cached_input_column}), 0),"
+    " COALESCE(SUM(output_tokens), 0),"
     " COALESCE(SUM(cost_usd), 0), COALESCE(SUM(estimated), 0)"
     " FROM model_usage WHERE {where}"
     " GROUP BY account_id, role, model ORDER BY account_id, role, model"
@@ -72,10 +73,12 @@ def account_usage_totals(
     """Totals model calls, tokens, and cost through the account-scoped SQL aggregate."""
     totals = db._aggregate_model_usage_for_account(account_id, start_iso, end_iso)
     input_tokens = int(totals["input_tokens"])
+    cached_input_tokens = int(totals["cached_input_tokens"])
     output_tokens = int(totals["output_tokens"])
     return {
         "calls": int(totals["calls"]),
         "input_tokens": input_tokens,
+        "cached_input_tokens": cached_input_tokens,
         "output_tokens": output_tokens,
         "tokens": input_tokens + output_tokens,
         "cost_usd": float(totals["cost_usd"]),
@@ -171,6 +174,7 @@ def record_model_usage(
     output_tokens: int,
     estimated: bool,
     turn_id: str | None = None,
+    cached_input_tokens: int = 0,
 ) -> None:
     """Computes cost and persists one metered call (called by the metering callback).
 
@@ -186,13 +190,19 @@ def record_model_usage(
                 "refusing to drop the row (ADR 041)."
             )
         return None
-    cost = compute_cost(model, input_tokens, output_tokens)
+    cost = compute_cost(
+        model,
+        input_tokens,
+        output_tokens,
+        cached_input_tokens=cached_input_tokens,
+    )
     store.record_model_usage(
         account_id=account_id,
         role=role,
         model=model,
         purpose=purpose,
         input_tokens=input_tokens,
+        cached_input_tokens=cached_input_tokens,
         output_tokens=output_tokens,
         estimated=estimated,
         cost_usd=cost,
@@ -232,6 +242,7 @@ def _usage_window_report(db: Any, start: datetime, end: datetime | None) -> dict
         "rows": rows,
         "total_requests": sum(row["requests"] for row in rows),
         "total_input_tokens": sum(row["input_tokens"] for row in rows),
+        "total_cached_input_tokens": sum(row["cached_input_tokens"] for row in rows),
         "total_output_tokens": sum(row["output_tokens"] for row in rows),
         "total_cost_usd": sum(row["cost_usd"] for row in rows),
     }
@@ -299,10 +310,18 @@ def _rollup_usage_rows(rows: list[dict[str, Any]], dimensions: tuple[str, ...]) 
         key = tuple(row[dimension] for dimension in dimensions)
         totals = groups.setdefault(
             key,
-            {"requests": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0, "estimated_calls": 0},
+            {
+                "requests": 0,
+                "input_tokens": 0,
+                "cached_input_tokens": 0,
+                "output_tokens": 0,
+                "cost_usd": 0.0,
+                "estimated_calls": 0,
+            },
         )
         totals["requests"] += row["requests"]
         totals["input_tokens"] += row["input_tokens"]
+        totals["cached_input_tokens"] += row["cached_input_tokens"]
         totals["output_tokens"] += row["output_tokens"]
         totals["cost_usd"] += row["cost_usd"]
         totals["estimated_calls"] += row["estimated_calls"]
@@ -401,7 +420,12 @@ class ReadOnlyModelUsageCatalog:
             "created_at >= ? AND created_at < ?",
             [start_iso, end_iso],
         )
-        cursor = self._conn.execute(_USAGE_GROUP_COLUMNS.format(where=where), params)
+        columns = {str(row[1]) for row in self._conn.execute("PRAGMA table_info(model_usage)")}
+        cached_input_column = "cached_input_tokens" if "cached_input_tokens" in columns else "0"
+        cursor = self._conn.execute(
+            _USAGE_GROUP_COLUMNS.format(where=where, cached_input_column=cached_input_column),
+            params,
+        )
         return [
             {
                 "account_id": row[0],
@@ -409,9 +433,10 @@ class ReadOnlyModelUsageCatalog:
                 "model": str(row[2]),
                 "requests": int(row[3]),
                 "input_tokens": int(row[4]),
-                "output_tokens": int(row[5]),
-                "cost_usd": float(row[6]),
-                "estimated_calls": int(row[7]),
+                "cached_input_tokens": int(row[5]),
+                "output_tokens": int(row[6]),
+                "cost_usd": float(row[7]),
+                "estimated_calls": int(row[8]),
             }
             for row in cursor.fetchall()
         ]

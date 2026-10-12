@@ -89,8 +89,8 @@ def estimate_tokens_from_text(text: str) -> int:
     return max(0, len(text) // _CHARS_PER_TOKEN)
 
 
-def _extract_usage(response: Any, prompt_chars: int) -> tuple[int, int, bool]:
-    """Returns ``(input_tokens, output_tokens, estimated)`` from an ``LLMResult``.
+def _extract_usage(response: Any, prompt_chars: int) -> tuple[int, int, int, bool]:
+    """Returns input, output, cached-input counts, and estimate status.
 
     Prefers provider ``usage_metadata`` then ``llm_output`` token usage; a
     missing side falls back to the documented chars/4 estimate and flags the
@@ -98,6 +98,7 @@ def _extract_usage(response: Any, prompt_chars: int) -> tuple[int, int, bool]:
     """
     input_tokens: int | None = None
     output_tokens: int | None = None
+    cached_input_tokens = 0
     produced_text: list[str] = []
 
     for generation_group in getattr(response, "generations", None) or []:
@@ -109,25 +110,33 @@ def _extract_usage(response: Any, prompt_chars: int) -> tuple[int, int, bool]:
                     input_tokens = int(usage["input_tokens"])
                 if usage.get("output_tokens") is not None:
                     output_tokens = int(usage["output_tokens"])
+                input_token_details = usage.get("input_token_details") or {}
+                cached_token_count = input_token_details.get("cache_read", input_token_details.get("cached_tokens"))
+                if cached_token_count is not None:
+                    cached_input_tokens = max(0, int(cached_token_count))
             produced_text.append(str(getattr(generation, "text", "") or ""))
 
     llm_output = getattr(response, "llm_output", None) or {}
     token_usage = llm_output.get("token_usage") or llm_output.get("usage") or {}
+    prompt_details = token_usage.get("prompt_tokens_details") or {}
+    cached_token_count = prompt_details.get("cached_tokens", token_usage.get("cached_tokens"))
+    if cached_token_count is not None:
+        cached_input_tokens = max(0, int(cached_token_count))
     if input_tokens is None:
-        value = token_usage.get("prompt_tokens", token_usage.get("input_tokens"))
-        if value is not None:
-            input_tokens = int(value)
+        input_token_count = token_usage.get("prompt_tokens", token_usage.get("input_tokens"))
+        if input_token_count is not None:
+            input_tokens = int(input_token_count)
     if output_tokens is None:
-        value = token_usage.get("completion_tokens", token_usage.get("output_tokens"))
-        if value is not None:
-            output_tokens = int(value)
+        output_token_count = token_usage.get("completion_tokens", token_usage.get("output_tokens"))
+        if output_token_count is not None:
+            output_tokens = int(output_token_count)
 
     estimated = input_tokens is None or output_tokens is None
     if input_tokens is None:
         input_tokens = max(0, prompt_chars // _CHARS_PER_TOKEN)
     if output_tokens is None:
         output_tokens = estimate_tokens_from_text("".join(produced_text))
-    return input_tokens, output_tokens, estimated
+    return input_tokens, output_tokens, min(input_tokens, cached_input_tokens), estimated
 
 
 #: The sink that persists a recorded call. Registered once at startup by
@@ -157,6 +166,8 @@ def record_usage(
     estimated: bool,
     context: UsageContext | None = None,
     finish_reason: str | None = None,
+    *,
+    cached_input_tokens: int = 0,
 ) -> None:
     """Persists one metered call; never raises (metering must not break inference)."""
     try:
@@ -168,6 +179,7 @@ def record_usage(
             purpose=active.purpose,
             model=model,
             input_tokens=input_tokens,
+            cached_input_tokens=cached_input_tokens,
             output_tokens=output_tokens,
             estimated=estimated,
             turn_id=active.turn_id,
@@ -208,7 +220,7 @@ class MeteringCallback(BaseCallbackHandler):
     def on_llm_end(self, response: Any, *, run_id: Any, **kwargs: Any) -> None:
         prompt_chars = self._prompt_chars.pop(run_id, 0)
         try:
-            input_tokens, output_tokens, estimated = _extract_usage(response, prompt_chars)
+            input_tokens, output_tokens, cached_input_tokens, estimated = _extract_usage(response, prompt_chars)
         except Exception:  # pragma: no cover - defensive
             logger.exception("Could not extract model usage; skipping row.")
             return
@@ -217,6 +229,7 @@ class MeteringCallback(BaseCallbackHandler):
             input_tokens,
             output_tokens,
             estimated,
+            cached_input_tokens=cached_input_tokens,
             finish_reason=_finish_reason(response),
         )
 

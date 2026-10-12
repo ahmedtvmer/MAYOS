@@ -14,7 +14,8 @@ ALLOWANCE_EXEMPT_PURPOSE = "checkpoint_review"
 
 class RegistryModelUsageMixin:
     _MODEL_USAGE_COLUMNS = (
-        "id, account_id, turn_id, role, model, purpose, input_tokens, output_tokens, estimated, cost_usd, created_at"
+        "id, account_id, turn_id, role, model, purpose, input_tokens, cached_input_tokens, "
+        "output_tokens, estimated, cost_usd, created_at"
     )
 
     @staticmethod
@@ -27,10 +28,11 @@ class RegistryModelUsageMixin:
             "model": str(row[4]),
             "purpose": row[5],
             "input_tokens": int(row[6]),
-            "output_tokens": int(row[7]),
-            "estimated": bool(row[8]),
-            "cost_usd": float(row[9]),
-            "created_at": str(row[10]),
+            "cached_input_tokens": int(row[7]),
+            "output_tokens": int(row[8]),
+            "estimated": bool(row[9]),
+            "cost_usd": float(row[10]),
+            "created_at": str(row[11]),
         }
 
     def record_model_usage(
@@ -45,6 +47,7 @@ class RegistryModelUsageMixin:
         purpose: str | None = None,
         created_at: str | None = None,
         turn_id: str | None = None,
+        cached_input_tokens: int = 0,
     ) -> None:
         """Appends one metered model call to the catalog.
 
@@ -61,6 +64,7 @@ class RegistryModelUsageMixin:
             str(model),
             str(purpose) if purpose else None,
             max(0, int(input_tokens)),
+            min(max(0, int(input_tokens)), max(0, int(cached_input_tokens))),
             max(0, int(output_tokens)),
             1 if estimated else 0,
             float(cost_usd or 0.0),
@@ -68,7 +72,7 @@ class RegistryModelUsageMixin:
         )
         with self._catalog_lock:
             self.catalog_conn.execute(
-                f"INSERT INTO model_usage ({self._MODEL_USAGE_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                f"INSERT INTO model_usage ({self._MODEL_USAGE_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 row,
             )
             self._commit_catalog()
@@ -217,7 +221,13 @@ class RegistryModelUsageMixin:
     ) -> dict[str, int | float]:
         """Aggregates calls, tokens, and cost for one account in SQL."""
         if not account_id:
-            return {"calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}
+            return {
+                "calls": 0,
+                "input_tokens": 0,
+                "cached_input_tokens": 0,
+                "output_tokens": 0,
+                "cost_usd": 0.0,
+            }
         clauses = ["account_id = ?"]
         params: list[str] = [str(account_id)]
         if start_iso is not None:
@@ -229,15 +239,17 @@ class RegistryModelUsageMixin:
         self.ensure_account_schema()
         with self._catalog_lock:
             row = self.catalog_conn.execute(
-                "SELECT COUNT(*), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),"
+                "SELECT COUNT(*), COALESCE(SUM(input_tokens), 0),"
+                " COALESCE(SUM(cached_input_tokens), 0), COALESCE(SUM(output_tokens), 0),"
                 " COALESCE(SUM(cost_usd), 0) FROM model_usage WHERE " + " AND ".join(clauses),
                 params,
             ).fetchone()
         return {
             "calls": int(row[0] or 0),
             "input_tokens": int(row[1] or 0),
-            "output_tokens": int(row[2] or 0),
-            "cost_usd": float(row[3] or 0.0),
+            "cached_input_tokens": int(row[2] or 0),
+            "output_tokens": int(row[3] or 0),
+            "cost_usd": float(row[4] or 0.0),
         }
 
     def summarize_model_usage(self, start_iso: str, end_iso: str | None = None) -> list[dict[str, Any]]:
@@ -251,7 +263,8 @@ class RegistryModelUsageMixin:
             cursor = self.catalog_conn.cursor()
             cursor.execute(
                 "SELECT account_id, role, model, COUNT(*),"
-                " COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),"
+                " COALESCE(SUM(input_tokens), 0), COALESCE(SUM(cached_input_tokens), 0),"
+                " COALESCE(SUM(output_tokens), 0),"
                 " COALESCE(SUM(cost_usd), 0), COALESCE(SUM(estimated), 0)"
                 f" FROM model_usage WHERE {where}"
                 " GROUP BY account_id, role, model ORDER BY account_id, role, model",
@@ -265,9 +278,10 @@ class RegistryModelUsageMixin:
                 "model": str(row[2]),
                 "requests": int(row[3]),
                 "input_tokens": int(row[4]),
-                "output_tokens": int(row[5]),
-                "cost_usd": float(row[6]),
-                "estimated_calls": int(row[7]),
+                "cached_input_tokens": int(row[5]),
+                "output_tokens": int(row[6]),
+                "cost_usd": float(row[7]),
+                "estimated_calls": int(row[8]),
             }
             for row in rows
         ]

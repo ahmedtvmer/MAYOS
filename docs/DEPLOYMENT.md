@@ -82,7 +82,7 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `RATE_LIMIT_PROGRAM_MUTATE` | `30/minute` | Player program mutations, including exercise substitutions and Undo |
 | `MODEL_RATE_LIMIT_REQUESTS` | `20` | Per-immutable-account model requests/minute; one turn counts once. `0` disables |
 | `MODEL_DAILY_TOKEN_LIMIT` | `200000` | Per-account input+output tokens/UTC day; `0` disables |
-| `MODEL_PRICING_JSON` | built-in defaults | `{model: {"input": usd, "output": usd}}` per 1M tokens; unknown model ⇒ cost 0 + warning |
+| `MODEL_PRICING_JSON` | built-in defaults | `{model: {"input": usd, "output": usd, "cached_input": usd}}` per 1M tokens; `cached_input` is optional and defaults to the input price; unknown model ⇒ cost 0 + warning |
 | `MODEL_SPEND_ALERT_USD` | `50` | Owner alert when projected month spend reaches this (evaluated on the hourly sweep) |
 | `LLM_API_KEY` | **required** | Credential for the hosted OpenAI-compatible chat API; missing credentials fail at model build |
 | `LLM_API_BASE` | `https://api.deepinfra.com/v1/openai` | OpenAI-compatible chat API base URL |

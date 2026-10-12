@@ -39,6 +39,7 @@ def _fake_model(
     *,
     input_tokens: int = 120,
     output_tokens: int = 30,
+    cached_input_tokens: int = 0,
     emit_usage: bool = True,
     finish_reason: str | None = None,
 ) -> ScriptedChatModel:
@@ -47,6 +48,7 @@ def _fake_model(
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "total_tokens": input_tokens + output_tokens,
+            "input_token_details": {"cache_read": cached_input_tokens},
         }
         if emit_usage
         else None
@@ -127,6 +129,22 @@ def _account_id(db, username: str) -> str:
 
 def _usage_rows(db, account_id: str) -> list[dict[str, Any]]:
     return [row for row in db.summarize_model_usage("2000-01-01") if row["account_id"] == account_id]
+
+
+def _create_legacy_model_usage_catalog(catalog_path: Path) -> None:
+    conn = sqlite3.connect(catalog_path)
+    conn.execute(
+        "CREATE TABLE model_usage ("
+        "id TEXT PRIMARY KEY, account_id TEXT, turn_id TEXT, role TEXT NOT NULL, model TEXT NOT NULL,"
+        "purpose TEXT, input_tokens INTEGER NOT NULL DEFAULT 0, output_tokens INTEGER NOT NULL DEFAULT 0,"
+        "estimated INTEGER NOT NULL DEFAULT 0, cost_usd REAL NOT NULL DEFAULT 0, created_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO model_usage (id, account_id, role, model, input_tokens, output_tokens, created_at)"
+        " VALUES ('legacy-row', 'acct-a', 'player', 'model-a', 120, 30, '2026-09-05T00:00:00+00:00')"
+    )
+    conn.commit()
+    conn.close()
 
 
 def _simple_program():
@@ -757,6 +775,106 @@ def test_cost_computed_from_pricing_json(api, monkeypatch):
     ).fetchone()[0] is None
 
 
+def test_cached_input_tokens_are_persisted_and_use_cached_price(api):
+    client, db = api
+    _register(client, "cacheplayer")
+    account_id = _account_id(db, "cacheplayer")
+    model_id = "deepseek-ai/DeepSeek-V4-Flash"
+    fake = _fake_model(
+        model_id,
+        input_tokens=1_000_000,
+        output_tokens=0,
+        cached_input_tokens=400_000,
+    )
+
+    run_inference_sync(
+        lambda: fake.invoke("cached prompt"),
+        scope=InferenceScope(account_id=account_id, role="player", purpose="cache", store=db),
+    )
+
+    rows = _usage_rows(db, account_id)
+    assert rows[0]["cached_input_tokens"] == 400_000
+    assert rows[0]["cost_usd"] == pytest.approx(0.0612)
+
+
+def test_cached_input_tokens_are_read_from_openai_compatible_prompt_details():
+    from types import SimpleNamespace
+
+    response = SimpleNamespace(
+        generations=[],
+        llm_output={
+            "token_usage": {
+                "prompt_tokens": 120,
+                "completion_tokens": 30,
+                "prompt_tokens_details": {"cached_tokens": 48},
+            }
+        },
+    )
+
+    assert utils_metering._extract_usage(response, 0) == (120, 30, 48, False)
+
+
+def test_cached_input_tokens_are_read_from_langchain_usage_metadata():
+    from types import SimpleNamespace
+
+    response = SimpleNamespace(
+        generations=[
+            [
+                SimpleNamespace(
+                    message=SimpleNamespace(
+                        usage_metadata={
+                            "input_tokens": 120,
+                            "output_tokens": 30,
+                            "input_token_details": {"cache_read": 48},
+                        }
+                    ),
+                    text="reply",
+                )
+            ]
+        ],
+        llm_output=None,
+    )
+
+    assert utils_metering._extract_usage(response, 0) == (120, 30, 48, False)
+
+
+def test_absent_cached_usage_defaults_to_zero():
+    from types import SimpleNamespace
+
+    response = SimpleNamespace(
+        generations=[
+            [
+                SimpleNamespace(
+                    message=SimpleNamespace(usage_metadata={"input_tokens": 12, "output_tokens": 4}),
+                    text="reply",
+                )
+            ]
+        ],
+        llm_output=None,
+    )
+
+    assert utils_metering._extract_usage(response, 0) == (12, 4, 0, False)
+
+
+def test_cached_input_price_is_used_when_configured_and_falls_back_otherwise():
+    from utils.model_pricing import compute_cost
+
+    assert compute_cost(
+        "priced",
+        1_000_000,
+        0,
+        {"priced": {"input": 0.09, "output": 0.18, "cached_input": 0.018}},
+        cached_input_tokens=400_000,
+    ) == pytest.approx(0.0612)
+    assert compute_cost(
+        "uncached-priced",
+        1_000_000,
+        0,
+        {"uncached-priced": {"input": 0.09, "output": 0.18}},
+        cached_input_tokens=400_000,
+    ) == pytest.approx(0.09)
+
+
 def test_unknown_model_cost_is_zero():
     from utils.model_pricing import compute_cost
 
@@ -932,8 +1050,22 @@ def test_account_usage_totals_sums_only_the_selected_account_and_window(api):
     totals = metering_service.account_usage_totals(db, account_id)
     recent = metering_service.account_usage_totals(db, account_id, second.isoformat())
 
-    assert totals == {"calls": 2, "input_tokens": 30, "output_tokens": 12, "tokens": 42, "cost_usd": 0.75}
-    assert recent == {"calls": 1, "input_tokens": 20, "output_tokens": 7, "tokens": 27, "cost_usd": 0.5}
+    assert totals == {
+        "calls": 2,
+        "input_tokens": 30,
+        "cached_input_tokens": 0,
+        "output_tokens": 12,
+        "tokens": 42,
+        "cost_usd": 0.75,
+    }
+    assert recent == {
+        "calls": 1,
+        "input_tokens": 20,
+        "cached_input_tokens": 0,
+        "output_tokens": 7,
+        "tokens": 27,
+        "cost_usd": 0.5,
+    }
 
 
 def test_concurrent_admits_are_capped(api, monkeypatch):
@@ -1153,6 +1285,39 @@ def test_read_only_report_and_missing_table(api, tmp_path):
             metering_service.usage_report(reader)
 
 
+def test_read_only_report_supports_catalogs_without_cached_input_column(tmp_path):
+    catalog_path = tmp_path / "legacy_catalog.db"
+    _create_legacy_model_usage_catalog(catalog_path)
+
+    with metering_service.ReadOnlyModelUsageCatalog(catalog_path) as reader:
+        report = metering_service.usage_report(reader, now=datetime(2026, 9, 15, tzinfo=UTC))
+
+    assert report["rows"][0]["cached_input_tokens"] == 0
+    assert report["total_cached_input_tokens"] == 0
+
+
+def test_existing_model_usage_rows_migrate_with_zero_cached_tokens(tmp_path):
+    from database.database_manager import DatabaseManager
+
+    catalog_path = tmp_path / "existing_catalog.db"
+    _create_legacy_model_usage_catalog(catalog_path)
+
+    db = DatabaseManager(
+        catalog_path=catalog_path,
+        ledgers_dir=tmp_path / "users",
+        backups_dir=tmp_path / "backups",
+    )
+    try:
+        columns = {row[1] for row in db.catalog_conn.execute("PRAGMA table_info(model_usage)")}
+        row = db.catalog_conn.execute(
+            "SELECT input_tokens, cached_input_tokens, output_tokens FROM model_usage WHERE id = 'legacy-row'"
+        ).fetchone()
+        assert "cached_input_tokens" in columns
+        assert tuple(row) == (120, 0, 30)
+    finally:
+        db.catalog_conn.close()
+
+
 def test_owner_report_json_respects_account_filter(api, capsys):
     _client, db = api
     _seed_usage(db, "acct-a", "player", "Qwen/Qwen3.5-9B", 0.5, datetime.now(UTC))
@@ -1181,6 +1346,7 @@ def test_owner_report_script_formatting(capsys):
                 "model": "Qwen/Qwen3.5-9B",
                 "requests": 3,
                 "input_tokens": 1000,
+                "cached_input_tokens": 250,
                 "output_tokens": 500,
                 "cost_usd": 0.25,
                 "estimated_calls": 0,
@@ -1188,6 +1354,7 @@ def test_owner_report_script_formatting(capsys):
         ],
         "total_requests": 3,
         "total_input_tokens": 1000,
+        "total_cached_input_tokens": 250,
         "total_output_tokens": 500,
         "total_cost_usd": 0.25,
         "mtd_actual_usd": 0.25,
@@ -1198,6 +1365,8 @@ def test_owner_report_script_formatting(capsys):
     out = capsys.readouterr().out
     assert "acct-a" in out
     assert "calls" in out
+    assert "cached" in out
+    assert "250" in out
     assert "Month-to-date actual" in out
     assert "Month-to-date projected" in out
     assert "Current month alert: not fired" in out

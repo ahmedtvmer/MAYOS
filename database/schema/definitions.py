@@ -687,6 +687,7 @@ class SchemaMixin:
                     model TEXT NOT NULL,
                     purpose TEXT,
                     input_tokens INTEGER NOT NULL DEFAULT 0,
+                    cached_input_tokens INTEGER NOT NULL DEFAULT 0,
                     output_tokens INTEGER NOT NULL DEFAULT 0,
                     estimated INTEGER NOT NULL DEFAULT 0,
                     cost_usd REAL NOT NULL DEFAULT 0,
@@ -782,6 +783,7 @@ class SchemaMixin:
             self._ensure_coach_profiles_stall_threshold()
             self._ensure_model_spend_alert_columns()
             self._ensure_model_usage_turn_id_column()
+            self._ensure_model_usage_cached_input_tokens_column()
             self._ensure_linked_sign_in_account_provider()
             self._ensure_coach_invites_revoked_at()
             self.catalog_conn.execute("DROP TRIGGER IF EXISTS first_touch_acquisition_no_update")
@@ -846,6 +848,13 @@ class SchemaMixin:
             "CREATE INDEX IF NOT EXISTS idx_model_usage_turn_account_created "
             "ON model_usage(turn_id, account_id, created_at)"
         )
+
+    def _ensure_model_usage_cached_input_tokens_column(self) -> None:
+        columns = self._table_columns(self.catalog_conn.cursor(), "model_usage")
+        if "cached_input_tokens" not in columns:
+            self.catalog_conn.execute(
+                "ALTER TABLE model_usage ADD COLUMN cached_input_tokens INTEGER NOT NULL DEFAULT 0"
+            )
 
     def _ensure_first_touch_referred_at_column(self) -> None:
         columns = self._table_columns(self.catalog_conn.cursor(), "first_touch_acquisition")

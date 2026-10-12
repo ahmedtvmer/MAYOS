@@ -2,8 +2,9 @@
 
 Prices are USD per 1,000,000 tokens and are **DeepInfra Standard-tier list
 prices**, not a provider contract: ``MODEL_PRICING_JSON`` (a JSON object mapping
-model id to ``{"input": <usd>, "output": <usd>}``) overrides them per
-deployment. An unknown model meters its tokens at cost 0 and logs one warning
+model id to ``{"input": <usd>, "output": <usd>, "cached_input": <usd>}``)
+overrides them per deployment. ``cached_input`` is optional and falls back to
+``input``. An unknown model meters its tokens at cost 0 and logs one warning
 per model, so a new hosted variant can never silently break metering (it only
 under-reports until priced).
 """
@@ -21,7 +22,11 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL_PRICING: dict[str, dict[str, float]] = {
     "Qwen/Qwen3.5-9B": {"input": 0.10, "output": 0.15},
     "Qwen/Qwen3.5-27B": {"input": 0.26, "output": 2.60},
-    "deepseek-ai/DeepSeek-V4-Flash": {"input": 0.09, "output": 0.18},
+    "deepseek-ai/DeepSeek-V4-Flash": {
+        "input": 0.09,
+        "cached_input": 0.018,
+        "output": 0.18,
+    },
 }
 
 #: Models already warned about, so an unpriced model does not spam the log.
@@ -43,7 +48,10 @@ def _parse_pricing_json(raw: str) -> dict[str, dict[str, float]]:
         if not isinstance(entry, dict):
             continue
         try:
-            pricing[str(model)] = {"input": float(entry["input"]), "output": float(entry["output"])}
+            parsed_entry = {"input": float(entry["input"]), "output": float(entry["output"])}
+            if "cached_input" in entry:
+                parsed_entry["cached_input"] = float(entry["cached_input"])
+            pricing[str(model)] = parsed_entry
         except (KeyError, TypeError, ValueError):
             logger.warning("Ignoring MODEL_PRICING_JSON entry for %r (needs numeric input/output).", model)
     return pricing
@@ -77,11 +85,17 @@ def compute_cost(
     input_tokens: int,
     output_tokens: int,
     pricing: dict[str, dict[str, float]] | None = None,
+    *,
+    cached_input_tokens: int = 0,
 ) -> float:
-    """USD cost for one call; 0.0 for an unknown model (tokens are still metered)."""
+    """USD cost for one call, pricing cached input separately when available."""
     entry = price_for(model, pricing)
     if entry is None:
         return 0.0
-    return (max(0, int(input_tokens)) / 1_000_000.0) * entry["input"] + (
+    input_count = max(0, int(input_tokens))
+    cached_count = min(input_count, max(0, int(cached_input_tokens)))
+    uncached_count = input_count - cached_count
+    cached_input_price = entry.get("cached_input", entry["input"])
+    return (uncached_count * entry["input"] + cached_count * cached_input_price) / 1_000_000.0 + (
         max(0, int(output_tokens)) / 1_000_000.0
     ) * entry["output"]

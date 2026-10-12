@@ -2,10 +2,10 @@
 
 The owner runs this from the ops console to review actual per-account usage
 before expansion. It opens the catalog **read-only** and never provisions
-schema. It prints per account id / role / model: model calls, input and output
-tokens, and USD cost for a date range (default: the current UTC calendar month),
-plus month-to-date actual and projected totals and the current month's alert
-status.
+schema. It prints per account id / role / model: model calls, input,
+cached-input, and output tokens, and USD cost for a date range (default: the
+current UTC calendar month), plus month-to-date actual and projected totals
+and the current month's alert status.
 
 Note the vocabulary: the per-row count is **model calls** (one row per call),
 while the per-account request limit counts **turns** (one chat turn with several
@@ -52,6 +52,7 @@ def _filter_account(report: dict, account_filter: str | None) -> dict:
     filtered["rows"] = rows
     filtered["total_requests"] = sum(row["requests"] for row in rows)
     filtered["total_input_tokens"] = sum(row["input_tokens"] for row in rows)
+    filtered["total_cached_input_tokens"] = sum(row["cached_input_tokens"] for row in rows)
     filtered["total_output_tokens"] = sum(row["output_tokens"] for row in rows)
     filtered["total_cost_usd"] = sum(row["cost_usd"] for row in rows)
     return filtered
@@ -75,18 +76,21 @@ def _print_report(report: dict) -> None:
         f"Model usage {report['start'][:10]} .. {report['end'][:10] if report['end'] else 'now'}{suffix}"
     )
     print(
-        f"{'account':<34} {'role':<8} {'model':<24} {'calls':>6} {'in_tok':>10} {'out_tok':>10} {'cost_usd':>10}"
+        f"{'account':<34} {'role':<8} {'model':<24} {'calls':>6} {'in_tok':>10}"
+        f" {'cached':>10} {'out_tok':>10} {'cost_usd':>10}"
     )
     for row in rows:
         account = row["account_id"] or "(unattributed)"
         print(
             f"{account:<34} {row['role']:<8} {row['model']:<24} {row['requests']:>6}"
-            f" {row['input_tokens']:>10} {row['output_tokens']:>10} {row['cost_usd']:>10.4f}"
+            f" {row['input_tokens']:>10} {row['cached_input_tokens']:>10}"
+            f" {row['output_tokens']:>10} {row['cost_usd']:>10.4f}"
         )
     print("-" * 110)
     print(
         f"{'TOTAL':<34} {'':<8} {'':<24} {report['total_requests']:>6}"
-        f" {report['total_input_tokens']:>10} {report['total_output_tokens']:>10} {report['total_cost_usd']:>10.4f}"
+        f" {report['total_input_tokens']:>10} {report['total_cached_input_tokens']:>10}"
+        f" {report['total_output_tokens']:>10} {report['total_cost_usd']:>10.4f}"
     )
     print()
     print(f"Month-to-date actual:    ${report['mtd_actual_usd']:,.2f}")
