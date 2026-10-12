@@ -90,4 +90,26 @@ void main() {
 
     expect(adapter.requests.single.headers['X-MAYOS-Build'], isNull);
   });
+
+  test('forgot-password sends the selected Display language', () async {
+    final FakeApiAdapter adapter = FakeApiAdapter(
+      (_) => const FakeResponse(
+        202,
+        <String, Object>{'message': 'If this email is linked, a reset link is on its way.'},
+      ),
+    );
+    final ApiClient api = ApiClient(
+      tokens: InMemoryTokenStore(),
+      baseUrl: 'http://test.local',
+      adapter: adapter,
+    );
+
+    await api.forgotPassword('alice@example.com', displayLanguage: 'ar');
+
+    expect(adapter.requests.single.path, '/auth/forgot-password');
+    expect(adapter.requests.single.body, <String, dynamic>{
+      'email': 'alice@example.com',
+      'display_language': 'ar',
+    });
+  });
 }

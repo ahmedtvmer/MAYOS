@@ -111,10 +111,14 @@ def verified_recovery_email(
     return email, None
 
 
-def _deliver_owner_reset_email(email: str, raw_token: str, account_id: str) -> bool:
+def _deliver_owner_reset_email(email: str, raw_token: str, account: dict[str, Any]) -> bool:
+    account_id = account["account_id"]
     try:
         return send_password_reset_email(
-            email, build_reset_link(raw_token), account_id=account_id
+            email,
+            build_reset_link(raw_token),
+            account.get("display_language", "en"),
+            account_id=account_id,
         )
     except Exception as exc:
         log_email_preparation_failure(
@@ -157,7 +161,7 @@ def owner_send_reset_email(db: Any, account_id: str, actor: str, source_ip: str 
         )
         return {"outcome": "send_failed"}
     db.prune_reset_tokens(datetime.now(UTC).isoformat())
-    delivered = _deliver_owner_reset_email(email, raw_token, account_id)
+    delivered = _deliver_owner_reset_email(email, raw_token, account)
     action = "reset_email_sent" if delivered else "reset_email_failed"
     write_owner_audit(
         db,
@@ -458,13 +462,20 @@ def _store_requested_reset_token(
 
 def _send_requested_reset_email(
     normalized: str,
-    account_id: str,
+    account: dict[str, Any],
     raw_token: str,
     mailer: Callable[..., bool] | None,
 ) -> None:
+    account_id = account["account_id"]
+    sender = mailer or send_password_reset_email
+    display_language = account.get("display_language", "en")
     try:
-        sender = mailer or send_password_reset_email
-        sender(normalized, build_reset_link(raw_token), account_id=account_id)
+        sender(
+            normalized,
+            build_reset_link(raw_token),
+            display_language,
+            account_id=account_id,
+        )
     except Exception as exc:
         log_email_preparation_failure(
             DeliveryContext(PURPOSE_PASSWORD_RESET, account_id), exc
@@ -473,11 +484,12 @@ def _send_requested_reset_email(
 
 def _send_no_account_notice_email(
     normalized: str,
-    mailer: Callable[[str, str], bool] | None,
+    display_language: str,
+    mailer: Callable[[str, str, str], bool] | None,
 ) -> None:
     try:
         sender = mailer or send_no_account_notice_email
-        sender(normalized, build_signup_link())
+        sender(normalized, build_signup_link(), display_language)
     except Exception as exc:
         log_email_preparation_failure(DeliveryContext(PURPOSE_NO_ACCOUNT_NOTICE), exc)
 
@@ -488,7 +500,8 @@ def request_password_reset(
     mailer: Callable[..., bool] | None = None,
     token_factory: Callable[[], str] | None = None,
     *,
-    no_account_mailer: Callable[[str, str], bool] | None = None,
+    display_language: str = "en",
+    no_account_mailer: Callable[[str, str, str], bool] | None = None,
 ) -> dict[str, Any]:
     """Sends recovery mail while keeping the logged-out response generic."""
     generic_response = {"ok": True, "message": GENERIC_REQUEST_MESSAGE}
@@ -507,14 +520,15 @@ def request_password_reset(
             else False
         )
         if notice_claimed:
-            _send_no_account_notice_email(normalized, no_account_mailer)
+            request_language = "ar" if display_language == "ar" else "en"
+            _send_no_account_notice_email(normalized, request_language, no_account_mailer)
         return generic_response
     if not db.is_recovery_email_verified(account["account_id"]):
         return generic_response
     raw_token = _store_requested_reset_token(db, account["account_id"], token_factory)
     if raw_token is None:
         return generic_response
-    _send_requested_reset_email(normalized, account["account_id"], raw_token, mailer)
+    _send_requested_reset_email(normalized, account, raw_token, mailer)
     db.prune_reset_tokens(now.isoformat())
     return generic_response
 

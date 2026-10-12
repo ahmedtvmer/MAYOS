@@ -1006,13 +1006,34 @@ def test_account_page_shows_metadata_usage_limits_and_never_training_content(adm
     assert "Not set" in missing_email.text
 
 
+@pytest.mark.parametrize(
+    ("display_language", "expected_subject", "expected_body"),
+    [
+        (
+            "en",
+            "Mayos Engine password reset",
+            "A password reset was requested",
+        ),
+        (
+            "ar",
+            "إعادة تعيين كلمة مرور MAYOS",
+            "تم طلب إعادة تعيين كلمة المرور",
+        ),
+    ],
+)
 def test_owner_reset_email_sends_standard_link_and_revokes_sessions(
-    admin_api, caplog, mark_recovery_email_verified
+    admin_api,
+    caplog,
+    mark_recovery_email_verified,
+    display_language,
+    expected_subject,
+    expected_body,
 ):
     from urllib.parse import parse_qs, urlsplit
 
     client, db, now, sent_emails = admin_api
     account, auth_headers = _register_account(client, db, "emailresetowner")
+    assert db.set_account_display_language(account["account_id"], display_language)
     db.set_account_email(account["account_id"], "alice@example.com")
     mark_recovery_email_verified(db, account["account_id"])
     page = client.get(f"/admin/accounts/{account['account_id']}")
@@ -1039,8 +1060,9 @@ def test_owner_reset_email_sends_standard_link_and_revokes_sessions(
     assert "alice@example.com" not in response.headers["location"]
     notice = client.get(response.headers["location"])
     assert "Reset email sent to a***@example.com" in notice.text
-    reset_email = next(email for email in sent_emails if email[1] == "Mayos Engine password reset")
+    reset_email = next(email for email in sent_emails if email[1] == expected_subject)
     assert reset_email[0] == "alice@example.com"
+    assert expected_body in reset_email[2]
     reset_link = re.search(r"https?://[^\s]+/reset-password\?token=[^\s]+", reset_email[2]).group(0)
     raw_token = parse_qs(urlsplit(reset_link).query)["token"][0]
 
@@ -1662,6 +1684,69 @@ def test_owner_delete_failed_notice_does_not_block_deletion_and_is_audited(
     )
     assert "account_deleted_email_failed" in failed.text
     assert "notice-failed@example.com" not in deleted.text + failed.text
+
+
+@pytest.mark.parametrize(
+    ("language", "expected_subject", "expected_body"),
+    [
+        (
+            "en",
+            "Your MAYOS account was deleted at your request",
+            "Your MAYOS account was deleted at your request",
+        ),
+        (
+            "ar",
+            "تم حذف حساب MAYOS الخاص بك بناءً على طلبك",
+            "تم حذف حساب MAYOS الخاص بك بناءً على طلبك",
+        ),
+    ],
+)
+def test_owner_deletion_email_uses_language_captured_before_account_removal(
+    admin_api, monkeypatch, language, expected_subject, expected_body
+):
+    from service import email_sender
+
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "deleteemailanguage")
+    account_id = account["account_id"]
+    assert db.set_account_display_language(account_id, language)
+    db.set_account_email(account_id, "delete-language@example.com")
+    deliveries = []
+
+    def capture(to_email, subject, body, *, delivery):
+        deliveries.append((to_email, subject, body, delivery))
+        assert db.is_live_account(db.get_account(account_id))
+        assert db.get_account(account_id)["display_language"] == language
+        return True
+
+    monkeypatch.setattr(email_sender, "_deliver", capture)
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(f"/admin/accounts/{account_id}/delete")
+    now[0] += 30
+
+    response = _submit_account_delete(
+        client,
+        account_id,
+        _csrf(page.text),
+        account["username"],
+        _totp(TOTP_SECRET, now[0]),
+        "The account holder requested deletion.",
+    )
+
+    assert response.status_code == 303
+    assert db.get_account(account_id)["deleted_at"] is not None
+    deletion_deliveries = [
+        item
+        for item in deliveries
+        if item[3].purpose == email_sender.PURPOSE_ACCOUNT_DELETED
+    ]
+    assert len(deletion_deliveries) == 1
+    to_email, subject, body, delivery = deletion_deliveries[0]
+    assert to_email == "delete-language@example.com"
+    assert delivery.purpose == email_sender.PURPOSE_ACCOUNT_DELETED
+    assert subject == expected_subject
+    assert expected_body in body
+    assert account["username"] in body
 
 
 def test_owner_delete_audit_failure_does_not_turn_deletion_into_an_error(admin_api, monkeypatch):

@@ -568,8 +568,11 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   /// Requests a reset link and returns the service's constant confirmation.
-  Future<String> requestPasswordReset(String email) =>
-      _repository.forgotPassword(email);
+  Future<String> requestPasswordReset(
+    String email, {
+    required String displayLanguage,
+  }) =>
+      _repository.forgotPassword(email, displayLanguage: displayLanguage);
 
   /// Completes a logged-out password reset and drops any local session.
   ///

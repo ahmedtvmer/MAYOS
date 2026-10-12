@@ -2,8 +2,56 @@ import hashlib
 import hmac
 import logging
 import smtplib
+from datetime import timedelta
+
+import pytest
 
 from service import email_sender
+
+
+@pytest.mark.parametrize(
+    ("minutes", "minute_unit"),
+    [
+        (1, "دقيقة"),
+        (2, "دقيقتين"),
+        (3, "دقائق"),
+        (10, "دقائق"),
+        (11, "دقيقة"),
+        (120, "دقيقة"),
+    ],
+)
+def test_arabic_minute_unit_uses_number_agreement(minutes, minute_unit):
+    assert email_sender._arabic_minute_unit(minutes) == minute_unit
+
+
+@pytest.mark.parametrize(
+    ("minutes", "minute_unit"),
+    [
+        (5, "دقائق"),
+        (10, "دقائق"),
+        (11, "دقيقة"),
+        (120, "دقيقة"),
+    ],
+)
+def test_arabic_password_reset_uses_minute_unit_for_supported_ttl(
+    monkeypatch, minutes, minute_unit
+):
+    from service import password_reset
+
+    captured = []
+    monkeypatch.setattr(
+        password_reset, "reset_ttl", lambda: timedelta(minutes=minutes)
+    )
+    monkeypatch.setattr(
+        email_sender,
+        "_deliver",
+        lambda to_email, subject, body, *, delivery: captured.append(body) or True,
+    )
+
+    assert email_sender.send_password_reset_email(
+        "player@example.com", "https://mayos.example/reset", "ar"
+    )
+    assert f"خلال {minutes} {minute_unit}." in captured[0]
 
 
 def test_issue_176_smtp_failure_omits_recipient_and_keeps_diagnostics(monkeypatch, caplog):
@@ -34,6 +82,7 @@ def test_issue_176_smtp_failure_omits_recipient_and_keeps_diagnostics(monkeypatc
         delivered = email_sender.send_password_reset_email(
             recipient,
             "https://mayos.example/reset-password?token=secret-token",
+            "en",
             account_id="account-123",
         )
 
@@ -56,6 +105,7 @@ def test_issue_176_console_log_uses_keyed_recipient_reference(monkeypatch, caplo
         email_sender.send_password_reset_email(
             recipient,
             f"https://mayos.example/reset-password?token=secret-token&address={recipient}",
+            "en",
         )
 
     assert recipient not in caplog.text
@@ -69,7 +119,7 @@ def test_no_account_notice_uses_console_sender_without_personal_details(monkeypa
 
     with caplog.at_level(logging.INFO, logger="service.email_sender"):
         delivered = email_sender.send_no_account_notice_email(
-            recipient, "https://mayos.example/register"
+            recipient, "https://mayos.example/register", "en"
         )
 
     assert delivered is True

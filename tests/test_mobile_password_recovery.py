@@ -272,12 +272,12 @@ def test_forgot_password_sends_notice_only_for_unmatched_addresses(api, monkeypa
 
     deliveries = []
 
-    def fake_reset_mailer(to_email, reset_link, *, account_id=None):
-        deliveries.append(("reset", to_email, reset_link, account_id))
+    def fake_reset_mailer(to_email, reset_link, display_language, *, account_id=None):
+        deliveries.append(("reset", to_email, reset_link, display_language, account_id))
         return True
 
-    def fake_notice_mailer(to_email, signup_link):
-        deliveries.append(("notice", to_email, signup_link))
+    def fake_notice_mailer(to_email, signup_link, display_language):
+        deliveries.append(("notice", to_email, signup_link, display_language))
         return True
 
     known_result = reset_service.request_password_reset(
@@ -296,10 +296,12 @@ def test_forgot_password_sends_notice_only_for_unmatched_addresses(api, monkeypa
     assert deliveries[0][0] == "reset"
     assert deliveries[0][1] == "alice@example.com"
     assert "/reset-password?token=" in deliveries[0][2]
+    assert deliveries[0][3] == "en"
     assert deliveries[1] == (
         "notice",
         "second-person@example.com",
         "https://mayos-api.fly.dev/register",
+        "en",
     )
 
 
@@ -351,14 +353,14 @@ def test_no_account_notice_limit_is_one_per_address_per_24_hours(api, monkeypatc
     monkeypatch.setenv("RESET_LINK_BASE_URL", "https://mayos.example")
     deliveries = []
 
-    def fake_notice_mailer(to_email, signup_link):
-        deliveries.append((to_email, signup_link))
+    def fake_notice_mailer(to_email, signup_link, display_language):
+        deliveries.append((to_email, signup_link, display_language))
         return True
 
     email = "nobody@example.com"
     for candidate in (email, email.upper()):
         reset_service.request_password_reset(db, candidate, no_account_mailer=fake_notice_mailer)
-    assert deliveries == [(email, email_sender.build_signup_link())]
+    assert deliveries == [(email, email_sender.build_signup_link(), "en")]
 
     with db._catalog_lock:
         columns = {
@@ -381,18 +383,38 @@ def test_no_account_notice_limit_is_one_per_address_per_24_hours(api, monkeypatc
         )
         db.catalog_conn.commit()
     reset_service.request_password_reset(db, email, no_account_mailer=fake_notice_mailer)
-    assert deliveries == [(email, email_sender.build_signup_link())] * 2
+    assert deliveries == [(email, email_sender.build_signup_link(), "en")] * 2
     with db._catalog_lock:
         assert db.catalog_conn.execute(
             "SELECT COUNT(*) FROM password_reset_notice_limits"
         ).fetchone()[0] == 1
 
 
+def test_request_password_reset_passes_selected_language_to_no_account_mailer(api):
+    _, db = api
+    captured = []
+
+    def capture(to_email, signup_link, display_language):
+        captured.append((to_email, signup_link, display_language))
+        return True
+
+    reset_service.request_password_reset(
+        db,
+        "nobody@example.com",
+        display_language="ar",
+        no_account_mailer=capture,
+    )
+
+    assert captured == [
+        ("nobody@example.com", email_sender.build_signup_link(), "ar")
+    ]
+
+
 def test_forgot_password_malformed_email_sends_nothing(api):
     _, db = api
     deliveries = []
 
-    def fake_notice_mailer(to_email, signup_link):
+    def fake_notice_mailer(to_email, signup_link, display_language):
         deliveries.append(to_email)
         return True
 
@@ -411,7 +433,7 @@ def test_forgot_password_malformed_email_sends_nothing(api):
 def test_no_account_mailer_preparation_error_uses_purpose_only_log(api, caplog):
     _, db = api
 
-    def failing_notice_mailer(_to_email, _signup_link):
+    def failing_notice_mailer(_to_email, _signup_link, _display_language):
         raise RuntimeError("notice preparation failed")
 
     with caplog.at_level(logging.ERROR, logger="service.email_sender"):
@@ -436,8 +458,8 @@ def test_deleted_account_recovery_address_gets_no_account_notice(api, monkeypatc
     assert deletion_service.delete_account(db, account_id, "correct-horse-1")["ok"]
     deliveries = []
 
-    def fake_notice_mailer(to_email, signup_link):
-        deliveries.append((to_email, signup_link))
+    def fake_notice_mailer(to_email, signup_link, display_language):
+        deliveries.append((to_email, signup_link, display_language))
         return True
 
     response = reset_service.request_password_reset(
@@ -447,7 +469,7 @@ def test_deleted_account_recovery_address_gets_no_account_notice(api, monkeypatc
     assert response == {"ok": True, "message": reset_service.GENERIC_REQUEST_MESSAGE}
     assert len(deliveries) == 1
     assert deliveries[0][0] == "alice@example.com"
-    assert deliveries[0][1] == email_sender.build_signup_link()
+    assert deliveries[0][1:] == (email_sender.build_signup_link(), "en")
 
 
 def test_forgot_password_keeps_existing_rate_limit(api):
@@ -474,7 +496,7 @@ def test_remember_me_session_is_rejected_after_reset(api, monkeypatch, verify_re
     assert client.get("/dashboard/exercises", headers=_authed(remembered)).status_code == 200
 
     reset_service.request_password_reset(
-        db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "remember-token-abcdef1234"
+        db, "alice@example.com", mailer=lambda to, link, display_language, *, account_id=None: True, token_factory=lambda: "remember-token-abcdef1234"
     )
     _reset_limiter()
     reset = client.post(
@@ -535,7 +557,7 @@ def test_reset_token_failures_are_generic_and_change_nothing(api, monkeypatch, v
 
     # Reused token: redeem once, then replay the same token.
     reset_service.request_password_reset(
-        db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "one-time-token-abcdef1234"
+        db, "alice@example.com", mailer=lambda to, link, display_language, *, account_id=None: True, token_factory=lambda: "one-time-token-abcdef1234"
     )
     _reset_limiter()
     first = client.post(
@@ -551,7 +573,7 @@ def test_reset_token_failures_are_generic_and_change_nothing(api, monkeypatch, v
 
     # Expired token: backdate the stored expiry, then redeem.
     reset_service.request_password_reset(
-        db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "stale-token-abcdef1234"
+        db, "alice@example.com", mailer=lambda to, link, display_language, *, account_id=None: True, token_factory=lambda: "stale-token-abcdef1234"
     )
     account_id = db.get_active_account_by_username("alice")["account_id"]
     with db._catalog_lock:

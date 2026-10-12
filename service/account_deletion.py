@@ -151,15 +151,15 @@ def owner_delete_account(
     db: Any,
     request: OwnerDeleteRequest,
     verify_step_up: Callable[[str], StepUpResult],
-    mailer: Callable[[str, str], bool] | None = None,
+    mailer: Callable[[str, str, str], bool] | None = None,
     *,
     client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
 ) -> dict[str, Any]:
     """Deletes any live account after owner step-up and records the outcome.
 
     The username, reason, and TOTP checks happen before any deletion record is written.
-    The notice uses the recovery address captured here, after the durable
-    deletion record is appended but before ADR 039 clears recovery identity.
+    The notice uses this account's recovery address; its Display language is
+    captured before the durable deletion record is appended.
     """
     account = db.get_account(request.account_id)
     if not db.is_live_account(account):
@@ -205,16 +205,19 @@ def _apply_owner_delete(
     db: Any,
     account: dict[str, Any],
     request: OwnerDeleteRequest,
-    mailer: Callable[[str, str], bool] | None,
+    mailer: Callable[[str, str, str], bool] | None,
     *,
     client: analytics_service.ClientContext,
 ) -> dict[str, Any]:
+    display_language = account.get("display_language", "en")
     recovery_email = db.get_account_email(request.account_id)
     deleted_at = datetime.now(UTC).isoformat()
     db.record_account_deletion(request.account_id, account["ledger_id"], deleted_at)
     email_failed = False
     if recovery_email:
-        email_failed = _send_owner_deletion_notice(recovery_email, account["username"], mailer)
+        email_failed = _send_owner_deletion_notice(
+            recovery_email, account["username"], display_language, mailer
+        )
     try:
         deletion = db.delete_account(request.account_id, deleted_at, ledger_id=account["ledger_id"])
     except Exception as exc:
@@ -292,11 +295,17 @@ def _request_analytics_person_deletion(
 def _send_owner_deletion_notice(
     recovery_email: str,
     username: str,
-    mailer: Callable[[str, str], bool] | None,
+    display_language: str,
+    mailer: Callable[[str, str, str], bool] | None,
 ) -> bool:
-    sender = mailer or email_sender.send_account_deleted_email
     try:
-        return not sender(recovery_email, username)
+        if mailer is not None:
+            return not mailer(recovery_email, username, display_language)
+        return not email_sender.send_account_deleted_email(
+            recovery_email,
+            username,
+            display_language,
+        )
     except Exception as exc:
         logger.error("Owner account deletion notice delivery failed (%s)", type(exc).__name__)
         return True

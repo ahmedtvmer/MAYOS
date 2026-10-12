@@ -107,6 +107,7 @@ class FakeMayosApi {
   String? validResetToken;
   int forgotRequests = 0;
   String? lastForgotEmail;
+  String? lastForgotLanguage;
   // Player profile fields written through `PUT /profile` (#27).
   String repPreference = 'balanced';
   int weeklyFrequency = 4;
@@ -1130,6 +1131,7 @@ class FakeMayosApi {
   FakeResponse _forgotPassword(FakeRequest request) {
     forgotRequests++;
     lastForgotEmail = request.body['email'] as String?;
+    lastForgotLanguage = request.body['display_language'] as String?;
     // Anti-enumeration: always the same constant message, known or unknown.
     return FakeResponse(202, <String, dynamic>{'message': resetConfirmation});
   }

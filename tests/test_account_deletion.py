@@ -207,6 +207,41 @@ def test_wrong_password_changes_nothing(api):
     assert client.get("/dashboard/exercises", headers=_authed(token)).status_code == 200
 
 
+def test_owner_deletion_mailer_receives_language_captured_before_account_removal(api):
+    client, db, _ = api
+    registered = _register(client, "ownerdelete-language")
+    account_id = _subject(registered["access_token"])
+    db.set_account_display_language(account_id, "ar")
+    db.set_account_email(account_id, "owner-delete@example.com")
+    captured = []
+
+    def capture(email, username, display_language):
+        captured.append((email, username, display_language))
+        return True
+
+    request = deletion_service.OwnerDeleteRequest(
+        account_id=account_id,
+        actor="owner",
+        reason="The account holder requested deletion.",
+        source_ip="203.0.113.8",
+        username_confirmation="ownerdelete-language",
+        totp_code="000000",
+    )
+    outcome = deletion_service.owner_delete_account(
+        db,
+        request,
+        verify_step_up=lambda _code: deletion_service.StepUpResult.SUCCESS,
+        mailer=capture,
+    )
+
+    assert outcome["outcome"] == "deleted"
+    assert not db.is_live_account(db.get_account(account_id))
+    assert db.get_account(account_id)["deleted_at"] is not None
+    assert captured == [
+        ("owner-delete@example.com", "ownerdelete-language", "ar")
+    ]
+
+
 def test_deletion_invalidates_all_sessions_and_removes_ledger(api, mark_recovery_email_verified):
     client, db, ledgers_dir = api
     registered = _register(client, "alice", remember_me=True)
@@ -218,7 +253,7 @@ def test_deletion_invalidates_all_sessions_and_removes_ledger(api, mark_recovery
     assert client.post("/auth/email", headers=_authed(token), json={"email": "alice@example.com"}).status_code == 200
     mark_recovery_email_verified(db, account_id)
     reset_service.request_password_reset(
-        db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "reset-token-abcdef1234"
+        db, "alice@example.com", mailer=lambda to, link, display_language, *, account_id=None: True, token_factory=lambda: "reset-token-abcdef1234"
     )
     assert _scalar(db, "SELECT COUNT(*) FROM password_reset_tokens WHERE trainee_id = ?", (account_id,)) == 1
 

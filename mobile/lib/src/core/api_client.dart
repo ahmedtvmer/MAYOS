@@ -1626,11 +1626,17 @@ class ApiClient {
   ///
   /// Always resolves to the service's constant confirmation message
   /// (anti-enumeration): nothing is disclosed about whether the email is linked.
-  Future<String> forgotPassword(String email) async {
+  Future<String> forgotPassword(
+    String email, {
+    required String displayLanguage,
+  }) async {
     final response = await _send(
       () => _dio.post<dynamic>(
         '/auth/forgot-password',
-        data: <String, dynamic>{'email': email},
+        data: <String, dynamic>{
+          'email': email,
+          'display_language': displayLanguage,
+        },
         options: Options(extra: {_skipAuth: true}),
       ),
     );

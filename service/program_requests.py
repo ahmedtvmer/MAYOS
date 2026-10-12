@@ -415,6 +415,7 @@ def _notify_coach(db: Any, coach_account_id: str, assignment_id: str, player_use
                     to_email,
                     display_name,
                     player_username,
+                    coach_account.get("display_language", "en"),
                     account_id=coach_account["account_id"],
                 )
                 email_sent = True

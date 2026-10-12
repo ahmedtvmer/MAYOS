@@ -335,6 +335,7 @@ def _send_redemption_email(
             to_email,
             coach_display_name,
             player_username,
+            coach_account.get("display_language", "en"),
             account_id=coach_account["account_id"],
         )
     except Exception as exc:

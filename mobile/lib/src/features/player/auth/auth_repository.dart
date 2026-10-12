@@ -298,7 +298,11 @@ class AuthRepository {
       _api.verifyRecoveryEmail(code);
 
   /// Requests a reset link, returning the service's constant confirmation.
-  Future<String> forgotPassword(String email) => _api.forgotPassword(email);
+  Future<String> forgotPassword(
+    String email, {
+    required String displayLanguage,
+  }) =>
+      _api.forgotPassword(email, displayLanguage: displayLanguage);
 
   /// Redeems a single-use reset token, then drops the local session.
   ///

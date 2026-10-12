@@ -318,7 +318,7 @@ def test_redeem_binds_immediately_and_creates_coach_notice(api, monkeypatch):
 
     calls = []
 
-    def _record(to_email, coach_display_name, player_username, *, account_id=None):
+    def _record(to_email, coach_display_name, player_username, _display_language, *, account_id=None):
         calls.append((to_email, coach_display_name, player_username))
         return True
 
@@ -364,6 +364,55 @@ def test_redeem_binds_immediately_and_creates_coach_notice(api, monkeypatch):
     assert roster[0]["alerts_acknowledged"] == 0
     assert roster[0]["current_missed_streak"] == 0
     assert roster[0]["next_follow_up_on"] is not None
+
+
+@pytest.mark.parametrize(
+    ("language", "expected_subject", "expected_body"),
+    [
+        (
+            "en",
+            "A player accepted your MAYOS coaching invite",
+            "p1 accepted your coaching invite",
+        ),
+        (
+            "ar",
+            "قبل لاعب دعوتك للتدريب مع مدرب في MAYOS",
+            "قبل p1 دعوتك",
+        ),
+    ],
+)
+def test_assignment_acceptance_email_uses_coach_language_without_training_details(
+    api, monkeypatch, language, expected_subject, expected_body
+):
+    from service import email_sender
+
+    client, db, _ = api
+    coach_headers, _, coach_account_id = _make_coach(
+        client, db, "coach", capacity=5, email="coach@example.com"
+    )
+    assert db.set_account_display_language(coach_account_id, language)
+    invite = _issue(client, coach_headers)["token"]
+    player = _register(client, "p1")
+    deliveries = []
+
+    def capture(to_email, subject, body, *, delivery):
+        deliveries.append((to_email, subject, body, delivery))
+        return True
+
+    monkeypatch.setattr(email_sender, "_deliver", capture)
+    redeemed = _redeem(client, _authed(player["access_token"]), invite)
+
+    assert redeemed.status_code == 200, redeemed.text
+    assert redeemed.json()["email_sent"] is True
+    assert len(deliveries) == 1
+    to_email, subject, body, delivery = deliveries[0]
+    assert to_email == "coach@example.com"
+    assert delivery.purpose == email_sender.PURPOSE_ASSIGNMENT_NOTICE
+    assert delivery.account_id == coach_account_id
+    assert subject == expected_subject
+    assert expected_body in body
+    assert "p1" in body
+    assert all(private_term not in body for private_term in ("Squat", "Bench Press", "volume"))
 
 
 def test_email_transport_failure_does_not_roll_back_assignment(api, monkeypatch):
@@ -418,7 +467,7 @@ def test_identity_fault_degrades_username_and_email_still_sent(api, monkeypatch)
 
     calls = []
 
-    def _record(to_email, coach_display_name, player_username, *, account_id=None):
+    def _record(to_email, coach_display_name, player_username, _display_language, *, account_id=None):
         calls.append((to_email, coach_display_name, player_username))
         return True
 
@@ -448,7 +497,7 @@ def test_redemption_email_looks_up_by_account_id_not_ledger_id(api, monkeypatch)
 
     calls = []
 
-    def _record(to_email, coach_display_name, player_username, *, account_id=None):
+    def _record(to_email, coach_display_name, player_username, _display_language, *, account_id=None):
         calls.append((to_email, coach_display_name, player_username))
         return True
 
@@ -463,9 +512,9 @@ def test_redemption_email_looks_up_by_account_id_not_ledger_id(api, monkeypatch)
 def test_email_notice_is_generic_and_contains_no_training_data(caplog):
     from service.email_sender import send_assignment_redemption_email
 
-    assert send_assignment_redemption_email("coach@example.com", "Coach Coach", "p1") is True
+    assert send_assignment_redemption_email("coach@example.com", "Coach Coach", "p1", "en") is True
     with caplog.at_level(logging.INFO, logger="service.email_sender"):
-        send_assignment_redemption_email("coach@example.com", "Coach Coach", "p1")
+        send_assignment_redemption_email("coach@example.com", "Coach Coach", "p1", "en")
     text = caplog.text
     assert "p1" in text
     for leak in ("bench", "reps", "volume", "e1RM", "personal record", "session_id"):

@@ -869,6 +869,12 @@ class RecoveryEmailOut(BaseModel):
 
 class ForgotPasswordIn(BaseModel):
     email: str = Field(min_length=3, max_length=254)
+    display_language: Literal["en", "ar"] = "en"
+
+    @field_validator("display_language", mode="before")
+    @classmethod
+    def default_unsupported_display_language(cls, value: Any) -> str:
+        return "ar" if value == "ar" else "en"
 
 
 class ResetPasswordIn(BaseModel):

@@ -183,10 +183,14 @@ def _deliver(
         return False
 
 
+# Four-argument-limit exception: these notices keep both retained names,
+# Display language, and the account-id log key explicit; revisit if the copy
+# gains another recipient-specific value.
 def send_assignment_redemption_email(
     to_email: str,
     coach_display_name: str,
     player_username: str,
+    display_language: str,
     *,
     account_id: str | None = None,
 ) -> bool:
@@ -196,19 +200,37 @@ def send_assignment_redemption_email(
     coach can detect an unintended redemption (ADR 014). The code itself is never
     included and never logged.
     """
-    subject = "A player accepted your MAYOS coaching invite"
-    body = (
-        f"Hi {coach_display_name},\n\n"
-        f"{player_username} accepted your coaching invite and is now assigned to you.\n\n"
-        "Open MAYOS to review the assignment. If you did not expect this, you can revoke "
-        "the assignment immediately.\n\n"
-        "This notice does not include any training data."
+    subject, body = _assignment_redemption_copy(
+        coach_display_name, player_username, display_language
     )
     return _deliver(
         to_email,
         subject,
         body,
-        delivery=DeliveryContext(PURPOSE_ASSIGNMENT_NOTICE, account_id, to_email),
+        delivery=DeliveryContext(
+            PURPOSE_ASSIGNMENT_NOTICE, account_id, to_email
+        ),
+    )
+
+
+def _assignment_redemption_copy(
+    coach_display_name: str, player_username: str, display_language: str
+) -> tuple[str, str]:
+    if display_language == "ar":
+        return (
+            "قبل لاعب دعوتك للتدريب مع مدرب في MAYOS",
+            f"مرحبًا {coach_display_name}،\n\n"
+            f"قبل {player_username} دعوتك، وأُنشئت بينكما علاقة تدريب.\n\n"
+            "افتح MAYOS لمراجعة علاقة التدريب. إذا لم تكن تتوقع ذلك، يمكنك إنهاء العلاقة فورًا.\n\n"
+            "لا تتضمن هذه الرسالة أي بيانات تدريبية.",
+        )
+    return (
+        "A player accepted your MAYOS coaching invite",
+        f"Hi {coach_display_name},\n\n"
+        f"{player_username} accepted your coaching invite and is now assigned to you.\n\n"
+        "Open MAYOS to review the assignment. If you did not expect this, you can revoke "
+        "the assignment immediately.\n\n"
+        "This notice does not include any training data.",
     )
 
 
@@ -216,6 +238,7 @@ def send_program_request_email(
     to_email: str,
     coach_display_name: str,
     player_username: str,
+    display_language: str,
     *,
     account_id: str | None = None,
 ) -> bool:
@@ -225,17 +248,34 @@ def send_program_request_email(
     replacement is ever named. The player's username is identity, not training
     detail, and is included so the coach can act on the request.
     """
-    subject = "A player requested a program change"
-    body = (
-        f"Hi {coach_display_name},\n\n"
-        f"{player_username} requested a program change. Review it in your roster.\n\n"
-        "This notice does not include any training data."
+    subject, body = _program_request_copy(
+        coach_display_name, player_username, display_language
     )
     return _deliver(
         to_email,
         subject,
         body,
-        delivery=DeliveryContext(PURPOSE_PROGRAM_REQUEST_NOTICE, account_id, to_email),
+        delivery=DeliveryContext(
+            PURPOSE_PROGRAM_REQUEST_NOTICE, account_id, to_email
+        ),
+    )
+
+
+def _program_request_copy(
+    coach_display_name: str, player_username: str, display_language: str
+) -> tuple[str, str]:
+    if display_language == "ar":
+        return (
+            "طلب لاعب تغيير البرنامج التدريبي",
+            f"مرحبًا {coach_display_name}،\n\n"
+            f"طلب {player_username} تغيير البرنامج التدريبي. راجع الطلب في قائمة اللاعبين.\n\n"
+            "لا تتضمن هذه الرسالة أي بيانات تدريبية.",
+        )
+    return (
+        "A player requested a program change",
+        f"Hi {coach_display_name},\n\n"
+        f"{player_username} requested a program change. Review it in your roster.\n\n"
+        "This notice does not include any training data.",
     )
 
 
@@ -304,28 +344,55 @@ def _single_line(value: str) -> str:
 
 
 def send_password_reset_email(
-    to_email: str, reset_link: str, *, account_id: str | None = None
+    to_email: str,
+    reset_link: str,
+    display_language: str,
+    *,
+    account_id: str | None = None,
 ) -> bool:
     # Local import: password_reset imports this module, so a top-level import
     # here would be circular. The TTL stays defined in one place.
     from service.password_reset import reset_ttl
 
     minutes = max(1, int(reset_ttl().total_seconds() // 60))
-    subject = "Mayos Engine password reset"
-    body = (
-        "A password reset was requested for your Mayos training ledger.\n\n"
-        "Open this link to set a new password. If the MAYOS app is installed it "
-        "opens the app; otherwise it opens a secure web page.\n\n"
-        f"{reset_link}\n\n"
-        f"This link is single-use and expires in {minutes} minutes.\n\n"
-        "If you did not request this, ignore this message — your password is unchanged."
-    )
+    subject, body = _password_reset_copy(reset_link, minutes, display_language)
     return _deliver(
         to_email,
         subject,
         body,
         delivery=DeliveryContext(PURPOSE_PASSWORD_RESET, account_id, to_email),
     )
+
+
+def _password_reset_copy(
+    reset_link: str, minutes: int, display_language: str
+) -> tuple[str, str]:
+    if display_language == "ar":
+        minute_unit = _arabic_minute_unit(minutes)
+        return (
+            "إعادة تعيين كلمة مرور MAYOS",
+            "تم طلب إعادة تعيين كلمة المرور لحسابك في MAYOS.\n\n"
+            "افتح هذا الرابط لتعيين كلمة مرور جديدة. إذا كان تطبيق MAYOS مثبتًا، فسيفتح التطبيق؛ "
+            "وإلا فستفتح صفحة ويب آمنة.\n\n"
+            f"{reset_link}\n\nيمكن استخدام هذا الرابط مرة واحدة، وينتهي خلال {minutes} {minute_unit}.\n\n"
+            "إذا لم تطلب ذلك، فتجاهل هذه الرسالة — لن تتغير كلمة مرورك.",
+        )
+    return (
+        "Mayos Engine password reset",
+        "A password reset was requested for your Mayos training ledger.\n\n"
+        "Open this link to set a new password. If the MAYOS app is installed it "
+        "opens the app; otherwise it opens a secure web page.\n\n"
+        f"{reset_link}\n\nThis link is single-use and expires in {minutes} minutes.\n\n"
+        "If you did not request this, ignore this message — your password is unchanged.",
+    )
+
+
+def _arabic_minute_unit(minutes: int) -> str:
+    if minutes == 2:
+        return "دقيقتين"
+    if 3 <= minutes <= 10:
+        return "دقائق"
+    return "دقيقة"
 
 
 def send_coach_invite_email(
@@ -445,15 +512,11 @@ def _recovery_email_verification_copy(
     return subject, body
 
 
-def send_no_account_notice_email(to_email: str, signup_link: str) -> bool:
+def send_no_account_notice_email(
+    to_email: str, signup_link: str, display_language: str
+) -> bool:
     """Tells an inbox owner how to proceed without naming any account details."""
-    subject = "No MAYOS account uses this email"
-    body = (
-        "No MAYOS account uses this email.\n\n"
-        f"You can sign up at {signup_link}.\n\n"
-        "If you already have an account, try the email address you registered "
-        "with, or log in and add a recovery email in Settings."
-    )
+    subject, body = _no_account_notice_copy(signup_link, display_language)
     return _deliver(
         to_email,
         subject,
@@ -462,18 +525,52 @@ def send_no_account_notice_email(to_email: str, signup_link: str) -> bool:
     )
 
 
+def _no_account_notice_copy(
+    signup_link: str, display_language: str
+) -> tuple[str, str]:
+    if display_language == "ar":
+        return (
+            "لا يوجد حساب في MAYOS يستخدم هذا البريد الإلكتروني",
+            "لا يوجد حساب في MAYOS يستخدم هذا البريد الإلكتروني.\n\n"
+            f"يمكنك إنشاء حساب في MAYOS من هنا: {signup_link}.\n\n"
+            "إذا كان لديك حساب بالفعل، فجرّب عنوان البريد الإلكتروني الذي استخدمته عند التسجيل، "
+            "أو سجّل الدخول وأضف بريدًا إلكترونيًا للاسترداد من الإعدادات.",
+        )
+    return (
+        "No MAYOS account uses this email",
+        "No MAYOS account uses this email.\n\n"
+        f"You can sign up at {signup_link}.\n\n"
+        "If you already have an account, try the email address you registered "
+        "with, or log in and add a recovery email in Settings.",
+    )
+
+
 def send_account_deleted_email(
-    to_email: str, username: str, *, account_id: str | None = None
+    to_email: str,
+    username: str,
+    display_language: str,
+    *,
+    account_id: str | None = None,
 ) -> bool:
     """Notifies the account holder that the owner permanently deleted it."""
-    subject = "Your MAYOS account was deleted at your request"
-    body = (
-        f"Hi {username},\n\n"
-        "Your MAYOS account was deleted at your request. This deletion is final.\n"
-    )
+    subject, body = _account_deleted_copy(username, display_language)
     return _deliver(
         to_email,
         subject,
         body,
         delivery=DeliveryContext(PURPOSE_ACCOUNT_DELETED, account_id, to_email),
+    )
+
+
+def _account_deleted_copy(username: str, display_language: str) -> tuple[str, str]:
+    if display_language == "ar":
+        return (
+            "تم حذف حساب MAYOS الخاص بك بناءً على طلبك",
+            f"مرحبًا {username}،\n\n"
+            "تم حذف حساب MAYOS الخاص بك بناءً على طلبك. هذا الحذف نهائي.\n",
+        )
+    return (
+        "Your MAYOS account was deleted at your request",
+        f"Hi {username},\n\n"
+        "Your MAYOS account was deleted at your request. This deletion is final.\n",
     )

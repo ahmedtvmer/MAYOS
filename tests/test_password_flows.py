@@ -197,7 +197,7 @@ def test_forgot_password_is_generic_and_reset_roundtrip(api, monkeypatch, verify
     # Issue a deterministic token through the service (mailer captured, nothing sent).
     sent = []
     reset_service.request_password_reset(
-        db, "alice@example.com", mailer=lambda to, link, *, account_id=None: sent.append((to, link)) or True, token_factory=lambda: "fixed-reset-token-1234567890"
+        db, "alice@example.com", mailer=lambda to, link, display_language, *, account_id=None: sent.append((to, link)) or True, token_factory=lambda: "fixed-reset-token-1234567890"
     )
     assert sent and sent[0][0] == "alice@example.com" and "fixed-reset-token-1234567890" in sent[0][1]
 
@@ -205,6 +205,117 @@ def test_forgot_password_is_generic_and_reset_roundtrip(api, monkeypatch, verify
     assert done.status_code == 200, done.text
     assert client.post("/auth/login", json={"trainee_id": "alice", "password": "reset-horse-33"}).status_code == 200
     assert client.post("/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}).status_code == 401
+
+
+@pytest.mark.parametrize(
+    ("account_language", "request_language", "reset_subject", "reset_body", "notice_subject"),
+    [
+        (
+            "en",
+            "ar",
+            "Mayos Engine password reset",
+            "A password reset was requested",
+            "لا يوجد حساب في MAYOS يستخدم هذا البريد الإلكتروني",
+        ),
+        (
+            "ar",
+            "en",
+            "إعادة تعيين كلمة مرور MAYOS",
+            "تم طلب إعادة تعيين كلمة المرور",
+            "No MAYOS account uses this email",
+        ),
+        (
+            "ar",
+            "fr",
+            "إعادة تعيين كلمة مرور MAYOS",
+            "تم طلب إعادة تعيين كلمة المرور",
+            "No MAYOS account uses this email",
+        ),
+        (
+            "en",
+            None,
+            "Mayos Engine password reset",
+            "A password reset was requested",
+            "No MAYOS account uses this email",
+        ),
+    ],
+)
+def test_forgot_emails_use_account_or_selected_language_and_keep_prepared_copy(
+    api,
+    monkeypatch,
+    verify_recovery_email,
+    account_language,
+    request_language,
+    reset_subject,
+    reset_body,
+    notice_subject,
+):
+    client, db = api
+    token = _register(client, "alice", display_language=account_language)
+    _set_recovery_email(client, token)
+    verify_recovery_email(client, token, monkeypatch)
+    account_id = db.get_active_account_by_username("alice")["account_id"]
+    deliveries = []
+
+    def capture(to_email, subject, body, *, delivery):
+        deliveries.append((to_email, subject, body, delivery))
+        if delivery.purpose == email_sender.PURPOSE_PASSWORD_RESET:
+            changed_language = "ar" if account_language == "en" else "en"
+            assert db.set_account_display_language(account_id, changed_language)
+        return True
+
+    monkeypatch.setattr(email_sender, "_deliver", capture)
+    request_body = {"email": "alice@example.com"}
+    if request_language is not None:
+        request_body["display_language"] = request_language
+
+    known = client.post("/auth/forgot-password", json=request_body)
+    no_account_body = {"email": "nobody@example.com"}
+    if request_language is not None:
+        no_account_body["display_language"] = request_language
+    unknown = client.post("/auth/forgot-password", json=no_account_body)
+
+    assert known.status_code == unknown.status_code == 202
+    assert known.json() == unknown.json()
+    assert [delivery[3].purpose for delivery in deliveries] == [
+        email_sender.PURPOSE_PASSWORD_RESET,
+        email_sender.PURPOSE_NO_ACCOUNT_NOTICE,
+    ]
+    assert deliveries[0][1] == reset_subject
+    assert reset_body in deliveries[0][2]
+    assert "/reset-password?token=" in deliveries[0][2]
+    assert deliveries[1][1] == notice_subject
+    assert "nobody@example.com" not in deliveries[1][2]
+    assert "Squat" not in deliveries[0][2] + deliveries[1][2]
+
+
+def test_injected_reset_mailer_receives_account_display_language(
+    api, monkeypatch, verify_recovery_email
+):
+    from service import password_reset as reset_service
+
+    client, db = api
+    token = _register(client, "alice", display_language="ar")
+    _set_recovery_email(client, token)
+    verify_recovery_email(client, token, monkeypatch)
+    account_id = db.get_active_account_by_username("alice")["account_id"]
+    calls = []
+
+    def capture(to_email, reset_link, display_language, *, account_id):
+        calls.append((to_email, reset_link, display_language, account_id))
+        return True
+
+    reset_service.request_password_reset(
+        db,
+        "alice@example.com",
+        mailer=capture,
+        token_factory=lambda: "owner-reset-test-token-123456",
+    )
+
+    assert len(calls) == 1
+    assert calls[0][0] == "alice@example.com"
+    assert "/reset-password?token=owner-reset-test-token-123456" in calls[0][1]
+    assert calls[0][2:] == ("ar", account_id)
 
 
 def test_reset_token_single_use_expiry_and_generic_errors(api, monkeypatch, verify_recovery_email):
@@ -216,7 +327,7 @@ def test_reset_token_single_use_expiry_and_generic_errors(api, monkeypatch, veri
     client.post("/auth/email", json={"email": "alice@example.com"}, headers=_authed(alice_token))
     verify_recovery_email(client, alice_token, monkeypatch)
 
-    reset_service.request_password_reset(db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "one-time-token-abcdef1234")
+    reset_service.request_password_reset(db, "alice@example.com", mailer=lambda to, link, display_language, *, account_id=None: True, token_factory=lambda: "one-time-token-abcdef1234")
     assert client.post("/auth/reset-password", json={"token": "one-time-token-abcdef1234", "new_password": "first-reset-11"}).status_code == 200
     reuse = client.post("/auth/reset-password", json={"token": "one-time-token-abcdef1234", "new_password": "second-reset-22"})
     assert reuse.status_code == 400
@@ -232,7 +343,7 @@ def test_reset_token_single_use_expiry_and_generic_errors(api, monkeypatch, veri
     assert garbage.json() == reuse.json()
 
     # Expired token: backdate the stored expiry, then redeem. Tokens are keyed by account id.
-    reset_service.request_password_reset(db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "stale-token-abcdef1234")
+    reset_service.request_password_reset(db, "alice@example.com", mailer=lambda to, link, display_language, *, account_id=None: True, token_factory=lambda: "stale-token-abcdef1234")
     account_id = db.get_active_account_by_username("alice")["account_id"]
     with db._catalog_lock:
         db.catalog_conn.execute(
@@ -256,7 +367,7 @@ def test_reset_weak_password_does_not_consume_token(api, monkeypatch, verify_rec
     login_token = client.post("/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}).json()["access_token"]
     client.post("/auth/email", json={"email": "alice@example.com"}, headers=_authed(login_token))
     verify_recovery_email(client, login_token, monkeypatch)
-    reset_service.request_password_reset(db, "alice@example.com", mailer=lambda to, link, *, account_id=None: True, token_factory=lambda: "patient-token-abcdef1234")
+    reset_service.request_password_reset(db, "alice@example.com", mailer=lambda to, link, display_language, *, account_id=None: True, token_factory=lambda: "patient-token-abcdef1234")
 
     weak = client.post("/auth/reset-password", json={"token": "patient-token-abcdef1234", "new_password": "short"})
     assert weak.status_code in {400, 422}

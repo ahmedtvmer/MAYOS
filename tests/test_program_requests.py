@@ -471,7 +471,7 @@ def test_program_request_email_looks_up_by_account_id_not_ledger_id(api, monkeyp
 
     calls = []
 
-    def _record(to_email, coach_display_name, player_username, *, account_id=None):
+    def _record(to_email, coach_display_name, player_username, _display_language, *, account_id=None):
         calls.append((to_email, coach_display_name, player_username))
         return True
 
@@ -480,6 +480,43 @@ def test_program_request_email_looks_up_by_account_id_not_ledger_id(api, monkeyp
     created = _create(client, player_headers, **_substitution())
     assert created.status_code == 200, created.text
     assert calls == [("coach@example.com", "Coach coach", "p1")]
+
+
+@pytest.mark.parametrize(
+    ("language", "expected_subject", "expected_body"),
+    [
+        (
+            "en",
+            "A player requested a program change",
+            "p1 requested a program change",
+        ),
+        (
+            "ar",
+            "طلب لاعب تغيير البرنامج التدريبي",
+            "طلب p1 تغيير البرنامج التدريبي",
+        ),
+    ],
+)
+def test_program_request_email_uses_coach_language_without_program_details(
+    api, monkeypatch, language, expected_subject, expected_body
+):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, coach_account_id, _ = _assigned_player(api)
+    assert db.set_account_display_language(coach_account_id, language)
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+    deliveries = _capture_email(monkeypatch)
+
+    created = _create(client, player_headers, **_substitution())
+
+    assert created.status_code == 200, created.text
+    assert len(deliveries) == 1
+    to_email, subject, body = deliveries[0]
+    assert to_email == "coach@example.com"
+    assert subject == expected_subject
+    assert expected_body in body
+    assert "Coach coach" in body
+    assert all(private_term not in body for private_term in ("Squat", "Overhead Press", "prefer a variation"))
 
 
 def test_create_split_change_records_desired_fields(api, monkeypatch):

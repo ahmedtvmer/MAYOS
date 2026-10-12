@@ -238,6 +238,7 @@ void main() {
           findsNothing);
     }
     expect(fake.forgotRequests, 2);
+    expect(fake.lastForgotLanguage, 'ar');
   });
 
   testWidgets(

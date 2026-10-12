@@ -798,7 +798,12 @@ async def forgot_password(
     db: Annotated[Any, Depends(get_db)],
 ):
     """Always returns the same generic message (anti-enumeration), known or unknown email."""
-    background_tasks.add_task(reset_service.request_password_reset, db, body.email)
+    background_tasks.add_task(
+        reset_service.request_password_reset,
+        db,
+        body.email,
+        display_language=body.display_language,
+    )
     return MessageOut(message=reset_service.GENERIC_REQUEST_MESSAGE)
 
 
