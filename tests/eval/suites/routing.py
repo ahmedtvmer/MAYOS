@@ -5,8 +5,10 @@ from __future__ import annotations
 import re
 import shutil
 import tempfile
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from tests.eval.parity_gate import ScoreBar
 
@@ -157,6 +159,7 @@ def _case_outcome(case: dict[str, Any], observation: dict[str, Any]) -> dict[str
         "passed": behavior_pass,
         "counted": case["language"] != "arabic" or case["review_status"] == ARABIC_REVIEWED,
         "runner_error": observation.get("runner_error"),
+        "scripted_classifier_used": observation.get("scripted_classifier_used") is True,
     }
 
 
@@ -511,13 +514,16 @@ def _observe_ledger_writes(ledger: Any, executed_actions: list[dict[str, Any]]) 
     ledger.set_deload_choice = set_deload_choice
 
 
-def _observe_case(case: dict[str, Any], root: Path) -> dict[str, Any]:
+def _observe_case(
+    case: dict[str, Any], root: Path, scripted_classification: dict[str, Any] | None = None
+) -> dict[str, Any]:
     from utils.logger import MyosLogger
 
     MyosLogger(log_file=str(root / "logs" / "routing.log"))
     from agent import assistant_graph as graph
     from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
     from langchain_core.messages import HumanMessage
+    from tests.fakes.chat_model import ScriptedChatModel
 
     case_root = root / case["id"]
     case_root.mkdir(parents=True, exist_ok=True)
@@ -542,14 +548,21 @@ def _observe_case(case: dict[str, Any], root: Path) -> dict[str, Any]:
                 "coach_tone": "Direct, grounded, and pragmatic",
                 "custom_instructions": "",
             }
-            for _chunk in graph.stream_assistant_turn(state, ledger=ledger, store=store):
-                pass
+            model_patch = (
+                patch.object(graph, "llm", ScriptedChatModel([scripted_classification]))
+                if scripted_classification is not None
+                else nullcontext()
+            )
+            with model_patch:
+                for _chunk in graph.stream_assistant_turn(state, ledger=ledger, store=store):
+                    pass
         metadata = state.get("intent_metadata") or {}
         return {
             "case_id": case["id"],
             "observed_intent": state.get("intent"),
             "franco_intercept": state.get("intent") == "clinical_intercept" and metadata.get("franco") is True,
             "executed_actions": executed_actions,
+            "scripted_classifier_used": scripted_classification is not None,
         }
     finally:
         store.catalog_conn.close()
@@ -607,6 +620,16 @@ def _hermetic_actions(case: dict[str, Any]) -> list[dict[str, Any]]:
     return actions
 
 
+def _hermetic_arabic_swap_classification(case: dict[str, Any]) -> dict[str, Any]:
+    action = case["expected_action"]
+    return {
+        "intent": case["expected_intent"],
+        "source_exercise": action["source_exercise"],
+        "target_exercise": action["target_exercise"],
+        "has_additional_request": case["expected_intent"] == "composite_intent",
+    }
+
+
 class RoutingSuite:
     """Measures intent routing and validated player actions; Arabic needs owner review."""
 
@@ -618,15 +641,34 @@ class RoutingSuite:
 
     def run_hermetic(self, _context: Any) -> dict[str, Any]:
         cases = _load_routing_cases()
-        observations = [
-            {
-                "case_id": case["id"],
-                "observed_intent": case["expected_intent"],
-                "executed_actions": _hermetic_actions(case),
-                "franco_intercept": case.get("franco_intercept_expected") is True,
-            }
-            for case in cases
-        ]
+        observations = []
+        with tempfile.TemporaryDirectory(prefix="mayos-routing-hermetic-") as directory:
+            root = Path(directory)
+            for case in cases:
+                expected_action = case.get("expected_action") or {}
+                if case["language"] == "arabic" and expected_action.get("kind") == "exercise_substitution":
+                    try:
+                        observations.append(
+                            _observe_case(case, root, _hermetic_arabic_swap_classification(case))
+                        )
+                    except Exception as error:
+                        observations.append(
+                            {
+                                "case_id": case["id"],
+                                "observed_intent": None,
+                                "executed_actions": [],
+                                "runner_error": f"{type(error).__name__}: {error}",
+                            }
+                        )
+                    continue
+                observations.append(
+                    {
+                        "case_id": case["id"],
+                        "observed_intent": case["expected_intent"],
+                        "executed_actions": _hermetic_actions(case),
+                        "franco_intercept": case.get("franco_intercept_expected") is True,
+                    }
+                )
         return _hermetic_summary(_summarize(cases, observations))
 
     def validate(self, recorded_entry: Any, report: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
