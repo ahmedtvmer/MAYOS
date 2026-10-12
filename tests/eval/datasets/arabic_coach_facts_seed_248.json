@@ -1,0 +1,147 @@
+{
+  "fixture_id": "arabic-coach-synthetic-seed-248-v1",
+  "seed": 248,
+  "as_of": "2026-10-12",
+  "single_player": {
+    "as_of": "2026-10-12",
+    "player": {
+      "username": "synthetic-player-248",
+      "preferred_name": "كريم"
+    },
+    "coach": {
+      "display_name": "مدرب MAYOS",
+      "bio": "مختصر ومباشر."
+    },
+    "assignment": {
+      "started_on": "2026-09-01",
+      "status": "active"
+    },
+    "training_profile": {
+      "current_goal": "Build muscle",
+      "experience_level": "intermediate",
+      "equipment_access": "Commercial gym"
+    },
+    "program": {
+      "name": "Synthetic Upper/Lower",
+      "split": "Upper/Lower",
+      "weekly_frequency": 4,
+      "version": 1,
+      "days": [
+        {
+          "order": 1,
+          "day": "Upper A",
+          "exercises": [
+            {
+              "name": "Bench Press",
+              "sets": 3,
+              "reps": "6-8",
+              "rpe": 8
+            }
+          ]
+        }
+      ]
+    },
+    "volume": {
+      "last_7_days_kg": 12400.0,
+      "last_28_days_kg": 41200.0
+    },
+    "recent_sessions": [
+      {
+        "session_date": "2026-10-10",
+        "split_name": "Upper A",
+        "sets_count": 18,
+        "total_volume_kg": 6200.0,
+        "readiness_score": 4,
+        "program_version": 1,
+        "divergences": []
+      },
+      {
+        "session_date": "2026-10-08",
+        "split_name": "Lower A",
+        "sets_count": 16,
+        "total_volume_kg": 6200.0,
+        "readiness_score": 3,
+        "program_version": 1,
+        "divergences": []
+      }
+    ],
+    "recent_sessions_totals": {
+      "sessions": 2,
+      "sets": 34,
+      "volume_kg": 12400.0
+    },
+    "personal_records": [
+      {
+        "exercise": "Squat",
+        "record_type": "e1rm",
+        "reps": 5,
+        "value": 142.5,
+        "prev_value": 138.0,
+        "achieved_at": "2026-10-10"
+      }
+    ],
+    "attendance": {
+      "timezone": "Africa/Cairo",
+      "local_today": "2026-10-12",
+      "window_start": "2026-09-15",
+      "expected_days": 19,
+      "satisfied_days": 15,
+      "missed_days": 4,
+      "adherence_pct": 78.9,
+      "trailing_missed_streak": 3,
+      "last_missed_on": "2026-10-11"
+    },
+    "schedule": {
+      "weekdays": [1, 3, 5],
+      "timezone": "Africa/Cairo"
+    },
+    "program_requests": {
+      "total": 0,
+      "pending": 0,
+      "pending_by_kind": {}
+    }
+  },
+  "roster": [
+    {
+      "id": "PLR-001",
+      "adherence_pct": 83.3,
+      "missed_streak": 0,
+      "pending_program_request": false,
+      "new_alert": false,
+      "squat_e1rm": 142.5
+    },
+    {
+      "id": "PLR-002",
+      "adherence_pct": 55.0,
+      "missed_streak": 4,
+      "pending_program_request": true,
+      "new_alert": true,
+      "squat_e1rm": 130.0
+    },
+    {
+      "id": "PLR-003",
+      "adherence_pct": 59.9,
+      "missed_streak": 3,
+      "pending_program_request": false,
+      "new_alert": true,
+      "squat_e1rm": 125.0
+    },
+    {
+      "id": "PLR-004",
+      "adherence_pct": 72.0,
+      "missed_streak": 1,
+      "pending_program_request": true,
+      "new_alert": false,
+      "squat_e1rm": 160.0
+    },
+    {
+      "id": "PLR-005",
+      "adherence_pct": 45.0,
+      "missed_streak": 0,
+      "pending_program_request": false,
+      "new_alert": true,
+      "squat_e1rm": 100.0
+    }
+  ],
+  "needle_player_id": "PLR-003"
+}
