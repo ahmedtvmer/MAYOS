@@ -104,11 +104,14 @@ def build_messages(
     facts: dict[str, Any], rating: list[dict[str, Any]], language: str, *,
     preferences: AssistantStylePreferences = AssistantStylePreferences(),
 ) -> list[Any]:
-    from langchain_core.messages import SystemMessage
+    from langchain_core.messages import HumanMessage, SystemMessage
 
     rendered = render_review(facts, rating, language)
     style = render_assistant_style(preferences.coach_tone, preferences.custom_instructions)
-    return [SystemMessage(content=f"{SYSTEM_PROMPT}\n\n{rendered}\n\n{style}")]
+    return [
+        SystemMessage(content=SYSTEM_PROMPT),
+        HumanMessage(content=f"{rendered}\n\n{style}"),
+    ]
 
 
 def canonical_messages_text() -> str:

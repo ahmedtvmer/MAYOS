@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import math
 import os
@@ -13,6 +14,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from types import ModuleType
 from pathlib import Path
 from typing import Any
@@ -303,8 +305,11 @@ def _split_budget_choice(
 def _checkpoint_budget_choice(
     previous: int, p95: int | None, length_count: int
 ) -> tuple[int, str]:
-    del p95, length_count
-    return previous, f"Kept the previous {previous}-token budget; EOS responses are not output measurements."
+    if p95 is None:
+        return previous, f"Kept the previous {previous}-token budget; no usable output was measured."
+    if length_count:
+        return previous, f"Kept the {previous}-token product budget; {length_count} sample(s) reached the output limit."
+    return previous, f"Kept the {previous}-token product budget; measured outputs did not reach the limit."
 
 
 CALL_SITE_POLICIES: dict[PlayerCallSite, CallSitePolicy] = {
@@ -487,6 +492,8 @@ class MeasurementTargets:
     checkpoint_review_ai: ModuleType
     diagnostic_request_counts: dict[str, int] = field(default_factory=dict)
     measurement_errors: dict[str, str] = field(default_factory=dict)
+    checkpoint_review_samples: list[dict[str, Any]] = field(default_factory=list)
+    measured_call_sites: list[str] = field(default_factory=list)
 
 
 def _find_sample(
@@ -571,6 +578,7 @@ def _measurement_modules() -> MeasurementModules:
 def _configure_measurement_environment() -> None:
     os.environ["LLM_BACKEND"] = "openai"
     os.environ["LLM_MAX_TOKENS"] = str(CHAT_PRODUCTION_CAP)
+    # MeasurementRunner owns retries so it can enforce the per-site request ceiling.
     os.environ["LLM_MAX_RETRIES"] = "0"
     os.environ["LLM_REQUEST_TIMEOUT"] = "30"
     os.environ["LLM_STREAM_CHUNK_TIMEOUT"] = "30"
@@ -699,6 +707,8 @@ def _measure_split_outputs(targets: Any, sample_count: int) -> list[dict[str, An
 
 
 def _checkpoint_facts(fixture: dict[str, Any], sample_index: int) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    from service.checkpoint_reviews import rate_checkpoint_facts
+
     facts = dict(fixture["facts"])
     facts.update(
         workouts_in_period=8 + sample_index,
@@ -709,18 +719,7 @@ def _checkpoint_facts(fixture: dict[str, Any], sample_index: int) -> tuple[dict[
         volume_first_half=3600 + 175 * sample_index,
         volume_second_half=4200 + 125 * sample_index,
     )
-    labels = (
-        ("Steady", "Strong", "Rising"),
-        ("Needs work", "Steady", "Stable"),
-        ("Strong", "Needs work", "Falling"),
-        ("Steady", "Steady", "Rising"),
-        ("Needs work", "Strong", "Stable"),
-    )[sample_index % 5]
-    rating = [
-        {"part": part, "label": label}
-        for part, label in zip(("Consistency", "Progression", "Volume trend"), labels)
-    ]
-    return facts, rating
+    return facts, rate_checkpoint_facts(facts)
 
 
 def _checkpoint_measurement_call(targets: Any, prompt: list[Any], observations: dict[str, Any]) -> str:
@@ -729,6 +728,7 @@ def _checkpoint_measurement_call(targets: Any, prompt: list[Any], observations: 
     observations["raw_content_kind"] = _checkpoint_content_kind(raw_content)
     extracted = targets.checkpoint_review_ai.extract_text(reply)
     observations["extracted_text_empty"] = not bool(extracted)
+    observations["review_text"] = extracted
     return extracted
 
 
@@ -776,11 +776,24 @@ def _measure_checkpoint_case(
         {"facts": facts, "rating": rating, "language": language},
         lambda: _checkpoint_measurement_call(targets, prompt, observation),
     )
+    review_text = observation.pop("review_text", None)
+    if review_text is not None:
+        targets.checkpoint_review_samples.append({
+            "language": language,
+            "sample": sample_index + 1,
+            "facts": facts,
+            "rating": rating,
+            "completion_tokens": sample["completion_tokens"],
+            "finish_reason": sample["finish_reason"],
+            "text": review_text,
+        })
     sample.update(observation)
     return sample
 
 
-def _measure_call_sites(targets: Any, sample_count: int) -> dict[str, list[dict[str, Any]]]:
+def _measure_call_sites(
+    targets: Any, sample_count: int, only_site: str | None = None,
+) -> dict[str, list[dict[str, Any]]]:
     measurements = (
         ("chat_reply", _measure_chat_replies),
         ("intent_routing", _measure_router_outputs),
@@ -791,11 +804,14 @@ def _measure_call_sites(targets: Any, sample_count: int) -> dict[str, list[dict[
     )
     results: dict[str, list[dict[str, Any]]] = {}
     errors: dict[str, str] = {}
+    previous_errors = targets.measurement_errors if only_site else {}
     for site, measure in measurements:
+        if only_site is not None and site != only_site:
+            continue
         results[site], error = _measure_site(targets, site, measure, sample_count)
         if error:
             errors[site] = error
-    targets.measurement_errors = errors
+    targets.measurement_errors = {**previous_errors, **errors}
     return results
 
 
@@ -874,11 +890,13 @@ def _build_report(
 ) -> dict[str, Any]:
     errors = errors or {}
     call_sites = _summarize_call_sites(targets, samples_by_site)
-    shortfalls = _sample_shortfalls(call_sites, sample_count)
+    measured_call_sites = targets.measured_call_sites or list(CALL_SITE_POLICIES)
+    shortfalls = _sample_shortfalls(call_sites, sample_count, measured_call_sites)
     return {
         "status": "complete with reduced n" if errors or shortfalls else "complete",
         "model": targets.model_name,
         "provider": targets.provider,
+        "checkpoint_prompt_hash": targets.checkpoint_review_ai.prompt_version_hash(),
         "measurement_output_cap_tokens": MEASUREMENT_OUTPUT_CAP,
         "measurement_caps_by_site": {
             site: policy.measurement_cap for site, policy in CALL_SITE_POLICIES.items()
@@ -901,12 +919,15 @@ def _build_report(
     }
 
 
-def _sample_shortfalls(call_sites: dict[str, dict[str, Any]], sample_count: int) -> dict[str, int]:
+def _sample_shortfalls(
+    call_sites: dict[str, dict[str, Any]], sample_count: int, measured_call_sites: list[str] | None = None,
+) -> dict[str, int]:
     target_count = sample_count * 2
+    sites = measured_call_sites if measured_call_sites is not None else call_sites
     return {
-        site: target_count - metrics["n"]
-        for site, metrics in call_sites.items()
-        if metrics["n"] < target_count
+        site: target_count - call_sites[site]["n"]
+        for site in sites
+        if call_sites[site]["n"] < target_count
     }
 
 
@@ -947,37 +968,22 @@ def _checkpoint_diagnosis(samples: list[dict[str, Any]], targets: Any) -> dict[s
         max_completion_tokens=CHECKPOINT_REVIEW_CAP,
         extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
+    message_roles = [message["role"] for message in body["messages"]]
     return {
         "model": targets.model_name,
         "provider": targets.provider,
         "request_body": body,
+        "message_roles": message_roles,
         "structured_output": False,
         "response_format": "not sent",
         "stop_sequences": "not sent",
         "raw_content_kinds": _count_sample_field(samples, "raw_content_kind"),
         "extracted_empty_count": sum(sample.get("extracted_text_empty", False) for sample in samples),
         "sample_count": len(samples),
-        "extra_body_comparison_probe": {
-            "calls": 2,
-            "with_extra_body": {
-                "max_completion_tokens": CHECKPOINT_REVIEW_CAP,
-                "output_tokens": 1,
-                "finish_reason": "stop",
-                "raw_content": DEEPSEEK_END_OF_SENTENCE_TOKEN,
-            },
-            "without_call_extra_body": {
-                "max_completion_tokens": CHECKPOINT_REVIEW_CAP,
-                "output_tokens": 1,
-                "finish_reason": "stop",
-                "raw_content": DEEPSEEK_END_OF_SENTENCE_TOKEN,
-            },
-        },
         "diagnosis": (
-            f"The production request contains a single system-role message and no user turn. At {CHECKPOINT_REVIEW_CAP} tokens, "
-            "DeepSeek returned its end-of-sentence marker with finish_reason=stop both with and without the "
-            "call-specific enable_thinking=false body. Structured player calls use system and user messages. "
-            "The system-only message shape is the leading cause; confirming a user-turn change requires a prompt "
-            "change, so that change was not made."
+            "Checkpoint review now sends safety and language rules in the system message and reduced facts, "
+            "ratings, and Assistant style in a user message. This addresses the system-only request shape "
+            "associated with DeepSeek-V4-Flash returning EOS in the #194 measurement."
         ),
         "empty_response_handling": (
             "Before the parser fix, the output scrubber passed the DeepSeek marker through as non-empty text, so "
@@ -985,7 +991,6 @@ def _checkpoint_diagnosis(samples: list[dict[str, Any]], targets: Any) -> dict[s
             "control token: extract_text returns empty and the existing read path serves its deterministic template "
             "without storing the marker."
         ),
-        "user_turn_probe": "An added-user-turn diagnostic request did not return before it was interrupted; not conclusive.",
     }
 
 
@@ -998,7 +1003,7 @@ def _report_margin_rule() -> str:
     return (
         "p95 uses nearest-rank. For measured sites, margin = max(16 tokens, ceil(p95 * 25%)); recommended budget "
         f"is p95 + margin rounded up to the next 8 tokens. Chat remains at {CHAT_PRODUCTION_CAP} by product choice; "
-        f"Checkpoint review retains its prior {CHECKPOINT_REVIEW_CAP}-token budget because EOS responses are not measured output; "
+        f"Checkpoint review retains its {CHECKPOINT_REVIEW_CAP}-token product budget while reporting the measured recommendation; "
         "DynamicSplitPlan uses its own p95 margin rule."
     )
 
@@ -1026,27 +1031,93 @@ def _load_progress(path: Path, resume: bool) -> tuple[dict[str, list[dict[str, A
     return samples, report
 
 
-def _collect(args: argparse.Namespace) -> dict[str, Any]:
-    prior_samples, prior_report = _load_progress(args.output_json, args.resume)
-    prior_request_counts = prior_report.get("provider_request_counts", {}) if prior_report else {}
+def _measurement_history(
+    args: argparse.Namespace,
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any] | None, dict[str, int], dict[str, int]]:
+    reuse_report = args.resume or (args.only_site is not None and args.output_json.exists())
+    prior_samples, prior_report = _load_progress(args.output_json, reuse_report)
+    prior_request_counts = dict(prior_report.get("provider_request_counts", {})) if prior_report else {}
+    prior_diagnostic_counts = dict(prior_report.get("diagnostic_request_counts", {})) if prior_report else {}
+    if args.only_site and prior_report and not args.resume:
+        prior_samples[args.only_site] = []
+        prior_request_counts[args.only_site] = 0
+        prior_diagnostic_counts[args.only_site] = 0
+    return prior_samples, prior_report, prior_request_counts, prior_diagnostic_counts
+
+
+def _measurement_targets(args: argparse.Namespace) -> MeasurementTargets:
+    prior_samples, prior_report, prior_request_counts, prior_diagnostic_counts = _measurement_history(args)
     targets = _prepare_measurement(args.max_retries, prior_samples, prior_request_counts)
-    targets.diagnostic_request_counts = prior_report.get("diagnostic_request_counts", {}) if prior_report else {}
+    targets.diagnostic_request_counts = prior_diagnostic_counts
+    if prior_report:
+        targets.measurement_errors = {
+            site: error
+            for site, error in prior_report.get("measurement_errors", {}).items()
+            if args.only_site is None or site != args.only_site
+        }
     if prior_report and prior_report.get("model") != targets.model_name:
         raise RuntimeError("Cannot resume: model differs from the saved samples.")
+    targets.measured_call_sites = list(CALL_SITE_POLICIES)
+    if args.only_site and prior_report is None:
+        targets.measured_call_sites = [args.only_site]
+    return targets
+
+
+def _collect(args: argparse.Namespace) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    targets = _measurement_targets(args)
     with override_player_output_budgets(targets.measurement_budget_overrides):
-        _measure_call_sites(targets, args.samples_per_language)
-    return _build_report(
+        _measure_call_sites(targets, args.samples_per_language, args.only_site)
+    report = _build_report(
         targets, targets.runner.samples_by_site, args.samples_per_language,
         errors=targets.measurement_errors,
     )
+    report["measured_call_sites"] = targets.measured_call_sites
+    return report, targets.checkpoint_review_samples
+
+
+def _checkpoint_samples_markdown(
+    report: dict[str, Any], samples: list[dict[str, Any]], prompt_hash: str,
+) -> str:
+    lines = [
+        "# DeepSeek-V4-Flash Checkpoint review samples",
+        "",
+        f"Recorded: {datetime.now(UTC).date().isoformat()} UTC",
+        f"Model: `{report['model']}` through `{report['provider']}`",
+        f"Prompt hash: `{prompt_hash}`",
+        "All facts are synthetic. Arabic wording is pending owner review.",
+        "",
+    ]
+    lines.extend(_checkpoint_sample_markdown(sample) for sample in samples)
+    return "\n".join(lines)
+
+
+def _checkpoint_sample_markdown(sample: dict[str, Any]) -> str:
+    sample_facts = json.dumps(
+        {"facts": sample["facts"], "rating": sample["rating"]}, ensure_ascii=False, sort_keys=True,
+    )
+    return "\n".join([
+        f"## {sample['language'].upper()} sample {sample['sample']}",
+        "",
+        f"Completion: {sample['completion_tokens']} tokens; finish reason: `{sample['finish_reason']}`; "
+        f"non-empty: `{bool(sample['text'])}`",
+        f"Facts and ratings: `{sample_facts}`",
+        "",
+        "<pre>",
+        html.escape(sample["text"]),
+        "</pre>",
+        "",
+    ])
 
 
 def _markdown_header(report: dict[str, Any]) -> list[str]:
+    measured_call_sites = ", ".join(
+        f"`{site}`" for site in report.get("measured_call_sites", report["call_sites"])
+    )
     return [
         "# Player model output token budgets",
         "",
         f"Measurement status: **{report['status']}**.",
-        f"Measured `{report['model']}` through `{report['provider']}` using real production prompt builders and call paths.",
+        f"Measured `{report['model']}` through `{report['provider']}` using the production prompt builder and call path for {measured_call_sites}.",
         f"Structured sites used a temporary `{report['measurement_output_cap_tokens']}`-token cap; chat and Checkpoint review used their previous {CHAT_PRODUCTION_CAP}- and {CHECKPOINT_REVIEW_CAP}-token caps. "
         f"The target was {report['sample_count_per_language_per_call_site']} English and {report['sample_count_per_language_per_call_site']} Arabic inputs for each language-aware path, plus 20 distinct language-neutral abbreviations; requests ran sequentially to reduce provider overload.",
         "",
@@ -1109,16 +1180,16 @@ def _checkpoint_markdown_note(report: dict[str, Any]) -> str:
     body = diagnosis["request_body"]
     metrics = report["call_sites"]["checkpoint_review"]
     status = metrics["measurement_status"] or "measured output was available"
+    roles = " + ".join(f"`{role}`" for role in diagnosis["message_roles"])
+    languages = metrics["n_by_language"]
     return (
-        f"Checkpoint review: **{status}**. Its previous and new budget is {metrics['configured_budget_tokens']} tokens. "
-        f"Across {diagnosis['sample_count']} response observations, raw content kinds were {kinds or 'none'}; "
-        f"{diagnosis['extracted_empty_count']} responses became empty after extraction. The exact canonical request body is in the JSON report: "
-        f"one `{body['messages'][0]['role']}` message, `max_completion_tokens={body['max_completion_tokens']}`, "
-        f"no `stop` or `response_format`, plain text (no structured parser), and `extra_body={body['extra_body']}`. "
-        f"A separate {CHECKPOINT_REVIEW_CAP}-token probe returned the same one-token EOS marker with and without that extra body, so the body is not the cause. "
-        "The strongest code-level suspect is the system-only message shape: structured player paths send a system and user message. "
-        "Adding a user turn changes the prompt input/hash, so it was not adopted; the diagnostic request with that turn did not return before interruption. "
-        f"Before the parser fix, the marker passed through as non-empty text and could be stored as review wording. The parser now treats `{DEEPSEEK_END_OF_SENTENCE_TOKEN}` as a control token, so the existing read path serves its deterministic template without storing it."
+        f"Checkpoint review: **{status}**. The {metrics['configured_budget_tokens']}-token production budget remains unchanged. "
+        f"Across {diagnosis['sample_count']} samples ({languages.get('en', 0)} English, {languages.get('ar', 0)} Arabic), "
+        f"raw content kinds were {kinds or 'none'} and {diagnosis['extracted_empty_count']} responses became empty after extraction. "
+        f"The canonical request uses {roles}, `max_completion_tokens={body['max_completion_tokens']}`, "
+        f"no `stop` or `response_format`, plain text, and `extra_body={body['extra_body']}`. "
+        f"The #194 baseline returned the one-token EOS marker in all 14 system-only samples. The current request separates instructions from the user facts and style data. "
+        f"The parser also treats `{DEEPSEEK_END_OF_SENTENCE_TOKEN}` as a control token, so the existing read path serves its deterministic template without storing the marker."
     )
 
 
@@ -1143,32 +1214,82 @@ def _markdown_report(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def main() -> int:
-    load_dotenv(BASE_DIR / ".env")
+def _measurement_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--samples-per-language", type=int, default=DEFAULT_SAMPLES_PER_LANGUAGE)
-    parser.add_argument("--max-retries", type=int, default=1)
+    parser.add_argument("--max-retries", type=int, default=1, help="Retry transient failures with exponential waits (maximum 8).")
+    parser.add_argument(
+        "--only-site",
+        choices=tuple(CALL_SITE_POLICIES),
+        help="Measure one site and retain saved measurements for the others.",
+    )
     parser.add_argument("--resume", action="store_true", help="Resume missing samples from --output-json.")
     parser.add_argument("--output-json", type=Path, default=BASE_DIR / "reports" / "player_output_budgets.json")
     parser.add_argument("--output-markdown", type=Path, default=BASE_DIR / "reports" / "player_output_budgets.md")
+    parser.add_argument(
+        "--checkpoint-samples-output",
+        type=Path,
+        help="Write fresh Checkpoint review responses and synthetic facts to Markdown.",
+    )
+    return parser
+
+
+def _parse_args() -> argparse.Namespace:
+    load_dotenv(BASE_DIR / ".env")
+    parser = _measurement_argument_parser()
     args = parser.parse_args()
     if not 1 <= args.samples_per_language <= 10:
         parser.error("--samples-per-language must be between 1 and 10.")
-    if args.max_retries < 0 or args.samples_per_language * 2 * (args.max_retries + 1) > MAX_PROVIDER_REQUESTS_PER_SITE:
-        parser.error(f"Sample count and retries must stay within {MAX_PROVIDER_REQUESTS_PER_SITE} requests per call site.")
-    try:
-        report = _collect(args)
-    except (RuntimeError, json.JSONDecodeError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
+    if not 0 <= args.max_retries <= 8 or args.samples_per_language * 2 > MAX_PROVIDER_REQUESTS_PER_SITE:
+        parser.error(
+            f"--max-retries must be 0–8 and target samples must stay within {MAX_PROVIDER_REQUESTS_PER_SITE} per call site."
+        )
+    if args.checkpoint_samples_output and args.only_site != "checkpoint_review":
+        parser.error("--checkpoint-samples-output requires --only-site checkpoint_review.")
+    if args.checkpoint_samples_output and args.resume:
+        parser.error("--checkpoint-samples-output requires a fresh measurement run.")
+    return args
+
+
+def _write_measurement_outputs(
+    args: argparse.Namespace, report: dict[str, Any], samples: list[dict[str, Any]],
+) -> None:
     args.output_json.parent.mkdir(parents=True, exist_ok=True)
     args.output_json.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     args.output_markdown.write_text(_markdown_report(report), encoding="utf-8")
+    if args.checkpoint_samples_output:
+        args.checkpoint_samples_output.parent.mkdir(parents=True, exist_ok=True)
+        args.checkpoint_samples_output.write_text(
+            _checkpoint_samples_markdown(report, samples, report["checkpoint_prompt_hash"]),
+            encoding="utf-8",
+        )
+
+
+def _requested_measurements_incomplete(args: argparse.Namespace, report: dict[str, Any]) -> bool:
+    requested_sites = [args.only_site] if args.only_site else list(CALL_SITE_POLICIES)
+    target_sample_count = args.samples_per_language * 2
+    return any(
+        report["call_sites"][site]["n"] < target_sample_count
+        or site in report.get("measurement_errors", {})
+        for site in requested_sites
+    )
+
+
+def main() -> int:
+    args = _parse_args()
+    try:
+        report, checkpoint_samples = _collect(args)
+    except (RuntimeError, json.JSONDecodeError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    _write_measurement_outputs(args, report, checkpoint_samples)
+    requested_sites = args.only_site or "all player call sites"
+    status = "incomplete" if _requested_measurements_incomplete(args, report) else "complete"
     print(
-        f"Measurement {report['status']} for {len(report['call_sites'])} call sites; "
+        f"Measurement {status}; requested sites: {requested_sites}; aggregate report status: {report['status']}; "
         f"wrote {args.output_json} and {args.output_markdown}."
     )
-    return 0 if report["status"] == "complete" else 1
+    return 1 if status == "incomplete" else 0
 
 
 if __name__ == "__main__":

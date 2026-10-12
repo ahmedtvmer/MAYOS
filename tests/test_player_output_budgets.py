@@ -71,12 +71,16 @@ def test_report_covers_every_measured_player_call_site():
     assert set(abbreviations) <= FITNESS_ABBREVIATIONS.keys()
     checkpoint = report["call_sites"]["checkpoint_review"]
     assert checkpoint["configured_budget_tokens"] == player_output_budgets.CHECKPOINT_REVIEW_MAX_OUTPUT_TOKENS
-    assert checkpoint["measurement_status"] == (
-        "not measured — the model returned EOS for every sample; see #402"
-    )
-    assert checkpoint["p50_completion_tokens"] is None
-    assert checkpoint["p95_completion_tokens"] is None
-    assert checkpoint["max_completion_tokens"] is None
+    assert checkpoint["measurement_status"] is None
+    assert checkpoint["n_by_language"] == {"ar": 10, "en": 10}
+    assert checkpoint["measured_output_n"] == checkpoint["n"] == 20
+    assert report["checkpoint_diagnosis"]["message_roles"] == ["system", "user"]
+    assert report["checkpoint_diagnosis"]["extracted_empty_count"] == 0
+    assert checkpoint["p50_completion_tokens"] == 75
+    assert checkpoint["p95_completion_tokens"] == 130
+    assert checkpoint["max_completion_tokens"] == 139
+    assert checkpoint["recommended_p95_plus_margin_tokens"] == 168
+    assert checkpoint["finish_reason_length_count"] == 0
 
 
 def test_measurement_budget_override_does_not_change_production_budget():
