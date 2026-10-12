@@ -409,6 +409,79 @@ class MessageCopy {
         : 'Training profile changed: ${labels.join(', ')}';
   }
 
+  String assignmentNoticeRedeemed(String playerName) =>
+      'قبل ${_ltr(playerName)} دعوتك للتدريب، وبدأت علاقة التدريب.';
+
+  String assignmentNoticePause(
+    String playerName,
+    String startDate,
+    String endDate,
+  ) =>
+      'حدّد ${_ltr(playerName)} فترة توقف عن التدريب من '
+      '${_ltr(startDate)} إلى ${_ltr(endDate)}.';
+
+  String assignmentNoticeMissedDays(
+    String playerName,
+    int count,
+    String startDate,
+    String endDate,
+  ) =>
+      'لم يتدرب ${_ltr(playerName)} في '
+      '${arabicCountPhrase(
+        count,
+        ArabicCountNoun.day,
+        afterPreposition: true,
+      )} '
+      'من أيام التدريب المتوقعة (${_ltr(startDate)} إلى '
+      '${_ltr(endDate)}). راجع التنبيه في قائمة اللاعبين.';
+
+  String assignmentNoticeFollowUp(String playerName, String dueOn) =>
+      'حان موعد المتابعة مع ${_ltr(playerName)} منذ ${_ltr(dueOn)}. '
+      'راجع التنبيه في قائمة اللاعبين.';
+
+  String assignmentNoticeStall(String playerName) =>
+      'يحتاج ${_ltr(playerName)} إلى الانتباه بسبب ثبات الأداء. '
+      'راجع التنبيه في قائمة اللاعبين.';
+
+  String assignmentNoticeDeload(String playerName) =>
+      'يوصى بتخفيف التدريب للاعب ${_ltr(playerName)}. '
+      'راجع التنبيه في قائمة اللاعبين.';
+
+  String assignmentNoticeRegression(String playerName, String? exerciseName) {
+    final String exerciseLabel =
+        exerciseName == null ? 'تمرين' : _ltr(exerciseName);
+    return 'تراجع الأداء لدى ${_ltr(playerName)} في $exerciseLabel. '
+        'راجع التنبيه في قائمة اللاعبين.';
+  }
+
+  String assignmentNoticeProfileChange(String playerName) =>
+      'غيّر ${_ltr(playerName)} الملف التدريبي. '
+      'راجع التنبيه في قائمة اللاعبين.';
+
+  String assignmentNoticePublished(int version) =>
+      'نشر مدربك البرنامج التدريبي، الإصدار ${_ltr(version)}.';
+
+  String assignmentNoticeRequestReceived(String playerName) =>
+      'أرسل ${_ltr(playerName)} طلبًا لتغيير البرنامج التدريبي. '
+      'راجعه في قائمة اللاعبين.';
+
+  String assignmentNoticeDirectRequestApplied(int? version) {
+    final String versionLabel = _assignmentNoticeVersionLabel(version);
+    return 'طبّق مدربك التغيير على البرنامج التدريبي$versionLabel.';
+  }
+
+  String assignmentNoticePublishedRequestApplied(int? version) {
+    final String versionLabel = _assignmentNoticeVersionLabel(version);
+    return 'تم تنفيذ طلبك في البرنامج التدريبي الجديد$versionLabel.';
+  }
+
+  String _assignmentNoticeVersionLabel(int? version) => version == null
+      ? ''
+      : ' (الإصدار ${_ltr(version)})';
+
+  String assignmentNoticeRequestDeclined(String reason) =>
+      'رفض مدربك طلب تغيير البرنامج التدريبي: ${_bidiIsolate(reason)}';
+
   String profileChangeEvidence(
     Map<String, Map<String, String?>>? profileChanges,
   ) {
@@ -550,6 +623,8 @@ const Map<String, String> _specificArabicErrors = <String, String>{
 const String _limitPlaceholder = 'الحد المحدد';
 
 String _ltr(Object value) => '\u2066$value\u2069';
+
+String _bidiIsolate(Object text) => '\u2068$text\u2069';
 
 String _formatMessageNumber(double value) {
   final String fixed = value.toStringAsFixed(1);

@@ -181,7 +181,15 @@ def test_sweep_creates_one_alert_and_notice_for_a_two_day_streak(api):
         "end_date": public_alert["last_missed_date"],
     }
     assert public_alert["message_fallback"].startswith("Missed 9 expected training days (")
-    assert len(_notices(db, coach_account_id)) == 1
+    notices = _notices(db, coach_account_id)
+    assert len(notices) == 1
+    assert notices[0]["message_code"] == "assignment_notice.missed_expected_days.v1"
+    assert notices[0]["message_params"] == {
+        "player_name": "p1",
+        "count": 9,
+        "start_date": alert["details"]["streak_start_date"],
+        "end_date": public_alert["last_missed_date"],
+    }
     summary = db.get_roster_alert_badges(coach_account_id)[assignment_id]
     assert summary["current_missed_streak"] == 9
     assert summary["alerts_acknowledged"] == 0

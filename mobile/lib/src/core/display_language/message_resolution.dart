@@ -133,6 +133,33 @@ const Map<String, Set<String>> _paramKeys = <String, Set<String>>{
   'assignment.not_found.v1': <String>{},
   'assignment.program_draft_not_found.v1': <String>{},
   'assignment.notice_not_found.v1': <String>{},
+  'assignment_notice.assignment_redeemed.v1': <String>{'player_name'},
+  'assignment_notice.training_pause_scheduled.v1': <String>{
+    'player_name',
+    'start_date',
+    'end_date',
+  },
+  'assignment_notice.missed_expected_days.v1': <String>{
+    'player_name',
+    'count',
+    'start_date',
+    'end_date',
+  },
+  'assignment_notice.follow_up_due.v1': <String>{'player_name', 'due_on'},
+  'assignment_notice.stall.v1': <String>{'player_name'},
+  'assignment_notice.deload_recommended.v1': <String>{'player_name'},
+  'assignment_notice.performance_regression.v1': <String>{
+    'player_name',
+    'exercise_name',
+  },
+  'assignment_notice.profile_change.v1': <String>{'player_name'},
+  'assignment_notice.program_published.v1': <String>{'version'},
+  'assignment_notice.program_request_received.v1': <String>{'player_name'},
+  'assignment_notice.program_request_applied.v1': <String>{
+    'version',
+    'in_published_program',
+  },
+  'assignment_notice.program_request_declined.v1': <String>{'reason'},
   'program_import.file_too_large.v1': <String>{},
   'program_import.file_type.v1': <String>{},
   'program_import.file_invalid.v1': <String>{},
@@ -248,6 +275,18 @@ final Map<String, _MessageTemplate> _templates = <String, _MessageTemplate>{
   'coach_alert.performance_regression.v1': _regression,
   'coach_alert.profile_change.v1': _profileChange,
   'coach_alert.weight_off_target_trend.v1': _weightOffTargetTrend,
+  'assignment_notice.assignment_redeemed.v1': _assignmentRedeemed,
+  'assignment_notice.training_pause_scheduled.v1': _assignmentPause,
+  'assignment_notice.missed_expected_days.v1': _assignmentMissedDays,
+  'assignment_notice.follow_up_due.v1': _assignmentFollowUp,
+  'assignment_notice.stall.v1': _assignmentStall,
+  'assignment_notice.deload_recommended.v1': _assignmentDeload,
+  'assignment_notice.performance_regression.v1': _assignmentRegression,
+  'assignment_notice.profile_change.v1': _assignmentProfileChange,
+  'assignment_notice.program_published.v1': _assignmentProgramPublished,
+  'assignment_notice.program_request_received.v1': _assignmentRequestReceived,
+  'assignment_notice.program_request_applied.v1': _assignmentRequestApplied,
+  'assignment_notice.program_request_declined.v1': _assignmentRequestDeclined,
   'program_import.file_too_large.v1': _programImport,
   'program_import.file_type.v1': _programImport,
   'program_import.file_invalid.v1': _programImport,
@@ -402,6 +441,121 @@ String? _programVersionMismatch(
   MessageCopy copy,
 ) =>
     copy.programVersionMismatch;
+
+String? _assignmentRedeemed(
+  Map<String, dynamic> params,
+  MessageCopy copy,
+) {
+  final String? player = _noticePlayer(params);
+  return player == null ? null : copy.assignmentNoticeRedeemed(player);
+}
+
+String? _assignmentPause(Map<String, dynamic> params, MessageCopy copy) {
+  final String? player = _noticePlayer(params);
+  final String? start = _date(params['start_date']);
+  final String? end = _date(params['end_date']);
+  if (player == null || start == null || end == null) return null;
+  return copy.assignmentNoticePause(player, start, end);
+}
+
+String? _assignmentMissedDays(Map<String, dynamic> params, MessageCopy copy) {
+  final String? player = _noticePlayer(params);
+  final int? count = _count(params['count']);
+  final String? start = _date(params['start_date']);
+  final String? end = _date(params['end_date']);
+  if (player == null || count == null || start == null || end == null) {
+    return null;
+  }
+  return copy.assignmentNoticeMissedDays(player, count, start, end);
+}
+
+String? _assignmentFollowUp(Map<String, dynamic> params, MessageCopy copy) {
+  final String? player = _noticePlayer(params);
+  final String? dueOn = _date(params['due_on']);
+  if (player == null || dueOn == null) return null;
+  return copy.assignmentNoticeFollowUp(player, dueOn);
+}
+
+String? _assignmentStall(Map<String, dynamic> params, MessageCopy copy) {
+  final String? player = _noticePlayer(params);
+  return player == null ? null : copy.assignmentNoticeStall(player);
+}
+
+String? _assignmentDeload(Map<String, dynamic> params, MessageCopy copy) {
+  final String? player = _noticePlayer(params);
+  return player == null ? null : copy.assignmentNoticeDeload(player);
+}
+
+String? _assignmentRegression(Map<String, dynamic> params, MessageCopy copy) {
+  final String? player = _noticePlayer(params);
+  final Object? rawExercise = params['exercise_name'];
+  final String? exercise =
+      rawExercise == null ? null : _noticeText(rawExercise);
+  if (player == null || (rawExercise != null && exercise == null)) return null;
+  return copy.assignmentNoticeRegression(player, exercise);
+}
+
+String? _assignmentProfileChange(
+  Map<String, dynamic> params,
+  MessageCopy copy,
+) {
+  final String? player = _noticePlayer(params);
+  return player == null
+      ? null
+      : copy.assignmentNoticeProfileChange(player);
+}
+
+String? _assignmentProgramPublished(
+  Map<String, dynamic> params,
+  MessageCopy copy,
+) {
+  final int? version = _positiveVersion(params['version']);
+  return version == null ? null : copy.assignmentNoticePublished(version);
+}
+
+String? _assignmentRequestReceived(
+  Map<String, dynamic> params,
+  MessageCopy copy,
+) {
+  final String? player = _noticePlayer(params);
+  return player == null
+      ? null
+      : copy.assignmentNoticeRequestReceived(player);
+}
+
+String? _assignmentRequestApplied(
+  Map<String, dynamic> params,
+  MessageCopy copy,
+) {
+  final Object? rawVersion = params['version'];
+  final int? version = rawVersion == null ? null : _positiveVersion(rawVersion);
+  final Object? published = params['in_published_program'];
+  if ((rawVersion != null && version == null) || published is! bool) {
+    return null;
+  }
+  return published
+      ? copy.assignmentNoticePublishedRequestApplied(version)
+      : copy.assignmentNoticeDirectRequestApplied(version);
+}
+
+String? _assignmentRequestDeclined(
+  Map<String, dynamic> params,
+  MessageCopy copy,
+) {
+  final String? reason = _noticeText(params['reason'], maximumLength: 500);
+  return reason == null ? null : copy.assignmentNoticeRequestDeclined(reason);
+}
+
+String? _noticePlayer(Map<String, dynamic> params) =>
+    _noticeText(params['player_name']);
+
+String? _noticeText(Object? value, {int maximumLength = 128}) =>
+    value is String && value.trim().isNotEmpty && value.length <= maximumLength
+        ? value
+        : null;
+
+int? _positiveVersion(Object? value) =>
+    value is int && value > 0 ? value : null;
 
 String? _missedDays(Map<String, dynamic> params, MessageCopy copy) {
   final int? count = _count(params['count']);

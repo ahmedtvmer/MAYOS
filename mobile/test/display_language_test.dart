@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/core/display_language.dart';
 import 'package:mayos_mobile/src/core/display_language/assignment_copy.dart';
+import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
 import 'package:mayos_mobile/src/core/display_language/workout_copy.dart';
 import 'package:mayos_mobile/src/core/browser_key_value_store.dart';
 import 'package:mayos_mobile/src/core/training_status_projection.dart';
@@ -86,6 +87,35 @@ void main() {
         preference: null,
       ),
       'Substitute Bench Press on Upper A with Incline Press',
+    );
+    expect(arabic.inviteCodeFromCoach, 'رمز الدعوة للتدريب مع مدرب');
+    expect(arabic.enterInviteCode, 'أدخل رمز دعوة للتدريب مع مدرب.');
+    expect(
+      arabic.inviteExplanation,
+      contains('رمز دعوة للتدريب مع مدرب'),
+    );
+    expect(const CoachCopy('ar').invitePlayer, 'دعوة لاعب للتدريب');
+    expect(
+      const CoachCopy('ar').createPlayerInvite,
+      'إنشاء دعوة لاعب للتدريب',
+    );
+    expect(
+      const MayosCopy('ar').coachInviteCode,
+      'رمز دعوة لتفعيل دور المدرب',
+    );
+    const WorkoutCopy workout = WorkoutCopy('ar');
+    expect(workout.replaceExercise, 'استبدال تمرين لهذه الحصة');
+    expect(workout.replaceQuestion, 'استبدال تمرين لهذه الحصة؟');
+    expect(workout.keepProgramSwap, 'تبديل تمرين في البرنامج');
+    expect(workout.askCoachPermanent, 'طلب تبديل تمرين من المدرب');
+    expect(const MayosCopy('ar').substituteExercise, 'تبديل تمرين في البرنامج');
+    expect(
+      const MayosCopy('ar').substituteExerciseQuestion,
+      'هل تريد تبديل تمرين في البرنامج؟',
+    );
+    expect(
+      const MayosCopy('ar').substitutionUndone,
+      'تم التراجع عن تبديل التمرين في البرنامج.',
     );
   });
 

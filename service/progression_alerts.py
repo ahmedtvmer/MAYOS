@@ -33,7 +33,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 from core.deload_choices import DELOAD_CHOICES
-from service.coach_notices import notify_coach, player_display_name
+from database.registry.assignments import AssignmentNoticeRecord
+from service.coach_notices import (
+    build_assignment_notice_record,
+    notify_coach,
+    player_display_name,
+)
 from service import coach_analytics
 
 logger = logging.getLogger(__name__)
@@ -256,15 +261,35 @@ def _close_episode(db: Any, assignment_id: str, kind: str, subject: str, now_iso
 
 def _notify(db: Any, assignment: dict[str, Any], signal: CommitSignal, now_iso: str) -> None:
     """Best-effort coach in-app notice; names the signal and the exercise only."""
+    player_name = player_display_name(db, assignment)
     if signal.kind == DELOAD_KIND:
-        message = f"{player_display_name(db, assignment)} has a deload recommended. Review the alert in your roster."
+        message = f"{player_name} has a deload recommended. Review the alert in your roster."
+        code = "assignment_notice.deload_recommended.v1"
+        params = {"player_name": player_name}
     else:
-        exercise = signal.details.get("exercise_name") or "an exercise"
+        exercise = signal.details.get("exercise_name")
+        if not isinstance(exercise, str) or not exercise.strip():
+            exercise = None
         message = (
-            f"{player_display_name(db, assignment)} regressed on {exercise}."
+            f"{player_name} regressed on {exercise or 'an exercise'}."
             " Review the alert in your roster."
         )
-    notify_coach(db, assignment, signal.kind, message, now_iso)
+        code = "assignment_notice.performance_regression.v1"
+        params = {"player_name": player_name, "exercise_name": exercise}
+    notify_coach(
+        db,
+        build_assignment_notice_record(
+            AssignmentNoticeRecord(
+                account_id=assignment["coach_account_id"],
+                assignment_id=assignment["assignment_id"],
+                kind=signal.kind,
+                message=message,
+                created_at=now_iso,
+            ),
+            code,
+            params,
+        ),
+    )
 
 
 def evaluate_commit(

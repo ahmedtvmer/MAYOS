@@ -31,7 +31,12 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from service.coach_notices import notify_coach, player_display_name
+from database.registry.assignments import AssignmentNoticeRecord
+from service.coach_notices import (
+    build_assignment_notice_record,
+    notify_coach,
+    player_display_name,
+)
 from service import analytics as analytics_service
 from service import coach_analytics
 from service.schedule import local_date_in
@@ -201,13 +206,24 @@ def evaluate_follow_up(
         )
         if inserted["created"]:
             created = 1
+            player_name = player_display_name(db, assignment)
+            message = (
+                f"A follow-up with {player_name} is due since"
+                f" {due_key}. Review your roster."
+            )
             notify_coach(
                 db,
-                assignment,
-                FOLLOW_UP_KIND,
-                f"A follow-up with {player_display_name(db, assignment)} is due since"
-                f" {due_key}. Review your roster.",
-                now_iso,
+                build_assignment_notice_record(
+                    AssignmentNoticeRecord(
+                        account_id=assignment["coach_account_id"],
+                        assignment_id=assignment["assignment_id"],
+                        kind=FOLLOW_UP_KIND,
+                        message=message,
+                        created_at=now_iso,
+                    ),
+                    "assignment_notice.follow_up_due.v1",
+                    {"player_name": player_name, "due_on": due_key},
+                ),
             )
     return {
         "created": created,

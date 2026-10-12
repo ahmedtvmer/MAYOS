@@ -9,7 +9,10 @@ String _resolve(String code, Map<String, dynamic> params) =>
       messageParams: params,
       englishFallback: 'Safe English fallback.',
       displayLanguage: 'ar',
-      ).replaceAll('\u2066', '').replaceAll('\u2069', '');
+    )
+        .replaceAll('\u2066', '')
+        .replaceAll('\u2068', '')
+        .replaceAll('\u2069', '');
 
 String _resolveProgramImport(
   String code,
@@ -130,6 +133,129 @@ void main() {
         'rejected_input': 'private text',
       }),
       'Safe English fallback.',
+    );
+  });
+
+  test('assignment notice templates keep request outcomes distinct and preserve human text', () {
+    expect(
+      _resolve('assignment_notice.assignment_redeemed.v1', <String, dynamic>{
+        'player_name': 'alice',
+      }),
+      'قبل alice دعوتك للتدريب، وبدأت علاقة التدريب.',
+    );
+    expect(
+      _resolve('assignment_notice.program_request_received.v1',
+          <String, dynamic>{'player_name': 'alice'}),
+      'أرسل alice طلبًا لتغيير البرنامج التدريبي. راجعه في قائمة اللاعبين.',
+    );
+    expect(
+      _resolve('assignment_notice.program_request_applied.v1',
+          <String, dynamic>{'version': 2, 'in_published_program': true}),
+      'تم تنفيذ طلبك في البرنامج التدريبي الجديد (الإصدار 2).',
+    );
+    expect(
+      _resolve('assignment_notice.program_request_applied.v1',
+          <String, dynamic>{'version': 2, 'in_published_program': false}),
+      'طبّق مدربك التغيير على البرنامج التدريبي (الإصدار 2).',
+    );
+    expect(
+      _resolve('assignment_notice.program_request_applied.v1',
+          <String, dynamic>{'version': null, 'in_published_program': false}),
+      'طبّق مدربك التغيير على البرنامج التدريبي.',
+    );
+    expect(
+      _resolve('assignment_notice.program_request_declined.v1',
+          <String, dynamic>{'reason': '<b>Keep the squat</b>.'}),
+      'رفض مدربك طلب تغيير البرنامج التدريبي: <b>Keep the squat</b>.',
+    );
+    expect(
+      _resolve('assignment_notice.performance_regression.v1',
+          <String, dynamic>{'player_name': 'alice', 'exercise_name': null}),
+      'تراجع الأداء لدى alice في تمرين. راجع التنبيه في قائمة اللاعبين.',
+    );
+  });
+
+  test('attendance, progression, profile, and publication notices resolve in Arabic', () {
+    final List<(String, Map<String, dynamic>, String)> cases =
+        <(String, Map<String, dynamic>, String)>[
+      (
+        'assignment_notice.training_pause_scheduled.v1',
+        <String, dynamic>{
+          'player_name': 'alice',
+          'start_date': '2026-10-01',
+          'end_date': '2026-10-03',
+        },
+        'حدّد alice فترة توقف عن التدريب من 2026-10-01 إلى 2026-10-03.',
+      ),
+      (
+        'assignment_notice.missed_expected_days.v1',
+        <String, dynamic>{
+          'player_name': 'alice',
+          'count': 2,
+          'start_date': '2026-10-01',
+          'end_date': '2026-10-02',
+        },
+        'لم يتدرب alice في يومين من أيام التدريب المتوقعة '
+            '(2026-10-01 إلى 2026-10-02). راجع التنبيه في قائمة اللاعبين.',
+      ),
+      (
+        'assignment_notice.follow_up_due.v1',
+        <String, dynamic>{'player_name': 'alice', 'due_on': '2026-10-01'},
+        'حان موعد المتابعة مع alice منذ 2026-10-01. '
+            'راجع التنبيه في قائمة اللاعبين.',
+      ),
+      (
+        'assignment_notice.stall.v1',
+        <String, dynamic>{'player_name': 'alice'},
+        'يحتاج alice إلى الانتباه بسبب ثبات الأداء. '
+            'راجع التنبيه في قائمة اللاعبين.',
+      ),
+      (
+        'assignment_notice.deload_recommended.v1',
+        <String, dynamic>{'player_name': 'alice'},
+        'يوصى بتخفيف التدريب للاعب alice. راجع التنبيه في قائمة اللاعبين.',
+      ),
+      (
+        'assignment_notice.performance_regression.v1',
+        <String, dynamic>{'player_name': 'alice', 'exercise_name': 'Bench Press'},
+        'تراجع الأداء لدى alice في Bench Press. راجع التنبيه في قائمة اللاعبين.',
+      ),
+      (
+        'assignment_notice.profile_change.v1',
+        <String, dynamic>{'player_name': 'alice'},
+        'غيّر alice الملف التدريبي. راجع التنبيه في قائمة اللاعبين.',
+      ),
+      (
+        'assignment_notice.program_published.v1',
+        <String, dynamic>{'version': 3},
+        'نشر مدربك البرنامج التدريبي، الإصدار 3.',
+      ),
+    ];
+
+    for (final (String code, Map<String, dynamic> params, String expected)
+        in cases) {
+      expect(_resolve(code, params), expected, reason: code);
+    }
+  });
+
+  test('invalid or unknown assignment notice metadata keeps its safe fallback', () {
+    expect(
+      resolveStructuredMessage(
+        messageCode: 'assignment_notice.follow_up_due.v1',
+        messageParams: const <String, dynamic>{'player_name': 'alice'},
+        englishFallback: 'Follow-up due since 2026-10-01',
+        displayLanguage: 'ar',
+      ),
+      'Follow-up due since 2026-10-01',
+    );
+    expect(
+      resolveStructuredMessage(
+        messageCode: 'assignment_notice.future.v1',
+        messageParams: const <String, dynamic>{},
+        englishFallback: 'Future notice fallback.',
+        displayLanguage: 'ar',
+      ),
+      'Future notice fallback.',
     );
   });
 

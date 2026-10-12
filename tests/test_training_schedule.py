@@ -503,6 +503,12 @@ def test_coach_drill_down_shows_schedule_pause_and_notice(api):
     assert pause_notices[0]["message"] == (
         f"p1 scheduled a training pause from {_iso(1, 'Europe/Berlin')} to {_iso(6, 'Europe/Berlin')}."
     )
+    assert pause_notices[0]["message_code"] == "assignment_notice.training_pause_scheduled.v1"
+    assert pause_notices[0]["message_params"] == {
+        "player_name": "p1",
+        "start_date": _iso(1, "Europe/Berlin"),
+        "end_date": _iso(6, "Europe/Berlin"),
+    }
 
 
 def test_notice_failure_still_creates_pause(api, monkeypatch):
@@ -512,7 +518,7 @@ def test_notice_failure_still_creates_pause(api, monkeypatch):
     def boom(*args, **kwargs):
         raise RuntimeError("notice store down")
 
-    monkeypatch.setattr(db, "create_assignment_notice", boom)
+    monkeypatch.setattr(db, "create_assignment_notice_record", boom)
 
     created = _post_pause(client, player_headers, starts_on=_iso(2), ends_on=_iso(4))
     assert created.status_code == 201, created.text

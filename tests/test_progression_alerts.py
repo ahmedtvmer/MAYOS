@@ -310,6 +310,11 @@ def test_commit_opens_one_alert_and_reprocessing_is_a_no_op(api):
         if notice["kind"] == progression.REGRESSION_KIND
     ]
     assert len(notices) == 1
+    assert notices[0]["message_code"] == "assignment_notice.performance_regression.v1"
+    assert notices[0]["message_params"] == {
+        "player_name": "p1",
+        "exercise_name": "Bench Press",
+    }
 
 
 def test_continuing_episode_updates_the_single_open_alert(api):
@@ -439,6 +444,14 @@ def test_deload_episode_opens_and_closes(api):
     alert = _deload_alerts(db, coach_account_id)[0]
     assert alert["dedupe_key"] == "s1"
     assert alert["details"]["reason"].startswith("Rolling readiness crash")
+    notices = [
+        notice
+        for notice in db.list_assignment_notices(coach_account_id)
+        if notice["kind"] == progression.DELOAD_KIND
+    ]
+    assert len(notices) == 1
+    assert notices[0]["message_code"] == "assignment_notice.deload_recommended.v1"
+    assert notices[0]["message_params"] == {"player_name": "p1"}
 
     # Still firing: no second alert.
     progression.evaluate_commit(db, player_account_id, "s2", "2026-09-22", [], _deload_fatigue())

@@ -4,7 +4,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
+import 'package:mayos_mobile/src/core/display_language/assignment_copy.dart';
+import 'package:mayos_mobile/src/core/display_language/controller.dart';
+import 'package:mayos_mobile/src/core/display_language/store.dart';
+import 'package:mayos_mobile/src/core/models.dart';
+import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/features/player/assignment/player_assignment_activity.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
@@ -80,6 +86,88 @@ Future<void> _openSettings(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('player notice reader re-renders cached metadata and keeps legacy text',
+      (tester) async {
+    const String fallback =
+        'Your coach declined your program change: <b>Keep the squat</b>.';
+    final List<AssignmentNotice> notices = <AssignmentNotice>[
+      AssignmentNotice.fromJson(<String, dynamic>{
+        'notice_id': 'structured',
+        'kind': 'program_request',
+        'message': fallback,
+        'message_code': 'assignment_notice.program_request_declined.v1',
+        'message_params': <String, dynamic>{
+          'reason': '<b>Keep the squat</b>.',
+        },
+        'message_fallback': fallback,
+        'created_at': '2026-10-01T12:00:00Z',
+        'read_at': null,
+      }),
+      AssignmentNotice.fromJson(<String, dynamic>{
+        'notice_id': 'legacy',
+        'kind': 'legacy_notice',
+        'message': 'Legacy coach text stays in English.',
+        'created_at': '2026-09-01T12:00:00Z',
+        'read_at': '2026-09-02T12:00:00Z',
+      }),
+      AssignmentNotice.fromJson(<String, dynamic>{
+        'notice_id': 'unknown',
+        'kind': 'future_notice',
+        'message': 'Safe future fallback.',
+        'message_code': 'assignment_notice.future.v1',
+        'message_params': <String, dynamic>{},
+        'message_fallback': 'Safe future fallback.',
+        'created_at': '2026-08-01T12:00:00Z',
+      }),
+    ];
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: <Override>[
+          displayLanguageStoreProvider.overrideWithValue(
+            InMemoryDisplayLanguageStore(),
+          ),
+          systemDisplayLanguageProvider.overrideWithValue('en'),
+        ],
+        child: MaterialApp(
+          theme: MayosTheme.light,
+          home: Consumer(
+            builder: (BuildContext context, WidgetRef ref, Widget? child) {
+              final String language = ref.watch(displayLanguageProvider);
+              return Scaffold(
+                body: PlayerAssignmentNoticesCard(
+                  notices: notices,
+                  copy: AssignmentCopy(language),
+                  actions: PlayerNoticeActions(
+                    onMarkAllRead: () {},
+                    onViewProgram: () {},
+                    markingRead: false,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    expect(find.text(fallback), findsOneWidget);
+    expect(find.text('Legacy coach text stays in English.'), findsOneWidget);
+    expect(find.text('Safe future fallback.'), findsOneWidget);
+
+    final container = ProviderScope.containerOf(tester.element(find.text(fallback)));
+    await container.read(displayLanguageProvider.notifier).choose('ar');
+    await tester.pump();
+    expect(find.textContaining('رفض مدربك طلب تغيير البرنامج التدريبي'), findsOneWidget);
+    expect(
+      find.textContaining('<b>Keep the squat</b>.'),
+      findsOneWidget,
+    );
+    expect(find.text('Legacy coach text stays in English.'), findsOneWidget);
+    expect(find.text('Safe future fallback.'), findsOneWidget);
+    expect(notices.first.isUnread, isTrue);
+    expect(notices[1].isUnread, isFalse);
+  });
+
   testWidgets(
       'Arabic settings and assignment surfaces keep server text and Western dates',
       (tester) async {

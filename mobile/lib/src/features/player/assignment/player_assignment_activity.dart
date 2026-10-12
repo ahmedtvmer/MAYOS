@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/display_language/assignment_copy.dart';
+import '../../../core/display_language/message_resolver.dart';
 import '../../../core/models.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
@@ -90,6 +91,10 @@ class _PlayerNoticeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final String message = resolveAssignmentNoticeMessage(
+      notice,
+      copy.languageCode,
+    );
     if (notice.programChangeSummary != null &&
         notice.summaryDismissedAt == null) {
       return Column(
@@ -97,7 +102,7 @@ class _PlayerNoticeRow extends StatelessWidget {
         children: <Widget>[
           ProgramChangeSummaryCard(
             summary: notice.programChangeSummary!,
-            message: notice.message,
+            message: message,
             onViewProgram: onViewProgram,
           ),
           _PlayerNoticeCaption(notice: notice, copy: copy),
@@ -114,8 +119,8 @@ class _PlayerNoticeRow extends StatelessWidget {
         color: notice.isUnread ? colors.accent : colors.textMuted,
       ),
       title: FirstStrongDirection(
-        text: notice.message,
-        child: Text(notice.message, textAlign: TextAlign.start),
+        text: message,
+        child: Text(message, textAlign: TextAlign.start),
       ),
       subtitle: _PlayerNoticeCaption(notice: notice, copy: copy),
     );

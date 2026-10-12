@@ -6,7 +6,12 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from service.coach_notices import notify_coach, player_display_name
+from database.registry.assignments import AssignmentNoticeRecord
+from service.coach_notices import (
+    build_assignment_notice_record,
+    notify_coach,
+    player_display_name,
+)
 from service import coach_analytics
 
 STALL_KIND = "stall"
@@ -83,12 +88,21 @@ def evaluate_commit(
                 )
         db.mark_stall_session_processed(assignment_id, session_id, now_iso)
     if created_alert is not None:
+        player_name = player_display_name(db, assignment)
+        message = f"{player_name} has a stall alert. Review the alert in your roster."
         notify_coach(
             db,
-            assignment,
-            STALL_KIND,
-            f"{player_display_name(db, assignment)} has a stall alert. Review the alert in your roster.",
-            now_iso,
+            build_assignment_notice_record(
+                AssignmentNoticeRecord(
+                    account_id=assignment["coach_account_id"],
+                    assignment_id=assignment["assignment_id"],
+                    kind=STALL_KIND,
+                    message=message,
+                    created_at=now_iso,
+                ),
+                "assignment_notice.stall.v1",
+                {"player_name": player_name},
+            ),
         )
     return {
         "evaluated": True,

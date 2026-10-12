@@ -20,9 +20,11 @@ from agent.program_generator import (
     has_supported_split_keyword,
 )
 from database.exercise_resolution import resolve_exercise_display_row
+from database.registry.assignments import AssignmentNoticeRecord
 from service._base import ledger_scope
 from service.assignments import authorized_player_ledger, coach_identity
 from service.coach_programs import UnrecognizedSplitOverride
+from service.coach_notices import build_assignment_notice_record
 from service.email_sender import (
     PURPOSE_PROGRAM_REQUEST_NOTICE,
     DeliveryContext,
@@ -156,10 +158,10 @@ def _present_program_request(db: Any, request: dict[str, Any]) -> dict[str, Any]
     return _present_program_requests(db, [request])[0]
 
 
-def _notify_player(db: Any, player_account_id: str, assignment_id: str, message: str, now_iso: str) -> None:
+def _notify_player(db: Any, notice: AssignmentNoticeRecord) -> None:
     """Best-effort player in-app notice; a notice failure never fails the resolution."""
     try:
-        db.create_assignment_notice(player_account_id, assignment_id, "program_request", message, now_iso)
+        db.create_assignment_notice_record(notice)
     except Exception:
         logger.warning("Player program-request notice failed", exc_info=True)
 
@@ -199,23 +201,25 @@ def _publish_resolution_responses(
     return responses
 
 
-def _record_published_request_resolution(
-    db: Any,
-    coach_actor: ProgramAnalyticsActor,
-    request_id: str,
-    client: analytics.ClientContext,
-) -> None:
-    request = db.get_program_request(request_id)
-    if request is None:
-        return
-    _notify_player(
-        db,
-        request["player_account_id"],
-        request["assignment_id"],
-        request["response"],
-        request["resolved_at"] or _now_iso(),
+def _published_request_notice(
+    request: dict[str, Any], program_version: int
+) -> AssignmentNoticeRecord:
+    fallback = f"Addressed in your new program (version {program_version})"
+    message = request.get("response")
+    if not isinstance(message, str) or not message:
+        message = fallback
+    return build_assignment_notice_record(
+        AssignmentNoticeRecord(
+            account_id=request["player_account_id"],
+            assignment_id=request["assignment_id"],
+            kind="program_request",
+            message=message,
+            created_at=request["resolved_at"] or _now_iso(),
+        ),
+        "assignment_notice.program_request_applied.v1",
+        {"version": program_version, "in_published_program": True},
+        fallback,
     )
-    capture_program_request_resolved(coach_actor, request, client=client)
 
 
 def resolve_published_requests(
@@ -236,9 +240,17 @@ def resolve_published_requests(
         coach_actor.account_id,
         _now_iso(),
     )
+
+    def record_resolution(request_id: str) -> None:
+        request = db.get_program_request(request_id)
+        if request is None:
+            return
+        _notify_player(db, _published_request_notice(request, program_version))
+        capture_program_request_resolved(coach_actor, request, client=client)
+
     for request_id in claimed_ids:
         try:
-            _record_published_request_resolution(db, coach_actor, request_id, client)
+            record_resolution(request_id)
         except Exception:
             logger.warning("Published program request follow-up failed", exc_info=True)
     return claimed_ids
@@ -394,12 +406,19 @@ def _notify_coach(db: Any, coach_account_id: str, assignment_id: str, player_use
     suppresses the other, and only the email outcome is reported back.
     """
     try:
-        db.create_assignment_notice(
-            coach_account_id,
-            assignment_id,
-            "program_request",
-            f"{player_username} requested a program change. Review it in your roster.",
-            now_iso,
+        message = f"{player_username} requested a program change. Review it in your roster."
+        db.create_assignment_notice_record(
+            build_assignment_notice_record(
+                AssignmentNoticeRecord(
+                    account_id=coach_account_id,
+                    assignment_id=assignment_id,
+                    kind="program_request",
+                    message=message,
+                    created_at=now_iso,
+                ),
+                "assignment_notice.program_request_received.v1",
+                {"player_name": player_username},
+            )
         )
     except Exception:
         logger.exception("Coach program-request notice raised unexpectedly")
@@ -489,12 +508,23 @@ def apply_request(
         def _finish_applied_request() -> dict[str, Any]:
             published = ledger.get_active_program()
             version = published.version if published is not None else None
+            message = f"Your coach applied your program change. Program version {version}."
             _notify_player(
                 db,
-                request["player_account_id"],
-                request["assignment_id"],
-                f"Your coach applied your program change. Program version {version}.",
-                _now_iso(),
+                build_assignment_notice_record(
+                    AssignmentNoticeRecord(
+                        account_id=request["player_account_id"],
+                        assignment_id=request["assignment_id"],
+                        kind="program_request",
+                        message=message,
+                        created_at=_now_iso(),
+                    ),
+                    "assignment_notice.program_request_applied.v1",
+                    {
+                        "version": version,
+                        "in_published_program": False,
+                    },
+                ),
             )
             resolved_request = db.get_program_request(request_id)
             if published is not None:
@@ -618,12 +648,20 @@ def decline_request(
         if not claimed["ok"]:
             return _refusal("program_request.not_pending.v1", NOT_PENDING_ERROR)
 
+        message = f"Your coach declined your program change: {response}"
         _notify_player(
             db,
-            request["player_account_id"],
-            request["assignment_id"],
-            f"Your coach declined your program change: {response}",
-            _now_iso(),
+            build_assignment_notice_record(
+                AssignmentNoticeRecord(
+                    account_id=request["player_account_id"],
+                    assignment_id=request["assignment_id"],
+                    kind="program_request",
+                    message=message,
+                    created_at=_now_iso(),
+                ),
+                "assignment_notice.program_request_declined.v1",
+                {"reason": response},
+            ),
         )
         resolved_request = db.get_program_request(request_id)
         capture_program_request_resolved(coach_actor, resolved_request, client=client)

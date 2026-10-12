@@ -30,7 +30,7 @@ def test_structured_message_codes_match_dart_resolver_and_server_allowlists():
 
     code_prefixes = (
         "coach_alert|http|ai_limit|chat|google|workout|auth|assignment|"
-        "program_import|program|program_request|intake|coach|media|recovery|coach_invite|app"
+        "assignment_notice|program_import|program|program_request|intake|coach|media|recovery|coach_invite|app"
     )
     service_codes = set(
         re.findall(rf'"((?:{code_prefixes})\.[^"]+)"', service_source)
@@ -69,6 +69,7 @@ def test_structured_message_codes_match_dart_resolver_and_server_allowlists():
             (
                 "auth.",
                 "assignment.",
+                "assignment_notice.",
                 "program.",
                 "program_request.",
                 "intake.",
@@ -181,3 +182,42 @@ def test_weight_trend_alert_message_contains_allowlisted_typed_values():
             "(alert threshold 1 kg; target 70 kg)."
         ),
     }
+
+
+def test_assignment_notice_metadata_rejects_untyped_or_unbounded_values():
+    valid = messages.structured_message(
+        "assignment_notice.program_request_declined.v1",
+        {"reason": "Keep the squat; we will revisit next block."},
+        "Your coach declined your program change: Keep the squat; we will revisit next block.",
+    )
+    malformed = messages.structured_message(
+        "assignment_notice.program_request_declined.v1",
+        {"reason": ""},
+        "Safe fallback.",
+    )
+
+    assert valid["message_code"] == "assignment_notice.program_request_declined.v1"
+    assert valid["message_params"] == {
+        "reason": "Keep the squat; we will revisit next block."
+    }
+    assert malformed == {
+        "message_code": None,
+        "message_params": {},
+        "message_fallback": "Safe fallback.",
+    }
+    applied_without_active_version = messages.structured_message(
+        "assignment_notice.program_request_applied.v1",
+        {"version": None, "in_published_program": False},
+        "Your coach applied your program change.",
+    )
+    assert applied_without_active_version["message_code"] == (
+        "assignment_notice.program_request_applied.v1"
+    )
+    regression_without_exercise_name = messages.structured_message(
+        "assignment_notice.performance_regression.v1",
+        {"player_name": "alice", "exercise_name": None},
+        "alice regressed on an exercise. Review the alert in your roster.",
+    )
+    assert regression_without_exercise_name["message_code"] == (
+        "assignment_notice.performance_regression.v1"
+    )

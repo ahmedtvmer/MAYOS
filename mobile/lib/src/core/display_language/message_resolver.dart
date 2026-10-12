@@ -4,6 +4,17 @@ import 'message_resolution.dart';
 
 export 'message_resolution.dart' show resolveStructuredMessage;
 
+String resolveAssignmentNoticeMessage(
+  AssignmentNotice notice,
+  String displayLanguage,
+) =>
+    resolveStructuredMessage(
+      messageCode: notice.messageCode,
+      messageParams: notice.messageParams,
+      englishFallback: notice.messageFallback ?? notice.message,
+      displayLanguage: displayLanguage,
+    );
+
 String resolveCoachAlertDescription(
   CoachAlert alert,
   String displayLanguage,

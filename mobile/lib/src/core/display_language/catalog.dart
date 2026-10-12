@@ -209,12 +209,14 @@ class MayosCopy {
       isArabic ? 'الأرقام القياسية الشخصية' : 'Personal records';
   String get logWorkout => isArabic ? 'تسجيل حصة تدريبية' : 'Log workout';
   String get substituteExercise =>
-      isArabic ? 'تبديل التمرين' : 'Substitute exercise';
+      isArabic ? 'تبديل تمرين في البرنامج' : 'Substitute exercise';
   String get substituteExerciseQuestion =>
-      isArabic ? 'هل تريد تبديل التمرين؟' : 'Substitute exercise?';
+      isArabic ? 'هل تريد تبديل تمرين في البرنامج؟' : 'Substitute exercise?';
   String get substitute => isArabic ? 'تبديل' : 'Substitute';
   String get substitutionUndone =>
-      isArabic ? 'تم التراجع عن تبديل التمرين.' : 'Substitution undone.';
+      isArabic
+          ? 'تم التراجع عن تبديل التمرين في البرنامج.'
+          : 'Substitution undone.';
   String get undo => isArabic ? 'تراجع' : 'Undo';
   String get moreExerciseActions =>
       isArabic ? 'المزيد من الخيارات للتمرين' : 'More actions for exercise';

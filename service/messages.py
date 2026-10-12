@@ -23,6 +23,28 @@ _DELOAD_REASONS = {
     "high_exertion_density",
 }
 _PROFILE_FIELDS = ("injuries_or_limitations", "equipment_access")
+ASSIGNMENT_NOTICE_MESSAGE_PARAM_ALLOWLISTS = {
+    "assignment_notice.assignment_redeemed.v1": frozenset({"player_name"}),
+    "assignment_notice.training_pause_scheduled.v1": frozenset(
+        {"player_name", "start_date", "end_date"}
+    ),
+    "assignment_notice.missed_expected_days.v1": frozenset(
+        {"player_name", "count", "start_date", "end_date"}
+    ),
+    "assignment_notice.follow_up_due.v1": frozenset({"player_name", "due_on"}),
+    "assignment_notice.stall.v1": frozenset({"player_name"}),
+    "assignment_notice.deload_recommended.v1": frozenset({"player_name"}),
+    "assignment_notice.performance_regression.v1": frozenset(
+        {"player_name", "exercise_name"}
+    ),
+    "assignment_notice.profile_change.v1": frozenset({"player_name"}),
+    "assignment_notice.program_published.v1": frozenset({"version"}),
+    "assignment_notice.program_request_received.v1": frozenset({"player_name"}),
+    "assignment_notice.program_request_applied.v1": frozenset(
+        {"version", "in_published_program"}
+    ),
+    "assignment_notice.program_request_declined.v1": frozenset({"reason"}),
+}
 COACH_ALERT_MESSAGE_PARAM_ALLOWLISTS = {
     "coach_alert.missed_expected_days.v1": frozenset(
         {"count", "start_date", "end_date"}
@@ -173,6 +195,7 @@ ERROR_MESSAGE_PARAM_ALLOWLISTS = {
 }
 INTAKE_COPY_MESSAGE_PARAM_ALLOWLISTS: dict[str, frozenset[str]] = {}
 MESSAGE_PARAM_ALLOWLISTS = {
+    **ASSIGNMENT_NOTICE_MESSAGE_PARAM_ALLOWLISTS,
     **COACH_ALERT_MESSAGE_PARAM_ALLOWLISTS,
     **ERROR_MESSAGE_PARAM_ALLOWLISTS,
 }
@@ -246,12 +269,51 @@ def structured_message(
 
 
 def _valid_message_params(code: str, params: Mapping[str, Any]) -> bool:
+    if code in ASSIGNMENT_NOTICE_MESSAGE_PARAM_ALLOWLISTS:
+        return _valid_assignment_notice_params(code, params)
     if code in _POSITIVE_LIMIT_CODES:
         key = "max_cells" if code == "program_import.too_many_cells.v1" else "limit"
         limit = params.get(key)
         maximum = 10000 if key == "limit" else 100_000
         return type(limit) is int and 0 < limit <= maximum
     return True
+
+
+def _valid_assignment_notice_params(code: str, params: Mapping[str, Any]) -> bool:
+    return all(
+        _valid_assignment_notice_param(code, key, param_value)
+        for key, param_value in params.items()
+    )
+
+
+def _valid_assignment_notice_param(code: str, key: str, param_value: Any) -> bool:
+    if key in {"player_name", "exercise_name"}:
+        optional_exercise = key == "exercise_name" and code == (
+            "assignment_notice.performance_regression.v1"
+        )
+        return (optional_exercise and param_value is None) or _valid_notice_text(param_value, 128)
+    if key in {"start_date", "end_date", "due_on"}:
+        return _alert_date(param_value) is not None
+    if key == "count":
+        return type(param_value) is int and param_value >= 0
+    if key == "version":
+        optional_version = code == "assignment_notice.program_request_applied.v1"
+        return (optional_version and param_value is None) or (
+            type(param_value) is int and param_value > 0
+        )
+    if key == "in_published_program":
+        return type(param_value) is bool
+    if key == "reason":
+        return _valid_notice_text(param_value, 500)
+    return False
+
+
+def _valid_notice_text(notice_text: Any, maximum_length: int) -> bool:
+    return (
+        isinstance(notice_text, str)
+        and bool(notice_text.strip())
+        and len(notice_text) <= maximum_length
+    )
 
 
 def http_error_message(

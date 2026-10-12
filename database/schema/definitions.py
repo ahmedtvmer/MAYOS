@@ -554,6 +554,9 @@ class SchemaMixin:
                     message TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     read_at TEXT,
+                    message_code TEXT,
+                    message_params_json TEXT,
+                    message_fallback TEXT,
                     program_change_summary_json TEXT,
                     summary_dismissed_at TEXT
                 );
@@ -770,6 +773,7 @@ class SchemaMixin:
             self._ensure_accounts_display_language()
             self._ensure_assignment_notice_summary_column()
             self._ensure_assignment_notice_summary_dismissed_at_column()
+            self._ensure_assignment_notice_message_metadata_columns()
             self._ensure_assignment_roster_ai_disclosure_columns()
             self._ensure_roster_attendance_timezone()
             self._ensure_roster_attendance_last_workout_on()
@@ -819,6 +823,20 @@ class SchemaMixin:
         columns = self._table_columns(self.catalog_conn.cursor(), "assignment_notices")
         if "summary_dismissed_at" not in columns:
             self.catalog_conn.execute("ALTER TABLE assignment_notices ADD COLUMN summary_dismissed_at TEXT")
+
+    def _ensure_assignment_notice_message_metadata_columns(self) -> None:
+        """Adds structured copy fields without rewriting legacy notice messages (#252)."""
+        columns = self._table_columns(self.catalog_conn.cursor(), "assignment_notices")
+        if "message_code" not in columns:
+            self.catalog_conn.execute("ALTER TABLE assignment_notices ADD COLUMN message_code TEXT")
+        if "message_params_json" not in columns:
+            self.catalog_conn.execute(
+                "ALTER TABLE assignment_notices ADD COLUMN message_params_json TEXT"
+            )
+        if "message_fallback" not in columns:
+            self.catalog_conn.execute(
+                "ALTER TABLE assignment_notices ADD COLUMN message_fallback TEXT"
+            )
 
     def _ensure_model_usage_turn_id_column(self) -> None:
         columns = self._table_columns(self.catalog_conn.cursor(), "model_usage")

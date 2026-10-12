@@ -166,12 +166,26 @@ def test_existing_coach_invite_catalog_adds_revocation_column(tmp_path: Path):
         db.catalog_conn.close()
 
 
-def test_existing_assignment_notices_adds_program_summary_columns(tmp_path: Path):
+def test_existing_assignment_notices_adds_summary_and_message_columns_without_rewriting_rows(
+    tmp_path: Path,
+):
     catalog_path = tmp_path / "catalog.db"
     legacy = sqlite3.connect(catalog_path)
     legacy.execute(
         "CREATE TABLE assignment_notices (notice_id TEXT PRIMARY KEY, account_id TEXT NOT NULL,"
         " assignment_id TEXT, kind TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL, read_at TEXT)"
+    )
+    legacy.execute(
+        "INSERT INTO assignment_notices VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            "legacy-notice",
+            "coach-account",
+            "assignment-1",
+            "assignment_redeemed",
+            "alice accepted your coaching invite and is now assigned to you.",
+            "2026-09-01T12:00:00+00:00",
+            None,
+        ),
     )
     legacy.commit()
     legacy.close()
@@ -184,7 +198,15 @@ def test_existing_assignment_notices_adds_program_summary_columns(tmp_path: Path
     try:
         with db.catalog_locked() as conn:
             columns = {row[1] for row in conn.execute("PRAGMA table_info(assignment_notices)")}
+        notice = db.list_assignment_notices("coach-account")[0]
         assert "program_change_summary_json" in columns
         assert "summary_dismissed_at" in columns
+        assert "message_code" in columns
+        assert "message_params_json" in columns
+        assert "message_fallback" in columns
+        assert notice["notice_id"] == "legacy-notice"
+        assert notice["message"] == "alice accepted your coaching invite and is now assigned to you."
+        assert notice["message_code"] is None
+        assert notice["message_params"] == {}
     finally:
         db.catalog_conn.close()

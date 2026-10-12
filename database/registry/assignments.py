@@ -29,6 +29,19 @@ class AssignmentNoticeRecord:
     message: str
     created_at: str
     program_change_summary: dict[str, Any] | None = None
+    message_code: str | None = None
+    message_params: dict[str, Any] | None = None
+    message_fallback: str | None = None
+
+
+def _notice_message_params(raw: Any) -> dict[str, Any]:
+    if not isinstance(raw, str):
+        return {}
+    try:
+        params = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    return params if isinstance(params, dict) else {}
 
 
 class RegistryAssignmentsMixin:
@@ -274,6 +287,16 @@ class RegistryAssignmentsMixin:
                     return fail(target["reason"])
                 coach_account_id = target["coach_account_id"]
                 player_username = target["player_username"]
+                from service.messages import structured_message
+
+                redemption_message = (
+                    f"{player_username} accepted your coaching invite and is now assigned to you."
+                )
+                notice_metadata = structured_message(
+                    "assignment_notice.assignment_redeemed.v1",
+                    {"player_name": player_username},
+                    redemption_message,
+                )
 
                 assignment_id = uuid.uuid4().hex
                 notice_id = uuid.uuid4().hex
@@ -301,14 +324,18 @@ class RegistryAssignmentsMixin:
                 )
                 cursor.execute(
                     "INSERT INTO assignment_notices"
-                    " (notice_id, account_id, assignment_id, kind, message, created_at, read_at)"
-                    " VALUES (?, ?, ?, 'assignment_redeemed', ?, ?, NULL)",
+                    " (notice_id, account_id, assignment_id, kind, message, created_at, read_at,"
+                    " message_code, message_params_json, message_fallback)"
+                    " VALUES (?, ?, ?, 'assignment_redeemed', ?, ?, NULL, ?, ?, ?)",
                     (
                         notice_id,
                         coach_account_id,
                         assignment_id,
-                        f"{player_username} accepted your coaching invite and is now assigned to you.",
+                        redemption_message,
                         now_iso,
+                        notice_metadata["message_code"],
+                        json.dumps(notice_metadata["message_params"], ensure_ascii=False),
+                        notice_metadata["message_fallback"],
                     ),
                 )
                 referring_coach_id = self.record_first_touch_referring_coach_once(
@@ -472,12 +499,16 @@ class RegistryAssignmentsMixin:
 
     def create_assignment_notice_record(self, notice: AssignmentNoticeRecord) -> str:
         notice_id = uuid.uuid4().hex
+        message_fallback = notice.message_fallback
+        if message_fallback is None and notice.message_code is not None:
+            message_fallback = notice.message
         self.ensure_account_schema()
         with self._catalog_lock:
             self.catalog_conn.execute(
                 "INSERT INTO assignment_notices"
                 " (notice_id, account_id, assignment_id, kind, message, created_at, read_at,"
-                " program_change_summary_json) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)",
+                " program_change_summary_json, message_code, message_params_json, message_fallback)"
+                " VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)",
                 (
                     notice_id,
                     str(notice.account_id),
@@ -488,6 +519,11 @@ class RegistryAssignmentsMixin:
                     json.dumps(notice.program_change_summary)
                     if notice.program_change_summary is not None
                     else None,
+                    notice.message_code,
+                    json.dumps(notice.message_params, ensure_ascii=False)
+                    if notice.message_code is not None and notice.message_params is not None
+                    else None,
+                    message_fallback,
                 ),
             )
             self.catalog_conn.commit()
@@ -499,7 +535,8 @@ class RegistryAssignmentsMixin:
             cursor = self.catalog_conn.cursor()
             cursor.execute(
                 "SELECT notice_id, assignment_id, kind, message, created_at, read_at,"
-                " program_change_summary_json, summary_dismissed_at"
+                " program_change_summary_json, summary_dismissed_at, message_code,"
+                " message_params_json, message_fallback"
                 " FROM assignment_notices WHERE account_id = ?"
                 " ORDER BY created_at DESC LIMIT ?",
                 (str(account_id), max(1, int(limit))),
@@ -514,6 +551,9 @@ class RegistryAssignmentsMixin:
                     "read_at": row[5],
                     "program_change_summary": json.loads(row[6]) if row[6] is not None else None,
                     "summary_dismissed_at": row[7],
+                    "message_code": row[8],
+                    "message_params": _notice_message_params(row[9]),
+                    "message_fallback": row[10] if isinstance(row[10], str) else str(row[3]),
                 }
                 for row in cursor.fetchall()
             ]

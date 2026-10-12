@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
+import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/providers.dart';
@@ -88,6 +89,106 @@ Future<void> _openSettings(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('Arabic coach notice reader resolves cached request notices',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake(coach: true)
+      ..displayLanguage = 'ar';
+    fake.assignmentNotices.add(<String, dynamic>{
+      'notice_id': 'request-received',
+      'kind': 'program_request',
+      'message': 'bob requested a program change. Review it in your roster.',
+      'message_code': 'assignment_notice.program_request_received.v1',
+      'message_params': <String, dynamic>{'player_name': 'bob'},
+      'message_fallback':
+          'bob requested a program change. Review it in your roster.',
+      'created_at': '2026-10-01T12:00:00Z',
+      'read_at': null,
+    });
+    await _pumpApp(tester, fake);
+
+    await tester.tap(find.text('الملف الشخصي'));
+    await _pumpUntilFound(tester, find.text('الملف الشخصي للمدرب'));
+
+    expect(
+      find.textContaining('طلبًا لتغيير البرنامج التدريبي.'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('bob requested a program change. Review it in your roster.'),
+      findsNothing,
+    );
+  });
+
+  testWidgets(
+      'coach notice reader switches cached structured copy and retains fallbacks',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake(coach: true);
+    fake.assignmentNotices.addAll(<Map<String, dynamic>>[
+      <String, dynamic>{
+        'notice_id': 'request-received',
+        'kind': 'program_request',
+        'message': 'bob requested a program change. Review it in your roster.',
+        'message_code': 'assignment_notice.program_request_received.v1',
+        'message_params': <String, dynamic>{'player_name': 'bob'},
+        'message_fallback':
+            'bob requested a program change. Review it in your roster.',
+        'created_at': '2026-10-01T12:00:00Z',
+        'read_at': null,
+      },
+      <String, dynamic>{
+        'notice_id': 'legacy',
+        'kind': 'legacy_notice',
+        'message': 'Legacy coach text stays in English.',
+        'created_at': '2026-09-01T12:00:00Z',
+        'read_at': '2026-09-02T12:00:00Z',
+      },
+      <String, dynamic>{
+        'notice_id': 'unusable',
+        'kind': 'program_request',
+        'message': 'Safe fallback for unusable metadata.',
+        'message_code': 'assignment_notice.program_request_received.v1',
+        'message_params': <String, dynamic>{},
+        'message_fallback': 'Safe fallback for unusable metadata.',
+        'created_at': '2026-08-01T12:00:00Z',
+      },
+    ]);
+    await _pumpApp(tester, fake);
+
+    await tester.tap(find.text('Profile'));
+    await _pumpUntilFound(tester, find.text('Coach profile'));
+    await tester.scrollUntilVisible(
+      find.text('bob requested a program change. Review it in your roster.'),
+      300,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('Legacy coach text stays in English.'), findsOneWidget);
+    expect(find.text('Safe fallback for unusable metadata.'), findsOneWidget);
+
+    final int noticeReads = fake.adapter.requests
+        .where((request) => request.path == '/coach/assignments/notices')
+        .length;
+    final container = ProviderScope.containerOf(
+      tester.element(
+        find.text('bob requested a program change. Review it in your roster.'),
+      ),
+    );
+    await container.read(displayLanguageProvider.notifier).choose('ar');
+    await tester.pump();
+
+    expect(
+      find.textContaining('طلبًا لتغيير البرنامج التدريبي.'),
+      findsOneWidget,
+    );
+    expect(find.text('Legacy coach text stays in English.'), findsOneWidget);
+    expect(find.text('Safe fallback for unusable metadata.'), findsOneWidget);
+    expect(
+      fake.adapter.requests
+          .where((request) => request.path == '/coach/assignments/notices')
+          .length,
+      noticeReads,
+    );
+  });
+
   testWidgets('coach profile loads, validates, and saves', (tester) async {
     final FakeMayosApi fake = _signedInFake(coach: true);
     await _pumpApp(tester, fake);

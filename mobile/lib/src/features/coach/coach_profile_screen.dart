@@ -527,9 +527,17 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
                     : Icons.notifications_none,
                 color: notice.isUnread ? c.accent : c.textMuted,
               ),
-              title: FirstStrongDirection(
-                text: notice.message,
-                child: Text(notice.message),
+              title: Builder(
+                builder: (BuildContext context) {
+                  final String message = resolveAssignmentNoticeMessage(
+                    notice,
+                    displayCopyOf(context).languageCode,
+                  );
+                  return FirstStrongDirection(
+                    text: message,
+                    child: Text(message),
+                  );
+                },
               ),
               subtitle:
                   Text(notice.createdAt, textDirection: TextDirection.ltr),

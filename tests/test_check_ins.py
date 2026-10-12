@@ -302,6 +302,17 @@ def test_follow_up_alert_is_created_once_when_due(api):
     assert follow_up["message_code"] == "coach_alert.follow_up_due.v1"
     assert follow_up["message_params"] == {"due_on": follow_up["due_on"]}
     assert follow_up["message_fallback"] == f"Follow-up due since {follow_up['due_on']}"
+    notices = [
+        row
+        for row in db.list_assignment_notices(coach_account_id)
+        if row["kind"] == check_ins_service.FOLLOW_UP_KIND
+    ]
+    assert len(notices) == 1
+    assert notices[0]["message_code"] == "assignment_notice.follow_up_due.v1"
+    assert notices[0]["message_params"] == {
+        "player_name": "p1",
+        "due_on": follow_up["due_on"],
+    }
 
 
 def test_follow_up_is_not_created_before_due(api):

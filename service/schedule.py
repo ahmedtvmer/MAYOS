@@ -19,8 +19,10 @@ from datetime import UTC, date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from database.registry.assignments import AssignmentNoticeRecord
 from service._base import ledger_scope
 from service import analytics
+from service.coach_notices import build_assignment_notice_record
 
 logger = logging.getLogger(__name__)
 
@@ -249,13 +251,27 @@ def _notify_coach(
         return False
     account = db.get_account(player_account_id)
     username = account["username"] if account else "A player"
+    message = (
+        f"{username} scheduled a training pause from {starts_on.isoformat()} to "
+        f"{ends_on.isoformat()}."
+    )
     try:
-        db.create_assignment_notice(
-            assignment["coach_account_id"],
-            assignment["assignment_id"],
-            PAUSE_NOTICE_KIND,
-            f"{username} scheduled a training pause from {starts_on.isoformat()} to {ends_on.isoformat()}.",
-            now_iso,
+        db.create_assignment_notice_record(
+            build_assignment_notice_record(
+                AssignmentNoticeRecord(
+                    account_id=assignment["coach_account_id"],
+                    assignment_id=assignment["assignment_id"],
+                    kind=PAUSE_NOTICE_KIND,
+                    message=message,
+                    created_at=now_iso,
+                ),
+                "assignment_notice.training_pause_scheduled.v1",
+                {
+                    "player_name": username,
+                    "start_date": starts_on.isoformat(),
+                    "end_date": ends_on.isoformat(),
+                },
+            )
         )
     except Exception:
         logger.exception("Coach training-pause notice raised unexpectedly")

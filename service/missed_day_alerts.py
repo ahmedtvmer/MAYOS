@@ -25,8 +25,13 @@ import uuid
 from datetime import UTC, date, datetime
 from typing import Any
 
+from database.registry.assignments import AssignmentNoticeRecord
 from service.attendance import AttendanceEvaluation, evaluate_attendance
-from service.coach_notices import notify_coach, player_display_name
+from service.coach_notices import (
+    build_assignment_notice_record,
+    notify_coach,
+    player_display_name,
+)
 from service.schedule import local_date_in, timezone_for_versions
 from service import stall_alerts
 from service import coach_analytics
@@ -88,16 +93,30 @@ def _last_workout_on(performed: list[str]) -> str | None:
 
 def _notify_coach(db: Any, assignment: dict[str, Any], evaluation: AttendanceEvaluation, now_iso: str) -> bool:
     """Best-effort coach in-app notice; carries the missed date range, no training detail."""
+    player_name = player_display_name(db, assignment)
+    message = (
+        f"{player_name} missed {evaluation.trailing_streak_length}"
+        f" expected training days ({evaluation.trailing_streak_start.isoformat()} to"
+        f" {evaluation.trailing_streak_last.isoformat()}). Review the alert in your roster."
+    )
     return notify_coach(
         db,
-        assignment,
-        MISSED_DAY_KIND,
-        (
-            f"{player_display_name(db, assignment)} missed {evaluation.trailing_streak_length}"
-            f" expected training days ({evaluation.trailing_streak_start.isoformat()} to"
-            f" {evaluation.trailing_streak_last.isoformat()}). Review the alert in your roster."
+        build_assignment_notice_record(
+            AssignmentNoticeRecord(
+                account_id=assignment["coach_account_id"],
+                assignment_id=assignment["assignment_id"],
+                kind=MISSED_DAY_KIND,
+                message=message,
+                created_at=now_iso,
+            ),
+            "assignment_notice.missed_expected_days.v1",
+            {
+                "player_name": player_name,
+                "count": evaluation.trailing_streak_length,
+                "start_date": evaluation.trailing_streak_start.isoformat(),
+                "end_date": evaluation.trailing_streak_last.isoformat(),
+            },
         ),
-        now_iso,
     )
 
 

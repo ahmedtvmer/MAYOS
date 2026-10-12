@@ -820,6 +820,9 @@ class AssignmentNoticeOut(BaseModel):
     notice_id: str
     kind: str
     message: str
+    message_code: str | None = None
+    message_params: dict[str, Any] = Field(default_factory=dict)
+    message_fallback: str | None = None
     created_at: str
     read_at: str | None = None
     program_change_summary: dict[str, Any] | None = None

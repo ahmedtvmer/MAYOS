@@ -8,7 +8,12 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from service.coach_notices import notify_coach, player_display_name
+from database.registry.assignments import AssignmentNoticeRecord
+from service.coach_notices import (
+    build_assignment_notice_record,
+    notify_coach,
+    player_display_name,
+)
 from service import analytics as analytics_service
 from service import coach_analytics
 
@@ -142,12 +147,23 @@ def record_profile_change(
         return
     if assignment is not None and created_alert is not None:
         try:
+            player_name = player_display_name(db, assignment)
+            message = (
+                f"{player_name} changed their Training profile. Review the alert in your roster."
+            )
             notify_coach(
                 db,
-                assignment,
-                PROFILE_CHANGE_KIND,
-                f"{player_display_name(db, assignment)} changed their Training profile. Review the alert in your roster.",
-                now_iso,
+                build_assignment_notice_record(
+                    AssignmentNoticeRecord(
+                        account_id=assignment["coach_account_id"],
+                        assignment_id=assignment["assignment_id"],
+                        kind=PROFILE_CHANGE_KIND,
+                        message=message,
+                        created_at=now_iso,
+                    ),
+                    "assignment_notice.profile_change.v1",
+                    {"player_name": player_name},
+                ),
             )
         except Exception:
             logger.warning("Could not notify the Coach about a profile-change alert.", exc_info=True)

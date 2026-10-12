@@ -241,12 +241,13 @@ class CoachCopy {
       ? 'يجب أن تكون السعة بين ${_ltr('$min')} و${_ltr('$max')}.'
       : 'Capacity must be between $min and $max.';
   String get retry => isArabic ? 'إعادة المحاولة' : 'Retry';
-  String get invitePlayer => isArabic ? 'دعوة لاعب' : 'Invite a player';
+  String get invitePlayer =>
+      isArabic ? 'دعوة لاعب للتدريب' : 'Invite a player';
   String get inviteExplanation => isArabic
-      ? 'أنشئ رمزًا لمرة واحدة وقدّمه للاعب واحد. تنتهي صلاحيته، ولا يمكن استخدامه إلا عند توفر مكان في قائمة اللاعبين. سيظهر تاريخ الانتهاء بعد إنشاء الرمز.'
+      ? 'أنشئ رمز دعوة للتدريب مع مدرب لمرة واحدة وقدّمه للاعب. تنتهي صلاحيته، ولا يمكن استخدامه إلا عند توفر مكان في قائمة اللاعبين. سيظهر تاريخ الانتهاء بعد إنشاء الرمز.'
       : 'Create a single-use code and give it to one player. It expires and can only be redeemed while you have roster room; the exact expiry is shown when the code is issued.';
   String get createPlayerInvite =>
-      isArabic ? 'إنشاء دعوة للاعب' : 'Create player invite';
+      isArabic ? 'إنشاء دعوة لاعب للتدريب' : 'Create player invite';
   String inviteExpires(String date) =>
       isArabic ? 'تنتهي الصلاحية ${_ltr(date)}' : 'Expires $date';
   String rosterSlotsFree(int remaining, int capacity) => isArabic

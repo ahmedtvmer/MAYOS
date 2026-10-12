@@ -354,6 +354,9 @@ def test_redeem_binds_immediately_and_creates_coach_notice(api, monkeypatch):
     assert len(notices) == 1
     assert notices[0]["kind"] == "assignment_redeemed"
     assert "p1" in notices[0]["message"]
+    assert notices[0]["message_code"] == "assignment_notice.assignment_redeemed.v1"
+    assert notices[0]["message_params"] == {"player_name": "p1"}
+    assert notices[0]["message_fallback"] == notices[0]["message"]
     roster = client.get("/coach/assignments", headers=coach_headers).json()["assignments"]
     assert len(roster) == 1
     assert roster[0]["assignment_id"] == body["assignment"]["assignment_id"]
@@ -849,3 +852,27 @@ def test_notices_can_be_marked_read(api):
     assert marked.json()["marked_read"] == 1
     notices = client.get("/coach/assignments/notices", headers=coach_headers).json()["notices"]
     assert notices[0]["read_at"] is not None
+
+
+def test_message_only_legacy_notice_keeps_its_fallback_and_read_marker(api):
+    client, db, _ = api
+    coach_headers, _, coach_account_id = _make_coach(client, db, "coach", capacity=5)
+    message = "Legacy English notice remains readable."
+    notice_id = db.create_assignment_notice(
+        coach_account_id,
+        None,
+        "legacy_notice",
+        message,
+        "2026-09-01T12:00:00+00:00",
+    )
+
+    response = client.get("/coach/assignments/notices", headers=coach_headers)
+
+    assert response.status_code == 200
+    notice = response.json()["notices"][0]
+    assert notice["notice_id"] == notice_id
+    assert notice["message"] == message
+    assert notice["message_code"] is None
+    assert notice["message_params"] == {}
+    assert notice["message_fallback"] == message
+    assert notice["read_at"] is None

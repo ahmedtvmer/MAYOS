@@ -112,7 +112,7 @@ class WorkoutCopy {
   String get pictureTooltip => isArabic ? 'صورة التمرين' : 'Exercise picture';
 
   String get replaceQuestion =>
-      isArabic ? 'استبدال التمرين؟' : 'Replace exercise?';
+      isArabic ? 'استبدال تمرين لهذه الحصة؟' : 'Replace exercise?';
   String discardSetsQuestion(int count) => isArabic
       ? 'استبدال التمرين وحذف ${arabicCountPhrase(count, ArabicCountNoun.group, isolateCount: true)} المسجلة؟'
       : count == 1
@@ -129,10 +129,10 @@ class WorkoutCopy {
   String get addReasonToContinue =>
       isArabic ? 'أضف سببًا للمتابعة.' : 'Add a reason to continue.';
   String get askCoachToMakePermanent => isArabic
-      ? 'اطلب من مدربك تبديل التمرين في البرنامج'
+      ? 'طلب تبديل تمرين من المدرب'
       : 'Ask my coach to make this permanent';
   String get keepSwapInProgram =>
-      isArabic ? 'تبديل التمرين في البرنامج' : 'Keep this swap in my program';
+      isArabic ? 'تبديل تمرين في البرنامج' : 'Keep this swap in my program';
   String get sendRequest => isArabic ? 'إرسال الطلب' : 'Send request';
   String get sending => isArabic ? 'جارٍ الإرسال…' : 'Sending…';
   String get cancel => isArabic ? 'إلغاء' : 'Cancel';

@@ -14,6 +14,7 @@ from agent.program_generator import (
 )
 from database.registry.assignments import AssignmentNoticeRecord
 from service.assignments import authorized_player_ledger
+from service.coach_notices import build_assignment_notice_record
 from service.program_analytics import ProgramAnalyticsActor, capture_coach_program_published
 from service import stall_alerts
 from service import analytics
@@ -146,14 +147,19 @@ def record_program_publication(
         stall_alerts.resolve_for_assignment(db, assignment_id, now)
     except Exception:
         logger.warning("Stall alert resolution failed after program publication", exc_info=True)
+    message = f"Your coach published program version {published.version}."
     db.create_assignment_notice_record(
-        AssignmentNoticeRecord(
-            account_id=player_account_id,
-            assignment_id=assignment_id,
-            kind="program_published",
-            message=f"Your coach published program version {published.version}.",
-            created_at=now.isoformat(),
-            program_change_summary=details.change_summary,
+        build_assignment_notice_record(
+            AssignmentNoticeRecord(
+                account_id=player_account_id,
+                assignment_id=assignment_id,
+                kind="program_published",
+                message=message,
+                created_at=now.isoformat(),
+                program_change_summary=details.change_summary,
+            ),
+            "assignment_notice.program_published.v1",
+            {"version": published.version},
         )
     )
     # Attendance evaluation is not run here, so refresh the roster's cached name.

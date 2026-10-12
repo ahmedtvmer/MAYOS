@@ -243,6 +243,9 @@ def test_publish_activates_immediately_with_provenance_and_notice(api, monkeypat
     assert len(notices) == 1
     assert notices[0]["kind"] == "program_published"
     assert "version 1" in notices[0]["message"]
+    assert notices[0]["message_code"] == "assignment_notice.program_published.v1"
+    assert notices[0]["message_params"] == {"version": 1}
+    assert notices[0]["message_fallback"] == notices[0]["message"]
     assert notices[0]["read_at"] is None
     assert notices[0]["program_change_summary"] == {
         "version": 1,
@@ -935,6 +938,15 @@ def test_publish_resolves_selected_requests_with_player_language_notice_and_anal
     ]
     assert len(notices) == 2
     assert all(row["message"] == addressed for row in notices)
+    assert all(
+        row["message_code"] == "assignment_notice.program_request_applied.v1"
+        and row["message_params"] == {
+            "version": 2,
+            "in_published_program": True,
+        }
+        and row["message_fallback"] == "Addressed in your new program (version 2)"
+        for row in notices
+    )
     new_events = recording_analytics.events[events_before:]
     assert len([row for row in new_events if row["event"] == "program_request_resolved"]) == 2
     assert all(

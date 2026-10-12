@@ -402,6 +402,9 @@ class AssignmentNotice {
     required this.kind,
     required this.message,
     required this.createdAt,
+    this.messageCode,
+    this.messageParams = const <String, dynamic>{},
+    this.messageFallback,
     this.readAt,
     this.programChangeSummary,
     this.summaryDismissedAt,
@@ -413,6 +416,13 @@ class AssignmentNotice {
         kind: json['kind'] as String? ?? '',
         message: json['message'] as String? ?? '',
         createdAt: json['created_at'] as String? ?? '',
+        messageCode: json['message_code'] is String
+            ? json['message_code'] as String
+            : null,
+        messageParams: _parseMessageParams(json['message_params']),
+        messageFallback: json['message_fallback'] is String
+            ? json['message_fallback'] as String
+            : null,
         readAt: json['read_at'] as String?,
         programChangeSummary:
             json['program_change_summary'] as Map<String, dynamic>?,
@@ -423,11 +433,21 @@ class AssignmentNotice {
   final String kind;
   final String message;
   final String createdAt;
+  final String? messageCode;
+  final Map<String, dynamic> messageParams;
+  final String? messageFallback;
   final String? readAt;
   final Map<String, dynamic>? programChangeSummary;
   final String? summaryDismissedAt;
 
   bool get isUnread => readAt == null || readAt!.isEmpty;
+
+  static Map<String, dynamic> _parseMessageParams(Object? value) {
+    if (value is! Map || value.keys.any((Object? key) => key is! String)) {
+      return const <String, dynamic>{};
+    }
+    return Map<String, dynamic>.from(value);
+  }
 }
 
 /// A request draft reviewed in the player's program-request form.

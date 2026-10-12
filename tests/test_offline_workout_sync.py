@@ -361,6 +361,8 @@ def test_roster_stall_length_recounts_commits_and_replays_through_routes(
     coach_id = db.get_active_account_by_username("coach")["account_id"]
     notices = [notice for notice in db.list_assignment_notices(coach_id) if notice["kind"] == "stall"]
     assert len(notices) == 1
+    assert notices[0]["message_code"] == "assignment_notice.stall.v1"
+    assert notices[0]["message_params"] == {"player_name": "p1"}
     assert "weight" not in notices[0]["message"].lower()
     acknowledged = client.post(f"/coach/alerts/{stall_alert['alert_id']}/acknowledge", headers=coach_headers)
     assert acknowledged.status_code == 200

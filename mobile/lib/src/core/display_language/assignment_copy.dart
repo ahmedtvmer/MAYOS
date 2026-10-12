@@ -100,12 +100,12 @@ class AssignmentCopy {
           'training data. Leaving your coach revokes that access immediately.';
   String get myCoach => isArabic ? 'مدربي' : 'My coach';
   String get inviteExplanation => isArabic
-      ? 'أدخل رمز الدعوة من مدربك. لن يتمكن مدربك من الاطلاع على بيانات تدريبك إلا بعد موافقتك، وينتهي وصوله عندما تغادر مدربك أو يغادر هو.'
+      ? 'أدخل رمز دعوة للتدريب مع مدرب. لن يتمكن مدربك من الاطلاع على بيانات تدريبك إلا بعد موافقتك، وينتهي وصوله عندما تغادر مدربك أو يغادر هو.'
       : 'Enter your coach’s invite code. Your coach can view your training data '
           'only after you accept, and access ends when either of you leaves the '
           'coaching relationship.';
   String get inviteCodeFromCoach =>
-      isArabic ? 'رمز الدعوة من مدربك' : 'Invite code from your coach';
+      isArabic ? 'رمز الدعوة للتدريب مع مدرب' : 'Invite code from your coach';
   String get previewAccess =>
       isArabic ? 'معاينة إمكانية الاطلاع' : 'Preview access';
   String coachWillBe(String name) =>
@@ -118,7 +118,7 @@ class AssignmentCopy {
           'other players’ figures. The AI does not receive your name or contact details.';
   String get rosterAiDisclosureOk => isArabic ? 'حسنًا' : 'OK';
   String get enterInviteCode => isArabic
-      ? 'أدخل رمز الدعوة من مدربك.'
+      ? 'أدخل رمز دعوة للتدريب مع مدرب.'
       : 'Enter the invite code from your coach.';
   String get requestType => isArabic ? 'نوع الطلب' : 'Request type';
   String checkInChannel(String channel) => switch (channel) {

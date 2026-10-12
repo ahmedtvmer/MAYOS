@@ -266,6 +266,8 @@ def test_create_substitution_records_exact_target_and_leaves_program(api, monkey
     request_notices = [n for n in notices if n["kind"] == "program_request"]
     assert len(request_notices) == 1
     assert "p1" in request_notices[0]["message"]
+    assert request_notices[0]["message_code"] == "assignment_notice.program_request_received.v1"
+    assert request_notices[0]["message_params"] == {"player_name": "p1"}
     assert len(sent) == 1
     to_email, _subject, email_body = sent[0]
     assert to_email == "coach@example.com"
@@ -713,6 +715,11 @@ def test_apply_substitution_publishes_new_version_preserving_provenance(api, mon
     notices = client.get("/assignments/notices", headers=player_headers).json()["notices"]
     applied_notices = [n for n in notices if n["kind"] == "program_request"]
     assert applied_notices and "version 3" in applied_notices[0]["message"]
+    assert applied_notices[0]["message_code"] == "assignment_notice.program_request_applied.v1"
+    assert applied_notices[0]["message_params"] == {
+        "version": 3,
+        "in_published_program": False,
+    }
 
 
 def test_apply_split_change_publishes_desired_frequency(api, monkeypatch):
@@ -956,6 +963,12 @@ def test_decline_records_response_and_leaves_program(api, monkeypatch):
     listed = client.get("/assignments/me/program-requests", headers=player_headers).json()["requests"]
     assert listed[0]["status"] == "declined"
     assert listed[0]["response"] == "Keep the squat; we will revisit next block."
+    notice = client.get("/assignments/notices", headers=player_headers).json()["notices"][0]
+    assert notice["message_code"] == "assignment_notice.program_request_declined.v1"
+    assert notice["message_params"] == {
+        "reason": "Keep the squat; we will revisit next block."
+    }
+    assert notice["message_fallback"] == notice["message"]
 
     db.switch_user("p1")
     assert db.ledger.get_active_program().version == 1

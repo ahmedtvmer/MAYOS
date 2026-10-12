@@ -337,7 +337,7 @@ def _profile_alerts(client, coach_headers, states=None):
 
 def test_profile_change_alert_projects_only_changed_training_profile_fields(api, monkeypatch):
     client, db = api
-    coach_headers, player_headers, _, _ = _assign(api)
+    coach_headers, player_headers, _, coach_account_id = _assign(api)
     _seed_training_profile(
         db,
         equipment_access="Commercial gym",
@@ -369,6 +369,14 @@ def test_profile_change_alert_projects_only_changed_training_profile_fields(api,
     assert "Left knee pain" not in str(alerts[0]["message_params"])
     assert "Left knee pain" not in alerts[0]["message_fallback"]
     assert not ({"current_goal", "weight_kg"} & alerts[0].keys())
+    notices = [
+        notice
+        for notice in db.list_assignment_notices(coach_account_id)
+        if notice["kind"] == "profile_change"
+    ]
+    assert len(notices) == 1
+    assert notices[0]["message_code"] == "assignment_notice.profile_change.v1"
+    assert notices[0]["message_params"] == {"player_name": "p1"}
 
 
 def test_profile_change_episode_deduplicates_and_starts_new_episode_after_resolution(api, monkeypatch):

@@ -67,11 +67,11 @@ numbers use Western digits.
 
 | English | Arabic |
 | --- | --- |
-| Substitute exercise | تبديل التمرين |
-| Substitute exercise? | هل تريد تبديل التمرين؟ |
+| Substitute exercise | تبديل تمرين في البرنامج |
+| Substitute exercise? | هل تريد تبديل تمرين في البرنامج؟ |
 | Cancel | إلغاء |
 | Substitute | تبديل |
-| Substitution undone. | تم التراجع عن تبديل التمرين. |
+| Substitution undone. | تم التراجع عن تبديل التمرين في البرنامج. |
 | Undo | تراجع |
 | Regenerate program | إنشاء البرنامج التدريبي من جديد |
 | Also replace on {count} other days | استبدل أيضًا في يوم واحد آخر / يومين آخرين / {count} أيام أخرى / {count} يومًا آخر |
@@ -377,20 +377,18 @@ days” and “rest for two seconds”).
 | Rest · {exercise} | راحة · {exercise} |
 | Skip | تخطي |
 | Exercise picture | صورة التمرين |
-| Replace exercise? | استبدال التمرين؟ |
+| Replace exercise? | استبدال تمرين لهذه الحصة؟ |
 | The sets you've logged on this exercise will be cleared. | ستُحذف المجموعات التي سجلتها لهذا التمرين. |
 | The sets you've logged on this exercise will be discarded. | ستُحذف المجموعات التي سجلتها لهذا التمرين. |
 | Reason for your coach | السبب لمدربك |
 | Add a reason to continue. | أضف سببًا للمتابعة. |
-| Ask my coach to make this permanent | اطلب من مدربك تبديل التمرين في البرنامج |
-| Keep this swap in my program | تبديل التمرين في البرنامج |
+| Ask my coach to make this permanent | طلب تبديل تمرين من المدرب |
+| Keep this swap in my program | تبديل تمرين في البرنامج |
 | Send request | إرسال الطلب |
 | Sending… | جارٍ الإرسال… |
 | Cancel | إلغاء |
 | Keep logging | متابعة التسجيل |
 | Replace | استبدال |
-| Ask my coach to make this permanent | طلب تبديل تمرين من المدرب |
-| Keep this swap in my program | تبديل تمرين في البرنامج |
 | Discard this workout? | حذف هذه الحصة؟ |
 | The sets you've logged in this workout will be lost. | ستفقد المجموعات التي سجلتها في هذه الحصة. |
 | Its sets will be removed from this browser. | ستُحذف مجموعات هذه الحصة من هذا المتصفح. |
@@ -631,12 +629,12 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 | Coaching assignment active | علاقة التدريب نشطة |
 | While this assignment is active, your coach can view your current and historical training data. Ending it revokes that access immediately. | أثناء نشاط علاقة التدريب، يمكن لمدربك الاطلاع على بيانات تدريبك الحالية والسابقة. يؤدي إنهاؤها إلى إلغاء إمكانية الاطلاع فورًا. |
 | Coach assignment | علاقة التدريب مع المدرب |
-| Enter the invite code from your coach. Your coach can only see your training data after you accept, and access ends when either of you ends the assignment. | أدخل رمز الدعوة من مدربك. لن يتمكن مدربك من الاطلاع على بيانات تدريبك إلا بعد موافقتك، وينتهي ذلك عند إنهاء أحدكما علاقة التدريب. |
-| Invite code from your coach | رمز الدعوة من مدربك |
+| Enter your coach’s invite code. Your coach can view your training data only after you accept, and access ends when either of you leaves the coaching relationship. | أدخل رمز دعوة للتدريب مع مدرب. لن يتمكن مدربك من الاطلاع على بيانات تدريبك إلا بعد موافقتك، وينتهي وصوله عندما تغادر مدربك أو يغادر هو. |
+| Invite code from your coach | رمز الدعوة للتدريب مع مدرب |
 | Preview access | معاينة إمكانية الاطلاع |
 | Your coach will be {name} | سيكون مدربك {name} |
 | Accept assignment | قبول علاقة التدريب |
-| Enter the invite code from your coach. | أدخل رمز الدعوة من مدربك. |
+| Enter the invite code from your coach. | أدخل رمز دعوة للتدريب مع مدرب. |
 | Request type | نوع الطلب |
 | In app | داخل التطبيق |
 | In person | حضوري |
@@ -854,9 +852,9 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 | Display name must be at most {max} characters. | يجب ألا يتجاوز الاسم {max} حرفًا. |
 | Enter a whole number. | أدخل عددًا صحيحًا. |
 | Capacity must be between {min} and {max}. | يجب أن تكون السعة بين {min} و{max}. |
-| Invite a player | دعوة لاعب |
-| Create a single-use code and give it to one player. It expires and can only be redeemed while you have roster room; the exact expiry is shown when the code is issued. | أنشئ رمزًا لمرة واحدة وقدّمه للاعب واحد. تنتهي صلاحيته، ولا يمكن استخدامه إلا عند توفر مكان في قائمة اللاعبين. سيظهر تاريخ الانتهاء بعد إنشاء الرمز. |
-| Create player invite | إنشاء دعوة للاعب |
+| Invite a player | دعوة لاعب للتدريب |
+| Create a single-use code and give it to one player. It expires and can only be redeemed while you have roster room; the exact expiry is shown when the code is issued. | أنشئ رمز دعوة للتدريب مع مدرب لمرة واحدة وقدّمه للاعب. تنتهي صلاحيته، ولا يمكن استخدامه إلا عند توفر مكان في قائمة اللاعبين. سيظهر تاريخ الانتهاء بعد إنشاء الرمز. |
+| Create player invite | إنشاء دعوة لاعب للتدريب |
 | Expires {date} | تنتهي الصلاحية {date} |
 | {remaining} of {capacity} roster slots free | المتاح في قائمة اللاعبين: {remaining} من {capacity} |
 | Notices | الإشعارات |
@@ -1136,3 +1134,29 @@ The count helper keeps Western digits and selects a short form by count.
 | coach.ai_unavailable.v1 | مساعد المدرب غير متاح حاليًا. |
 | media.unavailable.v1 | تعذر تحميل الوسائط حاليًا. حاول مجددًا. |
 | media.not_found.v1 | لم يُعثر على الوسائط المطلوبة. |
+
+## Assignment and program-request notices (#252; pending owner review)
+
+The following new notice copy uses standard Arabic and Western digits. Runtime
+values in braces come from the typed notice parameters; coach-written decline
+reasons remain unchanged.
+
+| Message code | English fallback | Arabic |
+| --- | --- | --- |
+| assignment_notice.assignment_redeemed.v1 | {player_name} accepted your coaching invite and is now assigned to you. | قبل {player_name} دعوتك للتدريب، وبدأت علاقة التدريب. |
+| assignment_notice.training_pause_scheduled.v1 | {player_name} scheduled a training pause from {start_date} to {end_date}. | حدّد {player_name} فترة توقف عن التدريب من {start_date} إلى {end_date}. |
+| assignment_notice.missed_expected_days.v1 | {player_name} missed {count} expected training days ({start_date} to {end_date}). Review the alert in your roster. | لم يتدرب {player_name} في {Arabic day count phrase in oblique form} من أيام التدريب المتوقعة ({start_date} إلى {end_date}). راجع التنبيه في قائمة اللاعبين. |
+| assignment_notice.follow_up_due.v1 | A follow-up with {player_name} is due since {due_on}. Review your roster. | حان موعد المتابعة مع {player_name} منذ {due_on}. راجع التنبيه في قائمة اللاعبين. |
+| assignment_notice.stall.v1 | {player_name} has a stall alert. Review the alert in your roster. | يحتاج {player_name} إلى الانتباه بسبب ثبات الأداء. راجع التنبيه في قائمة اللاعبين. |
+| assignment_notice.deload_recommended.v1 | {player_name} has a deload recommended. Review the alert in your roster. | يوصى بتخفيف التدريب للاعب {player_name}. راجع التنبيه في قائمة اللاعبين. |
+| assignment_notice.performance_regression.v1 | {player_name} regressed on {exercise_name}. Review the alert in your roster. | تراجع الأداء لدى {player_name} في {exercise_name}. راجع التنبيه في قائمة اللاعبين. |
+| assignment_notice.performance_regression.v1 (exercise name unavailable) | {player_name} regressed on an exercise. Review the alert in your roster. | تراجع الأداء لدى {player_name} في تمرين. راجع التنبيه في قائمة اللاعبين. |
+| assignment_notice.profile_change.v1 | {player_name} changed their Training profile. Review the alert in your roster. | غيّر {player_name} الملف التدريبي. راجع التنبيه في قائمة اللاعبين. |
+| assignment_notice.program_published.v1 | Your coach published program version {version}. | نشر مدربك البرنامج التدريبي، الإصدار {version}. |
+| assignment_notice.program_request_received.v1 | {player_name} requested a program change. Review it in your roster. | أرسل {player_name} طلبًا لتغيير البرنامج التدريبي. راجعه في قائمة اللاعبين. |
+| assignment_notice.program_request_applied.v1 (direct) | Your coach applied your program change. Program version {version}. | طبّق مدربك التغيير على البرنامج التدريبي (الإصدار {version}). |
+| assignment_notice.program_request_applied.v1 (published) | Addressed in your new program (version {version}). | تم تنفيذ طلبك في البرنامج التدريبي الجديد (الإصدار {version}). |
+| assignment_notice.program_request_declined.v1 | Your coach declined your program change: {reason} | رفض مدربك طلب تغيير البرنامج التدريبي: {original coach-written reason} |
+
+The workflow label updates for #252 appear in the Assignment and workout
+logger entries above and are pending owner review together with the notice copy.
