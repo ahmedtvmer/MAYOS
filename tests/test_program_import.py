@@ -880,6 +880,650 @@ def test_single_week_title_does_not_turn_day_numbers_into_week_selection():
     assert all(row.week is None for row in source.rows)
 
 
+# #400 found note cells being misread as day/week layout titles.
+def test_grid_titles_ignore_day_notes_and_preserve_model_day_names():
+    from service import program_import
+    from service.program_import_ai import ProgramImportReply
+
+    source_grid = {
+        "sheet": "CSV",
+        "cells": program_import._compact_cell_grid([
+            ["Day", "Session", "Exercise", "Sets", "Reps", "Notes"],
+            [1, "Sheet Push", "Bench Press", 3, 8, ""],
+            ["Day 9 - deload", "", "", "", "", ""],
+            [2, "Pull", "Squat", 3, 8, ""],
+        ]),
+    }
+    reply = ProgramImportReply.model_validate({
+        "rows": [
+            {
+                "source_row": 2, "day": 1, "day_name": "Model Push", "exercise": "Bench Press",
+                "sets": 3, "reps_min": 8, "reps_max": 8, "original_text": "Bench Press",
+            },
+            {
+                "source_row": 4, "day": 2, "day_name": "Pull", "exercise": "Squat",
+                "sets": 3, "reps_min": 8, "reps_max": 8, "original_text": "Squat",
+            },
+        ],
+        "layout": {
+            "days": [{"day": 1, "name": "Model Push"}, {"day": 2, "name": "Pull"}],
+            "weeks": [], "confidence": 0.99,
+        },
+    })
+
+    source = program_import._freeform_reader_output(reply, ["CSV"], "CSV", source_grid)
+
+    assert [(row.day, row.day_name) for row in source.rows] == [(1, "Model Push"), (2, "Pull")]
+    context = program_import._freeform_grid_context(source_grid, reply.layout.days)
+    assert 9 not in context.day_names
+
+
+def test_week_note_next_to_exercise_data_does_not_add_a_week():
+    from service import program_import
+    from service.program_import_ai import ProgramImportReply
+
+    source_grid = {
+        "sheet": "CSV",
+        "cells": program_import._compact_cell_grid([
+            ["Week 3 - accumulation"],
+            ["Day", "Session", "Exercise", "Sets", "Reps", "Notes"],
+            [1, "Push", "Bench Press", 3, 8, "Wk 4 - test 1RM"],
+            [2, "Pull", "Squat", 3, 8, ""],
+        ]),
+    }
+    reply = ProgramImportReply.model_validate({
+        "rows": [
+            {
+                "source_row": source_row, "week": "Week 3", "day": day, "day_name": name,
+                "exercise": exercise, "sets": 3, "reps_min": 8, "reps_max": 8,
+                "original_text": exercise,
+            }
+            for source_row, day, name, exercise in (
+                (3, 1, "Push", "Bench Press"), (4, 2, "Pull", "Squat"),
+            )
+        ],
+        "layout": {
+            "days": [{"day": 1, "name": "Push"}, {"day": 2, "name": "Pull"}],
+            "weeks": ["Week 3"], "confidence": 0.99,
+        },
+    })
+
+    source = program_import._freeform_reader_output(reply, ["CSV"], "CSV", source_grid)
+
+    assert source.detected_weeks == []
+    assert source.selected_week is None
+    assert source.weeks_not_imported == []
+    assert all(row.week is None for row in source.rows)
+
+
+@pytest.mark.parametrize("model_weeks", [["Week 3"], []])
+def test_week_note_between_exercise_rows_does_not_override_model_layout(model_weeks):
+    from service import program_import
+    from service.program_import_ai import ProgramImportReply
+
+    source_grid = {
+        "sheet": "Week 3",
+        "cells": program_import._compact_cell_grid([
+            ["Day", "Session", "Exercise", "Sets", "Reps", "Notes"],
+            [1, "Push", "Bench Press", 3, 8, ""],
+            ["", "", "", "", "", "Wk 4 - test 1RM"],
+            [2, "Pull", "Squat", 3, 8, ""],
+        ]),
+    }
+    reply = ProgramImportReply.model_validate({
+        "rows": [
+            {
+                "source_row": source_row,
+                "week": model_weeks[0] if model_weeks else None,
+                "day": day,
+                "day_name": name, "exercise": exercise, "sets": 3,
+                "reps_min": 8, "reps_max": 8, "original_text": exercise,
+            }
+            for source_row, day, name, exercise in (
+                (2, 1, "Push", "Bench Press"), (4, 2, "Pull", "Squat"),
+            )
+        ],
+        "layout": {
+            "days": [{"day": 1, "name": "Push"}, {"day": 2, "name": "Pull"}],
+            "weeks": model_weeks, "confidence": 0.99,
+        },
+    })
+
+    source = program_import._freeform_reader_output(reply, ["Week 3"], "Week 3", source_grid)
+
+    assert source.detected_weeks == []
+    assert source.selected_week is None
+    assert source.weeks_not_imported == []
+
+
+def test_day_title_in_later_exercise_column_cannot_rename_generic_model_day():
+    from service import program_import
+    from service.program_import_ai import ProgramImportReply
+
+    source_grid = {
+        "sheet": "CSV",
+        "cells": program_import._compact_cell_grid([
+            ["Day", "Session", "Exercise", "Sets", "Reps"],
+            [1, "Push", "Bench Press", 3, 8],
+            ["", "", "", "", "", "Day", "Session", "Movement", "Sets", "Reps"],
+            ["", "", "", "", "", "", "", "Day 2 - optional cardio"],
+            ["", "", "", "", "", 2, "Day 2", "Squat", 3, 8],
+        ]),
+    }
+    reply = ProgramImportReply.model_validate({
+        "rows": [
+            {
+                "source_row": 2, "day": 1, "day_name": "Push", "exercise": "Bench Press",
+                "sets": 3, "reps_min": 8, "reps_max": 8, "original_text": "Bench Press",
+            },
+            {
+                "source_row": 5, "day": 2, "day_name": "Day 2", "exercise": "Squat",
+                "sets": 3, "reps_min": 8, "reps_max": 8, "original_text": "Squat",
+            },
+        ],
+        "layout": {
+            "days": [{"day": 1, "name": "Push"}, {"day": 2, "name": "Day 2"}],
+            "weeks": [], "confidence": 0.99,
+        },
+    })
+
+    source = program_import._freeform_reader_output(reply, ["CSV"], "CSV", source_grid)
+    context = program_import._freeform_grid_context(source_grid, reply.layout.days)
+
+    assert context.day_names == {1: "Push"}
+    assert all(row.day_name != "optional cardio" for row in source.rows)
+    assert program_import._has_unplaced_exercise_rows(context, reply.rows[:1]) is True
+
+
+def test_layout_day_rename_keeps_column_derived_name_to_number_mapping():
+    from service import program_import
+    from service.program_import_ai import ProgramImportReply
+
+    source_grid = {
+        "cells": program_import._compact_cell_grid([
+            ["Day", "Session", "Exercise", "Sets", "Reps"],
+            [1, "Column Push", "Bench Press", 3, 8],
+        ])
+    }
+    reply = ProgramImportReply.model_validate({
+        "rows": [{
+            "source_row": 2, "day": 1, "day_name": "Model Push", "exercise": "Bench Press",
+            "sets": 3, "reps_min": 8, "reps_max": 8, "original_text": "Bench Press",
+        }],
+        "layout": {
+            "days": [{"day": 1, "name": "Model Push"}],
+            "weeks": [], "confidence": 0.99,
+        },
+    })
+
+    context = program_import._freeform_grid_context(source_grid, reply.layout.days)
+
+    assert context.day_names[1] == "Model Push"
+    assert context.day_numbers["column push"] == 1
+    assert context.day_numbers["model push"] == 1
+
+
+@pytest.mark.parametrize("note_column", [0, 5])
+def test_week_note_below_table_does_not_create_a_week(note_column):
+    from service import program_import
+    from service.program_import_ai import ProgramImportReply
+
+    rows = [
+        ["Week 3 - accumulation"],
+        ["Day", "Session", "Exercise", "Sets", "Reps", "Notes"],
+        [1, "Push", "Bench Press", 3, 8, ""],
+        [2, "Pull", "Squat", 3, 8, ""],
+    ]
+    note = [""] * 6
+    note[note_column] = "Wk 4 - test 1RM"
+    rows.append(note)
+    source_grid = {"sheet": "Week 3", "cells": program_import._compact_cell_grid(rows)}
+    reply = ProgramImportReply.model_validate({
+        "rows": [
+            {
+                "source_row": source_row, "week": "Week 3", "day": day,
+                "day_name": name, "exercise": exercise, "sets": 3,
+                "reps_min": 8, "reps_max": 8, "original_text": exercise,
+            }
+            for source_row, day, name, exercise in (
+                (3, 1, "Push", "Bench Press"), (4, 2, "Pull", "Squat"),
+            )
+        ],
+        "layout": {
+            "days": [{"day": 1, "name": "Push"}, {"day": 2, "name": "Pull"}],
+            "weeks": ["Week 3"], "confidence": 0.99,
+        },
+    })
+
+    source = program_import._freeform_reader_output(reply, ["Week 3"], "Week 3", source_grid)
+
+    assert source.detected_weeks == []
+    assert source.selected_week is None
+    assert source.weeks_not_imported == []
+    assert all(row.week is None for row in source.rows)
+
+
+@pytest.mark.parametrize(
+    ("title", "model_week"),
+    [
+        ("Week 3 — Coach shorthand retained from notebook", "Week 3"),
+        ("Week 3", "Week 3"),
+        ("Wk 2 heavy", "Week 2"),
+        ("الأسبوع 3", "Week 3"),
+    ],
+)
+def test_single_week_sheet_title_does_not_tag_rows_with_that_week(title, model_week):
+    from service import program_import
+    from service.program_import_ai import ProgramImportReply
+
+    source_grid = {
+        "sheet": "CSV",
+        "cells": program_import._compact_cell_grid([
+            [title],
+            ["Day", "Session", "Exercise", "Sets", "Reps"],
+            [1, "Lower A", "Back Squat", 3, 8],
+            [2, "Push A", "Bench Press", 3, 8],
+        ]),
+    }
+    reply = ProgramImportReply.model_validate({
+        "rows": [
+            {
+                "source_row": source_row, "week": model_week, "day": day,
+                "day_name": day_name, "exercise": exercise, "sets": 3,
+                "reps_min": 8, "reps_max": 8, "original_text": exercise,
+            }
+            for source_row, day, day_name, exercise in (
+                (3, 1, "Lower A", "Back Squat"), (4, 2, "Push A", "Bench Press"),
+            )
+        ],
+        "layout": {
+            "days": [{"day": 1, "name": "Lower A"}, {"day": 2, "name": "Push A"}],
+            "weeks": [model_week], "confidence": 0.99,
+        },
+    })
+
+    source = program_import._freeform_reader_output(reply, ["CSV"], "CSV", source_grid)
+    context = program_import._freeform_grid_context(source_grid, reply.layout.days)
+
+    assert context.week_labels == [model_week]
+    assert source.detected_weeks == []
+    assert source.selected_week is None
+    assert source.weeks_not_imported == []
+    assert all(row.week is None for row in source.rows)
+
+
+def test_unlabeled_week_blocks_expand_model_rows_from_source_values():
+    from service import program_import
+    from service.program_import_ai import ProgramImportReply
+
+    fixture_path = Path(__file__).parent / "eval/datasets/program_import/21_unlabeled_week_blocks.json"
+    case = json.loads(fixture_path.read_text(encoding="utf-8"))
+    tab_name, fixture_rows = next(iter(case["sheets"].items()))
+    source_grid = {
+        "sheet": tab_name,
+        "cells": program_import._compact_cell_grid(fixture_rows),
+    }
+    first_week_rows = [row for row in case["expected_rows"] if row["week"] == "Week 1"]
+    day_orders: dict[int, int] = {}
+    model_rows = []
+    for expected in first_week_rows:
+        day = expected["day"]
+        order = day_orders.get(day, 0) + 1
+        day_orders[day] = order
+        model_rows.append({
+            "source_row": expected["source_row"], "week": None, "day": day,
+            "day_name": expected["day_name"], "order": order,
+            "exercise": expected["input_exercise_name"], "sets": expected["sets"],
+            "reps_min": expected["reps_min"], "reps_max": expected["reps_max"],
+            "rir": expected["rir"], "rpe": expected["rpe"],
+            "original_text": expected["original_text"],
+        })
+    reply = ProgramImportReply.model_validate({
+        "rows": model_rows,
+        "layout": {
+            "days": [{"day": day, "name": name} for day, name in (
+                (1, "Lower A"), (2, "Push A"), (3, "Pull A"),
+            )],
+            "weeks": [], "confidence": 0.99,
+        },
+    })
+
+    source = program_import._freeform_reader_output(reply, [tab_name], tab_name, source_grid)
+    normalized = [program_import._normalise_row(row, {}) for row in source.rows]
+
+    assert source.detected_weeks == ["Week 1", "Week 2"]
+    assert source.confirm_layout is True
+    assert [
+        (row.source_row, row.week, int(row.sets), int(row.reps_min))
+        for row in source.rows
+    ] == [
+        (row["source_row"], row["week"], row["sets"], row["reps_min"])
+        for row in case["expected_rows"]
+    ]
+    assert not any(
+        error["code"] == "program_import.invalid_order.v1"
+        for row in normalized
+        for error in row["errors"]
+    )
+    assert [row["target_rir"] for row in normalized] == [
+        float(row["rir"]) for row in case["expected_rows"]
+    ]
+
+
+def test_implicit_week_expansion_preserves_model_values_and_normalizes_missing_source_values():
+    from service import program_import
+    from service.program_import_ai import ProgramImportReply
+
+    source_grid = {
+        "sheet": "CSV",
+        "cells": program_import._compact_cell_grid([
+            ["Day", "Session", "Exercise", "Sets", "Reps", "Effort", "Sets", "Reps", "Effort"],
+            [1, "Push", "Bench Press", 5, 7, "3 RIR", 4, "8-10", "2 RIR"],
+        ]),
+    }
+    reply = ProgramImportReply.model_validate({
+        "rows": [{
+            "source_row": 2, "week": None, "day": 1, "day_name": "Push",
+            "exercise": "Bench Press", "sets": 3, "reps_min": 6, "reps_max": 6,
+            "rir": 4, "original_text": "Bench Press",
+        }],
+        "layout": {
+            "days": [{"day": 1, "name": "Push"}], "weeks": [], "confidence": 0.99,
+        },
+    })
+
+    source = program_import._freeform_reader_output(reply, ["CSV"], "CSV", source_grid)
+    first_week, second_week = source.rows
+    normalized_second_week = program_import._normalise_row(second_week, {})
+
+    assert (first_week.week, first_week.sets, first_week.reps_min, first_week.reps_max, first_week.rir) == (
+        "Week 1", 3, 6, 6, 4,
+    )
+    assert (
+        second_week.week, second_week.sets, second_week.reps_min,
+        second_week.reps_max, normalized_second_week["target_rir"],
+    ) == ("Week 2", 4, 8, 10, 2)
+
+
+def test_two_distinct_grid_and_model_week_labels_are_reported():
+    from service import program_import
+    from service.program_import_ai import ProgramImportReply
+
+    source_grid = {
+        "sheet": "CSV",
+        "cells": program_import._compact_cell_grid([
+            ["Week 3"],
+            ["Day", "Session", "Exercise", "Sets", "Reps"],
+            [1, "Push", "Bench Press", 3, 8],
+            ["Week 4"],
+            [2, "Pull", "Squat", 3, 8],
+        ]),
+    }
+    reply = ProgramImportReply.model_validate({
+        "rows": [{
+            "source_row": 3, "week": "Week 3", "day": 1, "day_name": "Push",
+            "exercise": "Bench Press", "sets": 3, "reps_min": 8, "reps_max": 8,
+            "original_text": "Bench Press",
+        }],
+        "layout": {
+            "days": [{"day": 1, "name": "Push"}],
+            "weeks": ["Week 3", "Week 4"], "confidence": 0.99,
+        },
+    })
+
+    context = program_import._freeform_grid_context(source_grid, reply.layout.days)
+    source = program_import._freeform_reader_output(reply, ["CSV"], "CSV", source_grid)
+
+    assert context.week_labels == ["Week 3"]
+    assert source.detected_weeks == ["Week 3", "Week 4"]
+    assert source.selected_week == "Week 3"
+    assert source.weeks_not_imported == ["Week 4"]
+
+
+def test_stacked_day_title_rows_preserve_names_without_day_column():
+    from service import program_import
+    from service.program_import_ai import ProgramImportReply
+
+    source_grid = {
+        "sheet": "CSV",
+        "cells": program_import._compact_cell_grid([
+            ["Day 1 - Upper"],
+            ["Exercise", "Sets", "Reps"],
+            ["Bench Press", 3, 8],
+            ["Day 2 - Lower"],
+            ["Squat", 3, 8],
+        ]),
+    }
+    reply = ProgramImportReply.model_validate({
+        "rows": [
+            {
+                "source_row": 3, "day": 1, "day_name": "Day 1", "exercise": "Bench Press",
+                "sets": 3, "reps_min": 8, "reps_max": 8, "original_text": "Bench Press",
+            },
+            {
+                "source_row": 5, "day": 2, "day_name": "Day 2", "exercise": "Squat",
+                "sets": 3, "reps_min": 8, "reps_max": 8, "original_text": "Squat",
+            },
+        ],
+        "layout": {
+            "days": [{"day": 1, "name": "Day 1"}, {"day": 2, "name": "Day 2"}],
+            "weeks": [], "confidence": 0.99,
+        },
+    })
+
+    source = program_import._freeform_reader_output(reply, ["CSV"], "CSV", source_grid)
+
+    assert [(row.day, row.day_name) for row in source.rows] == [(1, "Upper"), (2, "Lower")]
+
+
+def test_single_implicit_day_without_day_column_does_not_need_confirmation():
+    from service import program_import
+    from types import SimpleNamespace
+
+    grid = {
+        "cells": program_import._compact_cell_grid([
+            ["Exercise", "Sets", "Reps"],
+            ["Bench Press", 3, 8],
+            ["Squat", 3, 8],
+        ])
+    }
+    context = program_import._freeform_grid_context(grid, [])
+    rows = [
+        SimpleNamespace(source_row=2, day=None, day_name=None),
+        SimpleNamespace(source_row=3, day=None, day_name=None),
+    ]
+
+    assert context.header_row is None
+    assert context.columns == {}
+    assert program_import._needs_layout_confirmation(context, rows) is False
+
+
+def test_multiple_day_titles_without_axis_need_confirmation_when_unplaced():
+    from service import program_import
+    from types import SimpleNamespace
+
+    grid = {
+        "cells": program_import._compact_cell_grid([
+            ["Day 1 - Upper"],
+            ["Exercise", "Sets", "Reps"],
+            ["Bench Press", 3, 8],
+            ["Day 2 - Lower"],
+            ["Squat", 3, 8],
+        ])
+    }
+    context = program_import._freeform_grid_context(grid, [])
+    rows = [
+        SimpleNamespace(source_row=3, day=None, day_name=None),
+        SimpleNamespace(source_row=5, day=None, day_name=None),
+    ]
+
+    assert program_import._needs_layout_confirmation(context, rows) is True
+
+
+@pytest.mark.parametrize(
+    ("candidate_exercise", "candidate_reps"),
+    [("Warm-up: Band Pull Apart", 10), ("Bench Press", "AMRAP")],
+)
+def test_reported_or_rejected_candidate_row_does_not_need_confirmation(
+    candidate_exercise, candidate_reps
+):
+    from service import program_import
+    from types import SimpleNamespace
+
+    grid = {
+        "cells": program_import._compact_cell_grid([
+            ["Day", "Exercise", "Sets", "Reps", "Notes"],
+            [1, candidate_exercise, 1, candidate_reps, "reported as a notice"],
+        ])
+    }
+    context = program_import._freeform_grid_context(grid, [])
+    reported_row = SimpleNamespace(source_row=2, day=1, day_name="Day 1", exercise=None)
+
+    assert program_import._has_unplaced_exercise_rows(context, [reported_row]) is False
+
+
+def test_unreported_exercise_row_needs_confirmation():
+    from service import program_import
+
+    grid = {
+        "cells": program_import._compact_cell_grid([
+            ["Day", "Exercise", "Sets", "Reps"],
+            [1, "Bench Press", 3, 8],
+        ])
+    }
+    context = program_import._freeform_grid_context(grid, [])
+
+    assert program_import._has_unplaced_exercise_rows(context, []) is True
+
+
+def test_clear_recognized_layout_ignores_model_confirmation_hint_and_low_confidence():
+    from service import program_import
+    from types import SimpleNamespace
+
+    grid = {
+        "cells": program_import._compact_cell_grid([
+            ["Day", "Session", "Exercise", "Sets", "Reps"],
+            [1, "Push", "Bench Press", 3, 8],
+        ])
+    }
+    context = program_import._freeform_grid_context(grid, [])
+    model_rows = [SimpleNamespace(source_row=2, day=1, day_name="Push")]
+
+    assert program_import._needs_layout_confirmation(context, model_rows, True, 0.3) is False
+
+
+def test_recognized_header_without_day_axis_ignores_model_confirmation_hint():
+    from service import program_import
+    from types import SimpleNamespace
+
+    grid = {
+        "cells": program_import._compact_cell_grid([
+            ["Exercise", "Sets", "Reps"],
+            ["Bench Press", 3, 8],
+            ["Squat", 3, 8],
+        ])
+    }
+    context = program_import._freeform_grid_context(grid, [])
+    model_rows = [
+        SimpleNamespace(source_row=2, day=1, day_name="Day 1"),
+        SimpleNamespace(source_row=3, day=1, day_name="Day 1"),
+    ]
+
+    assert context.header_row is None
+    assert context.row_facts.header_rows == frozenset({1})
+    assert program_import._needs_layout_confirmation(context, model_rows, True, 0.3) is False
+
+
+@pytest.mark.parametrize(
+    ("model_confirm_layout", "layout_confidence"),
+    [(True, 0.99), (False, 0.74)],
+)
+def test_unrecognized_header_honors_model_confirmation_hint_or_low_confidence(
+    model_confirm_layout, layout_confidence
+):
+    from service import program_import
+
+    grid = {
+        "cells": program_import._compact_cell_grid([
+            ["Tag", "Übung", "Sätze", "Wdh"],
+            [1, "Bench Press", 3, 8],
+        ])
+    }
+    context = program_import._freeform_grid_context(grid, [])
+
+    assert context.header_row is None
+    assert program_import._needs_layout_confirmation(
+        context, [], model_confirm_layout, layout_confidence
+    ) is True
+
+
+def test_structural_grid_ambiguity_requires_confirmation_even_with_confident_model():
+    from service import program_import
+    from types import SimpleNamespace
+
+    grid = {
+        "cells": program_import._compact_cell_grid([
+            ["Day", "Session", "Exercise", "Sets", "Reps", "Sets", "Reps"],
+            [1, "Push", "Bench Press", 3, 8, 4, 6],
+        ])
+    }
+    context = program_import._freeform_grid_context(grid, [])
+    model_rows = [SimpleNamespace(source_row=2, day=1, day_name="Push")]
+
+    assert program_import._needs_layout_confirmation(context, model_rows, False, 0.99) is True
+
+
+def test_arabic_headers_map_to_repaired_source_fields():
+    from service import program_import
+
+    grid = {
+        "cells": program_import._compact_cell_grid([
+            ["برنامج القوة"],
+            ["اليوم", "اسم اليوم", "التمرين", "سيتات", "تكرارات", "RIR/RPE", "راحة", "الوزن", "ملاحظات"],
+            [1, "دفع", "Bench Press", 3, 8, "2 RIR", 90, 60, "ثبت الكتفين"],
+        ])
+    }
+    context = program_import._freeform_grid_context(grid, [])
+    source = program_import._freeform_source_row(context, 3, None)
+
+    assert source.fields == {
+        "day": "1", "day_name": "دفع", "exercise": "Bench Press", "sets": "3",
+        "reps": "8", "effort": "2 RIR", "rest_seconds": "90", "load_kg": "60",
+        "notes": "ثبت الكتفين",
+    }
+
+
+@pytest.mark.parametrize(
+    ("header", "expected_field"),
+    [
+        ("تمرين", "exercise"), ("التمرين", "exercise"),
+        ("مجموعات", "sets"), ("جولات", "sets"), ("سيتات", "sets"),
+        ("تكرارات", "reps"), ("عدات", "reps"),
+        ("راحة", "rest_seconds"), ("RIR / RPE", "effort"),
+        ("وزن / كجم", "load_kg"), ("الوزن", "load_kg"), ("ملاحظات", "notes"),
+        ("Exercise / التمرين", "exercise"), ("Day / اليوم", "day"),
+        ("Session / الحصة", "day_name"), ("ملاحظات المدرب", "notes"),
+    ],
+)
+def test_arabic_coach_header_aliases_map_to_import_fields(header, expected_field):
+    from service import program_import
+
+    mapped_header = program_import._source_header_field(header)
+
+    assert mapped_header is not None
+    assert mapped_header[0] == expected_field
+
+
+@pytest.mark.parametrize(
+    ("header", "expected_week"),
+    [("Week 2 sets", 2), ("الأسبوع 2 sets", 2), ("اسبوع 3 مجموعات", 3)],
+)
+def test_english_and_arabic_week_prefixes_map_to_source_headers(header, expected_week):
+    from service import program_import
+
+    assert program_import._source_header_field(header) == ("sets", expected_week)
+
+
 def test_freeform_source_preserves_kg_per_set_and_superset_approximations():
     from service import program_import
     from service.program_import_ai import ProgramImportReply
@@ -1135,26 +1779,21 @@ def test_weekly_progression_is_flagged_even_when_preserved_as_a_load_note():
     assert [marker.code for marker in found] == ["program_import.unsupported_preserved_as_note.v1"]
 
 
-def test_sheet_title_rule_reaches_every_row_source_text():
-    from service.program_import import FreeFormGridContext, _freeform_source_row
+def test_sheet_title_rule_reaches_every_exercise_row():
+    from service import program_import
 
-    context = FreeFormGridContext(
-        cells_by_row={
-            1: {1: "Compounds: one top set followed by back-off work"},
-            2: {1: "Day", 2: "Exercise"},
-            3: {1: "1", 2: "Back Squat (Barbell)"},
-        },
-        columns={1: ("day", None), 2: ("exercise", None)},
-        header_row=2,
-        week_labels=[],
-        day_names={},
-        day_numbers={},
-    )
+    grid = {
+        "cells": program_import._compact_cell_grid([
+            ["Compounds: one top set followed by back-off work"],
+            ["Day", "Exercise", "Sets", "Reps"],
+            [1, "Back Squat (Barbell)", 1, 5],
+            [1, "Romanian Deadlift (Barbell)", 3, 10],
+        ])
+    }
+    context = program_import._freeform_grid_context(grid, [])
+    sources = [program_import._freeform_source_row(context, row_number, None) for row_number in (3, 4)]
 
-    source = _freeform_source_row(context, 3, None)
-
-    assert "Back Squat (Barbell)" in source.text
-    assert "top set" in source.text
+    assert all("top set" in source.text for source in sources)
 
 
 def test_full_inference_queue_reports_busy_not_uninterpretable(monkeypatch):

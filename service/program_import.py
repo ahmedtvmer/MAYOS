@@ -5,6 +5,7 @@ import datetime as dt
 import io
 import math
 import re
+from bisect import bisect_right
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Iterable, Protocol
 
@@ -60,15 +61,23 @@ _EFFORT_VALUE = re.compile(r"^(?:RIR\s*)?(\d+(?:\.\d+)?)$", re.IGNORECASE)
 _EFFORT_RANGE = re.compile(r"^(?:RIR\s*)?(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$", re.IGNORECASE)
 _RPE_VALUE = re.compile(r"^(?:RPE\s*|@\s*)?(\d+(?:\.\d+)?)$", re.IGNORECASE)
 _RPE_RANGE = re.compile(r"^(?:RPE\s*|@\s*)?(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$", re.IGNORECASE)
+_PRESCRIPTION_SOURCE_FIELDS = frozenset({"sets", "reps", "prescription", "reps_by_set"})
 _SOURCE_HEADER_FIELDS = {
-    "day": "day", "day number": "day", "training day": "day",
+    "day": "day", "day number": "day", "training day": "day", "يوم": "day", "اليوم": "day",
     "session": "day_name", "session name": "day_name", "day name": "day_name",
+    "اسم اليوم": "day_name", "اسم الحصة": "day_name", "الحصة": "day_name",
     "workout": "day_name", "workout name": "day_name",
-    "exercise": "exercise", "movement": "exercise",
+    "exercise": "exercise", "movement": "exercise", "تمرين": "exercise", "التمرين": "exercise",
     "exercise as written": "exercise", "lift": "exercise",
     "slot": "slot", "week": "week", "week number": "week",
-    "training week": "week", "set": "sets", "sets": "sets",
+    "training week": "week", "set": "sets", "sets": "sets", "مجموعات": "sets", "جولات": "sets",
+    "سيتات": "sets",
     "rpe": "rpe", "rir": "rir", "reps": "reps", "rep": "reps",
+    "تكرارات": "reps", "عدات": "reps", "عدّات": "reps",
+    "راحة": "rest_seconds", "rir/rpe": "effort", "rpe/rir": "effort",
+    "وزن": "load_kg", "الوزن": "load_kg", "وزن/كجم": "load_kg", "الوزن/كجم": "load_kg",
+    "وزن (كجم)": "load_kg", "الوزن (كجم)": "load_kg", "ملاحظات": "notes", "ملاحظة": "notes",
+    "ملاحظات المدرب": "notes",
     "prescription": "prescription", "reps by set": "reps_by_set",
     "rep scheme": "reps_by_set",
 }
@@ -160,13 +169,29 @@ class FreeFormCellGrid:
 
 
 @dataclass(frozen=True)
+class FreeFormGridRows:
+    columns_by_row: dict[int, dict[int, tuple[str, int | None]]]
+    header_rows: frozenset[int]
+    exercise_data_rows: tuple[int, ...]
+    exercise_data_columns_by_schema: dict[tuple[tuple[int, str, int | None], ...], frozenset[int]]
+    section_title_rows: frozenset[int]
+
+
+@dataclass(frozen=True)
 class FreeFormGridContext:
     cells_by_row: dict[int, dict[int, str]]
     columns: dict[int, tuple[str, int | None]]
     header_row: int | None
     week_labels: list[str]
+    title_week_labels: list[str]
+    explicit_week_labels: list[str]
+    implicit_week_columns: dict[int, int]
+    implicit_week_count: int
     day_names: dict[int, str]
     day_numbers: dict[str, int]
+    row_facts: FreeFormGridRows
+    preamble_text: str = ""
+    layout_ambiguous: bool = False
 
 
 @dataclass(frozen=True)
@@ -570,10 +595,37 @@ def _freeform_grid_context(
 ) -> FreeFormGridContext:
     cells_by_row = _grid_cells_by_row(grid)
     header_row, columns = _source_columns(cells_by_row)
-    day_names, day_numbers = _source_day_labels(cells_by_row, header_row, columns)
+    row_facts = _freeform_grid_rows(cells_by_row, columns)
+    layout_day_numbers = _layout_day_numbers(layout_days) if layout_days else None
+    day_names, day_numbers = _source_day_labels(
+        cells_by_row, header_row, columns, layout_day_numbers, row_facts
+    )
     _add_layout_day_labels(layout_days, day_names, day_numbers)
-    weeks = _source_week_labels(cells_by_row, header_row, columns)
-    return FreeFormGridContext(cells_by_row, columns, header_row, weeks, day_names, day_numbers)
+    implicit_week_columns = _implicit_week_block_columns(columns)
+    implicit_week_count = max(implicit_week_columns.values(), default=0)
+    title_weeks, explicit_weeks = _source_week_labels(
+        cells_by_row, header_row, columns, row_facts
+    )
+    title_weeks.extend(_week_labels_in_cell(_cell_text(grid.get("sheet", ""))))
+    title_weeks = list(dict.fromkeys(title_weeks))
+    weeks = title_weeks + explicit_weeks
+    weeks.extend(_week_number_labels(implicit_week_count))
+    weeks = list(dict.fromkeys(weeks))
+    return FreeFormGridContext(
+        cells_by_row=cells_by_row,
+        columns=columns,
+        header_row=header_row,
+        week_labels=weeks,
+        title_week_labels=title_weeks,
+        explicit_week_labels=explicit_weeks,
+        implicit_week_columns=implicit_week_columns,
+        implicit_week_count=implicit_week_count,
+        day_names=day_names,
+        day_numbers=day_numbers,
+        row_facts=row_facts,
+        preamble_text=_sheet_preamble_text(cells_by_row, header_row),
+        layout_ambiguous=_grid_layout_is_ambiguous(columns) or implicit_week_count > 1,
+    )
 
 
 def _grid_cells_by_row(grid: dict[str, Any]) -> dict[int, dict[int, str]]:
@@ -593,24 +645,31 @@ def _source_columns(
     best_row = None
     best_columns: dict[int, tuple[str, int | None]] = {}
     for row_number, cells in cells_by_row.items():
-        columns = {
-            column: field
-            for column, cell_value in cells.items()
-            if (field := _source_header_field(cell_value)) is not None
-        }
+        columns = _source_header_columns(cells)
         fields = {field_name for field_name, _week in columns.values()}
         if "exercise" in fields and fields & {"day", "day_name"} and len(columns) > len(best_columns):
             best_row, best_columns = row_number, columns
     return best_row, best_columns
 
 
+def _source_header_columns(cells: dict[int, str]) -> dict[int, tuple[str, int | None]]:
+    return {
+        column: field
+        for column, cell_value in cells.items()
+        if (field := _source_header_field(cell_value)) is not None
+    }
+
+
 def _source_header_field(header_value: str) -> tuple[str, int | None] | None:
-    header = " ".join(header_value.casefold().split())
-    week_prefix = re.match(r"^(?:week|wk|w)\s*(\d+)\s+(.+)$", header)
+    header = re.sub(r"\s*/\s*", "/", " ".join(header_value.casefold().split()))
+    week_prefix = re.match(r"^(?:week|wk|w|الأسبوع|اسبوع)\s*(\d+)\s+(.+)$", header)
     week_number = int(week_prefix.group(1)) if week_prefix else None
     header = week_prefix.group(2) if week_prefix else header
-    field_name = _source_field_name(header)
-    return (field_name, week_number) if field_name else None
+    for header_part in (header, *header.split("/")):
+        field_name = _source_field_name(header_part.strip())
+        if field_name:
+            return field_name, week_number
+    return None
 
 
 def _source_field_name(header: str) -> str | None:
@@ -631,9 +690,13 @@ def _source_day_labels(
     cells_by_row: dict[int, dict[int, str]],
     header_row: int | None,
     columns: dict[int, tuple[str, int | None]],
+    layout_day_numbers: set[int] | None,
+    row_facts: FreeFormGridRows,
 ) -> tuple[dict[int, str], dict[str, int]]:
-    row_labels = _day_labels_from_columns(cells_by_row, header_row, columns)
-    title_labels = _day_labels_from_titles(cells_by_row)
+    row_labels = _day_labels_from_columns(cells_by_row, header_row, columns, row_facts)
+    title_labels = _day_labels_from_titles(
+        cells_by_row, columns, layout_day_numbers, row_facts
+    )
     for day_number, day_name in title_labels[0].items():
         row_labels[0].setdefault(day_number, day_name)
     row_labels[1].update({key: number for key, number in title_labels[1].items() if key not in row_labels[1]})
@@ -644,14 +707,16 @@ def _day_labels_from_columns(
     cells_by_row: dict[int, dict[int, str]],
     header_row: int | None,
     columns: dict[int, tuple[str, int | None]],
+    row_facts: FreeFormGridRows,
 ) -> tuple[dict[int, str], dict[str, int]]:
     day_names: dict[int, str] = {}
     day_numbers: dict[str, int] = {}
-    day_column = next((column for column, spec in columns.items() if spec[0] == "day"), None)
-    name_column = next((column for column, spec in columns.items() if spec[0] == "day_name"), None)
     for row_number, cells in cells_by_row.items():
         if row_number == header_row:
             continue
+        row_columns = _columns_for_source_row(row_facts, row_number, columns)
+        day_column = next((column for column, spec in row_columns.items() if spec[0] == "day"), None)
+        name_column = next((column for column, spec in row_columns.items() if spec[0] == "day_name"), None)
         day_number = _parse_integer(cells.get(day_column)) if day_column else None
         if day_number is None or not 1 <= day_number <= MAX_PROGRAM_DAYS:
             continue
@@ -663,14 +728,21 @@ def _day_labels_from_columns(
 
 def _day_labels_from_titles(
     cells_by_row: dict[int, dict[int, str]],
+    columns: dict[int, tuple[str, int | None]],
+    allowed_day_numbers: set[int] | None,
+    row_facts: FreeFormGridRows,
 ) -> tuple[dict[int, str], dict[str, int]]:
     day_names: dict[int, str] = {}
     day_numbers: dict[str, int] = {}
-    for cells in cells_by_row.values():
-        for text in cells.values():
+    for row_number, cells in cells_by_row.items():
+        for column, text in cells.items():
+            if not _is_title_cell(cells_by_row, row_number, column, columns, row_facts):
+                continue
             title = re.match(r"^\s*day\s*(\d+)\s*[-:—–.)]+\s*(.+?)\s*$", text, re.IGNORECASE)
             if title:
-                _store_day_label(int(title.group(1)), title.group(2), day_names, day_numbers)
+                day_number = int(title.group(1))
+                if allowed_day_numbers is None or day_number in allowed_day_numbers:
+                    _store_day_label(day_number, title.group(2), day_names, day_numbers)
     return day_names, day_numbers
 
 
@@ -681,8 +753,17 @@ def _add_layout_day_labels(
         day_number = _parse_integer(layout_day.day) or index
         name = _clean_day_name(layout_day.name)
         if 1 <= day_number <= MAX_PROGRAM_DAYS and name and not _is_generic_day_name(name):
-            _store_day_label(day_number, name, day_names, day_numbers)
-            day_numbers.setdefault(_day_name_key(layout_day.name), day_number)
+            day_names[day_number] = name
+            day_numbers[_day_name_key(name)] = day_number
+
+
+def _layout_day_numbers(layout_days: list[Any]) -> set[int]:
+    day_numbers = set()
+    for index, layout_day in enumerate(layout_days, start=1):
+        day_number = _parse_integer(layout_day.day) or index
+        if 1 <= day_number <= MAX_PROGRAM_DAYS:
+            day_numbers.add(day_number)
+    return day_numbers
 
 
 def _store_day_label(
@@ -715,11 +796,52 @@ def _source_week_labels(
     cells_by_row: dict[int, dict[int, str]],
     header_row: int | None,
     columns: dict[int, tuple[str, int | None]],
+    row_facts: FreeFormGridRows,
+) -> tuple[list[str], list[str]]:
+    title_labels = _title_week_labels(cells_by_row, columns, row_facts)
+    explicit_labels = _explicit_week_labels(cells_by_row, header_row, columns)
+    return title_labels, explicit_labels
+
+
+def _title_week_labels(
+    cells_by_row: dict[int, dict[int, str]],
+    columns: dict[int, tuple[str, int | None]],
+    row_facts: FreeFormGridRows,
 ) -> list[str]:
     labels: list[str] = []
-    for cells in cells_by_row.values():
-        for text in cells.values():
+    first_exercise_row = min(row_facts.exercise_data_rows, default=None)
+    for row_number, cells in cells_by_row.items():
+        for column, text in cells.items():
+            if not _is_title_cell(cells_by_row, row_number, column, columns, row_facts):
+                continue
+            # A week-shaped note inside the exercise rows is not a sheet title.
+            if (
+                first_exercise_row is not None
+                and row_number >= first_exercise_row
+                and (
+                    row_number not in row_facts.section_title_rows
+                    or not _is_standalone_week_title(text)
+                )
+            ):
+                continue
             labels.extend(_week_labels_in_cell(text))
+    return list(dict.fromkeys(label for label in labels if label))
+
+
+def _is_standalone_week_title(value: str) -> bool:
+    return bool(re.fullmatch(
+        r"\s*(?:week|wk|w|الأسبوع|اسبوع)\s*(?:\d+|[a-z])\s*",
+        value,
+        re.IGNORECASE,
+    ))
+
+
+def _explicit_week_labels(
+    cells_by_row: dict[int, dict[int, str]],
+    header_row: int | None,
+    columns: dict[int, tuple[str, int | None]],
+) -> list[str]:
+    labels: list[str] = []
     for _field, week_number in columns.values():
         if week_number is not None:
             labels.append(_canonical_week_label(week_number))
@@ -730,9 +852,163 @@ def _source_week_labels(
     return list(dict.fromkeys(label for label in labels if label))
 
 
+def _implicit_week_block_columns(
+    columns: dict[int, tuple[str, int | None]],
+) -> dict[int, int]:
+    prescription_fields = {
+        "sets", "reps", "effort", "rir", "rpe", "rest_seconds", "tempo",
+        "load_kg", "prescription", "reps_by_set", "reps_effort",
+    }
+    columns_by_field: dict[str, list[int]] = {}
+    for column, (field_name, week_number) in columns.items():
+        if week_number is None and field_name in prescription_fields:
+            columns_by_field.setdefault(field_name, []).append(column)
+    sets_count = len(columns_by_field.get("sets", []))
+    reps_count = len(columns_by_field.get("reps", []))
+    if sets_count < 2 or sets_count != reps_count:
+        return {}
+    block_count = sets_count
+    return {
+        column: block_number
+        for field_columns in columns_by_field.values()
+        if len(field_columns) == block_count
+        for block_number, column in enumerate(sorted(field_columns), start=1)
+    }
+
+
+def _exercise_source_columns(
+    columns: dict[int, tuple[str, int | None]],
+) -> list[int]:
+    return [column for column, spec in columns.items() if spec[0] == "exercise"]
+
+
+def _is_title_cell(
+    cells_by_row: dict[int, dict[int, str]],
+    row_number: int,
+    column: int,
+    columns: dict[int, tuple[str, int | None]],
+    row_facts: FreeFormGridRows,
+) -> bool:
+    if not cells_by_row[row_number].get(column):
+        return False
+    row_columns = _columns_for_source_row(row_facts, row_number, columns)
+    exercise_rows = row_facts.exercise_data_rows
+    section_title_rows = row_facts.section_title_rows
+    data_columns = row_facts.exercise_data_columns_by_schema.get(
+        _columns_schema(row_columns), frozenset()
+    )
+    if row_number in exercise_rows:
+        return False
+    following_index = bisect_right(exercise_rows, row_number)
+    if following_index >= len(exercise_rows):
+        return False
+    if column in data_columns:
+        has_day_axis = any(
+            field_name in {"day", "day_name"}
+            for field_name, _week in row_columns.values()
+        )
+        return (
+            row_number < exercise_rows[0]
+            or row_number in section_title_rows
+            or not has_day_axis
+        )
+    return True
+
+
+def _columns_for_source_row(
+    row_facts: FreeFormGridRows,
+    row_number: int,
+    columns: dict[int, tuple[str, int | None]],
+) -> dict[int, tuple[str, int | None]]:
+    return row_facts.columns_by_row.get(row_number, columns)
+
+
+def _columns_schema(
+    columns: dict[int, tuple[str, int | None]],
+) -> tuple[tuple[int, str, int | None], ...]:
+    return tuple(
+        (column, field_name, week_number)
+        for column, (field_name, week_number) in sorted(columns.items())
+    )
+
+
+def _freeform_grid_rows(
+    cells_by_row: dict[int, dict[int, str]],
+    columns: dict[int, tuple[str, int | None]],
+) -> FreeFormGridRows:
+    active_columns = columns
+    columns_by_row: dict[int, dict[int, tuple[str, int | None]]] = {}
+    header_rows: set[int] = set()
+    exercise_data_rows: list[int] = []
+    section_title_rows: set[int] = set()
+    data_columns_by_schema: dict[
+        tuple[tuple[int, str, int | None], ...], set[int]
+    ] = {}
+    previous_nonempty_row: int | None = None
+    for row_number, cells in sorted(cells_by_row.items()):
+        is_header_row = _is_source_header_row(cells)
+        if is_header_row:
+            header_rows.add(row_number)
+            if previous_nonempty_row is not None:
+                previous_cells = cells_by_row[previous_nonempty_row]
+                if sum(bool(text) for text in previous_cells.values()) == 1:
+                    section_title_rows.add(previous_nonempty_row)
+            active_columns = _source_header_columns(cells)
+            columns_by_row[row_number] = active_columns
+            previous_nonempty_row = row_number
+            continue
+        columns_by_row[row_number] = active_columns
+        if active_columns and _is_exercise_data_row(cells, active_columns):
+            exercise_data_rows.append(row_number)
+            schema = _columns_schema(active_columns)
+            data_columns = data_columns_by_schema.setdefault(schema, set())
+            data_columns.update(column for column in active_columns if cells.get(column))
+        if any(cells.values()):
+            previous_nonempty_row = row_number
+    return FreeFormGridRows(
+        columns_by_row=columns_by_row,
+        header_rows=frozenset(header_rows),
+        exercise_data_rows=tuple(exercise_data_rows),
+        exercise_data_columns_by_schema={
+            schema: frozenset(data_columns)
+            for schema, data_columns in data_columns_by_schema.items()
+        },
+        section_title_rows=frozenset(section_title_rows),
+    )
+
+
+def _is_exercise_data_row(
+    cells: dict[int, str], columns: dict[int, tuple[str, int | None]]
+) -> bool:
+    exercise_source_columns = _exercise_source_columns(columns)
+    prescription_source_columns = [
+        column
+        for column, (field_name, _week_number) in columns.items()
+        if field_name in _PRESCRIPTION_SOURCE_FIELDS
+    ]
+    return (
+        any(cells.get(column) for column in exercise_source_columns)
+        and any(cells.get(column) for column in prescription_source_columns)
+    )
+
+
+def _grid_layout_is_ambiguous(
+    columns: dict[int, tuple[str, int | None]],
+) -> bool:
+    unlabelled_fields = [field_name for field_name, week_number in columns.values() if week_number is None]
+    return (
+        unlabelled_fields.count("day") > 1
+        or unlabelled_fields.count("day_name") > 1
+        or unlabelled_fields.count("week") > 1
+        or (unlabelled_fields.count("sets") > 1 and unlabelled_fields.count("reps") > 1)
+    )
+
+
 def _week_labels_in_cell(value: str) -> list[str]:
-    header_or_title = re.fullmatch(
-        r"(?:week|wk)\s*([0-9]+|[a-z])(?:\s*[-—/:].*)?", value.strip(), re.IGNORECASE
+    header_or_title = re.match(
+        r"^\s*(?:week|wk|الأسبوع|اسبوع)\s*([0-9]+|[a-z])(?=$|\s|[-—/:])",
+        value,
+        re.IGNORECASE,
     )
     if header_or_title:
         return [_canonical_week_label(f"Week {header_or_title.group(1)}")]
@@ -748,36 +1024,57 @@ def _freeform_source_row(
     context: FreeFormGridContext, source_row: int, week: str | None
 ) -> FreeFormSourceRow:
     cells = context.cells_by_row.get(source_row, {})
+    fields = _freeform_source_fields(context, source_row, cells, week)
+    row_text = " | ".join(cells[column] for column in sorted(cells))
+    # A title or note above the header can set a rule for the rows below it
+    # (e.g. top sets on compound lifts); every row inherits it so an unsupported
+    # construct there is flagged for the coach instead of silently dropped.
+    return FreeFormSourceRow(
+        fields,
+        " | ".join(part for part in (row_text, context.preamble_text) if part),
+    )
+
+
+def _freeform_source_fields(
+    context: FreeFormGridContext,
+    source_row: int,
+    cells: dict[int, str],
+    week: str | None,
+) -> dict[str, str]:
     fields: dict[str, str] = {}
     week_fields: dict[int, dict[str, str]] = {}
+    row_columns = _columns_for_source_row(
+        context.row_facts, source_row, context.columns
+    )
     for column, text in cells.items():
-        spec = context.columns.get(column)
+        spec = row_columns.get(column)
         if spec is None:
             continue
         field_name, week_number = spec
         if week_number is None:
-            fields[field_name] = text
+            implicit_week_number = context.implicit_week_columns.get(column)
+            if implicit_week_number is None:
+                fields[field_name] = text
+            else:
+                week_fields.setdefault(implicit_week_number, {})[field_name] = text
         else:
             week_fields.setdefault(week_number, {})[field_name] = text
     week_number = _week_number(week)
     if week_number is not None:
         fields.update(week_fields.get(week_number, {}))
-    row_text = " | ".join(cells[column] for column in sorted(cells))
-    # A title or note above the header can set a rule for the rows below it
-    # (e.g. top sets on compound lifts); every row inherits it so an unsupported
-    # construct there is flagged for the coach instead of silently dropped.
-    preamble = _sheet_preamble_text(context)
-    return FreeFormSourceRow(fields, " | ".join(part for part in (row_text, preamble) if part))
+    return fields
 
 
-def _sheet_preamble_text(context: FreeFormGridContext) -> str:
-    if context.header_row is None:
+def _sheet_preamble_text(
+    cells_by_row: dict[int, dict[int, str]], header_row: int | None
+) -> str:
+    if header_row is None:
         return ""
     return " | ".join(
         text
-        for row_number in sorted(context.cells_by_row)
-        if row_number < context.header_row
-        for text in context.cells_by_row[row_number].values()
+        for row_number in sorted(cells_by_row)
+        if row_number < header_row
+        for text in cells_by_row[row_number].values()
         if text
     )
 
@@ -800,18 +1097,76 @@ def _freeform_reader_output(
         detected_weeks=weeks,
         selected_week=selected_week,
         weeks_not_imported=[week for week in weeks if week != selected_week],
-        confirm_layout=_needs_layout_confirmation(reply.layout),
+        confirm_layout=_needs_layout_confirmation(
+            context,
+            reply.rows,
+            reply.layout.confirm_layout,
+            reply.layout.confidence,
+        ),
         layout_days=[day.model_dump() for day in reply.layout.days],
         layout_confidence=reply.layout.confidence,
         import_mode="freeform",
     )
 
 
-def _needs_layout_confirmation(layout: Any) -> bool:
+def _needs_layout_confirmation(
+    context: FreeFormGridContext,
+    model_rows: list[Any],
+    model_confirm_layout: bool = False,
+    layout_confidence: float | None = None,
+) -> bool:
     return (
-        layout.confirm_layout
-        or layout.confidence < MIN_PROGRAM_IMPORT_LAYOUT_CONFIDENCE
+        context.layout_ambiguous
+        or _has_unplaced_exercise_rows(context, model_rows)
+        or _has_unplaceable_day_assignments(context, model_rows)
+        or (
+            not context.row_facts.header_rows
+            and (
+                model_confirm_layout
+                or (
+                    layout_confidence is not None
+                    and layout_confidence < MIN_PROGRAM_IMPORT_LAYOUT_CONFIDENCE
+                )
+            )
+        )
     )
+
+
+def _has_unplaced_exercise_rows(
+    context: FreeFormGridContext, model_rows: list[Any]
+) -> bool:
+    candidate_rows = set(context.row_facts.exercise_data_rows)
+    reported_source_rows = {model_row.source_row for model_row in model_rows}
+    return bool(candidate_rows - reported_source_rows)
+
+
+def _has_unplaceable_day_assignments(
+    context: FreeFormGridContext, model_rows: list[Any]
+) -> bool:
+    day_axis_fields = {"day", "day_name"}
+    if not any(field_name in day_axis_fields for field_name, _week in context.columns.values()):
+        assigned_sessions = set()
+        for model_row in model_rows:
+            day_number = _parse_integer(model_row.day)
+            day_name = _clean_day_name(model_row.day_name or model_row.day)
+            if day_number is not None or day_name:
+                assigned_sessions.add((day_number, _day_name_key(day_name) if day_name else ""))
+        if len(assigned_sessions) <= 1 and len(context.day_names) <= 1:
+            return False
+    for model_row in model_rows:
+        day_number = _parse_integer(model_row.day)
+        day_name = _clean_day_name(model_row.day_name or model_row.day)
+        mapped_day = context.day_numbers.get(_day_name_key(day_name)) if day_name else None
+        if day_number is None and mapped_day is None:
+            return True
+        if day_number is not None and not 1 <= day_number <= MAX_PROGRAM_DAYS:
+            return True
+    return False
+
+
+def _is_source_header_row(cells: dict[int, str]) -> bool:
+    fields = {field_name for field_name, _week in _source_header_columns(cells).values()}
+    return "exercise" in fields and bool(fields & _PRESCRIPTION_SOURCE_FIELDS)
 
 
 def _freeform_program_rows(
@@ -820,6 +1175,7 @@ def _freeform_program_rows(
     selected_week: str | None,
     context: FreeFormGridContext,
 ) -> list[ProgramImportRow]:
+    ordered_model_rows = _expand_implicit_week_rows(model_rows, context)
     return [
         _program_import_row(
             model_row,
@@ -827,21 +1183,57 @@ def _freeform_program_rows(
             _freeform_source_row(context, model_row.source_row, model_row.week),
             context,
         )
-        for model_row in model_rows
+        for model_row in ordered_model_rows
     ]
+
+
+def _expand_implicit_week_rows(
+    model_rows: list[Any], context: FreeFormGridContext
+) -> list[Any]:
+    if context.implicit_week_count <= 1:
+        return model_rows
+    rows_by_source: dict[int, list[Any]] = {}
+    for model_row in model_rows:
+        rows_by_source.setdefault(model_row.source_row, []).append(model_row)
+    implicit_weeks = _week_number_labels(context.implicit_week_count)
+    expanded_rows = []
+    for model_row in model_rows:
+        if len(rows_by_source[model_row.source_row]) == 1:
+            expanded_rows.append(model_row.model_copy(update={"week": implicit_weeks[0]}))
+            for week in implicit_weeks[1:]:
+                expanded_rows.append(model_row.model_copy(update={
+                    "week": week,
+                    "sets": None,
+                    "reps_min": None,
+                    "reps_max": None,
+                    "rir": None,
+                    "rpe": None,
+                }))
+        else:
+            expanded_rows.append(model_row)
+    return expanded_rows
+
+
+def _week_number_labels(count: int) -> list[str]:
+    return [f"Week {number}" for number in range(1, count + 1)]
 
 
 def _resolved_week_labels(
     model_weeks: list[str], context: FreeFormGridContext
 ) -> list[str]:
-    if len(context.week_labels) > 1:
-        return context.week_labels
     normalized = list(dict.fromkeys(
         label for week in model_weeks if (label := _canonical_week_label(week))
     ))
-    if len(normalized) < 2 or _weeks_mirror_day_numbers(normalized, context):
-        return []
-    return normalized
+    model_week_ids = {_week_identity(week) for week in normalized}
+    if context.implicit_week_count > 1:
+        return _week_number_labels(context.implicit_week_count)
+    if normalized and _weeks_mirror_day_numbers(normalized, context) and len(context.week_labels) < 2:
+        normalized = []
+    title_weeks = context.title_week_labels
+    if model_week_ids:
+        title_weeks = [week for week in title_weeks if _week_identity(week) in model_week_ids]
+    week_labels = list(dict.fromkeys(normalized + context.explicit_week_labels + title_weeks))
+    return week_labels if len(week_labels) > 1 else []
 
 
 def _weeks_mirror_day_numbers(weeks: list[str], context: FreeFormGridContext) -> bool:
@@ -852,10 +1244,18 @@ def _weeks_mirror_day_numbers(weeks: list[str], context: FreeFormGridContext) ->
 
 def _canonical_week_label(value: Any) -> str:
     label = _cell_text(value)
-    match = re.fullmatch(r"(?:week|wk|w)?\s*(\d+)", label, re.IGNORECASE)
+    match = re.match(
+        r"^\s*(?:week|wk|w|الأسبوع|اسبوع)?\s*(\d+)(?=$|\s|[-—/:])",
+        label,
+        re.IGNORECASE,
+    )
     if match:
         return f"Week {int(match.group(1))}"
-    word_week = re.fullmatch(r"(?:week|wk)\s*([a-z])", label, re.IGNORECASE)
+    word_week = re.match(
+        r"^\s*(?:week|wk)\s*([a-z])(?=$|\s|[-—/:])",
+        label,
+        re.IGNORECASE,
+    )
     return f"Week {word_week.group(1).upper()}" if word_week else label
 
 
@@ -897,18 +1297,22 @@ def _program_import_row(
     context: FreeFormGridContext,
 ) -> ProgramImportRow:
     values = _freeform_row_values(row, source, context)
+    sets, reps_min, reps_max = row.sets, row.reps_min, row.reps_max
+    rir, rpe = values.rir, values.rpe
+    if context.implicit_week_count > 1:
+        sets, reps_min, reps_max = _fill_missing_implicit_prescription(row, source)
     return ProgramImportRow(
         source_row=row.source_row,
         day=values.day,
         day_name=values.day_name,
         order=row.order,
         exercise=row.exercise,
-        sets=row.sets,
-        reps_min=row.reps_min,
-        reps_max=row.reps_max,
+        sets=sets,
+        reps_min=reps_min,
+        reps_max=reps_max,
         reps_original=values.reps_original,
-        rir=values.rir,
-        rpe=_freeform_rpe_value(values.rpe),
+        rir=rir,
+        rpe=_freeform_rpe_value(rpe),
         rest_seconds=row.rest_seconds,
         tempo=row.tempo,
         notes=row.notes,
@@ -923,7 +1327,9 @@ def _freeform_row_values(
     row: Any, source: FreeFormSourceRow, context: FreeFormGridContext
 ) -> FreeFormRowValues:
     day, day_name = _freeform_day_values(row, source, context)
-    rir, rpe = _freeform_effort_values(row, source)
+    rir, rpe = _freeform_effort_values(
+        row, source, include_source_rir=context.implicit_week_count > 1
+    )
     return FreeFormRowValues(
         day,
         day_name,
@@ -939,25 +1345,87 @@ def _freeform_day_values(
 ) -> tuple[Any, str | None]:
     source_day = _parse_integer(source.fields.get("day"))
     day = source_day if source_day is not None else row.day
-    source_name = source.fields.get("day_name")
-    candidate_name = source_name or row.day_name
-    clean_name = _clean_day_name(candidate_name)
-    mapped_day = context.day_numbers.get(_day_name_key(clean_name)) if clean_name else None
+    model_name = _clean_day_name(row.day_name)
+    source_name = _clean_day_name(source.fields.get("day_name"))
+    day_name = model_name if model_name and not _is_generic_day_name(model_name) else source_name or model_name
+    mapped_day = context.day_numbers.get(_day_name_key(day_name)) if day_name else None
     if mapped_day is not None and (source_day is None or _is_generic_day_name(source_name)):
         day = mapped_day
     day_number = _parse_integer(day)
-    if _is_generic_day_name(clean_name) or not clean_name:
-        clean_name = context.day_names.get(day_number) if day_number is not None else None
-    return day, clean_name
+    if day_number is not None and day_number in context.day_names:
+        day_name = context.day_names[day_number]
+    elif _is_generic_day_name(day_name) or not day_name:
+        day_name = None
+    return day, day_name
 
 
 def _freeform_effort_values(
-    row: Any, source: FreeFormSourceRow
+    row: Any,
+    source: FreeFormSourceRow,
+    include_source_rir: bool = False,
 ) -> tuple[Any, Any]:
-    source_rpe = _source_rpe_value(source.fields)
-    if source_rpe is not None:
-        return None, source_rpe
-    return row.rir, row.rpe
+    rir, rpe = row.rir, row.rpe
+    if rpe in (None, ""):
+        source_rpe = _source_rpe_value(source.fields)
+        if source_rpe is not None:
+            _target_rir, effort_errors, _warnings, _notes = _normalise_effort(
+                rir, source_rpe, row.source_row
+            )
+            if not effort_errors:
+                rpe = source_rpe
+    if include_source_rir and rir in (None, "") and rpe in (None, ""):
+        source_rir = _source_rir_value(source.fields)
+        if source_rir is not None:
+            _target_rir, effort_errors, _warnings, _notes = _normalise_effort(
+                source_rir, None, row.source_row
+            )
+            if not effort_errors:
+                rir = source_rir
+    return rir, rpe
+
+
+def _fill_missing_implicit_prescription(
+    row: Any,
+    source: FreeFormSourceRow,
+) -> tuple[Any, Any, Any]:
+    sets, reps_min, reps_max = row.sets, row.reps_min, row.reps_max
+    if sets in (None, "") and source.fields.get("sets"):
+        normalized_sets, set_error, _warning = _normalise_sets(
+            source.fields["sets"], row.source_row
+        )
+        if set_error is None:
+            sets = normalized_sets
+
+    raw_reps = (
+        source.fields.get("reps_by_set")
+        or source.fields.get("reps")
+        or source.fields.get("prescription")
+    )
+    if raw_reps and (reps_min in (None, "") or reps_max in (None, "")):
+        source_min, source_max, reps_error, _warning, _note = _normalise_reps(
+            raw_reps, None, None, row.source_row
+        )
+        if reps_error is None:
+            if reps_min in (None, ""):
+                reps_min = source_min
+            if reps_max in (None, ""):
+                reps_max = source_max
+
+    return sets, reps_min, reps_max
+
+
+def _source_rir_value(fields: dict[str, str]) -> str | None:
+    number_pattern = r"\d+(?:\.\d+)?(?:\s*-\s*\d+(?:\.\d+)?)?"
+    for key in ("rir", "effort"):
+        raw = fields.get(key, "")
+        match = re.fullmatch(
+            rf"\s*(?:RIR\s*)?({number_pattern})(?:\s*RIR)?\s*",
+            raw,
+            re.IGNORECASE,
+        )
+        if match:
+            return match.group(1)
+    return None
 
 
 def _source_rpe_value(fields: dict[str, str]) -> str | None:

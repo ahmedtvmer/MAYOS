@@ -53,7 +53,7 @@ def _valid_report(case, evaluation_session):
 
 
 def test_sample_sheets_are_full_synthetic_programs_and_cover_required_shapes(cases, evaluation_session):
-    assert 15 <= len(cases) <= 20
+    assert len(cases) == 21
     assert len({case["id"] for case in cases}) == len(cases)
     assert sum(len(case["expected_rows"]) for case in cases) >= 300
     tags = {tag for case in cases for tag in case["tags"]}
@@ -143,7 +143,7 @@ def test_sample_sheets_are_full_synthetic_programs_and_cover_required_shapes(cas
             assert all(type(row.get("rest_seconds")) is int and row["rest_seconds"] > 0 for row in case["expected_rows"])
         assert case["expected_chosen_week"] in (case["expected_weeks"] or [None])
         if case["expected_weeks"]:
-            assert len(case["expected_weeks"]) in {3, 4}
+            assert len(case["expected_weeks"]) in {2, 3, 4}
             for week in case["expected_weeks"]:
                 week_rows = [row for row in case["expected_rows"] if row["week"] == week]
                 assert len(week_rows) >= 12
@@ -227,7 +227,7 @@ def test_side_by_side_weeks_keep_row_identity_and_error_attribution(evaluation_s
     assert [row["checks"]["present_or_reported"] for row in same_source] == [True, False, False]
 
 
-def test_confirmation_prompt_does_not_count_as_week_selection_error(evaluation_session, cases):
+def test_layout_confirmation_matches_fixture_and_is_recomputed_by_gate(evaluation_session, cases):
     case = next(case for case in cases if case["id"] == "01_english_strength_week")
     result = {
         "rows": [], "errors": [], "detected_tabs": case["expected_tabs"],
@@ -243,11 +243,27 @@ def test_confirmation_prompt_does_not_count_as_week_selection_error(evaluation_s
     )
 
     assert scored["week_layout_correct"] is True
-    assert not any("layout" in failure for failure in scored["layout_failures"])
+    assert scored["confirm_layout_correct"] is False
+    assert any("confirm_layout" in failure for failure in scored["layout_failures"])
 
     report = _valid_report(case, evaluation_session)
     report["runs"][0]["sheets"][0]["layout"]["confirm_layout"] = True
-    assert program_import_ai.validate_report(report)[0] is True
+    assert program_import_ai.validate_report(report)[0] is False
+
+
+def test_new_confirmation_fixtures_cover_both_outcomes(evaluation_session, cases):
+    confirmation_cases = [
+        case for case in cases
+        if case["id"] in {"20_clear_explicit_layout", "21_unlabeled_week_blocks"}
+    ]
+    assert {case["expected_confirm_layout"] for case in confirmation_cases} == {False, True}
+
+    results = runner.run_suite(confirmation_cases, model=runner.build_mock_model(), session=evaluation_session)
+
+    assert [result["layout"]["confirm_layout"] for result in results] == [
+        case["expected_confirm_layout"] for case in confirmation_cases
+    ]
+    assert all(result["confirm_layout_correct"] for result in results)
 
 
 def test_scorer_requires_row_week_and_exercise_and_counts_extra_rows(cases):
@@ -372,7 +388,7 @@ def test_mock_run_writes_plumbing_report_and_prints_summary(tmp_path, capsys):
     assert runner.main(["--mock", "--write-report", str(report_path), "--no-privacy"]) == 0
     output = capsys.readouterr().out
     assert "NOT A MODEL EVALUATION" in output
-    assert "316 expected rows" in output
+    assert "352 expected rows" in output
 
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["mode"] == "mock"
@@ -383,7 +399,7 @@ def test_mock_run_writes_plumbing_report_and_prints_summary(tmp_path, capsys):
     assert report["model"] == "tests.fakes.chat_model.ScriptedChatModel"
     assert report["backend"] == "scripted"
     assert report["gates"]["privacy"]["pass"] is False
-    assert len(report["runs"][0]["sheets"]) == 19
+    assert len(report["runs"][0]["sheets"]) == 21
     assert all(sheet["passed"] for sheet in report["runs"][0]["sheets"])
     assert program_import_ai.validate_report(report)[0] is False
 

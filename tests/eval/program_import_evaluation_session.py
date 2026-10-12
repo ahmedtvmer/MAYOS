@@ -49,6 +49,8 @@ class ProgramImportEvaluationSession:
         "POSTHOG_API_KEY": "",
         "PROGRAM_IMPORT_AI_ENABLED": "false",
         "PROGRAM_IMPORT_AI_EVAL_REPORT": "",
+        # The 21-sheet suite includes one extra request for its tab-choice fixture.
+        "MODEL_RATE_LIMIT_REQUESTS": "25",
         "HF_HUB_OFFLINE": "1",
         "TRANSFORMERS_OFFLINE": "1",
         "SMTP_HOST": "",

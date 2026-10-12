@@ -1,4 +1,4 @@
-"""Evaluate free-form Program import on synthetic coach spreadsheets (#350).
+"""Evaluate free-form Program import on synthetic coach spreadsheets (#350, #400).
 
 Live runs use the upload HTTP route and the configured hosted Coach model. The
 temporary account and Assignment contain no copied Training ledger; each model
@@ -45,8 +45,8 @@ def load_dataset(dataset_path: Path = DEFAULT_DATASET) -> dict[str, Any]:
     cases = [entry["fixture"] for entry in fixture_entries]
     if not cases:
         raise ValueError(f"Program import eval dataset must contain cases: {dataset_path}")
-    if not 15 <= len(cases) <= 20:
-        raise ValueError(f"Program import eval dataset must contain 15 to 20 cases: {dataset_path}")
+    if not 19 <= len(cases) <= 21:
+        raise ValueError(f"Program import eval dataset must contain between 19 and 21 cases: {dataset_path}")
     ids = [case.get("id") for case in cases if isinstance(case, dict)]
     if len(ids) != len(cases) or any(not item for item in ids) or len(set(ids)) != len(ids):
         raise ValueError("Program import eval case ids must be present and unique")
@@ -407,6 +407,11 @@ def score_import_result(
         and selected_week == case["expected_chosen_week"]
         and weeks_not_imported == expected_not_imported
     )
+    expected_confirm_layout = case.get("expected_confirm_layout", False)
+    confirm_layout_correct = (
+        type(result.get("confirm_layout")) is bool
+        and result.get("confirm_layout") is expected_confirm_layout
+    )
 
     layout_failures = []
     if not tab_choice_correct:
@@ -418,6 +423,10 @@ def score_import_result(
         layout_failures.append(
             f"expected weeks/selection/omitted {expected_weeks!r}/{case['expected_chosen_week']!r}/{expected_not_imported!r}; "
             f"got {detected_weeks!r}/{selected_week!r}/{weeks_not_imported!r}"
+        )
+    if not confirm_layout_correct:
+        layout_failures.append(
+            f"expected confirm_layout {expected_confirm_layout!r}; got {result.get('confirm_layout')!r}"
         )
 
     extra_rows = len(actual_rows) - len(used)
@@ -445,6 +454,7 @@ def score_import_result(
         },
         "tab_choice_correct": tab_choice_correct,
         "week_layout_correct": weeks_correct,
+        "confirm_layout_correct": confirm_layout_correct,
         "row_results": row_results,
         "layout_failures": layout_failures,
         "passed": all(not row.get("failures") for row in row_results) and not layout_failures,
@@ -519,6 +529,7 @@ def aggregate_metrics(results: list[dict[str, Any]]) -> dict[str, int]:
         "unresolved_auto_applied": unresolved_auto_applied,
         "layout_errors": sum(not case["week_layout_correct"] for case in results),
         "tab_choice_errors": sum(not case["tab_choice_correct"] for case in results),
+        "confirm_layout_errors": sum(not case["confirm_layout_correct"] for case in results),
         "extra_rows": sum(case.get("extra_rows", 0) for case in results),
     }
 
@@ -569,6 +580,7 @@ def build_report(
             "all_approximations_flagged": all(row["checks"]["approximations_flagged"] for row in row_results),
             "unresolved_only_suggested": all(row["checks"]["unresolved_only_suggested"] for row in row_results),
             "week_layout_correct": result["week_layout_correct"],
+            "confirm_layout_correct": result["confirm_layout_correct"],
             "tab_choice_correct": result["tab_choice_correct"],
         }
         sheet_results.append(
@@ -585,6 +597,7 @@ def build_report(
                 "layout": result["layout"],
                 "tab_choice_correct": result["tab_choice_correct"],
                 "week_layout_correct": result["week_layout_correct"],
+                "confirm_layout_correct": result["confirm_layout_correct"],
                 "checks": {name: {"passed": value} for name, value in row_checks.items()},
                 "passed": all(row_checks.values()),
             }
@@ -683,7 +696,8 @@ def _print_results(results: list[dict[str, Any]], metrics: dict[str, int]) -> No
         f"{metrics['silently_dropped_rows']} silently dropped; {metrics['extra_rows']} extra rows; "
         f"{metrics['approximations_flagged']}/{metrics['approximations']} approximations flagged; "
         f"{metrics['unresolved_auto_applied']} unresolved exercises applied; "
-        f"{metrics['layout_errors']} layout errors; {metrics['tab_choice_errors']} tab errors "
+        f"{metrics['layout_errors']} layout errors; {metrics['tab_choice_errors']} tab errors; "
+        f"{metrics['confirm_layout_errors']} confirmation errors "
         f"({'passed' if passed else 'failed'})"
     )
     for reason in reasons:

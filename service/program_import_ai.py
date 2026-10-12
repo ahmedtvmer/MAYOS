@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.exceptions import OutputParserException
@@ -29,7 +29,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-REPORT_VERSION = 3
+REPORT_VERSION = 4
+
+
+@dataclass(frozen=True)
+class SheetLayoutErrors:
+    week: int | None
+    tab: int | None
+    confirm_layout: int | None
+    failure: str | None = None
 
 # A whole sheet (every week in one call) far exceeds the coach model's shared
 # 512-token reply budget; a truncated reply fails as LengthFinishReasonError.
@@ -176,7 +184,7 @@ def evaluate_pass_condition(metrics: Any) -> tuple[bool, list[str], dict[str, An
     required = (
         "expected_rows", "correct_rows", "silently_dropped_rows", "approximations",
         "approximations_flagged", "unresolved_names", "unresolved_auto_applied",
-        "layout_errors", "tab_choice_errors",
+        "layout_errors", "tab_choice_errors", "confirm_layout_errors",
     )
     if not isinstance(metrics, dict) or any(not _valid_count(metrics.get(key)) for key in required):
         return False, ["evaluation metrics are incomplete or invalid"], {}
@@ -201,6 +209,8 @@ def evaluate_pass_condition(metrics: Any) -> tuple[bool, list[str], dict[str, An
         reasons.append("one or more sheets had incorrect week detection or selection")
     if metrics["tab_choice_errors"] != 0:
         reasons.append("one or more workbooks had incorrect tab selection")
+    if metrics["confirm_layout_errors"] != 0:
+        reasons.append("one or more sheets had incorrect layout confirmation")
     return not reasons, reasons, stats
 
 
@@ -368,6 +378,7 @@ def _metric_checks(metrics: dict[str, Any]) -> dict[str, bool]:
         "confirm_only_suggestions": metrics.get("unresolved_auto_applied") == 0,
         "week_layout": metrics.get("layout_errors") == 0,
         "tab_choice": metrics.get("tab_choice_errors") == 0,
+        "layout_confirmation": metrics.get("confirm_layout_errors") == 0,
     }
 
 
@@ -535,11 +546,15 @@ def _score_sheet_rows(case_id: str, fixture: dict[str, Any], sheet: dict[str, An
     }, None
 
 
-def _sheet_layout_errors(case_id: str, fixture: dict[str, Any], sheet: dict[str, Any]) -> tuple[int | None, int | None, str | None]:
+def _sheet_layout_errors(
+    case_id: str, fixture: dict[str, Any], sheet: dict[str, Any]
+) -> SheetLayoutErrors:
     preflight = sheet.get("preflight")
     layout = sheet.get("layout")
     if not isinstance(preflight, dict) or not isinstance(layout, dict):
-        return None, None, f"recorded tab or week layout is missing for sheet {case_id}"
+        return SheetLayoutErrors(
+            None, None, None, f"recorded tab or week layout is missing for sheet {case_id}"
+        )
     tabs_match = (
         preflight.get("detected_tabs") == fixture.get("expected_tabs")
         and preflight.get("requires_tab_choice") is fixture.get("expected_requires_tab_choice")
@@ -553,9 +568,21 @@ def _sheet_layout_errors(case_id: str, fixture: dict[str, Any], sheet: dict[str,
         and layout.get("selected_week") == chosen_week
         and layout.get("weeks_not_imported") == [week for week in expected_weeks if week != chosen_week]
     )
-    if sheet.get("tab_choice_correct") is not tabs_match or sheet.get("week_layout_correct") is not weeks_match:
-        return None, None, f"recorded tab or week check disagrees with the fixture for sheet {case_id}"
-    return int(not weeks_match), int(not tabs_match), None
+    confirmation_match = layout.get("confirm_layout") is fixture.get("expected_confirm_layout", False)
+    if (
+        sheet.get("tab_choice_correct") is not tabs_match
+        or sheet.get("week_layout_correct") is not weeks_match
+        or sheet.get("confirm_layout_correct") is not confirmation_match
+    ):
+        return SheetLayoutErrors(
+            None,
+            None,
+            None,
+            f"recorded tab, week, or confirmation check disagrees with the fixture for sheet {case_id}",
+        )
+    return SheetLayoutErrors(
+        int(not weeks_match), int(not tabs_match), int(not confirmation_match)
+    )
 
 
 def _validate_sheet_verdict(
@@ -572,6 +599,7 @@ def _validate_sheet_verdict(
         "unresolved_only_suggested": metrics["unresolved_auto_applied"] == 0,
         "week_layout_correct": layout_errors["week"] == 0,
         "tab_choice_correct": layout_errors["tab"] == 0,
+        "confirm_layout_correct": layout_errors["confirm_layout"] == 0,
     }
     if (
         not isinstance(checks, dict)
@@ -602,16 +630,24 @@ def _recompute_recorded_evaluation(report: dict[str, Any]) -> tuple[bool, list[s
             "approximations_flagged", "unresolved_names", "unresolved_auto_applied", "extra_rows",
         )
     }
-    layout_errors = tab_errors = 0
+    layout_errors = tab_errors = confirm_layout_errors = 0
     for case_id, fixture in fixtures.items():
         sheet_metrics, failure = _score_sheet_rows(case_id, fixture, sheets[case_id])
         if failure:
             return False, [failure], {}
-        week_error, tab_error, failure = _sheet_layout_errors(case_id, fixture, sheets[case_id])
-        if failure:
-            return False, [failure], {}
+        sheet_layout_errors = _sheet_layout_errors(case_id, fixture, sheets[case_id])
+        if sheet_layout_errors.failure:
+            return False, [sheet_layout_errors.failure], {}
+        week_error = sheet_layout_errors.week
+        tab_error = sheet_layout_errors.tab
+        confirm_error = sheet_layout_errors.confirm_layout
+        if week_error is None or tab_error is None or confirm_error is None:
+            return False, [f"recorded sheet checks are incomplete for {case_id}"], {}
         failure = _validate_sheet_verdict(
-            case_id, sheets[case_id], sheet_metrics, {"week": week_error, "tab": tab_error}
+            case_id,
+            sheets[case_id],
+            sheet_metrics,
+            {"week": week_error, "tab": tab_error, "confirm_layout": confirm_error},
         )
         if failure:
             return False, [failure], {}
@@ -619,8 +655,10 @@ def _recompute_recorded_evaluation(report: dict[str, Any]) -> tuple[bool, list[s
             totals[key] += sheet_metrics[key]
         layout_errors += week_error
         tab_errors += tab_error
+        confirm_layout_errors += confirm_error
     totals["layout_errors"] = layout_errors
     totals["tab_choice_errors"] = tab_errors
+    totals["confirm_layout_errors"] = confirm_layout_errors
     return True, [], totals
 
 def _validate_report_file(path: str) -> tuple[bool, str]:
