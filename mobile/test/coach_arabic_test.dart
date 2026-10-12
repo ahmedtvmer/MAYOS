@@ -396,7 +396,7 @@ void main() {
       tester,
       find.text('API notice: program schedule changed.'),
     );
-    expect(find.text('دعوة لاعب'), findsOneWidget);
+    expect(find.text('دعوة لاعب للتدريب'), findsOneWidget);
     expect(find.text('API notice: program schedule changed.'), findsOneWidget);
 
     await tester.tap(find.text('الطلبات'));
