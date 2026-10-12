@@ -5,6 +5,7 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from service.analytics import PROPERTY_TYPES, WORKOUT_SYNC_FAILURE_REASONS
+from service.display_language import DisplayLanguage
 from service.intake import IntakeValidationError, validate_answer
 from service.program_import_constants import (
     MAX_PROGRAM_IMPORT_ROWS,
@@ -194,7 +195,7 @@ class TraineeIn(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     remember_me: bool = False
     coach_invite_code: str | None = None
-    display_language: Literal["en", "ar"] = "en"
+    display_language: DisplayLanguage = "en"
     first_touch: FirstTouchIn | None = None
 
 
@@ -202,11 +203,11 @@ class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
     trainee_id: str
-    display_language: Literal["en", "ar"] = "en"
+    display_language: DisplayLanguage = "en"
 
 
 class DisplayLanguageIn(BaseModel):
-    display_language: Literal["en", "ar"]
+    display_language: DisplayLanguage
 
 
 class AnalyticsPreferenceIn(BaseModel):
@@ -239,7 +240,7 @@ class GoogleCompleteIn(BaseModel):
 
     signup_ticket: str
     username: str
-    display_language: Literal["en", "ar"] = "en"
+    display_language: DisplayLanguage = "en"
     id_token: str | None = None
     first_touch: FirstTouchIn | None = None
 
@@ -304,7 +305,7 @@ class AccountOut(BaseModel):
     plans: AccountPlansOut
     has_password: bool
     linked_sign_ins: list[str]
-    display_language: Literal["en", "ar"]
+    display_language: DisplayLanguage
     analytics_allowed: bool = True
     recovery_email_verified: bool = False
     coach_ai_enabled: bool = False
@@ -762,6 +763,8 @@ class CoachPersonalRecordOut(BaseModel):
 class CheckpointRatingPartOut(BaseModel):
     part: str
     label: str
+    part_code: str
+    label_code: str
 
 
 class CheckpointReviewListItemOut(BaseModel):
@@ -780,6 +783,7 @@ class CheckpointReviewOut(BaseModel):
     rating: list[CheckpointRatingPartOut]
     text: str
     text_is_template: bool
+    text_language: DisplayLanguage | None = None
 
 
 class CoachExerciseHistoryPointOut(BaseModel):

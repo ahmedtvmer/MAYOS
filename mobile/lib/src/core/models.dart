@@ -2004,19 +2004,33 @@ class TrainingStatus {
 }
 
 class CheckpointRatingPart {
-  const CheckpointRatingPart({required this.part, required this.label});
+  const CheckpointRatingPart({
+    required this.part,
+    required this.label,
+    this.partCode,
+    this.labelCode,
+  });
 
   factory CheckpointRatingPart.fromJson(Map<String, dynamic> json) {
     final dynamic part = json['part'];
     final dynamic label = json['label'];
+    final dynamic partCode = json['part_code'];
+    final dynamic labelCode = json['label_code'];
     if (part is! String || label is! String) {
       throw const FormatException('Invalid checkpoint rating part.');
     }
-    return CheckpointRatingPart(part: part, label: label);
+    return CheckpointRatingPart(
+      part: part,
+      label: label,
+      partCode: partCode is String ? partCode : null,
+      labelCode: labelCode is String ? labelCode : null,
+    );
   }
 
   final String part;
   final String label;
+  final String? partCode;
+  final String? labelCode;
 }
 
 /// One row from the player's or assigned coach's Checkpoints list.
@@ -2063,6 +2077,7 @@ class CheckpointReview {
     required this.rating,
     required this.text,
     required this.textIsTemplate,
+    this.textLanguage,
   });
 
   factory CheckpointReview.fromJson(Map<String, dynamic> json) {
@@ -2082,6 +2097,7 @@ class CheckpointReview {
           .toList(growable: false),
       text: json['text'] as String,
       textIsTemplate: json['text_is_template'] as bool? ?? false,
+      textLanguage: json['text_language'] as String?,
     );
   }
 
@@ -2092,6 +2108,7 @@ class CheckpointReview {
   final List<CheckpointRatingPart> rating;
   final String text;
   final bool textIsTemplate;
+  final String? textLanguage;
 }
 
 /// `PUT /profile/schedule` response: the appended version and the current schedule.

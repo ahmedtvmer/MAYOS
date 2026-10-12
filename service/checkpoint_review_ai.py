@@ -10,6 +10,7 @@ from typing import Any
 from agent.prompts import ASSISTANT_STYLE_KEYS, DEFAULT_ASSISTANT_STYLE, render_assistant_style
 from database.registry.model_usage import ALLOWANCE_EXEMPT_PURPOSE
 from service import evaluation_report_gate
+from service.display_language import DISPLAY_LANGUAGE_ORDER
 from service.evaluation_report_gate import EvaluationReportConfig, GateStatus, evaluate_gate as _evaluate_gate
 from utils import player_output_budgets
 
@@ -116,7 +117,7 @@ def build_messages(
 
 def canonical_messages_text() -> str:
     rendered = []
-    for language in ("en", "ar"):
+    for language in DISPLAY_LANGUAGE_ORDER:
         conflicting_language = "Arabic" if language == "en" else "English"
         for style in ASSISTANT_STYLE_KEYS:
             fixture = {**CANONICAL_FIXTURE, "language": language}

@@ -408,7 +408,14 @@ def test_coach_checkpoint_review_reads_do_not_open_player_review(api):
     assert listed.json()[0]["checkpoint"] == 10
     assert detail.json()["text"] == "Checkpoint 10: 10 workouts since you started logging in MAYOS."
     assert detail.json()["text_is_template"] is True
-    assert detail.json()["rating"] == [{"part": "Consistency", "label": "Strong"}]
+    assert detail.json()["rating"] == [
+        {
+            "part": "Consistency",
+            "label": "Strong",
+            "part_code": "consistency",
+            "label_code": "strong",
+        }
+    ]
     db.switch_user("p1")
     assert db.conn.execute(
         "SELECT opened_at FROM checkpoint_reviews WHERE checkpoint = 10"
@@ -500,6 +507,17 @@ def test_other_coach_and_unknown_and_revoked_are_indistinguishable(api):
     unknown = client.get("/coach/assignments/does-not-exist/player/summary", headers=other_headers)
     assert other.status_code == unknown.status_code == 403
     assert other.json()["detail"] == unknown.json()["detail"] == coach_history_service.DENIED_ERROR
+    other_checkpoint = client.get(
+        f"{base}/checkpoint-reviews/10", headers=other_headers
+    )
+    unknown_checkpoint = client.get(
+        "/coach/assignments/does-not-exist/player/checkpoint-reviews/10",
+        headers=other_headers,
+    )
+    assert other_checkpoint.status_code == unknown_checkpoint.status_code == 403
+    assert other_checkpoint.json()["detail"] == unknown_checkpoint.json()["detail"] == (
+        coach_history_service.DENIED_ERROR
+    )
 
     # Revoking the real assignment yields the same generic denial.
     assert client.post(f"/coach/assignments/{assignment_id}/revoke", headers=coach_headers).status_code == 200

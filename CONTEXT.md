@@ -53,7 +53,7 @@ A coach who joined during the closed trial and therefore qualifies for the found
 The maximum number of completed assistant requests an account may use in a given period, with the same request-count ceiling in English and Arabic. An account with both player and coach capabilities has separate Lifter and Coach allowances.
 
 **Assistant style**:
-How the player's assistant talks to that player: a chosen tone and optional instructions in the player's own words. It shapes the wording of assistant chat and Checkpoint reviews, never their facts, numbers, program changes, safety rules or reply language. It does not apply to what a coach reads.
+How the player's assistant talks to that player: a chosen tone and optional instructions in the player's own words. It shapes the wording of assistant chat and player-facing Checkpoint reviews, never their facts, numbers, program changes, safety rules or reply language. An active coach may read the player's saved review prose in that style, but never sees the style settings or custom-instruction text themselves; the style does not apply to content generated for a coach.
 _Arabic_: أسلوب المساعد
 _Avoid_: Persona, coach tone
 
@@ -312,7 +312,7 @@ _Arabic_: محطة تقدم
 _Avoid_: Milestone, achievement
 
 **Checkpoint review**:
-The assessment of a player's training since their previous checkpoint, with a rating computed from recorded facts and player-facing prose written once in their Assistant style and never changed. During an active assignment, the coach reads a neutral assessment of those same facts and rating, unaffected by the player's style or optional instructions.
+The assessment of a player's training since their previous checkpoint, with a rating computed from recorded facts and player-facing prose written once in their Assistant style and never changed. During an active Assignment, the coach reads that same saved prose with its facts and ratings; before prose is saved, the coach sees a fixed template in the coach's Display language. Style settings and custom-instruction text are never shown to the coach.
 _Arabic_: مراجعة محطة التقدم
 _Avoid_: AI rating, performance score
 

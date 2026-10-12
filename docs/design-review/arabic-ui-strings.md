@@ -115,6 +115,25 @@ numbers use Western digits.
 | No Checkpoints yet. | لا توجد محطات تقدم بعد. |
 | Your {ordinal} workout | حصتك التدريبية رقم {count} |
 | Could not load this Checkpoint review. | تعذر تحميل مراجعة محطة التقدم. |
+| Checkpoint review | مراجعة محطة التقدم |
+| Checkpoint {number} | محطة تقدم ⁦{number}⁩ |
+| Consistency | الاتساق |
+| Progression | التقدم |
+| Volume trend | اتجاه حجم التدريب |
+| Strong | قوي |
+| Steady | مستقر |
+| Needs attention | يحتاج إلى اهتمام |
+| Not enough weeks yet | لا توجد أسابيع كافية بعد |
+| Holding | ثابت |
+| Not enough data | لا توجد بيانات كافية |
+| Rising | متزايد |
+| Falling | متناقص |
+| Original text language: English | لغة النص الأصلي: الإنجليزية |
+| Original text language: Arabic | لغة النص الأصلي: العربية |
+| Checkpoint 10: 10 workouts since you started logging in MAYOS. | محطة تقدم 10: أكملت 10 حصص تدريبية منذ بدء تسجيلك في MAYOS. |
+| Checkpoint 25: 15 workouts since your last checkpoint. | محطة تقدم 25: أكملت 15 حصة تدريبية منذ محطة التقدم السابقة. |
+| Checkpoint template count agreement | 3–10: حصص تدريبية; 11+: حصة تدريبية |
+| #257 fake saved Arabic review prose fixture | كان تقدمك في التدريب مستقرًا. |
 | Strength | القوة |
 | Volume | الحجم التدريبي |
 | Body weight | وزن الجسم |
@@ -875,7 +894,7 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 | No personal records yet. | لا توجد أرقام قياسية شخصية بعد. |
 | Checkpoints | محطات التقدم |
 | No Checkpoints yet. | لا توجد محطات تقدم بعد. |
-| Checkpoint {number} | محطة التقدم {number} |
+| Checkpoint {number} | محطة تقدم ⁦{number}⁩ |
 | Mon / Tue / Wed / Thu / Fri / Sat / Sun | الاثنين / الثلاثاء / الأربعاء / الخميس / الجمعة / السبت / الأحد |
 | Exercises | التمارين |
 | No exercises logged yet. | لم تُسجل تمارين بعد. |

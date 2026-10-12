@@ -418,6 +418,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         // The server accepted the initiating Account's preference, but a
         // logout or account switch means it must not become the active choice.
         displayLanguageController.cacheAccountChoice(accountId, value);
+      } else {
+        await displayLanguageController.useAccount(accountId, value);
       }
       if (!mounted) return;
       if (stillCurrent) {

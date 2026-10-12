@@ -1624,7 +1624,7 @@ class FakeMayosApi {
           checkpoint == null ? null : checkpointReviewDetails[checkpoint];
       return review == null
           ? const FakeResponse(404, <String, dynamic>{'detail': 'Not found.'})
-          : FakeResponse(200, review);
+          : FakeResponse(200, _checkpointReviewForRequest(review, request));
     }
     if (path.endsWith('/player/summary')) {
       return FakeResponse(200, coachPlayerSummary);
@@ -4528,7 +4528,27 @@ class FakeMayosApi {
     for (final Map<String, dynamic> row in checkpointReviewRows) {
       if (row['checkpoint'] == checkpoint) row['opened'] = true;
     }
-    return FakeResponse(200, review);
+    return FakeResponse(200, _checkpointReviewForRequest(review, request));
+  }
+
+  Map<String, dynamic> _checkpointReviewForRequest(
+    Map<String, dynamic> review,
+    FakeRequest request,
+  ) {
+    final Map<String, dynamic> response = Map<String, dynamic>.from(review);
+    final dynamic localizedTexts = response.remove('text_by_language');
+    final dynamic language = request.headers.entries
+        .firstWhere(
+          (MapEntry<String, dynamic> entry) =>
+              entry.key.toLowerCase() == 'accept-language',
+          orElse: () => const MapEntry<String, dynamic>('', 'en'),
+        )
+        .value;
+    if (response['text_is_template'] == true && localizedTexts is Map) {
+      final dynamic localizedText = localizedTexts[language == 'ar' ? 'ar' : 'en'];
+      if (localizedText is String) response['text'] = localizedText;
+    }
+    return response;
   }
 
   FakeResponse _volume(FakeRequest request) {

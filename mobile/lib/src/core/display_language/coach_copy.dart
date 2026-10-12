@@ -1,5 +1,5 @@
 import 'arabic_count.dart';
-import 'catalog.dart' show exerciseNameOrFallback;
+import 'catalog.dart' show MayosCopy, exerciseNameOrFallback;
 import 'message_copy.dart';
 import 'message_resolution.dart';
 import '../personal_records.dart';
@@ -730,7 +730,7 @@ class CoachCopy {
   String get noCheckpoints =>
       isArabic ? 'لا توجد محطات تقدم بعد.' : 'No Checkpoints yet.';
   String checkpointNumber(int number) =>
-      isArabic ? 'محطة التقدم ${_ltr('$number')}' : 'Checkpoint $number';
+      MayosCopy(languageCode).checkpointAt(number);
   String checkpointPeriod(String start, String end) =>
       isArabic ? '${_ltr(start)} – ${_ltr(end)}' : '$start – $end';
   String recordHistory(String type, String value, int reps, String date) {

@@ -37,6 +37,26 @@ REVIEW_RATING = [
     {"part": "Progression", "label": "Strong"},
     {"part": "Volume trend", "label": "Rising"},
 ]
+REVIEW_RATING_RESPONSE = [
+    {
+        "part": "Consistency",
+        "label": "Steady",
+        "part_code": "consistency",
+        "label_code": "steady",
+    },
+    {
+        "part": "Progression",
+        "label": "Strong",
+        "part_code": "progression",
+        "label_code": "strong",
+    },
+    {
+        "part": "Volume trend",
+        "label": "Rising",
+        "part_code": "volume_trend",
+        "label_code": "rising",
+    },
+]
 
 
 @pytest.fixture
@@ -267,9 +287,29 @@ def test_gate_preserves_all_checkpoint_report_reasons(api, monkeypatch, tmp_path
     assert status.reason == expected_reason
 
 
-def test_gate_off_returns_template_without_calling_model(api, monkeypatch, scripted_chat_model):
+@pytest.mark.parametrize(
+    ("language", "expected_template"),
+    [
+        (
+            "en",
+            "Checkpoint 10: 10 workouts since you started logging in MAYOS.",
+        ),
+        (
+            "ar",
+            "محطة تقدم 10: أكملت 10 حصص تدريبية منذ بدء تسجيلك في MAYOS.",
+        ),
+    ],
+)
+def test_gate_off_returns_display_language_template_without_calling_model(
+    api, monkeypatch, scripted_chat_model, language, expected_template
+):
     client, db, _tmp_path = api
     headers, _account_id = _register(client, db, "review-off")
+    assert client.put(
+        "/auth/display-language",
+        headers=headers,
+        json={"display_language": language},
+    ).status_code == 200
     _seed_review(db, "review-off")
     stub = _model(scripted_chat_model)
 
@@ -277,7 +317,8 @@ def test_gate_off_returns_template_without_calling_model(api, monkeypatch, scrip
 
     assert response.status_code == 200
     assert response.json()["text_is_template"] is True
-    assert response.json()["text"] == "Checkpoint 10: 10 workouts since you started logging in MAYOS."
+    assert response.json()["text"] == expected_template
+    assert response.json()["text_language"] is None
     assert not stub.calls
     with db.open_ledger("review-off") as ledger:
         row = ledger.get_checkpoint_review_row(10)
@@ -372,7 +413,8 @@ def test_first_generation_uses_system_and_user_turns_and_saved_prose_is_immutabl
         assert first.status_code == 200
         assert first.json()["text_is_template"] is False
         assert first.json()["facts"] == REVIEW_FACTS
-        assert first.json()["rating"] == REVIEW_RATING
+        assert first.json()["rating"] == REVIEW_RATING_RESPONSE
+        assert client.get("/checkpoint-reviews", headers=headers).json()[0]["rating"] == REVIEW_RATING_RESPONSE
         messages = stub.calls[-1]["messages"]
         assert [message.type for message in messages] == ["system", "human"]
         assert messages[0].content == checkpoint_review_ai.SYSTEM_PROMPT
@@ -460,13 +502,17 @@ def test_display_language_facts_and_safety_precede_conflicting_quoted_style(api,
     _seed_review(db, "review-language")
     _enable(monkeypatch, tmp_path)
     stub = _model(scripted_chat_model, reply=reply)
-    monkeypatch.setattr("service.checkpoint_reviews.resolve_display_language", lambda _: language)
+    assert client.put(
+        "/auth/display-language",
+        headers=headers,
+        json={"display_language": language},
+    ).status_code == 200
 
     response = client.get("/checkpoint-reviews/10", headers=headers)
     assert response.status_code == 200
     assert response.json()["text"] == reply
     assert response.json()["facts"] == REVIEW_FACTS
-    assert response.json()["rating"] == REVIEW_RATING
+    assert response.json()["rating"] == REVIEW_RATING_RESPONSE
     payload = _rendered(stub.calls[0]["messages"])
     core, preferences = payload.split("Assistant style (player's wording preference", 1)
     assert "Give no medical advice" in core
@@ -503,11 +549,29 @@ def test_review_usage_does_not_reduce_daily_allowance(api, monkeypatch, scripted
     ) >= 750
 
 
-def test_coach_reads_neutral_projection_without_generating_or_exposing_player_style(api, monkeypatch, scripted_chat_model):
+@pytest.mark.parametrize(
+    ("player_language", "coach_language", "generated_text"),
+    [
+        (
+            "en",
+            "ar",
+            "PLAYER_ONLY_STYLE_TEXT. Your consistency stayed steady.",
+        ),
+        ("ar", "en", "كان تقدمك في التدريب مستقرًا."),
+    ],
+)
+def test_coach_reads_saved_player_prose_with_coach_language_and_active_assignment_gate(
+    api, monkeypatch, scripted_chat_model, player_language, coach_language, generated_text
+):
     client, db, tmp_path = api
     coach = client.post("/auth/register", json={"trainee_id": "review-coach", "password": "correct-horse-1"})
     assert coach.status_code == 201, coach.text
     coach_headers = {"Authorization": f"Bearer {coach.json()['access_token']}"}
+    assert client.put(
+        "/auth/display-language",
+        headers=coach_headers,
+        json={"display_language": coach_language},
+    ).status_code == 200
     invite = coach_service.issue_coach_invite(db, "review-coach", actor="cli")
     assert invite["ok"]
     assert client.post("/coach/invite/redeem", headers=coach_headers, json={"token": invite["token"]}).status_code == 200
@@ -519,6 +583,11 @@ def test_coach_reads_neutral_projection_without_generating_or_exposing_player_st
     assignment_invite = client.post("/coach/assignments/invites", headers=coach_headers)
     assert assignment_invite.status_code == 200, assignment_invite.text
     player_headers, _ = _register(client, db, "review-assigned-player")
+    assert client.put(
+        "/auth/display-language",
+        headers=player_headers,
+        json={"display_language": player_language},
+    ).status_code == 200
     redeemed = client.post(
         "/assignments/invites/redeem",
         headers=player_headers,
@@ -527,7 +596,7 @@ def test_coach_reads_neutral_projection_without_generating_or_exposing_player_st
     assert redeemed.status_code == 200, redeemed.text
     _seed_review(db, "review-assigned-player")
     _enable(monkeypatch, tmp_path)
-    stub = _model(scripted_chat_model, reply="PLAYER_ONLY_STYLE_TEXT. Your consistency stayed steady.")
+    stub = _model(scripted_chat_model, reply=generated_text)
     assert client.put("/profile", headers=player_headers, json={"current_goal": "Strength"}).status_code == 200
     assert client.put("/profile/persona", headers=player_headers, json={
         "coach_tone": "scientific", "custom_instructions": "PLAYER_PRIVATE_PREFERENCE",
@@ -537,21 +606,46 @@ def test_coach_reads_neutral_projection_without_generating_or_exposing_player_st
     first = client.get(path, headers=coach_headers)
     assert first.status_code == 200, first.text
     assert first.json()["text_is_template"] is True
+    assert first.json()["text_language"] is None
+    assert first.json()["text"].startswith(
+        "محطة تقدم 10:" if coach_language == "ar" else "Checkpoint 10:"
+    )
     assert first.json()["facts"] == REVIEW_FACTS
-    assert first.json()["rating"] == REVIEW_RATING
+    assert first.json()["rating"] == REVIEW_RATING_RESPONSE
     assert not stub.calls
     player_review = client.get("/checkpoint-reviews/10", headers=player_headers)
-    assert player_review.json()["text"] == stub.default_turn
+    assert player_review.json()["text"] == generated_text
+    assert player_review.json()["text_language"] == player_language
     assert len(stub.calls) == 1
+    assert client.put(
+        "/auth/display-language",
+        headers=player_headers,
+        json={"display_language": "en" if player_language == "ar" else "ar"},
+    ).status_code == 200
     assert client.put("/profile/persona", headers=player_headers, json={
         "coach_tone": "concise", "custom_instructions": "ANOTHER_PRIVATE_PREFERENCE",
     }).status_code == 200
     second = client.get(path, headers=coach_headers)
-    assert second.json() == first.json()
-    assert "PLAYER_ONLY_STYLE_TEXT" not in second.text
+    assert second.json()["text"] == generated_text
+    assert second.json()["text_is_template"] is False
+    assert second.json()["text_language"] == player_language
+    assert second.json()["rating"] == first.json()["rating"]
+    assert second.json()["facts"] == first.json()["facts"]
     assert "PRIVATE_PREFERENCE" not in second.text
-    assert client.get("/checkpoint-reviews/10", headers=player_headers).json() == player_review.json()
+    assert second.json()["text"] == player_review.json()["text"]
+    player_after_language_change = client.get("/checkpoint-reviews/10", headers=player_headers)
+    assert player_after_language_change.json()["text"] == generated_text
+    assert player_after_language_change.json()["text"] == player_review.json()["text"]
+    assert player_after_language_change.json()["text_language"] == player_language
+    assert player_after_language_change.json()["rating"] == REVIEW_RATING_RESPONSE
     assert len(stub.calls) == 1
+    with db.open_ledger("review-assigned-player") as ledger:
+        row = ledger.get_checkpoint_review_row(10)
+        assert row["text"] == generated_text
+        assert row["text_language"] == player_language
+        assert second.json()["text"] == row["text"]
+        assert json.loads(row["facts_json"]) == REVIEW_FACTS
+        assert json.loads(row["rating_json"]) == REVIEW_RATING
     ended = client.post("/assignments/me/end", headers=player_headers)
     assert ended.status_code == 200
     denied = client.get(path, headers=coach_headers)

@@ -325,9 +325,19 @@ void main() {
     await tester.tap(
       find.byKey(const ValueKey<String>('dashboard.checkpoint-review')),
     );
-    await _pumpUntilFound(tester, find.text('حصتك التدريبية رقم 10'));
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const ValueKey<String>('checkpoint.review.title')),
+    );
 
-    expect(find.text('حصتك التدريبية رقم 10'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('checkpoint.review.title')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('checkpoint.review.checkpoint')),
+      findsOneWidget,
+    );
     final Text period = tester.widget<Text>(
       find.byKey(const ValueKey<String>('checkpoint.review.period')),
     );

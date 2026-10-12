@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/api_client.dart';
 import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/catalog.dart';
+import '../../../core/display_language/controller.dart';
 import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
@@ -44,17 +46,27 @@ class _CheckpointReviewScreenState
           .read(apiClientProvider)
           .coachCheckpointReview(assignmentId, widget.checkpoint);
     }
-    return ref.read(checkpointReviewProvider(widget.checkpoint).future);
+    return ref.read(apiClientProvider).checkpointReview(widget.checkpoint);
   }
 
   Future<void> _retry() async {
     final Future<CheckpointReview> future = _loadReview();
-    setState(() => _reviewFuture = future);
+    setState(() => _replaceReviewFuture(future));
     await future;
+  }
+
+  void _replaceReviewFuture(Future<CheckpointReview> future) {
+    _reviewFuture = future;
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<String>(displayLanguageProvider, (String? previous, String next) {
+      if (previous != null && previous != next) {
+        final Future<CheckpointReview> future = _loadReview();
+        setState(() => _replaceReviewFuture(future));
+      }
+    });
     return FutureBuilder<CheckpointReview>(
       future: _reviewFuture,
       builder:
@@ -91,61 +103,129 @@ class _ReviewBody extends StatelessWidget {
 
   final CheckpointReview review;
 
+  Widget _heading(
+    BuildContext context,
+    MayosCopy copy,
+    MayosThemeExtension theme,
+  ) =>
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            copy.checkpointReview,
+            key: const ValueKey<String>('checkpoint.review.title'),
+            style: MayosTypography.of(context).display.copyWith(
+              fontSize: 30,
+              color: theme.textPrimary,
+            ),
+          ),
+          const SizedBox(height: MayosSpacing.xs),
+          Text(
+            copy.checkpointAt(review.checkpoint),
+            key: const ValueKey<String>('checkpoint.review.checkpoint'),
+            style: MayosTypography.of(context)
+                .bodySecondary
+                .copyWith(color: theme.textSecondary),
+          ),
+        ],
+      );
+
+  Widget _periodCard(
+    BuildContext context,
+    MayosCopy copy,
+    MayosThemeExtension theme,
+  ) =>
+      MayosCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            MayosSectionHeader(title: copy.period),
+            const SizedBox(height: MayosSpacing.xs),
+            Text(
+              '${review.periodStart} – ${review.periodEnd}',
+              key: const ValueKey<String>('checkpoint.review.period'),
+              textDirection: TextDirection.ltr,
+              style: MayosTypography.of(context)
+                  .bodySecondary
+                  .copyWith(color: theme.textSecondary),
+            ),
+          ],
+        ),
+      );
+
+  Widget _ratingCard(BuildContext context, MayosCopy copy) => MayosCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            MayosSectionHeader(title: copy.rating),
+            for (int index = 0; index < review.rating.length; index++)
+              _ratingRow(copy, index),
+          ],
+        ),
+      );
+
+  Widget _ratingRow(MayosCopy copy, int index) {
+    final CheckpointRatingPart rating = review.rating[index];
+    return ListTile(
+      key: ValueKey<String>('checkpoint.review.rating.$index'),
+      contentPadding: EdgeInsets.zero,
+      title: Text(copy.checkpointRatingPart(rating.partCode, rating.part)),
+      trailing: Text(copy.checkpointRatingLabel(rating.labelCode, rating.label)),
+    );
+  }
+
+  Widget _reviewTextCard(
+    BuildContext context,
+    MayosCopy copy,
+    MayosThemeExtension theme,
+  ) =>
+      MayosCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: _reviewTextContent(context, copy, theme),
+        ),
+      );
+
+  List<Widget> _reviewTextContent(
+    BuildContext context,
+    MayosCopy copy,
+    MayosThemeExtension theme,
+  ) =>
+      <Widget>[
+        if (review.textLanguage != null &&
+            review.textLanguage != copy.languageCode) ...<Widget>[
+          Text(
+            copy.originalReviewTextLanguage(review.textLanguage!),
+            key: const ValueKey<String>('checkpoint.review.original-language'),
+            style: MayosTypography.of(context)
+                .bodySecondary
+                .copyWith(color: theme.textSecondary),
+          ),
+          const SizedBox(height: MayosSpacing.sm),
+        ],
+        Text(
+          review.text,
+          key: const ValueKey<String>('checkpoint.review.text'),
+          style: MayosTypography.of(context)
+              .body
+              .copyWith(color: theme.textPrimary),
+        ),
+      ];
+
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MayosThemeExtension theme = MayosTheme.of(context);
+    final MayosCopy copy = displayCopyOf(context);
     return ListView(
       padding: MayosSpacing.screen,
       children: <Widget>[
-        Text(
-          displayCopyOf(context).checkpointWorkout(review.checkpoint),
-          key: const ValueKey<String>('checkpoint.review.title'),
-          style: MayosTypography.of(context).display.copyWith(
-            fontSize: 30,
-            color: c.textPrimary,
-          ),
-        ),
+        _heading(context, copy, theme),
         const SizedBox(height: MayosSpacing.lg),
-        MayosCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              MayosSectionHeader(title: displayCopyOf(context).period),
-              const SizedBox(height: MayosSpacing.xs),
-              Text(
-                '${review.periodStart} – ${review.periodEnd}',
-                key: const ValueKey<String>('checkpoint.review.period'),
-                textDirection: TextDirection.ltr,
-                style: MayosTypography.of(context).bodySecondary
-                    .copyWith(color: c.textSecondary),
-              ),
-            ],
-          ),
-        ),
+        _periodCard(context, copy, theme),
         const SizedBox(height: MayosSpacing.md),
-        MayosCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              MayosSectionHeader(title: displayCopyOf(context).rating),
-              for (int index = 0; index < review.rating.length; index++)
-                ListTile(
-                  key: ValueKey<String>('checkpoint.review.rating.$index'),
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(review.rating[index].part),
-                  trailing: Text(review.rating[index].label),
-                ),
-            ],
-          ),
-        ),
+        _ratingCard(context, copy),
         const SizedBox(height: MayosSpacing.md),
-        MayosCard(
-          child: Text(
-            review.text,
-            key: const ValueKey<String>('checkpoint.review.text'),
-            style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
-          ),
-        ),
+        _reviewTextCard(context, copy, theme),
       ],
     );
   }

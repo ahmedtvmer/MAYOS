@@ -339,8 +339,11 @@ For this call only, inference sets `chat_template_kwargs.enable_thinking`
 to `false`; other player requests keep the configured `LLM_EXTRA_BODY` behavior.
 These calls are metered as player usage with purpose `checkpoint_review` and
 excluded from the player's daily AI-allowance admission total. Saved style changes
-affect only future first generations. Coach reads return a neutral template with
-the stored facts/rating and never generate or return personalized player prose.
+affect only future first generations. Through an active Assignment, a Coach
+reads the Player's saved prose with its facts and ratings; style settings and
+custom-instruction text are not exposed. Before prose is saved, the Coach sees
+a fixed template in the Coach's Display language. Coach reads never generate
+review prose.
 
 ```bash
 export CHECKPOINT_REVIEW_AI_ENABLED=true

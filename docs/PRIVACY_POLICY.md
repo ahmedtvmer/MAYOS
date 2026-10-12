@@ -205,8 +205,10 @@ configured, the following is sent to it:
   chosen Assistant style, and your trimmed optional wording instructions (up to
   500 characters). Other profile facts, identity/contact fields, notes and chat
   are not selected for this request. Instructions you write may themselves
-  contain identifying information. The saved player prose is never rewritten;
-  your assigned coach reads a neutral view of the facts and rating instead.
+  contain identifying information. Your saved review prose is never rewritten;
+  during an active Assignment, your coach can read that prose in your Assistant
+  style with its facts and ratings. Your style settings and custom instructions
+  themselves are not shared with the coach.
 - **Onboarding**: the answers you type while setting up, so your profile and
   first Training program can be built. The intake and first-program creation
   use deterministic rules and do not send onboarding answers to a hosted model.

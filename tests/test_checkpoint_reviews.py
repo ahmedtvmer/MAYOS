@@ -134,5 +134,23 @@ def test_template_text_has_fixed_english_and_arabic_sentences():
         "Checkpoint 25: 15 workouts since your last checkpoint."
     )
     assert template_text(10, 10, "ar", True) == (
-        "نقطة التحقق 10: 10 تمرينًا منذ بدء تسجيلك في MAYOS."
+        "محطة تقدم 10: أكملت 10 حصص تدريبية منذ بدء تسجيلك في MAYOS."
     )
+    assert template_text(25, 15, "ar", False) == (
+        "محطة تقدم 25: أكملت 15 حصة تدريبية منذ محطة التقدم السابقة."
+    )
+
+
+@pytest.mark.parametrize(
+    ("workouts", "expected_count"),
+    [
+        (1, "1 حصة تدريبية"),
+        (2, "2 حصة تدريبية"),
+        (3, "3 حصص تدريبية"),
+        (10, "10 حصص تدريبية"),
+        (11, "11 حصة تدريبية"),
+        (25, "25 حصة تدريبية"),
+    ],
+)
+def test_arabic_template_uses_workout_number_agreement(workouts, expected_count):
+    assert expected_count in template_text(25, workouts, "ar", False)

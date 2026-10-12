@@ -169,7 +169,34 @@ class MayosCopy {
   String get checkpointReview =>
       isArabic ? 'مراجعة محطة التقدم' : 'Checkpoint review';
   String get checkpointLabel => isArabic ? 'محطة تقدم' : 'Checkpoint';
+  String checkpointAt(int number) => isArabic
+      ? '$checkpointLabel ${_ltr('$number')}'
+      : '$checkpointLabel $number';
   String get openYourReview => isArabic ? 'افتح المراجعة' : 'Open your review';
+  String checkpointRatingPart(String? code, String fallback) => switch (code) {
+        'consistency' => isArabic ? 'الاتساق' : 'Consistency',
+        'progression' => isArabic ? 'التقدم' : 'Progression',
+        'volume_trend' => isArabic ? 'اتجاه حجم التدريب' : 'Volume trend',
+        _ => fallback,
+      };
+  String checkpointRatingLabel(String? code, String fallback) =>
+      switch (code) {
+        'strong' => isArabic ? 'قوي' : 'Strong',
+        'steady' => isArabic ? 'مستقر' : 'Steady',
+        'needs_attention' =>
+          isArabic ? 'يحتاج إلى اهتمام' : 'Needs attention',
+        'not_enough_weeks' =>
+          isArabic ? 'لا توجد أسابيع كافية بعد' : 'Not enough weeks yet',
+        'holding' => isArabic ? 'ثابت' : 'Holding',
+        'not_enough_data' =>
+          isArabic ? 'لا توجد بيانات كافية' : 'Not enough data',
+        'rising' => isArabic ? 'متزايد' : 'Rising',
+        'falling' => isArabic ? 'متناقص' : 'Falling',
+        _ => fallback,
+      };
+  String originalReviewTextLanguage(String language) => isArabic
+      ? 'لغة النص الأصلي: ${language == 'ar' ? 'العربية' : 'الإنجليزية'}'
+      : 'Original text language: ${language == 'ar' ? 'Arabic' : 'English'}';
   String get noActiveProgram =>
       isArabic ? 'لا يوجد برنامج تدريبي نشط' : 'No active program';
   String get generateProgramForNextSession => isArabic

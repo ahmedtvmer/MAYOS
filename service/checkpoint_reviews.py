@@ -15,6 +15,7 @@ from service import coach_analytics
 from service import analytics
 from service import training_status
 from service._base import ledger_scope
+from service.display_language import SUPPORTED_DISPLAY_LANGUAGES
 from service.keyed_locks import KeyedLocks
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,22 @@ CONSISTENCY_STRONG_THRESHOLD = 0.8
 CONSISTENCY_STEADY_THRESHOLD = 0.5
 VOLUME_RISING_THRESHOLD = 1.05
 VOLUME_FALLING_THRESHOLD = 0.95
+
+_RATING_PART_CODES = {
+    "Consistency": "consistency",
+    "Progression": "progression",
+    "Volume trend": "volume_trend",
+}
+_RATING_LABEL_CODES = {
+    "Strong": "strong",
+    "Steady": "steady",
+    "Needs attention": "needs_attention",
+    "Not enough weeks yet": "not_enough_weeks",
+    "Holding": "holding",
+    "Rising": "rising",
+    "Falling": "falling",
+    "Not enough data": "not_enough_data",
+}
 
 
 @dataclass(frozen=True)
@@ -55,10 +72,25 @@ class _ReviewReadContext:
     background_tasks: Any = None
 
 
-def resolve_display_language(account_id: str | None = None) -> str:
-    """Current Display language; #135 will connect this to account preference."""
-    # TODO(#135): read the account's persisted Display language here.
-    return "en"
+def resolve_display_language(db: Any, account_id: str | None) -> str:
+    """Returns the account's supported Display language, falling back to English."""
+    if account_id is None:
+        return "en"
+    account = db.get_account(account_id)
+    language = account.get("display_language") if account is not None else None
+    return language if language in SUPPORTED_DISPLAY_LANGUAGES else "en"
+
+
+def _rating_with_codes(rating: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Adds stable client-localization codes without changing stored rating values."""
+    return [
+        {
+            **part,
+            "part_code": _RATING_PART_CODES.get(str(part.get("part")), "unknown"),
+            "label_code": _RATING_LABEL_CODES.get(str(part.get("label")), "unknown"),
+        }
+        for part in rating
+    ]
 
 
 def _session_ids(workouts: list[dict[str, Any]]) -> set[str]:
@@ -270,7 +302,7 @@ def create_checkpoint_review(
     )
 
 
-def _neutral_review_from_row(row: Any, language: str) -> dict[str, Any]:
+def _template_review_from_row(row: Any, language: str) -> dict[str, Any]:
     facts = json.loads(row["facts_json"])
     rating = json.loads(row["rating_json"])
     text = template_text(
@@ -284,16 +316,21 @@ def _neutral_review_from_row(row: Any, language: str) -> dict[str, Any]:
         "period_start": row["period_start"],
         "period_end": row["period_end"],
         "facts": facts,
-        "rating": rating,
+        "rating": _rating_with_codes(rating),
         "text": text,
         "text_is_template": True,
+        "text_language": None,
     }
 
 
 def _review_from_row(row: Any, language: str) -> dict[str, Any]:
-    review = _neutral_review_from_row(row, language)
+    review = _template_review_from_row(row, language)
     if row["text"] is not None:
-        review.update(text=row["text"] or review["text"], text_is_template=False)
+        review.update(
+            text=row["text"] or review["text"],
+            text_is_template=False,
+            text_language=row.get("text_language"),
+        )
     return review
 
 
@@ -412,11 +449,16 @@ def _generate_missing_review_text(context: _ReviewReadContext, fallback: dict[st
 
 def template_text(checkpoint: int, workouts: int, language: str, first: bool) -> str:
     if language == "ar":
-        # TODO(#135): review wording for Arabic dialect before model-written text lands.
-        period = "منذ بدء تسجيلك في MAYOS" if first else "منذ نقطة التحقق السابقة"
-        return f"نقطة التحقق {checkpoint}: {workouts} تمرينًا {period}."
+        period = "منذ بدء تسجيلك في MAYOS" if first else "منذ محطة التقدم السابقة"
+        workout_count = _arabic_workout_count(workouts)
+        return f"محطة تقدم {checkpoint}: أكملت {workout_count} {period}."
     period = "since you started logging in MAYOS" if first else "since your last checkpoint"
     return f"Checkpoint {checkpoint}: {workouts} workouts {period}."
+
+
+def _arabic_workout_count(workouts: int) -> str:
+    noun = "حصص تدريبية" if 3 <= workouts <= 10 else "حصة تدريبية"
+    return f"{workouts} {noun}"
 
 
 def list_checkpoint_reviews(
@@ -429,7 +471,7 @@ def list_checkpoint_reviews(
                 "checkpoint": int(row["checkpoint"]),
                 "period_start": row["period_start"],
                 "period_end": row["period_end"],
-                "rating": json.loads(row["rating_json"]),
+                "rating": _rating_with_codes(json.loads(row["rating_json"])),
                 "opened": row["opened_at"] is not None,
             }
             for row in rows
@@ -448,7 +490,7 @@ def read_checkpoint_review(
     client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
     background_tasks: Any = None,
 ) -> dict[str, Any] | None:
-    language = language or resolve_display_language(account_id)
+    language = language or resolve_display_language(db, account_id)
     context = _ReviewReadContext(db, ledger_id, checkpoint, language, account_id, ledger, client, background_tasks)
     row = _get_review_row(context, opened_at)
     if row is None:
@@ -499,8 +541,8 @@ def coach_checkpoint_review(
         row = ledger.get_checkpoint_review_row(checkpoint)
         if row is None:
             raise CheckpointReviewNotFoundError(checkpoint)
-        language = resolve_display_language(context["player"]["account_id"])
-        review = _neutral_review_from_row(row, language)
+        language = resolve_display_language(db, coach_account_id)
+        review = _review_from_row(row, language)
     coach_analytics.capture_player_history_viewed(
         db,
         coach_analytics.CoachDailyView(coach_account_id, assignment_id, client=client),
