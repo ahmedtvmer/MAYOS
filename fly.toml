@@ -44,7 +44,7 @@ swap_size_mb = 512
   COACH_AI_ENABLED = "true"
   COACH_AI_EVAL_REPORT = "/app/reports/coach_ai_eval.json"
   # Free-form Program import (#349/#350): on, gated by the committed live report
-  # for the configured coach model (DeepSeek-V4-Flash, 305/316 rows, owner-reviewed
+  # for the configured coach model (DeepSeek-V4-Flash, 352/352 rows on 21 owner-reviewed
   # sheets). A report for another model or prompt version keeps it off.
   PROGRAM_IMPORT_AI_ENABLED = "true"
   PROGRAM_IMPORT_AI_EVAL_REPORT = "/app/reports/program_import_eval.json"
