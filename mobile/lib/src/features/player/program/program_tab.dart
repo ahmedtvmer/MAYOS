@@ -298,26 +298,23 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   }
 
   Future<void> _requestProgramChange() async {
-    try {
-      final ProgramRequest? createdRequest = await requestProgramChange(
-        context,
-        ref,
-        onSubmitting: () => setState(() {
-          _requestingProgramChange = true;
-          _actionError = null;
-        }),
-      );
-      if (createdRequest == null || !mounted) return;
-      _showProgramChangeRequestSent();
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      _showProgramChangeRequestError(error);
-    }
+    final ProgramRequest? createdRequest = await requestProgramChange(
+      context,
+      ref,
+      onSubmitting: () => setState(() {
+        _requestingProgramChange = true;
+        _actionError = null;
+      }),
+      onFinished: () {
+        if (mounted) setState(() => _requestingProgramChange = false);
+      },
+    );
+    if (createdRequest == null || !mounted) return;
+    _showProgramChangeRequestSent();
   }
 
   void _showProgramChangeRequestSent() {
     if (!mounted) return;
-    setState(() => _requestingProgramChange = false);
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -325,13 +322,6 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
           content: Text(displayCopyOf(context).programChangeRequestSent),
         ),
       );
-  }
-
-  void _showProgramChangeRequestError(ApiException error) {
-    setState(() {
-      _requestingProgramChange = false;
-      _actionError = mutationFailureMessage(error);
-    });
   }
 
   Future<void> _onSubstituteExercise(

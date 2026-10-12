@@ -178,7 +178,7 @@ void main() {
     expect(find.text('Reason: Shoulder discomfort.'), findsOneWidget);
   });
 
-  testWidgets('Arabic player sees the localized split refusal with accepted values',
+  testWidgets('split refusal keeps the localized error and entered fields in dialog',
       (tester) async {
     final FakeMayosApi fake = _playerFake()
       ..displayLanguage = 'ar'
@@ -211,7 +211,32 @@ void main() {
         'Bro Split، Anterior، Posterior، Glute، Total Body\u2069.';
     await _pumpUntilFound(tester, find.text(localizedError));
 
+    expect(find.byType(AlertDialog), findsOneWidget);
     expect(find.text(localizedError), findsOneWidget);
+    expect(
+      tester
+          .widget<EditableText>(
+            find.descendant(
+              of: find.byKey(const Key('program_request_split_field')),
+              matching: find.byType(EditableText),
+            ),
+          )
+          .controller
+          .text,
+      'Zumba',
+    );
+    expect(
+      tester
+          .widget<EditableText>(
+            find.descendant(
+              of: find.byKey(const Key('program_request_reason_field')),
+              matching: find.byType(EditableText),
+            ),
+          )
+          .controller
+          .text,
+      'أريد تغيير التقسيمة.',
+    );
     expect(fake.programRequests, isEmpty);
   });
 

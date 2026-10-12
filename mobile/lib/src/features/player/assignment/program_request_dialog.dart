@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/api_client.dart';
+import '../../../core/connectivity_message.dart';
+import '../../../core/display_language/assignment_copy.dart';
+import '../../../core/display_language/copy_context.dart';
+import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/display_language/assignment_copy.dart';
-import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/theme/mayos_theme.dart';
 import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_button.dart';
@@ -30,16 +33,22 @@ class ProgramSubstitutionRequestPrefill {
 
 /// The shared request form used from both the assignment page and Program tab.
 class ProgramRequestDialog extends StatefulWidget {
-  const ProgramRequestDialog({super.key, this.initialDraft}) : substitution = null;
+  const ProgramRequestDialog({
+    super.key,
+    this.initialDraft,
+    this.onSubmit,
+  }) : substitution = null;
 
   const ProgramRequestDialog.forSubstitution({
     super.key,
     required this.substitution,
   })  : assert(substitution != null),
-        initialDraft = null;
+        initialDraft = null,
+        onSubmit = null;
 
   final ProgramSubstitutionRequestPrefill? substitution;
   final ProgramRequestDraft? initialDraft;
+  final Future<ProgramRequest> Function(ProgramRequestDraft draft)? onSubmit;
 
   @override
   State<ProgramRequestDialog> createState() => _ProgramRequestDialogState();
@@ -50,25 +59,50 @@ Future<ProgramRequest?> requestProgramChange(
   WidgetRef ref, {
   ProgramRequestDraft? initialDraft,
   VoidCallback? onSubmitting,
-}) async {
-  final ProgramRequestDraft? draft = await showDialog<ProgramRequestDraft>(
-    context: context,
-    builder: (BuildContext context) => ProgramRequestDialog(
-      initialDraft: initialDraft,
-    ),
-  );
-  if (draft == null || !context.mounted) return null;
-  onSubmitting?.call();
-  return ref.read(apiClientProvider).createPlayerProgramRequest(
-        kind: draft.kind,
-        dayName: draft.dayName,
-        exerciseId: draft.exerciseId,
-        replacementExerciseId: draft.replacementExerciseId,
-        desiredWeeklyFrequency: draft.desiredWeeklyFrequency,
-        desiredSplitPreference: draft.desiredSplitPreference,
-        reason: draft.reason,
-      );
+  VoidCallback? onFinished,
+}) =>
+    _showProgramRequestDialog(
+      context,
+      initialDraft,
+      (ProgramRequestDraft draft) {
+        onSubmitting?.call();
+        return _createProgramRequest(ref, draft);
+      },
+      onFinished,
+    );
+
+Future<ProgramRequest?> _showProgramRequestDialog(
+  BuildContext context,
+  ProgramRequestDraft? initialDraft,
+  Future<ProgramRequest> Function(ProgramRequestDraft draft) onSubmit,
+  VoidCallback? onFinished,
+) async {
+  try {
+    return await showDialog<ProgramRequest>(
+      context: context,
+      builder: (_) => ProgramRequestDialog(
+        initialDraft: initialDraft,
+        onSubmit: onSubmit,
+      ),
+    );
+  } finally {
+    onFinished?.call();
+  }
 }
+
+Future<ProgramRequest> _createProgramRequest(
+  WidgetRef ref,
+  ProgramRequestDraft draft,
+) =>
+    ref.read(apiClientProvider).createPlayerProgramRequest(
+          kind: draft.kind,
+          dayName: draft.dayName,
+          exerciseId: draft.exerciseId,
+          replacementExerciseId: draft.replacementExerciseId,
+          desiredWeeklyFrequency: draft.desiredWeeklyFrequency,
+          desiredSplitPreference: draft.desiredSplitPreference,
+          reason: draft.reason,
+        );
 
 class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
   late final TextEditingController _day;
@@ -79,6 +113,7 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
   late String _kind;
   int? _frequency;
   String? _localError;
+  bool _submitting = false;
 
   @override
   void initState() {
@@ -111,13 +146,55 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
     super.dispose();
   }
 
-  void _submit() {
-    final String? error = _validationError(context);
-    if (error != null) {
-      setState(() => _localError = error);
+  Future<void> _submit() async {
+    if (_submitting || !_validateAndShowError()) return;
+    final ProgramRequestDraft draft = _buildDraft();
+    final Future<ProgramRequest> Function(ProgramRequestDraft draft)? submit =
+        widget.onSubmit;
+    if (submit == null) {
+      Navigator.of(context).pop(draft);
       return;
     }
-    Navigator.of(context).pop(_buildDraft());
+
+    await _submitToServer(draft, submit);
+  }
+
+  bool _validateAndShowError() {
+    final String? error = _validationError(context);
+    if (error == null) return true;
+    setState(() => _localError = error);
+    return false;
+  }
+
+  Future<void> _submitToServer(
+    ProgramRequestDraft draft,
+    Future<ProgramRequest> Function(ProgramRequestDraft draft) submit,
+  ) async {
+    _beginSubmission();
+    ProgramRequest? created;
+    try {
+      created = await submit(draft);
+    } on ApiException catch (error) {
+      _showSubmissionError(error);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+    if (created != null && mounted) Navigator.of(context).pop(created);
+  }
+
+  void _beginSubmission() {
+    setState(() {
+      _submitting = true;
+      _localError = null;
+    });
+  }
+
+  void _showSubmissionError(ApiException error) {
+    if (!mounted) return;
+    setState(() {
+      _localError =
+          displayCopyOf(context).failureMessage(mutationFailureMessage(error));
+    });
   }
 
   String? _validationError(BuildContext context) {
@@ -247,13 +324,17 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
                 value: day,
                 child: Text('$day', textDirection: TextDirection.ltr)),
         ],
-        onChanged: (int? value) => setState(() => _frequency = value),
+        onChanged: (int? value) => setState(() {
+          _frequency = value;
+          _localError = null;
+        }),
       ),
       const SizedBox(height: MayosSpacing.md),
       MayosTextField(
         fieldKey: const Key('program_request_split_field'),
         controller: _preference,
         label: copy.splitPreferenceOptional,
+        onChanged: (_) => setState(() => _localError = null),
       ),
     ];
   }
@@ -300,13 +381,14 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
         label: copy.cancel,
         variant: MayosButtonVariant.tertiary,
         expand: false,
-        onPressed: () => Navigator.of(context).pop(),
+        onPressed: _submitting ? null : () => Navigator.of(context).pop(),
       ),
       MayosButton(
         key: const Key('program_request_submit_button'),
         label: copy.submitRequest,
         expand: false,
-        onPressed: _submit,
+        loading: _submitting,
+        onPressed: _submitting ? null : _submit,
       ),
     ];
   }
@@ -315,26 +397,29 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
   Widget build(BuildContext context) {
     final MayosThemeExtension colors = MayosTheme.of(context);
     final AssignmentCopy copy = assignmentCopyOf(context);
-    return AlertDialog(
-      title: Text(copy.programChangeRequest),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            if (widget.substitution == null) ...<Widget>[
-              _buildRequestTypeField(context),
+    return PopScope<Object?>(
+      canPop: !_submitting,
+      child: AlertDialog(
+        title: Text(copy.programChangeRequest),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              if (widget.substitution == null) ...<Widget>[
+                _buildRequestTypeField(context),
+                const SizedBox(height: MayosSpacing.md),
+              ],
+              if (_kind == 'exercise_substitution')
+                ..._buildSubstitutionFields()
+              else
+                ..._buildSplitChangeFields(),
               const SizedBox(height: MayosSpacing.md),
+              ..._buildReasonFields(context, colors),
             ],
-            if (_kind == 'exercise_substitution')
-              ..._buildSubstitutionFields()
-            else
-              ..._buildSplitChangeFields(),
-            const SizedBox(height: MayosSpacing.md),
-            ..._buildReasonFields(context, colors),
-          ],
+          ),
         ),
+        actions: _buildActions(),
       ),
-      actions: _buildActions(),
     );
   }
 }

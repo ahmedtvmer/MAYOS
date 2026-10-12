@@ -279,27 +279,21 @@ class _PlayerAssignmentScreenState
   }
 
   Future<void> _requestChange() async {
-    try {
-      final ProgramRequest? created = await requestProgramChange(
-        context,
-        ref,
-        onSubmitting: () => setState(() {
-          _requestingChange = true;
-          _requestError = null;
-        }),
-      );
-      if (created == null || !mounted) return;
-      setState(() {
-        _requestingChange = false;
-        _programRequests = <ProgramRequest>[created, ..._programRequests];
-      });
-    } on ApiException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _requestingChange = false;
-        _requestError = _mutationFailure(error);
-      });
-    }
+    final ProgramRequest? created = await requestProgramChange(
+      context,
+      ref,
+      onSubmitting: () => setState(() {
+        _requestingChange = true;
+        _requestError = null;
+      }),
+      onFinished: () {
+        if (mounted) setState(() => _requestingChange = false);
+      },
+    );
+    if (created == null || !mounted) return;
+    setState(() {
+      _programRequests = <ProgramRequest>[created, ..._programRequests];
+    });
   }
 
   Future<void> _cancelRequest(ProgramRequest request) async {

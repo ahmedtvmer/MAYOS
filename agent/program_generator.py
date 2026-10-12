@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -80,10 +81,184 @@ SPLIT_OVERRIDE_VALUES = (
     "Total Body",
 )
 
+_SPLIT_TERM_REPLACEMENTS = (
+    ("upper", ("علوي", "العلوي", "علوية", "العلوية", "فوق", "fo2")),
+    ("lower", ("سفلي", "السفلي", "سفلية", "السفلية", "تحت", "ta7t")),
+    ("push", ("دفع", "الدفع", "بوش", "dafa3", "daf3")),
+    ("pull", ("سحب", "السحب", "بول", "sa7b")),
+    (
+        "legs",
+        ("أرجل", "ارجل", "الأرجل", "الارجل", "رجل", "ليجز", "ليغز", "legz", "arjel", "regleen"),
+    ),
+    ("full body", ("جسم كامل", "الجسم كامل", "الجسم الكامل", "كامل الجسم", "فول بادي", "فول بودي", "فول بدي", "فل بادي", "فل بودي")),
+    ("bro split", ("برو سبليت", "برو سبلت")),
+    ("arnold", ("أرنولد",)),
+    ("glute", ("جلوت", "غلوت", "جلوتس", "غلوتس", "الجلوتس", "الغلوتس", "المؤخرة", "الأرداف", "الارداف")),
+    ("total body", ("الجسم بالكامل", "كل الجسم")),
+)
+
+_DIRECTION_TERM_REPLACEMENTS = (
+    ("anterior", ("أمامي", "الأمامي", "امامية", "الامامية", "amami")),
+    ("posterior", ("خلفي", "الخلفي", "خلفية", "الخلفية", "khalfi")),
+)
+
+_ARABIC_SPLIT_CHARACTER_MAP = str.maketrans(
+    {
+        "أ": "ا",
+        "إ": "ا",
+        "آ": "ا",
+        "ٱ": "ا",
+        "ى": "ي",
+        "ة": "ه",
+        "ؤ": "و",
+        "ئ": "ي",
+    }
+)
+_ARABIC_SHOULDER_PATTERN = re.compile(
+    r"(?<!\w)(?:ال)?(?:ا?كتاف|كتف(?:ان|ين|ه|ها)?)(?!\w)"
+)
+
+
+def _basic_split_text(preference: str) -> str:
+    without_marks = "".join(
+        character
+        for character in unicodedata.normalize("NFKC", preference.casefold())
+        if unicodedata.category(character)[0] != "M" and character != "ـ"
+    )
+    return re.sub(r"[^\w]+", " ", without_marks.translate(_ARABIC_SPLIT_CHARACTER_MAP))
+
+
+_NORMALIZED_SPLIT_WORDS = frozenset(
+    word
+    for _english, aliases in (*_SPLIT_TERM_REPLACEMENTS, *_DIRECTION_TERM_REPLACEMENTS)
+    for alias in aliases
+    for word in _basic_split_text(alias).split()
+)
+
+
+def _normalize_split_alias_text(preference: str) -> str:
+    words = _basic_split_text(preference).split()
+    normalized = []
+    for word in words:
+        if word in {"و", "w"}:
+            continue
+        if word.startswith("و") and word[1:] in _NORMALIZED_SPLIT_WORDS:
+            word = word[1:]
+        normalized.append(word)
+    return " ".join(normalized)
+
+
+def _normalized_split_replacements() -> tuple[tuple[re.Pattern[str], str], ...]:
+    replacements = []
+    for english, aliases in (*_SPLIT_TERM_REPLACEMENTS, *_DIRECTION_TERM_REPLACEMENTS):
+        for alias in aliases:
+            normalized = _normalize_split_alias_text(alias)
+            if normalized:
+                replacements.append((normalized, english))
+    replacements.sort(key=lambda item: len(item[0]), reverse=True)
+    return tuple(
+        (
+            re.compile(
+                r"(?<!\w)" + r"\s+".join(map(re.escape, normalized.split())) + r"(?!\w)"
+            ),
+            english,
+        )
+        for normalized, english in replacements
+    )
+
+
+_NORMALIZED_SPLIT_REPLACEMENTS = _normalized_split_replacements()
+_NORMALIZED_DIRECTION_TERMS = {
+    english: frozenset(_normalize_split_alias_text(alias) for alias in aliases)
+    for english, aliases in _DIRECTION_TERM_REPLACEMENTS
+}
+_SPLIT_ABBREVIATION_PATTERNS = (
+    (re.compile(r"(?<!\w)u\s*l(?!\w)"), "upper lower"),
+    (re.compile(r"(?<!\w)f\s*b(?!\w)"), "full body"),
+    (re.compile(r"(?<!\w)p\s*p\s*l(?!\w)"), "ppl"),
+    (re.compile(r"(?<!\w)ul(?!\w)"), "upper lower"),
+    (re.compile(r"(?<!\w)fb(?!\w)"), "full body"),
+)
+
+
+def _has_split_override_value(preference: str) -> bool:
+    return any(value.lower() in preference.lower() for value in SPLIT_OVERRIDE_VALUES)
+
+
+def _translate_split_preference(preference: str) -> str | None:
+    if _has_split_override_value(preference):
+        return preference
+
+    normalized = _normalize_split_alias_text(preference)
+    if not normalized:
+        return None
+
+    translated = _translate_split_terms(normalized)
+    translated = _expand_split_abbreviations(translated)
+    if not _has_split_override_value(translated) or _contains_one_sided_push_pull(translated):
+        return None
+    return _normalize_push_pull_split_terms(translated)
+
+
+def _translate_split_terms(preference: str) -> str:
+    has_direction_pair = _has_direction_pair(preference) and not _ARABIC_SHOULDER_PATTERN.search(
+        preference
+    )
+    translated = preference
+    for pattern, english in _NORMALIZED_SPLIT_REPLACEMENTS:
+        if english in {"anterior", "posterior"} and not has_direction_pair:
+            continue
+        translated = pattern.sub(english, translated)
+    return translated
+
+
+def _expand_split_abbreviations(preference: str) -> str:
+    for pattern, english in _SPLIT_ABBREVIATION_PATTERNS:
+        preference = pattern.sub(english, preference)
+    return preference
+
+
+def _normalize_push_pull_split_terms(preference: str) -> str:
+    words = preference.split()
+    split_positions = [index for index, word in enumerate(words) if word in {"push", "pull", "legs"}]
+    split_terms = {words[index] for index in split_positions}
+    if not {"push", "pull"}.issubset(split_terms):
+        return preference
+
+    first_split_position = split_positions[0]
+    before = [word for word in words[:first_split_position] if word not in split_terms]
+    after = [word for word in words[first_split_position:] if word not in split_terms]
+    ordered_terms = ("push", "pull", "legs") if "legs" in split_terms else ("push", "pull")
+    return " ".join((*before, *ordered_terms, *after))
+
+
+def _has_direction_pair(preference: str) -> bool:
+    words = preference.split()
+    anterior = _NORMALIZED_DIRECTION_TERMS["anterior"]
+    posterior = _NORMALIZED_DIRECTION_TERMS["posterior"]
+    return any(
+        (first in anterior and second in posterior)
+        or (first in posterior and second in anterior)
+        for first, second in zip(words, words[1:])
+    )
+
+
+def _contains_one_sided_push_pull(preference: str) -> bool:
+    has_push = re.search(r"(?<!\w)push(?!\w)", preference) is not None
+    has_pull = re.search(r"(?<!\w)pull(?!\w)", preference) is not None
+    return has_push != has_pull and not any(
+        value.lower() in preference.lower()
+        for value in SPLIT_OVERRIDE_VALUES
+        if value.lower() not in {"push", "pull", "legs"}
+    )
+
+
+def _recognized_split_preference(preference: str) -> str | None:
+    return _translate_split_preference(preference)
+
 
 def has_supported_split_keyword(preference: str) -> bool:
-    normalized_preference = preference.lower()
-    return any(value.lower() in normalized_preference for value in SPLIT_OVERRIDE_VALUES)
+    return _recognized_split_preference(preference) is not None
 
 
 @dataclass(frozen=True)
@@ -594,8 +769,7 @@ def _resolve_split_plan(
 ) -> DynamicSplitPlan:
     preference = request.user_split_override
     if preference:
-        if not has_supported_split_keyword(preference):
-            preference = None
+        preference = _recognized_split_preference(preference)
     return resolve_split(
         frequency=weekly_frequency,
         preference=preference,

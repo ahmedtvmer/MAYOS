@@ -7,12 +7,31 @@ sys.path.append(str(BASE_DIR))
 
 import pytest
 
+from agent import program_generator
+from agent.program_blueprints import match_split_keyword
+from agent.program_generator import (
+    ProgramGenerationRequest,
+    _recognized_split_preference,
+    has_supported_split_keyword,
+)
 from agent.program_rules import fetch_filtered_candidates, get_default_split, resolve_split
 from tests.fakes.chat_model import ScriptedChatModel
 from utils.logger import MyosLogger
 from utils.player_output_budgets import DYNAMIC_SPLIT_PLAN_MAX_OUTPUT_TOKENS
 
 logger = MyosLogger().get_logger(__name__)
+
+
+def _split_generation_profile():
+    return {
+        "gender": "male",
+        "weekly_frequency": 4,
+        "equipment_access": "commercial gym",
+        "injuries_or_limitations": "None",
+        "rep_preference": "balanced",
+        "training_age_years": 3.0,
+        "stress_and_sleep": "normal",
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -164,6 +183,164 @@ def test_blueprint_split_does_not_call_injected_inference():
 
     assert len(plan.days) == 3
     run_model.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("preference", "expected_split"),
+    [
+        ("علوي و سفلي", "upper_lower"),
+        ("سفلي علوي", "upper_lower"),
+        ("سفلي/علوي", "upper_lower"),
+        ("فوق - تحت", "upper_lower"),
+        ("علوي يومين وسفلي يومين", "upper_lower"),
+        ("تحت وفوق", "upper_lower"),
+        ("العلوية والسفلية", "upper_lower"),
+        ("الجزء العلوى والسفلى", "upper_lower"),
+        ("عُلْوِيّ/سُفْلِيّ", "upper_lower"),
+        ("fo2 w ta7t", "upper_lower"),
+        ("UL", "upper_lower"),
+        ("U/L", "upper_lower"),
+        ("u/l", "upper_lower"),
+        ("fb", "full_body"),
+        ("FB", "full_body"),
+        ("دفع/سحب", None),
+        ("سحب/دفع", None),
+        ("دفع - سحب - رجل", "ppl"),
+        ("أرجل - سحب - دفع", "ppl"),
+        ("سحب/دفع/رجل", "ppl"),
+        ("دفع وسحب وارجل", "ppl"),
+        ("بوش بول ليجز", "ppl"),
+        ("بوش بول ليغز", "ppl"),
+        ("dafa3 w sa7b w arjel", "ppl"),
+        ("daf3 w sa7b w regleen", "ppl"),
+        ("p/p/l", "ppl"),
+        ("جسم كامِل", "full_body"),
+        ("الجسم الكامل", "full_body"),
+        ("فول بادي", "full_body"),
+        ("فول بودي", "full_body"),
+        ("فول بدي", "full_body"),
+        ("فل بادي", "full_body"),
+        ("فل بودي", "full_body"),
+        ("f/b", "full_body"),
+        ("أرنولد", "arnold"),
+        ("أمامي/خلفي", "anterior_posterior"),
+        ("خلفي وأمامي", "anterior_posterior"),
+        ("amami w khalfi", "anterior_posterior"),
+        ("برو سبليت", None),
+        ("برو سبلت", None),
+        ("جلوتس", None),
+        ("ليجز", None),
+        ("المؤخرة", None),
+        ("الجلوتس", None),
+        ("الأرداف", None),
+        ("الجسم بالكامل", "full_body"),
+        ("كل الجسم", "full_body"),
+    ],
+)
+def test_translated_split_terms_route_through_existing_keyword_matcher(
+    preference, expected_split
+):
+    translated = _recognized_split_preference(preference)
+
+    assert translated is not None
+    if expected_split is not None:
+        assert match_split_keyword(translated) == expected_split
+
+
+@pytest.mark.parametrize(
+    "preference",
+    [
+        "عايز تمارين للكتف الخلفي",
+        "الكتف الأمامي",
+        "الكتف الأمامي والخلفي",
+        "الأكتاف الأمامية والخلفية",
+        "دفع",
+        "الدفع",
+        "دفع وأرجل",
+        "سحب",
+        "السحب",
+        "سحب وأرجل",
+        "بول",
+        "أمامي",
+        "خلفي",
+    ],
+)
+def test_body_region_and_single_push_pull_terms_are_not_split_overrides(preference):
+    assert not has_supported_split_keyword(preference)
+
+
+@pytest.mark.parametrize(
+    ("preference", "expected_split"),
+    [
+        ("upper lower but fb on saturday", "upper_lower"),
+        ("PPL, ul is boring", "ppl"),
+    ],
+)
+def test_english_preferences_accepted_before_translation_keep_old_routing(
+    preference, expected_split
+):
+    assert _recognized_split_preference(preference) == preference
+    assert match_split_keyword(preference) == expected_split
+
+
+def test_split_translation_keeps_other_player_words():
+    assert _recognized_split_preference("علوي يومين وسفلي يومين") == (
+        "upper يومين lower يومين"
+    )
+    assert _recognized_split_preference("سحب يومين ودفع يومين") == (
+        "push pull يومين يومين"
+    )
+
+
+@pytest.mark.parametrize(
+    ("preference", "expected_split_name"),
+    [
+        ("علوي و سفلي", "Upper / Lower (Arms & Delts Augmented)"),
+        ("u/l", "Upper / Lower (Arms & Delts Augmented)"),
+        ("دفع/سحب/أرجل", "Push / Pull / Legs / Push"),
+        ("p/p/l", "Push / Pull / Legs / Push"),
+        ("PPL", "Push / Pull / Legs / Push"),
+        ("جسم كامل", "Full Body 4-Day"),
+        ("f/b", "Full Body 4-Day"),
+        ("أرنولد", "Arnold x Upper/Lower (4-Day)"),
+        ("أمامي/خلفي", "Anterior / Posterior Split"),
+        ("الجسم بالكامل", "Full Body 4-Day"),
+    ],
+)
+def test_arabic_and_abbreviated_split_preferences_apply_blueprints(
+    fresh_store, preference, expected_split_name
+):
+    program, _ = program_generator.generate_program_draft_pipeline(
+        ProgramGenerationRequest(user_split_override=preference),
+        inference_call=lambda *_args, **_kwargs: pytest.fail(
+            "recognized split unexpectedly called the model"
+        ),
+        ledger=fresh_store.ledger,
+        profile=_split_generation_profile(),
+    )
+
+    assert program.split_type == expected_split_name
+
+
+@pytest.mark.parametrize(
+    ("preference", "translated_request"),
+    [("أريد برو سبليت", "اريد bro split"), ("أريد جلوتس", "اريد glute")],
+)
+def test_dynamic_split_translation_preserves_the_players_request(
+    monkeypatch, fresh_store, preference, translated_request
+):
+    model = ScriptedChatModel([get_default_split(4)])
+    monkeypatch.setattr("agent.program_rules.llm", model)
+
+    program, _ = program_generator.generate_program_draft_pipeline(
+        ProgramGenerationRequest(user_split_override=preference),
+        ledger=fresh_store.ledger,
+        profile=_split_generation_profile(),
+    )
+
+    assert program.split_type == get_default_split(4).split_name
+    assert len(model.calls) == 1
+    assert translated_request in model.calls[0]["messages"][1].content
 
 
 if __name__ == "__main__":
