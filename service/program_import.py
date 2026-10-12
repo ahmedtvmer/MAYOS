@@ -251,7 +251,11 @@ class FreeFormProgramImportReader:
         if prepared.grid is None:
             return ReaderOutput(prepared.tabs, prepared.selected_tab, True, import_mode="freeform")
         try:
-            reply = program_import_ai.translate_sheet(prepared.grid, self.inference_scope)
+            reply = program_import_ai.translate_sheet(
+                prepared.grid,
+                self.inference_scope,
+                implicit_week_count=_grid_implicit_week_count(prepared.grid),
+            )
         except program_import_ai.ProgramImportAIError as error:
             raise ProgramImportError(
                 "program_import.interpretation_failed.v1", str(error), 422
@@ -588,6 +592,11 @@ def _build_import_result(source: ReaderOutput, draft_exists: bool, rows: list[di
         "errors": [error for row in rows for error in row["errors"]],
         "unresolved_names": _unresolved_names(rows),
     }
+
+
+def _grid_implicit_week_count(grid: dict[str, Any]) -> int:
+    _header_row, columns = _source_columns(_grid_cells_by_row(grid))
+    return max(_implicit_week_block_columns(columns).values(), default=0)
 
 
 def _freeform_grid_context(

@@ -1483,8 +1483,9 @@ def test_issue_400_repeated_blank_week_rows_over_implicit_count_are_refused(
     assert response.json()["detail"] == "The sheet could not be interpreted. Try the MAYOS template."
 
 
-def test_issue_400_duplicate_blank_weeks_without_implicit_blocks_are_refused(
-    api, monkeypatch, tmp_path, scripted_chat_model
+@pytest.mark.parametrize("second_reply_repeats", [True, False], ids=["refused", "retry-recovers"])
+def test_issue_400_duplicate_blank_weeks_without_implicit_blocks_get_one_repair(
+    api, monkeypatch, tmp_path, scripted_chat_model, second_reply_repeats
 ):
     client, db = api
     coach_headers, _, assignment_id = _assignment(client, db, prefix="duplicate-no-weeks")
@@ -1502,15 +1503,17 @@ def test_issue_400_duplicate_blank_weeks_without_implicit_blocks_are_refused(
         "rir": 2,
         "original_text": "Bench Press, 3, 8",
     }
-    scripted_chat_model.script({
-        "rows": [repeated_row, repeated_row.copy()],
-        "layout": {
-            "days": [{"day": 1, "name": "Push"}],
-            "weeks": [],
-            "confidence": 0.99,
-            "confirm_layout": False,
-        },
-    })
+    layout = {
+        "days": [{"day": 1, "name": "Push"}],
+        "weeks": [],
+        "confidence": 0.99,
+        "confirm_layout": False,
+    }
+    duplicate_reply = {"rows": [repeated_row, repeated_row.copy()], "layout": layout}
+    single_reply = {"rows": [repeated_row], "layout": layout}
+    scripted_chat_model.script(
+        duplicate_reply, duplicate_reply if second_reply_repeats else single_reply
+    )
 
     response = client.post(
         f"/coach/assignments/{assignment_id}/program-import",
@@ -1518,9 +1521,13 @@ def test_issue_400_duplicate_blank_weeks_without_implicit_blocks_are_refused(
         files={"file": ("own-layout.csv", b"Exercise,Sets,Reps\nBench Press,3,8", "text/csv")},
     )
 
-    assert response.status_code == 422
-    assert response.json()["message_code"] == "program_import.interpretation_failed.v1"
-    assert response.json()["detail"] == "The sheet could not be interpreted. Try the MAYOS template."
+    if second_reply_repeats:
+        assert response.status_code == 422
+        assert response.json()["message_code"] == "program_import.interpretation_failed.v1"
+        assert response.json()["detail"] == "The sheet could not be interpreted. Try the MAYOS template."
+    else:
+        assert response.status_code == 200, response.text
+        assert [row["source_row"] for row in response.json()["rows"]] == [2]
 
 
 def test_issue_400_explicit_same_week_duplicates_remain_rejected(

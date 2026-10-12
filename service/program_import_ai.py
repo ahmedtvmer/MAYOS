@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
@@ -126,6 +128,9 @@ class ImportLayoutOut(BaseModel):
     confirm_layout: bool = False
 
 
+DUPLICATE_SOURCE_ROW_MESSAGE = "exercise rows must not repeat within the same source row and week"
+
+
 class ProgramImportReply(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -143,7 +148,7 @@ class ProgramImportReply(BaseModel):
             week = row.week.strip().casefold() if row.week and row.week.strip() else None
             position = (row.source_row, week)
             if position in source_positions and week is not None:
-                raise ValueError("exercise rows must not repeat within the same source row and week")
+                raise ValueError(DUPLICATE_SOURCE_ROW_MESSAGE)
             source_positions.add(position)
         weeks = {week.casefold() for week in self.layout.weeks}
         if weeks and any(not row.week for row in self.rows):
@@ -677,12 +682,30 @@ def log_enable_gate_at_startup() -> GateStatus:
     )
 
 
-def translate_sheet(grid: dict[str, Any], scope: InferenceScope) -> ProgramImportReply:
+def translate_sheet(
+    grid: dict[str, Any], scope: InferenceScope, *, implicit_week_count: int = 0
+) -> ProgramImportReply:
     messages = [
         SystemMessage(content=SYSTEM_PROMPT),
         HumanMessage(content="Translate this selected sheet cell grid into ProgramImportReply:\n" + json.dumps(grid, ensure_ascii=False)),
     ]
-    return _invoke_structured(ProgramImportReply, messages, scope, "The sheet could not be interpreted. Try the MAYOS template.")
+    return _invoke_structured(
+        ProgramImportReply,
+        messages,
+        scope,
+        "The sheet could not be interpreted. Try the MAYOS template.",
+        reply_check=lambda reply: _check_blank_week_repeats(reply, implicit_week_count),
+    )
+
+
+def _check_blank_week_repeats(reply: ProgramImportReply, implicit_week_count: int) -> None:
+    """Blank-week repeats are kept only when they fit the sheet's implicit week blocks.
+
+    Anything else fails like a schema error, so the model gets its one repair attempt.
+    """
+    repeats = Counter(row.source_row for row in reply.rows if not (row.week and row.week.strip()))
+    if any(count > 1 and (implicit_week_count <= 1 or count > implicit_week_count) for count in repeats.values()):
+        raise ValueError(DUPLICATE_SOURCE_ROW_MESSAGE)
 
 
 def suggest_exercises(
@@ -755,6 +778,7 @@ def _invoke_structured(
     messages: list[Any],
     scope: InferenceScope,
     failure_message: str,
+    reply_check: Callable[[Any], None] | None = None,
 ) -> Any:
     from service.model_limits import ModelLimitExceeded
     from svc.llm import run_inference_sync
@@ -769,8 +793,7 @@ def _invoke_structured(
         if validation_message:
             retry_hint = (
                 " Write each source row at most once per week."
-                if "exercise rows must not repeat within the same source row and week"
-                in validation_message
+                if DUPLICATE_SOURCE_ROW_MESSAGE in validation_message
                 else ""
             )
             retry_messages.append(HumanMessage(
@@ -782,7 +805,10 @@ def _invoke_structured(
         try:
             attempt_scope = scope if attempt == 0 else replace(scope, admit=False)
             reply = run_inference_sync(structured.invoke, retry_messages, scope=attempt_scope)
-            return schema.model_validate(reply)
+            validated = schema.model_validate(reply)
+            if reply_check is not None:
+                reply_check(validated)
+            return validated
         except (ModelLimitExceeded, TimeoutError):
             raise
         except (ValidationError, ValueError, TypeError, OutputParserException) as error:
