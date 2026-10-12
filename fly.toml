@@ -18,6 +18,11 @@
 app = "mayos-api"
 primary_region = "fra"
 
+# ONNX embeddings (#404, ADR 075): the in-image startup peak is about 365 MB.
+# Swap absorbs short spikes (large XLSX imports, backups, overlapping model
+# calls) instead of an out-of-memory kill; go to 768mb if deployed RSS nears 512.
+swap_size_mb = 512
+
 [build]
   dockerfile = "Dockerfile.fly"
 
@@ -110,7 +115,7 @@ primary_region = "fra"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "2gb"
+  memory = "512mb"
   cpus = 1
   cpu_kind = "shared"
 

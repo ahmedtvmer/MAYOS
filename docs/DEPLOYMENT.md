@@ -680,7 +680,7 @@ Frankfurt (`fra`) on a `shared-cpu-1x` Machine with a **10 GB volume** mounted a
 | Image | `Dockerfile.fly` + `requirements-fly.txt` | `python:3.12-slim`, ONNX Runtime and `tokenizers` for local embeddings; no PyTorch or Sentence Transformers |
 | Chat inference | hosted OpenAI-compatible endpoint (ADR 065) | Player, judge, and coach roles require `LLM_API_KEY`; the local BGE embedding model remains in the image |
 | Process | `uvicorn svc.app:app --workers 1` | SQLite is a single writer and the Machine owns the volume |
-| Region/VM | `primary_region = "fra"`, `shared-cpu-1x`, 2 GB | unchanged for this release; in-image startup peak RSS is 364.8 MB with ONNX (667.9 MB with PyTorch). Deployed PyTorch RSS grew about 90 MB above its startup peak over a day, so 768 MB is the proposed next size; drop to 512 MB only if deployed ONNX RSS stays well under 400 MB |
+| Region/VM | `primary_region = "fra"`, `shared-cpu-1x`, 512 MB plus `swap_size_mb = 512` (owner decision 2026-10-12) | in-image startup peak RSS is 364.8 MB with ONNX (667.9 MB with PyTorch). Deployed PyTorch RSS grew about 90 MB above its startup peak over a day; check deployed RSS after a day and move to 768 MB if it nears 512 MB or swaps heavily |
 | Volume | `[[mounts]]` `mayos_data` → `/data`, `initial_size = "10gb"` | catalog, ledgers, and the migration/backup work area |
 | Snapshots | `scheduled_snapshots = false` | ADR 015: Fly snapshots disabled; backups are owned by #41 |
 | Availability | `auto_stop_machines = "off"`, `auto_start_machines = false`, `[[restart]] policy = "always"` | idle periods must not stop the always-on writer |
