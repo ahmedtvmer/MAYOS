@@ -388,6 +388,30 @@ Future<void> _confirmReplace(
 }
 
 void main() {
+  testWidgets('Arabic logger names one-workout replacement and program requests distinctly',
+      (WidgetTester tester) async {
+    for (final (bool coachControlled, String option) in <(bool, String)>[
+      (false, 'تبديل تمرين في البرنامج'),
+      (true, 'طلب تبديل تمرين من المدرب'),
+    ]) {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _openLogger(
+        tester,
+        coachControlled: coachControlled,
+        languageCode: 'ar',
+      );
+
+      await _pickMenuItem(tester, 0, _replaceItem(0));
+      expect(find.text('استبدال تمرين لهذه الحصة؟'), findsOneWidget);
+      expect(find.text(option), findsOneWidget);
+      await tester.tap(find.text('استبدال').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('استبدال تمرين لهذه الحصة'), findsOneWidget);
+      expect(find.text('Bench Press'), findsOneWidget);
+    }
+  });
+
   testWidgets(
       'planned exercise detail keeps its prescription and returns to '
       'the unchanged Active workout (#217)', (WidgetTester tester) async {

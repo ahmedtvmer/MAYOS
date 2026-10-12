@@ -96,8 +96,7 @@ class WorkoutCopy {
       isArabic ? 'إلغاء تحديد اللياقة' : 'Mark Cardio not done';
   String get weightKg => isArabic ? 'الوزن (kg)' : 'Weight (kg)';
   String get repetitions => isArabic ? 'التكرارات' : 'Reps';
-  String get repsInReserve =>
-      isArabic ? 'التكرارات المتبقية' : 'Reps in reserve';
+  String get repsInReserve => isArabic ? 'RIR' : 'Reps in reserve';
   String keypadCaption(String exercise, int setNumber, String field) => isArabic
       ? '$exercise · مجموعة $setNumber · $field'
       : '$exercise · set $setNumber · $field';

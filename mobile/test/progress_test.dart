@@ -297,11 +297,20 @@ void main() {
     await _pumpProgress(tester, fake, languageCode: 'ar');
     expect(find.text('محطات التقدم'), findsOneWidget);
     expect(find.text('القوة'), findsOneWidget);
-    expect(find.text('الحجم التدريبي'), findsOneWidget);
+    expect(find.text('مجموعات محسوبة لكل عضلة'), findsOneWidget);
     expect(find.text('الحد الأقصى التقديري لتكرار واحد'), findsOneWidget);
     expect(find.text('٣'), findsNothing);
     expect(Directionality.of(tester.element(find.text('القوة'))),
         TextDirection.rtl);
+
+    await tester.tap(find.text('مجموعات محسوبة لكل عضلة'));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('مجموعات محسوبة لكل عضلة'), findsNWidgets(2));
+    expect(
+      find.text('تُحسب مجموعة التدريب بقيمة 1 للعضلة الأساسية و0.5 لكل عضلة مساعدة.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('إجمالي الوزن المرفوع'), findsNothing);
   });
 
   testWidgets('strength maps real history into the chart, rows, and units',

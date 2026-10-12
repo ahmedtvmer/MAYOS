@@ -262,7 +262,7 @@ void main() {
   test('HTTP and stream error messages use safe typed Arabic values', () {
     expect(
       _resolve('http.input_too_long.v1', <String, dynamic>{'limit': 400}),
-      'يجب ألا يتجاوز هذا الحقل 400 حرفًا',
+      'يجب ألا يتجاوز هذا الحقل 400 حرف',
     );
     expect(
       _resolve('ai_limit.daily_usage.v1', const <String, dynamic>{}),

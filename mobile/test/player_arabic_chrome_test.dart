@@ -84,18 +84,26 @@ void main() {
     );
   });
 
-  test('Arabic count phrases use simple singular, dual, plural, and 11+ forms',
+  test('Arabic count phrases follow CLDR plural categories',
       () {
     expect(arabicCountPhrase(0, ArabicCountNoun.day), '0 أيام');
     expect(arabicCountPhrase(1, ArabicCountNoun.day), 'يوم واحد');
     expect(arabicCountPhrase(2, ArabicCountNoun.day), 'يومان');
     expect(arabicCountPhrase(3, ArabicCountNoun.day), '3 أيام');
     expect(arabicCountPhrase(11, ArabicCountNoun.day), '11 يومًا');
+    expect(arabicCountPhrase(100, ArabicCountNoun.day), '100 يوم');
+    expect(arabicCountPhrase(101, ArabicCountNoun.day), '101 يوم');
+    expect(arabicCountPhrase(103, ArabicCountNoun.day), '103 أيام');
+    expect(arabicCountPhrase(111, ArabicCountNoun.day), '111 يومًا');
     expect(
         arabicCountPhrase(1, ArabicCountNoun.warmupSet), 'مجموعة إحماء واحدة');
     expect(arabicCountPhrase(2, ArabicCountNoun.warmupSet), 'مجموعتا إحماء');
     expect(arabicCountPhrase(3, ArabicCountNoun.warmupSet), '3 مجموعات إحماء');
     expect(arabicCountPhrase(11, ArabicCountNoun.warmupSet), '11 مجموعة إحماء');
+    expect(arabicCountPhrase(100, ArabicCountNoun.repetition), '100 تكرار');
+    expect(arabicCountPhrase(101, ArabicCountNoun.repetition), '101 تكرار');
+    expect(arabicCountPhrase(103, ArabicCountNoun.repetition), '103 تكرارات');
+    expect(arabicCountPhrase(111, ArabicCountNoun.repetition), '111 تكرارًا');
     const MayosCopy arabic = MayosCopy('ar');
     expect(arabic.programFrequency(1), 'يوم واحد في الأسبوع');
     expect(arabic.programFrequency(2), 'يومان في الأسبوع');

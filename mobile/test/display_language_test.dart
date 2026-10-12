@@ -25,6 +25,30 @@ class _FailingStore extends InMemoryDisplayLanguageStore {
 }
 
 void main() {
+  test('Progress Volume tab names the counted-sets-per-muscle chart', () {
+    expect(const MayosCopy('en').volume, 'Volume');
+    expect(const MayosCopy('ar').volume, 'مجموعات محسوبة لكل عضلة');
+    expect(const MayosCopy('ar').countedSetsExplanation,
+        'تُحسب مجموعة التدريب بقيمة 1 للعضلة الأساسية و0.5 لكل عضلة مساعدة.');
+    expect(const MayosCopy('ar').weeklyVolumeAndRecords,
+        'لوحة مجموعات التدريب والأرقام القياسية الأسبوعية');
+    expect(const MayosCopy('ar').homeHistoryLead,
+        'سجّل حصة تدريبية لعرض تقدم القوة ومجموعات التدريب لكل تمرين هنا.');
+    expect(const MayosCopy('ar').logToSeeHistory,
+        'سجّل حصة تدريبية لعرض تقدم القوة ومجموعات التدريب وسجل كل تمرين هنا.');
+  });
+
+  test('Coach volume labels name total weight in kg', () {
+    const CoachCopy arabic = CoachCopy('ar');
+    const CoachCopy english = CoachCopy('en');
+
+    expect(arabic.sessionVolumeColumn,
+        'إجمالي الوزن المرفوع (\u{2066}kg\u{2069})');
+    expect(arabic.volumeUnit, '\u{2066}kg\u{2069}');
+    expect(english.sessionVolumeColumn, 'Volume (kg)');
+    expect(english.volumeUnit, 'kg');
+  });
+
   test('Arabic workout prescription isolates numeric spans', () {
     const WorkoutCopy copy = WorkoutCopy('ar');
     expect(copy.prescriptionReps(6, 8), contains('\u{2066}6–8\u{2069}'));

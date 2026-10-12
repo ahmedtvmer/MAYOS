@@ -90,11 +90,17 @@ void main() {
       (tester) async {
     final FakeMayosApi fake = _signedInFake();
     await _pumpHome(tester, fake, languageCode: 'ar');
+    await _pumpUntilFound(tester, find.textContaining('محسوبة لكل عضلة'));
 
     expect(find.text('الرئيسية'), findsOneWidget);
     expect(find.text('لا يوجد برنامج تدريبي نشط'), findsNothing);
     expect(find.text('Upper/Lower 4x'), findsOneWidget);
     expect(find.text('Upper/Lower · 4 أيام في الأسبوع'), findsOneWidget);
+    expect(find.textContaining('محسوبة لكل عضلة'), findsOneWidget);
+    expect(
+      find.text('تُحسب مجموعة التدريب بقيمة 1 للعضلة الأساسية و0.5 لكل عضلة مساعدة.'),
+      findsOneWidget,
+    );
     expect(
       Directionality.of(tester.element(find.text('الرئيسية'))),
       TextDirection.rtl,

@@ -1,13 +1,16 @@
 # Arabic app UI strings awaiting owner review
 
-This inventory lists Arabic app-owned copy from chunks A, B, and C. It awaits owner review.
+This inventory lists Arabic app-owned copy from chunks A, B, C, and the workout
+logging slice. It awaits owner review.
 English fallbacks supplied by the API remain unchanged. Known structured API
 messages have matching Arabic templates in the app catalog and are listed
 below, including the server-authored structured-intake copy. Player-entered
 goals and limitations, coach-written notes, historical assistant replies, and
-saved workout summaries stay in their original language. New assistant replies
-follow the existing reply-language rule. Values in braces are runtime values;
-numbers use Western digits.
+past saved workout summaries stay in their original language. Future
+deterministic workout summaries are saved in the player's Display language at
+commit time; session notes and exercise names keep their original wording. New
+assistant replies follow the existing reply-language rule. Values in braces
+are runtime values; numbers use Western digits.
 
 ## Shared navigation and player shell
 
@@ -59,9 +62,9 @@ numbers use Western digits.
 | Offline — showing your saved program. | غير متصل — يعرض البرنامج التدريبي المحفوظ. |
 | {count} workout draft(s) waiting to sync | مسودة تدريبية واحدة / مسودتان تدريبيتان / {count} مسودات تدريبية / {count} مسودة تدريبية بانتظار المزامنة |
 | No sets recorded for this exercise yet. Log a workout to start a trend. | لا توجد مجموعات مسجلة لهذا التمرين بعد. سجّل حصة تدريبية لبدء متابعة التقدم. |
-| {count} weighted sets | 1: مجموعة محسوبة واحدة لكل عضلة; 2: مجموعتان محسوبتان لكل عضلة; 3–10: {count} مجموعات محسوبة لكل عضلة; 11+: {count} مجموعة محسوبة لكل عضلة; fractional values use {count} مجموعة محسوبة لكل عضلة |
+| {count} weighted sets | 1: مجموعة محسوبة واحدة لكل عضلة; 2: مجموعتان محسوبتان لكل عضلة; 3–10: {count} مجموعات محسوبة لكل عضلة; 11–99: {count} مجموعة محسوبة لكل عضلة; 100+: {count} مجموعة محسوبة لكل عضلة; fractional values use {count} مجموعة محسوبة لكل عضلة |
 | No training history yet | لا يوجد سجل تدريب بعد |
-| Log a workout and your strength trend, volume, and per-exercise history will show here. | سجّل حصة تدريبية لعرض تقدم القوة والحجم التدريبي لكل تمرين هنا. |
+| Log a workout and your strength trend, volume, and per-exercise history will show here. | سجّل حصة تدريبية لعرض تقدم القوة ومجموعات التدريب لكل تمرين هنا. |
 
 ## Program
 
@@ -109,6 +112,10 @@ numbers use Western digits.
 
 ## Progress
 
+In this tab, `Volume` opens the counted-sets-per-muscle chart. The four-week
+Volume review is a separate assessment and uses the term «مراجعة مجموعات
+التدريب» only for that assessment.
+
 | English | Arabic |
 | --- | --- |
 | Checkpoints | محطات التقدم |
@@ -132,10 +139,10 @@ numbers use Western digits.
 | Original text language: Arabic | لغة النص الأصلي: العربية |
 | Checkpoint 10: 10 workouts since you started logging in MAYOS. | محطة تقدم 10: أكملت 10 حصص تدريبية منذ بدء تسجيلك في MAYOS. |
 | Checkpoint 25: 15 workouts since your last checkpoint. | محطة تقدم 25: أكملت 15 حصة تدريبية منذ محطة التقدم السابقة. |
-| Checkpoint template count agreement | 3–10: حصص تدريبية; 11+: حصة تدريبية |
+| Checkpoint template count agreement | 3–10: حصص تدريبية; 11–99: حصة تدريبية; 100+: حصة تدريبية |
 | #257 fake saved Arabic review prose fixture | كان تقدمك في التدريب مستقرًا. |
 | Strength | القوة |
-| Volume | الحجم التدريبي |
+| Volume | مجموعات محسوبة لكل عضلة |
 | Body weight | وزن الجسم |
 | Target weight | الوزن المستهدف |
 | Target weight · {value} kg | الوزن المستهدف · ⁦{value} kg⁩ |
@@ -156,7 +163,7 @@ numbers use Western digits.
 | Only one session logged. A trend needs at least two sessions. | سُجلت حصة واحدة فقط. يلزم تسجيل حصتين على الأقل لمتابعة التقدم. |
 | No weighted sets logged in the last {count} days. | لم تُسجل مجموعات محسوبة لكل عضلة خلال آخر {Arabic count phrase for days}. |
 | Primary muscle counts 1 per working set, each secondary 0.5. | تُحسب مجموعة التدريب بقيمة 1 للعضلة الأساسية و0.5 لكل عضلة مساعدة. |
-| Log a workout and your strength trend, volume, and per-exercise records will appear here. | سجّل حصة تدريبية لعرض تقدم القوة والحجم التدريبي وسجل كل تمرين هنا. |
+| Log a workout and your strength trend, volume, and per-exercise records will appear here. | سجّل حصة تدريبية لعرض تقدم القوة ومجموعات التدريب وسجل كل تمرين هنا. |
 | {metric} for {exercise}: no sessions. | لا توجد حصص مسجلة لتمرين {exercise} في مقياس {metric}. |
 | {metric} for {exercise}: 1 session on {date}, {value} {unit}. | {metric} لتمرين {exercise}: حصة واحدة بتاريخ {date}، {value} {unit}. |
 | {metric} for {exercise}, {count} sessions from {first} to {last}, latest {value} {unit}. | {metric} لتمرين {exercise}: {Arabic count phrase for sessions} من {first} إلى {last}، وآخر قيمة {value} {unit}. |
@@ -321,7 +328,8 @@ counted-set labels.
 | 1 | يوم واحد | مجموعة واحدة | مجموعة تدريب واحدة | مجموعة إحماء واحدة | حصة تدريبية واحدة | حصة واحدة | سنة واحدة | ثانية واحدة | تكرار واحد |
 | 2 | يومان | مجموعتان | مجموعتا تدريب | مجموعتا إحماء | حصتان تدريبيتان | حصتان | سنتان | ثانيتان | تكراران |
 | 3–10 | {count} أيام | {count} مجموعات | {count} مجموعات تدريب | {count} مجموعات إحماء | {count} حصص تدريبية | {count} حصص | {count} سنوات | {count} ثوانٍ | {count} تكرارات |
-| 11+ | {count} يومًا | {count} مجموعة | {count} مجموعة تدريب | {count} مجموعة إحماء | {count} حصة تدريبية | {count} حصة | {count} سنة | {count} ثانية | {count} تكرارًا |
+| 11–99 | {count} يومًا | {count} مجموعة | {count} مجموعة تدريب | {count} مجموعة إحماء | {count} حصة تدريبية | {count} حصة | {count} سنة | {count} ثانية | {count} تكرارًا |
+| 100+ | {count} يوم | {count} مجموعة | {count} مجموعة تدريب | {count} مجموعة إحماء | {count} حصة تدريبية | {count} حصة | {count} سنة | {count} ثانية | {count} تكرار |
 
 Non-integer year values use “{count} سنة”. A fractional counted-set value
 uses “{count} مجموعة محسوبة لكل عضلة”.
@@ -367,7 +375,7 @@ days” and “rest for two seconds”).
 | Mark Cardio not done | إلغاء تحديد اللياقة |
 | Weight (kg) | الوزن (⁦kg⁩) |
 | Reps | التكرارات |
-| Reps in reserve | التكرارات المتبقية |
+| Reps in reserve | RIR |
 | {exercise} · set {setNumber} · {field} | {exercise} · مجموعة {setNumber} · {field} |
 | Unrated | بلا تقييم |
 | Hide | إخفاء |
@@ -480,7 +488,7 @@ days” and “rest for two seconds”).
 | Weekly streak: {count} week(s) | أسابيع الالتزام المتتالية: {count} |
 | This week: {done} of {total} done | هذا الأسبوع: {done} من {total} مكتملة |
 | {count} workout(s) to your {ordinal} | {Arabic count phrase for training sessions} للوصول إلى محطة التقدم رقم {ordinal} |
-| {count} set(s) | 1: مجموعة واحدة; 2: مجموعتان; 3–10: {count} مجموعات; 11+: {count} مجموعة |
+| {count} set(s) | 1: مجموعة واحدة; 2: مجموعتان; 3–10: {count} مجموعات; 11–99: {count} مجموعة; 100+: {count} مجموعة |
 | {count} working sets | {Arabic count phrase for training sets} |
 | Workout draft status: pending / syncing / synced / needs attention / other | بانتظار المزامنة / تمت المزامنة / تحتاج إلى مراجعة / مسودة تدريبية |
 | {exercise} prescription includes its target RIR | {exercise} · RIR {minimum RIR label} |
@@ -778,10 +786,10 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 | No active assignment. | لا توجد علاقة تدريب نشطة. |
 | Resolved by {username} | حلّه {username} |
 | New / Acknowledged / Resolved | جديد / تم تأكيد الاطلاع / تم الحل |
-| Missed {count}d | 1: يوم واحد فائت; 2: يومان فائتان; 3–10: {count} أيام فائتة; 11+: {count} يومًا فائتًا |
+| Missed {count}d | 1: يوم واحد فائت; 2: يومان فائتان; 3–10: {count} أيام فائتة; 11–99: {count} يومًا فائتًا; 100+: {count} يوم فائت |
 | Stalled {count} sessions | توقف التقدم: {count} حصص تدريبية |
-| {count} alert(s) | 1: تنبيه واحد; 2: تنبيهان; 3–10: {count} تنبيهات; 11+: {count} تنبيهًا |
-| {count} request(s) | 1: طلب واحد; 2: طلبان; 3–10: {count} طلبات; 11+: {count} طلبًا |
+| {count} alert(s) | 1: تنبيه واحد; 2: تنبيهان; 3–10: {count} تنبيهات; 11–99: {count} تنبيهًا; 100+: {count} تنبيه |
+| {count} request(s) | 1: طلب واحد; 2: طلبان; 3–10: {count} طلبات; 11–99: {count} طلبًا; 100+: {count} طلب |
 | Follow-up today / Follow-up overdue | المتابعة اليوم / المتابعة متأخرة |
 | No workouts yet | لم يسجل حصصًا بعد |
 | Last workout {date} · {program} | آخر حصة تدريبية {date} · {program} |
@@ -885,6 +893,7 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 | No sessions logged yet. | لم تُسجل حصص بعد. |
 | {sets} sets · {volume} kg | {sets} مجموعة تدريب · إجمالي الوزن المرفوع {volume} kg |
 | Warm-up: {count} movements | حركات الإحماء: {count} حركات إحماء |
+| Volume (kg) | إجمالي الوزن المرفوع (⁦kg⁩) |
 | Cardio: {minutes} min | تمارين اللياقة: {minutes} دقائق |
 | Cardio: no duration set | تمارين اللياقة: غير محددة |
 | Readiness {score}/5 | الاستعداد {score}/5 |
@@ -964,7 +973,7 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 | Ongoing plan — not a trial. | خطة مستمرة — ليست فترة تجريبية. |
 | What's included | ما الذي تتضمنه |
 | Automatic training program | برنامج تدريبي تلقائي |
-| Weekly volume and personal-record dashboard | لوحة الحجم التدريبي والأرقام القياسية الأسبوعية |
+| Weekly volume and personal-record dashboard | لوحة مجموعات التدريب والأرقام القياسية الأسبوعية |
 | Coaching assignment with your coach | علاقة تدريب مع مدربك |
 | Coach profile and player invites | الملف الشخصي للمدرب ودعوات اللاعبين |
 | Active roster with assignment status | قائمة اللاعبين النشطة وحالة علاقات التدريب |
@@ -999,13 +1008,13 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 
 The count helper keeps Western digits and selects a short form by count.
 
-| English noun | 1 | 2 | 3–10 | 11+ |
-| --- | --- | --- | --- | --- |
-| assignments | علاقة تدريب واحدة | علاقتا تدريب | {count} علاقات تدريب | {count} علاقة تدريب |
-| alerts | تنبيه واحد | تنبيهان | {count} تنبيهات | {count} تنبيهًا |
-| requests | طلب واحد | طلبان | {count} طلبات | {count} طلبًا |
-| warm-up movements | حركة إحماء واحدة | حركتا إحماء | {count} حركات إحماء | {count} حركة إحماء |
-| minutes | دقيقة واحدة | دقيقتان | {count} دقائق | {count} دقيقة |
+| English noun | 1 | 2 | 3–10 | 11–99 | 100+ |
+| --- | --- | --- | --- | --- | --- |
+| assignments | علاقة تدريب واحدة | علاقتا تدريب | {count} علاقات تدريب | {count} علاقة تدريب | {count} علاقة تدريب |
+| alerts | تنبيه واحد | تنبيهان | {count} تنبيهات | {count} تنبيهًا | {count} تنبيه |
+| requests | طلب واحد | طلبان | {count} طلبات | {count} طلبًا | {count} طلب |
+| warm-up movements | حركة إحماء واحدة | حركتا إحماء | {count} حركات إحماء | {count} حركة إحماء | {count} حركة إحماء |
+| minutes | دقيقة واحدة | دقيقتان | {count} دقائق | {count} دقيقة | {count} دقيقة |
 
 ## HTTP and assistant stream errors
 
@@ -1160,3 +1169,58 @@ reasons remain unchanged.
 
 The workflow label updates for #252 appear in the Assignment and workout
 logger entries above and are pending owner review together with the notice copy.
+
+## Workout logging and deterministic summary (Chunk D)
+
+The following new summary wording is pending owner review. The summary is
+generated from recorded workout facts without a model call and is saved with
+the language selected at commit time. Retrying a committed workout replays
+that saved text. Exercise names and session notes remain verbatim. When notes
+are present, the `Notes: {session_notes}.` suffix is appended to the readiness
+line; it is omitted when notes are empty. An unrated deload cap omits the RIR
+clause in either language.
+
+| English copy or template | Arabic |
+| --- | --- |
+| Substitute exercise | تبديل تمرين في البرنامج |
+| Substitute exercise? | هل تريد تبديل تمرين في البرنامج؟ |
+| Substitution undone. | تم التراجع عن تبديل التمرين في البرنامج. |
+| {oldExercise} replaced with {newExercise}. | تم تبديل تمرين في البرنامج من {oldExercise} إلى {newExercise}. |
+| Program authority changed. Continuing with direct substitution. | تغيرت صلاحية تعديل البرنامج. جارٍ تبديل تمرين في البرنامج مباشرة. |
+| **Overload Deltas**: | **تغيرات الأداء**: |
+| **Fatigue & CNS Check**: | **مراجعة الإرهاق والجهاز العصبي**: |
+| **Next Session Directives**: | **توجيهات الحصة التالية**: |
+| - {name}: Baseline established at {current:.1f} kg e1RM. Load held. | - ⁨{name}⁩: خط الأساس لـ ⁨e1RM⁩: ⁨{current:.1f} kg⁩. ثبّت الحمل. |
+| - {name}: e1RM advanced by +{delta:.1f} kg ({current:.1f} kg). Load step-up (+2.5 kg). | - ⁨{name}⁩: تحسن ⁨e1RM⁩ بمقدار ⁨+{delta:.1f} kg⁩ (⁨{current:.1f} kg⁩). زد الحمل ⁨(+2.5 kg)⁩. |
+| - {name}: e1RM maintained at {current:.1f} kg (+0.0 kg). Load held. | - ⁨{name}⁩: ⁨e1RM⁩ ثابت عند ⁨{current:.1f} kg⁩ ⁨(+0.0 kg)⁩. ثبّت الحمل. |
+| - No e1RM advancements recorded; all loads maintained in current rep corridor. | - لم يُسجل تحسن في ⁨e1RM⁩؛ بقيت الأوزان ضمن نطاق التكرارات الحالي. |
+| - Readiness: {readiness}/5 \| Volume Load: {total:,.1f} kg. | - الاستعداد: {readiness}/5 \| إجمالي الوزن المرفوع: ⁨{total:,.1f} kg⁩. |
+| Notes: {session_notes}. | ملاحظات: {session_notes}. |
+| - DELOAD: Cut sets by {volume_cut}, cap at RIR {rir_cap}. | - تخفيف التدريب: خفّض مجموعات التدريب بنسبة ⁨{volume_cut}⁩، بحيث لا يقل ⁨RIR⁩ عن ⁨{minimum_rir}⁩. |
+| - DELOAD: Reduce sets, cap at RIR {rir_cap}. | - تخفيف التدريب: قلّل مجموعات التدريب، بحيث لا يقل ⁨RIR⁩ عن ⁨{minimum_rir}⁩. |
+| - DELOAD: Cut sets by {volume_cut}. | - تخفيف التدريب: خفّض مجموعات التدريب بنسبة ⁨{volume_cut}⁩. |
+| - DELOAD: Reduce sets. | - تخفيف التدريب: قلّل مجموعات التدريب. |
+| - Hold current progression and prepare for deload adjustments. | - ثبّت التدرج الحالي واستعد لتعديلات تخفيف التدريب. |
+| - Monitor readiness closely and adjust volume cuts as necessary. | - راقب الاستعداد عن قرب واضبط خفض المجموعات عند الحاجة. |
+| - Hold load; build reps in the {exercise}. | - ثبّت الحمل وزد التكرارات ضمن نطاق تمرين ⁨{exercise}⁩. |
+| - Advance load (+2.5 kg) for {exercise}. | - زد الحمل ⁨(+2.5 kg)⁩ لتمرين ⁨{exercise}⁩. |
+| - 🏆 New PR: {name} — {parts} | - 🏆 رقم قياسي شخصي جديد: ⁨{name}⁩ — {facts} |
+| heaviest {weight:g} kg for {reps} reps ({previous}) | أعلى وزن ⁨{weight:g} kg⁩ لـ{Arabic count phrase for repetitions} ({previous}) |
+| e1RM {value:.1f} kg ({previous}) | ⁨e1RM⁩ ⁨{value:.1f} kg⁩ ({previous}) |
+| most reps {reps} reps (prev {previousReps} reps) | أعلى عدد من التكرارات: {Arabic count phrase for repetitions} (السابق: {Arabic count phrase for previous repetitions}) |
+| prev {previous:g} kg | السابق ⁨{previous:g} kg⁩ |
+| first record | أول قياس |
+| 📋 **Session Logged:** {day} ({date}) \| {total_working_sets} Sets \| Volume: {total_tonnage_kg:,.1f} kg \| Readiness: {readiness}/5 \| Saved to Ledger. | 📋 **تم تسجيل الحصة التدريبية:** ⁨{day}⁩ (⁦{date}⁩) \| {Arabic count phrase for working sets} \| إجمالي الوزن المرفوع: ⁦{total_tonnage_kg:,.1f} kg⁩ \| الاستعداد: ⁦{readiness}/5⁩ \| حُفظت في سجل التدريب. |
+
+Arabic summary counts follow the shared CLDR agreement forms: 0 uses plural,
+1 and 2 use singular and dual forms, 3–10 use the few form, 11–99 use the
+accusative singular, and 100+ use the genitive singular. Repetition counts
+after a preposition use the oblique dual form.
+
+| Count | Working sets | Repetitions |
+| --- | --- | --- |
+| 1 | مجموعة تدريب واحدة | تكرار واحد |
+| 2 | مجموعتا تدريب | تكراران; after a preposition: تكرارين |
+| 3–10 | {count} مجموعات تدريب | {count} تكرارات |
+| 11–99 | {count} مجموعة تدريب | {count} تكرارًا |
+| 100+ | {count} مجموعة تدريب | {count} تكرار |

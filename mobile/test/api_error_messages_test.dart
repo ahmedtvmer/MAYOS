@@ -49,7 +49,7 @@ void main() {
     expect(error.serverDetails?['pydantic_errors'], isA<List<dynamic>>());
     expect(
       MayosCopy('ar').failureMessage(apiFailureMessage(error)),
-      'يجب ألا يتجاوز هذا الحقل \u2066400\u2069 حرفًا',
+      'يجب ألا يتجاوز هذا الحقل \u2066400\u2069 حرف',
     );
   });
 

@@ -224,7 +224,7 @@ class MayosCopy {
   String get noCheckpointsYet =>
       isArabic ? 'لا توجد محطات تقدم بعد.' : 'No Checkpoints yet.';
   String get strength => isArabic ? 'القوة' : 'Strength';
-  String get volume => isArabic ? 'الحجم التدريبي' : 'Volume';
+  String get volume => isArabic ? countedSets : 'Volume';
   String get estimatedOneRepMax =>
       isArabic ? 'الحد الأقصى التقديري لتكرار واحد' : 'Estimated 1RM';
   String get recentSessions => isArabic ? 'الحصص الأخيرة' : 'Recent sessions';
@@ -273,7 +273,7 @@ class MayosCopy {
   String get automaticTrainingProgram =>
       isArabic ? 'برنامج تدريبي تلقائي' : 'Automatic training program';
   String get weeklyVolumeAndRecords => isArabic
-      ? 'لوحة الحجم التدريبي والأرقام القياسية الأسبوعية'
+      ? 'لوحة مجموعات التدريب والأرقام القياسية الأسبوعية'
       : 'Weekly volume and personal-record dashboard';
   String get coachingAssignmentBenefit =>
       isArabic ? 'علاقة تدريب مع مدربك' : 'Coaching assignment with your coach';
@@ -470,7 +470,7 @@ class MayosCopy {
   String get noTrainingHistory =>
       isArabic ? 'لا يوجد سجل تدريب بعد' : 'No training history yet';
   String get homeHistoryLead => isArabic
-      ? 'سجّل حصة تدريبية لعرض تقدم القوة والحجم التدريبي لكل تمرين هنا.'
+      ? 'سجّل حصة تدريبية لعرض تقدم القوة ومجموعات التدريب لكل تمرين هنا.'
       : 'Log a workout and your strength trend, volume, and per-exercise history will show here.';
   String get noActiveProgramYet => isArabic
       ? 'لا يوجد برنامج تدريبي نشط بعد. أكمل إعدادك لإنشاء برنامج.'
@@ -586,7 +586,7 @@ class MayosCopy {
       ? 'تغير البرنامج. اختر التمرين والبديل مرة أخرى.'
       : 'The program changed. Choose the exercise and replacement again.';
   String get authorityChangedDirectSwap => isArabic
-      ? 'تغيرت صلاحية تعديل البرنامج. جارٍ تبديل التمرين مباشرة.'
+      ? 'تغيرت صلاحية تعديل البرنامج. جارٍ تبديل تمرين في البرنامج مباشرة.'
       : 'Program authority changed. Continuing with direct substitution.';
   String get authorityChangedRequestCoach => isArabic
       ? 'تغيرت صلاحية تعديل البرنامج. جارٍ إرسال طلب إلى مدربك.'
@@ -596,7 +596,7 @@ class MayosCopy {
           ? 'طُلب من مدربك تبديل $oldExercise بـ $newExercise.'
           : 'Your coach has been asked to replace $oldExercise with $newExercise.';
   String substitutionApplied(String oldExercise, String newExercise) => isArabic
-      ? 'تم تبديل $oldExercise بـ $newExercise.'
+      ? 'تم تبديل تمرين في البرنامج من $oldExercise إلى $newExercise.'
       : '$oldExercise replaced with $newExercise.';
   String noSetsForExercise(String name) => isArabic
       ? 'لا توجد مجموعات مسجلة لهذا التمرين بعد. سجّل حصة تدريبية لبدء متابعة التقدم.'
@@ -631,7 +631,7 @@ class MayosCopy {
       ? 'تُحسب مجموعة التدريب بقيمة 1 للعضلة الأساسية و0.5 لكل عضلة مساعدة.'
       : 'Primary muscle counts 1 per working set, each secondary 0.5.';
   String get logToSeeHistory => isArabic
-      ? 'سجّل حصة تدريبية لعرض تقدم القوة والحجم التدريبي وسجل كل تمرين هنا.'
+      ? 'سجّل حصة تدريبية لعرض تقدم القوة ومجموعات التدريب وسجل كل تمرين هنا.'
       : 'Log a workout and your strength trend, volume, and per-exercise records will appear here.';
   String chartNoSessions(String metric, String exercise) => isArabic
       ? 'لا توجد حصص مسجلة لتمرين $exercise في مقياس $metric.'

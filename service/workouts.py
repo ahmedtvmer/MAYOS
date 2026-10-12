@@ -9,6 +9,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from agent.chat_markers import SessionPointerFacts, format_session_pointer
 from agent.debrief import generate_session_debrief
 from agent.progression_engine import (
     SessionExerciseRecord,
@@ -534,6 +535,7 @@ def _persist_session(
     warmup_movements: list[dict[str, Any]] | None = None,
     cardio: dict[str, Any] | None = None,
     active_program_version_at_sync: int | None = None,
+    display_language: str = "en",
 ) -> dict[str, Any]:
     """Writes one session and its derived records; the caller owns the transaction.
 
@@ -751,12 +753,18 @@ def _persist_session(
         total_sets=total_working_sets,
         fatigue_info=fatigue_post,
         pr_events=pr_events,
+        display_language=display_language,
     )
     ledger.save_session_debrief(session_id, debrief_content)
-    compact_pointer = (
-        f"📋 **Session Logged:** {day_plan.day_name} ({today_date}) | "
-        f"{total_working_sets} Sets | Volume: {total_tonnage_kg:,.1f} kg | "
-        f"Readiness: {readiness}/5 | Saved to Ledger."
+    compact_pointer = format_session_pointer(
+        SessionPointerFacts(
+            display_language=display_language,
+            day_name=day_plan.day_name,
+            performed_date=str(today_date),
+            total_working_sets=total_working_sets,
+            total_tonnage_kg=total_tonnage_kg,
+            readiness=readiness,
+        )
     )
     ledger.add_chat_message("assistant", compact_pointer)
 
@@ -872,6 +880,9 @@ def commit_session(
         imported_workouts = training_status_service.imported_workout_count(
             db, account_id
         )
+        display_language = checkpoint_reviews_service.resolve_display_language(
+            db, account_id
+        )
         with ledger.ledger_transaction():
             body = _persist_session(
                 db,
@@ -887,6 +898,7 @@ def commit_session(
                 ledger=ledger,
                 warmup_movements=warmup_movements,
                 cardio=cardio,
+                display_language=display_language,
             )
             body["training_status"] = (
                 training_status_service.get_training_status(
@@ -970,6 +982,9 @@ def commit_logged_session(
         imported_workouts = training_status_service.imported_workout_count(
             db, account_id
         )
+        display_language = checkpoint_reviews_service.resolve_display_language(
+            db, account_id
+        )
         committed_program = None
         try:
             with ledger.ledger_transaction():
@@ -1000,6 +1015,7 @@ def commit_logged_session(
                     warmup_movements=warmup_movements,
                     cardio=cardio,
                     active_program_version_at_sync=active_version,
+                    display_language=display_language,
                 )
                 body["training_status"] = (
                     training_status_service.get_training_status(

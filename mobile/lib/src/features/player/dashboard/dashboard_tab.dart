@@ -639,6 +639,11 @@ class _VolumeSection extends StatelessWidget {
             displayCopyOf(context).countedSetsMetric(total),
             style: MayosTypography.of(context).numericSmall.copyWith(color: c.textPrimary),
           ),
+          const SizedBox(height: MayosSpacing.xxs),
+          Text(
+            displayCopyOf(context).countedSetsExplanation,
+            style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
+          ),
           const SizedBox(height: MayosSpacing.md),
           for (final MapEntry<String, double> entry in muscles)
             _VolumeRow(

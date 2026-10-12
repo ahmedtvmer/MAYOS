@@ -6,6 +6,7 @@ enum ArabicCountNoun {
     dualNominative: 'يومان',
     dualOblique: 'يومين',
     many: 'يومًا',
+    other: 'يوم',
   ),
   group(
     zeroAndFew: 'مجموعات',
@@ -13,6 +14,7 @@ enum ArabicCountNoun {
     dualNominative: 'مجموعتان',
     dualOblique: 'مجموعتين',
     many: 'مجموعة',
+    other: 'مجموعة',
   ),
   trainingSet(
     zeroAndFew: 'مجموعات تدريب',
@@ -20,6 +22,7 @@ enum ArabicCountNoun {
     dualNominative: 'مجموعتا تدريب',
     dualOblique: 'مجموعتي تدريب',
     many: 'مجموعة تدريب',
+    other: 'مجموعة تدريب',
   ),
   exercise(
     zeroAndFew: 'تمارين',
@@ -27,6 +30,7 @@ enum ArabicCountNoun {
     dualNominative: 'تمرينان',
     dualOblique: 'تمرينين',
     many: 'تمرينًا',
+    other: 'تمرين',
   ),
   warmupSet(
     zeroAndFew: 'مجموعات إحماء',
@@ -34,6 +38,7 @@ enum ArabicCountNoun {
     dualNominative: 'مجموعتا إحماء',
     dualOblique: 'مجموعتي إحماء',
     many: 'مجموعة إحماء',
+    other: 'مجموعة إحماء',
   ),
   session(
     zeroAndFew: 'حصص',
@@ -41,6 +46,7 @@ enum ArabicCountNoun {
     dualNominative: 'حصتان',
     dualOblique: 'حصتين',
     many: 'حصة',
+    other: 'حصة',
   ),
   trainingSession(
     zeroAndFew: 'حصص تدريبية',
@@ -48,6 +54,7 @@ enum ArabicCountNoun {
     dualNominative: 'حصتان تدريبيتان',
     dualOblique: 'حصتين تدريبيتين',
     many: 'حصة تدريبية',
+    other: 'حصة تدريبية',
   ),
   workoutDraft(
     zeroAndFew: 'مسودات تدريبية',
@@ -55,6 +62,7 @@ enum ArabicCountNoun {
     dualNominative: 'مسودتان تدريبيتان',
     dualOblique: 'مسودتين تدريبيتين',
     many: 'مسودة تدريبية',
+    other: 'مسودة تدريبية',
   ),
   year(
     zeroAndFew: 'سنوات',
@@ -62,6 +70,7 @@ enum ArabicCountNoun {
     dualNominative: 'سنتان',
     dualOblique: 'سنتين',
     many: 'سنة',
+    other: 'سنة',
   ),
   second(
     zeroAndFew: 'ثوانٍ',
@@ -69,6 +78,7 @@ enum ArabicCountNoun {
     dualNominative: 'ثانيتان',
     dualOblique: 'ثانيتين',
     many: 'ثانية',
+    other: 'ثانية',
   ),
   repetition(
     zeroAndFew: 'تكرارات',
@@ -76,6 +86,7 @@ enum ArabicCountNoun {
     dualNominative: 'تكراران',
     dualOblique: 'تكرارين',
     many: 'تكرارًا',
+    other: 'تكرار',
   ),
   character(
     zeroAndFew: 'أحرف',
@@ -83,6 +94,7 @@ enum ArabicCountNoun {
     dualNominative: 'حرفان',
     dualOblique: 'حرفين',
     many: 'حرفًا',
+    other: 'حرف',
   ),
   assignment(
     zeroAndFew: 'علاقات تدريب',
@@ -90,6 +102,7 @@ enum ArabicCountNoun {
     dualNominative: 'علاقتا تدريب',
     dualOblique: 'علاقتي تدريب',
     many: 'علاقة تدريب',
+    other: 'علاقة تدريب',
   ),
   alert(
     zeroAndFew: 'تنبيهات',
@@ -97,6 +110,7 @@ enum ArabicCountNoun {
     dualNominative: 'تنبيهان',
     dualOblique: 'تنبيهين',
     many: 'تنبيهًا',
+    other: 'تنبيه',
   ),
   request(
     zeroAndFew: 'طلبات',
@@ -104,6 +118,7 @@ enum ArabicCountNoun {
     dualNominative: 'طلبان',
     dualOblique: 'طلبين',
     many: 'طلبًا',
+    other: 'طلب',
   ),
   warmupMovement(
     zeroAndFew: 'حركات إحماء',
@@ -111,6 +126,7 @@ enum ArabicCountNoun {
     dualNominative: 'حركتا إحماء',
     dualOblique: 'حركتي إحماء',
     many: 'حركة إحماء',
+    other: 'حركة إحماء',
   ),
   minute(
     zeroAndFew: 'دقائق',
@@ -118,6 +134,7 @@ enum ArabicCountNoun {
     dualNominative: 'دقيقتان',
     dualOblique: 'دقيقتين',
     many: 'دقيقة',
+    other: 'دقيقة',
   );
 
   const ArabicCountNoun({
@@ -126,6 +143,7 @@ enum ArabicCountNoun {
     required this.dualNominative,
     required this.dualOblique,
     required this.many,
+    required this.other,
   });
 
   final String zeroAndFew;
@@ -133,6 +151,7 @@ enum ArabicCountNoun {
   final String dualNominative;
   final String dualOblique;
   final String many;
+  final String other;
 }
 
 /// Returns a short, readable Arabic count phrase using Western digits.
@@ -147,6 +166,7 @@ String arabicCountPhrase(
   bool afterPreposition = false,
   bool isolateCount = false,
 }) {
+  // Mirrors agent/debrief.py:arabic_count_phrase.
   final String numericCount = isolateCount ? '\u2066$count\u2069' : '$count';
   if (count == 0) return '$numericCount ${noun.zeroAndFew}';
   if (count == 1) return noun.one;
@@ -156,10 +176,12 @@ String arabicCountPhrase(
     return dual;
   }
 
-  final int magnitude = count.abs();
-  if (magnitude >= 3 && magnitude <= 10) {
+  final int remainder = count % 100;
+  if (remainder >= 3 && remainder <= 10) {
     return '$numericCount ${noun.zeroAndFew}';
   }
-
-  return '$numericCount ${noun.many}';
+  if (remainder >= 11 && remainder <= 99) {
+    return '$numericCount ${noun.many}';
+  }
+  return '$numericCount ${noun.other}';
 }

@@ -872,7 +872,8 @@ class CoachCopy {
   String coachingSinceDate(String date) => isArabic ? _ltr(date) : date;
   String get lastSession => isArabic ? 'آخر حصة' : 'Last session';
   String get weeklyVolume => isArabic ? 'الحجم الأسبوعي' : 'Weekly volume';
-  String get sessionVolumeColumn => isArabic ? 'الحجم (كجم)' : 'Volume (kg)';
+  String get sessionVolumeColumn =>
+      isArabic ? 'إجمالي الوزن المرفوع (${_ltr('kg')})' : 'Volume (kg)';
   String get sessionDateColumn => isArabic ? 'التاريخ' : 'Date';
   String get sessionSplitColumn => isArabic ? 'التقسيمة' : 'Split';
   String get sessionFlagsColumn => isArabic ? 'العلامات' : 'Flags';
@@ -887,7 +888,7 @@ class CoachCopy {
     return isArabic ? _ltr(formatted) : formatted;
   }
 
-  String get volumeUnit => isArabic ? 'كجم' : 'kg';
+  String get volumeUnit => isArabic ? _ltr('kg') : 'kg';
   String expectedDays(String value) =>
       isArabic ? 'أيام التدريب المتوقعة: $value' : 'Expected: $value';
   String sessionTitle(String split, String date) =>

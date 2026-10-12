@@ -260,21 +260,31 @@ Future<void> _expectPrescriptionFormatting(
   expect(prescription, findsOneWidget);
 }
 
-Future<void> _openSubstitutePicker(WidgetTester tester) async {
+Future<void> _openSubstitutePicker(
+  WidgetTester tester, {
+  String languageCode = 'en',
+}) async {
   await tester.drag(find.byType(ListView).first, const Offset(0, -180));
   await tester.pumpAndSettle();
-  final Finder moreActions = find.byTooltip('More actions for Bench Press');
+  final Finder moreActions = find.byTooltip(languageCode == 'ar'
+      ? 'المزيد من الخيارات للتمرين Bench Press'
+      : 'More actions for Bench Press');
   await tester.ensureVisible(moreActions);
   await tester.tap(moreActions);
   await tester.pumpAndSettle();
-  await tester.tap(find.text('Substitute exercise'));
+  await tester.tap(find.text(languageCode == 'ar'
+      ? 'تبديل تمرين في البرنامج'
+      : 'Substitute exercise'));
   await tester.pumpAndSettle();
   await _pumpUntilFound(tester, find.text('Cable Fly'));
   expect(
     find.byKey(const Key('exercise_primary_muscle_filter')),
     findsOneWidget,
   );
-  expect(find.text('Muscle: Chest'), findsOneWidget);
+  expect(
+    find.textContaining(languageCode == 'ar' ? 'العضلة:' : 'Muscle: Chest'),
+    findsWidgets,
+  );
   expect(
     find.descendant(
       of: find.byType(AlertDialog),
@@ -291,6 +301,19 @@ Future<void> _chooseCableFly(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('Arabic program substitution keeps the permanent name distinct',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    await _pumpProgram(tester, fake, languageCode: 'ar');
+
+    await _openSubstitutePicker(tester, languageCode: 'ar');
+
+    expect(find.text('تبديل تمرين في البرنامج'), findsOneWidget);
+    expect(find.text('استبدال تمرين لهذه الحصة'), findsNothing);
+    expect(find.text('Bench Press'), findsOneWidget);
+    expect(find.textContaining('RIR'), findsWidgets);
+  });
+
   testWidgets('Player sees Coach exercise details without offering it as a substitute',
       (tester) async {
     final FakeMayosApi fake = _signedInFake();
@@ -1451,6 +1474,110 @@ void main() {
     expect(find.text('0/11 sets'), findsOneWidget);
     expect(fake.programEditRequests, hasLength(1));
     semantics.dispose();
+  });
+
+  testWidgets('Arabic program logging reaches a summary with original facts',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..programVersion = 1
+      ..programDaysOverride = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'day_name': 'Upper 1',
+          'day_order': 1,
+          'warmup_exercises': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'exercise_id': 'band_pull_apart',
+              'exercise_name': 'Band Pull-Apart',
+              'sets': 1,
+              'reps': 15,
+              'rest_seconds': 45,
+            },
+          ],
+          'exercises': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'exercise_id': 'bench_press',
+              'exercise_name': 'Bench Press',
+              'warmup_sets': 0,
+              'target_sets': 1,
+              'target_reps_min': 5,
+              'target_reps_max': 8,
+              'target_rpe': 8.5,
+              'rest_seconds': 180,
+            },
+          ],
+        },
+      ];
+    tester.view.viewPadding = const FakeViewPadding();
+    addTearDown(tester.view.resetViewPadding);
+    await _pumpProgram(
+      tester,
+      fake,
+      languageCode: 'ar',
+      activeWorkoutStore: InMemoryActiveWorkoutStore(),
+    );
+
+    await tester.tap(find.text('تسجيل حصة تدريبية'));
+    final Finder logger = find.byType(WorkoutLoggerScreen);
+    await _pumpUntilFound(tester, logger);
+    expect(logger, findsOneWidget);
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const ValueKey<String>('logger.cell.0.0.rir')),
+    );
+    expect(
+      find.byKey(const ValueKey<String>('logger.cell.0.0.rir')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: logger, matching: find.text('Bench Press')),
+      findsOneWidget,
+    );
+    expect(find.text('حركة إحماء'), findsOneWidget);
+    expect(find.text('تكرارات'), findsWidgets);
+    expect(find.text('RIR'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('logger.cell.0.0.rir')),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.textContaining('RIR'), findsWidgets);
+    expect(find.text('التكرارات المتبقية'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.hide')));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('logger.cell.0.0.kg')),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    for (final String digit in <String>['1', '0', '0']) {
+      await tester.tap(find.byKey(ValueKey<String>('logger.key.$digit')));
+    }
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.hide')));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('logger.cell.0.0.reps')),
+    );
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.5')));
+    await tester.tap(find.byKey(const ValueKey<String>('logger.key.hide')));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.byKey(const ValueKey<String>('logger.tick.0.0')));
+
+    final Finder finish = find.widgetWithText(FilledButton, 'إنهاء الحصة');
+    await tester.ensureVisible(finish);
+    await tester.tap(finish);
+    await _pumpUntilFound(tester, find.text('ملخص الحصة'));
+
+    expect(find.text('ملخص الحصة'), findsOneWidget);
+    expect(find.text('إجمالي الوزن المرفوع'), findsOneWidget);
+    expect(find.text('kg'), findsOneWidget);
+    final String renderedText = find
+        .byType(Text)
+        .evaluate()
+        .map((Element element) => (element.widget as Text).data ?? '')
+        .join('\n');
+    expect(renderedText, contains('500'));
+    expect(renderedText, isNot(matches(RegExp(r'[٠-٩۰-۹]'))));
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('Edit day stale version reloads the program and explains in English',

@@ -476,6 +476,84 @@ def test_first_commit_returns_201_and_records_sync_fields(api):
     assert row["uploaded_at"] == FIXED_NOW.isoformat()
 
 
+def test_display_language_saves_future_summaries_and_replays_original(api):
+    client, db = api
+    arabic_headers, arabic_version = _prepare_player(client, db, username="p1")
+    language_response = client.put(
+        "/auth/display-language",
+        headers=arabic_headers,
+        json={"display_language": "ar"},
+    )
+    assert language_response.status_code == 200, language_response.text
+    db.switch_user("p1")
+    db.ledger.add_chat_message("assistant", "Historical assistant text")
+
+    arabic_body = _sync_body(version=arabic_version)
+    arabic_body["session_notes"] = "left shoulder felt stiff"
+    arabic_commit = client.post(
+        "/workouts/sessions", headers=arabic_headers, json=arabic_body
+    )
+    assert arabic_commit.status_code == 201, arabic_commit.text
+    arabic_summary = arabic_commit.json()["debrief"]
+    assert "**تغيرات الأداء**" in arabic_summary
+    assert "**مراجعة الإرهاق والجهاز العصبي**" in arabic_summary
+    assert "**توجيهات الحصة التالية**" in arabic_summary
+    assert "Bench Press" in arabic_summary
+    assert "left shoulder felt stiff" in arabic_summary
+
+    db.switch_user("p1")
+    saved_summary = db.ledger.get_session_debrief(arabic_commit.json()["session_id"])
+    history_before_language_change = client.get(
+        "/chat/history", headers=arabic_headers
+    ).json()
+    assert history_before_language_change[0]["content"] == "Historical assistant text"
+    arabic_pointer = history_before_language_change[-1]
+    assert arabic_pointer["kind"] == "debrief"
+    assert "تم تسجيل الحصة التدريبية" in arabic_pointer["content"]
+    assert "\u20663\u2069 مجموعات تدريب" in arabic_pointer["content"]
+
+    english_headers, english_version = _prepare_player(client, db, username="p2")
+    english_body = _sync_body(
+        client_session_id="22222222-2222-4222-8222-222222222222",
+        version=english_version,
+    )
+    english_body["session_notes"] = arabic_body["session_notes"]
+    english_commit = client.post(
+        "/workouts/sessions", headers=english_headers, json=english_body
+    )
+    assert english_commit.status_code == 201, english_commit.text
+    english_summary = english_commit.json()["debrief"]
+    assert "**Overload Deltas**" in english_summary
+    assert "Bench Press" in english_summary
+    assert "left shoulder felt stiff" in english_summary
+    for fact in (
+        "total_tonnage_kg",
+        "total_working_sets",
+        "exercise_summaries",
+        "fatigue_post",
+        "new_prs",
+        "divergences",
+    ):
+        assert arabic_commit.json()[fact] == english_commit.json()[fact]
+
+    changed_language = client.put(
+        "/auth/display-language",
+        headers=arabic_headers,
+        json={"display_language": "en"},
+    )
+    assert changed_language.status_code == 200, changed_language.text
+    replay = client.post("/workouts/sessions", headers=arabic_headers, json=arabic_body)
+    assert replay.status_code == 200, replay.text
+    assert replay.json() == arabic_commit.json()
+    db.switch_user("p1")
+    assert db.ledger.get_session_debrief(arabic_commit.json()["session_id"]) == saved_summary
+    history_after_language_change = client.get(
+        "/chat/history", headers=arabic_headers
+    ).json()
+    assert history_after_language_change == history_before_language_change
+    assert history_after_language_change[-1] == arabic_pointer
+
+
 def test_workout_completed_is_aggregate_only_and_replay_emits_once(api, recording_analytics, monkeypatch):
     monkeypatch.setenv("MAYOS_ENV", "test")
     client, db = api
