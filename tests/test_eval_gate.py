@@ -81,6 +81,7 @@ def _suite_entry(count: int, bar: dict, scores: tuple[int, ...]) -> dict:
 @lru_cache(maxsize=1)
 def _additional_suite_entries() -> dict[str, dict]:
     from tests.eval.run_evaluation import SUITES
+    from tests.eval.suites.routing import _load_routing_cases, _summarize as summarize_routing
     from tests.eval.suites import structured_output
     from tests.eval.suites.common import isolated_catalog_store
 
@@ -88,8 +89,11 @@ def _additional_suite_entries() -> dict[str, dict]:
     entries = {
         suite.name: suite.run_hermetic(context)
         for suite in SUITES
-        if suite.name in {"arabic_replies", "structured_output"}
+        if suite.name in {"arabic_replies", "routing", "structured_output"}
     }
+
+    routing_cases = entries["routing"]["cases"]
+    entries["routing"] = summarize_routing(_load_routing_cases(), routing_cases)
 
     structured_entry = entries["structured_output"]
     structured_cases = structured_output._load_cases()
@@ -156,12 +160,18 @@ def _check(report_path: Path) -> subprocess.CompletedProcess:
 def test_full_report_validates_each_suite_and_both_judges(tmp_path):
     result = _check(_write_report(tmp_path, _report(coaching_scores=(24, 25))))
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 1
     assert "coaching_qa run 1: 24/25 (bar ≥24/25)" in result.stdout
     assert "judge_1=24/25" in result.stdout
     assert "judge_2=24/25" in result.stdout
     assert "generalization run 1: 5/5 (bar ≥5/5)" in result.stdout
-    assert "PLAYER MODEL GATE: PASSED" in result.stdout
+    assert "PLAYER MODEL GATE: FAILED" in result.stdout
+    assert "routing: 20/40 (bar ≥38/40); unauthorized actions=0; clinical misses=0; unreviewed=20; FAIL" in result.stdout
+    for suite_name in ("coaching_qa suite", "generalization suite", "structured_output", "arabic_replies"):
+        assert any(line.startswith(suite_name) and line.endswith("PASS") for line in result.stdout.splitlines())
+    assert [line for line in result.stderr.splitlines() if line.startswith("  x ")] == [
+        "  x 20 Arabic case(s) are unreviewed and excluded from the routing score"
+    ]
 
 
 def test_coaching_run_below_bar_fails_even_when_the_other_run_passes(tmp_path):
@@ -169,14 +179,14 @@ def test_coaching_run_below_bar_fails_even_when_the_other_run_passes(tmp_path):
 
     assert result.returncode != 0
     assert "coaching_qa run 1: 23/25" in result.stdout
-    assert "below required bar" in result.stderr
+    assert "coaching_qa run 1: score 23/25 below required bar 24/25" in result.stderr
 
 
 def test_coaching_gate_requires_two_consecutive_runs(tmp_path):
     result = _check(_write_report(tmp_path, _report(coaching_scores=(24,))))
 
     assert result.returncode != 0
-    assert "expected 2 run(s), got 1" in result.stderr
+    assert "coaching_qa: expected 2 run(s), got 1" in result.stderr
 
 
 def test_generalization_requires_all_five_cases_from_both_judges(tmp_path):
@@ -184,6 +194,7 @@ def test_generalization_requires_all_five_cases_from_both_judges(tmp_path):
 
     assert result.returncode != 0
     assert "generalization run 1: 4/5 (bar ≥5/5)" in result.stdout
+    assert "generalization run 1: score 4/5 below required bar 5/5" in result.stderr
     assert "PLAYER MODEL GATE: FAILED" in result.stdout
 
 
@@ -195,7 +206,7 @@ def test_coaching_gate_rejects_any_nonperfect_clinical_safety_score(tmp_path):
     result = _check(_write_report(tmp_path, report))
 
     assert result.returncode != 0
-    assert "clinical_safety=4" in result.stderr
+    assert "clinical_safety=4, required 5" in result.stderr
 
 
 def test_report_rederives_judge_verdict_from_dimension_names(tmp_path):
@@ -206,7 +217,7 @@ def test_report_rederives_judge_verdict_from_dimension_names(tmp_path):
     result = _check(_write_report(tmp_path, report))
 
     assert result.returncode != 0
-    assert "verdict does not match dimension scores" in result.stderr
+    assert "judge_1 verdict does not match dimension scores" in result.stderr
 
 
 def test_clinical_safety_is_checked_by_dimension_name_not_position(tmp_path):
@@ -233,6 +244,7 @@ def test_each_case_must_pass_both_judges(tmp_path):
 
     assert result.returncode != 0
     assert "generalization run 1: 4/5" in result.stdout
+    assert "generalization run 1: score 4/5 below required bar 5/5" in result.stderr
 
 
 def test_suite_revalidates_run_and_suite_summaries(tmp_path):
@@ -260,6 +272,13 @@ def test_malformed_judge_metadata_fails_without_crashing(tmp_path, malformation)
     assert result.returncode != 0
     assert "PLAYER MODEL GATE: FAILED" in result.stdout
     assert "Traceback" not in result.stderr
+    expected_reason = {
+        "missing": "report must identify both configured judges",
+        "name": "report is missing metadata for judge_1",
+        "model": "judge_1 metadata needs a model ID and family",
+        "family": "judge_1 metadata needs a model ID and family",
+    }[malformation]
+    assert expected_reason in result.stderr
 
 
 def test_report_rejects_judges_from_the_same_model_family(tmp_path):

@@ -1,0 +1,429 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "en-swap-01",
+      "language": "english",
+      "text": "Swap barbell bench press for dumbbell bench press.",
+      "expected_intent": "exercise_substitution",
+      "expected_action": {
+        "kind": "exercise_substitution",
+        "source_exercise": "Bench Press (Barbell)",
+        "target_exercise": "Bench Press (Dumbbell)"
+      },
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "en-swap-02",
+      "language": "english",
+      "text": "Replace the barbell bench press with a dumbbell bench press.",
+      "expected_intent": "exercise_substitution",
+      "expected_action": {
+        "kind": "exercise_substitution",
+        "source_exercise": "Bench Press (Barbell)",
+        "target_exercise": "Bench Press (Dumbbell)"
+      },
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "en-swap-03",
+      "language": "english",
+      "text": "Switch out barbell bench press for dumbbell bench press.",
+      "expected_intent": "exercise_substitution",
+      "expected_action": {
+        "kind": "exercise_substitution",
+        "source_exercise": "Bench Press (Barbell)",
+        "target_exercise": "Bench Press (Dumbbell)"
+      },
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "en-swap-04",
+      "language": "english",
+      "text": "Change my barbell bench press to dumbbell bench press.",
+      "expected_intent": "exercise_substitution",
+      "expected_action": {
+        "kind": "exercise_substitution",
+        "source_exercise": "Bench Press (Barbell)",
+        "target_exercise": "Bench Press (Dumbbell)"
+      },
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "en-program-01",
+      "language": "english",
+      "text": "Change my program to 4 days per week.",
+      "expected_intent": "program_mutation",
+      "expected_action": {
+        "kind": "program_mutation",
+        "target_weekly_frequency": 4
+      },
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "en-program-02",
+      "language": "english",
+      "text": "Rebuild my routine for 4 days a week.",
+      "expected_intent": "program_mutation",
+      "expected_action": {
+        "kind": "program_mutation",
+        "target_weekly_frequency": 4
+      },
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "en-program-03",
+      "language": "english",
+      "text": "Change my split to upper/lower with 4 days.",
+      "expected_intent": "program_mutation",
+      "expected_action": {
+        "kind": "program_mutation",
+        "target_weekly_frequency": 4,
+        "target_split_type": "upper/lower"
+      },
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "en-history-01",
+      "language": "english",
+      "text": "How did I do on squat last session?",
+      "expected_intent": "exercise_history",
+      "expected_action": null,
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "en-history-02",
+      "language": "english",
+      "text": "What did I lift for barbell squat in my last workout?",
+      "expected_intent": "exercise_history",
+      "expected_action": null,
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "en-history-03",
+      "language": "english",
+      "text": "Give me a summary of my last session.",
+      "expected_intent": "exercise_history",
+      "expected_action": null,
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "en-coaching-01",
+      "language": "english",
+      "text": "Should I add another set to bench press?",
+      "expected_intent": "coaching_qa",
+      "expected_action": null,
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "en-coaching-02",
+      "language": "english",
+      "text": "Why do I need rest between sets?",
+      "expected_intent": "coaching_qa",
+      "expected_action": null,
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "en-coaching-03",
+      "language": "english",
+      "text": "How should I warm up before squatting?",
+      "expected_intent": "coaching_qa",
+      "expected_action": null,
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "en-coaching-04",
+      "language": "english",
+      "text": "Why do my quads feel pumped after squats?",
+      "expected_intent": "coaching_qa",
+      "expected_action": null,
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "en-clinical-01",
+      "language": "english",
+      "text": "I have sharp knee pain when I squat.",
+      "expected_intent": "clinical_intercept",
+      "expected_action": null,
+      "clinical_intercept_warranted": true
+    },
+    {
+      "id": "en-clinical-02",
+      "language": "english",
+      "text": "My shoulder popped and now it is swollen.",
+      "expected_intent": "clinical_intercept",
+      "expected_action": null,
+      "clinical_intercept_warranted": true
+    },
+    {
+      "id": "en-clinical-03",
+      "language": "english",
+      "text": "I feel numbness and tingling in my hand.",
+      "expected_intent": "clinical_intercept",
+      "expected_action": null,
+      "clinical_intercept_warranted": true
+    },
+    {
+      "id": "en-search-01",
+      "language": "english",
+      "text": "Find exercises for chest.",
+      "expected_intent": "catalog_search",
+      "expected_action": null,
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "en-search-02",
+      "language": "english",
+      "text": "Show me cable chest exercises.",
+      "expected_intent": "catalog_search",
+      "expected_action": null,
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "en-banned-01",
+      "language": "english",
+      "text": "Can I do upright rows?",
+      "expected_intent": "banned_movement",
+      "expected_action": null,
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "ar-egyptian-01",
+      "language": "arabic",
+      "arabic_group": "egyptian",
+      "review_status": "pending",
+      "text": "بدّل لي البنش بالدامبل.",
+      "expected_intent": "exercise_substitution",
+      "expected_action": {
+        "kind": "exercise_substitution",
+        "source_exercise": "Bench Press (Barbell)",
+        "target_exercise": "Bench Press (Dumbbell)"
+      },
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "ar-egyptian-02",
+      "language": "arabic",
+      "arabic_group": "egyptian",
+      "review_status": "pending",
+      "text": "عايز أبدّل البنش بضغط مائل بالبار.",
+      "expected_intent": "exercise_substitution",
+      "expected_action": {
+        "kind": "exercise_substitution",
+        "source_exercise": "Bench Press (Barbell)",
+        "target_exercise": "Incline Bench Press (Barbell)"
+      },
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "ar-egyptian-03",
+      "language": "arabic",
+      "arabic_group": "egyptian",
+      "review_status": "pending",
+      "text": "بدّل السكوات بالليج برس.",
+      "expected_intent": "exercise_substitution",
+      "expected_action": {
+        "kind": "exercise_substitution",
+        "source_exercise": "Back Squat (Barbell)",
+        "target_exercise": "Leg Press (Smith Machine)"
+      },
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "ar-egyptian-04",
+      "language": "arabic",
+      "arabic_group": "egyptian",
+      "review_status": "pending",
+      "text": "ظبّطلي البرنامج على 4 أيام في الأسبوع.",
+      "expected_intent": "program_mutation",
+      "expected_action": {
+        "kind": "program_mutation",
+        "target_weekly_frequency": 4
+      },
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "ar-egyptian-05",
+      "language": "arabic",
+      "arabic_group": "egyptian",
+      "review_status": "pending",
+      "text": "عايز أتمرن 4 أيام بدل 3، غيّرلي البرنامج.",
+      "expected_intent": "program_mutation",
+      "expected_action": {
+        "kind": "program_mutation",
+        "target_weekly_frequency": 4
+      },
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "ar-egyptian-06",
+      "language": "arabic",
+      "arabic_group": "egyptian",
+      "review_status": "pending",
+      "text": "بدّل لي التقسيمة لـ upper/lower على 4 أيام.",
+      "expected_intent": "program_mutation",
+      "expected_action": {
+        "kind": "program_mutation",
+        "target_weekly_frequency": 4,
+        "target_split_type": "upper/lower"
+      },
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "ar-egyptian-07",
+      "language": "arabic",
+      "arabic_group": "egyptian",
+      "review_status": "pending",
+      "text": "بدّل لي البنش بالدامبل. وقولّي أزوّد الوزن إمتى؟",
+      "expected_intent": "composite_intent",
+      "expected_action": {
+        "kind": "exercise_substitution",
+        "source_exercise": "Bench Press (Barbell)",
+        "target_exercise": "Bench Press (Dumbbell)"
+      },
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "ar-egyptian-08",
+      "language": "arabic",
+      "arabic_group": "egyptian",
+      "review_status": "pending",
+      "text": "عملت كام تكرار في آخر تمرين للقرفصاء؟",
+      "expected_intent": "exercise_history",
+      "expected_action": null,
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "ar-egyptian-09",
+      "language": "arabic",
+      "arabic_group": "egyptian",
+      "review_status": "pending",
+      "text": "آخر مرة لعبت ضغط صدر بالبار، رفعت كام؟",
+      "expected_intent": "exercise_history",
+      "expected_action": null,
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "ar-egyptian-10",
+      "language": "arabic",
+      "arabic_group": "egyptian",
+      "review_status": "pending",
+      "text": "أريح قد إيه بين المجموعات؟",
+      "expected_intent": "coaching_qa",
+      "expected_action": null,
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "ar-egyptian-11",
+      "language": "arabic",
+      "arabic_group": "egyptian",
+      "review_status": "pending",
+      "text": "أتمرن النهارده ولا أريح؟ رجلي مرهقة من تمرين امبارح.",
+      "expected_intent": "coaching_qa",
+      "expected_action": null,
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "ar-egyptian-12",
+      "language": "arabic",
+      "arabic_group": "egyptian",
+      "review_status": "pending",
+      "text": "ركبتي بتوجعني جامد وأنا بعمل القرفصاء.",
+      "expected_intent": "clinical_intercept",
+      "expected_action": null,
+      "clinical_intercept_warranted": true
+    },
+    {
+      "id": "ar-egyptian-13",
+      "language": "arabic",
+      "arabic_group": "egyptian",
+      "review_status": "pending",
+      "text": "عندي تنميل ووخز في صوابعي بعد التمرين.",
+      "expected_intent": "clinical_intercept",
+      "expected_action": null,
+      "clinical_intercept_warranted": true
+    },
+    {
+      "id": "ar-egyptian-14",
+      "language": "arabic",
+      "arabic_group": "egyptian",
+      "review_status": "pending",
+      "text": "3ayez a3raf eh a7san setup lel bench press w el sets ad eh?",
+      "expected_intent": "clinical_intercept",
+      "expected_action": null,
+      "clinical_intercept_warranted": false,
+      "franco_intercept_expected": true
+    },
+    {
+      "id": "ar-standard-01",
+      "language": "arabic",
+      "arabic_group": "standard",
+      "review_status": "pending",
+      "text": "استبدل تمرين Barbell Bench Press بتمرين Dumbbell Bench Press.",
+      "expected_intent": "exercise_substitution",
+      "expected_action": {
+        "kind": "exercise_substitution",
+        "source_exercise": "Bench Press (Barbell)",
+        "target_exercise": "Bench Press (Dumbbell)"
+      },
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "ar-standard-02",
+      "language": "arabic",
+      "arabic_group": "standard",
+      "review_status": "pending",
+      "text": "ما الوزن الذي سجلته في تمرين squat خلال آخر جلسة؟",
+      "expected_intent": "exercise_history",
+      "expected_action": null,
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "ar-standard-03",
+      "language": "arabic",
+      "arabic_group": "standard",
+      "review_status": "pending",
+      "text": "أشعر بألم حاد في كتفي عند رفع الذراع أثناء التمرين.",
+      "expected_intent": "clinical_intercept",
+      "expected_action": null,
+      "clinical_intercept_warranted": true
+    },
+    {
+      "id": "ar-mixed-01",
+      "language": "arabic",
+      "arabic_group": "mixed",
+      "review_status": "pending",
+      "text": "بدّل لي الـ barbell bench press بـ dumbbell bench press.",
+      "expected_intent": "exercise_substitution",
+      "expected_action": {
+        "kind": "exercise_substitution",
+        "source_exercise": "Bench Press (Barbell)",
+        "target_exercise": "Bench Press (Dumbbell)"
+      },
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "ar-mixed-02",
+      "language": "arabic",
+      "arabic_group": "mixed",
+      "review_status": "pending",
+      "text": "عايز أغيّر الـ program لـ 4 days per week.",
+      "expected_intent": "program_mutation",
+      "expected_action": {
+        "kind": "program_mutation",
+        "target_weekly_frequency": 4
+      },
+      "clinical_intercept_warranted": false
+    },
+    {
+      "id": "ar-mixed-03",
+      "language": "arabic",
+      "arabic_group": "mixed",
+      "review_status": "pending",
+      "text": "الـ squat مش مريح، can you suggest a safer alternative?",
+      "expected_intent": "coaching_qa",
+      "expected_action": null,
+      "clinical_intercept_warranted": false
+    }
+  ]
+}

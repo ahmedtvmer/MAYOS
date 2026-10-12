@@ -277,10 +277,21 @@ def _print_result_line(name: str, result: dict[str, Any]) -> None:
     judge_labels = "; ".join(
         f"{label}={value}/{total}" for label, value in judge_scores.items()
     ) if isinstance(judge_scores, dict) else ""
-    status = result.get("status")
-    if status == "unreviewed":
+    details = [judge_labels] if judge_labels else []
+    for key, label in (
+        ("unauthorized_actions", "unauthorized actions"),
+        ("clinical_misses", "clinical misses"),
+        ("unreviewed_count", "unreviewed"),
+    ):
+        if key in result:
+            details.append(f"{label}={result[key]}")
+    if "would_be_passed" in result:
+        details.append(f"would-be gate={'PASS' if result['would_be_passed'] else 'FAIL'}")
+    detail = f"; {'; '.join(details)}" if details else ""
+    if result.get("status") == "unreviewed":
         verdict = "UNREVIEWED; observed score not counted"
     else:
         verdict = "PASS" if result.get("passed") is True else "FAIL"
-    detail = f"; {judge_labels}" if judge_labels else ""
+        if "would_be_passed" in result:
+            verdict = f"{verdict} (hermetic plumbing)"
     print(f"{name}: {score}/{total} (bar {bar_label}){detail}; {verdict}")
