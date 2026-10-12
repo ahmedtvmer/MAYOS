@@ -540,7 +540,7 @@ def test_owner_can_publish_player_can_log_and_keep_coach_exercise_prs(api):
     unknown_version = {
         **payload,
         "client_session_id": str(uuid.uuid4()),
-        "performed_date": date.today().isoformat(),
+        "performed_date": datetime.now(timezone.utc).date().isoformat(),
         "performed_timezone": "UTC",
         "program_version": 999,
         "captured_at": datetime.now(timezone.utc).isoformat(),
