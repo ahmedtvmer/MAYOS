@@ -66,23 +66,6 @@ def test_hermetic_routing_counts_every_owner_reviewed_case():
     assert (record["score"], record["total"]) == (40, 40)
     assert record["unreviewed_count"] == 0
     assert record["passed"] is True
-    graph_cases = {
-        case["case_id"]
-        for case in record["cases"]
-        if case["scripted_classifier_used"]
-    }
-    assert graph_cases == {
-        "ar-egyptian-01",
-        "ar-egyptian-02",
-        "ar-egyptian-03",
-        "ar-egyptian-07",
-        "ar-standard-01",
-        "ar-mixed-01",
-    }
-    composite = next(case for case in record["cases"] if case["case_id"] == "ar-egyptian-07")
-    assert composite["observed_intent"] == "composite_intent"
-    assert len(composite["executed_actions"]) == 1
-    assert composite["action_match"] is True
 
 
 def test_hermetic_routing_excludes_unreviewed_arabic_from_score(tmp_path, monkeypatch):

@@ -1224,17 +1224,3 @@ after a preposition use the oblique dual form.
 | 3–10 | {count} مجموعات تدريب | {count} تكرارات |
 | 11–99 | {count} مجموعة تدريب | {count} تكرارًا |
 | 100+ | {count} مجموعة تدريب | {count} تكرار |
-
-## Assistant chat clarifications — pending owner review (#191)
-
-| English intent | Arabic |
-| --- | --- |
-| Which exercise do you want to change? | أنهي تمرين عايز تغيّره؟ |
-| I’ll swap this exercise first. After that, tell me what else you’d like help with. | هبدّل التمرين ده الأول، وبعدها قولي تحب أساعدك في إيه كمان؟ |
-
-The Arabic swap classifier must return the canonical Exercise library names for
-both the source and target. Validation checks those names against the Player's
-current Training program and the visible Exercise library. A colloquial entity
-such as `البنش` or `الدامبل` returned by the classifier does not resolve; if an
-exact library name cannot be produced or validated, the assistant asks which
-exercise the Player wants to change and makes no change.
