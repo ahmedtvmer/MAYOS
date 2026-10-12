@@ -241,6 +241,11 @@ def print_gate_summary(
         if specs:
             print(f"Judges: {'; '.join(specs)}")
     for suite in summaries:
+        measures = suite.get("measures")
+        if isinstance(measures, list):
+            for measure in measures:
+                if isinstance(measure, dict):
+                    _print_result_line(f"{suite['name']} {measure.get('name', 'measure')}", measure)
         _print_suite_summary(suite)
     if report.get("mode") == "hermetic":
         print("PLAYER MODEL GATE: NOT RUN (hermetic validation only)")
@@ -272,6 +277,10 @@ def _print_result_line(name: str, result: dict[str, Any]) -> None:
     judge_labels = "; ".join(
         f"{label}={value}/{total}" for label, value in judge_scores.items()
     ) if isinstance(judge_scores, dict) else ""
-    passed = result.get("passed") is True
+    status = result.get("status")
+    if status == "unreviewed":
+        verdict = "UNREVIEWED; observed score not counted"
+    else:
+        verdict = "PASS" if result.get("passed") is True else "FAIL"
     detail = f"; {judge_labels}" if judge_labels else ""
-    print(f"{name}: {score}/{total} (bar {bar_label}){detail}; {'PASS' if passed else 'FAIL'}")
+    print(f"{name}: {score}/{total} (bar {bar_label}){detail}; {verdict}")

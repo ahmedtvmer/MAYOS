@@ -1,0 +1,9 @@
+{
+  "review_status": "pending",
+  "sample_sha256": null,
+  "judge_models": [],
+  "player_model": null,
+  "rubric_sha256": null,
+  "reviewed_by": null,
+  "reviewed_on": null
+}

@@ -1,0 +1,84 @@
+{
+  "split_plans": [
+    {
+      "id": "split-01",
+      "frequency": 4,
+      "gender": "male",
+      "request": "Rotate the focus across four spaced sessions, balancing presses, pulls, and lower-body work."
+    },
+    {
+      "id": "split-02",
+      "frequency": 3,
+      "gender": "female",
+      "request": "Build three varied full-session days with extra attention to glutes while keeping upper-body work."
+    },
+    {
+      "id": "split-03",
+      "frequency": 5,
+      "gender": "male",
+      "request": "Use five sessions: one chest and back focus, one shoulder and arm focus, then repeat with a leg day."
+    },
+    {
+      "id": "split-04",
+      "frequency": 4,
+      "gender": "female",
+      "request": "Arrange four weekly sessions by front-side and back-side movement emphasis, with a glute priority."
+    },
+    {
+      "id": "split-05",
+      "frequency": 3,
+      "gender": "male",
+      "request": "Make three balanced training sessions that rotate movement emphasis and leave recovery between hard lower-body days."
+    }
+  ],
+  "substitution_resolutions": [
+    {
+      "id": "substitution-01",
+      "program_exercise": "Bench Press (Barbell)",
+      "conversation": [
+        {"role": "human", "content": "The Bench Press (Barbell) is bothering my wrists. What could I use instead?"},
+        {"role": "assistant", "content": "You could use Bench Press (Dumbbell) or Incline Bench Press (Dumbbell)."}
+      ],
+      "query": "Let's replace it with Bench Press (Dumbbell).",
+      "expected_target": "Bench Press (Dumbbell)"
+    },
+    {
+      "id": "substitution-02",
+      "program_exercise": "Back Squat (Barbell)",
+      "conversation": [
+        {"role": "human", "content": "I'm not comfortable with Back Squat (Barbell) right now."}
+      ],
+      "query": "Can you change that to the 45 degree leg press?",
+      "expected_target": "45° Leg Press (Plate-Loaded)"
+    },
+    {
+      "id": "substitution-03",
+      "program_exercise": "Lat Pulldown (Cable)",
+      "conversation": [
+        {"role": "human", "content": "I want another option for Lat Pulldown (Cable)."},
+        {"role": "assistant", "content": "Assisted Pull-Up (Machine) is an option."}
+      ],
+      "query": "Switch it to the assisted pull-up.",
+      "expected_target": "Assisted Pull-Up (Machine)"
+    },
+    {
+      "id": "substitution-04",
+      "program_exercise": "Seated Row (Cable)",
+      "conversation": [
+        {"role": "human", "content": "Give me alternatives to Seated Row (Cable)."},
+        {"role": "assistant", "content": "Options: Chest-Supported Row (Barbell), then Chest-Supported Row (Dumbbell)."}
+      ],
+      "query": "Use the second option instead.",
+      "expected_target": "Chest-Supported Row (Dumbbell)"
+    },
+    {
+      "id": "substitution-05",
+      "program_exercise": "Romanian Deadlift (Barbell)",
+      "conversation": [
+        {"role": "human", "content": "I'd like a less awkward setup for Romanian Deadlift (Barbell)."}
+      ],
+      "query": "Could this be Romanian Deadlift (Dumbbell) instead?",
+      "expected_target": "Romanian Deadlift (Dumbbell)"
+    }
+  ]
+}

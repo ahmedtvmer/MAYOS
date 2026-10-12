@@ -332,6 +332,9 @@ class SubstitutionResolution(BaseModel):
     target_exercise: str | None = None
 
 
+SUBSTITUTION_SOURCE_SIMILARITY_THRESHOLD = 0.70
+
+
 class AssistantState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
     trainee_id: str
@@ -1617,10 +1620,14 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
     if requested_day_name:
         requested_day = next(day for day in active_program.days if day.day_name == requested_day_name)
         requested_match = _match_substitution_source([requested_day], source_name)
-        if requested_match[0] and requested_match[2] >= 0.70:
+        if requested_match[0] and requested_match[2] >= SUBSTITUTION_SOURCE_SIMILARITY_THRESHOLD:
             matched_ex, target_day, best_similarity = requested_match
 
-    if requested_day_name is None and matched_ex and best_similarity >= 0.70:
+    if (
+        requested_day_name is None
+        and matched_ex
+        and best_similarity >= SUBSTITUTION_SOURCE_SIMILARITY_THRESHOLD
+    ):
         matching_days = [
             day
             for day in active_program.days
@@ -1631,7 +1638,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
             msg = f"I found **{matched_ex.exercise_name.title()}** on more than one day: {day_list}. Which day should I change?"
             return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
-    if not matched_ex or best_similarity < 0.70:
+    if not matched_ex or best_similarity < SUBSTITUTION_SOURCE_SIMILARITY_THRESHOLD:
         routine_exercises = [
             (day, exercise)
             for day in active_program.days

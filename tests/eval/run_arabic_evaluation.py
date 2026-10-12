@@ -322,6 +322,21 @@ def _arabic_quality(
     }
 
 
+def score_arabic_reply_language(message: str, reply: str, response_kind: str) -> dict[str, Any]:
+    quality = _arabic_quality({"text": message}, {}, reply, response_kind)
+    letters = [character for character in reply if character.isalpha()]
+    arabic_share = (
+        sum(bool(ARABIC_SCRIPT.fullmatch(character)) for character in letters) / len(letters)
+        if letters
+        else 0.0
+    )
+    return {
+        "mostly_arabic": bool(quality["arabic_script_when_arabic_input"]) and arabic_share >= 0.5,
+        "arabic_letter_share": arabic_share,
+        "arabic_quality": quality,
+    }
+
+
 def _reply_preservation_quality(
     case: dict[str, Any], scenario: dict[str, Any], reply: str
 ) -> dict[str, Any]:
@@ -375,6 +390,32 @@ def _seed_program(store: Any, ledger: Any, scenario: dict[str, Any], *, coach_au
         created_at=(datetime.now(UTC) - timedelta(days=1)).isoformat(),
         days=[ProgramDaySchema(day_name="Full A", day_order=1, exercises=exercises).model_dump()])
     ledger.save_training_program(program.model_dump(), published_by_coach_account_id="synthetic-coach" if coach_authority else None)
+
+
+def seed_arabic_player_context(store: Any, ledger: Any, scenario: dict[str, Any]) -> None:
+    seed_program = scenario["seed_program"]
+    _seed_program(store, ledger, scenario)
+    _seed_arabic_player_profile(ledger, seed_program.get("weekly_frequency", 4))
+
+
+def _seed_arabic_player_profile(ledger: Any, weekly_frequency: int) -> None:
+    from utils.equipment_access import COMMERCIAL_GYM
+
+    ledger.upsert_player_profile(
+        {
+            "gender": "male",
+            "age": 30,
+            "weight_kg": 80.0,
+            "height_cm": 180.0,
+            "rep_preference": "balanced",
+            "current_goal": "muscle_gain",
+            "weekly_frequency": weekly_frequency,
+            "training_age_years": 3.0,
+            "equipment_access": COMMERCIAL_GYM,
+            "injuries_or_limitations": "None",
+            "stress_and_sleep": "normal",
+        }
+    )
 
 
 def _seed_history(store: Any, ledger: Any, scenario: dict[str, Any]) -> dict[str, Any]:

@@ -29,6 +29,8 @@ from tests.eval.parity_gate import (  # noqa: E402
     _safe_error_message,
 )
 from tests.eval.schemas import CoachingQAEvalJudgment  # noqa: E402
+from tests.eval.suites.arabic_replies import SUITE as ARABIC_REPLIES_SUITE  # noqa: E402
+from tests.eval.suites.structured_output import SUITE as STRUCTURED_OUTPUT_SUITE  # noqa: E402
 
 REPORTS_DIR = BASE_DIR / "tests" / "eval" / "reports"
 DATASETS_DIR = BASE_DIR / "tests" / "eval" / "datasets"
@@ -468,6 +470,8 @@ SUITES: tuple[Suite, ...] = (
     GeneralizationSuite(
         "generalization", "generalization_cases.json", 5, ScoreBar("count", 5), dataset_key="coaching_qa"
     ),
+    STRUCTURED_OUTPUT_SUITE,
+    ARABIC_REPLIES_SUITE,
 )
 
 

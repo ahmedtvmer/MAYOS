@@ -4,7 +4,10 @@ import json
 import os
 import subprocess
 import sys
+from copy import deepcopy
+from functools import lru_cache
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -75,6 +78,44 @@ def _suite_entry(count: int, bar: dict, scores: tuple[int, ...]) -> dict:
     }
 
 
+@lru_cache(maxsize=1)
+def _additional_suite_entries() -> dict[str, dict]:
+    from tests.eval.run_evaluation import SUITES
+    from tests.eval.suites import structured_output
+    from tests.eval.suites.common import isolated_catalog_store
+
+    context = SimpleNamespace(judges=[], judge_metadata=JUDGES)
+    entries = {
+        suite.name: suite.run_hermetic(context)
+        for suite in SUITES
+        if suite.name in {"arabic_replies", "structured_output"}
+    }
+
+    structured_entry = entries["structured_output"]
+    structured_cases = structured_output._load_cases()
+    cases_by_id = {
+        case["id"]: case
+        for group in structured_cases.values()
+        for case in group
+    }
+    from agent.ProgramState import DynamicSplitPlan
+
+    with isolated_catalog_store() as store:
+        for record in structured_entry["cases"]:
+            case = cases_by_id[record["case_id"]]
+            if record["kind"] == "split_plan":
+                plan = DynamicSplitPlan.model_validate(record["parsed_output"])
+                record["generated_program"] = structured_output._generate_split_program(plan, case, store)
+            else:
+                _program, source_id = structured_output._case_program(case, store)
+                record["source_exercise_id"] = source_id
+        entries["structured_output"], _ = structured_output._summarize(
+            structured_entry["cases"], structured_cases, store, hermetic=False
+        )
+
+    return entries
+
+
 def _report(*, coaching_scores: tuple[int, ...] = (24, 24), generalization_score: int = 5) -> dict:
     return {
         "mode": "live",
@@ -83,6 +124,7 @@ def _report(*, coaching_scores: tuple[int, ...] = (24, 24), generalization_score
         "suite_results": {
             "coaching_qa": _suite_entry(25, COACHING_BAR, coaching_scores),
             "generalization": _suite_entry(5, GENERALIZATION_BAR, (generalization_score,)),
+            **deepcopy(_additional_suite_entries()),
         },
     }
 
@@ -106,7 +148,7 @@ def _check(report_path: Path) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         env=env,
-        cwd=str(BASE_DIR),
+        cwd=str(report_path.parent),
         timeout=60,
     )
 
