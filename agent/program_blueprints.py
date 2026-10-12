@@ -94,6 +94,7 @@ class SlotSpec:
     rest_seconds: int
     warmup_sets: int = 0
     exclude_sql: str = ""
+    signature_name_exceptions: tuple[str, ...] = ()
     name_rank: tuple[str, ...] = ()
 
 
@@ -106,6 +107,7 @@ def _slot(
     rest_seconds: int,
     warmup_sets: int = 0,
     exclude_sql: str = "",
+    signature_name_exceptions: tuple[str, ...] = (),
     name_rank: tuple[str, ...] = (),
     primary_actions: tuple[str, ...] = (),
     primary_muscles: tuple[str, ...] = (),
@@ -121,6 +123,7 @@ def _slot(
         rest_seconds=rest_seconds,
         warmup_sets=warmup_sets,
         exclude_sql=exclude_sql,
+        signature_name_exceptions=signature_name_exceptions,
         name_rank=name_rank,
     )
 
@@ -210,6 +213,7 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         warmup_sets=1,
         exclude_sql="LOWER(name) NOT LIKE '%incline%' AND LOWER(name) NOT LIKE '%decline%' "
         "AND LOWER(name) NOT LIKE '%one arm%' AND LOWER(name) NOT LIKE '%push-up%'",
+        signature_name_exceptions=("push-up",),
         primary_actions=("Shoulder Horizontal Adduction",),
         primary_muscles=("Chest",),
     ),

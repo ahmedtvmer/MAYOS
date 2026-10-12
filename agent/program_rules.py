@@ -148,6 +148,10 @@ EXCLUDED_PATTERNS = [re.compile(rf"\b{re.escape(term)}\b", re.IGNORECASE) for te
 # name check limited to signature substitutions so explicit Staples retain
 # their coach-defined priority and name-pattern behavior stays unchanged.
 EXPLOSIVE_SIGNATURE_PATTERNS = (
+    re.compile(
+        r"\b(?:clap|plyo|plyometric|broad[ -]jump|jump|depth|bound|drop|explosive)\b",
+        re.IGNORECASE,
+    ),
     re.compile(r"\bcleans?(?![ -]grip\b)\b", re.IGNORECASE),
     re.compile(r"\bsnatch(?:es)?(?![ -]grip\b)\b", re.IGNORECASE),
     re.compile(r"\bjerks?\b", re.IGNORECASE),
@@ -161,7 +165,7 @@ def _is_excluded(name: str) -> bool:
 
 
 def _is_explosive_signature_substitute(name: str) -> bool:
-    """Whether a name describes an Olympic lift that cannot fill a signature slot."""
+    """Whether a power or Olympic variant cannot fill a signature slot."""
     return any(pattern.search(name) for pattern in EXPLOSIVE_SIGNATURE_PATTERNS)
 
 BASE_REP_WINDOWS = {"compound": (6, 10), "isolation": (10, 15)}
@@ -428,11 +432,42 @@ def _slot_filters(
         equipment_access_sql(equipment_access, "e.equipment"),
     ]
     if spec.exclude_sql:
-        where.append(f"({spec.exclude_sql})")
+        signature_name_exceptions = _signature_name_exception_filter(spec)
+        exclusion_filter = f"({spec.exclude_sql})"
+        if signature_name_exceptions:
+            exclusion_filter = f"({exclusion_filter} OR ({signature_name_exceptions}))"
+        where.append(exclusion_filter)
     back_filter = _back_limitation_filter(limitations)
     if back_filter:
         where.append(back_filter)
     return where
+
+
+def _signature_name_exception_filter(spec: SlotSpec) -> str:
+    if not spec.signature_name_exceptions:
+        return ""
+    complete_curation = (
+        "sp.exercise_id IS NULL AND cf.primary_action IS NOT NULL "
+        "AND cf.primary_muscle IS NOT NULL"
+    )
+    exclusion_clauses = spec.exclude_sql.split(" AND ")
+    exception_clauses = []
+    for source_name in spec.signature_name_exceptions:
+        remaining = [
+            clause
+            for clause in exclusion_clauses
+            if (
+                (match := re.fullmatch(r"LOWER\(name\) NOT LIKE '%([^%]+)%'", clause))
+                is None
+                or match.group(1).casefold() not in source_name.casefold()
+            )
+        ]
+        escaped_name = source_name.casefold().replace("'", "''")
+        remaining_sql = " AND ".join(remaining) or "1 = 1"
+        exception_clauses.append(
+            f"({complete_curation} AND LOWER(e.name) = '{escaped_name}' AND ({remaining_sql}))"
+        )
+    return " OR ".join(exception_clauses)
 
 
 SLOT_CANDIDATE_STAPLE_RANK = 0

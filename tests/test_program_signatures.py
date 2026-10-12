@@ -4,11 +4,18 @@ import gzip
 import json
 from pathlib import Path
 
+import pytest
+
 from agent import program_generator
 from agent.program_blueprints import SLOT_STAPLES
 from agent.ProgramState import CustomDayPlan
 from agent.program_rules import NO_LIMITATIONS, fetch_slot_candidates
-from utils.equipment_access import BODYWEIGHT_ONLY, COMMERCIAL_GYM, HOME_GYM
+from utils.equipment_access import (
+    BODYWEIGHT_ONLY,
+    COMMERCIAL_GYM,
+    HOME_GYM,
+    equipment_access_allows,
+)
 
 
 def _insert_exercises(store, rows):
@@ -50,6 +57,140 @@ def _generate_program(store, profile, preference=None, user_suffix=None):
     return program_generator.generate_program_pipeline(
         user_split_override=preference, ledger=store.ledger
     )[0]
+
+
+def test_bodyweight_flat_press_prefers_standard_push_up(fresh_store):
+    candidates = fetch_slot_candidates(
+        "flat_press", BODYWEIGHT_ONLY, limit=100, ledger=fresh_store.ledger
+    )
+    day = CustomDayPlan(
+        day_order=1,
+        day_name="Bodyweight flat press",
+        target_slots=["flat_press", "biceps_alt", "calf"],
+        warmup_family="upper",
+    )
+    context = program_generator.DayGenerationContext(
+        equipment_access=BODYWEIGHT_ONLY,
+        limitations=NO_LIMITATIONS,
+        rep_preference="balanced",
+        recovery_cut=False,
+        experience_level="intermediate",
+    )
+    generated = program_generator.assemble_deterministic_day(
+        day, context, set(), ledger=fresh_store.ledger
+    )
+    flat_press = next(
+        exercise for exercise in generated.exercises if exercise.slot_key == "flat_press"
+    )
+
+    assert candidates
+    assert str(candidates[0]["id"]) == "662"
+    assert flat_press.exercise_id == "662"
+
+
+@pytest.mark.parametrize(
+    ("slot_key", "excluded_ids"),
+    [
+        (
+            "flat_press",
+            {"33", "1300", "301", "302", "303", "1260", "342", "531", "664"},
+        ),
+        ("incline_press", {"171", "319", "279"}),
+        ("horizontal_row", {"1349", "1351", "1313", "293", "292"}),
+        ("quad_compound", {"24", "1759", "53", "514"}),
+        ("biceps_alt", {"592", "70"}),
+    ],
+)
+def test_curated_signature_rows_keep_existing_slot_exclusions(
+    fresh_store, slot_key, excluded_ids
+):
+    candidates = fetch_slot_candidates(
+        slot_key, HOME_GYM, limit=100, ledger=fresh_store.ledger
+    )
+
+    assert excluded_ids.isdisjoint({str(candidate["id"]) for candidate in candidates})
+
+
+def test_home_gym_suggestions_keep_decline_and_incline_fly_exclusions(fresh_store):
+    program = _generate_program(
+        fresh_store, _profile(HOME_GYM, "male", 3), "Full Body"
+    )
+    suggestions_by_slot = {
+        slot_key: {
+            substitute.exercise_id
+            for day in program.days
+            for exercise in day.exercises
+            if exercise.slot_key == slot_key
+            for substitute in exercise.suggested_substitutes
+        }
+        for slot_key in ("flat_press", "incline_press")
+    }
+
+    assert suggestions_by_slot["flat_press"]
+    assert suggestions_by_slot["incline_press"]
+    assert "33" not in suggestions_by_slot["flat_press"]
+    assert "319" not in suggestions_by_slot["incline_press"]
+
+
+def test_commercial_program_ids_match_master_for_frequency_and_experience(
+    fresh_store,
+):
+    """Pin the #361 parent ids across three weekly frequencies and experience tiers."""
+    expected_by_frequency = {
+        3: [
+            ["314", "1350", "178", "150", "592", "1723", "599", "585", "1375", "mayos:3", "1412"],
+            ["743", "599", "598", "1350", "576", "606", "869", "592", "1723", "mayos:3", "175"],
+            ["85", "606", "305", "314", "585", "178", "318", "194", "598", "1375", "1412"],
+        ],
+        4: [
+            ["314", "1350", "178", "150", "592", "1723", "599", "585", "1375", "mayos:3", "1412"],
+            ["743", "599", "598", "1350", "576", "606", "869", "592", "1723", "mayos:3", "175"],
+            ["85", "606", "305", "314", "585", "178", "318", "194", "598", "1375", "1412"],
+            ["576", "150", "1350", "869", "178", "318", "1723", "743", "599", "1375", "175"],
+        ],
+        5: [
+            ["314", "1350", "178", "150", "592", "1723", "599", "585", "1375", "mayos:3", "1412"],
+            ["743", "599", "598", "1350", "576", "606", "869", "592", "1723", "mayos:3", "175"],
+            ["85", "606", "305", "314", "585", "178", "318", "194", "598", "1375", "1412"],
+            ["576", "150", "1350", "869", "178", "318", "1723", "743", "599", "1375", "175"],
+            ["314", "150", "305", "596", "178", "mayos:3", "592", "194", "585", "2286", "1375", "175"],
+        ],
+    }
+
+    for frequency, expected_ids in expected_by_frequency.items():
+        for training_age in (1.0, 3.0, 6.0):
+            profile = _profile(COMMERCIAL_GYM, "male", frequency)
+            profile["training_age_years"] = training_age
+            program = _generate_program(fresh_store, profile, "Full Body")
+            actual_ids = [
+                [exercise.exercise_id for exercise in day.exercises]
+                for day in program.days
+            ]
+
+            assert actual_ids == expected_ids, (frequency, training_age)
+
+
+def test_commercial_horizontal_row_exhaustion_keeps_master_candidates(fresh_store):
+    day = CustomDayPlan(
+        day_order=1,
+        day_name="Repeated commercial horizontal rows",
+        target_slots=["horizontal_row"] * 6,
+        warmup_family="upper",
+    )
+    context = program_generator.DayGenerationContext(
+        equipment_access=COMMERCIAL_GYM,
+        limitations=NO_LIMITATIONS,
+        rep_preference="balanced",
+        recovery_cut=False,
+        experience_level="intermediate",
+    )
+    generated = program_generator.assemble_deterministic_day(
+        day, context, set(), ledger=fresh_store.ledger
+    )
+    horizontal_row_ids = [exercise.exercise_id for exercise in generated.exercises]
+
+    assert horizontal_row_ids == ["1350", "327", "571", "588", "1348", "3200"]
+    assert {"1349", "1351", "1313", "293", "292"}.isdisjoint(horizontal_row_ids)
 
 
 def _seed_flat_press_fixture(store, seed_exercise_curation, curated_ids):
@@ -97,6 +238,180 @@ def test_signature_match_precedes_uncurated_pattern_and_rejects_mismatch(
     )
 
     assert flat_press.exercise_id == "361:signature"
+
+
+@pytest.mark.parametrize("equipment_access", [BODYWEIGHT_ONLY, HOME_GYM])
+def test_equipment_access_uses_allowed_signature_before_slot_fallback(
+    fresh_store, equipment_access
+):
+    with fresh_store.catalog_conn:
+        fresh_store.catalog_conn.execute(
+            "UPDATE exercises SET equipment = 'cable' "
+            "WHERE id IN (SELECT exercise_id FROM exercise_curated_fields "
+            "WHERE primary_action = 'Shoulder Horizontal Adduction' "
+            "AND primary_muscle = 'Chest' AND exercise_id != '662')"
+        )
+        fresh_store.catalog_conn.executemany(
+            "UPDATE exercises SET equipment = 'cable' WHERE id = ?",
+            [(staple_id,) for staple_id in SLOT_STAPLES["flat_press"]],
+        )
+        fresh_store.catalog_conn.execute(
+            "UPDATE exercises SET equipment = 'body weight' WHERE id = '662'"
+        )
+
+    day = CustomDayPlan(
+        day_order=1,
+        day_name="Equipment signature fallback",
+        target_slots=["flat_press", "biceps_alt", "calf"],
+        warmup_family="upper",
+    )
+    context = program_generator.DayGenerationContext(
+        equipment_access=equipment_access,
+        limitations=NO_LIMITATIONS,
+        rep_preference="balanced",
+        recovery_cut=False,
+        experience_level="intermediate",
+    )
+    generated = program_generator.assemble_deterministic_day(
+        day, context, set(), ledger=fresh_store.ledger
+    )
+    flat_press = next(
+        exercise for exercise in generated.exercises if exercise.slot_key == "flat_press"
+    )
+
+    assert flat_press.exercise_id == "662"
+    assert equipment_access_allows(
+        equipment_access,
+        fresh_store.get_exercise_library_entry(flat_press.exercise_id)["equipment"],
+    )
+
+
+def test_equipment_slot_fallback_waits_until_no_allowed_signature_exists(fresh_store):
+    with fresh_store.catalog_conn:
+        fresh_store.catalog_conn.execute(
+            "UPDATE exercises SET equipment = 'dumbbell' "
+            "WHERE id IN (SELECT exercise_id FROM exercise_curated_fields "
+            "WHERE primary_action = 'Shoulder Horizontal Adduction' "
+            "AND primary_muscle = 'Chest')"
+        )
+        fresh_store.catalog_conn.executemany(
+            "UPDATE exercises SET equipment = 'dumbbell' WHERE id = ?",
+            [(staple_id,) for staple_id in SLOT_STAPLES["flat_press"]],
+        )
+
+    day = CustomDayPlan(
+        day_order=1,
+        day_name="No allowed signature",
+        target_slots=["flat_press", "biceps_alt", "calf"],
+        warmup_family="upper",
+    )
+    context = program_generator.DayGenerationContext(
+        equipment_access=BODYWEIGHT_ONLY,
+        limitations=NO_LIMITATIONS,
+        rep_preference="balanced",
+        recovery_cut=False,
+        experience_level="intermediate",
+    )
+    generated = program_generator.assemble_deterministic_day(
+        day, context, set(), ledger=fresh_store.ledger
+    )
+
+    assert "flat_press" not in {exercise.slot_key for exercise in generated.exercises}
+    assert {"quad_lunge", "vertical_pull"} & {
+        exercise.slot_key for exercise in generated.exercises
+    }
+
+
+def test_suggested_substitutes_top_up_ordered_staples_with_signature_matches(
+    fresh_store, seed_exercise_curation
+):
+    signature_ids = ("362:signature-a", "362:signature-b")
+    hidden_id = "362:hidden-signature"
+    _insert_exercises(
+        fresh_store,
+        [
+            (signature_ids[0], "synthetic signature press A", "chest", "pectorals", "dumbbell", None),
+            (signature_ids[1], "synthetic signature press B", "chest", "pectorals", "dumbbell", None),
+            (hidden_id, "synthetic hidden signature press", "chest", "pectorals", "dumbbell", None),
+        ],
+    )
+    seed_exercise_curation(
+        fresh_store,
+        {
+            signature_ids[0]: {
+                "primary_action": "Shoulder Horizontal Adduction",
+                "primary_muscle": "Chest",
+                "display_name": "A Signature Press",
+            },
+            signature_ids[1]: {
+                "primary_action": "Shoulder Horizontal Adduction",
+                "primary_muscle": "Chest",
+                "display_name": "B Signature Press",
+            },
+            hidden_id: {
+                "primary_action": "Shoulder Horizontal Adduction",
+                "primary_muscle": "Chest",
+                "hidden": True,
+            },
+        },
+    )
+    with fresh_store.catalog_conn:
+        fresh_store.catalog_conn.execute(
+            "UPDATE exercises SET equipment = 'cable' "
+            "WHERE id IN (SELECT exercise_id FROM exercise_curated_fields "
+            "WHERE primary_action = 'Shoulder Horizontal Adduction' "
+            "AND primary_muscle = 'Chest' AND exercise_id NOT LIKE '362:%')"
+        )
+        fresh_store.catalog_conn.executemany(
+            "UPDATE exercises SET equipment = 'cable' WHERE id = ?",
+            [
+                (staple_id,)
+                for staple_id in SLOT_STAPLES["flat_press"]
+                if staple_id not in {"25", "289"}
+            ],
+        )
+        fresh_store.catalog_conn.execute(
+            "UPDATE exercises SET equipment = 'barbell' WHERE id = '25'"
+        )
+        fresh_store.catalog_conn.execute(
+            "UPDATE exercises SET equipment = 'dumbbell' WHERE id = '289'"
+        )
+
+    day = CustomDayPlan(
+        day_order=1,
+        day_name="Suggested signature substitutes",
+        target_slots=["flat_press", "horizontal_row", "calf"],
+        warmup_family="upper",
+    )
+    context = program_generator.DayGenerationContext(
+        equipment_access=HOME_GYM,
+        limitations=NO_LIMITATIONS,
+        rep_preference="balanced",
+        recovery_cut=False,
+        experience_level="intermediate",
+    )
+    generated = program_generator.assemble_deterministic_day(
+        day, context, set(), ledger=fresh_store.ledger
+    )
+    flat_press = next(
+        exercise for exercise in generated.exercises if exercise.slot_key == "flat_press"
+    )
+
+    assert flat_press.exercise_id == "25"
+    assert [item.exercise_id for item in flat_press.suggested_substitutes] == [
+        "289",
+        signature_ids[0],
+    ]
+    assert hidden_id not in {
+        item.exercise_id
+        for exercise in generated.exercises
+        for item in exercise.suggested_substitutes
+    }
+    assert all(
+        item.exercise_id != exercise.exercise_id
+        for exercise in generated.exercises
+        for item in exercise.suggested_substitutes
+    )
 
 
 def test_name_pattern_fallback_skips_curated_signature_mismatches(
@@ -400,7 +715,7 @@ def test_limitation_guard_counts_used_staples_and_ignores_equipment_only(
     )
 
 
-def test_olympic_signature_match_is_never_prescribed(fresh_store, seed_exercise_curation):
+def test_explosive_signature_matches_are_never_prescribed(fresh_store, seed_exercise_curation):
     safe_id = "361:safe-hinge"
     push_press_id = "361:push-press-hinge"
     olympic_rows = (
@@ -411,11 +726,29 @@ def test_olympic_signature_match_is_never_prescribed(fresh_store, seed_exercise_
         ("361:olympic-clean-pull", "Synthetic Clean Pull"),
         ("361:olympic-hang-pull", "Synthetic Hang Pull"),
     )
+    explosive_bodyweight_rows = tuple(
+        (f"361:explosive-{term.replace(' ', '-')}", f"Synthetic {term.title()} Hinge")
+        for term in (
+            "clap",
+            "plyo",
+            "plyometric",
+            "jump",
+            "broad jump",
+            "depth",
+            "bound",
+            "drop",
+            "explosive",
+        )
+    )
     _insert_exercises(
         fresh_store,
         [
             (exercise_id, name, "hamstrings", "hamstrings", "dumbbell", None)
             for exercise_id, name in olympic_rows
+        ]
+        + [
+            (exercise_id, name, "hamstrings", "hamstrings", "body weight", None)
+            for exercise_id, name in explosive_bodyweight_rows
         ]
         + [
             (safe_id, "Synthetic Hip Hinge", "hamstrings", "hamstrings", "dumbbell", None),
@@ -427,7 +760,7 @@ def test_olympic_signature_match_is_never_prescribed(fresh_store, seed_exercise_
             "primary_action": "Hip Extension",
             "primary_muscle": "Hamstrings",
         }
-        for exercise_id, _ in olympic_rows
+        for exercise_id, _ in (*olympic_rows, *explosive_bodyweight_rows)
     }
     curation.update(
         {
@@ -467,8 +800,12 @@ def test_olympic_signature_match_is_never_prescribed(fresh_store, seed_exercise_
     assert safe_id in {str(candidate["id"]) for candidate in candidates}
     assert push_press_id in {str(candidate["id"]) for candidate in candidates}
     olympic_ids = {exercise_id for exercise_id, _ in olympic_rows}
+    explosive_bodyweight_ids = {
+        exercise_id for exercise_id, _ in explosive_bodyweight_rows
+    }
     candidate_ids = {str(candidate["id"]) for candidate in candidates}
     assert olympic_ids.isdisjoint(candidate_ids)
+    assert explosive_bodyweight_ids.isdisjoint(candidate_ids)
     assert prescribed_hinges
     assert all(
         exercise.exercise_id not in olympic_ids

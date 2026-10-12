@@ -44,7 +44,13 @@ from agent.program_rules import (
     get_split_plan,
     resolve_split,
 )
-from utils.equipment_access import BODYWEIGHT_ONLY, COMMERCIAL_GYM, EQUIPMENT_ACCESS_VALUES, HOME_GYM
+from utils.equipment_access import (
+    BODYWEIGHT_ONLY,
+    COMMERCIAL_GYM,
+    EQUIPMENT_ACCESS_VALUES,
+    HOME_GYM,
+    equipment_access_allows,
+)
 
 db = None
 
@@ -316,7 +322,7 @@ def test_generation_is_repeatable_and_offers_ordered_staple_substitutes():
     assert biceps_alternatives and biceps_alternatives[0].exercise_id == "318"
 
 
-def test_equipment_access_generation_uses_only_ordered_staples_and_next_substitutes(scripted_chat_model):
+def test_equipment_access_generation_uses_staples_then_signature_substitutes(scripted_chat_model):
     # The custom Glute Specialized preference needs a structured plan; all
     # catalog assertions below depend only on exercise-slot resolution.
     scripted_chat_model.default_turn = get_default_split(5)
@@ -391,20 +397,39 @@ def test_equipment_access_generation_uses_only_ordered_staples_and_next_substitu
                             f"{access} prescribed non-Staple {exercise.exercise_name} for {slot}"
                         )
                     assert exercise.exercise_id == str(expected["id"])
-                    expected_staples = [
-                        candidate for staple_id in SLOT_STAPLES[source_slot]
-                        for candidate in fetch_slot_candidates(
-                            source_slot, access, "None", limit=100, ledger=db.ledger
-                        ) if str(candidate["id"]) == staple_id
+                    suggestion_pool = fetch_slot_candidates(
+                        source_slot, access, "None", limit=100, ledger=db.ledger
+                    )
+                    suggestion_by_id = {
+                        str(candidate["id"]): candidate for candidate in suggestion_pool
+                    }
+                    staple_ids = set(SLOT_STAPLES[source_slot])
+                    suggestion_options = [
+                        suggestion_by_id[staple_id]
+                        for staple_id in SLOT_STAPLES[source_slot]
+                        if staple_id in suggestion_by_id
                     ]
+                    suggestion_options.extend(
+                        candidate
+                        for candidate in suggestion_pool
+                        if str(candidate["id"]) not in staple_ids
+                        and _candidate_matches_slot_signature(source_slot, candidate)
+                    )
                     expected_substitutes = [
-                        str(item["id"]) for item in expected_staples
+                        str(item["id"]) for item in suggestion_options
                         if str(item["id"]) != exercise.exercise_id and str(item["id"]) not in day_ids
                     ][:2]
                     actual_substitutes = [item.exercise_id for item in exercise.suggested_substitutes]
                     assert actual_substitutes == expected_substitutes
                     assert len(actual_substitutes) == len(set(actual_substitutes))
                     assert exercise.exercise_id not in actual_substitutes
+                    assert all(
+                        equipment_access_allows(
+                            access,
+                            db.get_exercise_library_entry(substitute_id)["equipment"],
+                        )
+                        for substitute_id in actual_substitutes
+                    )
         for slot in SLOT_SPECS:
             direct = fetch_slot_candidates(slot, access, "None", limit=100, ledger=db.ledger)
             direct_staples = [item for item in direct if str(item["id"]) in SLOT_STAPLES[slot]]
