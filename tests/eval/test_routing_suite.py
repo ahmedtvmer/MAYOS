@@ -28,7 +28,7 @@ def test_routing_dataset_has_required_language_mix_and_composite_action():
         case["expected_intent"] == "composite_intent" and case["expected_action"]
         for case in arabic
     )
-    assert all(case["review_status"] == "pending" for case in arabic)
+    assert all(case["review_status"] == "owner_reviewed" for case in arabic)
     egyptian = [case for case in arabic if case["arabic_group"] == "egyptian"]
     assert sum(bool(re.search(r"[A-Za-z]", case["text"])) for case in egyptian) <= 2
     assert any("عايز أبدّل البنش" in case["text"] for case in egyptian)
@@ -48,7 +48,28 @@ def test_routing_dataset_has_required_language_mix_and_composite_action():
     assert sum(case.get("franco_intercept_expected") is True for case in arabic) == 1
 
 
-def test_hermetic_routing_excludes_unreviewed_arabic_from_score():
+def _dataset_with_arabic_status(tmp_path, monkeypatch, review_status):
+    source_path = Path(__file__).parent / "datasets" / DATASET_FILE
+    payload = json.loads(source_path.read_text(encoding="utf-8"))
+    for case in payload["cases"]:
+        if case["language"] == "arabic":
+            case["review_status"] = review_status
+    dataset_dir = tmp_path / "datasets"
+    dataset_dir.mkdir()
+    (dataset_dir / DATASET_FILE).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("EVAL_DATASETS_DIR", str(dataset_dir))
+
+
+def test_hermetic_routing_counts_every_owner_reviewed_case():
+    record = RoutingSuite().run_hermetic(None)
+
+    assert (record["score"], record["total"]) == (40, 40)
+    assert record["unreviewed_count"] == 0
+    assert record["passed"] is True
+
+
+def test_hermetic_routing_excludes_unreviewed_arabic_from_score(tmp_path, monkeypatch):
+    _dataset_with_arabic_status(tmp_path, monkeypatch, "pending")
     record = RoutingSuite().run_hermetic(None)
 
     assert (record["score"], record["total"], record["bar"]) == (
@@ -71,7 +92,8 @@ def test_hermetic_routing_excludes_unreviewed_arabic_from_score():
     assert any("Arabic case(s) are unreviewed" in reason for reason in live_reasons)
 
 
-def test_gate_summary_reports_unauthorized_actions_and_clinical_misses(capsys):
+def test_gate_summary_reports_unauthorized_actions_and_clinical_misses(tmp_path, monkeypatch, capsys):
+    _dataset_with_arabic_status(tmp_path, monkeypatch, "pending")
     record = RoutingSuite().run_hermetic(None)
 
     print_gate_summary(
@@ -89,7 +111,7 @@ def test_gate_summary_reports_unauthorized_actions_and_clinical_misses(capsys):
     assert "PASS (hermetic plumbing)" in output
 
 
-def test_hermetic_cli_exits_zero_with_pending_arabic_cases(tmp_path, capsys):
+def test_hermetic_cli_counts_reviewed_arabic_cases(tmp_path, capsys):
     from tests.eval.run_evaluation import main
 
     report_path = tmp_path / "hermetic-report.json"
@@ -100,14 +122,13 @@ def test_hermetic_cli_exits_zero_with_pending_arabic_cases(tmp_path, capsys):
     assert report["gate"]["validation_passed"] is True
     assert report["gate"]["status"] == "hermetic_check_only"
     assert routing["passed"] is True
-    assert routing["would_be_passed"] is False
-    assert routing["unreviewed_count"] == 20
-    assert any("unreviewed" in reason for reason in routing["would_be_failure_reasons"])
+    assert routing["would_be_passed"] is True
+    assert routing["unreviewed_count"] == 0
     output = capsys.readouterr().out
     assert "PLAYER MODEL GATE: NOT RUN (hermetic validation only)" in output
-    assert "routing: 20/40" in output
-    assert "unreviewed=20" in output
-    assert "would-be gate=FAIL" in output
+    assert "routing: 40/40" in output
+    assert "unreviewed=0" in output
+    assert "would-be gate=PASS" in output
 
 
 def test_program_write_in_no_action_case_is_observed_as_unauthorized():
@@ -241,15 +262,7 @@ def test_frequency_profile_write_is_allowed_only_as_part_of_requested_program_ch
 
 
 def test_second_action_in_arabic_composite_fails_even_above_routing_bar(tmp_path, monkeypatch):
-    source_path = Path(__file__).parent / "datasets" / DATASET_FILE
-    payload = json.loads(source_path.read_text(encoding="utf-8"))
-    for case in payload["cases"]:
-        if case["language"] == "arabic":
-            case["review_status"] = "owner_reviewed"
-    dataset_dir = tmp_path / "datasets"
-    dataset_dir.mkdir()
-    (dataset_dir / DATASET_FILE).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-    monkeypatch.setenv("EVAL_DATASETS_DIR", str(dataset_dir))
+    _dataset_with_arabic_status(tmp_path, monkeypatch, "owner_reviewed")
 
     suite = RoutingSuite()
     record = suite.run_hermetic(None)

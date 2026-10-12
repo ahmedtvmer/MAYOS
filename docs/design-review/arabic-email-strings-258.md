@@ -1,7 +1,6 @@
-# Arabic customer email copy awaiting owner review
+# Arabic customer email copy
 
-Status: **pending owner review**. No review date, owner name, or reviewed hash
-has been recorded. The following simple standard Arabic subjects and bodies
+Status: **owner reviewed** by Thomas on 2026-10-12. The following simple standard Arabic subjects and bodies
 were added for #258. Runtime names and links are retained, and reset expiry
 uses Western digits.
 

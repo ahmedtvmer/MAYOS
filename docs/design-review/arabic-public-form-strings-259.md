@@ -1,7 +1,6 @@
-# Arabic public recovery and deletion form copy awaiting owner review
+# Arabic public recovery and deletion form copy
 
-Status: **pending owner review**. No review date, owner name, or reviewed hash
-has been recorded. The copy uses simple standard Arabic, approved MAYOS terms,
+Status: **owner reviewed** by Thomas on 2026-10-12. The copy uses simple standard Arabic, approved MAYOS terms,
 and Western digits.
 
 ## Browser account recovery

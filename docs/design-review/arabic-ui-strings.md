@@ -1,7 +1,7 @@
-# Arabic app UI strings awaiting owner review
+# Arabic app UI strings
 
 This inventory lists Arabic app-owned copy from chunks A, B, C, and the workout
-logging slice. It awaits owner review.
+logging slice. Status: **owner reviewed** by Thomas on 2026-10-12.
 English fallbacks supplied by the API remain unchanged. Known structured API
 messages have matching Arabic templates in the app catalog and are listed
 below, including the server-authored structured-intake copy. Player-entered
@@ -1144,7 +1144,7 @@ The count helper keeps Western digits and selects a short form by count.
 | media.unavailable.v1 | تعذر تحميل الوسائط حاليًا. حاول مجددًا. |
 | media.not_found.v1 | لم يُعثر على الوسائط المطلوبة. |
 
-## Assignment and program-request notices (#252; pending owner review)
+## Assignment and program-request notices (#252; owner reviewed 2026-10-12)
 
 The following new notice copy uses standard Arabic and Western digits. Runtime
 values in braces come from the typed notice parameters; coach-written decline
@@ -1168,11 +1168,11 @@ reasons remain unchanged.
 | assignment_notice.program_request_declined.v1 | Your coach declined your program change: {reason} | رفض مدربك طلب تغيير البرنامج التدريبي: {original coach-written reason} |
 
 The workflow label updates for #252 appear in the Assignment and workout
-logger entries above and are pending owner review together with the notice copy.
+logger entries above and were owner reviewed on 2026-10-12 together with the notice copy.
 
 ## Workout logging and deterministic summary (Chunk D)
 
-The following new summary wording is pending owner review. The summary is
+The following summary wording was owner reviewed on 2026-10-12. The summary is
 generated from recorded workout facts without a model call and is saved with
 the language selected at commit time. Retrying a committed workout replays
 that saved text. Exercise names and session notes remain verbatim. When notes

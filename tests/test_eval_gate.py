@@ -160,18 +160,15 @@ def _check(report_path: Path) -> subprocess.CompletedProcess:
 def test_full_report_validates_each_suite_and_both_judges(tmp_path):
     result = _check(_write_report(tmp_path, _report(coaching_scores=(24, 25))))
 
-    assert result.returncode == 1
+    assert result.returncode == 0, result.stderr
     assert "coaching_qa run 1: 24/25 (bar ≥24/25)" in result.stdout
     assert "judge_1=24/25" in result.stdout
     assert "judge_2=24/25" in result.stdout
     assert "generalization run 1: 5/5 (bar ≥5/5)" in result.stdout
-    assert "PLAYER MODEL GATE: FAILED" in result.stdout
-    assert "routing: 20/40 (bar ≥38/40); unauthorized actions=0; clinical misses=0; unreviewed=20; FAIL" in result.stdout
+    assert "routing: 40/40 (bar ≥38/40); unauthorized actions=0; clinical misses=0; unreviewed=0; PASS" in result.stdout
     for suite_name in ("coaching_qa suite", "generalization suite", "structured_output", "arabic_replies"):
         assert any(line.startswith(suite_name) and line.endswith("PASS") for line in result.stdout.splitlines())
-    assert [line for line in result.stderr.splitlines() if line.startswith("  x ")] == [
-        "  x 20 Arabic case(s) are unreviewed and excluded from the routing score"
-    ]
+    assert "PLAYER MODEL GATE: PASSED" in result.stdout
 
 
 def test_coaching_run_below_bar_fails_even_when_the_other_run_passes(tmp_path):
