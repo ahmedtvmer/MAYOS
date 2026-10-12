@@ -9,6 +9,7 @@ rate-limited with the password budget.
 """
 
 import html
+import re
 import sqlite3
 from pathlib import Path
 
@@ -76,8 +77,18 @@ def _register(client: TestClient, username: str = "alice", password: str = "corr
     return response.json()
 
 
-def _delete_form(client: TestClient, username: str, password: str, confirm: bool = True):
-    data = {"username": username, "password": password}
+def _delete_form(
+    client: TestClient,
+    username: str,
+    password: str,
+    confirm: bool = True,
+    display_language: str = "en",
+):
+    data = {
+        "username": username,
+        "password": password,
+        "display_language": display_language,
+    }
     if confirm:
         data["confirm"] = "yes"
     return client.post("/account/delete-request", data=data)
@@ -380,8 +391,36 @@ def test_delete_request_form_renders_without_a_session(api):
     assert 'type="checkbox"' in response.text
     # Lost-password guidance and the privacy policy link are on the page.
     assert "Forgot password" in response.text
+    assert '/reset-password?display_language=en' in response.text
     assert 'href="/privacy"' in response.text
     assert "form-action 'self'" in response.headers["content-security-policy"]
+
+
+def test_delete_request_form_uses_supported_system_language_and_manual_override(api):
+    client, _db = api
+
+    arabic = client.get(
+        "/account/delete-request",
+        headers={"Accept-Language": "fr-CA, ar-EG;q=0.8, en;q=0.7"},
+    )
+    assert '<html lang="ar" dir="rtl">' in arabic.text
+    assert 'name="display_language"' in arabic.text
+    assert 'value="ar" selected' in arabic.text
+    assert "احذف حسابي" in arabic.text
+    assert '/reset-password?display_language=ar' in arabic.text
+    assert "جلسات تسجيل الدخول" in arabic.text
+    assert "الجلسات التي سجلت الدخول" not in arabic.text
+    assert "<strong>30 يومًا</strong>" in arabic.text
+
+    english_override = client.get(
+        "/account/delete-request?display_language=en",
+        headers={"Accept-Language": "ar"},
+    )
+    assert '<html lang="en" dir="ltr">' in english_override.text
+    assert 'value="en" selected' in english_override.text
+
+    unsupported = client.get("/account/delete-request", headers={"Accept-Language": "fr"})
+    assert '<html lang="en" dir="ltr">' in unsupported.text
 
 
 def test_delete_request_form_is_nonce_scoped_and_states_what_is_kept(api):
@@ -431,9 +470,43 @@ def test_delete_request_wrong_password_and_unknown_username_are_identical(api):
         assert "alice" not in body
         assert "no account" not in body.lower()
         assert "not found" not in body.lower()
+        assert "browser recovery page" in body
     # Nothing changed for the live account.
     assert db.get_active_account_by_username("alice") is not None
     assert client.post("/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}).status_code == 200
+
+
+def test_delete_request_arabic_denial_is_generic_and_persists_language(api):
+    client, _db = api
+    _register(client, "alice")
+
+    wrong = _delete_form(client, "alice", "not-the-password", display_language="ar")
+    unknown = _delete_form(client, "nobody-here", "correct-horse-1", display_language="ar")
+
+    assert wrong.status_code == unknown.status_code == 200
+    def strip_nonce(body):
+        return re.sub(r'nonce="[^"]+"', 'nonce="nonce"', body)
+
+    assert strip_nonce(wrong.text) == strip_nonce(unknown.text)
+    assert '<html lang="ar" dir="rtl">' in wrong.text
+    assert "تعذر إكمال الطلب" in wrong.text
+    assert "/account/delete-request?display_language=ar" in wrong.text
+    assert "alice" not in wrong.text
+
+
+def test_delete_request_arabic_success_and_missing_confirmation_render_selected_language(api):
+    client, _db = api
+    _register(client, "alice")
+
+    missing_confirmation = _delete_form(
+        client, "alice", "correct-horse-1", confirm=False, display_language="ar"
+    )
+    success = _delete_form(client, "alice", "correct-horse-1", display_language="ar")
+
+    assert '<html lang="ar" dir="rtl">' in missing_confirmation.text
+    assert "يرجى تحديد مربع التأكيد" in missing_confirmation.text
+    assert '<html lang="ar" dir="rtl">' in success.text
+    assert "تم حذف حسابك" in success.text
 
 
 def test_delete_request_requires_the_confirmation_checkbox(api):

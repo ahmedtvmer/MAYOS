@@ -3,6 +3,7 @@ statement, hosted page, and the full logged-out round trip against real JWTs
 (issue #38, ADR 037)."""
 
 import logging
+import json
 import re
 from pathlib import Path
 
@@ -58,6 +59,11 @@ def _reset_limiter():
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
+
+
+def _recovery_page_config(response) -> dict:
+    config_start = response.text.index("var CONFIG = ") + len("var CONFIG = ")
+    return json.JSONDecoder().raw_decode(response.text[config_start:])[0]
 
 
 def _capture_reset_link(monkeypatch) -> dict[str, str]:
@@ -200,9 +206,93 @@ def test_hosted_reset_page_security_headers_and_script(api):
     assert "new_password" in resp.text
     # The URL is scrubbed immediately after reading the token.
     assert "history.replaceState(null, '', location.pathname)" in resp.text
-    # Server strings are JSON-embedded, and a non-string detail falls back.
-    assert 'var CONFIG = {"generic"' in resp.text
-    assert "typeof detail === 'string'" in resp.text
+    # The served client config has localized copy and a stable metadata mapping.
+    page_config = _recovery_page_config(resp)
+    assert page_config["errorMessageKeys"]["recovery.invalid_or_expired_token.v1"] == "invalidResetLink"
+    assert page_config["copy"]["ar"]["invalidResetLink"] == "رابط إعادة تعيين كلمة المرور غير صالح أو انتهت صلاحيته."
+    assert "message_fallback" not in resp.text
+    assert "body.detail" not in resp.text
+
+
+def test_hosted_recovery_page_localizes_forms_and_keeps_selected_language_out_of_urls(api):
+    client, _db = api
+
+    request_page = client.get(
+        "/reset-password",
+        headers={"Accept-Language": "ar-EG, en;q=0.8"},
+    )
+    assert '<html lang="ar" dir="rtl">' in request_page.text
+    assert 'value="ar" selected' in request_page.text
+    assert "أدخل البريد الإلكتروني للاسترداد" in request_page.text
+    assert 'id="request-form"' in request_page.text
+    assert 'id="language" name="display_language"' in request_page.text
+    assert "إذا كان هذا البريد الإلكتروني مرتبطًا بحساب في MAYOS" in request_page.text
+    assert "/auth/forgot-password" in request_page.text
+    assert _recovery_page_config(request_page)["copy"]["en"]["requestConfirmation"] == reset_service.GENERIC_REQUEST_MESSAGE
+
+    reset_token = "PRIVATE-RESET-TOKEN"
+    reset_page = client.get(
+        f"/reset-password?token={reset_token}",
+        headers={"Accept-Language": "ar"},
+    )
+    assert '<html lang="ar" dir="rtl">' in reset_page.text
+    assert "تعيين كلمة مرور جديدة" in reset_page.text
+    assert "إعادة تعيين كلمة المرور" in reset_page.text
+    assert reset_token not in reset_page.text
+    assert "history.replaceState(null, '', location.pathname)" in reset_page.text
+    assert "window.location.search" in reset_page.text
+    assert "display_language" not in str(reset_page.url)
+
+    unsupported = client.get("/reset-password", headers={"Accept-Language": "fr-CA"})
+    assert '<html lang="en" dir="ltr">' in unsupported.text
+    assert 'value="en" selected' in unsupported.text
+    assert "Enter the recovery email" in unsupported.text
+
+
+def test_invalid_reset_token_maps_to_arabic_page_copy(api):
+    client, _db = api
+    token = "UNKNOWN-RESET-TOKEN"
+
+    invalid = client.post(
+        "/auth/reset-password",
+        json={"token": token, "new_password": "valid-password-22"},
+    )
+    assert invalid.status_code == 400
+    assert invalid.json()["detail"] == reset_service.GENERIC_TOKEN_ERROR
+    assert invalid.json()["message_code"] == "recovery.invalid_or_expired_token.v1"
+
+    reset_page = client.get(
+        f"/reset-password?display_language=ar&token={token}",
+        headers={"Accept-Language": "en"},
+    )
+    assert token not in reset_page.text
+    assert '<html lang="ar" dir="rtl">' in reset_page.text
+    page_config = _recovery_page_config(reset_page)
+    message_key = page_config["errorMessageKeys"][invalid.json()["message_code"]]
+    assert page_config["copy"]["ar"][message_key] == "رابط إعادة تعيين كلمة المرور غير صالح أو انتهت صلاحيته."
+
+
+def test_forgot_password_endpoint_receives_selected_browser_language(api, monkeypatch):
+    client, _db = api
+    captured_emails = []
+
+    def capture_delivery(email, subject, body, *, delivery):
+        captured_emails.append((email, subject, body))
+        return True
+
+    monkeypatch.setattr(email_sender, "_deliver", capture_delivery)
+
+    response = client.post(
+        "/auth/forgot-password",
+        json={"email": "person@example.com", "display_language": "ar"},
+    )
+
+    assert response.status_code == 202
+    assert response.json() == {"message": reset_service.GENERIC_REQUEST_MESSAGE}
+    assert len(captured_emails) == 1
+    assert captured_emails[0][0] == "person@example.com"
+    assert captured_emails[0][1] == "لا يوجد حساب في MAYOS يستخدم هذا البريد الإلكتروني"
+    assert "لا يوجد حساب في MAYOS يستخدم هذا البريد الإلكتروني" in captured_emails[0][2]
 
 
 def test_forgot_reset_round_trip_email_body_and_session_revocation(
@@ -259,16 +349,24 @@ def test_forgot_password_sends_notice_only_for_unmatched_addresses(api, monkeypa
     _reset_limiter()
     known_ar = client.post(
         "/auth/forgot-password",
-        json={"email": "alice@example.com"},
+        json={"email": "alice@example.com", "display_language": "ar"},
         headers={"Accept-Language": "ar"},
     )
+    known_page = client.get("/reset-password", headers={"Accept-Language": "ar"})
     unknown_ar = client.post(
         "/auth/forgot-password",
-        json={"email": "new-person@example.com"},
+        json={"email": "new-person@example.com", "display_language": "ar"},
         headers={"Accept-Language": "ar"},
     )
+    unknown_page = client.get("/reset-password", headers={"Accept-Language": "ar"})
     assert known_ar.status_code == unknown_ar.status_code == 202
     assert known_ar.json() == unknown_ar.json()
+    assert known_ar.json() == {"message": reset_service.GENERIC_REQUEST_MESSAGE}
+    assert re.sub(r'nonce="[^"]+"', 'nonce="nonce"', known_page.text) == re.sub(
+        r'nonce="[^"]+"', 'nonce="nonce"', unknown_page.text
+    )
+    arabic_confirmation = _recovery_page_config(known_page)["copy"]["ar"]["requestConfirmation"]
+    assert arabic_confirmation == _recovery_page_config(unknown_page)["copy"]["ar"]["requestConfirmation"]
 
     deliveries = []
 
