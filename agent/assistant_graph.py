@@ -24,6 +24,8 @@ sys.path.append(str(BASE_DIR))
 
 from core.effort import rir_label
 from core.deload_choices import DELOAD_CHOICE_APPLY, DELOAD_CHOICE_UNDO, DELOAD_CHOICES
+from core.display_language import DisplayLanguage
+from core.reply_language import normalize_display_language, resolve_reply_language
 from agent.clinical_guard import (
     ARABIC_SCRIPT_RE,
     EMBED_MODEL,
@@ -341,6 +343,7 @@ class AssistantState(TypedDict):
     player_account_id: str | None
     coach_tone: str
     custom_instructions: str
+    display_language: NotRequired[DisplayLanguage]
     preferred_name: str | None
     telemetry_context: str | None
     weight_context: NotRequired[str | None]
@@ -478,15 +481,6 @@ def _explicit_preferred_name(query: str) -> str | None:
     return _valid_preferred_name(name) if name else None
 
 
-def _uses_arabic_preferred_name_trigger(query: str) -> bool:
-    normalized, _ = _normalize_preferred_name_match_text(query)
-    return re.match(
-        rf"\s*{_arabic_preferred_name_trigger_pattern()}(?=\s)",
-        normalized,
-        re.IGNORECASE,
-    ) is not None
-
-
 def _graph_context(config: dict[str, Any] | None) -> tuple[Any, Any]:
     """Resolves the explicit ``(ledger, store)`` handles carried on the run config."""
     configurable = (config or {}).get("configurable", {}) or {}
@@ -497,6 +491,15 @@ def hydrate_context_node(state: AssistantState, config: dict[str, Any] | None = 
     ledger, store = _graph_context(config)
     profile = ledger.get_player_profile()
     profile = profile if isinstance(profile, dict) else {}
+    display_language = normalize_display_language(state.get("display_language"))
+    account_id = state.get("player_account_id")
+    account_getter = getattr(store, "get_account", None)
+    if account_id and callable(account_getter):
+        account = account_getter(account_id)
+        if isinstance(account, dict):
+            display_language = normalize_display_language(
+                account.get("display_language", display_language)
+            )
     getter = getattr(ledger, "get_assistant_memory", None)
     memory = getter() if callable(getter) else {}
     name = _valid_preferred_name(memory.get("preferred_name")) if isinstance(memory, dict) else None
@@ -542,24 +545,37 @@ def hydrate_context_node(state: AssistantState, config: dict[str, Any] | None = 
         "telemetry_context": telemetry,
         "weight_context": weight_context,
         "preferred_name": name,
+        "display_language": display_language,
     }
+
+
+def _name_recall_response(
+    state: AssistantState, query: str, language: DisplayLanguage
+) -> str | None:
+    recall_pattern = r"(?:what(?:'s| is) my name|do you (?:remember|know) my name|what do you call me)[?!.]*"
+    if not re.fullmatch(recall_pattern, query, re.IGNORECASE):
+        return None
+    name = _valid_preferred_name(state.get("preferred_name"))
+    if language == "ar":
+        return (
+            f"إنت طلبت مني أناديك {name}."
+            if name
+            else "ما قلتليش اسمك المفضل لسه. تحب أناديك إيه؟"
+        )
+    return f"You asked me to call you {name}." if name else "I don't have your preferred name yet. What should I call you?"
 
 
 def _name_response(state: AssistantState, ledger: Any = None) -> str | None:
     query = _get_message_text(state["messages"][-1]) if state.get("messages") else ""
+    language = resolve_reply_language(query, state.get("display_language", "en"))
     name = _explicit_preferred_name(query)
-    if name:
-        setter = getattr(ledger, "set_assistant_memory", None)
-        if callable(setter):
-            setter("preferred_name", name)
-        state["preferred_name"] = name
-        if _uses_arabic_preferred_name_trigger(query):
-            return f"تمام، هناديك {name}."
-        return f"Nice to meet you, {name}."
-    if re.fullmatch(r"(?:what(?:'s| is) my name|do you (?:remember|know) my name|what do you call me)[?!.]*", query, re.IGNORECASE):
-        name = _valid_preferred_name(state.get("preferred_name"))
-        return f"You asked me to call you {name}." if name else "I don't have your preferred name yet. What should I call you?"
-    return None
+    if not name:
+        return _name_recall_response(state, query, language)
+    setter = getattr(ledger, "set_assistant_memory", None)
+    if callable(setter):
+        setter("preferred_name", name)
+    state["preferred_name"] = name
+    return f"تمام، هناديك {name}." if language == "ar" else f"Nice to meet you, {name}."
 
 
 RE_HISTORY_INDICATOR = re.compile(
@@ -1968,11 +1984,16 @@ def program_mutation_node(state: AssistantState, config: dict[str, Any] | None =
 def deload_choice_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     ledger, store = _graph_context(config)
     choice = (state.get("intent_metadata") or {}).get("choice")
+    query = _get_message_text(state["messages"][-1]) if state.get("messages") else ""
+    language = resolve_reply_language(query, state.get("display_language", "en"))
+    no_change_response = (
+        "مفيش حاجة محتاجة تغيير." if language == "ar" else DELOAD_NO_CHANGE_RESPONSE
+    )
     if choice not in DELOAD_CHOICES:
-        return _response(DELOAD_NO_CHANGE_RESPONSE)
+        return _response(no_change_response)
     program = ledger.get_active_program()
     if program is None or not program.days:
-        return _response(DELOAD_NO_CHANGE_RESPONSE)
+        return _response(no_change_response)
     from service import workouts as workouts_service
 
     prescription = workouts_service.build_prescription(
@@ -1982,16 +2003,13 @@ def deload_choice_node(state: AssistantState, config: dict[str, Any] | None = No
     deload = prescription["deload"]
     accepted_state = "applied" if choice == DELOAD_CHOICE_UNDO else "suggested"
     if deload["state"] != accepted_state:
-        return _response(DELOAD_NO_CHANGE_RESPONSE)
+        return _response(no_change_response)
 
     ledger.set_deload_choice(choice)
     reason = deload.get("reason") or "fatigue was detected"
-    action = choice
-    default = "applied" if choice == DELOAD_CHOICE_UNDO else "suggested"
-    response = (
-        f"I’ll {action} the {default} deload for your next workout only. "
-        f"The fatigue signal is: {reason}"
-    )
+    fatigue_info = prescription.get("fatigue_info") or {}
+    reason_code = fatigue_info.get("reason_code")
+    response = _deload_choice_copy(choice, reason, reason_code, language)
 
     account_id = state.get("player_account_id")
     if account_id:
@@ -2002,6 +2020,48 @@ def deload_choice_node(state: AssistantState, config: dict[str, Any] | None = No
         except Exception:
             logger.exception("Could not add player deload choice to coach alert")
     return _response(response, program_updated=True)
+
+
+_ARABIC_DELOAD_REASON_COPY = {
+    "acute_readiness_floor": "انخفاض حاد في الاستعداد (1/5 مسجل). التعافي العام متأثر.",
+    "rolling_readiness_crash": "انخفاض مستمر في الاستعداد خلال آخر 3 حصص.",
+    "high_exertion_density": "مجهود عالي في السيتات المسجلة عند RIR 0.5 أو أقل، مع انخفاض الاستعداد.",
+}
+
+
+def _localized_deload_reason(reason_code: str | None, reason: str) -> str:
+    copy = _ARABIC_DELOAD_REASON_COPY.get(reason_code or "")
+    if copy is None:
+        return "غير محددة."
+    if reason_code == "rolling_readiness_crash":
+        match = re.search(r"avg (\d+(?:\.\d+)?)/5", reason)
+        if match:
+            return f"انخفاض مستمر في الاستعداد (متوسط {match.group(1)}/5 خلال آخر 3 حصص)."
+    elif reason_code == "high_exertion_density":
+        match = re.search(r"\((\d+)% of recent rated sets", reason)
+        if match:
+            return (
+                f"مجهود عالي في {match.group(1)}% من السيتات المسجلة عند RIR 0.5 أو أقل، "
+                "مع انخفاض الاستعداد."
+            )
+    return copy
+
+
+def _deload_choice_copy(
+    choice: str,
+    reason: str,
+    reason_code: str | None,
+    language: DisplayLanguage,
+) -> str:
+    if language == "ar":
+        action = "ألغيت" if choice == DELOAD_CHOICE_UNDO else "طبّقت"
+        localized_reason = _localized_deload_reason(reason_code, reason)
+        return f"تمام، {action} تخفيف التدريب للحصة الجاية بس. إشارة الإرهاق: {localized_reason}"
+    default = "applied" if choice == DELOAD_CHOICE_UNDO else "suggested"
+    return (
+        f"I’ll {choice} the {default} deload for your next workout only. "
+        f"The fatigue signal is: {reason}"
+    )
 
 
 def catalog_search_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:

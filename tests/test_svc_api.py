@@ -9,6 +9,7 @@ from langchain_core.messages import AIMessage
 from database.database_manager import DatabaseManager
 from svc.app import create_app
 from svc.dependencies import VerifiedPlayer, get_current_player, get_db, get_verified_player
+from tests.fakes.chat_model import ScriptedChatModel
 
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
@@ -689,6 +690,118 @@ def test_chat_history_and_turn(client, monkeypatch):
     assert "user" in roles
     assert client.delete("/chat/history").status_code == 204
     assert client.get("/chat/history").json() == []
+
+
+def test_chat_api_uses_message_language_then_display_fallback_and_preserves_history(
+    client, monkeypatch
+):
+    import json
+
+    from agent import assistant_graph
+
+    model = ScriptedChatModel(
+        [
+            "English response retained.",
+            "Second response retained.",
+            "Fallback response retained.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    registered = client.post(
+        "/auth/register",
+        json={
+            "trainee_id": "alice",
+            "password": "correct-horse-1",
+            "display_language": "ar",
+        },
+    )
+    assert registered.status_code == 201, registered.text
+
+    def send(content):
+        with client.stream("POST", "/chat/messages", json={"content": content}) as response:
+            assert response.status_code == 200
+            events = [
+                json.loads(line[6:])
+                for line in response.iter_lines()
+                if line.startswith("data: ")
+            ]
+        return next(event for event in events if event.get("done"))
+
+    name_confirmation = send("Call me أحمد")
+    assert name_confirmation["response_content"] == "Nice to meet you, أحمد."
+    assert model.calls == []
+
+    english_done = send("How is أحمد doing?")
+    assert english_done["response_content"] == "English response retained."
+    assert "Reply language for this turn: English" in model.calls[0]["messages"][0].content
+    assert "Display language fallback: Arabic" in model.calls[0]["messages"][0].content
+
+    db = client.app.state.test_db
+    account = db.get_active_account_by_username("alice")
+    assert account is not None
+    assert db.set_account_display_language(account["account_id"], "en")
+    arabic_done = send("ممكن تشرحلي الراحة بين الـ RIR والـ sets؟")
+    assert arabic_done["response_content"] == "Second response retained."
+    assert "Reply language for this turn: Arabic" in model.calls[1]["messages"][0].content
+    assert "Display language fallback: English" in model.calls[1]["messages"][0].content
+    assert "polite everyday Egyptian Arabic" in model.calls[1]["messages"][0].content
+
+    assert db.set_account_display_language(account["account_id"], "ar")
+    fallback_done = send("👍")
+    assert fallback_done["response_content"] == "Fallback response retained."
+    assert "Reply language for this turn: Arabic" in model.calls[2]["messages"][0].content
+
+    history = client.get("/chat/history").json()
+    assert [(message["role"], message["content"]) for message in history] == [
+        ("user", "Call me أحمد"),
+        ("assistant", "Nice to meet you, أحمد."),
+        ("user", "How is أحمد doing?"),
+        ("assistant", "English response retained."),
+        ("user", "ممكن تشرحلي الراحة بين الـ RIR والـ sets؟"),
+        ("assistant", "Second response retained."),
+        ("user", "👍"),
+        ("assistant", "Fallback response retained."),
+    ]
+
+
+def test_arabic_chat_keeps_reviewed_safety_response_outside_model(client, monkeypatch):
+    import json
+
+    from agent import assistant_graph
+    from agent.prompts import (
+        ARABIC_CLINICAL_SAFEGUARD_RESPONSE,
+        ARABIC_DIAGNOSIS_SAFEGUARD_RESPONSE,
+    )
+
+    model = ScriptedChatModel()
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    registered = client.post(
+        "/auth/register",
+        json={
+            "trainee_id": "alice",
+            "password": "correct-horse-1",
+            "display_language": "en",
+        },
+    )
+    assert registered.status_code == 201, registered.text
+
+    with client.stream(
+        "POST",
+        "/chat/messages",
+        json={"content": "إيه سبب ألم الرسغ عندي؟ هل ده التهاب أوتار؟"},
+    ) as response:
+        assert response.status_code == 200
+        events = [
+            json.loads(line[6:])
+            for line in response.iter_lines()
+            if line.startswith("data: ")
+        ]
+    done = next(event for event in events if event.get("done"))
+    assert done["response_content"] in {
+        ARABIC_CLINICAL_SAFEGUARD_RESPONSE,
+        ARABIC_DIAGNOSIS_SAFEGUARD_RESPONSE,
+    }
+    assert model.calls == []
 
 
 def test_chat_error_frame_never_leaks(client, monkeypatch):

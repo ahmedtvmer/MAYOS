@@ -555,6 +555,9 @@ def test_assistant_deload_choice_is_one_workout_and_replay_safe(api, monkeypatch
 
     before = client.get("/workouts/prescription?day_order=1", headers=headers).json()
     assert before["deload"]["state"] == "applied"
+    player_account = db.get_active_account_by_username("deload-player")
+    assert player_account is not None
+    assert db.set_account_display_language(player_account["account_id"], "en")
 
     unchanged = client.post("/chat/messages", headers=headers, json={"content": "apply the deload"})
     unchanged_events = [json.loads(line[6:]) for line in unchanged.text.splitlines() if line.startswith("data: ")]
@@ -562,13 +565,22 @@ def test_assistant_deload_choice_is_one_workout_and_replay_safe(api, monkeypatch
     assert unchanged_done["program_updated"] is False
     assert "nothing to change" in unchanged_done["response_content"].lower()
 
-    stream = client.post("/chat/messages", headers=headers, json={"content": "undo the deload"})
+    no_change = client.post("/chat/messages", headers=headers, json={"content": "طبّق التخفيف"})
+    no_change_events = [json.loads(line[6:]) for line in no_change.text.splitlines() if line.startswith("data: ")]
+    no_change_done = next(event for event in no_change_events if event.get("done"))
+    assert no_change_done["program_updated"] is False
+    assert no_change_done["response_content"] == "مفيش حاجة محتاجة تغيير."
+
+    stream = client.post("/chat/messages", headers=headers, json={"content": "ألغِ التخفيف"})
     assert stream.status_code == 200, stream.text
     events = [json.loads(line[6:]) for line in stream.text.splitlines() if line.startswith("data: ")]
     done = next(event for event in events if event.get("done"))
     assert done["program_updated"] is True
-    assert "Acute readiness floor" in done["response_content"]
-    assert "next workout only" in done["response_content"]
+    assert "تمام، ألغيت تخفيف التدريب للحصة الجاية بس." in done["response_content"]
+    assert "إشارة الإرهاق: انخفاض حاد في الاستعداد (1/5 مسجل). التعافي العام متأثر." in done["response_content"]
+    assert "Acute readiness floor" not in done["response_content"]
+    assert "fatigue was detected" not in done["response_content"]
+    assert "تخفيف التدريب للحصة الجاية بس" in done["response_content"]
     assert client.get("/workouts/prescription?day_order=1", headers=headers).json()["deload"]["state"] == "none"
 
     first_commit = _commit(
@@ -577,9 +589,15 @@ def test_assistant_deload_choice_is_one_workout_and_replay_safe(api, monkeypatch
     )
     assert client.get("/workouts/prescription?day_order=1", headers=headers).json()["deload"]["state"] == "applied"
 
+    english_undo = client.post("/chat/messages", headers=headers, json={"content": "undo the deload"})
+    assert english_undo.status_code == 200, english_undo.text
+    english_events = [json.loads(line[6:]) for line in english_undo.text.splitlines() if line.startswith("data: ")]
+    english_done = next(event for event in english_events if event.get("done"))
+    assert english_done["program_updated"] is True
+    assert "I’ll undo the applied deload for your next workout only." in english_done["response_content"]
+    assert "The fatigue signal is: Acute readiness floor (1/5) detected." in english_done["response_content"]
+
     # A replay from before the new choice must not consume that later choice.
-    stream = client.post("/chat/messages", headers=headers, json={"content": "undo the deload"})
-    assert stream.status_code == 200, stream.text
     replay = client.post(
         "/workouts/sessions", headers=headers,
         json={

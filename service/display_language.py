@@ -4,9 +4,10 @@ import html
 import math
 import re
 from collections.abc import Mapping
-from typing import Any, Literal, get_args
+from typing import Any, get_args
 
-DisplayLanguage = Literal["en", "ar"]
+from core.display_language import DisplayLanguage
+
 DISPLAY_LANGUAGE_ORDER = get_args(DisplayLanguage)
 SUPPORTED_DISPLAY_LANGUAGES = frozenset(DISPLAY_LANGUAGE_ORDER)
 

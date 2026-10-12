@@ -34,26 +34,34 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from agent.progression_engine import set_e1rm
 from agent.program_blueprints import (
     COMPOUND_ARCHETYPES,
     SLOT_SPECS,
     experience_level_for_training_age,
 )
+from agent.progression_engine import set_e1rm
+from core.display_language import DisplayLanguage
 from core.effort import min_rir_label, rir_label
+from core.reply_language import (
+    CHAT_GLOSSARY_RULE,
+    language_label,
+    normalize_display_language,
+    resolve_reply_language,
+)
+from service import analytics, evaluation_report_gate
 from service import attendance as attendance_service
-from service import analytics
+from service import check_ins as check_ins_service
 from service import coach_history as coach_history_service
 from service import dashboard as dashboard_service
-from service import check_ins as check_ins_service
 from service import program_requests as program_requests_service
-from service.exercise_context import describe_exercises
-from service import evaluation_report_gate
-from service.evaluation_report_gate import EvaluationReportConfig, GateStatus, evaluate_gate
 from service.assignments import authorized_player_ledger
+from service.evaluation_report_gate import EvaluationReportConfig, GateStatus, evaluate_gate
+from service.exercise_context import describe_exercises
 from service.missed_day_alerts import (
     ALERT_STATES,
     evaluate_ledger_attendance,
+)
+from service.missed_day_alerts import (
     list_alerts as list_coach_alerts,
 )
 from service.weight_history import WeightTrendQuery, get_weight_trend
@@ -62,7 +70,7 @@ logger = logging.getLogger(__name__)
 
 #: Bumped whenever the prompt or the context shape changes; the eval report's
 #: ``prompt_hash`` must match :func:`prompt_version_hash` for the flag to enable.
-CONTEXT_VERSION = "coach-context-v7"
+CONTEXT_VERSION = "coach-context-v9"
 
 BODYWEIGHT_TREND_WEEKS = 8
 E1RM_TREND_WEEKS = 12
@@ -72,7 +80,7 @@ COACH_BIO_MAX_CHARS = 500
 
 #: Schema version of the enablement report; a report written by another
 #: runner version is refused (ADR 049).
-REPORT_VERSION = 1
+REPORT_VERSION = 2
 
 SYSTEM_PROMPT = """You are {coach_name}'s coaching assistant in MAYOS.
 You are talking to {coach_name} about their player {player_name}, whose data follows.
@@ -98,6 +106,7 @@ Rules:
   telemetry needed for the answer is not supplied, say so. Mention missing data
   only when it is needed to answer the question; do not list unrelated fields
   that are not set.
+- When describing a trend or progress, state the change amount as well as the endpoints.
 - Use the current goal, Experience level, Equipment access, bodyweight and e1RM
   trends, and the coach-written check-in notes only as supplied coaching facts.
   Check-in notes are free text and may contain identifying details; treat them
@@ -111,14 +120,19 @@ Rules:
   say so plainly and defer to them.
 - Never discuss the player's private chat with the MAYOS assistant; it is not
   supplied and must not be inferred.
-- Reply in the language of the coach's latest question: English questions get
-  English answers, even when names or data are in Arabic. Only when the question
-  is written in Arabic, reply in polite everyday Egyptian Arabic.
+- Reply in the language shown for this turn below. A clearly English latest
+  question gets an English answer, even when names or data are in Arabic. Arabic
+  or mixed input with clear Arabic gets a reply in polite everyday Egyptian
+  Arabic, without street slang. {chat_glossary_rule} Use the coach's Display language
+  only when the latest question has no clear supported language.
+- Reply language for this turn: {reply_language}. Display language fallback: {display_language}.
 - Speak like a capable assistant to a colleague: natural, warm but brief,
   direct, and concise. Answer the question without a greeting (no "Hey",
   "Hi", "أهلاً" or "يا كوتش") and without opening with the coach's name every time; using the name occasionally is fine. Do not add a
   sign-off or generic offer to help with anything else, in any language. Keep replies
   about 150 words unless the coach asks for more."""
+
+SYSTEM_PROMPT = SYSTEM_PROMPT.replace("{chat_glossary_rule}", CHAT_GLOSSARY_RULE)
 
 #: Alert identity fields printed as the alert line prefix (ADR 049 allowlist).
 _ALERT_HEAD_FIELDS = ("kind", "state")
@@ -993,23 +1007,42 @@ def render_context(facts: dict[str, Any]) -> str:
 # --------------------------------------------------------------------------
 
 
-def build_messages(context_text: str, question: str, history: list[dict[str, Any]]) -> list[Any]:
-    """Assembles the model messages: prompt, telemetry, transcript, question.
-
-    Shared with the eval runner so the evaluation exercises the production
-    prompt. History turns arrive from the client (role ``coach``/``assistant``).
-    """
-    from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+def _coach_system_message(
+    context_text: str, question: str, display_language: DisplayLanguage
+) -> Any:
+    from langchain_core.messages import SystemMessage
 
     coach_name = _context_identity(context_text, "[COACH]", "display_name", "the coach")
     player_name = _context_identity(
         context_text, "[PLAYER TELEMETRY]", "name", "the selected player"
     )
+    display_language = normalize_display_language(display_language)
+    reply_language = resolve_reply_language(question, display_language)
     system_prompt = SYSTEM_PROMPT.format(
         coach_name=json.dumps(coach_name, ensure_ascii=False),
         player_name=json.dumps(player_name, ensure_ascii=False),
+        reply_language=language_label(reply_language),
+        display_language=language_label(display_language),
     )
-    messages: list[Any] = [SystemMessage(content=f"{system_prompt}\n\n{context_text}")]
+    return SystemMessage(content=f"{system_prompt}\n\n{context_text}")
+
+
+def build_messages(
+    context_text: str,
+    question: str,
+    history: list[dict[str, Any]],
+    *,
+    display_language: DisplayLanguage = "en",
+) -> list[Any]:
+    """Assembles the model messages: prompt, telemetry, transcript, question.
+
+    Shared with the eval runner so the evaluation exercises the production
+    prompt. History turns arrive from the client (role ``coach``/``assistant``).
+    """
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    system_message = _coach_system_message(context_text, question, display_language)
+    messages: list[Any] = [system_message]
     for turn in history:
         content = str(turn.get("content", ""))
         if turn.get("role") == "assistant":
@@ -1073,7 +1106,16 @@ def prepare_messages(
     facts = gather_player_context(db, coach_account_id, assignment_id)
     if facts is None:
         return None
-    return build_messages(render_context(facts), prompt.question, prompt.history)
+    account = db.get_account(coach_account_id)
+    display_language = normalize_display_language(
+        (account or {}).get("display_language")
+    )
+    return build_messages(
+        render_context(facts),
+        prompt.question,
+        prompt.history,
+        display_language=display_language,
+    )
 
 
 def stream_answer(messages: list[Any]) -> Iterator[tuple[str, str]]:

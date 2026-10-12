@@ -427,19 +427,26 @@ def _context_number_checks(case: dict[str, Any], answer: str, context_text: str)
     if case["answer_type"] not in {"number", "numbers"}:
         return []
     allowed = coach_rubric.grounded_numbers(context_text, case["question"], "")
-    dates = coach_rubric.grounded_month_days(context_text)
-    return [coach_rubric.check_no_fabricated_numbers(answer, allowed, dates)]
+    dates = coach_rubric.grounded_date_keys(context_text)
+    return [
+        coach_rubric.check_no_fabricated_numbers(
+            answer,
+            allowed,
+            dates,
+            readiness_scale=coach_rubric.context_has_readiness_scale(context_text),
+        )
+    ]
 
 
 def _output_language_checks(case: dict[str, Any], answer: str) -> list[dict[str, Any]]:
     checks = [_check_register(case["kind"], answer)]
-    eastern_digits = sorted(set(run_arabic_evaluation.NON_WESTERN_DIGITS.findall(answer)))
+    digit_check = coach_rubric.check_western_digits(answer)
     checks.append(
         {
             "name": "western_digits_only",
-            "passed": not eastern_digits,
+            "passed": digit_check["passed"],
             "expected": "0-9",
-            "observed_eastern_digits": eastern_digits,
+            "observed_eastern_digits": digit_check["observed_non_western_digits"],
         }
     )
     return checks

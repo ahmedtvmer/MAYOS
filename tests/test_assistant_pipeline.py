@@ -11,6 +11,7 @@ from langchain_core.messages import HumanMessage
 from agent.assistant_graph import (
     RE_ACTION_HINT,
     STATIC_SYSTEM_CORE,
+    deload_choice_node,
     exercise_substitution_node,
     router_node,
     stream_assistant_turn,
@@ -173,6 +174,39 @@ def test_deload_pipeline_says_nothing_to_change_in_both_wrong_directions(fresh_s
             rendered = "".join(stream_assistant_turn(state, ledger=ledger, store=fresh_store))
         assert "There is nothing to change." in rendered
         assert state["program_updated"] is False
+
+
+def test_unknown_arabic_deload_reason_uses_generic_localized_copy(fresh_store, monkeypatch):
+    from types import SimpleNamespace
+
+    ledger = fresh_store.ledger
+    ledger.get_active_program = MagicMock(
+        return_value=SimpleNamespace(days=[SimpleNamespace(day_order=1, exercises=[])])
+    )
+    prescription = {
+        "deload": {"state": "applied", "reason": "Future English fatigue detail."},
+        "fatigue_info": {"reason_code": "future_reason_code"},
+    }
+    monkeypatch.setattr(
+        "service.workouts.build_prescription",
+        lambda *args, **kwargs: prescription,
+    )
+    state = {
+        "messages": [HumanMessage(content="ألغِ التخفيف")],
+        "trainee_id": "test_user",
+        "player_account_id": None,
+        "intent_metadata": {"choice": "undo"},
+    }
+
+    result = deload_choice_node(
+        state,
+        config={"configurable": {"ledger": ledger, "store": fresh_store}},
+    )
+
+    assert result["response_content"] == (
+        "تمام، ألغيت تخفيف التدريب للحصة الجاية بس. "
+        "إشارة الإرهاق: غير محددة."
+    )
 
 
 def test_phase1_tier1_catalog_search():

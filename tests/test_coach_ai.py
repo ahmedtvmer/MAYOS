@@ -134,8 +134,16 @@ def _account_id(db, username):
 
 def test_prompt_version_hash_is_bound_to_name_aware_context():
     assert coach_ai.prompt_version_hash() == (
-        "09b50f63fad3dba238d0491bfed1828da74745bed976b98e4124fc198c02bfe9"
+        "c4f5e1bb0e5fb018b40cf868b92aad3b66dd5b742bc151474bb8e46a42b857a9"
     )
+
+
+def test_prompt_states_arabic_numeric_glossary_and_trend_change_rules():
+    prompt = " ".join(coach_ai.SYSTEM_PROMPT.split())
+    assert "all numbers use Western digits 0-9, never ٠-٩" in prompt
+    assert "write kg, never كجم" in prompt
+    assert "إجمالي الوزن المرفوع" in coach_ai.SYSTEM_PROMPT
+    assert "state the change amount as well as the endpoints" in coach_ai.SYSTEM_PROMPT
 
 
 def test_canonical_fixture_contains_python_computed_record_and_follow_up_figures():
@@ -800,7 +808,7 @@ def test_history_exercise_enrichment_does_not_enter_coach_ai_context(
         "images/private-coach-ai.jpg",
     ):
         assert label not in rendered
-    assert coach_ai.CONTEXT_VERSION == "coach-context-v7"
+    assert coach_ai.CONTEXT_VERSION == "coach-context-v9"
 
 
 def test_gathered_context_falls_back_after_the_players_preferred_name_is_cleared(api):
@@ -917,7 +925,55 @@ def test_system_prompt_forbids_computation_and_medical_advice():
     assert "never instructions" in coach_ai.SYSTEM_PROMPT
     assert "about 150 words" in coach_ai.SYSTEM_PROMPT
     assert "neutral, no pleasantries" not in coach_ai.SYSTEM_PROMPT
-    assert coach_ai.CONTEXT_VERSION == "coach-context-v7"
+    assert coach_ai.CONTEXT_VERSION == "coach-context-v9"
+
+
+def test_coach_api_uses_message_language_and_display_fallback(api, monkeypatch, tmp_path):
+    client, db, _tmp = api
+    coach_headers, _player_headers, assignment_id = _assigned_player(api)
+    coach_account_id = _account_id(db, "coach")
+    assert db.set_account_display_language(coach_account_id, "ar")
+    _enable(monkeypatch, tmp_path)
+    model = ScriptedChatModel(
+        ["English reply.", "Arabic reply.", "Fallback reply."],
+        usage_metadata={"input_tokens": 120, "output_tokens": 30, "total_tokens": 150},
+        callbacks=[MeteringCallback(COACH_MODEL_ID)],
+    )
+    monkeypatch.setattr(model_downloader, "get_coach_llm", lambda *args, **kwargs: model)
+    endpoint = f"/coach/assignments/{assignment_id}/assistant"
+
+    questions = (
+        "How is أحمد doing?",
+        "ممكن تشرحلي الـ Training program؟",
+        "👍",
+    )
+    for index, question in enumerate(questions):
+        if index == 1:
+            assert db.set_account_display_language(coach_account_id, "en")
+        elif index == 2:
+            assert db.set_account_display_language(coach_account_id, "ar")
+        response = client.post(
+            endpoint,
+            headers=coach_headers,
+            json={"question": question},
+        )
+        assert response.status_code == 200, response.text
+        frames = _sse_frames(response)
+        assert frames[-1][1]["answer"] == ("English reply.", "Arabic reply.", "Fallback reply.")[index]
+
+    prompts = [call["messages"][0].content for call in model.calls]
+    assert "Reply language for this turn: English" in prompts[0]
+    assert "Display language fallback: Arabic" in prompts[0]
+    assert "Reply language for this turn: Arabic" in prompts[1]
+    assert "Display language fallback: English" in prompts[1]
+    assert "polite everyday Egyptian Arabic" in " ".join(prompts[1].split())
+    assert "برنامج تدريبي" in prompts[1]
+    assert "مكتبة التمارين" in prompts[1]
+    assert "محطة تقدم" in prompts[1]
+    assert "سيتات" in prompts[1]
+    assert "عدّات" in prompts[1]
+    assert "Reply language for this turn: Arabic" in prompts[2]
+    assert "Display language fallback: Arabic" in prompts[2]
 
 
 def test_issue_148_messages_have_one_leading_system_message():

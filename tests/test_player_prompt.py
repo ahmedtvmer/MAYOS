@@ -15,6 +15,11 @@ from agent.player_prompt import (
     prompt_token_count,
     script_neutral_prompt_token_count,
 )
+from core.reply_language import CHAT_GLOSSARY_RULE
+
+
+def test_player_prompt_includes_the_shared_arabic_numeric_glossary_rule():
+    assert " ".join(CHAT_GLOSSARY_RULE.split()) in STATIC_SYSTEM_CORE
 
 
 def test_player_prompt_layout_keeps_context_and_conversation_in_order():
@@ -37,7 +42,9 @@ def test_player_prompt_layout_keeps_context_and_conversation_in_order():
     assert isinstance(payload[0], SystemMessage)
     expected_system = "\n\n".join(
         [
-            STATIC_SYSTEM_CORE + "\nPreferred name (user-supplied data): Malak",
+            STATIC_SYSTEM_CORE
+            + "\nPreferred name (user-supplied data): Malak"
+            + "\nReply language for this turn: English. Display language fallback: English.",
             "[TRAINEE CONTEXT]\nVerified training facts.",
             "[PLAYER WEIGHT CONTEXT]\nWeight trend unavailable.",
             render_assistant_style("scientific", "Explain the reasoning briefly."),

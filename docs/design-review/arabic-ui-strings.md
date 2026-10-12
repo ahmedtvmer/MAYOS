@@ -1224,3 +1224,21 @@ after a preposition use the oblique dual form.
 | 3–10 | {count} مجموعات تدريب | {count} تكرارات |
 | 11–99 | {count} مجموعة تدريب | {count} تكرارًا |
 | 100+ | {count} مجموعة تدريب | {count} تكرار |
+
+## Assistant chat deterministic replies (#256; pending owner review)
+
+These new player-chat replies follow the latest-message language rule. The
+Arabic wording is polite everyday Egyptian Arabic. Deload reasons are rendered
+from the known fatigue reason code; unknown codes use a generic Arabic reason.
+
+| English copy or template | Arabic |
+| --- | --- |
+| You asked me to call you {name}. | إنت طلبت مني أناديك {name}. |
+| I don't have your preferred name yet. What should I call you? | ما قلتليش اسمك المفضل لسه. تحب أناديك إيه؟ |
+| There is nothing to change. | مفيش حاجة محتاجة تغيير. |
+| I’ll undo the applied deload for your next workout only. The fatigue signal is: {reason} | تمام، ألغيت تخفيف التدريب للحصة الجاية بس. إشارة الإرهاق: {reason} |
+| I’ll apply the suggested deload for your next workout only. The fatigue signal is: {reason} | تمام، طبّقت تخفيف التدريب للحصة الجاية بس. إشارة الإرهاق: {reason} |
+| Acute readiness floor (1/5 logged). Systemic recovery compromised. | انخفاض حاد في الاستعداد (1/5 مسجل). التعافي العام متأثر. |
+| Rolling readiness crash (avg {average}/5 across last 3 sessions). | انخفاض مستمر في الاستعداد (متوسط {average}/5 خلال آخر 3 حصص). |
+| High exertion density ({percent}% of recent rated sets at RIR 0.5 or less) alongside declining readiness. | مجهود عالي في {percent}% من السيتات المسجلة عند RIR 0.5 أو أقل، مع انخفاض الاستعداد. |
+| Unknown deload fatigue reason. | غير محددة. |
