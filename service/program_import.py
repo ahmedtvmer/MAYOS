@@ -1175,7 +1175,8 @@ def _freeform_program_rows(
     selected_week: str | None,
     context: FreeFormGridContext,
 ) -> list[ProgramImportRow]:
-    ordered_model_rows = _expand_implicit_week_rows(model_rows, context)
+    repaired_model_rows = _repair_implicit_week_duplicates(model_rows, context)
+    ordered_model_rows = _expand_implicit_week_rows(repaired_model_rows, context)
     return _renumber_out_of_range_orders([
         _program_import_row(
             model_row,
@@ -1185,6 +1186,132 @@ def _freeform_program_rows(
         )
         for model_row in ordered_model_rows
     ])
+
+
+def _repair_implicit_week_duplicates(
+    model_rows: list[Any], context: FreeFormGridContext
+) -> list[Any]:
+    duplicate_sources = _blank_week_duplicate_sources(model_rows)
+    if not duplicate_sources:
+        return model_rows
+    if context.implicit_week_count <= 1:
+        raise _duplicate_model_rows_error()
+    repaired = _assign_implicit_weeks(model_rows, duplicate_sources, context.implicit_week_count)
+    if _has_duplicate_model_positions(repaired):
+        raise _duplicate_model_rows_error()
+    return repaired
+
+
+def _blank_week_duplicate_sources(model_rows: list[Any]) -> set[int]:
+    positions: dict[tuple[int, str | None], list[int]] = {}
+    for index, model_row in enumerate(model_rows):
+        week = (
+            model_row.week.strip().casefold()
+            if model_row.week and model_row.week.strip()
+            else None
+        )
+        positions.setdefault((model_row.source_row, week), []).append(index)
+    duplicate_sources = set()
+    for (source_row, week), indexes in positions.items():
+        if len(indexes) > 1:
+            if week is not None:
+                raise _duplicate_model_rows_error()
+            duplicate_sources.add(source_row)
+    return duplicate_sources
+
+
+def _assign_implicit_weeks(
+    model_rows: list[Any], duplicate_sources: set[int], week_count: int
+) -> list[Any]:
+    implicit_weeks = _week_number_labels(week_count)
+    repaired = list(model_rows)
+    for source_row in duplicate_sources:
+        indexes = [
+            index
+            for index, model_row in enumerate(model_rows)
+            if model_row.source_row == source_row
+            and (not model_row.week or not model_row.week.strip())
+        ]
+        if len(indexes) > week_count:
+            raise _duplicate_model_rows_error()
+        for index, week in zip(indexes, implicit_weeks):
+            repaired[index] = repaired[index].model_copy(update={"week": week})
+    return repaired
+
+
+def _missing_implicit_week_rows(
+    source_rows: list[Any], implicit_weeks: list[str]
+) -> list[Any]:
+    present_weeks = {
+        _week_identity(row.week) for row in source_rows if row.week and row.week.strip()
+    }
+    template = source_rows[0]
+    return [
+        _implicit_week_row_without_prescription(template, week)
+        for week in implicit_weeks
+        if _week_identity(week) not in present_weeks
+    ]
+
+
+def _implicit_week_row_without_prescription(model_row: Any, week: str) -> Any:
+    return model_row.model_copy(update={
+        "week": week,
+        "sets": None,
+        "reps_min": None,
+        "reps_max": None,
+        "rir": None,
+        "rpe": None,
+    })
+
+
+def _missing_rows_after_source_groups(
+    model_rows: list[Any],
+    rows_by_source: dict[int, list[Any]],
+    implicit_weeks: list[str],
+) -> dict[int, list[Any]]:
+    last_index_by_source = {
+        model_row.source_row: index for index, model_row in enumerate(model_rows)
+    }
+    implicit_identities = {_week_identity(week) for week in implicit_weeks}
+    return {
+        last_index_by_source[source_rows[0].source_row]: _missing_implicit_week_rows(
+            source_rows, implicit_weeks
+        )
+        for source_rows in rows_by_source.values()
+        if len(source_rows) > 1
+        # Only rows already placed in implicit weeks are completed; model-named weeks stay as reported.
+        and all(_week_identity(row.week) in implicit_identities for row in source_rows)
+    }
+
+
+def _expand_single_implicit_week_row(
+    model_row: Any, implicit_weeks: list[str]
+) -> list[Any]:
+    expanded = [model_row.model_copy(update={"week": implicit_weeks[0]})]
+    expanded.extend(
+        _implicit_week_row_without_prescription(model_row, week)
+        for week in implicit_weeks[1:]
+    )
+    return expanded
+
+
+def _has_duplicate_model_positions(model_rows: list[Any]) -> bool:
+    positions = [
+        (
+            row.source_row,
+            row.week.strip().casefold() if row.week and row.week.strip() else None,
+        )
+        for row in model_rows
+    ]
+    return len(set(positions)) != len(positions)
+
+
+def _duplicate_model_rows_error() -> ProgramImportError:
+    return ProgramImportError(
+        "program_import.interpretation_failed.v1",
+        "The sheet could not be interpreted. Try the MAYOS template.",
+        422,
+    )
 
 
 def _renumber_out_of_range_orders(rows: list[ProgramImportRow]) -> list[ProgramImportRow]:
@@ -1223,21 +1350,17 @@ def _expand_implicit_week_rows(
     for model_row in model_rows:
         rows_by_source.setdefault(model_row.source_row, []).append(model_row)
     implicit_weeks = _week_number_labels(context.implicit_week_count)
+    missing_rows_after = _missing_rows_after_source_groups(
+        model_rows, rows_by_source, implicit_weeks
+    )
     expanded_rows = []
-    for model_row in model_rows:
-        if len(rows_by_source[model_row.source_row]) == 1:
-            expanded_rows.append(model_row.model_copy(update={"week": implicit_weeks[0]}))
-            for week in implicit_weeks[1:]:
-                expanded_rows.append(model_row.model_copy(update={
-                    "week": week,
-                    "sets": None,
-                    "reps_min": None,
-                    "reps_max": None,
-                    "rir": None,
-                    "rpe": None,
-                }))
+    for index, model_row in enumerate(model_rows):
+        source_rows = rows_by_source[model_row.source_row]
+        if len(source_rows) == 1:
+            expanded_rows.extend(_expand_single_implicit_week_row(model_row, implicit_weeks))
         else:
             expanded_rows.append(model_row)
+            expanded_rows.extend(missing_rows_after.get(index, []))
     return expanded_rows
 
 

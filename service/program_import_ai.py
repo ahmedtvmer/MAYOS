@@ -137,12 +137,14 @@ class ProgramImportReply(BaseModel):
     @model_validator(mode="after")
     def validate_rows(self) -> ProgramImportReply:
         # Horizontal periodization can produce one logical row per week at the same sheet row.
-        source_positions = [
-            (row.source_row, row.week.strip().casefold() if row.week else None)
-            for row in self.rows
-        ]
-        if len(set(source_positions)) != len(source_positions):
-            raise ValueError("exercise rows must not repeat within the same source row and week")
+        # Blank-week repeats need the grid context to distinguish implicit blocks from errors.
+        source_positions = set()
+        for row in self.rows:
+            week = row.week.strip().casefold() if row.week and row.week.strip() else None
+            position = (row.source_row, week)
+            if position in source_positions and week is not None:
+                raise ValueError("exercise rows must not repeat within the same source row and week")
+            source_positions.add(position)
         weeks = {week.casefold() for week in self.layout.weeks}
         if weeks and any(not row.week for row in self.rows):
             raise ValueError("every exercise row needs a week when the layout detects weeks")
@@ -765,7 +767,18 @@ def _invoke_structured(
     for attempt in range(2):
         retry_messages = list(messages)
         if validation_message:
-            retry_messages.append(HumanMessage(content=f"Your previous reply failed schema validation: {validation_message}"))
+            retry_hint = (
+                " Write each source row at most once per week."
+                if "exercise rows must not repeat within the same source row and week"
+                in validation_message
+                else ""
+            )
+            retry_messages.append(HumanMessage(
+                content=(
+                    "Your previous reply failed schema validation: "
+                    f"{validation_message}{retry_hint}"
+                )
+            ))
         try:
             attempt_scope = scope if attempt == 0 else replace(scope, admit=False)
             reply = run_inference_sync(structured.invoke, retry_messages, scope=attempt_scope)

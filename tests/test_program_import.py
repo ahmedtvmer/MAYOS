@@ -1220,36 +1220,9 @@ def test_unlabeled_week_blocks_expand_model_rows_from_source_values():
 def test_issue_400_unlabeled_week_blocks_normalize_orders_and_preserve_notes(
     api, monkeypatch, tmp_path, scripted_chat_model, order_base, order_step, expected_step
 ):
-    client, db = api
-    coach_headers, _, assignment_id = _assignment(client, db, prefix="week-order")
-
-    fixture_path = (
-        Path(__file__).parent
-        / "eval/datasets/program_import/21_unlabeled_week_blocks.json"
+    client, coach_headers, assignment_id, _case, expected_week_one, workbook = (
+        _issue_400_fixture21_setup(api, monkeypatch, tmp_path, "week-order")
     )
-    case = json.loads(fixture_path.read_text(encoding="utf-8"))
-    tab_name, fixture_rows = next(iter(case["sheets"].items()))
-    expected_week_one = [row for row in case["expected_rows"] if row["week"] == "Week 1"]
-    exercises = {
-        (row["expected_exercise_id"], row["exercise_name"])
-        for row in expected_week_one
-    }
-    db.catalog_conn.executemany(
-        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) "
-        "VALUES (?, ?, 'Other', 'Other', 'barbell')",
-        sorted(exercises),
-    )
-    db.catalog_conn.commit()
-    _enable_program_import_ai(monkeypatch, tmp_path)
-
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = tab_name
-    for row in fixture_rows:
-        sheet.append(row)
-    workbook_bytes = io.BytesIO()
-    workbook.save(workbook_bytes)
-    workbook.close()
 
     def model_reply():
         day_orders = {}
@@ -1289,15 +1262,7 @@ def test_issue_400_unlabeled_week_blocks_normalize_orders_and_preserve_notes(
 
     scripted_chat_model.script(model_reply())
 
-    response = client.post(
-        f"/coach/assignments/{assignment_id}/program-import",
-        headers=coach_headers,
-        files={"file": (
-            "blocks.xlsx",
-            workbook_bytes.getvalue(),
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )},
-    )
+    response = _post_issue_400_fixture21(client, coach_headers, assignment_id, workbook)
     assert response.status_code == 200, response.text
     result = response.json()
     assert result["detected_weeks"] == ["Week 1", "Week 2"]
@@ -1321,6 +1286,264 @@ def test_issue_400_unlabeled_week_blocks_normalize_orders_and_preserve_notes(
         assert [order for _source_row, order in ordered] == list(
             range(1, expected_step * len(ordered) + 1, expected_step)
         )
+
+
+def _issue_400_fixture21_setup(api, monkeypatch, tmp_path, prefix):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix=prefix)
+    fixture_path = (
+        Path(__file__).parent
+        / "eval/datasets/program_import/21_unlabeled_week_blocks.json"
+    )
+    case = json.loads(fixture_path.read_text(encoding="utf-8"))
+    tab_name, fixture_rows = next(iter(case["sheets"].items()))
+    expected_week_one = [row for row in case["expected_rows"] if row["week"] == "Week 1"]
+    db.catalog_conn.executemany(
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) "
+        "VALUES (?, ?, 'Other', 'Other', 'barbell')",
+        sorted({
+            (row["expected_exercise_id"], row["exercise_name"])
+            for row in expected_week_one
+        }),
+    )
+    db.catalog_conn.commit()
+    _enable_program_import_ai(monkeypatch, tmp_path)
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = tab_name
+    for row in fixture_rows:
+        sheet.append(row)
+    workbook_bytes = io.BytesIO()
+    workbook.save(workbook_bytes)
+    workbook.close()
+    return client, coach_headers, assignment_id, case, expected_week_one, workbook_bytes.getvalue()
+
+
+def _issue_400_fixture21_reply(expected_rows):
+    model_rows = []
+    order_by_source = {}
+    for expected in expected_rows:
+        order_key = (expected["day"], expected["source_row"])
+        if order_key not in order_by_source:
+            order_by_source[order_key] = 1 + sum(
+                day == expected["day"] for day, _source_row in order_by_source
+            )
+        model_rows.append({
+            "source_row": expected["source_row"],
+            "week": "",
+            "day": expected["day"],
+            "day_name": expected["day_name"],
+            "order": order_by_source[order_key],
+            "exercise": expected["input_exercise_name"],
+            "sets": expected["sets"],
+            "reps_min": expected["reps_min"],
+            "reps_max": expected["reps_max"],
+            "rir": expected["rir"],
+            "rpe": expected["rpe"],
+            "notes": expected["notes"],
+            "original_text": expected["original_text"],
+        })
+    return {
+        "rows": model_rows,
+        "layout": {
+            "days": [
+                {"day": day, "name": name}
+                for day, name in dict.fromkeys(
+                    (row["day"], row["day_name"]) for row in expected_rows
+                )
+            ],
+            "weeks": [],
+            "confidence": 0.99,
+            "confirm_layout": True,
+        },
+    }
+
+
+def _post_issue_400_fixture21(client, coach_headers, assignment_id, workbook_bytes):
+    return client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": (
+            "blocks.xlsx",
+            workbook_bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )},
+    )
+
+
+def test_issue_400_repeated_blank_week_rows_map_to_implicit_weeks(
+    api, monkeypatch, tmp_path, scripted_chat_model
+):
+    client, coach_headers, assignment_id, case, _week_one, workbook = (
+        _issue_400_fixture21_setup(api, monkeypatch, tmp_path, "duplicate-week-blocks")
+    )
+    scripted_chat_model.script(_issue_400_fixture21_reply(case["expected_rows"]))
+
+    response = _post_issue_400_fixture21(client, coach_headers, assignment_id, workbook)
+
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["detected_weeks"] == ["Week 1", "Week 2"]
+    assert result["confirm_layout"] is True
+    assert len(result["rows"]) == 24
+    assert all(row["valid"] for row in result["rows"])
+    expected = {
+        (row["source_row"], row["week"]): row for row in case["expected_rows"]
+    }
+    for row in result["rows"]:
+        source = expected[(row["source_row"], row["week"])]
+        assert (row["sets"], row["reps_min"], row["reps_max"]) == (
+            source["sets"], source["reps_min"], source["reps_max"],
+        )
+        assert row["target_rir"] == float(source["rir"])
+
+
+def test_issue_400_partial_duplicate_rows_fill_only_missing_implicit_weeks(
+    api, monkeypatch, tmp_path, scripted_chat_model
+):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="partial-duplicate-weeks")
+    _enable_program_import_ai(monkeypatch, tmp_path)
+    first_row = {
+        "source_row": 2, "week": "", "day": 1, "day_name": "Push", "order": 1,
+        "exercise": "Bench Press", "sets": 2, "reps_min": 8, "reps_max": 8,
+        "rir": 3, "original_text": "Model week one",
+    }
+    second_row = {
+        **first_row,
+        "sets": 3,
+        "reps_min": 7,
+        "reps_max": 7,
+        "rir": 2,
+        "original_text": "Model week two",
+    }
+    scripted_chat_model.script({
+        "rows": [first_row, second_row],
+        "layout": {
+            "days": [{"day": 1, "name": "Push"}],
+            "weeks": [],
+            "confidence": 0.99,
+            "confirm_layout": True,
+        },
+    })
+    csv_content = (
+        b"Training day,Session name,Movement,Set,Rep,Effort,Set,Rep,Effort,Set,Rep,Effort\n"
+        b"1,Push,Bench Press,2,8,2 RIR,3,6,1 RIR,4,5,1 RIR"
+    )
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("three-weeks.csv", csv_content, "text/csv")},
+    )
+
+    assert response.status_code == 200, response.text
+    result = response.json()
+    rows_by_week = {row["week"]: row for row in result["rows"]}
+    assert len(rows_by_week) == 3
+    assert all(row["valid"] for row in rows_by_week.values()), [
+        (row["week"], row["errors"]) for row in rows_by_week.values()
+    ]
+    assert (
+        rows_by_week["Week 1"]["sets"],
+        rows_by_week["Week 1"]["reps_min"],
+        rows_by_week["Week 1"]["target_rir"],
+    ) == (2, 8, 3)
+    assert (
+        rows_by_week["Week 2"]["sets"],
+        rows_by_week["Week 2"]["reps_min"],
+        rows_by_week["Week 2"]["target_rir"],
+    ) == (3, 7, 2)
+    assert (
+        rows_by_week["Week 3"]["sets"],
+        rows_by_week["Week 3"]["reps_min"],
+        rows_by_week["Week 3"]["target_rir"],
+    ) == (4, 5, 1)
+
+
+def test_issue_400_repeated_blank_week_rows_over_implicit_count_are_refused(
+    api, monkeypatch, tmp_path, scripted_chat_model
+):
+    client, coach_headers, assignment_id, _case, expected_week_one, workbook = (
+        _issue_400_fixture21_setup(api, monkeypatch, tmp_path, "too-many-duplicate-weeks")
+    )
+    repeated_source = expected_week_one[0]["source_row"]
+    model_rows = [
+        expected
+        for row in expected_week_one
+        for expected in [row] * (3 if row["source_row"] == repeated_source else 1)
+    ]
+    scripted_chat_model.script(_issue_400_fixture21_reply(model_rows))
+
+    response = _post_issue_400_fixture21(client, coach_headers, assignment_id, workbook)
+
+    assert response.status_code == 422
+    assert response.json()["message_code"] == "program_import.interpretation_failed.v1"
+    assert response.json()["detail"] == "The sheet could not be interpreted. Try the MAYOS template."
+
+
+def test_issue_400_duplicate_blank_weeks_without_implicit_blocks_are_refused(
+    api, monkeypatch, tmp_path, scripted_chat_model
+):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="duplicate-no-weeks")
+    _enable_program_import_ai(monkeypatch, tmp_path)
+    repeated_row = {
+        "source_row": 2,
+        "week": "",
+        "day": 1,
+        "day_name": "Push",
+        "order": 1,
+        "exercise": "Bench Press",
+        "sets": 3,
+        "reps_min": 8,
+        "reps_max": 8,
+        "rir": 2,
+        "original_text": "Bench Press, 3, 8",
+    }
+    scripted_chat_model.script({
+        "rows": [repeated_row, repeated_row.copy()],
+        "layout": {
+            "days": [{"day": 1, "name": "Push"}],
+            "weeks": [],
+            "confidence": 0.99,
+            "confirm_layout": False,
+        },
+    })
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("own-layout.csv", b"Exercise,Sets,Reps\nBench Press,3,8", "text/csv")},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["message_code"] == "program_import.interpretation_failed.v1"
+    assert response.json()["detail"] == "The sheet could not be interpreted. Try the MAYOS template."
+
+
+def test_issue_400_explicit_same_week_duplicates_remain_rejected(
+    api, monkeypatch, tmp_path, scripted_chat_model
+):
+    client, coach_headers, assignment_id, _case, expected_week_one, workbook = (
+        _issue_400_fixture21_setup(api, monkeypatch, tmp_path, "explicit-duplicate-week")
+    )
+
+    def duplicate_week_reply():
+        reply = _issue_400_fixture21_reply(expected_week_one + [expected_week_one[0]])
+        for row in reply["rows"]:
+            row["week"] = "Week 1"
+        reply["layout"]["weeks"] = ["Week 1", "Week 2"]
+        return reply
+
+    scripted_chat_model.script(duplicate_week_reply(), duplicate_week_reply())
+
+    response = _post_issue_400_fixture21(client, coach_headers, assignment_id, workbook)
+
+    assert response.status_code == 422
+    assert response.json()["message_code"] == "program_import.interpretation_failed.v1"
+    assert response.json()["detail"] == "The sheet could not be interpreted. Try the MAYOS template."
 
 
 def test_implicit_week_expansion_preserves_model_values_and_normalizes_missing_source_values():
