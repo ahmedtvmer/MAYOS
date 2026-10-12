@@ -12,7 +12,10 @@ import contextlib
 import csv
 import io
 import json
+import math
+import os
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
@@ -35,6 +38,8 @@ from tests.eval.program_import_evaluation_session import ProgramImportEvaluation
 DEFAULT_DATASET = Path(__file__).resolve().parent / "datasets" / "program_import"
 REVIEW_FILENAME = "REVIEW.json"
 PRIVACY_SUITE = "tests/test_program_import.py"
+PROVIDER_BUSY_RETRY_BACKOFF_ENV = "PROGRAM_IMPORT_EVAL_BUSY_RETRY_BACKOFF_SECONDS"
+DEFAULT_PROVIDER_BUSY_RETRY_BACKOFF_SECONDS = (30.0, 60.0, 120.0)
 
 
 def load_dataset(dataset_path: Path = DEFAULT_DATASET) -> dict[str, Any]:
@@ -252,37 +257,80 @@ def run_suite(
 
 
 def _run_case(session: ProgramImportEvaluationSession, case: dict[str, Any]) -> dict[str, Any]:
-    preflight_response = session.import_case(case)
-    preflight: dict[str, Any] = {}
-    final_response = preflight_response
-    if preflight_response.status_code == 200:
-        preflight = preflight_response.json()
-        if preflight.get("requires_tab_choice"):
-            final_response = session.import_case(case, case["expected_selected_tab"])
-    if final_response.status_code != 200:
-        return score_import_result(
-            case,
-            None,
-            http_status=final_response.status_code,
-            http_error=_response_error(final_response),
-            preflight=preflight,
-        )
+    backoffs = provider_busy_retry_backoffs()
+    for provider_busy_retries in range(len(backoffs) + 1):
+        preflight, final_response = _import_case_once(session, case)
+        if (
+            _response_message_code(final_response) != program_import_ai.PROVIDER_BUSY_MESSAGE_CODE
+            or provider_busy_retries == len(backoffs)
+        ):
+            return _score_case_response(case, final_response, preflight, provider_busy_retries)
+        time.sleep(backoffs[provider_busy_retries])
+
+
+def provider_busy_retry_backoffs(environ: dict[str, str] | None = None) -> tuple[float, ...]:
+    settings = os.environ if environ is None else environ
+    raw_backoffs = settings.get(PROVIDER_BUSY_RETRY_BACKOFF_ENV)
+    if raw_backoffs is None:
+        return DEFAULT_PROVIDER_BUSY_RETRY_BACKOFF_SECONDS
+    if not raw_backoffs.strip():
+        return ()
     try:
-        result = final_response.json()
-    except ValueError:
-        return score_import_result(
-            case,
-            None,
-            http_status=final_response.status_code,
-            http_error="response was not valid JSON",
-            preflight=preflight,
-        )
-    return score_import_result(
+        backoffs = tuple(float(value.strip()) for value in raw_backoffs.split(","))
+    except ValueError as error:
+        raise ValueError(f"{PROVIDER_BUSY_RETRY_BACKOFF_ENV} must be comma-separated seconds") from error
+    if len(backoffs) > 3 or any(not math.isfinite(seconds) or seconds < 0 for seconds in backoffs):
+        raise ValueError(f"{PROVIDER_BUSY_RETRY_BACKOFF_ENV} accepts up to three non-negative delays")
+    return backoffs
+
+
+def _import_case_once(
+    session: ProgramImportEvaluationSession, case: dict[str, Any]
+) -> tuple[dict[str, Any], Any]:
+    response = session.import_case(case)
+    if response.status_code != 200:
+        return {}, response
+    preflight = response.json()
+    if preflight.get("requires_tab_choice"):
+        return preflight, session.import_case(case, case["expected_selected_tab"])
+    return preflight, response
+
+
+def _score_case_response(
+    case: dict[str, Any], response: Any, preflight: dict[str, Any], provider_busy_retries: int
+) -> dict[str, Any]:
+    error_code = _response_message_code(response)
+    imported, http_error = _import_result(response)
+    scored = score_import_result(
         case,
-        result,
-        http_status=final_response.status_code,
-        preflight=preflight or result,
+        imported,
+        http_status=response.status_code,
+        http_error=http_error,
+        preflight=preflight or imported,
     )
+    scored["provider_busy_retries"] = provider_busy_retries
+    scored["error_code"] = error_code
+    scored["error_kind"] = (
+        "provider-busy" if error_code == program_import_ai.PROVIDER_BUSY_MESSAGE_CODE else None
+    )
+    return scored
+
+
+def _import_result(response: Any) -> tuple[Any, str | None]:
+    if response.status_code != 200:
+        return None, _response_error(response)
+    try:
+        return response.json(), None
+    except ValueError:
+        return None, "response was not valid JSON"
+
+
+def _response_message_code(response: Any) -> str | None:
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    return body.get("message_code") if isinstance(body, dict) else None
 
 
 def _response_error(response: Any) -> str:
@@ -592,6 +640,9 @@ def build_report(
                 "errors": result["errors"],
                 "http_status": result["http_status"],
                 "http_error": result["http_error"],
+                "provider_busy_retries": result.get("provider_busy_retries", 0),
+                "error_code": result.get("error_code"),
+                "error_kind": result.get("error_kind"),
                 "extra_rows": result["extra_rows"],
                 "preflight": result["preflight"],
                 "layout": result["layout"],

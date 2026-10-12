@@ -7,6 +7,7 @@ import json
 import shutil
 from collections import Counter
 
+import httpx
 import pytest
 
 from service import program_import_ai
@@ -193,6 +194,80 @@ def test_runner_uses_http_import_path_and_reports_a_dropped_row(evaluation_sessi
     assert results[0]["row_results"][-1]["checks"]["present_or_reported"] is False
     assert runner.aggregate_metrics(results)["silently_dropped_rows"] == 1
     assert results[0]["row_results"][-1]["failures"]
+
+
+def _provider_busy_error():
+    from langchain_openai.chat_models.base import OpenAIRateLimitError
+
+    error_body = {
+        "error": {
+            "message": "Model busy, retry later",
+            "type": "invalid_request_error",
+            "code": "engine_overloaded",
+        }
+    }
+    request = httpx.Request("POST", "https://api.deepinfra.com/v1/openai/chat/completions")
+    response = httpx.Response(429, request=request, json=error_body)
+    return OpenAIRateLimitError("provider unavailable", response=response, body=error_body)
+
+
+def test_provider_busy_retry_backoffs_default_and_allow_test_overrides():
+    assert runner.provider_busy_retry_backoffs({}) == (30.0, 60.0, 120.0)
+    assert runner.provider_busy_retry_backoffs(
+        {runner.PROVIDER_BUSY_RETRY_BACKOFF_ENV: "0,1.5"}
+    ) == (0.0, 1.5)
+
+
+def test_runner_retries_provider_busy_sheet_and_scores_successful_attempt(
+    evaluation_session, cases, monkeypatch
+):
+    from tests.fakes.chat_model import ScriptedChatModel
+
+    monkeypatch.setenv("PROGRAM_IMPORT_EVAL_BUSY_RETRY_BACKOFF_SECONDS", "0")
+    retry_waits = []
+    monkeypatch.setattr(runner.time, "sleep", retry_waits.append)
+    case = copy.deepcopy(next(case for case in cases if case["id"] == "01_english_strength_week"))
+    model = ScriptedChatModel(
+        [_provider_busy_error(), runner.expected_translation_reply(case)],
+        default_turn={"suggestions": []},
+    )
+
+    results = runner.run_suite([case], model=model, session=evaluation_session)
+
+    assert retry_waits == [0.0]
+    assert results[0]["http_status"] == 200
+    assert results[0]["provider_busy_retries"] == 1
+    assert results[0]["error_kind"] is None
+    assert results[0]["passed"] is True
+
+
+def test_runner_records_a_sheet_that_exhausts_provider_busy_retries(
+    evaluation_session, cases, monkeypatch
+):
+    from tests.fakes.chat_model import ScriptedChatModel
+
+    monkeypatch.setenv("PROGRAM_IMPORT_EVAL_BUSY_RETRY_BACKOFF_SECONDS", "0,0,0")
+    retry_waits = []
+    monkeypatch.setattr(runner.time, "sleep", retry_waits.append)
+    case = copy.deepcopy(next(case for case in cases if case["id"] == "01_english_strength_week"))
+    model = ScriptedChatModel([_provider_busy_error() for _ in range(4)])
+
+    results = runner.run_suite([case], model=model, session=evaluation_session)
+    report = runner.build_report(
+        results,
+        mode="mock",
+        privacy_pass=False,
+        dataset_entries=[{"filename": f"{case['id']}.json", "fixture": case}],
+    )
+    sheet = report["runs"][0]["sheets"][0]
+
+    assert retry_waits == [0.0, 0.0, 0.0]
+    assert results[0]["http_status"] == 503
+    assert results[0]["passed"] is False
+    assert sheet["provider_busy_retries"] == 3
+    assert sheet["error_kind"] == "provider-busy"
+    assert sheet["error_code"] == "program_import.model_busy.v1"
+    assert sheet["http_error"] == "The import assistant is busy with another request. Try again in a minute."
 
 
 def test_side_by_side_weeks_keep_row_identity_and_error_attribution(evaluation_session, cases):
@@ -408,6 +483,10 @@ def test_live_report_validator_recomputes_metrics_rows_sheets_and_hash(evaluatio
     case = next(case for case in cases if case["id"] == "09_compact_sets_reps_cells")
     report = _valid_report(case, evaluation_session)
     assert program_import_ai.validate_report(report)[0] is True
+
+    invalid_busy_retry_count = copy.deepcopy(report)
+    invalid_busy_retry_count["runs"][0]["sheets"][0]["provider_busy_retries"] = 4
+    assert program_import_ai.validate_report(invalid_busy_retry_count)[0] is False
 
     hand_edited_metrics = copy.deepcopy(report)
     hand_edited_metrics["gates"]["evaluation"]["metrics"]["correct_rows"] -= 1

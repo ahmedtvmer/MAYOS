@@ -721,6 +721,50 @@ def test_malformed_freeform_reply_retries_then_returns_a_clean_failure(
     assert response.status_code == 422
     assert response.json()["message_code"] == "program_import.interpretation_failed.v1"
     assert "malformed" not in response.text.lower()
+    assert len(scripted_chat_model.calls) == 2
+
+
+@pytest.mark.parametrize("provider_failure", ["overload", "server_error", "connection_error", "timeout"])
+def test_provider_unavailability_returns_busy_error_through_import_endpoint(
+    provider_failure, api, monkeypatch, tmp_path, scripted_chat_model
+):
+    import httpx
+    from langchain_openai.chat_models.base import OpenAIRateLimitError
+    from openai import APIConnectionError, APITimeoutError, InternalServerError
+
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix=f"busy-{provider_failure}")
+    _enable_program_import_ai(monkeypatch, tmp_path)
+    error_body = {
+        "error": {
+            "message": "Model busy, retry later",
+            "type": "invalid_request_error",
+            "code": "engine_overloaded",
+        }
+    }
+    request = httpx.Request("POST", "https://api.deepinfra.com/v1/openai/chat/completions")
+    if provider_failure in {"overload", "server_error"}:
+        status_code = 429 if provider_failure == "overload" else 503
+        response = httpx.Response(status_code, request=request, json=error_body)
+        error_type = OpenAIRateLimitError if provider_failure == "overload" else InternalServerError
+        provider_error = error_type("provider unavailable", response=response, body=error_body)
+    elif provider_failure == "connection_error":
+        provider_error = APIConnectionError(message="connection failed", request=request)
+    else:
+        provider_error = APITimeoutError(request=request)
+    scripted_chat_model.script(provider_error)
+
+    import_response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("own-layout.csv", b"Lift,Sets,Reps\nBench Press,3,8", "text/csv")},
+    )
+
+    assert import_response.status_code == 503
+    assert import_response.json()["message_code"] == "program_import.model_busy.v1"
+    assert import_response.json()["detail"] == (
+        "The import assistant is busy with another request. Try again in a minute."
+    )
 
 
 def test_freeform_import_returns_all_weeks_and_defaults_to_week_one(

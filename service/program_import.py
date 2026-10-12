@@ -260,9 +260,9 @@ class FreeFormProgramImportReader:
             raise ProgramImportError(
                 "program_import.interpretation_failed.v1", str(error), 422
             ) from None
-        except TimeoutError:
+        except (program_import_ai.ProgramImportProviderUnavailable, TimeoutError):
             raise ProgramImportError(
-                "program_import.model_busy.v1",
+                program_import_ai.PROVIDER_BUSY_MESSAGE_CODE,
                 "The import assistant is busy with another request. Try again in a minute.",
                 503,
             ) from None

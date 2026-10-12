@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 REPORT_VERSION = 4
+PROVIDER_BUSY_MESSAGE_CODE = "program_import.model_busy.v1"
 
 
 @dataclass(frozen=True)
@@ -510,7 +511,31 @@ def _score_expected_row(
     return score, None
 
 
+def _provider_busy_evidence_error(sheet: dict[str, Any]) -> str | None:
+    retries = sheet.get("provider_busy_retries", 0)
+    error_code = sheet.get("error_code")
+    error_kind = sheet.get("error_kind")
+    if type(retries) is not int or not 0 <= retries <= 3:
+        return "recorded provider-busy retry count is invalid"
+    if error_code is not None and not isinstance(error_code, str):
+        return "recorded import error code is invalid"
+    if error_kind not in (None, "provider-busy") or (
+        (error_code == PROVIDER_BUSY_MESSAGE_CODE) != (error_kind == "provider-busy")
+    ):
+        return "recorded provider-busy error kind disagrees with its message code"
+    if error_code == PROVIDER_BUSY_MESSAGE_CODE and (
+        sheet.get("http_status") != 503
+        or not isinstance(sheet.get("http_error"), str)
+        or not sheet["http_error"]
+    ):
+        return "recorded provider-busy error has no matching HTTP failure"
+    return None
+
+
 def _score_sheet_rows(case_id: str, fixture: dict[str, Any], sheet: dict[str, Any]) -> tuple[dict[str, int] | None, str | None]:
+    failure = _provider_busy_evidence_error(sheet)
+    if failure:
+        return None, f"{failure} for sheet {case_id}"
     expected = fixture["expected_rows"]
     row_results = sheet.get("row_results")
     produced_rows = sheet.get("produced_rows")
@@ -814,17 +839,47 @@ def _invoke_structured(
         except (ValidationError, ValueError, TypeError, OutputParserException) as error:
             validation_message = str(error)[:1200]
         except Exception as error:
+            if _is_provider_unavailable(error):
+                logger.info("Program import provider unavailable: %s", type(error).__name__)
+                raise ProgramImportProviderUnavailable() from None
             logger.warning("Program import model call failed: %s", type(error).__name__)
             raise ProgramImportAIError(failure_message) from None
     raise ProgramImportAIError(failure_message)
+
+
+def _is_provider_unavailable(error: Exception) -> bool:
+    import httpx
+    from openai import APIConnectionError, APIStatusError, APITimeoutError, RateLimitError
+
+    if isinstance(
+        error,
+        (
+            RateLimitError,
+            APIConnectionError,
+            APITimeoutError,
+            ConnectionError,
+            httpx.TimeoutException,
+            httpx.NetworkError,
+        ),
+    ):
+        return True
+    return isinstance(error, APIStatusError) and (
+        error.status_code == 429 or 500 <= error.status_code <= 599
+    )
 
 
 class ProgramImportAIError(Exception):
     """A model response could not be validated after its one repair attempt."""
 
 
+class ProgramImportProviderUnavailable(Exception):
+    """The provider could not serve the request; the sheet may be retried later."""
+
+
 __all__ = [
     "ProgramImportAIError",
+    "ProgramImportProviderUnavailable",
+    "PROVIDER_BUSY_MESSAGE_CODE",
     "REPORT_VERSION",
     "coach_model_identity",
     "evaluate_pass_condition",
