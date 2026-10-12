@@ -2,7 +2,6 @@
 
 import re
 
-import pandas as pd
 from database.shared import DEFAULT_CSV_PATH
 from database.exercise_library import authored
 from database.exercise_library.curation import DEFAULT_CURATION_CSV_PATH
@@ -21,6 +20,8 @@ class ExerciseSeedingMixin:
         csv_path=DEFAULT_CSV_PATH,
         curation_path=DEFAULT_CURATION_CSV_PATH,
     ) -> None:
+        import pandas as pd
+
         # The catalog schema only: any per-ledger schema is created by
         # ``open_ledger`` when a handle is actually opened (ADR 041).
         self.create_catalog_schema()
@@ -52,6 +53,8 @@ class ExerciseSeedingMixin:
 
 
 def _sqlite_value(value, *, column: str | None = None):
+    import pandas as pd
+
     if pd.isna(value):
         return None
     value = value.item() if hasattr(value, "item") else value

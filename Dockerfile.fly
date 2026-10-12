@@ -9,32 +9,29 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     HF_HOME=/app/.cache/huggingface \
+    EMBEDDING_MODEL=BAAI/bge-small-en-v1.5 \
     MODEL_DEVICE=cpu
 
 WORKDIR /app
 
 # curl: container healthcheck. sqlite3: operator inspection/verification.
-# libgomp1: OpenMP runtime required by the CPU PyTorch build.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     sqlite3 \
-    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
 COPY requirements-fly.txt .
 
-# CPU-only PyTorch from the official CPU index, installed first so the hosted
-# manifest never pulls CUDA wheels.
-RUN uv pip install --system --index-url https://download.pytorch.org/whl/cpu "torch>=2.0" \
-    && uv pip install --system -r requirements-fly.txt
+# ONNX Runtime replaces the former PyTorch embedding runtime.
+RUN uv pip install --system -r requirements-fly.txt
 
-# Bake the embedding model into the image so boot and the one-time vector seed
-# do not depend on a cold Hugging Face fetch.
-RUN python -c "from langchain_huggingface import HuggingFaceEmbeddings; \
-    HuggingFaceEmbeddings(model_name='BAAI/bge-small-en-v1.5', model_kwargs={'device': 'cpu'}, \
-    encode_kwargs={'normalize_embeddings': True})"
+# Bake the ONNX graph, tokenizer and Sentence Transformers configs so boot and
+# vector seeding never fetch from Hugging Face.
+COPY core/embeddings.py /app/core/embeddings.py
+RUN python -c "from core.embeddings import download_model_files; download_model_files()"
+ENV HF_HUB_OFFLINE=1
 
 # Keep explicit COPY instructions so the Fly build fails fast if either seed
 # file is missing. The production catalog CSV is operator-provided and ignored;

@@ -1,9 +1,6 @@
 import json
 from typing import Any
 
-import pandas as pd
-
-
 SESSION_CSV_COLUMNS = [
     "session_date",
     "split_name",
@@ -23,6 +20,8 @@ SESSION_CSV_COLUMNS = [
 
 def export_sessions_to_csv(rows: list[dict[str, Any]]) -> bytes:
     """Flattens set-level ledger rows into a UTF-8 CSV with a fixed column order."""
+    import pandas as pd
+
     frame = pd.DataFrame(rows)
     if frame.empty:
         frame = pd.DataFrame(columns=SESSION_CSV_COLUMNS)

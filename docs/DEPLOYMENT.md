@@ -15,7 +15,7 @@ This document details production deployment procedures, container orchestration,
 
 ## 1. Host Runtime Prerequisites
 
-MAYOS runs its chat, judge, and coach roles through a hosted OpenAI-compatible API. The service also loads its local BGE embedding model for clinical triage and Exercise library search. Plan memory for the API service, SQLite, and the embedding model; chat model weights are not stored or downloaded by the service.
+MAYOS runs its chat, judge, and coach roles through a hosted OpenAI-compatible API. The service loads BGE embeddings through ONNX Runtime for clinical triage and Exercise library search. The image includes the model graph, tokenizer and pooling configuration; chat model weights are not stored or downloaded by the service.
 
 **Host system dependencies (non-Docker native runs):**
 
@@ -87,7 +87,7 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `LLM_API_KEY` | **required** | Credential for the hosted OpenAI-compatible chat API; missing credentials fail at model build |
 | `LLM_API_BASE` | `https://api.deepinfra.com/v1/openai` | OpenAI-compatible chat API base URL |
 | `LLM_MAX_CONCURRENT` | `1` | Maximum overlapping hosted inference calls; excess requests fail fast |
-| `MODEL_DEVICE` | `cpu` | Device for the local embedding model used by clinical triage and catalog search |
+| `MODEL_DEVICE` | `cpu` | Accepted for compatibility; ONNX Runtime embeddings always use CPU |
 | `LLM_MODEL` | `deepseek-ai/DeepSeek-V4-Flash` | Hosted player model; set to override the default |
 | `LLM_EXTRA_BODY` | unset | Hosted player sends no extra body by default; a JSON object replaces only the player body, and `{}` sends none |
 | `JUDGE_MODEL` | `Qwen/Qwen3.5-27B` | Hosted evaluation judge; set to override the default |
@@ -142,7 +142,7 @@ The legacy `/onboarding/start`, `/onboarding/step`, and `/onboarding/complete`
 routes are removed. `RATE_LIMIT_ONBOARDING` still limits intake answer and
 confirmation writes.
 
-The evaluation runners use the same hosted model configuration. They require the hosted API credential and do not load local chat weights. The separate BGE embedding model remains local for the clinical guard and Exercise library search.
+The evaluation runners use the same hosted model configuration. They require the hosted API credential and do not load local chat weights. The BGE ONNX embedding model remains local for the clinical guard and Exercise library search.
 
 ### Enabling the optional coach AI assistant (issue #45)
 
@@ -435,7 +435,7 @@ The service applies `LLM_MAX_CONCURRENT` (default `1`) to blocking, async, and s
 
 ## 7. Local Embedding Model
 
-The BGE embedding model remains local for clinical triage and Exercise library search. It uses `MODEL_DEVICE` (default `cpu`). Configure access to the embedding model source or bake its cache into the image.
+The `BAAI/bge-small-en-v1.5` ONNX model remains local for clinical triage and Exercise library search. The image bakes the official `onnx/model.onnx`, `tokenizer.json`, `1_Pooling/config.json` and `sentence_bert_config.json` files into `HF_HOME`; startup uses Hugging Face offline mode and does not fetch model files. The runtime uses the configured CLS pooling, maximum sequence length and L2 normalization. `MODEL_DEVICE` (default `cpu`) is retained as a compatibility no-op because ONNX execution is CPU-only. If `EMBEDDING_MODEL` changes, bake that repo's files into the image as well.
 
 ## 8. Operational Observability, Auth Ops & Health Monitoring
 
@@ -677,10 +677,10 @@ Frankfurt (`fra`) on a `shared-cpu-1x` Machine with a **10 GB volume** mounted a
 
 | Piece | Setting | Why |
 | :--- | :--- | :--- |
-| Image | `Dockerfile.fly` + `requirements-fly.txt` | `python:3.12-slim`, CPU-only PyTorch for local embeddings |
+| Image | `Dockerfile.fly` + `requirements-fly.txt` | `python:3.12-slim`, ONNX Runtime and `tokenizers` for local embeddings; no PyTorch or Sentence Transformers |
 | Chat inference | hosted OpenAI-compatible endpoint (ADR 065) | Player, judge, and coach roles require `LLM_API_KEY`; the local BGE embedding model remains in the image |
 | Process | `uvicorn svc.app:app --workers 1` | SQLite is a single writer and the Machine owns the volume |
-| Region/VM | `primary_region = "fra"`, `shared-cpu-1x`, 2 GB | within the locked trial size (ANDROID-PLAN §1); 2 GB is chosen to leave headroom for the CPU BGE embedding model, which measured near 1 GB RSS in local development — confirm headroom on the deployed Machine |
+| Region/VM | `primary_region = "fra"`, `shared-cpu-1x`, 2 GB | unchanged for this release; in-image startup peak RSS is 364.8 MB with ONNX (667.9 MB with PyTorch). Deployed PyTorch RSS grew about 90 MB above its startup peak over a day, so 768 MB is the proposed next size; drop to 512 MB only if deployed ONNX RSS stays well under 400 MB |
 | Volume | `[[mounts]]` `mayos_data` → `/data`, `initial_size = "10gb"` | catalog, ledgers, and the migration/backup work area |
 | Snapshots | `scheduled_snapshots = false` | ADR 015: Fly snapshots disabled; backups are owned by #41 |
 | Availability | `auto_stop_machines = "off"`, `auto_start_machines = false`, `[[restart]] policy = "always"` | idle periods must not stop the always-on writer |
@@ -833,8 +833,8 @@ deliberate input. Constructing `DatabaseManager` still provisions the engine's
 empty `default` ledger, exactly as a normal boot does; that is expected.
 Curated exercise display names and aliases are applied idempotently whenever
 the application ensures the catalog schema at startup. This does not reload
-the ExerciseDB library or its embeddings. `seed_vectors.py` uses the BGE model
-baked into the image. Re-running the initializer is safe: seed rows are upserted
+the ExerciseDB library or its embeddings. `seed_vectors.py` uses the BGE ONNX
+model baked into the image. Re-running the initializer is safe: seed rows are upserted
 by exercise ID, and rows outside the seed source are retained.
 
 `/readyz` checks the running process, model, and writable volume; it does not

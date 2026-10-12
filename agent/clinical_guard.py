@@ -1,17 +1,10 @@
 # agent/clinical_guard.py
-import os
 import re
 import numpy as np
-from langchain_huggingface import HuggingFaceEmbeddings
+from core.embeddings import get_embedding_model
 
-EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5").strip("'\"")
-MODEL_DEVICE = os.getenv("MODEL_DEVICE", "cpu").strip("'\"")
-
-EMBED_MODEL = HuggingFaceEmbeddings(
-    model_name=EMBEDDING_MODEL_NAME,
-    model_kwargs={"device": MODEL_DEVICE},
-    encode_kwargs={"normalize_embeddings": True},
-)
+# ONNX Runtime is CPU-only; MODEL_DEVICE remains accepted as a config no-op.
+EMBED_MODEL = get_embedding_model()
 
 ARABIC_SCRIPT_RE = re.compile(r"[\u0600-\u06ff]")
 LATIN_SCRIPT_RE = re.compile(r"[A-Za-z]")

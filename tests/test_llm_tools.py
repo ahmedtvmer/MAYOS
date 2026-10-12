@@ -1,32 +1,27 @@
-import os
 import sys
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 from langchain_core.tools import tool
-from langchain_huggingface import HuggingFaceEmbeddings
 from pydantic import BaseModel, Field, field_validator
 
 from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 
 load_dotenv()
 
-Embedding = os.getenv("EMBEDDING_MODEL", 'BAAI/bge-small-en-v1.5')
-
 # Anchor paths
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
 from utils.logger import MyosLogger
+from core.embeddings import get_embedding_model
 
 logger = MyosLogger().get_logger(__name__)
 
 # The seeded Exercise library and local embedding model stay available to the tool.
 db: Any = None
-embed_model = HuggingFaceEmbeddings(
-    model_name=Embedding, model_kwargs={"device": "cpu"}, encode_kwargs={"normalize_embeddings": True}
-)
+embed_model = get_embedding_model()
 
 
 # 1. Define defensive schema for the tool

@@ -6,23 +6,27 @@ WORKDIR /app
 ENV DEBIAN_FRONTEND=noninteractive \
     TZ=Etc/UTC \
     PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    HF_HOME=/app/.cache/huggingface \
+    EMBEDDING_MODEL=BAAI/bge-small-en-v1.5 \
+    MODEL_DEVICE=cpu
 
-# curl: container healthcheck. sqlite3: operator inspection. libgomp1 supports CPU PyTorch.
+# curl: container healthcheck. sqlite3: operator inspection.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl sqlite3 libgomp1 \
+    curl sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install UV binary
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
-ENV MODEL_DEVICE=cpu
-
 COPY requirements.txt .
 
-# Install CPU PyTorch for the embedding model, then service dependencies.
-RUN uv pip install --system --index-url https://download.pytorch.org/whl/cpu "torch>=2.0" \
-    && uv pip install --system -r requirements.txt
+RUN uv pip install --system -r requirements.txt
+
+# Bake the ONNX graph, tokenizer and Sentence Transformers configs.
+COPY core/embeddings.py /app/core/embeddings.py
+RUN python -c "from core.embeddings import download_model_files; download_model_files()"
+ENV HF_HUB_OFFLINE=1
 
 COPY . .
 

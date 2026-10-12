@@ -1,11 +1,11 @@
 """Semantic index maintenance for Exercise library rows."""
 
-import os
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 import sqlite_vec
+from core.embeddings import get_embedding_model
 from database.schema.definitions import EMBEDDING_DIM
 
 MAYOS_EXERCISE_ID_PREFIX = "mayos:"
@@ -13,13 +13,7 @@ MAYOS_VECTOR_ID_SIGN = -1
 
 
 def _load_embedding_model():
-    from langchain_huggingface import HuggingFaceEmbeddings
-
-    return HuggingFaceEmbeddings(
-        model_name=os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5"),
-        model_kwargs={"device": os.getenv("MODEL_DEVICE", "cpu")},
-        encode_kwargs={"normalize_embeddings": True},
-    )
+    return get_embedding_model()
 
 
 def semantic_text(name: str, target: str, equipment: str, instructions: str | None) -> str:

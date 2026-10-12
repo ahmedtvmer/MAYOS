@@ -20,6 +20,7 @@ This document records the architectural, algorithmic, and heuristic decisions im
 * **Context**: Human trainees describe musculoskeletal damage colloquial-first ("velcro tearing", "hot glass in joint", "pins and needles"). Keyword-only regex creates false negatives, while evaluating full LLM prompts on every message introduces CPU thermal throttling and multi-second latency.
 * **Rationale**: **Defensive Safety Architecture.** Acute musculoskeletal trauma demands an immediate halt. Combining deterministic token matching for common trauma terms with an in-memory 8-anchor semantic cosine guard catches edge-case somatosensory feedback while allowing normal hypertrophic fatigue to reach the coaching prompt.
 * **Code References**: `agent/clinical_guard.py` (`evaluate_clinical_semantic_guard`), `agent/assistant_graph.py` (`router_node`, `_acute_injury_hit`, `RE_AMBIGUOUS_TRAUMA`).
+* **Amendment (2026-10-12, #404)**: The Tier 1 BGE guard now embeds through the shared ONNX Runtime module. Its warmed local median query latency is 8.976 ms; clinical guard test decisions remain unchanged.
 
 ---
 
@@ -559,6 +560,7 @@ This document records the architectural, algorithmic, and heuristic decisions im
 * **Context**: Programs and search never surfaced the lat pulldown players ask for: the library has no "frontal" or "lat pull-down" rows, most cable pulldowns are named "lateral pulldown", and some coach staples (Kelso shrug, Bayesian curl, cable Y-raise, machine hip thrust) do not exist in ExerciseDB at all.
 * **Rationale**: Renaming source rows in place would break media paths, ids and history and could not be undone cleanly; aliases alone would still show players raw ExerciseDB names. The "same movement" rule keeps a gym name from promising a movement the demo contradicts. Authoring a handful of rows is cheaper than prescribing a band or bodyweight stand-in. Professional animation for the authored rows (and possibly licensing Gym Visual's larger library) is a later decision; any media must pass the same form review as the instructions.
 * **Code References**: `database/exercise_library/authored.py`, `database/exercise_library/embeddings.py`, `database/exercise_library/names.py`, `database/exercise_library/seeding.py`, `database/exercise_library/lookup.py`, `database/exercise_library/similarity.py`, `database/schema/definitions.py`, `database/database_manager.py`, `database/ledger/training_program.py`, `database/ledger/workouts.py`, `database/ledger/debriefs.py`, `service/dashboard.py`, `agent/assistant_graph.py`, `agent/progression_engine.py`.
+* **Amendment (2026-10-12, #404)**: Exercise library vectors use the shared ONNX Runtime embedding module. Across all 1,328 seeded Exercise library texts, the PyTorch and ONNX vectors have a minimum cosine similarity of 0.999999762; existing catalog vectors remain valid.
 
 ---
 
@@ -698,6 +700,7 @@ This document records the architectural, algorithmic, and heuristic decisions im
 * **Context**: The service and product clients now depend on hosted inference, while the GGUF path adds a second runtime, large artifacts, hardware-specific deployment settings, and separate test behavior.
 * **Rationale**: One chat model path keeps player privacy and application behavior consistent across deployed roles while removing unused download and runtime dependencies. Local embeddings remain necessary for deterministic clinical screening and catalog search.
 * **Code References**: `utils/model_downloader.py`, `svc/llm.py`, `agent/assistant_graph.py`, `tests/fakes/chat_model.py`, `tests/conftest.py`, `scripts/provider_smoke.py`.
+* **Amendment (2026-10-12, #404)**: The local embedding model used for clinical triage and Exercise library search runs through ONNX Runtime with `tokenizers` and CPU execution; the hosted image no longer installs PyTorch, sentence-transformers, or langchain-huggingface.
 
 ---
 
@@ -787,3 +790,14 @@ This document records the architectural, algorithmic, and heuristic decisions im
 * **Context**: The roster assistant needs to process de-identified training figures across assigned Players. Acceptance already establishes the mutual coaching relationship, but existing Players have not seen the roster-AI disclosure.
 * **Rationale**: Storing consent on the Assignment ties it to the relationship that grants coaching access. Recording a version and time makes the disclosure auditable, and gating the existing snapshot eligibility predicate keeps legacy Assignments out until the Player acknowledges it. Active-assignment ownership and live-account checks continue to enforce immediate revocation.
 * **Code References**: `database/schema/definitions.py` (`assignments.roster_ai_disclosure_version`, `roster_ai_disclosed_at`), `database/registry/assignments.py`, `service/assignments.py`, `service/roster_snapshot.py` (`_eligible_assignments`), `svc/routers/assignments.py`, `mobile/lib/src/features/player/assignment/player_assignment_screen.dart`, `mobile/lib/src/features/player/shell/player_shell.dart`, `docs/PRIVACY_POLICY.md`.
+
+---
+
+### ADR 075: Embeddings run on ONNX Runtime (no PyTorch in the hosted image)
+
+* **Status**: Accepted (2026-10-12, #404).
+* **Decision**: The clinical guard and Exercise library use one shared embedding model loaded from the official non-quantized `BAAI/bge-small-en-v1.5` `onnx/model.onnx` graph. `tokenizers` supplies BERT tokenization; `1_Pooling/config.json` selects CLS pooling, `sentence_bert_config.json` supplies truncation length, and output vectors are L2-normalized. One CPU `InferenceSession` uses two intra-op threads and one sequential inter-op thread. Memory arena retention and weight prepacking are disabled to reduce peak RSS. The image bakes the ONNX graph, tokenizer and both configs into `HF_HOME` and sets Hugging Face offline mode, so runtime boot does not fetch model files. `MODEL_DEVICE` remains accepted but is a no-op because execution is CPU-only.
+* **Context**: PyTorch plus the embedding model accounted for nearly all of the API's 760 MB live RSS on a 2 GB Fly Machine. The unchanged local full-app process peaked at about 1.02 GB RSS, while the rest of the service is about 60 MB.
+* **Parity evidence**: The PyTorch/ONNX minimum cosine across 1,364 texts (1,328 Exercise library semantic texts, eight clinical anchors, 23 clinical guard test queries and five benchmark queries) was 0.999999762. All five benchmark queries returned identical top-five Exercise library ids. Existing catalog vectors remain valid, so no one-time re-embed is needed. Median warmed query latency was 8.976 ms on ONNX Runtime and 12.503 ms on PyTorch. Measured in the built `Dockerfile.fly` image (app imported, model loaded, one embedding), peak RSS fell from 667.9 MB to 364.8 MB and the image from 1.63 GB to 0.73 GB. The deployed PyTorch process grew from that startup peak to 760 MB over a day of traffic, so the Machine size is chosen from deployed RSS after the change rather than the startup figure.
+* **Rationale**: ONNX Runtime removes the large PyTorch and Sentence Transformers runtime while preserving the same model weights, tokenization, pooling, truncation and normalization. The parity bar is cosine ≥ 0.9999; passing it keeps seeded catalog vectors usable without mixed runtimes or a re-embedding migration. Two intra-op workers gave lower measured query latency than PyTorch while retaining one sequential inter-op worker for the single-vCPU Machine.
+* **Code References**: `core/embeddings.py`, `agent/clinical_guard.py`, `database/exercise_library/embeddings.py`, `Dockerfile.fly`, `requirements-fly.txt`, `scripts/embedding_parity.py`, `scripts/measure_api_memory.py`.
