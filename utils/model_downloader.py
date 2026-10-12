@@ -28,6 +28,13 @@ CLOUD_MODEL_REGISTRY = {
         "default_max_tokens": 700,
         "streaming": False,
     },
+    "judge_secondary": {
+        "model_env": "JUDGE_SECONDARY_MODEL",
+        "default_model": "zai-org/GLM-5.3",
+        "max_tokens_env": "JUDGE_MAX_TOKENS",
+        "default_max_tokens": 700,
+        "streaming": False,
+    },
     "coach": {
         "model_env": "COACH_MODEL",
         "default_model": "deepseek-ai/DeepSeek-V4-Flash",
@@ -41,6 +48,7 @@ DEFAULT_CLOUD_API_BASE = "https://api.deepinfra.com/v1/openai"
 DEFAULT_CLOUD_REQUEST_TIMEOUT = 60.0
 DEFAULT_CLOUD_MAX_RETRIES = 1
 DEFAULT_CLOUD_STREAM_CHUNK_TIMEOUT = 30.0
+JUDGE_MODEL_ROLES = ("judge", "judge_secondary")
 
 
 class SafeChatOpenAI(ChatOpenAI):
@@ -131,16 +139,23 @@ def _parse_extra_body(raw_extra_body: str, env_name: str) -> dict[str, Any]:
 
 
 def _extra_body(model_type: str) -> dict[str, Any] | None:
-    setting = {
+    settings = {
         "production": ("LLM_EXTRA_BODY", None),
-        "judge": ("JUDGE_EXTRA_BODY", {"chat_template_kwargs": {"enable_thinking": False}}),
         "coach": ("COACH_EXTRA_BODY", None),
-    }[model_type]
-    name, default = setting
+        **{
+            role: ("JUDGE_EXTRA_BODY", {"chat_template_kwargs": {"enable_thinking": False}})
+            for role in JUDGE_MODEL_ROLES
+        },
+    }
+    if model_type not in settings:
+        raise ValueError(f"Unknown model_type '{model_type}'. Choose from {list(settings)}")
+    name, default = settings[model_type]
     raw_body = os.getenv(name, "").strip()
     if raw_body:
         return _parse_extra_body(raw_body, name) or None
-    if model_type == "judge" and os.getenv("LLM_ENABLE_THINKING", "").strip().lower() in {"1", "true", "yes", "on"}:
+    if model_type in JUDGE_MODEL_ROLES and os.getenv("LLM_ENABLE_THINKING", "").strip().lower() in {
+        "1", "true", "yes", "on"
+    }:
         return None
     return default
 
@@ -183,6 +198,16 @@ def build_player_llm(*, timeout: float, max_retries: int = DEFAULT_CLOUD_MAX_RET
     return _build_cloud_llm(
         "production", timeout=timeout, max_retries=max_retries, stream_chunk_timeout=timeout
     )
+
+
+def build_judge_llm() -> SafeChatOpenAI:
+    """Builds the primary evaluator with retries controlled by the eval runner."""
+    return _build_cloud_llm("judge", max_retries=0)
+
+
+def build_secondary_judge_llm() -> SafeChatOpenAI:
+    """Builds the second evaluator from its separately configured model role."""
+    return _build_cloud_llm("judge_secondary", max_retries=0)
 
 
 # A free-form Program import writes a whole sheet of rows in one call, which

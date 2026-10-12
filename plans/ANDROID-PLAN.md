@@ -28,9 +28,9 @@
 |--------------------|--------------------------------------------------------------------|
 | Product model      | One account may train, coach, or both; capabilities are not exclusive |
 | Client packaging   | Shared Flutter client for Android and web, with capability-aware player and coach routes |
-| Player assistant   | DeepSeek-V4-Flash via DeepInfra; #184: 60/65 and 62/65 standard, 15/15 generalization, 96.9% Arabic |
+| Player assistant   | DeepSeek-V4-Flash via DeepInfra; historical #184 runs: 60/65 and 62/65 standard, 15/15 generalization, 96.9% Arabic response share; current gate is the two-judge Q&A gate in ADR 012 |
 | Coach assistant    | DeepSeek-V4-Flash via DeepInfra (player-scoped analysis + split help) |
-| Judge LLM          | Qwen3.5-27B via DeepInfra (eval-only; outside production requests)  |
+| Judge LLMs         | Qwen3.5-27B and GLM-5.3 via DeepInfra (eval-only; outside production requests) |
 | Assignment         | Short-lived single-use bearer code; instant binding after player consent, coach notified and may revoke; directory requests after trial |
 | Coach privacy      | `discoverable` flag, **default off** — invisible unless opted in   |
 | Coach cardinality  | One active coach per player (switching = unassign + rebind)        |
@@ -139,9 +139,10 @@ Two consent paths:
   `get_coach_llm()` factories behind a LangChain-standard surface. The
   `LLM_MAX_CONCURRENT` limit bounds hosted inference. The structured onboarding
   intake and first-program creation do not use that path.
-- The eval harness (`tests/eval/run_evaluation.py`) uses the same factories, so
-  the existing 65-case + 15-case suites can check the player model swap. The
-  command still needs a failing exit status when thresholds are missed.
+- The eval harness (`tests/eval/run_evaluation.py`) checks 25 coaching Q&A
+  cases twice (at least 24/25 each run, with perfect clinical safety from both
+  judges) and five unseen generalization Q&A cases (5/5). Each case records both
+  judge verdicts, and the command exits nonzero when any bar is missed.
 - The deterministic temporary program exists (ADR-011); coach provenance,
   mutation authority, and expected calendar days are additional concepts.
 - The "performance degraded / deload detected" alarm is the existing ADR-004
@@ -280,7 +281,7 @@ clinical triage and Exercise library search.
   coach-assistant conversation context stays in memory for one selected player
   and is cleared on player switch, revocation, logout, or app close; no
   coach-assistant transcript is persisted by the service.
-- New small eval suite for the coach assistant (the 65-case suite only
+- New small eval suite for the coach assistant (the player-model gate only
   validates the selected player model).
 - Explicit coach-chat rate limit (e.g., 15/min, separate from the player's
   `CHAT_LIMIT`) — the 27B is the most expensive surface in the system.
@@ -434,7 +435,7 @@ clinical triage and Exercise library search.
 
 1. `pytest` green with the shared scripted chat fake (zero-regression baseline)
 2. Hosted-provider curl smoke (model IDs + thinking-off + tool calls verified)
-3. Player eval suites ≥ 62/65 and 15/15 on the configured hosted player and judge models
+3. Player-model gate passes: coaching Q&A ≥ 24/25 on two consecutive runs with strict 5/5 clinical safety from both judges, and generalization Q&A 5/5, on the configured hosted player and judge models
 4. Authorization tests (C1): coach can only open actively assigned player
    ledgers; revoked assignments denied; dual capabilities enforced; every
    program write path, including existing exercise-swap routes, respects coach

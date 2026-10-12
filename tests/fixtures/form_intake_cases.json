@@ -1,0 +1,115 @@
+[
+  {
+    "id": "onboard_s1_01",
+    "answers": {"gender": "MALE", "proportions": "LONG_TORSO", "age": "25", "height_cm": "182", "weight_kg": 84.5},
+    "normalized": {"gender": "male", "proportions": "long_torso", "age": 25, "height_cm": 182.0, "weight_kg": 84.5}
+  },
+  {
+    "id": "onboard_s1_02",
+    "answers": {"gender": "female", "proportions": "long_legs", "age": 29, "height_cm": 168, "weight_kg": 62},
+    "normalized": {"gender": "female", "proportions": "long_legs", "age": 29, "height_cm": 168.0, "weight_kg": 62.0}
+  },
+  {
+    "id": "onboard_s1_03",
+    "invalid_answers": {"proportions": null},
+    "errors": {"proportions": "proportions"}
+  },
+  {
+    "id": "onboard_s1_04",
+    "invalid_answers": {"proportions": ""},
+    "errors": {"proportions": "proportions"}
+  },
+  {
+    "id": "onboard_s1_05",
+    "answers": {"gender": "male", "proportions": "balanced", "weight_kg": 45, "height_cm": 140},
+    "normalized": {"gender": "male", "proportions": "balanced", "weight_kg": 45.0, "height_cm": 140.0},
+    "invalid_answers": {"age": 8},
+    "errors": {"age": "age"}
+  },
+  {
+    "id": "onboard_s2_01",
+    "answers": {"current_goal": "build bigger arms and chest", "long_term_goal": "dense physique without joint pain", "weekly_frequency": 4, "training_age_years": "3.5", "rep_preference": "Balanced"},
+    "normalized": {"current_goal": "build bigger arms and chest", "long_term_goal": "dense physique without joint pain", "weekly_frequency": 4, "training_age_years": 3.5, "rep_preference": "balanced"}
+  },
+  {
+    "id": "onboard_s2_02",
+    "answers": {"current_goal": "pure lat width", "long_term_goal": "add 5kg of stage lean tissue", "weekly_frequency": "5", "training_age_years": 6, "rep_preference": "low"},
+    "normalized": {"current_goal": "pure lat width", "long_term_goal": "add 5kg of stage lean tissue", "weekly_frequency": 5, "training_age_years": 6.0, "rep_preference": "low"}
+  },
+  {
+    "id": "onboard_s2_03",
+    "answers": {"current_goal": "grow as fast as possible", "training_age_years": 0},
+    "normalized": {"current_goal": "grow as fast as possible", "training_age_years": 0.0},
+    "invalid_answers": {"weekly_frequency": 7},
+    "errors": {"weekly_frequency": "weekly_frequency"}
+  },
+  {
+    "id": "onboard_s2_04",
+    "invalid_answers": {"weekly_frequency": null},
+    "errors": {"weekly_frequency": "weekly_frequency"}
+  },
+  {
+    "id": "onboard_s2_05",
+    "answers": {"current_goal": "getting huge", "long_term_goal": "staying healthy", "weekly_frequency": 4},
+    "normalized": {"current_goal": "getting huge", "long_term_goal": "staying healthy", "weekly_frequency": 4},
+    "invalid_answers": {"training_age_years": ""},
+    "errors": {"training_age_years": "training_age_years"}
+  },
+  {
+    "id": "onboard_s3_01",
+    "answers": {"equipment_access": "Full commercial gym with hack squats and cable towers.", "injuries_or_limitations": "Mild left shoulder impingement on vertical pressing", "stress_and_sleep": "Moderate office job stress and 7.5 hours of solid sleep."},
+    "normalized": {"equipment_access": "Commercial gym", "injuries_or_limitations": "Mild left shoulder impingement on vertical pressing", "stress_and_sleep": "Moderate office job stress and 7.5 hours of solid sleep."}
+  },
+  {
+    "id": "onboard_s3_02",
+    "answers": {"equipment_access": "Garage gym with barbell, rack, flat bench, and dumbbells up to 40kg.", "injuries_or_limitations": "Zero joint issues or injuries.", "stress_and_sleep": "High startup stress, sleep is erratic around 5 to 6 hours."},
+    "normalized": {"equipment_access": "Home gym", "injuries_or_limitations": "Zero joint issues or injuries.", "stress_and_sleep": "High startup stress, sleep is erratic around 5 to 6 hours."}
+  },
+  {
+    "id": "onboard_s3_03",
+    "answers": {"equipment_access": "I have a barbell and some bands.", "stress_and_sleep": "High stress and 6 hours sleep."},
+    "normalized": {"equipment_access": "Home gym", "stress_and_sleep": "High stress and 6 hours sleep."},
+    "invalid_answers": {"injuries_or_limitations": ""},
+    "errors": {"injuries_or_limitations": "injuries_or_limitations"}
+  },
+  {
+    "id": "onboard_s3_04",
+    "invalid_answers": {"equipment_access": null},
+    "errors": {"equipment_access": "equipment_access"}
+  },
+  {
+    "id": "onboard_s3_05",
+    "answers": {"equipment_access": "Commercial gym", "injuries_or_limitations": "Lumbar disc herniation 2 years ago; no heavy axial spinal loading", "stress_and_sleep": "Desk job stress is low, sleep 8 hours nightly."},
+    "normalized": {"equipment_access": "Commercial gym", "injuries_or_limitations": "Lumbar disc herniation 2 years ago; no heavy axial spinal loading", "stress_and_sleep": "Desk job stress is low, sleep 8 hours nightly."}
+  },
+  {
+    "id": "gen_onboard_01",
+    "answers": {"gender": "male", "proportions": "long_legs", "age": 31, "weight_kg": 92.5, "height_cm": 188},
+    "normalized": {"gender": "male", "proportions": "long_legs", "age": 31, "weight_kg": 92.5, "height_cm": 188.0}
+  },
+  {
+    "id": "gen_onboard_02",
+    "answers": {"gender": "male", "proportions": "balanced", "weight_kg": 40, "height_cm": 145},
+    "normalized": {"gender": "male", "proportions": "balanced", "weight_kg": 40.0, "height_cm": 145.0},
+    "invalid_answers": {"age": 11},
+    "errors": {"age": "age"}
+  },
+  {
+    "id": "gen_onboard_03",
+    "answers": {"current_goal": "build a wider back taper and forearms", "long_term_goal": "hit a 200kg squat safely without injury", "weekly_frequency": 3, "training_age_years": 4.5},
+    "normalized": {"current_goal": "build a wider back taper and forearms", "long_term_goal": "hit a 200kg squat safely without injury", "weekly_frequency": 3, "training_age_years": 4.5},
+    "optional_fields_absent": ["rep_preference"]
+  },
+  {
+    "id": "gen_onboard_04",
+    "answers": {"current_goal": "get ripped", "long_term_goal": "stay fit", "training_age_years": 2},
+    "normalized": {"current_goal": "get ripped", "long_term_goal": "stay fit", "training_age_years": 2.0},
+    "invalid_answers": {"weekly_frequency": 6},
+    "errors": {"weekly_frequency": "weekly_frequency"}
+  },
+  {
+    "id": "gen_onboard_05",
+    "answers": {"equipment_access": "Access to a home gym with power rack, landmine attachment, and adjustable dumbbells up to 32kg.", "injuries_or_limitations": "None", "stress_and_sleep": "High corporate stress, sleep around 6.5 to 7 hours."},
+    "normalized": {"equipment_access": "Home gym", "injuries_or_limitations": "None", "stress_and_sleep": "High corporate stress, sleep around 6.5 to 7 hours."}
+  }
+]

@@ -26,6 +26,23 @@ offline reconciliation, historical program sync, performed-date correction,
 revocation, deletion, and restore. The mobile tests include the player consent
 flow and the coach roster, request, and alert journey.
 
+## Hosted player-model gate
+
+Before expanding the trial, run the full hosted gate with the configured player
+model and both judges. It requires coaching Q&A to score at least 24/25 on each
+of two consecutive runs, with clinical safety scored exactly 5/5 by both
+judges on every case, and unseen generalization Q&A to score 5/5. The report
+records each judge's verdict for each case and the command exits nonzero when a
+bar fails.
+
+```bash
+python tests/eval/run_evaluation.py
+```
+
+CI uses `python tests/eval/run_evaluation.py --hermetic` to check the suite
+registration and report path without provider calls. That synthetic run is not
+hosted-model evidence and does not count toward this release gate.
+
 ## Owner evidence report
 
 Run the catalog-only report from the service environment. It lists each

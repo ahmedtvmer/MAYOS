@@ -180,40 +180,5 @@
         "deload_recommended": false
       }
     }
-  ],
-  "onboarding": [
-    {
-      "id": "gen_onboard_01",
-      "step": 1,
-      "user_input": "Weighing 92.5 kilos at 188cm tall, 31 years old male. Definitely longer legs than torso.",
-      "expected_action": "advance"
-    },
-    {
-      "id": "gen_onboard_02",
-      "step": 1,
-      "user_input": "I am an 11 year old boy, 40kg, 145cm, balanced build.",
-      "expected_action": "reject",
-      "expected_reason_contains": "age"
-    },
-    {
-      "id": "gen_onboard_03",
-      "step": 2,
-      "user_input": "Current focus is building a wider back taper and beefing up forearms. Long term is hitting a 200kg squat safely without injury. I can commit to 3 days weekly. Lifting for 4.5 years.",
-      "expected_action": "advance",
-      "rep_preference_provided": false
-    },
-    {
-      "id": "gen_onboard_04",
-      "step": 2,
-      "user_input": "Want to get ripped, long term stay fit, 6 days a week, 2 years lifting.",
-      "expected_action": "reject",
-      "expected_reason_contains": "between 1 and 5"
-    },
-    {
-      "id": "gen_onboard_05",
-      "step": 3,
-      "user_input": "Access to a home gym with power rack, landmine attachment, and adjustable dumbbells up to 32kg. No injuries or joint limitations whatsoever, completely healthy. High corporate stress, sleep around 6.5 to 7 hours.",
-      "expected_action": "advance"
-    }
   ]
 }

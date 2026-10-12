@@ -136,18 +136,39 @@ The player, judge, and coach roles share a LangChain-compatible hosted chat fact
 
 ---
 
-## 7. LLM-as-a-Judge Clinical & Generalization Benchmark Suite
+## 7. Historical LLM-as-a-Judge Benchmarks and Current Player Gate
 
-To guarantee deterministic clinical safety, numerical fidelity, and zero-hallucination guardrails prior to deployment, Myos evaluates its engine pipeline using an automated LLM-as-a-Judge evaluation suite (`tests/eval/run_evaluation.py`).
+The 65-case and 15-case results below are historical records from 2026-09; they
+included deterministic debrief output and conversational onboarding extraction.
+The current hosted gate measures only the player model: 25 coaching Q&A cases
+must score at least 24/25 on each of two consecutive runs, with clinical safety
+exactly 5/5 from both judges for every case, and unseen generalization Q&A must
+score 5/5. Debrief and named form intake are covered by deterministic unit
+tests. Run the hosted gate with `python tests/eval/run_evaluation.py`; CI uses
+`python tests/eval/run_evaluation.py --hermetic` to check the gate without
+provider calls.
 
-### Evaluation Architecture & Judge Specs
-* **Evaluator Model**: the hosted judge role defaults to `Qwen/Qwen3.5-27B`; the player and coach roles default to `deepseek-ai/DeepSeek-V4-Flash`. Eval runs require `LLM_API_KEY` and use hosted chat models only.
-* **Inference Pipeline**: Strict Pydantic structured output validation (`safe_invoke_judge`) scoring across 5 discrete dimensions per module.
-* **Pass Threshold**: Composite `is_passed == True` requires $\ge 4/5$ on non-fatal dimensions and strictly $5/5$ on fatal dimensions (`clinical_safety`, `groundedness`).
+### Historical 65-case Evaluation Architecture & Judge Spec
+
+These details describe the former mixed pipeline and its 2026-09 tables only.
+
+* **Evaluator Model**: the hosted judge role defaulted to `Qwen/Qwen3.5-27B`; the player and coach roles defaulted to `deepseek-ai/DeepSeek-V4-Flash`. Eval runs required `LLM_API_KEY` and used hosted chat models only.
+* **Inference Pipeline**: Strict Pydantic structured output validation (`safe_invoke_judge`) scored across five discrete dimensions per module.
+* **Pass Threshold**: Composite `is_passed == True` required at least 4/5 on non-fatal dimensions and strictly 5/5 on fatal dimensions (`clinical_safety`, `groundedness`).
+
+### Current Two-judge Player-model Gate
+
+The hosted player gate uses two configurable judges from different model
+families: `Qwen/Qwen3.5-27B` and `zai-org/GLM-5.3` by default. It records both
+structured verdicts per case and retries judge 429/5xx, timeout, and connection
+errors with configurable backoff. Each coaching Q&A run must pass at least
+24/25 cases twice consecutively with exactly 5/5 clinical safety from both
+judges on every case; unseen generalization Q&A must pass 5/5. The gate command
+is `python tests/eval/run_evaluation.py`; CI runs its `--hermetic` path.
 
 ### 1. Historical Standard Evaluation Results (65 Cases — 2026-09)
 
-These scores predate the hosted-only model configuration and are retained as historical evaluation records. Run `tests/eval/run_evaluation.py` with `LLM_API_KEY` to measure the currently configured hosted player and judge models.
+These scores predate the hosted-only model configuration and are retained as historical evaluation records. The current gate command is `python tests/eval/run_evaluation.py` and uses the configured hosted player plus both judges.
 
 The standard test suite validates baseline compliance across onboarding intake validation, post-workout analytics, and active session coaching.
 

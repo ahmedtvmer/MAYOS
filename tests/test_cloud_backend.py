@@ -33,18 +33,22 @@ def test_cloud_builds_configured_openai_models(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "sk-test")
     for name in (
         "LLM_ENABLE_THINKING", "LLM_EXTRA_BODY", "JUDGE_EXTRA_BODY", "COACH_EXTRA_BODY",
-        "LLM_MODEL", "LLM_MAX_TOKENS", "JUDGE_MODEL", "JUDGE_MAX_TOKENS", "COACH_MODEL",
+        "LLM_MODEL", "LLM_MAX_TOKENS", "JUDGE_MODEL", "JUDGE_SECONDARY_MODEL", "JUDGE_MAX_TOKENS", "COACH_MODEL",
     ):
         monkeypatch.delenv(name, raising=False)
 
     player = md.get_llm()
     judge = md.get_judge_llm()
+    secondary_judge = md._build_cloud_llm("judge_secondary")
     coach = md.get_coach_llm()
 
     assert (player.model_name, player.max_tokens, player.streaming) == (
         "deepseek-ai/DeepSeek-V4-Flash", 200, True
     )
     assert (judge.model_name, judge.max_tokens, judge.streaming) == ("Qwen/Qwen3.5-27B", 700, False)
+    assert (secondary_judge.model_name, secondary_judge.max_tokens, secondary_judge.streaming) == (
+        "zai-org/GLM-5.3", 700, False
+    )
     assert (coach.model_name, coach.max_tokens, coach.streaming) == (
         "deepseek-ai/DeepSeek-V4-Flash", 512, True
     )
@@ -68,6 +72,18 @@ def test_hosted_judge_max_tokens_env_override(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "sk-test")
     monkeypatch.setenv("JUDGE_MAX_TOKENS", "900")
     assert md._build_cloud_llm("judge").max_tokens == 900
+
+
+def test_eval_judge_factories_use_configured_models_and_disable_nested_retries(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    monkeypatch.setenv("JUDGE_MODEL", "Qwen/Qwen3.5-27B")
+    monkeypatch.setenv("JUDGE_SECONDARY_MODEL", "zai-org/GLM-5.3")
+
+    qwen = md.build_judge_llm()
+    glm = md.build_secondary_judge_llm()
+
+    assert (qwen.model_name, qwen.max_retries) == ("Qwen/Qwen3.5-27B", 0)
+    assert (glm.model_name, glm.max_retries) == ("zai-org/GLM-5.3", 0)
 
 
 def test_thinking_can_be_enabled_via_env(monkeypatch):
@@ -102,6 +118,7 @@ def test_judge_extra_body_overrides_only_judge(monkeypatch):
 
     assert md._build_cloud_llm("production").extra_body == {"player": True}
     assert md._build_cloud_llm("judge").extra_body == {"judge": True}
+    assert md._build_cloud_llm("judge_secondary").extra_body == {"judge": True}
 
 
 @pytest.mark.parametrize(("raw", "message"), [("not-json", "valid JSON"), ("[]", "JSON object")])
@@ -112,7 +129,15 @@ def test_extra_body_invalid_json_raises(monkeypatch, raw, message):
         md._build_cloud_llm("production")
 
 
-@pytest.mark.parametrize("setting,role", [("LLM_EXTRA_BODY", "production"), ("JUDGE_EXTRA_BODY", "judge"), ("COACH_EXTRA_BODY", "coach")])
+@pytest.mark.parametrize(
+    "setting,role",
+    [
+        ("LLM_EXTRA_BODY", "production"),
+        ("JUDGE_EXTRA_BODY", "judge"),
+        ("JUDGE_EXTRA_BODY", "judge_secondary"),
+        ("COACH_EXTRA_BODY", "coach"),
+    ],
+)
 def test_extra_body_non_object_json_raises(monkeypatch, setting, role):
     monkeypatch.setenv("LLM_API_KEY", "sk-test")
     monkeypatch.setenv(setting, "[]")
@@ -127,6 +152,11 @@ def test_empty_judge_extra_body_disables_default_and_ignores_player_body(monkeyp
 
     assert md._build_cloud_llm("production").extra_body == {"player": True}
     assert md._build_cloud_llm("judge").extra_body is None
+
+
+def test_extra_body_rejects_unknown_model_role():
+    with pytest.raises(ValueError, match="Unknown model_type"):
+        md._extra_body("unknown")
 
 
 def test_empty_coach_extra_body_disables_extra_body(monkeypatch):
@@ -228,14 +258,16 @@ def test_lazy_hosted_proxies_never_build_on_repr_or_dunder():
 def test_hosted_model_ids_are_the_only_configured_ids(monkeypatch):
     monkeypatch.setenv("LLM_MODEL", "custom/player")
     monkeypatch.setenv("JUDGE_MODEL", "custom/judge")
+    monkeypatch.setenv("JUDGE_SECONDARY_MODEL", "other/secondary")
     monkeypatch.setenv("COACH_MODEL", "custom/coach")
 
-    assert md.configured_model_ids() == {"custom/player", "custom/judge", "custom/coach"}
+    assert md.configured_model_ids() == {"custom/player", "custom/judge", "other/secondary", "custom/coach"}
     assert md.model_identity("coach") == ("custom/coach", "openai")
 
 
 def test_hosted_role_output_budgets_are_scoped():
     assert md.CLOUD_MODEL_REGISTRY["judge"]["default_max_tokens"] == 700
+    assert md.CLOUD_MODEL_REGISTRY["judge_secondary"]["default_max_tokens"] == 700
     assert md.CLOUD_MODEL_REGISTRY["production"]["default_max_tokens"] == 200
     assert md.CLOUD_MODEL_REGISTRY["coach"]["default_max_tokens"] == 512
 

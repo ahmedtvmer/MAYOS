@@ -46,6 +46,9 @@ jobs:
           uv pip install --system -r requirements.txt
           uv pip install --system pytest ruff
 
+      - name: Verify Player Model Gate Hermetically
+        run: python tests/eval/run_evaluation.py --hermetic --report /tmp/player-gate-ci.json
+
       - name: Lint with Ruff
         run: |
           ruff check --select E,F,W --ignore E402,E501,EXE002,W291,W292,W293 .

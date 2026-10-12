@@ -141,8 +141,8 @@ The FastAPI service is available at **`http://localhost:8000`** and its OpenAPI 
 
 ## Performance Highlights
 
-* **Standard Evaluation Suite (65 cases)**: **96.9% (63/65)** pass rate — 25/25 Coaching Q&A, 25/25 Post-Workout Debrief, 13/15 Onboarding (LLM-as-a-judge, strict 5/5 on clinical safety and groundedness; the two misses are onboarding extraction-fidelity bugs, not safety regressions).
-* **Unseen Generalization (15 cases)**: **100% (15/15)** pass rate on novel movements, inverted syntax, and third-party contraindication traps.
+* **Historical evaluation results (2026-09)**: **63/65** on the former mixed suite and **15/15** on its generalization suite; these included debrief and LLM onboarding cases and are retained as historical baselines.
+* **Current hosted player gate**: coaching Q&A must score at least 24/25 on each of two runs with strict 5/5 clinical safety from both judges; unseen generalization Q&A must score 5/5. See [`docs/TRIAL_RELEASE_GATE.md`](docs/TRIAL_RELEASE_GATE.md).
 * **Up to ~375,000× Latency Elimination**: Pure-regex paths resolve in 0.014–0.075 ms; the guard-inclusive deterministic router averages **17 ms** against a **5.6 s** LLM classification call (**≈329× on average, never below ≈157×**).
 * **Flat Clamped Latency**: A 6-message context tail (`TAIL_WINDOW_SIZE = 6`) plus compact telemetry holds a **~4.2 s asymptotic ceiling** regardless of conversation length — 2.4× faster than an unclamped pipeline by turn 30.
 * **Zero Math Hallucination**: Offloads e1RM tracking, Olympic barbell plate distribution, and volume tonnage directly to deterministic Python algorithms.
@@ -206,7 +206,7 @@ docker compose exec myos-api python scripts/check_engine_health.py
 - [x] Sub-millisecond regex router, banned movement vetoes, and clinical safeguard interceptor.
 - [x] Dynamic entity extraction and introspective ledger reconciliation layer.
 - [x] Hybrid deterministic debrief architecture (zero-hallucination metrics).
-- [x] Standard & generalization benchmark suites re-run on the refreshed stack (63/65 standard, 15/15 generalization).
+- [x] Historical standard & generalization benchmark suites re-run on the refreshed stack (63/65 standard, 15/15 generalization; 2026-09).
 - [x] Hosted chat streaming and tool-call support.
 - [x] In-process `sqlite-vec` semantic exercise catalog search.
 - [x] Fractional synergist volume attribution (1.0 direct / 0.5 synergist).

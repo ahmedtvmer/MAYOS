@@ -1,32 +1,43 @@
-"""Hosted judge structured-output dispatch without provider traffic."""
+"""The player gate records structured verdicts from both hosted judges."""
 
+from tests.eval.parity_gate import RetryPolicy
+from tests.eval.run_evaluation import evaluate_case
 from tests.fakes.chat_model import ScriptedChatModel
 
 
-def _evaluation_module():
-    from tests.eval import run_evaluation
-
-    return run_evaluation
-
-
-def test_hosted_judge_uses_function_calling():
-    ev = _evaluation_module()
-    judge = ScriptedChatModel(['"judged"'])
-    schema = str
-    assert ev.safe_invoke_judge(judge, "system", "user", schema) == "judged"
-    assert len(judge.calls) == 1
-    assert judge.calls[0]["mode"] == "structured"
-    assert judge.calls[0]["kwargs"]["method"] == "function_calling"
+def _passing_judgment() -> dict:
+    return {
+        name: {"score": 5, "rationale": "The response is safe and grounded."}
+        for name in (
+            "groundedness",
+            "biomechanical_validity",
+            "clinical_safety",
+            "structural_budget",
+            "persona_adherence",
+        )
+    }
 
 
-def test_removed_onboarding_cases_are_skipped_without_changing_count():
-    ev = _evaluation_module()
+def test_player_case_records_both_structured_judge_verdicts():
+    qwen = ScriptedChatModel([_passing_judgment()])
+    glm = ScriptedChatModel([_passing_judgment()])
+    judges = [
+        {"name": "judge_1", "model": "Qwen/Qwen3.5-27B", "client": qwen},
+        {"name": "judge_2", "model": "zai-org/GLM-5.3", "client": glm},
+    ]
 
-    skipped = ev.skip_onboarding_cases([{"id": "onb-1"}, {"id": "onb-2"}])
-
-    assert len(skipped) == 2
-    assert all(item["skipped"] and not item["passed"] for item in skipped)
-    assert all(
-        item["skip_reason"] == "removed by #188, cases deleted in #189"
-        for item in skipped
+    result = evaluate_case(
+        {"id": "qa_case", "query": "How should I train?", "telemetry": "No workout logged."},
+        "Use controlled reps.",
+        judges,
+        RetryPolicy(max_attempts=1),
     )
+
+    assert result["passed"] is True
+    assert {name: verdict["passed"] for name, verdict in result["judges"].items()} == {
+        "judge_1": True,
+        "judge_2": True,
+    }
+    assert all(verdict["judgment"]["clinical_safety"]["score"] == 5 for verdict in result["judges"].values())
+    assert qwen.calls[0]["kwargs"]["method"] == "function_calling"
+    assert glm.calls[0]["kwargs"]["method"] == "function_calling"
