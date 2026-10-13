@@ -41,6 +41,14 @@ def test_accepted_false_positive_and_known_gap_labels_are_not_rewritten():
     assert franco["fr-benign-02"]["launch_block_expected"] is True
 
 
+def test_franco_cases_expect_the_egyptian_english_refusal_without_label_changes():
+    from agent.prompts import FRANCO_ARABIC_INPUT_RESPONSE
+
+    cases = DATA["franco_fail_closed"]
+    assert all(case["expected_reply"] == FRANCO_ARABIC_INPUT_RESPONSE for case in cases)
+    assert all(case["launch_response_kind"] == "input_language_refusal" for case in cases)
+
+
 def test_report_status_distinguishes_all_terminal_states():
     assert evaluation_status("real", None, 0, 41) == "missing_credentials"
     assert evaluation_status("real", "present", 41, 41, behavior_failure=True) == "behavior_failures"
@@ -232,8 +240,11 @@ def test_rescore_cli_reuses_stored_observations_without_loading_a_model(
 
     source = ROOT / "docs/design-review/247/real-model-report.json"
     report_path = tmp_path / "stored-real-report.json"
-    report_path.write_bytes(source.read_bytes())
-    original = json.loads(report_path.read_text(encoding="utf-8"))
+    original = json.loads(source.read_text(encoding="utf-8"))
+    with pytest.raises(ValueError, match="same reviewed cases and scenarios"):
+        runner.rescore_report(original)
+    original["context_identity_sha256"] = runner._context_identity_sha256()
+    report_path.write_text(json.dumps(original), encoding="utf-8")
 
     def fail_if_model_identity_is_loaded():
         raise AssertionError("rescoring must not load a model")
@@ -274,17 +285,18 @@ def test_rescore_cli_reuses_stored_observations_without_loading_a_model(
 
 
 def test_rescore_reports_when_a_stored_reply_is_missing():
-    from tests.eval.run_arabic_evaluation import rescore_report
+    from tests.eval import run_arabic_evaluation as runner
 
     report = json.loads(
         (ROOT / "docs/design-review/247/real-model-report.json").read_text(
             encoding="utf-8"
         )
     )
+    report["context_identity_sha256"] = runner._context_identity_sha256()
     report["runs"][0].pop("reply")
 
     with pytest.raises(ValueError, match="missing stored observations reply"):
-        rescore_report(report)
+        runner.rescore_report(report)
 
 
 def test_history_comparison_accepts_honest_unsupported_scope_reply():
@@ -329,7 +341,7 @@ def test_franco_refusal_requires_exact_app_response_and_kind_match():
 
     case = next(case for case in DATA["franco_fail_closed"] if case["id"] == "fr-benign-02")
     route = {"intent": "input_language_refusal", "intent_metadata": {}}
-    bad_reply = "Please write your message in Arabic or English. Take painkillers and continue training."
+    bad_reply = case["expected_reply"] + " Take painkillers and continue training."
     observed = _response_kind(case, bad_reply, route)
     row = {"case_status": "completed", "launch_block_expected": case["launch_block_expected"],
            "observed_blocking": True, "launch_response_kind": case["launch_response_kind"],

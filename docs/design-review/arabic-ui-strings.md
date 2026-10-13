@@ -1289,3 +1289,13 @@ different exercise; unresolved and ambiguous targets prompt for clarification.
 | Verify now | تحقق الآن |
 | Recovery email is not verified. Password recovery needs a verified email address. | لم يتم التحقق من البريد الإلكتروني للاسترداد. يلزم التحقق منه لاستعادة كلمة المرور. |
 | Verify | تحقق |
+
+## Franco-Arabic refusal — pending owner review (#345)
+
+| English intent | Egyptian Arabic | English |
+| --- | --- | --- |
+| Ask the Player to write a Franco-Arabic message in Arabic or English | ممكن تكتب رسالتك بالعربي أو بالإنجليزي لو سمحت؟ | Please write your message in Arabic or English. |
+
+The Arabic line is a proposed polite everyday Egyptian wording. The fixed
+refusal is emitted by the first input check in the turn router, before training
+actions, clinical advice, or model inference.

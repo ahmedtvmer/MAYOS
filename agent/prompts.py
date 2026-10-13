@@ -91,6 +91,6 @@ ARABIC_DIAGNOSIS_SAFEGUARD_RESPONSE = (
 )
 
 FRANCO_ARABIC_INPUT_RESPONSE = (
-    "من فضلك اكتب رسالتك بالعربية أو الإنجليزية.\n\n"
+    "ممكن تكتب رسالتك بالعربي أو بالإنجليزي لو سمحت؟\n"
     "Please write your message in Arabic or English."
 )

@@ -144,6 +144,7 @@ def test_required_block_routes_match_reviewed_misses_and_fixed_replies():
 
         response = graph.clinical_intercept_node({**_state(entry["text"]), **route})
         if entry["launch_response_kind"] == "input_language_refusal":
+            assert response["response_content"] == entry["expected_reply"]
             assert response["response_content"] == FRANCO_ARABIC_INPUT_RESPONSE
         else:
             assert response["response_content"] in {

@@ -52,6 +52,12 @@ def _done_content(body: str) -> str:
     return next(payload["response_content"] for payload in payloads if payload.get("done"))
 
 
+FRANCO_REFUSAL = (
+    "ممكن تكتب رسالتك بالعربي أو بالإنجليزي لو سمحت؟\n"
+    "Please write your message in Arabic or English."
+)
+
+
 @pytest.fixture
 def api(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("SKIP_LLM_LOAD", "true")
@@ -267,6 +273,82 @@ def test_player_model_input_excludes_identifying_fields(api, monkeypatch):
     assert username not in rendered
     assert email not in rendered
     assert "secretpineapple" not in rendered
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "ana 3ayez a8ayar el bench",
+        "7aseet be alam 7ad fe ketfy we ana ba3mel bench",
+    ],
+)
+def test_franco_chat_is_refused_before_model_or_training_action(api, monkeypatch, content):
+    client, db = api
+    username = "franco-intercept-player"
+    registered = _register(client, username)
+    headers = _authed(registered["access_token"])
+    account = db.get_active_account_by_username(username)
+    ledger_id = account["ledger_id"]
+    with db.open_ledger(ledger_id) as ledger:
+        program = GeneratedProgramSchema(
+            program_name="Existing plan",
+            split_type="Full Body",
+            weekly_frequency=3,
+            days=[_day_plan()],
+        )
+        ledger.save_training_program(program.model_dump())
+        version_before = ledger.get_active_program().version
+
+    model = ScriptedChatModel(["THE MODEL MUST NOT RUN"])
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": content}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    assert _done_content(body) == FRANCO_REFUSAL
+    assert model.calls == []
+    history = client.get("/chat/history", headers=headers).json()
+    assert [message["role"] for message in history] == ["user", "assistant"]
+    assert history[-1]["content"] == FRANCO_REFUSAL
+    with db.open_ledger(ledger_id) as ledger:
+        assert ledger.get_active_program().version == version_before
+
+
+@pytest.mark.parametrize(
+    ("content", "script", "expected_reply"),
+    [
+        (
+            "How should I cue my bench?",
+            ["SCRIPTED ENGLISH ANSWER"],
+            "SCRIPTED ENGLISH ANSWER",
+        ),
+        (
+            "إزاي أزود قوتي؟",
+            [{"intent": "coaching_qa"}, "رد عربي تجريبي"],
+            "رد عربي تجريبي",
+        ),
+        ("3x8 bench", ["SCRIPTED NUMERIC ANSWER"], "SCRIPTED NUMERIC ANSWER"),
+    ],
+)
+def test_english_arabic_and_ordinary_gym_digits_keep_model_chat_behavior(
+    api, monkeypatch, content, script, expected_reply
+):
+    client, _db = api
+    registered = _register(client, f"chat-language-{len(content)}")
+    headers = _authed(registered["access_token"])
+    model = ScriptedChatModel(script)
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": content}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    assert _done_content(body) == expected_reply
 
 
 def test_preferred_name_profile_api_sets_changes_and_clears(api):

@@ -546,7 +546,8 @@ def _graph_error_response(reply: str) -> str | None:
 def _response_kind(case: dict[str, Any], reply: str, route: dict[str, Any]) -> str:
     if case["launch_response_kind"] == "input_language_refusal":
         from agent.prompts import FRANCO_ARABIC_INPUT_RESPONSE
-        return "input_language_refusal" if reply == FRANCO_ARABIC_INPUT_RESPONSE else "normal_assistant"
+        expected_reply = case.get("expected_reply", FRANCO_ARABIC_INPUT_RESPONSE)
+        return "input_language_refusal" if reply == expected_reply else "normal_assistant"
     if route.get("intent_metadata", {}).get("mode") == "diagnosis":
         return "diagnosis_safeguard"
     if route.get("intent") == "clinical_intercept":
