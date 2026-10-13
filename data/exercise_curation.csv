@@ -9,10 +9,10 @@ id,source_name,display_name,aliases,primary_action,secondary_actions,primary_mus
 3541,dumbbell incline y-raise,Incline Y-Raise (Dumbbell),incline db y raise|incline dumbbell y raise,Shoulder Flexion,Scapular Elevation,Traps,,,
 318,dumbbell incline curl,Incline Curl (Dumbbell),incline db curl|incline dumbbell curl,Elbow Flexion,,Biceps,,,
 598,machine seated hip adduction,Hip Adduction (Machine),hip adduction|seated hip adduction|adductor machine,Hip Adduction,,Adductors,selectorized,,
-mayos:1,Kelso shrug,Kelso Shrug,,,,,,true,305
-mayos:2,Bayesian curl,Bayesian Curl,bayesian curl|behind-the-body cable curl,,,,,,
-mayos:3,Cable Y-raise,Cable Y-Raise,cable y raise|standing cable y raise,,,,,,
-mayos:4,machine hip thrust,Machine Hip Thrust,machine hip thrust|hip thrust machine,,,,,,
+mayos:1,Kelso shrug,Kelso Shrug,,Scapular Retraction,,Traps,,true,305
+mayos:2,Bayesian curl,Bayesian Curl,bayesian curl|behind-the-body cable curl,Elbow Flexion,,Biceps,,,
+mayos:3,Cable Y-raise,Cable Y-Raise,cable y raise|standing cable y raise,Shoulder Flexion,Scapular Elevation,Traps,,,
+mayos:4,machine hip thrust,Machine Hip Thrust,machine hip thrust|hip thrust machine,Hip Extension,,Glutes,plate_loaded,,
 9,assisted chest dip (kneeling),Assisted Chest Dip (Machine),assisted dip machine,Shoulder Flexion,Elbow Extension,Chest,selectorized,,
 15,assisted parallel close grip pull-up,Assisted Close Neutral-Grip Pull-Up (Machine),,Shoulder Extension,Elbow Flexion,Lats,selectorized,,
 17,assisted pull-up,Assisted Pull-Up (Machine),assisted pull up machine|gravitron,Shoulder Adduction,Elbow Flexion,Lats,selectorized,,
