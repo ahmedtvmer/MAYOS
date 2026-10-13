@@ -180,6 +180,11 @@ _Avoid_: User database, user DB
 The player's current structured selection of training days and exercises.
 _Arabic_: برنامج تدريبي
 
+**Split**:
+The named arrangement of a Training program's training days across the week, such as Upper/Lower, Anterior/Posterior or PPL × UL, for a given number of training days. Every split includes a leg day.
+_Arabic_: تقسيمة
+_Avoid_: Split type, split family
+
 **Program draft**:
 An unpublished Training program a Coach is writing for a Player on an active Assignment. It lives in the Player's Training ledger, is keyed to that Assignment, and is visible only to that Coach while the Assignment is active. There is at most one open Program draft per Assignment. It keeps the existing program fields; the editor shows target RIR and storage keeps `target_rpe` (RIR = 10 − RPE). Publishing activates it as a new program version and removes the draft. Ending the Assignment discards it.
 _Arabic_: مسودة برنامج تدريبي
