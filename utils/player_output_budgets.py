@@ -12,6 +12,8 @@ SUBSTITUTION_RESOLUTION_MAX_OUTPUT_TOKENS = 200
 ABBREVIATION_EXPANSION_MAX_OUTPUT_TOKENS = 48
 # #194 peaked at 1019 tokens; retain 25% headroom now that #406 enforces the cap.
 DYNAMIC_SPLIT_PLAN_MAX_OUTPUT_TOKENS = 1280
+# Reserve extra completion capacity for reasoning-enabled split-plan calls.
+DYNAMIC_SPLIT_PLAN_REASONING_MAX_OUTPUT_TOKENS = 2048
 CHECKPOINT_REVIEW_MAX_OUTPUT_TOKENS = 200
 
 PlayerCallSite = Literal[
@@ -43,6 +45,14 @@ def player_output_budget(call_site: PlayerCallSite) -> int:
     if overrides is not None and call_site in overrides:
         return overrides[call_site]
     return CALL_SITE_BUDGETS[call_site]
+
+
+def dynamic_split_plan_reasoning_budget() -> int:
+    """Returns the reasoning-path ceiling while preserving scoped test overrides."""
+    overrides = _BUDGET_OVERRIDES.get()
+    if overrides is not None and "dynamic_split_plan" in overrides:
+        return overrides["dynamic_split_plan"]
+    return DYNAMIC_SPLIT_PLAN_REASONING_MAX_OUTPUT_TOKENS
 
 
 @contextmanager

@@ -146,6 +146,7 @@ def test_mechanics_for_real_curated_exercises_use_joint_actions(fresh_store):
 
 
 def test_dynamic_split_plan_uses_its_own_output_budget(monkeypatch):
+    monkeypatch.setenv("PROGRAM_GENERATION_REASONING_ENABLED", "false")
     model = ScriptedChatModel([get_default_split(3)])
     monkeypatch.setattr("agent.program_rules.llm", model)
 
@@ -159,6 +160,31 @@ def test_dynamic_split_plan_uses_its_own_output_budget(monkeypatch):
     assert model.calls[0]["mode"] == "structured"
     assert model.calls[0]["kwargs"]["schema"] == "DynamicSplitPlan"
     assert model.calls[0]["kwargs"]["max_completion_tokens"] == DYNAMIC_SPLIT_PLAN_MAX_OUTPUT_TOKENS
+
+
+def test_split_plan_keeps_separate_reasoning_metadata_out_of_parsed_fields(monkeypatch):
+    monkeypatch.setenv("PROGRAM_GENERATION_REASONING_ENABLED", "true")
+    plan_from_tool_call = get_default_split(3)
+    model = ScriptedChatModel(
+        [
+            AIMessage(
+                content="",
+                additional_kwargs={
+                    "reasoning_content": "<think>private planning text</think>",
+                    "scripted_structured_value": plan_from_tool_call,
+                },
+            )
+        ]
+    )
+    monkeypatch.setattr("agent.program_rules.llm", model)
+
+    resolved_plan = resolve_split(
+        3,
+        preference="Build three custom sessions with balanced movement emphasis.",
+    )
+
+    assert resolved_plan == plan_from_tool_call
+    assert "private planning text" not in resolved_plan.model_dump_json()
 
 
 @pytest.mark.parametrize(

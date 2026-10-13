@@ -139,11 +139,20 @@ def _raw_finish_reason(raw_response: Any) -> str | None:
 
 
 def _call_structured(model: Any, schema: type[BaseModel], prompt: Any, policy: Any, budget: int) -> StructuredResponse:
-    call = call_with_retry(lambda: _invoke_structured(model, schema, prompt, budget), policy)
-    response = call.response
-    if isinstance(response, StructuredResponse):
-        return StructuredResponse(response.parsed, response.finish_reason, call.error, call.attempts)
-    return StructuredResponse(None, None, call.error or "No structured response returned", call.attempts)
+    return _call_prepared_structured(
+        lambda: _invoke_structured(model, schema, prompt, budget), policy
+    )
+
+
+def _call_prepared_structured(invoke: Any, policy: Any) -> StructuredResponse:
+    call = call_with_retry(invoke, policy)
+    if isinstance(call.response, StructuredResponse):
+        return StructuredResponse(
+            call.response.parsed, call.response.finish_reason, call.error, call.attempts
+        )
+    return StructuredResponse(
+        None, None, call.error or "No structured response returned", call.attempts
+    )
 
 
 def _invoke_structured(model: Any, schema: type[BaseModel], prompt: Any, budget: int) -> StructuredResponse:
@@ -153,7 +162,14 @@ def _invoke_structured(model: Any, schema: type[BaseModel], prompt: Any, budget:
         method="function_calling",
         max_completion_tokens=budget,
     )
-    response = structured.invoke(prompt)
+    return _read_structured_response(structured.invoke(prompt), schema)
+
+
+def _read_structured_response(response: Any, schema: type[BaseModel]) -> StructuredResponse:
+    if isinstance(response, StructuredResponse):
+        return response
+    if not isinstance(response, dict):
+        raise ValueError(f"Structured response did not return a mapping for {schema.__name__}.")
     finish_reason = _raw_finish_reason(response.get("raw"))
     if finish_reason == "length":
         return StructuredResponse(None, finish_reason, None, 0)
@@ -192,25 +208,43 @@ def _run_split_case(case: dict[str, Any], model: Any, policy: Any, store: Any) -
 def _model_split_plan(
     case: dict[str, Any], model: Any, policy: Any, capture: dict[str, StructuredResponse]
 ) -> Any:
-    from agent.program_rules import resolve_split
-    from agent.ProgramState import DynamicSplitPlan
-    from utils.player_output_budgets import player_output_budget
+    def invoke_split(invoke: Any, prompt: Any) -> dict[str, Any]:
+        return _capture_split_plan_call(invoke, prompt, policy, capture)
 
-    def invoke_split(_invoke: Any, prompt: Any) -> dict[str, Any]:
-        call = _call_structured(model, DynamicSplitPlan, prompt, policy, player_output_budget("dynamic_split_plan"))
-        capture["call"] = call
-        from langchain_core.messages import AIMessage
-
-        return {
-            "raw": AIMessage(content="", response_metadata={"finish_reason": call.finish_reason}),
-            "parsed": deepcopy(call.parsed),
-            "parsing_error": ValueError(call.error) if call.error else None,
-        }
-
-    resolved = resolve_split(case["frequency"], case["request"], case["gender"], inference_call=invoke_split)
+    resolved = _resolve_split_with_model(model, case, invoke_split)
     if "call" not in capture:
         raise ValueError(f"split-plan case {case['id']} bypassed the configured player model.")
     return resolved
+
+
+def _capture_split_plan_call(
+    invoke: Any, prompt: Any, policy: Any, capture: dict[str, StructuredResponse]
+) -> dict[str, Any]:
+    from agent.ProgramState import DynamicSplitPlan
+    from langchain_core.messages import AIMessage
+
+    call = _call_prepared_structured(
+        lambda: _read_structured_response(invoke(prompt), DynamicSplitPlan), policy
+    )
+    capture["call"] = call
+    return {
+        "raw": AIMessage(content="", response_metadata={"finish_reason": call.finish_reason}),
+        "parsed": deepcopy(call.parsed),
+        "parsing_error": ValueError(call.error) if call.error else None,
+    }
+
+
+def _resolve_split_with_model(model: Any, case: dict[str, Any], inference_call: Any) -> Any:
+    from agent import program_rules
+
+    original_model = program_rules.llm
+    program_rules.llm = model
+    try:
+        return program_rules.resolve_split(
+            case["frequency"], case["request"], case["gender"], inference_call=inference_call
+        )
+    finally:
+        program_rules.llm = original_model
 
 
 def _generate_split_program(plan: Any, case: dict[str, Any], store: Any) -> dict[str, Any]:

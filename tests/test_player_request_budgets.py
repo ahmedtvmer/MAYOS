@@ -8,7 +8,11 @@ from langchain_core.messages import HumanMessage
 from agent import assistant_graph, fitness_abbreviations, program_rules
 from service import checkpoint_review_ai
 from utils import model_downloader
-from utils.player_output_budgets import CALL_SITE_BUDGETS
+from utils.player_output_budgets import (
+    CALL_SITE_BUDGETS,
+    DYNAMIC_SPLIT_PLAN_REASONING_MAX_OUTPUT_TOKENS,
+    DYNAMIC_SPLIT_PLAN_MAX_OUTPUT_TOKENS,
+)
 
 MOCK_RESPONSES = {
     "chat_reply": "Try five minutes of easy sets before your working weight.",
@@ -140,5 +144,32 @@ def test_intent_routing_uses_non_streaming_transport_for_structured_output(monke
         assert len(request_bodies) == 1
         assert request_bodies[0]["stream"] is False
         assert request_bodies[0]["max_completion_tokens"] == CALL_SITE_BUDGETS["intent_routing"]
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize(
+    ("call_site", "reasoning_enabled", "expected_budget"),
+    [
+        ("dynamic_split_plan", False, DYNAMIC_SPLIT_PLAN_MAX_OUTPUT_TOKENS),
+        ("dynamic_split_plan", True, DYNAMIC_SPLIT_PLAN_REASONING_MAX_OUTPUT_TOKENS),
+        ("chat_reply", True, CALL_SITE_BUDGETS["chat_reply"]),
+        ("intent_routing", True, CALL_SITE_BUDGETS["intent_routing"]),
+    ],
+)
+def test_program_reasoning_switch_is_scoped_to_split_generation(
+    call_site, reasoning_enabled, expected_budget, monkeypatch
+):
+    monkeypatch.setenv("PROGRAM_GENERATION_REASONING_ENABLED", str(reasoning_enabled).lower())
+    request_bodies, client = _captured_player_requests(monkeypatch, call_site)
+    try:
+        _invoke_player_call(call_site)
+
+        request_body = request_bodies[0]
+        assert request_body["max_completion_tokens"] == expected_budget
+        if call_site == "dynamic_split_plan" and reasoning_enabled:
+            assert request_body["thinking"] == {"type": "enabled"}
+        else:
+            assert "thinking" not in request_body
     finally:
         client.close()

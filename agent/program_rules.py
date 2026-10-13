@@ -25,6 +25,7 @@ from database.exercise_library.ranking import replacement_rank_sql
 from database.exercise_library.schema import exercise_library_visible_sql
 from database.exercise_library.values import split_curation_values
 from utils.equipment_access import COMMERCIAL_GYM, equipment_access_sql, map_equipment_access
+from utils.env_flags import env_flag
 from utils.model_downloader import llm, structured_output_model
 from utils import player_output_budgets
 
@@ -359,6 +360,28 @@ def _parsed_dynamic_split_plan(structured_response: Any) -> DynamicSplitPlan | N
     return parsed_plan if isinstance(parsed_plan, DynamicSplitPlan) else None
 
 
+def _dynamic_split_plan_options() -> dict[str, Any]:
+    reasoning_enabled = (
+        env_flag("PROGRAM_GENERATION_REASONING_ENABLED")
+        and getattr(llm, "model_name", None) == "deepseek-ai/DeepSeek-V4-Flash"
+    )
+    options = {
+        "include_raw": True,
+        "max_completion_tokens": (
+            player_output_budgets.dynamic_split_plan_reasoning_budget()
+            if reasoning_enabled
+            else player_output_budgets.player_output_budget("dynamic_split_plan")
+        ),
+    }
+    if reasoning_enabled:
+        # Function-call arguments are parsed separately from DeepSeek's reasoning field.
+        options["method"] = "function_calling"
+        extra_body = dict(getattr(llm, "extra_body", None) or {})
+        extra_body["thinking"] = {"type": "enabled"}
+        options["extra_body"] = extra_body
+    return options
+
+
 def resolve_split(
     frequency: int,
     preference: str | None = None,
@@ -385,8 +408,7 @@ def resolve_split(
 
     structured_llm = structured_output_model(llm).with_structured_output(
         DynamicSplitPlan,
-        include_raw=True,
-        max_completion_tokens=player_output_budgets.player_output_budget("dynamic_split_plan"),
+        **_dynamic_split_plan_options(),
     )
     gender_context = (
         "female trainee (prioritize glutes and lower body; still include direct arm and forearm work)"

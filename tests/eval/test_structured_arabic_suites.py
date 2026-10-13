@@ -69,11 +69,32 @@ def test_overlong_raw_split_plan_fails_even_when_generation_trims_it(fresh_store
     assert any("required sanitizing" in reason for reason in reasons)
 
 
+def test_structured_suite_uses_reasoning_budget_and_toggle_when_enabled(monkeypatch, fresh_store):
+    from agent.program_rules import get_default_split
+    from utils.player_output_budgets import DYNAMIC_SPLIT_PLAN_REASONING_MAX_OUTPUT_TOKENS
+
+    monkeypatch.setenv("PROGRAM_GENERATION_REASONING_ENABLED", "true")
+    case = structured_output._load_cases()["split_plans"][0]
+    model = ParsedStructuredModel(get_default_split(case["frequency"], case["gender"]))
+
+    record = structured_output._run_split_case(
+        case, model, RetryPolicy(max_attempts=1), fresh_store
+    )
+
+    assert record["status"] == "parsed"
+    assert model.options["method"] == "function_calling"
+    assert model.options["max_completion_tokens"] == DYNAMIC_SPLIT_PLAN_REASONING_MAX_OUTPUT_TOKENS
+    assert model.options["extra_body"]["thinking"] == {"type": "enabled"}
+
+
 class ParsedStructuredModel:
+    model_name = "deepseek-ai/DeepSeek-V4-Flash"
+
     def __init__(self, parsed):
         self.parsed = parsed
 
-    def with_structured_output(self, _schema, **_options):
+    def with_structured_output(self, _schema, **options):
+        self.options = options
         return self
 
     def bind(self, **_options):
