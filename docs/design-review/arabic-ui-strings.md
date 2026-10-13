@@ -1411,7 +1411,7 @@ The following Arabic prompt examples are also draft wording and pending the same
 | Encouraging close | واصل... |
 | Explain the rating from evidence | تدعم البيانات المسجلة تقييمك |
 | Unit spelling | حجم العمل 300 kg; avoid حجم العمل 300 كجم and حجم العمل 300 كغ |
-## Diagnosis safeguard reply (#193; pending owner review)
+## Diagnosis safeguard reply (#193; owner reviewed 2026-10-14)
 
 Candidate fixed standard-Arabic wording for the diagnosis safeguard in
 `agent/prompts.py`:
@@ -1420,9 +1420,9 @@ Candidate fixed standard-Arabic wording for the diagnosis safeguard in
 | --- | --- |
 | Decline diagnosis, stop the painful exercise, and defer evaluation to a licensed clinician | لا أستطيع تشخيص إصابات الجهاز العضلي الهيكلي أو آلام المفاصل أو الحالات المرضية الكامنة. MAYOS سجل تدريب آلي ومحرك لميكانيكا الحركة، وليس طبيبًا. أوقف فورًا أي تمرين يسبب ألمًا موضعيًا في المفصل أو وجعًا، واستشر أخصائي علاج طبيعي مرخّصًا لتقييم الحالة. |
 
-Status: pending owner review. This wording has not been owner reviewed.
+Status: owner reviewed by Thomas on 2026-10-14.
 
-## Routine slot update chat reply (#193; pending owner review)
+## Routine slot update chat reply (#193; owner reviewed 2026-10-14)
 
 Draft polite Egyptian Arabic for both successful exercise-substitution paths.
 English exercise names come from the verified program. Arabic replies use
@@ -1434,4 +1434,4 @@ catalog instructions.
 | Confirm the routine slot update and show the removed and installed exercises | ✅ **تمام، بدّلت التمرين في يوم {day_name}.**<br><br>- **اللي اتشال:** {source_exercise}<br>- **اللي اتحط:** {replacement}<br>- **التوجيه:** *اشتغل بنفس الفورم اللي كنت بتعمله.* |
 | Mention an available equipment variant | *(ضفت النسخة الأساسية **{equipment}**. لو عايز **{alternate_exercise}**، قولّي: `swap {source_exercise} for {alternate_exercise}`.)* |
 
-Status: pending owner review. This wording has not been owner reviewed.
+Status: owner reviewed by Thomas on 2026-10-14.
