@@ -746,6 +746,52 @@ void main() {
   });
 
   group('exact-alarm permission policy (#125)', () {
+    test('permissions are granted only when notifications and exact alarms are',
+        () async {
+      bool notificationsGranted = true;
+      bool exactAlarmsGranted = true;
+      final AndroidRestAlerts alerts = AndroidRestAlerts(
+        store: _MemorySecureStore(),
+        initialize: () async {},
+        areNotificationsEnabled: () async => notificationsGranted,
+        canScheduleExactNotifications: () async => exactAlarmsGranted,
+      );
+
+      expect(await alerts.areGranted(), isTrue);
+      notificationsGranted = false;
+      expect(await alerts.areGranted(), isFalse);
+      notificationsGranted = true;
+      exactAlarmsGranted = false;
+      expect(await alerts.areGranted(), isFalse);
+    });
+
+    test('onboarding request reuses notification-then-exact permission flow',
+        () async {
+      final _MemorySecureStore store = _MemorySecureStore();
+      final List<String> requests = <String>[];
+      final AndroidRestAlerts alerts = AndroidRestAlerts(
+        store: store,
+        initialize: () async {},
+        requestNotificationsPermission: () async {
+          requests.add('notifications');
+          return true;
+        },
+        requestExactAlarmsPermission: () async {
+          requests.add('exact_alarm');
+          return true;
+        },
+      );
+
+      await alerts.request();
+      expect(requests, <String>['notifications', 'exact_alarm']);
+      expect(store.values['rest_alerts.asked'], '1');
+
+      // The workout fallback shares the same one-device ask record.
+      await alerts.ensureReady();
+      await _flush();
+      expect(requests, <String>['notifications', 'exact_alarm']);
+    });
+
     test('asked once with one line, and a refusal falls back to inexact and '
         'is never re-asked', () async {
       final _MemorySecureStore store = _MemorySecureStore();

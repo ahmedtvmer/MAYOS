@@ -777,6 +777,13 @@ class MayosCopy {
   String get reviewSetupLead => isArabic
       ? 'راجع إجاباتك. يمكنك تعديلها قبل أن ينشئ MAYOS برنامجك التدريبي الأول.'
       : 'Check your answers. You can edit anything before MAYOS builds your first program.';
+  String get restAlertPermissionTitle =>
+      isArabic ? 'تنبيهات مؤقت الراحة' : 'Rest timer alerts';
+  String get restAlertPermissionMessage => isArabic
+      ? 'يصلك تنبيه عند انتهاء الراحة، حتى عندما تكون الشاشة مطفأة.'
+      : 'Get an alert when your rest ends, even with the screen off.';
+  String get allow => isArabic ? 'السماح' : 'Allow';
+  String get notNow => isArabic ? 'ليس الآن' : 'Not now';
   String get requiredAnswersMissing => isArabic
       ? 'ما زالت بعض الإجابات المطلوبة ناقصة.'
       : 'Some required answers are still missing.';

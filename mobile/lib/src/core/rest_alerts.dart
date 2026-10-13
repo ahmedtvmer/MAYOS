@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart' show HapticFeedback;
+import 'package:flutter/services.dart'
+    show HapticFeedback, MissingPluginException, PlatformException;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
@@ -7,6 +8,7 @@ import 'package:timezone/timezone.dart' as tz;
 
 import 'rest_alerts_web_stub.dart'
     if (dart.library.js_interop) 'rest_alerts_web.dart' as platform;
+import 'rest_alert_permission_access.dart';
 import 'rest_length.dart';
 import 'secure_store.dart';
 import 'display_language/workout_copy.dart';
@@ -142,12 +144,13 @@ void unlockWebRestAudio() {
 /// unavailable (a test host answers no channel) must never block or break the
 /// workout, and the in-app bar remains the source of truth while the app is
 /// open.
-class AndroidRestAlerts implements RestAlerts {
+class AndroidRestAlerts implements RestAlerts, RestAlertPermissionAccess {
   AndroidRestAlerts({
     SecureStore? store,
     void Function(String line)? explain,
     Future<bool?> Function()? requestNotificationsPermission,
     Future<bool?> Function()? requestExactAlarmsPermission,
+    Future<bool?> Function()? areNotificationsEnabled,
     Future<bool?> Function()? canScheduleExactNotifications,
     Future<void> Function()? initialize,
     DateTime Function()? now,
@@ -156,6 +159,7 @@ class AndroidRestAlerts implements RestAlerts {
         _explain = explain,
         _requestNotificationsPermission = requestNotificationsPermission,
         _requestExactAlarmsPermission = requestExactAlarmsPermission,
+        _areNotificationsEnabled = areNotificationsEnabled,
         _canScheduleExact = canScheduleExactNotifications,
         _initializePlugin = initialize,
         _now = now ?? DateTime.now,
@@ -180,6 +184,7 @@ class AndroidRestAlerts implements RestAlerts {
   /// tested without a platform (#125). Null means "ask the plugin".
   final Future<bool?> Function()? _requestNotificationsPermission;
   final Future<bool?> Function()? _requestExactAlarmsPermission;
+  final Future<bool?> Function()? _areNotificationsEnabled;
   final Future<bool?> Function()? _canScheduleExact;
 
   /// Injectable plugin/timezone initialization, so the "everything waits for
@@ -330,7 +335,54 @@ class AndroidRestAlerts implements RestAlerts {
       // carries its own wording.
     }
     try {
+      await _requestPlatformPermissions();
+    } on Object {
+      // A refused or unavailable prompt is just "not granted"; scheduling
+      // then falls back to an inexact while-idle alarm.
+    }
+  }
+
+  @override
+  bool get isSupported => true;
+
+  @override
+  Future<bool> areGranted() async {
+    try {
       await _ensureInitialized();
+      final Future<bool?> Function()? notifications = _areNotificationsEnabled;
+      final bool notificationsGranted = notifications == null
+          ? await _android?.areNotificationsEnabled() ?? false
+          : await notifications() ?? false;
+      return notificationsGranted && await _exactAllowed();
+    } on Object {
+      // An unavailable platform channel is not evidence that both grants
+      // exist, so keep the explanation available.
+      return false;
+    }
+  }
+
+  @override
+  Future<void> request() async {
+    try {
+      // Keep the workout's one-device fallback from reopening the same system
+      // prompts after the player has acted on the onboarding explanation.
+      await _store.writeString(_askedKey, '1');
+    } on PlatformException {
+      // The permission requests still proceed when local storage is unavailable.
+    } on MissingPluginException {
+      // The permission requests still proceed when local storage is unavailable.
+    }
+    await _requestPlatformPermissions();
+  }
+
+  Future<void> _requestPlatformPermissions() async {
+    try {
+      await _ensureInitialized();
+    } on Object {
+      // An unavailable plugin must not break the workout or onboarding.
+      return;
+    }
+    try {
       final Future<bool?> Function()? notifications =
           _requestNotificationsPermission;
       if (notifications != null) {
@@ -338,6 +390,11 @@ class AndroidRestAlerts implements RestAlerts {
       } else {
         await _android?.requestNotificationsPermission();
       }
+    } on Object {
+      // Continue to the exact-alarm request even if notifications are refused
+      // or the notification permission channel is unavailable.
+    }
+    try {
       final Future<bool?> Function()? exact = _requestExactAlarmsPermission;
       if (exact != null) {
         await exact();
@@ -345,8 +402,7 @@ class AndroidRestAlerts implements RestAlerts {
         await _android?.requestExactAlarmsPermission();
       }
     } on Object {
-      // A refused or unavailable prompt is just "not granted"; scheduling
-      // then falls back to an inexact while-idle alarm.
+      // A refusal simply leaves scheduling on the inexact fallback.
     }
   }
 

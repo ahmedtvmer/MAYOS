@@ -4,10 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
+import 'package:mayos_mobile/src/core/rest_alert_permission_prompt_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
+import 'support/fake_rest_alert_permission_access.dart';
 
 /// Pumps finite frames until [finder] matches. Avoids `pumpAndSettle`, which
 /// never settles while an indeterminate progress indicator is on screen. Once
@@ -34,12 +36,19 @@ void main() {
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
+    final FakeRestAlertPermissionAccess permissionAccess =
+        FakeRestAlertPermissionAccess();
 
     await tester.pumpWidget(
       ProviderScope(
         overrides: <Override>[
           tokenStoreProvider.overrideWithValue(tokens),
           appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
+          restAlertPermissionAccessProvider
+              .overrideWithValue(permissionAccess),
+          restAlertPermissionPromptStoreProvider.overrideWithValue(
+            InMemoryRestAlertPermissionPromptStore(),
+          ),
           apiClientProvider.overrideWith((ref) {
             final ApiClient client = ApiClient(
               tokens: ref.watch(tokenStoreProvider),
@@ -95,6 +104,10 @@ void main() {
     await tester.tap(find.text('I understand'));
     await _pumpUntilFound(tester, find.text('Create my program'));
     await tester.tap(find.text('Create my program'));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('rest_alert_permission_screen')));
+    expect(permissionAccess.grantedChecks, 1);
+    await tester.tap(find.byKey(const Key('rest_alert_permission_not_now')));
     await _pumpUntilFound(tester, find.textContaining('Next session'));
 
     // Completion is reachable and home renders the player's program.

@@ -1311,3 +1311,12 @@ different exercise; unresolved and ambiguous targets prompt for clarification.
 The Arabic line is a proposed polite everyday Egyptian wording. The fixed
 refusal is emitted by the first input check in the turn router, before training
 actions, clinical advice, or model inference.
+
+## Rest-alert permission screen (#409; pending owner review)
+
+| English | Arabic |
+| --- | --- |
+| Rest timer alerts | تنبيهات مؤقت الراحة |
+| Get an alert when your rest ends, even with the screen off. | يصلك تنبيه عند انتهاء الراحة، حتى عندما تكون الشاشة مطفأة. |
+| Allow | السماح |
+| Not now | ليس الآن |

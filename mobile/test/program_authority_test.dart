@@ -8,6 +8,7 @@ import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/connectivity_message.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/models.dart';
+import 'package:mayos_mobile/src/core/rest_alert_permission_access.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/features/player/onboarding/onboarding_screen.dart';
 import 'package:mayos_mobile/src/features/player/profile/profile_screen.dart';
@@ -574,6 +575,9 @@ void main() {
         overrides: <Override>[
           tokenStoreProvider.overrideWithValue(tokens),
           appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
+          restAlertPermissionAccessProvider.overrideWithValue(
+            const UnsupportedRestAlertPermissionAccess(),
+          ),
           _apiOverride(fake),
         ],
         child: MaterialApp.router(routerConfig: router),

@@ -10,6 +10,7 @@ import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/connectivity_message.dart';
 import 'package:mayos_mobile/src/core/display_language/controller.dart';
+import 'package:mayos_mobile/src/core/rest_alert_permission_prompt_store.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
@@ -23,6 +24,7 @@ import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_analytics_client.dart';
 import 'support/fake_mayos_api.dart';
+import 'support/fake_rest_alert_permission_access.dart';
 
 const Map<String, Object> _requiredAnswers = <String, Object>{
   'gender': 'female',
@@ -782,6 +784,12 @@ void main() {
             workoutCacheStoreProvider
                 .overrideWithValue(InMemoryWorkoutCacheStore()),
             chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
+            restAlertPermissionAccessProvider.overrideWithValue(
+              FakeRestAlertPermissionAccess(),
+            ),
+            restAlertPermissionPromptStoreProvider.overrideWithValue(
+              InMemoryRestAlertPermissionPromptStore(),
+            ),
             _apiOverride(fake),
           ],
           child: const MayosApp(),
@@ -790,6 +798,13 @@ void main() {
 
       await _pumpUntilFound(tester, find.byKey(const Key('onboarding_confirm')));
       await tester.tap(find.byKey(const Key('onboarding_confirm')));
+      await _pumpUntilFound(
+        tester,
+        find.byKey(const Key('rest_alert_permission_not_now')),
+      );
+      await tester.tap(
+        find.byKey(const Key('rest_alert_permission_not_now')),
+      );
       if (noProgram) {
         await _pumpUntilFound(
           tester,
@@ -798,6 +813,7 @@ void main() {
             'اطلب من مدربك إجراء التغييرات.',
           ),
         );
+        await tester.pumpAndSettle();
         expect(
           find.text(
             'يتحكم مدربك المعيّن في برنامجك التدريبي. '

@@ -28,6 +28,7 @@ import 'features/player/auth/reset_password_screen.dart';
 import 'features/player/chat/chat_screen.dart';
 import 'features/player/exercise/exercise_detail_screen.dart';
 import 'features/player/onboarding/onboarding_screen.dart';
+import 'features/player/onboarding/rest_alert_permission_screen.dart';
 import 'features/player/plan/plan_screen.dart';
 import 'features/player/profile/profile_screen.dart';
 import 'features/player/progress/checkpoint_review_screen.dart';
@@ -53,6 +54,7 @@ const String forgotPasswordPath = '/forgot-password';
 const String resetPasswordPath = '/reset-password';
 const String recoveryEmailPath = '/recovery-email';
 const String onboardingPath = '/onboarding';
+const String restAlertPermissionPath = '/onboarding/rest-alert-permission';
 const String homePath = '/home';
 const String settingsPath = '/settings';
 const String recoveryEmailSettingsPath = '/settings/recovery-email';
@@ -406,6 +408,13 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         path: onboardingPath,
         builder: (BuildContext context, GoRouterState state) =>
             _withRecoveryEmailReminder(state, const OnboardingScreen()),
+      ),
+      GoRoute(
+        path: restAlertPermissionPath,
+        builder: (BuildContext context, GoRouterState state) =>
+            RestAlertPermissionScreen(
+          programMessage: state.extra as String?,
+        ),
       ),
       GoRoute(
         path: homePath,

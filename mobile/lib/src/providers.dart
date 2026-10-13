@@ -21,7 +21,9 @@ import 'core/display_language/controller.dart';
 import 'core/display_language/store.dart';
 import 'core/models.dart';
 import 'core/personal_records.dart';
+import 'core/rest_alert_permission_access.dart';
 import 'core/rest_alerts.dart';
+import 'core/rest_alert_permission_prompt_store.dart';
 import 'core/rest_length.dart';
 import 'core/theme/theme_mode_controller.dart';
 import 'core/theme/theme_mode_store.dart';
@@ -554,6 +556,25 @@ final Provider<RestAlerts> restAlertsProvider = Provider<RestAlerts>((ref) {
     ),
   );
 });
+
+/// Permission access for the post-onboarding rest-alert explanation (#409).
+/// Android's existing rest-alert implementation owns both the permission
+/// checks and ordered requests; unsupported platforms skip the screen.
+final Provider<RestAlertPermissionAccess> restAlertPermissionAccessProvider =
+    Provider<RestAlertPermissionAccess>((ref) {
+  final RestAlerts alerts = ref.watch(restAlertsProvider);
+  return alerts is RestAlertPermissionAccess
+      ? alerts as RestAlertPermissionAccess
+      : const UnsupportedRestAlertPermissionAccess();
+});
+
+/// Whether the Android rest-alert explanation was already shown to one
+/// account on this device (#409).
+final Provider<RestAlertPermissionPromptStore>
+    restAlertPermissionPromptStoreProvider =
+    Provider<RestAlertPermissionPromptStore>(
+  (ref) => SecureRestAlertPermissionPromptStore(),
+);
 
 /// Device persistence for the player's per-exercise rest overrides, per
 /// account (#125) — the same online/offline gate as the other protected

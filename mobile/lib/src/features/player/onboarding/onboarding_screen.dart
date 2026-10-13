@@ -437,14 +437,21 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       );
 
   void _finishToHome({String? programMessage}) {
-    if (programMessage != null && programMessage.isNotEmpty) {
+    final bool showRestAlertPrompt =
+        ref.read(restAlertPermissionAccessProvider).isSupported;
+    if (!showRestAlertPrompt &&
+        programMessage != null &&
+        programMessage.isNotEmpty) {
       mayosMessengerKey.currentState?.showSnackBar(
         SnackBar(content: Text(programMessage)),
       );
     }
     ref.read(authControllerProvider.notifier).markOnboarded();
     if (mounted) {
-      context.go(homePath);
+      context.go(
+        showRestAlertPrompt ? restAlertPermissionPath : homePath,
+        extra: showRestAlertPrompt ? programMessage : null,
+      );
     }
   }
 
