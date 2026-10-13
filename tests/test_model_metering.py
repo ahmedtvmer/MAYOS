@@ -434,95 +434,37 @@ def test_program_generation_limit_refusal_emits_limit_without_completion(api, mo
     assert limited[0]["properties"]["limit"] == "requests_per_minute"
 
 
-def test_coach_generate_draft_is_metered(api, monkeypatch, recording_analytics):
+def test_coach_generate_draft_makes_no_model_call(api, monkeypatch, recording_analytics):
+    """Coach generation picks a Split id (#413), so it is deterministic and unmetered."""
     from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
 
     client, db = api
     coach_headers, _player_headers, assignment_id = _assigned_player(client, db)
-    monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "1")
-    coach_account_id = _account_id(db, "coach")
-    db.set_plan(coach_account_id, "coach", "pro")
-    fake = _fake_model("deepseek-ai/DeepSeek-V4-Flash")
+    exercises = [
+        ProgramExerciseSchema(exercise_id=item, exercise_name=item, target_reps_min=5, target_reps_max=8)
+        for item in ("sq", "bp", "row")
+    ]
+    program = GeneratedProgramSchema(
+        program_name="Stub",
+        split_type="Full Body",
+        weekly_frequency=1,
+        days=[ProgramDaySchema(day_name="Full A", day_order=1, exercises=exercises)],
+    )
+    monkeypatch.setattr(
+        coach_programs_service, "generate_program_draft_pipeline", lambda request, *, ledger: (program, "")
+    )
 
-    def _stub_program() -> GeneratedProgramSchema:
-        return GeneratedProgramSchema(
-            program_name="Stub",
-            split_type="Full Body",
-            weekly_frequency=1,
-            days=[
-                ProgramDaySchema(
-                    day_name="Full A",
-                    day_order=1,
-                    exercises=[
-                        ProgramExerciseSchema(exercise_id="sq", exercise_name="Squat", target_reps_min=5, target_reps_max=8),
-                        ProgramExerciseSchema(
-                            exercise_id="bp", exercise_name="Bench Press", target_reps_min=5, target_reps_max=8
-                        ),
-                        ProgramExerciseSchema(exercise_id="row", exercise_name="Row", target_reps_min=5, target_reps_max=8),
-                    ],
-                )
-            ],
+    for body in ({}, {"split_id": "auto"}):
+        response = client.post(
+            f"/coach/assignments/{assignment_id}/program-draft/generate",
+            headers=coach_headers,
+            json=body,
+            params={"replace": "true"},
         )
+        assert response.status_code == 200, response.text
 
-    def _wrapped(request, *, inference_call, ledger):
-        if request.user_split_override == "glute focus":
-            inference_call(lambda: fake.invoke("coach program"))
-        program = _stub_program()
-        return program, ""
-
-    monkeypatch.setattr(coach_programs_service, "generate_program_draft_pipeline", _wrapped)
-
-    deterministic = client.post(
-        f"/coach/assignments/{assignment_id}/program-draft/generate",
-        headers=coach_headers,
-        json={},
-    )
-    assert deterministic.status_code == 200, deterministic.text
     assert _usage_rows(db, _account_id(db, "coach")) == []
-    empty_turns = [event for event in recording_analytics.events if event["event"] == "ai_request_completed"]
-    assert len(empty_turns) == 1
-    assert empty_turns[0]["properties"]["use_case"] == "coach_generate_draft"
-    assert empty_turns[0]["properties"]["tokens"] == 0
-    recording_analytics.events.clear()
-
-    model_backed = client.post(
-        f"/coach/assignments/{assignment_id}/program-draft/generate",
-        headers=coach_headers,
-        json={"user_split_override": "glute focus"},
-        params={"replace": "true"},
-    )
-    assert model_backed.status_code == 200, model_backed.text
-
-    coach_account_id = _account_id(db, "coach")
-    rows = _usage_rows(db, coach_account_id)
-    assert rows and rows[0]["role"] == "coach"
-    assert rows[0]["model"] == "deepseek-ai/DeepSeek-V4-Flash"
-    with db.catalog_locked() as catalog:
-        purposes = catalog.execute(
-            "SELECT purpose FROM model_usage WHERE account_id = ? ORDER BY created_at",
-            (coach_account_id,),
-        ).fetchall()
-    assert [row[0] for row in purposes] == ["coach_generate_draft"]
-
-    refused = client.post(
-        f"/coach/assignments/{assignment_id}/program-draft/generate",
-        headers=coach_headers,
-        json={"user_split_override": "glute focus"},
-        params={"replace": "true"},
-    )
-    assert refused.status_code == 429
-    refused_body = refused.json()
-    assert refused_body["detail"] == "Too many AI requests. Please wait a minute and try again."
-    assert refused_body["message_code"] == "ai_limit.request_rate.v1"
-    assert refused_body["message_params"] == {}
-    assert refused_body["message_fallback"] == refused_body["detail"]
-    _assert_ai_usage_event(recording_analytics, db, coach_account_id, "coach_generate_draft", 1)
-    event = next(item for item in recording_analytics.events if item["event"] == "ai_request_completed")
-    assert event["properties"]["plan"] == "pro"
-    limited = [event for event in recording_analytics.events if event["event"] == "ai_request_limited"]
-    assert len(limited) == 1
-    assert limited[0]["properties"]["limit"] == "requests_per_minute"
-    assert len([event for event in recording_analytics.events if event["event"] == "ai_request_completed"]) == 1
+    assert not [event for event in recording_analytics.events if event["event"] == "ai_request_completed"]
 
 
 def test_profile_rebuild_emits_its_metered_turn_after_api_write(api, monkeypatch, recording_analytics):
