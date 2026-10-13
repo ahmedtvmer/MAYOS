@@ -83,13 +83,21 @@ def _live_judges() -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     return judges, metadata
 
 
+def _plan_validation_errors(case: dict[str, Any], record: dict[str, Any], store: Any) -> list[str]:
+    from agent.ProgramState import DynamicSplitPlan
+
+    try:
+        plan = DynamicSplitPlan.model_validate(record.get("parsed_output"))
+    except ValueError as error:
+        return [f"split plan could not be rebuilt for validation: {str(error)[:300]}"]
+    return structured_output._validate_split(case, plan, record, store, hermetic=False)
+
+
 def _generation_record(
     case: dict[str, Any], record: dict[str, Any], generation_seconds: float, store: Any
 ) -> dict[str, Any]:
     program = record.get("generated_program")
-    validation_errors = structured_output._validate_split(
-        case, record.get("parsed_output"), record, store, hermetic=False
-    )
+    validation_errors = _plan_validation_errors(case, record, store)
     program_text = json.dumps(program, ensure_ascii=False) if program is not None else ""
     if "<think>" in program_text.casefold() or "reasoning_content" in program_text.casefold():
         validation_errors.append("reasoning text appeared in the player-facing Training program")

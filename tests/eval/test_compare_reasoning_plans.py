@@ -39,3 +39,43 @@ def test_paired_comparison_gate_requires_both_judges_and_latency(
     report = _comparison_report(cases, metadata=[])
 
     assert report["passed"] is expected_pass
+
+
+class _ScriptedPlanModel:
+    model_name = "deepseek-ai/DeepSeek-V4-Flash"
+
+    def __init__(self, plan):
+        self.plan = plan
+
+    def with_structured_output(self, _schema, **_options):
+        return self
+
+    def bind(self, **_options):
+        return self
+
+    def invoke(self, _prompt):
+        from langchain_core.messages import AIMessage
+
+        return {
+            "raw": AIMessage(content="", response_metadata={"finish_reason": "stop"}),
+            "parsed": self.plan,
+            "parsing_error": None,
+        }
+
+
+def test_generation_arm_validates_a_realistic_plan_end_to_end(fresh_store):
+    from agent.program_rules import get_default_split
+    from tests.eval.compare_reasoning_plans import ComparisonContext, _generation_arm
+    from tests.eval.parity_gate import RetryPolicy
+    from tests.eval.suites import structured_output
+
+    case = structured_output._load_cases()["split_plans"][0]
+    model = _ScriptedPlanModel(get_default_split(case["frequency"], case["gender"]))
+    context = ComparisonContext(model, fresh_store, [], RetryPolicy(max_attempts=1))
+
+    for arm in ("baseline", "reasoned"):
+        result = _generation_arm(case, context, arm)
+
+        assert result["status"] == "parsed"
+        assert result["validation_errors"] == []
+        assert len(result["program"]["days"]) == case["frequency"]
