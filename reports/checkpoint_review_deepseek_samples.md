@@ -3,7 +3,7 @@
 Recorded: 2026-10-12 UTC
 Model: `deepseek-ai/DeepSeek-V4-Flash` through `https://api.deepinfra.com/v1/openai`
 Prompt hash: `a55a752d1d29644aedfe6a550a7e8299fcc76b3a67d3f0ee227ac23fbf3c9a37`
-All facts are synthetic. Arabic wording is pending owner review.
+All facts are synthetic. Arabic wording owner reviewed by Thomas on 2026-10-13.
 
 ## EN sample 1
 

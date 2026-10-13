@@ -1,7 +1,9 @@
 {
   "schema_version": 1,
   "issue": 262,
-  "status": "pending_owner_review",
+  "status": "owner_reviewed",
+  "reviewed_by": "Thomas",
+  "reviewed_on": "2026-10-13",
   "facts_are_synthetic": true,
   "language_quality_gate": "separate; this fixture does not certify Arabic quality",
   "ordinary_day_assumptions": {
@@ -48,7 +50,7 @@
       "task_type": "short_question",
       "capability": "player",
       "task": "Give concise training guidance grounded in the same recent workout facts.",
-      "review_status": "pending_owner_review",
+      "review_status": "owner_reviewed",
       "seeded_facts": {"recent_workout": "Upper; Bench Press was 80 kg for 5 reps at RIR 2; no injury reported."},
       "english": {
         "question": "I trained Upper yesterday. Bench Press was 80 kg for 5 reps at RIR 2. Should I train Lower today or rest?",
@@ -64,7 +66,7 @@
       "task_type": "long_history",
       "capability": "player",
       "task": "Recall the same recorded Bench Press facts from a long conversation history and answer the latest question.",
-      "review_status": "pending_owner_review",
+      "review_status": "owner_reviewed",
       "seeded_facts": {"bench_press_weight_kg": 82.5, "bench_press_reps": 6, "bench_press_rir": 2},
       "english": {
         "question": "From the workout details I gave you earlier, what was my latest Bench Press weight, reps, and RIR?",
@@ -106,7 +108,7 @@
       "task_type": "arabic_english_mixing",
       "capability": "player",
       "task": "Give a concise Bench Press cue for the same shoulder-dominant feeling; Arabic fixture retains English exercise vocabulary.",
-      "review_status": "pending_owner_review",
+      "review_status": "owner_reviewed",
       "seeded_facts": {"exercise": "Bench Press", "reported_feeling": "shoulders fatigue before chest", "injury": false},
       "english": {
         "question": "During Bench Press, my shoulders fatigue before my chest. What one setup cue should I try?",
@@ -122,7 +124,7 @@
       "task_type": "program_action",
       "capability": "player",
       "task": "Apply the same authorized Program change to the seeded Training program.",
-      "review_status": "pending_owner_review",
+      "review_status": "owner_reviewed",
       "seeded_facts": {"program_authority": "player", "starting_frequency": 4, "requested_frequency": 3, "requested_split": "Upper/Lower"},
       "expected_effect": {"weekly_frequency": 3, "split_type": "Upper/Lower", "version_advance": true},
       "english": {
@@ -139,7 +141,7 @@
       "task_type": "coach_analysis",
       "capability": "coach",
       "task": "Analyze the same seeded player's attendance fact using the production Coach prompt and transcript assembly.",
-      "review_status": "pending_owner_review",
+      "review_status": "owner_reviewed",
       "seeded_facts": {"attendance_adherence_pct": 83.3, "satisfied_expected_days": 10, "expected_days": 12},
       "english": {
         "question": "What was the player's adherence percentage over the attendance window?",

@@ -1,6 +1,6 @@
 # Paired trial usage workload (#262)
 
-Status: **pending owner review**.
+Status: **owner reviewed by Thomas on 2026-10-13**.
 
 The synthetic Arabic prompts and the provisional ordinary-day profile are in
 [`tests/eval/datasets/trial_usage_workloads_262.json`](../../tests/eval/datasets/trial_usage_workloads_262.json).

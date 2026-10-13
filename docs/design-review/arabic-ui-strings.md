@@ -1344,7 +1344,7 @@ actions, clinical advice, or model inference.
 | Allow | السماح |
 | Not now | ليس الآن |
 
-## Coach Generate options (#413; pending owner review)
+## Coach Generate options (#413; owner reviewed 2026-10-13)
 
 The following simple standard Arabic UI copy and Split names are drafts and
 need owner review before release.
@@ -1373,7 +1373,7 @@ need owner review before release.
 | Generating a new draft will replace the current Program draft, including its days. Continue? | سيؤدي إنشاء مسودة جديدة إلى استبدال مسودة البرنامج التدريبي الحالية، بما فيها أيامها. هل تريد المتابعة؟ |
 | Replace draft | استبدال المسودة |
 
-## Coach cardio generation (#414; pending owner review)
+## Coach cardio generation (#414; owner reviewed 2026-10-13)
 
 The fixed notes use the Player's Display language. The custom note is Coach
 written and is kept verbatim. These Arabic strings are drafts and need owner
@@ -1393,7 +1393,7 @@ review before release.
 | Enter a custom cardio note. | أدخل ملاحظة تمارين اللياقة. |
 | Steady cardio: {minutes} min at an easy, conversational pace. | تمارين لياقة مستمرة: {minutes} دقيقة بوتيرة مريحة تسمح بالمحادثة. |
 | Intervals: {minutes} min, 30 s hard / 90 s easy. | تمارين متقطعة: {minutes} دقيقة؛ 30 ثانية بشدة عالية / 90 ثانية بوتيرة سهلة. |
-## Checkpoint review wording (#403; pending owner review)
+## Checkpoint review wording (#403; owner reviewed 2026-10-13)
 
 Draft sample in simple standard Arabic. It addresses the Player directly, keeps each rating part tied to its own facts, uses the glossary workout term, and writes the unit as `kg`. The owner has not reviewed this wording.
 

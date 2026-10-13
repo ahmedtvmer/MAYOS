@@ -8,13 +8,13 @@ from service.trial_usage_measurement import decide_trial_cap, replay_trial_day
 from tests.eval.run_trial_usage_measurement import load_workloads
 
 
-def test_trial_workload_pairs_are_synthetic_and_pending_owner_review():
+def test_trial_workload_pairs_are_synthetic_and_owner_reviewed():
     fixture = load_workloads(
         Path(__file__).parent / "eval" / "datasets" / "trial_usage_workloads_262.json"
     )
 
     assert fixture["facts_are_synthetic"] is True
-    assert fixture["status"] == "pending_owner_review"
+    assert fixture["status"] == "owner_reviewed"
     assert {pair["task_type"] for pair in fixture["pairs"]} == {
         "short_question",
         "long_history",
@@ -22,7 +22,7 @@ def test_trial_workload_pairs_are_synthetic_and_pending_owner_review():
         "program_action",
         "coach_analysis",
     }
-    assert all(pair["review_status"] == "pending_owner_review" for pair in fixture["pairs"])
+    assert all(pair["review_status"] == "owner_reviewed" for pair in fixture["pairs"])
     assert fixture["ordinary_day_assumptions"]["launch_request_counts"] is False
 
 
