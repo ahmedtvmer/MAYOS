@@ -173,6 +173,8 @@ class ApiClient {
       'The service returned invalid program data.';
   static const String _invalidCoachProgramDraft =
       'The service returned invalid Program draft data.';
+  static const String _invalidCoachProgramSplitCatalog =
+      'The service returned invalid Program Split options.';
   static const String _invalidCoachExercises =
       'The service returned invalid Coach exercise data.';
   static const String _invalidNotices =
@@ -1009,6 +1011,72 @@ class ApiClient {
       _invalidCheckIns,
       failureMessage: _invalidCheckInsFailure,
     );
+  }
+
+  /// Lists the assignment's shared, per-days Split choices.
+  Future<Map<int, List<CoachProgramSplitOption>>> coachProgramSplitOptions(
+    String assignmentId,
+  ) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+        '/coach/assignments/$assignmentId/program-draft/splits',
+      ),
+    );
+    return _parseCoachProgramSplitCatalog(response.data);
+  }
+
+  Map<int, List<CoachProgramSplitOption>> _parseCoachProgramSplitCatalog(
+    dynamic responseData,
+  ) {
+    if (responseData is! Map<String, dynamic>) {
+      throw const ApiException(_invalidCoachProgramSplitCatalog);
+    }
+    return _parseCoachSplitOptionsByDays(responseData['options_by_days']);
+  }
+
+  Map<int, List<CoachProgramSplitOption>> _parseCoachSplitOptionsByDays(
+    dynamic optionsByDays,
+  ) {
+    if (optionsByDays is! Map<String, dynamic>) {
+      throw const ApiException(_invalidCoachProgramSplitCatalog);
+    }
+    final Map<int, List<CoachProgramSplitOption>> parsed =
+        <int, List<CoachProgramSplitOption>>{};
+    for (final MapEntry<String, dynamic> entry in optionsByDays.entries) {
+      final int? days = int.tryParse(entry.key);
+      if (days == null || days < 1 || days > 5) {
+        throw const ApiException(_invalidCoachProgramSplitCatalog);
+      }
+      final List<CoachProgramSplitOption> options =
+          _parseCoachProgramSplitDayOptions(entry.value);
+      if (options.isEmpty || options.first.splitId != 'auto') {
+        throw const ApiException(_invalidCoachProgramSplitCatalog);
+      }
+      parsed[days] = options;
+    }
+    if (parsed.length != 5 ||
+        List<int>.generate(5, (int index) => index + 1)
+            .any((int days) => !parsed.containsKey(days))) {
+      throw const ApiException(_invalidCoachProgramSplitCatalog);
+    }
+    return parsed;
+  }
+
+  List<CoachProgramSplitOption> _parseCoachProgramSplitDayOptions(
+    dynamic rawOptions,
+  ) {
+    if (rawOptions is! List<dynamic>) {
+      throw const ApiException(_invalidCoachProgramSplitCatalog);
+    }
+    final List<CoachProgramSplitOption> options =
+        <CoachProgramSplitOption>[];
+    for (final dynamic rawOption in rawOptions) {
+      if (rawOption is! Map<String, dynamic>) {
+        throw const ApiException(_invalidCoachProgramSplitCatalog);
+      }
+      options.add(CoachProgramSplitOption.fromJson(rawOption));
+    }
+    return options;
   }
 
   /// Generates an unpublished Program draft for an assigned player.

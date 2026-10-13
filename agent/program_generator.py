@@ -288,6 +288,7 @@ class ProgramGenerationRequest:
     user_split_override: str | None = None
     rep_preference_override: str | None = None
     frequency_override: int | None = None
+    split_id_override: str | None = None
 
 
 def get_biomechanical_cue(
@@ -771,6 +772,12 @@ def _resolve_split_plan(
     weekly_frequency: int,
     inference_call: Callable[..., Any] | None = None,
 ) -> DynamicSplitPlan:
+    if request.split_id_override is not None:
+        return resolve_split(
+            frequency=weekly_frequency,
+            preference=request.split_id_override,
+            gender=profile.get("gender", "male"),
+        )
     preference = request.user_split_override
     if preference:
         preference = _recognized_split_preference(preference)

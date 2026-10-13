@@ -10,8 +10,8 @@ from agent.program_generator import (
     SPLIT_OVERRIDE_VALUES,
     ProgramGenerationRequest,
     generate_program_draft_pipeline,
-    has_supported_split_keyword,
 )
+from agent.program_rules import valid_splits_for
 from database.registry.assignments import AssignmentNoticeRecord
 from service.assignments import authorized_player_ledger
 from service.coach_notices import build_assignment_notice_record
@@ -22,8 +22,12 @@ from service import analytics
 logger = logging.getLogger(__name__)
 
 
+class InvalidCoachSplitSelection(ValueError):
+    """A selected coach Split is not available at the requested frequency."""
+
+
 class UnrecognizedSplitOverride(ValueError):
-    """A split preference that generation cannot honor."""
+    """A free-text Player split request that generation cannot honor."""
 
     message_code = "assignment.split_override_unrecognized.v1"
 
@@ -34,6 +38,34 @@ class UnrecognizedSplitOverride(ValueError):
     @property
     def message_params(self) -> dict[str, list[str]]:
         return {"accepted_values": list(self.accepted_values)}
+
+
+def program_generation_split_options(
+    db: Any, actor: ProgramAnalyticsActor, assignment_id: Any
+) -> dict[str, list[dict[str, str]]] | None:
+    """Return the shared Split catalog for an actively assigned Player."""
+    authorized = authorized_player_ledger(db, actor.account_id, assignment_id)
+    if authorized is None:
+        return None
+    ledger, _ = authorized
+    with ledger:
+        profile = ledger.get_player_profile() or {}
+    gender = profile.get("gender", "male")
+    return {
+        str(days): _coach_split_options_for_days(days, gender)
+        for days in range(1, 6)
+    }
+
+
+def _coach_split_options_for_days(days: int, gender: str) -> list[dict[str, str]]:
+    auto_label = "Auto (Full Body)" if days == 1 else "Auto"
+    return [
+        {"split_id": "auto", "display_name": auto_label},
+        *(
+            {"split_id": split_id, "display_name": display_name}
+            for split_id, display_name in valid_splits_for(days, gender)
+        ),
+    ]
 
 
 @dataclass(frozen=True)
@@ -69,28 +101,33 @@ def _program_draft(
     return validate_generated_program_draft(generated, days, db, coach_account_id, ledger)
 
 
-def _coach_split_inference(scope: Any):
-    from svc.llm import run_inference_sync
-
-    def infer(function, *args, **kwargs):
-        return run_inference_sync(function, *args, scope=scope, **kwargs)
-
-    return infer
-
-
 def _build_generated_draft(
     db: Any,
     actor: ProgramAnalyticsActor,
     request: ProgramGenerationRequest,
     ledger: Any,
-    inference_scope: Any,
 ) -> dict[str, Any]:
-    program, _ = generate_program_draft_pipeline(
-        request,
-        inference_call=_coach_split_inference(inference_scope),
-        ledger=ledger,
-    )
+    program, _ = generate_program_draft_pipeline(request, ledger=ledger)
     return _program_draft(program, db, actor.account_id, ledger)
+
+
+def _coach_generation_options(
+    profile: dict[str, Any], request: ProgramGenerationRequest
+) -> tuple[int, str, ProgramGenerationRequest]:
+    days = request.frequency_override or int(profile.get("weekly_frequency", 4))
+    split_id = request.split_id_override or "auto"
+    valid_ids = {
+        candidate_id
+        for candidate_id, _ in valid_splits_for(days, profile.get("gender", "male"))
+    }
+    if split_id != "auto" and split_id not in valid_ids:
+        raise InvalidCoachSplitSelection()
+    generation_request = ProgramGenerationRequest(
+        rep_preference_override=request.rep_preference_override or "balanced",
+        frequency_override=days,
+        split_id_override=None if split_id == "auto" else split_id,
+    )
+    return days, split_id, generation_request
 
 
 def generate_program_draft(
@@ -100,36 +137,30 @@ def generate_program_draft(
     request: ProgramGenerationRequest,
     *,
     replace_existing: bool = False,
-    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
-    background_tasks: Any = None,
 ) -> Any | None:
     """Generates a coach-owned program draft for an assigned player."""
     from service import coach_program_drafts
-    from svc.llm import InferenceScope, inference_turn
 
     authorized = authorized_player_ledger(db, actor.account_id, assignment_id)
     if authorized is None:
         return None
     ledger, _ = authorized
-    if request.user_split_override and not has_supported_split_keyword(request.user_split_override):
-        raise UnrecognizedSplitOverride()
     with ledger:
+        profile = ledger.get_player_profile() or {}
+        days, split_id, generation_request = _coach_generation_options(profile, request)
         coach_program_drafts.ensure_generated_program_draft_available(
             ledger, assignment_id, replace_existing=replace_existing
         )
-        inference_scope = InferenceScope(
-            account_id=actor.account_id,
-            role="coach",
-            purpose="coach_generate_draft",
-            store=db,
-            client=client,
-        )
-        with inference_turn(inference_scope, background_tasks=background_tasks):
-            draft = _build_generated_draft(db, actor, request, ledger, inference_scope)
-            if db.get_active_assignment_for_coach(actor.account_id, assignment_id) is None:
-                return None
-            if replace_existing:
-                return coach_program_drafts.replace_generated_program_draft(ledger, assignment_id, draft)
+        draft = _build_generated_draft(db, actor, generation_request, ledger)
+        draft["generation_options"] = {
+            "days": days,
+            "split_id": split_id,
+            "rep_preference": generation_request.rep_preference_override,
+        }
+        if db.get_active_assignment_for_coach(actor.account_id, assignment_id) is None:
+            return None
+        if replace_existing:
+            return coach_program_drafts.replace_generated_program_draft(ledger, assignment_id, draft)
         return coach_program_drafts.create_generated_program_draft(ledger, assignment_id, draft)
 
 

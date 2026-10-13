@@ -1343,3 +1343,32 @@ actions, clinical advice, or model inference.
 | Get an alert when your rest ends, even with the screen off. | يصلك تنبيه عند انتهاء الراحة، حتى عندما تكون الشاشة مطفأة. |
 | Allow | السماح |
 | Not now | ليس الآن |
+
+## Coach Generate options (#413; pending owner review)
+
+The following simple standard Arabic UI copy and Split names are drafts and
+need owner review before release.
+
+| English | Arabic |
+| --- | --- |
+| Generate draft | إنشاء مسودة |
+| Split | التقسيمة |
+| Days per week | أيام التدريب أسبوعيًا |
+| Rep range preference | تفضيل نطاق التكرارات |
+| Low | منخفض |
+| Balanced | متوازن |
+| High | مرتفع |
+| Auto | تلقائي |
+| Auto (Full Body) | تلقائي (كامل الجسم) |
+| Full Body | كامل الجسم |
+| Upper/Lower | علوي / سفلي |
+| Upper/Lower/Upper | علوي / سفلي / علوي |
+| Anterior / Posterior | أمامي / خلفي |
+| Arnold | أرنولد |
+| Arnold × Upper/Lower | أرنولد × علوي / سفلي |
+| PPL | PPL |
+| Upper/Lower ×2 + Upper | علوي / سفلي ×2 + علوي |
+| PPL × UL | PPL × UL |
+| Replace the current Program draft? | استبدال مسودة البرنامج التدريبي الحالية؟ |
+| Generating a new draft will replace the current Program draft, including its days. Continue? | سيؤدي إنشاء مسودة جديدة إلى استبدال مسودة البرنامج التدريبي الحالية، بما فيها أيامها. هل تريد المتابعة؟ |
+| Replace draft | استبدال المسودة |

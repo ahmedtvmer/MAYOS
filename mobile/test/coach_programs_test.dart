@@ -3133,14 +3133,9 @@ void main() {
     expect(fake.programDaysOverride!.first['day_name'], 'Edited Full A');
   });
 
-  // Regression for #288: the Coach can correct a refused split without losing
-  // the other generation choices.
-  testWidgets('an invalid generated split shows the error and keeps inputs',
+  testWidgets('Split picker updates with days and sends the selected id',
       (tester) async {
-    const String error = 'Unrecognized split override.';
-    const String renderedError =
-        'Unrecognized split override. Accepted split values: Upper, Lower, PPL, Push, Pull, Legs, Arnold, Full Body, Bro Split, Anterior, Posterior, Glute, Total Body.';
-    final FakeMayosApi fake = _coachFake()..programDraftGenerationError = error;
+    final FakeMayosApi fake = _coachFake();
     await _pumpApp(tester, fake);
 
     await _pumpUntilFound(tester, find.text('Active assignments'));
@@ -3153,32 +3148,28 @@ void main() {
       find.byKey(const Key('generate_draft_confirm_button')),
     );
 
-    await tester.enterText(
-      find.byKey(const Key('generate_draft_split_field')),
-      'Broccoli split',
-    );
-    tester.testTextInput.hide();
+    await tester.tap(find.byKey(const Key('generate_draft_frequency_field')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('generate_draft_rep_field')));
+    await tester.tap(find.text('2').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('High').last);
+    await tester.tap(find.byKey(const Key('generate_draft_split_field')));
+    await tester.pumpAndSettle();
+    expect(find.text('PPL'), findsNothing);
+    await tester.tap(find.text('Auto').last);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('generate_draft_frequency_field')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('3').last);
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('generate_draft_confirm_button')));
-    await _pumpUntilFound(tester, find.text(renderedError));
-
-    expect(find.text(renderedError), findsOneWidget);
-    expect(
-      tester.widget<TextField>(
-        find.byKey(const Key('generate_draft_split_field')),
-      ).controller!.text,
-      'Broccoli split',
-    );
-
-    fake.programDraftGenerationError = null;
+    await tester.tap(find.byKey(const Key('generate_draft_split_field')));
+    await tester.pumpAndSettle();
+    expect(find.text('PPL'), findsOneWidget);
+    await tester.tap(find.text('PPL'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('generate_draft_rep_field')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('High').last);
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('generate_draft_confirm_button')));
     await _pumpUntilFound(tester, find.byKey(const Key('program_draft_save')));
 
@@ -3186,12 +3177,10 @@ void main() {
         .where((FakeRequest request) =>
             request.path.endsWith('/program-draft/generate'))
         .toList(growable: false);
-    expect(generationRequests, hasLength(2));
-    for (final FakeRequest request in generationRequests) {
-      expect(request.body, containsPair('user_split_override', 'Broccoli split'));
-      expect(request.body, containsPair('rep_preference_override', 'high'));
-      expect(request.body, containsPair('frequency_override', 3));
-    }
+    expect(generationRequests, hasLength(1));
+    expect(generationRequests.single.body, containsPair('split_id', 'ppl'));
+    expect(generationRequests.single.body, containsPair('rep_preference_override', 'high'));
+    expect(generationRequests.single.body, containsPair('frequency_override', 3));
   });
 
   testWidgets('generating over a draft asks before replacing it', (tester) async {
@@ -3199,8 +3188,13 @@ void main() {
       ..programDraft = <String, dynamic>{
         'program_name': 'Existing plan',
         'split_type': 'Full Body',
-        'weekly_frequency': 1,
+        'weekly_frequency': 3,
         'instructions': '',
+        'generation_options': <String, dynamic>{
+          'days': 3,
+          'split_id': 'ppl',
+          'rep_preference': 'high',
+        },
         'days': <Map<String, dynamic>>[
           <String, dynamic>{
             'day_name': 'Saved day',
@@ -3218,8 +3212,20 @@ void main() {
     await _openProgramSegment(tester);
     await tester.tap(find.byKey(const Key('generate_draft_action')));
     await _pumpUntilFound(tester, find.byKey(const Key('generate_draft_confirm_button')));
+    expect(find.text('PPL'), findsOneWidget);
+    expect(find.text('High'), findsOneWidget);
+    expect(
+      tester.widget<DropdownButtonFormField<int>>(
+        find.byKey(const Key('generate_draft_frequency_field')),
+      ).initialValue,
+      3,
+    );
     await tester.tap(find.byKey(const Key('generate_draft_confirm_button')));
     await _pumpUntilFound(tester, find.text('Replace the current Program draft?'));
+    expect(
+      find.text('Generating a new draft will replace the current Program draft, including its days. Continue?'),
+      findsOneWidget,
+    );
     expect(fake.programDraft!['program_name'], 'Existing plan');
     await tester.tap(find.byKey(const Key('generate_draft_replace_confirm')));
     await _pumpUntilFound(tester, find.byKey(const Key('program_draft_save')));
@@ -3230,6 +3236,9 @@ void main() {
     expect(generationRequests, hasLength(2));
     expect(generationRequests.first.query, isNot(containsPair('replace', true)));
     expect(generationRequests.last.query, containsPair('replace', true));
+    expect(generationRequests.last.body, containsPair('split_id', 'ppl'));
+    expect(generationRequests.last.body, containsPair('rep_preference_override', 'high'));
+    expect(generationRequests.last.body, containsPair('frequency_override', 3));
     expect(fake.programVersion, isNull);
   });
 
@@ -3291,6 +3300,12 @@ void main() {
     expect(find.text('أيام التدريب أسبوعيًا'), findsOneWidget);
     expect(find.text('التقسيمة'), findsOneWidget);
     expect(find.text('إنشاء'), findsOneWidget);
+    expect(find.text('تلقائي'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('generate_draft_split_field')));
+    await tester.pumpAndSettle();
+    expect(find.text('كامل الجسم'), findsOneWidget);
+    expect(find.text('علوي / سفلي'), findsOneWidget);
+    expect(find.text('أمامي / خلفي'), findsOneWidget);
   });
 
   testWidgets('profile shows and saves the intake rep preference values',

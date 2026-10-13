@@ -272,7 +272,6 @@ class FakeMayosApi {
   int? programApproveMismatchVersion;
   String? programApproveMismatchName;
   int programDraftGenerationRequests = 0;
-  String? programDraftGenerationError;
   Map<String, dynamic>? programDraftPublishError;
   Object? programDraftReplaceError;
   String? _programNameOverride;
@@ -1612,7 +1611,10 @@ class FakeMayosApi {
     }
     final String path = request.path;
     if (path.endsWith('/program')) {
-      return FakeResponse(200, coachActiveProgram);
+      return FakeResponse(200, <String, dynamic>{
+        ...coachActiveProgram,
+        'has_draft': coachActiveProgram['has_draft'] == true || programDraft != null,
+      });
     }
     if (path.endsWith('/player/checkpoint-reviews')) {
       return FakeResponse(
@@ -2141,6 +2143,49 @@ class FakeMayosApi {
       return const FakeResponse(
           403, <String, dynamic>{'detail': 'No active assignment.'});
     }
+    if (request.path.endsWith('/program-draft/splits')) {
+      const Map<String, List<Map<String, String>>> optionsByDays =
+          <String, List<Map<String, String>>>{
+        '1': <Map<String, String>>[
+          <String, String>{
+            'split_id': 'auto',
+            'display_name': 'Auto (Full Body)',
+          },
+        ],
+        '2': <Map<String, String>>[
+          <String, String>{'split_id': 'auto', 'display_name': 'Auto'},
+          <String, String>{'split_id': 'full_body', 'display_name': 'Full Body'},
+          <String, String>{'split_id': 'upper_lower', 'display_name': 'Upper/Lower'},
+          <String, String>{'split_id': 'anterior_posterior', 'display_name': 'Anterior / Posterior'},
+        ],
+        '3': <Map<String, String>>[
+          <String, String>{'split_id': 'auto', 'display_name': 'Auto'},
+          <String, String>{'split_id': 'full_body', 'display_name': 'Full Body'},
+          <String, String>{'split_id': 'upper_lower', 'display_name': 'Upper/Lower/Upper'},
+          <String, String>{'split_id': 'anterior_posterior', 'display_name': 'Anterior / Posterior'},
+          <String, String>{'split_id': 'ppl', 'display_name': 'PPL'},
+          <String, String>{'split_id': 'arnold', 'display_name': 'Arnold'},
+        ],
+        '4': <Map<String, String>>[
+          <String, String>{'split_id': 'auto', 'display_name': 'Auto'},
+          <String, String>{'split_id': 'full_body', 'display_name': 'Full Body'},
+          <String, String>{'split_id': 'upper_lower', 'display_name': 'Upper/Lower'},
+          <String, String>{'split_id': 'anterior_posterior', 'display_name': 'Anterior / Posterior'},
+        ],
+        '5': <Map<String, String>>[
+          <String, String>{'split_id': 'auto', 'display_name': 'Auto'},
+          <String, String>{'split_id': 'full_body', 'display_name': 'Full Body'},
+          <String, String>{'split_id': 'upper_lower', 'display_name': 'Upper/Lower ×2 + Upper'},
+          <String, String>{'split_id': 'anterior_posterior', 'display_name': 'Anterior / Posterior'},
+          <String, String>{'split_id': 'arnold_x_ul', 'display_name': 'Arnold × Upper/Lower'},
+          <String, String>{'split_id': 'ppl_x_ul', 'display_name': 'PPL × UL'},
+        ],
+      };
+      return const FakeResponse(
+        200,
+        <String, dynamic>{'options_by_days': optionsByDays},
+      );
+    }
     if (request.path.endsWith('/program-draft/import')) {
       final bool replace = request.query['replace'] == true ||
           request.query['replace'] == 'true';
@@ -2193,12 +2238,6 @@ class FakeMayosApi {
     }
     if (request.path.endsWith('/program-draft/generate')) {
       programDraftGenerationRequests++;
-      if (programDraftGenerationError != null) {
-        return FakeResponse(
-          400,
-          _unrecognizedSplitOverrideResponse(programDraftGenerationError!),
-        );
-      }
       final bool replace = request.query['replace'] == true ||
           request.query['replace'] == 'true';
       if (programDraft != null && !replace) {
@@ -2211,11 +2250,26 @@ class FakeMayosApi {
       }
       final int frequency =
           (request.body['frequency_override'] as num?)?.toInt() ?? weeklyFrequency;
+      final String splitId = request.body['split_id'] as String? ?? 'auto';
+      const Map<String, String> splitNames = <String, String>{
+        'full_body': 'Full Body',
+        'upper_lower': 'Upper/Lower',
+        'anterior_posterior': 'Anterior / Posterior',
+        'ppl': 'PPL',
+        'arnold': 'Arnold',
+        'arnold_x_ul': 'Arnold × Upper/Lower',
+        'ppl_x_ul': 'PPL × UL',
+      };
       programDraft = <String, dynamic>{
         'program_name': 'Generated plan',
-        'split_type': request.body['user_split_override'] as String? ?? 'Full Body',
+        'split_type': splitNames[splitId] ?? 'Full Body',
         'weekly_frequency': frequency,
         'instructions': '',
+        'generation_options': <String, dynamic>{
+          'days': frequency,
+          'split_id': splitId,
+          'rep_preference': request.body['rep_preference_override'] ?? 'balanced',
+        },
         'days': <Map<String, dynamic>>[
           for (int day = 1; day <= frequency; day++)
             <String, dynamic>{

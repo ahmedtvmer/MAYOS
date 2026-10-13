@@ -115,6 +115,8 @@ __all__ = [
     "CoachProgramApproveIn",
     "CoachProgramDraftIn",
     "CoachProgramDraftOut",
+    "CoachProgramGenerateIn",
+    "CoachProgramSplitCatalogOut",
     "ProgramImportCreateIn",
     "ProgramImportDraftRowIn",
     "CoachExerciseCreateIn",
@@ -151,6 +153,7 @@ __all__ = [
     "ProgramEditOut",
     "ProgramEditExerciseIn",
     "ProgramGenerateIn",
+    "ProgramGenerationOptionsIn",
     "ProgramSubstitutionIn",
     "ProgramSubstitutionUndoIn",
     "ProgramSubstitutionOut",
@@ -1054,6 +1057,31 @@ class ProgramGenerateIn(BaseModel):
     user_split_override: str | None = None
 
 
+class CoachProgramGenerateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    split_id: str = Field(default="auto", min_length=1, max_length=50)
+    rep_preference_override: Literal["low", "balanced", "high"] = "balanced"
+    frequency_override: int | None = Field(default=None, ge=1, le=5)
+
+
+class ProgramGenerationOptionsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    days: int = Field(ge=1, le=5)
+    split_id: str = Field(min_length=1, max_length=50)
+    rep_preference: Literal["low", "balanced", "high"]
+
+
+class CoachProgramSplitOptionOut(BaseModel):
+    split_id: str
+    display_name: str
+
+
+class CoachProgramSplitCatalogOut(BaseModel):
+    options_by_days: dict[int, list[CoachProgramSplitOptionOut]]
+
+
 class ProgramDraftInput(BaseModel):
     """Strict draft input that rejects all unknown fields."""
 
@@ -1132,6 +1160,7 @@ class CoachProgramDraftIn(ProgramDraftInput):
     weekly_frequency: int = Field(default=1, ge=1, le=MAX_PROGRAM_DAYS)
     instructions: str = ""
     days: list[ProgramDraftDayIn] = Field(default_factory=list, max_length=MAX_PROGRAM_DAYS)
+    generation_options: ProgramGenerationOptionsIn | None = None
 
     @model_validator(mode="before")
     @classmethod

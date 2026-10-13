@@ -59,20 +59,64 @@ class CoachPlayerHistoryScreen extends ConsumerStatefulWidget {
 
 class _GenerateDraftRequest {
   const _GenerateDraftRequest({
-    required this.split,
+    required this.splitId,
     required this.repPreference,
     required this.frequency,
   });
 
-  final String split;
+  final String splitId;
   final String repPreference;
   final int frequency;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        if (split.isNotEmpty) 'user_split_override': split,
+        'split_id': splitId,
         'rep_preference_override': repPreference,
         'frequency_override': frequency,
       };
+}
+
+class _GenerateDraftDialogOptions {
+  const _GenerateDraftDialogOptions({
+    required this.optionsByDays,
+    required this.days,
+    required this.splitId,
+    required this.repPreference,
+  });
+
+  factory _GenerateDraftDialogOptions.fromDraft(
+    Map<int, List<CoachProgramSplitOption>> optionsByDays,
+    Map<String, dynamic>? draft,
+  ) {
+    final dynamic rawSavedOptions = draft?['generation_options'];
+    final Map<String, dynamic>? savedOptions =
+        rawSavedOptions is Map<String, dynamic> ? rawSavedOptions : null;
+    final dynamic days =
+        savedOptions?['days'] ?? draft?['weekly_frequency'];
+    final dynamic splitId = savedOptions?['split_id'];
+    final dynamic repPreference = savedOptions?['rep_preference'];
+    return _GenerateDraftDialogOptions(
+      optionsByDays: optionsByDays,
+      days: _validDays(days),
+      splitId: splitId is String ? splitId : 'auto',
+      repPreference: _validRepPreference(repPreference),
+    );
+  }
+
+  static int _validDays(dynamic days) =>
+      days is num && days.toInt() >= 1 && days.toInt() <= 5
+          ? days.toInt()
+          : 4;
+
+  static String _validRepPreference(dynamic preference) =>
+      preference is String &&
+              const <String>{'low', 'balanced', 'high'}.contains(preference)
+          ? preference
+          : 'balanced';
+
+  final Map<int, List<CoachProgramSplitOption>> optionsByDays;
+  final int days;
+  final String splitId;
+  final String repPreference;
 }
 
 class _GenerateDraftResult {
@@ -83,26 +127,38 @@ class _GenerateDraftResult {
 }
 
 class _GenerateDraftDialog extends StatefulWidget {
-  const _GenerateDraftDialog({required this.onGenerate});
+  const _GenerateDraftDialog({
+    required this.onGenerate,
+    required this.options,
+  });
 
   final Future<_GenerateDraftResult> Function(_GenerateDraftRequest request)
       onGenerate;
+  final _GenerateDraftDialogOptions options;
 
   @override
   State<_GenerateDraftDialog> createState() => _GenerateDraftDialogState();
 }
 
 class _GenerateDraftDialogState extends State<_GenerateDraftDialog> {
-  final TextEditingController _split = TextEditingController();
-  String _repPreference = 'balanced';
-  int _frequency = 4;
+  late String _splitId;
+  late String _repPreference;
+  late int _frequency;
   bool _submitting = false;
   FailureMessage? _failure;
 
   @override
-  void dispose() {
-    _split.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _frequency = widget.options.days;
+    _repPreference = widget.options.repPreference;
+    final List<CoachProgramSplitOption> optionsForDays =
+        widget.options.optionsByDays[_frequency] ??
+            const <CoachProgramSplitOption>[];
+    _splitId = optionsForDays.any((CoachProgramSplitOption option) =>
+            option.splitId == widget.options.splitId)
+        ? widget.options.splitId
+        : 'auto';
   }
 
   Future<void> _submit() async {
@@ -114,7 +170,7 @@ class _GenerateDraftDialogState extends State<_GenerateDraftDialog> {
     try {
       result = await widget.onGenerate(
         _GenerateDraftRequest(
-          split: _split.text.trim(),
+          splitId: _splitId,
           repPreference: _repPreference,
           frequency: _frequency,
         ),
@@ -131,18 +187,35 @@ class _GenerateDraftDialogState extends State<_GenerateDraftDialog> {
   Widget build(BuildContext context) {
     final copy = coachCopyOf(context);
     final MayosThemeExtension c = MayosTheme.of(context);
+    final List<CoachProgramSplitOption> splitOptions =
+        widget.options.optionsByDays[_frequency] ??
+            const <CoachProgramSplitOption>[];
     return AlertDialog(
       scrollable: true,
       title: Text(copy.generateDraft),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          TextField(
+          DropdownButtonFormField<String>(
             key: const Key('generate_draft_split_field'),
-            controller: _split,
+            initialValue: _splitId,
             decoration: InputDecoration(
               labelText: copy.split,
               border: const OutlineInputBorder(),
+            ),
+            items: <DropdownMenuItem<String>>[
+              for (final CoachProgramSplitOption option in splitOptions)
+                DropdownMenuItem<String>(
+                  value: option.splitId,
+                  child: Text(copy.splitOptionName(
+                    option.splitId,
+                    _frequency,
+                    option.displayName,
+                  )),
+                ),
+            ],
+            onChanged: (String? selectedSplitId) => setState(
+              () => _splitId = selectedSplitId ?? _splitId,
             ),
           ),
           if (_failure != null) ...<Widget>[
@@ -189,9 +262,18 @@ class _GenerateDraftDialogState extends State<_GenerateDraftDialog> {
                   child: Text('$day', textDirection: TextDirection.ltr),
                 ),
             ],
-            onChanged: (int? value) => setState(
-              () => _frequency = value ?? _frequency,
-            ),
+            onChanged: (int? selectedDays) {
+              if (selectedDays == null) return;
+              setState(() {
+                _frequency = selectedDays;
+                if (!(widget.options.optionsByDays[selectedDays] ??
+                        const <CoachProgramSplitOption>[])
+                    .any((CoachProgramSplitOption option) =>
+                        option.splitId == _splitId)) {
+                  _splitId = 'auto';
+                }
+              });
+            },
           ),
         ],
       ),
@@ -417,13 +499,45 @@ class _CoachPlayerHistoryScreenState
   }
 
   Future<void> _openGenerateDraftDialog() async {
-    final bool? generated = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) => _GenerateDraftDialog(
-        onGenerate: _generateDraft,
-      ),
-    );
-    if (generated == true && mounted) _openProgramDraft();
+    try {
+      final _GenerateDraftDialogOptions options =
+          await _loadGenerateDraftOptions();
+      if (!mounted) return;
+      final bool? generated = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext context) => _GenerateDraftDialog(
+          onGenerate: _generateDraft,
+          options: options,
+        ),
+      );
+      if (generated == true && mounted) _openProgramDraft();
+    } on ApiException catch (error) {
+      if (mounted) {
+        setState(() => _programActionError = apiFailureMessage(error));
+      }
+    }
+  }
+
+  Future<_GenerateDraftDialogOptions> _loadGenerateDraftOptions() async {
+    final ApiClient api = ref.read(apiClientProvider);
+    final Map<int, List<CoachProgramSplitOption>> optionsByDays =
+        await api.coachProgramSplitOptions(_entry.assignmentId);
+    final Map<String, dynamic>? draft = await _readExistingProgramDraft(api);
+    return _GenerateDraftDialogOptions.fromDraft(optionsByDays, draft);
+  }
+
+  Future<Map<String, dynamic>?> _readExistingProgramDraft(
+    ApiClient api,
+  ) async {
+    if (!(_activeProgram?.hasDraft ?? false)) return null;
+    try {
+      final Map<String, dynamic> envelope =
+          await api.coachReadProgramDraft(_entry.assignmentId);
+      return envelope['draft'] as Map<String, dynamic>?;
+    } on ApiException catch (error) {
+      if (error.statusCode != 404) rethrow;
+      return null;
+    }
   }
 
   Future<_GenerateDraftResult> _generateDraft(

@@ -405,6 +405,23 @@ class CoachCopy {
       };
   String get generate => isArabic ? 'إنشاء' : 'Generate';
   String get split => isArabic ? 'التقسيمة' : 'Split';
+  String splitOptionName(String splitId, int days, String fallback) {
+    if (!isArabic) return fallback;
+    return switch (splitId) {
+      'auto' => days == 1 ? 'تلقائي (كامل الجسم)' : 'تلقائي',
+      'full_body' => 'كامل الجسم',
+      'upper_lower' => days == 3
+          ? 'علوي / سفلي / علوي'
+          : days == 5
+              ? 'علوي / سفلي ×2 + علوي'
+              : 'علوي / سفلي',
+      'anterior_posterior' => 'أمامي / خلفي',
+      'ppl' || 'ppl_x_ul' => splitId == 'ppl' ? 'PPL' : 'PPL × UL',
+      'arnold' => 'أرنولد',
+      'arnold_x_ul' => 'أرنولد × علوي / سفلي',
+      _ => fallback,
+    };
+  }
   String get repRangePreference =>
       isArabic ? 'تفضيل نطاق التكرارات' : 'Rep range preference';
   String get replaceProgramDraftTitle =>
@@ -412,8 +429,8 @@ class CoachCopy {
           ? 'استبدال مسودة البرنامج التدريبي الحالية؟'
           : 'Replace the current Program draft?';
   String get replaceProgramDraftPrompt => isArabic
-      ? 'سيؤدي إنشاء مسودة جديدة إلى استبدال تعديلاتك المحفوظة. هل تريد المتابعة؟'
-      : 'Generating a new draft will replace your saved edits. Continue?';
+      ? 'سيؤدي إنشاء مسودة جديدة إلى استبدال مسودة البرنامج التدريبي الحالية، بما فيها أيامها. هل تريد المتابعة؟'
+      : 'Generating a new draft will replace the current Program draft, including its days. Continue?';
   String get replaceProgramDraftAction =>
       isArabic ? 'استبدال المسودة' : 'Replace draft';
   String get program => isArabic ? 'البرنامج التدريبي' : 'Program';

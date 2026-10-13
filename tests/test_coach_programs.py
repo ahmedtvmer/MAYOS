@@ -227,7 +227,7 @@ def test_publish_activates_immediately_with_provenance_and_notice(api, monkeypat
         client,
         coach_headers,
         assignment_id,
-        user_split_override="Upper/Lower",
+        split_id="upper_lower",
         frequency_override=3,
     )
     assert published.status_code == 200, published.text
@@ -272,40 +272,82 @@ def test_publish_activates_immediately_with_provenance_and_notice(api, monkeypat
     assert client.get("/assignments/notices", headers=player_headers).json()["notices"][0]["read_at"] is not None
 
 
-def test_generate_draft_rejects_unrecognised_split_override_without_writes(api, monkeypatch):
-    """Regression for #288: refused overrides create no draft, version, or notice."""
+def test_program_draft_split_catalog_lists_exact_choices_for_each_frequency(api):
+    client, _, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+
+    response = client.get(
+        f"/coach/assignments/{assignment_id}/program-draft/splits",
+        headers=coach_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    assert {
+        days: [
+            (option["split_id"], option["display_name"])
+            for option in options
+        ]
+        for days, options in response.json()["options_by_days"].items()
+    } == {
+        "1": [("auto", "Auto (Full Body)")],
+        "2": [
+            ("auto", "Auto"),
+            ("full_body", "Full Body"),
+            ("upper_lower", "Upper/Lower"),
+            ("anterior_posterior", "Anterior / Posterior"),
+        ],
+        "3": [
+            ("auto", "Auto"),
+            ("full_body", "Full Body"),
+            ("upper_lower", "Upper/Lower/Upper"),
+            ("anterior_posterior", "Anterior / Posterior"),
+            ("ppl", "PPL"),
+            ("arnold", "Arnold"),
+        ],
+        "4": [
+            ("auto", "Auto"),
+            ("full_body", "Full Body"),
+            ("upper_lower", "Upper/Lower"),
+            ("anterior_posterior", "Anterior / Posterior"),
+        ],
+        "5": [
+            ("auto", "Auto"),
+            ("full_body", "Full Body"),
+            ("upper_lower", "Upper/Lower ×2 + Upper"),
+            ("anterior_posterior", "Anterior / Posterior"),
+            ("arnold_x_ul", "Arnold × Upper/Lower"),
+            ("ppl_x_ul", "PPL × UL"),
+        ],
+    }
+
+
+def test_generate_draft_rejects_split_invalid_for_frequency_without_writes(api, monkeypatch):
     client, db, _ = api
     coach_headers, player_headers, assignment_id, _, player_account_id = _assigned_player(api)
-    _coach_generation(monkeypatch)
+    pipeline = MagicMock()
+    monkeypatch.setattr("service.coach_programs.generate_program_draft_pipeline", pipeline)
 
     rejected = _generate_draft(
         client,
         coach_headers,
         assignment_id,
-        user_split_override="Broccoli split",
+        split_id="ppl",
         rep_preference_override="high",
-        frequency_override=3,
+        frequency_override=2,
     )
 
-    assert rejected.status_code == 400
-    assert rejected.json()["message_code"] == "assignment.split_override_unrecognized.v1"
-    assert rejected.json()["message_params"] == {
-        "accepted_values": [
-            "Upper",
-            "Lower",
-            "PPL",
-            "Push",
-            "Pull",
-            "Legs",
-            "Arnold",
-            "Full Body",
-            "Bro Split",
-            "Anterior",
-            "Posterior",
-            "Glute",
-            "Total Body",
-        ]
-    }
+    assert rejected.status_code == 422
+    assert "not available" in rejected.json()["detail"]
+    pipeline.assert_not_called()
+    free_text = _generate_draft(
+        client,
+        coach_headers,
+        assignment_id,
+        user_split_override="Upper/Lower",
+        frequency_override=3,
+    )
+    assert free_text.status_code == 422
+    pipeline.assert_not_called()
     assert client.get(
         f"/coach/assignments/{assignment_id}/program-draft", headers=coach_headers
     ).status_code == 404
@@ -697,6 +739,7 @@ def test_generate_draft_preserves_active_program_profile_and_authority(api, monk
         client,
         coach_headers,
         assignment_id,
+        split_id="auto",
         frequency_override=2,
         rep_preference_override="high",
     )
@@ -704,6 +747,11 @@ def test_generate_draft_preserves_active_program_profile_and_authority(api, monk
     assert response.status_code == 200, response.text
     draft = response.json()["draft"]
     assert draft["weekly_frequency"] == 2
+    assert draft["generation_options"] == {
+        "days": 2,
+        "split_id": "auto",
+        "rep_preference": "high",
+    }
     assert draft["days"][0]["exercises"][0]["notes"] is None
     assert client.get("/programs/active", headers=player_headers).json()["version"] == original.version
     with db.open_ledger(player["ledger_id"]) as ledger:
@@ -719,11 +767,23 @@ def test_generated_draft_can_be_edited_and_published(api, monkeypatch):
     coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
     _coach_generation(monkeypatch)
 
-    generated = _generate_draft(client, coach_headers, assignment_id)
+    generated = _generate_draft(
+        client,
+        coach_headers,
+        assignment_id,
+        split_id="upper_lower",
+        frequency_override=3,
+        rep_preference_override="low",
+    )
     assert generated.status_code == 200, generated.text
     assert client.get("/programs/active", headers=player_headers).json() is None
 
     draft = generated.json()["draft"]
+    assert draft["generation_options"] == {
+        "days": 3,
+        "split_id": "upper_lower",
+        "rep_preference": "low",
+    }
     draft["days"][0]["day_name"] = "Coach edited day"
     saved = client.put(
         _program_draft_path(assignment_id),
@@ -731,6 +791,7 @@ def test_generated_draft_can_be_edited_and_published(api, monkeypatch):
         json=draft,
     )
     assert saved.status_code == 200, saved.text
+    assert saved.json()["draft"]["generation_options"] == draft["generation_options"]
     assert client.get("/programs/active", headers=player_headers).json() is None
 
     published = client.post(
@@ -750,7 +811,9 @@ def test_generate_draft_requires_confirmation_to_replace_existing_draft(api, mon
     original = _one_day_draft()
     assert client.post(path, headers=coach_headers, json=original).status_code == 200
 
-    refused = _generate_draft(client, coach_headers, assignment_id, frequency_override=2)
+    refused = _generate_draft(
+        client, coach_headers, assignment_id, split_id="auto", frequency_override=2
+    )
 
     assert refused.status_code == 409
     untouched = client.get(path, headers=coach_headers).json()["draft"]
@@ -761,7 +824,7 @@ def test_generate_draft_requires_confirmation_to_replace_existing_draft(api, mon
     replaced = client.post(
         f"{path}/generate?replace=true",
         headers=coach_headers,
-        json={"frequency_override": 2},
+        json={"split_id": "auto", "frequency_override": 2},
     )
 
     assert replaced.status_code == 200, replaced.text
@@ -1234,6 +1297,7 @@ def test_copy_active_program_to_draft_preserves_the_complete_program(api):
     for day in expected_draft["days"]:
         for exercise in day["exercises"]:
             exercise["target_rir"] = 10 - exercise.pop("target_rpe")
+    expected_draft["generation_options"] = None
     assert copied.json()["draft"] == expected_draft
     active_after = client.get("/programs/active", headers=player_headers).json()
     assert active_after["version"] == 1

@@ -1325,6 +1325,29 @@ class CoachActiveProgram {
   final bool hasDraft;
 }
 
+/// One server-catalogued Split choice for a Coach's generation options.
+class CoachProgramSplitOption {
+  const CoachProgramSplitOption({
+    required this.splitId,
+    required this.displayName,
+  });
+
+  factory CoachProgramSplitOption.fromJson(Map<String, dynamic> json) {
+    final dynamic splitId = json['split_id'];
+    final dynamic displayName = json['display_name'];
+    if (splitId is! String || displayName is! String) {
+      throw const FormatException('Invalid Program Split option.');
+    }
+    return CoachProgramSplitOption(
+      splitId: splitId,
+      displayName: displayName,
+    );
+  }
+
+  final String splitId;
+  final String displayName;
+}
+
 /// One exercise the assigned player has logged.
 class CoachPlayerExercise {
   const CoachPlayerExercise({

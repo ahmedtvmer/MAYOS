@@ -72,6 +72,7 @@ from svc.schemas import (
     CoachProgramApproveIn,
     CoachProgramDraftIn,
     CoachProgramDraftOut,
+    CoachProgramGenerateIn,
     CoachProgramPublishIn,
     CoachProgramPublicationOut,
     CoachCheckInListOut,
@@ -85,13 +86,13 @@ from svc.schemas import (
     CoachPlayerExercisesOut,
     CoachPlayerSummaryOut,
     CoachProgramRequestListOut,
+    CoachProgramSplitCatalogOut,
     CoachRosterEntryOut,
     PlayerCheckInListOut,
     PlayerNoticeListOut,
     PlayerProgramRequestIn,
     PlayerProgramRequestListOut,
     RosterAiDisclosureOut,
-    ProgramGenerateIn,
     ProgramImportCreateIn,
     ProgramRequestDeclineIn,
     ProgramRequestOut,
@@ -663,20 +664,36 @@ async def approve_assigned_player_active_program(
     return await asyncio.to_thread(_run)
 
 
+@coach_router.get(
+    "/{assignment_id}/program-draft/splits",
+    response_model=CoachProgramSplitCatalogOut,
+)
+async def coach_program_draft_split_catalog(
+    assignment_id: str,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    options_by_days = await asyncio.to_thread(
+        coach_programs_service.program_generation_split_options,
+        db,
+        ProgramAnalyticsActor(coach.account_id, "coach"),
+        assignment_id,
+    )
+    if options_by_days is None:
+        raise _no_active_assignment()
+    return {"options_by_days": options_by_days}
+
+
 @coach_router.post("/{assignment_id}/program-draft/generate", response_model=CoachProgramDraftOut)
 @limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
 async def generate_assigned_player_program_draft(
     request: Request,
-    background_tasks: BackgroundTasks,
     assignment_id: str,
-    body: ProgramGenerateIn,
+    body: CoachProgramGenerateIn,
     coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
     replace: bool = False,
 ):
-    register_ai_analytics_background_tasks(request, background_tasks)
-    client = analytics.client_context(request)
-
     def _run():
         try:
             generated = coach_programs_service.generate_program_draft(
@@ -684,19 +701,16 @@ async def generate_assigned_player_program_draft(
                 ProgramAnalyticsActor(coach.account_id, "coach"),
                 assignment_id,
                 coach_programs_service.ProgramGenerationRequest(
-                    user_split_override=body.user_split_override,
                     rep_preference_override=body.rep_preference_override,
                     frequency_override=body.frequency_override,
+                    split_id_override=(None if body.split_id == "auto" else body.split_id),
                 ),
                 replace_existing=replace,
-                client=client,
-                background_tasks=background_tasks,
             )
-        except coach_programs_service.UnrecognizedSplitOverride as exc:
-            raise _bad_request(
-                str(exc),
-                exc.message_code,
-                exc.message_params,
+        except coach_programs_service.InvalidCoachSplitSelection as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="The selected Split is not available for these training days.",
             ) from exc
         except coach_program_drafts_service.ProgramDraftAlreadyExists as exc:
             raise message_http_exception(

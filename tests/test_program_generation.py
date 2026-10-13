@@ -56,6 +56,7 @@ from unittest.mock import MagicMock
 from pydantic import ValidationError
 
 from agent import program_generator
+from agent import program_rules
 from agent.ProgramState import (
     CustomDayPlan,
     GeneratedProgramSchema,
@@ -152,6 +153,33 @@ def test_coach_generation_can_build_a_draft_without_writing_program_or_profile(m
     ledger.update_player_frequency.assert_not_called()
     ledger.save_training_program.assert_not_called()
     assert ledger.get_player_profile.return_value == profile
+
+
+def test_coach_split_id_uses_blueprint_without_dynamic_planner_and_keeps_gender_bias(monkeypatch):
+    def unexpected_dynamic_plan(*_args, **_kwargs):
+        raise AssertionError("Coach split ids must not call the dynamic split planner")
+
+    monkeypatch.setattr(program_rules, "llm", type("NoDynamicLLM", (), {
+        "with_structured_output": staticmethod(unexpected_dynamic_plan),
+    })())
+    profile = {"gender": "female"}
+
+    plan = program_generator._resolve_split_plan(
+        profile,
+        program_generator.ProgramGenerationRequest(
+            frequency_override=4,
+            split_id_override="upper_lower",
+        ),
+        4,
+        inference_call=unexpected_dynamic_plan,
+    )
+
+    assert plan.split_name == "Upper / Lower (Arms & Delts Augmented)"
+    assert any(
+        slot.startswith("glute")
+        for day in plan.days
+        for slot in day.target_slots
+    )
 
 
 @pytest.mark.parametrize("schema", [PlayerProfileSchema, ProgramSchema, GeneratedProgramSchema])
