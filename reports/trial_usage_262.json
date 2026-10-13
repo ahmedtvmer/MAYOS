@@ -1,9 +1,4 @@
 {
-  "report_version": 1,
-  "issue": 262,
-  "status": "awaiting_live_measurement",
-  "generated_at": null,
-  "expected_runtime": "About 10–20 minutes for ten paired turns at current provider latency; this script is designed to remain below 30 minutes.",
   "dataset": "tests/eval/datasets/trial_usage_workloads_262.json",
   "dataset_sha256": "ebc49599a7f11dab07f6e9c708320c0c30d8ca1834c5e86f885fad07f8fe8233",
   "fixture_status": "pending_owner_review",
@@ -13,40 +8,789 @@
     "coach": "deepseek-ai/DeepSeek-V4-Flash"
   },
   "configuration": {
+    "provider": "OpenAI-compatible hosted API",
+    "api_base_host": "api.deepinfra.com",
+    "player": {
+      "model": "deepseek-ai/DeepSeek-V4-Flash",
+      "backend": "openai",
+      "prompt_config_sha256": "8a17b939d531ea43013bc98c1c8abe50707a55633541727f09cf2fa6a3f0bfe9",
+      "output_budgets": {
+        "chat_reply": 200,
+        "intent_routing": 112,
+        "substitution_resolution": 200,
+        "abbreviation_expansion": 48,
+        "dynamic_split_plan": 1280,
+        "checkpoint_review": 200
+      },
+      "history_tail_window": 16,
+      "hosted_prompt_token_budget": 1500,
+      "hosted_prompt_real_token_safety_ceiling": 1800
+    },
+    "coach": {
+      "model": "deepseek-ai/DeepSeek-V4-Flash",
+      "backend": "openai"
+    },
     "trial_admission": {
       "configured_daily_token_limit": 200000,
       "accepted_default_daily_token_limit": 200000,
+      "request_limit_per_minute": 20,
       "reset": "UTC calendar day",
       "soft_cap": "admission-time check; a request admitted below the cap may overshoot by that turn's usage",
       "checkpoint_review_exempt": true
     },
+    "pricing": {
+      "deepseek-ai/DeepSeek-V4-Flash": {
+        "input": 0.09,
+        "cached_input": 0.018,
+        "output": 0.18
+      }
+    },
+    "workload_profile_status": "provisional_measurement_profile",
     "launch_request_counts_accepted": false,
     "quality_gate": {
       "status": "separate; not assessed by usage measurement"
     },
     "privacy_gate": {
       "status": "separate; synthetic fixtures only"
+    },
+    "coach_prompt_hash": "c4f5e1bb0e5fb018b40cf868b92aad3b66dd5b742bc151474bb8e46a42b857a9",
+    "coach_context_version": "coach-context-v9"
+  },
+  "accepted_trial_limit": 200000,
+  "report_version": 1,
+  "issue": 262,
+  "status": "measured",
+  "generated_at": "2026-10-13T12:38:43.353915+00:00",
+  "expected_runtime": "About 10–20 minutes for ten paired turns at current provider latency; this script is designed to remain below 30 minutes.",
+  "run_error": null,
+  "paired_turns": [
+    {
+      "turn_id": "short_question-english",
+      "pair_id": "short_question",
+      "task_type": "short_question",
+      "capability": "player",
+      "language": "english",
+      "role": "player",
+      "purpose": "chat",
+      "prompt_path": "chat_service history + assistant_graph.stream_assistant_turn",
+      "call_count": 1,
+      "calls": [
+        {
+          "call_index": 1,
+          "model": "deepseek-ai/DeepSeek-V4-Flash",
+          "input_tokens": 818,
+          "cached_input_tokens": 256,
+          "output_tokens": 65,
+          "total_tokens": 883,
+          "usage_source": "provider_reported",
+          "estimated": false,
+          "cost_status": "priced",
+          "cost_usd": 6.688799999999999e-05
+        }
+      ],
+      "input_tokens": 818,
+      "cached_input_tokens": 256,
+      "output_tokens": 65,
+      "total_tokens": 883,
+      "estimated_call_count": 0,
+      "cost_usd": 6.688799999999999e-05,
+      "outcome": "completed",
+      "provider_finish_reasons": [
+        "stop"
+      ],
+      "answer": "Train Lower today. You're recovered, and 80 kg x 5 @ RIR 2 is well within your capacity—not a session that demands an extra rest day.\n\nKeep Lower focused on building baseline loads. No need to push for RIR 0; establish the movement patterns and let the volume accumulate.",
+      "error_type": null,
+      "semantic_outcome": "pending_owner_review",
+      "equivalent_successful_work_eligible": false,
+      "fixture_review_status": "pending_owner_review"
+    },
+    {
+      "turn_id": "short_question-arabic",
+      "pair_id": "short_question",
+      "task_type": "short_question",
+      "capability": "player",
+      "language": "arabic",
+      "role": "player",
+      "purpose": "chat",
+      "prompt_path": "chat_service history + assistant_graph.stream_assistant_turn",
+      "call_count": 2,
+      "calls": [
+        {
+          "call_index": 1,
+          "model": "deepseek-ai/DeepSeek-V4-Flash",
+          "input_tokens": 693,
+          "cached_input_tokens": 512,
+          "output_tokens": 86,
+          "total_tokens": 779,
+          "usage_source": "provider_reported",
+          "estimated": false,
+          "cost_status": "priced",
+          "cost_usd": 4.0986000000000004e-05
+        },
+        {
+          "call_index": 2,
+          "model": "deepseek-ai/DeepSeek-V4-Flash",
+          "input_tokens": 831,
+          "cached_input_tokens": 512,
+          "output_tokens": 117,
+          "total_tokens": 948,
+          "usage_source": "provider_reported",
+          "estimated": false,
+          "cost_status": "priced",
+          "cost_usd": 5.8985999999999994e-05
+        }
+      ],
+      "input_tokens": 1524,
+      "cached_input_tokens": 1024,
+      "output_tokens": 203,
+      "total_tokens": 1727,
+      "estimated_call_count": 0,
+      "cost_usd": 9.9972e-05,
+      "outcome": "completed",
+      "provider_finish_reasons": [
+        "stop",
+        "stop"
+      ],
+      "answer": "أتمرن Lower النهاردة عادي. تمرين امبارح كان 5 عدات وRIR 2، ده حمل متوسط مش استنزاف. طالما مفيهاش وجع غير طبيعي أو إرهاق واضح، استمر في البرنامج. خلي الراحة بين السيتات 2-3 دقايق وركز على الـ lengthened loading في تمارين الرجل. لو حسيت إن الـ readiness نازلة 1/5، قلل الشدة والـ volume.",
+      "error_type": null,
+      "semantic_outcome": "pending_owner_review",
+      "equivalent_successful_work_eligible": false,
+      "fixture_review_status": "pending_owner_review"
+    },
+    {
+      "turn_id": "long_history-english",
+      "pair_id": "long_history",
+      "task_type": "long_history",
+      "capability": "player",
+      "language": "english",
+      "role": "player",
+      "purpose": "chat",
+      "prompt_path": "chat_service history + assistant_graph.stream_assistant_turn",
+      "call_count": 1,
+      "calls": [
+        {
+          "call_index": 1,
+          "model": "deepseek-ai/DeepSeek-V4-Flash",
+          "input_tokens": 1021,
+          "cached_input_tokens": 768,
+          "output_tokens": 15,
+          "total_tokens": 1036,
+          "usage_source": "provider_reported",
+          "estimated": false,
+          "cost_status": "priced",
+          "cost_usd": 3.9293999999999993e-05
+        }
+      ],
+      "input_tokens": 1021,
+      "cached_input_tokens": 768,
+      "output_tokens": 15,
+      "total_tokens": 1036,
+      "estimated_call_count": 0,
+      "cost_usd": 3.9293999999999993e-05,
+      "outcome": "completed",
+      "provider_finish_reasons": [
+        "stop"
+      ],
+      "answer": "82.5 kg for 6 reps at RIR 2.",
+      "error_type": null,
+      "semantic_outcome": "pending_owner_review",
+      "equivalent_successful_work_eligible": false,
+      "fixture_review_status": "pending_owner_review"
+    },
+    {
+      "turn_id": "long_history-arabic",
+      "pair_id": "long_history",
+      "task_type": "long_history",
+      "capability": "player",
+      "language": "arabic",
+      "role": "player",
+      "purpose": "chat",
+      "prompt_path": "chat_service history + assistant_graph.stream_assistant_turn",
+      "call_count": 2,
+      "calls": [
+        {
+          "call_index": 1,
+          "model": "deepseek-ai/DeepSeek-V4-Flash",
+          "input_tokens": 683,
+          "cached_input_tokens": 512,
+          "output_tokens": 86,
+          "total_tokens": 769,
+          "usage_source": "provider_reported",
+          "estimated": false,
+          "cost_status": "priced",
+          "cost_usd": 4.0085999999999995e-05
+        },
+        {
+          "call_index": 2,
+          "model": "deepseek-ai/DeepSeek-V4-Flash",
+          "input_tokens": 1021,
+          "cached_input_tokens": 512,
+          "output_tokens": 25,
+          "total_tokens": 1046,
+          "usage_source": "provider_reported",
+          "estimated": false,
+          "cost_status": "priced",
+          "cost_usd": 5.9526e-05
+        }
+      ],
+      "input_tokens": 1704,
+      "cached_input_tokens": 1024,
+      "output_tokens": 111,
+      "total_tokens": 1815,
+      "estimated_call_count": 0,
+      "cost_usd": 9.9612e-05,
+      "outcome": "completed",
+      "provider_finish_reasons": [
+        "stop",
+        "stop"
+      ],
+      "answer": "آخر مجموعة مسجلة: 82.5 kg × 6 تكرارات، RIR 2.",
+      "error_type": null,
+      "semantic_outcome": "pending_owner_review",
+      "equivalent_successful_work_eligible": false,
+      "fixture_review_status": "pending_owner_review"
+    },
+    {
+      "turn_id": "mixed_language-english",
+      "pair_id": "mixed_language",
+      "task_type": "arabic_english_mixing",
+      "capability": "player",
+      "language": "english",
+      "role": "player",
+      "purpose": "chat",
+      "prompt_path": "chat_service history + assistant_graph.stream_assistant_turn",
+      "call_count": 1,
+      "calls": [
+        {
+          "call_index": 1,
+          "model": "deepseek-ai/DeepSeek-V4-Flash",
+          "input_tokens": 741,
+          "cached_input_tokens": 512,
+          "output_tokens": 72,
+          "total_tokens": 813,
+          "usage_source": "provider_reported",
+          "estimated": false,
+          "cost_status": "priced",
+          "cost_usd": 4.2786e-05
+        }
+      ],
+      "input_tokens": 741,
+      "cached_input_tokens": 512,
+      "output_tokens": 72,
+      "total_tokens": 813,
+      "estimated_call_count": 0,
+      "cost_usd": 4.2786e-05,
+      "outcome": "completed",
+      "provider_finish_reasons": [
+        "stop"
+      ],
+      "answer": "Set your shoulder blades back and down into the bench *before* you unrack the bar, and keep them pinned there through the set. This creates a stable shelf, shortens your chest's range of motion slightly, and shifts the load off your front delts. If your shoulders still take over, you're likely flaring your elbows too early.",
+      "error_type": null,
+      "semantic_outcome": "pending_owner_review",
+      "equivalent_successful_work_eligible": false,
+      "fixture_review_status": "pending_owner_review"
+    },
+    {
+      "turn_id": "mixed_language-arabic",
+      "pair_id": "mixed_language",
+      "task_type": "arabic_english_mixing",
+      "capability": "player",
+      "language": "arabic",
+      "role": "player",
+      "purpose": "chat",
+      "prompt_path": "chat_service history + assistant_graph.stream_assistant_turn",
+      "call_count": 2,
+      "calls": [
+        {
+          "call_index": 1,
+          "model": "deepseek-ai/DeepSeek-V4-Flash",
+          "input_tokens": 676,
+          "cached_input_tokens": 512,
+          "output_tokens": 86,
+          "total_tokens": 762,
+          "usage_source": "provider_reported",
+          "estimated": false,
+          "cost_status": "priced",
+          "cost_usd": 3.9455999999999996e-05
+        },
+        {
+          "call_index": 2,
+          "model": "deepseek-ai/DeepSeek-V4-Flash",
+          "input_tokens": 747,
+          "cached_input_tokens": 512,
+          "output_tokens": 91,
+          "total_tokens": 838,
+          "usage_source": "provider_reported",
+          "estimated": false,
+          "cost_status": "priced",
+          "cost_usd": 4.6746e-05
+        }
+      ],
+      "input_tokens": 1423,
+      "cached_input_tokens": 1024,
+      "output_tokens": 177,
+      "total_tokens": 1600,
+      "estimated_call_count": 0,
+      "cost_usd": 8.6202e-05,
+      "outcome": "completed",
+      "provider_finish_reasons": [
+        "stop",
+        "stop"
+      ],
+      "answer": "جرب Cue واحد: **\"إضغط البار للخلف ناحية وجهك\"** (Pull the bar apart / Push it back towards your face).\n\nده بيفعل العضلة المنشارية (Serratus Anterior) ويثبت لوح الكتف، ويمنع إنه يتحرك للأمام وياخد منك الشغل. حافظ على الضغط ده طول الـ Rep.",
+      "error_type": null,
+      "semantic_outcome": "pending_owner_review",
+      "equivalent_successful_work_eligible": false,
+      "fixture_review_status": "pending_owner_review"
+    },
+    {
+      "turn_id": "program_action-english",
+      "pair_id": "program_action",
+      "task_type": "program_action",
+      "capability": "player",
+      "language": "english",
+      "role": "player",
+      "purpose": "chat",
+      "prompt_path": "chat_service history + assistant_graph.stream_assistant_turn",
+      "call_count": 0,
+      "calls": [],
+      "input_tokens": 0,
+      "cached_input_tokens": 0,
+      "output_tokens": 0,
+      "total_tokens": 0,
+      "estimated_call_count": 0,
+      "cost_usd": null,
+      "outcome": "completed_finish_reason_unreported",
+      "provider_finish_reasons": [],
+      "answer": "Rebuilt routine: **Upper / Lower / Upper (Arms & Delts Augmented)** (3 Days/Week). Context cleared for new routine.",
+      "error_type": null,
+      "semantic_outcome": "pending_owner_review",
+      "equivalent_successful_work_eligible": false,
+      "fixture_review_status": "pending_owner_review"
+    },
+    {
+      "turn_id": "program_action-arabic",
+      "pair_id": "program_action",
+      "task_type": "program_action",
+      "capability": "player",
+      "language": "arabic",
+      "role": "player",
+      "purpose": "chat",
+      "prompt_path": "chat_service history + assistant_graph.stream_assistant_turn",
+      "call_count": 2,
+      "calls": [
+        {
+          "call_index": 1,
+          "model": "deepseek-ai/DeepSeek-V4-Flash",
+          "input_tokens": 674,
+          "cached_input_tokens": 512,
+          "output_tokens": 93,
+          "total_tokens": 767,
+          "usage_source": "provider_reported",
+          "estimated": false,
+          "cost_status": "priced",
+          "cost_usd": 4.0536e-05
+        },
+        {
+          "call_index": 2,
+          "model": "deepseek-ai/DeepSeek-V4-Flash",
+          "input_tokens": 745,
+          "cached_input_tokens": 512,
+          "output_tokens": 200,
+          "total_tokens": 945,
+          "usage_source": "provider_reported",
+          "estimated": false,
+          "cost_status": "priced",
+          "cost_usd": 6.6186e-05
+        }
+      ],
+      "input_tokens": 1419,
+      "cached_input_tokens": 1024,
+      "output_tokens": 293,
+      "total_tokens": 1712,
+      "estimated_call_count": 0,
+      "cost_usd": 0.00010672200000000001,
+      "outcome": "truncated",
+      "provider_finish_reasons": [
+        "stop",
+        "length"
+      ],
+      "answer": "تمام، هنبني برنامج Upper/Lower 3 أيام. التقسيمة هتبقى:\n\n**اليوم 1: Upper A**\n- ضغط أفقي (دمبل أو بار)\n- سحب رأسي\n- ضغط كتفين (دمبل)\n- سحب أفقي (كابل أو دمبل)\n\n**اليوم 2: Lower**\n- قرفصاء خلفي\n- رجل أمامية (مقص)\n- رجل خلفية (هايبر أو كيرل)\n- رفع سمانة واقف\n\n**اليوم 3: Upper B**\n- ضغط مائل (دمبل)\n- سحب أفقي\n- ضغط كتفين (دمبل أو جهاز)\n- سحب رأسي\n\nابدأ بوزن يخليك 2-3 RIR، 3 شيتات عمل لكل تمرين، راحة 2-3 دقا\n\nI reached the response limit. Ask me to continue if you'd like more.",
+      "error_type": null,
+      "semantic_outcome": "pending_owner_review",
+      "equivalent_successful_work_eligible": false,
+      "fixture_review_status": "pending_owner_review"
+    },
+    {
+      "turn_id": "coach_analysis-english",
+      "pair_id": "coach_analysis",
+      "task_type": "coach_analysis",
+      "capability": "coach",
+      "language": "english",
+      "role": "coach",
+      "purpose": "coach_assistant",
+      "prompt_path": "coach_ai.render_context + build_messages + stream_answer; context_sha256=b0c038ee9f9d853c9149df25bae988da7ae8f40c818e677d84edd5464c3b7946",
+      "call_count": 1,
+      "calls": [
+        {
+          "call_index": 1,
+          "model": "deepseek-ai/DeepSeek-V4-Flash",
+          "input_tokens": 1608,
+          "cached_input_tokens": 0,
+          "output_tokens": 32,
+          "total_tokens": 1640,
+          "usage_source": "provider_reported",
+          "estimated": false,
+          "cost_status": "priced",
+          "cost_usd": 0.00015048
+        }
+      ],
+      "input_tokens": 1608,
+      "cached_input_tokens": 0,
+      "output_tokens": 32,
+      "total_tokens": 1640,
+      "estimated_call_count": 0,
+      "cost_usd": 0.00015048,
+      "outcome": "completed",
+      "provider_finish_reasons": [
+        "stop"
+      ],
+      "answer": "The player's adherence percentage over the attendance window (2026-09-01 to 2026-09-28) was 83.3%.",
+      "error_type": null,
+      "semantic_outcome": "pending_owner_review",
+      "equivalent_successful_work_eligible": false,
+      "fixture_review_status": "pending_owner_review"
+    },
+    {
+      "turn_id": "coach_analysis-arabic",
+      "pair_id": "coach_analysis",
+      "task_type": "coach_analysis",
+      "capability": "coach",
+      "language": "arabic",
+      "role": "coach",
+      "purpose": "coach_assistant",
+      "prompt_path": "coach_ai.render_context + build_messages + stream_answer; context_sha256=b0c038ee9f9d853c9149df25bae988da7ae8f40c818e677d84edd5464c3b7946",
+      "call_count": 1,
+      "calls": [
+        {
+          "call_index": 1,
+          "model": "deepseek-ai/DeepSeek-V4-Flash",
+          "input_tokens": 1621,
+          "cached_input_tokens": 512,
+          "output_tokens": 57,
+          "total_tokens": 1678,
+          "usage_source": "provider_reported",
+          "estimated": false,
+          "cost_status": "priced",
+          "cost_usd": 0.000119286
+        }
+      ],
+      "input_tokens": 1621,
+      "cached_input_tokens": 512,
+      "output_tokens": 57,
+      "total_tokens": 1678,
+      "estimated_call_count": 0,
+      "cost_usd": 0.000119286,
+      "outcome": "completed",
+      "provider_finish_reasons": [
+        "stop"
+      ],
+      "answer": "نسبة الالتزام بالحضور من 2026-09-01 إلى 2026-09-28 هي 83.3%، بواقع 10 أيام تدريب من أصل 12 يومًا متوقعًا، وغاب يومين.",
+      "error_type": null,
+      "semantic_outcome": "pending_owner_review",
+      "equivalent_successful_work_eligible": false,
+      "fixture_review_status": "pending_owner_review"
+    }
+  ],
+  "replays": {
+    "player_only_english": {
+      "account_id": "trial-replay-player_only-english",
+      "first_refusal": null,
+      "admitted_turns": [
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 883,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 883,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 1036,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 1036,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 813,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 0,
+          "purpose": "chat"
+        }
+      ],
+      "admitted_turn_count": 6,
+      "admitted_role_counts": {
+        "player": 6
+      },
+      "limit_hits": [],
+      "day_start_utc": "2026-10-13T00:00:00+00:00",
+      "daily_limit": 200000,
+      "potential_tokens_if_all_scheduled_turns_admitted": 4651,
+      "minimum_limit_to_admit_all_scheduled_turns": 4652,
+      "daily_input_tokens": 4419,
+      "daily_cached_input_tokens": 2560,
+      "daily_output_tokens": 232,
+      "daily_tokens_after_replay": 4651,
+      "daily_model_call_count": 5,
+      "persisted_call_count": 5,
+      "persisted_cost_usd": 0.00025514999999999994,
+      "unpriced_call_count": 0,
+      "estimated_call_count": 0
+    },
+    "player_only_arabic": {
+      "account_id": "trial-replay-player_only-arabic",
+      "first_refusal": null,
+      "admitted_turns": [
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 1727,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 1727,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 1815,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 1815,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 1600,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 1712,
+          "purpose": "chat"
+        }
+      ],
+      "admitted_turn_count": 6,
+      "admitted_role_counts": {
+        "player": 6
+      },
+      "limit_hits": [],
+      "day_start_utc": "2026-10-13T00:00:00+00:00",
+      "daily_limit": 200000,
+      "potential_tokens_if_all_scheduled_turns_admitted": 10396,
+      "minimum_limit_to_admit_all_scheduled_turns": 8685,
+      "daily_input_tokens": 9298,
+      "daily_cached_input_tokens": 6144,
+      "daily_output_tokens": 1098,
+      "daily_tokens_after_replay": 10396,
+      "daily_model_call_count": 12,
+      "persisted_call_count": 12,
+      "persisted_cost_usd": 0.000592092,
+      "unpriced_call_count": 0,
+      "estimated_call_count": 0
+    },
+    "dual_capability_english": {
+      "account_id": "trial-replay-dual_capability-english",
+      "first_refusal": null,
+      "admitted_turns": [
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 883,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 883,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 1036,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 1036,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 813,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 0,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "coach",
+          "turn_tokens": 1640,
+          "purpose": "coach_assistant"
+        },
+        {
+          "case_id": "unknown",
+          "role": "coach",
+          "turn_tokens": 1640,
+          "purpose": "coach_assistant"
+        }
+      ],
+      "admitted_turn_count": 8,
+      "admitted_role_counts": {
+        "coach": 2,
+        "player": 6
+      },
+      "limit_hits": [],
+      "day_start_utc": "2026-10-13T00:00:00+00:00",
+      "daily_limit": 200000,
+      "potential_tokens_if_all_scheduled_turns_admitted": 7931,
+      "minimum_limit_to_admit_all_scheduled_turns": 6292,
+      "daily_input_tokens": 7635,
+      "daily_cached_input_tokens": 2560,
+      "daily_output_tokens": 296,
+      "daily_tokens_after_replay": 7931,
+      "daily_model_call_count": 7,
+      "persisted_call_count": 7,
+      "persisted_cost_usd": 0.00055611,
+      "unpriced_call_count": 0,
+      "estimated_call_count": 0
+    },
+    "dual_capability_arabic": {
+      "account_id": "trial-replay-dual_capability-arabic",
+      "first_refusal": null,
+      "admitted_turns": [
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 1727,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 1727,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 1815,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 1815,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 1600,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "player",
+          "turn_tokens": 1712,
+          "purpose": "chat"
+        },
+        {
+          "case_id": "unknown",
+          "role": "coach",
+          "turn_tokens": 1678,
+          "purpose": "coach_assistant"
+        },
+        {
+          "case_id": "unknown",
+          "role": "coach",
+          "turn_tokens": 1678,
+          "purpose": "coach_assistant"
+        }
+      ],
+      "admitted_turn_count": 8,
+      "admitted_role_counts": {
+        "coach": 2,
+        "player": 6
+      },
+      "limit_hits": [],
+      "day_start_utc": "2026-10-13T00:00:00+00:00",
+      "daily_limit": 200000,
+      "potential_tokens_if_all_scheduled_turns_admitted": 13752,
+      "minimum_limit_to_admit_all_scheduled_turns": 12075,
+      "daily_input_tokens": 12540,
+      "daily_cached_input_tokens": 7168,
+      "daily_output_tokens": 1212,
+      "daily_tokens_after_replay": 13752,
+      "daily_model_call_count": 14,
+      "persisted_call_count": 14,
+      "persisted_cost_usd": 0.000830664,
+      "unpriced_call_count": 0,
+      "estimated_call_count": 0
     }
   },
-  "run_error": null,
-  "paired_turns": [],
-  "replays": {},
   "cap_decision": {
     "setting": 200000,
     "decision": "retain",
-    "reason": "No hosted measurement was run, and the Arabic fixture, ordinary-day profile, and semantic outcomes remain pending review; ADR 059's raise trigger is not demonstrated.",
+    "reason": "The replay is not yet an eligible ordinary-use equivalent-work day.",
     "trigger_met": false,
-    "setting_source": "accepted common trial setting pending eligible paired evidence"
+    "setting_source": "accepted shared trial default unless eligible paired evidence demonstrates ADR 059's trigger",
+    "review_requirements": {
+      "arabic_fixture_owner_review": true,
+      "ordinary_day_profile_owner_review": true,
+      "semantic_success_review": true
+    }
   },
   "trial_setting": {
     "accepted_common_limit": 200000,
     "chosen_setting": 200000,
     "decision": "retain",
-    "rationale": "No hosted measurement was run; the accepted Arabic-only refusal trigger is not demonstrated.",
-    "live_measurement_available": false
+    "rationale": "The replay is not yet an eligible ordinary-use equivalent-work day.",
+    "live_measurement_available": true
   },
   "quality_gate": {
-    "status": "separate; outcome checks are not Arabic quality certification"
+    "status": "separate; usage outcome checks are not Arabic quality certification"
   },
   "privacy_gate": {
     "status": "separate; all workload inputs are synthetic"
@@ -55,6 +799,5 @@
     "reusable": true,
     "proposed_free_5_pro_30_request_counts_accepted": false,
     "use_measured_turns_and_separately_review_quality_privacy_before_sale": true
-  },
-  "reproducible_command": "/mnt/work/MAYOS/.venv/bin/python tests/eval/run_trial_usage_measurement.py --live --report reports/trial_usage_262.json"
+  }
 }
