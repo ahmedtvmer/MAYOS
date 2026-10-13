@@ -1176,7 +1176,8 @@ def _whole_session_query(query: str) -> bool:
     query = re.sub(r"\b(?:all|every)\s+(?:the\s+)?exercises?\s+(?:from|in|on)\s+", "", supported, flags=re.IGNORECASE)
     return bool(re.fullmatch(
         r"(?:(?:how (?:was|is) (?:my )?(?:performance|perfomance)(?: in| on)?|how did i do(?: in| on)?|"
-        r"(?:show|review|summari[sz]e|check)(?: me)?|what (?:was|happened in))\s+)?"
+        r"give me (?:a )?summary of|(?:show|review|summari[sz]e|check)(?: me)?|"
+        r"what (?:was|happened in))\s+)?"
         r"(?:my |the )?(?:last|latest|previous) (?:session|workout)(?: summary| performance| perfomance)?[?!.]*",
         query.strip(), re.IGNORECASE,
     ))

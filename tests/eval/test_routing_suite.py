@@ -4,13 +4,17 @@ from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from tests.eval.parity_gate import print_gate_summary
 from tests.eval.suites.routing import (
     DATASET_FILE,
     RoutingSuite,
+    _action_matches,
     _case_outcome,
     _hermetic_arabic_swap_classification,
     _load_routing_cases,
+    _observe_case,
     _observe_ledger_writes,
 )
 
@@ -59,6 +63,46 @@ def _dataset_with_arabic_status(tmp_path, monkeypatch, review_status):
     dataset_dir.mkdir()
     (dataset_dir / DATASET_FILE).write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     monkeypatch.setenv("EVAL_DATASETS_DIR", str(dataset_dir))
+
+
+def test_program_mutation_matches_generated_split_display_by_family():
+    expected = {
+        "kind": "program_mutation",
+        "target_weekly_frequency": 4,
+        "target_split_type": "upper/lower",
+    }
+    observed = {
+        **expected,
+        "target_split_type": "Upper / Lower (Arms & Delts Augmented)",
+    }
+
+    assert _action_matches(expected, observed)
+
+
+@pytest.mark.parametrize("split_type", ["Push / Pull / Legs", "Full Body 4-Day"])
+def test_program_mutation_rejects_a_different_split_family(split_type):
+    expected = {
+        "kind": "program_mutation",
+        "target_split_type": "upper/lower",
+    }
+    observed = {"kind": "program_mutation", "target_split_type": split_type}
+
+    assert not _action_matches(expected, observed)
+
+
+def test_en_history_03_whole_session_request_stays_on_history_route(tmp_path, monkeypatch):
+    from agent import assistant_graph
+    from tests.fakes.chat_model import ScriptedChatModel
+
+    scripted_model = ScriptedChatModel(["History fallback should not be used."])
+    monkeypatch.setattr(assistant_graph, "llm", scripted_model)
+    case = next(case for case in _load_routing_cases() if case["id"] == "en-history-03")
+
+    observation = _observe_case(case, tmp_path)
+
+    assert observation.get("runner_error") is None
+    assert observation["observed_intent"] == "exercise_history"
+    assert scripted_model.calls == []
 
 
 def test_hermetic_routing_counts_every_owner_reviewed_case():

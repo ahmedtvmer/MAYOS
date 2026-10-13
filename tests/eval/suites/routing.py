@@ -87,7 +87,7 @@ def _action_matches(expected: dict[str, Any] | None, observed: dict[str, Any]) -
         if expected_value is None:
             continue
         if field == "target_split_type":
-            if _normalize_split_type(observed_value) != _normalize_split_type(expected_value):
+            if _split_family(observed_value) != _split_family(expected_value):
                 return False
         elif observed_value != expected_value:
             return False
@@ -109,6 +109,24 @@ def _supports_program_action(expected: dict[str, Any] | None, observed: dict[str
 
 def _normalize_split_type(value: Any) -> str:
     return re.sub(r"[^a-z0-9]", "", str(value).casefold())
+
+
+def _split_family(value: Any) -> str:
+    normalized = _normalize_split_type(value)
+    family_prefixes = (
+        ("arnoldxupperlower", "arnold_x_ul"),
+        ("upperlower", "upper_lower"),
+        ("hybridppl", "ppl"),
+        ("pushpull", "ppl"),
+        ("ppl", "ppl"),
+        ("fullbody", "full_body"),
+        ("anteriorposterior", "anterior_posterior"),
+        ("arnold", "arnold"),
+    )
+    for prefix, family in family_prefixes:
+        if normalized.startswith(prefix):
+            return family
+    return normalized
 
 
 def _case_outcome(case: dict[str, Any], observation: dict[str, Any]) -> dict[str, Any]:
