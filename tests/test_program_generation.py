@@ -57,6 +57,13 @@ from pydantic import ValidationError
 
 from agent import program_generator
 from agent import program_rules
+from agent.program_cardio import (
+    CoachCardioOptions,
+    apply_program_cardio,
+    build_cardio_note,
+    is_leg_day,
+    select_cardio_day_indices,
+)
 from agent.ProgramState import (
     CustomDayPlan,
     GeneratedProgramSchema,
@@ -180,6 +187,93 @@ def test_coach_split_id_uses_blueprint_without_dynamic_planner_and_keeps_gender_
         for day in plan.days
         for slot in day.target_slots
     )
+
+
+@pytest.mark.parametrize("frequency", [2, 3, 4, 5])
+def test_coach_cardio_days_are_evenly_spread_and_intervals_prefer_non_leg_days(frequency):
+    for split_id, _ in program_rules.valid_splits_for(frequency):
+        split = program_rules.resolve_split(frequency, split_id)
+        for cardio_days in range(1, frequency + 1):
+            selected = select_cardio_day_indices(split.days, cardio_days, "steady")
+            expected = tuple(
+                int((index + 0.5) * frequency / cardio_days)
+                for index in range(cardio_days)
+            )
+            assert selected == expected
+
+            intervals = select_cardio_day_indices(split.days, cardio_days, "intervals")
+            non_leg_days = {
+                index
+                for index, day in enumerate(split.days)
+                if not is_leg_day(day)
+            }
+            assert len(intervals) == cardio_days
+            assert len(set(intervals) & non_leg_days) == min(cardio_days, len(non_leg_days))
+            interval_gaps = [
+                right - left for left, right in zip(intervals, intervals[1:])
+            ]
+            assert max(interval_gaps, default=0) - min(interval_gaps, default=0) <= 1
+
+
+def test_coach_cardio_notes_use_fixed_wording_and_custom_text_verbatim():
+    assert build_cardio_note(CoachCardioOptions(1, 20, "steady")) == (
+        "Steady cardio: 20 min at an easy, conversational pace."
+    )
+    assert build_cardio_note(CoachCardioOptions(1, 20, "intervals")) == (
+        "Intervals: 20 min, 30 s hard / 90 s easy."
+    )
+    assert build_cardio_note(CoachCardioOptions(1, 30, "steady", display_language="ar")) == (
+        "تمارين لياقة مستمرة: 30 دقيقة بوتيرة مريحة تسمح بالمحادثة."
+    )
+    assert build_cardio_note(CoachCardioOptions(1, 30, "intervals", display_language="ar")) == (
+        "تمارين متقطعة: 30 دقيقة؛ 30 ثانية بشدة عالية / 90 ثانية بوتيرة سهلة."
+    )
+    custom = "Bike as tolerated  \n"
+    assert build_cardio_note(CoachCardioOptions(1, 20, "custom", custom_note=custom)) == custom
+
+
+def test_coach_cardio_overrides_fat_loss_automatic_note_and_none_clears_it():
+    profile = {
+        "gender": "male",
+        "weekly_frequency": 3,
+        "current_goal": "fat loss",
+        "training_age_years": 3.0,
+        "equipment_access": "commercial gym",
+        "injuries_or_limitations": "None",
+        "stress_and_sleep": "normal",
+    }
+    split = program_rules.resolve_split(3, "upper_lower")
+    exercises = [
+        ProgramExerciseSchema(
+            exercise_id=exercise_id,
+            exercise_name=exercise_name,
+            target_reps_min=6,
+            target_reps_max=8,
+        )
+        for exercise_id, exercise_name in (("sq", "Squat"), ("bp", "Bench"), ("row", "Row"))
+    ]
+    program_days = [
+        ProgramDaySchema(
+            day_name=day.day_name,
+            day_order=day.day_order,
+            exercises=[exercise.model_copy() for exercise in exercises],
+        )
+        for day in split.days
+    ]
+
+    apply_program_cardio(
+        program_days, split.days, profile, CoachCardioOptions(1, 25, "steady")
+    )
+
+    cardio_days = [day for day in program_days if day.cardio]
+    assert len(cardio_days) == 1
+    assert cardio_days[0].cardio == "Steady cardio: 25 min at an easy, conversational pace."
+    assert sum(day.cardio is not None for day in program_days) == 1
+
+    apply_program_cardio(
+        program_days, split.days, profile, CoachCardioOptions(0, 25, "none")
+    )
+    assert all(day.cardio is None for day in program_days)
 
 
 @pytest.mark.parametrize("schema", [PlayerProfileSchema, ProgramSchema, GeneratedProgramSchema])

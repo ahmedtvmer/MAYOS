@@ -742,6 +742,10 @@ def test_generate_draft_preserves_active_program_profile_and_authority(api, monk
         split_id="auto",
         frequency_override=2,
         rep_preference_override="high",
+        cardio_days=1,
+        cardio_minutes=25,
+        cardio_type="custom",
+        cardio_custom_note="Cycle only if comfortable. ",
     )
 
     assert response.status_code == 200, response.text
@@ -751,6 +755,10 @@ def test_generate_draft_preserves_active_program_profile_and_authority(api, monk
         "days": 2,
         "split_id": "auto",
         "rep_preference": "high",
+        "cardio_days": 1,
+        "cardio_minutes": 25,
+        "cardio_type": "custom",
+        "cardio_custom_note": "Cycle only if comfortable. ",
     }
     assert draft["days"][0]["exercises"][0]["notes"] is None
     assert client.get("/programs/active", headers=player_headers).json()["version"] == original.version
@@ -760,6 +768,24 @@ def test_generate_draft_preserves_active_program_profile_and_authority(api, monk
         assert ledger.get_program_draft(assignment_id)["draft"]["weekly_frequency"] == 2
         assert db.get_active_assignment_for_player(player_account_id)["coach_account_id"] == coach_account_id
         assert ledger.get_program_draft(assignment_id)["draft"]["days"][0]["exercises"][0]["target_rir"] == 2
+
+
+def test_generate_draft_rejects_cardio_days_above_training_frequency(api):
+    client, _, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+
+    response = _generate_draft(
+        client,
+        coach_headers,
+        assignment_id,
+        split_id="auto",
+        frequency_override=2,
+        cardio_days=3,
+        cardio_type="steady",
+    )
+
+    assert response.status_code == 422
+    assert "Cardio days cannot exceed training days" in response.json()["detail"]
 
 
 def test_generated_draft_can_be_edited_and_published(api, monkeypatch):
@@ -783,6 +809,10 @@ def test_generated_draft_can_be_edited_and_published(api, monkeypatch):
         "days": 3,
         "split_id": "upper_lower",
         "rep_preference": "low",
+        "cardio_days": 0,
+        "cardio_minutes": 20,
+        "cardio_type": "none",
+        "cardio_custom_note": None,
     }
     draft["days"][0]["day_name"] = "Coach edited day"
     saved = client.put(

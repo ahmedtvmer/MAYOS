@@ -1372,3 +1372,24 @@ need owner review before release.
 | Replace the current Program draft? | استبدال مسودة البرنامج التدريبي الحالية؟ |
 | Generating a new draft will replace the current Program draft, including its days. Continue? | سيؤدي إنشاء مسودة جديدة إلى استبدال مسودة البرنامج التدريبي الحالية، بما فيها أيامها. هل تريد المتابعة؟ |
 | Replace draft | استبدال المسودة |
+
+## Coach cardio generation (#414; pending owner review)
+
+The fixed notes use the Player's Display language. The custom note is Coach
+written and is kept verbatim. These Arabic strings are drafts and need owner
+review before release.
+
+| English | Arabic |
+| --- | --- |
+| Cardio days | أيام تمارين اللياقة |
+| Minutes per session | دقائق لكل حصة |
+| Enter a whole number from 1 to 600 minutes. | أدخل عددًا صحيحًا من 1 إلى 600 دقيقة. |
+| Cardio type | نوع تمارين اللياقة |
+| None | بدون |
+| Steady | مستمرة |
+| Intervals | متقطعة |
+| Custom note | ملاحظة مخصصة |
+| Custom cardio note | نص ملاحظة تمارين اللياقة |
+| Enter a custom cardio note. | أدخل ملاحظة تمارين اللياقة. |
+| Steady cardio: {minutes} min at an easy, conversational pace. | تمارين لياقة مستمرة: {minutes} دقيقة بوتيرة مريحة تسمح بالمحادثة. |
+| Intervals: {minutes} min, 30 s hard / 90 s easy. | تمارين متقطعة: {minutes} دقيقة؛ 30 ثانية بشدة عالية / 90 ثانية بوتيرة سهلة. |

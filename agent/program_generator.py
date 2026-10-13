@@ -8,7 +8,6 @@ from dotenv import load_dotenv
 
 from core.effort import min_rir_from_rpe
 from agent.program_blueprints import (
-    FAT_LOSS_CARDIO_NOTE,
     ExperienceLevel,
     MAX_RECOVERY_CUTS_PER_DAY,
     SLOT_FALLBACKS,
@@ -23,7 +22,6 @@ from agent.program_blueprints import (
     WARMUP_SETS,
     experience_level_for_training_age,
     is_escalated_isolation,
-    is_fat_loss_goal,
     is_poor_recovery,
     rest_seconds_for_exercise_class,
     resolve_sets_family,
@@ -40,6 +38,7 @@ from agent.program_rules import (
     fetch_warmup_candidates,
     resolve_split,
 )
+from agent.program_cardio import CoachCardioOptions, apply_program_cardio
 from agent.ProgramState import (
     CustomDayPlan,
     DynamicSplitPlan,
@@ -289,6 +288,7 @@ class ProgramGenerationRequest:
     rep_preference_override: str | None = None
     frequency_override: int | None = None
     split_id_override: str | None = None
+    coach_cardio: CoachCardioOptions | None = None
 
 
 def get_biomechanical_cue(
@@ -806,7 +806,5 @@ def _generate_program_days(
         assemble_deterministic_day(day=day, context=context, excluded_ids=set(), ledger=ledger)
         for day in split_plan.days
     ]
-    if is_fat_loss_goal(profile.get("current_goal"), profile.get("long_term_goal")):
-        for day in days:
-            day.cardio = FAT_LOSS_CARDIO_NOTE
+    apply_program_cardio(days, split_plan.days, profile, request.coach_cardio)
     return days

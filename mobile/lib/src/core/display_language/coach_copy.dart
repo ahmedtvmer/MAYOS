@@ -260,6 +260,21 @@ class CoachCopy {
 
   String get generateDraft =>
       isArabic ? 'إنشاء مسودة' : 'Generate draft';
+  String get cardioDays => isArabic ? 'أيام تمارين اللياقة' : 'Cardio days';
+  String get cardioMinutesPerSession =>
+      isArabic ? 'دقائق لكل حصة' : 'Minutes per session';
+  String get cardioMinutesRange => isArabic
+      ? 'أدخل عددًا صحيحًا من 1 إلى 600 دقيقة.'
+      : 'Enter a whole number from 1 to 600 minutes.';
+  String get cardioType => isArabic ? 'نوع تمارين اللياقة' : 'Cardio type';
+  String get noCardio => isArabic ? 'بدون' : 'None';
+  String get steadyCardio => isArabic ? 'مستمرة' : 'Steady';
+  String get intervalCardio => isArabic ? 'متقطعة' : 'Intervals';
+  String get customCardioNote => isArabic ? 'ملاحظة مخصصة' : 'Custom note';
+  String get customCardioNoteText =>
+      isArabic ? 'نص ملاحظة تمارين اللياقة' : 'Custom cardio note';
+  String get customCardioNoteRequired =>
+      isArabic ? 'أدخل ملاحظة تمارين اللياقة.' : 'Enter a custom cardio note.';
   String get programActions =>
       isArabic ? 'إجراءات البرنامج' : 'Program actions';
   String get programActionsSubtitle => isArabic

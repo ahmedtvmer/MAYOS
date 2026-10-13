@@ -62,16 +62,28 @@ class _GenerateDraftRequest {
     required this.splitId,
     required this.repPreference,
     required this.frequency,
+    required this.cardioDays,
+    required this.cardioMinutes,
+    required this.cardioType,
+    required this.cardioCustomNote,
   });
 
   final String splitId;
   final String repPreference;
   final int frequency;
+  final int cardioDays;
+  final int cardioMinutes;
+  final String cardioType;
+  final String? cardioCustomNote;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
         'split_id': splitId,
         'rep_preference_override': repPreference,
         'frequency_override': frequency,
+        'cardio_days': cardioDays,
+        'cardio_minutes': cardioMinutes,
+        'cardio_type': cardioType,
+        'cardio_custom_note': cardioCustomNote,
       };
 }
 
@@ -81,6 +93,10 @@ class _GenerateDraftDialogOptions {
     required this.days,
     required this.splitId,
     required this.repPreference,
+    required this.cardioDays,
+    required this.cardioMinutes,
+    required this.cardioType,
+    required this.cardioCustomNote,
   });
 
   factory _GenerateDraftDialogOptions.fromDraft(
@@ -94,11 +110,27 @@ class _GenerateDraftDialogOptions {
         savedOptions?['days'] ?? draft?['weekly_frequency'];
     final dynamic splitId = savedOptions?['split_id'];
     final dynamic repPreference = savedOptions?['rep_preference'];
+    final int selectedDays = _validDays(days);
+    final int cardioDays = _validCardioDays(
+      savedOptions?['cardio_days'],
+      selectedDays,
+    );
+    final String cardioType = _validCardioType(
+      savedOptions?['cardio_type'],
+      cardioDays,
+      savedOptions?['cardio_custom_note'],
+    );
     return _GenerateDraftDialogOptions(
       optionsByDays: optionsByDays,
-      days: _validDays(days),
+      days: selectedDays,
       splitId: splitId is String ? splitId : 'auto',
       repPreference: _validRepPreference(repPreference),
+      cardioDays: cardioType == 'none' ? 0 : cardioDays,
+      cardioMinutes: _validCardioMinutes(savedOptions?['cardio_minutes']),
+      cardioType: cardioType,
+      cardioCustomNote: savedOptions?['cardio_custom_note'] is String
+          ? savedOptions!['cardio_custom_note'] as String
+          : null,
     );
   }
 
@@ -113,10 +145,44 @@ class _GenerateDraftDialogOptions {
           ? preference
           : 'balanced';
 
+  static int _validCardioDays(dynamic days, int frequency) =>
+      days is num && days.toInt() >= 0 && days.toInt() <= frequency
+          ? days.toInt()
+          : 0;
+
+  static int _validCardioMinutes(dynamic minutes) =>
+      minutes is num && minutes.toInt() >= 1 && minutes.toInt() <= 600
+          ? minutes.toInt()
+          : 20;
+
+  static String _validCardioType(
+    dynamic cardioType,
+    int cardioDays,
+    dynamic customNote,
+  ) {
+    const Set<String> accepted = <String>{
+      'none',
+      'steady',
+      'intervals',
+      'custom',
+    };
+    if (cardioType is! String || !accepted.contains(cardioType)) return 'none';
+    if (cardioType != 'none' && cardioDays == 0) return 'none';
+    if (cardioType == 'custom' &&
+        (customNote is! String || customNote.trim().isEmpty)) {
+      return 'none';
+    }
+    return cardioType;
+  }
+
   final Map<int, List<CoachProgramSplitOption>> optionsByDays;
   final int days;
   final String splitId;
   final String repPreference;
+  final int cardioDays;
+  final int cardioMinutes;
+  final String cardioType;
+  final String? cardioCustomNote;
 }
 
 class _GenerateDraftResult {
@@ -144,14 +210,30 @@ class _GenerateDraftDialogState extends State<_GenerateDraftDialog> {
   late String _splitId;
   late String _repPreference;
   late int _frequency;
+  late int _cardioDays;
+  late int _cardioMinutes;
+  late String _cardioType;
+  late final TextEditingController _cardioCustomNoteController;
+  late final TextEditingController _cardioMinutesController;
   bool _submitting = false;
   FailureMessage? _failure;
+  bool _customCardioNoteMissing = false;
+  bool _cardioMinutesInvalid = false;
 
   @override
   void initState() {
     super.initState();
     _frequency = widget.options.days;
     _repPreference = widget.options.repPreference;
+    _cardioDays = widget.options.cardioDays;
+    _cardioMinutes = widget.options.cardioMinutes;
+    _cardioType = widget.options.cardioType;
+    _cardioCustomNoteController = TextEditingController(
+      text: widget.options.cardioCustomNote ?? '',
+    );
+    _cardioMinutesController = TextEditingController(
+      text: '$_cardioMinutes',
+    );
     final List<CoachProgramSplitOption> optionsForDays =
         widget.options.optionsByDays[_frequency] ??
             const <CoachProgramSplitOption>[];
@@ -161,26 +243,180 @@ class _GenerateDraftDialogState extends State<_GenerateDraftDialog> {
         : 'auto';
   }
 
+  _GenerateDraftRequest? _requestFromFields() {
+    final int? cardioMinutes = int.tryParse(_cardioMinutesController.text);
+    if (!_validCardioMinutes(cardioMinutes)) return null;
+    final String? customNote = _cardioType == 'custom'
+        ? _cardioCustomNoteController.text
+        : null;
+    if (!_validCustomCardioNote(customNote)) return null;
+    return _GenerateDraftRequest(
+      splitId: _splitId,
+      repPreference: _repPreference,
+      frequency: _frequency,
+      cardioDays: _cardioDays,
+      cardioMinutes: cardioMinutes ?? _cardioMinutes,
+      cardioType: _cardioType,
+      cardioCustomNote: customNote,
+    );
+  }
+
+  bool _validCardioMinutes(int? minutes) {
+    if (_cardioDays == 0 ||
+        (minutes != null && minutes >= 1 && minutes <= 600)) {
+      return true;
+    }
+    setState(() => _cardioMinutesInvalid = true);
+    return false;
+  }
+
+  bool _validCustomCardioNote(String? note) {
+    if (_cardioDays == 0 ||
+        _cardioType != 'custom' ||
+        (note != null && note.trim().isNotEmpty)) {
+      return true;
+    }
+    setState(() => _customCardioNoteMissing = true);
+    return false;
+  }
+
   Future<void> _submit() async {
+    final _GenerateDraftRequest? request = _requestFromFields();
+    if (request == null) return;
     setState(() {
       _submitting = true;
       _failure = null;
+      _customCardioNoteMissing = false;
+      _cardioMinutesInvalid = false;
     });
+    await _runGeneration(request);
+  }
+
+  Future<void> _runGeneration(_GenerateDraftRequest request) async {
     late final _GenerateDraftResult result;
     try {
-      result = await widget.onGenerate(
-        _GenerateDraftRequest(
-          splitId: _splitId,
-          repPreference: _repPreference,
-          frequency: _frequency,
-        ),
-      );
+      result = await widget.onGenerate(request);
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
     if (!mounted) return;
     setState(() => _failure = result.failure);
     if (result.completed) Navigator.of(context).pop(true);
+  }
+
+  @override
+  void dispose() {
+    _cardioCustomNoteController.dispose();
+    _cardioMinutesController.dispose();
+    super.dispose();
+  }
+
+  InputDecoration _cardioFieldDecoration(String label, {String? errorText}) =>
+      InputDecoration(
+        labelText: label,
+        errorText: errorText,
+        border: const OutlineInputBorder(),
+      );
+
+  List<DropdownMenuItem<String>> _cardioTypeOptions() {
+    final copy = coachCopyOf(context);
+    return <DropdownMenuItem<String>>[
+      DropdownMenuItem<String>(value: 'none', child: Text(copy.noCardio)),
+      DropdownMenuItem<String>(value: 'steady', child: Text(copy.steadyCardio)),
+      DropdownMenuItem<String>(value: 'intervals', child: Text(copy.intervalCardio)),
+      DropdownMenuItem<String>(value: 'custom', child: Text(copy.customCardioNote)),
+    ];
+  }
+
+  Widget _cardioTypeField() => DropdownButtonFormField<String>(
+        key: const Key('generate_draft_cardio_type_field'),
+        initialValue: _cardioType,
+        decoration: _cardioFieldDecoration(coachCopyOf(context).cardioType),
+        items: _cardioTypeOptions(),
+        onChanged: _selectCardioType,
+      );
+
+  void _selectCardioType(String? type) {
+    if (type == null) return;
+    setState(() {
+      _cardioType = type;
+      _cardioDays = type == 'none' ? 0 : (_cardioDays == 0 ? 1 : _cardioDays);
+      _customCardioNoteMissing = false;
+    });
+  }
+
+  List<DropdownMenuItem<int>> _cardioDayOptions() {
+    final copy = coachCopyOf(context);
+    return <DropdownMenuItem<int>>[
+      for (int day = 0; day <= _frequency; day++)
+        DropdownMenuItem<int>(
+          value: day,
+          child: Text(day == 0 ? copy.noCardio : '$day'),
+        ),
+    ];
+  }
+
+  Widget _cardioDaysField() => DropdownButtonFormField<int>(
+        key: const Key('generate_draft_cardio_days_field'),
+        initialValue: _cardioDays,
+        decoration: _cardioFieldDecoration(coachCopyOf(context).cardioDays),
+        items: _cardioDayOptions(),
+        onChanged: _selectCardioDays,
+      );
+
+  void _selectCardioDays(int? selectedDays) {
+    if (selectedDays == null) return;
+    setState(() {
+      _cardioDays = selectedDays;
+      _cardioType = selectedDays == 0
+          ? 'none'
+          : (_cardioType == 'none' ? 'steady' : _cardioType);
+    });
+  }
+
+  Widget _cardioMinutesField() {
+    final copy = coachCopyOf(context);
+    return TextField(
+      key: const Key('generate_draft_cardio_minutes_field'),
+      controller: _cardioMinutesController,
+      keyboardType: TextInputType.number,
+      maxLength: 3,
+      decoration: _cardioFieldDecoration(
+        copy.cardioMinutesPerSession,
+        errorText: _cardioMinutesInvalid ? copy.cardioMinutesRange : null,
+      ),
+      onChanged: _updateCardioMinutes,
+    );
+  }
+
+  void _updateCardioMinutes(String value) {
+    final int? minutes = int.tryParse(value);
+    if (minutes == null || minutes < 1 || minutes > 600) return;
+    setState(() {
+      _cardioMinutes = minutes;
+      _cardioMinutesInvalid = false;
+    });
+  }
+
+  Widget _customCardioNoteField() {
+    final copy = coachCopyOf(context);
+    return TextField(
+      key: const Key('generate_draft_custom_cardio_note_field'),
+      controller: _cardioCustomNoteController,
+      maxLength: 2000,
+      maxLines: 3,
+      decoration: _cardioFieldDecoration(
+        copy.customCardioNoteText,
+        errorText: _customCardioNoteMissing ? copy.customCardioNoteRequired : null,
+      ),
+      onChanged: _updateCustomCardioNote,
+    );
+  }
+
+  void _updateCustomCardioNote(String _) {
+    if (_customCardioNoteMissing) {
+      setState(() => _customCardioNoteMissing = false);
+    }
   }
 
   @override
@@ -266,6 +502,9 @@ class _GenerateDraftDialogState extends State<_GenerateDraftDialog> {
               if (selectedDays == null) return;
               setState(() {
                 _frequency = selectedDays;
+                if (_cardioDays > selectedDays) {
+                  _cardioDays = selectedDays;
+                }
                 if (!(widget.options.optionsByDays[selectedDays] ??
                         const <CoachProgramSplitOption>[])
                     .any((CoachProgramSplitOption option) =>
@@ -275,6 +514,18 @@ class _GenerateDraftDialogState extends State<_GenerateDraftDialog> {
               });
             },
           ),
+          const SizedBox(height: MayosSpacing.md),
+          _cardioTypeField(),
+          const SizedBox(height: MayosSpacing.md),
+          _cardioDaysField(),
+          if (_cardioDays > 0) ...<Widget>[
+            const SizedBox(height: MayosSpacing.md),
+            _cardioMinutesField(),
+          ],
+          if (_cardioDays > 0 && _cardioType == 'custom') ...<Widget>[
+            const SizedBox(height: MayosSpacing.md),
+            _customCardioNoteField(),
+          ],
         ],
       ),
       actions: <Widget>[

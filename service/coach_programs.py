@@ -1,11 +1,12 @@
 """Coach program draft generation."""
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 
 from agent.ProgramState import GeneratedProgramSchema
+from agent.program_cardio import CoachCardioOptions
 from agent.program_generator import (
     SPLIT_OVERRIDE_VALUES,
     ProgramGenerationRequest,
@@ -24,6 +25,10 @@ logger = logging.getLogger(__name__)
 
 class InvalidCoachSplitSelection(ValueError):
     """A selected coach Split is not available at the requested frequency."""
+
+
+class InvalidCoachCardioOptions(ValueError):
+    """Coach cardio settings do not fit the selected training frequency."""
 
 
 class UnrecognizedSplitOverride(ValueError):
@@ -112,7 +117,7 @@ def _build_generated_draft(
 
 
 def _coach_generation_options(
-    profile: dict[str, Any], request: ProgramGenerationRequest
+    profile: dict[str, Any], request: ProgramGenerationRequest, display_language: str
 ) -> tuple[int, str, ProgramGenerationRequest]:
     days = request.frequency_override or int(profile.get("weekly_frequency", 4))
     split_id = request.split_id_override or "auto"
@@ -122,10 +127,15 @@ def _coach_generation_options(
     }
     if split_id != "auto" and split_id not in valid_ids:
         raise InvalidCoachSplitSelection()
+    cardio = request.coach_cardio or CoachCardioOptions(0, 20, "none")
+    if cardio.days > days:
+        raise InvalidCoachCardioOptions("Cardio days cannot exceed training days.")
+    cardio = replace(cardio, display_language=display_language)
     generation_request = ProgramGenerationRequest(
         rep_preference_override=request.rep_preference_override or "balanced",
         frequency_override=days,
         split_id_override=None if split_id == "auto" else split_id,
+        coach_cardio=cardio,
     )
     return days, split_id, generation_request
 
@@ -144,10 +154,12 @@ def generate_program_draft(
     authorized = authorized_player_ledger(db, actor.account_id, assignment_id)
     if authorized is None:
         return None
-    ledger, _ = authorized
+    ledger, assignment_context = authorized
     with ledger:
         profile = ledger.get_player_profile() or {}
-        days, split_id, generation_request = _coach_generation_options(profile, request)
+        days, split_id, generation_request = _coach_generation_options(
+            profile, request, assignment_context["player"].get("display_language", "en")
+        )
         coach_program_drafts.ensure_generated_program_draft_available(
             ledger, assignment_id, replace_existing=replace_existing
         )
@@ -156,6 +168,10 @@ def generate_program_draft(
             "days": days,
             "split_id": split_id,
             "rep_preference": generation_request.rep_preference_override,
+            "cardio_days": generation_request.coach_cardio.days,
+            "cardio_minutes": generation_request.coach_cardio.minutes,
+            "cardio_type": generation_request.coach_cardio.cardio_type,
+            "cardio_custom_note": generation_request.coach_cardio.custom_note,
         }
         if db.get_active_assignment_for_coach(actor.account_id, assignment_id) is None:
             return None

@@ -20,6 +20,7 @@ from agent.ProgramState import (
     ProgramExerciseSchema,
     SuggestedSubstitute,
 )
+from agent.program_cardio import CardioType
 from agent.program_prescription import (
     DEFAULT_TARGET_REPS_MAX,
     DEFAULT_TARGET_REPS_MIN,
@@ -1063,6 +1064,15 @@ class CoachProgramGenerateIn(BaseModel):
     split_id: str = Field(default="auto", min_length=1, max_length=50)
     rep_preference_override: Literal["low", "balanced", "high"] = "balanced"
     frequency_override: int | None = Field(default=None, ge=1, le=5)
+    cardio_days: int = Field(default=0, ge=0, le=5)
+    cardio_minutes: int = Field(default=20, ge=1, le=600)
+    cardio_type: CardioType = "none"
+    cardio_custom_note: str | None = Field(default=None, max_length=MAX_PROGRAM_NOTES_LENGTH)
+
+    @model_validator(mode="after")
+    def validate_cardio(self) -> "CoachProgramGenerateIn":
+        _validate_generation_cardio(self.cardio_days, self.cardio_type, self.cardio_custom_note)
+        return self
 
 
 class ProgramGenerationOptionsIn(BaseModel):
@@ -1071,6 +1081,28 @@ class ProgramGenerationOptionsIn(BaseModel):
     days: int = Field(ge=1, le=5)
     split_id: str = Field(min_length=1, max_length=50)
     rep_preference: Literal["low", "balanced", "high"]
+    cardio_days: int = Field(default=0, ge=0, le=5)
+    cardio_minutes: int = Field(default=20, ge=1, le=600)
+    cardio_type: CardioType = "none"
+    cardio_custom_note: str | None = Field(default=None, max_length=MAX_PROGRAM_NOTES_LENGTH)
+
+    @model_validator(mode="after")
+    def validate_cardio(self) -> "ProgramGenerationOptionsIn":
+        _validate_generation_cardio(self.cardio_days, self.cardio_type, self.cardio_custom_note)
+        if self.cardio_days > self.days:
+            raise ValueError("Cardio days cannot exceed training days.")
+        return self
+
+
+def _validate_generation_cardio(
+    cardio_days: int, cardio_type: str, custom_note: str | None
+) -> None:
+    if (cardio_type == "none") != (cardio_days == 0):
+        raise ValueError("Choose cardio days for a cardio type, or select None.")
+    if cardio_type == "custom" and (custom_note is None or not custom_note.strip()):
+        raise ValueError("A custom cardio note is required.")
+    if cardio_type != "custom" and custom_note is not None:
+        raise ValueError("A custom cardio note requires the custom cardio type.")
 
 
 class CoachProgramSplitOptionOut(BaseModel):

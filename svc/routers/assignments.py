@@ -19,6 +19,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import JSONResponse, Response
 
+from agent.program_cardio import CoachCardioOptions
 from service import analytics
 from service import assignments as assignment_service
 from service import analytics as analytics_service
@@ -704,6 +705,12 @@ async def generate_assigned_player_program_draft(
                     rep_preference_override=body.rep_preference_override,
                     frequency_override=body.frequency_override,
                     split_id_override=(None if body.split_id == "auto" else body.split_id),
+                    coach_cardio=CoachCardioOptions(
+                        days=body.cardio_days,
+                        minutes=body.cardio_minutes,
+                        cardio_type=body.cardio_type,
+                        custom_note=body.cardio_custom_note,
+                    ),
                 ),
                 replace_existing=replace,
             )
@@ -711,6 +718,11 @@ async def generate_assigned_player_program_draft(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="The selected Split is not available for these training days.",
+            ) from exc
+        except coach_programs_service.InvalidCoachCardioOptions as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(exc),
             ) from exc
         except coach_program_drafts_service.ProgramDraftAlreadyExists as exc:
             raise message_http_exception(

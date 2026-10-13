@@ -3170,6 +3170,25 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('High').last);
     await tester.pumpAndSettle();
+    final Finder cardioType =
+        find.byKey(const Key('generate_draft_cardio_type_field'));
+    await tester.ensureVisible(cardioType);
+    await tester.tap(cardioType);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Intervals').last);
+    await tester.pumpAndSettle();
+    final Finder cardioDays =
+        find.byKey(const Key('generate_draft_cardio_days_field'));
+    await tester.ensureVisible(cardioDays);
+    await tester.tap(cardioDays);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('2').last);
+    await tester.pumpAndSettle();
+    final Finder cardioMinutes =
+        find.byKey(const Key('generate_draft_cardio_minutes_field'));
+    await tester.ensureVisible(cardioMinutes);
+    await tester.enterText(cardioMinutes, '25');
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('generate_draft_confirm_button')));
     await _pumpUntilFound(tester, find.byKey(const Key('program_draft_save')));
 
@@ -3181,6 +3200,10 @@ void main() {
     expect(generationRequests.single.body, containsPair('split_id', 'ppl'));
     expect(generationRequests.single.body, containsPair('rep_preference_override', 'high'));
     expect(generationRequests.single.body, containsPair('frequency_override', 3));
+    expect(generationRequests.single.body, containsPair('cardio_days', 2));
+    expect(generationRequests.single.body, containsPair('cardio_minutes', 25));
+    expect(generationRequests.single.body, containsPair('cardio_type', 'intervals'));
+    expect(generationRequests.single.body, containsPair('cardio_custom_note', null));
   });
 
   testWidgets('generating over a draft asks before replacing it', (tester) async {
@@ -3194,6 +3217,10 @@ void main() {
           'days': 3,
           'split_id': 'ppl',
           'rep_preference': 'high',
+          'cardio_days': 2,
+          'cardio_minutes': 25,
+          'cardio_type': 'custom',
+          'cardio_custom_note': 'Bike as tolerated',
         },
         'days': <Map<String, dynamic>>[
           <String, dynamic>{
@@ -3214,6 +3241,25 @@ void main() {
     await _pumpUntilFound(tester, find.byKey(const Key('generate_draft_confirm_button')));
     expect(find.text('PPL'), findsOneWidget);
     expect(find.text('High'), findsOneWidget);
+    expect(
+      tester.widget<DropdownButtonFormField<int>>(
+        find.byKey(const Key('generate_draft_cardio_days_field')),
+      ).initialValue,
+      2,
+    );
+    expect(
+      tester.widget<TextField>(
+        find.byKey(const Key('generate_draft_cardio_minutes_field')),
+      ).controller!.text,
+      '25',
+    );
+    expect(
+      tester.widget<DropdownButtonFormField<String>>(
+        find.byKey(const Key('generate_draft_cardio_type_field')),
+      ).initialValue,
+      'custom',
+    );
+    expect(find.text('Bike as tolerated'), findsOneWidget);
     expect(
       tester.widget<DropdownButtonFormField<int>>(
         find.byKey(const Key('generate_draft_frequency_field')),
@@ -3298,6 +3344,8 @@ void main() {
     await _pumpUntilFound(tester, find.text('تفضيل نطاق التكرارات'));
 
     expect(find.text('أيام التدريب أسبوعيًا'), findsOneWidget);
+    expect(find.text('أيام تمارين اللياقة'), findsOneWidget);
+    expect(find.text('نوع تمارين اللياقة'), findsOneWidget);
     expect(find.text('التقسيمة'), findsOneWidget);
     expect(find.text('إنشاء'), findsOneWidget);
     expect(find.text('تلقائي'), findsOneWidget);
