@@ -67,26 +67,11 @@ void main() {
     await tester.enterText(fields.at(2), 'correct-horse-1');
     await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
 
-    // ADR 007 gate: recovery email is required before any onboarding call.
-    await _pumpUntilFound(tester, find.text('Recovery email'));
-    expect(_sawOnboardingCall(fake), isFalse);
-
-    // A server error is shown and does not unlock the gate.
-    await tester.enterText(find.byType(TextField), 'not-an-email');
-    await tester.tap(find.text('Save email'));
-    await _pumpUntilFound(tester, find.text('Enter a valid email address.'));
-    expect(_sawOnboardingCall(fake), isFalse);
-
-    // A valid email starts verification; the gate stays closed until the code
-    // is entered. The onboarding privacy notice still gates every answer.
-    await tester.enterText(
-        find.byKey(const Key('recovery_email')), 'alice@example.com');
-    await tester.tap(find.text('Save email'));
-    await _pumpUntilFound(
-        tester, find.byKey(const Key('recovery_verification_code')));
-    await tester.enterText(find.byKey(const Key('recovery_verification_code')),
-        fake.currentRecoveryEmailCode!);
-    await tester.tap(find.text('Verify email'));
+    // The unverified account reaches onboarding, where its privacy notice
+    // still gates every answer.
+    await _pumpUntilFound(tester, find.text('Verify your recovery email'));
+    expect(_sawOnboardingCall(fake), isTrue);
+    await tester.tap(find.text('Later'));
     await _pumpUntilFound(tester, find.text('Your answers and privacy'));
     expect(fake.intakeAnswers, isEmpty);
     expect(fake.intakeDisclosureAcknowledged, isFalse);

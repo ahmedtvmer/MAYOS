@@ -27,7 +27,7 @@ import 'support/fake_mayos_api.dart';
 /// Issue #110: the gym wallpaper behind the splash and logged-out screens.
 ///
 /// These tests pin its presence on the listed screens (in both app themes),
-/// its absence on the recovery-email gate and signed-in screens, the fixed
+/// its absence on the recovery-email screen and signed-in screens, the fixed
 /// design constants, cover-fit, and the always-white lockup over the photo.
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,

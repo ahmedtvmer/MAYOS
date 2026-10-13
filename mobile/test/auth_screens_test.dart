@@ -28,7 +28,7 @@ import 'support/fake_google_auth.dart';
 import 'support/fake_mayos_api.dart';
 
 /// Focused coverage for the restyled authentication and recovery-email screens
-/// (#52): login, registration, the ADR 007 gate, forgot/reset, keyboard insets,
+/// (#52): login, registration, recovery email, forgot/reset, keyboard insets,
 /// focus traversal, password visibility, and overflow at small sizes/scale.
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
@@ -370,7 +370,7 @@ void main() {
     );
   });
 
-  testWidgets('registration success lands on the recovery-email gate',
+  testWidgets('registration reaches onboarding and shows the optional reminder',
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi();
     await _pumpAuth(tester, fake);
@@ -384,11 +384,13 @@ void main() {
         find.byKey(const Key('register_confirm')), 'correct-horse-1');
     await tester.tap(find.byKey(const Key('register_submit')));
 
-    await _pumpUntilFound(tester, find.text('Recovery email'));
-    expect(find.byKey(const Key('recovery_email')), findsOneWidget);
+    await _pumpUntilFound(tester, find.text('Verify your recovery email'));
+    expect(_routerOf(tester).routeInformationProvider.value.uri.path,
+        onboardingPath);
+    expect(find.byKey(const Key('recovery_email')), findsNothing);
   });
 
-  testWidgets('coach code registration passes recovery gate into Coach mode',
+  testWidgets('coach code registration opens Coach mode without verification',
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi()
       ..validNewAccountCoachInviteCode = 'coach-code-123456';
@@ -418,21 +420,14 @@ void main() {
     await tester.enterText(find.byKey(const Key('register_coach_invite_code')),
         'coach-code-123456');
     await tester.tap(find.byKey(const Key('register_submit')));
-    await _pumpUntilFound(tester, find.text('Recovery email'));
+    await _pumpUntilFound(tester, find.text('Verify your recovery email'));
     expect(fake.lastRegistrationCoachInviteCode, 'coach-code-123456');
-
-    await tester.enterText(
-        find.byKey(const Key('recovery_email')), 'coach@example.com');
-    await tester.tap(find.byKey(const Key('recovery_submit')));
-    await _pumpUntilFound(
-        tester, find.byKey(const Key('recovery_verification_code')));
-    await tester.enterText(find.byKey(const Key('recovery_verification_code')),
-        fake.currentRecoveryEmailCode!);
-    await tester.tap(find.byKey(const Key('recovery_submit')));
     await _pumpUntilFound(tester, find.text('Roster'));
     expect(_routerOf(tester).routeInformationProvider.value.uri.path,
         coachRosterPath);
     expect(find.text('Before we begin'), findsNothing);
+    await tester.tap(find.text('Later'));
+    await tester.pump();
 
     await tester.tap(find.byType(ModeAvatarButton));
     await _pumpUntilFound(tester, find.text('Player mode'));
@@ -463,7 +458,7 @@ void main() {
     expect(find.byKey(const Key('recovery_email')), findsNothing);
   });
 
-  testWidgets('recovery-email gate shows a server error, then unlocks',
+  testWidgets('the optional recovery flow shows errors and verifies an address',
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi();
     await _pumpAuth(tester, fake);
@@ -475,6 +470,8 @@ void main() {
     await tester.enterText(
         find.byKey(const Key('register_confirm')), 'correct-horse-1');
     await tester.tap(find.byKey(const Key('register_submit')));
+    await _pumpUntilFound(tester, find.text('Verify your recovery email'));
+    await tester.tap(find.text('Verify now'));
     await _pumpUntilFound(tester, find.text('Recovery email'));
 
     await tester.enterText(
@@ -494,7 +491,7 @@ void main() {
     expect(fake.recoveryEmail, 'alice@example.com');
   });
 
-  testWidgets('saved unverified recovery email opens code entry and can be corrected',
+  testWidgets('the reminder opens code entry and an unverified email can be corrected',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _loginFake()..recoveryEmailVerified = false;
     await _pumpAuth(tester, fake);
@@ -503,6 +500,8 @@ void main() {
         find.byKey(const Key('login_password')), 'correct-horse-1');
     await tester.tap(find.byKey(const Key('login_submit')));
 
+    await _pumpUntilFound(tester, find.text('Verify your recovery email'));
+    await tester.tap(find.text('Verify now'));
     await _pumpUntilFound(
         tester, find.byKey(const Key('recovery_verification_code')));
     expect(fake.recoveryEmailCodesSent, 0);
@@ -528,7 +527,7 @@ void main() {
     expect(fake.recoveryEmailCodesSent, 1);
   });
 
-  testWidgets('saved unverified recovery email sends only when requested',
+  testWidgets('verification code sends only after the person requests it',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _loginFake()..recoveryEmailVerified = false;
     await _pumpAuth(tester, fake);
@@ -537,6 +536,8 @@ void main() {
         find.byKey(const Key('login_password')), 'correct-horse-1');
     await tester.tap(find.byKey(const Key('login_submit')));
 
+    await _pumpUntilFound(tester, find.text('Verify your recovery email'));
+    await tester.tap(find.text('Verify now'));
     await _pumpUntilFound(
         tester, find.byKey(const Key('recovery_verification_code')));
     expect(fake.recoveryEmailCodesSent, 0);
@@ -550,7 +551,7 @@ void main() {
     expect(fake.recoveryEmailCodesSent, 2);
   });
 
-  testWidgets('saving the unchanged verified recovery email releases the gate',
+  testWidgets('the verification screen leaves after the email becomes verified',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _loginFake()..recoveryEmailVerified = false;
     await _pumpAuth(tester, fake);
@@ -558,6 +559,8 @@ void main() {
     await tester.enterText(
         find.byKey(const Key('login_password')), 'correct-horse-1');
     await tester.tap(find.byKey(const Key('login_submit')));
+    await _pumpUntilFound(tester, find.text('Verify your recovery email'));
+    await tester.tap(find.text('Verify now'));
     await _pumpUntilFound(
         tester, find.byKey(const Key('recovery_verification_code')));
     expect(fake.recoveryEmailCodesSent, 0);

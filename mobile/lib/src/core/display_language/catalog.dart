@@ -77,6 +77,13 @@ class MayosCopy {
   String get clear => isArabic ? 'مسح' : 'Clear';
   String get send => isArabic ? 'إرسال' : 'Send';
   String get understood => isArabic ? 'فهمت' : 'I understand';
+  String get recoveryEmailReminderTitle =>
+      isArabic ? 'تحقق من البريد الإلكتروني للاسترداد' : 'Verify your recovery email';
+  String get recoveryEmailReminderBody => isArabic
+      ? 'لم يتم التحقق من البريد الإلكتروني للاسترداد. يلزم التحقق منه لاستعادة كلمة المرور.'
+      : 'Your recovery email is not verified. Password recovery needs a verified email address.';
+  String get later => isArabic ? 'لاحقًا' : 'Later';
+  String get verifyNow => isArabic ? 'تحقق الآن' : 'Verify now';
   String get beforeYouStart => isArabic ? 'قبل أن تبدأ' : 'Before you start';
   String get clearChatHistory =>
       isArabic ? 'مسح سجل المحادثة' : 'Clear chat history';

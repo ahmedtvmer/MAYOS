@@ -108,28 +108,21 @@ void main() {
     );
   });
 
-  test('recovery email gates the authenticated area (ADR 007)', () {
-    final AuthState gated =
+  test('players use onboarding without a recovery email', () {
+    final AuthState unverified =
         _authenticated(coach: false, onboarded: false, hasRecoveryEmail: false);
     expect(
-        redirectFor(gated, homePath, _mode(AppMode.player)), recoveryEmailPath);
-    expect(redirectFor(gated, onboardingPath, _mode(AppMode.player)),
-        recoveryEmailPath);
-    expect(
-        redirectFor(gated, recoveryEmailPath, _mode(AppMode.player)), isNull);
+        redirectFor(unverified, homePath, _mode(AppMode.player)), onboardingPath);
+    expect(redirectFor(unverified, onboardingPath, _mode(AppMode.player)), isNull);
+    expect(redirectFor(unverified, recoveryEmailPath, _mode(AppMode.player)),
+        isNull);
 
-    // Saving the email releases the gate to onboarding, then home.
-    final AuthState set =
-        _authenticated(coach: false, onboarded: false, hasRecoveryEmail: true);
-    expect(redirectFor(set, recoveryEmailPath, _mode(AppMode.player)),
-        onboardingPath);
-    final AuthState done =
-        _authenticated(coach: false, onboarded: true, hasRecoveryEmail: true);
-    expect(
-        redirectFor(done, recoveryEmailPath, _mode(AppMode.player)), homePath);
+    final AuthState onboarded = _authenticated(
+        coach: false, onboarded: true, hasRecoveryEmail: false);
+    expect(redirectFor(onboarded, homePath, _mode(AppMode.player)), isNull);
   });
 
-  test('saved but unverified recovery email stays behind the gate', () {
+  test('saved but unverified recovery email does not block Home', () {
     final AuthState unverified = _authenticated(
       coach: false,
       onboarded: true,
@@ -137,8 +130,7 @@ void main() {
       recoveryEmailVerified: false,
     );
 
-    expect(redirectFor(unverified, homePath, _mode(AppMode.player)),
-        recoveryEmailPath);
+    expect(redirectFor(unverified, homePath, _mode(AppMode.player)), isNull);
     expect(redirectFor(unverified, recoveryEmailPath, _mode(AppMode.player)),
         isNull);
 
@@ -151,23 +143,14 @@ void main() {
     expect(redirectFor(verified, homePath, _mode(AppMode.player)), isNull);
   });
 
-  test('recovery email stays ahead of the mode and deferred onboarding', () {
-    // A coach in Coach mode without a recovery email still hits the ADR 007
-    // gate first, even though Coach mode would otherwise ignore onboarding.
-    final AuthState gated =
+  test('an unverified coach can open Coach mode without onboarding', () {
+    final AuthState unverified =
         _authenticated(coach: true, onboarded: false, hasRecoveryEmail: false);
-    expect(
-        redirectFor(gated, coachPath, _mode(AppMode.coach)), recoveryEmailPath);
-    expect(redirectFor(gated, splashPath, _mode(AppMode.coach)),
-        recoveryEmailPath);
-    expect(redirectFor(gated, recoveryEmailPath, _mode(AppMode.coach)), isNull);
-    // Releasing the gate then lands the coach in Coach mode.
-    final AuthState released =
-        _authenticated(coach: true, onboarded: false, hasRecoveryEmail: true);
-    expect(redirectFor(released, recoveryEmailPath, _mode(AppMode.coach)),
+    expect(redirectFor(unverified, coachPath, _mode(AppMode.coach)), isNull);
+    expect(redirectFor(unverified, splashPath, _mode(AppMode.coach)),
         coachRosterPath);
-    expect(redirectFor(released, splashPath, _mode(AppMode.coach)),
-        coachRosterPath);
+    expect(redirectFor(unverified, recoveryEmailPath, _mode(AppMode.coach)),
+        isNull);
   });
 
   test('onboarding gates the authenticated area for players', () {
@@ -317,11 +300,11 @@ void main() {
       redirectFor(coach, splashPath, _mode(AppMode.player, accountId: null)),
       splashPath,
     );
-    // The recovery-email gate still comes first, mode pending or not.
-    final AuthState gated =
+    // Missing verification does not replace the account-scoped mode hold.
+    final AuthState unverified =
         _authenticated(coach: true, onboarded: true, hasRecoveryEmail: false);
-    expect(redirectFor(gated, homePath, _mode(AppMode.coach, ready: false)),
-        recoveryEmailPath);
+    expect(redirectFor(unverified, homePath, _mode(AppMode.coach, ready: false)),
+        splashPath);
     // Once resolved for this account, the usual decision applies.
     expect(redirectFor(coach, splashPath, _mode(AppMode.coach)),
         coachRosterPath);

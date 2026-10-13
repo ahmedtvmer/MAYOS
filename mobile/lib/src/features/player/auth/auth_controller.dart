@@ -673,7 +673,7 @@ class AuthController extends StateNotifier<AuthState> {
     );
   }
 
-  /// Saves or corrects the recovery email while keeping the verification gate closed.
+  /// Saves or corrects the recovery email and records its verification state.
   Future<bool> setRecoveryEmail(String email) async {
     final AccountSession? before = state.session;
     final ({String email, bool verified}) saved =
@@ -701,7 +701,7 @@ class AuthController extends StateNotifier<AuthState> {
     await _repository.sendRecoveryEmailVerificationCode();
   }
 
-  /// Verifies the saved recovery email and releases the authenticated gate.
+  /// Verifies the saved recovery email in the current authenticated session.
   Future<void> verifyRecoveryEmail(String code) async {
     final AccountSession? before = state.session;
     await _repository.verifyRecoveryEmail(code);

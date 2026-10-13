@@ -1278,3 +1278,14 @@ receive the normal coaching answer. Arabic target validation accepts one unique
 exact display/source/alias match, or one unique lexical name-search hit whose
 name contains the target words. It does not use semantic similarity to choose a
 different exercise; unresolved and ambiguous targets prompt for clarification.
+
+## Recovery-email reminder (#408; pending owner review)
+
+| English | Arabic |
+| --- | --- |
+| Verify your recovery email | تحقق من البريد الإلكتروني للاسترداد |
+| Your recovery email is not verified. Password recovery needs a verified email address. | لم يتم التحقق من البريد الإلكتروني للاسترداد. يلزم التحقق منه لاستعادة كلمة المرور. |
+| Later | لاحقًا |
+| Verify now | تحقق الآن |
+| Recovery email is not verified. Password recovery needs a verified email address. | لم يتم التحقق من البريد الإلكتروني للاسترداد. يلزم التحقق منه لاستعادة كلمة المرور. |
+| Verify | تحقق |

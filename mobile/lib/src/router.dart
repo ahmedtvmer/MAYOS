@@ -42,6 +42,7 @@ import 'features/settings/recovery_email_settings_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shared/app_update_required_screen.dart';
 import 'features/shared/not_found_screen.dart';
+import 'features/shared/recovery_email_launch_reminder.dart';
 import 'features/shared/splash_screen.dart';
 import 'providers.dart';
 
@@ -109,8 +110,8 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
       if (_isPasswordRecoveryPage(path)) {
         return null;
       }
-      // A plain splash start holds with no carry; splash, the auth screens and
-      // the recovery-email gate are never a target to remember.
+      // A plain splash start holds with no carry; splash, auth screens and
+      // recovery-email tools are never a target to remember.
       if (path == splashPath) {
         return null;
       }
@@ -148,20 +149,15 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
       final bool coachMode = isCoach && mode.mode == AppMode.coach;
       final bool atAuthPage =
           path == loginPath || path == registerPath || path == googleSignupPath;
-      final bool atRecoveryGate = path == recoveryEmailPath;
-      final String? target = path == splashPath || atAuthPage || atRecoveryGate
+      final bool atRecoveryFlow = path == recoveryEmailPath;
+      final String? target = path == splashPath || atAuthPage || atRecoveryFlow
           ? _carriedTarget(from)
           : null;
 
-      // ADR 007: a verified recovery email is mandatory before dashboard or onboarding.
-      // It stays first, ahead of the mode and onboarding rules.
-      if (!accountSession.account.recoveryEmailVerified) {
-        if (path == recoveryEmailPath) {
-          return null;
-        }
-        return target == null
-            ? recoveryEmailPath
-            : _locationWithCarry(recoveryEmailPath, target);
+      // Verification remains available as an account tool, but it no longer
+      // blocks Player or Coach mode.
+      if (atRecoveryFlow && !accountSession.account.recoveryEmailVerified) {
+        return null;
       }
 
       // Hold on splash until this account's stored mode is known, so the app
@@ -193,10 +189,10 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
         return isCoach ? playerSetupPath : onboardingPath;
       }
 
-      if (path == splashPath || path == recoveryEmailPath || atAuthPage) {
+      if (path == splashPath || atAuthPage || atRecoveryFlow) {
         if (target != null) {
           // Re-run the full rule set before releasing a target carried through
-          // sign-in or the recovery-email gate. Unknown routes reach not-found.
+          // sign-in or recovery-email tools. Unknown routes reach not-found.
           return redirectFor(auth, target, mode) ?? target;
         }
         return landing();
@@ -266,8 +262,8 @@ String _pathOf(String location) {
 
 /// Whether [path] can be carried through a startup or sign-in gate (#127/#172).
 ///
-/// Splash, the auth screens and the recovery-email gate are never carried:
-/// they are the hold itself or the gates the hold exists to pass.
+/// Splash, auth screens and the recovery-email flow are never carried: they
+/// are the hold itself or account tools rather than app destinations.
 bool _isCarryable(String path) =>
     path.startsWith('/') &&
     !path.startsWith('//') &&
@@ -322,6 +318,9 @@ Widget _localizedPlayerPage({
       },
     );
 
+Widget _withRecoveryEmailReminder(GoRouterState state, Widget child) =>
+    RecoveryEmailLaunchReminder(path: state.uri.path, child: child);
+
 final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   final ValueNotifier<int> refresh = ValueNotifier<int>(0);
   // Either dependency can change the destination. Which listener fires first
@@ -359,7 +358,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
     },
     // Unknown locations land on a branded page, never a blank screen (#127).
     errorBuilder: (BuildContext context, GoRouterState state) =>
-        const NotFoundScreen(),
+        _withRecoveryEmailReminder(state, const NotFoundScreen()),
     routes: <RouteBase>[
       GoRoute(
         path: splashPath,
@@ -406,92 +405,118 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: onboardingPath,
         builder: (BuildContext context, GoRouterState state) =>
-            const OnboardingScreen(),
+            _withRecoveryEmailReminder(state, const OnboardingScreen()),
       ),
       GoRoute(
         path: homePath,
         builder: (BuildContext context, GoRouterState state) =>
-            const PlayerShell(),
+            _withRecoveryEmailReminder(state, const PlayerShell()),
       ),
       GoRoute(
         path: settingsPath,
         builder: (BuildContext context, GoRouterState state) =>
-            const SettingsScreen(),
+            _withRecoveryEmailReminder(state, const SettingsScreen()),
       ),
       GoRoute(
         path: recoveryEmailSettingsPath,
         builder: (BuildContext context, GoRouterState state) =>
-            _localizedPlayerPage(
-          title: (String languageCode) => SettingsCopy(languageCode).recoveryEmail,
-          body: const RecoveryEmailSettingsScreen(),
-        ),
+            _withRecoveryEmailReminder(
+              state,
+              _localizedPlayerPage(
+                title: (String languageCode) =>
+                    SettingsCopy(languageCode).recoveryEmail,
+                body: const RecoveryEmailSettingsScreen(),
+              ),
+            ),
       ),
       GoRoute(
         path: personalizationPath,
         builder: (BuildContext context, GoRouterState state) =>
-            _localizedPlayerPage(
-          title: (String languageCode) =>
-              SettingsCopy(languageCode).personalization,
-          body: const PersonalizationScreen(),
-        ),
+            _withRecoveryEmailReminder(
+              state,
+              _localizedPlayerPage(
+                title: (String languageCode) =>
+                    SettingsCopy(languageCode).personalization,
+                body: const PersonalizationScreen(),
+              ),
+            ),
       ),
       GoRoute(
         path: lifterPlanPath,
         builder: (BuildContext context, GoRouterState state) =>
-            _localizedPlayerPage(
-          title: (String languageCode) => SettingsCopy(languageCode).lifterPlan,
-          body: const PlanScreen(capability: PlanCapability.lifter),
-        ),
+            _withRecoveryEmailReminder(
+              state,
+              _localizedPlayerPage(
+                title: (String languageCode) =>
+                    SettingsCopy(languageCode).lifterPlan,
+                body: const PlanScreen(capability: PlanCapability.lifter),
+              ),
+            ),
       ),
       GoRoute(
         path: coachPlanPath,
         builder: (BuildContext context, GoRouterState state) =>
-            _localizedPlayerPage(
-          title: (String languageCode) => SettingsCopy(languageCode).coachPlan,
-          body: const PlanScreen(capability: PlanCapability.coach),
-        ),
+            _withRecoveryEmailReminder(
+              state,
+              _localizedPlayerPage(
+                title: (String languageCode) =>
+                    SettingsCopy(languageCode).coachPlan,
+                body: const PlanScreen(capability: PlanCapability.coach),
+              ),
+            ),
       ),
       GoRoute(
         path: profilePath,
         builder: (BuildContext context, GoRouterState state) =>
-            _localizedPlayerPage(
-          title: (String languageCode) =>
-              SettingsCopy(languageCode).trainingProfile,
-          body: ProfileScreen(),
-        ),
+            _withRecoveryEmailReminder(
+              state,
+              _localizedPlayerPage(
+                title: (String languageCode) =>
+                    SettingsCopy(languageCode).trainingProfile,
+                body: ProfileScreen(),
+              ),
+            ),
       ),
       GoRoute(
         path: chatPath,
         builder: (BuildContext context, GoRouterState state) =>
-            const ChatScreen(),
+            _withRecoveryEmailReminder(state, const ChatScreen()),
       ),
       GoRoute(
         path: '$checkpointReviewPath/:checkpoint',
         builder: (BuildContext context, GoRouterState state) =>
-            _localizedPlayerPage(
-          title: (String languageCode) =>
-              MayosCopy(languageCode).checkpointReview,
-          body: CheckpointReviewScreen(
-            key: ValueKey<String>(
-              '${state.pathParameters['checkpoint']}:${state.uri.queryParameters['assignment_id'] ?? ''}',
+            _withRecoveryEmailReminder(
+              state,
+              _localizedPlayerPage(
+                title: (String languageCode) =>
+                    MayosCopy(languageCode).checkpointReview,
+                body: CheckpointReviewScreen(
+                  key: ValueKey<String>(
+                    '${state.pathParameters['checkpoint']}:${state.uri.queryParameters['assignment_id'] ?? ''}',
+                  ),
+                  checkpoint: int.tryParse(
+                        state.pathParameters['checkpoint'] ?? '',
+                      ) ??
+                      0,
+                  assignmentId: state.uri.queryParameters['assignment_id'],
+                ),
+              ),
             ),
-            checkpoint:
-                int.tryParse(state.pathParameters['checkpoint'] ?? '') ?? 0,
-            assignmentId: state.uri.queryParameters['assignment_id'],
-          ),
-        ),
       ),
       GoRoute(
         path: coachInvitePath,
         builder: (BuildContext context, GoRouterState state) =>
-            const CoachInviteScreen(),
+            _withRecoveryEmailReminder(state, const CoachInviteScreen()),
       ),
       ShellRoute(
         builder: (BuildContext context, GoRouterState state, Widget child) =>
-            CoachShell(
-          child: child,
-          assignmentId: state.pathParameters[coachAssignmentParameter],
-        ),
+            _withRecoveryEmailReminder(
+              state,
+              CoachShell(
+                child: child,
+                assignmentId: state.pathParameters[coachAssignmentParameter],
+              ),
+            ),
         routes: <RouteBase>[
           GoRoute(
             path: coachPath,
@@ -556,59 +581,77 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: playerSetupPath,
         builder: (BuildContext context, GoRouterState state) =>
-            const PlayerSetupScreen(),
+            _withRecoveryEmailReminder(state, const PlayerSetupScreen()),
       ),
       GoRoute(
         path: assignmentPath,
         builder: (BuildContext context, GoRouterState state) =>
-            _localizedPlayerPage(
-          title: (String languageCode) =>
-              AssignmentCopy(languageCode).myCoach,
-          body: const PlayerAssignmentScreen(),
-        ),
+            _withRecoveryEmailReminder(
+              state,
+              _localizedPlayerPage(
+                title: (String languageCode) =>
+                    AssignmentCopy(languageCode).myCoach,
+                body: const PlayerAssignmentScreen(),
+              ),
+            ),
       ),
       GoRoute(
         path: playerNotificationsPath,
         builder: (BuildContext context, GoRouterState state) =>
-            _localizedPlayerPage(
-          title: (String languageCode) =>
-              SettingsCopy(languageCode).notifications,
-          body: const PlayerNotificationsScreen(),
-        ),
+            _withRecoveryEmailReminder(
+              state,
+              _localizedPlayerPage(
+                title: (String languageCode) =>
+                    SettingsCopy(languageCode).notifications,
+                body: const PlayerNotificationsScreen(),
+              ),
+            ),
       ),
       GoRoute(
         path: workoutsPath,
         builder: (BuildContext context, GoRouterState state) =>
-            _localizedPlayerPage(
-          title: (String languageCode) => SettingsCopy(languageCode).workouts,
-          body: const WorkoutDraftsScreen(),
-        ),
+            _withRecoveryEmailReminder(
+              state,
+              _localizedPlayerPage(
+                title: (String languageCode) =>
+                    SettingsCopy(languageCode).workouts,
+                body: const WorkoutDraftsScreen(),
+              ),
+            ),
       ),
       GoRoute(
         path: '$logWorkoutPath/:day',
-        builder: (BuildContext context, GoRouterState state) => MayosScaffold(
-          // The logger draws its own compact top bar — Back, live Workout
-          // time and the discard menu (#159) — so the frame supplies no
-          // header of its own.
-          header: const LoggerTopBar(),
-          // The logger's bottom elements (bar, keypad) take the system-nav
-          // inset themselves, inside their own surface, so the bar's colour
-          // runs under the inset with no seam (#160).
-          safeBottom: false,
-          body: WorkoutLoggerScreen(
-            dayOrder: int.tryParse(state.pathParameters['day'] ?? '') ?? 1,
-          ),
-        ),
+        builder: (BuildContext context, GoRouterState state) =>
+            _withRecoveryEmailReminder(
+              state,
+              MayosScaffold(
+                // The logger draws its own compact top bar — Back, live Workout
+                // time and the discard menu (#159) — so the frame supplies no
+                // header of its own.
+                header: const LoggerTopBar(),
+                // The logger's bottom elements (bar, keypad) take the system-nav
+                // inset themselves, inside their own surface, so the bar's colour
+                // runs under the inset with no seam (#160).
+                safeBottom: false,
+                body: WorkoutLoggerScreen(
+                  dayOrder:
+                      int.tryParse(state.pathParameters['day'] ?? '') ?? 1,
+                ),
+              ),
+            ),
       ),
       GoRoute(
         path: '$exerciseDetailPath/:id',
         builder: (BuildContext context, GoRouterState state) =>
-            ExerciseDetailScreen(
-          exerciseId: state.pathParameters['id'] ?? '',
-          dayOrder: int.tryParse(state.uri.queryParameters['day'] ?? ''),
-          showProgram: state.uri.queryParameters['library'] != '1',
-          initialTab: state.uri.queryParameters['tab'] ?? 'overview',
-        ),
+            _withRecoveryEmailReminder(
+              state,
+              ExerciseDetailScreen(
+                exerciseId: state.pathParameters['id'] ?? '',
+                dayOrder: int.tryParse(state.uri.queryParameters['day'] ?? ''),
+                showProgram: state.uri.queryParameters['library'] != '1',
+                initialTab: state.uri.queryParameters['tab'] ?? 'overview',
+              ),
+            ),
       ),
     ],
   );

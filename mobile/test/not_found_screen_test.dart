@@ -156,7 +156,7 @@ void main() {
     expect(currentUri().queryParameters['from'], lifterPlanPath);
   });
 
-  testWidgets('the recovery-email gate releases a carried page after saving',
+  testWidgets('an unverified login releases its carried app page',
       (WidgetTester tester) async {
     tester.binding.platformDispatcher.defaultRouteNameTestValue = lifterPlanPath;
     addTearDown(
@@ -172,28 +172,19 @@ void main() {
     await tester.enterText(
         find.byKey(const Key('login_password')), 'correct-horse-1');
     await tester.tap(find.byKey(const Key('login_submit')));
-    await _pumpUntilFound(tester, find.byKey(const Key('recovery_email')));
+    await _pumpUntilFound(tester, find.text('Verify your recovery email'));
 
     final ProviderContainer container = ProviderScope.containerOf(
       tester.element(find.byType(MayosApp)),
       listen: false,
     );
-    final Uri recoveryUri =
-        container.read(routerProvider).routerDelegate.currentConfiguration.uri;
-    expect(recoveryUri.path, recoveryEmailPath);
-    expect(recoveryUri.queryParameters['from'], lifterPlanPath);
-
-    await tester.enterText(
-        find.byKey(const Key('recovery_email')), 'alice@example.com');
-    await tester.tap(find.byKey(const Key('recovery_submit')));
-    await _pumpUntilFound(
-        tester, find.byKey(const Key('recovery_verification_code')));
-    await tester.enterText(find.byKey(const Key('recovery_verification_code')),
-        fake.currentRecoveryEmailCode!);
-    await tester.tap(find.byKey(const Key('recovery_submit')));
+    expect(
+      container.read(routerProvider).routerDelegate.currentConfiguration.uri.path,
+      lifterPlanPath,
+    );
+    await tester.tap(find.text('Later'));
     await _pumpUntilFound(tester, find.byType(PlanScreen));
 
-    expect(fake.recoveryEmail, 'alice@example.com');
     expect(find.byType(PlanScreen), findsOneWidget);
   });
 }

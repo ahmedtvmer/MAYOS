@@ -60,6 +60,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final String language = ref.watch(displayLanguageProvider);
     final AsyncValue<RecoveryEmailDetails> recoveryEmail =
         ref.watch(recoveryEmailDetailsProvider);
+    final bool recoveryEmailVerified =
+        session?.account.recoveryEmailVerified == true ||
+            recoveryEmail.valueOrNull?.verified == true;
     final MayosCopy copy = MayosCopy(language);
     final SettingsCopy ui = SettingsCopy(language);
     final AssignmentCopy assignmentCopy = AssignmentCopy(language);
@@ -254,7 +257,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   key: const Key('recovery_email_settings_entry'),
                   icon: Icons.email_outlined,
                   title: ui.recoveryEmail,
-                  subtitle: _recoveryEmailSubtitle(ui, recoveryEmail),
+                  subtitle: _recoveryEmailSubtitle(
+                    ui,
+                    recoveryEmail,
+                    recoveryEmailVerified,
+                  ),
                   subtitleTextDirection: recoveryEmail.valueOrNull?.email != null
                       ? TextDirection.ltr
                       : null,
@@ -267,6 +274,39 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                   onTap: _openRecoveryEmail,
                 ),
+                if (!recoveryEmailVerified) ...<Widget>[
+                  Divider(height: 1, color: c.border),
+                  Padding(
+                    padding: const EdgeInsets.all(MayosSpacing.sm),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Icon(Icons.warning_amber_rounded,
+                            color: c.danger, size: 20),
+                        const SizedBox(width: MayosSpacing.xs),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              ui.recoveryEmailNotVerifiedWarning,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(color: c.danger),
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          key: const Key('recovery_email_verify_action'),
+                          onPressed: () => context.go(
+                            withCarry(recoveryEmailPath, settingsPath),
+                          ),
+                          child: Text(ui.verifyRecoveryEmailAction),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -381,13 +421,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _recoveryEmailSubtitle(
     SettingsCopy ui,
     AsyncValue<RecoveryEmailDetails> recoveryEmail,
+    bool verified,
   ) => recoveryEmail.when(
         loading: () => ui.recoveryEmailLoading,
         error: (Object error, StackTrace stack) => ui.recoveryEmailLoadFailed,
         data: (RecoveryEmailDetails details) {
           final String? email = details.email;
           if (email == null || email.isEmpty) return ui.recoveryEmailNotSet;
-          final String verification = details.verified
+          final String verification = verified
               ? ui.recoveryEmailVerified
               : ui.recoveryEmailNotVerified;
           final String? pending = details.pendingEmail;

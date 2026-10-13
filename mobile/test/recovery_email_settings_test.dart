@@ -39,6 +39,12 @@ Future<void> _pumpSettings(WidgetTester tester, FakeMayosApi fake) async {
     ),
   );
   await _pumpUntilFound(tester, find.text(fake.displayLanguage == 'ar' ? 'الرئيسية' : 'Home'));
+  final String laterLabel = fake.displayLanguage == 'ar' ? 'لاحقًا' : 'Later';
+  if (!fake.recoveryEmailVerified) {
+    await _pumpUntilFound(tester, find.text(laterLabel));
+    await tester.tap(find.text(laterLabel));
+    await tester.pump();
+  }
   if (find.byIcon(Icons.settings_outlined).evaluate().isNotEmpty) {
     await tester.tap(find.byIcon(Icons.settings_outlined));
   } else {
@@ -116,10 +122,18 @@ void main() {
   testWidgets('Recovery-email Settings copy is Arabic', (
     WidgetTester tester,
   ) async {
-    final FakeMayosApi fake = _signedInFake(language: 'ar');
+    final FakeMayosApi fake = _signedInFake(language: 'ar')
+      ..recoveryEmailVerified = false;
     await _pumpSettings(tester, fake);
 
     expect(find.text('البريد الإلكتروني للاسترداد'), findsOneWidget);
+    expect(
+      find.text(
+        'لم يتم التحقق من البريد الإلكتروني للاسترداد. يلزم التحقق منه لاستعادة كلمة المرور.',
+      ),
+      findsNWidgets(1),
+    );
+    expect(find.text('تحقق'), findsOneWidget);
     await tester.tap(find.byKey(const Key('recovery_email_settings_entry')));
     await _pumpUntilFound(tester, find.text('البريد الإلكتروني الحالي'));
     expect(find.text('إرسال رمز التحقق'), findsOneWidget);
@@ -132,6 +146,51 @@ void main() {
     expect(find.text('رمز التحقق المكوّن من 6 أرقام'), findsOneWidget);
     expect(find.text('تأكيد التغيير'), findsOneWidget);
     expect(fake.recoveryEmail, 'old@example.com');
+  });
+
+  testWidgets('Settings warning opens verification and clears after success', (
+    WidgetTester tester,
+  ) async {
+    final FakeMayosApi fake = _signedInFake()..recoveryEmailVerified = false;
+    await _pumpSettings(tester, fake);
+
+    expect(
+      find.text(
+        'Recovery email is not verified. Password recovery needs a verified email address.',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('recovery_email_verify_action')));
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('recovery_verification_code')),
+    );
+    expect(fake.recoveryEmailCodesSent, 0);
+
+    await tester.tap(find.text('Send code'));
+    await _pumpUntilFound(
+      tester,
+      find.text('We sent a code to your recovery email.'),
+    );
+    await tester.enterText(
+      find.byKey(const Key('recovery_verification_code')),
+      fake.currentRecoveryEmailCode!,
+    );
+    await tester.tap(find.byKey(const Key('recovery_submit')));
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('recovery_email_settings_entry')),
+    );
+
+    expect(fake.recoveryEmailVerified, isTrue);
+    expect(find.text('Not verified'), findsNothing);
+    expect(find.text('old@example.com · Verified'), findsOneWidget);
+    expect(
+      find.text(
+        'Recovery email is not verified. Password recovery needs a verified email address.',
+      ),
+      findsNothing,
+    );
   });
 
   testWidgets('wrong change code keeps the current and pending addresses', (

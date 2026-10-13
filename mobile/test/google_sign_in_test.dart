@@ -157,7 +157,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('a web ID token signs in and keeps the recovery-email gate',
+  testWidgets('a web ID token signs in without recovery-email verification',
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi()..profileExists = true;
     final FakeGoogleAuthGateway google = FakeGoogleAuthGateway(
@@ -171,19 +171,14 @@ void main() {
 
     google.emitAuthenticationOutcome(
         GoogleAuthIdToken(fake.googleLinkedIdToken));
-    await _pumpUntilFound(tester, find.byKey(const Key('recovery_email')));
+    await _pumpUntilFound(tester, find.text('Verify your recovery email'));
 
     expect(container.read(authControllerProvider).status,
         AuthStatus.authenticated);
     expect(fake.googleSignInRequests, 1);
     expect(google.authenticateCalls, 0);
     expect(
-      container
-          .read(routerProvider)
-          .routerDelegate
-          .currentConfiguration
-          .uri
-          .queryParameters['from'],
+      container.read(routerProvider).routerDelegate.currentConfiguration.uri.path,
       lifterPlanPath,
     );
   });
@@ -216,7 +211,7 @@ void main() {
     );
 
     gate.complete();
-    await _pumpUntilFound(tester, find.byKey(const Key('recovery_email')));
+    await _pumpUntilFound(tester, find.text('Verify your recovery email'));
     expect(fake.googleSignInRequests, 1);
   });
 
@@ -489,7 +484,7 @@ void main() {
   });
 
   testWidgets(
-      'submitting the picked username signs in and keeps the ADR 007 gate',
+      'submitting the picked username signs in without an email gate',
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi();
     final ProviderContainer container =
@@ -499,15 +494,15 @@ void main() {
     await _awaitAvailability(tester);
 
     await tester.tap(find.byKey(const Key('google_signup_submit')));
-    await _pumpUntilFound(tester, find.text('Recovery email'));
+    await _pumpUntilFound(tester, find.text('Verify your recovery email'));
 
     expect(fake.googleCompletedUsernames, <String>['alice']);
     expect(container.read(authControllerProvider).status,
         AuthStatus.authenticated);
-    expect(find.byKey(const Key('recovery_email')), findsOneWidget);
+    expect(find.byKey(const Key('recovery_email')), findsNothing);
   });
 
-  testWidgets('verified Google signup skips the recovery-email gate',
+  testWidgets('verified Google signup opens onboarding without a reminder',
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi()
       ..googleCompleteRecoveryEmailVerified = true;

@@ -60,6 +60,10 @@ class SettingsCopy {
   String get recoveryEmail => isArabic ? 'البريد الإلكتروني للاسترداد' : 'Recovery email';
   String get recoveryEmailVerified => isArabic ? 'تم التحقق' : 'Verified';
   String get recoveryEmailNotVerified => isArabic ? 'لم يتم التحقق' : 'Not verified';
+  String get recoveryEmailNotVerifiedWarning => isArabic
+      ? 'لم يتم التحقق من البريد الإلكتروني للاسترداد. يلزم التحقق منه لاستعادة كلمة المرور.'
+      : 'Recovery email is not verified. Password recovery needs a verified email address.';
+  String get verifyRecoveryEmailAction => isArabic ? 'تحقق' : 'Verify';
   String get recoveryEmailNotSet => isArabic ? 'لم يُضف بريد إلكتروني' : 'Not set';
   String get recoveryEmailPendingChange =>
       isArabic ? 'بانتظار التحقق' : 'Awaiting verification';

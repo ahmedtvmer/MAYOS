@@ -12,7 +12,7 @@ import '../../core/ui/mayos_scaffold.dart';
 /// Unknown location (issue #127): a small branded page instead of a blank
 /// screen, with one way out — the account's home. `context.go(homePath)` asks
 /// nothing of the rules; the router's redirect then places the user as it
-/// would any other navigation (recovery gate, onboarding, mode).
+/// would any other navigation (recovery flow, onboarding, mode).
 class NotFoundScreen extends StatelessWidget {
   const NotFoundScreen({super.key});
 

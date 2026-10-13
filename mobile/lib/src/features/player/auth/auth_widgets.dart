@@ -57,7 +57,7 @@ class AuthScaffold extends ConsumerWidget {
 
   /// Draws the dark gym photo backdrop (#110) and forces the white lockup and
   /// the wallpaper theme. Only the logged-out sign-in surfaces opt in; the
-  /// recovery-email gate stays plain and theme-following.
+  /// recovery-email screen stays plain and theme-following.
   final bool wallpaper;
 
   /// Enables the fixed Home Screen hint slot for login and registration.

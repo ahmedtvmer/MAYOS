@@ -12,7 +12,7 @@ import '../../../core/ui/mayos_text_field.dart';
 import '../../../providers.dart';
 import 'auth_widgets.dart';
 
-/// ADR 007 gate: the recovery email must be verified before dashboard or onboarding.
+/// Lets an account add or verify its recovery email.
 class RecoveryEmailScreen extends ConsumerStatefulWidget {
   const RecoveryEmailScreen({super.key});
 

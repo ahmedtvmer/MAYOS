@@ -64,7 +64,9 @@ void main() {
       (WidgetTester tester) async {
     final FakeMayosApi api = FakeMayosApi()
       ..currentUsername = 'alice'
-      ..issuedToken = 'token-alice';
+      ..issuedToken = 'token-alice'
+      ..profileExists = true
+      ..recoveryEmail = 'alice@example.com';
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     await tokens.save('token-alice');
     final FakeAnalyticsClient analytics = FakeAnalyticsClient();
@@ -75,6 +77,7 @@ void main() {
         attempt++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
+    await tester.pump(const Duration(milliseconds: 100));
 
     expect(analytics.identifiedAccountIds, <String>['account-alice']);
     expect(analytics.identifiedRoles, <String>['player']);

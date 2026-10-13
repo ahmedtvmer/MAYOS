@@ -14,6 +14,7 @@ import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/workout_storage.dart';
 import 'package:mayos_mobile/src/features/settings/settings_screen.dart';
 import 'package:mayos_mobile/src/providers.dart';
+import 'package:mayos_mobile/src/router.dart';
 
 import 'support/auth_harness.dart';
 import 'support/fake_google_auth.dart';
@@ -125,7 +126,7 @@ void main() {
   });
 
   testWidgets(
-      'Arabic account recovery-email gate has no logged-out language selector',
+      'Arabic account recovery-email screen has no logged-out language selector',
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi()
       ..profileExists = true
@@ -142,6 +143,17 @@ void main() {
     await tester.pumpAndSettle();
 
     await _signIn(tester, 'alice');
+    await tester.tap(find.text('تحقق الآن'));
+    await tester.pumpAndSettle();
+
+    final ProviderContainer container = ProviderScope.containerOf(
+      tester.element(find.byType(MayosApp)),
+      listen: false,
+    );
+    expect(
+      container.read(routerProvider).routeInformationProvider.value.uri.path,
+      recoveryEmailPath,
+    );
 
     expect(find.byKey(const Key('recovery_email')), findsOneWidget);
     expect(find.byKey(const Key('display_language_selector')), findsNothing);

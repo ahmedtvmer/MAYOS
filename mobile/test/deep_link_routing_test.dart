@@ -79,7 +79,7 @@ void main() {
           from: '$coachPath#section'),
       homePath,
     );
-    // ADR 007: before the recovery email there is no authenticated surface.
+    // An unverified account can use the carried app destination immediately.
     expect(
       redirectFor(
           _authenticated(
@@ -87,7 +87,7 @@ void main() {
           splashPath,
           _mode(AppMode.player),
           from: lifterPlanPath),
-      withCarry(recoveryEmailPath, lifterPlanPath),
+      lifterPlanPath,
     );
     // Onboarding still gates the deferred intake.
     expect(
@@ -110,7 +110,7 @@ void main() {
     );
   });
 
-  test('auth and gate pages are never carried as a target', () {
+  test('auth and account-tool pages are never carried as a target', () {
     // The hold itself is never a remembered target.
     expect(_hold(splashPath), isNull);
     expect(_hold(loginPath), splashPath);
@@ -190,17 +190,16 @@ void main() {
         splashHold(lifterPlanPath));
   });
 
-  test('login and recovery email release the carry through routing rules', () {
+  test('login opens app pages while the verification flow retains its return', () {
     final AuthState playerWithoutEmail = _authenticated(
       coach: false,
       onboarded: true,
       hasRecoveryEmail: false,
     );
-    final String recovery = withCarry(recoveryEmailPath, lifterPlanPath);
     expect(
       redirectFor(playerWithoutEmail, loginPath, _mode(AppMode.player),
           from: lifterPlanPath),
-      recovery,
+      lifterPlanPath,
     );
     expect(
       redirectFor(playerWithoutEmail, recoveryEmailPath, _mode(AppMode.player),
