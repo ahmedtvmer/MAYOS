@@ -187,7 +187,10 @@ class CustomDayPlan(BaseModel):
         default_factory=list,
         description="Legacy muscle targets; only used as a fallback when target_slots is empty",
     )
-    warmup_family: str = Field(default="full", description="Warm-up block family: upper, lower, full or arms")
+    warmup_family: Literal["upper", "lower", "full", "arms"] = Field(
+        default="full",
+        description="Warm-up block family; exactly one of upper, lower, full or arms (use full for whole-body days)",
+    )
     sets_family: str | None = Field(
         default=None, description="Working-set profile: standard, leg, arms or full (defaults from warmup_family)"
     )

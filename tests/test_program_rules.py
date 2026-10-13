@@ -15,6 +15,7 @@ from agent.program_generator import (
     _recognized_split_preference,
     has_supported_split_keyword,
 )
+from agent.ProgramState import DynamicSplitPlan
 from agent.program_rules import (
     fetch_filtered_candidates,
     get_default_split,
@@ -160,6 +161,25 @@ def test_dynamic_split_plan_uses_its_own_output_budget(monkeypatch):
     assert model.calls[0]["mode"] == "structured"
     assert model.calls[0]["kwargs"]["schema"] == "DynamicSplitPlan"
     assert model.calls[0]["kwargs"]["max_completion_tokens"] == DYNAMIC_SPLIT_PLAN_MAX_OUTPUT_TOKENS
+    assert model.calls[0]["kwargs"]["method"] == "function_calling"
+
+
+def test_dynamic_split_plan_schema_constrains_warmup_family():
+    from agent.program_blueprints import WARMUP_FAMILIES
+
+    schema = DynamicSplitPlan.model_json_schema()
+    assert set(schema["$defs"]["CustomDayPlan"]["properties"]["warmup_family"]["enum"]) == set(WARMUP_FAMILIES)
+
+
+def test_split_plan_with_invented_warmup_family_falls_back_to_default(monkeypatch):
+    monkeypatch.setenv("PROGRAM_GENERATION_REASONING_ENABLED", "false")
+    invalid = get_default_split(3).model_dump()
+    invalid["days"][0]["warmup_family"] = "dynamic lower body + banded glute activation"
+    monkeypatch.setattr("agent.program_rules.llm", ScriptedChatModel([invalid]))
+
+    plan = resolve_split(3, preference="Custom weekly arrangement with separate emphasis days")
+
+    assert plan == get_default_split(3)
 
 
 def test_split_plan_keeps_separate_reasoning_metadata_out_of_parsed_fields(monkeypatch):

@@ -367,6 +367,7 @@ def _dynamic_split_plan_options() -> dict[str, Any]:
     )
     options = {
         "include_raw": True,
+        "method": "function_calling",
         "max_completion_tokens": (
             player_output_budgets.dynamic_split_plan_reasoning_budget()
             if reasoning_enabled
@@ -375,7 +376,6 @@ def _dynamic_split_plan_options() -> dict[str, Any]:
     }
     if reasoning_enabled:
         # Function-call arguments are parsed separately from DeepSeek's reasoning field.
-        options["method"] = "function_calling"
         extra_body = dict(getattr(llm, "extra_body", None) or {})
         extra_body["thinking"] = {"type": "enabled"}
         options["extra_body"] = extra_body
