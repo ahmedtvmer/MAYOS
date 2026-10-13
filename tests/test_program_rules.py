@@ -114,7 +114,7 @@ def test_mechanics_for_real_curated_exercises_use_joint_actions(fresh_store):
         "85": "compound",       # Romanian Deadlift (Barbell)
         "116": "compound",      # Stiff-Leg Deadlift (Barbell)
         "3562": "compound",     # Hip Thrust (Barbell)
-        "mayos:4": "isolation", # Machine Hip Thrust has no action curation; use its name rule.
+        "mayos:4": "compound",  # Machine Hip Thrust (Plate-Loaded): curated Hip Extension, like the barbell one.
         "585": "isolation",     # Leg Extension (Machine)
         "586": "isolation",     # Lying Leg Curl (Machine)
         "1638": "isolation",    # Pulldown-Station Curl (Cable)
