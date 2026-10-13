@@ -241,9 +241,9 @@ def test_rescore_cli_reuses_stored_observations_without_loading_a_model(
     source = ROOT / "docs/design-review/247/real-model-report.json"
     report_path = tmp_path / "stored-real-report.json"
     original = json.loads(source.read_text(encoding="utf-8"))
+    stale = {**original, "context_identity_sha256": "0" * 64}
     with pytest.raises(ValueError, match="same reviewed cases and scenarios"):
-        runner.rescore_report(original)
-    original["context_identity_sha256"] = runner._context_identity_sha256()
+        runner.rescore_report(stale)
     report_path.write_text(json.dumps(original), encoding="utf-8")
 
     def fail_if_model_identity_is_loaded():
@@ -276,12 +276,10 @@ def test_rescore_cli_reuses_stored_observations_without_loading_a_model(
         for row in rescored["runs"]
     }
     assert rescored_labels == original_labels
-    assert next(row for row in rescored["runs"] if row["case_id"] == "ar-hist-01")[
-        "history_scoring"
-    ]["passed"] is True
-    assert next(row for row in rescored["runs"] if row["case_id"] == "ar-hist-01")[
-        "arabic_quality"
-    ]["egyptian_arabic_register_heuristic"]["passed"] is False
+    for field in ("history_scoring", "arabic_quality", "behavior_findings"):
+        assert {row["case_id"]: row[field] for row in rescored["runs"]} == {
+            row["case_id"]: row[field] for row in original["runs"]
+        }
 
 
 def test_rescore_reports_when_a_stored_reply_is_missing():
