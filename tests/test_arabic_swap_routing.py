@@ -351,12 +351,10 @@ def test_ambiguous_source_clarifies_without_mutation(fresh_store, monkeypatch):
     [
         ("أريح قد إيه بين المجموعات؟", {"intent": "coaching_qa"}),
         ("أتمرن النهارده ولا أريح؟ رجلي مرهقة من تمرين امبارح.", {"intent": "coaching_qa"}),
-        ("ظبّطلي البرنامج على 4 أيام في الأسبوع.", {"intent": "program_change"}),
-        ("إيه التمارين اللي سجلتها الأسبوع اللي فات؟", {"intent": "exercise_history"}),
         ("سؤال تاني عن النادي.", {"intent": "other"}),
     ],
 )
-def test_non_swap_arabic_intents_get_normal_coaching_answer(
+def test_arabic_coaching_questions_get_normal_coaching_answer(
     fresh_store, monkeypatch, message, classification
 ):
     before = _seed_program(fresh_store)

@@ -825,3 +825,362 @@ def test_chat_history_labels_the_session_pointer(api):
     debriefs = [m for m in history if m["kind"] == "debrief"]
     assert len(debriefs) == 1
     assert debriefs[0]["content"] == outcome["pointer"]
+
+
+def _seed_chat_program(db, player, *, split_type="Full Body", frequency=3, gender="male"):
+    day_names = ["Full A", "Full B", "Full C", "Full D", "Full E"][:frequency]
+    program = GeneratedProgramSchema(
+        program_name=f"{split_type} test program",
+        split_type=split_type,
+        weekly_frequency=frequency,
+        days=[
+            _day_plan().model_copy(update={"day_name": name, "day_order": index})
+            for index, name in enumerate(day_names, start=1)
+        ],
+    )
+    with db.open_ledger(player) as ledger:
+        ledger.upsert_player_profile(
+            {"gender": gender, "weekly_frequency": frequency, "current_goal": "Hypertrophy"}
+        )
+        ledger.save_training_program(program.model_dump())
+        return ledger.get_active_program()
+
+
+def _install_chat_program_generator(monkeypatch):
+    def generate_program(
+        *, user_split_override=None, rep_preference_override=None,
+        frequency_override=None, ledger, **_kwargs,
+    ):
+        current_program = ledger.get_active_program()
+        frequency = frequency_override or current_program.weekly_frequency
+        profile = ledger.get_player_profile() or {}
+        split_plan = assistant_graph.get_split_plan(
+            user_split_override, frequency, profile.get("gender", "male")
+        ) if user_split_override else None
+        split_type = split_plan.split_name if split_plan else current_program.split_type
+        program = GeneratedProgramSchema(
+            program_name=f"{split_type} rebuilt",
+            split_type=split_type,
+            weekly_frequency=frequency,
+            days=[
+                _day_plan().model_copy(update={"day_name": f"{split_type} {index}", "day_order": index})
+                for index in range(1, frequency + 1)
+            ],
+        )
+        if frequency != (ledger.get_player_profile() or {}).get("weekly_frequency"):
+            ledger.update_player_frequency(frequency)
+        ledger.save_training_program(program.model_dump())
+        return program, ""
+
+    monkeypatch.setattr(assistant_graph, "generate_program_pipeline", generate_program)
+
+
+def test_arabic_program_change_runs_through_http_chat_with_validated_split(api, monkeypatch):
+    client, db = api
+    player = "arabic-program-change"
+    headers = _authed(_register(client, player)["access_token"])
+    before = _seed_chat_program(db, player)
+    _install_chat_program_generator(monkeypatch)
+    model = ScriptedChatModel(
+        [{"intent": "program_change", "target_split_type": "upper_lower"}]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "غيّر البرنامج لتقسيمة Upper / Lower."},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    with db.open_ledger(player) as ledger:
+        after = ledger.get_active_program()
+    assert after.version == before.version + 1
+    assert after.split_type == "Upper / Lower / Upper (Arms & Delts Augmented)"
+    assert _done_content(body) == (
+        "تمام، ظبطتلك البرنامج التدريبي على 3 أيام: "
+        "Upper / Lower / Upper (Arms & Delts Augmented) rebuilt."
+    )
+
+
+@pytest.mark.parametrize(
+    ("frequency", "message", "expected_plan", "frequency_label"),
+    [
+        (4, "ظبّطلي البرنامج على 4 أيام.", "Full Body 4-Day", "4 أيام"),
+        (4, "ممكن تغيّرلي البرنامج لـ 4 أيام.", "Full Body 4-Day", "4 أيام"),
+        (4, "غيّر البرنامج لـ 4 أيام.", "Full Body 4-Day", "4 أيام"),
+        (1, "ظبطلي البرنامج على يوم واحد.", "Consolidated Full Body", "يوم واحد"),
+    ],
+)
+def test_arabic_frequency_change_runs_through_http_chat(
+    api, monkeypatch, frequency, message, expected_plan, frequency_label
+):
+    client, db = api
+    player = f"arabic-frequency-change-{frequency}"
+    headers = _authed(_register(client, player)["access_token"])
+    before = _seed_chat_program(db, player)
+    _install_chat_program_generator(monkeypatch)
+    model = ScriptedChatModel([{"intent": "program_change", "target_frequency": frequency}])
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": message},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    with db.open_ledger(player) as ledger:
+        after = ledger.get_active_program()
+    assert after.version == before.version + 1
+    assert after.weekly_frequency == frequency
+    assert after.split_type == expected_plan
+    assert _done_content(body) == (
+        f"تمام، ظبطتلك البرنامج التدريبي على {frequency_label}: "
+        f"{expected_plan} rebuilt."
+    )
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "ينفع تغير البرنامج لـ 4 أيام؟",
+        "إزاي أغير البرنامج ل 3 أيام",
+        "ممكن أغير البرنامج لـ 4 أيام",
+    ],
+)
+def test_arabic_program_change_questions_do_not_mutate_through_http_chat(
+    api, monkeypatch, message
+):
+    client, db = api
+    player = "arabic-program-question"
+    headers = _authed(_register(client, player)["access_token"])
+    before = _seed_chat_program(db, player)
+    _install_chat_program_generator(monkeypatch)
+    model = ScriptedChatModel(
+        [
+            {"intent": "program_change", "target_frequency": 4},
+            "خليني أوضحلك إزاي تقدر تعدل برنامجك.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": message}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    with db.open_ledger(player) as ledger:
+        after = ledger.get_active_program()
+    assert after.version == before.version
+    assert _done_content(body) == "خليني أوضحلك إزاي تقدر تعدل برنامجك."
+
+
+def test_arabic_program_change_without_target_clarifies_without_mutation(
+    api, monkeypatch
+):
+    client, db = api
+    player = "arabic-program-change-needs-target"
+    headers = _authed(_register(client, player)["access_token"])
+    before = _seed_chat_program(db, player)
+    _install_chat_program_generator(monkeypatch)
+    with db.open_ledger(player) as ledger:
+        ledger.add_chat_message("user", "previous chat context")
+    model = ScriptedChatModel([{"intent": "program_change"}])
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "غيّر البرنامج"}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    with db.open_ledger(player) as ledger:
+        after = ledger.get_active_program()
+        history = ledger.get_chat_history()
+    assert after.version == before.version
+    assert any(row["content"] == "previous chat context" for row in history)
+    assert _done_content(body) == assistant_graph.ARABIC_PROGRAM_CHANGE_CLARIFICATION_RESPONSE
+
+
+def test_arabic_frequency_change_preserves_supported_female_split_family(api, monkeypatch):
+    client, db = api
+    player = "arabic-female-frequency"
+    headers = _authed(_register(client, player)["access_token"])
+    before = _seed_chat_program(
+        db,
+        player,
+        split_type="Glute Hypertrophy Tri-Phase",
+        gender="female",
+    )
+    _install_chat_program_generator(monkeypatch)
+    model = ScriptedChatModel([{"intent": "program_change", "target_frequency": 4}])
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "ظبّطلي البرنامج على 4 أيام."},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    with db.open_ledger(player) as ledger:
+        after = ledger.get_active_program()
+    assert after.version == before.version + 1
+    assert after.split_type == "Glute Specialization 4-Day"
+    assert _done_content(body) == (
+        "تمام، ظبطتلك البرنامج التدريبي على 4 أيام: Glute Specialization 4-Day rebuilt."
+    )
+
+
+def test_arabic_history_question_returns_verified_figures_through_http_chat(api, monkeypatch):
+    client, db = api
+    player = "arabic-history"
+    headers = _authed(_register(client, player)["access_token"])
+    _seed_chat_program(db, player)
+    _seed_session(db, player, "2026-09-24T10:00:00+00:00")
+    model = ScriptedChatModel(
+        [
+            {"intent": "exercise_history", "history_exercise": "Squat"},
+            "آخر مرة سجلت 100 kg × 5 عدّات، بإجمالي 500 kg.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    monkeypatch.setattr(assistant_graph, "_prompt_budget", lambda: 100_000)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "عملت كام في السكوات آخر مرة؟"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    assert _done_content(body) == "آخر مرة سجلت 100 kg × 5 عدّات، بإجمالي 500 kg."
+    grounded_context = _last_rendered(model)
+    assert "Squat" in grounded_context
+    assert "100 kg × 5 reps" in grounded_context
+    assert "500 kg volume" in grounded_context
+
+
+@pytest.mark.parametrize(
+    ("message", "classification", "clarification"),
+    [
+        (
+            "بدّل تمرين Squat ب Bench Press في يوم Push.",
+            {
+                "intent": "exercise_substitution",
+                "source_exercise": "Squat",
+                "target_exercise": "Bench Press",
+                "target_day": "Push",
+            },
+            "مش لاقي اليوم أو التمرين ده في برنامجك. ممكن تحدد يوم أو تمرين موجود؟",
+        ),
+        (
+            "بدّل تمرين Imaginary Press ب Bench Press.",
+            {
+                "intent": "exercise_substitution",
+                "source_exercise": "Imaginary Press",
+                "target_exercise": "Bench Press",
+            },
+            "أنهي تمرين عايز تغيّره؟",
+        ),
+    ],
+)
+def test_arabic_missing_program_day_or_exercise_clarifies_without_change(
+    api, monkeypatch, message, classification, clarification
+):
+    client, db = api
+    player = "arabic-unresolved"
+    headers = _authed(_register(client, player)["access_token"])
+    before = _seed_chat_program(db, player)
+    model = ScriptedChatModel([classification])
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": message}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    with db.open_ledger(player) as ledger:
+        after = ledger.get_active_program()
+    assert after.version == before.version
+    assert _done_content(body) == clarification
+
+
+@pytest.mark.parametrize(
+    ("message", "classification"),
+    [
+        (
+            "ظبطلي البرنامج على 6 أيام.",
+            {"intent": "program_change", "target_frequency": 6},
+        ),
+        (
+            "غيرلي البرنامج لتقسيمة Imaginary Split.",
+            {"intent": "program_change", "target_split_type": "imaginary_split"},
+        ),
+    ],
+)
+def test_arabic_program_change_rejects_unsupported_frequency_or_split(
+    api, monkeypatch, message, classification
+):
+    client, db = api
+    player = "arabic-invalid-program-change"
+    headers = _authed(_register(client, player)["access_token"])
+    before = _seed_chat_program(db, player)
+    model = ScriptedChatModel([classification])
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": message}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    with db.open_ledger(player) as ledger:
+        after = ledger.get_active_program()
+    assert after.version == before.version
+    assert _done_content(body) == (
+        "مش قادر أحدد تقسيمة البرنامج أو عدد أيامه. تحب البرنامج يبقى كام يوم وبأي تقسيمة؟"
+    )
+
+
+def test_english_program_routing_remains_unchanged(api, monkeypatch):
+    client, db = api
+    player = "chat-routing-order"
+    headers = _authed(_register(client, player)["access_token"])
+    _seed_chat_program(db, player)
+    _install_chat_program_generator(monkeypatch)
+    model = ScriptedChatModel()
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "switch routine to 4 days"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert "Rebuilt routine:" in _done_content(body)
+    with db.open_ledger(player) as ledger:
+        assert ledger.get_active_program().weekly_frequency == 4
+
+
+def test_clinical_and_franco_messages_are_intercepted_before_chat_model(api, monkeypatch):
+    client, _db = api
+    player = "safety-routing-order"
+    headers = _authed(_register(client, player)["access_token"])
+    safety_model = ScriptedChatModel(default_turn="CHAT MODEL RAN")
+    monkeypatch.setattr(assistant_graph, "llm", safety_model)
+    safety_cases = (
+        ("ركبتي بتوجعني جامد وأنا بعمل القرفصاء.", "ARABIC_CLINICAL_SAFEGUARD_RESPONSE"),
+        ("3ayez a3raf eh a7san setup lel bench press w el sets ad eh?", "FRANCO_ARABIC_INPUT_RESPONSE"),
+    )
+    for message, response_name in safety_cases:
+        with client.stream(
+            "POST", "/chat/messages", headers=headers, json={"content": message}
+        ) as response:
+            body = response.read().decode("utf-8")
+            assert response.status_code == 200
+        expected = getattr(assistant_graph, response_name)
+        assert _done_content(body) == expected

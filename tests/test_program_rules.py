@@ -312,6 +312,23 @@ def test_english_preferences_accepted_before_translation_keep_old_routing(
     assert match_split_keyword(preference) == expected_split
 
 
+@pytest.mark.parametrize(
+    ("frequency", "gender", "split_type", "expected_name"),
+    [
+        (4, "male", "upper_lower", "Upper / Lower (Arms & Delts Augmented)"),
+        (4, "female", "female_full_body", "Glute Specialization 4-Day"),
+        (4, "female", "female_upper_lower", "Lower (Glute Bias) / Upper & Core"),
+    ],
+)
+def test_catalog_split_family_keys_route_deterministically(
+    frequency, gender, split_type, expected_name
+):
+    assert _recognized_split_preference(split_type) == split_type
+    plan = resolve_split(frequency, split_type, gender)
+
+    assert plan.split_name == expected_name
+
+
 def test_split_translation_keeps_other_player_words():
     assert _recognized_split_preference("علوي يومين وسفلي يومين") == (
         "upper يومين lower يومين"

@@ -1264,8 +1264,9 @@ below need owner review before release.
 
 The Arabic classifier uses the labels `exercise_substitution`,
 `composite_intent`, `program_change`, `exercise_history`, `coaching_qa`, and
-`other`. Program changes and exercise-history requests receive the normal
-coaching answer without a new action. Only `exercise_substitution` and a
+`other`. Under #191, program changes and exercise-history requests received the
+normal coaching answer without a new action; #200 updates that behavior below.
+Only `exercise_substitution` and a
 `composite_intent` with a swap part enter the swap path. For that classification,
 the prompt includes the Player's current Training program exercise names and
 asks for the source copied exactly from that list. The classifier translates the
@@ -1290,6 +1291,28 @@ receive the normal coaching answer. Arabic target validation accepts one unique
 exact display/source/alias match, or one unique lexical name-search hit whose
 name contains the target words. It does not use semantic similarity to choose a
 different exercise; unresolved and ambiguous targets prompt for clarification.
+
+The #200 extension below supersedes the prior no-action behavior for direct
+program changes and history questions: those requests now use the existing
+program mutation and ledger history paths after validation.
+
+## Assistant chat routing and replies (#200; pending owner review)
+
+These new fixed replies use polite Egyptian Arabic. Exercise names,
+program names, and `kg` values are runtime data. The frequency label uses
+`يوم واحد` for 1, `يومين` for 2, and a Western digit plus `أيام` for 3–5.
+
+| English intent or template | Arabic |
+| --- | --- |
+| I could not find that day or exercise in your program. Which existing day or exercise did you mean? | مش لاقي اليوم أو التمرين ده في برنامجك. ممكن تحدد يوم أو تمرين موجود؟ |
+| I could not identify the program split or number of days. How many days and which split would you like? | مش قادر أحدد تقسيمة البرنامج أو عدد أيامه. تحب البرنامج يبقى كام يوم وبأي تقسيمة؟ |
+| I could not find that exercise in your program or Exercise library. Which exercise did you mean? | مش لاقي التمرين ده في برنامجك أو مكتبة التمارين. تقصد أنهي تمرين؟ |
+| I updated your Training program to {frequencyLabel}: {programName}. | تمام، ظبطتلك البرنامج التدريبي على {frequencyLabel}: {programName}. |
+
+Arabic program changes use the existing program-mutation handler only after
+their split family and weekly frequency resolve to supported generator data.
+Exercise-history replies use figures already computed from the player's
+Training ledger and keep the answer in Egyptian Arabic.
 
 ## Recovery-email reminder (#408; pending owner review)
 

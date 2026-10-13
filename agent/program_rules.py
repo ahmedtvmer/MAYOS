@@ -326,7 +326,12 @@ def resolve_split(
     if not preference or preference.strip().lower() in ["standard", "default", "none", "balanced"]:
         return get_default_split(clamped_freq, gender=gender)
 
-    split_type = match_split_keyword(preference)
+    canonical_split = preference.strip().casefold()
+    split_type = (
+        canonical_split
+        if canonical_split in SPLIT_DISPLAY_NAMES
+        else match_split_keyword(preference)
+    )
     if split_type:
         plan = get_split_plan(split_type, clamped_freq, gender)
         if plan is not None:

@@ -40,7 +40,12 @@ from agent.program_generator import (
     generate_program_pipeline,
     get_biomechanical_cue,
 )
-from agent.program_blueprints import experience_level_for_training_age
+from agent.program_blueprints import (
+    DEFAULT_SPLIT_BY_FREQUENCY,
+    SPLIT_DISPLAY_NAMES,
+    experience_level_for_training_age,
+)
+from agent.program_rules import SPLIT_FREQUENCY_NAMES, get_split_plan, match_split_keyword
 from agent.prompts import (
     ARABIC_CLINICAL_SAFEGUARD_RESPONSE,
     ARABIC_DIAGNOSIS_SAFEGUARD_RESPONSE,
@@ -92,6 +97,15 @@ logger = MyosLogger().get_logger(__name__)
 
 OUTPUT_LIMIT_RESPONSE = "I reached the response limit. Ask me to continue if you'd like more."
 ARABIC_SWAP_CLARIFICATION_RESPONSE = "أنهي تمرين عايز تغيّره؟"
+ARABIC_ACTION_CLARIFICATION_RESPONSE = (
+    "مش لاقي اليوم أو التمرين ده في برنامجك. ممكن تحدد يوم أو تمرين موجود؟"
+)
+ARABIC_PROGRAM_CHANGE_CLARIFICATION_RESPONSE = (
+    "مش قادر أحدد تقسيمة البرنامج أو عدد أيامه. تحب البرنامج يبقى كام يوم وبأي تقسيمة؟"
+)
+ARABIC_HISTORY_CLARIFICATION_RESPONSE = (
+    "مش لاقي التمرين ده في برنامجك أو مكتبة التمارين. تقصد أنهي تمرين؟"
+)
 ARABIC_ONE_AT_A_TIME_NOTE = "هبدّل التمرين ده الأول، وبعدها قولي تحب أساعدك في إيه كمان؟"
 ARABIC_PREFERRED_NAME_TRIGGERS = ("اسمي", "ناديني", "قولي يا", "قوللي يا")
 _MAX_PREFERRED_NAME_WORDS = 4
@@ -274,6 +288,41 @@ RE_ARABIC_SWAP_REQUEST = re.compile(
     r"(?:(?:عايز|عاوز|عايزة|عاوزة|محتاج|محتاجة)\s+)?"
     r"(?:أ?بدل|أ?غير|استبدل)(?:\s+لي)?(?:\s|$)"
 )
+# Unicode \w treats Arabic letters as word characters; diacritics are removed first.
+RE_ARABIC_PROGRAM_COMMAND = re.compile(
+    r"(?:(?<!\w)(?:ظبط|غير|عدل|بدل|خلي|اعمل|زود|قلل)(?:لي)?(?!\w)|"
+    r"(?<!\w)(?:ممكن|لو\s+سمحت|يا\s+ريت|من\s+فضلك)\s+"
+    r"ت(?:ظبط|غير|عدل|بدل|خلي|عمل|زود|قلل)(?:لي)?(?!\w))"
+    r".{0,50}(?<!\w)(?:البرنامج|برنامج|التقسيمة|تقسيمة|الروتين|روتين|program|routine|split)(?!\w)",
+    re.IGNORECASE,
+)
+RE_ARABIC_FREQUENCY_MENTION = re.compile(
+    r"(?<!\w)(?P<number>[0-9٠-٩]+|واحد|واحدة|اتنين|اثنين|يومين|تلاتة|ثلاثة|"
+    r"أربع|اربع|أربعة|اربعة|أربعين|خمسة|خمس|ستة|ست|سبعة|سبع)"
+    r"\s*(?:أيام?|ايام?|يومين|يوم|days?|d/wk)(?!\w)",
+    re.IGNORECASE,
+)
+ARABIC_DIGIT_TRANSLATION = str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789")
+ARABIC_FREQUENCY_WORDS = {
+    "واحد": 1,
+    "واحدة": 1,
+    "اتنين": 2,
+    "اثنين": 2,
+    "يومين": 2,
+    "تلاتة": 3,
+    "ثلاثة": 3,
+    "أربع": 4,
+    "اربع": 4,
+    "أربعة": 4,
+    "اربعة": 4,
+    "أربعين": 40,
+    "خمسة": 5,
+    "خمس": 5,
+    "ستة": 6,
+    "ست": 6,
+    "سبعة": 7,
+    "سبع": 7,
+}
 RE_SINGLE_SWAP = re.compile(
     r"(?:(?:i\s+(?:just\s+)?want|show\s+me|give\s+me)\s+)?\b(?:swap|replace|substitute|alternatives?\s+(?:for|to)|switch(?:\s+out)?)\b\s+(?P<source>[a-zA-Z0-9\s\(\)\-\_]+)",
     re.IGNORECASE,
@@ -378,6 +427,11 @@ class ArabicIntentClassification(BaseModel):
     ]
     source_exercise: str | None = None
     target_exercise: str | None = None
+    target_day: str | None = None
+    target_split_type: str | None = None
+    target_frequency: int | None = Field(default=None, strict=True)
+    history_exercise: str | None = None
+    history_whole_session: bool = False
     has_swap: bool = False
     has_additional_request: bool = False
 
@@ -385,9 +439,14 @@ class ArabicIntentClassification(BaseModel):
 ARABIC_ROUTER_PROMPT = (
     "Classify this Arabic or Arabic-dominant player message as exactly one of: "
     "exercise_substitution, composite_intent, program_change, exercise_history, "
-    "coaching_qa, other. Use program_change for a requested Training program change "
-    "and exercise_history for questions about past workouts or exercises. These intents "
-    "receive a normal coaching answer and do not perform an action here. Use "
+    "coaching_qa, other. Use program_change for a direct request to change the Training "
+    "program, including its split family or weekly frequency. Set target_split_type to "
+    "one of the allowed split family keys listed below, or null if no split was named; "
+    "set target_frequency to the requested number of days, or null if none was named. "
+    "Use exercise_history for questions about past workouts or exercises. For a question "
+    "about one exercise, set history_exercise to its English Exercise library-style name. "
+    "For a whole-session summary, set history_whole_session=true. The server validates "
+    "these proposals against the player's Training program and Exercise library. Use "
     "exercise_substitution only when the player explicitly asks to replace or swap an "
     "exercise and names the replacement, such as بدّل/غيّر/استبدل X بـ Y or "
     "'swap X for Y'. Asking for a suggestion, an alternative, advice, or what to do "
@@ -403,9 +462,10 @@ ARABIC_ROUTER_PROMPT = (
     "Fly or Raise. When the player names only equipment or a variant for the same "
     "movement, apply it to the source movement: بالدامبل with Bench Press means "
     "Dumbbell Bench Press; بالبار means Barbell; على السميث means Smith Machine. "
-    "Keep source_exercise copied exactly from the current program exercise names. If "
-    "the message has no swap, leave source_exercise and target_exercise empty. Return "
-    "at most one swap."
+    "Keep source_exercise copied exactly from the current program exercise names. If a "
+    "day is named for a swap, copy target_day exactly from the current program day names; "
+    "otherwise leave it empty. If the message has no swap, leave source_exercise, "
+    "target_exercise, and target_day empty. Return at most one swap."
 )
 
 
@@ -688,6 +748,15 @@ def _extract_frequency(text: str) -> int | None:
     return None
 
 
+def _mentioned_arabic_frequency(query: str) -> int | None:
+    normalized = query.translate(ARABIC_DIGIT_TRANSLATION)
+    match = RE_ARABIC_FREQUENCY_MENTION.search(normalized)
+    if not match:
+        return None
+    number = match.group("number")
+    return int(number) if number.isdigit() else ARABIC_FREQUENCY_WORDS.get(number)
+
+
 def _action_command(query: str) -> str:
     command = query.strip().lower()
     if re.search(r"\b(?:if|unless|should|would|hypothetically|maybe|might)\b|\b(?:do not|don't|not to)\b", command):
@@ -831,23 +900,35 @@ def _classify_intent_with_llm(query: str) -> IntentClassification:
     )
 
 
+def _arabic_program_context(program: Any) -> str:
+    return "\n".join(
+        f"- {day.day_name}: " + ", ".join(
+            exercise.exercise_name for exercise in day.exercises
+        )
+        for day in getattr(program, "days", [])
+    ) or "- None"
+
+
+def _arabic_router_system_prompt(program: Any) -> str:
+    split_types = ", ".join(
+        split_type for split_type in ARABIC_SPLIT_PREFERENCES
+        if split_type in SPLIT_DISPLAY_NAMES
+    )
+    return (
+        f"{ARABIC_ROUTER_PROMPT}\n\n"
+        f"Allowed split family keys: {split_types}.\n"
+        f"Current Training program exercise names:\n{_arabic_program_context(program)}"
+    )
+
+
 def _classify_arabic_intent_with_llm(
-    query: str, program_exercise_names: list[str]
+    query: str, program: Any
 ) -> ArabicIntentClassification:
     structured_llm = llm.with_structured_output(ArabicIntentClassification).bind(
         max_completion_tokens=player_output_budgets.player_output_budget("intent_routing")
     )
-    program_context = "\n".join(f"- {name}" for name in program_exercise_names) or "- None"
     return structured_llm.invoke(
-        [
-            SystemMessage(
-                content=(
-                    f"{ARABIC_ROUTER_PROMPT}\n\n"
-                    f"Current Training program exercise names:\n{program_context}"
-                )
-            ),
-            HumanMessage(content=query),
-        ]
+        [SystemMessage(content=_arabic_router_system_prompt(program)), HumanMessage(content=query)]
     )
 
 
@@ -856,30 +937,177 @@ def _is_arabic_dominant(query: str) -> bool:
     return resolve_reply_language(query, "en") == "ar"
 
 
-def _program_exercise_names(program: Any) -> list[str]:
-    return list(dict.fromkeys(
-        exercise.exercise_name
+ARABIC_SPLIT_PREFERENCES = {
+    split_type: split_type for split_type in SPLIT_DISPLAY_NAMES
+}
+
+
+def _resolve_arabic_day(program: Any, requested_name: str) -> Any | None:
+    if not program or not requested_name.strip():
+        return None
+    requested = requested_name.strip().casefold()
+    exact = [day for day in program.days if day.day_name.strip().casefold() == requested]
+    if len(exact) == 1:
+        return exact[0]
+    words = set(re.findall(r"[a-z0-9]+", requested))
+    if not words:
+        return None
+    matches = [
+        day
         for day in program.days
-        for exercise in day.exercises
-    )) if program else []
+        if words <= set(re.findall(r"[a-z0-9]+", day.day_name.casefold()))
+    ]
+    return matches[0] if len(matches) == 1 else None
 
 
-def _resolve_arabic_source(program: Any, requested_name: str) -> tuple[Any, Any] | None:
-    source_name = expand_fitness_abbreviations(requested_name.strip())
+def _current_split_family(program: Any) -> str | None:
+    if not program:
+        return None
+    split_name = str(getattr(program, "split_type", "")).strip().casefold()
+    frequency = getattr(program, "weekly_frequency", None)
+    for (split_type, split_frequency), display_name in SPLIT_FREQUENCY_NAMES.items():
+        if split_frequency == frequency and display_name.casefold() == split_name:
+            return split_type if split_type in ARABIC_SPLIT_PREFERENCES else None
+    for split_type, display_name in SPLIT_DISPLAY_NAMES.items():
+        if display_name.casefold() == split_name:
+            return split_type if split_type in ARABIC_SPLIT_PREFERENCES else None
+    return match_split_keyword(split_name)
+
+
+def _arabic_split_family(value: str) -> str | None:
+    normalized = value.strip().casefold()
+    if normalized in ARABIC_SPLIT_PREFERENCES:
+        return normalized
+    for split_type, display_name in SPLIT_DISPLAY_NAMES.items():
+        if display_name.casefold() == normalized:
+            return split_type if split_type in ARABIC_SPLIT_PREFERENCES else None
+    if "arnold" in normalized and ("upper" in normalized or "lower" in normalized):
+        return "arnold_x_ul"
+    matched = match_split_keyword(normalized)
+    return matched if matched in ARABIC_SPLIT_PREFERENCES else None
+
+
+def _arabic_program_change_is_directive(query: str) -> bool:
+    normalized = RE_ARABIC_DIACRITICS.sub("", query).strip()
+    if normalized.endswith(("؟", "?")) or re.match(
+        r"^(?:ينفع|إزاي|ازاي|ازاى|كيف|هل|لو(?!\s+سمحت)|مش|ما|لا|تنصحني|ايه رأيك|إيه رأيك)(?=\s|$)",
+        normalized,
+    ):
+        return False
+    if re.search(r"(?:مش|ما|لا)\s+(?:تغير|تغيّر|تظبط|تظبّط|تعدل|تعدّل)", normalized):
+        return False
+    return _authorized_action(query, "program_mutation") or bool(
+        RE_ARABIC_PROGRAM_COMMAND.search(normalized)
+    )
+
+
+def _arabic_change_frequency(
+    query: str, requested_frequency: int | None, current_frequency: Any
+) -> int | None:
+    mentioned_frequency = _mentioned_arabic_frequency(query)
+    if requested_frequency is not None and (
+        type(requested_frequency) is not int or not 1 <= requested_frequency <= 5
+    ):
+        return None
+    if mentioned_frequency is not None and requested_frequency != mentioned_frequency:
+        return None
+    if type(current_frequency) is not int or not 1 <= current_frequency <= 5:
+        return None
+    return requested_frequency if requested_frequency is not None else current_frequency
+
+
+def _default_arabic_split(frequency: int, profile: dict[str, Any]) -> str:
+    gender = str(profile.get("gender", "male")).lower()
+    split_type = DEFAULT_SPLIT_BY_FREQUENCY.get(gender, {}).get(frequency)
+    if split_type not in ARABIC_SPLIT_PREFERENCES:
+        split_type = DEFAULT_SPLIT_BY_FREQUENCY["male"].get(frequency, "full_body")
+    return split_type
+
+
+def _preserved_arabic_split(program: Any, profile: dict[str, Any], frequency: int) -> str:
+    gender = profile.get("gender", "male")
+    split_type = _current_split_family(program)
+    if split_type not in ARABIC_SPLIT_PREFERENCES:
+        return _default_arabic_split(frequency, profile)
+    if split_type == "arnold_x_ul" and frequency < 4:
+        split_type = "arnold"
+    if get_split_plan(split_type, frequency, gender) is None:
+        return _default_arabic_split(frequency, profile)
+    return split_type
+
+
+def _validated_arabic_split(
+    classification: ArabicIntentClassification,
+    program: Any,
+    profile: dict[str, Any],
+    frequency: int,
+) -> str | None:
+    requested_split = (
+        _arabic_split_family(classification.target_split_type)
+        if classification.target_split_type
+        else None
+    )
+    if classification.target_split_type and requested_split is None:
+        return None
+    gender = profile.get("gender", "male")
+    if requested_split == "arnold_x_ul" and frequency < 4:
+        return None
+    split_type = requested_split or _preserved_arabic_split(program, profile, frequency)
+    return split_type if get_split_plan(split_type, frequency, gender) else None
+
+
+def _validated_arabic_program_change(
+    query: str, classification: ArabicIntentClassification, ledger: Any
+) -> dict[str, Any] | None:
+    if not _arabic_program_change_is_directive(query):
+        return None
+    if classification.target_frequency is None and not classification.target_split_type:
+        return None
+    profile = ledger.get_player_profile() or {}
+    program = ledger.get_active_program()
+    current_frequency = getattr(program, "weekly_frequency", None) or profile.get("weekly_frequency")
+    frequency = _arabic_change_frequency(query, classification.target_frequency, current_frequency)
+    if frequency is None:
+        return None
+    split_type = _validated_arabic_split(classification, program, profile, frequency)
+    if split_type is None:
+        return None
+    return _arabic_program_mutation_route(frequency, split_type)
+
+
+def _arabic_program_mutation_route(frequency: int, split_type: str) -> dict[str, Any]:
+    return {
+        "intent": "program_mutation",
+        "intent_metadata": {
+            "target_frequency": frequency,
+            "split_preference": SPLIT_DISPLAY_NAMES[split_type],
+            "split_family": ARABIC_SPLIT_PREFERENCES[split_type],
+            "arabic_data_validated": True,
+        },
+    }
+
+
+def _arabic_source_candidates(
+    program: Any, source_name: str, requested_day: str | None
+) -> list[tuple[Any, Any, float]]:
     source_stem = clean_movement_stem(source_name.lower())
-    candidates = [
+    return [
         (day, exercise, _substitution_source_similarity(source_name, source_stem, exercise))
         for day in program.days
+        if requested_day is None or day.day_name == requested_day
         for exercise in day.exercises
     ]
+
+
+def _resolve_arabic_source(
+    program: Any, requested_name: str, requested_day: str | None = None
+) -> tuple[Any, Any] | None:
+    source_name = expand_fitness_abbreviations(requested_name.strip())
+    candidates = _arabic_source_candidates(program, source_name, requested_day)
     if not candidates:
         return None
     best_similarity = max(similarity for _, _, similarity in candidates)
-    best_matches = [
-        (day, exercise)
-        for day, exercise, similarity in candidates
-        if similarity == best_similarity
-    ]
+    best_matches = [(day, exercise) for day, exercise, score in candidates if score == best_similarity]
     if best_similarity < SUBSTITUTION_SOURCE_SIMILARITY_THRESHOLD or len(best_matches) != 1:
         return None
     return best_matches[0]
@@ -951,17 +1179,22 @@ def _resolve_arabic_target(
     return None
 
 
-def _validated_arabic_swap(program: Any, store: Any, intent: ArabicIntentClassification) -> dict[str, Any] | None:
-    if not program or not intent.source_exercise or not intent.target_exercise:
+def _arabic_swap_source(
+    program: Any, intent: ArabicIntentClassification
+) -> tuple[Any, Any] | None:
+    if not program or not intent.source_exercise:
         return None
-    source_match = _resolve_arabic_source(program, intent.source_exercise)
-    if source_match is None:
+    day = _resolve_arabic_day(program, intent.target_day) if intent.target_day else None
+    if intent.target_day and day is None:
         return None
-    source_day, source = source_match
-    target = _resolve_arabic_target(store, source, source_day, intent.target_exercise)
-    if target is None:
-        return None
-    target_id, target_entry = target
+    return _resolve_arabic_source(
+        program, intent.source_exercise, requested_day=day.day_name if day else None
+    )
+
+
+def _arabic_swap_metadata(
+    source_day: Any, source: Any, target_id: str, target_entry: dict[str, Any]
+) -> dict[str, Any]:
     return {
         "mode": "direct_swap",
         "source_exercise": source.exercise_name,
@@ -972,40 +1205,164 @@ def _validated_arabic_swap(program: Any, store: Any, intent: ArabicIntentClassif
     }
 
 
+def _validated_arabic_swap(
+    program: Any, store: Any, intent: ArabicIntentClassification
+) -> dict[str, Any] | None:
+    if not intent.target_exercise:
+        return None
+    source_match = _arabic_swap_source(program, intent)
+    if source_match is None:
+        return None
+    source_day, source = source_match
+    target = _resolve_arabic_target(store, source, source_day, intent.target_exercise)
+    if target is None:
+        return None
+    return _arabic_swap_metadata(source_day, source, *target)
+
+
+def _arabic_history_program_match(program: Any, requested_name: str) -> tuple[str, str] | None:
+    if program:
+        requested = expand_fitness_abbreviations(requested_name.strip())
+        source_stem = clean_movement_stem(requested.lower())
+        candidates = [
+            (exercise, _substitution_source_similarity(requested, source_stem, exercise))
+            for day in program.days
+            for exercise in day.exercises
+        ]
+        if candidates:
+            best_score = max(score for _, score in candidates)
+            best = [exercise for exercise, score in candidates if score == best_score]
+            best_ids = {str(exercise.exercise_id) for exercise in best}
+            if best_score >= SUBSTITUTION_SOURCE_SIMILARITY_THRESHOLD and len(best_ids) == 1:
+                exercise = best[0]
+                return str(exercise.exercise_id), exercise.exercise_name
+    return None
+
+
+def _arabic_history_library_match(store: Any, requested_name: str) -> tuple[str, str] | None:
+    requested = expand_fitness_abbreviations(requested_name.strip())
+    matches = [
+        entry
+        for entry in _arabic_name_search_candidates(store, requested)
+        if store.is_exercise_library_exercise_visible(str(entry["id"]))
+    ]
+    by_id = {str(entry["id"]): entry for entry in matches}
+    if len(by_id) != 1:
+        return None
+    exercise_id, entry = next(iter(by_id.items()))
+    return exercise_id, str(entry["name"])
+
+
+def _resolve_arabic_history_exercise(
+    program: Any, store: Any, requested_name: str
+) -> tuple[str, str] | None:
+    return _arabic_history_program_match(program, requested_name) or (
+        _arabic_history_library_match(store, requested_name)
+    )
+
+
+def _classify_arabic_program_change(
+    query: str, classification: ArabicIntentClassification, ledger: Any
+) -> dict[str, Any]:
+    proposal = _validated_arabic_program_change(query, classification, ledger)
+    if proposal is not None:
+        return proposal
+    if _arabic_program_change_is_directive(query):
+        return _arabic_clarification_route("program_change")
+    return {"intent": "coaching_qa", "intent_metadata": {}}
+
+
+def _arabic_clarification_route(kind: str | None = None) -> dict[str, Any]:
+    metadata = {"clarification_kind": kind} if kind else {}
+    return {"intent": "arabic_swap_clarification", "intent_metadata": metadata}
+
+
+def _arabic_history_route(exercise_id: str, exercise_name: str) -> dict[str, Any]:
+    return {
+        "intent": "exercise_history",
+        "intent_metadata": {
+            "raw_query": f"how did I do on {exercise_name} last session",
+            "arabic_history": True,
+            "history_exercise_id": exercise_id,
+            "history_exercise_name": exercise_name,
+        },
+    }
+
+
+def _classify_arabic_history(
+    classification: ArabicIntentClassification, program: Any, store: Any
+) -> dict[str, Any]:
+    if classification.history_whole_session and not classification.history_exercise:
+        return {
+            "intent": "exercise_history",
+            "intent_metadata": {
+                "raw_query": "how did I perform last session",
+                "arabic_history": True,
+            },
+        }
+    if not classification.history_exercise or store is None:
+        return _arabic_clarification_route("history")
+    resolved = _resolve_arabic_history_exercise(program, store, classification.history_exercise)
+    if resolved is None:
+        return _arabic_clarification_route("history")
+    return _arabic_history_route(*resolved)
+
+
+def _arabic_swap_route(
+    classification: ArabicIntentClassification,
+    metadata: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if metadata is None:
+        return _arabic_clarification_route(
+            "program_reference" if classification.target_day else None
+        )
+    if classification.intent == "composite_intent" or classification.has_additional_request:
+        metadata["has_additional_request"] = True
+        return {"intent": "composite_intent", "intent_metadata": {"arabic_validated_swap": metadata}}
+    return {"intent": "exercise_substitution", "intent_metadata": {**metadata, "arabic_data_validated": True}}
+
+
+def _classify_arabic_swap(
+    query: str, classification: ArabicIntentClassification, program: Any, store: Any
+) -> dict[str, Any]:
+    if not (
+        RE_EXPLICIT_SWAP.search(query)
+        or RE_ARABIC_SWAP_REQUEST.search(RE_ARABIC_DIACRITICS.sub("", query))
+    ):
+        return {"intent": "coaching_qa", "intent_metadata": {}}
+    metadata = _validated_arabic_swap(program, store, classification) if store is not None else None
+    return _arabic_swap_route(classification, metadata)
+
+
 def _classify_arabic_intent(query: str, config: dict[str, Any] | None) -> dict[str, Any]:
     ledger, store = _graph_context(config)
     program = ledger.get_active_program() if ledger is not None else None
     try:
-        classification = _classify_arabic_intent_with_llm(
-            query, _program_exercise_names(program)
-        )
+        classification = _classify_arabic_intent_with_llm(query, program)
     except Exception:
         logger.exception("Arabic player intent classification failed.")
         return {"intent": "coaching_qa", "intent_metadata": {}}
-    is_swap = classification.intent == "exercise_substitution" or (
-        classification.intent == "composite_intent" and classification.has_swap
-    )
-    if not is_swap:
-        return {"intent": "coaching_qa", "intent_metadata": {}}
-    normalized_query = RE_ARABIC_DIACRITICS.sub("", query)
-    if not (RE_EXPLICIT_SWAP.search(query) or RE_ARABIC_SWAP_REQUEST.search(normalized_query)):
-        return {"intent": "coaching_qa", "intent_metadata": {}}
-    metadata = _validated_arabic_swap(program, store, classification) if store is not None else None
-    if metadata is None:
-        return {"intent": "arabic_swap_clarification", "intent_metadata": {}}
-    if classification.intent == "composite_intent" or classification.has_additional_request:
-        metadata["has_additional_request"] = True
-        return {
-            "intent": "composite_intent",
-            "intent_metadata": {"arabic_validated_swap": metadata},
-        }
-    return {"intent": "exercise_substitution", "intent_metadata": {**metadata, "arabic_data_validated": True}}
+    if classification.intent in {"exercise_substitution", "composite_intent"} and (
+        classification.intent == "exercise_substitution" or classification.has_swap
+    ):
+        return _classify_arabic_swap(query, classification, program, store)
+    if classification.intent == "program_change":
+        return _classify_arabic_program_change(query, classification, ledger)
+    if classification.intent == "exercise_history":
+        return _classify_arabic_history(classification, program, store)
+    return {"intent": "coaching_qa", "intent_metadata": {}}
 
 
 def arabic_swap_clarification_node(
     state: AssistantState, config: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    return _response(ARABIC_SWAP_CLARIFICATION_RESPONSE)
+    kind = (state.get("intent_metadata") or {}).get("clarification_kind")
+    response = {
+        "program_change": ARABIC_PROGRAM_CHANGE_CLARIFICATION_RESPONSE,
+        "program_reference": ARABIC_ACTION_CLARIFICATION_RESPONSE,
+        "history": ARABIC_HISTORY_CLARIFICATION_RESPONSE,
+    }.get(kind, ARABIC_SWAP_CLARIFICATION_RESPONSE)
+    return _response(response)
 
 
 def _clinical_turn_metadata(query: str, sub_intents=()) -> dict[str, Any] | None:
@@ -1358,6 +1715,27 @@ def _session_summary_response(ledger: Any, store: Any) -> dict[str, Any]:
     return _response_with_model_context(content + ending, model_content + "".join(model_exercises) + ending)
 
 
+def _arabic_history_fallback(
+    state: AssistantState, config: dict[str, Any] | None
+) -> dict[str, Any]:
+    metadata = dict(state.get("intent_metadata", {}))
+    metadata.pop("arabic_history", None)
+    resolved = exercise_history_node({**state, "intent_metadata": metadata}, config)
+    facts = (
+        resolved.get("model_context_content")
+        or resolved.get("response_content")
+        or resolved.get("telemetry_context")
+        or "No matching Training ledger history was found."
+    )
+    return {
+        "intent": "exercise_history_fallback",
+        "telemetry_context": (
+            "Verified Training ledger history for this request. Use only these "
+            "figures and answer in the latest message's language:\n" + str(facts)
+        ),
+    }
+
+
 def _history_name(name: str) -> str:
     name = expand_fitness_abbreviations(name).lower()
     name = re.sub(r"\b(squat|deadlift|curl|row|press|lunge)(?:s|es)\b", r"\1", name)
@@ -1392,7 +1770,10 @@ def _history_model_fallback(state: AssistantState, config: dict[str, Any] | None
 def exercise_history_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     ledger, store = _graph_context(config)
     messages = state.get("messages", [])
-    raw_query = state.get("intent_metadata", {}).get("raw_query")
+    metadata = state.get("intent_metadata", {})
+    if metadata.get("arabic_history"):
+        return _arabic_history_fallback(state, config)
+    raw_query = metadata.get("raw_query")
     raw_query = _get_message_text(raw_query) if raw_query else (_get_message_text(messages[-1]) if messages else "")
     if _whole_session_query(raw_query):
         return _session_summary_response(ledger, store)
@@ -1821,10 +2202,11 @@ def _split_change_request_suggestion(query: str, metadata: dict[str, Any]) -> di
         supplied_frequency = metadata.get("target_frequency")
         if type(supplied_frequency) is int and 1 <= supplied_frequency <= 5:
             frequency = supplied_frequency
+    split_preference = metadata.get("split_preference")
     return {
         "kind": "split_change",
         "desired_weekly_frequency": frequency,
-        "desired_split_preference": None,
+        "desired_split_preference": split_preference if isinstance(split_preference, str) else None,
         "reason": _request_suggestion_reason(query),
     }
 
@@ -1836,6 +2218,14 @@ def _coach_program_refusal(query: str) -> str:
             "يمكنك مراجعة طلب وإرساله إلى مدربك."
         )
     return programs_service.COACH_CONTROLLED_REQUEST_ERROR
+
+
+def _arabic_frequency_label(frequency: int) -> str:
+    if frequency == 1:
+        return "يوم واحد"
+    if frequency == 2:
+        return "يومين"
+    return f"{frequency} أيام"
 
 
 def _remove_day_suffix(exercise_name: str, day_name: str | None) -> str:
@@ -2296,37 +2686,82 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
     return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
 
 
+def _program_mutation_frequency(
+    query: str, metadata: dict[str, Any]
+) -> tuple[int | None, str | None]:
+    arabic_data_validated = metadata.get("arabic_data_validated") is True
+    requested = _extract_frequency(query)
+    supplied = metadata.get("target_frequency")
+    if arabic_data_validated and requested is not None and requested != supplied:
+        return None, ARABIC_PROGRAM_CHANGE_CLARIFICATION_RESPONSE
+    for frequency in (requested, supplied):
+        if frequency is not None and (type(frequency) is not int or not 1 <= frequency <= 5):
+            response = (
+                ARABIC_PROGRAM_CHANGE_CLARIFICATION_RESPONSE
+                if arabic_data_validated
+                else "Training frequency must be 1–5 days per week (max 5 days). Please choose a supported frequency."
+            )
+            return None, response
+    frequency = supplied if arabic_data_validated else (requested if requested is not None else supplied)
+    return frequency, None
+
+
+def _program_mutation_confirmation(
+    program: Any, query: str, state: AssistantState
+) -> str:
+    if resolve_reply_language(query, state.get("display_language", "en")) == "ar":
+        frequency_label = _arabic_frequency_label(program.weekly_frequency)
+        return f"تمام، ظبطتلك البرنامج التدريبي على {frequency_label}: {program.program_name}."
+    return f"Rebuilt routine: **{program.program_name}** ({program.weekly_frequency} Days/Week). Context cleared for new routine."
+
+
+def _program_mutation_result(
+    program: Any, query: str, state: AssistantState
+) -> dict[str, Any]:
+    response = _program_mutation_confirmation(program, query, state)
+    return {
+        "program_updated": True,
+        "program_change": "regenerated",
+        "response_content": response,
+        "messages": [AIMessage(content=response)],
+    }
+
+
+def _run_program_mutation(
+    state: AssistantState, ledger: Any, frequency: int | None
+) -> dict[str, Any]:
+    query = _get_message_text(state["messages"][-1])
+    metadata = state.get("intent_metadata", {})
+    arabic_data_validated = metadata.get("arabic_data_validated") is True
+    split_preference = metadata.get("split_family") if arabic_data_validated else query
+    try:
+        prog, _ = generate_program_pipeline(
+            user_split_override=split_preference,
+            frequency_override=frequency,
+            ledger=ledger,
+        )
+        # Intentional fresh-start: a rebuilt split invalidates routine-specific dialogue context.
+        ledger.clear_chat_history()
+    except Exception as e:
+        logger.error(f"Mutation failure: {e}")
+        failure = "Could not rebuild split with those parameters."
+        return {"program_updated": False, "response_content": failure, "messages": [AIMessage(content=failure)]}
+    return _program_mutation_result(prog, query, state)
+
+
 def program_mutation_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     ledger, store = _graph_context(config)
     query = _get_message_text(state["messages"][-1])
-    if not _authorized_action(query, "program_mutation"):
+    metadata = state.get("intent_metadata", {})
+    if metadata.get("arabic_data_validated") is not True and not _authorized_action(query, "program_mutation"):
         return _response(AUTHORIZATION_RESPONSE)
-
-    meta = state.get("intent_metadata", {})
-    requested = _extract_frequency(query)
-    supplied = meta.get("target_frequency")
     if not programs_service.player_controls_program(store, ledger, state.get("player_account_id")):
-        suggestion = _split_change_request_suggestion(query, meta)
+        suggestion = _split_change_request_suggestion(query, metadata)
         return _response(_coach_program_refusal(query), request_suggestion=suggestion)
-    for frequency in (requested, supplied):
-        if frequency is not None and (type(frequency) is not int or not 1 <= frequency <= 5):
-            return _response("Training frequency must be 1–5 days per week (max 5 days). Please choose a supported frequency.")
-    freq = requested if requested is not None else supplied
-    try:
-        prog, _ = generate_program_pipeline(user_split_override=query, frequency_override=freq, ledger=ledger)
-        # Intentional fresh-start: a rebuilt split invalidates routine-specific dialogue context.
-        ledger.clear_chat_history()
-        msg = f"Rebuilt routine: **{prog.program_name}** ({prog.weekly_frequency} Days/Week). Context cleared for new routine."
-        return {
-            "program_updated": True,
-            "program_change": "regenerated",
-            "response_content": msg,
-            "messages": [AIMessage(content=msg)],
-        }
-    except Exception as e:
-        logger.error(f"Mutation failure: {e}")
-        msg = "Could not rebuild split with those parameters."
-        return {"program_updated": False, "response_content": msg, "messages": [AIMessage(content=msg)]}
+    frequency, issue = _program_mutation_frequency(query, metadata)
+    if issue:
+        return _response(issue)
+    return _run_program_mutation(state, ledger, frequency)
 
 
 def deload_choice_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:

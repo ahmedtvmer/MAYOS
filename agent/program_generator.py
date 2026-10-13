@@ -14,6 +14,7 @@ from agent.program_blueprints import (
     SLOT_FALLBACKS,
     SLOT_STAPLES,
     SLOT_SPECS,
+    SPLIT_DISPLAY_NAMES,
     SlotSpec,
     WARMUP_FAMILIES,
     WARMUP_SPECS,
@@ -254,6 +255,9 @@ def _contains_one_sided_push_pull(preference: str) -> bool:
 
 
 def _recognized_split_preference(preference: str) -> str | None:
+    split_type = preference.strip().casefold()
+    if split_type in SPLIT_DISPLAY_NAMES:
+        return split_type
     return _translate_split_preference(preference)
 
 
