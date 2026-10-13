@@ -114,7 +114,8 @@ def resolve_unknown_abbreviation_with_llm(token: str) -> Optional[str]:
 
     prompt = _abbreviation_prompt(clean_token)
     try:
-        structured_llm = llm.with_structured_output(AbbreviationExpansion).bind(
+        structured_llm = llm.with_structured_output(
+            AbbreviationExpansion,
             max_completion_tokens=player_output_budgets.player_output_budget("abbreviation_expansion")
         )
         res: AbbreviationExpansion = structured_llm.invoke(prompt)

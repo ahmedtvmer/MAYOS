@@ -5,13 +5,14 @@ import shutil
 from types import SimpleNamespace
 
 import pytest
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from agent import assistant_graph
 from agent.assistant_graph import exercise_substitution_node
 from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
 from tests.fakes.chat_model import ScriptedChatModel
 from utils.equipment_access import BODYWEIGHT_ONLY, COMMERCIAL_GYM, HOME_GYM
+from utils.player_output_budgets import SUBSTITUTION_RESOLUTION_MAX_OUTPUT_TOKENS
 
 CHEST_SLOT = "577"  # machine chest press (pectorals | chest)
 REVERSE_LAT_SLOT = "673"  # reverse grip machine lat pulldown (lats | back)
@@ -103,6 +104,57 @@ def _save_program_days(db, day_specs: list[tuple[str, list[str]]]) -> None:
         for index, (day_name, exercise_ids) in enumerate(day_specs, start=1)
     ]
     db.ledger.save_training_program(program)
+
+
+def test_coreference_structured_request_uses_substitution_output_budget(monkeypatch):
+    model = ScriptedChatModel(
+        [{"source_exercise": "barbell bench press", "target_exercise": "incline dumbbell press"}]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    store = SimpleNamespace(get_exercise_library_entries=lambda _exercise_ids: {})
+
+    resolved = assistant_graph.resolve_coreference_with_llm(
+        "Replace that with an incline press.",
+        [HumanMessage(content="Which one?")],
+        SimpleNamespace(days=[]),
+        store,
+    )
+
+    assert resolved == ("barbell bench press", "incline dumbbell press")
+    assert model.calls[0]["mode"] == "structured"
+    assert model.calls[0]["kwargs"]["max_completion_tokens"] == (
+        SUBSTITUTION_RESOLUTION_MAX_OUTPUT_TOKENS
+    )
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param(
+            '{"source_exercise":"barbell bench press","target_exercise":"incline dumbbell press"}',
+            id="parsed-response-marked-truncated",
+        ),
+        pytest.param(
+            '{"source_exercise":"barbell bench press","target_exercise":',
+            id="truncated-json",
+        ),
+    ],
+)
+def test_coreference_truncation_falls_back_without_using_partial_result(monkeypatch, content):
+    model = ScriptedChatModel(
+        [AIMessage(content=content, response_metadata={"finish_reason": "length"})]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    store = SimpleNamespace(get_exercise_library_entries=lambda _exercise_ids: {})
+
+    resolved = assistant_graph.resolve_coreference_with_llm(
+        "Replace that with an incline press.",
+        [HumanMessage(content="Which one?")],
+        SimpleNamespace(days=[]),
+        store,
+    )
+
+    assert resolved == (None, None)
 
 
 @pytest.mark.parametrize(

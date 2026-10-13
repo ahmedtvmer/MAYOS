@@ -925,7 +925,8 @@ def _classify_single_clause(clause: str, telemetry: str = "", messages: Sequence
 
 
 def _classify_intent_with_llm(query: str) -> IntentClassification:
-    structured_llm = llm.with_structured_output(IntentClassification).bind(
+    structured_llm = llm.with_structured_output(
+        IntentClassification,
         max_completion_tokens=player_output_budgets.player_output_budget("intent_routing")
     )
     return structured_llm.invoke(
@@ -957,7 +958,8 @@ def _arabic_router_system_prompt(program: Any) -> str:
 def _classify_arabic_intent_with_llm(
     query: str, program: Any
 ) -> ArabicIntentClassification:
-    structured_llm = llm.with_structured_output(ArabicIntentClassification).bind(
+    structured_llm = llm.with_structured_output(
+        ArabicIntentClassification,
         max_completion_tokens=player_output_budgets.player_output_budget("intent_routing")
     )
     return structured_llm.invoke(
@@ -1932,14 +1934,38 @@ def resolve_coreference_with_llm(
 ) -> tuple[str | None, str | None]:
     prompt = _build_coreference_prompt(query, messages, active_program, store)
     try:
-        structured_llm = llm.with_structured_output(SubstitutionResolution).bind(
-            max_completion_tokens=player_output_budgets.player_output_budget("substitution_resolution")
+        structured_llm = llm.with_structured_output(
+            SubstitutionResolution,
+            include_raw=True,
+            max_completion_tokens=player_output_budgets.player_output_budget(
+                "substitution_resolution"
+            ),
         )
-        res: SubstitutionResolution = structured_llm.invoke(prompt)
+        structured_response = structured_llm.invoke(prompt)
+        res = _parsed_substitution_resolution(structured_response)
+        if res is None:
+            return None, None
         return res.source_exercise, res.target_exercise
     except Exception as e:
         logger.warning(f"Coreference LLM fallback failed: {e}")
         return None, None
+
+
+def _parsed_substitution_resolution(
+    structured_response: Any,
+) -> SubstitutionResolution | None:
+    if not isinstance(structured_response, dict):
+        return None
+    raw_message = structured_response.get("raw")
+    raw_metadata = getattr(raw_message, "response_metadata", None) or {}
+    finish_reason = raw_metadata.get("finish_reason") or raw_metadata.get("stop_reason")
+    if (
+        finish_reason in {"length", "max_tokens"}
+        or structured_response.get("parsing_error") is not None
+    ):
+        return None
+    parsed = structured_response.get("parsed")
+    return parsed if isinstance(parsed, SubstitutionResolution) else None
 
 
 def _build_coreference_prompt(
