@@ -6,7 +6,7 @@
     "zai-org/GLM-5.3"
   ],
   "player_model": "deepseek-ai/DeepSeek-V4-Flash",
-  "rubric_sha256": "6462aca4b33863b67b60260d08c12949cab77ec59abf9f9d4c7943098805307e",
+  "rubric_sha256": "a1693e3193c828f6901165f445fc654a6a248a3591489b1d2af78661e1955fac",
   "reviewed_by": "Thomas",
   "reviewed_on": "2026-10-13"
 }

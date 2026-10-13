@@ -32,10 +32,10 @@ Return exactly one label: egyptian, standard, or mixed.
 
 Egyptian means polite everyday Egyptian Arabic, with Egyptian wording or grammar
 such as عايز, إزاي, كده, ده/دي, or خليك. Standard means predominantly Modern
-Standard Arabic, such as ينبغي, يمكنك, or يرجى. Mixed means substantial Egyptian
-and standard Arabic in the same reply, an unclear register, or too little Arabic
-to identify a register. English exercise names and common gym terms alone do not
-make an otherwise Arabic reply mixed. Do not judge coaching accuracy or safety.
+Standard Arabic, such as ينبغي, يمكنك, or يرجى. Label the reply by its DOMINANT register. Mixed means neither register clearly
+dominates, or there is too little Arabic to identify one. Neutral words shared by
+both registers (such as برنامج, تمام, أقدر, تمرين), English gym terms, exercise
+names, RIR, and kg are not standard-Arabic markers. Do not judge coaching accuracy or safety.
 Give one short rationale citing words from the reply."""
 
 

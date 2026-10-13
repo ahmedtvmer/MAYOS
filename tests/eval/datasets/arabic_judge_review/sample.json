@@ -6,7 +6,7 @@
     "Qwen/Qwen3.5-27B",
     "zai-org/GLM-5.3"
   ],
-  "rubric_sha256": "6462aca4b33863b67b60260d08c12949cab77ec59abf9f9d4c7943098805307e",
+  "rubric_sha256": "a1693e3193c828f6901165f445fc654a6a248a3591489b1d2af78661e1955fac",
   "examples": [
     {
       "case_id": "ar-sore-01",
