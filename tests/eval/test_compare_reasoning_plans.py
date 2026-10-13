@@ -3,7 +3,7 @@ import pytest
 from tests.eval.compare_reasoning_plans import _comparison_report
 
 
-def _comparison_case(index, judge_two_vote, latency_delta):
+def _comparison_case(index, judge_two_vote, latency_delta, baseline_errors=(), reasoned_errors=()):
     reasoned_first = index % 2 == 0
     option_order = {
         "first": "reasoned" if reasoned_first else "baseline",
@@ -18,8 +18,12 @@ def _comparison_case(index, judge_two_vote, latency_delta):
         "case_id": f"split-{index}",
         "option_order": option_order,
         "generation_error": None,
-        "baseline": {"status": "parsed", "validation_errors": [], "generation_seconds": 20.0},
-        "reasoned": {"status": "parsed", "validation_errors": [], "generation_seconds": 20.0 + latency_delta},
+        "baseline": {"status": "parsed", "validation_errors": list(baseline_errors), "generation_seconds": 20.0},
+        "reasoned": {
+            "status": "parsed",
+            "validation_errors": list(reasoned_errors),
+            "generation_seconds": 20.0 + latency_delta,
+        },
         "judges": {"judge_1": {"preferred": "first" if reasoned_first else "second"}, "judge_2": {"preferred": judge_two_choice}},
     }
 
@@ -39,6 +43,46 @@ def test_paired_comparison_gate_requires_both_judges_and_latency(
     report = _comparison_report(cases, metadata=[])
 
     assert report["passed"] is expected_pass
+
+
+SANITIZED = "DynamicSplitPlan required sanitizing or deterministic fallback"
+VOTES = ["reasoned", "reasoned", "reasoned", "baseline", "tie"]
+
+
+@pytest.mark.parametrize(
+    ("baseline_errors", "reasoned_errors", "expected_pass"),
+    [
+        ((SANITIZED,), (), True),
+        ((SANITIZED,), (SANITIZED,), True),
+        ((), (SANITIZED,), False),
+        ((), ("DynamicSplitPlan must contain 4 non-empty days",), False),
+    ],
+)
+def test_sanitized_baseline_plans_are_still_compared(baseline_errors, reasoned_errors, expected_pass):
+    cases = [
+        _comparison_case(index, vote, 5.0, baseline_errors, reasoned_errors)
+        for index, vote in enumerate(VOTES)
+    ]
+    report = _comparison_report(cases, metadata=[])
+
+    assert report["passed"] is expected_pass
+
+
+def test_pairs_are_judged_when_the_baseline_plan_needed_sanitizing(monkeypatch):
+    import tests.eval.compare_reasoning_plans as module
+
+    arm = {"status": "parsed", "validation_errors": [SANITIZED], "program": {"days": []}}
+    record = {"baseline": arm, "reasoned": {**arm, "validation_errors": []}, "judges": {}}
+    context = type("Context", (), {"judges": [{"name": "judge_1"}]})()
+    judged = []
+
+    monkeypatch.setattr(
+        module, "_judge_pair", lambda judge, *_: judged.append(judge["name"]) or {"preferred": "first"}
+    )
+    result = module._judge_valid_pair({}, record, module.BlindProgramPair({}, {}, {}), context)
+
+    assert judged == ["judge_1"]
+    assert "generation_error" not in result
 
 
 class _ScriptedPlanModel:

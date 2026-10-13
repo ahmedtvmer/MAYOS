@@ -83,6 +83,14 @@ def _live_judges() -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     return judges, metadata
 
 
+SANITIZED_PLAN_ERROR = "DynamicSplitPlan required sanitizing or deterministic fallback"
+
+
+def _hard_errors(arm: dict[str, Any]) -> list[str]:
+    """Validation errors other than sanitizing, which production applies before the player sees the plan."""
+    return [error for error in arm["validation_errors"] if error != SANITIZED_PLAN_ERROR]
+
+
 def _plan_validation_errors(case: dict[str, Any], record: dict[str, Any], store: Any) -> list[str]:
     from agent.ProgramState import DynamicSplitPlan
 
@@ -176,8 +184,8 @@ def _judge_valid_pair(
     if baseline["status"] != "parsed" or reasoned["status"] != "parsed":
         record["generation_error"] = "one or both split plans did not parse"
         return record
-    if baseline["validation_errors"] or reasoned["validation_errors"]:
-        record["generation_error"] = "one or both generated programs failed validation"
+    if baseline["program"] is None or reasoned["program"] is None:
+        record["generation_error"] = "one or both arms produced no Training program"
         return record
     record["judges"] = {
         judge["name"]: _judge_pair(judge, case, pair, context) for judge in context.judges
@@ -242,11 +250,14 @@ def _latency_summary(cases: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _all_programs_valid(cases: list[dict[str, Any]]) -> bool:
-    return len(cases) == 5 and all(
-        case.get("generation_error") is None
-        and not case["baseline"]["validation_errors"]
-        and not case["reasoned"]["validation_errors"]
-        for case in cases
+    """Reasoned plans must pass hard validation and need sanitizing no more often than baseline plans."""
+    def sanitized(arm: str) -> int:
+        return sum(SANITIZED_PLAN_ERROR in case[arm]["validation_errors"] for case in cases)
+
+    return (
+        len(cases) == 5
+        and all(case.get("generation_error") is None and not _hard_errors(case["reasoned"]) for case in cases)
+        and sanitized("reasoned") <= sanitized("baseline")
     )
 
 
@@ -256,6 +267,10 @@ def _comparison_outcome(cases: list[dict[str, Any]]) -> dict[str, Any]:
     all_valid = _all_programs_valid(cases)
     judges_pass = all(record["prefers_reasoned"] for record in preferences.values())
     return {
+        "sanitized_plans": {
+            arm: sum(SANITIZED_PLAN_ERROR in case[arm]["validation_errors"] for case in cases)
+            for arm in ("baseline", "reasoned")
+        },
         "judge_preferences": preferences,
         "latency": latency,
         "both_judges_prefer_reasoned": judges_pass,
