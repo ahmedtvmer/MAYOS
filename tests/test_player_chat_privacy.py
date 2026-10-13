@@ -1114,25 +1114,52 @@ def test_arabic_missing_program_day_or_exercise_clarifies_without_change(
 
 
 @pytest.mark.parametrize(
-    ("message", "classification"),
+    ("frequency", "message", "classification"),
     [
         (
+            3,
             "ظبطلي البرنامج على 6 أيام.",
             {"intent": "program_change", "target_frequency": 6},
         ),
         (
+            3,
             "غيرلي البرنامج لتقسيمة Imaginary Split.",
             {"intent": "program_change", "target_split_type": "imaginary_split"},
+        ),
+        (
+            2,
+            "غيرلي البرنامج لتقسيمة PPL.",
+            {"intent": "program_change", "target_split_type": "ppl"},
+        ),
+        (
+            4,
+            "غيرلي البرنامج لتقسيمة PPL.",
+            {"intent": "program_change", "target_split_type": "ppl"},
+        ),
+        (
+            2,
+            "غيرلي البرنامج لتقسيمة Arnold.",
+            {"intent": "program_change", "target_split_type": "arnold"},
+        ),
+        (
+            3,
+            "غيرلي البرنامج لتقسيمة Arnold x Upper/Lower.",
+            {"intent": "program_change", "target_split_type": "arnold_x_ul"},
+        ),
+        (
+            4,
+            "غيرلي البرنامج لتقسيمة Arnold x Upper/Lower.",
+            {"intent": "program_change", "target_split_type": "arnold_x_ul"},
         ),
     ],
 )
 def test_arabic_program_change_rejects_unsupported_frequency_or_split(
-    api, monkeypatch, message, classification
+    api, monkeypatch, frequency, message, classification
 ):
     client, db = api
-    player = "arabic-invalid-program-change"
+    player = f"arabic-invalid-program-change-{frequency}"
     headers = _authed(_register(client, player)["access_token"])
-    before = _seed_chat_program(db, player)
+    before = _seed_chat_program(db, player, frequency=frequency)
     model = ScriptedChatModel([classification])
     monkeypatch.setattr(assistant_graph, "llm", model)
 

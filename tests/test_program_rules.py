@@ -15,7 +15,12 @@ from agent.program_generator import (
     _recognized_split_preference,
     has_supported_split_keyword,
 )
-from agent.program_rules import fetch_filtered_candidates, get_default_split, resolve_split
+from agent.program_rules import (
+    fetch_filtered_candidates,
+    get_default_split,
+    resolve_split,
+    valid_splits_for,
+)
 from tests.fakes.chat_model import ScriptedChatModel
 from utils.logger import MyosLogger
 from utils.player_output_budgets import DYNAMIC_SPLIT_PLAN_MAX_OUTPUT_TOKENS
@@ -313,6 +318,20 @@ def test_english_preferences_accepted_before_translation_keep_old_routing(
 
 
 @pytest.mark.parametrize(
+    ("preference", "expected_name"),
+    [
+        ("PPL", "PPL × UL"),
+        ("PPL × UL", "PPL × UL"),
+        ("Arnold × Upper/Lower", "Arnold × Upper/Lower"),
+    ],
+)
+def test_five_day_hybrid_keywords_resolve_to_the_named_split(preference, expected_name):
+    plan = resolve_split(5, preference)
+
+    assert plan.split_name == expected_name
+
+
+@pytest.mark.parametrize(
     ("frequency", "gender", "split_type", "expected_name"),
     [
         (4, "male", "upper_lower", "Upper / Lower (Arms & Delts Augmented)"),
@@ -343,12 +362,12 @@ def test_split_translation_keeps_other_player_words():
     [
         ("علوي و سفلي", "Upper / Lower (Arms & Delts Augmented)"),
         ("u/l", "Upper / Lower (Arms & Delts Augmented)"),
-        ("دفع/سحب/أرجل", "Push / Pull / Legs / Push"),
-        ("p/p/l", "Push / Pull / Legs / Push"),
-        ("PPL", "Push / Pull / Legs / Push"),
+        ("دفع/سحب/أرجل", "Upper / Lower (Arms & Delts Augmented)"),
+        ("p/p/l", "Upper / Lower (Arms & Delts Augmented)"),
+        ("PPL", "Upper / Lower (Arms & Delts Augmented)"),
         ("جسم كامل", "Full Body 4-Day"),
         ("f/b", "Full Body 4-Day"),
-        ("أرنولد", "Arnold x Upper/Lower (4-Day)"),
+        ("أرنولد", "Upper / Lower (Arms & Delts Augmented)"),
         ("أمامي/خلفي", "Anterior / Posterior Split"),
         ("الجسم بالكامل", "Full Body 4-Day"),
     ],
@@ -387,6 +406,43 @@ def test_dynamic_split_translation_preserves_the_players_request(
     assert program.split_type == get_default_split(4).split_name
     assert len(model.calls) == 1
     assert translated_request in model.calls[0]["messages"][1].content
+
+
+def test_valid_splits_for_matches_the_parent_frequency_table():
+    expected = {
+        1: [],
+        2: [
+            ("full_body", "Full Body"),
+            ("upper_lower", "Upper/Lower"),
+            ("anterior_posterior", "Anterior / Posterior"),
+        ],
+        3: [
+            ("full_body", "Full Body"),
+            ("upper_lower", "Upper/Lower/Upper"),
+            ("anterior_posterior", "Anterior / Posterior"),
+            ("ppl", "PPL"),
+            ("arnold", "Arnold"),
+        ],
+        4: [
+            ("full_body", "Full Body"),
+            ("upper_lower", "Upper/Lower"),
+            ("anterior_posterior", "Anterior / Posterior"),
+        ],
+        5: [
+            ("full_body", "Full Body"),
+            ("upper_lower", "Upper/Lower ×2 + Upper"),
+            ("anterior_posterior", "Anterior / Posterior"),
+            ("arnold_x_ul", "Arnold × Upper/Lower"),
+            ("ppl_x_ul", "PPL × UL"),
+        ],
+    }
+
+    for gender in ("male", "female"):
+        for frequency, choices in expected.items():
+            assert valid_splits_for(frequency, gender) == choices
+
+    assert [len(get_default_split(frequency, "male").days) for frequency in expected] == [1, 2, 3, 4, 5]
+    assert [len(get_default_split(frequency, "female").days) for frequency in expected] == [1, 2, 3, 4, 5]
 
 
 if __name__ == "__main__":

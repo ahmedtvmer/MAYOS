@@ -250,16 +250,43 @@ SPLIT_FREQUENCY_NAMES: dict[tuple[str, int], str] = {
     ("female_upper_lower", 5): "Glute & Upper Hypertrophy 5-Day",
     ("arnold", 2): "Arnold Split (Condensed)",
     ("arnold", 3): "Arnold Split (Chest & Back / Shoulders & Arms / Legs)",
-    ("arnold_x_ul", 4): "Arnold x Upper/Lower (4-Day)",
-    ("arnold_x_ul", 5): "Arnold x Upper/Lower",
+    ("arnold_x_ul", 5): "Arnold × Upper/Lower",
     ("anterior_posterior", 2): "Anterior / Posterior Split",
     ("anterior_posterior", 3): "Anterior / Posterior Split",
     ("anterior_posterior", 4): "Anterior / Posterior Split",
     ("anterior_posterior", 5): "Anterior / Posterior Split",
-    ("ppl", 2): "Push / Pull",
     ("ppl", 3): "Push / Pull / Legs",
-    ("ppl", 4): "Push / Pull / Legs / Push",
+    ("ppl_x_ul", 5): "PPL × UL",
+    # Keep the old label readable so chat can recognize already-saved 5-day programs.
     ("ppl", 5): "Hybrid PPL / Upper-Lower",
+}
+
+SPLIT_OPTIONS_BY_FREQUENCY: dict[int, tuple[tuple[str, str], ...]] = {
+    1: (),
+    2: (
+        ("full_body", "Full Body"),
+        ("upper_lower", "Upper/Lower"),
+        ("anterior_posterior", "Anterior / Posterior"),
+    ),
+    3: (
+        ("full_body", "Full Body"),
+        ("upper_lower", "Upper/Lower/Upper"),
+        ("anterior_posterior", "Anterior / Posterior"),
+        ("ppl", "PPL"),
+        ("arnold", "Arnold"),
+    ),
+    4: (
+        ("full_body", "Full Body"),
+        ("upper_lower", "Upper/Lower"),
+        ("anterior_posterior", "Anterior / Posterior"),
+    ),
+    5: (
+        ("full_body", "Full Body"),
+        ("upper_lower", "Upper/Lower ×2 + Upper"),
+        ("anterior_posterior", "Anterior / Posterior"),
+        ("arnold_x_ul", "Arnold × Upper/Lower"),
+        ("ppl_x_ul", "PPL × UL"),
+    ),
 }
 
 
@@ -283,6 +310,22 @@ def get_default_split(frequency: int, gender: str = "male") -> DynamicSplitPlan:
     if plan is None:
         raise ValueError(f"No blueprint available for frequency {clamped_freq}")
     return plan
+
+
+def valid_splits_for(frequency: int, gender: str = "male") -> list[tuple[str, str]]:
+    """Return the ordered manual Split choices for a frequency and Player gender.
+
+    Auto is intentionally omitted; the caller can resolve its display with
+    ``get_default_split(frequency, gender)``. Gender is applied to the generic
+    Full Body and Upper / Lower blueprints without exposing a separate option.
+    """
+    if type(frequency) is not int or frequency not in range(1, 6):
+        return []
+    return [
+        (split_type, display_name)
+        for split_type, display_name in SPLIT_OPTIONS_BY_FREQUENCY[frequency]
+        if get_split_plan(split_type, frequency, gender) is not None
+    ]
 
 
 def _sanitize_llm_plan(plan: DynamicSplitPlan, frequency: int, gender: str) -> DynamicSplitPlan:

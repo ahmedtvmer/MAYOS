@@ -17,7 +17,7 @@ the coaching assistant for cues.
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 from database.exercise_library.vocabulary import PRIMARY_ACTIONS, PRIMARY_MUSCLES
@@ -1210,44 +1210,23 @@ PPL_DAYS: tuple[DayBlueprint, ...] = (
         ),
         family="lower",
     ),
-    DayBlueprint(
-        "Push 2",
-        (
-            "flat_press",
-            "incline_press",
-            "chest_fly",
-            "shoulder_press",
-            "side_delts",
-            "triceps_pushdown",
-            "abs",
-        ),
-        family="upper",
-        sets_family="arms",
-    ),
-    DayBlueprint(
-        "Pull 2",
-        (
-            "vertical_pull",
-            "horizontal_row",
-            "rear_delts",
-            "biceps_alt",
-            "biceps_preacher",
-            "forearm_reverse",
-        ),
-        family="upper",
-        sets_family="arms",
-    ),
-    DayBlueprint(
-        "Legs 2",
-        (
-            "glute_thrust",
-            "ham_curl",
+)
+
+PPL_X_UL_DAYS: tuple[DayBlueprint, ...] = (
+    *PPL_DAYS,
+    replace(UL_DAYS[2], name="Upper"),
+    replace(
+        UL_DAYS[1],
+        name="Lower",
+        slots=(
+            "quad_compound",
             "quad_iso",
+            "ham_curl",
             "adductors",
+            "glute_iso",
             "calf",
             "abs",
         ),
-        family="lower",
     ),
 )
 
@@ -1333,6 +1312,24 @@ SPLIT_DAY_POOLS: dict[str, tuple[DayBlueprint, ...]] = {
     "arnold_x_ul": ARNOLD_X_UL_DAYS,
     "anterior_posterior": ANTERIOR_POSTERIOR_DAYS,
     "ppl": PPL_DAYS,
+    "ppl_x_ul": PPL_X_UL_DAYS,
+}
+
+SPLIT_SUPPORTED_FREQUENCIES: dict[str, tuple[int, ...]] = {
+    "full_body": (1, 2, 3, 4, 5),
+    "female_full_body": (1, 2, 3, 4, 5),
+    "upper_lower": (2, 3, 4, 5),
+    "female_upper_lower": (2, 3, 4, 5),
+    "arnold": (3,),
+    "arnold_x_ul": (5,),
+    "anterior_posterior": (2, 3, 4, 5),
+    "ppl": (3,),
+    "ppl_x_ul": (5,),
+}
+
+SPLIT_TYPE_ALIASES_BY_FREQUENCY: dict[tuple[str, int], str] = {
+    ("arnold", 5): "arnold_x_ul",
+    ("ppl", 5): "ppl_x_ul",
 }
 
 SPLIT_DISPLAY_NAMES: dict[str, str] = {
@@ -1341,9 +1338,10 @@ SPLIT_DISPLAY_NAMES: dict[str, str] = {
     "upper_lower": "Upper / Lower (Arms & Delts Augmented)",
     "female_upper_lower": "Lower (Glute Bias) / Upper & Core",
     "arnold": "Arnold Split (Chest & Back / Shoulders & Arms / Legs)",
-    "arnold_x_ul": "Arnold x Upper/Lower",
+    "arnold_x_ul": "Arnold × Upper/Lower",
     "anterior_posterior": "Anterior / Posterior Split",
-    "ppl": "Hybrid PPL / Upper-Lower",
+    "ppl": "PPL",
+    "ppl_x_ul": "PPL × UL",
 }
 
 
@@ -1356,50 +1354,26 @@ def _pool_for(split_type: str, gender: str) -> tuple[DayBlueprint, ...] | None:
 
 
 def resolve_split_type(split_type: str, frequency: int) -> str:
-    """Arnold requests at 4-5 days map onto the Arnold x Upper/Lower hybrid.
+    """Five-day Arnold and PPL requests map onto their Upper/Lower hybrids.
 
-    The hybrid mirrors Belghamdi's 5-day reference sample (Chest & Back,
-    Shoulders & Arms, Lower A, Upper, Lower B); the classic 3-day Arnold
-    rotation stays for frequencies 2-3.
+    The Arnold hybrid retains the reference five-day shape. The PPL hybrid
+    keeps Push/Pull/Legs and adds one existing Upper and Lower blueprint.
     """
-    if split_type == "arnold" and frequency >= 4:
-        return "arnold_x_ul"
-    return split_type
+    return SPLIT_TYPE_ALIASES_BY_FREQUENCY.get((split_type, frequency), split_type)
 
 
 def build_split_days(split_type: str, frequency: int, gender: str = "male") -> list[DayBlueprint] | None:
     """Returns the day templates for a supported split/frequency, else None.
 
-    Frequency 1 is only meaningful for full-body; other splits fall back to the
-    frequency-based default (upper/lower 1 day cannot cover a week).
+    Unsupported split/frequency combinations return None so the caller can
+    use the player's deterministic frequency default.
     """
     split_type = resolve_split_type(split_type, frequency)
+    if frequency not in SPLIT_SUPPORTED_FREQUENCIES.get(split_type, ()):
+        return None
     pool = _pool_for(split_type, gender)
-    if not pool or frequency < 1:
+    if not pool:
         return None
-    if split_type == "anterior_posterior" and frequency == 1:
-        return None
-    if split_type in {"upper_lower", "arnold", "ppl", "female_upper_lower"} and frequency == 1:
-        return None
-    if split_type == "arnold_x_ul" and frequency < 3:
-        return None
-    if frequency > len(pool):
-        # Last-resort repeat for future high-frequency pools: suffix duplicate names.
-        days = list(pool)
-        used_names = {day.name for day in days}
-        index = 0
-        while len(days) < frequency:
-            repeated = pool[index % len(pool)]
-            suffix = 2
-            while f"{repeated.name} #{suffix}" in used_names:
-                suffix += 1
-            renamed = f"{repeated.name} #{suffix}"
-            used_names.add(renamed)
-            days.append(
-                DayBlueprint(name=renamed, slots=repeated.slots, family=repeated.family, cardio=repeated.cardio)
-            )
-            index += 1
-        return days[:frequency]
     return list(pool[:frequency])
 
 
@@ -1433,7 +1407,22 @@ SPLIT_KEYWORD_PATTERNS: tuple[tuple[str, tuple[re.Pattern[str], ...]], ...] = (
             re.compile(r"\banterior[\s/]*posterior\b"),
         ),
     ),
+    (
+        "arnold_x_ul",
+        (
+            re.compile(r"\barnold\s*(?:x|×)\s*(?:upper\s*/\s*lower|u\s*/\s*l|ul)\b"),
+            re.compile(r"\barnold[\s\S]*\bupper\b[\s\S]*\blower\b"),
+            re.compile(r"\barnold[\s\S]*\blower\b[\s\S]*\bupper\b"),
+        ),
+    ),
     ("arnold", (re.compile(r"\barnold\b"),)),
+    (
+        "ppl_x_ul",
+        (
+            re.compile(r"\bppl\s*(?:x|×)\s*(?:upper\s*/\s*lower|u\s*/\s*l|ul)\b"),
+            re.compile(r"\bppl[\s\S]*\bupper\s*[-/\s]\s*lower\b"),
+        ),
+    ),
     (
         "upper_lower",
         (

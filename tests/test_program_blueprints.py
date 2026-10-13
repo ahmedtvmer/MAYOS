@@ -43,6 +43,7 @@ from agent.program_rules import (
     get_default_split,
     get_split_plan,
     resolve_split,
+    valid_splits_for,
 )
 from utils.equipment_access import (
     BODYWEIGHT_ONLY,
@@ -269,9 +270,12 @@ def test_generated_upper_and_full_warmups_follow_equipment_access(equipment_acce
             assert {"3011", "3021", "3699"}.issubset(warmup_ids)
 
 
-@pytest.mark.parametrize("gender,frequency", [("male", 3), ("male", 4), ("female", 3)])
-def test_weekly_muscle_coverage_guarantees(gender, frequency):
-    program = _generate(gender, frequency)
+@pytest.mark.parametrize(
+    "gender,frequency,preference",
+    [("male", 3, None), ("male", 4, None), ("female", 3, None), ("male", 5, "PPL")],
+)
+def test_weekly_muscle_coverage_guarantees(gender, frequency, preference):
+    program = _generate(gender, frequency, preference=preference)
     slots = {exercise.slot_key for day in program.days for exercise in day.exercises}
     for required in ["incline_press", "flat_press", "vertical_pull", "horizontal_row", "side_delts", "rear_delts", "calf", "adductors", "abs"]:
         assert required in slots, f"Weekly coverage missing '{required}': {sorted(slots)}"
@@ -612,18 +616,45 @@ def test_arnold_x_ul_matches_belghamdi_day_sizes():
     assert [len(day.target_slots) for day in plan.days] == [7, 7, 6, 7, 6]
 
 
-def test_arnold_keyword_routes_to_hybrid_at_high_frequency():
+def test_arnold_hybrid_is_only_available_at_five_days():
     plan_5 = get_split_plan("arnold", 5, "male")
-    assert plan_5.split_name == "Arnold x Upper/Lower"
+    assert plan_5.split_name == "Arnold × Upper/Lower"
     assert [day.day_name for day in plan_5.days] == ["Chest & Back", "Shoulders & Arms", "Lower A", "Upper", "Lower B"]
     assert [len(day.target_slots) for day in plan_5.days] == [7, 7, 6, 7, 6]
 
-    plan_4 = get_split_plan("arnold", 4, "male")
-    assert plan_4.split_name == "Arnold x Upper/Lower (4-Day)"
-    assert [day.day_name for day in plan_4.days] == ["Chest & Back", "Shoulders & Arms", "Lower A", "Upper"]
+    assert get_split_plan("arnold", 4, "male") is None
+    assert get_split_plan("arnold_x_ul", 4, "male") is None
+    assert get_split_plan("arnold_x_ul", 3, "male") is None
 
     plan_3 = get_split_plan("arnold", 3, "male")
+    assert plan_3 is not None
     assert [day.day_name for day in plan_3.days] == ["Chest & Back", "Shoulders & Arms", "Legs"]
+
+
+def test_five_day_ppl_is_push_pull_legs_upper_lower_with_balanced_volume():
+    program = _generate("male", 5, preference="PPL")
+
+    assert program.split_type == "PPL × UL"
+    assert [day.day_name for day in program.days] == ["Push", "Pull", "Legs", "Upper", "Lower"]
+    totals = [sum(exercise.target_sets for exercise in day.exercises) for day in program.days]
+    assert all(10 <= total <= 15 for total in totals), totals
+    assert sum(totals) <= 70
+
+
+@pytest.mark.parametrize(
+    ("frequency", "preference"),
+    [
+        (2, "PPL"),
+        (4, "PPL"),
+        (2, "Arnold"),
+        (3, "Arnold × Upper/Lower"),
+        (4, "Arnold × Upper/Lower"),
+    ],
+)
+def test_player_generation_falls_back_for_removed_split_combinations(frequency, preference):
+    program = _generate("male", frequency, preference=preference)
+
+    assert program.split_type == get_default_split(frequency, "male").split_name
 
 
 def test_anterior_posterior_five_day_has_unique_day_names():
@@ -653,6 +684,51 @@ def test_unsupported_keyword_frequency_falls_back_to_default():
     assert resolve_split(1, "arnold split").split_name == resolve_split(1).split_name
     assert resolve_split(1, "ppl").split_name == resolve_split(1).split_name
     assert resolve_split(1, "upper lower").split_name == resolve_split(1).split_name
+
+
+@pytest.mark.parametrize(
+    ("frequency", "preference"),
+    [
+        (2, "PPL"),
+        (4, "PPL"),
+        (2, "Arnold"),
+        (3, "Arnold × Upper/Lower"),
+        (4, "Arnold × Upper/Lower"),
+        (3, "PPL × UL"),
+        (4, "PPL × UL"),
+    ],
+)
+def test_removed_split_frequencies_fall_back_to_the_frequency_default(frequency, preference):
+    plan = resolve_split(frequency, preference)
+
+    assert plan == get_default_split(frequency)
+
+
+def test_every_offered_split_and_auto_has_leg_training():
+    leg_slots = {
+        "quad_compound",
+        "quad_lunge",
+        "quad_iso",
+        "ham_curl",
+        "ham_hinge",
+        "glute_thrust",
+        "glute_iso",
+        "adductors",
+        "calf",
+    }
+    for gender in ("male", "female"):
+        for frequency in range(1, 6):
+            plans = [get_default_split(frequency, gender)]
+            plans.extend(
+                get_split_plan(split_id, frequency, gender)
+                for split_id, _display_name in valid_splits_for(frequency, gender)
+            )
+            for plan in plans:
+                assert plan is not None
+                assert any(
+                    len(leg_slots.intersection(day.target_slots)) >= 2
+                    for day in plan.days
+                ), f"{gender} {frequency}d {plan.split_name} has no leg day"
 
 
 def test_resolve_split_routes_preferences_deterministically():
@@ -848,3 +924,10 @@ def test_mobility_limitations_leave_program_unchanged():
             for ex in m_day.exercises
         ]
         assert b_shape == m_shape, f"Mobility limitation changed the lifting plan for {b_day.day_name}"
+
+
+@pytest.mark.parametrize(
+    "request_text", ["ppl x upper/lower", "PPL × UL", "ppl upper lower", "hybrid ppl / upper-lower"]
+)
+def test_ppl_x_ul_requests_are_not_taken_as_upper_lower(request_text):
+    assert match_split_keyword(request_text.lower()) == "ppl_x_ul"
