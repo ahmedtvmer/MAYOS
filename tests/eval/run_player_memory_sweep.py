@@ -28,9 +28,7 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv(BASE_DIR / ".env")
 
 from agent.player_prompt import (  # noqa: E402
-    ASSISTANT_HISTORY_REPLY_MAX_CHARS,
     STATIC_SYSTEM_CORE,
-    TAIL_WINDOW_SIZE,
     override_player_prompt_history,
 )
 from tests.eval import run_evaluation as evaluation  # noqa: E402
@@ -42,7 +40,10 @@ MEMORY_DATASET = BASE_DIR / "tests" / "eval" / "datasets" / "player_memory_sweep
 COACHING_CASES = "coaching_qa_cases.json"
 COACHING_REPETITIONS = 2
 WINDOWS = (6, 10, 16)
-TRUNCATION_LIMITS = (ASSISTANT_HISTORY_REPLY_MAX_CHARS, None)
+# The sweep compares against the pre-#195 production setting, not the current defaults.
+BASELINE_WINDOW_SIZE = 6
+BASELINE_REPLY_MAX_CHARS = 500
+TRUNCATION_LIMITS = (BASELINE_REPLY_MAX_CHARS, None)
 MEMORY_CASE_COUNT = 8
 REGRESSION_SUITES = ("coaching_qa", "arabic_replies")
 EXPECTED_RUNTIME = (
@@ -135,7 +136,7 @@ def _validate_memory_history(case: dict[str, Any]) -> None:
 
 def _validate_memory_fact_position(case: dict[str, Any]) -> None:
     fact = case["expected_fact"]
-    recent = case["history"][-TAIL_WINDOW_SIZE:]
+    recent = case["history"][-BASELINE_WINDOW_SIZE:]
     if case["memory_need"] == "outside_window" and not _fact_is_outside_window(case, recent):
         raise ValueError(f"The required fact for {case['id']} must be outside the default message window.")
     if case["memory_need"] == "reply_tail" and not _fact_is_after_reply_cut(case, fact):
@@ -145,7 +146,7 @@ def _validate_memory_fact_position(case: dict[str, Any]) -> None:
 
 
 def _fact_is_outside_window(case: dict[str, Any], recent: list[dict[str, Any]]) -> bool:
-    return len(case["history"]) > TAIL_WINDOW_SIZE and not _fact_is_in_window(recent, case["expected_fact"])
+    return len(case["history"]) > BASELINE_WINDOW_SIZE and not _fact_is_in_window(recent, case["expected_fact"])
 
 
 def _fact_is_in_window(messages: list[dict[str, Any]], fact: str) -> bool:
@@ -155,7 +156,7 @@ def _fact_is_in_window(messages: list[dict[str, Any]], fact: str) -> bool:
 def _fact_is_after_reply_cut(case: dict[str, Any], fact: str) -> bool:
     return any(
         message["role"] == "assistant"
-        and message["content"].casefold().find(fact.casefold()) > ASSISTANT_HISTORY_REPLY_MAX_CHARS
+        and message["content"].casefold().find(fact.casefold()) > BASELINE_REPLY_MAX_CHARS
         for message in case["history"]
     )
 
@@ -767,7 +768,7 @@ def _run_configurations(report: dict[str, Any], paths: tuple[Path, Path], sessio
         for reply_limit in TRUNCATION_LIMITS:
             setting, measurements = _run_setting(window_size, reply_limit, session)
             if setting["status"] == "complete":
-                if window_size == TAIL_WINDOW_SIZE and reply_limit == ASSISTANT_HISTORY_REPLY_MAX_CHARS:
+                if window_size == BASELINE_WINDOW_SIZE and reply_limit == BASELINE_REPLY_MAX_CHARS:
                     baseline = measurements
                 setting["measurements"] = _comparison_metrics(measurements, baseline or {})
             report["settings"].append(setting)
@@ -786,9 +787,9 @@ def select_best_scoring_setting(settings: list[dict[str, Any]]) -> dict[str, Any
         complete,
         key=lambda setting: (
             -int(setting.get("memory_cases", {}).get("all_checks_passed_cases", 0)),
-            setting.get("window_size") != TAIL_WINDOW_SIZE
-            or setting.get("assistant_reply_max_chars") != ASSISTANT_HISTORY_REPLY_MAX_CHARS,
-            int(setting.get("window_size", TAIL_WINDOW_SIZE)),
+            setting.get("window_size") != BASELINE_WINDOW_SIZE
+            or setting.get("assistant_reply_max_chars") != BASELINE_REPLY_MAX_CHARS,
+            int(setting.get("window_size", BASELINE_WINDOW_SIZE)),
             setting.get("assistant_reply_max_chars") is None,
         ),
     )

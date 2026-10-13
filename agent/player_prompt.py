@@ -19,8 +19,9 @@ from core.reply_language import (
 )
 from utils.preferred_name import is_valid_preferred_name
 
-TAIL_WINDOW_SIZE = 6
-ASSISTANT_HISTORY_REPLY_MAX_CHARS = 500
+#: Chosen from the #195 live sweep (reports/player_memory_sweep_195.md); None disables the earlier-reply cut.
+TAIL_WINDOW_SIZE = 16
+ASSISTANT_HISTORY_REPLY_MAX_CHARS: int | None = None
 
 
 @dataclass(frozen=True)

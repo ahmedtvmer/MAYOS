@@ -1,0 +1,4638 @@
+{
+  "report_version": 2,
+  "generated_at": "2026-10-13T12:04:15.794280+00:00",
+  "mode": "live",
+  "player_model": "deepseek-ai/DeepSeek-V4-Flash",
+  "backend": "openai",
+  "judges": [
+    {
+      "name": "judge_1",
+      "model": "Qwen/Qwen3.5-27B",
+      "family": "qwen"
+    },
+    {
+      "name": "judge_2",
+      "model": "zai-org/GLM-5.3",
+      "family": "glm"
+    }
+  ],
+  "suites": [
+    "multi_turn_memory"
+  ],
+  "regression_suites": [
+    "coaching_qa",
+    "arabic_replies"
+  ],
+  "regression_enabled": false,
+  "synthetic_dataset": "player_memory_sweep_cases.json",
+  "synthetic_cases": [
+    {
+      "id": "synthetic-memory-reply-tail-row-en",
+      "kind": "synthetic_multi_turn",
+      "review_status": "not_required_english_fixture",
+      "telemetry": "No verified Training ledger fact answers the earlier conversation question.",
+      "history": [
+        {
+          "role": "user",
+          "content": "I'm choosing a starting load for the one-arm dumbbell row. I can use 18–26 kg per hand, and I want to keep my torso strict. Please choose a load and rep target, and tell me what would mean I should reduce it."
+        },
+        {
+          "role": "assistant",
+          "content": "For a one-arm dumbbell row, set up with your free hand supported and brace your trunk before each set. Keep your spine steady, let the working shoulder reach at the bottom without rounding, and pull your elbow toward your hip. Stop the rep when your upper arm reaches your torso rather than rotating to lift higher. Keep your wrist neutral and use the same range on every rep. Rest enough that your next set has the same control. Choose a weight that leaves a couple of clean reps in reserve; if your torso starts turning or your low back takes over, the load is too heavy. Track the load and reps so you can repeat the setup next session. I would begin at 22 kg per hand for 8 reps, using a 2-second lowering, and reduce the load if you cannot keep your torso still through all 8 reps."
+        },
+        {
+          "role": "user",
+          "content": "How should I set up for a goblet squat?"
+        },
+        {
+          "role": "assistant",
+          "content": "Hold the dumbbell close to your chest, brace, and squat through a comfortable range while keeping your whole foot planted."
+        },
+        {
+          "role": "user",
+          "content": "How long should I rest between working sets?"
+        },
+        {
+          "role": "assistant",
+          "content": "Rest about 2–3 minutes, then start the next set when you can keep your technique steady."
+        }
+      ],
+      "query": "What exact starting load and rep target did you recommend for my one-arm dumbbell row, and what would make me reduce the load?",
+      "memory_need": "reply_tail",
+      "expected_fact": "22 kg per hand for 8 reps"
+    },
+    {
+      "id": "synthetic-memory-reply-tail-incline-press-en",
+      "kind": "synthetic_multi_turn",
+      "review_status": "not_required_english_fixture",
+      "telemetry": "No verified Training ledger fact answers the earlier conversation question.",
+      "history": [
+        {
+          "role": "user",
+          "content": "For incline dumbbell press, I can use 16–22 kg per hand. Choose a starting load and rep target, and tell me what form issue means I should reduce it."
+        },
+        {
+          "role": "assistant",
+          "content": "For an incline dumbbell press, set the bench to a low incline and keep your head, shoulders, and hips supported. Plant your feet, brace before each rep, and lower the dumbbells under control until you reach a comfortable chest stretch. Keep your wrists stacked over your elbows, then press without bouncing or letting the weights drift together. Use a range of motion you can repeat cleanly, and rest enough to maintain it on the next set. Leave a couple of good reps in reserve while you learn the setup. If your shoulders roll forward or your lower back arches to finish a rep, the load is too heavy for the position. Keep notes on the load and completed reps so you can compare sessions. My starting recommendation is 18 kg per hand for 8 reps; reduce the weight if your shoulders roll forward or your lower back arches before all 8 reps are complete."
+        },
+        {
+          "role": "user",
+          "content": "How do I warm up before training?"
+        },
+        {
+          "role": "assistant",
+          "content": "Start with a few easy minutes of movement, then do lighter practice sets for your first exercise."
+        },
+        {
+          "role": "user",
+          "content": "Should I train to failure on every set?"
+        },
+        {
+          "role": "assistant",
+          "content": "No. Keep most working sets a few reps short of failure so technique and recovery stay consistent."
+        },
+        {
+          "role": "user",
+          "content": "How many sets should I do for an exercise?"
+        },
+        {
+          "role": "assistant",
+          "content": "Follow the sets in your current Training program and progress them gradually."
+        },
+        {
+          "role": "user",
+          "content": "What should I do if a machine is busy?"
+        },
+        {
+          "role": "assistant",
+          "content": "Use a compatible alternative that trains the same movement, or wait for the machine."
+        },
+        {
+          "role": "user",
+          "content": "How do I track progress between sessions?"
+        },
+        {
+          "role": "assistant",
+          "content": "Record your load, reps, and how consistently you completed the planned range of motion."
+        },
+        {
+          "role": "user",
+          "content": "Does soreness tell me whether a workout worked?"
+        },
+        {
+          "role": "assistant",
+          "content": "Soreness alone is not a reliable measure. Look at repeated performance and recovery instead."
+        }
+      ],
+      "query": "What exact starting load and reps did you recommend for my incline dumbbell press, and what form issue should make me reduce it?",
+      "memory_need": "reply_tail",
+      "expected_fact": "18 kg per hand for 8 reps"
+    },
+    {
+      "id": "synthetic-memory-injury-free-preference-en",
+      "kind": "synthetic_multi_turn",
+      "review_status": "not_required_english_fixture",
+      "memory_need": "outside_window",
+      "expected_fact": "chest-supported dumbbell rows",
+      "telemetry": "No verified Training ledger fact answers the earlier conversation question.",
+      "history": [
+        {
+          "role": "user",
+          "content": "I have no current injuries, and for back work I prefer chest-supported dumbbell rows because they feel stable."
+        },
+        {
+          "role": "assistant",
+          "content": "Got it. I will use that detail when you ask about it later."
+        },
+        {
+          "role": "user",
+          "content": "How should I warm up before a workout?"
+        },
+        {
+          "role": "assistant",
+          "content": "Start with easy movement, then build up with lighter practice sets."
+        },
+        {
+          "role": "user",
+          "content": "How long should I rest between sets?"
+        },
+        {
+          "role": "assistant",
+          "content": "Rest until you can keep the next set controlled, usually a few minutes for compound lifts."
+        },
+        {
+          "role": "user",
+          "content": "Should I train to failure every time?"
+        },
+        {
+          "role": "assistant",
+          "content": "No. Leave a few reps in reserve on most sets and focus on repeatable technique."
+        }
+      ],
+      "query": "Which back exercise did I say I prefer?"
+    },
+    {
+      "id": "synthetic-memory-past-weight-en",
+      "kind": "synthetic_multi_turn",
+      "review_status": "not_required_english_fixture",
+      "memory_need": "outside_window",
+      "expected_fact": "76.4 kg",
+      "telemetry": "No verified Training ledger fact answers the earlier conversation question.",
+      "history": [
+        {
+          "role": "user",
+          "content": "At my March 1 check-in, my bodyweight was 76.4 kg."
+        },
+        {
+          "role": "assistant",
+          "content": "Got it. I will use that detail when you ask about it later."
+        },
+        {
+          "role": "user",
+          "content": "How should I warm up before a workout?"
+        },
+        {
+          "role": "assistant",
+          "content": "Start with easy movement, then build up with lighter practice sets."
+        },
+        {
+          "role": "user",
+          "content": "How long should I rest between sets?"
+        },
+        {
+          "role": "assistant",
+          "content": "Rest until you can keep the next set controlled, usually a few minutes for compound lifts."
+        },
+        {
+          "role": "user",
+          "content": "Should I train to failure every time?"
+        },
+        {
+          "role": "assistant",
+          "content": "No. Leave a few reps in reserve on most sets and focus on repeatable technique."
+        }
+      ],
+      "query": "What bodyweight did I mention at that earlier check-in?"
+    },
+    {
+      "id": "synthetic-memory-schedule-constraint-en",
+      "kind": "synthetic_multi_turn",
+      "review_status": "not_required_english_fixture",
+      "memory_need": "outside_window",
+      "expected_fact": "Monday, Wednesday, and Saturday",
+      "telemetry": "No verified Training ledger fact answers the earlier conversation question.",
+      "history": [
+        {
+          "role": "user",
+          "content": "I can train only on Monday, Wednesday, and Saturday; the other days do not work for me."
+        },
+        {
+          "role": "assistant",
+          "content": "Got it. I will use that detail when you ask about it later."
+        },
+        {
+          "role": "user",
+          "content": "How should I warm up before a workout?"
+        },
+        {
+          "role": "assistant",
+          "content": "Start with easy movement, then build up with lighter practice sets."
+        },
+        {
+          "role": "user",
+          "content": "How long should I rest between sets?"
+        },
+        {
+          "role": "assistant",
+          "content": "Rest until you can keep the next set controlled, usually a few minutes for compound lifts."
+        },
+        {
+          "role": "user",
+          "content": "Should I train to failure every time?"
+        },
+        {
+          "role": "assistant",
+          "content": "No. Leave a few reps in reserve on most sets and focus on repeatable technique."
+        }
+      ],
+      "query": "Which days did I say I can train?"
+    },
+    {
+      "id": "synthetic-memory-equipment-preference-en",
+      "kind": "synthetic_multi_turn",
+      "review_status": "not_required_english_fixture",
+      "memory_need": "outside_window",
+      "expected_fact": "neutral-grip pull-ups",
+      "telemetry": "No verified Training ledger fact answers the earlier conversation question.",
+      "history": [
+        {
+          "role": "user",
+          "content": "For vertical pulling, I prefer neutral-grip pull-ups over wide-grip pulldowns because the grip feels comfortable."
+        },
+        {
+          "role": "assistant",
+          "content": "Got it. I will use that detail when you ask about it later."
+        },
+        {
+          "role": "user",
+          "content": "How should I warm up before a workout?"
+        },
+        {
+          "role": "assistant",
+          "content": "Start with easy movement, then build up with lighter practice sets."
+        },
+        {
+          "role": "user",
+          "content": "How long should I rest between sets?"
+        },
+        {
+          "role": "assistant",
+          "content": "Rest until you can keep the next set controlled, usually a few minutes for compound lifts."
+        },
+        {
+          "role": "user",
+          "content": "Should I train to failure every time?"
+        },
+        {
+          "role": "assistant",
+          "content": "No. Leave a few reps in reserve on most sets and focus on repeatable technique."
+        }
+      ],
+      "query": "Which vertical-pull movement did I say I prefer?"
+    },
+    {
+      "id": "synthetic-memory-control-load-en",
+      "kind": "synthetic_multi_turn",
+      "review_status": "not_required_english_fixture",
+      "memory_need": "control",
+      "expected_fact": "20 kg per hand for 10 reps",
+      "telemetry": "No verified Training ledger fact answers the earlier conversation question.",
+      "history": [
+        {
+          "role": "user",
+          "content": "I can use 16–22 kg per hand for dumbbell bench press. What starting load should I use?"
+        },
+        {
+          "role": "assistant",
+          "content": "Start with 18 kg per hand for 8 reps and keep each rep controlled."
+        },
+        {
+          "role": "user",
+          "content": "How much rest should I take?"
+        },
+        {
+          "role": "assistant",
+          "content": "Rest about 2–3 minutes, then begin when you can keep your technique steady."
+        },
+        {
+          "role": "user",
+          "content": "Should I add weight every workout?"
+        },
+        {
+          "role": "assistant",
+          "content": "Add weight after you complete the planned reps with consistent range and control."
+        },
+        {
+          "role": "user",
+          "content": "For the chest-supported row, what should I start with?"
+        },
+        {
+          "role": "assistant",
+          "content": "Start with 20 kg per hand for 10 reps, stopping if you cannot keep your torso still."
+        }
+      ],
+      "query": "What load and rep target did you just recommend for my chest-supported row?"
+    },
+    {
+      "id": "synthetic-memory-control-days-en",
+      "kind": "synthetic_multi_turn",
+      "review_status": "not_required_english_fixture",
+      "memory_need": "control",
+      "expected_fact": "Thursday and Sunday",
+      "telemetry": "No verified Training ledger fact answers the earlier conversation question.",
+      "history": [
+        {
+          "role": "user",
+          "content": "What is a good number of weekly sessions for a beginner?"
+        },
+        {
+          "role": "assistant",
+          "content": "Two or three consistent sessions can work well, depending on recovery and schedule."
+        },
+        {
+          "role": "user",
+          "content": "How should I progress a dumbbell press?"
+        },
+        {
+          "role": "assistant",
+          "content": "Add a small amount of load only after you can complete all planned reps cleanly."
+        },
+        {
+          "role": "user",
+          "content": "When can I train this week?"
+        },
+        {
+          "role": "assistant",
+          "content": "You said Thursday and Sunday are the two days that work for you this week."
+        }
+      ],
+      "query": "Which two days did I say work for me this week?"
+    }
+  ],
+  "expected_runtime": "About 25 minutes for the six-setting memory sweep (48 player turns and 96 judge verdicts), based on the previous 45-minute estimate for 87 turns and 174 verdicts. The optional coaching_qa + arabic_replies regression pass adds about 43 minutes (83 player turns and 166 judge verdicts).",
+  "ttft_definition": "Seconds from starting a player chat stream to its first content chunk.",
+  "settings": [
+    {
+      "label": "window-6_truncate-500",
+      "window_size": 6,
+      "assistant_reply_max_chars": 500,
+      "status": "complete",
+      "memory_cases": {
+        "runs": [
+          {
+            "case_id": "synthetic-memory-reply-tail-row-en",
+            "query": "What exact starting load and rep target did you recommend for my one-arm dumbbell row, and what would make me reduce the load?",
+            "generated_output": "I didn’t recommend a specific load or rep target for your one-arm dumbbell row. If you want a starting point, pick a weight that leaves 2–3 clean reps in reserve for 8–12 controlled reps. Reduce the load if you can’t keep your spine steady, your shoulder reaches without control, or you have to jerk or rotate to finish the rep.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Hallucinates 'I didn't recommend' despite prior text stating 'begin at 22 kg'."
+                  },
+                  "biomechanical_validity": {
+                    "score": 4,
+                    "rationale": "Valid cues like 'spine steady' and 'jerk or rotate' ensure tension."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "Safe advice to reduce load on form breakdown; no medical diagnosis."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 49-word response with clear directives and no fluff."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Direct answer with zero pleasantries, intros, or motivational filler."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Coach denies recommending '22 kg per hand for 8 reps' despite stating it earlier."
+                  },
+                  "biomechanical_validity": {
+                    "score": 4,
+                    "rationale": "Cues 'spine steady' and controlled reps, but omits lengthened loading specifics."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis or training-through-pain advice; safe load-reduction guidance."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 62 words with clear directives and reduction criteria."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Direct, no pleasantries or filler; purely instructional tone."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": false,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "22 kg per hand for 8 reps",
+              "passed": false
+            },
+            "generation_seconds": 126.46218566900643,
+            "case_elapsed_seconds": 132.369
+          },
+          {
+            "case_id": "synthetic-memory-reply-tail-incline-press-en",
+            "query": "What exact starting load and reps did you recommend for my incline dumbbell press, and what form issue should make me reduce it?",
+            "generated_output": "I don't have a record of a specific starting load or rep recommendation for your incline dumbbell press. Without that history, I can't give you an exact number or form cue tied to a prior plan.\n\nIf you want to start fresh: pick a weight you can control for 8–12 reps with 2–3 RIR, and reduce it if you lose shoulder stability or feel a sharp pinch in the front of the shoulder.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly states 'I don't have a record' since no verified ledger exists."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Validates 'reduce it if you lose shoulder stability or feel a sharp pinch'."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "Safely advises reducing load on 'sharp pinch' without diagnosing pathology."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 49-word response with clear directives and no filler."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or motivational fluff; direct and factual tone."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Coach denies recommending 18 kg for 8 reps despite stating it earlier."
+                  },
+                  "biomechanical_validity": {
+                    "score": 4,
+                    "rationale": "Recommends 2-3 RIR and reducing load on shoulder instability, sound mechanics."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "Advises reducing load on sharp pinch rather than training through pain."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Two concise paragraphs, roughly 70 words, direct and complete."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries or filler; direct answer with actionable guidance."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": false,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "18 kg per hand for 8 reps",
+              "passed": false
+            },
+            "generation_seconds": 7.378898876995663,
+            "case_elapsed_seconds": 13.442
+          },
+          {
+            "case_id": "synthetic-memory-injury-free-preference-en",
+            "query": "Which back exercise did I say I prefer?",
+            "generated_output": "You haven't mentioned a preferred back exercise in our conversation.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Hallucinates absence of 'chest-supported dumbbell rows' explicitly stated in context."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "No biomechanical advice given; administrative query handled without movement errors."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis, prescription, or training through pain suggested."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence response well under 130 words."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer provided immediately."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Claims 'haven't mentioned' despite user stating 'chest-supported dumbbell rows'."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative recall question; no biomechanical content applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related advice present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Single concise sentence, well under word limit."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Direct answer, no pleasantries or filler."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": false,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "chest-supported dumbbell rows",
+              "passed": false
+            },
+            "generation_seconds": 2.0933207910129568,
+            "case_elapsed_seconds": 8.411
+          },
+          {
+            "case_id": "synthetic-memory-past-weight-en",
+            "query": "What bodyweight did I mention at that earlier check-in?",
+            "generated_output": "You haven't mentioned a bodyweight in this conversation.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Hallucinates 'You haven't mentioned a bodyweight' despite context stating 76.4 kg."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Biomechanics not applicable to this administrative data retrieval query."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis, prescription, or pain cues present in response."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Response is concise, direct, and well under the 130-word limit."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries, filler, or motivational fluff detected in the response."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Claims 'You haven't mentioned a bodyweight' contradicting the logged 76.4 kg."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative recall question; no biomechanical content applies."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related advice given."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Nine-word direct answer, well within budget."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, filler, or cheerleading present."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": false,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "76.4 kg",
+              "passed": false
+            },
+            "generation_seconds": 1.9891309130034642,
+            "case_elapsed_seconds": 6.007
+          },
+          {
+            "case_id": "synthetic-memory-schedule-constraint-en",
+            "query": "Which days did I say I can train?",
+            "generated_output": "You haven't mentioned your available training days yet.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Hallucinates absence of 'Monday, Wednesday, and Saturday' explicitly stated in earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query regarding schedule requires no biomechanical assessment or movement cues."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "Response contains no medical diagnoses, prescriptions, or unsafe training cues."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence response well within the 80-130 word limit."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Direct statement with zero pleasantries, filler, or motivational fluff."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Coach claims 'haven't mentioned' days despite user stating Monday, Wednesday, Saturday."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative scheduling query; no biomechanical content applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related advice present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Nine words, direct, no filler."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, intros, or motivational fluff."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": false,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "Monday, Wednesday, and Saturday",
+              "passed": false
+            },
+            "generation_seconds": 4.407904875988606,
+            "case_elapsed_seconds": 10.742
+          },
+          {
+            "case_id": "synthetic-memory-equipment-preference-en",
+            "query": "Which vertical-pull movement did I say I prefer?",
+            "generated_output": "You haven't mentioned a preferred vertical-pull movement in our conversation.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Hallucinates 'You haven't mentioned' despite user stating 'I prefer neutral-grip pull-ups'."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "No biomechanical advice given; administrative query handled correctly."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis, prescription, or pain cues present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence under 15 words with clear directive."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries, filler, or motivational fluff detected."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Claims \"haven't mentioned\" despite user stating \"neutral-grip pull-ups\" preference."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative recall question; no biomechanical claims made."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescriptions, or pain-related advice present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Twelve words, direct answer, no filler."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, intros, or motivational fluff."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": false,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "neutral-grip pull-ups",
+              "passed": false
+            },
+            "generation_seconds": 2.4735719679883914,
+            "case_elapsed_seconds": 7.991
+          },
+          {
+            "case_id": "synthetic-memory-control-load-en",
+            "query": "What load and rep target did you just recommend for my chest-supported row?",
+            "generated_output": "20 kg per hand for 10 reps, stopping if you cannot keep your torso still.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites '20 kg per hand for 10 reps' from the earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Validates 'stopping if you cannot keep your torso still' for strict form."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "Safe response; no diagnosis, medication, or training through pain."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 15-word response with clear directive and no filler."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer only."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Restates exact prior recommendation: '20 kg per hand for 10 reps'."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative recall; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis or unsafe cues; safe."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "14 words, direct restatement."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries or filler; direct answer."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "20 kg per hand for 10 reps",
+              "passed": true
+            },
+            "generation_seconds": 5.955391758005135,
+            "case_elapsed_seconds": 10.278
+          },
+          {
+            "case_id": "synthetic-memory-control-days-en",
+            "query": "Which two days did I say work for me this week?",
+            "generated_output": "You said Thursday and Sunday.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'Thursday and Sunday' from the earlier conversation context."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis; response is valid."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical advice or pain cues present in the response."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 5-word response fits the strict 10-120 word limit."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer provided immediately."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly restates Thursday and Sunday from the earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative scheduling answer; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical claims or pain cues present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Six words, direct and complete."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, filler, or cheerleading."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "Thursday and Sunday",
+              "passed": true
+            },
+            "generation_seconds": 5.194505325998762,
+            "case_elapsed_seconds": 10.407
+          }
+        ],
+        "judge_scores": {
+          "judge_1": {
+            "passed_cases": 3,
+            "total_cases": 8
+          },
+          "judge_2": {
+            "passed_cases": 2,
+            "total_cases": 8
+          }
+        },
+        "both_judges_passed_cases": 2,
+        "deterministic_fact_passed_cases": 2,
+        "all_checks_passed_cases": 2,
+        "total_cases": 8
+      },
+      "measurements": {
+        "cost_change_vs_baseline_percent": 0.0,
+        "ttft_delta_vs_baseline_seconds": 0.0,
+        "turn_count": 8,
+        "metered_player_calls": 10,
+        "input_tokens": 6388,
+        "cached_input_tokens": 3072,
+        "output_tokens": 352,
+        "cost_usd": 0.000417096,
+        "cost_per_turn_usd": 5.2137e-05,
+        "cached_input_share": 0.48090169067000627,
+        "estimated_calls": 0,
+        "median_ttft_seconds": 1.8168924744968535,
+        "ttft_sample_count": 8,
+        "turns_with_metering": 8,
+        "turns": [
+          {
+            "case_id": "synthetic-memory-reply-tail-row-en",
+            "ttft_seconds": 121.53482354999869,
+            "metered_player_calls": 1,
+            "input_tokens": 920,
+            "cached_input_tokens": 0,
+            "output_tokens": 80,
+            "cost_usd": 9.719999999999999e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-reply-tail-incline-press-en",
+            "ttft_seconds": 3.5484908710059244,
+            "metered_player_calls": 1,
+            "input_tokens": 750,
+            "cached_input_tokens": 512,
+            "output_tokens": 91,
+            "cost_usd": 4.7016e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-injury-free-preference-en",
+            "ttft_seconds": 1.4503654900036054,
+            "metered_player_calls": 1,
+            "input_tokens": 728,
+            "cached_input_tokens": 512,
+            "output_tokens": 13,
+            "cost_usd": 3.0996e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-past-weight-en",
+            "ttft_seconds": 1.2588802069949452,
+            "metered_player_calls": 1,
+            "input_tokens": 798,
+            "cached_input_tokens": 512,
+            "output_tokens": 12,
+            "cost_usd": 3.7115999999999995e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-schedule-constraint-en",
+            "ttft_seconds": 0.8522600680007599,
+            "metered_player_calls": 2,
+            "input_tokens": 824,
+            "cached_input_tokens": 512,
+            "output_tokens": 61,
+            "cost_usd": 4.8275999999999997e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-equipment-preference-en",
+            "ttft_seconds": 1.792298177999328,
+            "metered_player_calls": 1,
+            "input_tokens": 730,
+            "cached_input_tokens": 0,
+            "output_tokens": 15,
+            "cost_usd": 6.84e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-control-load-en",
+            "ttft_seconds": 5.385419366997667,
+            "metered_player_calls": 1,
+            "input_tokens": 808,
+            "cached_input_tokens": 512,
+            "output_tokens": 19,
+            "cost_usd": 3.9276e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-control-days-en",
+            "ttft_seconds": 1.8414867709943792,
+            "metered_player_calls": 2,
+            "input_tokens": 830,
+            "cached_input_tokens": 512,
+            "output_tokens": 61,
+            "cost_usd": 4.8816e-05,
+            "estimated_calls": 0
+          }
+        ],
+        "cost_increase_within_20_percent": true,
+        "median_ttft_within_2_seconds": true
+      }
+    },
+    {
+      "label": "window-6_untruncated",
+      "window_size": 6,
+      "assistant_reply_max_chars": null,
+      "status": "complete",
+      "memory_cases": {
+        "runs": [
+          {
+            "case_id": "synthetic-memory-reply-tail-row-en",
+            "query": "What exact starting load and rep target did you recommend for my one-arm dumbbell row, and what would make me reduce the load?",
+            "generated_output": "You recommended 22 kg per hand for 8 reps, with a 2-second lowering. Reduce the load if your torso starts turning or your low back takes over.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites '22 kg per hand for 8 reps' and 'torso starts turning' from prior context."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Accurately reflects prior biomechanical cues regarding torso stability and load reduction."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "Safe response; correctly identifies form breakdown as the trigger to reduce load."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 33-word response with two direct sentences answering the specific query."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; delivers direct factual answer immediately."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly restates 22 kg, 8 reps, 2-second lowering, and torso-turning reduction cue from earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Pure recall of prior recommendation; no new biomechanical claims introduced."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related advice; safe administrative recall."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Two concise sentences, ~30 words, directly answers the query."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, filler, or motivational fluff; purely factual restatement."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "22 kg per hand for 8 reps",
+              "passed": true
+            },
+            "generation_seconds": 4.863404885996715,
+            "case_elapsed_seconds": 11.55
+          },
+          {
+            "case_id": "synthetic-memory-reply-tail-incline-press-en",
+            "query": "What exact starting load and reps did you recommend for my incline dumbbell press, and what form issue should make me reduce it?",
+            "generated_output": "I don't have a record of a specific starting load or rep recommendation for your incline dumbbell press. If you'd like a starting point, pick a weight you can control for 8–12 reps with 2–3 reps in reserve, focusing on a full stretch at the bottom and a controlled press.\n\nReduce the load if you can't maintain a stable shoulder position, feel sharp pain, or lose control of the dumbbells during the eccentric.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Hallucinates absence of the '18 kg' and '8 reps' explicitly stated in earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Correctly cues 'full stretch' and 'controlled press' for tension and lengthened loading."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "Safely advises reducing load upon 'sharp pain' or loss of control."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 48-word response with clear directives and no unnecessary filler."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Direct response with zero pleasantries, AI intros, or motivational fluff."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Coach denies recommending 18 kg for 8 reps despite stating it earlier."
+                  },
+                  "biomechanical_validity": {
+                    "score": 4,
+                    "rationale": "Cites full stretch, controlled press, and stable shoulder position correctly."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "Instructs to reduce load if you feel sharp pain, which is safe."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Two concise sentences with clear directives, well under budget."
+                  },
+                  "persona_adherence": {
+                    "score": 4,
+                    "rationale": "Mostly direct, but 'If you'd like' adds slight conversational filler."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": false,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "18 kg per hand for 8 reps",
+              "passed": false
+            },
+            "generation_seconds": 7.819878205002169,
+            "case_elapsed_seconds": 44.635
+          },
+          {
+            "case_id": "synthetic-memory-injury-free-preference-en",
+            "query": "Which back exercise did I say I prefer?",
+            "generated_output": "You haven't mentioned a preferred back exercise in our conversation.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Hallucinates absence of 'chest-supported dumbbell rows' explicitly stated in context."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "No biomechanical advice given; administrative query handled without movement errors."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis, prescription, or training through pain suggested."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence response well under 130 words."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries, filler, or motivational fluff present in response."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Denies stated preference 'chest-supported dumbbell rows' despite user saying it."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative recall question; no biomechanical claims made."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescriptions, or pain-related advice given."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Twelve words, single direct sentence, no filler."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, intros, or motivational fluff present."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": false,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "chest-supported dumbbell rows",
+              "passed": false
+            },
+            "generation_seconds": 1.5663682999875164,
+            "case_elapsed_seconds": 6.58
+          },
+          {
+            "case_id": "synthetic-memory-past-weight-en",
+            "query": "What bodyweight did I mention at that earlier check-in?",
+            "generated_output": "You haven't supplied any bodyweight data in this conversation.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Hallucinates 'no bodyweight data' despite user stating '76.4 kg' earlier."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Biomechanics irrelevant for administrative data retrieval queries."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis, prescription, or pain training cues present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence response well under 130 words."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries, filler, or motivational fluff in response."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly states no bodyweight data supplied, matching absent ledger facts."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative data query; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related advice present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Ten concise words with a clear ledger statement."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Direct answer, no pleasantries or filler."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": false,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "76.4 kg",
+              "passed": false
+            },
+            "generation_seconds": 2.4328545089956606,
+            "case_elapsed_seconds": 6.786
+          },
+          {
+            "case_id": "synthetic-memory-schedule-constraint-en",
+            "query": "Which days did I say I can train?",
+            "generated_output": "You haven't mentioned your available training days yet.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Hallucinates absence of days despite user stating 'Monday, Wednesday, and Saturday'."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query regarding schedule requires no biomechanical assessment or movement cues."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "Response contains no medical diagnoses, prescriptions, or unsafe training cues."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Response is concise, direct, and well within the 10-120 word limit."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries, filler, or motivational fluff present in the direct response."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Claims \"haven't mentioned\" days though user stated Monday, Wednesday, Saturday."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative schedule query; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related advice given."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Nine words, direct answer, no filler."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, intros, or motivational fluff."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": false,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "Monday, Wednesday, and Saturday",
+              "passed": false
+            },
+            "generation_seconds": 4.216338629994425,
+            "case_elapsed_seconds": 18.659
+          },
+          {
+            "case_id": "synthetic-memory-equipment-preference-en",
+            "query": "Which vertical-pull movement did I say I prefer?",
+            "generated_output": "You haven't mentioned a preferred vertical-pull movement in our conversation.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Hallucinates 'You haven't mentioned' despite user stating 'I prefer neutral-grip pull-ups'."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "No biomechanical advice given; administrative query handled correctly."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis, prescription, or pain cues present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence under 15 words with clear directive."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries, filler, or motivational fluff detected."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Coach denies stated preference, contradicting 'neutral-grip pull-ups' from earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative recall question; no biomechanical claims made."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related content present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Single concise sentence, well within word limits."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Direct answer with no pleasantries or filler."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": false,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "neutral-grip pull-ups",
+              "passed": false
+            },
+            "generation_seconds": 2.2569835079921177,
+            "case_elapsed_seconds": 8.074
+          },
+          {
+            "case_id": "synthetic-memory-control-load-en",
+            "query": "What load and rep target did you just recommend for my chest-supported row?",
+            "generated_output": "20 kg per hand for 10 reps, stopping if you cannot keep your torso still.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites '20 kg per hand for 10 reps' from the earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Recommends stopping if torso movement occurs, ensuring strict mechanical tension."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis or pain training; simply restates previous safe load parameters."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 15-word response with zero filler or unnecessary sentences."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct factual answer only."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly restates prior recommendation: '20 kg per hand for 10 reps'."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative recall of prior recommendation; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "Reiterates safe cessation cue: 'stopping if you cannot keep your torso still'."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 16-word answer with clear directive."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Direct answer, zero pleasantries or filler."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "20 kg per hand for 10 reps",
+              "passed": true
+            },
+            "generation_seconds": 4.467573579007876,
+            "case_elapsed_seconds": 9.627
+          },
+          {
+            "case_id": "synthetic-memory-control-days-en",
+            "query": "Which two days did I say work for me this week?",
+            "generated_output": "You said Thursday and Sunday.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'Thursday and Sunday' from the earlier conversation context."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis or movement cues."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis, pain cues, or unsafe training advice provided."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 5-word response fits strict 10-120 word limit perfectly."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer matches strict persona."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly restates 'Thursday and Sunday' from the earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative scheduling answer; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical claims, diagnoses, or pain-related advice present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Six words, direct answer, no filler."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; purely direct answer."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "Thursday and Sunday",
+              "passed": true
+            },
+            "generation_seconds": 6.289762091997545,
+            "case_elapsed_seconds": 12.947
+          }
+        ],
+        "judge_scores": {
+          "judge_1": {
+            "passed_cases": 3,
+            "total_cases": 8
+          },
+          "judge_2": {
+            "passed_cases": 4,
+            "total_cases": 8
+          }
+        },
+        "both_judges_passed_cases": 3,
+        "deterministic_fact_passed_cases": 3,
+        "all_checks_passed_cases": 3,
+        "total_cases": 8
+      },
+      "measurements": {
+        "cost_change_vs_baseline_percent": -17.89228379078198,
+        "ttft_delta_vs_baseline_seconds": -0.03745810699183494,
+        "turn_count": 8,
+        "metered_player_calls": 10,
+        "input_tokens": 6456,
+        "cached_input_tokens": 4096,
+        "output_tokens": 313,
+        "cost_usd": 0.00034246799999999996,
+        "cost_per_turn_usd": 4.2808499999999995e-05,
+        "cached_input_share": 0.6344485749690211,
+        "estimated_calls": 0,
+        "median_ttft_seconds": 1.7794343675050186,
+        "ttft_sample_count": 8,
+        "turns_with_metering": 8,
+        "turns": [
+          {
+            "case_id": "synthetic-memory-reply-tail-row-en",
+            "ttft_seconds": 1.8594698480010265,
+            "metered_player_calls": 1,
+            "input_tokens": 988,
+            "cached_input_tokens": 512,
+            "output_tokens": 35,
+            "cost_usd": 5.8355999999999995e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-reply-tail-incline-press-en",
+            "ttft_seconds": 2.710320972997579,
+            "metered_player_calls": 1,
+            "input_tokens": 750,
+            "cached_input_tokens": 512,
+            "output_tokens": 94,
+            "cost_usd": 4.755599999999999e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-injury-free-preference-en",
+            "ttft_seconds": 1.1082858209992992,
+            "metered_player_calls": 1,
+            "input_tokens": 728,
+            "cached_input_tokens": 512,
+            "output_tokens": 13,
+            "cost_usd": 3.0996e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-past-weight-en",
+            "ttft_seconds": 1.5466119150078157,
+            "metered_player_calls": 1,
+            "input_tokens": 798,
+            "cached_input_tokens": 512,
+            "output_tokens": 13,
+            "cost_usd": 3.7296e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-schedule-constraint-en",
+            "ttft_seconds": 0.9172720170026878,
+            "metered_player_calls": 2,
+            "input_tokens": 824,
+            "cached_input_tokens": 512,
+            "output_tokens": 63,
+            "cost_usd": 4.863599999999999e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-equipment-preference-en",
+            "ttft_seconds": 1.833093021006789,
+            "metered_player_calls": 1,
+            "input_tokens": 730,
+            "cached_input_tokens": 512,
+            "output_tokens": 15,
+            "cost_usd": 3.1536e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-control-load-en",
+            "ttft_seconds": 3.173323477007216,
+            "metered_player_calls": 1,
+            "input_tokens": 808,
+            "cached_input_tokens": 512,
+            "output_tokens": 19,
+            "cost_usd": 3.9276e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-control-days-en",
+            "ttft_seconds": 1.7257757140032481,
+            "metered_player_calls": 2,
+            "input_tokens": 830,
+            "cached_input_tokens": 512,
+            "output_tokens": 61,
+            "cost_usd": 4.8816e-05,
+            "estimated_calls": 0
+          }
+        ],
+        "cost_increase_within_20_percent": true,
+        "median_ttft_within_2_seconds": true
+      }
+    },
+    {
+      "label": "window-10_truncate-500",
+      "window_size": 10,
+      "assistant_reply_max_chars": 500,
+      "status": "complete",
+      "memory_cases": {
+        "runs": [
+          {
+            "case_id": "synthetic-memory-reply-tail-row-en",
+            "query": "What exact starting load and rep target did you recommend for my one-arm dumbbell row, and what would make me reduce the load?",
+            "generated_output": "Start with 22 kg per hand for 3 sets of 8–10 reps, keeping 1–2 reps in reserve. Reduce the load if you can't keep your torso still, your shoulder drifts forward at the bottom, or you lose control on the last 2 reps of any set.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 4,
+                    "rationale": "Matches 22 kg but adds unlogged '3 sets' and '10 reps' not in context."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Cues torso stability and control loss as valid reduction triggers."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "Safely advises load reduction on form breakdown without diagnosing pathology."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 39-word response with clear directives and no filler."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or fluff; direct answer to the specific query."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 2,
+                    "rationale": "Coach claims \"3 sets of 8–10 reps\" and \"shoulder drifts forward\" which were never stated earlier."
+                  },
+                  "biomechanical_validity": {
+                    "score": 4,
+                    "rationale": "Torso stillness and control cues align with strict rowing mechanics, though \"shoulder drifts forward\" is unverified."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis, prescription, or training through pain is suggested."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Response is 47 words, concise, and directly answers the question."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, filler, or motivational fluff; purely instructional."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 2,
+                "error": null
+              }
+            },
+            "passed": false,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "22 kg per hand for 8 reps",
+              "passed": false
+            },
+            "generation_seconds": 4.255140149994986,
+            "case_elapsed_seconds": 15.451
+          },
+          {
+            "case_id": "synthetic-memory-reply-tail-incline-press-en",
+            "query": "What exact starting load and reps did you recommend for my incline dumbbell press, and what form issue should make me reduce it?",
+            "generated_output": "I have no record of a prior recommendation for your incline dumbbell press. Without that history, I can’t give a starting load or reps. If you’d like a starting point, tell me your current bench press working weight and reps, and I’ll suggest a load.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly states 'no record' of prior recommendation, matching the empty ledger context."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative response regarding missing data; no biomechanical advice given to evaluate."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "Safe response declining to prescribe loads without verified baseline data."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 4-sentence response under 130 words with clear directives."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct statement of missing data and request."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Coach denies the earlier 18 kg, 8 reps recommendation that exists in conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 3,
+                    "rationale": "No mechanical cues given; defers load selection pending trainee data."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, pain advice, or unsafe training cues present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 48 words with clear directives and request for data."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Direct, no pleasantries, filler, or motivational fluff."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": false,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "18 kg per hand for 8 reps",
+              "passed": false
+            },
+            "generation_seconds": 3.606678830998135,
+            "case_elapsed_seconds": 9.047
+          },
+          {
+            "case_id": "synthetic-memory-injury-free-preference-en",
+            "query": "Which back exercise did I say I prefer?",
+            "generated_output": "Chest-supported dumbbell rows.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'Chest-supported dumbbell rows' from the user's earlier statement."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis; response is factually neutral."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis or pain cues present in the factual response."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Response is concise, direct, and well within the 10-120 word limit."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; provides only the requested factual answer."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'chest-supported dumbbell rows' from the user's stated preference."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative recall question; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related advice given."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Four-word answer is maximally concise and direct."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, filler, or motivational fluff present."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "chest-supported dumbbell rows",
+              "passed": true
+            },
+            "generation_seconds": 6.156893245992251,
+            "case_elapsed_seconds": 11.468
+          },
+          {
+            "case_id": "synthetic-memory-past-weight-en",
+            "query": "What bodyweight did I mention at that earlier check-in?",
+            "generated_output": "You said your bodyweight was 76.4 kg at the March 1 check-in.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites '76.4 kg' and 'March 1' from the provided conversation history."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis; response is factually neutral."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis or pain cues present in this factual recall response."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence under 120 words with no unnecessary filler."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or AI intros; direct factual answer provided immediately."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly restates '76.4 kg' from the user's own March 1 check-in message."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative recall of bodyweight; no biomechanical claims to evaluate."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related advice; purely factual recall."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Single concise sentence, well under word limit, directly answers the query."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, filler, or motivational fluff; direct factual answer."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "76.4 kg",
+              "passed": true
+            },
+            "generation_seconds": 3.3954720189940417,
+            "case_elapsed_seconds": 9.806
+          },
+          {
+            "case_id": "synthetic-memory-schedule-constraint-en",
+            "query": "Which days did I say I can train?",
+            "generated_output": "You said Monday, Wednesday, and Saturday.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'Monday, Wednesday, and Saturday' from the earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis; response is valid."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical advice or pain cues present in the response."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence under 120 words with clear directive."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer provided immediately."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly restates trainee's stated days: \"Monday, Wednesday, and Saturday.\""
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative scheduling query; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescriptions, or pain-related advice present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Eight words, direct answer, no filler."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, intros, or motivational fluff."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "Monday, Wednesday, and Saturday",
+              "passed": true
+            },
+            "generation_seconds": 11.218984966006246,
+            "case_elapsed_seconds": 16.22
+          },
+          {
+            "case_id": "synthetic-memory-equipment-preference-en",
+            "query": "Which vertical-pull movement did I say I prefer?",
+            "generated_output": "You said you prefer neutral-grip pull-ups over wide-grip pulldowns because the grip feels comfortable.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'neutral-grip pull-ups' from the earlier conversation context."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis; response is valid."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical advice or pain cues present in the response."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence under 120 words with clear directive."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer to the query."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly recalls stated preference for neutral-grip pull-ups over wide-grip pulldowns."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative recall question; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related content present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Single concise sentence, well under word limit."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Direct factual answer with no pleasantries or filler."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "neutral-grip pull-ups",
+              "passed": true
+            },
+            "generation_seconds": 2.1470383709965972,
+            "case_elapsed_seconds": 6.948
+          },
+          {
+            "case_id": "synthetic-memory-control-load-en",
+            "query": "What load and rep target did you just recommend for my chest-supported row?",
+            "generated_output": "20 kg per hand for 10 reps.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites '20 kg per hand for 10 reps' from the earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Validates the previously recommended load and rep target without biomechanical errors."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis or pain cues; simply restates a safe training recommendation."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 6-word response with zero filler, well within the 80–130 word limit."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer matches the strict persona requirements."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly restates the earlier 20 kg per hand for 10 reps recommendation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative recall of prior recommendation; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescriptions, or pain cues; safe administrative answer."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Eight words, direct answer, no filler."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; pure direct answer."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "20 kg per hand for 10 reps",
+              "passed": true
+            },
+            "generation_seconds": 3.3331259279948426,
+            "case_elapsed_seconds": 7.885
+          },
+          {
+            "case_id": "synthetic-memory-control-days-en",
+            "query": "Which two days did I say work for me this week?",
+            "generated_output": "You said Thursday and Sunday.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'Thursday and Sunday' from the earlier conversation context."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis; response is neutral."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical advice or pain cues present in the response."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 5-word response fits the strict 10-120 word limit."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer provided immediately."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly restates Thursday and Sunday from the earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative scheduling answer; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related advice given."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Six words, direct answer, no filler."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; purely direct."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "Thursday and Sunday",
+              "passed": true
+            },
+            "generation_seconds": 15.662013709006715,
+            "case_elapsed_seconds": 23.236
+          }
+        ],
+        "judge_scores": {
+          "judge_1": {
+            "passed_cases": 8,
+            "total_cases": 8
+          },
+          "judge_2": {
+            "passed_cases": 6,
+            "total_cases": 8
+          }
+        },
+        "both_judges_passed_cases": 6,
+        "deterministic_fact_passed_cases": 6,
+        "all_checks_passed_cases": 6,
+        "total_cases": 8
+      },
+      "measurements": {
+        "cost_change_vs_baseline_percent": -12.67046435353013,
+        "ttft_delta_vs_baseline_seconds": 0.7913077350021922,
+        "turn_count": 8,
+        "metered_player_calls": 10,
+        "input_tokens": 6708,
+        "cached_input_tokens": 4096,
+        "output_tokens": 308,
+        "cost_usd": 0.00036424799999999996,
+        "cost_per_turn_usd": 4.5530999999999995e-05,
+        "cached_input_share": 0.6106141920095408,
+        "estimated_calls": 0,
+        "median_ttft_seconds": 2.6082002094990457,
+        "ttft_sample_count": 8,
+        "turns_with_metering": 8,
+        "turns": [
+          {
+            "case_id": "synthetic-memory-reply-tail-row-en",
+            "ttft_seconds": 1.9638771699974313,
+            "metered_player_calls": 1,
+            "input_tokens": 966,
+            "cached_input_tokens": 512,
+            "output_tokens": 63,
+            "cost_usd": 6.1416e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-reply-tail-incline-press-en",
+            "ttft_seconds": 1.6073259840050014,
+            "metered_player_calls": 1,
+            "input_tokens": 810,
+            "cached_input_tokens": 512,
+            "output_tokens": 60,
+            "cost_usd": 4.6836e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-injury-free-preference-en",
+            "ttft_seconds": 5.960893688999931,
+            "metered_player_calls": 1,
+            "input_tokens": 771,
+            "cached_input_tokens": 512,
+            "output_tokens": 9,
+            "cost_usd": 3.4145999999999995e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-past-weight-en",
+            "ttft_seconds": 2.9789247479930054,
+            "metered_player_calls": 1,
+            "input_tokens": 836,
+            "cached_input_tokens": 512,
+            "output_tokens": 20,
+            "cost_usd": 4.1976e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-schedule-constraint-en",
+            "ttft_seconds": 2.237475671005086,
+            "metered_player_calls": 2,
+            "input_tokens": 865,
+            "cached_input_tokens": 512,
+            "output_tokens": 60,
+            "cost_usd": 5.1786e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-equipment-preference-en",
+            "ttft_seconds": 1.3535448270122288,
+            "metered_player_calls": 1,
+            "input_tokens": 774,
+            "cached_input_tokens": 512,
+            "output_tokens": 23,
+            "cost_usd": 3.6936e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-control-load-en",
+            "ttft_seconds": 3.115718379995087,
+            "metered_player_calls": 1,
+            "input_tokens": 852,
+            "cached_input_tokens": 512,
+            "output_tokens": 10,
+            "cost_usd": 4.1615999999999996e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-control-days-en",
+            "ttft_seconds": 6.373776842010557,
+            "metered_player_calls": 2,
+            "input_tokens": 834,
+            "cached_input_tokens": 512,
+            "output_tokens": 63,
+            "cost_usd": 4.9536e-05,
+            "estimated_calls": 0
+          }
+        ],
+        "cost_increase_within_20_percent": true,
+        "median_ttft_within_2_seconds": false
+      }
+    },
+    {
+      "label": "window-10_untruncated",
+      "window_size": 10,
+      "assistant_reply_max_chars": null,
+      "status": "complete",
+      "memory_cases": {
+        "runs": [
+          {
+            "case_id": "synthetic-memory-reply-tail-row-en",
+            "query": "What exact starting load and rep target did you recommend for my one-arm dumbbell row, and what would make me reduce the load?",
+            "generated_output": "I recommended 22 kg per hand for 8 reps, lowering for 2 seconds. Reduce the load if your torso turns or your low back takes over to finish the rep.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites '22 kg per hand for 8 reps' and 'torso turns' from prior output."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Validates 'lowering for 2 seconds' and 'torso turns' as proper failure cues."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "Safely advises reducing load if 'low back takes over' to prevent injury."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 32-word response with two direct sentences answering the query."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; starts directly with 'I recommended'."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly restates '22 kg per hand for 8 reps' and 'torso turns' from earlier assistant message."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative recall of prior recommendation; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis or training-through-pain advice; safe load-reduction guidance."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Two concise sentences, roughly 35 words, direct answer."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, filler, or cheerleading; purely factual recall."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "22 kg per hand for 8 reps",
+              "passed": true
+            },
+            "generation_seconds": 16.57822009899246,
+            "case_elapsed_seconds": 23.785
+          },
+          {
+            "case_id": "synthetic-memory-reply-tail-incline-press-en",
+            "query": "What exact starting load and reps did you recommend for my incline dumbbell press, and what form issue should make me reduce it?",
+            "generated_output": "I don’t have a record of your incline dumbbell press load or reps. If you’re unsure about form, reduce the weight until you can control the full range of motion without momentum.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly states 'I don’t have a record' since no verified ledger exists."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Validly advises reducing weight to control 'full range of motion without momentum'."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "Safe advice to reduce weight for control; no diagnosis or pain training."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 33-word response with two direct sentences."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct factual statement and directive."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Coach denies recommending '18 kg per hand for 8 reps' despite stating it earlier."
+                  },
+                  "biomechanical_validity": {
+                    "score": 4,
+                    "rationale": "Cues 'control the full range of motion without momentum' align with tension principles."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescriptions, or training through pain cues present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Two concise sentences, roughly 40 words, direct and complete."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, filler, or motivational fluff; purely directive."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": false,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "18 kg per hand for 8 reps",
+              "passed": false
+            },
+            "generation_seconds": 12.338006345002213,
+            "case_elapsed_seconds": 18.716
+          },
+          {
+            "case_id": "synthetic-memory-injury-free-preference-en",
+            "query": "Which back exercise did I say I prefer?",
+            "generated_output": "Chest-supported dumbbell rows.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'Chest-supported dumbbell rows' from the user's earlier statement."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis; response is factually neutral."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis or pain cues present in the factual response."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Response is concise, direct, and well within the 10-120 word limit."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; provides only the requested factual answer."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites \"chest-supported dumbbell rows\" from the user's stated preference."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative recall; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain cueing present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Four words; maximally concise and direct."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, filler, or cheerleading."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "chest-supported dumbbell rows",
+              "passed": true
+            },
+            "generation_seconds": 11.399136526990333,
+            "case_elapsed_seconds": 17.42
+          },
+          {
+            "case_id": "synthetic-memory-past-weight-en",
+            "query": "What bodyweight did I mention at that earlier check-in?",
+            "generated_output": "You said your bodyweight at the March 1 check-in was 76.4 kg.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites '76.4 kg' from the user's March 1 check-in statement."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis; response is valid."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis or pain cues present in the response."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence under 15 words directly answers the query."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct factual statement only."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly recalls '76.4 kg' from the user's own earlier statement."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative recall; no biomechanical content applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related advice present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Single concise sentence, well under word limit."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Direct answer with no pleasantries or filler."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "76.4 kg",
+              "passed": true
+            },
+            "generation_seconds": 10.247723899999983,
+            "case_elapsed_seconds": 15.342
+          },
+          {
+            "case_id": "synthetic-memory-schedule-constraint-en",
+            "query": "Which days did I say I can train?",
+            "generated_output": "You said Monday, Wednesday, and Saturday.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'Monday, Wednesday, and Saturday' from the earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis; response is valid."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical advice or pain cues present in the response."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence under 120 words with clear directive."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer provided immediately."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly restates \"Monday, Wednesday, and Saturday\" from the earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative scheduling answer; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related content present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Seven-word direct answer, well within budget."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, filler, or cheerleading; purely direct."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "Monday, Wednesday, and Saturday",
+              "passed": true
+            },
+            "generation_seconds": 30.631646726003964,
+            "case_elapsed_seconds": 166.461
+          },
+          {
+            "case_id": "synthetic-memory-equipment-preference-en",
+            "query": "Which vertical-pull movement did I say I prefer?",
+            "generated_output": "You said you prefer neutral-grip pull-ups over wide-grip pulldowns because the grip feels comfortable.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'neutral-grip pull-ups' from the earlier conversation context."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis; response is valid."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical advice or pain cues present in the response."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence under 120 words with clear directive."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer provided immediately."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'neutral-grip pull-ups over wide-grip pulldowns' from earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Recall-only answer; no biomechanical claims made, so no violation."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No pain, diagnosis, or prescription content; purely factual recall."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Single concise sentence, well under word limit, direct answer."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, filler, or cheerleading; direct factual reply."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "neutral-grip pull-ups",
+              "passed": true
+            },
+            "generation_seconds": 7.351195572002325,
+            "case_elapsed_seconds": 12.747
+          },
+          {
+            "case_id": "synthetic-memory-control-load-en",
+            "query": "What load and rep target did you just recommend for my chest-supported row?",
+            "generated_output": "20 kg per hand for 10 reps, stopping if you cannot keep your torso still.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites '20 kg per hand for 10 reps' from the earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Recommends stopping if torso movement occurs, ensuring strict mechanical tension."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis or pain training; simply restates previous safe load parameters."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 15-word response with zero filler or unnecessary sentences."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer matches strict persona requirements."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Restates exact prior recommendation: \"20 kg per hand for 10 reps\"."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Cues torso stillness, ensuring controlled row mechanics without momentum."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "Advises stopping if form breaks; no diagnosis or unsafe pain cues."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Single concise sentence, well under word limit, directly answers query."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries or filler; direct factual restatement only."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "20 kg per hand for 10 reps",
+              "passed": true
+            },
+            "generation_seconds": 5.9734177729988005,
+            "case_elapsed_seconds": 10.445
+          },
+          {
+            "case_id": "synthetic-memory-control-days-en",
+            "query": "Which two days did I say work for me this week?",
+            "generated_output": "You said Thursday and Sunday.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'Thursday and Sunday' from the earlier conversation context."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis or movement cues."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis, pain cues, or unsafe training advice provided."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 5-word response fits strict 10-120 word limit perfectly."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer matches strict persona."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly restates \"Thursday and Sunday\" from the earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative scheduling answer; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related content; safe."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Six words, direct answer, well within budget."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, filler, or cheerleading; purely direct."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "Thursday and Sunday",
+              "passed": true
+            },
+            "generation_seconds": 16.736568781998358,
+            "case_elapsed_seconds": 59.34
+          }
+        ],
+        "judge_scores": {
+          "judge_1": {
+            "passed_cases": 8,
+            "total_cases": 8
+          },
+          "judge_2": {
+            "passed_cases": 7,
+            "total_cases": 8
+          }
+        },
+        "both_judges_passed_cases": 7,
+        "deterministic_fact_passed_cases": 7,
+        "all_checks_passed_cases": 7,
+        "total_cases": 8
+      },
+      "measurements": {
+        "cost_change_vs_baseline_percent": -8.46711548420508,
+        "ttft_delta_vs_baseline_seconds": 7.1227681990058045,
+        "turn_count": 8,
+        "metered_player_calls": 10,
+        "input_tokens": 6776,
+        "cached_input_tokens": 3840,
+        "output_tokens": 269,
+        "cost_usd": 0.00038177999999999997,
+        "cost_per_turn_usd": 4.7722499999999996e-05,
+        "cached_input_share": 0.5667060212514758,
+        "estimated_calls": 0,
+        "median_ttft_seconds": 8.939660673502658,
+        "ttft_sample_count": 8,
+        "turns_with_metering": 8,
+        "turns": [
+          {
+            "case_id": "synthetic-memory-reply-tail-row-en",
+            "ttft_seconds": 15.188525956007652,
+            "metered_player_calls": 1,
+            "input_tokens": 1034,
+            "cached_input_tokens": 768,
+            "output_tokens": 37,
+            "cost_usd": 4.4423999999999993e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-reply-tail-incline-press-en",
+            "ttft_seconds": 9.821247215993935,
+            "metered_player_calls": 1,
+            "input_tokens": 810,
+            "cached_input_tokens": 0,
+            "output_tokens": 42,
+            "cost_usd": 8.046e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-injury-free-preference-en",
+            "ttft_seconds": 11.200303485995391,
+            "metered_player_calls": 1,
+            "input_tokens": 771,
+            "cached_input_tokens": 512,
+            "output_tokens": 9,
+            "cost_usd": 3.4145999999999995e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-past-weight-en",
+            "ttft_seconds": 10.162174409008003,
+            "metered_player_calls": 1,
+            "input_tokens": 836,
+            "cached_input_tokens": 768,
+            "output_tokens": 20,
+            "cost_usd": 2.3543999999999997e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-schedule-constraint-en",
+            "ttft_seconds": 8.05807413101138,
+            "metered_player_calls": 2,
+            "input_tokens": 865,
+            "cached_input_tokens": 512,
+            "output_tokens": 63,
+            "cost_usd": 5.2326e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-equipment-preference-en",
+            "ttft_seconds": 6.622086745992419,
+            "metered_player_calls": 1,
+            "input_tokens": 774,
+            "cached_input_tokens": 0,
+            "output_tokens": 23,
+            "cost_usd": 7.379999999999999e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-control-load-en",
+            "ttft_seconds": 5.509838397993008,
+            "metered_player_calls": 1,
+            "input_tokens": 852,
+            "cached_input_tokens": 768,
+            "output_tokens": 19,
+            "cost_usd": 2.4804e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-control-days-en",
+            "ttft_seconds": 7.277105775996461,
+            "metered_player_calls": 2,
+            "input_tokens": 834,
+            "cached_input_tokens": 512,
+            "output_tokens": 56,
+            "cost_usd": 4.8275999999999997e-05,
+            "estimated_calls": 0
+          }
+        ],
+        "cost_increase_within_20_percent": true,
+        "median_ttft_within_2_seconds": false
+      }
+    },
+    {
+      "label": "window-16_truncate-500",
+      "window_size": 16,
+      "assistant_reply_max_chars": 500,
+      "status": "complete",
+      "memory_cases": {
+        "runs": [
+          {
+            "case_id": "synthetic-memory-reply-tail-row-en",
+            "query": "What exact starting load and rep target did you recommend for my one-arm dumbbell row, and what would make me reduce the load?",
+            "generated_output": "Start with 20 kg per hand for 3 sets of 8–10 reps, keeping 1–2 reps in reserve. Reduce the load if you can't keep your torso still, if your shoulder hikes up, or if you lose control on the way down.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Hallucinates '20 kg' and '3 sets', contradicting the earlier '22 kg' and '8 reps' recommendation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Correctly cues torso stability and control to maintain mechanical tension and lengthened loading."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "Safely advises reducing load upon loss of control or form breakdown without diagnosing pathology."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 36-word response with clear directives fits the strict 80–130 word limit."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; delivers direct, actionable instructions immediately."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Fabricates \"20 kg\" and \"3 sets of 8–10 reps\" contradicting earlier \"22 kg per hand for 8 reps\"."
+                  },
+                  "biomechanical_validity": {
+                    "score": 3,
+                    "rationale": "\"torso still\" cue is sound but \"shoulder hikes up\" and \"lose control\" lack lengthened-loading specificity."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescriptions, or pain-related advice; safe load-reduction guidance only."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Two dense sentences, 44 words, direct directives without filler."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, intros, or cheerleading; purely directive coaching tone."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": false,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "22 kg per hand for 8 reps",
+              "passed": false
+            },
+            "generation_seconds": 6.12301421900338,
+            "case_elapsed_seconds": 13.517
+          },
+          {
+            "case_id": "synthetic-memory-reply-tail-incline-press-en",
+            "query": "What exact starting load and reps did you recommend for my incline dumbbell press, and what form issue should make me reduce it?",
+            "generated_output": "Start with 18 kg per hand for 3 sets of 8–10 reps, leaving 2–3 reps in reserve. Reduce the load if you feel the dumbbells drift together, your elbows flare, or your lower back arches off the bench.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 4,
+                    "rationale": "Correctly cites '18 kg' but hallucinates '3 sets' and '8–10 reps' absent from context."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Valid cues like 'lower back arches' and 'elbows flare' ensure mechanical tension."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "Safe advice to reduce load on form breakdown; no medical diagnosis or pain training."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise two-sentence response under 130 words with clear directives."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer to the specific query."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 2,
+                    "rationale": "Coach says \"3 sets of 8–10 reps\" but earlier answer was \"18 kg for 8 reps\"."
+                  },
+                  "biomechanical_validity": {
+                    "score": 4,
+                    "rationale": "\"lower back arches off the bench\" cue reflects sound load-reduction criteria."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescriptions, or pain-cuing present; response stays safe."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Two concise sentences, roughly 40 words, direct and complete."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, filler, or cheerleading; purely directive coaching."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": false,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "18 kg per hand for 8 reps",
+              "passed": false
+            },
+            "generation_seconds": 7.304032408006606,
+            "case_elapsed_seconds": 13.554
+          },
+          {
+            "case_id": "synthetic-memory-injury-free-preference-en",
+            "query": "Which back exercise did I say I prefer?",
+            "generated_output": "You said you prefer chest-supported dumbbell rows because they feel stable.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'chest-supported dumbbell rows' from the earlier conversation context."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query regarding preference; biomechanical principles are not applicable here."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis or pain cues present in this factual recall response."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence under 120 words directly answering the specific query."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; response is a direct factual statement."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'chest-supported dumbbell rows' preference stated in conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Recall query; no biomechanical claims made, so not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related advice present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Single concise sentence, well under word limit."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Direct answer, no pleasantries or filler."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "chest-supported dumbbell rows",
+              "passed": true
+            },
+            "generation_seconds": 3.5105052369908663,
+            "case_elapsed_seconds": 8.852
+          },
+          {
+            "case_id": "synthetic-memory-past-weight-en",
+            "query": "What bodyweight did I mention at that earlier check-in?",
+            "generated_output": "You said your bodyweight was 76.4 kg at the March 1 check-in.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites '76.4 kg' and 'March 1' from the provided conversation history."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis; response is factually accurate."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical advice given; response safely answers a factual question."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence under 120 words with clear directive."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer to the specific query."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites \"76.4 kg\" and \"March 1 check-in\" from the user's stated message."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative recall of stated bodyweight; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related advice; purely factual recall."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Single concise sentence, well under word limit, direct answer."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, filler, or cheerleading; direct factual statement."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "76.4 kg",
+              "passed": true
+            },
+            "generation_seconds": 2.7539178729930427,
+            "case_elapsed_seconds": 8.915
+          },
+          {
+            "case_id": "synthetic-memory-schedule-constraint-en",
+            "query": "Which days did I say I can train?",
+            "generated_output": "You said Monday, Wednesday, and Saturday.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'Monday, Wednesday, and Saturday' from the earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis; response is neutral."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical advice or pain cues present in the response."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence under 15 words with clear directive."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer provided immediately."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly restates user's stated Monday, Wednesday, Saturday training days."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative scheduling answer; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No pain, diagnosis, or medical content present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Eight-word direct answer, well within budget."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, filler, or cheerleading present."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "Monday, Wednesday, and Saturday",
+              "passed": true
+            },
+            "generation_seconds": 3.9351517500035698,
+            "case_elapsed_seconds": 9.604
+          },
+          {
+            "case_id": "synthetic-memory-equipment-preference-en",
+            "query": "Which vertical-pull movement did I say I prefer?",
+            "generated_output": "You said you prefer neutral-grip pull-ups over wide-grip pulldowns because the grip feels comfortable.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'neutral-grip pull-ups' from the earlier conversation context."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis; response is valid."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical advice or pain cues present in the response."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence under 120 words with clear directive."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer to the specific query."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'neutral-grip pull-ups over wide-grip pulldowns' from earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Recall question; no biomechanical claims made, so not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related advice present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Single concise sentence, well under word limit."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Direct answer with no pleasantries or filler."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "neutral-grip pull-ups",
+              "passed": true
+            },
+            "generation_seconds": 1.6495002879964886,
+            "case_elapsed_seconds": 6.862
+          },
+          {
+            "case_id": "synthetic-memory-control-load-en",
+            "query": "What load and rep target did you just recommend for my chest-supported row?",
+            "generated_output": "20 kg per hand for 10 reps.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites '20 kg per hand for 10 reps' from the earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Validates the previously recommended load and rep target without biomechanical errors."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis or pain cues; simply restates a safe training recommendation."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 6-word response with zero filler, well within the 80–130 word limit."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer matches the strict persona requirements."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly restates prior recommendation of \"20 kg per hand for 10 reps\" without fabricating lifts."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Restates prior load and rep target; no new biomechanical claims introduced."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related advice; purely restates prior recommendation."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Seven words; concise and directly answers the question."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, filler, or motivational fluff; purely factual restatement."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "20 kg per hand for 10 reps",
+              "passed": true
+            },
+            "generation_seconds": 1.3312124740041327,
+            "case_elapsed_seconds": 126.645
+          },
+          {
+            "case_id": "synthetic-memory-control-days-en",
+            "query": "Which two days did I say work for me this week?",
+            "generated_output": "You said Thursday and Sunday.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'Thursday and Sunday' from the earlier conversation context."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis or movement cues."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis, pain cues, or unsafe training advice provided."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 5-word response fits strict 10-120 word limit perfectly."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer matches strict persona."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly restates 'Thursday and Sunday' from the earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative scheduling answer; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical claims or pain-related advice present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Six words, direct answer, no filler."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, intros, or motivational fluff."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "Thursday and Sunday",
+              "passed": true
+            },
+            "generation_seconds": 8.89660083099443,
+            "case_elapsed_seconds": 14.23
+          }
+        ],
+        "judge_scores": {
+          "judge_1": {
+            "passed_cases": 7,
+            "total_cases": 8
+          },
+          "judge_2": {
+            "passed_cases": 6,
+            "total_cases": 8
+          }
+        },
+        "both_judges_passed_cases": 6,
+        "deterministic_fact_passed_cases": 6,
+        "all_checks_passed_cases": 6,
+        "total_cases": 8
+      },
+      "measurements": {
+        "cost_change_vs_baseline_percent": -4.993095114793711,
+        "ttft_delta_vs_baseline_seconds": 0.6860632605021237,
+        "turn_count": 8,
+        "metered_player_calls": 10,
+        "input_tokens": 6887,
+        "cached_input_tokens": 3840,
+        "output_tokens": 294,
+        "cost_usd": 0.00039627,
+        "cost_per_turn_usd": 4.953375e-05,
+        "cached_input_share": 0.5575722375490054,
+        "estimated_calls": 0,
+        "median_ttft_seconds": 2.5029557349989773,
+        "ttft_sample_count": 8,
+        "turns_with_metering": 8,
+        "turns": [
+          {
+            "case_id": "synthetic-memory-reply-tail-row-en",
+            "ttft_seconds": 3.9982548830012092,
+            "metered_player_calls": 1,
+            "input_tokens": 966,
+            "cached_input_tokens": 0,
+            "output_tokens": 56,
+            "cost_usd": 9.702e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-reply-tail-incline-press-en",
+            "ttft_seconds": 5.563478702009888,
+            "metered_player_calls": 1,
+            "input_tokens": 989,
+            "cached_input_tokens": 512,
+            "output_tokens": 54,
+            "cost_usd": 6.1866e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-injury-free-preference-en",
+            "ttft_seconds": 3.050832452994655,
+            "metered_player_calls": 1,
+            "input_tokens": 771,
+            "cached_input_tokens": 512,
+            "output_tokens": 16,
+            "cost_usd": 3.540599999999999e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-past-weight-en",
+            "ttft_seconds": 1.9550790170032997,
+            "metered_player_calls": 1,
+            "input_tokens": 836,
+            "cached_input_tokens": 512,
+            "output_tokens": 20,
+            "cost_usd": 4.1976e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-schedule-constraint-en",
+            "ttft_seconds": 1.511743620998459,
+            "metered_player_calls": 2,
+            "input_tokens": 865,
+            "cached_input_tokens": 512,
+            "output_tokens": 54,
+            "cost_usd": 5.0706e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-equipment-preference-en",
+            "ttft_seconds": 0.9028635260037845,
+            "metered_player_calls": 1,
+            "input_tokens": 774,
+            "cached_input_tokens": 512,
+            "output_tokens": 23,
+            "cost_usd": 3.6936e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-control-load-en",
+            "ttft_seconds": 0.9853066430077888,
+            "metered_player_calls": 1,
+            "input_tokens": 852,
+            "cached_input_tokens": 768,
+            "output_tokens": 10,
+            "cost_usd": 2.3183999999999997e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-control-days-en",
+            "ttft_seconds": 3.188890496996464,
+            "metered_player_calls": 2,
+            "input_tokens": 834,
+            "cached_input_tokens": 512,
+            "output_tokens": 61,
+            "cost_usd": 4.9176000000000005e-05,
+            "estimated_calls": 0
+          }
+        ],
+        "cost_increase_within_20_percent": true,
+        "median_ttft_within_2_seconds": false
+      }
+    },
+    {
+      "label": "window-16_untruncated",
+      "window_size": 16,
+      "assistant_reply_max_chars": null,
+      "status": "complete",
+      "memory_cases": {
+        "runs": [
+          {
+            "case_id": "synthetic-memory-reply-tail-row-en",
+            "query": "What exact starting load and rep target did you recommend for my one-arm dumbbell row, and what would make me reduce the load?",
+            "generated_output": "Start at 22 kg per hand for 8 reps, lowering for 2 seconds. Reduce the load if your torso turns or your low back takes over to finish the rep.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites '22 kg per hand for 8 reps' and reduction cues from prior assistant output."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Validates 'lowering for 2 seconds' and 'torso turns' as proper mechanical failure indicators."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "Safe; correctly identifies 'low back takes over' as a cue to reduce load."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 2-sentence response under 130 words with clear directives."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer to the specific query."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Restates '22 kg per hand for 8 reps' and torso-turn reduction cue from earlier answer."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "2-second lowering and torso-still criterion reflect tension control, not momentum."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis or pain advice; load-reduction cue is safe."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Two dense sentences, ~30 words, fully answers both parts."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries or filler; direct directives only."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "22 kg per hand for 8 reps",
+              "passed": true
+            },
+            "generation_seconds": 5.333817150996765,
+            "case_elapsed_seconds": 11.742
+          },
+          {
+            "case_id": "synthetic-memory-reply-tail-incline-press-en",
+            "query": "What exact starting load and reps did you recommend for my incline dumbbell press, and what form issue should make me reduce it?",
+            "generated_output": "18 kg per hand for 8 reps. Reduce the weight if your shoulders roll forward or your lower back arches before all 8 reps are complete.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites '18 kg per hand for 8 reps' and form issues from earlier assistant response."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Validly identifies 'shoulders roll forward' and 'lower back arches' as form failure cues."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "Safe advice to reduce weight on form breakdown; no diagnosis or pain training."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 2-sentence response under 130 words with clear directives."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer to the specific query."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly restates earlier recommendation: \"18 kg per hand for 8 reps\" and form cues."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Reduction cues \"shoulders roll forward or your lower back arches\" reflect sound mechanics."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, medication, or training-through-pain advice present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Two concise sentences, well under word limit, directly answers query."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, filler, or motivational fluff; purely factual answer."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "18 kg per hand for 8 reps",
+              "passed": true
+            },
+            "generation_seconds": 4.44293447099335,
+            "case_elapsed_seconds": 10.38
+          },
+          {
+            "case_id": "synthetic-memory-injury-free-preference-en",
+            "query": "Which back exercise did I say I prefer?",
+            "generated_output": "You said you prefer chest-supported dumbbell rows because they feel stable.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'chest-supported dumbbell rows' from the earlier conversation context."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query regarding preference; biomechanical principles are not applicable here."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis or pain cues present in this factual recall response."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence under 120 words with no unnecessary filler."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or AI intros; direct answer to the specific question."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'chest-supported dumbbell rows because they feel stable' from user's stated preference."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Recall query; no biomechanical claims made, so not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related advice present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Single concise sentence, well within word limits."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Direct answer, no pleasantries or filler."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "chest-supported dumbbell rows",
+              "passed": true
+            },
+            "generation_seconds": 5.223531746989465,
+            "case_elapsed_seconds": 135.753
+          },
+          {
+            "case_id": "synthetic-memory-past-weight-en",
+            "query": "What bodyweight did I mention at that earlier check-in?",
+            "generated_output": "You said your bodyweight was 76.4 kg at the March 1 check-in.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites '76.4 kg' and 'March 1' from the provided conversation history."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis; response is factually neutral."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis or pain cues present in this factual recall response."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence under 15 words directly answers the specific query."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; response is a direct factual statement."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": false,
+                "judgment": {
+                  "groundedness": {
+                    "score": 1,
+                    "rationale": "Coach cites '76.4 kg' which is absent from the verified training ledger."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative recall query; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related content present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Single concise sentence, well within word limits."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Direct factual answer with no pleasantries or filler."
+                  },
+                  "is_passed": false
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": false,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "76.4 kg",
+              "passed": true
+            },
+            "generation_seconds": 2.379529194004135,
+            "case_elapsed_seconds": 12.839
+          },
+          {
+            "case_id": "synthetic-memory-schedule-constraint-en",
+            "query": "Which days did I say I can train?",
+            "generated_output": "You said Monday, Wednesday, and Saturday.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'Monday, Wednesday, and Saturday' from the earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis; response is neutral."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical advice or pain cues present in the response."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence under 15 words with clear directive."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer provided immediately."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly restates user's stated days: \"Monday, Wednesday, and Saturday\"."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative scheduling query; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No pain, diagnosis, or medical content present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Eight words, direct answer, no filler."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; purely direct restatement."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "Monday, Wednesday, and Saturday",
+              "passed": true
+            },
+            "generation_seconds": 11.196248329986702,
+            "case_elapsed_seconds": 27.676
+          },
+          {
+            "case_id": "synthetic-memory-equipment-preference-en",
+            "query": "Which vertical-pull movement did I say I prefer?",
+            "generated_output": "You said you prefer neutral-grip pull-ups over wide-grip pulldowns because the grip feels comfortable.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'neutral-grip pull-ups' from the earlier conversation context."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis; response is valid."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical advice or pain cues present in the response."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise single sentence under 120 words with clear directive."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer to the specific query."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly restates \"neutral-grip pull-ups over wide-grip pulldowns\" from earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative recall question; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No pain, diagnosis, or medical content present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Single concise sentence, well under word limit."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Direct answer, no pleasantries or filler."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "neutral-grip pull-ups",
+              "passed": true
+            },
+            "generation_seconds": 2.7153459830005886,
+            "case_elapsed_seconds": 7.175
+          },
+          {
+            "case_id": "synthetic-memory-control-load-en",
+            "query": "What load and rep target did you just recommend for my chest-supported row?",
+            "generated_output": "20 kg per hand for 10 reps.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites '20 kg per hand for 10 reps' from the earlier conversation."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Validates the previously recommended load and rep target without biomechanical errors."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis or pain cues; simply restates a safe training recommendation."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 6-word response with zero filler, well within the 80–130 word limit."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer matches the strict persona requirements."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly restates prior recommendation: '20 kg per hand for 10 reps'."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative recall of prior recommendation; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescription, or pain-related advice present."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Seven-word direct answer, well within budget."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, filler, or cheerleading; purely direct."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "20 kg per hand for 10 reps",
+              "passed": true
+            },
+            "generation_seconds": 1.8974992180010304,
+            "case_elapsed_seconds": 6.524
+          },
+          {
+            "case_id": "synthetic-memory-control-days-en",
+            "query": "Which two days did I say work for me this week?",
+            "generated_output": "You said Thursday and Sunday.",
+            "judges": {
+              "judge_1": {
+                "model": "Qwen/Qwen3.5-27B",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly cites 'Thursday and Sunday' from the earlier conversation context."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative query requires no biomechanical analysis or movement cues."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No medical diagnosis, pain cues, or unsafe training advice provided."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Concise 5-word response fits strict 10-120 word limit perfectly."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "Zero pleasantries or filler; direct answer matches strict persona."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              },
+              "judge_2": {
+                "model": "zai-org/GLM-5.3",
+                "passed": true,
+                "judgment": {
+                  "groundedness": {
+                    "score": 5,
+                    "rationale": "Correctly restates 'Thursday and Sunday' from the earlier conversation, no fabricated lifts."
+                  },
+                  "biomechanical_validity": {
+                    "score": 5,
+                    "rationale": "Administrative scheduling answer; biomechanics not applicable."
+                  },
+                  "clinical_safety": {
+                    "score": 5,
+                    "rationale": "No diagnosis, prescriptions, or pain cues; purely scheduling."
+                  },
+                  "structural_budget": {
+                    "score": 5,
+                    "rationale": "Six words, direct answer, well within budget."
+                  },
+                  "persona_adherence": {
+                    "score": 5,
+                    "rationale": "No pleasantries, filler, or cheerleading; direct answer only."
+                  },
+                  "is_passed": true
+                },
+                "attempts": 1,
+                "error": null
+              }
+            },
+            "passed": true,
+            "deterministic_check": {
+              "required": true,
+              "expected_fact": "Thursday and Sunday",
+              "passed": true
+            },
+            "generation_seconds": 4.117904890998034,
+            "case_elapsed_seconds": 9.127
+          }
+        ],
+        "judge_scores": {
+          "judge_1": {
+            "passed_cases": 8,
+            "total_cases": 8
+          },
+          "judge_2": {
+            "passed_cases": 7,
+            "total_cases": 8
+          }
+        },
+        "both_judges_passed_cases": 7,
+        "deterministic_fact_passed_cases": 8,
+        "all_checks_passed_cases": 7,
+        "total_cases": 8
+      },
+      "measurements": {
+        "cost_change_vs_baseline_percent": 9.472639392370109,
+        "ttft_delta_vs_baseline_seconds": 0.039474313001846895,
+        "turn_count": 8,
+        "metered_player_calls": 10,
+        "input_tokens": 7029,
+        "cached_input_tokens": 3072,
+        "output_tokens": 251,
+        "cost_usd": 0.00045660599999999997,
+        "cost_per_turn_usd": 5.7075749999999996e-05,
+        "cached_input_share": 0.4370465215535638,
+        "estimated_calls": 0,
+        "median_ttft_seconds": 1.8563667874987004,
+        "ttft_sample_count": 8,
+        "turns_with_metering": 8,
+        "turns": [
+          {
+            "case_id": "synthetic-memory-reply-tail-row-en",
+            "ttft_seconds": 4.270940417001839,
+            "metered_player_calls": 1,
+            "input_tokens": 1034,
+            "cached_input_tokens": 0,
+            "output_tokens": 37,
+            "cost_usd": 9.972e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-reply-tail-incline-press-en",
+            "ttft_seconds": 3.872627342992928,
+            "metered_player_calls": 1,
+            "input_tokens": 1063,
+            "cached_input_tokens": 512,
+            "output_tokens": 31,
+            "cost_usd": 6.4386e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-injury-free-preference-en",
+            "ttft_seconds": 4.9651972179999575,
+            "metered_player_calls": 1,
+            "input_tokens": 771,
+            "cached_input_tokens": 512,
+            "output_tokens": 16,
+            "cost_usd": 3.540599999999999e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-past-weight-en",
+            "ttft_seconds": 1.870922857997357,
+            "metered_player_calls": 1,
+            "input_tokens": 836,
+            "cached_input_tokens": 0,
+            "output_tokens": 20,
+            "cost_usd": 7.884e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-schedule-constraint-en",
+            "ttft_seconds": 1.2719708410004387,
+            "metered_player_calls": 2,
+            "input_tokens": 865,
+            "cached_input_tokens": 512,
+            "output_tokens": 60,
+            "cost_usd": 5.1786e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-equipment-preference-en",
+            "ttft_seconds": 1.841810717000044,
+            "metered_player_calls": 1,
+            "input_tokens": 774,
+            "cached_input_tokens": 512,
+            "output_tokens": 23,
+            "cost_usd": 3.6936e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-control-load-en",
+            "ttft_seconds": 1.7063894650054863,
+            "metered_player_calls": 1,
+            "input_tokens": 852,
+            "cached_input_tokens": 512,
+            "output_tokens": 10,
+            "cost_usd": 4.1615999999999996e-05,
+            "estimated_calls": 0
+          },
+          {
+            "case_id": "synthetic-memory-control-days-en",
+            "ttft_seconds": 0.7854953599889996,
+            "metered_player_calls": 2,
+            "input_tokens": 834,
+            "cached_input_tokens": 512,
+            "output_tokens": 54,
+            "cost_usd": 4.7916e-05,
+            "estimated_calls": 0
+          }
+        ],
+        "cost_increase_within_20_percent": true,
+        "median_ttft_within_2_seconds": true
+      }
+    }
+  ],
+  "regression": {
+    "status": "skipped_by_flag"
+  },
+  "best_scoring_setting": "window-10_untruncated"
+}

@@ -467,7 +467,7 @@ def test_comparison_hydration_followup_and_budget(graph, comparison):
     assert "baseline=2026-09-10" in request["telemetry_context"]
     assert "@ RIR not rated" in request["telemetry_context"]
     payload = graph.build_prompt_payload(request)
-    assert graph.TAIL_WINDOW_SIZE == 6
+    assert graph.TAIL_WINDOW_SIZE == 16
     assert graph._prompt_token_count(payload) <= graph.HOSTED_PROMPT_TOKEN_BUDGET
     for exercise in comparison["exercises"]:
         assert exercise["name"] in payload[0].content

@@ -170,14 +170,16 @@ def test_real_token_safety_ceiling_trims_only_oversized_arabic_history(
     state = {"telemetry_context": "ع" * 1_800}
     normalized_prompts = {}
     safety_limited_prompts = {}
-    for language in ("english", "arabic"):
-        history = history_pair[language]
-        state["messages"] = _chat_messages(history)
-        normalized_prompts[language] = build_player_chat_prompt(
-            state,
-            prompt_token_count=script_neutral_prompt_token_count,
-        )
-        safety_limited_prompts[language] = build_player_chat_prompt(state)
+    # The ceiling mechanism is measured with the pre-#195 history limits so the fixture stays tight.
+    with override_player_prompt_history(window_size=6, assistant_reply_max_chars=500):
+        for language in ("english", "arabic"):
+            history = history_pair[language]
+            state["messages"] = _chat_messages(history)
+            normalized_prompts[language] = build_player_chat_prompt(
+                state,
+                prompt_token_count=script_neutral_prompt_token_count,
+            )
+            safety_limited_prompts[language] = build_player_chat_prompt(state)
 
     normalized_counts = {
         language: _retained_earlier_message_count(
@@ -240,7 +242,7 @@ def test_output_limit_response_keeps_its_original_literal():
     )
 
 
-def test_earlier_assistant_replies_are_truncated_to_500_characters():
+def test_earlier_assistant_replies_are_not_truncated_by_default():
     payload = build_player_chat_prompt(
         {
             "messages": [
@@ -252,32 +254,30 @@ def test_earlier_assistant_replies_are_truncated_to_500_characters():
         prompt_budget=lambda: 100_000,
     )
 
-    assert payload[2].content == "A" * 500
+    assert payload[2].content == "A" * 600
 
 
 def test_prompt_history_defaults_and_scoped_window_and_truncation_overrides():
     long_reply = "Earlier answer " + "x" * 600
     state = {
         "messages": [
-            HumanMessage(content="Outside the larger window"),
+            HumanMessage(content="Outside the default window"),
             AIMessage(content=long_reply),
-            *[HumanMessage(content=f"Later message {index}") for index in range(9)],
+            *[HumanMessage(content=f"Later message {index}") for index in range(15)],
         ]
     }
     default_prompt = build_player_chat_prompt(state, prompt_budget=lambda: 100_000)
     default_text = "\n".join(message.content for message in default_prompt)
-    assert "Earlier answer" not in default_text
-    assert "Later message 2" not in default_text
-    assert "Later message 3" in default_text
+    assert "Outside the default window" not in default_text
+    assert long_reply in default_text
+    assert "Later message 0" in default_text
 
-    with override_player_prompt_history(
-        window_size=10,
-        assistant_reply_max_chars=None,
-    ):
+    with override_player_prompt_history(window_size=6, assistant_reply_max_chars=500):
         prompt = build_player_chat_prompt(state, prompt_budget=lambda: 100_000)
         prompt_text = "\n".join(message.content for message in prompt)
-        assert long_reply in prompt_text
-        assert "Outside the larger window" not in prompt_text
+        assert long_reply not in prompt_text
+        assert "Later message 8" not in prompt_text
+        assert "Later message 9" in prompt_text
 
     assert build_player_chat_prompt(state, prompt_budget=lambda: 100_000) == default_prompt
 
@@ -347,3 +347,17 @@ def test_eval_qa_payloads_match_the_offline_pre_refactor_capture(
     assert capsys.readouterr().out.endswith(
         f"{len(captured)}/{len(baseline)} Q&A payload lists match the pre-refactor capture.\n"
     )
+
+
+def test_sixteen_message_arabic_history_is_trimmed_to_the_hosted_token_ceiling():
+    messages = []
+    for index in range(8):
+        messages.append(HumanMessage(content="سؤال عن التمرين رقم %d وكيف أنظم الأحمال والراحة بين المجموعات" % index))
+        messages.append(AIMessage(content="رد مفصل " * 60))
+    messages.append(HumanMessage(content="ما الذي يجب أن أركز عليه الآن؟"))
+
+    prompt = build_player_chat_prompt({"messages": messages})
+
+    assert prompt[-1].content == "ما الذي يجب أن أركز عليه الآن؟"
+    assert len(prompt) - 1 < 16
+    assert prompt_token_count(prompt) <= HOSTED_PROMPT_REAL_TOKEN_SAFETY_CEILING
