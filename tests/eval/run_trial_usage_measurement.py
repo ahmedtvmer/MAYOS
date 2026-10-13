@@ -534,8 +534,6 @@ def _measure_turn(pair: dict[str, Any], language: str, store: Any) -> dict[str, 
 
 
 def _close_store(store: Any) -> None:
-    if store.ledger_conn is not None:
-        store.ledger_conn.close()
     store.catalog_conn.close()
 
 

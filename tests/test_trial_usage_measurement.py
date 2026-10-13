@@ -108,3 +108,20 @@ def test_shared_day_replay_counts_every_call_and_keeps_checkpoint_exempt(monkeyp
     assert eligible["decision"] == "raise"
     assert eligible["setting"] == 101
     assert eligible["trigger_met"] is True
+
+
+def test_measure_pairs_completes_and_closes_real_store_without_provider_calls(monkeypatch):
+    from agent import assistant_graph
+    from service import coach_ai
+    from tests.eval import run_trial_usage_measurement as runner
+
+    monkeypatch.setattr(assistant_graph, "stream_assistant_turn", lambda *a, **k: iter(()))
+    monkeypatch.setattr(coach_ai, "stream_answer", lambda *a, **k: iter(()))
+    fixture = load_workloads(
+        Path(__file__).parent / "eval" / "datasets" / "trial_usage_workloads_262.json"
+    )
+
+    turns, by_language = runner._measure_pairs(fixture)
+
+    assert len(turns) == 2 * len(fixture["pairs"])
+    assert set(by_language) == {"english", "arabic"}
