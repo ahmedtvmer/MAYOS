@@ -14,6 +14,7 @@ from tests.eval.checkpoint_review_rubric import (
     check_no_invented_numbers,
     check_rating_part_attribution,
     check_second_person_address,
+    check_uses_supplied_facts,
     evaluate_case,
 )
 
@@ -102,6 +103,13 @@ def test_rubric_rejects_cross_part_claims():
     neutral_workout_count_used_as_rating = check_rating_part_attribution(
         "You completed 8 workouts, which shows strong consistency.", rating
     )
+    workout_count_with_consistency_evidence = check_rating_part_attribution(
+        "You completed 10 workouts, and met your target in 4 of 5 weeks to rate consistency.", rating
+    )
+    workout_count_explaining_missing_weeks = check_rating_part_attribution(
+        "You have only 10 workouts, so there are not enough weeks with data to rate your consistency.",
+        [{"part": "Consistency", "label": "Not enough weeks yet"}],
+    )
     correct = check_rating_part_attribution(
         "Consistency met its target in 4 of 5 weeks. Progression had 3 personal records. "
         "Your working volume measured 5000 kg in the first half and 5200 kg in the second half.",
@@ -110,14 +118,85 @@ def test_rubric_rejects_cross_part_claims():
 
     assert wrong_part["passed"] is False
     assert neutral_workout_count_used_as_rating["passed"] is False
+    assert workout_count_with_consistency_evidence["passed"] is True
+    assert workout_count_explaining_missing_weeks["passed"] is True
     assert correct["passed"] is True
 
 
-def test_holding_volume_rating_rejects_a_claim_of_increase():
-    rating = [{"part": "Volume trend", "label": "Holding"}]
-    answer = "Your volume increased from 5000 kg to 5200 kg."
+@pytest.mark.parametrize("consistency_label", ["Not enough weeks yet", "Not enough data"])
+def test_shared_insufficient_status_can_name_consistency_and_volume_together(consistency_label):
+    rating = [
+        {"part": "Consistency", "label": consistency_label},
+        {"part": "Volume trend", "label": "Not enough data"},
+    ]
 
-    assert check_rating_part_attribution(answer, rating)["passed"] is False
+    result = check_rating_part_attribution(
+        "You don't have enough weeks with recorded data yet to assess consistency or volume trend.",
+        rating,
+    )
+
+    assert result["passed"] is True
+    assert result["issues"] == []
+
+
+def test_shared_status_does_not_allow_cross_attributed_volume_direction():
+    rating = [
+        {"part": "Consistency", "label": "Not enough data"},
+        {"part": "Volume trend", "label": "Not enough data"},
+    ]
+
+    result = check_rating_part_attribution(
+        "There is not enough data to rate consistency because your volume rose.",
+        rating,
+    )
+
+    assert result["passed"] is False
+    assert "sentence 1 attributes ['volume_trend'] evidence to consistency" in result["issues"]
+
+
+@pytest.mark.parametrize(
+    ("label", "answer", "expected"),
+    [
+        ("Rising", "Your working volume rose from 4100 kg to 4700 kg.", True),
+        ("Falling", "Your working volume fell from 4700 kg to 4100 kg.", True),
+        ("Holding", "Your working volume held steady at 4100 kg.", True),
+        ("Holding", "Your volume increased from 5000 kg to 5200 kg.", False),
+        ("Falling", "Your working volume rose from 4100 kg to 4700 kg.", False),
+        ("Rising", "Your volume is strong at 4700 kg.", False),
+    ],
+)
+def test_volume_direction_must_match_its_supplied_rating(label, answer, expected):
+    rating = [{"part": "Volume trend", "label": label}]
+
+    assert check_rating_part_attribution(answer, rating)["passed"] is expected
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [
+        ("The volume trend is not enough data.", True),
+        ("The volume trend is strong.", False),
+        ("The volume is improving.", False),
+    ],
+)
+def test_volume_rating_word_check_ignores_its_supplied_label(answer, expected):
+    rating = [{"part": "Volume trend", "label": "Not enough data"}]
+
+    assert check_rating_part_attribution(answer, rating)["passed"] is expected
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected_terms", "expected"),
+    [
+        ("حققت هدفك في أسابيع التدريب المطلوبة.", ["الأسابيع"], True),
+        ("سجلت أرقامك القياسية الشخصية.", ["الأرقام القياسية"], True),
+        ("راجعت بياناتك خلال الفترة.", ["البيانات"], True),
+        ("تقدمك واضح في هذه الفترة.", ["التقدم"], True),
+        ("كانت النتائج جيدة هذا الشهر.", ["التقدم"], False),
+    ],
+)
+def test_arabic_supplied_facts_match_article_and_pronoun_variants(answer, expected_terms, expected):
+    assert check_uses_supplied_facts(answer, expected_terms)["passed"] is expected
 
 
 @pytest.mark.parametrize(
@@ -162,6 +241,16 @@ def test_style_rubric_checks_requested_tone_and_reasoning(expect, answer, expect
         "fact_terms_any": ["consistency"], **expect,
     }}
     result = evaluate_case(case, "", answer)
+    assert result["checks"]["style_wording"]["passed"] is expected
+
+
+@pytest.mark.parametrize(("word_count", "expected"), [(35, True), (36, False)])
+def test_concise_assistant_style_stays_at_most_35_words(word_count, expected):
+    case = {"id": "concise_style", "language": "en", "coach_tone": "concise"}
+    answer = " ".join(["word"] * word_count)
+
+    result = evaluate_case(case, "", answer)
+
     assert result["checks"]["style_wording"]["passed"] is expected
 
 

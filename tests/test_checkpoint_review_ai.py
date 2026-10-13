@@ -201,6 +201,26 @@ def test_render_is_allowlisted_and_prompt_hash_is_stable(monkeypatch):
     assert checkpoint_review_ai.prompt_version_hash() != initial_hash
 
 
+def test_concise_style_rules_are_pinned_in_the_user_turn():
+    concise_messages = checkpoint_review_ai.build_messages(
+        REVIEW_FACTS,
+        REVIEW_RATING,
+        "en",
+        preferences=checkpoint_review_ai.AssistantStylePreferences("concise"),
+    )
+    direct_messages = checkpoint_review_ai.build_messages(REVIEW_FACTS, REVIEW_RATING, "en")
+    concise_user_turn = concise_messages[1].content
+    direct_user_turn = direct_messages[1].content
+
+    assert "2–4 short sentences unless the supplied Assistant style sets a stricter limit" in concise_messages[0].content
+    assert "2–3 short sentences" in concise_user_turn
+    assert "at most 35 words" in concise_user_turn
+    assert "one sentence per rating part only when it has something useful to say" in concise_user_turn
+    assert "Do not add a closing sentence unless the style asks for one" in concise_user_turn
+    assert "Do not add interpretive restatements such as ‘indicating …’" in concise_user_turn
+    assert "2–3 short sentences" not in direct_user_turn
+
+
 def test_review_model_binding_disables_thinking_only_for_cloud():
     class BindingModel:
         def __init__(self):
@@ -220,6 +240,22 @@ def test_review_model_binding_disables_thinking_only_for_cloud():
 
 def test_194_deepseek_end_token_is_empty_for_checkpoint_review():
     assert checkpoint_review_ai.extract_text(AIMessage(content="<｜end▁of▁sentence｜>")) == ""
+
+
+@pytest.mark.parametrize(
+    "arabic_unit",
+    ["300كجم", "300 كجم", "300كغ", "300 كغ"],
+)
+def test_arabic_kg_variants_are_normalized_after_generation(arabic_unit):
+    reply = AIMessage(content=f"ارتفع الحجم إلى {arabic_unit}.")
+
+    assert checkpoint_review_ai.extract_text(reply) == "ارتفع الحجم إلى 300 kg."
+
+
+def test_kg_normalization_does_not_rewrite_a_longer_arabic_word():
+    reply = AIMessage(content="الحجم 5 كغم.")
+
+    assert checkpoint_review_ai.extract_text(reply) == "الحجم 5 كغم."
 
 
 def test_gate_binds_the_report_to_the_hosted_player_model(monkeypatch):

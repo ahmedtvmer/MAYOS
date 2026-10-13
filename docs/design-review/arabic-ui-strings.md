@@ -1400,3 +1400,12 @@ Draft sample in simple standard Arabic. It addresses the Player directly, keeps 
 | English facts | Draft Arabic review |
 | --- | --- |
 | 10 workouts; target met in 4 of 5 weeks with enough data; 2 personal records; 1 regression; working volume 4200 kg in the first half and 4500 kg in the second half. | أكملت 10 حصص تدريبية خلال هذه الفترة. حققت هدف التدريب في 4 من أصل 5 أسابيع توفرت عنها بيانات كافية. سجلت رقمين قياسيين شخصيين، مع تراجع في تمرين واحد. بلغ حجم العمل المسجل لديك 4200 kg في النصف الأول و4500 kg في النصف الثاني. |
+
+The following Arabic prompt examples are also draft wording and pending the same owner review:
+
+| Context | Arabic draft |
+| --- | --- |
+| Insufficient weeks | لا توجد لديك أسابيع كافية بعد |
+| Encouraging close | واصل... |
+| Explain the rating from evidence | تدعم البيانات المسجلة تقييمك |
+| Unit spelling | حجم العمل 300 kg; avoid حجم العمل 300 كجم and حجم العمل 300 كغ |

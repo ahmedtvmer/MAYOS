@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -11,6 +12,7 @@ from service.checkpoint_review_ai import render_review
 NUMBER_RE = re.compile(r"(?<![\w.,])(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?!\w|\.\d|,\d)")
 ARABIC_RE = re.compile(r"[\u0600-\u06ff]")
 ARABIC_LETTER_RE = re.compile(r"[\u0621-\u063a\u0641-\u064a\u066e-\u06d3\u06fa-\u06fc]")
+ARABIC_MARK_RE = re.compile(r"[\u064b-\u065f\u0670\u0640]")
 ENGLISH_LETTER_RE = re.compile(r"[A-Za-z]")
 SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?؟۔])\s+|\n+")
 ARABIC_NUMBER_TRANSLATION = str.maketrans("٠١٢٣٤٥٦٧٨٩٬٫", "0123456789,.")
@@ -37,6 +39,19 @@ PART_EVIDENCE = {
     ),
     "volume_trend": re.compile(r"\bvolume\b|\bkg\b|حجم العمل|الحجم|إجمالي الوزن المرفوع", re.I),
 }
+PART_FACT_EVIDENCE = {
+    **PART_EVIDENCE,
+    "volume_trend": re.compile(r"\bkg\b|إجمالي الوزن المرفوع", re.I),
+}
+INSUFFICIENT_LABEL = re.compile(
+    r"\b(?:not enough|insufficient|too few|no data|no records?)\b|بيانات غير كافية",
+    re.I,
+)
+INSUFFICIENT_STATUS = re.compile(
+    r"\b(?:not enough|(?:do|does|did)n['’]?t have enough|insufficient|too few|no recorded data)\b|"
+    r"بيانات غير كافية|لا توجد بيانات كافية",
+    re.I,
+)
 VOLUME_RISE = re.compile(
     r"\b(?:rose|rising|increas\w*|climb\w*|grew|growth|upward|higher|uptick)\b|"
     r"(?:ارتفع|يرتفع|يزداد|ازدياد|زاد|زيادة|تصاعد|ارتفاع|أعلى)",
@@ -50,6 +65,17 @@ VOLUME_FALL = re.compile(
 VOLUME_HOLD = re.compile(
     r"\b(?:holding|held steady|steady|stable|unchanged|flat|level|same)\b|"
     r"(?:مستقر|ثابت|استقرار|ثبات|لم يتغير|لم يتبدل|بقي كما هو)",
+    re.I,
+)
+VOLUME_NON_DIRECTION_RATING = re.compile(
+    r"\b(?:strong|needs attention|not enough data|not enough weeks(?: yet)?|improv\w*|"
+    r"poor|good|great|excellent|solid|weak)\b|"
+    r"(?:قوي|قوية|يحتاج إلى اهتمام|بيانات غير كافية|تحسن|جيد|جيدة|ممتاز|ضعيف)",
+    re.I,
+)
+RATING_CLAIM_WORDS = re.compile(
+    r"\b(?:strong|steady|needs attention|improv\w*|poor|good|great|excellent|solid|weak)\b|"
+    r"(?:قوي|قوية|ثابت|مستقر|تحسن|جيد|جيدة|ممتاز|ضعيف)",
     re.I,
 )
 ARABIC_THIRD_PERSON = re.compile(r"اللاعب(?:ة|ين|ات)?", re.I)
@@ -70,6 +96,7 @@ ARABIC_WORKOUT_TERM = re.compile(r"(?:حصة|حصص)\s+تدريبية")
 ARABIC_WORKOUT_REFERENCE = re.compile(r"workouts?|تمرين|تمارين|حصة|حصص|مرات|مرة", re.I)
 ARABIC_KG_VARIANT = re.compile(r"كجم|كغ")
 WORKOUT_COUNT_WORDS = re.compile(r"\bworkouts?\b|(?:حصة|حصص)\s+تدريبية", re.I)
+ARABIC_PRONOUN_SUFFIXES = ("كما", "هما", "هن", "هم", "ها", "كم", "كن", "نا", "ك", "ه", "ي")
 
 
 def _numbers(text: str) -> set[Decimal]:
@@ -89,8 +116,39 @@ def _sentence_count(answer: str) -> int:
 
 def check_uses_supplied_facts(answer: str, expected_terms: list[str]) -> dict[str, Any]:
     lowered = (answer or "").casefold()
-    observed = [term for term in expected_terms if term.casefold() in lowered]
+    answer_tokens = _arabic_fact_tokens(answer or "")
+    observed = [
+        term
+        for term in expected_terms
+        if (ARABIC_RE.search(term) and _arabic_term_matches(term, answer_tokens))
+        or (not ARABIC_RE.search(term) and term.casefold() in lowered)
+    ]
     return {"name": "uses_supplied_facts", "passed": bool(observed), "matched_terms": observed}
+
+
+def _arabic_fact_tokens(text: str) -> list[str]:
+    normalized = unicodedata.normalize("NFKC", text).casefold()
+    normalized = ARABIC_MARK_RE.sub("", normalized)
+    words = re.findall(r"[\u0621-\u063a\u0641-\u064a\u066e-\u06d3\u06fa-\u06fc]+", normalized)
+    return [_arabic_stem(word) for word in words]
+
+
+def _arabic_stem(word: str) -> str:
+    if word.startswith("ال") and len(word) > 4:
+        word = word[2:]
+    for suffix in ARABIC_PRONOUN_SUFFIXES:
+        if word.endswith(suffix) and len(word) - len(suffix) > 2:
+            return word[: -len(suffix)]
+    return word
+
+
+def _arabic_term_matches(term: str, answer_tokens: list[str]) -> bool:
+    term_tokens = _arabic_fact_tokens(term)
+    width = len(term_tokens)
+    return bool(width) and any(
+        answer_tokens[index : index + width] == term_tokens
+        for index in range(len(answer_tokens) - width + 1)
+    )
 
 
 def check_no_invented_numbers(answer: str, facts_text: str) -> dict[str, Any]:
@@ -132,10 +190,12 @@ def check_no_identifiers(answer: str, prompt: str, identifiers: list[str]) -> di
     return {"name": "no_identifiers", "passed": not leaked, "leaked": leaked}
 
 
-def check_style_wording(answer: str, expect: dict[str, Any]) -> dict[str, Any]:
+def check_style_wording(answer: str, expect: dict[str, Any], coach_tone: str = "") -> dict[str, Any]:
     """Checks explicit brevity/reasoning expectations, not subjective tone quality."""
     word_count = len(answer.split())
     maximum = expect.get("max_words")
+    if coach_tone == "concise":
+        maximum = min(maximum, 35) if maximum is not None else 35
     terms = expect.get("reasoning_terms_any") or []
     style_terms = expect.get("style_terms_any") or []
     matched = [term for term in terms if term.casefold() in answer.casefold()]
@@ -151,26 +211,95 @@ def check_style_wording(answer: str, expect: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _part_evidence_issues(sentence: str, sentence_number: int) -> list[str]:
+def _shared_status_is_stated(sentence: str, labels: list[str], insufficient: bool) -> bool:
+    same_label = len({label.casefold() for label in labels}) == 1
+    if same_label and re.search(re.escape(labels[0]), sentence, re.I):
+        return True
+    return insufficient and bool(INSUFFICIENT_STATUS.search(sentence))
+
+
+def _has_part_specific_evidence(sentence: str, insufficient: bool) -> bool:
+    if NUMBER_RE.search(sentence) or any(
+        pattern.search(sentence) for pattern in (VOLUME_RISE, VOLUME_FALL, VOLUME_HOLD)
+    ):
+        return True
+    if PART_FACT_EVIDENCE["progression"].search(sentence):
+        return True
+    if PART_FACT_EVIDENCE["volume_trend"].search(sentence):
+        return True
+    return not insufficient and bool(PART_FACT_EVIDENCE["consistency"].search(sentence))
+
+
+def _shared_status_without_cross_evidence(sentence: str, rating: list[dict[str, Any]]) -> bool:
+    mentioned = [part for part, pattern in PART_WORDS.items() if pattern.search(sentence)]
+    if len(mentioned) < 2:
+        return False
+    labels_by_part = {
+        str(item.get("part", "")).casefold().replace(" ", "_"): str(item.get("label", "")).strip()
+        for item in rating
+    }
+    labels = [labels_by_part.get(part, "") for part in mentioned]
+    if any(not label for label in labels):
+        return False
+
+    insufficient = all(INSUFFICIENT_LABEL.search(label) for label in labels)
+    if not _shared_status_is_stated(sentence, labels, insufficient):
+        return False
+    if _has_part_specific_evidence(sentence, insufficient):
+        return False
+
+    remaining = sentence
+    for label in labels:
+        remaining = re.sub(re.escape(label), "", remaining, flags=re.I)
+    return not RATING_CLAIM_WORDS.search(remaining)
+
+
+def _part_evidence_issues(
+    sentence: str, sentence_number: int, shared_status: bool = False
+) -> list[str]:
     evidence = {part for part, pattern in PART_EVIDENCE.items() if pattern.search(sentence)}
     issues = []
     for part, pattern in PART_WORDS.items():
         misplaced = sorted(evidence - {part}) if pattern.search(sentence) else []
-        if misplaced:
+        if misplaced and not shared_status:
             issues.append(f"sentence {sentence_number} attributes {misplaced} evidence to {part}")
-    if WORKOUT_COUNT_WORDS.search(sentence) and any(pattern.search(sentence) for pattern in PART_WORDS.values()):
-        issues.append(f"sentence {sentence_number} connects the neutral workout count to a rating part")
+    if WORKOUT_COUNT_WORDS.search(sentence) and RATING_CLAIM_WORDS.search(sentence):
+        unsupported = [
+            part
+            for part, pattern in PART_WORDS.items()
+            if pattern.search(sentence) and not PART_FACT_EVIDENCE[part].search(sentence)
+        ]
+        if unsupported:
+            issues.append(
+                f"sentence {sentence_number} uses the workout count to support {sorted(unsupported)}"
+            )
     return issues
 
 
-def _volume_direction_issue(sentence: str, sentence_number: int, volume_label: str) -> str | None:
+def _volume_direction_issue(
+    sentence: str, sentence_number: int, volume_label: str, shared_status: bool = False
+) -> str | None:
     if not PART_EVIDENCE["volume_trend"].search(sentence):
         return None
-    rising = bool(VOLUME_RISE.search(sentence))
-    falling = bool(VOLUME_FALL.search(sentence))
-    holding = bool(VOLUME_HOLD.search(sentence))
-    if rising or falling or holding:
-        return f"sentence {sentence_number} paraphrases the supplied {volume_label.title()} volume rating"
+    directions = {
+        direction
+        for direction, pattern in (
+            ("rising", VOLUME_RISE),
+            ("falling", VOLUME_FALL),
+            ("holding", VOLUME_HOLD),
+        )
+        if pattern.search(sentence)
+    }
+    expected_direction = volume_label.casefold()
+    if expected_direction not in {"rising", "falling", "holding"}:
+        expected_direction = ""
+    if directions and (len(directions) > 1 or directions != {expected_direction}):
+        return f"sentence {sentence_number} states a volume direction inconsistent with {volume_label.title()}"
+    rating_word_text = re.sub(
+        rf"(?<!\w){re.escape(volume_label)}(?!\w)", "", sentence, flags=re.I
+    ) if volume_label else sentence
+    if VOLUME_NON_DIRECTION_RATING.search(rating_word_text) and not shared_status:
+        return f"sentence {sentence_number} attaches another rating word to volume"
     return None
 
 
@@ -180,11 +309,22 @@ def check_rating_part_attribution(answer: str, rating: list[dict[str, Any]]) -> 
         (str(item.get("label", "")).casefold() for item in rating if item.get("part") == "Volume trend"),
         "",
     )
-    issues = [issue for index, sentence in enumerate(sentences, 1) for issue in _part_evidence_issues(sentence, index)]
+    shared_statuses = [
+        _shared_status_without_cross_evidence(sentence, rating) for sentence in sentences
+    ]
+    issues = [
+        issue
+        for index, sentence in enumerate(sentences, 1)
+        for issue in _part_evidence_issues(sentence, index, shared_statuses[index - 1])
+    ]
     issues.extend(
         issue
         for index, sentence in enumerate(sentences, 1)
-        if (issue := _volume_direction_issue(sentence, index, volume_label)) is not None
+        if (
+            issue := _volume_direction_issue(
+                sentence, index, volume_label, shared_statuses[index - 1]
+            )
+        ) is not None
     )
     return {"name": "rating_part_attribution", "passed": not issues, "issues": issues}
 
@@ -251,7 +391,7 @@ def evaluate_case(case: dict[str, Any], prompt: str, answer: str) -> dict[str, A
         check_no_medical_advice(answer),
         check_sentence_count(answer),
         check_no_identifiers(answer, prompt, list(expect.get("must_not_contain") or [])),
-        check_style_wording(answer, expect),
+        check_style_wording(answer, expect, str(case.get("coach_tone", ""))),
     ]
     return {
         "case_id": case.get("id", "?"),
