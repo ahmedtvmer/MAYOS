@@ -69,6 +69,7 @@ from agent.player_prompt import (
 )
 from agent.telemetry_reconciler import (
     clean_movement_stem,
+    extract_ledger_exercise_name,
     reconcile_telemetry_query,
 )
 from database.exercise_library.schema import exercise_library_visible_sql
@@ -657,6 +658,108 @@ def _graph_context(config: dict[str, Any] | None) -> tuple[Any, Any]:
     return configurable.get("ledger"), configurable.get("store")
 
 
+def _exercise_name_candidates(name: str) -> tuple[str, ...]:
+    candidates = [name]
+    words = name.split()
+    if words:
+        last = words[-1]
+        if last.endswith("ies") and len(last) > 3:
+            candidates.append(" ".join((*words[:-1], last[:-3] + "y")))
+        elif last.endswith("s") and not last.endswith("ss") and len(last) > 2:
+            candidates.append(" ".join((*words[:-1], last[:-1])))
+    return tuple(dict.fromkeys(candidates))
+
+
+def _logged_exercise_ids(session_log: list[dict[str, Any]]) -> set[str]:
+    return {
+        str(row["exercise_id"])
+        for row in session_log
+        if row.get("exercise_id")
+    }
+
+
+def _ledger_exercise_ids_for_context(ledger: Any) -> set[str] | None:
+    get_session_log = getattr(ledger, "get_session_log", None)
+    if not callable(get_session_log):
+        return None
+    try:
+        return _logged_exercise_ids(get_session_log() or [])
+    except sqlite3.Error:
+        logger.exception("Player ledger history grounding could not be checked for assistant context.")
+        return None
+
+
+def _has_progress_history_scope(query: str, exercise_name: str | None) -> bool:
+    if exercise_name:
+        return True
+    return bool(re.search(
+        r"\b(?:session|workout|training|history|ledger|log)\b|جلسة|حصة|تاريخ|سجل",
+        query,
+        re.IGNORECASE,
+    ))
+
+
+def _baseline_history_fact(
+    telemetry: str, logged_exercise_ids: set[str], language: str
+) -> str | None:
+    if logged_exercise_ids or not re.search(
+        r"No recorded sessions yet in ledger|Establishing baseline", telemetry, re.IGNORECASE
+    ):
+        return None
+    return "مفيش تاريخ تمرين متسجّل لسه." if language == "ar" else "New user: no logged history yet."
+
+
+def _resolved_progress_exercise_id(name: str | None, store: Any) -> str | None:
+    resolver = getattr(store, "find_unique_exercise_id_by_exact_name", None)
+    if not name or not callable(resolver):
+        return None
+    for candidate in _exercise_name_candidates(name):
+        exercise_id = resolver(candidate)
+        if exercise_id:
+            return str(exercise_id)
+    return None
+
+
+def _missing_exercise_history_fact(
+    exercise_name: str | None, logged_exercise_ids: set[str], store: Any, language: str
+) -> str | None:
+    try:
+        exercise_id = _resolved_progress_exercise_id(exercise_name, store)
+        if not exercise_id or exercise_id in logged_exercise_ids:
+            return None
+        get_entry = getattr(store, "get_exercise_library_entry", None)
+        entry = get_entry(exercise_id) if callable(get_entry) else None
+        display_name = str((entry or {}).get("name") or exercise_name)
+    except sqlite3.Error:
+        logger.exception("Named exercise history could not be checked for assistant context.")
+        return None
+    if language == "ar":
+        return f"السجل: مفيش بيانات مسجّلة عن {display_name}."
+    return f"Ledger: no logged data for {display_name}."
+
+
+def _append_ledger_history_facts(
+    query: str, telemetry: str, context_handles: tuple[Any, Any], display_language: object
+) -> str:
+    ledger, store = context_handles
+    if not query or not RE_PROGRESS_COMPARISON.search(query):
+        return telemetry
+    exercise_name = extract_ledger_exercise_name(query)
+    if not _has_progress_history_scope(query, exercise_name):
+        return telemetry
+    logged_exercise_ids = _ledger_exercise_ids_for_context(ledger)
+    if logged_exercise_ids is None:
+        return telemetry
+    language = resolve_reply_language(query, display_language)
+    facts = [
+        fact for fact in (
+            _baseline_history_fact(telemetry, logged_exercise_ids, language),
+            _missing_exercise_history_fact(exercise_name, logged_exercise_ids, store, language),
+        ) if fact
+    ]
+    return "\n".join(part for part in (telemetry, *facts) if part)
+
+
 def hydrate_context_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     ledger, store = _graph_context(config)
     profile = ledger.get_player_profile()
@@ -694,6 +797,9 @@ def hydrate_context_node(state: AssistantState, config: dict[str, Any] | None = 
         None,
     )
     recent_user = _get_message_text(latest_user) if latest_user is not None else ""
+    telemetry = _append_ledger_history_facts(
+        recent_user, str(telemetry or ""), (ledger, store), display_language
+    )
     weight_context = None
     if is_weight_context_relevant(recent_user):
         try:
@@ -763,6 +869,13 @@ RE_HISTORY_SCOPE = re.compile(
     r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
     r"january|february|march|april|may|june|july|august|september|october|november|december|"
     r"\d{4}-\d{2}-\d{2})\b", re.IGNORECASE
+)
+RE_PROGRESS_COMPARISON = re.compile(
+    r"\b(?:advance|improv\w*|progress\w*|compar\w*|how\s+much\s+(?:did|has|have)\s+(?:my|the)|"
+    r"yesterday|last\s+(?:(?:\d+|\w+)\s+)?sessions?|"
+    r"past\s+(?:\d+|\w+)\s+sessions?)\b|"
+    r"(?:تحسن|اتحسن|تقدم|اتقدم|مقارنة|مقارنات|امبارح|أمس|آخر\s+(?:جلسة|جلستين|حصتين)|"
+    r"كام\s+(?:زاد|تحسن|اتحسن|اتقدم|تقدم|فرق))"
 )
 AUTHORIZATION_RESPONSE = "Routine changes require an explicit directive, such as 'switch routine to 3 days' or 'swap bench press for incline press'."
 
@@ -2313,6 +2426,17 @@ def _remove_day_suffix(exercise_name: str, day_name: str | None) -> str:
 UNSPECIFIC_CHOICE_WORDS = {"one", "two", "three", "first", "second", "third"}
 
 
+@dataclass(frozen=True)
+class _RoutineSlotUpdateReply:
+    source_exercise: str
+    replacement: dict[str, Any]
+    day_name: str
+    new_notes: str
+    query: str
+    display_language: object
+    note_suffix: str = ""
+
+
 def _validated_swap_success(
     state: AssistantState,
     metadata: dict[str, Any],
@@ -2323,7 +2447,16 @@ def _validated_swap_success(
     profile = ledger.get_player_profile() or {}
     experience_level = experience_level_for_training_age(profile.get("training_age_years", 0.0))
     day_name = substitution["day_names"][0]
-    msg = _validated_swap_message(metadata, replacement, day_name, experience_level)
+    msg = _routine_slot_updated_message(
+        _RoutineSlotUpdateReply(
+            source_exercise=metadata["source_exercise"],
+            replacement=replacement,
+            day_name=day_name,
+            new_notes=replacement.get("instructions") or get_biomechanical_cue(replacement, experience_level),
+            query=_get_message_text(state["messages"][-1]),
+            display_language=state.get("display_language", "en"),
+        )
+    )
     if metadata.get("has_additional_request"):
         msg += "\n\n" + ARABIC_ONE_AT_A_TIME_NOTE
     return {
@@ -2334,18 +2467,25 @@ def _validated_swap_success(
     }
 
 
-def _validated_swap_message(
-    metadata: dict[str, Any], replacement: dict[str, Any], day_name: str, experience_level: str
-) -> str:
-    new_notes = replacement.get("instructions") or get_biomechanical_cue(replacement, experience_level)
-    msg = (
-        f"✅ **Routine Slot Updated ({day_name})**\n\n"
-        f"- **Removed:** {metadata['source_exercise'].title()}\n"
-        f"- **Installed:** {replacement['name'].title()} "
-        f"(`{replacement['target_muscle']}` | `{replacement['equipment']}`)\n"
-        f"- **Execution Directive:** *{new_notes}*"
+def _routine_slot_updated_message(update: _RoutineSlotUpdateReply) -> str:
+    replacement = update.replacement
+    language = resolve_reply_language(update.query, update.display_language)
+    installed = replacement["name"].title()
+    if language == "ar":
+        heading = f"تمام، بدّلت التمرين في يوم {update.day_name}."
+        labels = ("اللي اتشال", "اللي اتحط", "التوجيه")
+        new_notes = "اشتغل بنفس الفورم اللي كنت بتعمله."
+    else:
+        heading = f"Routine Slot Updated ({update.day_name})"
+        labels = ("Removed", "Installed", "Execution Directive")
+        new_notes = update.new_notes
+        installed += f" (`{replacement['target_muscle']}` | `{replacement['equipment']}`)"
+    return (
+        f"✅ **{heading}**\n\n"
+        f"- **{labels[0]}:** {update.source_exercise.title()}\n"
+        f"- **{labels[1]}:** {installed}\n"
+        f"- **{labels[2]}:** *{new_notes}*{update.note_suffix}"
     )
-    return msg
 
 
 def _persist_validated_swap(
@@ -2731,17 +2871,29 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
             None,
         )
         if alt_variant and ("dumbbell" not in query.lower() and "barbell" not in query.lower()):
-            note_suffix = (
-                f"\n\n*(Installed the primary **{replacement['equipment'].title()}** variant. "
-                f"If you prefer **{alt_variant['name'].title()}**, reply: "
-                f"`swap {matched_ex.exercise_name} for {alt_variant['name']}`.)*"
-            )
+            if resolve_reply_language(query, state.get("display_language", "en")) == "ar":
+                note_suffix = (
+                    f"\n\n*(ضفت النسخة الأساسية **{replacement['equipment'].title()}**. "
+                    f"لو عايز **{alt_variant['name'].title()}**، قولّي: "
+                    f"`swap {matched_ex.exercise_name} for {alt_variant['name']}`.)*"
+                )
+            else:
+                note_suffix = (
+                    f"\n\n*(Installed the primary **{replacement['equipment'].title()}** variant. "
+                    f"If you prefer **{alt_variant['name'].title()}**, reply: "
+                    f"`swap {matched_ex.exercise_name} for {alt_variant['name']}`.)*"
+                )
 
-        msg = (
-            f"✅ **Routine Slot Updated ({target_day.day_name})**\n\n"
-            f"- **Removed:** {matched_ex.exercise_name.title()}\n"
-            f"- **Installed:** {replacement['name'].title()} (`{replacement['target_muscle']}` | `{replacement['equipment']}`)\n"
-            f"- **Execution Directive:** *{new_notes}*{note_suffix}"
+        msg = _routine_slot_updated_message(
+            _RoutineSlotUpdateReply(
+                source_exercise=matched_ex.exercise_name,
+                replacement=replacement,
+                day_name=target_day.day_name,
+                new_notes=new_notes,
+                query=query,
+                display_language=state.get("display_language", "en"),
+                note_suffix=note_suffix,
+            )
         )
         return {
             "program_updated": True,
@@ -3027,13 +3179,33 @@ def _finish_limited(message: Any) -> bool:
     return any(m.get("finish_reason") in {"length", "max_tokens"} or m.get("stop_reason") == "max_tokens" for m in (metadata, info))
 
 
+def _last_complete_sentence_end(text: str) -> int:
+    """Return the end of the last sentence with terminal punctuation."""
+    sentence_end = 0
+    closing_marks = "\"'’”»)]}*_`"
+    for index, char in enumerate(text):
+        if char not in ".!?؟":
+            continue
+        end = index + 1
+        while end < len(text) and text[end] in closing_marks:
+            end += 1
+        if end == len(text) or text[end].isspace():
+            sentence_end = end
+    return sentence_end
+
+
+def _trim_to_last_complete_sentence(text: str) -> str:
+    return text[:_last_complete_sentence_end(text)].rstrip()
+
+
 def generation_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     try:
         payload = build_prompt_payload(state)
         response = llm.invoke(payload)
         content = finalize_coach_output(response.content)
         if _finish_limited(response):
-            content += "\n\n" + OUTPUT_LIMIT_RESPONSE
+            content = _trim_to_last_complete_sentence(content)
+            content = f"{content}\n\n{OUTPUT_LIMIT_RESPONSE}" if content else OUTPUT_LIMIT_RESPONSE
         return {"response_content": content, "program_updated": False, "messages": [AIMessage(content=content)]}
     except PromptBudgetError as exc:
         return _response(str(exc))
@@ -3256,6 +3428,7 @@ def stream_assistant_turn(
     result = None
     visible = []
     scrubber = None
+    pending_output = ""
     try:
         state.update(hydrate_context_node(state, config))
         state.update(router_node(state, config))
@@ -3307,17 +3480,26 @@ def stream_assistant_turn(
                 for char in piece:
                     cleaned = scrubber.feed(char)
                     if cleaned:
-                        visible.append(cleaned)
-                        yield cleaned
+                        pending_output += cleaned
+                        complete_end = _last_complete_sentence_end(pending_output)
+                        if complete_end:
+                            complete_text = pending_output[:complete_end]
+                            pending_output = pending_output[complete_end:]
+                            visible.append(complete_text)
+                            yield complete_text
             cleaned = scrubber.finish()
             if cleaned:
-                visible.append(cleaned)
-                yield cleaned
-            if not visible:
+                pending_output += cleaned
+            if limited:
+                pending_output = _trim_to_last_complete_sentence(pending_output)
+            if pending_output:
+                visible.append(pending_output)
+                yield pending_output
+            if not visible and not limited:
                 visible.append(EMPTY_RESPONSE_FALLBACK)
                 yield EMPTY_RESPONSE_FALLBACK
             if limited:
-                note = "\n\n" + OUTPUT_LIMIT_RESPONSE
+                note = ("\n\n" if visible else "") + OUTPUT_LIMIT_RESPONSE
                 visible.append(note)
                 yield note
             gen_time_s = max(0.0, (time.perf_counter() - gen_start) - ttft_s)
@@ -3338,8 +3520,10 @@ def stream_assistant_turn(
         if scrubber is not None:
             cleaned = scrubber.finish()
             if cleaned:
-                visible.append(cleaned)
-                yield cleaned
+                pending_output += cleaned
+            if pending_output:
+                visible.append(pending_output)
+                yield pending_output
         result = _response(PIPELINE_ERROR_RESPONSE, bool(result and result.get("program_updated")))
     if result is not None:
         cleaned = finalize_coach_output(result.get("response_content") or "")

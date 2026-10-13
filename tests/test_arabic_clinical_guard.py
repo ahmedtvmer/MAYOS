@@ -58,6 +58,28 @@ def test_arabic_safeguards_use_latin_mayos_brand():
 
 
 @pytest.mark.parametrize(
+    ("reply", "referral", "treatment_advice"),
+    [
+        (
+            graph.DIAGNOSIS_SAFEGUARD_RESPONSE,
+            "licensed physical therapist",
+            ("substitute with", "medication", "painkiller"),
+        ),
+        (
+            ARABIC_DIAGNOSIS_SAFEGUARD_RESPONSE,
+            "أخصائي علاج طبيعي مرخّصًا",
+            ("استبدله بحركة", "دواء", "مسكن"),
+        ),
+    ],
+)
+def test_diagnosis_safeguards_defer_without_medication_or_rehab_advice(
+    reply, referral, treatment_advice
+):
+    assert referral in reply
+    assert all(advice not in reply.lower() for advice in treatment_advice)
+
+
+@pytest.mark.parametrize(
     "query",
     [
         "ركبتي بتوجعني after squat",

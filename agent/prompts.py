@@ -69,9 +69,8 @@ CLINICAL_SAFEGUARD_RESPONSE = (
 DIAGNOSIS_SAFEGUARD_RESPONSE = (
     "I cannot diagnose musculoskeletal injuries, joint aches, or underlying pathology. "
     "Mayos is an automated training ledger and biomechanics engine, not a clinical physician. "
-    "Immediately discontinue any exercise causing localized joint pain or aching, substitute with "
-    "a pain-free movement that loads the target muscle in a stable, supported plane, and consult "
-    "a licensed physical therapist for an accurate diagnostic evaluation."
+    "Immediately discontinue any exercise causing localized joint pain or aching, and consult "
+    "a licensed physical therapist for an evaluation."
 )
 
 ARABIC_CLINICAL_SAFEGUARD_RESPONSE = (
@@ -86,8 +85,7 @@ ARABIC_CLINICAL_SAFEGUARD_RESPONSE = (
 ARABIC_DIAGNOSIS_SAFEGUARD_RESPONSE = (
     "لا أستطيع تشخيص إصابات الجهاز العضلي الهيكلي أو آلام المفاصل أو الحالات المرضية الكامنة. "
     "MAYOS سجل تدريب آلي ومحرك لميكانيكا الحركة، وليس طبيبًا. أوقف فورًا أي تمرين يسبب ألمًا موضعيًا "
-    "في المفصل أو وجعًا، واستبدله بحركة خالية من الألم تحمّل العضلة المستهدفة في وضع ثابت ومدعوم، "
-    "واستشر أخصائي علاج طبيعي مرخّصًا للحصول على تقييم تشخيصي دقيق."
+    "في المفصل أو وجعًا، واستشر أخصائي علاج طبيعي مرخّصًا لتقييم الحالة."
 )
 
 FRANCO_ARABIC_INPUT_RESPONSE = (

@@ -85,33 +85,34 @@ def test_graph_and_stream_failures(graph, stage):
     assert list(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db)) == [PIPELINE_ERROR_RESPONSE]
 
 
-def test_finish_limit_preserves_partial_answer(graph):
-    partial = AIMessage(content="Cut off", response_metadata={"finish_reason": "length"})
+def test_finish_limit_keeps_only_complete_sentences_before_notice(graph):
+    partial = AIMessage(
+        content="The direct answer is yes. The next sentence was cut off",
+        response_metadata={"finish_reason": "length"},
+    )
     graph.llm.reset([partial, partial])
-    expected = "Cut off\n\n" + graph.OUTPUT_LIMIT_RESPONSE
+    expected = "The direct answer is yes.\n\n" + graph.OUTPUT_LIMIT_RESPONSE
     assert graph.generation_node(state("How many squat reps?"))["response_content"] == expected
     request = state("How many squat reps?")
     assert "".join(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db)) == expected
     assert request["response_content"] == request["messages"][-1].content == expected
 
 
-def test_words_visible_before_sentence_or_generation_finishes(graph):
-    graph.llm.reset(["Use controlled reps."])
-    graph.llm.chunk_size = 5
+def test_complete_sentence_is_visible_before_generation_finishes(graph):
+    raw = "Use controlled reps. Keep the next repetition smooth."
+    first_sentence = "Use controlled reps. "
+    graph.llm.reset([raw])
+    graph.llm.chunk_size = len(first_sentence)
     request = state("How many squat reps?")
     stream = graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db)
     first = next(stream)
-    assert first == "Use"
-    assert graph.llm.streamed_chunk_count == 1
-    second = next(stream)
-    assert second == " controlled"
-    assert graph.llm.streamed_chunk_count == 3
-    output = first + second + "".join(stream)
-    assert output == "Use controlled reps."
+    assert first == "Use controlled reps."
+    output = first + "".join(stream)
+    assert output == raw
     assert output == request["response_content"] == request["messages"][-1].content
 
 
-def test_stream_subdivides_a_sentence_sized_model_chunk(graph):
+def test_stream_releases_a_complete_sentence_as_one_unit(graph):
     raw = "Use controlled reps while keeping each repetition smooth and balanced."
     graph.llm.reset([raw])
     graph.llm.chunk_size = len(raw)
@@ -120,11 +121,8 @@ def test_stream_subdivides_a_sentence_sized_model_chunk(graph):
 
     first = next(stream)
     assert graph.llm.streamed_chunk_count == 1
-    second = next(stream)
-    assert (first, second) == ("Use", " controlled")
-    assert graph.llm.streamed_chunk_count == 1
-    tail = "".join(stream)
-    assert first + second + tail == raw
+    assert first == raw
+    assert "".join(stream) == ""
 
 
 def test_long_sentence_releases_complete_words_before_its_end():

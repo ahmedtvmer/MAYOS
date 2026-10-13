@@ -1,7 +1,9 @@
 # Arabic app UI strings
 
 This inventory lists Arabic app-owned copy from chunks A, B, C, and the workout
-logging slice. Status: **owner reviewed** by Thomas on 2026-10-12.
+logging slice. The original inventory was owner reviewed on 2026-10-12; later
+sections carry their own review status, and entries marked pending have not
+been owner reviewed.
 English fallbacks supplied by the API remain unchanged. Known structured API
 messages have matching Arabic templates in the app catalog and are listed
 below, including the server-authored structured-intake copy. Player-entered
@@ -1409,3 +1411,27 @@ The following Arabic prompt examples are also draft wording and pending the same
 | Encouraging close | واصل... |
 | Explain the rating from evidence | تدعم البيانات المسجلة تقييمك |
 | Unit spelling | حجم العمل 300 kg; avoid حجم العمل 300 كجم and حجم العمل 300 كغ |
+## Diagnosis safeguard reply (#193; pending owner review)
+
+Candidate fixed standard-Arabic wording for the diagnosis safeguard in
+`agent/prompts.py`:
+
+| English intent | Arabic candidate |
+| --- | --- |
+| Decline diagnosis, stop the painful exercise, and defer evaluation to a licensed clinician | لا أستطيع تشخيص إصابات الجهاز العضلي الهيكلي أو آلام المفاصل أو الحالات المرضية الكامنة. MAYOS سجل تدريب آلي ومحرك لميكانيكا الحركة، وليس طبيبًا. أوقف فورًا أي تمرين يسبب ألمًا موضعيًا في المفصل أو وجعًا، واستشر أخصائي علاج طبيعي مرخّصًا لتقييم الحالة. |
+
+Status: pending owner review. This wording has not been owner reviewed.
+
+## Routine slot update chat reply (#193; pending owner review)
+
+Draft polite Egyptian Arabic for both successful exercise-substitution paths.
+English exercise names come from the verified program. Arabic replies use
+shorter Egyptian labels and a fixed training cue instead of copying English
+catalog instructions.
+
+| English intent | Draft Egyptian Arabic |
+| --- | --- |
+| Confirm the routine slot update and show the removed and installed exercises | ✅ **تمام، بدّلت التمرين في يوم {day_name}.**<br><br>- **اللي اتشال:** {source_exercise}<br>- **اللي اتحط:** {replacement}<br>- **التوجيه:** *اشتغل بنفس الفورم اللي كنت بتعمله.* |
+| Mention an available equipment variant | *(ضفت النسخة الأساسية **{equipment}**. لو عايز **{alternate_exercise}**، قولّي: `swap {source_exercise} for {alternate_exercise}`.)* |
+
+Status: pending owner review. This wording has not been owner reviewed.

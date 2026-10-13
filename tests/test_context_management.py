@@ -74,8 +74,8 @@ def test_short_conversation_bypasses_canned_clarification(graph, query):
     assert result["response_content"] == "Use controlled reps."
     assert len(graph.llm.calls) == 1
     prompt = graph.llm.calls[0]["messages"][0].content
-    assert "Respond naturally to greetings, introductions and frustration" in prompt
-    assert "Short messages are not inherently unclear" in prompt
+    assert "Handle greetings and frustration naturally" in prompt
+    assert "don't invent training/medical concerns from short messages" in prompt
 
 
 @pytest.mark.parametrize("query", ["RDLs", "RPE?", "why?", "the second one", "8"])

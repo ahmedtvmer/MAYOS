@@ -10,7 +10,7 @@ from langchain_core.messages import HumanMessage
 
 from agent.assistant_graph import (
     RE_ACTION_HINT,
-    STATIC_SYSTEM_CORE,
+    hydrate_context_node,
     deload_choice_node,
     exercise_substitution_node,
     router_node,
@@ -23,18 +23,65 @@ from utils.model_downloader import llm
 logger = MyosLogger().get_logger(__name__)
 
 
+def _hydrate_history_context(query, telemetry, session_log, *, exercise_id="bss-1"):
+    ledger = MagicMock()
+    ledger.get_player_profile.return_value = {}
+    ledger.get_assistant_memory.return_value = {}
+    ledger.get_session_log.return_value = session_log
+    ledger.get_session_comparison_context.return_value = None
+    store = MagicMock()
+    store.find_unique_exercise_id_by_exact_name.side_effect = lambda name: (
+        exercise_id if name.casefold() in {"bulgarian split squat", "bulgarian split squats"} else None
+    )
+    store.get_exercise_library_entry.return_value = {"name": "Bulgarian Split Squat"}
+    state = {
+        "messages": [HumanMessage(content=query)],
+        "telemetry_context": telemetry,
+        "display_language": "en",
+    }
+    return hydrate_context_node(state, {"configurable": {"ledger": ledger, "store": store}})
+
+
+def test_progress_context_marks_a_new_players_empty_history():
+    hydrated = _hydrate_history_context(
+        "How much did my bench press top set advance this month?",
+        "[TRAINEE TELEMETRY]\nLast Session: No recorded sessions yet in ledger.\n"
+        "Progression: Establishing baseline loads across routine.",
+        [],
+    )
+
+    assert "New user: no logged history yet." in hydrated["telemetry_context"]
+
+
+def test_progress_context_marks_an_absent_exercise_in_egyptian_arabic():
+    hydrated = _hydrate_history_context(
+        "هل تحسن Bulgarian split squats خلال آخر جلستين؟",
+        "Last Session: Upper | Top: Leg Press 240kg x 10",
+        [{"exercise_id": "leg-press", "is_warmup": 0}],
+    )
+
+    assert "السجل: مفيش بيانات مسجّلة عن Bulgarian Split Squat." in hydrated["telemetry_context"]
+
+
+def test_progress_context_does_not_mark_a_logged_exercise_absent():
+    hydrated = _hydrate_history_context(
+        "Did my Bulgarian split squat load advance over the past two sessions?",
+        "Last Session: Upper | Top: Bulgarian Split Squat 60kg x 8",
+        [{"exercise_id": "bss-1", "is_warmup": 0}],
+    )
+
+    assert "no logged data for Bulgarian Split Squat" not in hydrated["telemetry_context"]
+
+
 def test_phase1_engine_configuration():
-    """Validates model parameters and system prompt token budget constraints."""
+    """Validates the hosted model's response token limit."""
     logger.info("Verifying Phase 1 Engine Configuration & Directives...")
 
     assert getattr(llm, "max_tokens", None) == 200, (
         f"Expected llm.max_tokens == 200, found {getattr(llm, 'max_tokens', None)}"
     )
 
-    assert "Output Budget & Structural Constraints:" in STATIC_SYSTEM_CORE
-    assert "up to 90 words" in STATIC_SYSTEM_CORE
-    assert "brief natural prose for conversation or clarification" in STATIC_SYSTEM_CORE
-    logger.info("✅ Phase 1 configuration & prompt budgeting verified.")
+    logger.info("✅ Phase 1 hosted model configuration verified.")
 
 def test_phase1_tier1_explicit_swaps():
     """Validates two-way deterministic exercise swaps."""
@@ -282,8 +329,9 @@ def test_phase2_streaming_generator_qa(fresh_store, monkeypatch):
     monkeypatch.setattr("agent.assistant_graph.llm", model)
     generator = stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store)
     first = next(generator)
-    # Text is released word by word (#395), not held to the sentence boundary.
-    assert first == "Keep"
+    # Complete sentences stream as soon as their boundary is known, so a capped
+    # response can omit only its unfinished trailing sentence.
+    assert first == "Keep your elbows tucked."
     yielded_tokens = [first, *generator]
     assert "".join(yielded_tokens) == "Keep your elbows tucked. Use controlled reps."
     assert len(model.calls) == 1

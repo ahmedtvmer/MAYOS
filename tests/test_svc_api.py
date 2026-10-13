@@ -746,7 +746,7 @@ def test_chat_api_uses_message_language_then_display_fallback_and_preserves_hist
     assert arabic_done["response_content"] == "Second response retained."
     assert "Reply language for this turn: Arabic" in model.calls[2]["messages"][0].content
     assert "Display language fallback: English" in model.calls[2]["messages"][0].content
-    assert "polite everyday Egyptian Arabic" in model.calls[2]["messages"][0].content
+    assert "polite everyday Egyptian" in model.calls[2]["messages"][0].content
 
     assert db.set_account_display_language(account["account_id"], "ar")
     fallback_done = send("👍")
@@ -766,7 +766,7 @@ def test_chat_api_uses_message_language_then_display_fallback_and_preserves_hist
     ]
 
 
-def test_arabic_chat_keeps_reviewed_safety_response_outside_model(client, monkeypatch):
+def test_arabic_chat_keeps_fixed_safety_response_outside_model(client, monkeypatch):
     import json
 
     from agent import assistant_graph
@@ -804,6 +804,170 @@ def test_arabic_chat_keeps_reviewed_safety_response_outside_model(client, monkey
         ARABIC_DIAGNOSIS_SAFEGUARD_RESPONSE,
     }
     assert model.calls == []
+
+
+@pytest.mark.parametrize("validated_swap", [True, False])
+def test_arabic_routine_slot_update_reply_uses_egyptian_copy_over_http(
+    client, monkeypatch, validated_swap
+):
+    import json
+
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
+    from agent import assistant_graph
+
+    registered = client.post(
+        "/auth/register",
+        json={
+            "trainee_id": "alice",
+            "password": "correct-horse-1",
+            "display_language": "ar",
+        },
+    )
+    assert registered.status_code == 201, registered.text
+
+    source = ProgramExerciseSchema(
+        exercise_id="source",
+        exercise_name="Barbell Bench Press",
+        target_reps_min=6,
+        target_reps_max=10,
+    )
+    supporting_exercises = [
+        ProgramExerciseSchema(
+            exercise_id=f"support-{index}",
+            exercise_name=f"Support Exercise {index}",
+            target_reps_min=6,
+            target_reps_max=10,
+        )
+        for index in range(2)
+    ]
+    day = ProgramDaySchema(
+        day_name="Full A", day_order=1, exercises=[source, *supporting_exercises]
+    )
+    program = GeneratedProgramSchema(
+        program_name="Routine slot update test",
+        split_type="Full Body",
+        weekly_frequency=4,
+        days=[day],
+    )
+    replacement = {
+        "id": "target",
+        "name": "Dumbbell Bench Press",
+        "target_muscle": "chest",
+        "body_part": "chest",
+        "equipment": "dumbbell",
+        "instructions": "Keep a controlled range of motion.",
+    }
+
+    class FakeStore:
+        @contextmanager
+        def catalog_locked(self):
+            cursor = SimpleNamespace(
+                execute=lambda *_args: None,
+                fetchone=lambda: ("chest", "chest", "barbell"),
+            )
+            yield SimpleNamespace(cursor=lambda: cursor)
+
+        def get_exercise_library_entry(self, exercise_id):
+            return {
+                "id": exercise_id,
+                "name": "Barbell Bench Press",
+                "equipment": "barbell",
+            }
+
+        def find_exercises_by_name(self, _name, **_kwargs):
+            return [replacement]
+
+        def get_account(self, _account_id):
+            return {"display_language": "ar"}
+
+        def get_active_assignment_for_player(self, _account_id):
+            return None
+
+    class FakeLedger:
+        def get_active_program(self):
+            return program
+
+        def get_player_profile(self):
+            return {}
+
+        def get_compact_telemetry(self):
+            return ""
+
+    fake_store = FakeStore()
+    fake_ledger = FakeLedger()
+    route_metadata = (
+        {
+            "arabic_data_validated": True,
+            "source_exercise": source.exercise_name,
+            "source_exercise_id": source.exercise_id,
+            "source_day": day.day_name,
+            "target_exercise": replacement["name"],
+            "target_exercise_id": replacement["id"],
+        }
+        if validated_swap
+        else {
+            "mode": "direct_swap",
+            "source_exercise": source.exercise_name,
+            "target_exercise": replacement["name"],
+        }
+    )
+    monkeypatch.setattr(
+        assistant_graph,
+        "_graph_context",
+        lambda _config: (fake_ledger, fake_store),
+    )
+    monkeypatch.setattr(
+        assistant_graph,
+        "router_node",
+        lambda _state, _config: {
+            "intent": "exercise_substitution",
+            "intent_metadata": route_metadata,
+        },
+    )
+    if not validated_swap:
+        monkeypatch.setattr(assistant_graph, "_authorized_action", lambda *_args: True)
+    monkeypatch.setattr(
+        assistant_graph,
+        "_persist_validated_swap",
+        lambda *_args: {
+            "ok": True,
+            "replacement": replacement,
+            "day_names": [day.day_name],
+        },
+    )
+    monkeypatch.setattr(
+        assistant_graph,
+        "substitute_program_exercise",
+        lambda *_args: {"ok": True, "replacement": replacement},
+    )
+
+    with client.stream(
+        "POST",
+        "/chat/messages",
+        json={"content": "بدّل الـ bench press بـ dumbbell bench press"},
+    ) as response:
+        assert response.status_code == 200
+        events = [
+            json.loads(line[6:])
+            for line in response.iter_lines()
+            if line.startswith("data: ")
+        ]
+
+    done = next(event for event in events if event.get("done"))
+    reply = done["response_content"]
+    assert done["program_updated"] is True
+    assert "تمام، بدّلت التمرين في يوم Full A." in reply
+    assert "**اللي اتشال:** Barbell Bench Press" in reply
+    assert "**اللي اتحط:** Dumbbell Bench Press" in reply
+    assert "التوجيه:" in reply
+    assert "اشتغل بنفس الفورم اللي كنت بتعمله." in reply
+    assert "(`chest` | `dumbbell`)" not in reply
+    assert "Keep a controlled range of motion." not in reply
+    assert "Routine Slot Updated" not in reply
+    assert client.get("/chat/history").json()[-1]["content"] == reply
 
 
 def test_chat_error_frame_never_leaks(client, monkeypatch):

@@ -34,6 +34,7 @@ ENTITY_EXTRACTION_PATTERNS = [
 STOP_WORDS = {
     "my", "the", "a", "an", "all", "prescribed", "sets", "set", "reps",
     "workout", "session", "yesterday", "performance", "top", "e1rm", "rpe",
+    "load", "weight",
 }
 
 STANCE_MODIFIERS = {
@@ -46,6 +47,21 @@ STANCE_MODIFIERS = {
 def clean_extracted_entity(raw_entity: str) -> str:
     tokens = [w for w in re.findall(r"\w+", raw_entity.lower()) if w not in STOP_WORDS]
     return " ".join(tokens).strip()
+
+
+def extract_ledger_exercise_name(query: str) -> str | None:
+    for pattern in ENTITY_EXTRACTION_PATTERNS:
+        match = pattern.search(query)
+        if match:
+            return clean_extracted_entity(match.group("ex")) or None
+    arabic_progress = re.search(
+        r"(?:تحسن|اتحسن|تقدم|اتقدم)\s+(?:الـ\s*|ال)?"
+        r"(?P<ex>[A-Za-z][A-Za-z0-9 -]*?)"
+        r"(?=\s+(?:خلال|في|على|من)|[؟?.!]|$)",
+        query,
+        re.IGNORECASE,
+    )
+    return clean_extracted_entity(arabic_progress.group("ex")) if arabic_progress else None
 
 
 def clean_movement_stem(name: str) -> str:
