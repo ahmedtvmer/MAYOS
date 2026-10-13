@@ -337,7 +337,7 @@ def test_closed_trial_release_gate_story(api, monkeypatch, scripted_chat_model):
     generated_draft = client.post(
         f"/coach/assignments/{assignment_id}/program-draft/generate",
         headers=coach_headers,
-        json={"user_split_override": custom_split},
+        json={"split_id": "auto"},
     )
     assert generated_draft.status_code == 200, generated_draft.text
     published = client.post(

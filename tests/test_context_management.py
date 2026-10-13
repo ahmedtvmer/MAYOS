@@ -11,17 +11,28 @@ from langchain_core.messages import AIMessage, HumanMessage
 from tests.fakes.chat_model import ScriptedChatModel
 
 
+class _StubModule(ModuleType):
+    """Stub module that serves any not-listed public name as a MagicMock, so new imports in the real code do not break isolation."""
+
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        value = MagicMock()
+        setattr(self, name, value)
+        return value
+
+
 @pytest.fixture
 def graph(monkeypatch):
     modules = {}
     for name, attrs in {
         "agent.clinical_guard": ["ARABIC_SCRIPT_RE", "EMBED_MODEL", "evaluate_clinical_semantic_guard"],
-        "agent.program_generator": ["extract_frequency_from_text", "generate_program_pipeline", "get_biomechanical_cue"],
+        "agent.program_generator": ["extract_frequency_from_text", "generate_program_pipeline", "get_biomechanical_cue", "has_supported_split_keyword"],
         "database.database_manager": ["DatabaseManager"],
-        "utils.model_downloader": ["llm"],
+        "utils.model_downloader": ["llm", "structured_output_model"],
         "utils.logger": ["MyosLogger"],
     }.items():
-        module = ModuleType(name)
+        module = _StubModule(name)
         for attr in attrs:
             setattr(module, attr, MagicMock())
         modules[name] = module
@@ -241,10 +252,14 @@ def test_turn_uses_the_passed_ledger_handle_on_a_foreign_thread(graph, compariso
 
 
 def test_tail_and_nonmutation(graph):
-    messages = [HumanMessage(content="old"), AIMessage(content="old answer"), HumanMessage(content="first"), HumanMessage(content="second"), AIMessage(content="a" * 900), HumanMessage(content="latest")]
-    payload = graph.build_prompt_payload({"messages": [HumanMessage(content="discarded"), AIMessage(content="discarded answer")] + messages})
-    assert [m.content for m in payload[1:]] == ["old", "old answer", "first", "second", "a" * 500, "latest"]
-    assert len(messages[4].content) == 900
+    older = [HumanMessage(content=f"older {i}") for i in range(4)]
+    messages = [HumanMessage(content=f"turn {i}") for i in range(15)] + [AIMessage(content="a" * 900), HumanMessage(content="latest")]
+    payload = graph.build_prompt_payload({"messages": older + messages})
+    assert [m.content for m in payload[1:]] == [m.content for m in messages[-16:]]
+    assert len(messages[-2].content) == 900
+    assert len(messages) == 17
+    assert len(payload) - 1 == 16
+    assert not any("older" in m.content for m in payload[1:])
 
 
 def test_assistant_style_follows_safety_core_and_quotes_player_wording(graph):
