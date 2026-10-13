@@ -48,6 +48,11 @@ swap_size_mb = 512
   # sheets). A report for another model or prompt version keeps it off.
   PROGRAM_IMPORT_AI_ENABLED = "true"
   PROGRAM_IMPORT_AI_EVAL_REPORT = "/app/reports/program_import_eval.json"
+  # Checkpoint review AI (#403): on, gated by the committed live report for the
+  # configured player model (DeepSeek-V4-Flash, 8/8 with privacy passing; Arabic
+  # wording owner reviewed 2026-10-13). Another model or prompt version keeps it off.
+  CHECKPOINT_REVIEW_AI_ENABLED = "true"
+  CHECKPOINT_REVIEW_EVAL_REPORT = "/app/reports/checkpoint_review_deepseek_report.json"
   # Hosted models only wait on the network, so several calls can overlap; with
   # the default of 1 a minutes-long Program import blocked every other AI call.
   LLM_MAX_CONCURRENT = "4"
