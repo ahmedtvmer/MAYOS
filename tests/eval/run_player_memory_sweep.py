@@ -1,7 +1,8 @@
 """Run the hosted player-memory sweep and write JSON and Markdown results.
 
-This is an explicit live command. It runs coaching_qa twice and arabic_replies
-once for each of six history settings; it does not run during pytest.
+The six settings run only synthetic multi-turn memory cases. The standard
+coaching and Arabic suites run once at the best-scoring setting as a regression
+pass, unless ``--skip-regression`` is supplied.
 """
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import statistics
 import sys
 import time
@@ -41,10 +43,12 @@ COACHING_CASES = "coaching_qa_cases.json"
 COACHING_REPETITIONS = 2
 WINDOWS = (6, 10, 16)
 TRUNCATION_LIMITS = (ASSISTANT_HISTORY_REPLY_MAX_CHARS, None)
-SUITES = ("coaching_qa", "arabic_replies")
+MEMORY_CASE_COUNT = 8
+REGRESSION_SUITES = ("coaching_qa", "arabic_replies")
 EXPECTED_RUNTIME = (
-    "About 4–5 hours for all six settings at current provider latency; retries and extra routing calls add time. "
-    "Each setting generates 87 player turns and requests 174 judge verdicts."
+    "About 25 minutes for the six-setting memory sweep (48 player turns and 96 judge verdicts), based on the "
+    "previous 45-minute estimate for 87 turns and 174 verdicts. The optional coaching_qa + arabic_replies "
+    "regression pass adds about 43 minutes (83 player turns and 166 judge verdicts)."
 )
 
 
@@ -52,6 +56,7 @@ EXPECTED_RUNTIME = (
 class TurnMeasurements:
     ttft_samples: list[float]
     turns: list[dict[str, Any]]
+    setting_label: str = ""
 
 
 @dataclass
@@ -93,10 +98,13 @@ class StreamingInvokeAdapter:
 
 def load_memory_cases(path: Path = MEMORY_DATASET) -> list[dict[str, Any]]:
     cases = json.loads(Path(path).read_text(encoding="utf-8"))
-    if not isinstance(cases, list) or not cases:
-        raise ValueError(f"Expected a non-empty synthetic memory dataset at {path}.")
+    if not isinstance(cases, list) or len(cases) != MEMORY_CASE_COUNT:
+        count = len(cases) if isinstance(cases, list) else "invalid"
+        raise ValueError(f"Expected {MEMORY_CASE_COUNT} synthetic memory cases at {path}, got {count}.")
     for case in cases:
         _validate_memory_case(case)
+    if sum(case["memory_need"] == "control" for case in cases) != 2:
+        raise ValueError("The memory sweep dataset must contain exactly two within-window control cases.")
     return cases
 
 
@@ -105,13 +113,72 @@ def _validate_memory_case(case: Any) -> None:
         raise ValueError("Memory sweep cases must be objects.")
     if case.get("kind") != "synthetic_multi_turn" or case.get("review_status") != "not_required_english_fixture":
         raise ValueError("Memory sweep fixtures must be marked as English synthetic multi-turn cases.")
-    if not isinstance(case.get("query"), str) or not isinstance(case.get("history"), list):
+    if (
+        not isinstance(case.get("query"), str)
+        or not isinstance(case.get("history"), list)
+        or not isinstance(case.get("expected_fact"), str)
+        or not case["expected_fact"].strip()
+        or case.get("memory_need") not in {"outside_window", "reply_tail", "control"}
+    ):
         raise ValueError(f"Invalid multi-turn memory case: {case.get('id', '?')}")
+    _validate_memory_history(case)
+    _validate_memory_fact_position(case)
+
+
+def _validate_memory_history(case: dict[str, Any]) -> None:
     for message in case["history"]:
         if not isinstance(message, dict) or message.get("role") not in {"user", "assistant"}:
             raise ValueError(f"Invalid conversation message in memory case {case.get('id', '?')}.")
         if not isinstance(message.get("content"), str):
             raise ValueError(f"Invalid conversation text in memory case {case.get('id', '?')}.")
+
+
+def _validate_memory_fact_position(case: dict[str, Any]) -> None:
+    fact = case["expected_fact"]
+    recent = case["history"][-TAIL_WINDOW_SIZE:]
+    if case["memory_need"] == "outside_window" and not _fact_is_outside_window(case, recent):
+        raise ValueError(f"The required fact for {case['id']} must be outside the default message window.")
+    if case["memory_need"] == "reply_tail" and not _fact_is_after_reply_cut(case, fact):
+        raise ValueError(f"The required fact for {case['id']} must appear after the earlier-reply cut.")
+    if case["memory_need"] == "control" and not _fact_is_in_window(recent, fact):
+        raise ValueError(f"The control fact for {case['id']} must remain inside the default message window.")
+
+
+def _fact_is_outside_window(case: dict[str, Any], recent: list[dict[str, Any]]) -> bool:
+    return len(case["history"]) > TAIL_WINDOW_SIZE and not _fact_is_in_window(recent, case["expected_fact"])
+
+
+def _fact_is_in_window(messages: list[dict[str, Any]], fact: str) -> bool:
+    return any(_contains_fact(message["content"], fact) for message in messages)
+
+
+def _fact_is_after_reply_cut(case: dict[str, Any], fact: str) -> bool:
+    return any(
+        message["role"] == "assistant"
+        and message["content"].casefold().find(fact.casefold()) > ASSISTANT_HISTORY_REPLY_MAX_CHARS
+        for message in case["history"]
+    )
+
+
+def _normalize_fact_text(text: str) -> str:
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", text.casefold()).split())
+
+
+def _contains_fact(text: str, fact: str) -> bool:
+    normalized_fact = _normalize_fact_text(fact)
+    return bool(normalized_fact and normalized_fact in _normalize_fact_text(text))
+
+
+def check_expected_fact(case: dict[str, Any], reply: str) -> dict[str, Any]:
+    """Checks an exact fixture fact, ignoring only case and punctuation."""
+    fact = case.get("expected_fact")
+    if not isinstance(fact, str) or not fact.strip():
+        return {"required": False, "expected_fact": None, "passed": None}
+    return {
+        "required": True,
+        "expected_fact": fact,
+        "passed": _contains_fact(reply, fact),
+    }
 
 
 def summarize_usage(events: list[dict[str, Any]], turn_count: int) -> dict[str, Any]:
@@ -221,10 +288,87 @@ def _failed_case(case: dict[str, Any], judges: list[dict[str, Any]], error: Exce
     }
 
 
-def run_coaching_qa(context: Any, ttft_samples: list[float]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    cases = evaluation.load_suite_cases(COACHING_CASES, 25) + load_memory_cases()
+def run_memory_cases(
+    context: Any, ttft_samples: list[float], setting_label: str
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    cases = load_memory_cases()
+    measurements = TurnMeasurements(ttft_samples, [], setting_label)
     results = []
-    measurements = TurnMeasurements(ttft_samples, [])
+    for index, case in enumerate(cases, start=1):
+        case_result = _run_memory_case(case, context, measurements)
+        results.append(case_result)
+        print(
+            f"Progress: setting={setting_label} case={case.get('id', '?')} "
+            f"elapsed={case_result['case_elapsed_seconds']:.1f}s ({index}/{len(cases)})",
+            flush=True,
+        )
+    return _summarize_memory_cases(results), measurements.turns
+
+
+def _run_memory_case(
+    case: dict[str, Any], context: Any, measurements: TurnMeasurements
+) -> dict[str, Any]:
+    started = time.perf_counter()
+    case_result = _evaluate_memory_case(case, context, measurements)
+    case_result["case_elapsed_seconds"] = round(time.perf_counter() - started, 3)
+    return case_result
+
+
+def _evaluate_memory_case(
+    case: dict[str, Any], context: Any, measurements: TurnMeasurements
+) -> dict[str, Any]:
+    try:
+        reply, elapsed, ttft, usage = _measure_turn(
+            lambda: evaluation._generate_reply(case), ttft_samples=measurements.ttft_samples
+        )
+    except Exception as error:
+        _record_turn_metrics(measurements.turns, case.get("id", "?"), None, summarize_usage([], 1))
+        case_result = _failed_case(case, context.judges, error)
+        reply = ""
+        elapsed = None
+    else:
+        _record_turn_metrics(measurements.turns, case["id"], ttft, usage)
+    if elapsed is not None:
+        case_result = evaluation.evaluate_case(case, reply, context.judges, context.retry_policy)
+    case_result["deterministic_check"] = check_expected_fact(case, reply)
+    case_result["passed"] = case_result.get("passed") is True and case_result["deterministic_check"].get("passed") is True
+    case_result["generation_seconds"] = elapsed
+    return case_result
+
+
+def _summarize_memory_cases(results: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "runs": results,
+        "judge_scores": _memory_judge_scores(results),
+        "both_judges_passed_cases": sum(_both_judges_passed(case_result) for case_result in results),
+        "deterministic_fact_passed_cases": sum(
+            case_result["deterministic_check"].get("passed") is True for case_result in results
+        ),
+        "all_checks_passed_cases": sum(case_result.get("passed") is True for case_result in results),
+        "total_cases": len(results),
+    }
+
+
+def _memory_judge_scores(results: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
+    return {
+        name: {
+            "passed_cases": sum(case_result.get("judges", {}).get(name, {}).get("passed") is True for case_result in results),
+            "total_cases": len(results),
+        }
+        for name in evaluation.JUDGE_NAMES
+    }
+
+
+def _both_judges_passed(case_result: dict[str, Any]) -> bool:
+    return all(case_result.get("judges", {}).get(name, {}).get("passed") is True for name in evaluation.JUDGE_NAMES)
+
+
+def run_coaching_qa(
+    context: Any, ttft_samples: list[float], setting_label: str
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    cases = evaluation.load_suite_cases(COACHING_CASES, 25)
+    results = []
+    measurements = TurnMeasurements(ttft_samples, [], setting_label)
     for repetition in range(1, COACHING_REPETITIONS + 1):
         for case in cases:
             results.append(_run_coaching_case(case, repetition, context, measurements))
@@ -232,6 +376,23 @@ def run_coaching_qa(context: Any, ttft_samples: list[float]) -> tuple[dict[str, 
 
 
 def _run_coaching_case(
+    case: dict[str, Any],
+    repetition: int,
+    context: Any,
+    measurements: TurnMeasurements,
+) -> dict[str, Any]:
+    started = time.perf_counter()
+    case_result = _evaluate_coaching_case(case, repetition, context, measurements)
+    case_result["case_elapsed_seconds"] = round(time.perf_counter() - started, 3)
+    print(
+        f"Progress: setting={measurements.setting_label} regression=coaching_qa case={case.get('id', '?')} "
+        f"run={repetition} elapsed={case_result['case_elapsed_seconds']:.1f}s",
+        flush=True,
+    )
+    return case_result
+
+
+def _evaluate_coaching_case(
     case: dict[str, Any], repetition: int, context: Any, measurements: TurnMeasurements
 ) -> dict[str, Any]:
     try:
@@ -240,11 +401,12 @@ def _run_coaching_case(
         )
     except Exception as error:
         _record_turn_metrics(measurements.turns, case.get("id", "?"), None, summarize_usage([], 1))
-        return _tag_failed_coaching_case(case, repetition, context.judges, error)
-    result = evaluation.evaluate_case(case, reply, context.judges, context.retry_policy)
-    result.update({"generation_seconds": elapsed, "run": repetition})
-    _record_turn_metrics(measurements.turns, case["id"], ttft, usage)
-    return result
+        case_result = _tag_failed_coaching_case(case, repetition, context.judges, error)
+    else:
+        case_result = evaluation.evaluate_case(case, reply, context.judges, context.retry_policy)
+        _record_turn_metrics(measurements.turns, case["id"], ttft, usage)
+        case_result["generation_seconds"] = elapsed
+    return case_result
 
 
 def _tag_failed_coaching_case(
@@ -304,14 +466,19 @@ def _mean_dimension_score(judgments: list[dict[str, Any]], dimension: str) -> fl
     return round(statistics.mean(scores), 3) if scores else None
 
 
-def run_arabic_replies(context: Any, ttft_samples: list[float]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def run_arabic_replies(
+    context: Any, ttft_samples: list[float], setting_label: str
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     original_generate = arabic_replies._generate_reply
+    original_evaluate = arabic_replies._evaluate_reply_case
     measurements = TurnMeasurements(ttft_samples, [])
     arabic_replies._generate_reply = _measured_arabic_generator(original_generate, measurements)
+    arabic_replies._evaluate_reply_case = _progress_arabic_case(original_evaluate, setting_label)
     try:
         entry = arabic_replies.SUITE.run(context)
     finally:
         arabic_replies._generate_reply = original_generate
+        arabic_replies._evaluate_reply_case = original_evaluate
     return _summarize_arabic_replies(entry), measurements.turns
 
 
@@ -329,6 +496,22 @@ def _measured_arabic_generator(original_generate: Callable[..., str], measuremen
         return reply
 
     return measured_generate
+
+
+def _progress_arabic_case(original_evaluate: Callable[..., dict[str, Any]], setting_label: str):
+    def progress(case: dict[str, Any], scenarios: dict[str, Any], context: Any, store: Any) -> dict[str, Any]:
+        started = time.perf_counter()
+        result = original_evaluate(case, scenarios, context, store)
+        elapsed = round(time.perf_counter() - started, 3)
+        result["case_elapsed_seconds"] = elapsed
+        print(
+            f"Progress: setting={setting_label} regression=arabic_replies case={case.get('id', '?')} "
+            f"elapsed={elapsed:.1f}s",
+            flush=True,
+        )
+        return result
+
+    return progress
 
 
 def _summarize_arabic_replies(entry: dict[str, Any]) -> dict[str, Any]:
@@ -399,9 +582,10 @@ def _write_reports(json_path: Path, markdown_path: Path, report: dict[str, Any])
 def render_markdown(report: dict[str, Any]) -> str:
     lines = _markdown_header(report)
     lines.extend(_markdown_measurement_row(setting) for setting in report.get("settings", []))
-    lines.extend(["", "## Run details", ""])
+    lines.extend(["", "## Setting details", ""])
     for setting in report.get("settings", []):
         lines.extend(_markdown_setting_details(setting))
+    lines.extend(_markdown_regression(report.get("regression")))
     return "\n".join(lines) + "\n"
 
 
@@ -414,26 +598,36 @@ def _markdown_header(report: dict[str, Any]) -> list[str]:
         f"Judges: {', '.join(judge.get('model', '?') for judge in report.get('judges', []))}",
         f"Expected runtime: {report.get('expected_runtime', EXPECTED_RUNTIME)}",
         "",
-        "The TTFT value is the time from starting the player chat stream to its first content chunk. "
-        "The report includes the delta from the 6-message, 500-character baseline. Provider TTFT "
-        "has previously been measured around 9 seconds on DeepInfra (#405), so the 2.0-second "
-        "criterion is reported for evidence even when the provider floor exceeds it.",
+        "## Six-setting memory sweep",
         "",
-        "| Window | Earlier reply limit | Coaching QA judges (pass / total) | Arabic register judges (match / total) | Cost / turn (USD) | Cost change vs baseline | Median TTFT | TTFT delta vs baseline | Cached input share |",
-        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        _markdown_memory_description(),
+        "",
+        "| Window | Earlier reply limit | Judge passes (1 / 2) | Exact facts | All checks | Cost / turn (USD) | Cost change vs baseline | Median TTFT | TTFT delta vs baseline | Cached input share |",
+        "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
 
 
+def _markdown_memory_description() -> str:
+    return (
+        "TTFT is measured from starting the player chat stream to its first content chunk. Each setting runs "
+        "the eight synthetic multi-turn memory cases once. Both judges and exact-fact checks are reported "
+        "separately, along with the combined pass count. Cost and TTFT deltas use the 6-message, "
+        "500-character baseline. Provider TTFT has previously been measured around 9 seconds on DeepInfra "
+        "(#405), so the 2.0-second criterion is reported even when the provider floor exceeds it."
+    )
+
+
 def _markdown_measurement_row(setting: dict[str, Any]) -> str:
-    qa_scores = setting.get("coaching_qa", {}).get("judge_scores", {})
-    ar_scores = setting.get("arabic_replies", {}).get("judge_scores", {})
+    memory = setting.get("memory_cases", {})
+    judge_scores = memory.get("judge_scores", {})
     measurements = setting.get("measurements", {})
     limit = setting.get("assistant_reply_max_chars")
     values = (
         setting.get("window_size", "?"),
         "none" if limit is None else limit,
-        _judge_score_pair(qa_scores, "passed_cases"),
-        _judge_score_pair(ar_scores, "expected_register_matches"),
+        _judge_score_pair(judge_scores, "passed_cases"),
+        f"{memory.get('deterministic_fact_passed_cases', 0)}/{memory.get('total_cases', 0)}",
+        f"{memory.get('all_checks_passed_cases', 0)}/{memory.get('total_cases', 0)}",
         _format_metric(measurements.get("cost_per_turn_usd"), "${:.6f}"),
         _format_metric(measurements.get("cost_change_vs_baseline_percent"), "{:+.1f}%"),
         _format_metric(measurements.get("median_ttft_seconds"), "{:.3f}s"),
@@ -458,26 +652,62 @@ def _markdown_setting_details(setting: dict[str, Any]) -> list[str]:
     lines = [f"### {setting.get('label', 'setting')}", ""]
     if setting.get("error"):
         return [*lines, f"Setting error: `{setting['error']}`", ""]
-    coaching = setting.get("coaching_qa", {})
-    arabic = setting.get("arabic_replies", {})
+    memory = setting.get("memory_cases", {})
     measurement = setting.get("measurements", {})
     return [
         *lines,
-        f"- Coaching Q&A: {coaching.get('both_judges_passed_cases', 0)}/{coaching.get('total_judged_cases', 0)} cases passed by both judges.",
-        f"- Arabic replies: {arabic.get('mostly_arabic_cases', 0)}/{arabic.get('total_cases', 0)} replies passed the mostly-Arabic check.",
+        f"- Memory cases: {memory.get('all_checks_passed_cases', 0)}/{memory.get('total_cases', 0)} passed both judges and the exact-fact check.",
+        f"- Judge passes: {_judge_score_pair(memory.get('judge_scores', {}), 'passed_cases')}; exact-fact checks: {memory.get('deterministic_fact_passed_cases', 0)}/{memory.get('total_cases', 0)}.",
         f"- Player usage: {measurement.get('metered_player_calls', 0)} model calls, {measurement.get('input_tokens', 0)} input tokens, {measurement.get('output_tokens', 0)} output tokens, {measurement.get('estimated_calls', 0)} estimated calls.",
         "",
     ]
 
 
-def run_sweep(output_dir: Path) -> tuple[Path, Path]:
+def _markdown_regression(regression: dict[str, Any] | None) -> list[str]:
+    if not regression:
+        return ["## Regression pass", "", "No regression pass was recorded.", ""]
+    lines = ["## Regression pass", "", f"Status: {regression.get('status', 'not recorded')}."]
+    if regression.get("best_scoring_setting"):
+        lines.append(f"Selected setting: `{regression['best_scoring_setting']}`.")
+    if regression.get("error"):
+        lines.append(f"Error: `{regression['error']}`.")
+    lines.extend(_markdown_coaching_regression(regression.get("coaching_qa", {})))
+    lines.extend(_markdown_arabic_regression(regression.get("arabic_replies", {})))
+    return [*lines, ""]
+
+
+def _markdown_coaching_regression(coaching: dict[str, Any]) -> list[str]:
+    if not coaching:
+        return []
+    scores = _judge_score_pair(coaching.get("judge_scores", {}), "passed_cases")
+    return [f"- Coaching Q&A: {scores} judge verdicts passed across {coaching.get('total_judged_cases', 0)} cases."]
+
+
+def _markdown_arabic_regression(arabic: dict[str, Any]) -> list[str]:
+    if not arabic:
+        return []
+    return [
+        f"- Arabic replies: {arabic.get('mostly_arabic_cases', 0)}/{arabic.get('total_cases', 0)} "
+        "replies passed the mostly-Arabic check."
+    ]
+
+
+def run_sweep(output_dir: Path, *, skip_regression: bool = False) -> tuple[Path, Path]:
+    print(f"Expected runtime: {EXPECTED_RUNTIME}", flush=True)
+    if skip_regression:
+        print("Regression pass disabled by --skip-regression.", flush=True)
     session = _build_sweep_session()
     session.assistant_graph.llm = StreamingInvokeAdapter(session.original_llm, session.ttft_samples)
     try:
         report_paths = _report_paths(output_dir)
-        report = _new_report(session)
+        report = _new_report(session, skip_regression=skip_regression)
         _write_reports(*report_paths, report)
         _run_configurations(report, report_paths, session)
+        if skip_regression:
+            report["regression"] = {"status": "skipped_by_flag"}
+            _write_reports(*report_paths, report)
+        else:
+            _run_regression(report, report_paths, session)
         return report_paths
     finally:
         session.assistant_graph.llm = session.original_llm
@@ -511,20 +741,23 @@ def _report_paths(output_dir: Path) -> tuple[Path, Path]:
     return basename.with_suffix(".json"), basename.with_suffix(".md")
 
 
-def _new_report(session: SweepSession) -> dict[str, Any]:
+def _new_report(session: SweepSession, *, skip_regression: bool) -> dict[str, Any]:
     return {
-        "report_version": 1,
+        "report_version": 2,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "mode": "live",
         "player_model": session.player_model,
         "backend": session.backend,
         "judges": session.evaluation_context.judge_metadata,
-        "suites": list(SUITES),
+        "suites": ["multi_turn_memory"],
+        "regression_suites": list(REGRESSION_SUITES),
+        "regression_enabled": not skip_regression,
         "synthetic_dataset": MEMORY_DATASET.name,
         "synthetic_cases": load_memory_cases(),
         "expected_runtime": EXPECTED_RUNTIME,
         "ttft_definition": "Seconds from starting a player chat stream to its first content chunk.",
         "settings": [],
+        "regression": {"status": "pending" if not skip_regression else "skipped_by_flag"},
     }
 
 
@@ -536,10 +769,77 @@ def _run_configurations(report: dict[str, Any], paths: tuple[Path, Path], sessio
             if setting["status"] == "complete":
                 if window_size == TAIL_WINDOW_SIZE and reply_limit == ASSISTANT_HISTORY_REPLY_MAX_CHARS:
                     baseline = measurements
-                setting["measurements"] = _comparison_metrics(measurements, baseline)
+                setting["measurements"] = _comparison_metrics(measurements, baseline or {})
             report["settings"].append(setting)
+            best = select_best_scoring_setting(report["settings"])
+            report["best_scoring_setting"] = best["label"] if best else None
             _write_reports(*paths, report)
             print(f"Reports updated: {paths[0]} and {paths[1]}", flush=True)
+
+
+def select_best_scoring_setting(settings: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Choose the highest combined pass count, preferring baseline ties."""
+    complete = [setting for setting in settings if setting.get("status") == "complete"]
+    if not complete:
+        return None
+    return min(
+        complete,
+        key=lambda setting: (
+            -int(setting.get("memory_cases", {}).get("all_checks_passed_cases", 0)),
+            setting.get("window_size") != TAIL_WINDOW_SIZE
+            or setting.get("assistant_reply_max_chars") != ASSISTANT_HISTORY_REPLY_MAX_CHARS,
+            int(setting.get("window_size", TAIL_WINDOW_SIZE)),
+            setting.get("assistant_reply_max_chars") is None,
+        ),
+    )
+
+
+def _run_regression(report: dict[str, Any], paths: tuple[Path, Path], session: SweepSession) -> None:
+    setting = select_best_scoring_setting(report.get("settings", []))
+    if setting is None:
+        report["regression"] = {"status": "skipped_no_complete_setting"}
+        _write_reports(*paths, report)
+        return
+    regression = _new_regression_record(setting)
+    report["regression"] = regression
+    print(f"\nRunning one regression pass at {regression['best_scoring_setting']}", flush=True)
+    _write_reports(*paths, report)
+    session.ttft_samples.clear()
+    try:
+        regression["measurements"] = _collect_regression_suites(regression, report, paths, session)
+        regression["status"] = "complete"
+    except Exception as error:
+        regression.update({"status": "failed", "error": evaluation._safe_error_message(error)})
+        print(f"Regression pass failed: {regression['error']}", file=sys.stderr, flush=True)
+    _write_reports(*paths, report)
+
+
+def _new_regression_record(setting: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": "running",
+        "best_scoring_setting": setting["label"],
+        "window_size": setting["window_size"],
+        "assistant_reply_max_chars": setting["assistant_reply_max_chars"],
+    }
+
+
+def _collect_regression_suites(
+    regression: dict[str, Any], report: dict[str, Any], paths: tuple[Path, Path], session: SweepSession
+) -> dict[str, Any]:
+    label = regression["best_scoring_setting"]
+    turns = []
+    with override_player_prompt_history(
+        window_size=regression["window_size"],
+        assistant_reply_max_chars=regression["assistant_reply_max_chars"],
+    ):
+        coaching, coaching_turns = run_coaching_qa(session.evaluation_context, session.ttft_samples, label)
+        regression["coaching_qa"] = coaching
+        turns.extend(coaching_turns)
+        _write_reports(*paths, report)
+        arabic, arabic_turns = run_arabic_replies(session.evaluation_context, session.ttft_samples, label)
+        regression["arabic_replies"] = arabic
+        turns.extend(arabic_turns)
+    return _aggregate_turns(turns)
 
 
 def _run_setting(
@@ -554,22 +854,21 @@ def _run_setting(
     print(f"\nRunning {label}", flush=True)
     session.ttft_samples.clear()
     try:
-        coaching, arabic, measurements = _run_setting_suites(window_size, reply_limit, session)
+        memory, measurements = _run_setting_suites(window_size, reply_limit, session, label)
     except Exception as error:
         setting.update({"status": "failed", "error": evaluation._safe_error_message(error)})
         print(f"Setting failed: {setting['error']}", file=sys.stderr, flush=True)
         return setting, {}
-    setting.update({"status": "complete", "coaching_qa": coaching, "arabic_replies": arabic})
+    setting.update({"status": "complete", "memory_cases": memory})
     return setting, measurements
 
 
 def _run_setting_suites(
-    window_size: int, reply_limit: int | None, session: SweepSession
-) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    window_size: int, reply_limit: int | None, session: SweepSession, label: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
     with override_player_prompt_history(window_size=window_size, assistant_reply_max_chars=reply_limit):
-        coaching, coaching_turns = run_coaching_qa(session.evaluation_context, session.ttft_samples)
-        arabic, arabic_turns = run_arabic_replies(session.evaluation_context, session.ttft_samples)
-    return coaching, arabic, _aggregate_turns(coaching_turns + arabic_turns)
+        memory, turns = run_memory_cases(session.evaluation_context, session.ttft_samples, label)
+    return memory, _aggregate_turns(turns)
 
 
 def _comparison_metrics(current: dict[str, Any], baseline: dict[str, Any]) -> dict[str, Any]:
@@ -598,7 +897,7 @@ def _difference(current: float | None, baseline: float | None) -> float | None:
     return current - baseline if current is not None and baseline is not None else None
 
 
-def main(argv: list[str] | None = None) -> int:
+def _argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the six-setting hosted player-memory sweep.")
     parser.add_argument(
         "--output-dir",
@@ -606,16 +905,31 @@ def main(argv: list[str] | None = None) -> int:
         default=BASE_DIR / "reports" / "player-memory-sweep",
         help="Directory for the generated JSON and Markdown report pair.",
     )
-    args = parser.parse_args(argv)
+    parser.add_argument(
+        "--skip-regression",
+        action="store_true",
+        help="Run only the six-setting memory sweep and skip coaching_qa + arabic_replies regression suites.",
+    )
+    return parser
+
+
+def _report_exit_code(report: dict[str, Any]) -> int:
+    settings_complete = all(setting.get("status") == "complete" for setting in report["settings"])
+    regression_complete = report.get("regression", {}).get("status") in {"complete", "skipped_by_flag"}
+    return 0 if settings_complete and regression_complete else 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _argument_parser().parse_args(argv)
     try:
-        json_path, markdown_path = run_sweep(args.output_dir)
+        json_path, markdown_path = run_sweep(args.output_dir, skip_regression=args.skip_regression)
     except Exception as error:
         print(f"Player-memory sweep could not start: {error}", file=sys.stderr)
         return 1
     print(f"JSON report: {json_path}")
     print(f"Markdown report: {markdown_path}")
     report = json.loads(json_path.read_text(encoding="utf-8"))
-    return 0 if all(setting.get("status") == "complete" for setting in report["settings"]) else 1
+    return _report_exit_code(report)
 
 
 if __name__ == "__main__":

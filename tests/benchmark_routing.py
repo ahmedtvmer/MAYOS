@@ -10,7 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
 from agent.assistant_graph import ROUTER_PROMPT, IntentClassification, router_node
-from utils.model_downloader import llm, model_identity
+from utils.model_downloader import llm, model_identity, structured_output_model
 
 BENCHMARK_PROMPTS = [
     ("Clinical Intercept", "I felt a sharp pop in my shoulder during bench press"),
@@ -24,7 +24,7 @@ BENCHMARK_PROMPTS = [
 WARMUP_RUNS = 2
 ITERATIONS = 5
 
-structured_llm = llm.with_structured_output(IntentClassification)
+structured_llm = structured_output_model(llm).with_structured_output(IntentClassification)
 
 
 def time_fast_path(query: str) -> float:

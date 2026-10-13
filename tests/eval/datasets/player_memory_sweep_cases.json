@@ -1,6 +1,6 @@
 [
   {
-    "id": "synthetic-memory-window-long-reply-en",
+    "id": "synthetic-memory-reply-tail-row-en",
     "kind": "synthetic_multi_turn",
     "review_status": "not_required_english_fixture",
     "telemetry": "No verified Training ledger fact answers the earlier conversation question.",
@@ -28,20 +28,14 @@
       {
         "role": "assistant",
         "content": "Rest about 2–3 minutes, then start the next set when you can keep your technique steady."
-      },
-      {
-        "role": "user",
-        "content": "Should I add weight every workout?"
-      },
-      {
-        "role": "assistant",
-        "content": "Add weight only after you can complete the planned reps with consistent range and control."
       }
     ],
-    "query": "What exact starting load and rep target did you recommend for my one-arm dumbbell row, and what would make me reduce the load?"
+    "query": "What exact starting load and rep target did you recommend for my one-arm dumbbell row, and what would make me reduce the load?",
+    "memory_need": "reply_tail",
+    "expected_fact": "22 kg per hand for 8 reps"
   },
   {
-    "id": "synthetic-memory-window-16-en",
+    "id": "synthetic-memory-reply-tail-incline-press-en",
     "kind": "synthetic_multi_turn",
     "review_status": "not_required_english_fixture",
     "telemetry": "No verified Training ledger fact answers the earlier conversation question.",
@@ -103,6 +97,258 @@
         "content": "Soreness alone is not a reliable measure. Look at repeated performance and recovery instead."
       }
     ],
-    "query": "What exact starting load and reps did you recommend for my incline dumbbell press, and what form issue should make me reduce it?"
+    "query": "What exact starting load and reps did you recommend for my incline dumbbell press, and what form issue should make me reduce it?",
+    "memory_need": "reply_tail",
+    "expected_fact": "18 kg per hand for 8 reps"
+  },
+  {
+    "id": "synthetic-memory-injury-free-preference-en",
+    "kind": "synthetic_multi_turn",
+    "review_status": "not_required_english_fixture",
+    "memory_need": "outside_window",
+    "expected_fact": "chest-supported dumbbell rows",
+    "telemetry": "No verified Training ledger fact answers the earlier conversation question.",
+    "history": [
+      {
+        "role": "user",
+        "content": "I have no current injuries, and for back work I prefer chest-supported dumbbell rows because they feel stable."
+      },
+      {
+        "role": "assistant",
+        "content": "Got it. I will use that detail when you ask about it later."
+      },
+      {
+        "role": "user",
+        "content": "How should I warm up before a workout?"
+      },
+      {
+        "role": "assistant",
+        "content": "Start with easy movement, then build up with lighter practice sets."
+      },
+      {
+        "role": "user",
+        "content": "How long should I rest between sets?"
+      },
+      {
+        "role": "assistant",
+        "content": "Rest until you can keep the next set controlled, usually a few minutes for compound lifts."
+      },
+      {
+        "role": "user",
+        "content": "Should I train to failure every time?"
+      },
+      {
+        "role": "assistant",
+        "content": "No. Leave a few reps in reserve on most sets and focus on repeatable technique."
+      }
+    ],
+    "query": "Which back exercise did I say I prefer?"
+  },
+  {
+    "id": "synthetic-memory-past-weight-en",
+    "kind": "synthetic_multi_turn",
+    "review_status": "not_required_english_fixture",
+    "memory_need": "outside_window",
+    "expected_fact": "76.4 kg",
+    "telemetry": "No verified Training ledger fact answers the earlier conversation question.",
+    "history": [
+      {
+        "role": "user",
+        "content": "At my March 1 check-in, my bodyweight was 76.4 kg."
+      },
+      {
+        "role": "assistant",
+        "content": "Got it. I will use that detail when you ask about it later."
+      },
+      {
+        "role": "user",
+        "content": "How should I warm up before a workout?"
+      },
+      {
+        "role": "assistant",
+        "content": "Start with easy movement, then build up with lighter practice sets."
+      },
+      {
+        "role": "user",
+        "content": "How long should I rest between sets?"
+      },
+      {
+        "role": "assistant",
+        "content": "Rest until you can keep the next set controlled, usually a few minutes for compound lifts."
+      },
+      {
+        "role": "user",
+        "content": "Should I train to failure every time?"
+      },
+      {
+        "role": "assistant",
+        "content": "No. Leave a few reps in reserve on most sets and focus on repeatable technique."
+      }
+    ],
+    "query": "What bodyweight did I mention at that earlier check-in?"
+  },
+  {
+    "id": "synthetic-memory-schedule-constraint-en",
+    "kind": "synthetic_multi_turn",
+    "review_status": "not_required_english_fixture",
+    "memory_need": "outside_window",
+    "expected_fact": "Monday, Wednesday, and Saturday",
+    "telemetry": "No verified Training ledger fact answers the earlier conversation question.",
+    "history": [
+      {
+        "role": "user",
+        "content": "I can train only on Monday, Wednesday, and Saturday; the other days do not work for me."
+      },
+      {
+        "role": "assistant",
+        "content": "Got it. I will use that detail when you ask about it later."
+      },
+      {
+        "role": "user",
+        "content": "How should I warm up before a workout?"
+      },
+      {
+        "role": "assistant",
+        "content": "Start with easy movement, then build up with lighter practice sets."
+      },
+      {
+        "role": "user",
+        "content": "How long should I rest between sets?"
+      },
+      {
+        "role": "assistant",
+        "content": "Rest until you can keep the next set controlled, usually a few minutes for compound lifts."
+      },
+      {
+        "role": "user",
+        "content": "Should I train to failure every time?"
+      },
+      {
+        "role": "assistant",
+        "content": "No. Leave a few reps in reserve on most sets and focus on repeatable technique."
+      }
+    ],
+    "query": "Which days did I say I can train?"
+  },
+  {
+    "id": "synthetic-memory-equipment-preference-en",
+    "kind": "synthetic_multi_turn",
+    "review_status": "not_required_english_fixture",
+    "memory_need": "outside_window",
+    "expected_fact": "neutral-grip pull-ups",
+    "telemetry": "No verified Training ledger fact answers the earlier conversation question.",
+    "history": [
+      {
+        "role": "user",
+        "content": "For vertical pulling, I prefer neutral-grip pull-ups over wide-grip pulldowns because the grip feels comfortable."
+      },
+      {
+        "role": "assistant",
+        "content": "Got it. I will use that detail when you ask about it later."
+      },
+      {
+        "role": "user",
+        "content": "How should I warm up before a workout?"
+      },
+      {
+        "role": "assistant",
+        "content": "Start with easy movement, then build up with lighter practice sets."
+      },
+      {
+        "role": "user",
+        "content": "How long should I rest between sets?"
+      },
+      {
+        "role": "assistant",
+        "content": "Rest until you can keep the next set controlled, usually a few minutes for compound lifts."
+      },
+      {
+        "role": "user",
+        "content": "Should I train to failure every time?"
+      },
+      {
+        "role": "assistant",
+        "content": "No. Leave a few reps in reserve on most sets and focus on repeatable technique."
+      }
+    ],
+    "query": "Which vertical-pull movement did I say I prefer?"
+  },
+  {
+    "id": "synthetic-memory-control-load-en",
+    "kind": "synthetic_multi_turn",
+    "review_status": "not_required_english_fixture",
+    "memory_need": "control",
+    "expected_fact": "20 kg per hand for 10 reps",
+    "telemetry": "No verified Training ledger fact answers the earlier conversation question.",
+    "history": [
+      {
+        "role": "user",
+        "content": "I can use 16–22 kg per hand for dumbbell bench press. What starting load should I use?"
+      },
+      {
+        "role": "assistant",
+        "content": "Start with 18 kg per hand for 8 reps and keep each rep controlled."
+      },
+      {
+        "role": "user",
+        "content": "How much rest should I take?"
+      },
+      {
+        "role": "assistant",
+        "content": "Rest about 2–3 minutes, then begin when you can keep your technique steady."
+      },
+      {
+        "role": "user",
+        "content": "Should I add weight every workout?"
+      },
+      {
+        "role": "assistant",
+        "content": "Add weight after you complete the planned reps with consistent range and control."
+      },
+      {
+        "role": "user",
+        "content": "For the chest-supported row, what should I start with?"
+      },
+      {
+        "role": "assistant",
+        "content": "Start with 20 kg per hand for 10 reps, stopping if you cannot keep your torso still."
+      }
+    ],
+    "query": "What load and rep target did you just recommend for my chest-supported row?"
+  },
+  {
+    "id": "synthetic-memory-control-days-en",
+    "kind": "synthetic_multi_turn",
+    "review_status": "not_required_english_fixture",
+    "memory_need": "control",
+    "expected_fact": "Thursday and Sunday",
+    "telemetry": "No verified Training ledger fact answers the earlier conversation question.",
+    "history": [
+      {
+        "role": "user",
+        "content": "What is a good number of weekly sessions for a beginner?"
+      },
+      {
+        "role": "assistant",
+        "content": "Two or three consistent sessions can work well, depending on recovery and schedule."
+      },
+      {
+        "role": "user",
+        "content": "How should I progress a dumbbell press?"
+      },
+      {
+        "role": "assistant",
+        "content": "Add a small amount of load only after you can complete all planned reps cleanly."
+      },
+      {
+        "role": "user",
+        "content": "When can I train this week?"
+      },
+      {
+        "role": "assistant",
+        "content": "You said Thursday and Sunday are the two days that work for you this week."
+      }
+    ],
+    "query": "Which two days did I say work for me this week?"
   }
 ]

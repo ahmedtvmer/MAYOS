@@ -6,7 +6,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from utils.logger import MyosLogger
-from utils.model_downloader import llm
+from utils.model_downloader import llm, structured_output_model
 from utils import player_output_budgets
 
 logger = MyosLogger().get_logger(__name__)
@@ -114,7 +114,7 @@ def resolve_unknown_abbreviation_with_llm(token: str) -> Optional[str]:
 
     prompt = _abbreviation_prompt(clean_token)
     try:
-        structured_llm = llm.with_structured_output(
+        structured_llm = structured_output_model(llm).with_structured_output(
             AbbreviationExpansion,
             max_completion_tokens=player_output_budgets.player_output_budget("abbreviation_expansion")
         )

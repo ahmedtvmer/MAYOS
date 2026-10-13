@@ -31,7 +31,7 @@ class EmptyProgramFixture:
     days: list[object] = field(default_factory=list)
 
 
-def _captured_player_requests(monkeypatch, call_site: str):
+def _captured_player_requests(monkeypatch, call_site: str, *, streaming: bool = False):
     request_bodies = []
 
     def capture(request: httpx.Request) -> httpx.Response:
@@ -58,7 +58,7 @@ def _captured_player_requests(monkeypatch, call_site: str):
         api_key="offline-test-key",
         base_url="https://unit.test/v1",
         max_tokens=CALL_SITE_BUDGETS["chat_reply"],
-        streaming=False,
+        streaming=streaming,
         stream_usage=False,
         http_client=client,
         max_retries=0,
@@ -114,5 +114,31 @@ def test_player_call_sends_one_output_budget_field(call_site, monkeypatch):
         budget_fields = {name for name in ("max_tokens", "max_completion_tokens") if name in request_bodies[0]}
         assert budget_fields == {"max_completion_tokens"}
         assert request_bodies[0]["max_completion_tokens"] == CALL_SITE_BUDGETS[call_site]
+    finally:
+        client.close()
+
+
+def test_structured_output_model_disables_streaming_without_mutating_chat_model():
+    model = model_downloader.SafeChatOpenAI(
+        model="deepseek-ai/DeepSeek-V4-Flash",
+        api_key="offline-test-key",
+        base_url="https://unit.test/v1",
+        streaming=True,
+    )
+
+    structured_model = model_downloader.structured_output_model(model)
+
+    assert model.streaming is True
+    assert structured_model.streaming is False
+
+
+def test_intent_routing_uses_non_streaming_transport_for_structured_output(monkeypatch):
+    request_bodies, client = _captured_player_requests(monkeypatch, "intent_routing", streaming=True)
+    try:
+        _invoke_player_call("intent_routing")
+
+        assert len(request_bodies) == 1
+        assert request_bodies[0]["stream"] is False
+        assert request_bodies[0]["max_completion_tokens"] == CALL_SITE_BUDGETS["intent_routing"]
     finally:
         client.close()

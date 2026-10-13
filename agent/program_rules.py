@@ -25,7 +25,7 @@ from database.exercise_library.ranking import replacement_rank_sql
 from database.exercise_library.schema import exercise_library_visible_sql
 from database.exercise_library.values import split_curation_values
 from utils.equipment_access import COMMERCIAL_GYM, equipment_access_sql, map_equipment_access
-from utils.model_downloader import llm
+from utils.model_downloader import llm, structured_output_model
 from utils import player_output_budgets
 
 load_dotenv()
@@ -383,7 +383,7 @@ def resolve_split(
         # stay deterministic and fall back to the frequency default rather than the LLM.
         return get_default_split(clamped_freq, gender=gender)
 
-    structured_llm = llm.with_structured_output(
+    structured_llm = structured_output_model(llm).with_structured_output(
         DynamicSplitPlan,
         include_raw=True,
         max_completion_tokens=player_output_budgets.player_output_budget("dynamic_split_plan"),

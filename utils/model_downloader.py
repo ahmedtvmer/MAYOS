@@ -259,6 +259,22 @@ def get_coach_llm() -> Any:
     return _get_model("coach")
 
 
+def structured_output_model(model: Any) -> Any:
+    """Return a non-streaming copy for structured-output calls when needed.
+
+    LangChain's streamed OpenAI structured-output path serializes parsed
+    response chunks with a schema that declares ``parsed`` as ``None``, which
+    emits Pydantic serialization warnings for valid parsed models. Structured
+    calls are consumed through ``invoke`` and do not need streaming.
+    """
+    if not getattr(model, "streaming", False):
+        return model
+    model_copy = getattr(model, "model_copy", None)
+    if not callable(model_copy):
+        raise TypeError("Streaming structured-output models must support model_copy().")
+    return model_copy(update={"streaming": False})
+
+
 def _unload_model(instance_name: str) -> None:
     globals()[instance_name] = None
     gc.collect()
@@ -314,6 +330,7 @@ __all__ = [
     "judge_llm",
     "llm",
     "model_identity",
+    "structured_output_model",
     "unload_coach_llm",
     "unload_judge_llm",
     "unload_llm",

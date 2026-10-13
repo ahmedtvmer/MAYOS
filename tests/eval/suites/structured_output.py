@@ -17,6 +17,7 @@ from tests.eval.suites.common import (
     load_case_group,
     suite_summary,
 )
+from utils.model_downloader import structured_output_model
 
 ROOT = Path(__file__).resolve().parents[3]
 DATASET = ROOT / "tests/eval/datasets/structured_player_cases.json"
@@ -146,7 +147,7 @@ def _call_structured(model: Any, schema: type[BaseModel], prompt: Any, policy: A
 
 
 def _invoke_structured(model: Any, schema: type[BaseModel], prompt: Any, budget: int) -> StructuredResponse:
-    structured = model.with_structured_output(
+    structured = structured_output_model(model).with_structured_output(
         schema,
         include_raw=True,
         method="function_calling",

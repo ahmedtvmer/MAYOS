@@ -89,7 +89,7 @@ from service.program_requests import MAX_REASON_CHARS
 from service.program_substitution import ProgramSubstitution, substitute_program_exercise
 from utils.logger import MyosLogger
 from utils.equipment_access import COMMERCIAL_GYM, equipment_access_allows, map_equipment_access
-from utils.model_downloader import llm
+from utils.model_downloader import llm, structured_output_model
 from utils import player_output_budgets
 from utils.text_scrubber import CoachOutputScrubber, EMPTY_RESPONSE_FALLBACK, PIPELINE_ERROR_RESPONSE, finalize_coach_output
 
@@ -925,7 +925,7 @@ def _classify_single_clause(clause: str, telemetry: str = "", messages: Sequence
 
 
 def _classify_intent_with_llm(query: str) -> IntentClassification:
-    structured_llm = llm.with_structured_output(
+    structured_llm = structured_output_model(llm).with_structured_output(
         IntentClassification,
         max_completion_tokens=player_output_budgets.player_output_budget("intent_routing")
     )
@@ -958,7 +958,7 @@ def _arabic_router_system_prompt(program: Any) -> str:
 def _classify_arabic_intent_with_llm(
     query: str, program: Any
 ) -> ArabicIntentClassification:
-    structured_llm = llm.with_structured_output(
+    structured_llm = structured_output_model(llm).with_structured_output(
         ArabicIntentClassification,
         max_completion_tokens=player_output_budgets.player_output_budget("intent_routing")
     )
@@ -1934,7 +1934,7 @@ def resolve_coreference_with_llm(
 ) -> tuple[str | None, str | None]:
     prompt = _build_coreference_prompt(query, messages, active_program, store)
     try:
-        structured_llm = llm.with_structured_output(
+        structured_llm = structured_output_model(llm).with_structured_output(
             SubstitutionResolution,
             include_raw=True,
             max_completion_tokens=player_output_budgets.player_output_budget(
