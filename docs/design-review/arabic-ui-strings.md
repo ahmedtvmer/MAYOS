@@ -1242,3 +1242,39 @@ from the known fatigue reason code; unknown codes use a generic Arabic reason.
 | Rolling readiness crash (avg {average}/5 across last 3 sessions). | انخفاض مستمر في الاستعداد (متوسط {average}/5 خلال آخر 3 حصص). |
 | High exertion density ({percent}% of recent rated sets at RIR 0.5 or less) alongside declining readiness. | مجهود عالي في {percent}% من السيتات المسجلة عند RIR 0.5 أو أقل، مع انخفاض الاستعداد. |
 | Unknown deload fatigue reason. | غير محددة. |
+
+## Assistant chat clarifications — pending owner review (#191)
+
+| English intent | Arabic |
+| --- | --- |
+| Which exercise do you want to change? | أنهي تمرين عايز تغيّره؟ |
+| I’ll swap this exercise first. After that, tell me what else you’d like help with. | هبدّل التمرين ده الأول، وبعدها قولي تحب أساعدك في إيه كمان؟ |
+
+The Arabic classifier uses the labels `exercise_substitution`,
+`composite_intent`, `program_change`, `exercise_history`, `coaching_qa`, and
+`other`. Program changes and exercise-history requests receive the normal
+coaching answer without a new action. Only `exercise_substitution` and a
+`composite_intent` with a swap part enter the swap path. For that classification,
+the prompt includes the Player's current Training program exercise names and
+asks for the source copied exactly from that list. The classifier translates the
+target into an English Exercise library-style name (for example, دامبل to
+`Dumbbell`) and applies an equipment-only variant to the source movement. The
+English substitution resolver's program-context similarity resolves the source;
+Exercise library name search resolves the target by display name or alias. The
+source must match exactly one program exercise. Target selection follows the
+English named-target path: it picks the same visible, compatible library row
+using the same day-aware candidate choice, or prompts for clarification when
+that path cannot resolve the target. Semantic similarity does not guess a
+different named exercise. Clarification appears only for a request classified
+as a swap.
+
+Per the owner's recorded decision on 2026-10-13, a plain `Leg Press` target
+resolves through the English substitution path to `45° Leg Press
+(Plate-Loaded)`. An Arabic request for ليج برس follows that same resolution.
+
+The Arabic route acts only on an explicit replace/swap request that names the
+replacement. Requests for an exercise suggestion, an alternative, or advice
+receive the normal coaching answer. Arabic target validation accepts one unique
+exact display/source/alias match, or one unique lexical name-search hit whose
+name contains the target words. It does not use semantic similarity to choose a
+different exercise; unresolved and ambiguous targets prompt for clarification.

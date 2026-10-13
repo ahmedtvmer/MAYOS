@@ -225,7 +225,7 @@
       "expected_action": {
         "kind": "exercise_substitution",
         "source_exercise": "Back Squat (Barbell)",
-        "target_exercise": "Leg Press (Smith Machine)"
+        "target_exercise": "45° Leg Press (Plate-Loaded)"
       },
       "clinical_intercept_warranted": false
     },

@@ -489,7 +489,10 @@ def _run_one(case: dict[str, Any], scenario: dict[str, Any], store: Any, *, mode
         turn = RuntimeError("synthetic model failure") if scenario.get("plumbing_raise_model") else scenario.get(
             "plumbing_reply", "سجّل التدريب بناءً على بيانات السجل. استخدم RIR لتقدير التكرارات المتبقية."
         )
-        fake_model = ScriptedChatModel([turn])
+        turns = [turn]
+        if graph._is_arabic_dominant(case["text"]):
+            turns.insert(0, {"intent": "coaching_qa"})
+        fake_model = ScriptedChatModel(turns)
         patches = [patch.object(graph, "llm", fake_model)] if mode == "plumbing" else []
         if mode == "plumbing":
             patches.append(patch.object(graph, "generate_program_pipeline", side_effect=lambda **kwargs: _fake_generation(scenario, **kwargs)))

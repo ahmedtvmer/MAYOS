@@ -81,7 +81,11 @@ def _suite_entry(count: int, bar: dict, scores: tuple[int, ...]) -> dict:
 @lru_cache(maxsize=1)
 def _additional_suite_entries() -> dict[str, dict]:
     from tests.eval.run_evaluation import SUITES
-    from tests.eval.suites.routing import _load_routing_cases, _summarize as summarize_routing
+    from tests.eval.suites.routing import (
+        _hermetic_actions,
+        _load_routing_cases,
+        _summarize as summarize_routing,
+    )
     from tests.eval.suites import structured_output
     from tests.eval.suites.common import isolated_catalog_store
 
@@ -89,11 +93,21 @@ def _additional_suite_entries() -> dict[str, dict]:
     entries = {
         suite.name: suite.run_hermetic(context)
         for suite in SUITES
-        if suite.name in {"arabic_replies", "routing", "structured_output"}
+        if suite.name in {"arabic_replies", "structured_output"}
     }
 
-    routing_cases = entries["routing"]["cases"]
-    entries["routing"] = summarize_routing(_load_routing_cases(), routing_cases)
+    # Keep this report-validation fixture independent of the graph behavior tested in test_routing_suite.
+    routing_cases = _load_routing_cases()
+    routing_observations = [
+        {
+            "case_id": case["id"],
+            "observed_intent": case["expected_intent"],
+            "executed_actions": _hermetic_actions(case),
+            "franco_intercept": case.get("franco_intercept_expected") is True,
+        }
+        for case in routing_cases
+    ]
+    entries["routing"] = summarize_routing(routing_cases, routing_observations)
 
     structured_entry = entries["structured_output"]
     structured_cases = structured_output._load_cases()
@@ -312,6 +326,9 @@ def test_hermetic_gate_reports_every_suite_and_can_revalidate_its_report(tmp_pat
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["gate"]["passed"] is False
     assert report["gate"]["status"] == "hermetic_check_only"
+    assert report["suite_results"]["routing"]["score"] == 40
+    assert report["suite_results"]["routing"]["unauthorized_actions"] == 0
+    assert "routing: 40/40 (bar ≥38/40); unauthorized actions=0" in result.stdout
     assert "PLAYER MODEL GATE: NOT RUN" in result.stdout
 
     checked = _check(report_path)

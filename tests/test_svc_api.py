@@ -702,6 +702,8 @@ def test_chat_api_uses_message_language_then_display_fallback_and_preserves_hist
     model = ScriptedChatModel(
         [
             "English response retained.",
+            # Arabic-dominant turns are classified first (#191); this one is a coaching question.
+            {"intent": "coaching_qa"},
             "Second response retained.",
             "Fallback response retained.",
         ]
@@ -742,14 +744,14 @@ def test_chat_api_uses_message_language_then_display_fallback_and_preserves_hist
     assert db.set_account_display_language(account["account_id"], "en")
     arabic_done = send("ممكن تشرحلي الراحة بين الـ RIR والـ sets؟")
     assert arabic_done["response_content"] == "Second response retained."
-    assert "Reply language for this turn: Arabic" in model.calls[1]["messages"][0].content
-    assert "Display language fallback: English" in model.calls[1]["messages"][0].content
-    assert "polite everyday Egyptian Arabic" in model.calls[1]["messages"][0].content
+    assert "Reply language for this turn: Arabic" in model.calls[2]["messages"][0].content
+    assert "Display language fallback: English" in model.calls[2]["messages"][0].content
+    assert "polite everyday Egyptian Arabic" in model.calls[2]["messages"][0].content
 
     assert db.set_account_display_language(account["account_id"], "ar")
     fallback_done = send("👍")
     assert fallback_done["response_content"] == "Fallback response retained."
-    assert "Reply language for this turn: Arabic" in model.calls[2]["messages"][0].content
+    assert "Reply language for this turn: Arabic" in model.calls[3]["messages"][0].content
 
     history = client.get("/chat/history").json()
     assert [(message["role"], message["content"]) for message in history] == [

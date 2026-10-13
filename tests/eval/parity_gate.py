@@ -247,7 +247,9 @@ def print_gate_summary(
                 if isinstance(measure, dict):
                     _print_result_line(f"{suite['name']} {measure.get('name', 'measure')}", measure)
         _print_suite_summary(suite)
-    if report.get("mode") == "hermetic":
+    if report.get("partial") is True:
+        print("PLAYER MODEL GATE: NOT RUN (partial suite run)")
+    elif report.get("mode") == "hermetic":
         print("PLAYER MODEL GATE: NOT RUN (hermetic validation only)")
     else:
         print(f"PLAYER MODEL GATE: {'PASSED' if not reasons else 'FAILED'}")

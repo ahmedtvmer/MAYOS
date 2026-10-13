@@ -506,27 +506,45 @@ def _hermetic_context() -> GateContext:
     return GateContext([], metadata, retry_policy_from_env())
 
 
-def _live_report() -> dict[str, Any]:
+def _select_suites(names: list[str] | None) -> tuple[Suite, ...]:
+    if names is None:
+        return SUITES
+    if not names:
+        raise ValueError("At least one suite name is required")
+    unknown = set(names) - {suite.name for suite in SUITES}
+    if unknown:
+        raise ValueError(f"Unknown suite name(s): {', '.join(sorted(unknown))}")
+    selected = set(names)
+    return tuple(suite for suite in SUITES if suite.name in selected)
+
+
+def _live_report(suites: tuple[Suite, ...] = SUITES) -> dict[str, Any]:
     from utils.model_downloader import model_identity
 
     context = _build_live_context()
+    selected_names = [suite.name for suite in suites]
     return {
         "mode": "live",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "player_model": model_identity("production")[0],
         "judges": context.judge_metadata,
-        "suite_results": {suite.name: suite.run(context) for suite in SUITES},
+        "suite_results": {suite.name: suite.run(context) for suite in suites},
+        "selected_suites": selected_names,
+        "partial": len(suites) != len(SUITES),
     }
 
 
-def _hermetic_report() -> dict[str, Any]:
+def _hermetic_report(suites: tuple[Suite, ...] = SUITES) -> dict[str, Any]:
     context = _hermetic_context()
+    selected_names = [suite.name for suite in suites]
     return {
         "mode": "hermetic",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "player_model": "not-called",
         "judges": context.judge_metadata,
-        "suite_results": {suite.name: suite.run_hermetic(context) for suite in SUITES},
+        "suite_results": {suite.name: suite.run_hermetic(context) for suite in suites},
+        "selected_suites": selected_names,
+        "partial": len(suites) != len(SUITES),
     }
 
 
@@ -537,10 +555,15 @@ def _default_report_path() -> Path:
 
 def _write_report(path: Path, report: dict[str, Any], passed: bool, reasons: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    partial = report.get("partial") is True
     report["gate"] = {
-        "passed": passed if report["mode"] == "live" else False,
+        "passed": passed if report["mode"] == "live" and not partial else False,
         "validation_passed": passed,
-        "status": "hosted_decision" if report["mode"] == "live" else "hermetic_check_only",
+        "status": (
+            "partial_suite_run"
+            if partial
+            else "hosted_decision" if report["mode"] == "live" else "hermetic_check_only"
+        ),
         "reasons": reasons,
     }
     path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -558,7 +581,25 @@ def _check_report(path: Path) -> int:
     if not isinstance(report, dict) or report.get("mode") not in {"live", "hermetic"}:
         print("report is not a recognized player gate result", file=sys.stderr)
         return 1
-    passed, reasons, summaries = evaluate_report(report, SUITES)
+    selected_names = report.get("selected_suites")
+    if selected_names is None:
+        suites = SUITES
+    elif not isinstance(selected_names, list) or not all(
+        isinstance(name, str) for name in selected_names
+    ):
+        print("report has invalid selected suite metadata", file=sys.stderr)
+        return 1
+    else:
+        try:
+            suites = _select_suites(selected_names)
+        except ValueError as error:
+            print(str(error), file=sys.stderr)
+            return 1
+        expected_partial = len(suites) != len(SUITES)
+        if report.get("partial") is not expected_partial:
+            print("report partial marker does not match its selected suites", file=sys.stderr)
+            return 1
+    passed, reasons, summaries = evaluate_report(report, suites)
     print_gate_summary(report, reasons, summaries)
     return 0 if passed else 1
 
@@ -566,16 +607,27 @@ def _check_report(path: Path) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the registered hosted player-model evaluation suites.")
     parser.add_argument("--hermetic", action="store_true", help="Run all suite hermetic paths without provider calls.")
+    parser.add_argument(
+        "--suite",
+        action="append",
+        help="Run only a named suite; repeat to run several suites. Partial runs are not a full gate pass.",
+    )
     parser.add_argument("--report", type=Path, default=None, help="Write the report JSON to this path.")
     parser.add_argument("--check-report", type=Path, default=None, help="Revalidate a live report without model calls.")
     args = parser.parse_args(argv)
     if args.check_report is not None:
         if args.hermetic:
             parser.error("--check-report cannot be combined with --hermetic")
+        if args.suite is not None:
+            parser.error("--check-report uses the suite selection recorded in its report")
         return _check_report(args.check_report)
 
-    report = _hermetic_report() if args.hermetic else _live_report()
-    passed, reasons, summaries = evaluate_report(report, SUITES)
+    try:
+        suites = _select_suites(args.suite)
+    except ValueError as error:
+        parser.error(str(error))
+    report = _hermetic_report(suites) if args.hermetic else _live_report(suites)
+    passed, reasons, summaries = evaluate_report(report, suites)
     print_gate_summary(report, reasons, summaries)
     report_path = args.report or _default_report_path()
     _write_report(report_path, report, passed, reasons)

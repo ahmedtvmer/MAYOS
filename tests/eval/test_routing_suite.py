@@ -9,6 +9,7 @@ from tests.eval.suites.routing import (
     DATASET_FILE,
     RoutingSuite,
     _case_outcome,
+    _hermetic_arabic_swap_classification,
     _load_routing_cases,
     _observe_ledger_writes,
 )
@@ -66,6 +67,64 @@ def test_hermetic_routing_counts_every_owner_reviewed_case():
     assert (record["score"], record["total"]) == (40, 40)
     assert record["unreviewed_count"] == 0
     assert record["passed"] is True
+    assert record["would_be_passed"] is True
+    assert record["unauthorized_actions"] == 0
+    graph_cases = {
+        case["case_id"]
+        for case in record["cases"]
+        if case["scripted_classifier_used"]
+    }
+    assert graph_cases == {
+        "ar-egyptian-01",
+        "ar-egyptian-02",
+        "ar-egyptian-03",
+        "ar-egyptian-07",
+        "ar-standard-01",
+        "ar-mixed-01",
+        "ar-mixed-03",
+    }
+    composite = next(case for case in record["cases"] if case["case_id"] == "ar-egyptian-07")
+    assert composite["observed_intent"] == "composite_intent"
+    assert len(composite["executed_actions"]) == 1
+    assert composite["action_match"] is True
+    leg_press = next(case for case in record["cases"] if case["case_id"] == "ar-egyptian-03")
+    assert leg_press["expected_action"]["target_exercise"] == "45° Leg Press (Plate-Loaded)"
+    assert leg_press["executed_actions"][0]["target_exercise"] == "45° Leg Press (Plate-Loaded)"
+    assert leg_press["action_match"] is True
+    safer_alternative = next(case for case in record["cases"] if case["case_id"] == "ar-mixed-03")
+    assert safer_alternative["observed_intent"] == "coaching_qa"
+    assert safer_alternative["intent_match"] is True
+    assert safer_alternative["executed_actions"] == []
+    swap_cases = [
+        case
+        for case in _load_routing_cases()
+        if case["language"] == "arabic"
+        and (case.get("expected_action") or {}).get("kind") == "exercise_substitution"
+    ]
+    for case in swap_cases:
+        scripted = _hermetic_arabic_swap_classification(case)
+        if case["id"] == "ar-egyptian-07":
+            assert scripted == {
+                "intent": "composite_intent",
+                "source_exercise": "Bench Press (Barbell)",
+                "target_exercise": "Dumbbell Bench Press",
+                "has_swap": True,
+                "has_additional_request": True,
+            }
+        else:
+            assert scripted["source_exercise"] != case["expected_action"]["source_exercise"]
+        assert scripted["target_exercise"] in {
+            "Dumbbell Bench Press",
+            "Incline Bench Press (Barbell)",
+            "Leg Press",
+        }
+    mixed_suggestion = next(case for case in _load_routing_cases() if case["id"] == "ar-mixed-03")
+    assert _hermetic_arabic_swap_classification(mixed_suggestion) == {
+        "intent": "exercise_substitution",
+        "source_exercise": "Back Squat (Barbell)",
+        "target_exercise": "Goblet Squat",
+        "has_swap": True,
+    }
 
 
 def test_hermetic_routing_excludes_unreviewed_arabic_from_score(tmp_path, monkeypatch):
@@ -79,6 +138,7 @@ def test_hermetic_routing_excludes_unreviewed_arabic_from_score(tmp_path, monkey
     )
     assert record["passed"] is True
     assert record["would_be_passed"] is False
+    assert record["unauthorized_actions"] == 0
     assert record["unreviewed_count"] == 20
     assert record["failure_reasons"] == []
     assert any("unreviewed" in reason and "excluded" in reason for reason in record["would_be_failure_reasons"])
@@ -127,8 +187,34 @@ def test_hermetic_cli_counts_reviewed_arabic_cases(tmp_path, capsys):
     output = capsys.readouterr().out
     assert "PLAYER MODEL GATE: NOT RUN (hermetic validation only)" in output
     assert "routing: 40/40" in output
+    assert "unauthorized actions=0" in output
     assert "unreviewed=0" in output
     assert "would-be gate=PASS" in output
+
+
+def test_partial_suite_cli_marks_player_gate_not_run(tmp_path, capsys):
+    from tests.eval.run_evaluation import main
+
+    report_path = tmp_path / "routing-partial-report.json"
+    assert main(["--hermetic", "--suite", "routing", "--report", str(report_path)]) == 0
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["partial"] is True
+    assert report["selected_suites"] == ["routing"]
+    assert list(report["suite_results"]) == ["routing"]
+    assert report["gate"]["passed"] is False
+    assert report["gate"]["validation_passed"] is True
+    assert report["gate"]["status"] == "partial_suite_run"
+    routing = report["suite_results"]["routing"]
+    assert (routing["score"], routing["total"]) == (40, 40)
+    assert routing["unauthorized_actions"] == 0
+    assert routing["would_be_passed"] is True
+    output = capsys.readouterr().out
+    assert "routing: 40/40" in output
+    assert "unauthorized actions=0" in output
+    assert "PLAYER MODEL GATE: NOT RUN (partial suite run)" in output
+    assert main(["--check-report", str(report_path)]) == 0
+    assert "PLAYER MODEL GATE: NOT RUN (partial suite run)" in capsys.readouterr().out
 
 
 def test_program_write_in_no_action_case_is_observed_as_unauthorized():

@@ -91,6 +91,8 @@ load_dotenv()
 logger = MyosLogger().get_logger(__name__)
 
 OUTPUT_LIMIT_RESPONSE = "I reached the response limit. Ask me to continue if you'd like more."
+ARABIC_SWAP_CLARIFICATION_RESPONSE = "أنهي تمرين عايز تغيّره؟"
+ARABIC_ONE_AT_A_TIME_NOTE = "هبدّل التمرين ده الأول، وبعدها قولي تحب أساعدك في إيه كمان؟"
 ARABIC_PREFERRED_NAME_TRIGGERS = ("اسمي", "ناديني", "قولي يا", "قوللي يا")
 _MAX_PREFERRED_NAME_WORDS = 4
 _PREFERRED_NAME_CLAUSE_BREAK_RE = re.compile(r"[,،.!?؟…;؛\r\n]")
@@ -120,6 +122,7 @@ IntentType = Literal[
     "exercise_history",
     "exercise_history_fallback",
     "exercise_substitution",
+    "arabic_swap_clarification",
     "program_mutation",
     "deload_choice",
     "catalog_search",
@@ -266,6 +269,11 @@ RE_EXPLICIT_SWAP = re.compile(
     r"\b(?:swap|replace|substitute|switch(?:\s+out)?|change)\b\s+(?P<source>.+?)\s+\b(?:for|with|instead of|to)\b\s+(?P<target>.+)",
     re.IGNORECASE,
 )
+RE_ARABIC_SWAP_REQUEST = re.compile(
+    r"(?:^|[.!?؟;؛]\s*)(?:من فضلك\s+|لو سمحت\s+)?"
+    r"(?:(?:عايز|عاوز|عايزة|عاوزة|محتاج|محتاجة)\s+)?"
+    r"(?:أ?بدل|أ?غير|استبدل)(?:\s+لي)?(?:\s|$)"
+)
 RE_SINGLE_SWAP = re.compile(
     r"(?:(?:i\s+(?:just\s+)?want|show\s+me|give\s+me)\s+)?\b(?:swap|replace|substitute|alternatives?\s+(?:for|to)|switch(?:\s+out)?)\b\s+(?P<source>[a-zA-Z0-9\s\(\)\-\_]+)",
     re.IGNORECASE,
@@ -326,6 +334,48 @@ ROUTER_PROMPT = (
     "- catalog_search: Finding or listing movements from the database.\n"
     "- coaching_qa: Biomechanics, technique cues, session reviews, fatigue, or general gym questions.\n\n"
     "Extract entities where present."
+)
+
+
+class ArabicIntentClassification(BaseModel):
+    intent: Literal[
+        "exercise_substitution",
+        "composite_intent",
+        "program_change",
+        "exercise_history",
+        "coaching_qa",
+        "other",
+    ]
+    source_exercise: str | None = None
+    target_exercise: str | None = None
+    has_swap: bool = False
+    has_additional_request: bool = False
+
+
+ARABIC_ROUTER_PROMPT = (
+    "Classify this Arabic or Arabic-dominant player message as exactly one of: "
+    "exercise_substitution, composite_intent, program_change, exercise_history, "
+    "coaching_qa, other. Use program_change for a requested Training program change "
+    "and exercise_history for questions about past workouts or exercises. These intents "
+    "receive a normal coaching answer and do not perform an action here. Use "
+    "exercise_substitution only when the player explicitly asks to replace or swap an "
+    "exercise and names the replacement, such as بدّل/غيّر/استبدل X بـ Y or "
+    "'swap X for Y'. Asking for a suggestion, an alternative, advice, or what to do "
+    "instead (including اقترح, بديل, إيه البديل, 'suggest', 'alternative', and "
+    "'what can I do instead') is coaching_qa, even when an exercise feels uncomfortable. "
+    "Never invent a replacement the player did not name. Use composite_intent when the "
+    "message combines an explicit named swap with another request, and set has_swap=true "
+    "only when it contains that explicit swap. For a swap, copy the source exactly from the current program "
+    "exercise names below. Return target_exercise as an English Exercise library-style "
+    "exercise name, translating Arabic gym terms instead of copying them. Examples: "
+    "بنش means Bench Press, دامبل means Dumbbell, بار means Barbell, ضغط مائل means "
+    "Incline Bench Press, ليج برس means Leg Press, سكوات means Squat, and رفرفة means "
+    "Fly or Raise. When the player names only equipment or a variant for the same "
+    "movement, apply it to the source movement: بالدامبل with Bench Press means "
+    "Dumbbell Bench Press; بالبار means Barbell; على السميث means Smith Machine. "
+    "Keep source_exercise copied exactly from the current program exercise names. If "
+    "the message has no swap, leave source_exercise and target_exercise empty. Return "
+    "at most one swap."
 )
 
 
@@ -747,6 +797,183 @@ def _classify_intent_with_llm(query: str) -> IntentClassification:
     )
 
 
+def _classify_arabic_intent_with_llm(
+    query: str, program_exercise_names: list[str]
+) -> ArabicIntentClassification:
+    structured_llm = llm.with_structured_output(ArabicIntentClassification).bind(
+        max_completion_tokens=player_output_budgets.player_output_budget("intent_routing")
+    )
+    program_context = "\n".join(f"- {name}" for name in program_exercise_names) or "- None"
+    return structured_llm.invoke(
+        [
+            SystemMessage(
+                content=(
+                    f"{ARABIC_ROUTER_PROMPT}\n\n"
+                    f"Current Training program exercise names:\n{program_context}"
+                )
+            ),
+            HumanMessage(content=query),
+        ]
+    )
+
+
+def _is_arabic_dominant(query: str) -> bool:
+    # Same rule as reply language (#256); ties fall back to English so unclear turns keep the existing route.
+    return resolve_reply_language(query, "en") == "ar"
+
+
+def _program_exercise_names(program: Any) -> list[str]:
+    return list(dict.fromkeys(
+        exercise.exercise_name
+        for day in program.days
+        for exercise in day.exercises
+    )) if program else []
+
+
+def _resolve_arabic_source(program: Any, requested_name: str) -> tuple[Any, Any] | None:
+    source_name = expand_fitness_abbreviations(requested_name.strip())
+    source_stem = clean_movement_stem(source_name.lower())
+    candidates = [
+        (day, exercise, _substitution_source_similarity(source_name, source_stem, exercise))
+        for day in program.days
+        for exercise in day.exercises
+    ]
+    if not candidates:
+        return None
+    best_similarity = max(similarity for _, _, similarity in candidates)
+    best_matches = [
+        (day, exercise)
+        for day, exercise, similarity in candidates
+        if similarity == best_similarity
+    ]
+    if best_similarity < SUBSTITUTION_SOURCE_SIMILARITY_THRESHOLD or len(best_matches) != 1:
+        return None
+    return best_matches[0]
+
+
+def _arabic_name_search_candidates(store: Any, name: str) -> list[dict[str, Any]]:
+    exact_resolver = getattr(store, "find_unique_exercise_id_by_exact_name", None)
+    exact_id = exact_resolver(name) if callable(exact_resolver) else None
+    if exact_id:
+        return [
+            entry
+            for entry in (store.get_exercise_library_entry(str(exact_id)),)
+            if entry is not None
+        ]
+
+    key_words = set(re.findall(r"[a-z0-9]+", name.casefold()))
+    return [
+        match
+        for match in store.find_exercises_by_name(name, limit=None)
+        if key_words
+        and key_words.issubset(
+            set(re.findall(r"[a-z0-9]+", str(match.get("name", "")).casefold()))
+        )
+    ]
+
+
+def _arabic_target_name_matches(
+    store: Any, source: Any, name: str
+) -> tuple[list[dict[str, Any]], frozenset[str]]:
+    near_miss_ids = near_miss_exercise_ids(name)
+    matches = [
+        match for match in _arabic_name_search_candidates(store, name)
+        if str(match["id"]) != str(source.exercise_id)
+        and str(match["id"]) not in near_miss_ids
+        and store.is_exercise_library_exercise_visible(str(match["id"]))
+    ]
+    return matches, near_miss_ids
+
+
+def _resolve_arabic_target(
+    store: Any, source: Any, source_day: Any, requested_name: str
+) -> tuple[str, dict[str, Any]] | None:
+    source_entry = store.get_exercise_library_entry(str(source.exercise_id))
+    if source_entry is None:
+        return None
+    raw_name = requested_name.strip()
+    for name in dict.fromkeys((raw_name, expand_fitness_abbreviations(raw_name))):
+        matches, near_miss_ids = _arabic_target_name_matches(
+            store, source, name
+        )
+        if not matches:
+            if near_miss_ids:
+                return None
+            continue
+        if len(matches) != 1:
+            return None
+        match = _compatible_name_match(
+            matches,
+            source_entry.get("target_muscle"),
+            source_entry.get("body_part"),
+            source_day,
+        )
+        if match is not None:
+            target_id = str(match["id"])
+            target = store.get_exercise_library_entry(target_id)
+            return (target_id, target) if target is not None else None
+        if matches or near_miss_ids:
+            return None
+    return None
+
+
+def _validated_arabic_swap(program: Any, store: Any, intent: ArabicIntentClassification) -> dict[str, Any] | None:
+    if not program or not intent.source_exercise or not intent.target_exercise:
+        return None
+    source_match = _resolve_arabic_source(program, intent.source_exercise)
+    if source_match is None:
+        return None
+    source_day, source = source_match
+    target = _resolve_arabic_target(store, source, source_day, intent.target_exercise)
+    if target is None:
+        return None
+    target_id, target_entry = target
+    return {
+        "mode": "direct_swap",
+        "source_exercise": source.exercise_name,
+        "source_exercise_id": str(source.exercise_id),
+        "source_day": source_day.day_name,
+        "target_exercise": target_entry["name"],
+        "target_exercise_id": str(target_id),
+    }
+
+
+def _classify_arabic_intent(query: str, config: dict[str, Any] | None) -> dict[str, Any]:
+    ledger, store = _graph_context(config)
+    program = ledger.get_active_program() if ledger is not None else None
+    try:
+        classification = _classify_arabic_intent_with_llm(
+            query, _program_exercise_names(program)
+        )
+    except Exception:
+        logger.exception("Arabic player intent classification failed.")
+        return {"intent": "coaching_qa", "intent_metadata": {}}
+    is_swap = classification.intent == "exercise_substitution" or (
+        classification.intent == "composite_intent" and classification.has_swap
+    )
+    if not is_swap:
+        return {"intent": "coaching_qa", "intent_metadata": {}}
+    normalized_query = RE_ARABIC_DIACRITICS.sub("", query)
+    if not (RE_EXPLICIT_SWAP.search(query) or RE_ARABIC_SWAP_REQUEST.search(normalized_query)):
+        return {"intent": "coaching_qa", "intent_metadata": {}}
+    metadata = _validated_arabic_swap(program, store, classification) if store is not None else None
+    if metadata is None:
+        return {"intent": "arabic_swap_clarification", "intent_metadata": {}}
+    if classification.intent == "composite_intent" or classification.has_additional_request:
+        metadata["has_additional_request"] = True
+        return {
+            "intent": "composite_intent",
+            "intent_metadata": {"arabic_validated_swap": metadata},
+        }
+    return {"intent": "exercise_substitution", "intent_metadata": {**metadata, "arabic_data_validated": True}}
+
+
+def arabic_swap_clarification_node(
+    state: AssistantState, config: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    return _response(ARABIC_SWAP_CLARIFICATION_RESPONSE)
+
+
 def _clinical_turn_metadata(query: str, sub_intents=()) -> dict[str, Any] | None:
     if is_franco_arabic(query):
         return {"raw_query": query, "franco": True}
@@ -804,6 +1031,7 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
 
     query = _get_message_text(messages[-1])
     telemetry = state.get("telemetry_context") or ""
+    arabic_dominant = _is_arabic_dominant(query)
 
     clinical = _clinical_turn_metadata(query)
     if clinical is not None:
@@ -814,12 +1042,28 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
         return {"intent": "deload_choice", "intent_metadata": {"choice": choice}}
 
     history_followup = _last_history_exchange(messages)
-    if history_followup is not None and not RE_BANNED_MOVEMENT.search(query) and len(RE_CLAUSE_SPLIT.split(query)) == 1:
+    if (
+        not arabic_dominant
+        and history_followup is not None
+        and not RE_BANNED_MOVEMENT.search(query)
+        and len(RE_CLAUSE_SPLIT.split(query)) == 1
+    ):
         return {"intent": "exercise_history", "intent_metadata": {"raw_query": history_followup}, "active_intents": []}
 
     name_response = _name_response(state, _graph_context(config)[0])
     if name_response:
         return {"intent": "telemetry_intercept", "intent_metadata": {"response_content": name_response}, "preferred_name": state.get("preferred_name")}
+
+    if arabic_dominant:
+        deterministic = _classify_single_clause(query, telemetry, messages)
+        if deterministic and deterministic["intent"] in {
+            "banned_movement",
+            "telemetry_intercept",
+            "deload_choice",
+            "catalog_search",
+        }:
+            return {k: v for k, v in deterministic.items() if k != "query"}
+        return _classify_arabic_intent(query, config)
 
     # Clause Splitting for Compound / Multi-Intent Queries
     clauses = [p.strip(" ,;?!.") for p in RE_CLAUSE_SPLIT.split(query) if p.strip(" ,;?!.")]
@@ -1576,9 +1820,78 @@ def _remove_day_suffix(exercise_name: str, day_name: str | None) -> str:
 UNSPECIFIC_CHOICE_WORDS = {"one", "two", "three", "first", "second", "third"}
 
 
+def _validated_swap_success(
+    state: AssistantState,
+    metadata: dict[str, Any],
+    substitution: dict[str, Any],
+    ledger: Any,
+) -> dict[str, Any]:
+    replacement = substitution["replacement"]
+    profile = ledger.get_player_profile() or {}
+    experience_level = experience_level_for_training_age(profile.get("training_age_years", 0.0))
+    day_name = substitution["day_names"][0]
+    msg = _validated_swap_message(metadata, replacement, day_name, experience_level)
+    if metadata.get("has_additional_request"):
+        msg += "\n\n" + ARABIC_ONE_AT_A_TIME_NOTE
+    return {
+        "program_updated": True,
+        "program_change": "swapped",
+        "response_content": msg,
+        "messages": [AIMessage(content=msg)],
+    }
+
+
+def _validated_swap_message(
+    metadata: dict[str, Any], replacement: dict[str, Any], day_name: str, experience_level: str
+) -> str:
+    new_notes = replacement.get("instructions") or get_biomechanical_cue(replacement, experience_level)
+    msg = (
+        f"✅ **Routine Slot Updated ({day_name})**\n\n"
+        f"- **Removed:** {metadata['source_exercise'].title()}\n"
+        f"- **Installed:** {replacement['name'].title()} "
+        f"(`{replacement['target_muscle']}` | `{replacement['equipment']}`)\n"
+        f"- **Execution Directive:** *{new_notes}*"
+    )
+    return msg
+
+
+def _persist_validated_swap(
+    ledger: Any, store: Any, active_program: Any, metadata: dict[str, Any]
+) -> dict[str, Any]:
+    return substitute_program_exercise(
+        ledger,
+        store,
+        active_program,
+        ProgramSubstitution(
+            day_name=metadata["source_day"],
+            exercise_id=metadata["source_exercise_id"],
+            replacement_exercise_id=metadata["target_exercise_id"],
+        ),
+    )
+
+
+def _apply_validated_swap(
+    state: AssistantState, config: dict[str, Any] | None, metadata: dict[str, Any]
+) -> dict[str, Any]:
+    ledger, store = _graph_context(config)
+    query = _get_message_text(state["messages"][-1])
+    if not programs_service.player_controls_program(store, ledger, state.get("player_account_id")):
+        return _response(_coach_program_refusal(query))
+    active_program = ledger.get_active_program()
+    if active_program is None:
+        return _response(ARABIC_SWAP_CLARIFICATION_RESPONSE)
+    substitution = _persist_validated_swap(ledger, store, active_program, metadata)
+    if not substitution["ok"]:
+        return _response(ARABIC_SWAP_CLARIFICATION_RESPONSE)
+    return _validated_swap_success(state, metadata, substitution, ledger)
+
+
 def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     ledger, store = _graph_context(config)
     meta = state.get("intent_metadata", {})
+    if meta.get("arabic_data_validated") is True:
+        return _apply_validated_swap(state, config, meta)
+
     source_name = (meta.get("source_exercise") or "").strip()
     target_desc = (meta.get("target_exercise") or "").strip()
     query = _get_message_text(state["messages"][-1])
@@ -2193,6 +2506,10 @@ def generation_node(state: AssistantState, config: dict[str, Any] | None = None)
 
 def composite_intent_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     meta = state.get("intent_metadata", {})
+    arabic_swap = meta.get("arabic_validated_swap")
+    if isinstance(arabic_swap, dict):
+        return _apply_validated_swap(state, config, arabic_swap)
+
     sub_intents = meta.get("sub_intents") or state.get("active_intents") or []
     original_msgs = list(state.get("messages", []))
     original_query = meta.get("raw_query") or (_get_message_text(original_msgs[-1]) if original_msgs else "")
@@ -2295,6 +2612,7 @@ builder.add_node("banned_movement", _safe_node(banned_movement_node))
 builder.add_node("telemetry_intercept", _safe_node(telemetry_intercept_node))
 builder.add_node("exercise_history", _safe_node(exercise_history_node))
 builder.add_node("exercise_substitution", _safe_node(exercise_substitution_node))
+builder.add_node("arabic_swap_clarification", _safe_node(arabic_swap_clarification_node))
 builder.add_node("program_mutation", _safe_node(program_mutation_node))
 builder.add_node("deload_choice", _safe_node(deload_choice_node))
 builder.add_node("catalog_search", _safe_node(catalog_search_node))
@@ -2313,6 +2631,7 @@ builder.add_conditional_edges(
         "telemetry_intercept": "telemetry_intercept",
         "exercise_history": "exercise_history",
         "exercise_substitution": "exercise_substitution",
+        "arabic_swap_clarification": "arabic_swap_clarification",
         "program_mutation": "program_mutation",
         "deload_choice": "deload_choice",
         "catalog_search": "catalog_search",
@@ -2323,7 +2642,7 @@ builder.add_conditional_edges(
 
 for node in [
     "clinical_intercept", "banned_movement", "telemetry_intercept",
-    "exercise_substitution", "program_mutation",
+    "exercise_substitution", "arabic_swap_clarification", "program_mutation",
     "catalog_search", "composite_intent", "generation",
 ]:
     builder.add_edge(node, END)
@@ -2409,6 +2728,7 @@ def stream_assistant_turn(
             "clinical_intercept": clinical_intercept_node,
             "banned_movement": banned_movement_node,
             "exercise_substitution": exercise_substitution_node,
+            "arabic_swap_clarification": arabic_swap_clarification_node,
             "program_mutation": program_mutation_node,
             "deload_choice": deload_choice_node,
             "catalog_search": catalog_search_node,
