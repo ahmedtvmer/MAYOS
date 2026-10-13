@@ -1,9 +1,12 @@
 {
   "review_status": "pending",
-  "sample_sha256": null,
-  "judge_models": [],
-  "player_model": null,
-  "rubric_sha256": null,
+  "sample_sha256": "5b8283b375749a449bf4689500716046561303dd0172c8e76a09295c16ad8032",
+  "judge_models": [
+    "Qwen/Qwen3.5-27B",
+    "zai-org/GLM-5.3"
+  ],
+  "player_model": "deepseek-ai/DeepSeek-V4-Flash",
+  "rubric_sha256": "6462aca4b33863b67b60260d08c12949cab77ec59abf9f9d4c7943098805307e",
   "reviewed_by": null,
   "reviewed_on": null
 }
