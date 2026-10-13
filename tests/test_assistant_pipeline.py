@@ -116,6 +116,14 @@ def test_deload_choice_routing_is_deterministic_in_english_and_arabic(monkeypatc
         ("skip the deload next workout", "undo"),
         ("ألغِ التخفيف", "undo"),
         ("طبّق التخفيف", "apply"),
+        ("شيل الديلود", "undo"),
+        ("لغي الديلود", "undo"),
+        ("بلاش ديلود النهارده", "undo"),
+        ("طبّق الديلود", "apply"),
+        ("شيل الديلود للحصة الجاية", "undo"),
+        ("طبق الديلود للتمرين ده", "apply"),
+        ("ألغِ الديلود للتمرين القادم", "undo"),
+        ("طبّق التخفيف لهذا التمرين", "apply"),
     ]
     monkeypatch.setattr("agent.assistant_graph.llm", scripted_chat_model)
     for query, choice in cases:
@@ -141,6 +149,11 @@ def test_deload_routing_does_not_override_clinical_or_negated_requests():
     for query in non_commands:
         routed = router_node({"messages": [HumanMessage(content=query)]})
         assert routed["intent"] != "deload_choice"
+
+    for query in ("مش عايز ألغي الديلود", "متشيلش الديلود"):
+        routed = router_node({"messages": [HumanMessage(content=query)]})
+        assert routed["intent"] == "deload_choice"
+        assert routed["intent_metadata"]["choice"] == "no_change"
 
 
 def test_deload_pipeline_says_nothing_to_change_in_both_wrong_directions(fresh_store):

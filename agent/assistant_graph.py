@@ -290,12 +290,42 @@ RE_DELOAD_ENGLISH_CHOICE = re.compile(
     re.IGNORECASE,
 )
 RE_ARABIC_DIACRITICS = re.compile(r"[\u064b-\u065f\u0670\u0640]")
+ARABIC_DELOAD_UNDO_VERBS = (
+    "ألغ", "ألغي", "الغ", "الغي", "الغى", "إلغاء", "الغاء", "لغي", "لغى",
+    "تراجع عن", "أوقف", "اوقف", "وقف", "شيل", "شيلي",
+)
+ARABIC_DELOAD_APPLY_VERBS = ("طبق", "فعل", "اعتمد", "استخدم")
+ARABIC_DELOAD_VERB_PATTERN = "|".join(
+    (*ARABIC_DELOAD_UNDO_VERBS, *ARABIC_DELOAD_APPLY_VERBS)
+)
+ARABIC_DELOAD_NOUN = r"(?:ال)?(?:ديلود|تخفيف(?:\s+التدريب)?)"
+ARABIC_DELOAD_SCOPE = (
+    r"(?:اليوم|النهارده|التمرين\s+(?:ده|دا|الحالي|القادم|الجاي)|"
+    r"الحصة\s+(?:دي|ده|الحالية|القادمة|الجاية)|"
+    r"للتمرين\s+(?:ده|دا|الحالي|القادم|الجاي)|"
+    r"للحصة\s+(?:دي|ده|الحالية|القادمة|الجاية)|"
+    r"لهذا\s+التمرين|لهذه\s+الحصة|هذا\s+التمرين|هذه\s+الحصة|"
+    r"في\s+(?:التمرين|الحصة)\s+(?:ده|دي|الحالي|الحالية|الجاي|الجاية))"
+)
 RE_DELOAD_ARABIC_CHOICE = re.compile(
     r"^\s*(?:(?:من فضلك|لو سمحت)\s+)?(?:(?:هل يمكنك|ممكن)\s+)?(?:أن\s+)?"
-    r"(?P<verb>ألغ|الغ|إلغاء|الغاء|تراجع عن|أوقف|اوقف|وقف|طبق|فعل|اعتمد|استخدم)\s+"
-    r"(?:ال)?(?:ديلود|تخفيف)(?:\s+(?:من فضلك|لو سمحت|اليوم|للتمرين القادم))?\s*[.!?؟]*\s*$"
+    rf"(?P<verb>{ARABIC_DELOAD_VERB_PATTERN})\s+"
+    rf"{ARABIC_DELOAD_NOUN}(?:\s+{ARABIC_DELOAD_SCOPE}(?:\s+بس)?)?"
+    r"(?:\s+(?:من فضلك|لو سمحت))?\s*[.!?؟]*\s*$"
+)
+RE_ARABIC_DELOAD_AVOID = re.compile(
+    rf"^\s*(?:(?:من فضلك|لو سمحت)\s+)?بلاش\s+{ARABIC_DELOAD_NOUN}"
+    rf"(?:\s+{ARABIC_DELOAD_SCOPE}(?:\s+بس)?)?\s*[.!?؟]*\s*$"
+)
+RE_ARABIC_NEGATED_DELOAD_CHOICE = re.compile(
+    r"^\s*(?:"
+    r"(?:مش|ما|لا|لن|ليس)\s+(?:(?:عايز|عاوز|عايزة|عاوزة)\s+)?"
+    rf"(?:{ARABIC_DELOAD_VERB_PATTERN})"
+    r"|م(?:ا)?ت(?:شيل|لغي|لغ|طبق|فعل)[\u0600-\u06ff]*ش"
+    rf")\s+{ARABIC_DELOAD_NOUN}(?:\s+{ARABIC_DELOAD_SCOPE}(?:\s+بس)?)?\s*[.!?؟]*\s*$"
 )
 RE_ARABIC_NEGATION = re.compile(r"(?:^|\s)(?:لا|لن|ليس|مش|ما)\s")
+DELOAD_NO_CHANGE_CHOICE = "no_change"
 DELOAD_NO_CHANGE_RESPONSE = "There is nothing to change."
 RE_FREQ_DIGIT = re.compile(r"\b([1-5])\s*(?:days?|d/wk|days\s+a\s+week)\b", re.IGNORECASE)
 RE_SEARCH_TOKENS = re.compile(r"\b(search|find|lookup|show me|list exercises)\b", re.IGNORECASE)
@@ -693,14 +723,18 @@ def _deload_choice(query: str) -> str | None:
         )
 
     arabic = RE_ARABIC_DIACRITICS.sub("", query).strip()
+    if RE_ARABIC_NEGATED_DELOAD_CHOICE.fullmatch(arabic):
+        return DELOAD_NO_CHANGE_CHOICE
     if RE_ARABIC_NEGATION.search(arabic):
         return None
+    if RE_ARABIC_DELOAD_AVOID.fullmatch(arabic):
+        return DELOAD_CHOICE_UNDO
     match = RE_DELOAD_ARABIC_CHOICE.fullmatch(arabic)
     if not match:
         return None
     return (
         DELOAD_CHOICE_UNDO
-        if match.group("verb") in {"ألغ", "الغ", "إلغاء", "الغاء", "تراجع عن", "أوقف", "اوقف", "وقف"}
+        if match.group("verb") in ARABIC_DELOAD_UNDO_VERBS
         else DELOAD_CHOICE_APPLY
     )
 

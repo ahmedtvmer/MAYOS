@@ -1243,6 +1243,18 @@ from the known fatigue reason code; unknown codes use a generic Arabic reason.
 | High exertion density ({percent}% of recent rated sets at RIR 0.5 or less) alongside declining readiness. | مجهود عالي في {percent}% من السيتات المسجلة عند RIR 0.5 أو أقل، مع انخفاض الاستعداد. |
 | Unknown deload fatigue reason. | غير محددة. |
 
+## Egyptian deload chat commands (#346; pending owner review)
+
+Egyptian deload commands use the same one-workout action and fixed reply as
+the existing standard Arabic commands. The confirmation and no-change strings
+below need owner review before release.
+
+| Outcome | Egyptian Arabic reply |
+| --- | --- |
+| Apply the suggested deload for the next workout only; `{reason}` is localized using the entries above. | تمام، طبّقت تخفيف التدريب للحصة الجاية بس. إشارة الإرهاق: {reason} |
+| Undo the applied deload for the next workout only; `{reason}` is localized using the entries above. | تمام، ألغيت تخفيف التدريب للحصة الجاية بس. إشارة الإرهاق: {reason} |
+| There is nothing to change. | مفيش حاجة محتاجة تغيير. |
+
 ## Assistant chat clarifications — pending owner review (#191)
 
 | English intent | Arabic |

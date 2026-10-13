@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from agent import assistant_graph
 from agent.progression_engine import calculate_e1rm
 from database.database_manager import DatabaseManager
 from service import coach as coach_service
@@ -543,9 +544,13 @@ def test_zero_load_sets_on_non_eligible_equipment_do_not_record(api):
     assert second["new_prs"] == []
 
 
-def test_assistant_deload_choice_is_one_workout_and_replay_safe(api, monkeypatch):
+@pytest.mark.parametrize("undo_command", ["ألغِ التخفيف", "شيل الديلود"])
+def test_assistant_deload_choice_is_one_workout_and_replay_safe(
+    api, monkeypatch, scripted_chat_model, undo_command
+):
     client, db = api
     headers, version = _prepare_player(client, db, "deload-player")
+    monkeypatch.setattr(assistant_graph, "llm", scripted_chat_model)
     fatigue = {
         "deload_recommended": True, "reason": "Acute readiness floor (1/5) detected.",
         "volume_multiplier": 0.5, "intensity_cap_rpe": 7.0,
@@ -571,7 +576,21 @@ def test_assistant_deload_choice_is_one_workout_and_replay_safe(api, monkeypatch
     assert no_change_done["program_updated"] is False
     assert no_change_done["response_content"] == "مفيش حاجة محتاجة تغيير."
 
-    stream = client.post("/chat/messages", headers=headers, json={"content": "ألغِ التخفيف"})
+    egyptian_no_change = client.post(
+        "/chat/messages", headers=headers, json={"content": "طبّق الديلود"}
+    )
+    egyptian_no_change_events = [
+        json.loads(line[6:])
+        for line in egyptian_no_change.text.splitlines()
+        if line.startswith("data: ")
+    ]
+    egyptian_no_change_done = next(
+        event for event in egyptian_no_change_events if event.get("done")
+    )
+    assert egyptian_no_change_done["program_updated"] is False
+    assert egyptian_no_change_done["response_content"] == "مفيش حاجة محتاجة تغيير."
+
+    stream = client.post("/chat/messages", headers=headers, json={"content": undo_command})
     assert stream.status_code == 200, stream.text
     events = [json.loads(line[6:]) for line in stream.text.splitlines() if line.startswith("data: ")]
     done = next(event for event in events if event.get("done"))
@@ -611,8 +630,18 @@ def test_assistant_deload_choice_is_one_workout_and_replay_safe(api, monkeypatch
     assert client.get("/workouts/prescription?day_order=1", headers=headers).json()["deload"]["state"] == "none"
 
 
-def test_apply_suggested_deload_adds_note_to_open_coach_alert(api, monkeypatch):
+@pytest.mark.parametrize(
+    ("apply_command", "reply_prefix"),
+    [
+        ("apply the deload", "I’ll apply the suggested deload for your next workout only."),
+        ("طبّق الديلود", "تمام، طبّقت تخفيف التدريب للحصة الجاية بس."),
+    ],
+)
+def test_apply_suggested_deload_adds_note_to_open_coach_alert(
+    api, monkeypatch, scripted_chat_model, apply_command, reply_prefix
+):
     client, db = api
+    monkeypatch.setattr(assistant_graph, "llm", scripted_chat_model)
     coach_response = client.post("/auth/register", json={"trainee_id": "deload-coach", "password": "correct-horse-1"})
     coach_headers = {"Authorization": f"Bearer {coach_response.json()['access_token']}"}
     issued = coach_service.issue_coach_invite(db, "deload-coach", actor="cli")
@@ -647,8 +676,14 @@ def test_apply_suggested_deload_adds_note_to_open_coach_alert(api, monkeypatch):
     unchanged_done = next(event for event in unchanged_events if event.get("done"))
     assert unchanged_done["program_updated"] is False
     assert "nothing to change" in unchanged_done["response_content"].lower()
-    stream = client.post("/chat/messages", headers=player_headers, json={"content": "apply the deload"})
+    stream = client.post(
+        "/chat/messages", headers=player_headers, json={"content": apply_command}
+    )
     assert stream.status_code == 200, stream.text
+    events = [json.loads(line[6:]) for line in stream.text.splitlines() if line.startswith("data: ")]
+    done = next(event for event in events if event.get("done"))
+    assert done["program_updated"] is True
+    assert done["response_content"].startswith(reply_prefix)
     refreshed = client.get("/workouts/prescription?day_order=1", headers=player_headers).json()
     assert refreshed["deload"]["state"] == "applied"
     assert all(target["effective_sets"] == 2 for target in refreshed["targets"])
@@ -657,6 +692,36 @@ def test_apply_suggested_deload_adds_note_to_open_coach_alert(api, monkeypatch):
     assert alerts.status_code == 200, alerts.text
     deload_alert = next(row for row in alerts.json()["alerts"] if row["kind"] == "deload_recommended")
     assert deload_alert["player_deload_choice"] == {"choice": "apply", "scope": "next_workout_only"}
+
+
+def test_negated_egyptian_deload_requests_leave_deload_unchanged(
+    api, monkeypatch, scripted_chat_model
+):
+    client, db = api
+    headers, _ = _prepare_player(client, db, "negated-deload-player")
+    _seed_acute_readiness_floor(db)
+    monkeypatch.setattr(assistant_graph, "llm", scripted_chat_model)
+    before = client.get("/workouts/prescription?day_order=1", headers=headers).json()
+    assert before["deload"]["state"] == "applied"
+
+    for content in ("مش عايز ألغي الديلود", "متشيلش الديلود"):
+        response = client.post("/chat/messages", headers=headers, json={"content": content})
+        assert response.status_code == 200, response.text
+        events = [
+            json.loads(line[6:])
+            for line in response.text.splitlines()
+            if line.startswith("data: ")
+        ]
+        done = next(event for event in events if event.get("done"))
+        assert done["program_updated"] is False
+        assert done["response_content"] == "مفيش حاجة محتاجة تغيير."
+        assert (
+            client.get("/workouts/prescription?day_order=1", headers=headers).json()["deload"]["state"]
+            == "applied"
+        )
+
+    assert db.ledger.get_deload_choice() is None
+
 
 def test_zero_kg_bodyweight_session_is_still_previous_performance(api):
     client, db = api
