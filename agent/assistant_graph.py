@@ -58,12 +58,13 @@ from agent.player_prompt import (
     PromptBudgetError,
     HOSTED_PROMPT_TOKEN_BUDGET as HOSTED_PROMPT_TOKEN_BUDGET,
     STATIC_SYSTEM_CORE as STATIC_SYSTEM_CORE,
-    TAIL_WINDOW_SIZE,
+    TAIL_WINDOW_SIZE as TAIL_WINDOW_SIZE,
     build_player_chat_prompt,
     get_message_text as _get_message_text,
     message_role as _message_role,
     prompt_budget as _prompt_budget,
     prompt_token_count as _prompt_token_count,
+    player_prompt_history_settings,
     valid_preferred_name as _valid_preferred_name,
 )
 from agent.telemetry_reconciler import (
@@ -673,7 +674,10 @@ def hydrate_context_node(state: AssistantState, config: dict[str, Any] | None = 
     memory = getter() if callable(getter) else {}
     name = _valid_preferred_name(memory.get("preferred_name")) if isinstance(memory, dict) else None
     telemetry = state.get("telemetry_context") or ledger.get_compact_telemetry()
-    recent = " ".join(_get_message_text(m) for m in state.get("messages", [])[-TAIL_WINDOW_SIZE:])
+    recent = " ".join(
+        _get_message_text(m)
+        for m in state.get("messages", [])[-player_prompt_history_settings().window_size :]
+    )
     needs_comparison = state.get("intent") == "exercise_history_fallback" or re.search(
         r"\b(?:session|workout|performance|compare|comparison|progress|sets?|reps?|rpe|load|heavier|improve)\b",
         recent,

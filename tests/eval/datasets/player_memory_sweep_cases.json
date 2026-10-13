@@ -1,0 +1,108 @@
+[
+  {
+    "id": "synthetic-memory-window-long-reply-en",
+    "kind": "synthetic_multi_turn",
+    "review_status": "not_required_english_fixture",
+    "telemetry": "No verified Training ledger fact answers the earlier conversation question.",
+    "history": [
+      {
+        "role": "user",
+        "content": "I'm choosing a starting load for the one-arm dumbbell row. I can use 18–26 kg per hand, and I want to keep my torso strict. Please choose a load and rep target, and tell me what would mean I should reduce it."
+      },
+      {
+        "role": "assistant",
+        "content": "For a one-arm dumbbell row, set up with your free hand supported and brace your trunk before each set. Keep your spine steady, let the working shoulder reach at the bottom without rounding, and pull your elbow toward your hip. Stop the rep when your upper arm reaches your torso rather than rotating to lift higher. Keep your wrist neutral and use the same range on every rep. Rest enough that your next set has the same control. Choose a weight that leaves a couple of clean reps in reserve; if your torso starts turning or your low back takes over, the load is too heavy. Track the load and reps so you can repeat the setup next session. I would begin at 22 kg per hand for 8 reps, using a 2-second lowering, and reduce the load if you cannot keep your torso still through all 8 reps."
+      },
+      {
+        "role": "user",
+        "content": "How should I set up for a goblet squat?"
+      },
+      {
+        "role": "assistant",
+        "content": "Hold the dumbbell close to your chest, brace, and squat through a comfortable range while keeping your whole foot planted."
+      },
+      {
+        "role": "user",
+        "content": "How long should I rest between working sets?"
+      },
+      {
+        "role": "assistant",
+        "content": "Rest about 2–3 minutes, then start the next set when you can keep your technique steady."
+      },
+      {
+        "role": "user",
+        "content": "Should I add weight every workout?"
+      },
+      {
+        "role": "assistant",
+        "content": "Add weight only after you can complete the planned reps with consistent range and control."
+      }
+    ],
+    "query": "What exact starting load and rep target did you recommend for my one-arm dumbbell row, and what would make me reduce the load?"
+  },
+  {
+    "id": "synthetic-memory-window-16-en",
+    "kind": "synthetic_multi_turn",
+    "review_status": "not_required_english_fixture",
+    "telemetry": "No verified Training ledger fact answers the earlier conversation question.",
+    "history": [
+      {
+        "role": "user",
+        "content": "For incline dumbbell press, I can use 16–22 kg per hand. Choose a starting load and rep target, and tell me what form issue means I should reduce it."
+      },
+      {
+        "role": "assistant",
+        "content": "For an incline dumbbell press, set the bench to a low incline and keep your head, shoulders, and hips supported. Plant your feet, brace before each rep, and lower the dumbbells under control until you reach a comfortable chest stretch. Keep your wrists stacked over your elbows, then press without bouncing or letting the weights drift together. Use a range of motion you can repeat cleanly, and rest enough to maintain it on the next set. Leave a couple of good reps in reserve while you learn the setup. If your shoulders roll forward or your lower back arches to finish a rep, the load is too heavy for the position. Keep notes on the load and completed reps so you can compare sessions. My starting recommendation is 18 kg per hand for 8 reps; reduce the weight if your shoulders roll forward or your lower back arches before all 8 reps are complete."
+      },
+      {
+        "role": "user",
+        "content": "How do I warm up before training?"
+      },
+      {
+        "role": "assistant",
+        "content": "Start with a few easy minutes of movement, then do lighter practice sets for your first exercise."
+      },
+      {
+        "role": "user",
+        "content": "Should I train to failure on every set?"
+      },
+      {
+        "role": "assistant",
+        "content": "No. Keep most working sets a few reps short of failure so technique and recovery stay consistent."
+      },
+      {
+        "role": "user",
+        "content": "How many sets should I do for an exercise?"
+      },
+      {
+        "role": "assistant",
+        "content": "Follow the sets in your current Training program and progress them gradually."
+      },
+      {
+        "role": "user",
+        "content": "What should I do if a machine is busy?"
+      },
+      {
+        "role": "assistant",
+        "content": "Use a compatible alternative that trains the same movement, or wait for the machine."
+      },
+      {
+        "role": "user",
+        "content": "How do I track progress between sessions?"
+      },
+      {
+        "role": "assistant",
+        "content": "Record your load, reps, and how consistently you completed the planned range of motion."
+      },
+      {
+        "role": "user",
+        "content": "Does soreness tell me whether a workout worked?"
+      },
+      {
+        "role": "assistant",
+        "content": "Soreness alone is not a reliable measure. Look at repeated performance and recovery instead."
+      }
+    ],
+    "query": "What exact starting load and reps did you recommend for my incline dumbbell press, and what form issue should make me reduce it?"
+  }
+]

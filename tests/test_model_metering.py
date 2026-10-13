@@ -797,6 +797,20 @@ def test_cached_input_tokens_are_persisted_and_use_cached_price(api):
     assert rows[0]["cost_usd"] == pytest.approx(0.0612)
 
 
+def test_scoped_usage_recorder_captures_current_context_and_restores_global_sink():
+    global_rows = []
+    scoped_rows = []
+    utils_metering.set_recorder(lambda **row: global_rows.append(row))
+
+    with utils_metering.scoped_usage_recorder(lambda **row: scoped_rows.append(row)):
+        utils_metering.record_usage("player-model", 100, 10, False)
+
+    utils_metering.record_usage("player-model", 200, 20, False)
+
+    assert [row["input_tokens"] for row in scoped_rows] == [100]
+    assert [row["input_tokens"] for row in global_rows] == [200]
+
+
 def test_cached_input_tokens_are_read_from_openai_compatible_prompt_details():
     from types import SimpleNamespace
 

@@ -83,29 +83,62 @@ def _invoke_assistant_graph(state: dict[str, Any]) -> dict[str, Any]:
         db.catalog_conn.close()
 
 
+def _evaluation_history_messages(history: list[dict[str, Any]]) -> list[Any]:
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    messages = []
+    for message in history:
+        if not isinstance(message, dict) or message.get("role") not in {"user", "assistant"}:
+            raise ValueError("Evaluation history messages need a user or assistant role.")
+        content = message.get("content")
+        if not isinstance(content, str):
+            raise ValueError("Evaluation history message content must be text.")
+        message_type = HumanMessage if message["role"] == "user" else AIMessage
+        messages.append(message_type(content=content))
+    return messages
+
+
 def _generate_reply(case: dict[str, Any]) -> tuple[str, float]:
-    from langchain_core.messages import HumanMessage
     from utils.text_scrubber import scrub_coach_output
 
-    state = {
-        "messages": [HumanMessage(content=case["query"])],
-        "trainee_id": "eval_user",
-        "coach_tone": "Direct, grounded, and pragmatic",
-        "custom_instructions": "",
-        "telemetry_context": case.get("telemetry", ""),
-    }
+    state = _evaluation_case_state(case)
     started = time.perf_counter()
     graph_output = _invoke_assistant_graph(state)
     reply = scrub_coach_output(graph_output.get("response_content", ""))
     return reply, time.perf_counter() - started
 
 
+def _evaluation_case_state(case: dict[str, Any]) -> dict[str, Any]:
+    from langchain_core.messages import HumanMessage
+
+    history = case.get("history", [])
+    if not isinstance(history, list):
+        raise ValueError("Evaluation history must be a list of user/assistant messages.")
+    return {
+        "messages": [
+            *_evaluation_history_messages(history),
+            HumanMessage(content=case["query"]),
+        ],
+        "trainee_id": "eval_user",
+        "coach_tone": "Direct, grounded, and pragmatic",
+        "custom_instructions": "",
+        "telemetry_context": case.get("telemetry", ""),
+    }
+
+
 def _judge_messages(case: dict[str, Any], reply: str) -> list[Any]:
     from langchain_core.messages import HumanMessage, SystemMessage
     from tests.eval.rubrics import COACHING_QA_RUBRIC
 
+    history = case.get("history", [])
+    history_context = ""
+    if history:
+        history_context = "[EARLIER CONVERSATION]\n" + "\n".join(
+            f"[{message['role'].upper()}] {message['content']}" for message in history
+        ) + "\n\n"
     prompt = (
         f"[TRAINEE CONTEXT]\n{case.get('telemetry', 'None')}\n\n"
+        f"{history_context}"
         f"[USER QUERY]\n{case['query']}\n\n[COACH RESPONSE]\n{reply}"
     )
     return [SystemMessage(content=COACHING_QA_RUBRIC), HumanMessage(content=prompt)]

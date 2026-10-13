@@ -54,6 +54,9 @@ class UsageContext:
 _usage_context: contextvars.ContextVar[UsageContext | None] = contextvars.ContextVar(
     "mayos_usage_context", default=None
 )
+_scoped_recorder: contextvars.ContextVar[Callable[..., Any] | None] = contextvars.ContextVar(
+    "mayos_scoped_usage_recorder", default=None
+)
 
 
 def current_usage_context() -> UsageContext:
@@ -152,6 +155,16 @@ def set_recorder(recorder: Callable[..., Any] | None) -> None:
     _recorder = recorder
 
 
+@contextmanager
+def scoped_usage_recorder(recorder: Callable[..., Any]) -> Iterator[None]:
+    """Temporarily directs current-context usage records to ``recorder``."""
+    token = _scoped_recorder.set(recorder)
+    try:
+        yield
+    finally:
+        _scoped_recorder.reset(token)
+
+
 def _no_op_recorder(**kwargs: Any) -> None:
     global _no_op_logged
     if not _no_op_logged:
@@ -172,7 +185,9 @@ def record_usage(
     """Persists one metered call; never raises (metering must not break inference)."""
     try:
         active = context or current_usage_context()
-        (_recorder or _no_op_recorder)(
+        scoped_recorder = _scoped_recorder.get()
+        recorder = scoped_recorder if scoped_recorder is not None else _recorder or _no_op_recorder
+        recorder(
             store=active.store,
             account_id=active.account_id,
             role=active.role,

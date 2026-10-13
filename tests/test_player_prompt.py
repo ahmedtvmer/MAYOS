@@ -12,6 +12,7 @@ from agent.player_prompt import (
     STATIC_SYSTEM_CORE,
     build_player_chat_prompt,
     message_role,
+    override_player_prompt_history,
     prompt_token_count,
     script_neutral_prompt_token_count,
 )
@@ -252,6 +253,33 @@ def test_earlier_assistant_replies_are_truncated_to_500_characters():
     )
 
     assert payload[2].content == "A" * 500
+
+
+def test_prompt_history_defaults_and_scoped_window_and_truncation_overrides():
+    long_reply = "Earlier answer " + "x" * 600
+    state = {
+        "messages": [
+            HumanMessage(content="Outside the larger window"),
+            AIMessage(content=long_reply),
+            *[HumanMessage(content=f"Later message {index}") for index in range(9)],
+        ]
+    }
+    default_prompt = build_player_chat_prompt(state, prompt_budget=lambda: 100_000)
+    default_text = "\n".join(message.content for message in default_prompt)
+    assert "Earlier answer" not in default_text
+    assert "Later message 2" not in default_text
+    assert "Later message 3" in default_text
+
+    with override_player_prompt_history(
+        window_size=10,
+        assistant_reply_max_chars=None,
+    ):
+        prompt = build_player_chat_prompt(state, prompt_budget=lambda: 100_000)
+        prompt_text = "\n".join(message.content for message in prompt)
+        assert long_reply in prompt_text
+        assert "Outside the larger window" not in prompt_text
+
+    assert build_player_chat_prompt(state, prompt_budget=lambda: 100_000) == default_prompt
 
 
 def test_eval_qa_payloads_match_the_offline_pre_refactor_capture(

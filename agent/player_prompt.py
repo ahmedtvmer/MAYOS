@@ -1,7 +1,10 @@
 """Player chat prompt text, layout, and history budget."""
 
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -17,6 +20,59 @@ from core.reply_language import (
 from utils.preferred_name import is_valid_preferred_name
 
 TAIL_WINDOW_SIZE = 6
+ASSISTANT_HISTORY_REPLY_MAX_CHARS = 500
+
+
+@dataclass(frozen=True)
+class PlayerPromptHistorySettings:
+    """History limits applied when assembling the player's chat prompt."""
+
+    window_size: int = TAIL_WINDOW_SIZE
+    assistant_reply_max_chars: int | None = ASSISTANT_HISTORY_REPLY_MAX_CHARS
+
+
+_DEFAULT_HISTORY_SETTINGS = PlayerPromptHistorySettings()
+_HISTORY_SETTINGS: ContextVar[PlayerPromptHistorySettings] = ContextVar(
+    "player_prompt_history_settings", default=_DEFAULT_HISTORY_SETTINGS
+)
+_KEEP_CURRENT = object()
+
+
+def player_prompt_history_settings() -> PlayerPromptHistorySettings:
+    """Returns the active chat-history limits, normally the production defaults."""
+    return _HISTORY_SETTINGS.get()
+
+
+@contextmanager
+def override_player_prompt_history(
+    *,
+    window_size: int | None = None,
+    assistant_reply_max_chars: int | None | object = _KEEP_CURRENT,
+) -> Iterator[None]:
+    """Temporarily overrides chat-history limits for a scoped measurement."""
+    current = player_prompt_history_settings()
+    settings = _resolve_history_settings(current, window_size, assistant_reply_max_chars)
+    token = _HISTORY_SETTINGS.set(settings)
+    try:
+        yield
+    finally:
+        _HISTORY_SETTINGS.reset(token)
+
+
+def _resolve_history_settings(
+    current: PlayerPromptHistorySettings,
+    window_size: int | None,
+    assistant_reply_max_chars: int | None | object,
+) -> PlayerPromptHistorySettings:
+    resolved_window_size = current.window_size if window_size is None else window_size
+    if isinstance(resolved_window_size, bool) or not isinstance(resolved_window_size, int) or resolved_window_size < 1:
+        raise ValueError("window_size must be a positive integer")
+    reply_limit = current.assistant_reply_max_chars if assistant_reply_max_chars is _KEEP_CURRENT else assistant_reply_max_chars
+    if reply_limit is not None and (
+        isinstance(reply_limit, bool) or not isinstance(reply_limit, int) or reply_limit < 1
+    ):
+        raise ValueError("assistant_reply_max_chars must be a positive integer or None")
+    return PlayerPromptHistorySettings(resolved_window_size, reply_limit)
 
 INPUT_TOO_LONG_RESPONSE = "Your latest message is too long for my context window. Please shorten it and send it again."
 CONTEXT_TOO_LONG_RESPONSE = "The required context is too large to process safely. Please shorten your custom instructions or request."
@@ -177,6 +233,7 @@ def build_player_chat_prompt(
 
 
 def _history_tail(state: dict[str, Any]) -> list[BaseMessage]:
+    settings = player_prompt_history_settings()
     messages = [
         message
         for message in state.get("messages", [])
@@ -184,10 +241,13 @@ def _history_tail(state: dict[str, Any]) -> list[BaseMessage]:
         and not _is_session_pointer(message)
     ]
     tail = []
-    for message in messages[-TAIL_WINDOW_SIZE:]:
+    for message in messages[-settings.window_size :]:
         role = message_role(message)
         content = message.get("content", "") if isinstance(message, dict) else getattr(message, "content", str(message))
-        tail.append(AIMessage(content=str(content)[:500]) if role == "assistant" else HumanMessage(content=str(content)))
+        text = str(content)
+        if role == "assistant" and settings.assistant_reply_max_chars is not None:
+            text = text[: settings.assistant_reply_max_chars]
+        tail.append(AIMessage(content=text) if role == "assistant" else HumanMessage(content=text))
     return tail
 
 
