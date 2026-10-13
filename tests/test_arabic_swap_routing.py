@@ -455,3 +455,63 @@ def test_arabic_clinical_and_franco_messages_are_intercepted_before_swap_routing
     assert state["intent"] == "clinical_intercept"
     assert state["intent_metadata"].get("franco", False) is expected_franco
     assert response
+
+
+@pytest.mark.parametrize(
+    ("message", "classification"),
+    [
+        (
+            "عملت كام تكرار في آخر تمرين للقرفصاء؟",
+            {"intent": "exercise_history", "history_exercise": "Back Squat (Barbell)"},
+        ),
+        (
+            "آخر مرة لعبت ضغط صدر بالبار، رفعت كام؟",
+            {"intent": "exercise_history", "history_exercise": "Bench Press (Barbell)"},
+        ),
+        (
+            "ما الوزن الذي سجلته في تمرين squat خلال آخر جلسة؟",
+            {"intent": "exercise_history", "history_exercise": "Squat"},
+        ),
+    ],
+)
+def test_live_arabic_history_targets_remain_history_routes(
+    fresh_store, monkeypatch, message, classification
+):
+    program = _seed_program(fresh_store)
+    program_exercise_ids = {
+        str(exercise.exercise_id)
+        for day in program.days
+        for exercise in day.exercises
+    }
+    model = ScriptedChatModel([classification, "البيانات المسجلة للتمرين موجودة في السياق."])
+    monkeypatch.setattr("agent.assistant_graph.llm", model)
+    state = _turn(message)
+
+    response = "".join(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
+
+    assert state["intent"] == "exercise_history"
+    assert state["intent_metadata"]["arabic_history"] is True
+    assert state["intent_metadata"]["history_exercise_id"] in program_exercise_ids
+    assert state["intent_metadata"]["history_exercise_name"]
+    assert state["program_updated"] is False
+    assert response == "البيانات المسجلة للتمرين موجودة في السياق."
+
+
+def test_arabic_train_or_rest_advice_overrides_misclassified_history(
+    fresh_store, monkeypatch
+):
+    _seed_program(fresh_store)
+    model = ScriptedChatModel(
+        [
+            {"intent": "exercise_history", "history_whole_session": True},
+            COACHING_REPLY,
+        ]
+    )
+    monkeypatch.setattr("agent.assistant_graph.llm", model)
+    state = _turn("أتمرن النهارده ولا أريح؟ رجلي مرهقة من تمرين امبارح.")
+
+    response = "".join(stream_assistant_turn(state, ledger=fresh_store.ledger, store=fresh_store))
+
+    assert state["intent"] == "coaching_qa"
+    assert state["program_updated"] is False
+    assert response == COACHING_REPLY

@@ -909,6 +909,7 @@ def test_arabic_program_change_runs_through_http_chat_with_validated_split(api, 
         (4, "ظبّطلي البرنامج على 4 أيام.", "Full Body 4-Day", "4 أيام"),
         (4, "ممكن تغيّرلي البرنامج لـ 4 أيام.", "Full Body 4-Day", "4 أيام"),
         (4, "غيّر البرنامج لـ 4 أيام.", "Full Body 4-Day", "4 أيام"),
+        (4, "عايز أغيّر الـ program لـ 4 days per week.", "Full Body 4-Day", "4 أيام"),
         (1, "ظبطلي البرنامج على يوم واحد.", "Consolidated Full Body", "يوم واحد"),
     ],
 )
@@ -947,6 +948,8 @@ def test_arabic_frequency_change_runs_through_http_chat(
         "ينفع تغير البرنامج لـ 4 أيام؟",
         "إزاي أغير البرنامج ل 3 أيام",
         "ممكن أغير البرنامج لـ 4 أيام",
+        "مش عايز أغير البرنامج لـ 4 أيام",
+        "كنت عايز أغير البرنامج لـ 4 أيام بس مش متأكد",
     ],
 )
 def test_arabic_program_change_questions_do_not_mutate_through_http_chat(
@@ -977,8 +980,9 @@ def test_arabic_program_change_questions_do_not_mutate_through_http_chat(
     assert _done_content(body) == "خليني أوضحلك إزاي تقدر تعدل برنامجك."
 
 
+@pytest.mark.parametrize("message", ["غيّر البرنامج", "عايز أغير البرنامج"])
 def test_arabic_program_change_without_target_clarifies_without_mutation(
-    api, monkeypatch
+    api, monkeypatch, message
 ):
     client, db = api
     player = "arabic-program-change-needs-target"
@@ -991,7 +995,7 @@ def test_arabic_program_change_without_target_clarifies_without_mutation(
     monkeypatch.setattr(assistant_graph, "llm", model)
 
     with client.stream(
-        "POST", "/chat/messages", headers=headers, json={"content": "غيّر البرنامج"}
+        "POST", "/chat/messages", headers=headers, json={"content": message}
     ) as response:
         body = response.read().decode("utf-8")
         assert response.status_code == 200

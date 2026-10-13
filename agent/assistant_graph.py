@@ -296,6 +296,30 @@ RE_ARABIC_PROGRAM_COMMAND = re.compile(
     r".{0,50}(?<!\w)(?:البرنامج|برنامج|التقسيمة|تقسيمة|الروتين|روتين|program|routine|split)(?!\w)",
     re.IGNORECASE,
 )
+# Past-tense wishes and hedges («كنت عايز أغير… بس مش متأكد») are not requests.
+RE_ARABIC_HEDGED_PROGRAM_CHANGE = re.compile(
+    r"(?<!\w)(?:كنت|كان|كنا|يمكن|مش\s+متأكد|مش\s+متأكدة|مش\s+عارف|مش\s+عارفة|متردد|مترددة)(?!\w)"
+)
+RE_ARABIC_WANTED_PROGRAM_CHANGE = re.compile(
+    r"(?<!\w)(?:عايز|عاوز|عايزة|عاوزة|محتاج|محتاجة)\s+"
+    r"(?:أ|ا)?(?:ظبط|غير|عدل|بدل|خلي|عمل|زود|قلل)(?:لي)?(?!\w)"
+    r".{0,50}(?<!\w)(?:البرنامج|برنامج|التقسيمة|تقسيمة|الروتين|روتين|program|routine|split)(?!\w)",
+    re.IGNORECASE,
+)
+RE_ARABIC_NEGATED_PROGRAM_CHANGE = re.compile(
+    r"(?<!\w)(?:مش|ما|لا)\s+(?:عايز|عاوز|عايزة|عاوزة|محتاج|محتاجة)\s+"
+    r"(?:أ|ا)?(?:ظبط|غير|عدل|بدل|خلي|عمل|زود|قلل)(?:لي)?(?!\w)",
+    re.IGNORECASE,
+)
+RE_ARABIC_TRAIN_REST_QUESTION = re.compile(
+    r"(?<!\w)(?:أتمرن|اتمرن|أتدرب|اتدرب|ألعب|العب|أروح|اروح)"
+    r".{0,40}(?<!\w)(?:ولا|أم)\s*"
+    r"(?<!\w)(?:أريح|اريح|أرتاح|ارتاح|أستريح|استريح)(?!\w)|"
+    r"(?<!\w)(?:أريح|اريح|أرتاح|ارتاح|أستريح|استريح)"
+    r".{0,40}(?<!\w)(?:ولا|أم)\s*"
+    r"(?<!\w)(?:أتمرن|اتمرن|أتدرب|اتدرب|ألعب|العب|أروح|اروح)(?!\w)",
+    re.IGNORECASE,
+)
 RE_ARABIC_FREQUENCY_MENTION = re.compile(
     r"(?<!\w)(?P<number>[0-9٠-٩]+|واحد|واحدة|اتنين|اثنين|يومين|تلاتة|ثلاثة|"
     r"أربع|اربع|أربعة|اربعة|أربعين|خمسة|خمس|ستة|ست|سبعة|سبع)"
@@ -440,10 +464,15 @@ ARABIC_ROUTER_PROMPT = (
     "Classify this Arabic or Arabic-dominant player message as exactly one of: "
     "exercise_substitution, composite_intent, program_change, exercise_history, "
     "coaching_qa, other. Use program_change for a direct request to change the Training "
-    "program, including its split family or weekly frequency. Set target_split_type to "
+    "program, including its split family or weekly frequency. Affirmative Egyptian "
+    "desire forms such as عايز/عاوز/محتاج أغيّر are program_change requests even "
+    "when their target is missing; "
+    "questions or negated requests are not. Set target_split_type to "
     "one of the allowed split family keys listed below, or null if no split was named; "
     "set target_frequency to the requested number of days, or null if none was named. "
-    "Use exercise_history for questions about past workouts or exercises. For a question "
+    "Use exercise_history only to retrieve logged figures or summarize past workouts. "
+    "Questions asking what to do, including whether to train or rest because of fatigue, "
+    "are coaching_qa even if they mention yesterday's workout. For a question "
     "about one exercise, set history_exercise to its English Exercise library-style name. "
     "For a whole-session summary, set history_whole_session=true. The server validates "
     "these proposals against the player's Training program and Exercise library. Use "
@@ -994,10 +1023,16 @@ def _arabic_program_change_is_directive(query: str) -> bool:
         normalized,
     ):
         return False
-    if re.search(r"(?:مش|ما|لا)\s+(?:تغير|تغيّر|تظبط|تظبّط|تعدل|تعدّل)", normalized):
+    if RE_ARABIC_NEGATED_PROGRAM_CHANGE.search(normalized) or re.search(
+        r"(?<!\w)(?:مش|ما|لا)\s+(?:تغير|تظبط|تعدل|تبدل|تخلي|تعمل|تزود|تقلل)(?:لي)?(?!\w)",
+        normalized,
+    ):
+        return False
+    if RE_ARABIC_HEDGED_PROGRAM_CHANGE.search(normalized):
         return False
     return _authorized_action(query, "program_mutation") or bool(
         RE_ARABIC_PROGRAM_COMMAND.search(normalized)
+        or RE_ARABIC_WANTED_PROGRAM_CHANGE.search(normalized)
     )
 
 
@@ -1349,6 +1384,9 @@ def _classify_arabic_intent(query: str, config: dict[str, Any] | None) -> dict[s
     if classification.intent == "program_change":
         return _classify_arabic_program_change(query, classification, ledger)
     if classification.intent == "exercise_history":
+        normalized = RE_ARABIC_DIACRITICS.sub("", query)
+        if RE_ARABIC_TRAIN_REST_QUESTION.search(normalized):
+            return {"intent": "coaching_qa", "intent_metadata": {}}
         return _classify_arabic_history(classification, program, store)
     return {"intent": "coaching_qa", "intent_metadata": {}}
 
@@ -3207,9 +3245,12 @@ def stream_assistant_turn(
         if intent == "exercise_history":
             result = exercise_history_node(state, config)
             if result.get("intent") == "exercise_history_fallback":
-                state.update(result)
+                arabic_history = (state.get("intent_metadata") or {}).get("arabic_history") is True
+                state.update({key: value for key, value in result.items() if key != "intent"})
                 intent = "exercise_history_fallback"
-                state["intent"] = intent
+                # Arabic history still uses generated answers; fallback is only the answer path.
+                if not arabic_history:
+                    state["intent"] = intent
                 result = None
         if result is not None:
             telemetry = {}
