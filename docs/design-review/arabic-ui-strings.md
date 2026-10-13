@@ -1393,3 +1393,10 @@ review before release.
 | Enter a custom cardio note. | أدخل ملاحظة تمارين اللياقة. |
 | Steady cardio: {minutes} min at an easy, conversational pace. | تمارين لياقة مستمرة: {minutes} دقيقة بوتيرة مريحة تسمح بالمحادثة. |
 | Intervals: {minutes} min, 30 s hard / 90 s easy. | تمارين متقطعة: {minutes} دقيقة؛ 30 ثانية بشدة عالية / 90 ثانية بوتيرة سهلة. |
+## Checkpoint review wording (#403; pending owner review)
+
+Draft sample in simple standard Arabic. It addresses the Player directly, keeps each rating part tied to its own facts, uses the glossary workout term, and writes the unit as `kg`. The owner has not reviewed this wording.
+
+| English facts | Draft Arabic review |
+| --- | --- |
+| 10 workouts; target met in 4 of 5 weeks with enough data; 2 personal records; 1 regression; working volume 4200 kg in the first half and 4500 kg in the second half. | أكملت 10 حصص تدريبية خلال هذه الفترة. حققت هدف التدريب في 4 من أصل 5 أسابيع توفرت عنها بيانات كافية. سجلت رقمين قياسيين شخصيين، مع تراجع في تمرين واحد. بلغ حجم العمل المسجل لديك 4200 kg في النصف الأول و4500 kg في النصف الثاني. |

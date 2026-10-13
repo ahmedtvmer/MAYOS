@@ -9,7 +9,13 @@ import pytest
 from agent.prompts import ASSISTANT_STYLE_DESCRIPTIONS
 from service import checkpoint_review_ai
 from tests.eval import run_checkpoint_review_evaluation as evaluation
-from tests.eval.checkpoint_review_rubric import check_no_invented_numbers, evaluate_case
+from tests.eval.checkpoint_review_rubric import (
+    check_arabic_glossary,
+    check_no_invented_numbers,
+    check_rating_part_attribution,
+    check_second_person_address,
+    evaluate_case,
+)
 
 
 def test_dataset_covers_both_languages_and_required_period_shapes():
@@ -24,6 +30,14 @@ def test_dataset_covers_both_languages_and_required_period_shapes():
     assert {case["coach_tone"] for case in cases} == {
         "direct", "encouraging", "scientific", "tough_love", "concise",
     }
+    scored_styles = {
+        case["coach_tone"]
+        for case in cases
+        if case.get("expect", {}).get("style_terms_any")
+        or case.get("expect", {}).get("reasoning_terms_any")
+        or case.get("expect", {}).get("max_words")
+    }
+    assert {"encouraging", "scientific", "concise"} <= scored_styles
     assert {case["language"] for case in cases if "999" in case["custom_instructions"]} == {"en", "ar"}
 
 
@@ -73,6 +87,60 @@ def test_rubric_rejects_invented_numbers_wrong_language_and_medical_advice():
     assert result["checks"]["sentence_count"]["passed"] is True
 
 
+def test_rubric_rejects_cross_part_claims():
+    rating = [
+        {"part": "Consistency", "label": "Steady"},
+        {"part": "Progression", "label": "Strong"},
+        {"part": "Volume trend", "label": "Holding"},
+    ]
+
+    wrong_part = check_rating_part_attribution(
+        "Your working volume was 5000 kg in the first half and 5200 kg in the second half, "
+        "which shows strong consistency.",
+        rating,
+    )
+    neutral_workout_count_used_as_rating = check_rating_part_attribution(
+        "You completed 8 workouts, which shows strong consistency.", rating
+    )
+    correct = check_rating_part_attribution(
+        "Consistency met its target in 4 of 5 weeks. Progression had 3 personal records. "
+        "Your working volume measured 5000 kg in the first half and 5200 kg in the second half.",
+        rating,
+    )
+
+    assert wrong_part["passed"] is False
+    assert neutral_workout_count_used_as_rating["passed"] is False
+    assert correct["passed"] is True
+
+
+def test_holding_volume_rating_rejects_a_claim_of_increase():
+    rating = [{"part": "Volume trend", "label": "Holding"}]
+    answer = "Your volume increased from 5000 kg to 5200 kg."
+
+    assert check_rating_part_attribution(answer, rating)["passed"] is False
+
+
+@pytest.mark.parametrize(
+    ("answer", "language", "expected"),
+    [
+        ("Your consistency stayed steady. You set a record.", "en", True),
+        ("You trained consistently. The player showed progress.", "en", False),
+        ("حققت هدف التدريب في 4 من 5 أسابيع. سجلت رقمًا قياسيًا.", "ar", True),
+        ("حققت هدف التدريب. أظهر اللاعب تحسنًا.", "ar", False),
+    ],
+)
+def test_second_person_rubric(answer, language, expected):
+    assert check_second_person_address(answer, language)["passed"] is expected
+
+
+def test_arabic_glossary_rubric_requires_workout_term_and_one_kg_spelling():
+    facts = {"workouts_in_period": 9}
+
+    assert check_arabic_glossary("أكملت 9 تمارين. سجلت رقمًا قياسيًا.", facts)["passed"] is False
+    assert check_arabic_glossary("أكملت 9 حصص تدريبية. ارتفع الحجم إلى 300 kg.", facts)["passed"] is True
+    assert check_arabic_glossary("أكملت 9 حصص تدريبية. ارتفع الحجم إلى 300 كغ.", facts)["passed"] is False
+
+
 def test_number_rubric_uses_only_facts_and_recognizes_arabic_digits():
     facts = checkpoint_review_ai.render_review(
         {"workouts_in_period": 10, "volume_first_half": 4200}, [], "ar"
@@ -83,16 +151,18 @@ def test_number_rubric_uses_only_facts_and_recognizes_arabic_digits():
     assert check_no_invented_numbers("وصل الحجم إلى ٤٢٠١ كجم.", facts)["passed"] is False
 
 
-@pytest.mark.parametrize(("expect", "answer"), [
-    ({"max_words": 4}, "Your consistency was steady. Your volume stayed steady too."),
-    ({"reasoning_terms_any": ["evidence", "because"]}, "Consistency is strong. Progress is strong."),
+@pytest.mark.parametrize(("expect", "answer", "expected"), [
+    ({"max_words": 4}, "Your consistency was steady. Your volume stayed steady too.", False),
+    ({"reasoning_terms_any": ["evidence", "because"]}, "Consistency is strong. Progress is strong.", False),
+    ({"style_terms_any": ["keep going", "well done"]}, "Your consistency was steady. You set one record.", False),
+    ({"style_terms_any": ["well done"]}, "Well done. Your recorded consistency improved.", True),
 ])
-def test_style_rubric_refuses_verbosity_or_missing_requested_reasoning(expect, answer):
+def test_style_rubric_checks_requested_tone_and_reasoning(expect, answer, expected):
     case = {"id": "style_mismatch", "language": "en", "expect": {
         "fact_terms_any": ["consistency"], **expect,
     }}
     result = evaluate_case(case, "", answer)
-    assert result["checks"]["style_wording"]["passed"] is False
+    assert result["checks"]["style_wording"]["passed"] is expected
 
 
 def test_mock_runner_writes_a_report_that_the_live_gate_refuses(tmp_path):

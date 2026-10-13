@@ -1,4 +1,4 @@
-"""Checkpoint review evaluation and live enablement report (issue #222)."""
+"""Checkpoint review evaluation and live enablement report (issue #403)."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ DEFAULT_DATASET = Path(__file__).resolve().parent / "datasets" / "checkpoint_rev
 PRIVACY_SUITE = "tests/test_checkpoint_review_ai_privacy.py"
 RUNNER_CONFIG = evaluation_runner.EvaluationRunnerConfig(
     title="checkpoint review",
-    description="Checkpoint review evaluation + enablement report (issue #222)",
+    description="Checkpoint review evaluation + enablement report (issue #403)",
     suite_name="checkpoint_review",
     dataset_path=DEFAULT_DATASET,
     dataset_label="checkpoint review",
