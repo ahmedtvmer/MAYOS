@@ -7,9 +7,10 @@ from typing import Literal
 
 PLAYER_CHAT_REPLY_MAX_OUTPUT_TOKENS = 200
 INTENT_ROUTING_MAX_OUTPUT_TOKENS = 112
-SUBSTITUTION_RESOLUTION_MAX_OUTPUT_TOKENS = 56
+# The correctly capped #199 gate truncated all five cases at 56; retain the former ceiling.
+SUBSTITUTION_RESOLUTION_MAX_OUTPUT_TOKENS = 200
 ABBREVIATION_EXPANSION_MAX_OUTPUT_TOKENS = 48
-# Retained from #186 because a full custom week needs more than a short reply.
+# #194 peaked at 1019 tokens; retain 25% headroom now that #406 enforces the cap.
 DYNAMIC_SPLIT_PLAN_MAX_OUTPUT_TOKENS = 1280
 CHECKPOINT_REVIEW_MAX_OUTPUT_TOKENS = 200
 

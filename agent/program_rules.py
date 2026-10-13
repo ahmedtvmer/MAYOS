@@ -301,11 +301,26 @@ def _sanitize_llm_plan(plan: DynamicSplitPlan, frequency: int, gender: str) -> D
     return plan.model_copy(update={"days": sanitized_days})
 
 
+def _parsed_dynamic_split_plan(structured_response: Any) -> DynamicSplitPlan | None:
+    if not isinstance(structured_response, Mapping):
+        return None
+    raw_message = structured_response.get("raw")
+    raw_metadata = getattr(raw_message, "response_metadata", None) or {}
+    finish_reason = raw_metadata.get("finish_reason") or raw_metadata.get("stop_reason")
+    if (
+        finish_reason in {"length", "max_tokens"}
+        or structured_response.get("parsing_error") is not None
+    ):
+        return None
+    parsed_plan = structured_response.get("parsed")
+    return parsed_plan if isinstance(parsed_plan, DynamicSplitPlan) else None
+
+
 def resolve_split(
     frequency: int,
     preference: str | None = None,
     gender: str = "male",
-    inference_call: Callable[..., DynamicSplitPlan] | None = None,
+    inference_call: Callable[..., Any] | None = None,
 ) -> DynamicSplitPlan:
     clamped_freq = min(max(int(frequency), 1), 5)
     if not preference or preference.strip().lower() in ["standard", "default", "none", "balanced"]:
@@ -320,8 +335,10 @@ def resolve_split(
         # stay deterministic and fall back to the frequency default rather than the LLM.
         return get_default_split(clamped_freq, gender=gender)
 
-    structured_llm = llm.with_structured_output(DynamicSplitPlan).bind(
-        max_completion_tokens=player_output_budgets.player_output_budget("dynamic_split_plan")
+    structured_llm = llm.with_structured_output(
+        DynamicSplitPlan,
+        include_raw=True,
+        max_completion_tokens=player_output_budgets.player_output_budget("dynamic_split_plan"),
     )
     gender_context = (
         "female trainee (prioritize glutes and lower body; still include direct arm and forearm work)"
@@ -335,9 +352,12 @@ def resolve_split(
         ),
     ]
     if inference_call is None:
-        plan: DynamicSplitPlan = structured_llm.invoke(prompt)
+        response = structured_llm.invoke(prompt)
     else:
-        plan = inference_call(structured_llm.invoke, prompt)
+        response = inference_call(structured_llm.invoke, prompt)
+    plan = _parsed_dynamic_split_plan(response)
+    if plan is None:
+        return get_default_split(clamped_freq, gender=gender)
     if len(plan.days) > clamped_freq:
         plan.days = plan.days[:clamped_freq]
     return _sanitize_llm_plan(plan, clamped_freq, gender)

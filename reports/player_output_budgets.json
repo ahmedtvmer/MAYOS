@@ -340,8 +340,9 @@
       "configured_budget_tokens": 56,
       "recommended_p95_plus_margin_tokens": 56,
       "margin_tokens": 16,
-      "budget_rule": "p95 + margin, rounded up to 8 tokens.",
+      "budget_rule": "Historical #194 p95 + margin choice; superseded after all five correctly capped #199 substitution cases truncated at 56 tokens. Issue #406 restores the previous 200-token ceiling pending a full live rerun.",
       "measurement_status": null,
+      "superseded_by_issue": 406,
       "samples": [
         {
           "language": "en",
@@ -546,7 +547,7 @@
       "configured_budget_tokens": 1280,
       "recommended_p95_plus_margin_tokens": 1280,
       "margin_tokens": 255,
-      "budget_rule": "Conservative given reduced n; applied DynamicSplitPlan's p95 margin rule.",
+      "budget_rule": "#406 retains 1280 tokens from the #194 maximum of 1019 plus 25% headroom because the structured-output call now enforces its cap.",
       "measurement_status": null,
       "samples": [
         {
@@ -626,7 +627,8 @@
           "finish_reason": "stop",
           "input": "أقدر أروح الجيم ست أيام، بس عايز يوم خفيف ومن غير رفعة ميتة تقيلة."
         }
-      ]
+      ],
+      "superseded_by_issue": 406
     },
     "checkpoint_review": {
       "n": 20,
@@ -1385,5 +1387,6 @@
     "abbreviation_expansion",
     "dynamic_split_plan",
     "checkpoint_review"
-  ]
+  ],
+  "snapshot_note": "Historical broad #194 measurement. Issue #406 re-evaluates its DynamicSplitPlan maximum together with seven targeted samples and retains the 1280-token cap with corrected cap forwarding; substitution_resolution is restored to the previous 200-token ceiling after the correctly capped #199 suite truncated all five cases at 56. See reports/issue_406_split_plan_measurement.json."
 }

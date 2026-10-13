@@ -146,8 +146,13 @@ def _call_structured(model: Any, schema: type[BaseModel], prompt: Any, policy: A
 
 
 def _invoke_structured(model: Any, schema: type[BaseModel], prompt: Any, budget: int) -> StructuredResponse:
-    structured = model.with_structured_output(schema, include_raw=True, method="function_calling")
-    response = structured.bind(max_completion_tokens=budget).invoke(prompt)
+    structured = model.with_structured_output(
+        schema,
+        include_raw=True,
+        method="function_calling",
+        max_completion_tokens=budget,
+    )
+    response = structured.invoke(prompt)
     finish_reason = _raw_finish_reason(response.get("raw"))
     if finish_reason == "length":
         return StructuredResponse(None, finish_reason, None, 0)
@@ -190,12 +195,16 @@ def _model_split_plan(
     from agent.ProgramState import DynamicSplitPlan
     from utils.player_output_budgets import player_output_budget
 
-    def invoke_split(_invoke: Any, prompt: Any) -> DynamicSplitPlan:
+    def invoke_split(_invoke: Any, prompt: Any) -> dict[str, Any]:
         call = _call_structured(model, DynamicSplitPlan, prompt, policy, player_output_budget("dynamic_split_plan"))
         capture["call"] = call
-        if call.parsed is None:
-            raise ValueError(call.error or "truncated: finish_reason=length")
-        return deepcopy(call.parsed)
+        from langchain_core.messages import AIMessage
+
+        return {
+            "raw": AIMessage(content="", response_metadata={"finish_reason": call.finish_reason}),
+            "parsed": deepcopy(call.parsed),
+            "parsing_error": ValueError(call.error) if call.error else None,
+        }
 
     resolved = resolve_split(case["frequency"], case["request"], case["gender"], inference_call=invoke_split)
     if "call" not in capture:

@@ -144,8 +144,9 @@ def test_structured_output_truncation_fails_the_case_and_ten_case_bar():
     from agent.ProgramState import DynamicSplitPlan
 
     report = run_evaluation._hermetic_report()
+    model = LengthFinishedModel()
     call = structured_output._call_structured(
-        LengthFinishedModel(), DynamicSplitPlan, [], RetryPolicy(max_attempts=1), 1200
+        model, DynamicSplitPlan, [], RetryPolicy(max_attempts=1), 1200
     )
     report["suite_results"]["structured_output"]["cases"][0] = {
         "case_id": "split-01",
@@ -157,6 +158,7 @@ def test_structured_output_truncation_fails_the_case_and_ten_case_bar():
         report["suite_results"]["structured_output"], report
     )
 
+    assert model.options["max_completion_tokens"] == 1200
     assert summary["score"] == 9
     assert summary["passed"] is False
     assert any("truncated" in reason for reason in reasons)
@@ -164,9 +166,7 @@ def test_structured_output_truncation_fails_the_case_and_ten_case_bar():
 
 class LengthFinishedModel:
     def with_structured_output(self, _schema, **_options):
-        return self
-
-    def bind(self, **_options):
+        self.options = _options
         return self
 
     def invoke(self, _prompt):

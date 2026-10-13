@@ -1,12 +1,14 @@
 # Player model output token budgets
 
 Measurement status: **complete with reduced n**.
+
+This is the broad #194 measurement snapshot. It records 11 DynamicSplitPlan outputs with a 1,019-token p95 and maximum under the earlier structured-output `.bind(...)` path. Issue #406 also measured seven targeted suite outputs with a 654-token maximum, then selected 1,280 tokens by applying 25% headroom to the larger historical maximum after fixing cap forwarding at `with_structured_output`. The old `substitution_resolution` choice of 56 tokens proved too small when correctly forwarded; its earlier effective 200-token setting passed all five cases, so the production setting is restored to that ceiling. See [the #406 measurement report](issue_406_split_plan_measurement.md).
 Measured `deepseek-ai/DeepSeek-V4-Flash` through `https://api.deepinfra.com/v1/openai` using the production prompt builder and call path for `chat_reply`, `intent_routing`, `substitution_resolution`, `abbreviation_expansion`, `dynamic_split_plan`, `checkpoint_review`.
 Structured sites used a temporary `2400`-token cap; chat and Checkpoint review used their previous 200- and 200-token caps. The target was 10 English and 10 Arabic inputs for each language-aware path, plus 20 distinct language-neutral abbreviations; requests ran sequentially to reduce provider overload.
 
-Margin rule: p95 uses nearest-rank. For measured sites, margin = max(16 tokens, ceil(p95 * 25%)); recommended budget is p95 + margin rounded up to the next 8 tokens. Chat remains at 200 by product choice; Checkpoint review retains its 200-token product budget while reporting the measured recommendation; DynamicSplitPlan uses its own p95 margin rule.
+Margin rule in this snapshot: p95 uses nearest-rank. For measured sites, margin = max(16 tokens, ceil(p95 * 25%)); recommended budget is p95 + margin rounded up to the next 8 tokens. Chat remains at 200 by product choice; Checkpoint review retains its 200-token product budget while reporting the measured recommendation; the snapshot used its own p95 margin rule for DynamicSplitPlan.
 
-| Call site | n | p50 | p95 | max | finish_reason=length | Failed/unrecorded requests | Previous budget | New budget | p95 + margin recommendation |
+| Call site | n | p50 | p95 | max | finish_reason=length | Failed/unrecorded requests | Previous budget | Budget after #194 snapshot | p95 + margin recommendation |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | `chat_reply` | 15 | 95 | 177 | 177 | 0 | 26 | 200 | 200 | 224 |
 | `intent_routing` | 14 | 54.5 | 68 | 68 | 0 | 17 | 200 | 112 | 88 |
@@ -17,7 +19,7 @@ Margin rule: p95 uses nearest-rank. For measured sites, margin = max(16 tokens, 
 
 The report is complete with reduced n after hosted provider overloads and timeouts. The target was 20 samples per call site; actual n and failed or unrecorded request counts are shown above.
 
-Routing uses 112 tokens, conservative given reduced n (Arabic max 68 at n=14). Substitution resolution and abbreviation expansion use p95 + margin, rounded up to 8 tokens. Chat keeps its previous product choice because no sample truncated. DynamicSplitPlan uses 1280 tokens, conservative given reduced n: p95 was 1019 and the Arabic max was 1019 across only 4 samples; its own p95 + 25% margin rounded up to 8 tokens gives 1280. The production resolver clamps 6-day requests to 5 days.
+Routing uses 112 tokens, conservative given reduced n (Arabic max 68 at n=14). The #194 snapshot selected 56 tokens for substitution resolution from its broad p95 + margin sample, but the correctly capped #199 full live run truncated all five substitution cases at 56; the setting is restored to its previous bounded 200-token ceiling. The full suite has not been rerun after this adjustment. Abbreviation expansion uses p95 + margin, rounded up to 8 tokens. Chat keeps its previous product choice because no sample truncated. For DynamicSplitPlan, #406 retains the 1,019-token maximum from the broader #194 sample, adds 25% headroom, and rounds 1,274 up to 1,280; the corrected structured-output call now forwards that ceiling to the provider. The production resolver clamps 6-day requests to 5 days.
 
 The production `SubstitutionResolution` call resolves exercise references in the substitution flow, so it is measured once as `substitution_resolution`.
 
@@ -25,7 +27,7 @@ Checkpoint review: **measured output was available**. The 200-token production b
 
 Abbreviation input limitation: The production resolver receives only a 2–6 letter Latin token, with no locale argument. Recorded samples use distinct accepted keys from FITNESS_ABBREVIATIONS and are language-neutral.
 
-The structured suite (#199) and the two-judge gate (#189) are deferred to those open tickets; this change does not build either suite or run judge evaluations.
+When this #194 snapshot was prepared, the structured suite (#199) and two-judge gate (#189) were still open; the targeted #199 split-plan results are recorded in the #406 report.
 
 ## Finish reasons
 

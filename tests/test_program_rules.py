@@ -6,6 +6,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
 import pytest
+from langchain_core.messages import AIMessage
 
 from agent import program_generator
 from agent.program_blueprints import match_split_keyword
@@ -153,6 +154,34 @@ def test_dynamic_split_plan_uses_its_own_output_budget(monkeypatch):
     assert model.calls[0]["mode"] == "structured"
     assert model.calls[0]["kwargs"]["schema"] == "DynamicSplitPlan"
     assert model.calls[0]["kwargs"]["max_completion_tokens"] == DYNAMIC_SPLIT_PLAN_MAX_OUTPUT_TOKENS
+
+
+@pytest.mark.parametrize(
+    ("content", "finish_reason"),
+    [
+        pytest.param('{"split_name":"Partial plan","days":[{"day_order":1', "length", id="truncated-json"),
+        pytest.param('{"split_name":', "stop", id="unparseable-json"),
+        pytest.param(
+            get_default_split(3).model_copy(update={"split_name": "Incomplete generated plan"}).model_dump_json(),
+            "length",
+            id="parsed-object-with-length-finish-reason",
+        ),
+    ],
+)
+def test_406_truncated_or_unparseable_dynamic_split_falls_back_to_default(
+    monkeypatch, content, finish_reason
+):
+    model = ScriptedChatModel(
+        [AIMessage(content=content, response_metadata={"finish_reason": finish_reason})]
+    )
+    monkeypatch.setattr("agent.program_rules.llm", model)
+
+    plan = resolve_split(
+        3,
+        preference="Create a custom three-day split with varied emphasis",
+    )
+
+    assert plan == get_default_split(3)
 
 
 def test_dynamic_split_uses_the_generation_metering_scope(monkeypatch):

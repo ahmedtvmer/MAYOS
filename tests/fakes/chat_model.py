@@ -187,10 +187,13 @@ class ScriptedChatModel(BaseChatModel):
         schema: Any,
         include_raw: bool,
     ) -> Any:
-        parsed = _parse_structured(response, schema)
         if include_raw:
+            try:
+                parsed = _parse_structured(response, schema)
+            except ValueError as error:
+                return {"raw": response, "parsed": None, "parsing_error": error}
             return {"raw": response, "parsed": parsed, "parsing_error": None}
-        return parsed
+        return _parse_structured(response, schema)
 
     def _next_response(
         self,

@@ -705,7 +705,7 @@ def generate_program_pipeline(
 def generate_program_draft_pipeline(
     request: ProgramGenerationRequest,
     *,
-    inference_call: Callable[..., DynamicSplitPlan] | None = None,
+    inference_call: Callable[..., Any] | None = None,
     ledger: Any,
     profile: dict[str, Any] | None = None,
 ) -> tuple[GeneratedProgramSchema, str]:
@@ -748,7 +748,7 @@ def _build_program(
     weekly_frequency: int,
     ledger: Any,
     *,
-    inference_call: Callable[..., DynamicSplitPlan] | None = None,
+    inference_call: Callable[..., Any] | None = None,
 ) -> tuple[GeneratedProgramSchema, str]:
     split_plan = _resolve_split_plan(profile, request, weekly_frequency, inference_call)
     days = _generate_program_days(profile, request, split_plan, ledger)
@@ -765,7 +765,7 @@ def _resolve_split_plan(
     profile: dict[str, Any],
     request: ProgramGenerationRequest,
     weekly_frequency: int,
-    inference_call: Callable[..., DynamicSplitPlan] | None = None,
+    inference_call: Callable[..., Any] | None = None,
 ) -> DynamicSplitPlan:
     preference = request.user_split_override
     if preference:

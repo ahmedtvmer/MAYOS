@@ -1,0 +1,201 @@
+{
+  "ticket": 406,
+  "measured_at_utc": "2026-10-13T08:51:52.370764+00:00",
+  "model": "deepseek-ai/DeepSeek-V4-Flash",
+  "backend": "DeepInfra OpenAI-compatible API",
+  "measurement_method": "The five #199 structured_output DynamicSplitPlan cases were invoked with the production prompt builder and function-calling schema under a temporary 4096-token model output cap; the two largest outputs were repeated once. Only case ids and usage metadata were retained; raw provider response bodies were not saved.",
+  "historical_issue_194_measurement": {
+    "sample_count": 11,
+    "p95_completion_tokens": 1019,
+    "max_completion_tokens": 1019,
+    "call_path": "Earlier structured-output wrapper .bind(...) path that did not forward the selected cap to the provider."
+  },
+  "measurement_cap_tokens": 4096,
+  "model_max_tokens_during_measurement": 4096,
+  "cases": [
+    {
+      "case_id": "split-01",
+      "repetition": 1,
+      "frequency": 4,
+      "gender": "male",
+      "completion_tokens": 507,
+      "reasoning_tokens": null,
+      "finish_reason": "tool_calls",
+      "usage_keys": [
+        "input_token_details",
+        "input_tokens",
+        "output_token_details",
+        "output_tokens",
+        "total_tokens"
+      ],
+      "provider_usage_keys": [],
+      "raw_additional_fields": [],
+      "valid_plan": true
+    },
+    {
+      "case_id": "split-02",
+      "repetition": 1,
+      "frequency": 3,
+      "gender": "female",
+      "completion_tokens": 440,
+      "reasoning_tokens": null,
+      "finish_reason": "tool_calls",
+      "usage_keys": [
+        "input_token_details",
+        "input_tokens",
+        "output_token_details",
+        "output_tokens",
+        "total_tokens"
+      ],
+      "provider_usage_keys": [],
+      "raw_additional_fields": [],
+      "valid_plan": true
+    },
+    {
+      "case_id": "split-03",
+      "repetition": 1,
+      "frequency": 5,
+      "gender": "male",
+      "completion_tokens": 604,
+      "reasoning_tokens": null,
+      "finish_reason": "tool_calls",
+      "usage_keys": [
+        "input_token_details",
+        "input_tokens",
+        "output_token_details",
+        "output_tokens",
+        "total_tokens"
+      ],
+      "provider_usage_keys": [],
+      "raw_additional_fields": [],
+      "valid_plan": true
+    },
+    {
+      "case_id": "split-04",
+      "repetition": 1,
+      "frequency": 4,
+      "gender": "female",
+      "completion_tokens": 654,
+      "reasoning_tokens": null,
+      "finish_reason": "tool_calls",
+      "usage_keys": [
+        "input_token_details",
+        "input_tokens",
+        "output_token_details",
+        "output_tokens",
+        "total_tokens"
+      ],
+      "provider_usage_keys": [],
+      "raw_additional_fields": [],
+      "valid_plan": true
+    },
+    {
+      "case_id": "split-05",
+      "repetition": 1,
+      "frequency": 3,
+      "gender": "male",
+      "completion_tokens": 442,
+      "reasoning_tokens": null,
+      "finish_reason": "tool_calls",
+      "usage_keys": [
+        "input_token_details",
+        "input_tokens",
+        "output_token_details",
+        "output_tokens",
+        "total_tokens"
+      ],
+      "provider_usage_keys": [],
+      "raw_additional_fields": [],
+      "valid_plan": true
+    },
+    {
+      "case_id": "split-04",
+      "repetition": 2,
+      "frequency": 4,
+      "gender": "female",
+      "completion_tokens": 574,
+      "reasoning_tokens": null,
+      "finish_reason": "tool_calls",
+      "usage_keys": [
+        "input_token_details",
+        "input_tokens",
+        "output_token_details",
+        "output_tokens",
+        "total_tokens"
+      ],
+      "provider_usage_keys": [],
+      "raw_additional_fields": [],
+      "valid_plan": true
+    },
+    {
+      "case_id": "split-03",
+      "repetition": 2,
+      "frequency": 5,
+      "gender": "male",
+      "completion_tokens": 595,
+      "reasoning_tokens": null,
+      "finish_reason": "tool_calls",
+      "usage_keys": [
+        "input_token_details",
+        "input_tokens",
+        "output_token_details",
+        "output_tokens",
+        "total_tokens"
+      ],
+      "provider_usage_keys": [],
+      "raw_additional_fields": [],
+      "valid_plan": true
+    }
+  ],
+  "max_completion_tokens": 654,
+  "sample_count": 7,
+  "max_reported_reasoning_tokens": null,
+  "reasoning_tokens_reported": false,
+  "provider_usage_metadata_keys": [
+    "input_token_details",
+    "input_tokens",
+    "output_token_details",
+    "output_tokens",
+    "total_tokens"
+  ],
+  "provider_token_usage_keys": [],
+  "additional_raw_message_fields": [],
+  "all_valid": true,
+  "budget_cap_probes": [
+    {
+      "case_id": "split-04",
+      "budget_tokens": 824,
+      "completion_tokens": 545,
+      "reasoning_tokens": null,
+      "finish_reason": "tool_calls",
+      "valid_plan": true
+    }
+  ],
+  "thinking_mode_request": "No explicit thinking-mode override was sent; the production player request had no extra body.",
+  "reasoning_token_budget_conclusion": "DeepSeek Chat Completions documents max_tokens as the maximum generated completion tokens and reasoning_tokens as a breakdown within completion usage, so reasoning shares the output-token cap under that API contract. Applying that contract to DeepInfra's compatible endpoint is an inference. DeepInfra returned output_tokens but no reasoning_tokens detail, so the reasoning portion could not be quantified separately.",
+  "post_change_structured_output_suite": {
+    "score": 5,
+    "case_count": 10,
+    "passed": false,
+    "split_plan": {
+      "passed": 5,
+      "truncated": 0,
+      "budget_tokens": 824
+    },
+    "substitution_resolution": {
+      "passed": 0,
+      "truncated": 5,
+      "budget_tokens": 56
+    }
+  },
+  "substitution_resolution_budget_followup": {
+    "previous_budget_tokens": 200,
+    "selected_budget_tokens": 200,
+    "reason": "The correctly capped #199 live suite truncated all five substitution cases at the 56-token budget. The earlier run passed all five at the model's effective 200-token default because the cap was bound after the structured-output wrapper."
+  },
+  "selected_split_plan_budget": {
+    "tokens": 1280,
+    "calculation": "ceil((1019 + ceil(1019 * 0.25)) / 8) * 8 = 1280",
+    "reason": "Use the larger historical #194 maximum after fixing cap forwarding, avoiding deterministic fallback for valid outputs above the smaller #406 seven-sample maximum."
+  }
+}
