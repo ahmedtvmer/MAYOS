@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "issue": 262,
+  "status": "pending_owner_review",
+  "facts_are_synthetic": true,
+  "language_quality_gate": "separate; this fixture does not certify Arabic quality",
+  "ordinary_day_assumptions": {
+    "status": "provisional_measurement_profile",
+    "description": "The Player-only measurement day contains two short Player questions, two long-history Player questions, one mixed Arabic/English Player question, and one Program action. The dual-capability day adds two Coach analyses to that same account-wide sequence.",
+    "launch_request_counts": false,
+    "player_only": [
+      {"case_id": "short_question", "count": 2},
+      {"case_id": "long_history", "count": 2},
+      {"case_id": "mixed_language", "count": 1},
+      {"case_id": "program_action", "count": 1}
+    ],
+    "dual_capability": [
+      {"case_id": "short_question", "count": 2},
+      {"case_id": "long_history", "count": 2},
+      {"case_id": "mixed_language", "count": 1},
+      {"case_id": "program_action", "count": 1},
+      {"case_id": "coach_analysis", "count": 2}
+    ]
+  },
+  "seed": {
+    "player_profile": {
+      "gender": "male",
+      "age": 30,
+      "weight_kg": 80.0,
+      "height_cm": 180.0,
+      "current_goal": "muscle_gain",
+      "weekly_frequency": 4,
+      "training_age_years": 3.0,
+      "equipment_access": "Commercial gym",
+      "injuries_or_limitations": "None"
+    },
+    "program": {
+      "program_name": "Synthetic measurement program",
+      "split_type": "Upper/Lower",
+      "weekly_frequency": 4,
+      "exercise_names": ["Bench Press", "Squat", "Lat Pulldown"]
+    },
+    "coach_facts_ref": "service.coach_ai.CANONICAL_FIXTURE"
+  },
+  "pairs": [
+    {
+      "id": "short_question",
+      "task_type": "short_question",
+      "capability": "player",
+      "task": "Give concise training guidance grounded in the same recent workout facts.",
+      "review_status": "pending_owner_review",
+      "seeded_facts": {"recent_workout": "Upper; Bench Press was 80 kg for 5 reps at RIR 2; no injury reported."},
+      "english": {
+        "question": "I trained Upper yesterday. Bench Press was 80 kg for 5 reps at RIR 2. Should I train Lower today or rest?",
+        "history": []
+      },
+      "arabic": {
+        "question": "تمرنت Upper امبارح. عملت Bench Press بوزن 80 kg لـ 5 تكرارات وRIR 2. أتمرن Lower النهارده ولا أريح؟",
+        "history": []
+      }
+    },
+    {
+      "id": "long_history",
+      "task_type": "long_history",
+      "capability": "player",
+      "task": "Recall the same recorded Bench Press facts from a long conversation history and answer the latest question.",
+      "review_status": "pending_owner_review",
+      "seeded_facts": {"bench_press_weight_kg": 82.5, "bench_press_reps": 6, "bench_press_rir": 2},
+      "english": {
+        "question": "From the workout details I gave you earlier, what was my latest Bench Press weight, reps, and RIR?",
+        "history": [
+          {"role": "user", "content": "I am keeping my current four-day Upper/Lower Training program."},
+          {"role": "assistant", "content": "Got it. I will use your current four-day Upper/Lower program as context."},
+          {"role": "user", "content": "My goal is muscle gain, and I train at a commercial gym."},
+          {"role": "assistant", "content": "Understood. I will keep your goal and available equipment in mind."},
+          {"role": "user", "content": "Last week I did Bench Press for 5 reps at 80 kg, RIR 3."},
+          {"role": "assistant", "content": "I have that earlier Bench Press set recorded in this conversation."},
+          {"role": "user", "content": "On my latest Upper day, Bench Press was 82.5 kg for 6 reps at RIR 2."},
+          {"role": "assistant", "content": "I have the latest Bench Press set details in context."},
+          {"role": "user", "content": "I also asked about my Squat warm-up and Lat Pulldown grip."},
+          {"role": "assistant", "content": "We can keep those topics separate from your Bench Press set."},
+          {"role": "user", "content": "Please remember that the 82.5 kg set was the latest one."},
+          {"role": "assistant", "content": "Understood. The later set is the one to use for a latest-set question."}
+        ]
+      },
+      "arabic": {
+        "question": "من تفاصيل التمرين اللي قلتها قبل كده، كان آخر وزن وعدد تكرارات وRIR في Bench Press كام؟",
+        "history": [
+          {"role": "user", "content": "أنا محافظ على برنامج Upper/Lower الحالي، 4 أيام في الأسبوع."},
+          {"role": "assistant", "content": "تمام، هستخدم برنامج Upper/Lower الحالي كجزء من السياق."},
+          {"role": "user", "content": "هدفي زيادة الكتلة العضلية وبتمرن في جيم تجاري."},
+          {"role": "assistant", "content": "تمام، هاخد الهدف والمعدات المتاحة في الاعتبار."},
+          {"role": "user", "content": "الأسبوع اللي فات عملت Bench Press خمس تكرارات بوزن 80 kg وRIR 3."},
+          {"role": "assistant", "content": "سجلت تفاصيل مجموعة Bench Press السابقة في سياق المحادثة."},
+          {"role": "user", "content": "في آخر يوم Upper، عملت Bench Press ست تكرارات بوزن 82.5 kg وRIR 2."},
+          {"role": "assistant", "content": "معايا تفاصيل مجموعة Bench Press الأخيرة في السياق."},
+          {"role": "user", "content": "وسألت كمان عن إحماء Squat وطريقة مسكة Lat Pulldown."},
+          {"role": "assistant", "content": "ممكن نخلي الموضوعين دول منفصلين عن مجموعة Bench Press."},
+          {"role": "user", "content": "افتكر إن مجموعة 82.5 kg هي الأحدث."},
+          {"role": "assistant", "content": "تمام، المجموعة الأحدث هي اللي هستخدمها لو سألت عن آخر مجموعة."}
+        ]
+      }
+    },
+    {
+      "id": "mixed_language",
+      "task_type": "arabic_english_mixing",
+      "capability": "player",
+      "task": "Give a concise Bench Press cue for the same shoulder-dominant feeling; Arabic fixture retains English exercise vocabulary.",
+      "review_status": "pending_owner_review",
+      "seeded_facts": {"exercise": "Bench Press", "reported_feeling": "shoulders fatigue before chest", "injury": false},
+      "english": {
+        "question": "During Bench Press, my shoulders fatigue before my chest. What one setup cue should I try?",
+        "history": []
+      },
+      "arabic": {
+        "question": "في Bench Press كتافي بتتعب قبل صدري. إيه cue واحد أجربه في وضع البداية؟",
+        "history": []
+      }
+    },
+    {
+      "id": "program_action",
+      "task_type": "program_action",
+      "capability": "player",
+      "task": "Apply the same authorized Program change to the seeded Training program.",
+      "review_status": "pending_owner_review",
+      "seeded_facts": {"program_authority": "player", "starting_frequency": 4, "requested_frequency": 3, "requested_split": "Upper/Lower"},
+      "expected_effect": {"weekly_frequency": 3, "split_type": "Upper/Lower", "version_advance": true},
+      "english": {
+        "question": "Please rebuild my Training program as a 3-day Upper/Lower split.",
+        "history": []
+      },
+      "arabic": {
+        "question": "ممكن تعيد بناء البرنامج التدريبي على تقسيمة Upper/Lower لمدة 3 أيام؟",
+        "history": []
+      }
+    },
+    {
+      "id": "coach_analysis",
+      "task_type": "coach_analysis",
+      "capability": "coach",
+      "task": "Analyze the same seeded player's attendance fact using the production Coach prompt and transcript assembly.",
+      "review_status": "pending_owner_review",
+      "seeded_facts": {"attendance_adherence_pct": 83.3, "satisfied_expected_days": 10, "expected_days": 12},
+      "english": {
+        "question": "What was the player's adherence percentage over the attendance window?",
+        "history": [
+          {"role": "coach", "content": "I am reviewing the player's recent training and attendance."},
+          {"role": "assistant", "content": "The selected player's current training facts are available for this analysis."}
+        ]
+      },
+      "arabic": {
+        "question": "نسبة التزام اللاعب بالحضور كام خلال فترة المتابعة؟",
+        "history": [
+          {"role": "coach", "content": "براجع تدريب اللاعب وحضوره في الفترة الأخيرة."},
+          {"role": "assistant", "content": "بيانات تدريب اللاعب المختار متاحة للتحليل ده."}
+        ]
+      }
+    }
+  ]
+}

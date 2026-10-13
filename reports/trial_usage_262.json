@@ -1,0 +1,60 @@
+{
+  "report_version": 1,
+  "issue": 262,
+  "status": "awaiting_live_measurement",
+  "generated_at": null,
+  "expected_runtime": "About 10–20 minutes for ten paired turns at current provider latency; this script is designed to remain below 30 minutes.",
+  "dataset": "tests/eval/datasets/trial_usage_workloads_262.json",
+  "dataset_sha256": "ebc49599a7f11dab07f6e9c708320c0c30d8ca1834c5e86f885fad07f8fe8233",
+  "fixture_status": "pending_owner_review",
+  "facts_are_synthetic": true,
+  "model_identity": {
+    "player": "deepseek-ai/DeepSeek-V4-Flash",
+    "coach": "deepseek-ai/DeepSeek-V4-Flash"
+  },
+  "configuration": {
+    "trial_admission": {
+      "configured_daily_token_limit": 200000,
+      "accepted_default_daily_token_limit": 200000,
+      "reset": "UTC calendar day",
+      "soft_cap": "admission-time check; a request admitted below the cap may overshoot by that turn's usage",
+      "checkpoint_review_exempt": true
+    },
+    "launch_request_counts_accepted": false,
+    "quality_gate": {
+      "status": "separate; not assessed by usage measurement"
+    },
+    "privacy_gate": {
+      "status": "separate; synthetic fixtures only"
+    }
+  },
+  "run_error": null,
+  "paired_turns": [],
+  "replays": {},
+  "cap_decision": {
+    "setting": 200000,
+    "decision": "retain",
+    "reason": "No hosted measurement was run, and the Arabic fixture, ordinary-day profile, and semantic outcomes remain pending review; ADR 059's raise trigger is not demonstrated.",
+    "trigger_met": false,
+    "setting_source": "accepted common trial setting pending eligible paired evidence"
+  },
+  "trial_setting": {
+    "accepted_common_limit": 200000,
+    "chosen_setting": 200000,
+    "decision": "retain",
+    "rationale": "No hosted measurement was run; the accepted Arabic-only refusal trigger is not demonstrated.",
+    "live_measurement_available": false
+  },
+  "quality_gate": {
+    "status": "separate; outcome checks are not Arabic quality certification"
+  },
+  "privacy_gate": {
+    "status": "separate; all workload inputs are synthetic"
+  },
+  "future_launch_sizing": {
+    "reusable": true,
+    "proposed_free_5_pro_30_request_counts_accepted": false,
+    "use_measured_turns_and_separately_review_quality_privacy_before_sale": true
+  },
+  "reproducible_command": "/mnt/work/MAYOS/.venv/bin/python tests/eval/run_trial_usage_measurement.py --live --report reports/trial_usage_262.json"
+}

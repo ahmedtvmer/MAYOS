@@ -952,6 +952,70 @@ def test_daily_token_limit_refuses_the_next_turn(api, monkeypatch):
     assert db.count_model_limit_hits(account_id, month_start.isoformat())["daily_tokens"] == 1
 
 
+def test_trial_cap_chat_api_seam_uses_utc_reset_and_refuses_before_stream(api, monkeypatch):
+    from service import model_limits
+    from svc.routers import chat as chat_router
+
+    client, db = api
+    now = datetime(2026, 10, 13, 0, 1, tzinfo=UTC)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now if tz else now.replace(tzinfo=None)
+
+    monkeypatch.setattr(model_limits, "datetime", FrozenDateTime)
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "200")
+    monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "0")
+    reset_model_limits()
+    stream_calls: list[str] = []
+
+    def deterministic_stream(state, *, ledger, store):
+        stream_calls.append(state["messages"][-1].content)
+        state["response_content"] = "Recorded reply."
+        yield "Recorded reply."
+
+    monkeypatch.setattr(chat_router, "stream_assistant_turn", deterministic_stream)
+
+    yesterday_token = _register(client, "yesterday-player")
+    yesterday_id = _account_id(db, "yesterday-player")
+    db.record_model_usage(
+        account_id=yesterday_id,
+        role="player",
+        model="deepseek-ai/DeepSeek-V4-Flash",
+        input_tokens=100,
+        output_tokens=100,
+        cost_usd=0.0,
+        estimated=False,
+        purpose="chat",
+        created_at="2026-10-12T23:59:00+00:00",
+    )
+    reset_response = client.post(
+        "/chat/messages", headers=_authed(yesterday_token), json={"content": "Help me plan."}
+    )
+    assert reset_response.status_code == 200, reset_response.text
+
+    capped_token = _register(client, "capped-player")
+    capped_id = _account_id(db, "capped-player")
+    db.record_model_usage(
+        account_id=capped_id,
+        role="player",
+        model="deepseek-ai/DeepSeek-V4-Flash",
+        input_tokens=100,
+        output_tokens=100,
+        cost_usd=0.0,
+        estimated=False,
+        purpose="chat",
+        created_at=now.isoformat(),
+    )
+    refusal = client.post(
+        "/chat/messages", headers=_authed(capped_token), json={"content": "Help me plan."}
+    )
+    assert refusal.status_code == 429
+    assert refusal.json()["message_code"] == "ai_limit.daily_usage.v1"
+    assert stream_calls == ["Help me plan."]
+
+
 def test_limit_hit_recording_failure_keeps_the_refusal_as_429(api, monkeypatch):
     client, db = api
     token = _register(client, "player1")

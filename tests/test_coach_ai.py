@@ -1359,3 +1359,42 @@ def test_daily_token_limit_refuses_before_the_model_is_called(api, monkeypatch, 
     assert response.status_code == 429
     assert response.headers["content-type"].startswith("application/json")
     assert stub.calls == []
+
+
+def test_shared_trial_cap_combines_player_and_coach_usage_for_one_account(api, monkeypatch, tmp_path):
+    from service.model_limits import reset_model_limits
+
+    client, db, _tmp = api
+    coach_headers, _player_headers, assignment_id = _assigned_player(api)
+    _enable(monkeypatch, tmp_path)
+    stub = _stub_coach_llm(monkeypatch)
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "100")
+    monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "0")
+    account_id = _account_id(db, "coach")
+    created_at = datetime.now(UTC).isoformat()
+    for role, input_tokens, output_tokens in (("player", 40, 20), ("coach", 25, 15)):
+        db.record_model_usage(
+            account_id=account_id,
+            role=role,
+            model=COACH_MODEL_ID,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=0.0,
+            estimated=False,
+            purpose="chat" if role == "player" else "coach_assistant",
+            created_at=created_at,
+        )
+    reset_model_limits()
+    try:
+        response = client.post(
+            f"/coach/assignments/{assignment_id}/assistant",
+            headers=coach_headers,
+            json=QUESTION,
+        )
+    finally:
+        reset_model_limits()
+
+    assert db.sum_model_tokens_for_account(account_id, created_at[:10] + "T00:00:00+00:00") == 100
+    assert response.status_code == 429
+    assert response.json()["message_code"] == "ai_limit.daily_usage.v1"
+    assert stub.calls == []
