@@ -1225,7 +1225,7 @@ after a preposition use the oblique dual form.
 | 11–99 | {count} مجموعة تدريب | {count} تكرارًا |
 | 100+ | {count} مجموعة تدريب | {count} تكرار |
 
-## Assistant chat deterministic replies (#256; pending owner review)
+## Assistant chat deterministic replies (#256; owner reviewed 2026-10-13)
 
 These new player-chat replies follow the latest-message language rule. The
 Arabic wording is polite everyday Egyptian Arabic. Deload reasons are rendered
@@ -1243,7 +1243,7 @@ from the known fatigue reason code; unknown codes use a generic Arabic reason.
 | High exertion density ({percent}% of recent rated sets at RIR 0.5 or less) alongside declining readiness. | مجهود عالي في {percent}% من السيتات المسجلة عند RIR 0.5 أو أقل، مع انخفاض الاستعداد. |
 | Unknown deload fatigue reason. | غير محددة. |
 
-## Egyptian deload chat commands (#346; pending owner review)
+## Egyptian deload chat commands (#346; owner reviewed 2026-10-13)
 
 Egyptian deload commands use the same one-workout action and fixed reply as
 the existing standard Arabic commands. The confirmation and no-change strings
@@ -1255,7 +1255,7 @@ below need owner review before release.
 | Undo the applied deload for the next workout only; `{reason}` is localized using the entries above. | تمام، ألغيت تخفيف التدريب للحصة الجاية بس. إشارة الإرهاق: {reason} |
 | There is nothing to change. | مفيش حاجة محتاجة تغيير. |
 
-## Assistant chat clarifications — pending owner review (#191)
+## Assistant chat clarifications — owner reviewed 2026-10-13 (#191)
 
 | English intent | Arabic |
 | --- | --- |
@@ -1296,7 +1296,7 @@ The #200 extension below supersedes the prior no-action behavior for direct
 program changes and history questions: those requests now use the existing
 program mutation and ledger history paths after validation.
 
-## Assistant chat routing and replies (#200; pending owner review)
+## Assistant chat routing and replies (#200; owner reviewed 2026-10-13)
 
 These new fixed replies use polite Egyptian Arabic. Exercise names,
 program names, and `kg` values are runtime data. The frequency label uses
@@ -1314,7 +1314,7 @@ their split family and weekly frequency resolve to supported generator data.
 Exercise-history replies use figures already computed from the player's
 Training ledger and keep the answer in Egyptian Arabic.
 
-## Recovery-email reminder (#408; pending owner review)
+## Recovery-email reminder (#408; owner reviewed 2026-10-13)
 
 | English | Arabic |
 | --- | --- |
@@ -1325,7 +1325,7 @@ Training ledger and keep the answer in Egyptian Arabic.
 | Recovery email is not verified. Password recovery needs a verified email address. | لم يتم التحقق من البريد الإلكتروني للاسترداد. يلزم التحقق منه لاستعادة كلمة المرور. |
 | Verify | تحقق |
 
-## Franco-Arabic refusal — pending owner review (#345)
+## Franco-Arabic refusal — owner reviewed 2026-10-13 (#345)
 
 | English intent | Egyptian Arabic | English |
 | --- | --- | --- |
@@ -1335,7 +1335,7 @@ The Arabic line is a proposed polite everyday Egyptian wording. The fixed
 refusal is emitted by the first input check in the turn router, before training
 actions, clinical advice, or model inference.
 
-## Rest-alert permission screen (#409; pending owner review)
+## Rest-alert permission screen (#409; owner reviewed 2026-10-13)
 
 | English | Arabic |
 | --- | --- |

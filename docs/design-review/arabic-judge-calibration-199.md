@@ -1,4 +1,4 @@
-# Arabic judge calibration sample (#199) — pending owner review
+# Arabic judge calibration sample (#199) — owner reviewed by Thomas on 2026-10-13
 
 Player model: `deepseek-ai/DeepSeek-V4-Flash`. Judges: `Qwen/Qwen3.5-27B` (judge 1), `zai-org/GLM-5.3` (judge 2). Sample hash `5b8283b37574…` (bound in `tests/eval/datasets/arabic_judge_review/REVIEW.json`).
 
