@@ -525,8 +525,8 @@ class WeightTrendPointOut(BaseModel):
 class CoachAlertOut(BaseModel):
     """One catalog-side alert for the coach alert centre (ADR 030/031/032).
 
-    ``kind`` distinguishes missed-day, follow-up-due, deload,
-    performance-regression, stall, and profile-change alerts. The kind-specific fields
+    ``kind`` distinguishes attendance, follow-up, progression, profile, and
+    final-Program-week alerts. The kind-specific fields
     are flattened beside the common ones, so a client can read
     ``streak_start_date``/``missed_count``, ``due_on``, progression evidence,
     ``stall_length``/``window_start_date``, or the ``profile_changes`` before/after values directly.
@@ -1418,6 +1418,11 @@ class ActiveProgramOut(PersistedProgramSchema):
     current_week: int = 1
     week_count: int = 1
     next_day_order: int = 1
+    final_week_completed: bool = False
+
+
+class ProgramRepeatIn(BaseModel):
+    expected_active_version: int = Field(ge=1)
 
 
 class ProgramSubstitutionOut(PersistedProgramSchema):

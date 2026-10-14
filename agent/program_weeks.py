@@ -117,6 +117,25 @@ def progress_for_program(
     return _repeat_final_week(weeks[-1], latest_day_order, len(weeks))
 
 
+def final_week_is_complete(
+    program: Any, completed_days: Iterable[tuple[int, int]]
+) -> bool:
+    """Whether every day in a multi-week program's final week is committed.
+
+    A one-week program is the ordinary repeating program shape and has no block
+    end state. Completion is scoped to the program version by the caller.
+    """
+    weeks = normalize_program_weeks(program)
+    if len(weeks) <= 1 or not weeks[-1]["days"]:
+        return False
+    completed = set(completed_days)
+    final_week_order = int(weeks[-1]["week_order"])
+    return all(
+        (final_week_order, int(day["day_order"])) in completed
+        for day in weeks[-1]["days"]
+    )
+
+
 def _first_unfinished_position(
     weeks: list[dict[str, Any]],
     completed_days: set[tuple[int, int]],

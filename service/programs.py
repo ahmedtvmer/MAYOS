@@ -5,7 +5,11 @@ from typing import Any
 from pydantic import BaseModel
 
 from agent.program_generator import generate_program_pipeline
-from agent.program_weeks import flatten_program_days, normalize_program_weeks
+from agent.program_weeks import (
+    final_week_is_complete,
+    flatten_program_days,
+    normalize_program_weeks,
+)
 from service._base import ledger_scope
 from service import analytics
 from service.program_analytics import ProgramAnalyticsActor, capture_program_exercise_swapped, capture_program_generated
@@ -15,6 +19,14 @@ COACH_CONTROLLED_REQUEST_ERROR = (
     "Your assigned coach controls your program. "
     "You can review and send a request to your coach."
 )
+
+
+class ProgramRepeatError(Exception):
+    """The player cannot restart this program block from Week 1."""
+
+    def __init__(self, code: str, message: str):
+        self.code = code
+        super().__init__(message)
 
 
 def player_controls_program(db: Any, ledger: Any, player_account_id: str | None) -> bool:
@@ -64,6 +76,75 @@ def with_library_equipment(program: Any, db: Any) -> dict[str, Any]:
     payload["weeks"] = weeks
     payload["days"] = flatten_program_days(weeks)
     return payload
+
+
+def active_program_response(
+    db: Any, ledger: Any, player_account_id: str, program: Any
+) -> dict[str, Any]:
+    """Build the Player API payload with authority, cursor, and block state."""
+    version = getattr(program, "version", None)
+    completed_days = ledger.completed_program_days(int(version)) if version is not None else set()
+    position = ledger.get_program_position(program)
+    return {
+        **with_library_equipment(program, db),
+        "player_controls_program": player_controls_program(db, ledger, player_account_id),
+        "current_week": position.current_week,
+        "week_count": position.week_count,
+        "next_day_order": position.next_day_order,
+        "final_week_completed": final_week_is_complete(program, completed_days),
+    }
+
+
+def repeat_program_from_week_one(
+    db: Any,
+    ledger: Any,
+    player_account_id: str,
+    expected_active_version: int,
+) -> Any:
+    """Create a fresh version of the same program starting at Week 1, Day 1."""
+    with ledger.ledger_transaction():
+        active = _repeatable_program(
+            db, ledger, player_account_id, expected_active_version
+        )
+        ledger.save_training_program(
+            _program_copy_for_new_version(active),
+            published_by_coach_account_id=None,
+        )
+        return ledger.get_active_program()
+
+
+def _repeatable_program(
+    db: Any, ledger: Any, player_account_id: str, expected_version: int
+) -> Any:
+    if not player_controls_program(db, ledger, player_account_id):
+        raise ProgramRepeatError("coach_controlled", COACH_CONTROLLED_ERROR)
+    active = ledger.get_active_program()
+    if active is None:
+        raise ProgramRepeatError("no_active_program", "There is no active program to repeat.")
+    if active.version != expected_version or active.version is None:
+        raise ProgramRepeatError("program_changed", "The active program changed. Refresh and try again.")
+    completed_days = ledger.completed_program_days(int(active.version))
+    if not final_week_is_complete(active, completed_days):
+        raise ProgramRepeatError(
+            "final_week_incomplete", "The final Program week is not complete."
+        )
+    return active
+
+
+def _program_copy_for_new_version(active: Any) -> dict[str, Any]:
+    program_copy = active.model_dump()
+    for field in ("id", "version", "created_at", "published_by_coach_account_id"):
+        program_copy.pop(field, None)
+    weeks = normalize_program_weeks(program_copy)
+    for week in weeks:
+        week.pop("id", None)
+        for day in week["days"]:
+            day.pop("id", None)
+            for movement in [*day.get("exercises", []), *day.get("warmup_exercises", [])]:
+                movement.pop("id", None)
+    program_copy["weeks"] = weeks
+    program_copy["days"] = flatten_program_days(weeks)
+    return program_copy
 
 
 def ensure_active_program(

@@ -215,6 +215,8 @@ _COACH_ALERT_KINDS = frozenset(
         "stall",
         "deload_recommended",
         "performance_regression",
+        "program_final_week_started",
+        "program_final_week_completed",
     }
 )
 _PROGRAM_REQUEST_KINDS = frozenset({"exercise_substitution", "split_change"})

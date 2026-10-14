@@ -1,7 +1,6 @@
 """Program generation, retrieval, and editing."""
 
 import asyncio
-from dataclasses import asdict
 from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
@@ -32,6 +31,7 @@ from svc.schemas import (
     ProgramEditIn,
     ProgramEditOut,
     ProgramGenerateIn,
+    ProgramRepeatIn,
     ProgramSubstitutionIn,
     ProgramSubstitutionOut,
     ProgramSubstitutionUndoIn,
@@ -137,12 +137,7 @@ async def generate_program(
             )
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-        result = {
-            **programs_service.with_library_equipment(program, db),
-            "player_controls_program": programs_service.player_controls_program(db, ledger, account_id),
-            **asdict(ledger.get_program_position(program)),
-        }
-        return result
+        return programs_service.active_program_response(db, ledger, account_id, program)
 
     return await asyncio.to_thread(_run)
 
@@ -196,14 +191,42 @@ async def read_active_program(
             )
         if program is None:
             return None
-        result = {
-            **programs_service.with_library_equipment(program, db),
-            "player_controls_program": programs_service.player_controls_program(db, ledger, account_id),
-            **asdict(ledger.get_program_position(program)),
-        }
-        return result
+        return programs_service.active_program_response(db, ledger, account_id, program)
 
     return await asyncio.to_thread(_run)
+
+
+@router.post("/active/repeat-from-week-1", response_model=ActiveProgramOut)
+@limiter.limit(PROGRAM_MUTATE_LIMIT)
+async def repeat_active_program_from_week_one(
+    request: Request,
+    body: ProgramRepeatIn,
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Starts a completed self-controlled Program block again at Week 1."""
+
+    def _run():
+        account_id = account_id_of(player)
+        program = programs_service.repeat_program_from_week_one(
+            db, ledger, account_id, body.expected_active_version
+        )
+        return programs_service.active_program_response(db, ledger, account_id, program)
+
+    try:
+        return await asyncio.to_thread(_run)
+    except programs_service.ProgramRepeatError as exc:
+        error_status = {
+            "coach_controlled": status.HTTP_403_FORBIDDEN,
+            "no_active_program": status.HTTP_404_NOT_FOUND,
+            "program_changed": status.HTTP_409_CONFLICT,
+            "final_week_incomplete": status.HTTP_409_CONFLICT,
+        }.get(exc.code, status.HTTP_400_BAD_REQUEST)
+        return JSONResponse(
+            status_code=error_status,
+            content={"detail": str(exc), "code": exc.code},
+        )
 
 
 @router.post("/active/substitutions", response_model=ProgramSubstitutionOut)

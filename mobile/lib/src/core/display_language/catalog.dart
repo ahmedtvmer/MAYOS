@@ -417,6 +417,21 @@ class MayosCopy {
   String programWeekLabel(int current, int total) => isArabic
       ? 'الأسبوع ${_ltr('$current')} من ${_ltr('$total')}'
       : 'Week $current of $total';
+  String get programFinalWeek => isArabic
+      ? 'الأسبوع الأخير في برنامجك التدريبي'
+      : "Your program's final week";
+  String get waitingForCoachNextBlock => isArabic
+      ? 'بانتظار المرحلة التالية من مدربك'
+      : "Waiting for your coach's next block";
+  String get programBlockCompleteChooseNext => isArabic
+      ? 'اكتملت مرحلة البرنامج. اختر ما تريد فعله بعد ذلك.'
+      : 'Your program block is complete. Choose what comes next.';
+  String get repeatFromWeekOne => isArabic
+      ? 'كرّر من الأسبوع ${_ltr('1')}'
+      : 'Repeat from week 1';
+  String get generateNewProgram => isArabic
+      ? 'أنشئ برنامجًا تدريبيًا جديدًا'
+      : 'Generate a new program';
   String get reviewing => isArabic ? 'مراجعة' : 'Review';
   String get continueAction => isArabic ? 'متابعة' : 'Continue';
   String greetingFor(DateTime now) => isArabic

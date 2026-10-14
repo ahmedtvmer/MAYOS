@@ -83,6 +83,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   bool _substituting = false;
   bool _editingProgramDay = false;
   bool _requestingProgramChange = false;
+  bool _programActionBusy = false;
   bool _pickerBusy = false;
   FailureMessage? _loadError;
   FailureMessage? _actionError;
@@ -316,6 +317,49 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     );
     if (createdRequest == null || !mounted) return;
     _showProgramChangeRequestSent();
+  }
+
+  Future<void> _repeatProgramFromWeekOne(TrainingProgram program) async {
+    if (_programActionBusy || program.version == null) return;
+    setState(() {
+      _programActionBusy = true;
+      _actionError = null;
+    });
+    try {
+      final TrainingProgram updated = await ref
+          .read(apiClientProvider)
+          .repeatProgramFromWeekOne(expectedActiveVersion: program.version!);
+      if (!mounted) return;
+      setState(() => _programActionBusy = false);
+      _updateProgram(updated, _accountId, fromCache: false);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _programActionBusy = false;
+        _actionError = apiFailureMessage(error);
+      });
+    }
+  }
+
+  Future<void> _generateNewProgram() async {
+    if (_programActionBusy) return;
+    setState(() {
+      _programActionBusy = true;
+      _actionError = null;
+    });
+    try {
+      final TrainingProgram updated =
+          await ref.read(apiClientProvider).generateProgram();
+      if (!mounted) return;
+      setState(() => _programActionBusy = false);
+      _updateProgram(updated, _accountId, fromCache: false);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _programActionBusy = false;
+        _actionError = apiFailureMessage(error);
+      });
+    }
   }
 
   void _showProgramChangeRequestSent() {
@@ -937,6 +981,14 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       );
     }
     final ProgramDay? nextWorkoutDay = _nextWorkoutDay(program);
+    final bool isFinalWeek =
+        program.weekCount > 1 && program.currentWeek == program.weekCount;
+    final bool showFinalWeekMessage =
+        isFinalWeek && !program.finalWeekCompleted;
+    final bool showFinalWeekChoices =
+        isFinalWeek && program.finalWeekCompleted && program.playerControlsProgram;
+    final bool showWaitingForCoach =
+        isFinalWeek && program.finalWeekCompleted && !program.playerControlsProgram;
     final MayosThemeExtension c = MayosTheme.of(context);
     final ({
       String message,
@@ -1000,6 +1052,16 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
                   .copyWith(color: c.textSecondary),
             ),
           ],
+          if (showFinalWeekMessage) ...<Widget>[
+            const SizedBox(height: MayosSpacing.xs),
+            Text(
+              displayCopyOf(context).programFinalWeek,
+              key: const ValueKey<String>('program.final_week_message'),
+              style: MayosTypography.of(context)
+                  .bodySecondary
+                  .copyWith(color: c.textSecondary),
+            ),
+          ],
           if (program.isCoachPublished) ...<Widget>[
             const SizedBox(height: MayosSpacing.xs),
             _ProvenanceLabel(
@@ -1014,28 +1076,73 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
             ),
           ],
           const SizedBox(height: MayosSpacing.md),
-          MayosCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  authorityAction.message,
-                  style: MayosTypography.of(context).bodySecondary
-                      .copyWith(color: c.textSecondary),
-                ),
-                const SizedBox(height: MayosSpacing.sm),
-                MayosButton(
-                  label: authorityAction.actionLabel,
-                  icon: authorityAction.icon,
-                  loading: _requestingProgramChange,
-                  expand: false,
-                  onPressed: _requestingProgramChange
-                      ? null
-                      : authorityAction.onPressed,
-                ),
-              ],
+          if (showWaitingForCoach)
+            MayosCard(
+              child: Text(
+                displayCopyOf(context).waitingForCoachNextBlock,
+                key: const ValueKey<String>('program.waiting_for_coach'),
+                style: MayosTypography.of(context)
+                    .bodySecondary
+                    .copyWith(color: c.textSecondary),
+              ),
+            )
+          else if (showFinalWeekChoices)
+            MayosCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    displayCopyOf(context).programBlockCompleteChooseNext,
+                    key: const ValueKey<String>('program.final_week_choices'),
+                    style: MayosTypography.of(context)
+                        .bodySecondary
+                        .copyWith(color: c.textSecondary),
+                  ),
+                  const SizedBox(height: MayosSpacing.sm),
+                  MayosButton(
+                    label: displayCopyOf(context).repeatFromWeekOne,
+                    loading: _programActionBusy,
+                    expand: false,
+                    onPressed: _programActionBusy || fromCache || program.version == null
+                        ? null
+                        : () => unawaited(_repeatProgramFromWeekOne(program)),
+                  ),
+                  const SizedBox(height: MayosSpacing.xs),
+                  MayosButton(
+                    label: displayCopyOf(context).generateNewProgram,
+                    variant: MayosButtonVariant.tertiary,
+                    loading: _programActionBusy,
+                    expand: false,
+                    onPressed: _programActionBusy || fromCache
+                        ? null
+                        : () => unawaited(_generateNewProgram()),
+                  ),
+                ],
+              ),
+            )
+          else
+            MayosCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    authorityAction.message,
+                    style: MayosTypography.of(context).bodySecondary
+                        .copyWith(color: c.textSecondary),
+                  ),
+                  const SizedBox(height: MayosSpacing.sm),
+                  MayosButton(
+                    label: authorityAction.actionLabel,
+                    icon: authorityAction.icon,
+                    loading: _requestingProgramChange,
+                    expand: false,
+                    onPressed: _requestingProgramChange
+                        ? null
+                        : authorityAction.onPressed,
+                  ),
+                ],
+              ),
             ),
-          ),
           const SizedBox(height: MayosSpacing.lg),
           for (final ProgramDay day in program.days) ...<Widget>[
             if (program.weekCount > 1 && day.dayOrder == 1) ...<Widget>[

@@ -53,6 +53,47 @@ FakeMayosApi _signedInFake() {
   return fake;
 }
 
+void _setTwoWeekProgram(
+  FakeMayosApi fake, {
+  required bool finalWeekCompleted,
+  bool coachControlsProgram = false,
+}) {
+  final Map<String, dynamic> firstDay = <String, dynamic>{
+    'day_name': 'Upper 1',
+    'day_order': 1,
+    'week_order': 1,
+    'warmup_exercises': <dynamic>[],
+    'exercises': <dynamic>[],
+    'cardio': null,
+  };
+  final Map<String, dynamic> finalDay = <String, dynamic>{
+    'day_name': 'Upper 1',
+    'day_order': 1,
+    'week_order': 2,
+    'warmup_exercises': <dynamic>[],
+    'exercises': <dynamic>[],
+    'cardio': null,
+  };
+  fake
+    ..programDaysOverride = <Map<String, dynamic>>[firstDay, finalDay]
+    ..programWeeksOverride = <Map<String, dynamic>>[
+      <String, dynamic>{
+        'week_name': 'Base',
+        'week_order': 1,
+        'days': <Map<String, dynamic>>[firstDay],
+      },
+      <String, dynamic>{
+        'week_name': 'Build',
+        'week_order': 2,
+        'days': <Map<String, dynamic>>[finalDay],
+      },
+    ]
+    ..programCurrentWeekOverride = 2
+    ..programFinalWeekCompleted = finalWeekCompleted
+    ..programVersion = 1
+    ..coachControlsProgram = coachControlsProgram;
+}
+
 Future<void> _pumpProgram(
   WidgetTester tester,
   FakeMayosApi fake, {
@@ -1740,5 +1781,92 @@ void main() {
     );
     expect(after.programVersion, before.programVersion);
     expect(fake.programEditRequests, hasLength(1));
+  });
+
+  testWidgets('Player sees the final-week message in English and Arabic',
+      (tester) async {
+    for (final String language in <String>['en', 'ar']) {
+      final FakeMayosApi fake = _signedInFake();
+      _setTwoWeekProgram(fake, finalWeekCompleted: false);
+      await _pumpProgram(tester, fake, languageCode: language);
+
+      expect(
+        find.text(language == 'ar'
+            ? 'الأسبوع الأخير في برنامجك التدريبي'
+            : "Your program's final week"),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey<String>('program.final_week_message')),
+          findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    }
+  });
+
+  testWidgets('Coach-controlled Player waits after the final week in both languages',
+      (tester) async {
+    for (final String language in <String>['en', 'ar']) {
+      final FakeMayosApi fake = _signedInFake();
+      _setTwoWeekProgram(
+        fake,
+        finalWeekCompleted: true,
+        coachControlsProgram: true,
+      );
+      await _pumpProgram(tester, fake, languageCode: language);
+
+      expect(
+        find.text(language == 'ar'
+            ? 'بانتظار المرحلة التالية من مدربك'
+            : "Waiting for your coach's next block"),
+        findsOneWidget,
+      );
+      expect(
+        find.text(language == 'ar' ? 'كرّر من الأسبوع 1' : 'Repeat from week 1'),
+        findsNothing,
+      );
+      expect(
+        find.text(language == 'ar'
+            ? 'أنشئ برنامجًا تدريبيًا جديدًا'
+            : 'Generate a new program'),
+        findsNothing,
+      );
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    }
+  });
+
+  testWidgets('Player with Program authority gets both next-block choices',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    _setTwoWeekProgram(fake, finalWeekCompleted: true);
+    await _pumpProgram(tester, fake);
+
+    expect(find.byKey(const ValueKey<String>('program.final_week_choices')),
+        findsOneWidget);
+    expect(find.text('Repeat from week 1'), findsOneWidget);
+    expect(find.text('Generate a new program'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('Repeat from week 1'));
+    await tester.tap(find.text('Repeat from week 1'));
+    await tester.pumpAndSettle();
+    expect(fake.programVersion, 2);
+    expect(fake.programCurrentWeekOverride, 1);
+    expect(fake.programFinalWeekCompleted, isFalse);
+  });
+
+  testWidgets('Generate new program choice calls the Player program generator',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    _setTwoWeekProgram(fake, finalWeekCompleted: true);
+    await _pumpProgram(tester, fake);
+
+    await tester.ensureVisible(find.text('Generate a new program'));
+    await tester.tap(find.text('Generate a new program'));
+    await tester.pumpAndSettle();
+    expect(fake.generateProgramRequests, 1);
+    expect(fake.programFinalWeekCompleted, isFalse);
+    expect(find.text('Generated program'), findsOneWidget);
   });
 }

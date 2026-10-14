@@ -61,6 +61,8 @@ COACH_ALERT_MESSAGE_PARAM_ALLOWLISTS = {
     "coach_alert.weight_off_target_trend.v1": frozenset(
         {"distance_change_kg", "target_weight_kg", "window_days", "threshold_kg"}
     ),
+    "coach_alert.program_final_week_started.v1": frozenset(),
+    "coach_alert.program_final_week_completed.v1": frozenset(),
 }
 ERROR_MESSAGE_PARAM_ALLOWLISTS = {
     "app.update_required.v1": frozenset({"min_build"}),
@@ -551,6 +553,22 @@ def _weight_off_target_trend(evidence: Mapping[str, Any]) -> dict[str, Any]:
     )
 
 
+def _program_final_week_started(evidence: Mapping[str, Any]) -> dict[str, Any]:
+    return structured_message(
+        "coach_alert.program_final_week_started.v1",
+        {},
+        "Program ends after this week.",
+    )
+
+
+def _program_final_week_completed(evidence: Mapping[str, Any]) -> dict[str, Any]:
+    return structured_message(
+        "coach_alert.program_final_week_completed.v1",
+        {},
+        "The program block is complete.",
+    )
+
+
 _COACH_ALERT_BUILDERS: dict[str, Callable[[Mapping[str, Any]], dict[str, Any]]] = {
     "missed_expected_days": _missed_days,
     "follow_up_due": _follow_up,
@@ -559,4 +577,6 @@ _COACH_ALERT_BUILDERS: dict[str, Callable[[Mapping[str, Any]], dict[str, Any]]] 
     "performance_regression": _regression,
     "profile_change": _profile_change,
     "weight_off_target_trend": _weight_off_target_trend,
+    "program_final_week_started": _program_final_week_started,
+    "program_final_week_completed": _program_final_week_completed,
 }

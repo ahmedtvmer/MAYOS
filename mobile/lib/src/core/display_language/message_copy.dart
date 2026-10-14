@@ -174,6 +174,13 @@ class MessageCopy {
   String get unavailable =>
       isArabic ? 'تعذر عرض الرسالة.' : 'Message unavailable.';
 
+  String get programFinalWeekStartedAlert => isArabic
+      ? 'ينتهي البرنامج بعد هذا الأسبوع.'
+      : 'Program ends after this week.';
+  String get programFinalWeekCompletedAlert => isArabic
+      ? 'اكتمل البرنامج التدريبي.'
+      : 'The program block is complete.';
+
   String get badRequest => isArabic
       ? 'تعذر تنفيذ الطلب. راجع البيانات وحاول مجددًا.'
       : 'The request could not be completed.';

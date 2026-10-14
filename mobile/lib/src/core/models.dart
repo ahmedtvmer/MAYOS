@@ -723,9 +723,8 @@ class CoachAssistantTurn {
 
 /// `GET /coach/alerts`: one catalog-side alert (ADR 030/031/032).
 ///
-/// `kind` is `missed_expected_days`, `follow_up_due`, `deload_recommended`,
-/// `performance_regression`, `stall`, or `profile_change`; kind-specific fields are
-/// flattened beside the common fields.
+/// `kind` distinguishes attendance, follow-up, progression, profile, and Program
+/// block alerts; kind-specific fields are flattened beside the common fields.
 class CoachAlert {
   const CoachAlert({
     required this.alertId,
@@ -862,6 +861,9 @@ class CoachAlert {
   static const String stallKind = 'stall';
   static const String profileChangeKind = 'profile_change';
   static const String weightOffTargetTrendKind = 'weight_off_target_trend';
+  static const String programFinalWeekStartedKind = 'program_final_week_started';
+  static const String programFinalWeekCompletedKind =
+      'program_final_week_completed';
 
   bool get isNew => state == 'new';
   bool get isAcknowledged => state == 'acknowledged';
@@ -882,6 +884,10 @@ class CoachAlert {
     performanceRegressionKind: 'coach_alert.performance_regression.v1',
     profileChangeKind: 'coach_alert.profile_change.v1',
     weightOffTargetTrendKind: 'coach_alert.weight_off_target_trend.v1',
+    programFinalWeekStartedKind:
+        'coach_alert.program_final_week_started.v1',
+    programFinalWeekCompletedKind:
+        'coach_alert.program_final_week_completed.v1',
   };
 
   String? get supportedMessageCode {
@@ -2576,6 +2582,7 @@ class TrainingProgram {
     this.currentWeek = 1,
     this.weekCount = 1,
     this.nextDayOrder = 1,
+    this.finalWeekCompleted = false,
     this.version,
     this.publishedByCoachAccountId,
     this.playerControlsProgram = false,
@@ -2602,6 +2609,7 @@ class TrainingProgram {
         weekCount: (json['week_count'] as num?)?.toInt() ??
             (weeks.isEmpty ? 1 : weeks.length),
         nextDayOrder: (json['next_day_order'] as num?)?.toInt() ?? 1,
+        finalWeekCompleted: json['final_week_completed'] as bool? ?? false,
         version: (json['version'] as num?)?.toInt(),
         publishedByCoachAccountId:
             json['published_by_coach_account_id'] as String?,
@@ -2618,6 +2626,7 @@ class TrainingProgram {
   final int currentWeek;
   final int weekCount;
   final int nextDayOrder;
+  final bool finalWeekCompleted;
 
   /// Stable ledger version recorded at publication; null for legacy payloads.
   final int? version;
@@ -2643,6 +2652,7 @@ class TrainingProgram {
         'current_week': currentWeek,
         'week_count': weekCount,
         'next_day_order': nextDayOrder,
+        'final_week_completed': finalWeekCompleted,
         'version': version,
         'published_by_coach_account_id': publishedByCoachAccountId,
         'player_controls_program': playerControlsProgram,

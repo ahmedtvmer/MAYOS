@@ -10,6 +10,8 @@ each before coach publication, during coach control, and after unassignment.
 import copy
 import json
 import sqlite3
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -1330,3 +1332,228 @@ def test_assistant_substitution_targets_named_day_and_publishes_version(api, mon
         "SELECT version, is_active, published_by_coach_account_id FROM training_programs ORDER BY version"
     ).fetchall()
     assert [(row[0], row[1], row[2]) for row in rows] == [(1, 0, None), (2, 0, None), (3, 1, None)]
+
+
+def _commit_program_week_day(client, player_headers, program_version, week_order, day_order):
+    now = datetime.now(UTC)
+    exercise = _program().days[0].exercises[0].model_dump()
+    return client.post(
+        "/workouts/sessions",
+        headers=player_headers,
+        json={
+            "day_order": day_order,
+            "week_order": week_order,
+            "readiness": 4,
+            "session_notes": "",
+            "sets": [
+                {
+                    "exercise": exercise,
+                    "sets": [{"weight_kg": 50, "reps": 6, "rpe": 8}],
+                }
+            ],
+            "client_session_id": str(uuid.uuid4()),
+            "performed_date": now.date().isoformat(),
+            "performed_timezone": "UTC",
+            "program_version": program_version,
+            "captured_at": now.isoformat(),
+        },
+    )
+
+
+def test_final_week_alerts_are_deduplicated_and_resolved_by_publish(api):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, coach_id, _ = _assigned_player(api)
+    db.switch_user("p1")
+    db.ledger.save_training_program(
+        _three_week_program_data(_program().model_dump()),
+        published_by_coach_account_id=coach_id,
+    )
+    version = db.ledger.get_active_program().version
+
+    # Week 2 is not the final week, so it has no warning.
+    for day_order in (1, 2, 3):
+        response = _commit_program_week_day(
+            client, player_headers, version, 1, day_order
+        )
+        assert response.status_code == 201, response.text
+    before_final_week = client.get("/coach/alerts", headers=coach_headers).json()["alerts"]
+    assert not [alert for alert in before_final_week if alert["kind"].startswith("program_final_week_")]
+
+    # Completing Week 2 moves the cursor into Week 3 and creates the warning.
+    for day_order in (1, 2, 3):
+        response = _commit_program_week_day(
+            client, player_headers, version, 2, day_order
+        )
+        assert response.status_code == 201, response.text
+    started_alerts = client.get("/coach/alerts", headers=coach_headers).json()["alerts"]
+    started = next(
+        alert for alert in started_alerts if alert["kind"] == "program_final_week_started"
+    )
+    assert started["message_code"] == "coach_alert.program_final_week_started.v1"
+    assert started["message_fallback"] == "Program ends after this week."
+
+    for day_order in (1, 2, 3):
+        response = _commit_program_week_day(
+            client, player_headers, version, 3, day_order
+        )
+        assert response.status_code == 201, response.text
+
+    all_alerts = client.get(
+        "/coach/alerts?state=new&state=acknowledged&state=resolved",
+        headers=coach_headers,
+    ).json()["alerts"]
+    block_alerts = [
+        alert for alert in all_alerts if alert["kind"].startswith("program_final_week_")
+    ]
+    assert {alert["kind"] for alert in block_alerts} == {
+        "program_final_week_started",
+        "program_final_week_completed",
+    }
+    registry_alerts = db.list_coach_alerts(
+        coach_id, ("new", "acknowledged", "resolved")
+    )
+    registry_started = next(
+        alert for alert in registry_alerts if alert["kind"] == "program_final_week_started"
+    )
+    assert registry_started["dedupe_key"] == str(version)
+    assert registry_started["details"]["program_version"] == version
+
+    # Completing the final week creates one completion alert. Repeating that
+    # week creates no more alerts because the dedupe key is the program version.
+    for day_order in (1, 2, 3):
+        response = _commit_program_week_day(
+            client, player_headers, version, 3, day_order
+        )
+        assert response.status_code == 201, response.text
+    all_alerts = client.get(
+        "/coach/alerts?state=new&state=acknowledged&state=resolved",
+        headers=coach_headers,
+    ).json()["alerts"]
+    block_alerts = [
+        alert for alert in all_alerts if alert["kind"].startswith("program_final_week_")
+    ]
+    assert len(block_alerts) == 2
+    completed = next(
+        alert for alert in block_alerts if alert["kind"] == "program_final_week_completed"
+    )
+    assert completed["message_code"] == "coach_alert.program_final_week_completed.v1"
+    registry_completed = next(
+        alert
+        for alert in db.list_coach_alerts(coach_id, ("new", "acknowledged", "resolved"))
+        if alert["kind"] == "program_final_week_completed"
+    )
+    assert registry_completed["dedupe_key"] == str(version)
+    assert registry_completed["details"]["program_version"] == version
+
+    for day_order in (1, 2, 3):
+        response = _commit_program_week_day(
+            client, player_headers, version, 3, day_order
+        )
+        assert response.status_code == 201, response.text
+    all_alerts = client.get(
+        "/coach/alerts?state=new&state=acknowledged&state=resolved",
+        headers=coach_headers,
+    ).json()["alerts"]
+    assert len(
+        [alert for alert in all_alerts if alert["kind"].startswith("program_final_week_")]
+    ) == 2
+
+    republished = client.post(
+        f"/coach/assignments/{assignment_id}/program/approve",
+        headers=coach_headers,
+        json={"expected_active_version": version},
+    )
+    assert republished.status_code == 200, republished.text
+    all_alerts = client.get(
+        "/coach/alerts?state=new&state=acknowledged&state=resolved",
+        headers=coach_headers,
+    ).json()["alerts"]
+    resolved = [
+        alert for alert in all_alerts if alert["kind"].startswith("program_final_week_")
+    ]
+    assert len(resolved) == 2
+    assert all(alert["state"] == "resolved" for alert in resolved)
+    assert all(alert["resolved_by"] == "system" for alert in resolved)
+
+
+def test_single_week_program_does_not_create_final_week_alert(api):
+    client, db, _ = api
+    coach_headers, player_headers, _, coach_id, _ = _assigned_player(api)
+    db.switch_user("p1")
+    db.ledger.save_training_program(
+        _program().model_dump(), published_by_coach_account_id=coach_id
+    )
+    version = db.ledger.get_active_program().version
+
+    response = _commit_program_week_day(client, player_headers, version, 1, 1)
+    assert response.status_code == 201, response.text
+    alerts = client.get(
+        "/coach/alerts?state=new&state=acknowledged&state=resolved",
+        headers=coach_headers,
+    ).json()["alerts"]
+    assert not [alert for alert in alerts if alert["kind"].startswith("program_final_week_")]
+
+
+def test_player_can_repeat_a_self_controlled_program_from_week_one(api):
+    client, db, _ = api
+    player = _register(client, "solo")
+    player_headers = _authed(player["access_token"])
+    db.switch_user("solo")
+    db.ledger.upsert_player_profile({"current_goal": "Strength"})
+    # A previous Coach's provenance must not transfer to the player's new
+    # version after the player has regained Program authority.
+    db.ledger.save_training_program(
+        _three_week_program_data(_program().model_dump()),
+        published_by_coach_account_id="former-coach",
+    )
+    active = db.ledger.get_active_program()
+    for week_order in (1, 2, 3):
+        for day_order in (1, 2, 3):
+            session_date = f"2026-10-{week_order * 3 + day_order:02}"
+            db.ledger.log_workout_session(
+                f"solo-{week_order}-{day_order}",
+                session_date,
+                f"Full {day_order}",
+                f"{session_date}T10:00:00+00:00",
+                f"{session_date}T11:00:00+00:00",
+                program_version=active.version,
+                program_week_order=week_order,
+                program_day_order=day_order,
+            )
+
+    before = client.get("/programs/active", headers=player_headers)
+    assert before.status_code == 200, before.text
+    assert before.json()["final_week_completed"] is True
+    assert before.json()["current_week"] == 3
+    assert before.json()["next_day_order"] == 1
+    assert before.json()["player_controls_program"] is True
+
+    repeated = client.post(
+        "/programs/active/repeat-from-week-1",
+        headers=player_headers,
+        json={"expected_active_version": active.version},
+    )
+    assert repeated.status_code == 200, repeated.text
+    assert repeated.json()["version"] == active.version + 1
+    assert repeated.json()["current_week"] == 1
+    assert repeated.json()["final_week_completed"] is False
+    assert repeated.json()["published_by_coach_account_id"] is None
+    assert repeated.json()["player_controls_program"] is True
+
+
+def test_coach_controlled_program_rejects_player_repeat_choice(api):
+    client, db, _ = api
+    _, player_headers, _, coach_id, _ = _assigned_player(api)
+    db.switch_user("p1")
+    db.ledger.save_training_program(
+        _three_week_program_data(_program().model_dump()),
+        published_by_coach_account_id=coach_id,
+    )
+    active = db.ledger.get_active_program()
+
+    response = client.post(
+        "/programs/active/repeat-from-week-1",
+        headers=player_headers,
+        json={"expected_active_version": active.version},
+    )
+    assert response.status_code == 403

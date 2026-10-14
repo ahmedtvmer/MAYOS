@@ -324,6 +324,16 @@ def _evaluate_progression_alerts(
         logger.exception("Progression alert evaluation raised unexpectedly after session commit")
 
 
+def _evaluate_program_end_alerts(db: Any, account_id: str) -> None:
+    """Best-effort final-week alerts after a committed workout (#332)."""
+    try:
+        from service import program_end_alerts
+
+        program_end_alerts.evaluate_for_player(db, account_id)
+    except Exception:
+        logger.exception("Final Program week alert evaluation raised after session commit")
+
+
 def _run_post_commit_hooks(
     db: Any,
     account_id: str | None,
@@ -338,6 +348,7 @@ def _run_post_commit_hooks(
     _evaluate_missed_days(db, account_id)
     _evaluate_stalling(db, account_id, session_id)
     _evaluate_progression_alerts(db, account_id, session_id, session_date, exercise_summaries, fatigue_post)
+    _evaluate_program_end_alerts(db, account_id)
 
 
 def _is_barbell(exercise: Any) -> bool:

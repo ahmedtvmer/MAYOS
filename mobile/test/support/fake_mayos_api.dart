@@ -219,6 +219,7 @@ class FakeMayosApi {
   String? programPublishedByCoachAccountId;
   List<Map<String, dynamic>>? programWeeksOverride;
   int? programCurrentWeekOverride;
+  bool programFinalWeekCompleted = false;
   Map<String, dynamic>? programDraft;
   Map<String, dynamic> programImportResult = <String, dynamic>{
     'detected_tabs': <String>['Program'],
@@ -294,6 +295,7 @@ class FakeMayosApi {
   // simulation for the Program tab's cache fallback, ADR 020/033).
   bool activeProgramFails = false;
   int activeProgramRequests = 0;
+  int generateProgramRequests = 0;
   bool coachControlsProgram = false;
   bool? coachPreparingProgram;
   bool substitutionVersionConflict = false;
@@ -702,6 +704,10 @@ class FakeMayosApi {
         return _profile(request);
       case '/programs/active':
         return _activeProgram(request);
+      case '/programs/active/repeat-from-week-1':
+        return _repeatProgramFromWeekOne(request);
+      case '/programs/generate':
+        return _generateProgram(request);
       case '/programs/active/edits':
         return _editActiveProgramDay(request);
       case '/programs/active/substitutions':
@@ -3697,6 +3703,7 @@ class FakeMayosApi {
         if (programWeeksOverride != null)
           'week_count': programWeeksOverride!.length,
         if (programWeeksOverride != null) 'next_day_order': 1,
+        'final_week_completed': programFinalWeekCompleted,
         if (programVersion != null) 'version': programVersion,
         if (programPublishedByCoachAccountId != null)
           'published_by_coach_account_id': programPublishedByCoachAccountId,
@@ -3716,6 +3723,37 @@ class FakeMayosApi {
     if (noActiveProgram) {
       return const FakeResponse(200);
     }
+    return FakeResponse(200, _activeProgramBody());
+  }
+
+  FakeResponse _repeatProgramFromWeekOne(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (coachControlsProgram) {
+      return const FakeResponse(403, <String, dynamic>{
+        'detail': 'Your assigned coach controls your program.',
+      });
+    }
+    programVersion = (programVersion ?? 1) + 1;
+    programCurrentWeekOverride = 1;
+    programFinalWeekCompleted = false;
+    return FakeResponse(200, _activeProgramBody());
+  }
+
+  FakeResponse _generateProgram(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    generateProgramRequests++;
+    programVersion = (programVersion ?? 0) + 1;
+    programWeeksOverride = null;
+    programDaysOverride = null;
+    programCurrentWeekOverride = 1;
+    programFinalWeekCompleted = false;
+    _programNameOverride = 'Generated program';
     return FakeResponse(200, _activeProgramBody());
   }
 

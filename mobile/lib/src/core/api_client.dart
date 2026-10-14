@@ -2005,6 +2005,37 @@ class ApiClient {
     return TrainingProgram.fromJson(data as Map<String, dynamic>);
   }
 
+  /// Starts the completed self-controlled Program block again at Week 1.
+  Future<TrainingProgram> repeatProgramFromWeekOne({
+    required int expectedActiveVersion,
+  }) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/programs/active/repeat-from-week-1',
+        data: <String, dynamic>{
+          'expected_active_version': expectedActiveVersion,
+        },
+      ),
+    );
+    return _parseBody(
+      response.data,
+      TrainingProgram.fromJson,
+      'The service returned invalid program data.',
+    );
+  }
+
+  /// Requests a fresh Player-controlled program from the existing generator.
+  Future<TrainingProgram> generateProgram() async {
+    final response = await _send(
+      () => _dio.post<dynamic>('/programs/generate', data: <String, dynamic>{}),
+    );
+    return _parseBody(
+      response.data,
+      TrainingProgram.fromJson,
+      'The service returned invalid program data.',
+    );
+  }
+
   /// Saves one complete working-set list as a Program edit.
   Future<TrainingProgram> editProgramDay({
     required String dayName,
