@@ -315,6 +315,9 @@ class CoachCopy {
   String weeksNotImported(List<String> weeks, String? selectedWeek) => isArabic
       ? 'سيتم استيراد ${_ltr(selectedWeek ?? '')} فقط. لم تُستورد هذه الأسابيع: ${_ltr(weeks.join(', '))}.'
       : 'Only ${selectedWeek ?? 'one week'} will be imported. These weeks were not imported: ${weeks.join(', ')}.';
+  String importWeeksIncluded(List<String> weeks) => isArabic
+      ? 'سيتم استيراد الأسابيع: ${_ltr(weeks.join('، '))}.'
+      : 'Weeks to import: ${weeks.join(', ')}.';
   String get importLayoutNeedsConfirmation => isArabic
       ? 'راجع تقسيم الأيام والأسابيع قبل إنشاء المسودة.'
       : 'Review the detected day and week layout before creating the draft.';
@@ -409,6 +412,7 @@ class CoachCopy {
         'rpe' => 'RPE',
         'sets' => isArabic ? 'المجموعات' : 'sets',
         'load_kg' || 'load_pct_e1rm' => isArabic ? 'الحمل' : 'load',
+        'week' => isArabic ? 'الأسبوع' : 'week',
         'day' => isArabic ? 'اليوم' : 'day',
         'day_name' => isArabic ? 'اسم اليوم' : 'day name',
         'order' => isArabic ? 'الترتيب' : 'order',
@@ -586,6 +590,7 @@ class CoachCopy {
   String get dayName => isArabic ? 'اسم اليوم' : 'Day name';
   String get weekName => isArabic ? 'اسم الأسبوع' : 'Week name';
   String get addWeek => isArabic ? 'إضافة أسبوع' : 'Add week';
+  String get duplicateWeek => isArabic ? 'نسخ الأسبوع' : 'Duplicate week';
   String get removeWeek => isArabic ? 'حذف الأسبوع' : 'Remove week';
   String get moveWeekUp => isArabic ? 'نقل الأسبوع لأعلى' : 'Move week up';
   String get moveWeekDown => isArabic ? 'نقل الأسبوع لأسفل' : 'Move week down';

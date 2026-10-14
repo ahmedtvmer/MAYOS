@@ -2,6 +2,7 @@ abstract final class ProgramDraftPrescription {
   static const int minReps = 4;
   static const int maxReps = 30;
   static const int maxDays = 5;
+  static const int maxWeeks = 12;
   static const int minWarmupSets = 0;
   static const int maxWarmupSets = 4;
   static const int defaultExerciseRestSeconds = 180;

@@ -20,6 +20,7 @@ from agent.program_prescription import (
     DEFAULT_TARGET_SETS,
     MAX_EXERCISES_PER_DAY,
     MAX_PROGRAM_DAYS,
+    MAX_PROGRAM_WEEKS,
     MAX_PROGRAM_NOTES_LENGTH,
     MAX_REPS,
     MAX_TEMPO_LENGTH,
@@ -52,7 +53,7 @@ if TYPE_CHECKING:
     from svc.llm import InferenceScope
 
 TEMPLATE_COLUMNS = (
-    "day", "day_name", "order", "exercise", "sets", "reps", "rir", "rpe",
+    "week", "day", "day_name", "order", "exercise", "sets", "reps", "rir", "rpe",
     "load_kg", "load_pct_e1rm", "rest_sec", "tempo", "notes",
 )
 _REP_RANGE = re.compile(r"^(\d+)\s*-\s*(\d+)$")
@@ -135,6 +136,7 @@ class ProgramImportRow:
     approximation_markers: tuple[Approximation, ...] = ()
     confirmed_exercise_id: str | None = None
     week: str | None = None
+    week_order: ImportValue = None
     suggestion_terms: tuple[str, ...] = ()
 
 
@@ -506,13 +508,15 @@ def create_imported_program_draft(
         pass
     source_rows = [_confirmed_row(row) for row in rows]
     reviewed_rows = validate_and_resolve_rows(db, coach_account_id, source_rows)
-    grouped = _confirmed_rows_by_day(db, coach_account_id, reviewed_rows)
+    weeks = _confirmed_rows_by_week(db, coach_account_id, reviewed_rows)
+    days = [day for week in weeks for day in week["days"]]
     draft = {
         "program_name": (program_name or "").strip() or "Imported program",
         "split_type": "custom",
-        "weekly_frequency": len(grouped),
+        "weekly_frequency": max((len(week["days"]) for week in weeks), default=1),
         "instructions": "",
-        "days": grouped,
+        "days": days,
+        "weeks": weeks,
     }
     from svc.schemas import CoachProgramDraftIn
 
@@ -542,7 +546,7 @@ def template_csv_bytes() -> bytes:
     output = io.StringIO(newline="")
     writer = csv.writer(output)
     writer.writerow(TEMPLATE_COLUMNS)
-    writer.writerow((1, "Example: Push", 1, "Bench Press", 3, "6-8", 2, "", "", "", 120, "2-0-1", "Pause briefly at the chest"))
+    writer.writerow((1, 1, "Example: Push", 1, "Bench Press", 3, "6-8", 2, "", "", "", 120, "2-0-1", "Pause briefly at the chest"))
     return output.getvalue().encode("utf-8-sig")
 
 
@@ -553,9 +557,9 @@ def template_xlsx_bytes() -> bytes:
     program.append(TEMPLATE_COLUMNS)
     example = workbook.create_sheet("Example")
     example.append(TEMPLATE_COLUMNS)
-    example.append((1, "Push", 1, "Bench Press", 3, "6-8", 2, "", "", "", 120, "2-0-1", "Pause briefly at the chest"))
+    example.append((1, 1, "Push", 1, "Bench Press", 3, "6-8", 2, "", "", "", 120, "2-0-1", "Pause briefly at the chest"))
     for worksheet in (program, example):
-        for column in ("F", "G", "H"):
+        for column in ("G", "H", "I"):
             worksheet.column_dimensions[column].number_format = "@"
             for row_number in range(1, MAX_PROGRAM_IMPORT_ROWS + 2):
                 worksheet[f"{column}{row_number}"].number_format = "@"
@@ -1922,15 +1926,34 @@ def _rows_from_table(
         }
         if not any(value is not None and str(value).strip() for value in named.values()):
             continue
-        rows.append(_template_row(row_number, named))
+        rows.append(_template_row(row_number, named, has_week_column="week" in columns))
         if len(rows) > MAX_PROGRAM_IMPORT_ROWS:
             break
     if columns is None:
         raise ProgramImportError("program_import.sheet_empty.v1", "The selected sheet is empty.")
-    return ReaderOutput(detected_tabs, selected_tab, False, rows)
+    detected_weeks = _detected_template_weeks(rows) if "week" in columns else []
+    return ReaderOutput(
+        detected_tabs,
+        selected_tab,
+        False,
+        rows,
+        detected_weeks=detected_weeks,
+    )
 
 
-def _template_row(source_row: int, cells: dict[str, Any]) -> ProgramImportRow:
+def _detected_template_weeks(rows: list[ProgramImportRow]) -> list[str]:
+    week_orders = {
+        week_order
+        for row in rows
+        if (week_order := _parse_integer(row.week_order)) is not None
+        and 1 <= week_order <= MAX_PROGRAM_WEEKS
+    }
+    return [f"Week {week_order}" for week_order in sorted(week_orders)]
+
+
+def _template_row(
+    source_row: int, cells: dict[str, Any], *, has_week_column: bool
+) -> ProgramImportRow:
     reps = cells.get("reps")
     reps_min, reps_max, rep_markers = _reader_reps(reps)
     notes = _cell_text(cells.get("notes"))
@@ -1941,6 +1964,9 @@ def _template_row(source_row: int, cells: dict[str, Any]) -> ProgramImportRow:
             notes = "\n".join(part for part in (notes, f"{label}: {value}") if part)
             markers.append(Approximation("program_import.load_preserved_as_note.v1", column, value))
     raw_values = {key: _cell_text(value) for key, value in cells.items() if value is not None}
+    week_order = cells.get("week")
+    if has_week_column and not _cell_text(week_order):
+        week_order = 1
     return ProgramImportRow(
         source_row=source_row,
         day=cells.get("day"),
@@ -1958,6 +1984,7 @@ def _template_row(source_row: int, cells: dict[str, Any]) -> ProgramImportRow:
         notes=notes,
         original_text=" | ".join(f"{key}: {value}" for key, value in raw_values.items()),
         approximation_markers=tuple(markers),
+        week_order=week_order if has_week_column else None,
     )
 
 
@@ -1992,7 +2019,7 @@ def validate_and_resolve_rows(
     if len(source_rows) > MAX_PROGRAM_IMPORT_ROWS:
         raise ProgramImportError("program_import.too_many_rows.v1", "Trim the sheet to 500 exercise rows or fewer.", 413)
     output: list[dict[str, Any]] = []
-    order_by_day: dict[int, int] = {}
+    order_by_day: dict[tuple[str, str | int], int] = {}
     for source in source_rows:
         row = _normalise_row(source, order_by_day)
         resolution = _resolve_exercise(db, coach_account_id, row["exercise_name"], source.confirmed_exercise_id)
@@ -2012,22 +2039,30 @@ def validate_and_resolve_rows(
     return output
 
 
-def _normalise_row(source: ProgramImportRow, order_by_day: dict[int, int]) -> dict[str, Any]:
+def _normalise_row(
+    source: ProgramImportRow, order_by_day: dict[tuple[str, str | int], int]
+) -> dict[str, Any]:
     errors: list[dict[str, Any]] = []
     warnings = [_row_warning(item.code, source.source_row, item.column, "") for item in source.approximation_markers]
+    week, week_order, week_error = _normalise_template_week(
+        source.week_order, source.week, source.source_row
+    )
+    if week_error:
+        errors.append(week_error)
     day = _parse_integer(source.day)
     day_valid = day is not None and 1 <= day <= MAX_PROGRAM_DAYS
     if not day_valid:
         errors.append(_row_error("program_import.invalid_day.v1", source.source_row, "day", "Day is outside the supported range."))
         day = 1
     if day_valid:
-        order_by_day[day] = order_by_day.get(day, 0) + 1
+        day_key = (_week_group_key(week, week_order), day)
+        order_by_day[day_key] = order_by_day.get(day_key, 0) + 1
     order = _parse_integer(source.order)
     if order is None:
-        order = order_by_day.get(day, 1)
+        order = order_by_day.get((_week_group_key(week, week_order), day), 1)
     elif not 1 <= order <= MAX_PROGRAM_IMPORT_ROWS:
         errors.append(_row_error("program_import.invalid_order.v1", source.source_row, "order", "Exercise order is outside the supported range."))
-        order = order_by_day.get(day, 1)
+        order = order_by_day.get((_week_group_key(week, week_order), day), 1)
 
     sets, set_error, set_warning = _normalise_sets(source.sets, source.source_row)
     if set_error:
@@ -2086,7 +2121,8 @@ def _normalise_row(source: ProgramImportRow, order_by_day: dict[int, int]) -> di
 
     return {
         "source_row": source.source_row,
-        "week": source.week,
+        "week": week,
+        "week_order": week_order,
         "original_text": source.original_text,
         "approximation_markers": [item.code for item in source.approximation_markers],
         "suggestion_search_terms": list(source.suggestion_terms),
@@ -2108,6 +2144,31 @@ def _normalise_row(source: ProgramImportRow, order_by_day: dict[int, int]) -> di
         "errors": errors,
         "warnings": warnings,
     }
+
+
+def _normalise_template_week(
+    raw_week_order: ImportValue, source_week: str | None, source_row: int
+) -> tuple[str | None, int | None, dict[str, Any] | None]:
+    if raw_week_order is None:
+        return source_week, None, None
+    week_order = _parse_integer(raw_week_order)
+    if week_order is None or not 1 <= week_order <= MAX_PROGRAM_WEEKS:
+        error = _row_error(
+            "program_import.week_invalid.v1",
+            source_row,
+            "week",
+            f"Week must be a number from 1 to {MAX_PROGRAM_WEEKS}.",
+        )
+        return "Week 1", 1, error
+    return f"Week {week_order}", week_order, None
+
+
+def _week_group_key(week: str | None, week_order: int | None) -> tuple[str, str | int]:
+    if week_order is not None:
+        return ("order", week_order)
+    if week:
+        return ("label", _week_identity(week))
+    return ("order", 1)
 
 
 def _normalise_sets(value: Any, source_row: int) -> tuple[int, dict[str, Any] | None, dict[str, Any] | None]:
@@ -2226,20 +2287,25 @@ def _join_notes(*values: Any) -> str:
 
 
 def _normalise_day_names(rows: list[dict[str, Any]]) -> None:
-    names: dict[int, str] = {}
+    names: dict[tuple[tuple[str, str | int], int], str] = {}
     for row in rows:
         if row["day_valid"] and row["day_name"]:
-            names.setdefault(row["day"], row["day_name"])
+            names.setdefault(
+                (_week_group_key(row["week"], row["week_order"]), row["day"]),
+                row["day_name"],
+            )
     for row in rows:
         if not row["day_name"]:
-            row["day_name"] = names.get(row["day"], f"Day {row['day']}")
+            day_key = (_week_group_key(row["week"], row["week_order"]), row["day"])
+            row["day_name"] = names.get(day_key, f"Day {row['day']}")
 
 
 def _mark_per_day_count_errors(rows: list[dict[str, Any]]) -> None:
-    counts: dict[int, list[dict[str, Any]]] = {}
+    counts: dict[tuple[tuple[str, str | int], int], list[dict[str, Any]]] = {}
     for row in rows:
         if row["valid"] and row["day_valid"] and row["exercise_name"]:
-            counts.setdefault(row["day"], []).append(row)
+            day_key = (_week_group_key(row["week"], row["week_order"]), row["day"])
+            counts.setdefault(day_key, []).append(row)
     for day_rows in counts.values():
         for row in day_rows[MAX_EXERCISES_PER_DAY:]:
             row["errors"].append(_row_error("program_import.too_many_exercises.v1", row["source_row"], "exercise", "A day has too many exercises."))
@@ -2247,11 +2313,12 @@ def _mark_per_day_count_errors(rows: list[dict[str, Any]]) -> None:
 
 
 def _mark_conflicting_day_names(rows: list[dict[str, Any]]) -> None:
-    names: dict[int, str] = {}
+    names: dict[tuple[tuple[str, str | int], int], str] = {}
     for row in rows:
         if not row["day_valid"] or not row["day_name"]:
             continue
-        current = names.setdefault(row["day"], row["day_name"])
+        day_key = (_week_group_key(row["week"], row["week_order"]), row["day"])
+        current = names.setdefault(day_key, row["day_name"])
         if row["day_name"] != current:
             row["errors"].append(_row_error("program_import.conflicting_day_name.v1", row["source_row"], "day_name", "Use one name for each day number."))
             row["valid"] = False
@@ -2324,10 +2391,54 @@ def _confirmed_row(row: dict[str, Any]) -> ProgramImportRow:
         notes=row.get("notes"),
         original_text="",
         confirmed_exercise_id=row["exercise_id"],
+        week_order=row.get("week_order", 1),
     )
 
 
-def _confirmed_rows_by_day(db: Any, coach_account_id: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _confirmed_rows_by_week(
+    db: Any, coach_account_id: str, rows: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    source_orders = sorted(
+        {
+            row.get("week_order", 1)
+            for row in rows
+            if row["valid"] and row["exercise_id"]
+        }
+    )
+    if not source_orders:
+        raise ProgramImportError(
+            "program_import.no_rows.v1",
+            "No valid confirmed rows are ready to create a draft.",
+        )
+    return [
+        _confirmed_week_for_import(
+            db, coach_account_id, rows, (week_order, source_order)
+        )
+        for week_order, source_order in enumerate(source_orders, start=1)
+    ]
+
+
+def _confirmed_week_for_import(
+    db: Any,
+    coach_account_id: str,
+    rows: list[dict[str, Any]],
+    orders: tuple[int, int],
+) -> dict[str, Any]:
+    week_order, source_order = orders
+    week_rows = [row for row in rows if row.get("week_order", 1) == source_order]
+    return {
+        "week_name": f"Week {week_order}",
+        "week_order": week_order,
+        "days": _confirmed_rows_by_day(db, coach_account_id, week_rows, week_order),
+    }
+
+
+def _confirmed_rows_by_day(
+    db: Any,
+    coach_account_id: str,
+    rows: list[dict[str, Any]],
+    week_order: int,
+) -> list[dict[str, Any]]:
     days: dict[int, dict[str, Any]] = {}
     for row in sorted(rows, key=lambda candidate: (candidate["day"], candidate["order"], candidate["source_row"])):
         if not row["valid"] or not row["exercise_id"]:
@@ -2345,6 +2456,7 @@ def _confirmed_rows_by_day(db: Any, coach_account_id: str, rows: list[dict[str, 
         day_number = row["day"]
         day = days.setdefault(day_number, {
             "day_name": row["day_name"], "day_order": day_number,
+            "week_order": week_order,
             "warmup_exercises": [], "exercises": [], "cardio": None,
         })
         day["exercises"].append({

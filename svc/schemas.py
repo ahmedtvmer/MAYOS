@@ -1257,6 +1257,7 @@ class ProgramImportDraftRowIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source_row: int = Field(ge=1)
+    week_order: int = Field(default=1, ge=1, le=MAX_PROGRAM_WEEKS)
     day: Any
     day_name: Any = None
     order: Any

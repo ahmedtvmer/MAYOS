@@ -47,6 +47,7 @@ class _CoachProgramImportScreenState
           .toList(growable: false);
 
   List<Map<String, dynamic>> get _rows {
+    if (_result?['import_mode'] == 'template') return _allRows;
     if (_selectedWeek == null || _detectedWeeks.isEmpty) return _allRows;
     return _allRows
         .where((Map<String, dynamic> row) => row['week'] == _selectedWeek)
@@ -129,7 +130,8 @@ class _CoachProgramImportScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        if (_detectedWeeks.isNotEmpty)
+        if (_detectedWeeks.isNotEmpty &&
+            _result?['import_mode'] != 'template')
           DropdownButtonFormField<String>(
             key: const Key('program_import_week_picker'),
             initialValue: _selectedWeek,
@@ -145,7 +147,11 @@ class _CoachProgramImportScreenState
                     setState(() => _selectedWeek = week);
                   },
           ),
-        if (_detectedWeeks.isNotEmpty)
+        if (_detectedWeeks.isNotEmpty &&
+            _result?['import_mode'] == 'template')
+          Text(copy.importWeeksIncluded(_detectedWeeks)),
+        if (_detectedWeeks.isNotEmpty &&
+            _result?['import_mode'] != 'template')
           Text(copy.weeksNotImported(_weeksNotImported, _selectedWeek)),
         Text(copy.importRowsSummary(_rows.length, _confirmedRows.length)),
         if (_confirmedRows.isEmpty) ...<Widget>[
@@ -260,6 +266,7 @@ class _CoachProgramImportScreenState
           row['valid'] == true && row['exercise_id'] is String)
       .map((Map<String, dynamic> row) => <String, dynamic>{
             'source_row': row['source_row'],
+            'week_order': row['week_order'] ?? 1,
             'day': row['day'],
             'day_name': row['day_name'],
             'order': row['order'],

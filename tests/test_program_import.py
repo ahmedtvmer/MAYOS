@@ -112,7 +112,34 @@ def _csv(rows):
 
 
 def _confirmed_rows(rows):
-    return [{field: row[field] for field in CONFIRMED_ROW_FIELDS} for row in rows]
+    return [
+        {
+            **{field: row[field] for field in CONFIRMED_ROW_FIELDS},
+            "week_order": row.get("week_order") or 1,
+        }
+        for row in rows
+    ]
+
+
+def _week_csv(rows):
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(["week", *HEADERS])
+    writer.writerows(rows)
+    return output.getvalue().encode()
+
+
+def _week_xlsx(rows):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Program"
+    sheet.append(["week", *HEADERS])
+    for row in rows:
+        sheet.append(row)
+    output = io.BytesIO()
+    workbook.save(output)
+    workbook.close()
+    return output.getvalue()
 
 
 def _enable_program_import_ai(monkeypatch, tmp_path, mode="live"):
@@ -218,6 +245,7 @@ def test_csv_import_creates_only_program_draft_and_replacement_requires_confirma
     )
     assert created.status_code == 200, created.text
     assert created.json()["draft"]["days"][0]["exercises"][0]["exercise_id"] == "sq"
+    assert len(created.json()["draft"]["weeks"]) == 1
     assert client.get("/programs/active", headers=player_headers).json() == active_before
     assert client.post(
         f"/coach/assignments/{assignment_id}/program-draft/import",
@@ -425,9 +453,81 @@ def test_upload_limits_and_assignment_gate(api, monkeypatch, tmp_path, scripted_
 def test_template_downloads_are_authenticated(api):
     client, db = api
     coach_headers, _, _ = _assignment(client, db)
-    assert client.get("/coach/program-import/template.csv", headers=coach_headers).status_code == 200
-    assert client.get("/coach/program-import/template.xlsx", headers=coach_headers).status_code == 200
+    csv_response = client.get("/coach/program-import/template.csv", headers=coach_headers)
+    xlsx_response = client.get("/coach/program-import/template.xlsx", headers=coach_headers)
+    assert csv_response.status_code == 200
+    assert next(csv.reader(io.StringIO(csv_response.content.decode("utf-8-sig"))))[0] == "week"
+    assert xlsx_response.status_code == 200
+    workbook = load_workbook(io.BytesIO(xlsx_response.content), read_only=True, data_only=True)
+    assert next(workbook["Program"].values)[0] == "week"
+    workbook.close()
     assert client.get("/coach/program-import/template.csv").status_code == 401
+
+
+@pytest.mark.parametrize("extension", ["csv", "xlsx"])
+def test_template_week_column_builds_ordered_weeks_in_draft(api, extension):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix=f"weeks-{extension}")
+    rows = [
+        [week, "1", "Full body", "1", "Squat", "3", "6-8", "2", "", "", "", "90", "", ""]
+        for week in range(1, 5)
+    ]
+    payload = _week_csv(rows) if extension == "csv" else _week_xlsx(rows)
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": (f"four-weeks.{extension}", payload, "text/csv" if extension == "csv" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["detected_weeks"] == [f"Week {week}" for week in range(1, 5)]
+    assert [row["week_order"] for row in result["rows"]] == [1, 2, 3, 4]
+
+    created = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/import",
+        headers=coach_headers,
+        json={"program_name": "four weeks", "rows": _confirmed_rows(result["rows"])},
+    )
+    assert created.status_code == 200, created.text
+    draft = created.json()["draft"]
+    assert [week["week_order"] for week in draft["weeks"]] == [1, 2, 3, 4]
+    assert [week["week_name"] for week in draft["weeks"]] == [f"Week {week}" for week in range(1, 5)]
+    assert [[day["day_name"] for day in week["days"]] for week in draft["weeks"]] == [
+        ["Full body"], ["Full body"], ["Full body"], ["Full body"]
+    ]
+    assert [week["days"][0]["exercises"][0]["exercise_id"] for week in draft["weeks"]] == ["sq"] * 4
+
+
+def test_template_blank_week_defaults_to_one_and_bad_weeks_are_reported_by_row(api):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="bad-week")
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={
+            "file": (
+                "bad-weeks.csv",
+                _week_csv([
+                    ["", "1", "Push", "1", "Bench Press", "3", "6-8", "2", "", "", "", "90", "", ""],
+                    ["four", "1", "Push", "1", "Bench Press", "3", "6-8", "2", "", "", "", "90", "", ""],
+                    [0, "1", "Push", "1", "Bench Press", "3", "6-8", "2", "", "", "", "90", "", ""],
+                    [13, "1", "Push", "1", "Bench Press", "3", "6-8", "2", "", "", "", "90", "", ""],
+                ]),
+                "text/csv",
+            )
+        },
+    )
+    assert response.status_code == 200, response.text
+    rows = response.json()["rows"]
+    assert rows[0]["week_order"] == 1 and rows[0]["valid"] is True
+    assert [row["valid"] for row in rows[1:]] == [False, False, False]
+    assert [row["errors"][0]["code"] for row in rows[1:]] == [
+        "program_import.week_invalid.v1",
+        "program_import.week_invalid.v1",
+        "program_import.week_invalid.v1",
+    ]
+    assert [row["errors"][0]["column"] for row in rows[1:]] == ["week"] * 3
+    assert [row["errors"][0]["source_row"] for row in rows[1:]] == [3, 4, 5]
 
 
 def test_effort_and_per_set_reps_are_approximated_with_original_text(api):
@@ -2004,10 +2104,10 @@ def test_xlsx_date_reps_and_downloaded_template_sheet_behavior(api):
     downloaded = client.get("/coach/program-import/template.xlsx", headers=coach_headers)
     assert downloaded.status_code == 200
     template = load_workbook(io.BytesIO(downloaded.content), data_only=True)
-    assert template["Program"]["F1"].number_format == "@"
     assert template["Program"]["G1"].number_format == "@"
     assert template["Program"]["H1"].number_format == "@"
-    assert template["Program"]["F500"].number_format == "@"
+    assert template["Program"]["I1"].number_format == "@"
+    assert template["Program"]["G500"].number_format == "@"
     template.close()
     upload_template = client.post(
         f"/coach/assignments/{assignment_id}/program-import",

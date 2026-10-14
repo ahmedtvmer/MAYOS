@@ -236,9 +236,23 @@ class _CoachProgramDraftScreenState
   }
 
   void _addWeek() {
+    if (_weeks.length >= ProgramDraftPrescription.maxWeeks) return;
     setState(() {
       _weeks.add(_newWeek(_weeks.length + 1));
       _selectedWeekIndex = _weeks.length - 1;
+      _hasUnsavedChanges = true;
+      _syncWeekOrders();
+      _clearServerErrors();
+    });
+  }
+
+  void _duplicateWeek() {
+    if (_weeks.length >= ProgramDraftPrescription.maxWeeks) return;
+    final int duplicateIndex = _selectedWeekIndex + 1;
+    final _DraftWeekEditor duplicate = _weeks[_selectedWeekIndex].copy();
+    setState(() {
+      _weeks.insert(duplicateIndex, duplicate);
+      _selectedWeekIndex = duplicateIndex;
       _hasUnsavedChanges = true;
       _syncWeekOrders();
       _clearServerErrors();
@@ -346,7 +360,19 @@ class _CoachProgramDraftScreenState
         label: copy.addWeek,
         icon: Icons.add,
         variant: MayosButtonVariant.secondary,
-        onPressed: _busy ? null : _addWeek,
+        onPressed: _busy || _weeks.length >= ProgramDraftPrescription.maxWeeks
+            ? null
+            : _addWeek,
+      );
+
+  Widget _duplicateWeekButton(CoachCopy copy) => MayosButton(
+        key: const Key('program_draft_duplicate_week'),
+        label: copy.duplicateWeek,
+        icon: Icons.copy_outlined,
+        variant: MayosButtonVariant.secondary,
+        onPressed: _busy || _weeks.length >= ProgramDraftPrescription.maxWeeks
+            ? null
+            : _duplicateWeek,
       );
 
   Widget _weekTabStrip(CoachCopy copy) => SingleChildScrollView(
@@ -890,6 +916,8 @@ class _CoachProgramDraftScreenState
                               ),
                               const SizedBox(height: MayosSpacing.xs),
                               _addWeekButton(copy),
+                              const SizedBox(height: MayosSpacing.xs),
+                              _duplicateWeekButton(copy),
                               if (_days.isEmpty) ...<Widget>[
                                 const SizedBox(height: MayosSpacing.sm),
                                 Text(copy.noTrainingDays),
@@ -1222,6 +1250,16 @@ class _DraftWeekEditor {
             days[dayIndex].toJson(dayIndex + 1, copy, weekOrder: order),
         ],
       };
+
+  _DraftWeekEditor copy() {
+    final Map<String, dynamic> copiedSource =
+        jsonDecode(jsonEncode(source)) as Map<String, dynamic>;
+    copiedSource['days'] = <dynamic>[];
+    return _DraftWeekEditor(
+      copiedSource,
+      days.map((_DraftDayEditor day) => day.copy()).toList(),
+    )..name.text = name.text;
+  }
 
   void dispose() {
     name.dispose();

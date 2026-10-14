@@ -56,8 +56,8 @@ const Map<String, ({String english, String arabic})> _programImportMessages =
     arabic: 'الورقة المحددة كبيرة جدًا لفهمها. قلّلها إلى {max_cells} خلية غير فارغة أو أقل.',
   ),
   'program_import.week_invalid.v1': (
-    english: 'Choose a week detected in the sheet.',
-    arabic: 'اختر أسبوعًا اكتُشف في الورقة.',
+    english: 'Enter a week number from 1 to 12.',
+    arabic: 'أدخل رقم أسبوع من 1 إلى 12.',
   ),
   'program_import.unsupported_preserved_as_note.v1': (
     english: 'This prescription was approximated and its original text was kept in the exercise notes.',

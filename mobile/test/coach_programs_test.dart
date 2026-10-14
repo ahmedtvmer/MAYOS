@@ -316,6 +316,135 @@ Future<void> _openSettings(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('coach editor duplicates a week with its full prescription',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..programDraft = <String, dynamic>{
+        'program_name': 'Block',
+        'split_type': 'custom',
+        'weekly_frequency': 1,
+        'instructions': 'Program notes',
+        'days': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'day_name': 'Lower',
+            'day_order': 1,
+            'week_order': 1,
+            'warmup_exercises': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'exercise_name': 'Bodyweight squat',
+                'sets': 2,
+                'reps': 10,
+                'rest_seconds': 30,
+                'notes': 'Warm up slowly',
+              },
+            ],
+            'exercises': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'exercise_id': 'sq',
+                'exercise_name': 'Squat',
+                'warmup_sets': 2,
+                'target_sets': 4,
+                'target_reps_min': 6,
+                'target_reps_max': 8,
+                'target_rir': 2.0,
+                'rest_seconds': 150,
+                'tempo': '3-1-1',
+                'notes': 'Brace before each rep',
+              },
+            ],
+            'cardio': 'Steady cardio · 20 minutes',
+          },
+        ],
+        'weeks': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'week_name': 'Week 1',
+            'week_order': 1,
+            'days': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'day_name': 'Lower',
+                'day_order': 1,
+                'week_order': 1,
+                'warmup_exercises': <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'exercise_name': 'Bodyweight squat',
+                    'sets': 2,
+                    'reps': 10,
+                    'rest_seconds': 30,
+                    'notes': 'Warm up slowly',
+                  },
+                ],
+                'exercises': <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'exercise_id': 'sq',
+                    'exercise_name': 'Squat',
+                    'warmup_sets': 2,
+                    'target_sets': 4,
+                    'target_reps_min': 6,
+                    'target_reps_max': 8,
+                    'target_rir': 2.0,
+                    'rest_seconds': 150,
+                    'tempo': '3-1-1',
+                    'notes': 'Brace before each rep',
+                  },
+                ],
+                'cardio': 'Steady cardio · 20 minutes',
+              },
+            ],
+          },
+        ],
+      };
+    await _openProgramEditor(tester, fake);
+
+    final Finder duplicate = find.byKey(const Key('program_draft_duplicate_week'));
+    final Finder editorList = find.byType(ListView).last;
+    final Finder editorScrollable = find.descendant(
+      of: editorList,
+      matching: find.byType(Scrollable),
+    ).first;
+    await tester.scrollUntilVisible(
+      duplicate,
+      200,
+      scrollable: editorScrollable,
+    );
+    await tester.tap(duplicate);
+    await tester.pump();
+
+    final Finder save = find.byKey(const Key('program_draft_save'));
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await _pumpUntilFound(tester, find.text('Program draft saved.'));
+
+    final List<dynamic> weeks = fake.programDraft!['weeks'] as List<dynamic>;
+    final Map<String, dynamic> copiedWeek =
+        Map<String, dynamic>.from(weeks[1] as Map);
+    expect(copiedWeek['week_name'], 'Week 1');
+    expect(copiedWeek['week_order'], 2);
+    final Map<String, dynamic> copiedDay =
+        Map<String, dynamic>.from((copiedWeek['days'] as List).single as Map);
+    expect(copiedDay['day_name'], 'Lower');
+    expect(copiedDay['day_order'], 1);
+    expect(copiedDay['week_order'], 2);
+    expect(copiedDay['cardio'], 'Steady cardio · 20 minutes');
+    final Map<String, dynamic> warmup =
+        Map<String, dynamic>.from((copiedDay['warmup_exercises'] as List).single as Map);
+    expect(warmup['exercise_name'], 'Bodyweight squat');
+    expect(warmup['sets'], 2);
+    expect(warmup['reps'], 10);
+    expect(warmup['rest_seconds'], 30);
+    expect(warmup['notes'], 'Warm up slowly');
+    final Map<String, dynamic> exercise =
+        Map<String, dynamic>.from((copiedDay['exercises'] as List).single as Map);
+    expect(exercise['exercise_id'], 'sq');
+    expect(exercise['target_sets'], 4);
+    expect(exercise['target_reps_min'], 6);
+    expect(exercise['target_reps_max'], 8);
+    expect(exercise['target_rir'], 2.0);
+    expect(exercise['warmup_sets'], 2);
+    expect(exercise['rest_seconds'], 150);
+    expect(exercise['tempo'], '3-1-1');
+    expect(exercise['notes'], 'Brace before each rep');
+  });
+
   testWidgets('coach editor adds, renames, reorders, and removes weeks',
       (tester) async {
     final FakeMayosApi fake = _coachFake();
@@ -1358,6 +1487,23 @@ void main() {
   testWidgets('spreadsheet import reviews rows and opens the Program editor',
       (tester) async {
     final FakeMayosApi fake = _coachFake();
+    final Map<String, dynamic> firstRow = Map<String, dynamic>.from(
+      (fake.programImportResult['rows'] as List<Map<String, dynamic>>).single,
+    )
+      ..['week'] = 'Week 1'
+      ..['week_order'] = 1;
+    final Map<String, dynamic> secondRow = Map<String, dynamic>.from(firstRow)
+      ..['source_row'] = 3
+      ..['week'] = 'Week 2'
+      ..['week_order'] = 2
+      ..['day_name'] = 'Pull';
+    fake.programImportResult.addAll(<String, dynamic>{
+      'import_mode': 'template',
+      'detected_weeks': <String>['Week 1', 'Week 2'],
+      'selected_week': 'Week 1',
+      'weeks_not_imported': <String>['Week 2'],
+      'rows': <Map<String, dynamic>>[firstRow, secondRow],
+    });
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
@@ -1365,15 +1511,21 @@ void main() {
     await tester.tap(find.byKey(const Key('program_import_action')));
     await _pumpUntilFound(tester, find.byKey(const Key('program_import_pick_file')));
     await tester.tap(find.byKey(const Key('program_import_pick_file')));
-    await _pumpUntilFound(tester, find.text('Rows: 1 · valid: 1'));
+    await _pumpUntilFound(tester, find.text('Rows: 2 · valid: 2'));
 
     expect(find.textContaining('Push · 3 sets · 6-8 reps · RIR 2.0'), findsOneWidget);
+    expect(find.byKey(const Key('program_import_week_picker')), findsNothing);
+    expect(find.text('Weeks to import: Week 1, Week 2.'), findsOneWidget);
     await tester.tap(find.byKey(const Key('program_import_create_draft')));
     await _pumpUntilFound(tester, find.byKey(const Key('program_draft_add_day')));
 
     expect(fake.programImportRequests, 1);
     expect(fake.programImportDraftRequests, hasLength(1));
     expect(fake.programDraft!['program_name'], 'plan');
+    final List<dynamic> sentRows =
+        fake.programImportDraftRequests.single['rows'] as List<dynamic>;
+    expect(sentRows, hasLength(2));
+    expect(sentRows.map((dynamic row) => row['week_order']), <int>[1, 2]);
   });
 
   testWidgets('spreadsheet import asks for a workbook tab before review',
