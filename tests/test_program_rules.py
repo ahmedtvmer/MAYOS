@@ -1,3 +1,4 @@
+import re
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -352,6 +353,33 @@ def test_dynamic_split_retries_overlong_structured_response_before_fallback(monk
     assert len(model.calls) == 2
 
 
+def test_custom_split_prompt_is_formatted_and_valid_output_survives_sanitization(monkeypatch):
+    monkeypatch.setenv("PROGRAM_GENERATION_REASONING_ENABLED", "false")
+    candidate = get_default_split(3)
+    model = ScriptedChatModel([candidate])
+    monkeypatch.setattr("agent.program_rules.llm", model)
+
+    plan = resolve_split(
+        3,
+        preference="Custom split with separate balanced emphasis days",
+        gender="female",
+    )
+
+    assert plan == candidate
+    prompt = model.calls[0]["messages"][0].content
+    assert "{frequency}" not in prompt
+    normalized_prompt = " ".join(prompt.casefold().split())
+    assert "12 slots" in normalized_prompt
+    assert "2 double_slots" in normalized_prompt
+    assert re.search(r"beginners.{0,100}1-2 rir.{0,100}compound", normalized_prompt)
+    assert re.search(r"intermediate and advanced.{0,120}0-1 rir.{0,120}compound", normalized_prompt)
+    assert "technical failure" in normalized_prompt
+    assert all(
+        rest in normalized_prompt
+        for rest in ("3-4 minutes", "2-3 minutes", "1.5-2 minutes")
+    )
+
+
 def test_dynamic_split_plan_schema_constrains_warmup_family():
     from agent.program_blueprints import WARMUP_FAMILIES
 
@@ -567,11 +595,28 @@ def test_five_day_hybrid_keywords_resolve_to_the_named_split(preference, expecte
     assert plan.split_name == expected_name
 
 
+def test_issue_232_glute_priority_prose_uses_the_injected_model_path():
+    request = (
+        "Arrange four weekly sessions by front-side and back-side movement emphasis, "
+        "with a glute priority."
+    )
+    model_plan = get_default_split(4, "female").model_copy(
+        update={"split_name": "Model-selected split"}
+    )
+
+    def run_model(_invoke, _messages):
+        return {"parsed": model_plan}
+
+    plan = resolve_split(4, request, gender="female", inference_call=run_model)
+
+    assert plan.split_name == "Model-selected split"
+
+
 @pytest.mark.parametrize(
     ("frequency", "gender", "split_type", "expected_name"),
     [
         (4, "male", "upper_lower", "Upper / Lower (Arms & Delts Augmented)"),
-        (4, "female", "female_full_body", "Glute Specialization 4-Day"),
+        (4, "female", "female_full_body", "Full Body (Glute Priority)"),
         (4, "female", "female_upper_lower", "Lower (Glute Bias) / Upper & Core"),
     ],
 )
@@ -654,6 +699,7 @@ def test_valid_splits_for_matches_the_parent_frequency_table():
         ],
         3: [
             ("full_body", "Full Body"),
+            ("female_full_body", "Full Body (Glute Priority)"),
             ("upper_lower", "Upper/Lower/Upper"),
             ("anterior_posterior", "Anterior / Posterior"),
             ("ppl", "PPL"),
@@ -661,11 +707,13 @@ def test_valid_splits_for_matches_the_parent_frequency_table():
         ],
         4: [
             ("full_body", "Full Body"),
+            ("female_full_body", "Full Body (Glute Priority)"),
             ("upper_lower", "Upper/Lower"),
             ("anterior_posterior", "Anterior / Posterior"),
         ],
         5: [
             ("full_body", "Full Body"),
+            ("female_full_body", "Full Body (Glute Priority)"),
             ("upper_lower", "Upper/Lower ×2 + Upper"),
             ("anterior_posterior", "Anterior / Posterior"),
             ("arnold_x_ul", "Arnold × Upper/Lower"),

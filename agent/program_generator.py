@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from core.effort import min_rir_from_rpe
 from agent.program_blueprints import (
     ExperienceLevel,
+    MAX_COACH_PATTERN_RECOVERY_CUTS_PER_DAY,
     MAX_RECOVERY_CUTS_PER_DAY,
     SLOT_FALLBACKS,
     SLOT_STAPLES,
@@ -483,6 +484,11 @@ def assemble_deterministic_day(
     sets_family = resolve_sets_family(day.warmup_family, getattr(day, "sets_family", None))
     double_slots = tuple(getattr(day, "double_slots", ()) or ())
     cuts_used = 0
+    max_recovery_cuts = (
+        MAX_COACH_PATTERN_RECOVERY_CUTS_PER_DAY
+        if sets_family == "coach"
+        else MAX_RECOVERY_CUTS_PER_DAY
+    )
     substitute_options: dict[str, list[dict]] = {}
 
     for slot_key in day.target_slots:
@@ -529,7 +535,7 @@ def assemble_deterministic_day(
         substitute_options[candidate_id] = _suggestion_candidates(candidates, resolved_slot)
         apply_cut = (
             context.recovery_cut
-            and cuts_used < MAX_RECOVERY_CUTS_PER_DAY
+            and cuts_used < max_recovery_cuts
             and is_escalated_isolation(slot_key, sets_family)
         )
         if apply_cut:

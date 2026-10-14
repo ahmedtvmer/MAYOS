@@ -132,28 +132,28 @@ def test_home_gym_suggestions_keep_decline_and_incline_fly_exclusions(fresh_stor
     assert "319" not in suggestions_by_slot["incline_press"]
 
 
-def test_commercial_program_ids_match_master_for_frequency_and_experience(
+def test_coach_pattern_program_ids_are_stable_across_experience_levels(
     fresh_store,
 ):
-    """Pin the #361 parent ids across three weekly frequencies and experience tiers."""
+    """Pin coach-pattern output ids across frequencies and experience tiers."""
     expected_by_frequency = {
         3: [
-            ["314", "1350", "178", "150", "592", "1723", "599", "585", "1375", "mayos:3", "1412"],
-            ["743", "599", "598", "1350", "576", "606", "869", "592", "1723", "mayos:3", "175"],
-            ["85", "606", "305", "314", "585", "178", "318", "194", "598", "1375", "1412"],
+            ["1375", "743", "869", "314", "150", "598", "592", "599", "1723"],
+            ["1375", "1350", "576", "mayos:4", "175", "318", "1412", "178", "194"],
+            ["598", "85", "175", "596", "1411", "2286", "585", "mayos:3", "305"],
         ],
         4: [
-            ["314", "1350", "178", "150", "592", "1723", "599", "585", "1375", "mayos:3", "1412"],
-            ["743", "599", "598", "1350", "576", "606", "869", "592", "1723", "mayos:3", "175"],
-            ["85", "606", "305", "314", "585", "178", "318", "194", "598", "1375", "1412"],
-            ["576", "150", "1350", "869", "178", "318", "1723", "743", "599", "1375", "175"],
+            ["178", "85", "314", "175", "318", "2286", "194"],
+            ["598", "1350", "576", "mayos:4", "1412", "1723"],
+            ["598", "1375", "596", "1411", "585", "mayos:3", "305"],
+            ["175", "743", "869", "150", "592", "1375", "599"],
         ],
         5: [
-            ["314", "1350", "178", "150", "592", "1723", "599", "585", "1375", "mayos:3", "1412"],
-            ["743", "599", "598", "1350", "576", "606", "869", "592", "1723", "mayos:3", "175"],
-            ["85", "606", "305", "314", "585", "178", "318", "194", "598", "1375", "1412"],
-            ["576", "150", "1350", "869", "178", "318", "1723", "743", "599", "1375", "175"],
-            ["314", "150", "305", "596", "178", "mayos:3", "592", "194", "585", "2286", "1375", "175"],
+            ["598", "mayos:4", "314", "592", "194"],
+            ["1375", "743", "576", "175", "1412", "305"],
+            ["175", "869", "1375", "596", "1411", "585"],
+            ["178", "150", "318", "2286", "599"],
+            ["598", "85", "1350", "mayos:3", "1723"],
         ],
     }
 
@@ -506,15 +506,15 @@ def test_replace_signature_rank_precedes_slot_equipment_preference(
     assert glute_iso.exercise_id == "361:rank-0"
 
 
-def test_empty_curation_programs_match_pre_signature_snapshot(
+def test_empty_curation_programs_match_coach_pattern_snapshot(
     fresh_store, seed_exercise_curation
 ):
-    """Snapshot generated with empty curation under origin/master ad1c9c5."""
+    """Empty curation keeps current coach-pattern output deterministic."""
     seed_exercise_curation(fresh_store, {})
     snapshot_path = (
         Path(__file__).parent
         / "fixtures"
-        / "program_generation_empty_curation_origin_master.json.gz"
+        / "program_generation_empty_curation_coach_patterns.json.gz"
     )
     with gzip.open(snapshot_path, "rt", encoding="utf-8") as snapshot_file:
         expected = json.load(snapshot_file)

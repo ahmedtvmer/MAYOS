@@ -673,6 +673,8 @@ SETS_FAMILY_BY_DAY_FAMILY = {"lower": "leg", "arms": "arms", "upper": "standard"
 #: Upper bound on escalated-set reductions applied per day under poor recovery,
 #: so fatigue management shaves accessory volume without gutting dense splits.
 MAX_RECOVERY_CUTS_PER_DAY = 4
+# Keep recovery cuts proportional in low-volume coach-pattern weeks.
+MAX_COACH_PATTERN_RECOVERY_CUTS_PER_DAY = 2
 
 #: Safe movement-slot substitutes when a limitation or Equipment access filter
 #: empties the original candidate pool. ``None`` applies to every Equipment
@@ -708,9 +710,9 @@ def resolve_sets_family(day_family: str, explicit: str | None = None) -> str:
 
 def is_escalated_isolation(slot_key: str, sets_family: str) -> bool:
     """True when the slot earns its second set purely through a family escalation."""
-    if sets_family == "leg" and slot_key in LEG_STAPLE_SLOTS:
+    if sets_family in {"leg", "coach"} and slot_key in LEG_STAPLE_SLOTS:
         return True
-    return sets_family == "arms" and slot_key in ARM_ISOLATION_SLOTS
+    return sets_family in {"arms", "coach"} and slot_key in ARM_ISOLATION_SLOTS
 
 
 def slot_working_sets(
@@ -720,24 +722,26 @@ def slot_working_sets(
     double_slots: tuple[str, ...] = (),
     recovery_cut: bool = False,
 ) -> int:
-    """Working sets for one slot occurrence, matching the reference-program profiles.
+    """Return the prescribed working-set count for one slot occurrence.
 
-    Compounds carry 2 sets; isolations start at 1 and earn a second set only in
-    the contexts where the reference programs escalated them: leg staples on
-    lower days and arm/delt isolations on dedicated arm days. Full-body days run
-    a minimal profile (``double_slots`` = the day's priority lifts at 2 sets)
-    plus calves. With ``recovery_cut`` (poor stress/sleep) escalated isolations
-    drop back to a single set while compounds, priority lifts and calves keep
-    theirs — exercise selection, order and frequency never change.
+    Compounds and calves carry 2 sets. Leg and arm focus days escalate their
+    staple isolations; coach-pattern days escalate both groups. ``double_slots``
+    supports explicit priorities in other plans. A recovery cut drops
+    escalated isolations to 1 set without changing the day's selection, order,
+    or frequency.
     """
+    if recovery_cut and is_escalated_isolation(slot_key, sets_family):
+        return 1
     if slot_key == "calf":
         return CALF_WORKING_SET_COUNT
     if sets_family == "full" and double_slots:
         return 2 if slot_key in double_slots else 1
+    if slot_key in double_slots:
+        return 2
     if archetype in COMPOUND_ARCHETYPES:
         return 2
     if is_escalated_isolation(slot_key, sets_family):
-        return 1 if recovery_cut else 2
+        return 2
     return 1
 
 
@@ -1303,6 +1307,214 @@ FEMALE_UL_DAYS: tuple[DayBlueprint, ...] = (
     ),
 )
 
+
+# The default three-to-five-day templates use a restrained weekly dose and
+# repeat each broad muscle group on two or three separate days. Priority
+# starters open the day before the remaining work is ordered by movement class.
+_COACH_PATTERN_EVENTS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("chest", ("incline_press", "flat_press", "chest_fly")),
+    ("back", ("vertical_pull", "horizontal_row", "shrug")),
+    ("shoulders", ("shoulder_press", "side_delts", "rear_delts")),
+    ("biceps", ("biceps_preacher", "biceps_alt")),
+    ("triceps", ("triceps_pushdown", "triceps_overhead")),
+    ("forearms", ("forearm_wrist", "forearm_reverse")),
+    ("quads", ("quad_compound", "quad_iso")),
+    ("hamstrings", ("ham_curl", "ham_hinge")),
+    ("glutes", ("glute_thrust", "glute_iso")),
+    ("adductors", ("adductors", "adductors")),
+    ("calves", ("calf", "calf")),
+    ("abs", ("abs", "abs")),
+)
+
+_COACH_PATTERN_THREE_DAY_SLOTS: tuple[tuple[str, ...], ...] = (
+    (
+        "incline_press", "vertical_pull", "shoulder_press", "biceps_preacher",
+        "triceps_pushdown", "quad_compound", "ham_curl", "adductors", "calf",
+    ),
+    (
+        "flat_press", "horizontal_row", "side_delts", "biceps_alt",
+        "triceps_overhead", "forearm_wrist", "glute_thrust", "calf", "abs",
+    ),
+    (
+        "chest_fly", "shrug", "rear_delts", "forearm_reverse", "quad_iso",
+        "ham_hinge", "glute_iso", "adductors", "abs",
+    ),
+)
+
+_SMALL_MUSCLE_OPENERS = (
+    "side_delts", "calf", "adductors", "rear_delts", "forearm_wrist", "abs",
+)
+
+
+def _ordered_coach_day_slots(slots: list[str], day_index: int) -> tuple[str, ...]:
+    opener = next(
+        (
+            slot
+            for offset in range(len(_SMALL_MUSCLE_OPENERS))
+            if (slot := _SMALL_MUSCLE_OPENERS[(day_index + offset) % len(_SMALL_MUSCLE_OPENERS)])
+            in slots
+        ),
+        None,
+    )
+    remaining = [slot for slot in slots if slot != opener]
+    archetype_order = {"heavy_compound": 0, "medium_compound": 1, "isolation": 2}
+    remaining.sort(key=lambda slot: (archetype_order[SLOT_SPECS[slot].archetype], slot))
+    return ((opener,) if opener else ()) + tuple(remaining)
+
+
+def coach_pattern_days(frequency: int) -> list[DayBlueprint]:
+    """Builds a low-volume default week with glutes at base volume."""
+    return _coach_pattern_days(frequency, glute_exposures=2)
+
+
+def glute_priority_days(frequency: int) -> list[DayBlueprint]:
+    """Builds the default week with one additional glute exposure."""
+    return _coach_pattern_days(frequency, glute_exposures=3)
+
+
+def _coach_pattern_days(frequency: int, glute_exposures: int) -> list[DayBlueprint]:
+    if frequency not in (3, 4, 5):
+        return []
+    assigned = (
+        _three_day_coach_slots(glute_exposures)
+        if frequency == 3
+        else _distribute_coach_events(frequency, glute_exposures)
+    )
+    names = tuple(f"Full Body #{index}" for index in range(1, frequency + 1))
+    return [
+        DayBlueprint(
+            name=names[index],
+            slots=_ordered_coach_day_slots(slots, index),
+            family="full",
+            sets_family="coach",
+            cardio=UL_DAYS[index].cardio if frequency == 4 else None,
+        )
+        for index, slots in enumerate(assigned)
+    ]
+
+
+def _three_day_coach_slots(glute_exposures: int) -> list[list[str]]:
+    assigned = [list(slots) for slots in _COACH_PATTERN_THREE_DAY_SLOTS]
+    if glute_exposures == 3:
+        assigned[2].append("glute_thrust")
+    return assigned
+
+
+def _distribute_coach_events(frequency: int, glute_exposures: int) -> list[list[str]]:
+    assigned = [[] for _ in range(frequency)]
+    for group_index, (group, slots) in enumerate(_COACH_PATTERN_EVENTS):
+        events = (*slots, "glute_thrust") if group == "glutes" and glute_exposures == 3 else slots
+        _assign_group_events(assigned, group_index, events)
+    return assigned
+
+
+def _assign_group_events(assigned: list[list[str]], group_index: int, slots: tuple[str, ...]) -> None:
+    frequency = len(assigned)
+    used_days: set[int] = set()
+    for slot in slots:
+        candidates = [day for day in range(frequency) if day not in used_days]
+        day_index = min(
+            candidates,
+            key=lambda day: (len(assigned[day]), (day - group_index) % frequency),
+        )
+        assigned[day_index].append(slot)
+        used_days.add(day_index)
+
+
+def coach_upper_lower_days(frequency: int) -> list[DayBlueprint]:
+    """Build a balanced four-day Upper/Lower split with two weekly exposures."""
+    if frequency != 4:
+        return []
+    return [
+        DayBlueprint(
+            "Upper 1",
+            (
+                "side_delts", "incline_press", "vertical_pull", "biceps_preacher",
+                "triceps_pushdown", "forearm_wrist",
+            ),
+            family="upper",
+            sets_family="coach",
+            cardio=UL_DAYS[0].cardio,
+        ),
+        DayBlueprint(
+            "Lower 1",
+            ("adductors", "quad_compound", "ham_curl", "glute_thrust", "calf", "abs"),
+            family="lower",
+            sets_family="coach",
+            cardio=UL_DAYS[1].cardio,
+        ),
+        DayBlueprint(
+            "Upper 2",
+            (
+                "rear_delts", "flat_press", "horizontal_row", "shoulder_press",
+                "biceps_alt", "triceps_overhead", "forearm_reverse", "shrug",
+            ),
+            family="upper",
+            sets_family="coach",
+            cardio=UL_DAYS[2].cardio,
+        ),
+        DayBlueprint(
+            "Lower 2",
+            ("calf", "quad_iso", "ham_hinge", "glute_iso", "adductors", "abs"),
+            family="lower",
+            sets_family="coach",
+            cardio=UL_DAYS[3].cardio,
+        ),
+    ]
+
+
+def coach_ppl_upper_lower_days(frequency: int) -> list[DayBlueprint]:
+    """Build a five-day PPL + Upper/Lower split with balanced repeat work."""
+    if frequency != 5:
+        return []
+    return [
+        DayBlueprint(
+            "Upper",
+            (
+                "forearm_wrist", "incline_press", "vertical_pull", "biceps_preacher",
+                "triceps_pushdown",
+            ),
+            family="upper",
+            sets_family="coach",
+        ),
+        DayBlueprint(
+            "Lower",
+            ("adductors", "quad_compound", "ham_curl", "glute_thrust", "calf", "abs"),
+            family="lower",
+            sets_family="coach",
+        ),
+        DayBlueprint(
+            "Push",
+            (
+                "side_delts", "flat_press", "shoulder_press", "chest_fly",
+                "triceps_overhead", "triceps_pushdown",
+            ),
+            family="upper",
+            sets_family="coach",
+        ),
+        DayBlueprint(
+            "Pull",
+            ("rear_delts", "horizontal_row", "shrug", "biceps_alt", "forearm_reverse"),
+            family="upper",
+            sets_family="coach",
+        ),
+        DayBlueprint(
+            "Legs",
+            ("calf", "quad_iso", "ham_hinge", "glute_iso", "adductors", "abs"),
+            family="lower",
+            sets_family="coach",
+        ),
+    ]
+
+
+_COACH_PATTERN_BUILDERS = {
+    "full_body": coach_pattern_days,
+    "female_full_body": glute_priority_days,
+    "upper_lower": coach_upper_lower_days,
+    "ppl_x_ul": coach_ppl_upper_lower_days,
+}
+
+
 SPLIT_DAY_POOLS: dict[str, tuple[DayBlueprint, ...]] = {
     "full_body": FB_DAYS,
     "female_full_body": FEMALE_FB_DAYS,
@@ -1334,7 +1546,7 @@ SPLIT_TYPE_ALIASES_BY_FREQUENCY: dict[tuple[str, int], str] = {
 
 SPLIT_DISPLAY_NAMES: dict[str, str] = {
     "full_body": "Full Body",
-    "female_full_body": "Full Body (Glute Specialized)",
+    "female_full_body": "Full Body (Glute Priority)",
     "upper_lower": "Upper / Lower (Arms & Delts Augmented)",
     "female_upper_lower": "Lower (Glute Bias) / Upper & Core",
     "arnold": "Arnold Split (Chest & Back / Shoulders & Arms / Legs)",
@@ -1347,9 +1559,9 @@ SPLIT_DISPLAY_NAMES: dict[str, str] = {
 
 def _pool_for(split_type: str, gender: str) -> tuple[DayBlueprint, ...] | None:
     if split_type == "full_body":
-        return FEMALE_FB_DAYS if (gender or "").lower() == "female" else FB_DAYS
+        return FB_DAYS
     if split_type == "upper_lower":
-        return FEMALE_UL_DAYS if (gender or "").lower() == "female" else UL_DAYS
+        return UL_DAYS
     return SPLIT_DAY_POOLS.get(split_type)
 
 
@@ -1371,6 +1583,11 @@ def build_split_days(split_type: str, frequency: int, gender: str = "male") -> l
     split_type = resolve_split_type(split_type, frequency)
     if frequency not in SPLIT_SUPPORTED_FREQUENCIES.get(split_type, ()):
         return None
+    coach_pattern_builder = _COACH_PATTERN_BUILDERS.get(split_type)
+    if coach_pattern_builder and frequency in (3, 4, 5):
+        coach_days = coach_pattern_builder(frequency)
+        if coach_days:
+            return coach_days
     pool = _pool_for(split_type, gender)
     if not pool:
         return None
@@ -1378,26 +1595,21 @@ def build_split_days(split_type: str, frequency: int, gender: str = "male") -> l
 
 
 DEFAULT_SPLIT_BY_FREQUENCY: dict[str, dict[int, str]] = {
-    "male": {
+    gender: {
         1: "full_body",
         2: "full_body",
         3: "full_body",
         4: "upper_lower",
-        5: "arnold_x_ul",
-    },
-    "female": {
-        1: "female_full_body",
-        2: "female_full_body",
-        3: "female_full_body",
-        4: "female_upper_lower",
-        5: "female_upper_lower",
-    },
+        5: "ppl_x_ul",
+    }
+    for gender in ("male", "female")
 }
 
 
 # Deterministic keyword routing for free-text split preferences. Word-boundary
 # regex keeps body-part phrases ("lower back pain", "upper chest focus",
-# "posterior chain") from hijacking the split router.
+# "posterior chain") from hijacking the split router. Glute-priority prose is
+# left for the planner; only its exact catalog label or id is deterministic.
 SPLIT_KEYWORD_PATTERNS: tuple[tuple[str, tuple[re.Pattern[str], ...]], ...] = (
     (
         "anterior_posterior",
@@ -1447,7 +1659,12 @@ SPLIT_KEYWORD_PATTERNS: tuple[tuple[str, tuple[re.Pattern[str], ...]], ...] = (
 def match_split_keyword(preference: str | None) -> str | None:
     if not preference:
         return None
-    text = preference.lower()
+    text = preference.strip().casefold()
+    if text in {
+        "female_full_body",
+        SPLIT_DISPLAY_NAMES["female_full_body"].casefold(),
+    }:
+        return "female_full_body"
     for split_type, patterns in SPLIT_KEYWORD_PATTERNS:
         if any(pattern.search(text) for pattern in patterns):
             return split_type

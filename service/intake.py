@@ -10,11 +10,12 @@ first-program path all live here.
 Two disclosures are deliberately made explicit because the program code, not
 guesswork, defines them:
 
-* The male/female specialization is required and does change the automatic
-  split: this flow collects no custom split, so generation uses the
-  deterministic default from ``agent.program_blueprints.DEFAULT_SPLIT_BY_FREQUENCY``
-  (via ``agent.program_rules.get_default_split``), which routes female to the
-  glute/lower-body-biased family and male to the standard family.
+* The male/female specialization is required profile context, but does not
+  change the automatic split. This flow collects no custom split, so generation
+  uses the deterministic frequency default from
+  ``agent.program_blueprints.DEFAULT_SPLIT_BY_FREQUENCY`` (via
+  ``agent.program_rules.get_default_split``); glute priority is an opt-in for
+  any player.
 * Relative leg/torso proportion is coaching context only (ADR 011) and is never
   read by program generation; it changes neither split nor volume.
 """
@@ -54,16 +55,17 @@ STATUS_CONFIRMED = "confirmed"
 MIN_TEXT_LENGTH = 2
 MAX_TEXT_LENGTH = 500
 
-#: The current training effect of the required male/female specialization.
-#: Derived from `agent.program_blueprints.DEFAULT_SPLIT_BY_FREQUENCY` /
-#: `agent.program_rules.get_default_split`, not from any invented rule. This flow
-#: collects no custom split preference, so the gender-selected default family is
-#: the whole split effect for the intake path.
+SPECIALIZATION_FREQUENCY_DESCRIPTION = (
+    "Full Body for 1-3 days, Upper/Lower for 4 days, and Upper/Lower plus PPL "
+    "for 5 days. Glute priority is an optional choice for anyone."
+)
+
+#: The required specialization is profile context and does not select the
+#: player's default split. Glute priority is an opt-in for any player.
 SPECIALIZATION_EXPLANATION = (
-    "Your specialization is required. It sets the default training split we "
-    "build for you: female trainees get glute- and lower-body-focused splits, "
-    "male trainees get our standard balanced splits, and your weekly frequency "
-    "decides the exact layout."
+    "Your specialization is required profile context and does not change your "
+    "default training split. We use your weekly frequency: "
+    f"{SPECIALIZATION_FREQUENCY_DESCRIPTION}"
 )
 
 PROPORTIONS_EXPLANATION = (
@@ -71,20 +73,9 @@ PROPORTIONS_EXPLANATION = (
     "exercise selection, program structure, or training volume."
 )
 
-#: Per-value split-family effect of the male/female choice. Derived directly from
-#: ``agent.program_blueprints.DEFAULT_SPLIT_BY_FREQUENCY`` (via
-#: ``agent.program_rules.get_default_split``): gender picks the default split
-#: family for the chosen weekly frequency.
 SPECIALIZATION_OPTION_DESCRIPTIONS: dict[str, str] = {
-    "male": (
-        "Balanced upper- and lower-body training by frequency: full body at "
-        "1-3 days, upper/lower at 4 days, Arnold-style at 5 days."
-    ),
-    "female": (
-        "Glute- and lower-body-focused by frequency: glute-specialised full "
-        "body at 1-3 days, lower-body (glute bias) and upper body + core at "
-        "4-5 days."
-    ),
+    "male": f"Default split by frequency: {SPECIALIZATION_FREQUENCY_DESCRIPTION}",
+    "female": f"Default split by frequency: {SPECIALIZATION_FREQUENCY_DESCRIPTION}",
 }
 
 #: Captions for the relative proportion choices. Coaching context only (ADR 011).

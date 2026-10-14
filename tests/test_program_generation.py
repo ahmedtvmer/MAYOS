@@ -162,7 +162,7 @@ def test_coach_generation_can_build_a_draft_without_writing_program_or_profile(m
     assert ledger.get_player_profile.return_value == profile
 
 
-def test_coach_split_id_uses_blueprint_without_dynamic_planner_and_keeps_gender_bias(monkeypatch):
+def test_glute_priority_is_explicit_for_female_profiles(monkeypatch):
     def unexpected_dynamic_plan(*_args, **_kwargs):
         raise AssertionError("Coach split ids must not call the dynamic split planner")
 
@@ -171,22 +171,39 @@ def test_coach_split_id_uses_blueprint_without_dynamic_planner_and_keeps_gender_
     })())
     profile = {"gender": "female"}
 
-    plan = program_generator._resolve_split_plan(
+    default_plan = program_generator._resolve_split_plan(
         profile,
         program_generator.ProgramGenerationRequest(
             frequency_override=4,
-            split_id_override="upper_lower",
         ),
         4,
         inference_call=unexpected_dynamic_plan,
     )
 
-    assert plan.split_name == "Upper / Lower (Arms & Delts Augmented)"
-    assert any(
+    assert default_plan.split_name == "Upper / Lower (Arms & Delts Augmented)"
+    default_glute_exposures = sum(
         slot.startswith("glute")
-        for day in plan.days
+        for day in default_plan.days
         for slot in day.target_slots
     )
+
+    priority_plan = program_generator._resolve_split_plan(
+        profile,
+        program_generator.ProgramGenerationRequest(
+            frequency_override=4,
+            split_id_override="female_full_body",
+        ),
+        4,
+        inference_call=unexpected_dynamic_plan,
+    )
+    assert priority_plan.split_name == "Full Body (Glute Priority)"
+    priority_glute_exposures = sum(
+        slot.startswith("glute")
+        for day in priority_plan.days
+        for slot in day.target_slots
+    )
+    assert default_glute_exposures == 2
+    assert priority_glute_exposures == 3
 
 
 @pytest.mark.parametrize("frequency", [2, 3, 4, 5])

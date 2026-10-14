@@ -299,6 +299,7 @@ def test_program_draft_split_catalog_lists_exact_choices_for_each_frequency(api)
         "3": [
             ("auto", "Auto"),
             ("full_body", "Full Body"),
+            ("female_full_body", "Full Body (Glute Priority)"),
             ("upper_lower", "Upper/Lower/Upper"),
             ("anterior_posterior", "Anterior / Posterior"),
             ("ppl", "PPL"),
@@ -307,12 +308,14 @@ def test_program_draft_split_catalog_lists_exact_choices_for_each_frequency(api)
         "4": [
             ("auto", "Auto"),
             ("full_body", "Full Body"),
+            ("female_full_body", "Full Body (Glute Priority)"),
             ("upper_lower", "Upper/Lower"),
             ("anterior_posterior", "Anterior / Posterior"),
         ],
         "5": [
             ("auto", "Auto"),
             ("full_body", "Full Body"),
+            ("female_full_body", "Full Body (Glute Priority)"),
             ("upper_lower", "Upper/Lower ×2 + Upper"),
             ("anterior_posterior", "Anterior / Posterior"),
             ("arnold_x_ul", "Arnold × Upper/Lower"),

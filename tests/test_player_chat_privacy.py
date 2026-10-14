@@ -1008,23 +1008,57 @@ def test_arabic_program_change_without_target_clarifies_without_mutation(
     assert _done_content(body) == assistant_graph.ARABIC_PROGRAM_CHANGE_CLARIFICATION_RESPONSE
 
 
-def test_arabic_frequency_change_preserves_supported_female_split_family(api, monkeypatch):
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        pytest.param(
+            ("Full Body (Glute Specialized)", "male", 1, 4),
+            id="legacy-specialized-male",
+        ),
+        pytest.param(("Glute Bias A/B", "female", 2, 4), id="legacy-glute-bias-female"),
+        pytest.param(
+            ("Glute Hypertrophy Tri-Phase", "female", 3, 4),
+            id="legacy-tri-phase-female",
+        ),
+        pytest.param(
+            ("Glute Hypertrophy Tri-Phase", "male", 3, 4),
+            id="legacy-tri-phase-male",
+        ),
+        pytest.param(
+            ("Glute Specialization 4-Day", "male", 4, 3),
+            id="legacy-specialization-four-day",
+        ),
+        pytest.param(
+            ("Glute Specialization 5-Day", "female", 5, 4),
+            id="legacy-specialization-five-day",
+        ),
+        pytest.param(
+            ("Full Body (Glute Priority)", "male", 3, 4),
+            id="current-glute-priority-male",
+        ),
+    ],
+)
+def test_arabic_frequency_change_preserves_glute_priority_split_family(api, monkeypatch, scenario):
+    split_type, gender, frequency, target_frequency = scenario
     client, db = api
-    player = "arabic-female-frequency"
+    player = f"arabic-glute-frequency-{gender}-{frequency}"
     headers = _authed(_register(client, player)["access_token"])
     before = _seed_chat_program(
         db,
         player,
-        split_type="Glute Hypertrophy Tri-Phase",
-        gender="female",
+        split_type=split_type,
+        frequency=frequency,
+        gender=gender,
     )
     _install_chat_program_generator(monkeypatch)
-    model = ScriptedChatModel([{"intent": "program_change", "target_frequency": 4}])
+    model = ScriptedChatModel(
+        [{"intent": "program_change", "target_frequency": target_frequency}]
+    )
     monkeypatch.setattr(assistant_graph, "llm", model)
 
     with client.stream(
         "POST", "/chat/messages", headers=headers,
-        json={"content": "ظبّطلي البرنامج على 4 أيام."},
+        json={"content": f"ظبّطلي البرنامج على {target_frequency} أيام."},
     ) as response:
         body = response.read().decode("utf-8")
         assert response.status_code == 200
@@ -1032,9 +1066,11 @@ def test_arabic_frequency_change_preserves_supported_female_split_family(api, mo
     with db.open_ledger(player) as ledger:
         after = ledger.get_active_program()
     assert after.version == before.version + 1
-    assert after.split_type == "Glute Specialization 4-Day"
+    assert after.weekly_frequency == target_frequency
+    assert after.split_type == "Full Body (Glute Priority)"
     assert _done_content(body) == (
-        "تمام، ظبطتلك البرنامج التدريبي على 4 أيام: Glute Specialization 4-Day rebuilt."
+        f"تمام، ظبطتلك البرنامج التدريبي على {target_frequency} أيام: "
+        "Full Body (Glute Priority) rebuilt."
     )
 
 

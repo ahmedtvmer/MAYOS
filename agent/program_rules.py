@@ -212,11 +212,14 @@ Rules:
    arms: 'biceps_preacher', 'biceps_alt', 'triceps_pushdown', 'triceps_overhead', 'forearm_wrist', 'forearm_reverse'
    legs: 'quad_compound', 'quad_lunge', 'quad_iso', 'ham_curl', 'ham_hinge', 'glute_thrust', 'glute_iso', 'adductors', 'calf'
    core: 'abs'
-3. Session Size: Full Body days 8-12 slots; Upper days 7-12; Lower days 6-10; Push/Pull/Arms days 5-8.
-4. Weekly Coverage (mandatory): incline_press AND flat_press; vertical_pull AND horizontal_row; side_delts AND rear_delts; biceps_preacher or biceps_alt; triceps_pushdown AND triceps_overhead; forearm_wrist or forearm_reverse; at least one lower day with adductors AND calf; at least one shrug and one abs slot.
-5. Ordering: heaviest compounds first, then machine/medium compounds, then isolations, then arms/forearms/abs.
-6. Fatigue Management: avoid heavy spinal loads (ham_hinge, quad_compound) on consecutive days.
-7. Lower days MAY include low-fatigue upper isolations ('side_delts', 'biceps_preacher', 'biceps_alt', 'triceps_pushdown', 'triceps_overhead', 'abs').
+3. Session Size: for 3 days, use 8-10 slots per day; for 4 days, use 6-8; for 5 days, use 5-6. Keep sessions balanced, never use more than 12 slots in a day, and list no more than 2 double_slots per day.
+4. Weekly Coverage (mandatory): chest uses incline_press and flat_press on separate days, with chest_fly as an optional third exposure; back uses vertical_pull and horizontal_row on separate days, with shrug as an optional third exposure; shoulders use side_delts and rear_delts on separate days, with shoulder_press as an optional third exposure; include both biceps slots, both triceps slots, and forearm_wrist or forearm_reverse across 2 days; include quad, hamstring, glute, adductors, calf, and abs work across 2 days. Spread all groups across distinct days.
+5. Weekly Volume and Frequency: start every muscle at 4-6 working sets per week, regardless of experience, and train each muscle on 2-3 separate days. Spread slots across the week so repeated work is not concentrated on one day.
+6. Staples: include calf, side_delts, and adductors every week. Do not default to extra glute work for a female trainee; only emphasize glutes when the user explicitly requests it.
+7. Ordering: a priority or small muscle may open a day, and a pre-exhaust isolation may precede compounds. Never place two hard compounds for the same muscle back-to-back after a pre-exhaust unless the requested coach template explicitly does so.
+8. Fatigue Management: avoid heavy spinal loads (ham_hinge, quad_compound) on consecutive days.
+9. Lower days MAY include low-fatigue upper isolations ('side_delts', 'biceps_preacher', 'biceps_alt', 'triceps_pushdown', 'triceps_overhead', 'abs'). Keep prescriptions to 1-2 working sets per exercise.
+10. Prescriptions: beginners leave 1-2 RIR on compounds and 0-1 RIR on isolations. Intermediate and advanced trainees leave 0-1 RIR on compounds and take isolations to technical failure (the last full-range rep that looks like the first). Rest 3-4 minutes on compounds, 2-3 minutes on isolations, and 1.5-2 minutes on calves and abs.
 """
 
 def _plan_from_blueprint_days(split_name: str, days: list) -> DynamicSplitPlan:
@@ -243,11 +246,11 @@ SPLIT_FREQUENCY_NAMES: dict[tuple[str, int], str] = {
     ("full_body", 3): "Full Body Tri-Phase",
     ("full_body", 4): "Full Body 4-Day",
     ("full_body", 5): "Full Body 5-Day",
-    ("female_full_body", 1): "Full Body (Glute Specialized)",
-    ("female_full_body", 2): "Glute Bias A/B",
-    ("female_full_body", 3): "Glute Hypertrophy Tri-Phase",
-    ("female_full_body", 4): "Glute Specialization 4-Day",
-    ("female_full_body", 5): "Glute Specialization 5-Day",
+    ("female_full_body", 1): "Full Body (Glute Priority)",
+    ("female_full_body", 2): "Full Body (Glute Priority)",
+    ("female_full_body", 3): "Full Body (Glute Priority)",
+    ("female_full_body", 4): "Full Body (Glute Priority)",
+    ("female_full_body", 5): "Full Body (Glute Priority)",
     ("upper_lower", 1): "Upper / Lower (Arms & Delts Augmented)",
     ("upper_lower", 2): "Upper / Lower (Arms & Delts Augmented)",
     ("upper_lower", 3): "Upper / Lower / Upper (Arms & Delts Augmented)",
@@ -277,6 +280,7 @@ SPLIT_OPTIONS_BY_FREQUENCY: dict[int, tuple[tuple[str, str], ...]] = {
     ),
     3: (
         ("full_body", "Full Body"),
+        ("female_full_body", "Full Body (Glute Priority)"),
         ("upper_lower", "Upper/Lower/Upper"),
         ("anterior_posterior", "Anterior / Posterior"),
         ("ppl", "PPL"),
@@ -284,11 +288,13 @@ SPLIT_OPTIONS_BY_FREQUENCY: dict[int, tuple[tuple[str, str], ...]] = {
     ),
     4: (
         ("full_body", "Full Body"),
+        ("female_full_body", "Full Body (Glute Priority)"),
         ("upper_lower", "Upper/Lower"),
         ("anterior_posterior", "Anterior / Posterior"),
     ),
     5: (
         ("full_body", "Full Body"),
+        ("female_full_body", "Full Body (Glute Priority)"),
         ("upper_lower", "Upper/Lower ×2 + Upper"),
         ("anterior_posterior", "Anterior / Posterior"),
         ("arnold_x_ul", "Arnold × Upper/Lower"),
@@ -320,11 +326,9 @@ def get_default_split(frequency: int, gender: str = "male") -> DynamicSplitPlan:
 
 
 def valid_splits_for(frequency: int, gender: str = "male") -> list[tuple[str, str]]:
-    """Return the ordered manual Split choices for a frequency and Player gender.
+    """Return manual Split choices, including an explicit glute-priority option.
 
-    Auto is intentionally omitted; the caller can resolve its display with
-    ``get_default_split(frequency, gender)``. Gender is applied to the generic
-    Full Body and Upper / Lower blueprints without exposing a separate option.
+    Auto is omitted and resolves through the gender-neutral default template.
     """
     if type(frequency) is not int or frequency not in range(1, 6):
         return []
@@ -460,9 +464,9 @@ def resolve_split(
         **_dynamic_split_plan_options(),
     )
     gender_context = (
-        "female trainee (prioritize glutes and lower body; still include direct arm and forearm work)"
+        "female trainee (use the same balanced muscle priorities; glute emphasis only when explicitly requested)"
         if gender.lower() == "female"
-        else "male trainee"
+        else "trainee with no default muscle priority"
     )
     prompt = [
         SystemMessage(content=SYSTEM_SPLIT_PROMPT.format(frequency=clamped_freq)),

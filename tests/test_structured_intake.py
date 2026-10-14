@@ -211,11 +211,15 @@ def test_intake_contract_lists_fields_and_explanations(api):
     gender = _field(view, "gender")
     assert gender["allowed_values"] == ["male", "female"]
     assert gender["required"] is True
-    assert gender["explanation"] and "female" in gender["explanation"]
+    assert "does not change" in gender["explanation"]
+    assert "Full Body" in gender["explanation"]
+    assert "Upper/Lower" in gender["explanation"]
+    assert "PPL" in gender["explanation"]
     # Every enum value carries the training-effect description shown on its card.
     assert set(gender["option_descriptions"]) == {"male", "female"}
     assert all(gender["option_descriptions"].values())
-    assert "frequency" in gender["option_descriptions"]["female"]
+    assert gender["option_descriptions"]["male"] == gender["option_descriptions"]["female"]
+    assert "glute priority" in gender["option_descriptions"]["female"].casefold()
     proportions = _field(view, "proportions")
     assert proportions["allowed_values"] == [
         "long_legs",
@@ -934,7 +938,7 @@ def test_proportions_do_not_change_generated_program(generation_db, monkeypatch)
     assert seen and "proportions" not in seen[0]
 
 
-def test_specialization_still_changes_the_split(generation_db, monkeypatch):
+def test_specialization_does_not_change_the_default_split(generation_db, monkeypatch):
     db, program_generator = generation_db
     _stub_day_assembly(program_generator, monkeypatch)
 
@@ -946,7 +950,7 @@ def test_specialization_still_changes_the_split(generation_db, monkeypatch):
     db.ledger.upsert_player_profile(_generation_profile(gender="female"))
     female, _ = program_generator.generate_program_pipeline(ledger=db.ledger)
 
-    assert male.split_type != female.split_type
+    assert male.split_type == female.split_type == "Upper / Lower (Arms & Delts Augmented)"
 
 
 def test_confirm_intake_appends_weight_history(api, monkeypatch):

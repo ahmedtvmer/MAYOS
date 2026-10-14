@@ -1108,6 +1108,17 @@ def _resolve_arabic_day(program: Any, requested_name: str) -> Any | None:
     return matches[0] if len(matches) == 1 else None
 
 
+_LEGACY_GLUTE_PRIORITY_SPLIT_NAMES = frozenset(
+    {
+        "full body (glute specialized)",
+        "glute bias a/b",
+        "glute hypertrophy tri-phase",
+        "glute specialization 4-day",
+        "glute specialization 5-day",
+    }
+)
+
+
 def _current_split_family(program: Any) -> str | None:
     if not program:
         return None
@@ -1119,6 +1130,8 @@ def _current_split_family(program: Any) -> str | None:
     for split_type, display_name in SPLIT_DISPLAY_NAMES.items():
         if display_name.casefold() == split_name:
             return split_type if split_type in ARABIC_SPLIT_PREFERENCES else None
+    if split_name in _LEGACY_GLUTE_PRIORITY_SPLIT_NAMES:
+        return "female_full_body"
     return match_split_keyword(split_name)
 
 

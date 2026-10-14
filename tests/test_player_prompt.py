@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 from pathlib import Path
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -21,6 +22,17 @@ from core.reply_language import CHAT_GLOSSARY_RULE
 
 def test_player_prompt_includes_the_shared_arabic_numeric_glossary_rule():
     assert " ".join(CHAT_GLOSSARY_RULE.split()) in STATIC_SYSTEM_CORE
+
+
+def test_player_prompt_matches_experience_based_effort_and_rest_prescriptions():
+    prompt = " ".join(STATIC_SYSTEM_CORE.casefold().split())
+    assert "0-3 rir" not in prompt
+    assert "2-3+ minutes" not in prompt
+    assert re.search(r"beginners.{0,100}1-2 rir.{0,100}compound", prompt)
+    assert re.search(r"beginners.{0,100}0-1 rir.{0,100}isolation", prompt)
+    assert re.search(r"intermediate and advanced.{0,120}0-1 rir.{0,120}compound", prompt)
+    assert re.search(r"intermediate and advanced.{0,180}technical failure", prompt)
+    assert all(rest in prompt for rest in ("3-4 minutes", "2-3 minutes", "1.5-2 minutes"))
 
 
 def test_player_prompt_pins_polite_egyptian_register_for_all_arabic_replies():
