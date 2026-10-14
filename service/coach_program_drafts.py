@@ -7,6 +7,11 @@ from typing import Any
 from pydantic import ValidationError
 
 from agent.ProgramState import PersistedProgramSchema
+from agent.program_weeks import (
+    default_week_name,
+    flatten_program_days,
+    normalize_program_weeks,
+)
 from agent.program_prescription import (
     DEFAULT_TARGET_RIR,
     MAX_EXERCISES_PER_DAY,
@@ -39,6 +44,21 @@ logger = logging.getLogger(__name__)
 class ProgramPublicationResult:
     program: Any
     resolved_request_ids: list[str]
+
+
+@dataclass(frozen=True)
+class _ProgramPublishContext:
+    db: Any
+    coach_account_id: str
+    ledger: Any
+
+
+@dataclass(frozen=True)
+class _ProgramDayPosition:
+    week_order: int
+    week_index: int
+    day_index: int
+    week_count: int
 
 
 class ProgramDraftNotFound(Exception):
@@ -305,98 +325,226 @@ def copy_active_program_to_draft(
 def _published_program(
     draft: dict[str, Any], db: Any, coach_account_id: str, ledger: Any
 ) -> dict[str, Any]:
-    days = draft.get("days", [])
-    if not days:
+    weeks = normalize_program_weeks(draft)
+    if not any(week.get("days") for week in weeks):
         raise ProgramDraftValidationError.one(
             "no_days", "A program needs at least one training day.", field="days"
         )
-
-    issues = []
-    program = {**draft, "days": []}
-    for day_index, day in enumerate(days):
-        published_day = {**day, "exercises": []}
-        for exercise_index, exercise in enumerate(day.get("exercises", [])):
-            entry = db.get_exercise_library_entry(exercise["exercise_id"])
-            is_coach_exercise = False
-            if entry is None:
-                entry = db.get_coach_exercise(coach_account_id, exercise["exercise_id"])
-                is_coach_exercise = entry is not None
-            if entry is None and ledger.has_exercise_in_program_history(exercise["exercise_id"]):
-                entry = db.get_coach_exercise_unscoped(exercise["exercise_id"])
-                is_coach_exercise = entry is not None
-            if entry is None:
-                issues.append(
-                    {
-                        "code": "unknown_exercise",
-                        "message": "Exercise is not in the Exercise library.",
-                        "location": {
-                            "day_index": day_index,
-                            "exercise_index": exercise_index,
-                            "field": "exercise_id",
-                        },
-                    }
-                )
-                continue
-            raw_rir = exercise.get("target_rir", DEFAULT_TARGET_RIR)
-            try:
-                target_rir = float(raw_rir)
-            except (TypeError, ValueError, OverflowError):
-                target_rir = float("nan")
-            if not MIN_TARGET_RIR <= target_rir <= MAX_TARGET_RIR:
-                issues.append(
-                    {
-                        "code": "invalid_rir",
-                        "message": f"Target RIR must be from {MIN_TARGET_RIR:g} to {MAX_TARGET_RIR:g}.",
-                        "location": {
-                            "day_index": day_index,
-                            "exercise_index": exercise_index,
-                            "field": "target_rir",
-                        },
-                    }
-                )
-                continue
-            published_exercise = dict(exercise)
-            published_exercise.pop("target_rir", None)
-            published_exercise["target_rpe"] = 10 - target_rir
-            published_exercise.update(
-                exercise_name=entry["name"],
-                body_part=entry.get("body_part") if is_coach_exercise else None,
-                equipment=entry["equipment"],
-                image_path=entry["image_path"],
-                gif_path=entry["gif_path"],
-                note=entry.get("note") if is_coach_exercise else None,
-                video_url=entry.get("video_url") if is_coach_exercise else None,
-                is_coach_exercise=is_coach_exercise,
-                suggested_substitutes=[] if is_coach_exercise else exercise.get("suggested_substitutes", []),
-            )
-            published_day["exercises"].append(published_exercise)
-        program["days"].append(published_day)
+    context = _ProgramPublishContext(db, coach_account_id, ledger)
+    published_weeks, issues = _published_weeks(weeks, context)
+    program = {
+        **draft,
+        "weekly_frequency": (
+            draft.get("weekly_frequency", 1)
+            if len(published_weeks) == 1
+            else max((len(week["days"]) for week in published_weeks), default=1)
+        ),
+        "days": flatten_program_days(published_weeks),
+        "weeks": published_weeks,
+    }
     if issues:
         raise ProgramDraftValidationError(issues)
+    return _validate_published_program(program)
 
+
+def _published_weeks(
+    weeks: list[dict[str, Any]], context: _ProgramPublishContext
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    published_weeks = []
+    issues = []
+    week_count = len(weeks)
+    for week_index, week in enumerate(weeks):
+        published_week, week_issues = _published_week(
+            week, week_index, week_count, context
+        )
+        published_weeks.append(published_week)
+        issues.extend(week_issues)
+    return published_weeks, issues
+
+
+def _published_week(
+    week: dict[str, Any],
+    week_index: int,
+    week_count: int,
+    context: _ProgramPublishContext,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    week_order = week_index + 1
+    published_days = []
+    issues = []
+    for day_index, day in enumerate(week.get("days", [])):
+        position = _ProgramDayPosition(week_order, week_index, day_index, week_count)
+        published_day, day_issues = _published_day(
+            day, position, context
+        )
+        published_days.append(published_day)
+        issues.extend(day_issues)
+    return {
+        "week_name": week.get("week_name") or default_week_name(week_order),
+        "week_order": week_order,
+        "days": published_days,
+    }, issues
+
+
+def _published_day(
+    day: dict[str, Any],
+    position: _ProgramDayPosition,
+    context: _ProgramPublishContext,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    exercises = []
+    issues = []
+    for exercise_index, exercise in enumerate(day.get("exercises", [])):
+        published, issue = _published_exercise(
+            exercise, position, exercise_index, context
+        )
+        if issue is not None:
+            issues.append(issue)
+        if published is not None:
+            exercises.append(published)
+    return {
+        **day,
+        "day_order": day.get("day_order", position.day_index + 1)
+        if position.week_count == 1
+        else position.day_index + 1,
+        "week_order": position.week_order,
+        "exercises": exercises,
+    }, issues
+
+
+def _published_exercise(
+    exercise: dict[str, Any],
+    position: _ProgramDayPosition,
+    exercise_index: int,
+    context: _ProgramPublishContext,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    entry, is_coach_exercise = _program_exercise_entry(exercise, context)
+    if entry is None:
+        return None, _unknown_exercise_issue(position, exercise_index)
+    target_rir = _valid_target_rir(exercise.get("target_rir", DEFAULT_TARGET_RIR))
+    if target_rir is None:
+        return None, _invalid_target_rir_issue(position, exercise_index)
+    return _program_exercise_payload(exercise, entry, is_coach_exercise, target_rir), None
+
+
+def _program_exercise_entry(
+    exercise: dict[str, Any], context: _ProgramPublishContext
+) -> tuple[dict[str, Any] | None, bool]:
+    exercise_id = exercise["exercise_id"]
+    entry = context.db.get_exercise_library_entry(exercise_id)
+    is_coach_exercise = False
+    if entry is None:
+        entry = context.db.get_coach_exercise(context.coach_account_id, exercise_id)
+        is_coach_exercise = entry is not None
+    if entry is None and context.ledger.has_exercise_in_program_history(exercise_id):
+        entry = context.db.get_coach_exercise_unscoped(exercise_id)
+        is_coach_exercise = entry is not None
+    return entry, is_coach_exercise
+
+
+def _valid_target_rir(value: Any) -> float | None:
+    try:
+        target_rir = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return target_rir if MIN_TARGET_RIR <= target_rir <= MAX_TARGET_RIR else None
+
+
+def _unknown_exercise_issue(
+    position: _ProgramDayPosition, exercise_index: int
+) -> dict[str, Any]:
+    return _program_exercise_issue(
+        "unknown_exercise",
+        "Exercise is not in the Exercise library.",
+        _program_exercise_location(position, exercise_index, "exercise_id"),
+    )
+
+
+def _invalid_target_rir_issue(
+    position: _ProgramDayPosition, exercise_index: int
+) -> dict[str, Any]:
+    return _program_exercise_issue(
+        "invalid_rir",
+        f"Target RIR must be from {MIN_TARGET_RIR:g} to {MAX_TARGET_RIR:g}.",
+        _program_exercise_location(position, exercise_index, "target_rir"),
+    )
+
+
+def _program_exercise_location(
+    position: _ProgramDayPosition, exercise_index: int, field: str
+) -> dict[str, Any]:
+    location = {
+        "day_index": position.day_index,
+        "exercise_index": exercise_index,
+        "field": field,
+    }
+    if position.week_count > 1:
+        location["week_index"] = position.week_index
+    return location
+
+
+def _program_exercise_issue(
+    code: str, message: str, location: dict[str, Any]
+) -> dict[str, Any]:
+    return {"code": code, "message": message, "location": location}
+
+
+def _program_exercise_payload(
+    exercise: dict[str, Any],
+    entry: dict[str, Any],
+    is_coach_exercise: bool,
+    target_rir: float,
+) -> dict[str, Any]:
+    published = dict(exercise)
+    published.pop("target_rir", None)
+    published["target_rpe"] = 10 - target_rir
+    published.update(
+        exercise_name=entry["name"],
+        body_part=entry.get("body_part") if is_coach_exercise else None,
+        equipment=entry["equipment"],
+        image_path=entry["image_path"],
+        gif_path=entry["gif_path"],
+        note=entry.get("note") if is_coach_exercise else None,
+        video_url=entry.get("video_url") if is_coach_exercise else None,
+        is_coach_exercise=is_coach_exercise,
+        suggested_substitutes=[] if is_coach_exercise else exercise.get("suggested_substitutes", []),
+    )
+    return published
+
+
+def _validate_published_program(program: dict[str, Any]) -> dict[str, Any]:
     try:
         validated = PersistedProgramSchema.model_validate(program)
     except ValidationError as error:
         raise ProgramDraftValidationError([_pydantic_issue(issue) for issue in error.errors()]) from error
 
+    _validate_program_rep_ranges(validated.days, len(validated.weeks))
+    return validated.model_dump()
+
+
+def _validate_program_rep_ranges(days: list[Any], week_count: int) -> None:
     issues = []
-    for day_index, day in enumerate(validated.days):
+    for day in days:
         for exercise_index, exercise in enumerate(day.exercises):
             if exercise.target_reps_min > exercise.target_reps_max:
-                issues.append(
-                    {
-                        "code": "invalid_reps",
-                        "message": f"Reps must be from {MIN_REPS} to {MAX_REPS}, with the lower bound first.",
-                        "location": {
-                            "day_index": day_index,
-                            "exercise_index": exercise_index,
-                            "field": "target_reps_min",
-                        },
-                    }
-                )
+                issues.append(_invalid_rep_range_issue(day, exercise_index, week_count))
     if issues:
         raise ProgramDraftValidationError(issues)
-    return validated.model_dump()
+
+
+def _invalid_rep_range_issue(
+    day: Any, exercise_index: int, week_count: int
+) -> dict[str, Any]:
+    location = {
+        "day_index": day.day_order - 1,
+        "exercise_index": exercise_index,
+        "field": "target_reps_min",
+    }
+    if week_count > 1:
+        location["week_index"] = day.week_order - 1
+    return {
+        "code": "invalid_reps",
+        "message": f"Reps must be from {MIN_REPS} to {MAX_REPS}, with the lower bound first.",
+        "location": location,
+    }
 
 
 def validate_generated_program_draft(
@@ -451,6 +599,11 @@ def _publish_program(
                 assignment_context["assignment"]["started_at"],
             )
             previous_program = ledger.get_active_program()
+            starting_position = (
+                ledger.get_program_position(previous_program)
+                if not publishes_draft and previous_program is not None
+                else None
+            )
             if publishes_draft:
                 draft_record = ledger.get_program_draft(assignment_id)
                 if draft_record is None:
@@ -474,6 +627,7 @@ def _publish_program(
             ledger.save_training_program(
                 program_data,
                 published_by_coach_account_id=coach_account_id,
+                starting_position=starting_position,
             )
             if publishes_draft:
                 ledger.discard_program_draft(assignment_id)

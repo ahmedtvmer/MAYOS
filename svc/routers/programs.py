@@ -1,6 +1,7 @@
 """Program generation, retrieval, and editing."""
 
 import asyncio
+from dataclasses import asdict
 from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
@@ -95,6 +96,8 @@ def _program_edit_command(body: ProgramEditIn, player: Any, request: Request) ->
             )
             for exercise in body.exercises
         ],
+        week_order=body.week_order,
+        day_order=body.day_order,
         player_account_id=account_id,
         actor=ProgramAnalyticsActor(account_id, "player"),
         client=analytics.client_context(request),
@@ -137,6 +140,7 @@ async def generate_program(
         result = {
             **programs_service.with_library_equipment(program, db),
             "player_controls_program": programs_service.player_controls_program(db, ledger, account_id),
+            **asdict(ledger.get_program_position(program)),
         }
         return result
 
@@ -195,6 +199,7 @@ async def read_active_program(
         result = {
             **programs_service.with_library_equipment(program, db),
             "player_controls_program": programs_service.player_controls_program(db, ledger, account_id),
+            **asdict(ledger.get_program_position(program)),
         }
         return result
 
@@ -221,6 +226,8 @@ async def substitute_active_program_exercise(
                 day_name=body.day_name,
                 exercise_id=body.exercise_id,
                 replacement_exercise_id=body.replacement_exercise_id,
+                week_order=body.week_order,
+                day_order=body.day_order,
                 all_occurrences=body.all_occurrences,
                 expected_active_version=body.expected_active_version,
             ),

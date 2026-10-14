@@ -10,7 +10,15 @@ from typing import Any
 from agent.ProgramState import PersistedProgramDaySchema
 from agent.ProgramState import PersistedProgramExerciseSchema
 from agent.ProgramState import PersistedProgramSchema
+from agent.ProgramState import PersistedProgramWeekSchema
 from agent.ProgramState import WarmupExerciseSchema
+from agent.program_weeks import (
+    ProgramPosition,
+    clamp_program_position,
+    default_week_name,
+    normalize_program_weeks,
+    progress_for_program,
+)
 from database.exercise_resolution import EXERCISE_DISPLAY_EQUIPMENT_SQL
 from database.exercise_resolution import exercise_display_join, exercise_display_name_sql
 
@@ -46,15 +54,30 @@ class LedgerTrainingProgramMixin:
         return cursor.fetchone() is not None
 
     def save_training_program(
-        self, program_data: dict, published_by_coach_account_id: str | None = None
+        self,
+        program_data: dict,
+        published_by_coach_account_id: str | None = None,
+        *,
+        starting_position: ProgramPosition | None = None,
     ) -> str:
-        """Persists a new active program, stamping a stable version and provenance.
+        """Persists an active program version and its provenance.
 
         ``published_by_coach_account_id`` is ``None`` for player self-service and the
         assigning coach's account id for a coach publication (ADR 026).
+        ``starting_position`` is supplied only when republishing the same program
+        after an edit; new programs start at Week 1, Day 1.
         """
         cursor = self.conn.cursor()
         try:
+            if starting_position is None:
+                position = (1, 1)
+            else:
+                position = (
+                    starting_position.current_week,
+                    starting_position.next_day_order,
+                )
+            weeks = normalize_program_weeks(program_data)
+            position = clamp_program_position(weeks, *position)
             cursor.execute("UPDATE training_programs SET is_active = 0")
             prog_id = program_data.get("id") or str(uuid.uuid4())
             created_at = program_data.get("created_at") or datetime.now(UTC).isoformat()
@@ -92,58 +115,72 @@ class LedgerTrainingProgramMixin:
             cursor.execute(
                 f"INSERT INTO training_programs ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(vals))})", vals
             )
+            cursor.execute(
+                "INSERT INTO program_version_positions "
+                "(program_id, start_week_order, start_day_order) VALUES (?, ?, ?)",
+                (prog_id, position[0], position[1]),
+            )
 
             cursor.execute("PRAGMA table_info(program_days)")
             day_cols = {col[1] for col in cursor.fetchall()}
             cursor.execute("PRAGMA table_info(program_exercises)")
             exercise_cols = {col[1] for col in cursor.fetchall()}
 
-            for day in program_data.get("days", []):
-                day_id = day.get("id") or str(uuid.uuid4())
-                day_values = {
-                    "id": day_id,
-                    "program_id": prog_id,
-                    "day_name": day["day_name"],
-                    "day_order": day["day_order"],
-                }
-                if "warmup_json" in day_cols:
-                    day_values["warmup_json"] = json.dumps(day.get("warmup_exercises", []), ensure_ascii=False)
-                if "cardio" in day_cols:
-                    day_values["cardio"] = day.get("cardio")
+            for week in weeks:
+                week_order = int(week["week_order"])
+                week_id = week.get("id") or str(uuid.uuid4())
                 cursor.execute(
-                    f"INSERT INTO program_days ({', '.join(day_values)}) VALUES ({', '.join(['?'] * len(day_values))})",
-                    list(day_values.values()),
+                    "INSERT INTO program_weeks (id, program_id, week_name, week_order) VALUES (?, ?, ?, ?)",
+                    (week_id, prog_id, week.get("week_name") or default_week_name(week_order), week_order),
                 )
-
-                for order_idx, ex in enumerate(day.get("exercises", []), start=1):
-                    pe_id = ex.get("id") or str(uuid.uuid4())
-                    exercise_values = {
-                        "id": pe_id,
-                        "day_id": day_id,
-                        "exercise_id": str(ex["exercise_id"]),
-                        "order_in_day": order_idx,
-                        "target_sets": ex.get("target_sets", 2),
-                        "target_reps_min": ex.get("target_reps_min", 8),
-                        "target_reps_max": ex.get("target_reps_max", 12),
-                        "target_rpe": ex.get("target_rpe", 8.5),
-                        "rest_seconds": ex.get("rest_seconds", 180),
-                        "notes": ex.get("notes", ""),
+                for day in week["days"]:
+                    day_id = day.get("id") or str(uuid.uuid4())
+                    day_values = {
+                        "id": day_id,
+                        "program_id": prog_id,
+                        "day_name": day["day_name"],
+                        "day_order": day["day_order"],
                     }
-                    if "slot_key" in exercise_cols:
-                        exercise_values["slot_key"] = ex.get("slot_key")
-                    if "warmup_sets" in exercise_cols:
-                        exercise_values["warmup_sets"] = ex.get("warmup_sets", 0)
-                    if "suggested_substitutes_json" in exercise_cols:
-                        exercise_values["suggested_substitutes_json"] = json.dumps(
-                            ex.get("suggested_substitutes", []), ensure_ascii=False
-                        )
-                    if "tempo" in exercise_cols:
-                        exercise_values["tempo"] = ex.get("tempo")
+                    if "week_id" in day_cols:
+                        day_values["week_id"] = week_id
+                    if "warmup_json" in day_cols:
+                        day_values["warmup_json"] = json.dumps(day.get("warmup_exercises", []), ensure_ascii=False)
+                    if "cardio" in day_cols:
+                        day_values["cardio"] = day.get("cardio")
                     cursor.execute(
-                        f"INSERT INTO program_exercises ({', '.join(exercise_values)}) "
-                        f"VALUES ({', '.join(['?'] * len(exercise_values))})",
-                        list(exercise_values.values()),
+                        f"INSERT INTO program_days ({', '.join(day_values)}) VALUES ({', '.join(['?'] * len(day_values))})",
+                        list(day_values.values()),
                     )
+
+                    for order_idx, ex in enumerate(day.get("exercises", []), start=1):
+                        pe_id = ex.get("id") or str(uuid.uuid4())
+                        exercise_values = {
+                            "id": pe_id,
+                            "day_id": day_id,
+                            "exercise_id": str(ex["exercise_id"]),
+                            "order_in_day": order_idx,
+                            "target_sets": ex.get("target_sets", 2),
+                            "target_reps_min": ex.get("target_reps_min", 8),
+                            "target_reps_max": ex.get("target_reps_max", 12),
+                            "target_rpe": ex.get("target_rpe", 8.5),
+                            "rest_seconds": ex.get("rest_seconds", 180),
+                            "notes": ex.get("notes", ""),
+                        }
+                        if "slot_key" in exercise_cols:
+                            exercise_values["slot_key"] = ex.get("slot_key")
+                        if "warmup_sets" in exercise_cols:
+                            exercise_values["warmup_sets"] = ex.get("warmup_sets", 0)
+                        if "suggested_substitutes_json" in exercise_cols:
+                            exercise_values["suggested_substitutes_json"] = json.dumps(
+                                ex.get("suggested_substitutes", []), ensure_ascii=False
+                            )
+                        if "tempo" in exercise_cols:
+                            exercise_values["tempo"] = ex.get("tempo")
+                        cursor.execute(
+                            f"INSERT INTO program_exercises ({', '.join(exercise_values)}) "
+                            f"VALUES ({', '.join(['?'] * len(exercise_values))})",
+                            list(exercise_values.values()),
+                        )
 
             self._commit_ledger()
             return prog_id
@@ -151,6 +188,43 @@ class LedgerTrainingProgramMixin:
             if getattr(self._local, "ledger_tx_depth", 0) == 0:
                 self.conn.rollback()
             raise RuntimeError(f"Database error while saving program: {e}")
+
+    def get_program_position(self, program: Any) -> ProgramPosition:
+        """Load ledger progress facts and calculate a pure version cursor."""
+        version = getattr(program, "version", None)
+        if version is None and isinstance(program, dict):
+            version = program.get("version")
+        weeks = normalize_program_weeks(program)
+        if version is None:
+            completed_days: set[tuple[int, int]] = set()
+            start_position = (1, 1)
+            latest_day_order = None
+        else:
+            completed_days = self.completed_program_days(int(version))
+            start_position = self.get_program_start_position(int(version))
+            latest_day_order = (
+                self.latest_program_day_order(int(version), weeks[-1]["week_order"])
+                if weeks
+                else None
+            )
+        return progress_for_program(
+            program,
+            completed_days,
+            start_position=start_position,
+            latest_day_order=latest_day_order,
+        )
+
+    def get_program_start_position(self, version: int) -> tuple[int, int]:
+        row = self.conn.execute(
+            "SELECT pvp.start_week_order, pvp.start_day_order "
+            "FROM program_version_positions pvp "
+            "JOIN training_programs tp ON tp.id = pvp.program_id "
+            "WHERE tp.version = ?",
+            (int(version),),
+        ).fetchone()
+        if row is None:
+            return 1, 1
+        return int(row[0]), int(row[1])
 
     def _current_exercise_names(self, exercise_ids: list[str]) -> dict[str, str]:
         """Current display names for library or Coach exercise ids; unknown ids are omitted."""
@@ -203,10 +277,23 @@ class LedgerTrainingProgramMixin:
             day_extras += ", warmup_json"
         if "cardio" in day_cols:
             day_extras += ", cardio"
-        cursor.execute(
-            f"SELECT id, day_name, day_order{day_extras} FROM program_days WHERE program_id = ? ORDER BY day_order ASC",
-            (prog_id,),
-        )
+        has_week_table = self.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'program_weeks'"
+        ).fetchone() is not None
+        if "week_id" in day_cols and has_week_table:
+            cursor.execute(
+                f"SELECT pd.id, pd.day_name, pd.day_order, COALESCE(pw.week_order, 1), "
+                f"COALESCE(pw.week_name, 'Week 1'){day_extras} "
+                "FROM program_days pd LEFT JOIN program_weeks pw ON pw.id = pd.week_id "
+                "WHERE pd.program_id = ? ORDER BY pw.week_order, pd.day_order",
+                (prog_id,),
+            )
+        else:
+            cursor.execute(
+                f"SELECT id, day_name, day_order, 1, 'Week 1'{day_extras} "
+                "FROM program_days WHERE program_id = ? ORDER BY day_order ASC",
+                (prog_id,),
+            )
         days_rows = cursor.fetchall()
         if not days_rows:
             return None
@@ -221,9 +308,12 @@ class LedgerTrainingProgramMixin:
         days = []
         try:
             for day_row in days_rows:
-                d_id, d_name, d_order = day_row[0], day_row[1], day_row[2]
-                warmup_json = day_row[3] if "warmup_json" in day_cols else None
-                cardio = day_row[4] if "cardio" in day_cols and len(day_row) > 4 else None
+                d_id, d_name, d_order, week_order, week_name = day_row[:5]
+                extra_index = 5
+                warmup_json = day_row[extra_index] if "warmup_json" in day_cols else None
+                if "warmup_json" in day_cols:
+                    extra_index += 1
+                cardio = day_row[extra_index] if "cardio" in day_cols else None
 
                 select_cols = (
                     f"pe.exercise_id, {exercise_display_name_sql('pe.exercise_id')} AS name, "
@@ -317,11 +407,27 @@ class LedgerTrainingProgramMixin:
                     PersistedProgramDaySchema(
                         day_name=d_name,
                         day_order=d_order,
+                        week_order=week_order,
                         warmup_exercises=warmup_exercises,
                         exercises=exercises,
                         cardio=cardio,
                     )
                 )
+
+            weeks_by_order: dict[int, list[PersistedProgramDaySchema]] = {}
+            week_names: dict[int, str] = {}
+            for day in days:
+                weeks_by_order.setdefault(day.week_order, []).append(day)
+            for day_row in days_rows:
+                week_names[int(day_row[3])] = str(day_row[4])
+            weeks = [
+                PersistedProgramWeekSchema(
+                    week_name=week_names[week_order],
+                    week_order=week_order,
+                    days=week_days,
+                )
+                for week_order, week_days in sorted(weeks_by_order.items())
+            ]
 
             return PersistedProgramSchema(
                 program_name=prog_name,
@@ -329,6 +435,7 @@ class LedgerTrainingProgramMixin:
                 split_type=split_type or "custom",
                 instructions=instructions or "",
                 days=days,
+                weeks=weeks,
                 version=int(version) if version is not None else None,
                 published_by_coach_account_id=published_by,
                 created_at=created_at,

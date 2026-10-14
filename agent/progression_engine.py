@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Iterable
 
+from agent.program_weeks import find_program_day, normalize_program_weeks
 from database.database_manager import DatabaseManager
 from database.exercise_resolution import EXERCISE_DISPLAY_BODY_PART_SQL
 from database.exercise_resolution import EXERCISE_DISPLAY_TARGET_MUSCLE_SQL
@@ -218,7 +219,8 @@ def get_exercise_progression_history(db: DatabaseManager, exercise_id: str) -> l
     cursor = db.conn.cursor()
     cursor.execute(
         """
-        SELECT s.session_date, ws.weight_kg, ws.reps, ws.rpe, ws.set_index
+        SELECT s.session_date, s.program_week_order, s.program_day_order,
+               ws.weight_kg, ws.reps, ws.rpe, ws.set_index
         FROM workout_sets ws
         JOIN workout_sessions s ON ws.session_id = s.id
         WHERE ws.exercise_id = ? AND ws.is_warmup = 0
@@ -228,10 +230,12 @@ def get_exercise_progression_history(db: DatabaseManager, exercise_id: str) -> l
     )
 
     history_by_date: dict[str, dict[str, Any]] = {}
-    for session_date, weight, reps, rpe, _ in cursor.fetchall():
+    for session_date, week_order, day_order, weight, reps, rpe, _ in cursor.fetchall():
         if session_date not in history_by_date:
             history_by_date[session_date] = {
                 "date": session_date,
+                "week_order": int(week_order) if week_order is not None else None,
+                "day_order": int(day_order) if day_order is not None else None,
                 "weight_kg": weight,
                 "reps": reps,
                 "rpe": rpe,
@@ -630,11 +634,11 @@ def evaluate_session_most_reps(
 def get_progression_signals(db: DatabaseManager) -> str:
     cursor = db.conn.cursor()
     active_program = db.get_active_program()
-    target_ceilings = {}
+    weeks: list[dict[str, Any]] = []
+    current_week_order = 1
     if active_program:
-        for day in active_program.days:
-            for ex in day.exercises:
-                target_ceilings[str(ex.exercise_id)] = (ex.target_reps_min, ex.target_reps_max, ex.target_rpe or 8.5)
+        weeks = normalize_program_weeks(active_program)
+        current_week_order = db.get_program_position(active_program).current_week
 
     cutoff = (datetime.now(UTC) - timedelta(days=30)).isoformat()[:10]
     cursor.execute(
@@ -655,7 +659,12 @@ def get_progression_signals(db: DatabaseManager) -> str:
         history = get_exercise_progression_history(db, ex_id)
         if len(history) >= 2:
             last = history[-1]
-            rmin, rmax, rpe_target = target_ceilings.get(str(ex_id), (8, 12, 8.5))
+            rmin, rmax, rpe_target = _target_reps_for_logged_session(
+                weeks,
+                current_week_order,
+                last,
+                str(ex_id),
+            )
             proj = project_next_load(
                 last_weight=last["weight_kg"],
                 last_reps=last["reps"],
@@ -676,6 +685,51 @@ def get_progression_signals(db: DatabaseManager) -> str:
     if cursor.fetchone() is None:
         return "Progression: Establishing baseline loads across routine."
     return "Progression: No progression or stall signals in the last 30 days."
+
+
+def _target_reps_for_logged_session(
+    weeks: list[dict[str, Any]],
+    current_week_order: int,
+    session: dict[str, Any],
+    exercise_id: str,
+) -> tuple[int, int, float]:
+    """Use the logged week/day prescription, falling back if that week was removed."""
+    logged_week_order = session.get("week_order")
+    target_week = next(
+        (week for week in weeks if week["week_order"] == logged_week_order),
+        None,
+    )
+    if target_week is None:
+        target_week = next(
+            (week for week in weeks if week["week_order"] == current_week_order),
+            None,
+        )
+    if target_week is None:
+        return 8, 12, 8.5
+
+    day = find_program_day(
+        weeks,
+        target_week["week_order"],
+        day_order=session.get("day_order"),
+    )
+    candidates = [day] if day is not None else []
+    candidates.extend(item for item in target_week["days"] if item is not day)
+    for target_day in candidates:
+        exercise = next(
+            (
+                item
+                for item in target_day["exercises"]
+                if str(item["exercise_id"]) == exercise_id
+            ),
+            None,
+        )
+        if exercise is not None:
+            return (
+                exercise["target_reps_min"],
+                exercise["target_reps_max"],
+                exercise.get("target_rpe") or 8.5,
+            )
+    return 8, 12, 8.5
 
 
 def evaluate_systemic_fatigue(db_manager) -> dict[str, Any]:

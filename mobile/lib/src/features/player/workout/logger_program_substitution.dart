@@ -106,6 +106,8 @@ class LoggerProgramSubstitutionController {
       final ProgramSubstitutionResult result =
           await api.substituteProgramExercise(
         dayName: swap.day.dayName,
+        weekOrder: swap.day.weekOrder,
+        dayOrder: swap.day.dayOrder,
         exerciseId: swap.oldExercise.exerciseId,
         replacementExerciseId: swap.replacement.id,
         expectedActiveVersion: swap.workout.programVersion,
@@ -140,6 +142,8 @@ class LoggerProgramSubstitutionController {
       api.createPlayerProgramRequest(
         kind: 'exercise_substitution',
         dayName: swap.day.dayName,
+        weekOrder: swap.day.weekOrder,
+        dayOrder: swap.day.dayOrder,
         exerciseId: swap.oldExercise.exerciseId,
         replacementExerciseId: swap.replacement.id,
         reason: reason,

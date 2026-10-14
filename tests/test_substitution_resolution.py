@@ -228,6 +228,46 @@ def test_explicit_on_day_reference_selects_that_day(sub_db):
     assert "Pull" in result["response_content"]
 
 
+def test_assistant_swap_targets_players_current_week_by_coordinates(sub_db):
+    sub_db.initialize_and_seed()
+    first_day = {
+        "day_name": "Upper A",
+        "day_order": 1,
+        "week_order": 1,
+        "exercises": [_exercise(REVERSE_LAT_SLOT), _exercise(CHEST_SLOT)],
+    }
+    second_day = {**first_day, "week_order": 2}
+    program = sub_db.ledger.get_active_program().model_dump()
+    program.pop("created_at", None)
+    program["days"] = [first_day, second_day]
+    program["weeks"] = [
+        {"week_name": "Base", "week_order": 1, "days": [first_day]},
+        {"week_name": "Build", "week_order": 2, "days": [second_day]},
+    ]
+    sub_db.ledger.save_training_program(program)
+    active = sub_db.ledger.get_active_program()
+    sub_db.ledger.log_workout_session(
+        "completed-week-one",
+        "2026-10-10",
+        "Upper A",
+        "2026-10-10T10:00:00+00:00",
+        "2026-10-10T11:00:00+00:00",
+        program_version=active.version,
+        program_week_order=1,
+        program_day_order=1,
+    )
+
+    state = _state(REVERSE_LAT_DISPLAY_NAME, "standing cable pulldown")
+    result = exercise_substitution_node(
+        state, {"configurable": {"ledger": sub_db.ledger, "store": sub_db}}
+    )
+
+    assert result["program_updated"] is True
+    updated = sub_db.ledger.get_active_program()
+    assert updated.weeks[0].days[0].exercises[0].exercise_id == REVERSE_LAT_SLOT
+    assert updated.weeks[1].days[0].exercises[0].exercise_id == "2330"
+
+
 def test_swap_request_without_replacement_resolves_on_day_reference(sub_db, monkeypatch):
     _save_program_days(
         sub_db,

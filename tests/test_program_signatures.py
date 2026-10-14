@@ -59,6 +59,19 @@ def _generate_program(store, profile, preference=None, user_suffix=None):
     )[0]
 
 
+def test_automatic_generator_persists_one_repeating_program_week(fresh_store):
+    generated = _generate_program(
+        fresh_store, _profile(COMMERCIAL_GYM, "male", 3), "Full Body"
+    )
+
+    active = fresh_store.ledger.get_active_program()
+
+    assert len(generated.days) == 3
+    assert len(active.weeks) == 1
+    assert active.weeks[0].week_order == 1
+    assert [day.week_order for day in active.days] == [1, 1, 1]
+
+
 def test_bodyweight_flat_press_prefers_standard_push_up(fresh_store):
     candidates = fetch_slot_candidates(
         "flat_press", BODYWEIGHT_ONLY, limit=100, ledger=fresh_store.ledger
@@ -527,7 +540,7 @@ def test_empty_curation_programs_match_coach_pattern_snapshot(
                 _profile(equipment_access, "male", frequency),
                 "Full Body",
             )
-            assert program.model_dump(mode="json") == expected[scenario], scenario
+            assert _without_program_week_fields(program.model_dump(mode="json")) == expected[scenario], scenario
 
     limitations = "lower back tightness"
     scenario = f"{COMMERCIAL_GYM}|3|{limitations}"
@@ -537,7 +550,17 @@ def test_empty_curation_programs_match_coach_pattern_snapshot(
         "Full Body",
         user_suffix="back_limit",
     )
-    assert program.model_dump(mode="json") == expected[scenario], scenario
+    assert _without_program_week_fields(program.model_dump(mode="json")) == expected[scenario], scenario
+
+
+def _without_program_week_fields(program: dict) -> dict:
+    """Drops the Program week structure (#330), which postdates this snapshot."""
+    program = {key: value for key, value in program.items() if key != "weeks"}
+    program["days"] = [
+        {key: value for key, value in day.items() if key != "week_order"}
+        for day in program["days"]
+    ]
+    return program
 
 
 def test_partially_curated_name_matches_keep_uncurated_ordering(

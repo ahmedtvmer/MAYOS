@@ -574,11 +574,21 @@ class CoachCopy {
       isArabic ? 'ملاحظات: $notes' : 'Notes: $notes';
   String get writeProgram =>
       isArabic ? 'اكتب برنامجًا تدريبيًا' : 'Write program';
+  String get firstWeekName => isArabic ? 'الأسبوع 1' : 'Week 1';
+  String weekNameNumber(int number) =>
+      isArabic ? 'الأسبوع ${_ltr('$number')}' : 'Week $number';
+  String weekTabLabel(int number, String name) =>
+      isArabic ? '${_ltr('$number')} · $name' : '$number · $name';
   String get trainingDay => isArabic ? 'يوم التدريب' : 'Training day';
   String get firstTrainingDay => isArabic ? 'اليوم 1' : 'Day 1';
   String get customProgram =>
       isArabic ? 'برنامج تدريبي مخصص' : 'Custom program';
   String get dayName => isArabic ? 'اسم اليوم' : 'Day name';
+  String get weekName => isArabic ? 'اسم الأسبوع' : 'Week name';
+  String get addWeek => isArabic ? 'إضافة أسبوع' : 'Add week';
+  String get removeWeek => isArabic ? 'حذف الأسبوع' : 'Remove week';
+  String get moveWeekUp => isArabic ? 'نقل الأسبوع لأعلى' : 'Move week up';
+  String get moveWeekDown => isArabic ? 'نقل الأسبوع لأسفل' : 'Move week down';
   String trainingDayNumber(int number) => isArabic
       ? 'يوم التدريب ${_ltr('$number')}'
       : 'Training day $number';

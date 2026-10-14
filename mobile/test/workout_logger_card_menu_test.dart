@@ -848,6 +848,10 @@ void main() {
     expect(harness.fake.programRequests.single,
         containsPair('day_name', 'Upper A'));
     expect(harness.fake.programRequests.single,
+        containsPair('week_order', 1));
+    expect(harness.fake.programRequests.single,
+        containsPair('day_order', 2));
+    expect(harness.fake.programRequests.single,
         containsPair('replacement_exercise_id', 'cable_fly'));
     expect(harness.fake.programRequests.single,
         containsPair('reason', 'This movement feels better on my shoulder.'));

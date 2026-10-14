@@ -419,7 +419,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       ProgramDay? day;
       for (final ProgramDay candidate
           in program?.days ?? const <ProgramDay>[]) {
-        if (candidate.dayOrder == widget.dayOrder) {
+        if (candidate.dayOrder == widget.dayOrder &&
+            candidate.weekOrder == (program?.currentWeek ?? 1)) {
           day = candidate;
         }
       }
@@ -436,6 +437,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         accountId: accountId,
         day: day,
         programVersion: program?.version,
+        programWeekCount: program?.weekCount ?? 1,
       );
       if (outcome == StartWorkoutOutcome.started) {
         ref.read(analyticsClientProvider).workoutStarted();
@@ -1603,6 +1605,18 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
             workout.dayName,
             style: MayosTypography.of(context).pageHeading.copyWith(color: c.textPrimary),
           ),
+          if (workout.programWeekCount > 1) ...<Widget>[
+            const SizedBox(height: MayosSpacing.xxs),
+            Text(
+              displayCopyOf(context).programWeekLabel(
+                workout.weekOrder,
+                workout.programWeekCount,
+              ),
+              key: const ValueKey<String>('logger.program_week'),
+              style: MayosTypography.of(context).bodySecondary
+                  .copyWith(color: c.textSecondary),
+            ),
+          ],
           const SizedBox(height: MayosSpacing.xxs),
           // The progress line (#159): the same pure counts the bottom bar
           // will show (#160), under the screen's one serif heading.
@@ -1964,7 +1978,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     ActiveWorkout workout,
   ) {
     for (final ProgramDay day in program.days) {
-      if (day.dayOrder == workout.dayOrder) return day;
+      if (day.dayOrder == workout.dayOrder &&
+          day.weekOrder == workout.weekOrder) {
+        return day;
+      }
     }
     return null;
   }

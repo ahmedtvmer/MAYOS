@@ -54,9 +54,10 @@ from service import check_ins as check_ins_service
 from service import coach_history as coach_history_service
 from service import dashboard as dashboard_service
 from service import program_requests as program_requests_service
+from service.exercise_context import describe_exercises
+from agent.program_weeks import normalize_program_weeks
 from service.assignments import authorized_player_ledger
 from service.evaluation_report_gate import EvaluationReportConfig, GateStatus, evaluate_gate
-from service.exercise_context import describe_exercises
 from service.missed_day_alerts import (
     ALERT_STATES,
     evaluate_ledger_attendance,
@@ -70,7 +71,7 @@ logger = logging.getLogger(__name__)
 
 #: Bumped whenever the prompt or the context shape changes; the eval report's
 #: ``prompt_hash`` must match :func:`prompt_version_hash` for the flag to enable.
-CONTEXT_VERSION = "coach-context-v9"
+CONTEXT_VERSION = "coach-context-v10"
 
 BODYWEIGHT_TREND_WEEKS = 8
 E1RM_TREND_WEEKS = 12
@@ -179,6 +180,48 @@ CANONICAL_FIXTURE: dict[str, Any] = {
         "split": "Upper/Lower",
         "weekly_frequency": 4,
         "version": 3,
+        "current_week": 2,
+        "week_count": 2,
+        "weeks": [
+            {
+                "order": 1,
+                "name": "Base",
+                "days": [
+                    {
+                        "order": 1,
+                        "day": "Upper A",
+                        "exercises": [
+                            {
+                                "name": "Bench Press",
+                                "description": "Bench Press — Primary action: Shoulder Horizontal Adduction; Primary muscle: Chest; Equipment category: Free weight",
+                                "sets": 3,
+                                "reps": "5-8",
+                                "rpe": 8.5,
+                            }
+                        ],
+                    }
+                ],
+            },
+            {
+                "order": 2,
+                "name": "Build",
+                "days": [
+                    {
+                        "order": 1,
+                        "day": "Upper A",
+                        "exercises": [
+                            {
+                                "name": "Bench Press",
+                                "description": "Bench Press — Primary action: Shoulder Horizontal Adduction; Primary muscle: Chest; Equipment category: Free weight",
+                                "sets": 4,
+                                "reps": "5-8",
+                                "rpe": 8.5,
+                            }
+                        ],
+                    }
+                ],
+            },
+        ],
         "days": [
             {
                 "order": 1,
@@ -407,38 +450,75 @@ def _session_facts(sessions: list[dict[str, Any]]) -> tuple[list[dict[str, Any]]
     return kept, totals
 
 
-def _program_facts(program: Any, store: Any) -> dict[str, Any] | None:
+def _program_facts(program: Any, store: Any, ledger: Any) -> dict[str, Any] | None:
     """The active program reduced to structure; no provenance ids or free text."""
     if program is None:
         return None
-    exercises = [exercise for day in program.days for exercise in day.exercises]
-    descriptions = iter(
-        describe_exercises(
-            store,
-            ((exercise.exercise_id, exercise.exercise_name) for exercise in exercises),
-        )
-    )
-    return {
+    weeks = _program_week_structure(program)
+    descriptions = iter(_program_exercise_descriptions(store, weeks))
+    week_facts = [_program_week_facts(week, descriptions) for week in weeks]
+    facts = {
         "name": program.program_name,
         "split": program.split_type,
         "weekly_frequency": program.weekly_frequency,
         "version": program.version,
-        "days": [
+    }
+    if len(week_facts) == 1:
+        facts["days"] = week_facts[0]["days"]
+        return facts
+    facts.update(
+        {
+            "current_week": ledger.get_program_position(program).current_week,
+            "week_count": len(weeks),
+            "weeks": week_facts,
+        }
+    )
+    return facts
+
+
+def _program_week_structure(program: Any) -> list[dict[str, Any]]:
+    weeks = normalize_program_weeks(program)
+    return [
+        {
+            "order": week["week_order"],
+            "name": week["week_name"],
+            "days": week["days"],
+        }
+        for week in weeks
+    ]
+
+
+def _program_exercise_descriptions(store: Any, weeks: list[dict[str, Any]]) -> list[str]:
+    exercises = [exercise for week in weeks for day in week["days"] for exercise in day["exercises"]]
+    return describe_exercises(
+        store,
+        ((exercise["exercise_id"], exercise["exercise_name"]) for exercise in exercises),
+    )
+
+
+def _program_week_facts(
+    week: dict[str, Any], descriptions: Any
+) -> dict[str, Any]:
+    return {
+        "order": week["order"],
+        "name": week["name"],
+        "days": [_program_day_facts(day, descriptions) for day in week["days"]],
+    }
+
+
+def _program_day_facts(day: Any, descriptions: Any) -> dict[str, Any]:
+    return {
+        "order": day["day_order"],
+        "day": day["day_name"],
+        "exercises": [
             {
-                "order": day.day_order,
-                "day": day.day_name,
-                "exercises": [
-                    {
-                        "name": exercise.exercise_name,
-                        "description": next(descriptions),
-                        "sets": exercise.target_sets,
-                        "reps": f"{exercise.target_reps_min}-{exercise.target_reps_max}",
-                        "rpe": exercise.target_rpe,
-                    }
-                    for exercise in day.exercises
-                ],
+                "name": exercise["exercise_name"],
+                "description": next(descriptions),
+                "sets": exercise["target_sets"],
+                "reps": f"{exercise['target_reps_min']}-{exercise['target_reps_max']}",
+                "rpe": exercise["target_rpe"],
             }
-            for day in program.days
+            for exercise in day["exercises"]
         ],
     }
 
@@ -629,7 +709,7 @@ def gather_player_context(
                 "started_on": str(context["assignment"].get("started_at", ""))[:10],
                 "status": context["assignment"].get("status", "active"),
             },
-            "program": _program_facts(program, db),
+            "program": _program_facts(program, db, ledger),
             "training_profile": _training_profile_facts(ledger),
             "volume": {
                 "last_7_days_kg": volumes[7],
@@ -711,14 +791,32 @@ def _render_program(facts: dict[str, Any]) -> list[str]:
     lines.append(f"  split: {program.get('split')}")
     lines.append(f"  weekly_frequency: {format_number(program.get('weekly_frequency'))}")
     lines.append(f"  version: {format_number(program.get('version'))}")
-    for day in program.get("days", []):
+    weeks = program.get("weeks")
+    if weeks:
+        lines.append(
+            "  current_week: "
+            f"{format_number(program.get('current_week'))} of {format_number(program.get('week_count'))}"
+        )
+        for week in weeks:
+            lines.append(
+                f"  week {format_number(week.get('order'))} {week.get('name')}:"
+            )
+            lines.extend(_render_program_days(week.get("days", []), indent="    "))
+        return lines
+    lines.extend(_render_program_days(program.get("days", []), indent="  "))
+    return lines
+
+
+def _render_program_days(days: list[dict[str, Any]], *, indent: str) -> list[str]:
+    lines = []
+    for day in days:
         prescriptions = ", ".join(
             f"{exercise.get('description') or exercise.get('name')} "
             f"{format_number(exercise.get('sets'))}x{exercise.get('reps')}"
             f" @RIR {min_rir_label(exercise.get('rpe'))}"
             for exercise in day.get("exercises", [])
         )
-        lines.append(f"  day {format_number(day.get('order'))} {day.get('day')}: {prescriptions}")
+        lines.append(f"{indent}day {format_number(day.get('order'))} {day.get('day')}: {prescriptions}")
     return lines
 
 

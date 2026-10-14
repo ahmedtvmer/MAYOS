@@ -6,6 +6,12 @@ from enum import Enum
 from typing import Any
 
 from agent.program_blueprints import SLOT_SPECS, rest_seconds_for_exercise_class
+from agent.program_weeks import (
+    ProgramPosition,
+    flatten_program_days,
+    find_program_day,
+    normalize_program_weeks,
+)
 from agent.program_rules import (
     apply_rep_preference,
     exercise_mechanic,
@@ -58,6 +64,8 @@ class ProgramSubstitution:
     day_name: str
     exercise_id: str
     replacement_exercise_id: str
+    week_order: int | None = None
+    day_order: int | None = None
     all_occurrences: bool = False
     published_by_coach_account_id: str | None = None
     expected_active_version: int | None = None
@@ -73,7 +81,9 @@ def substitute_program_exercise(
     ledger: Any, catalog: Any, active_program: Any, request: ProgramSubstitution
 ) -> dict[str, Any]:
     """Replace the requested slot(s), validate the new exercise, and publish a version."""
-    prepared = _prepare_substitution(active_program, catalog, request)
+    current_position = ledger.get_program_position(active_program)
+    current_week = current_position.current_week
+    prepared = _prepare_substitution(active_program, catalog, request, current_week)
     if not prepared["ok"]:
         return prepared
     program_data = prepared["program_data"]
@@ -88,7 +98,11 @@ def substitute_program_exercise(
         _adjust_class_prescription(exercise, replacement, profile)
     replaced_count = len(replaced_exercises)
     program_data.pop("created_at", None)
-    ledger.save_training_program(program_data, published_by_coach_account_id=request.published_by_coach_account_id)
+    ledger.save_training_program(
+        program_data,
+        published_by_coach_account_id=request.published_by_coach_account_id,
+        starting_position=current_position,
+    )
     return {
         "ok": True,
         "replacement": replacement,
@@ -161,7 +175,12 @@ def undo_active_program_substitution(
     snapshot = ledger.get_program_by_version(request.restore_version)
     if snapshot is None:
         return _failure(SubstitutionErrorCode.RESTORE_VERSION_NOT_FOUND)
-    result = _restore_program_snapshot(ledger, active.version, snapshot)
+    result = _restore_program_snapshot(
+        ledger,
+        active.version,
+        snapshot,
+        ledger.get_program_position(active),
+    )
     updated = ledger.get_active_program()
     if updated is not None:
         capture_program_exercise_swapped(actor, updated, client=client)
@@ -184,28 +203,46 @@ def _updated_program_result(ledger: Any, previous_version: int | None) -> dict[s
     return {**updated.model_dump(), "previous_version": previous_version}
 
 
-def _restore_program_snapshot(ledger: Any, previous_version: int | None, snapshot: Any) -> dict[str, Any]:
+def _restore_program_snapshot(
+    ledger: Any,
+    previous_version: int | None,
+    snapshot: Any,
+    starting_position: ProgramPosition,
+) -> dict[str, Any]:
     program_data = _program_data(snapshot)
     # Let the ledger allocate new identities and a monotonically increasing
     # version while retaining every content field from the historical copy.
     program_data.pop("id", None)
     program_data.pop("version", None)
     program_data.pop("created_at", None)
-    for day in program_data.get("days", []):
-        day.pop("id", None)
-        for exercise in day.get("exercises", []):
-            exercise.pop("id", None)
-    ledger.save_training_program(program_data, published_by_coach_account_id=None)
+    weeks = normalize_program_weeks(program_data)
+    for week in weeks:
+        for day in week["days"]:
+            day.pop("id", None)
+            for exercise in day.get("exercises", []):
+                exercise.pop("id", None)
+    program_data["weeks"] = weeks
+    program_data["days"] = flatten_program_days(weeks)
+    ledger.save_training_program(
+        program_data,
+        published_by_coach_account_id=None,
+        starting_position=starting_position,
+    )
     return _updated_program_result(ledger, previous_version)
 
 
-def _prepare_substitution(active_program: Any, catalog: Any, request: ProgramSubstitution) -> dict[str, Any]:
+def _prepare_substitution(
+    active_program: Any,
+    catalog: Any,
+    request: ProgramSubstitution,
+    current_week: int,
+) -> dict[str, Any]:
     source_id = str(request.exercise_id)
     replacement = _replacement(catalog, source_id, request.replacement_exercise_id)
     if not replacement["ok"]:
         return replacement
     program_data = _program_data(active_program)
-    target_days = _target_days(program_data, request, source_id)
+    target_days = _target_days(program_data, request, source_id, current_week)
     if not target_days["ok"]:
         return target_days
     target_days = target_days["days"]
@@ -214,14 +251,31 @@ def _prepare_substitution(active_program: Any, catalog: Any, request: ProgramSub
     return {"ok": True, "program_data": program_data, "target_days": target_days, "replacement": replacement["entry"]}
 
 
-def _target_days(program_data: dict[str, Any], request: ProgramSubstitution, source_id: str) -> dict[str, Any]:
-    days = program_data.get("days", [])
-    named_day = next((day for day in days if day.get("day_name") == request.day_name), None)
+def _target_days(
+    program_data: dict[str, Any],
+    request: ProgramSubstitution,
+    source_id: str,
+    current_week: int,
+) -> dict[str, Any]:
+    weeks = normalize_program_weeks(program_data)
+    program_data["weeks"] = weeks
+    program_data["days"] = flatten_program_days(weeks)
+    week_order = request.week_order or current_week
+    named_day = find_program_day(
+        weeks,
+        week_order,
+        day_order=request.day_order,
+        day_name=request.day_name,
+    )
     if named_day is None:
         return _failure(SubstitutionErrorCode.DAY_NOT_FOUND)
     if not _day_has_exercise(named_day, source_id):
         return _failure(SubstitutionErrorCode.SOURCE_NOT_ON_DAY)
-    target_days = [day for day in days if _day_has_exercise(day, source_id)] if request.all_occurrences else [named_day]
+    target_days = (
+        [day for day in flatten_program_days(weeks) if _day_has_exercise(day, source_id)]
+        if request.all_occurrences
+        else [named_day]
+    )
     return {"ok": True, "days": target_days}
 
 

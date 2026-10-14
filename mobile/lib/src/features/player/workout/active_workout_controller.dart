@@ -75,6 +75,9 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     required BaselinesService baselines,
     Future<Prescription?> Function(String accountId, int dayOrder)?
         loadPrescription,
+    Future<Prescription?> Function(
+            String accountId, int dayOrder, int weekOrder)?
+        loadWeekPrescription,
     DateTime Function()? now,
     String Function()? newId,
     String Function()? clientSessionIdGenerator,
@@ -86,6 +89,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   })  : _store = store,
         _baselines = baselines,
         _loadPrescription = loadPrescription,
+        _loadWeekPrescription = loadWeekPrescription,
         _now = now ?? DateTime.now,
         _newId = newId ?? _fallbackId,
         _newClientSessionId = clientSessionIdGenerator ?? newClientSessionId,
@@ -104,6 +108,9 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   /// prescription — how the old logger resolved it (#123 item 4).
   final Future<Prescription?> Function(String accountId, int dayOrder)?
       _loadPrescription;
+  final Future<Prescription?> Function(
+          String accountId, int dayOrder, int weekOrder)?
+      _loadWeekPrescription;
   final DateTime Function() _now;
   final String Function() _newId;
   final String Function() _newClientSessionId;
@@ -301,6 +308,7 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     required String accountId,
     required ProgramDay day,
     required int? programVersion,
+    int programWeekCount = 1,
   }) async {
     await syncAccount(accountId);
     if (state.workout != null) {
@@ -313,7 +321,15 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     Future<Prescription?> prescriptionFuture = Future<Prescription?>.value();
     final Future<Prescription?> Function(String, int)? loadPrescription =
         _loadPrescription;
-    if (loadPrescription != null) {
+    final Future<Prescription?> Function(String, int, int)? loadWeekPrescription =
+        _loadWeekPrescription;
+    if (loadWeekPrescription != null) {
+      prescriptionFuture = loadWeekPrescription(
+        accountId,
+        day.dayOrder,
+        day.weekOrder,
+      );
+    } else if (loadPrescription != null) {
       prescriptionFuture = loadPrescription(accountId, day.dayOrder);
     }
     final BaselineResolution resolution = await _baselines.resolveForStart(
@@ -337,6 +353,8 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       clientSessionId: persistClientSessionId ? _newClientSessionId() : null,
       startedAt: _now().toUtc().toIso8601String(),
       dayOrder: day.dayOrder,
+      weekOrder: day.weekOrder,
+      programWeekCount: programWeekCount,
       dayName: day.dayName,
       warmupMovements: <ActiveWarmupMovement>[
         for (final WarmupExercise movement in day.warmupExercises)

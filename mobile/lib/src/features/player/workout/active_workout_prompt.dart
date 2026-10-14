@@ -157,6 +157,7 @@ Future<bool> startWorkoutFromDay(
   WidgetRef ref, {
   required ProgramDay day,
   required int? programVersion,
+  int programWeekCount = 1,
 }) async {
   final ActiveWorkoutController controller =
       ref.read(activeWorkoutControllerProvider.notifier);
@@ -206,6 +207,7 @@ Future<bool> startWorkoutFromDay(
     accountId: accountId,
     day: day,
     programVersion: programVersion,
+    programWeekCount: programWeekCount,
   );
   if (!context.mounted || outcome != StartWorkoutOutcome.started) {
     return false;

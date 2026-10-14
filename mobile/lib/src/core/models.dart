@@ -456,6 +456,8 @@ class ProgramRequestDraft {
     required this.kind,
     required this.reason,
     this.dayName,
+    this.weekOrder,
+    this.dayOrder,
     this.exerciseId,
     this.replacementExerciseId,
     this.desiredWeeklyFrequency,
@@ -472,6 +474,8 @@ class ProgramRequestDraft {
       kind: kind as String,
       reason: json['reason'] is String ? json['reason'] as String : '',
       dayName: _optionalString(json['day_name']),
+      weekOrder: (json['week_order'] as num?)?.toInt(),
+      dayOrder: (json['day_order'] as num?)?.toInt(),
       exerciseId: _optionalString(json['exercise_id']),
       replacementExerciseId:
           _optionalString(json['replacement_exercise_id']),
@@ -488,6 +492,8 @@ class ProgramRequestDraft {
   final String kind;
   final String reason;
   final String? dayName;
+  final int? weekOrder;
+  final int? dayOrder;
   final String? exerciseId;
   final String? replacementExerciseId;
   final int? desiredWeeklyFrequency;
@@ -507,6 +513,8 @@ class ProgramRequest {
     required this.status,
     required this.createdAt,
     this.dayName,
+    this.weekOrder,
+    this.dayOrder,
     this.exerciseId,
     this.exerciseName,
     this.replacementExerciseId,
@@ -526,6 +534,8 @@ class ProgramRequest {
         kind: json['kind'] as String,
         programVersion: (json['program_version'] as num).toInt(),
         dayName: json['day_name'] as String?,
+        weekOrder: (json['week_order'] as num?)?.toInt(),
+        dayOrder: (json['day_order'] as num?)?.toInt(),
         exerciseId: json['exercise_id'] as String?,
         exerciseName: json['exercise_name'] as String?,
         replacementExerciseId: json['replacement_exercise_id'] as String?,
@@ -546,6 +556,8 @@ class ProgramRequest {
   final String kind;
   final int programVersion;
   final String? dayName;
+  final int? weekOrder;
+  final int? dayOrder;
   final String? exerciseId;
   final String? exerciseName;
   final String? replacementExerciseId;
@@ -2457,6 +2469,7 @@ class ProgramDay {
   const ProgramDay({
     required this.dayName,
     required this.dayOrder,
+    this.weekOrder = 1,
     this.warmupExercises = const <WarmupExercise>[],
     required this.exercises,
     this.cardio,
@@ -2465,6 +2478,7 @@ class ProgramDay {
   factory ProgramDay.fromJson(Map<String, dynamic> json) => ProgramDay(
         dayName: json['day_name'] as String,
         dayOrder: (json['day_order'] as num).toInt(),
+        weekOrder: (json['week_order'] as num?)?.toInt() ?? 1,
         warmupExercises:
             (json['warmup_exercises'] as List<dynamic>? ?? const [])
                 .map((dynamic e) =>
@@ -2479,6 +2493,7 @@ class ProgramDay {
 
   final String dayName;
   final int dayOrder;
+  final int weekOrder;
   final List<WarmupExercise> warmupExercises;
   final List<ProgramExercise> exercises;
   final String? cardio;
@@ -2490,6 +2505,7 @@ class ProgramDay {
   Map<String, dynamic> toJson() => <String, dynamic>{
         'day_name': dayName,
         'day_order': dayOrder,
+        'week_order': weekOrder,
         'warmup_exercises': <Map<String, dynamic>>[
           for (final WarmupExercise warmup in warmupExercises) warmup.toJson(),
         ],
@@ -2556,30 +2572,52 @@ class TrainingProgram {
     required this.splitType,
     required this.weeklyFrequency,
     required this.days,
+    this.weeks = const <ProgramWeek>[],
+    this.currentWeek = 1,
+    this.weekCount = 1,
+    this.nextDayOrder = 1,
     this.version,
     this.publishedByCoachAccountId,
     this.playerControlsProgram = false,
   });
 
-  factory TrainingProgram.fromJson(Map<String, dynamic> json) =>
-      TrainingProgram(
+  factory TrainingProgram.fromJson(Map<String, dynamic> json) {
+    final List<ProgramDay> days = (json['days'] as List<dynamic>? ?? const [])
+        .map((dynamic day) => ProgramDay.fromJson(day as Map<String, dynamic>))
+        .toList(growable: false);
+    final List<ProgramWeek> weeks =
+        (json['weeks'] as List<dynamic>? ?? const <dynamic>[])
+            .map((dynamic week) =>
+                ProgramWeek.fromJson(week as Map<String, dynamic>))
+            .toList(growable: false);
+    return TrainingProgram(
         programName: json['program_name'] as String,
         splitType: json['split_type'] as String? ?? 'custom',
         weeklyFrequency: (json['weekly_frequency'] as num).toInt(),
-        days: (json['days'] as List<dynamic>? ?? const [])
-            .map((dynamic d) => ProgramDay.fromJson(d as Map<String, dynamic>))
-            .toList(growable: false),
+        days: days,
+        weeks: weeks.isEmpty
+            ? <ProgramWeek>[ProgramWeek(weekName: 'Week 1', weekOrder: 1, days: days)]
+            : weeks,
+        currentWeek: (json['current_week'] as num?)?.toInt() ?? 1,
+        weekCount: (json['week_count'] as num?)?.toInt() ??
+            (weeks.isEmpty ? 1 : weeks.length),
+        nextDayOrder: (json['next_day_order'] as num?)?.toInt() ?? 1,
         version: (json['version'] as num?)?.toInt(),
         publishedByCoachAccountId:
             json['published_by_coach_account_id'] as String?,
         playerControlsProgram:
             json['player_controls_program'] as bool? ?? false,
       );
+  }
 
   final String programName;
   final String splitType;
   final int weeklyFrequency;
   final List<ProgramDay> days;
+  final List<ProgramWeek> weeks;
+  final int currentWeek;
+  final int weekCount;
+  final int nextDayOrder;
 
   /// Stable ledger version recorded at publication; null for legacy payloads.
   final int? version;
@@ -2599,9 +2637,44 @@ class TrainingProgram {
         'days': <Map<String, dynamic>>[
           for (final ProgramDay day in days) day.toJson(),
         ],
+        'weeks': <Map<String, dynamic>>[
+          for (final ProgramWeek week in weeks) week.toJson(),
+        ],
+        'current_week': currentWeek,
+        'week_count': weekCount,
+        'next_day_order': nextDayOrder,
         'version': version,
         'published_by_coach_account_id': publishedByCoachAccountId,
         'player_controls_program': playerControlsProgram,
+      };
+}
+
+class ProgramWeek {
+  const ProgramWeek({
+    required this.weekName,
+    required this.weekOrder,
+    required this.days,
+  });
+
+  factory ProgramWeek.fromJson(Map<String, dynamic> json) => ProgramWeek(
+        weekName: json['week_name'] as String,
+        weekOrder: (json['week_order'] as num).toInt(),
+        days: (json['days'] as List<dynamic>? ?? const <dynamic>[])
+            .map((dynamic day) =>
+                ProgramDay.fromJson(day as Map<String, dynamic>))
+            .toList(growable: false),
+      );
+
+  final String weekName;
+  final int weekOrder;
+  final List<ProgramDay> days;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+        'week_name': weekName,
+        'week_order': weekOrder,
+        'days': <Map<String, dynamic>>[
+          for (final ProgramDay day in days) day.toJson(),
+        ],
       };
 }
 
@@ -2984,6 +3057,7 @@ class WorkoutDraft {
     required this.performedTimezone,
     required this.programVersion,
     required this.dayOrder,
+    this.weekOrder = 1,
     required this.dayName,
     required this.capturedAt,
     required this.exercises,
@@ -3010,6 +3084,7 @@ class WorkoutDraft {
         performedTimezone: json['performed_timezone'] as String,
         programVersion: (json['program_version'] as num).toInt(),
         dayOrder: (json['day_order'] as num).toInt(),
+        weekOrder: (json['week_order'] as num?)?.toInt() ?? 1,
         dayName: json['day_name'] as String? ?? 'Day',
         capturedAt: json['captured_at'] as String,
         exercises: (json['exercises'] as List<dynamic>? ?? const <dynamic>[])
@@ -3046,6 +3121,7 @@ class WorkoutDraft {
   final String performedTimezone;
   final int programVersion;
   final int dayOrder;
+  final int weekOrder;
   final String dayName;
   final String capturedAt;
   final List<DraftExercise> exercises;
@@ -3144,6 +3220,7 @@ class WorkoutDraft {
         performedTimezone: performedTimezone,
         programVersion: programVersion,
         dayOrder: dayOrder,
+        weekOrder: weekOrder,
         dayName: dayName,
         capturedAt: capturedAt,
         exercises: exercises,
@@ -3173,6 +3250,7 @@ class WorkoutDraft {
   /// The `POST /workouts/sessions` body for this draft.
   Map<String, dynamic> toCommitBody() => <String, dynamic>{
         'day_order': dayOrder,
+        'week_order': weekOrder,
         'readiness': readiness,
         'session_notes': notes,
         'sets': <Map<String, dynamic>>[
@@ -3207,6 +3285,7 @@ class WorkoutDraft {
         'performed_timezone': performedTimezone,
         'program_version': programVersion,
         'day_order': dayOrder,
+        'week_order': weekOrder,
         'day_name': dayName,
         'captured_at': capturedAt,
         'exercises': <Map<String, dynamic>>[
@@ -3665,14 +3744,15 @@ List<String> _stringList(dynamic raw) =>
 
 /// `GET /workouts/sessions/latest`: the player's most recent committed session.
 ///
-/// [splitName] is the program day name written at commit; [dayOrder] is null
-/// when the ledger does not store one, so Home matches the program day by name.
+/// Older committed sessions omit [dayOrder], so Home can still match those by
+/// [splitName].
 class LatestSession {
   const LatestSession({
     required this.sessionId,
     required this.sessionDate,
     required this.splitName,
     this.dayOrder,
+    this.weekOrder,
     this.programVersion,
     this.warmupMovements = const <WarmupMovementLog>[],
     this.cardio,
@@ -3683,6 +3763,7 @@ class LatestSession {
         sessionDate: json['session_date'] as String,
         splitName: json['split_name'] as String? ?? '',
         dayOrder: (json['day_order'] as num?)?.toInt(),
+        weekOrder: (json['week_order'] as num?)?.toInt(),
         programVersion: (json['program_version'] as num?)?.toInt(),
         warmupMovements: (json['warmup_movements'] as List<dynamic>? ??
                 const [])
@@ -3698,6 +3779,7 @@ class LatestSession {
   final String sessionDate;
   final String splitName;
   final int? dayOrder;
+  final int? weekOrder;
   final int? programVersion;
   final List<WarmupMovementLog> warmupMovements;
   final WorkoutCardio? cardio;
@@ -3707,6 +3789,7 @@ class LatestSession {
         'session_date': sessionDate,
         'split_name': splitName,
         'day_order': dayOrder,
+        'week_order': weekOrder,
         'program_version': programVersion,
         'warmup_movements': <Map<String, dynamic>>[
           for (final WarmupMovementLog movement in warmupMovements)

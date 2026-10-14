@@ -217,6 +217,8 @@ class FakeMayosApi {
   int _publishedVersion = 0;
   int? programVersion;
   String? programPublishedByCoachAccountId;
+  List<Map<String, dynamic>>? programWeeksOverride;
+  int? programCurrentWeekOverride;
   Map<String, dynamic>? programDraft;
   Map<String, dynamic> programImportResult = <String, dynamic>{
     'detected_tabs': <String>['Program'],
@@ -2613,6 +2615,8 @@ class FakeMayosApi {
       'kind': kind,
       'program_version': programVersion ?? 0,
       'day_name': null,
+      'week_order': null,
+      'day_order': null,
       'exercise_id': null,
       'replacement_exercise_id': null,
       'exercise_name': null,
@@ -2642,6 +2646,8 @@ class FakeMayosApi {
         });
       }
       row['day_name'] = day;
+      row['week_order'] = (request.body['week_order'] as num?)?.toInt();
+      row['day_order'] = (request.body['day_order'] as num?)?.toInt();
       row['exercise_id'] = exercise;
       row['replacement_exercise_id'] = replacement;
       row['exercise_name'] = exercise == 'bench_press' ? 'Bench Press' : null;
@@ -3685,6 +3691,12 @@ class FakeMayosApi {
                     ],
                   },
             ],
+        if (programWeeksOverride != null) 'weeks': programWeeksOverride,
+        if (programCurrentWeekOverride != null)
+          'current_week': programCurrentWeekOverride,
+        if (programWeeksOverride != null)
+          'week_count': programWeeksOverride!.length,
+        if (programWeeksOverride != null) 'next_day_order': 1,
         if (programVersion != null) 'version': programVersion,
         if (programPublishedByCoachAccountId != null)
           'published_by_coach_account_id': programPublishedByCoachAccountId,

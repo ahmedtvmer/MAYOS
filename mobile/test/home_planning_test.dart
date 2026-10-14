@@ -38,12 +38,16 @@ TrainingSchedule _schedule(List<int> weekdays) => TrainingSchedule(
 
 TrainedDay _trained({
   int? dayOrder,
+  int? weekOrder,
+  int? programVersion,
   String? dayName,
   String performedDate = '2026-09-20',
   String updatedAt = '2026-09-20T10:00:00Z',
 }) =>
     TrainedDay(
       dayOrder: dayOrder,
+      weekOrder: weekOrder,
+      programVersion: programVersion,
       dayName: dayName,
       performedDate: performedDate,
       updatedAt: updatedAt,
@@ -235,6 +239,139 @@ void main() {
         days: const <ProgramDay>[],
       );
       expect(selectNextDay(empty, const <TrainedDay>[]), isNull);
+    });
+
+    test('walks the cached current week from locally completed workouts', () {
+      final TrainingProgram block = TrainingProgram(
+        programName: 'Two weeks',
+        splitType: 'custom',
+        weeklyFrequency: 2,
+        version: 4,
+        currentWeek: 1,
+        weekCount: 2,
+        nextDayOrder: 1,
+        days: <ProgramDay>[
+          for (int week in <int>[1, 2])
+            for (int day in <int>[1, 2])
+              ProgramDay(
+                dayName: 'Day $day',
+                dayOrder: day,
+                weekOrder: week,
+                exercises: const <ProgramExercise>[],
+              ),
+        ],
+      );
+
+      final ProgramDay? next = selectNextDay(
+        block,
+        <TrainedDay>[
+          _trained(
+            dayOrder: 1,
+            weekOrder: 1,
+            programVersion: 4,
+          ),
+        ],
+      );
+
+      expect((next?.weekOrder, next?.dayOrder), (1, 2));
+    });
+
+    test('advances offline to the next known week after completing this week', () {
+      final List<ProgramDay> weekOne = <ProgramDay>[
+        for (int day in <int>[1, 2])
+          ProgramDay(
+            dayName: 'Week 1 Day $day',
+            dayOrder: day,
+            weekOrder: 1,
+            exercises: const <ProgramExercise>[],
+          ),
+      ];
+      final List<ProgramDay> weekTwo = <ProgramDay>[
+        for (int day in <int>[1, 2])
+          ProgramDay(
+            dayName: 'Week 2 Day $day',
+            dayOrder: day,
+            weekOrder: 2,
+            exercises: const <ProgramExercise>[],
+          ),
+      ];
+      final TrainingProgram block = TrainingProgram(
+        programName: 'Two weeks',
+        splitType: 'custom',
+        weeklyFrequency: 2,
+        version: 4,
+        currentWeek: 1,
+        weekCount: 2,
+        nextDayOrder: 1,
+        days: <ProgramDay>[...weekOne, ...weekTwo],
+        weeks: <ProgramWeek>[
+          ProgramWeek(weekName: 'Base', weekOrder: 1, days: weekOne),
+          ProgramWeek(weekName: 'Build', weekOrder: 2, days: weekTwo),
+        ],
+      );
+      final List<TrainedDay> completedWeekOne = <TrainedDay>[
+        _trained(dayOrder: 1, weekOrder: 1, programVersion: 4),
+        _trained(dayOrder: 2, weekOrder: 1, programVersion: 4),
+      ];
+
+      final ProgramDay? next = selectNextDay(block, completedWeekOne);
+
+      expect((next?.weekOrder, next?.dayOrder), (2, 1));
+    });
+
+    test('clamps offline completion to the last week and repeats its next day', () {
+      final List<ProgramDay> weekOne = <ProgramDay>[
+        for (int day in <int>[1, 2])
+          ProgramDay(
+            dayName: 'Week 1 Day $day',
+            dayOrder: day,
+            weekOrder: 1,
+            exercises: const <ProgramExercise>[],
+          ),
+      ];
+      final List<ProgramDay> weekTwo = <ProgramDay>[
+        for (int day in <int>[1, 2])
+          ProgramDay(
+            dayName: 'Week 2 Day $day',
+            dayOrder: day,
+            weekOrder: 2,
+            exercises: const <ProgramExercise>[],
+          ),
+      ];
+      final TrainingProgram block = TrainingProgram(
+        programName: 'Two weeks',
+        splitType: 'custom',
+        weeklyFrequency: 2,
+        version: 4,
+        currentWeek: 2,
+        weekCount: 2,
+        nextDayOrder: 1,
+        days: <ProgramDay>[...weekOne, ...weekTwo],
+        weeks: <ProgramWeek>[
+          ProgramWeek(weekName: 'Base', weekOrder: 1, days: weekOne),
+          ProgramWeek(weekName: 'Build', weekOrder: 2, days: weekTwo),
+        ],
+      );
+      final List<TrainedDay> completed = <TrainedDay>[
+        _trained(dayOrder: 1, weekOrder: 1, programVersion: 4),
+        _trained(dayOrder: 2, weekOrder: 1, programVersion: 4),
+        _trained(
+          dayOrder: 1,
+          weekOrder: 2,
+          programVersion: 4,
+          performedDate: '2026-09-21',
+        ),
+        _trained(
+          dayOrder: 2,
+          weekOrder: 2,
+          programVersion: 4,
+          performedDate: '2026-09-22',
+        ),
+      ];
+
+      final ProgramDay? next = selectNextDay(block, completed);
+
+      expect((next?.weekOrder, next?.dayOrder), (2, 1));
     });
   });
 }

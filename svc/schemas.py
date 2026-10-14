@@ -17,10 +17,12 @@ from agent.ProgramState import (
     PersistedProgramDaySchema,
     PersistedProgramExerciseSchema,
     PersistedProgramSchema,
+    PersistedProgramWeekSchema,
     ProgramExerciseSchema,
     SuggestedSubstitute,
 )
 from agent.program_cardio import CardioType
+from agent.program_weeks import default_week_name
 from agent.program_prescription import (
     DEFAULT_TARGET_REPS_MAX,
     DEFAULT_TARGET_REPS_MIN,
@@ -34,6 +36,7 @@ from agent.program_prescription import (
     DEFAULT_WARMUP_MOVEMENT_REST_SECONDS,
     DEFAULT_WARMUP_MOVEMENT_SETS,
     MAX_PROGRAM_DAYS,
+    MAX_PROGRAM_WEEKS,
     MAX_PROGRAM_NOTES_LENGTH,
     MAX_RAMPED_WARMUP_SETS,
     MAX_TEMPO_LENGTH,
@@ -650,6 +653,7 @@ class PlayerLatestSessionOut(BaseModel):
     session_date: str
     split_name: str
     day_order: int | None = None
+    week_order: int | None = Field(default=None, ge=1, le=MAX_PROGRAM_WEEKS)
     program_version: int | None = None
     warmup_movements: list[WarmupMovementOut] = []
     cardio: CardioOut | None = None
@@ -1181,9 +1185,19 @@ class ProgramDraftDayIn(ProgramDraftInput):
 
     day_name: str = Field(default="Day 1", min_length=1, max_length=100)
     day_order: int = Field(default=1, ge=1, le=MAX_PROGRAM_DAYS)
+    week_order: int = Field(default=1, ge=1, le=MAX_PROGRAM_WEEKS)
     warmup_exercises: list[ProgramDraftWarmupExerciseIn] = Field(default_factory=list)
     exercises: list[ProgramDraftExerciseIn] = Field(default_factory=list)
     cardio: str | None = None
+
+
+class ProgramDraftWeekIn(ProgramDraftInput):
+    week_name: str = Field(default=default_week_name(1), min_length=1, max_length=100)
+    week_order: int = Field(default=1, ge=1, le=MAX_PROGRAM_WEEKS)
+    days: list[ProgramDraftDayIn] = Field(
+        default_factory=list,
+        max_length=MAX_PROGRAM_DAYS,
+    )
 
 
 class CoachProgramDraftIn(ProgramDraftInput):
@@ -1191,8 +1205,12 @@ class CoachProgramDraftIn(ProgramDraftInput):
     split_type: str = "custom"
     weekly_frequency: int = Field(default=1, ge=1, le=MAX_PROGRAM_DAYS)
     instructions: str = ""
-    days: list[ProgramDraftDayIn] = Field(default_factory=list, max_length=MAX_PROGRAM_DAYS)
+    days: list[ProgramDraftDayIn] = Field(
+        default_factory=list,
+        max_length=MAX_PROGRAM_DAYS * MAX_PROGRAM_WEEKS,
+    )
     generation_options: ProgramGenerationOptionsIn | None = None
+    weeks: list[ProgramDraftWeekIn] = Field(default_factory=list, max_length=MAX_PROGRAM_WEEKS)
 
     @model_validator(mode="before")
     @classmethod
@@ -1203,6 +1221,14 @@ class CoachProgramDraftIn(ProgramDraftInput):
         for field_name in ("version", "published_by_coach_account_id"):
             normalized.pop(field_name, None)
         return normalized
+
+    @model_validator(mode="after")
+    def validate_implicit_week_days(self) -> "CoachProgramDraftIn":
+        if not self.weeks and len(self.days) > MAX_PROGRAM_DAYS:
+            raise ValueError(
+                f"A program can have at most {MAX_PROGRAM_DAYS} training days per week."
+            )
+        return self
 
 
 class CoachProgramApproveIn(BaseModel):
@@ -1271,6 +1297,10 @@ class CoachActiveProgramDayOut(PersistedProgramDaySchema):
     )
 
 
+class CoachActiveProgramWeekOut(PersistedProgramWeekSchema):
+    days: list[CoachActiveProgramDayOut]
+
+
 class CoachActiveProgramDetailsOut(BaseModel):
     """Active Training program content without account identity fields."""
 
@@ -1279,6 +1309,9 @@ class CoachActiveProgramDetailsOut(BaseModel):
     weekly_frequency: int
     instructions: str
     days: list[CoachActiveProgramDayOut]
+    weeks: list[CoachActiveProgramWeekOut] = Field(default_factory=list)
+    current_week: int = 1
+    week_count: int = 1
     version: int | None = None
     provenance: Literal["automatic", "coach"]
     active_since: str | None = None
@@ -1346,6 +1379,8 @@ class ProgramSubstitutionIn(BaseModel):
     """One permanent slot swap in the player's active program."""
 
     day_name: str = Field(min_length=1, max_length=100)
+    week_order: int | None = Field(default=None, ge=1, le=MAX_PROGRAM_WEEKS)
+    day_order: int | None = Field(default=None, ge=1, le=MAX_PROGRAM_DAYS)
     exercise_id: str = Field(min_length=1, max_length=200)
     replacement_exercise_id: str = Field(min_length=1, max_length=200)
     all_occurrences: bool = False
@@ -1369,6 +1404,8 @@ class ProgramEditIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     day_name: str = Field(min_length=1, max_length=100)
+    week_order: int | None = Field(default=None, ge=1, le=MAX_PROGRAM_WEEKS)
+    day_order: int | None = Field(default=None, ge=1, le=MAX_PROGRAM_DAYS)
     expected_active_version: int = Field(ge=1)
     exercises: list[ProgramEditExerciseIn] = Field(max_length=MAX_EXERCISES_PER_DAY)
 
@@ -1377,6 +1414,9 @@ class ActiveProgramOut(PersistedProgramSchema):
     """An active program plus the server's current Program-authority decision."""
 
     player_controls_program: bool
+    current_week: int = 1
+    week_count: int = 1
+    next_day_order: int = 1
 
 
 class ProgramSubstitutionOut(PersistedProgramSchema):
@@ -1394,6 +1434,8 @@ class PlayerProgramRequestIn(BaseModel):
 
     kind: Literal["exercise_substitution", "split_change"]
     day_name: str | None = Field(default=None, max_length=80)
+    week_order: int | None = Field(default=None, ge=1, le=MAX_PROGRAM_WEEKS)
+    day_order: int | None = Field(default=None, ge=1, le=MAX_PROGRAM_DAYS)
     exercise_id: str | None = Field(default=None, max_length=120)
     replacement_exercise_id: str | None = Field(default=None, max_length=120)
     desired_weekly_frequency: int | None = Field(default=None, ge=1, le=5)
@@ -1409,6 +1451,8 @@ class ProgramRequestOut(BaseModel):
     kind: str
     program_version: int
     day_name: str | None = None
+    week_order: int | None = Field(default=None, ge=1, le=MAX_PROGRAM_WEEKS)
+    day_order: int | None = None
     exercise_id: str | None = None
     exercise_name: str | None = None
     replacement_exercise_id: str | None = None
@@ -1483,6 +1527,7 @@ class CardioIn(BaseModel):
 
 class SessionCommitIn(BaseModel):
     day_order: int = Field(ge=1, le=5)
+    week_order: int = Field(default=1, ge=1, le=MAX_PROGRAM_WEEKS)
     readiness: int = Field(ge=1, le=5)
     session_notes: str = Field(default="", max_length=2000)
     sets: list[ExerciseSetsIn] = Field(min_length=1)

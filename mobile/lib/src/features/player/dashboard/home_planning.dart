@@ -21,6 +21,8 @@ String greetingFor(DateTime now) => MayosCopy('en').greetingFor(now);
 class TrainedDay {
   const TrainedDay({
     this.dayOrder,
+    this.weekOrder,
+    this.programVersion,
     this.dayName,
     required this.performedDate,
     required this.updatedAt,
@@ -29,6 +31,8 @@ class TrainedDay {
   /// The ledger `day_order` when the source carries one (drafts do; the
   /// committed-session read does not, so [dayName] is used instead).
   final int? dayOrder;
+  final int? weekOrder;
+  final int? programVersion;
 
   /// The day name written at commit (`split_name` / draft `day_name`).
   final String? dayName;
@@ -39,6 +43,8 @@ class TrainedDay {
   /// Builds the trained-day view from an existing workout draft.
   factory TrainedDay.fromDraft(WorkoutDraft draft) => TrainedDay(
         dayOrder: draft.dayOrder,
+        weekOrder: draft.weekOrder,
+        programVersion: draft.programVersion,
         dayName: draft.dayName,
         performedDate: draft.performedDate,
         updatedAt: draft.updatedAt,
@@ -47,6 +53,8 @@ class TrainedDay {
   /// Builds the trained-day view from the server's latest committed session.
   factory TrainedDay.fromLatestSession(LatestSession session) => TrainedDay(
         dayOrder: session.dayOrder,
+        weekOrder: session.weekOrder,
+        programVersion: session.programVersion,
         dayName: session.splitName,
         performedDate: session.sessionDate,
         // The ledger exposes no update timestamp; the performed date is the only
@@ -97,6 +105,9 @@ ProgramDay? selectNextDay(
   if (program.days.isEmpty) {
     return null;
   }
+  if (program.weekCount > 1) {
+    return _nextLocallyKnownWeekDay(program, trained);
+  }
   final List<ProgramDay> ordered = List<ProgramDay>.of(program.days)
     ..sort((ProgramDay a, ProgramDay b) => a.dayOrder.compareTo(b.dayOrder));
   final TrainedDay? last = latestTrainedDay(trained);
@@ -109,6 +120,70 @@ ProgramDay? selectNextDay(
     return ordered.first;
   }
   return ordered[(index + 1) % ordered.length];
+}
+
+ProgramDay? _nextLocallyKnownWeekDay(
+  TrainingProgram program,
+  Iterable<TrainedDay> trained,
+) {
+  final List<TrainedDay> sessions = trained.toList(growable: false);
+  final List<ProgramDay> days = program.days
+      .where((ProgramDay day) => day.weekOrder == program.currentWeek)
+      .toList()
+    ..sort((ProgramDay a, ProgramDay b) => a.dayOrder.compareTo(b.dayOrder));
+  if (days.isEmpty) return null;
+  final Set<int> completed = <int>{
+    for (final ProgramDay day in days)
+      if (day.dayOrder < program.nextDayOrder) day.dayOrder,
+  };
+  completed.addAll(
+    sessions.where((TrainedDay session) {
+      return (session.programVersion == null ||
+              session.programVersion == program.version) &&
+          (session.weekOrder ?? 1) == program.currentWeek &&
+          session.dayOrder != null;
+    }).map((TrainedDay session) => session.dayOrder!),
+  );
+  for (final ProgramDay day in days) {
+    if (!completed.contains(day.dayOrder)) return day;
+  }
+
+  final List<int> weekOrders = program.weeks.isNotEmpty
+      ? program.weeks.map((ProgramWeek week) => week.weekOrder).toList()
+      : program.days.map((ProgramDay day) => day.weekOrder).toSet().toList();
+  weekOrders.sort();
+  int? nextWeekOrder;
+  for (final int weekOrder in weekOrders) {
+    if (weekOrder > program.currentWeek) {
+      nextWeekOrder = weekOrder;
+      break;
+    }
+  }
+  if (nextWeekOrder != null) {
+    final List<ProgramDay> nextWeekDays = program.days
+        .where((ProgramDay day) => day.weekOrder == nextWeekOrder)
+        .toList()
+      ..sort((ProgramDay a, ProgramDay b) => a.dayOrder.compareTo(b.dayOrder));
+    if (nextWeekDays.isNotEmpty) return nextWeekDays.first;
+  }
+
+  final int lastWeekOrder = weekOrders.isEmpty ? program.currentWeek : weekOrders.last;
+  final List<ProgramDay> lastWeekDays = program.days
+      .where((ProgramDay day) => day.weekOrder == lastWeekOrder)
+      .toList()
+    ..sort((ProgramDay a, ProgramDay b) => a.dayOrder.compareTo(b.dayOrder));
+  if (lastWeekDays.isEmpty) return days.first;
+  final List<TrainedDay> lastWeekSessions = sessions.where((TrainedDay session) {
+    return (session.programVersion == null ||
+            session.programVersion == program.version) &&
+        (session.weekOrder ?? 1) == lastWeekOrder &&
+        session.dayOrder != null;
+  }).toList();
+  final int? latestOrder = lastTrainedDayOrder(lastWeekSessions);
+  final int index = lastWeekDays.indexWhere(
+    (ProgramDay day) => day.dayOrder == latestOrder,
+  );
+  return index < 0 ? lastWeekDays.first : lastWeekDays[(index + 1) % lastWeekDays.length];
 }
 
 int _indexOfTrainedDay(List<ProgramDay> ordered, TrainedDay trained) {

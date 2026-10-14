@@ -601,11 +601,16 @@ final StateNotifierProvider<ActiveWorkoutController, ActiveWorkoutState>
     ),
     // The prescription a start seeds and hints from: fresh with a short
     // timeout, else the cache, as the old logger resolved it (#123).
-    loadPrescription: (String accountId, int dayOrder) => loadDayPrescription(
+    loadWeekPrescription: (
+      String accountId,
+      int dayOrder,
+      int weekOrder,
+    ) => loadDayPrescription(
       api: api,
       cache: cache,
       accountId: accountId,
       dayOrder: dayOrder,
+      weekOrder: weekOrder,
     ),
     restLengths: ref.watch(restLengthStoreProvider),
     alerts: ref.watch(restAlertsProvider),

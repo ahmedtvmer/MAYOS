@@ -185,6 +185,10 @@ The named arrangement of a Training program's training days across the week, suc
 _Arabic_: تقسيمة
 _Avoid_: Split type, split family
 
+**Program week**:
+An ordered group of Training program days. A Coach-authored Training program may contain multiple Program weeks; each week has its own ordered days. The Player advances to the next Program week only after committing every day in the current week on the active program version. Calendar dates, missed days, and Schedule pauses do not move the Player between weeks. When a new program version is published, the Player's current `(week_order, day_order)` carries forward and clamps to an existing week/day if edits removed its position. An automatic Training program has one repeating Program week.
+_Arabic_: أسبوع البرنامج
+
 **Program draft**:
 An unpublished Training program a Coach is writing for a Player on an active Assignment. It lives in the Player's Training ledger, is keyed to that Assignment, and is visible only to that Coach while the Assignment is active. There is at most one open Program draft per Assignment. It keeps the existing program fields; the editor shows target RIR and storage keeps `target_rpe` (RIR = 10 − RPE). Publishing activates it as a new program version and removes the draft. Ending the Assignment discards it.
 _Arabic_: مسودة برنامج تدريبي

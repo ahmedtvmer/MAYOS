@@ -314,6 +314,74 @@ void main() {
     expect(find.textContaining('RIR'), findsWidgets);
   });
 
+  testWidgets('multi-week Program view marks next day but lets any day start',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..programVersion = 3
+      ..programDaysOverride = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'day_name': 'Upper 1',
+          'day_order': 1,
+          'week_order': 1,
+          'warmup_exercises': <dynamic>[],
+          'exercises': <dynamic>[],
+          'cardio': null,
+        },
+        <String, dynamic>{
+          'day_name': 'Upper 1',
+          'day_order': 1,
+          'week_order': 2,
+          'warmup_exercises': <dynamic>[],
+          'exercises': <dynamic>[],
+          'cardio': null,
+        },
+      ]
+      ..programWeeksOverride = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'week_name': 'Base',
+          'week_order': 1,
+          'days': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'day_name': 'Upper 1',
+              'day_order': 1,
+              'week_order': 1,
+              'warmup_exercises': <dynamic>[],
+              'exercises': <dynamic>[],
+              'cardio': null,
+            },
+          ],
+        },
+        <String, dynamic>{
+          'week_name': 'Build',
+          'week_order': 2,
+          'days': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'day_name': 'Upper 1',
+              'day_order': 1,
+              'week_order': 2,
+              'warmup_exercises': <dynamic>[],
+              'exercises': <dynamic>[],
+              'cardio': null,
+            },
+          ],
+        },
+      ]
+      ..programCurrentWeekOverride = 1;
+
+    await _pumpProgram(tester, fake);
+
+    expect(find.text('Week 1 of 2'), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('program.next_day')), findsOneWidget);
+    expect(find.text('Log workout'), findsOneWidget);
+    final Finder weekTwoTile =
+        find.byKey(const ValueKey<String>('program_day_2_1'));
+    await tester.ensureVisible(weekTwoTile);
+    await tester.tap(weekTwoTile);
+    await tester.pumpAndSettle();
+    expect(find.text('Log workout'), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Player sees Coach exercise details without offering it as a substitute',
       (tester) async {
     final FakeMayosApi fake = _signedInFake();
@@ -945,6 +1013,8 @@ void main() {
     expect(fake.programRequests, isEmpty);
     expect(fake.programSubstitutionRequests.single, <String, dynamic>{
       'day_name': 'Upper 1',
+      'week_order': 1,
+      'day_order': 1,
       'exercise_id': 'bench_press',
       'replacement_exercise_id': 'cable_fly',
       'all_occurrences': false,
@@ -1023,6 +1093,8 @@ void main() {
       expect(fake.programRequests.single,
           containsPair('kind', 'exercise_substitution'));
       expect(fake.programRequests.single, containsPair('day_name', 'Upper 1'));
+      expect(fake.programRequests.single, containsPair('week_order', 1));
+      expect(fake.programRequests.single, containsPair('day_order', 1));
       expect(fake.programRequests.single,
           containsPair('exercise_id', 'bench_press'));
       expect(fake.programRequests.single,
@@ -1210,6 +1282,8 @@ void main() {
     expect(fake.programEditRequests, hasLength(1));
     expect(fake.programEditRequests.single, <String, dynamic>{
       'day_name': 'Upper 1',
+      'week_order': 1,
+      'day_order': 1,
       'expected_active_version': 1,
       'exercises': <Map<String, dynamic>>[
         <String, dynamic>{'source_index': 1, 'exercise_id': 'overhead_press', 'target_sets': 3},

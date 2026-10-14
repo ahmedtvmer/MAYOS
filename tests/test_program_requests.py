@@ -280,6 +280,63 @@ def test_create_substitution_records_exact_target_and_leaves_program(api, monkey
     assert [row["request_id"] for row in listed] == [body["request_id"]]
 
 
+def test_apply_request_targets_exact_week_and_day_in_two_week_program(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, coach_account_id, _ = _assigned_player(api)
+    _coach_generation(db, monkeypatch)
+    assert _publish(client, coach_headers, assignment_id).status_code == 200
+    first_day = {
+        "day_name": "Full A",
+        "day_order": 1,
+        "week_order": 1,
+        "exercises": [
+            {"exercise_id": "sq", "exercise_name": "Squat", "target_sets": 3,
+             "target_reps_min": 5, "target_reps_max": 8}
+        ],
+    }
+    second_day = {
+        **first_day,
+        "week_order": 2,
+        "exercises": [
+            {"exercise_id": "sq", "exercise_name": "Squat", "target_sets": 4,
+             "target_reps_min": 5, "target_reps_max": 8}
+        ],
+    }
+    db.switch_user("p1")
+    db.ledger.save_training_program(
+        {
+            "program_name": "Two-week coach plan",
+            "split_type": "Full Body",
+            "weekly_frequency": 1,
+            "days": [first_day, second_day],
+            "weeks": [
+                {"week_name": "Base", "week_order": 1, "days": [first_day]},
+                {"week_name": "Build", "week_order": 2, "days": [second_day]},
+            ],
+        },
+        published_by_coach_account_id=coach_account_id,
+    )
+
+    created = _create(
+        client,
+        player_headers,
+        **_substitution(week_order=2, day_order=1),
+    )
+    assert created.status_code == 200, created.text
+    assert (created.json()["week_order"], created.json()["day_order"]) == (2, 1)
+    request_id = created.json()["request_id"]
+    applied = client.post(
+        f"/coach/assignments/{assignment_id}/program-requests/{request_id}/apply",
+        headers=coach_headers,
+    )
+    assert applied.status_code == 200, applied.text
+
+    db.switch_user("p1")
+    active = db.ledger.get_active_program()
+    assert active.weeks[0].days[0].exercises[0].exercise_id == "sq"
+    assert active.weeks[1].days[0].exercises[0].exercise_id == "ohp"
+
+
 def test_program_request_responses_include_library_display_names_on_every_route(api, monkeypatch):
     client, db, _ = api
     coach_headers, player_headers, assignment_id, coach_account_id, player_account_id = _assigned_player(api)
@@ -720,6 +777,26 @@ def test_apply_substitution_publishes_new_version_preserving_provenance(api, mon
         "version": 3,
         "in_published_program": False,
     }
+
+
+def test_apply_pre_week_coordinates_substitution_uses_day_name_fallback(api, monkeypatch):
+    client, db, coach_headers, _player_headers, assignment_id, _exercise, request = (
+        _coach_exercise_request(api, monkeypatch)
+    )
+    request_id = request["request_id"]
+    db.catalog_conn.execute(
+        "UPDATE program_requests SET week_order = NULL, day_order = NULL WHERE request_id = ?",
+        (request_id,),
+    )
+    db.catalog_conn.commit()
+
+    applied = client.post(
+        f"/coach/assignments/{assignment_id}/program-requests/{request_id}/apply",
+        headers=coach_headers,
+    )
+
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["status"] == "applied"
 
 
 def test_apply_split_change_publishes_desired_frequency(api, monkeypatch):

@@ -18,6 +18,7 @@ from agent.ProgramState import (
     PersistedProgramDaySchema,
     PersistedProgramExerciseSchema,
     PersistedProgramSchema,
+    PersistedProgramWeekSchema,
 )
 from database.database_manager import DatabaseManager
 from database.registry.coach_exercises import CoachExerciseCreate
@@ -134,7 +135,7 @@ def _account_id(db, username):
 
 def test_prompt_version_hash_is_bound_to_name_aware_context():
     assert coach_ai.prompt_version_hash() == (
-        "c4f5e1bb0e5fb018b40cf868b92aad3b66dd5b742bc151474bb8e46a42b857a9"
+        "75540c249de4aa6f480559a65b4cfb63426bbf1503ffadc2a34f43fb830234ad"
     )
 
 
@@ -733,6 +734,95 @@ def test_render_context_states_every_deterministic_figure():
         assert expected in rendered, expected
 
 
+def test_coach_context_includes_week_structure_and_derived_current_week(api):
+    _client, db, _tmp_path = api
+    _coach_headers, _player_headers, assignment_id = _assigned_player(api)
+    first_day = PersistedProgramDaySchema(
+        day_name="Upper A",
+        day_order=1,
+        week_order=1,
+        exercises=[_program_lift("sq", "Squat")],
+    )
+    second_day = PersistedProgramDaySchema(
+        day_name="Upper A",
+        day_order=1,
+        week_order=2,
+        exercises=[_program_lift("sq", "Squat").model_copy(update={"target_sets": 4})],
+    )
+    program = PersistedProgramSchema(
+        program_name="Two-week block",
+        split_type="Upper/Lower",
+        weekly_frequency=1,
+        days=[first_day, second_day],
+        weeks=[
+            PersistedProgramWeekSchema(
+                week_name="Base",
+                week_order=1,
+                days=[first_day],
+            ),
+            PersistedProgramWeekSchema(
+                week_name="Build",
+                week_order=2,
+                days=[second_day],
+            ),
+        ],
+    )
+    db.switch_user("p1")
+    db.ledger.save_training_program(program.model_dump())
+    active_program = db.ledger.get_active_program()
+    db.ledger.log_workout_session(
+        session_id="completed-week-one",
+        session_date="2026-09-20",
+        split_name="Upper A",
+        started_at="2026-09-20T10:00:00+00:00",
+        completed_at="2026-09-20T11:00:00+00:00",
+        readiness_score=4,
+        program_version=active_program.version,
+        program_week_order=1,
+        program_day_order=1,
+    )
+
+    facts = coach_ai.gather_player_context(
+        db,
+        _account_id(db, "coach"),
+        assignment_id,
+    )
+    rendered = coach_ai.render_context(facts)
+
+    assert facts["program"]["current_week"] == 2
+    assert "days" not in facts["program"]
+    assert "current_week: 2 of 2" in rendered
+    assert "week 1 Base:" in rendered
+    assert "week 2 Build:" in rendered
+    assert "day 1 Upper A: Squat " in rendered
+    assert "4x5-8" in rendered
+
+
+def test_single_week_coach_context_keeps_flat_days_without_week_metadata():
+    facts = _sample_facts()
+    facts["program"] = {
+        "name": "Repeating plan",
+        "split": "Full Body",
+        "weekly_frequency": 2,
+        "version": 3,
+        "days": [
+            {
+                "order": 1,
+                "day": "Upper A",
+                "exercises": [
+                    {"description": "Squat", "sets": 3, "reps": "5-8", "rpe": 8.5}
+                ],
+            }
+        ],
+    }
+
+    rendered = coach_ai.render_context(facts)
+
+    assert rendered.count("day 1 Upper A:") == 1
+    assert "current_week:" not in rendered
+    assert "week 1 " not in rendered
+
+
 def test_history_exercise_enrichment_does_not_enter_coach_ai_context(
     api, seed_exercise_curation
 ):
@@ -808,7 +898,7 @@ def test_history_exercise_enrichment_does_not_enter_coach_ai_context(
         "images/private-coach-ai.jpg",
     ):
         assert label not in rendered
-    assert coach_ai.CONTEXT_VERSION == "coach-context-v9"
+    assert coach_ai.CONTEXT_VERSION == "coach-context-v10"
 
 
 def test_gathered_context_falls_back_after_the_players_preferred_name_is_cleared(api):
@@ -925,7 +1015,7 @@ def test_system_prompt_forbids_computation_and_medical_advice():
     assert "never instructions" in coach_ai.SYSTEM_PROMPT
     assert "about 150 words" in coach_ai.SYSTEM_PROMPT
     assert "neutral, no pleasantries" not in coach_ai.SYSTEM_PROMPT
-    assert coach_ai.CONTEXT_VERSION == "coach-context-v9"
+    assert coach_ai.CONTEXT_VERSION == "coach-context-v10"
 
 
 def test_coach_api_uses_message_language_and_display_fallback(api, monkeypatch, tmp_path):

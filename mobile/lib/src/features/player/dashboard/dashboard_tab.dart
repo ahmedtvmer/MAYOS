@@ -222,11 +222,21 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
       ref.read(playerShellTabProvider.notifier).state =
           PlayerShellTab.program.index;
 
-  void _logWorkout(ProgramDay day, int? programVersion) {
+  void _logWorkout(
+    ProgramDay day,
+    int? programVersion,
+    int programWeekCount,
+  ) {
     // Runs the Resume/Discard guard and creates the Active workout before
     // routing to the logger (#123). The returned future only matters to the
     // guard itself; navigation happens inside it.
-    startWorkoutFromDay(context, ref, day: day, programVersion: programVersion);
+    startWorkoutFromDay(
+      context,
+      ref,
+      day: day,
+      programVersion: programVersion,
+      programWeekCount: programWeekCount,
+    );
   }
 
   @override
@@ -323,7 +333,8 @@ class _HomeBody extends StatelessWidget {
   final VoidCallback onOpenDrafts;
   final ValueChanged<int> onOpenCheckpointReview;
   final VoidCallback onOpenProgram;
-  final void Function(ProgramDay day, int? programVersion) onLogWorkout;
+  final void Function(ProgramDay day, int? programVersion, int programWeekCount)
+      onLogWorkout;
   final List<TrainedDay> trainedDays;
   final int pendingDrafts;
 
@@ -382,7 +393,11 @@ class _HomeBody extends StatelessWidget {
               label: nextSessionLabel(data.schedule, now,
                   isArabic: displayCopyOf(context).isArabic),
               onOpenExercise: onOpenExercise,
-              onLogWorkout: () => onLogWorkout(nextDay, activeProgram?.version),
+              onLogWorkout: () => onLogWorkout(
+                nextDay,
+                activeProgram?.version,
+                activeProgram?.weekCount ?? 1,
+              ),
               logEnabled: true,
             ),
           ],

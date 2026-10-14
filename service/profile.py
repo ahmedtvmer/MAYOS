@@ -143,7 +143,10 @@ def update_profile(
                     with ledger.ledger_transaction():
                         persist_profile()
                         if program is not None:
-                            ledger.save_training_program(program.model_dump())
+                            ledger.save_training_program(
+                                program.model_dump(),
+                                starting_position=None,
+                            )
             else:
                 program_blocked = True
                 persist_profile()

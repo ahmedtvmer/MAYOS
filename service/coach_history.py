@@ -71,11 +71,13 @@ def _active_program_response(
 
 
 def _enrich_program_exercises(db: Any, program_content: dict[str, Any]) -> None:
-    exercises = [
-        exercise
-        for day in program_content["days"]
-        for exercise in day["exercises"]
-    ]
+    days = list(program_content.get("days", []))
+    days.extend(
+        day
+        for week in program_content.get("weeks", [])
+        for day in week.get("days", [])
+    )
+    exercises = [exercise for day in days for exercise in day["exercises"]]
     labels_by_id = exercise_labels(
         db,
         (exercise["exercise_id"] for exercise in exercises),

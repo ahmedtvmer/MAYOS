@@ -1,10 +1,15 @@
 """Permanent edits to a player's active program day."""
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any
 
+from agent.program_weeks import (
+    flatten_program_days,
+    find_program_day,
+    normalize_program_weeks,
+)
 from service import analytics
 from service.program_analytics import ProgramAnalyticsActor, capture_program_edited
 from service.programs import COACH_CONTROLLED_ERROR, player_controls_program
@@ -57,6 +62,8 @@ class ProgramEdit:
     exercises: list[ProgramEditExercise]
     player_account_id: str
     actor: ProgramAnalyticsActor
+    week_order: int | None = None
+    day_order: int | None = None
     client: analytics.ClientContext = analytics.UNKNOWN_CLIENT
 
 
@@ -70,6 +77,9 @@ def edit_active_program_day(db: Any, ledger: Any, edit_request: ProgramEdit) -> 
     active, failure = _active_program_for_edit(db, ledger, edit_request)
     if failure:
         return failure
+    current_position = ledger.get_program_position(active)
+    if edit_request.week_order is None:
+        edit_request = replace(edit_request, week_order=current_position.current_week)
     prepared, failure = _prepare_program_edit(active, edit_request)
     if failure:
         return failure
@@ -78,7 +88,11 @@ def edit_active_program_day(db: Any, ledger: Any, edit_request: ProgramEdit) -> 
         return _updated_program_result(ledger, previous_version)
     _apply_program_edit(prepared, edit_request.exercises)
     prepared.program_copy.pop("created_at", None)
-    ledger.save_training_program(prepared.program_copy, published_by_coach_account_id=None)
+    ledger.save_training_program(
+        prepared.program_copy,
+        published_by_coach_account_id=None,
+        starting_position=current_position,
+    )
     updated = ledger.get_active_program()
     if updated is not None:
         capture_program_edited(edit_request.actor, updated, client=edit_request.client)
@@ -101,9 +115,13 @@ def _prepare_program_edit(
     edit_request: ProgramEdit,
 ) -> tuple[_PreparedProgramEdit | None, dict[str, Any] | None]:
     program_copy = active.model_dump()
-    day = next(
-        (candidate for candidate in program_copy["days"] if candidate["day_name"] == edit_request.day_name),
-        None,
+    weeks = normalize_program_weeks(program_copy)
+    week_order = edit_request.week_order or 1
+    day = find_program_day(
+        weeks,
+        week_order,
+        day_order=edit_request.day_order,
+        day_name=edit_request.day_name,
     )
     if day is None:
         return None, _failure(ProgramEditErrorCode.DAY_NOT_FOUND)
@@ -112,6 +130,8 @@ def _prepare_program_edit(
     failure = _validate_program_edit(day["exercises"], edit_request.exercises)
     if failure:
         return None, failure
+    program_copy["weeks"] = weeks
+    program_copy["days"] = flatten_program_days(weeks)
     return _PreparedProgramEdit(program_copy, day), None
 
 

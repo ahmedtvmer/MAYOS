@@ -1,6 +1,7 @@
 import pytest
 
 from agent.program_blueprints import SLOT_SPECS
+from agent.program_weeks import ProgramPosition
 from service.program_substitution import (
     ProgramSubstitution,
     SubstitutionErrorCode,
@@ -27,7 +28,16 @@ class FakeLedger:
     def get_player_profile(self):
         return {"rep_preference": "balanced"}
 
-    def save_training_program(self, program_data, published_by_coach_account_id=None):
+    def get_program_position(self, _program):
+        return ProgramPosition(current_week=1, week_count=1, next_day_order=1)
+
+    def save_training_program(
+        self,
+        program_data,
+        published_by_coach_account_id=None,
+        *,
+        starting_position=None,
+    ):
         self.saved.append((program_data, published_by_coach_account_id))
 
 
@@ -227,6 +237,46 @@ def test_single_swap_adjusts_only_first_duplicate_exercise_on_day(fresh_store):
         exercises[1]["target_reps_max"],
         exercises[1]["rest_seconds"],
     ) == (*second_slot.reps, second_slot.rest_seconds)
+
+
+def test_week_coordinate_targets_matching_day_in_two_week_program(replacement):
+    ledger = FakeLedger()
+    first = {
+        "day_name": "Full A",
+        "day_order": 1,
+        "week_order": 1,
+        "exercises": [{"exercise_id": "squat", "exercise_name": "Squat"}],
+    }
+    second = {
+        "day_name": "Full A",
+        "day_order": 1,
+        "week_order": 2,
+        "exercises": [{"exercise_id": "squat", "exercise_name": "Squat"}],
+    }
+    program = {
+        "program_name": "Two-week plan",
+        "weekly_frequency": 1,
+        "split_type": "Full Body",
+        "days": [first, second],
+        "weeks": [
+            {"week_name": "Base", "week_order": 1, "days": [first]},
+            {"week_name": "Build", "week_order": 2, "days": [second]},
+        ],
+    }
+
+    result = substitute_program_exercise(
+        ledger,
+        FakeCatalog({"leg_press": replacement}),
+        program,
+        ProgramSubstitution(
+            "Full A", "squat", "leg_press", week_order=2, day_order=1
+        ),
+    )
+
+    assert result["ok"] is True
+    weeks = ledger.saved[0][0]["weeks"]
+    assert weeks[0]["days"][0]["exercises"][0]["exercise_id"] == "squat"
+    assert weeks[1]["days"][0]["exercises"][0]["exercise_id"] == "leg_press"
 
 
 def test_abs_slot_accepts_real_hanging_leg_raise_with_calf_abs_prescription(fresh_store):

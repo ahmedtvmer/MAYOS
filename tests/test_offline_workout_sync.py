@@ -25,6 +25,7 @@ from database.database_manager import DatabaseManager
 from service import analytics
 from service import coach as coach_service
 from service import coach_history as coach_history_service
+from service import schedule as schedule_service
 from service import workouts as workouts_service
 from service import training_status as training_status_service
 from svc.app import create_app
@@ -119,6 +120,20 @@ def _program_payload():
     }
 
 
+def test_flat_automatic_program_loads_as_one_implicit_week(api):
+    _client, db = api
+    db.switch_user("implicit-week-player")
+    db.ledger.save_training_program(_program_payload())
+
+    program = db.ledger.get_active_program()
+
+    assert program is not None
+    assert [(week.week_name, week.week_order) for week in program.weeks] == [
+        ("Week 1", 1)
+    ]
+    assert [(day.week_order, day.day_order) for day in program.days] == [(1, 1)]
+
+
 def _program_payload_v2():
     """A structurally different newer program: another day name, exercises, and targets."""
     return {
@@ -137,6 +152,60 @@ def _program_payload_v2():
             }
         ],
     }
+
+
+def _two_week_program_payload():
+    exercise_template = [
+        {"exercise_id": "sq", "target_sets": 3, "target_reps_min": 5, "target_reps_max": 8, "target_rpe": 8.5},
+        {"exercise_id": "bp", "target_sets": 3, "target_reps_min": 5, "target_reps_max": 8, "target_rpe": 8.5},
+        {"exercise_id": "row", "target_sets": 3, "target_reps_min": 5, "target_reps_max": 8, "target_rpe": 8.5},
+    ]
+    return {
+        "program_name": "Two-week block",
+        "weekly_frequency": 2,
+        "split_type": "Upper/Lower",
+        "weeks": [
+            {
+                "week_name": "Base",
+                "week_order": 1,
+                "days": [
+                    {"day_name": "Upper", "day_order": 1, "exercises": copy.deepcopy(exercise_template)},
+                    {"day_name": "Lower", "day_order": 2, "exercises": copy.deepcopy(exercise_template)},
+                ],
+            },
+            {
+                "week_name": "Build",
+                "week_order": 2,
+                "days": [
+                    {"day_name": "Upper", "day_order": 1, "exercises": copy.deepcopy(exercise_template)},
+                    {"day_name": "Lower", "day_order": 2, "exercises": copy.deepcopy(exercise_template)},
+                ],
+            },
+        ],
+    }
+
+
+def _three_week_program_payload():
+    program = _two_week_program_payload()
+    third_week = copy.deepcopy(program["weeks"][1])
+    third_week["week_name"] = "Peak"
+    third_week["week_order"] = 3
+    for day in third_week["days"]:
+        day["week_order"] = 3
+    program["weeks"].append(third_week)
+    program["days"] = [day for week in program["weeks"] for day in week["days"]]
+    return program
+
+
+def _three_week_three_day_program_payload():
+    program = _three_week_program_payload()
+    for week in program["weeks"]:
+        third_day = copy.deepcopy(week["days"][-1])
+        third_day.update(day_name="Accessory", day_order=3, week_order=week["week_order"])
+        week["days"].append(third_day)
+    program["days"] = [day for week in program["weeks"] for day in week["days"]]
+    program["weekly_frequency"] = 3
+    return program
 
 
 def _program_row_snapshot(db, program_id):
@@ -210,10 +279,12 @@ def _assign(client, coach_headers, player_headers):
 
 
 def _sync_body(*, client_session_id=CLIENT_ID, version, day_order=1, performed_date="2026-09-26",
+               week_order=1,
                performed_timezone="UTC", captured_at="2026-09-26T11:30:00+00:00",
                captured_offline=False):
     return {
         "day_order": day_order,
+        "week_order": week_order,
         "readiness": 4,
         "session_notes": "",
         "sets": _sets_body(),
@@ -224,6 +295,230 @@ def _sync_body(*, client_session_id=CLIENT_ID, version, day_order=1, performed_d
         "captured_at": captured_at,
         "captured_offline": captured_offline,
     }
+
+
+def test_program_week_advances_by_committed_days_not_calendar_or_replays(api, monkeypatch):
+    class _FrozenScheduleDatetime(datetime):
+        current = datetime(2026, 9, 14, 12, 0, tzinfo=UTC)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current.astimezone(tz) if tz is not None else cls.current.replace(tzinfo=None)
+
+    monkeypatch.setattr(schedule_service, "datetime", _FrozenScheduleDatetime)
+    client, db = api
+    player = _register(client, "week-player")
+    headers = _authed(player["access_token"])
+    db.switch_user("week-player")
+    db.ledger.upsert_player_profile({"current_goal": "Strength"})
+    db.ledger.save_training_program(_two_week_program_payload())
+    version = db.ledger.get_active_program().version
+
+    schedule = client.put(
+        "/profile/schedule",
+        headers=headers,
+        json={"weekdays": [1, 3, 5], "timezone": "UTC", "effective_from": "2026-09-14"},
+    )
+    assert schedule.status_code == 200, schedule.text
+    pause = client.post(
+        "/profile/schedule/pauses",
+        headers=headers,
+        json={
+            "starts_on": "2026-09-15",
+            "ends_on": "2026-09-16",
+        },
+    )
+    assert pause.status_code == 201, pause.text
+
+    # Advance past several expected days (including the pause) with no workouts.
+    _FrozenScheduleDatetime.current = datetime(2026, 9, 26, 12, 0, tzinfo=UTC)
+    initial = client.get("/programs/active", headers=headers).json()
+    assert (initial["current_week"], initial["week_count"], initial["next_day_order"]) == (1, 2, 1)
+    assert [week["week_name"] for week in initial["weeks"]] == ["Base", "Build"]
+
+    future_prescription = client.get(
+        "/workouts/prescription",
+        params={"day_order": 1, "week_order": 2},
+        headers=headers,
+    )
+    assert future_prescription.status_code == 200
+    early_week_two = client.post(
+        "/workouts/sessions",
+        headers=headers,
+        json=_sync_body(
+            client_session_id="eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+            version=version,
+            week_order=2,
+            day_order=1,
+        ),
+    )
+    assert early_week_two.status_code == 201, early_week_two.text
+    assert client.get("/programs/active", headers=headers).json()["current_week"] == 1
+
+    first_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    first = client.post(
+        "/workouts/sessions",
+        headers=headers,
+        json=_sync_body(client_session_id=first_id, version=version, week_order=1, day_order=1),
+    )
+    assert first.status_code == 201, first.text
+    replay = client.post(
+        "/workouts/sessions",
+        headers=headers,
+        json=_sync_body(client_session_id=first_id, version=version, week_order=1, day_order=1),
+    )
+    assert replay.status_code == 200
+    assert replay.json() == first.json()
+    current = client.get("/programs/active", headers=headers).json()
+    assert (current["current_week"], current["next_day_order"]) == (1, 2)
+
+    second = client.post(
+        "/workouts/sessions",
+        headers=headers,
+        json=_sync_body(
+            client_session_id="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            version=version,
+            week_order=1,
+            day_order=2,
+            performed_date="2026-09-24",
+        ),
+    )
+    assert second.status_code == 201, second.text
+    current = client.get("/programs/active", headers=headers).json()
+    assert (current["current_week"], current["next_day_order"]) == (2, 2)
+
+    week_two_second = client.post(
+        "/workouts/sessions",
+        headers=headers,
+        json=_sync_body(
+            client_session_id="dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+            version=version,
+            week_order=2,
+            day_order=2,
+            performed_date="2026-09-25",
+        ),
+    )
+    assert week_two_second.status_code == 201, week_two_second.text
+    current = client.get("/programs/active", headers=headers).json()
+    # The latest performed date is Day 1, even though Day 2 synced later.
+    assert (current["current_week"], current["next_day_order"]) == (2, 2)
+
+
+def test_new_program_without_a_start_position_starts_at_week_one_day_one(api):
+    _client, db = api
+    db.switch_user("new-program-cursor")
+    db.ledger.save_training_program(_three_week_three_day_program_payload())
+    previous = db.ledger.get_active_program()
+
+    for index, (week_order, day_order) in enumerate(
+        ((1, 1), (1, 2), (1, 3), (2, 1), (2, 2)),
+        start=1,
+    ):
+        session_date = f"2026-09-{index:02}"
+        db.ledger.log_workout_session(
+            f"completed-{index}",
+            session_date,
+            f"Day {day_order}",
+            f"{session_date}T10:00:00+00:00",
+            f"{session_date}T11:00:00+00:00",
+            program_version=previous.version,
+            program_week_order=week_order,
+            program_day_order=day_order,
+        )
+
+    progress = db.ledger.get_program_position(previous)
+    assert (progress.current_week, progress.next_day_order) == (2, 3)
+
+    new_program = _three_week_three_day_program_payload()
+    new_program["program_name"] = "New program"
+    db.ledger.save_training_program(new_program)
+
+    current = db.ledger.get_program_position(db.ledger.get_active_program())
+    assert (current.current_week, current.next_day_order) == (1, 1)
+
+
+def test_backdated_session_synced_after_later_session_keeps_date_ordered_position(api):
+    client, db = api
+    player = _register(client, "backdated-cursor-player")
+    headers = _authed(player["access_token"])
+    db.switch_user("backdated-cursor-player")
+    db.ledger.save_training_program(_two_week_program_payload())
+    version = db.ledger.get_active_program().version
+
+    def commit(week_order, day_order, performed_date):
+        return client.post(
+            "/workouts/sessions",
+            headers=headers,
+            json=_sync_body(
+                client_session_id=(
+                    f"{week_order}{day_order}000000-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+                ),
+                version=version,
+                week_order=week_order,
+                day_order=day_order,
+                performed_date=performed_date,
+            ),
+        )
+
+    for week_order, day_order, performed_date in (
+        (1, 1, "2026-09-24"),
+        (1, 2, "2026-09-25"),
+        (2, 2, "2026-09-26"),
+    ):
+        response = commit(
+            week_order,
+            day_order,
+            performed_date,
+        )
+        assert response.status_code == 201, response.text
+
+    late_sync = commit(2, 1, "2026-09-25")
+    assert late_sync.status_code == 201, late_sync.text
+
+    progress = client.get("/programs/active", headers=headers).json()
+    assert (progress["current_week"], progress["next_day_order"]) == (2, 1)
+
+
+def test_republish_carries_week_position_and_clamps_removed_week(api):
+    client, db = api
+    player = _register(client, "week-cursor-player")
+    headers = _authed(player["access_token"])
+    db.switch_user("week-cursor-player")
+    db.ledger.upsert_player_profile({"current_goal": "Strength"})
+    db.ledger.save_training_program(_three_week_program_payload())
+    version = db.ledger.get_active_program().version
+
+    for week_order, day_order in ((1, 1), (1, 2), (2, 1), (2, 2)):
+        client_session_id = f"{week_order}{day_order}000000-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        response = client.post(
+            "/workouts/sessions",
+            headers=headers,
+            json=_sync_body(
+                client_session_id=client_session_id,
+                version=version,
+                week_order=week_order,
+                day_order=day_order,
+            ),
+        )
+        assert response.status_code == 201, response.text
+
+    progress = client.get("/programs/active", headers=headers).json()
+    assert (progress["current_week"], progress["next_day_order"]) == (3, 1)
+    active = db.ledger.get_active_program().model_dump()
+    active.pop("created_at", None)
+    starting_position = db.ledger.get_program_position(db.ledger.get_active_program())
+    db.ledger.save_training_program(active, starting_position=starting_position)
+    republished = client.get("/programs/active", headers=headers).json()
+    assert (republished["current_week"], republished["next_day_order"]) == (3, 1)
+
+    active = db.ledger.get_active_program().model_dump()
+    active.pop("created_at", None)
+    active["weeks"] = active["weeks"][:2]
+    active["days"] = [day for week in active["weeks"] for day in week["days"]]
+    starting_position = db.ledger.get_program_position(db.ledger.get_active_program())
+    db.ledger.save_training_program(active, starting_position=starting_position)
+    clamped = client.get("/programs/active", headers=headers).json()
+    assert (clamped["current_week"], clamped["next_day_order"]) == (2, 1)
 
 
 def test_roster_stall_length_recounts_commits_and_replays_through_routes(

@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from agent.prompts import DEFAULT_ASSISTANT_STYLE
+from agent.program_weeks import default_week_name
 from utils.logger import MyosLogger
 from utils.equipment_access import (
     EQUIPMENT_ACCESS_VALUES,
@@ -16,7 +17,7 @@ from utils.equipment_access import (
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 26
+CURRENT_LEDGER_SCHEMA_VERSION: int = 27
 
 PROGRAM_DRAFTS_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS program_drafts ("
@@ -24,6 +25,28 @@ PROGRAM_DRAFTS_DDL: tuple[str, ...] = (
     " draft_json TEXT NOT NULL,"
     " created_at TEXT NOT NULL,"
     " updated_at TEXT NOT NULL"
+    ")",
+)
+
+PROGRAM_WEEKS_DDL: tuple[str, ...] = (
+    "CREATE TABLE IF NOT EXISTS program_weeks ("
+    " id TEXT PRIMARY KEY,"
+    " program_id TEXT NOT NULL,"
+    " week_name TEXT NOT NULL,"
+    " week_order INTEGER NOT NULL,"
+    " UNIQUE(program_id, week_order),"
+    " FOREIGN KEY(program_id) REFERENCES training_programs(id) ON DELETE CASCADE"
+    ")",
+    "CREATE INDEX IF NOT EXISTS idx_program_weeks_program"
+    " ON program_weeks(program_id, week_order)",
+)
+
+PROGRAM_VERSION_POSITIONS_DDL: tuple[str, ...] = (
+    "CREATE TABLE IF NOT EXISTS program_version_positions ("
+    " program_id TEXT PRIMARY KEY,"
+    " start_week_order INTEGER NOT NULL DEFAULT 1,"
+    " start_day_order INTEGER NOT NULL DEFAULT 1,"
+    " FOREIGN KEY(program_id) REFERENCES training_programs(id) ON DELETE CASCADE"
     ")",
 )
 
@@ -641,6 +664,63 @@ def _migrate_v25_to_v26(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE user_profile ADD COLUMN target_weight_kg REAL")
 
 
+def _migrate_v26_to_v27(conn: sqlite3.Connection) -> None:
+    """Adds Program weeks, workout positions, and version-start cursors."""
+    for statement in PROGRAM_WEEKS_DDL:
+        conn.execute(statement)
+    for statement in PROGRAM_VERSION_POSITIONS_DDL:
+        conn.execute(statement)
+    _migrate_program_days_to_week_one(conn)
+    if _ledger_table_exists(conn, "training_programs"):
+        conn.execute(
+            "INSERT OR IGNORE INTO program_version_positions (program_id) "
+            "SELECT id FROM training_programs"
+        )
+    _add_program_position_to_workouts(conn)
+
+
+def _migrate_program_days_to_week_one(conn: sqlite3.Connection) -> None:
+    if not _ledger_table_exists(conn, "program_days"):
+        return
+    columns = {column[1] for column in conn.execute("PRAGMA table_info(program_days)")}
+    if "week_id" not in columns:
+        # SQLite cannot add a required, foreign-key column in place. Existing
+        # days are backfilled below, and ledger writes always provide week_id.
+        conn.execute("ALTER TABLE program_days ADD COLUMN week_id TEXT")
+    if not _ledger_table_exists(conn, "training_programs"):
+        return
+    programs = conn.execute("SELECT id FROM training_programs ORDER BY rowid").fetchall()
+    for (program_id,) in programs:
+        _assign_program_days_to_week_one(conn, program_id)
+
+
+def _assign_program_days_to_week_one(conn: sqlite3.Connection, program_id: str) -> None:
+    week = conn.execute(
+        "SELECT id FROM program_weeks WHERE program_id = ? AND week_order = 1",
+        (program_id,),
+    ).fetchone()
+    week_id = week[0] if week else str(uuid.uuid4())
+    if week is None:
+        conn.execute(
+            "INSERT INTO program_weeks (id, program_id, week_name, week_order)"
+            " VALUES (?, ?, ?, 1)",
+            (week_id, program_id, default_week_name(1)),
+        )
+    conn.execute(
+        "UPDATE program_days SET week_id = ? WHERE program_id = ? AND week_id IS NULL",
+        (week_id, program_id),
+    )
+
+
+def _add_program_position_to_workouts(conn: sqlite3.Connection) -> None:
+    if _ledger_table_exists(conn, "workout_sessions"):
+        columns = {column[1] for column in conn.execute("PRAGMA table_info(workout_sessions)")}
+        if "program_week_order" not in columns:
+            conn.execute("ALTER TABLE workout_sessions ADD COLUMN program_week_order INTEGER")
+        if "program_day_order" not in columns:
+            conn.execute("ALTER TABLE workout_sessions ADD COLUMN program_day_order INTEGER")
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -752,6 +832,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     23: _migrate_v23_to_v24,
     24: _migrate_v24_to_v25,
     25: _migrate_v25_to_v26,
+    26: _migrate_v26_to_v27,
 }
 
 

@@ -179,7 +179,8 @@ def test_latest_session_returns_the_most_recent_committed(api):
     assert body["session_id"] != first["session_id"]
     assert body["session_date"] == "2026-09-26"
     assert body["split_name"] == "Full A"
-    assert body["day_order"] is None  # not stored on the ledger
+    assert body["day_order"] == 1
+    assert body["week_order"] == 1
     assert body["program_version"] == version
 
 

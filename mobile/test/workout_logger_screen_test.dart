@@ -328,6 +328,7 @@ Future<InMemoryActiveWorkoutStore> _seedThroughController({
   required FakeMayosApi fake,
   required String startedAt,
   ProgramDay day = _day,
+  int programWeekCount = 1,
   InMemoryWorkoutCacheStore? workoutCache,
 }) async {
   final InMemoryTokenStore tokens = InMemoryTokenStore();
@@ -353,6 +354,7 @@ Future<InMemoryActiveWorkoutStore> _seedThroughController({
     accountId: _account,
     day: day,
     programVersion: 3,
+    programWeekCount: programWeekCount,
   );
   expect(outcome, StartWorkoutOutcome.started);
   final ActiveWorkout? seeded = controller.workout;
@@ -363,6 +365,8 @@ Future<InMemoryActiveWorkoutStore> _seedThroughController({
     accountId: seeded.accountId,
     startedAt: startedAt,
     dayOrder: seeded.dayOrder,
+    weekOrder: seeded.weekOrder,
+    programWeekCount: seeded.programWeekCount,
     dayName: seeded.dayName,
     warmupMovements: seeded.warmupMovements,
     cardio: seeded.cardio,
@@ -474,6 +478,7 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
   ThemeMode themeMode = ThemeMode.light,
   DateTime Function()? clock,
   ProgramDay day = _day,
+  int programWeekCount = 1,
   _WorkoutSeedVariant workoutSeedVariant = _WorkoutSeedVariant.standard,
   FakeMayosApi? fakeApi,
   bool webDirectCommit = false,
@@ -495,6 +500,7 @@ Future<InMemoryActiveWorkoutStore> _openLogger(
       fake: fake,
       startedAt: startedAt,
       day: day,
+      programWeekCount: programWeekCount,
       workoutCache: workoutCache,
     ),
   ))!;
@@ -720,6 +726,36 @@ Future<void> _assertNoOverflowAt360(
 }
 
 void main() {
+  testWidgets('logger header shows the workout week in a multi-week plan',
+      (WidgetTester tester) async {
+    const ProgramDay weekTwoDay = ProgramDay(
+      dayName: 'Upper A',
+      dayOrder: 1,
+      weekOrder: 2,
+      exercises: <ProgramExercise>[
+        ProgramExercise(
+          exerciseId: 'bench_press',
+          exerciseName: 'Bench Press',
+          targetSets: 1,
+          targetRepsMin: 5,
+          targetRepsMax: 8,
+          targetRpe: 8.5,
+        ),
+      ],
+    );
+    await _openLogger(
+      tester,
+      day: weekTwoDay,
+      programWeekCount: 2,
+    );
+
+    expect(find.text('Week 2 of 2'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('logger.program_week')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('logger shows Coach exercise details without opening library details',
       (WidgetTester tester) async {
     const ProgramDay day = ProgramDay(

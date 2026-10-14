@@ -817,6 +817,7 @@ def test_arabic_routine_slot_update_reply_uses_egyptian_copy_over_http(
 
     from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
     from agent import assistant_graph
+    from agent.program_weeks import ProgramPosition
 
     registered = client.post(
         "/auth/register",
@@ -889,6 +890,9 @@ def test_arabic_routine_slot_update_reply_uses_egyptian_copy_over_http(
     class FakeLedger:
         def get_active_program(self):
             return program
+
+        def get_program_position(self, _program):
+            return ProgramPosition(current_week=1, week_count=1, next_day_order=1)
 
         def get_player_profile(self):
             return {}

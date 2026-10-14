@@ -53,19 +53,25 @@ Future<Prescription?> loadDayPrescription({
   required WorkoutCacheStore cache,
   required String accountId,
   required int dayOrder,
+  int weekOrder = 1,
   Duration timeout = const Duration(seconds: 5),
 }) async {
   try {
     final Prescription fresh =
-        await api.prescription(dayOrder).timeout(timeout);
+        await api.prescription(dayOrder, weekOrder: weekOrder).timeout(timeout);
     try {
-      await cache.writePrescription(accountId, dayOrder, fresh);
+      await cache.writePrescription(
+        accountId,
+        dayOrder,
+        fresh,
+        weekOrder: weekOrder,
+      );
     } on Object {
       // The fresh server response remains usable if device storage fails.
     }
     return fresh;
   } on Object {
-    return _readCachedPrescription(cache, accountId, dayOrder);
+    return _readCachedPrescription(cache, accountId, dayOrder, weekOrder);
   }
 }
 
@@ -95,9 +101,14 @@ Future<Prescription?> _readCachedPrescription(
   WorkoutCacheStore cache,
   String accountId,
   int dayOrder,
+  int weekOrder,
 ) async {
   try {
-    return await cache.readPrescription(accountId, dayOrder);
+    return await cache.readPrescription(
+      accountId,
+      dayOrder,
+      weekOrder: weekOrder,
+    );
   } on Object {
     // An unreadable offline cache has no prescription to show for this day.
     return null;

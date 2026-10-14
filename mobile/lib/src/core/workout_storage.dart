@@ -156,10 +156,18 @@ abstract class WorkoutCacheStore {
 
   Future<void> writeProgram(String accountId, TrainingProgram program);
 
-  Future<Prescription?> readPrescription(String accountId, int dayOrder);
+  Future<Prescription?> readPrescription(
+    String accountId,
+    int dayOrder, {
+    int weekOrder = 1,
+  });
 
   Future<void> writePrescription(
-      String accountId, int dayOrder, Prescription prescription);
+    String accountId,
+    int dayOrder,
+    Prescription prescription, {
+    int weekOrder = 1,
+  });
 
   /// The last-known committed session, cached so Home can derive the next day
   /// offline (#53).
@@ -202,9 +210,13 @@ class SecureWorkoutCacheStore implements WorkoutCacheStore {
       _store.writeJson(key: 'program.$accountId', value: program.toJson());
 
   @override
-  Future<Prescription?> readPrescription(String accountId, int dayOrder) async {
+  Future<Prescription?> readPrescription(
+    String accountId,
+    int dayOrder, {
+    int weekOrder = 1,
+  }) async {
     final dynamic decoded =
-        await _store.readJson('prescription.$accountId.$dayOrder');
+        await _store.readJson(_prescriptionCacheKey(accountId, dayOrder, weekOrder));
     if (decoded is! Map<String, dynamic>) {
       return null;
     }
@@ -219,9 +231,13 @@ class SecureWorkoutCacheStore implements WorkoutCacheStore {
 
   @override
   Future<void> writePrescription(
-          String accountId, int dayOrder, Prescription prescription) =>
+    String accountId,
+    int dayOrder,
+    Prescription prescription, {
+    int weekOrder = 1,
+  }) =>
       _store.writeJson(
-        key: 'prescription.$accountId.$dayOrder',
+        key: _prescriptionCacheKey(accountId, dayOrder, weekOrder),
         value: prescription.toJson(),
       );
 
@@ -299,13 +315,20 @@ class InMemoryWorkoutCacheStore implements WorkoutCacheStore {
 
   @override
   Future<Prescription?> readPrescription(
-          String accountId, int dayOrder) async =>
-      _prescriptions['$accountId.$dayOrder'];
+    String accountId,
+    int dayOrder, {
+    int weekOrder = 1,
+  }) async =>
+      _prescriptions['$accountId.$weekOrder.$dayOrder'];
 
   @override
   Future<void> writePrescription(
-      String accountId, int dayOrder, Prescription prescription) async {
-    _prescriptions['$accountId.$dayOrder'] = prescription;
+    String accountId,
+    int dayOrder,
+    Prescription prescription, {
+    int weekOrder = 1,
+  }) async {
+    _prescriptions['$accountId.$weekOrder.$dayOrder'] = prescription;
   }
 
   @override
@@ -337,3 +360,8 @@ class InMemoryWorkoutCacheStore implements WorkoutCacheStore {
         .removeWhere((String key, _) => key.startsWith('$accountId.'));
   }
 }
+
+String _prescriptionCacheKey(String accountId, int dayOrder, int weekOrder) =>
+    weekOrder == 1
+        ? 'prescription.$accountId.$dayOrder'
+        : 'prescription.$accountId.week$weekOrder.$dayOrder';

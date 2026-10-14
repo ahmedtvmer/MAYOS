@@ -67,7 +67,7 @@ def test_v18_upgrade_adds_deload_choice(temp_db_env):
         default_ledger_id="v18lifter",
     )
     try:
-        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 26
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 27
         assert migrated.ledger.conn.execute(
             "SELECT started_at FROM onboarding_analytics WHERE id = 1"
         ).fetchone() is None
@@ -125,7 +125,7 @@ def test_v20_upgrade_allows_most_reps_records_without_backfilling(temp_db_env):
 
     apply_lazy_migrations(conn, "v20player", db.ledgers_dir, backups_dir)
 
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 26
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 27
     assert conn.execute(
         "SELECT id, record_type, value FROM personal_records"
     ).fetchall() == [("old", "max_weight", 100.0)]
@@ -148,7 +148,7 @@ def test_v22_upgrade_adds_program_drafts(temp_db_env):
 
     columns = {row[1] for row in conn.execute("PRAGMA table_info(program_drafts)")}
     assert columns == {"assignment_id", "draft_json", "created_at", "updated_at"}
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 26
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 27
     conn.close()
 
 
@@ -180,7 +180,7 @@ def test_v24_upgrade_seeds_profile_weight_only_when_present(
     apply_lazy_migrations(conn, "v24player", db.ledgers_dir, backups_dir)
 
     assert conn.execute("SELECT entry_date, weight_kg FROM weight_history").fetchall() == expected_history
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 26
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 27
     conn.close()
 
 
@@ -227,7 +227,7 @@ def test_v25_upgrade_adds_nullable_target_weight(temp_db_env):
     columns = {row[1] for row in conn.execute("PRAGMA table_info(user_profile)")}
     assert "target_weight_kg" in columns
     assert conn.execute("SELECT target_weight_kg FROM user_profile").fetchone() == (None,)
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 26
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 27
     conn.close()
 
 
@@ -275,7 +275,7 @@ def test_v23_upgrade_adds_tempo_to_program_exercises(temp_db_env):
     assert conn.execute(
         "SELECT notes, tempo FROM program_exercises WHERE id = 'exercise-1'"
     ).fetchone() == ("Keep control", None)
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 26
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 27
     conn.close()
 
 
@@ -1438,3 +1438,38 @@ def test_onboarding_state_roundtrip_and_clear(temp_db_env):
     assert db.ledger.load_onboarding_state()["intake_step"] == 3
     db.ledger.clear_onboarding_state()
     assert db.ledger.load_onboarding_state() is None
+
+
+def test_v26_to_v27_creates_one_implicit_week_and_is_idempotent(tmp_path: Path):
+    conn = sqlite3.connect(tmp_path / "v26-player.db")
+    conn.executescript(
+        "CREATE TABLE training_programs (id TEXT PRIMARY KEY);"
+        "CREATE TABLE program_days (id TEXT PRIMARY KEY, program_id TEXT, day_name TEXT, day_order INTEGER);"
+        "CREATE TABLE workout_sessions (id TEXT PRIMARY KEY);"
+        "INSERT INTO training_programs VALUES ('program-1');"
+        "INSERT INTO program_days VALUES ('day-1', 'program-1', 'Upper', 1);"
+        "INSERT INTO program_days VALUES ('day-2', 'program-1', 'Lower', 2);"
+    )
+    try:
+        MIGRATION_REGISTRY[26](conn)
+        MIGRATION_REGISTRY[26](conn)
+
+        weeks = conn.execute(
+            "SELECT id, program_id, week_name, week_order FROM program_weeks"
+        ).fetchall()
+        assert len(weeks) == 1
+        assert weeks[0][1:] == ("program-1", "Week 1", 1)
+        assert conn.execute(
+            "SELECT COUNT(DISTINCT week_id) FROM program_days"
+        ).fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM program_version_positions").fetchone()[0] == 1
+        assert conn.execute(
+            "SELECT start_week_order, start_day_order FROM program_version_positions"
+        ).fetchone() == (1, 1)
+        assert conn.execute(
+            "SELECT COUNT(*) FROM program_days WHERE week_id IS NULL"
+        ).fetchone()[0] == 0
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(workout_sessions)")}
+        assert {"program_week_order", "program_day_order"} <= columns
+    finally:
+        conn.close()

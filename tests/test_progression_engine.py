@@ -50,6 +50,12 @@ from types import SimpleNamespace
 
 import pytest
 
+from agent.ProgramState import (
+    PersistedProgramDaySchema,
+    PersistedProgramExerciseSchema,
+    PersistedProgramSchema,
+    PersistedProgramWeekSchema,
+)
 from agent.progression_engine import get_progression_signals
 
 
@@ -63,7 +69,9 @@ def test_progression_baseline_requires_empty_all_time_ledger(days_ago, exposures
             CREATE TABLE catalog.coach_exercises (
                 id TEXT, name TEXT, equipment TEXT, body_part TEXT
             );
-            CREATE TABLE workout_sessions (id TEXT, session_date TEXT);
+            CREATE TABLE workout_sessions (
+                id TEXT, session_date TEXT, program_week_order INTEGER, program_day_order INTEGER
+            );
             CREATE TABLE workout_sets (
                 session_id TEXT, exercise_id TEXT, weight_kg REAL, reps INTEGER,
                 rpe REAL, set_index INTEGER, is_warmup INTEGER
@@ -73,7 +81,10 @@ def test_progression_baseline_requires_empty_all_time_ledger(days_ago, exposures
         if days_ago is not None:
             for index in range(max(exposures, 1)):
                 date = (datetime.now(UTC) - timedelta(days=days_ago + index)).date().isoformat()
-                connection.execute("INSERT INTO workout_sessions VALUES (?, ?)", (str(index), date))
+                connection.execute(
+                    "INSERT INTO workout_sessions VALUES (?, ?, NULL, NULL)",
+                    (str(index), date),
+                )
                 if exposures:
                     connection.execute("INSERT INTO workout_sets VALUES (?, 'squat', 80, 8, 8.5, 1, 0)", (str(index),))
         database = SimpleNamespace(ledger_conn=connection, conn=connection, get_active_program=lambda: None)
@@ -84,6 +95,94 @@ def test_progression_baseline_requires_empty_all_time_ledger(days_ago, exposures
             assert result == "Progression: No progression or stall signals in the last 30 days."
     finally:
         connection.close()
+
+
+def test_progression_targets_follow_logged_week_when_current_week_advances(fresh_store):
+    ledger = fresh_store.ledger
+    exercise = fresh_store.catalog_conn.execute(
+        "SELECT id, name FROM exercises ORDER BY id LIMIT 1"
+    ).fetchone()
+    exercise_id, exercise_name = str(exercise[0]), str(exercise[1])
+    first_day = PersistedProgramDaySchema(
+        day_name="A",
+        day_order=1,
+        week_order=1,
+        exercises=[
+            PersistedProgramExerciseSchema(
+                exercise_id=exercise_id,
+                exercise_name=exercise_name,
+                target_reps_min=5,
+                target_reps_max=8,
+            )
+        ],
+    )
+    first_week_second_day = first_day.model_copy(
+        update={"day_name": "B", "day_order": 2}
+    )
+    second_week_day = first_day.model_copy(
+        update={
+            "week_order": 2,
+            "exercises": [
+                first_day.exercises[0].model_copy(
+                    update={"target_reps_min": 10, "target_reps_max": 12}
+                )
+            ],
+        }
+    )
+    program = PersistedProgramSchema(
+        program_name="Rep ranges",
+        split_type="custom",
+        weekly_frequency=2,
+        days=[first_day, first_week_second_day, second_week_day],
+        weeks=[
+            PersistedProgramWeekSchema(
+                week_name="Week 1",
+                week_order=1,
+                days=[first_day, first_week_second_day],
+            ),
+            PersistedProgramWeekSchema(
+                week_name="Week 2", week_order=2, days=[second_week_day]
+            ),
+        ],
+    )
+    ledger.save_training_program(program.model_dump())
+    active_program = ledger.get_active_program()
+    session_date = (datetime.now(UTC) - timedelta(days=3)).date()
+
+    for index in range(2):
+        date = session_date + timedelta(days=index)
+        session_id = f"week-one-{index}"
+        ledger.log_workout_session(
+            session_id,
+            date.isoformat(),
+            "A",
+            f"{date.isoformat()}T10:00:00+00:00",
+            f"{date.isoformat()}T11:00:00+00:00",
+            program_version=active_program.version,
+            program_week_order=1,
+            program_day_order=1,
+        )
+        ledger.log_workout_set(
+            f"set-{index}", session_id, exercise_id, 1, 100 + index * 5, 8, 8.0
+        )
+
+    assert ledger.get_program_position(active_program).current_week == 1
+    first_signal = get_progression_signals(ledger)
+    ledger.log_workout_session(
+        "finish-week-one",
+        (session_date + timedelta(days=2)).isoformat(),
+        "B",
+        f"{session_date + timedelta(days=2)}T10:00:00+00:00",
+        f"{session_date + timedelta(days=2)}T11:00:00+00:00",
+        program_version=active_program.version,
+        program_week_order=1,
+        program_day_order=2,
+    )
+
+    assert ledger.get_program_position(active_program).current_week == 2
+    second_signal = get_progression_signals(ledger)
+    assert first_signal == second_signal
+    assert "+2.5kg target" in first_signal
 
 
 if __name__ == "__main__":

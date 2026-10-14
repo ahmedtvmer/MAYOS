@@ -414,6 +414,9 @@ class MayosCopy {
   String programFrequency(int count) => isArabic
       ? '${arabicCountPhrase(count, ArabicCountNoun.day)} في الأسبوع'
       : '$count ${count == 1 ? 'day' : 'days'}/week';
+  String programWeekLabel(int current, int total) => isArabic
+      ? 'الأسبوع ${_ltr('$current')} من ${_ltr('$total')}'
+      : 'Week $current of $total';
   String get reviewing => isArabic ? 'مراجعة' : 'Review';
   String get continueAction => isArabic ? 'متابعة' : 'Continue';
   String greetingFor(DateTime now) => isArabic

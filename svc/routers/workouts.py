@@ -9,6 +9,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from agent.program_prescription import MAX_PROGRAM_WEEKS
 from database.exercise_resolution import resolve_exercise_display_row
 from database.exercise_library.filters import exercise_filters_for
 from service import analytics
@@ -34,7 +35,7 @@ router = APIRouter(prefix="/workouts", tags=["workouts"])
 EXPORT_MEDIA_TYPES = {"csv": "text/csv", "json": "application/json"}
 
 
-def _day_plan(ledger: Any, day_order: int) -> Any:
+def _day_plan(ledger: Any, day_order: int, week_order: int = 1) -> Any:
     program = ledger.get_active_program()
     if program is None:
         raise message_http_exception(
@@ -43,7 +44,7 @@ def _day_plan(ledger: Any, day_order: int) -> Any:
             MessageMetadata("program.no_active.v1"),
         )
     try:
-        return workouts_service.day_plan_from(program, day_order)
+        return workouts_service.day_plan_from(program, day_order, week_order)
     except workouts_service.DayPlanNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
@@ -192,12 +193,13 @@ async def read_prescription(
     player: Annotated[Any, Depends(get_verified_player)],
     ledger: Annotated[Any, Depends(get_ledger)],
     db: Annotated[Any, Depends(get_db)],
+    week_order: int = Query(default=1, ge=1, le=MAX_PROGRAM_WEEKS),
 ):
     def _run():
         return workouts_service.build_prescription(
             db,
             str(player),
-            _day_plan(ledger, day_order),
+            _day_plan(ledger, day_order, week_order),
             ledger=ledger,
             player_account_id=player.account_id,
         )
@@ -232,10 +234,14 @@ async def commit_session(
     def _run() -> workouts_service.CommitOutcome:
         if body.client_session_id is None:
             # Legacy online-only contract, unchanged.
-            day_plan = _day_plan(ledger, body.day_order)
+            program = ledger.get_active_program()
+            day_plan = _day_plan(ledger, body.day_order, body.week_order)
             return workouts_service.commit_session(
                 db, str(player), day_plan, body.readiness, body.session_notes,
                 _sets_payload(db, ledger, body),
+                sync=workouts_service.SyncMetadata(
+                    program_version=program.version if program is not None else None
+                ),
                 warmup_movements=_warmup_movements_payload(db, body),
                 cardio=body.cardio.model_dump() if body.cardio is not None else None,
                 account_id=account_id_of(player), ledger=ledger,
@@ -275,6 +281,7 @@ async def commit_session(
             body.session_notes,
             _sets_payload(db, ledger, body),
             sync=sync,
+            week_order=body.week_order,
             warmup_movements=_warmup_movements_payload(db, body),
             cardio=body.cardio.model_dump() if body.cardio is not None else None,
             account_id=account_id_of(player),
@@ -297,7 +304,6 @@ async def commit_session(
                 **program_version_mismatch_message(),
             },
         )
-
     if not result.created:
         return JSONResponse(status_code=status.HTTP_200_OK, content=result.body)
     return result.body

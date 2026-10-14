@@ -27,6 +27,7 @@ part 'program_editor/exercise_card.dart';
 part 'program_editor/warmup_movement_card.dart';
 
 typedef _EditorErrorLocation = ({
+  int weekIndex,
   int dayIndex,
   int? exerciseIndex,
   int? warmupMovementIndex,
@@ -50,7 +51,8 @@ class CoachProgramDraftScreen extends ConsumerStatefulWidget {
 
 class _CoachProgramDraftScreenState
     extends ConsumerState<CoachProgramDraftScreen> {
-  final List<_DraftDayEditor> _days = <_DraftDayEditor>[];
+  final List<_DraftWeekEditor> _weeks = <_DraftWeekEditor>[];
+  int _selectedWeekIndex = 0;
   Map<String, dynamic>? _draft;
   bool _loading = true;
   bool _saving = false;
@@ -66,6 +68,7 @@ class _CoachProgramDraftScreenState
       <_EditorErrorLocation, String>{};
 
   bool get _busy => _saving || _publishing || _discarding;
+  List<_DraftDayEditor> get _days => _weeks[_selectedWeekIndex].days;
 
   @override
   void initState() {
@@ -75,8 +78,8 @@ class _CoachProgramDraftScreenState
 
   @override
   void dispose() {
-    for (final _DraftDayEditor day in _days) {
-      day.dispose();
+    for (final _DraftWeekEditor week in _weeks) {
+      week.dispose();
     }
     super.dispose();
   }
@@ -106,18 +109,24 @@ class _CoachProgramDraftScreenState
 
   Map<String, dynamic> _emptyDraft() {
     final copy = coachCopyOf(context);
+    final Map<String, dynamic> firstDay = <String, dynamic>{
+      'day_name': copy.firstTrainingDay,
+      'day_order': 1,
+      'warmup_exercises': <dynamic>[],
+      'exercises': <dynamic>[],
+      'cardio': null,
+    };
     return <String, dynamic>{
       'program_name': copy.customProgram,
       'split_type': 'custom',
       'weekly_frequency': 1,
       'instructions': '',
-      'days': <Map<String, dynamic>>[
+      'days': <Map<String, dynamic>>[firstDay],
+      'weeks': <Map<String, dynamic>>[
         <String, dynamic>{
-          'day_name': copy.firstTrainingDay,
-          'day_order': 1,
-          'warmup_exercises': <dynamic>[],
-          'exercises': <dynamic>[],
-          'cardio': null,
+          'week_name': copy.firstWeekName,
+          'week_order': 1,
+          'days': <Map<String, dynamic>>[firstDay],
         },
       ],
     };
@@ -127,19 +136,37 @@ class _CoachProgramDraftScreenState
     final Map<String, dynamic> draft = _copyMap(
       envelope['draft'] as Map<String, dynamic>,
     );
-    final List<dynamic> days = draft['days'] as List<dynamic>? ?? <dynamic>[];
-    for (final _DraftDayEditor day in _days) {
-      day.dispose();
+    final List<dynamic> sourceWeeks = draft['weeks'] as List<dynamic>? ?? <dynamic>[];
+    final List<dynamic> weeks = sourceWeeks.isEmpty
+        ? <dynamic>[
+            <String, dynamic>{
+              'week_name': coachCopyOf(context).firstWeekName,
+              'week_order': 1,
+              'days': draft['days'] as List<dynamic>? ?? <dynamic>[],
+            },
+          ]
+        : sourceWeeks;
+    for (final _DraftWeekEditor week in _weeks) {
+      week.dispose();
     }
-    _days
+    _weeks
       ..clear()
       ..addAll(
-        days.map(
-          (dynamic rawDay) => _DraftDayEditor(
-            _copyMap(rawDay as Map<String, dynamic>),
-          ),
-        ),
+        weeks.map((dynamic rawWeek) {
+          final Map<String, dynamic> week = _copyMap(rawWeek as Map<String, dynamic>);
+          return _DraftWeekEditor(
+            week,
+            <_DraftDayEditor>[
+              for (final dynamic rawDay in week['days'] as List<dynamic>? ?? <dynamic>[])
+                _DraftDayEditor(_copyMap(rawDay as Map<String, dynamic>)),
+            ],
+          );
+        }),
       );
+    _selectedWeekIndex = 0;
+    if (_weeks.isEmpty) {
+      _weeks.add(_newWeek(1));
+    }
     setState(() {
       _draft = draft;
       _loading = false;
@@ -153,22 +180,100 @@ class _CoachProgramDraftScreenState
 
   Map<String, dynamic> _serializedDraft() {
     final Map<String, dynamic> draft = _copyMap(_draft!);
-    draft['weekly_frequency'] = _days.length.clamp(1, ProgramDraftPrescription.maxDays);
+    draft['weekly_frequency'] = _maximumWeekFrequency;
+    final List<Map<String, dynamic>> weeks = <Map<String, dynamic>>[
+      for (int weekIndex = 0; weekIndex < _weeks.length; weekIndex++)
+        _weeks[weekIndex].toJson(weekIndex + 1, coachCopyOf(context)),
+    ];
+    draft['weeks'] = weeks;
     draft['days'] = <Map<String, dynamic>>[
-      for (int index = 0; index < _days.length; index++)
-        _days[index].toJson(index + 1, coachCopyOf(context)),
+      for (final Map<String, dynamic> week in weeks)
+        for (final dynamic day in week['days'] as List<dynamic>)
+          day as Map<String, dynamic>,
     ];
     return draft;
   }
+
+  int get _maximumWeekFrequency => _weeks.fold<int>(
+        1,
+        (int maxDays, _DraftWeekEditor week) =>
+            week.days.length > maxDays ? week.days.length : maxDays,
+      );
 
   _DraftDayEditor _newDay(int order) {
     final CoachCopy copy = coachCopyOf(context);
     return _DraftDayEditor(<String, dynamic>{
       'day_name': copy.trainingDayNumber(order),
       'day_order': order,
-          'warmup_exercises': <dynamic>[],
+      'warmup_exercises': <dynamic>[],
       'exercises': <dynamic>[],
       'cardio': null,
+    });
+  }
+
+  _DraftWeekEditor _newWeek(int order) {
+    final CoachCopy copy = coachCopyOf(context);
+    return _DraftWeekEditor(
+      <String, dynamic>{
+        'week_name': copy.weekNameNumber(order),
+        'week_order': order,
+        'days': <dynamic>[],
+      },
+      <_DraftDayEditor>[_newDay(1)],
+    )..name.text = copy.weekNameNumber(order);
+  }
+
+  void _syncWeekOrders() {
+    for (int weekIndex = 0; weekIndex < _weeks.length; weekIndex++) {
+      final _DraftWeekEditor week = _weeks[weekIndex];
+      week.source['week_order'] = weekIndex + 1;
+      for (int dayIndex = 0; dayIndex < week.days.length; dayIndex++) {
+        week.days[dayIndex].source['day_order'] = dayIndex + 1;
+        week.days[dayIndex].source['week_order'] = weekIndex + 1;
+      }
+    }
+    if (_draft != null) _draft!['weekly_frequency'] = _maximumWeekFrequency;
+  }
+
+  void _addWeek() {
+    setState(() {
+      _weeks.add(_newWeek(_weeks.length + 1));
+      _selectedWeekIndex = _weeks.length - 1;
+      _hasUnsavedChanges = true;
+      _syncWeekOrders();
+      _clearServerErrors();
+    });
+  }
+
+  void _moveWeek(int delta) {
+    final int target = _selectedWeekIndex + delta;
+    if (target < 0 || target >= _weeks.length) return;
+    if (!_moveListItem(_weeks, _selectedWeekIndex, delta)) return;
+    setState(() {
+      _selectedWeekIndex = target;
+      _hasUnsavedChanges = true;
+      _syncWeekOrders();
+      _clearServerErrors();
+    });
+  }
+
+  void _removeWeek() {
+    if (_weeks.length <= 1) return;
+    final _DraftWeekEditor removed = _weeks.removeAt(_selectedWeekIndex);
+    removed.dispose();
+    setState(() {
+      _selectedWeekIndex = _selectedWeekIndex.clamp(0, _weeks.length - 1);
+      _hasUnsavedChanges = true;
+      _syncWeekOrders();
+      _clearServerErrors();
+    });
+  }
+
+  void _selectWeek(int index) {
+    if (index == _selectedWeekIndex) return;
+    setState(() {
+      _selectedWeekIndex = index;
+      _clearServerErrors();
     });
   }
 
@@ -176,9 +281,7 @@ class _CoachProgramDraftScreenState
     for (int index = 0; index < _days.length; index++) {
       _days[index].source['day_order'] = index + 1;
     }
-    if (_draft != null) {
-      _draft!['weekly_frequency'] = _days.length.clamp(1, ProgramDraftPrescription.maxDays);
-    }
+    if (_draft != null) _draft!['weekly_frequency'] = _maximumWeekFrequency;
   }
 
   void _addDay() {
@@ -224,6 +327,86 @@ class _CoachProgramDraftScreenState
       _clearServerErrors();
     });
   }
+
+  Widget _weekControls(CoachCopy copy) {
+    if (_weeks.length <= 1) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _weekTabStrip(copy),
+        const SizedBox(height: MayosSpacing.xs),
+        _weekNameField(copy),
+        _weekOrderButtons(copy),
+      ],
+    );
+  }
+
+  Widget _addWeekButton(CoachCopy copy) => MayosButton(
+        key: const Key('program_draft_add_week'),
+        label: copy.addWeek,
+        icon: Icons.add,
+        variant: MayosButtonVariant.secondary,
+        onPressed: _busy ? null : _addWeek,
+      );
+
+  Widget _weekTabStrip(CoachCopy copy) => SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: <Widget>[
+            for (int index = 0; index < _weeks.length; index++)
+              Padding(
+                padding: const EdgeInsetsDirectional.only(end: MayosSpacing.xs),
+                child: TextButton(
+                  key: Key('program_draft_week_tab_${index + 1}'),
+                  onPressed: () => _selectWeek(index),
+                  child: Text(copy.weekTabLabel(
+                    index + 1,
+                    _weeks[index].name.text.trim(),
+                  )),
+                ),
+              ),
+          ],
+        ),
+      );
+
+  Widget _weekNameField(CoachCopy copy) => TextField(
+        key: const Key('program_draft_week_name'),
+        controller: _weeks[_selectedWeekIndex].name,
+        enabled: !_busy,
+        decoration: InputDecoration(
+          labelText: copy.weekName,
+          border: const OutlineInputBorder(),
+        ),
+        onChanged: (_) => setState(() => _hasUnsavedChanges = true),
+      );
+
+  Widget _weekOrderButtons(CoachCopy copy) => Row(
+        children: <Widget>[
+          IconButton(
+            key: const Key('program_draft_week_up'),
+            tooltip: copy.moveWeekUp,
+            onPressed: _busy || _selectedWeekIndex == 0
+                ? null
+                : () => _moveWeek(-1),
+            icon: const Icon(Icons.arrow_upward),
+          ),
+          IconButton(
+            key: const Key('program_draft_week_down'),
+            tooltip: copy.moveWeekDown,
+            onPressed: _busy || _selectedWeekIndex == _weeks.length - 1
+                ? null
+                : () => _moveWeek(1),
+            icon: const Icon(Icons.arrow_downward),
+          ),
+          const Spacer(),
+          IconButton(
+            key: const Key('program_draft_week_remove'),
+            tooltip: copy.removeWeek,
+            onPressed: _busy ? null : _removeWeek,
+            icon: const Icon(Icons.delete_outline),
+          ),
+        ],
+      );
 
   Future<ExerciseCatalogEntry?> _pickExercise({
     String? replacingExerciseId,
@@ -532,28 +715,33 @@ class _CoachProgramDraftScreenState
       final int? exerciseIndex = normalized['exercise_index'] as int?;
       final int? movementIndex =
           normalized['warmup_movement_index'] as int?;
+      final int weekIndex =
+          (normalized['week_index'] as int? ?? _selectedWeekIndex)
+              .clamp(0, _weeks.length - 1);
       final String field = normalized['field'] as String;
       final String? code = normalized['code'] as String?;
       final String rendered = code == null
           ? message
           : copy.programDraftValidationMessage(code);
       final _EditorErrorLocation location = (
+        weekIndex: weekIndex,
         dayIndex: dayIndex ?? -1,
         exerciseIndex: exerciseIndex,
         warmupMovementIndex: movementIndex,
         field: field,
       );
-      if (dayIndex == null || dayIndex < 0 || dayIndex >= _days.length) {
+      final List<_DraftDayEditor> errorDays = _weeks[weekIndex].days;
+      if (dayIndex == null || dayIndex < 0 || dayIndex >= errorDays.length) {
         summary.add(rendered);
       } else if (movementIndex != null &&
           movementIndex >= 0 &&
-          movementIndex < _days[dayIndex].warmups.length &&
+          movementIndex < errorDays[dayIndex].warmups.length &&
           const <String>{'exercise_name', 'sets', 'reps', 'rest_seconds', 'notes'}
               .contains(field)) {
         _serverErrors[location] = rendered;
       } else if (exerciseIndex != null &&
           exerciseIndex >= 0 &&
-          exerciseIndex < _days[dayIndex].exercises.length &&
+          exerciseIndex < errorDays[dayIndex].exercises.length &&
           const <String>{
             'exercise_id', 'target_sets', 'target_reps_min', 'target_reps_max',
             'target_rir', 'target_rpe', 'warmup_sets', 'rest_seconds', 'tempo', 'notes'
@@ -583,13 +771,21 @@ class _CoachProgramDraftScreenState
     }
     final List<dynamic> rawLocation = issue['loc'] as List<dynamic>? ?? <dynamic>[];
     final List<dynamic> location = rawLocation.skipWhile((dynamic item) => item == 'body').toList();
+    int? weekIndex;
     int? dayIndex;
     int? exerciseIndex;
     int? movementIndex;
     String field = 'program';
+    final int weeksAt = location.indexOf('weeks');
+    if (weeksAt >= 0 &&
+        location.length > weeksAt + 1 &&
+        location[weeksAt + 1] is int) {
+      weekIndex = location[weeksAt + 1] as int;
+    }
     final int dayAt = location.indexOf('days');
     if (dayAt >= 0 && location.length > dayAt + 1 && location[dayAt + 1] is int) {
       dayIndex = location[dayAt + 1] as int;
+      weekIndex ??= _selectedWeekIndex;
       if (location.length > dayAt + 2) {
         final dynamic group = location[dayAt + 2];
         if (group == 'exercises' && location.length > dayAt + 3 && location[dayAt + 3] is int) {
@@ -624,6 +820,7 @@ class _CoachProgramDraftScreenState
     return <String, dynamic>{
       'code': code,
       'message': message,
+      'week_index': weekIndex,
       'day_index': dayIndex,
       'exercise_index': exerciseIndex,
       'warmup_movement_index': movementIndex,
@@ -674,6 +871,10 @@ class _CoachProgramDraftScreenState
                               Text(widget.playerUsername,
                                   style: MayosTypography.of(context).sectionHeading),
                               const SizedBox(height: MayosSpacing.md),
+                              if (_weeks.length > 1) ...<Widget>[
+                                _weekControls(copy),
+                                const SizedBox(height: MayosSpacing.md),
+                              ],
                               for (int index = 0; index < _days.length; index++)
                                 _dayCard(context, index),
                               MayosButton(
@@ -687,6 +888,8 @@ class _CoachProgramDraftScreenState
                                     ? null
                                     : _addDay,
                               ),
+                              const SizedBox(height: MayosSpacing.xs),
+                              _addWeekButton(copy),
                               if (_days.isEmpty) ...<Widget>[
                                 const SizedBox(height: MayosSpacing.sm),
                                 Text(copy.noTrainingDays),
@@ -804,6 +1007,7 @@ class _CoachProgramDraftScreenState
       onChanged: (String field) => setState(() {
         _hasUnsavedChanges = true;
         _serverErrors.remove((
+          weekIndex: _selectedWeekIndex,
           dayIndex: index,
           exerciseIndex: null,
           warmupMovementIndex: null,
@@ -834,6 +1038,7 @@ class _CoachProgramDraftScreenState
       onChanged: (String field) => setState(() {
         _hasUnsavedChanges = true;
         _serverErrors.remove((
+          weekIndex: _selectedWeekIndex,
           dayIndex: dayIndex,
           exerciseIndex: null,
           warmupMovementIndex: movementIndex,
@@ -864,6 +1069,7 @@ class _CoachProgramDraftScreenState
       onChanged: (String field) => setState(() {
         _hasUnsavedChanges = true;
         _serverErrors.remove((
+          weekIndex: _selectedWeekIndex,
           dayIndex: dayIndex,
           exerciseIndex: exerciseIndex,
           warmupMovementIndex: null,
@@ -893,6 +1099,7 @@ class _CoachProgramDraftScreenState
     int? warmupMovementIndex,
   }) =>
       _serverErrors[(
+        weekIndex: _selectedWeekIndex,
         dayIndex: dayIndex,
         exerciseIndex: exerciseIndex,
         warmupMovementIndex: warmupMovementIndex,
@@ -902,7 +1109,8 @@ class _CoachProgramDraftScreenState
   String? _generalDayError(int dayIndex) {
     for (final MapEntry<_EditorErrorLocation, String> entry
         in _serverErrors.entries) {
-      if (entry.key.dayIndex == dayIndex &&
+      if (entry.key.weekIndex == _selectedWeekIndex &&
+          entry.key.dayIndex == dayIndex &&
           entry.key.exerciseIndex == null &&
           entry.key.warmupMovementIndex == null &&
           entry.key.field != 'day_name' &&
@@ -997,6 +1205,32 @@ Widget _editorNumberField({
       onChanged: onChanged,
     );
 
+class _DraftWeekEditor {
+  _DraftWeekEditor(this.source, this.days)
+      : name = TextEditingController(text: source['week_name'] as String? ?? '');
+
+  final Map<String, dynamic> source;
+  final TextEditingController name;
+  final List<_DraftDayEditor> days;
+
+  Map<String, dynamic> toJson(int order, CoachCopy copy) => <String, dynamic>{
+        ...source,
+        'week_name': name.text.trim(),
+        'week_order': order,
+        'days': <Map<String, dynamic>>[
+          for (int dayIndex = 0; dayIndex < days.length; dayIndex++)
+            days[dayIndex].toJson(dayIndex + 1, copy, weekOrder: order),
+        ],
+      };
+
+  void dispose() {
+    name.dispose();
+    for (final _DraftDayEditor day in days) {
+      day.dispose();
+    }
+  }
+}
+
 class _DraftDayEditor {
   _DraftDayEditor(this.source)
       : dayName = TextEditingController(
@@ -1038,10 +1272,15 @@ class _DraftDayEditor {
     return duplicate;
   }
 
-  Map<String, dynamic> toJson(int order, CoachCopy copy) => <String, dynamic>{
+  Map<String, dynamic> toJson(
+    int order,
+    CoachCopy copy, {
+    int weekOrder = 1,
+  }) => <String, dynamic>{
         ...source,
         'day_name': dayName.text.trim(),
         'day_order': order,
+        'week_order': weekOrder,
         'warmup_exercises': <Map<String, dynamic>>[
           for (final _DraftWarmupEditor movement in warmups)
             movement.toJson(copy),

@@ -7,6 +7,7 @@ onboarding completion, chat program mutation, and assistant exercise swap —
 each before coach publication, during coach control, and after unassignment.
 """
 
+import copy
 import json
 import sqlite3
 from pathlib import Path
@@ -160,6 +161,53 @@ def _program(name: str = "Coach Plan") -> GeneratedProgramSchema:
     )
 
 
+def _three_week_program_data(program_data: dict[str, Any]) -> dict[str, Any]:
+    program = copy.deepcopy(program_data)
+    for key in ("id", "version", "created_at"):
+        program.pop(key, None)
+    template = program["days"][0]
+    base_days = []
+    for day_order in range(1, 4):
+        day = copy.deepcopy(template)
+        day.pop("id", None)
+        day.update(day_name=f"Full {day_order}", day_order=day_order)
+        for exercise in day.get("exercises", []):
+            exercise.pop("id", None)
+        base_days.append(day)
+    weeks = []
+    for week_order, week_name in enumerate(("Base", "Build", "Peak"), start=1):
+        week_days = []
+        for base_day in base_days:
+            day = copy.deepcopy(base_day)
+            day["week_order"] = week_order
+            week_days.append(day)
+        weeks.append(
+            {"week_name": week_name, "week_order": week_order, "days": week_days}
+        )
+    program["weekly_frequency"] = 3
+    program["weeks"] = weeks
+    program["days"] = [day for week in weeks for day in week["days"]]
+    return program
+
+
+def _log_to_week_two_day_three(ledger: Any, program_version: int, prefix: str) -> None:
+    for index, (week_order, day_order) in enumerate(
+        ((1, 1), (1, 2), (1, 3), (2, 1), (2, 2)),
+        start=1,
+    ):
+        session_date = f"2026-10-{index:02}"
+        ledger.log_workout_session(
+            f"{prefix}-{index}",
+            session_date,
+            f"Full {day_order}",
+            f"{session_date}T10:00:00+00:00",
+            f"{session_date}T11:00:00+00:00",
+            program_version=program_version,
+            program_week_order=week_order,
+            program_day_order=day_order,
+        )
+
+
 def _counting_saver(db: Any, program_name: str):
     """Returns (fake pipeline, call counter) that saves through the real ledger."""
     calls = {"n": 0}
@@ -308,6 +356,46 @@ def test_direct_generation_allowed_before_publication(api, monkeypatch):
     assert client.get("/programs/active", headers=player_headers).json()["published_by_coach_account_id"] is None
 
 
+def test_automatic_generation_restarts_after_week_two_day_three(shipped_library_api):
+    from agent.program_generator import generate_program_pipeline
+
+    _client, db = shipped_library_api
+    _register(_client, "generation-cursor-player")
+    db.switch_user("generation-cursor-player")
+    db.ledger.upsert_player_profile(
+        {
+            "gender": "male",
+            "proportions": "balanced",
+            "age": 28,
+            "weight_kg": 80.0,
+            "height_cm": 175.0,
+            "rep_preference": "balanced",
+            "current_goal": "hypertrophy",
+            "long_term_goal": "progressive overload",
+            "weekly_frequency": 3,
+            "training_age_years": 3.0,
+            "equipment_access": "Commercial gym",
+            "injuries_or_limitations": "None",
+            "stress_and_sleep": "normal",
+        }
+    )
+    db.ledger.save_training_program(
+        _three_week_program_data(_program("Prior program").model_dump())
+    )
+    previous = db.ledger.get_active_program()
+    _log_to_week_two_day_three(db.ledger, previous.version, "before-generation")
+    position = db.ledger.get_program_position(previous)
+    assert (position.current_week, position.next_day_order) == (2, 3)
+
+    generated, _ = generate_program_pipeline(ledger=db.ledger)
+
+    active = db.ledger.get_active_program()
+    position = db.ledger.get_program_position(active)
+    assert generated.weekly_frequency == 3
+    assert len(active.weeks) == 1
+    assert (position.current_week, position.next_day_order) == (1, 1)
+
+
 def test_direct_generation_refused_during_control(api, monkeypatch):
     client, db, _ = api
     coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
@@ -425,6 +513,55 @@ def test_profile_rebuild_generates_from_the_edited_profile(api, monkeypatch):
     assert resp.json()["program_rebuilt"] is True
     assert calls["profile"]["equipment_access"] == "Home gym"
     assert calls["profile"]["weekly_frequency"] == 3
+
+
+def test_profile_rebuild_starts_at_week_one_after_later_program_position(
+    shipped_library_api,
+):
+    from agent.program_generator import generate_program_pipeline
+
+    client, db = shipped_library_api
+    player = _register(client, "profile-cursor-player")
+    player_headers = _authed(player["access_token"])
+    db.switch_user("profile-cursor-player")
+    db.ledger.upsert_player_profile(
+        {
+            "gender": "male",
+            "proportions": "balanced",
+            "age": 28,
+            "weight_kg": 80.0,
+            "height_cm": 175.0,
+            "rep_preference": "balanced",
+            "current_goal": "hypertrophy",
+            "long_term_goal": "progressive overload",
+            "equipment_access": "Commercial gym",
+            "weekly_frequency": 3,
+            "training_age_years": 3.0,
+            "injuries_or_limitations": "None",
+            "stress_and_sleep": "normal",
+        }
+    )
+    generate_program_pipeline(ledger=db.ledger)
+    db.ledger.save_training_program(
+        _three_week_program_data(db.ledger.get_active_program().model_dump())
+    )
+    previous = db.ledger.get_active_program()
+    _log_to_week_two_day_three(db.ledger, previous.version, "before-profile-rebuild")
+    position = db.ledger.get_program_position(previous)
+    assert (position.current_week, position.next_day_order) == (2, 3)
+
+    response = client.put(
+        "/profile",
+        headers=player_headers,
+        json={"equipment_access": "Home gym"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["program_rebuilt"] is True
+    db.switch_user("profile-cursor-player")
+    active = db.ledger.get_active_program()
+    position = db.ledger.get_program_position(active)
+    assert (position.current_week, position.next_day_order) == (1, 1)
 
 
 def test_profile_rebuild_quota_refusal_rolls_back_and_can_retry(shipped_library_api, monkeypatch):
@@ -930,9 +1067,36 @@ def test_chat_api_suggests_prefilled_substitution_only_from_resolved_ledger_fact
     from svc.routers import chat as chat_router
 
     client, db, _ = api
-    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    coach_headers, player_headers, assignment_id, coach_account_id, _ = _assigned_player(api)
     _coach_generation(db, monkeypatch)
     assert _publish(client, coach_headers, assignment_id).status_code == 200
+
+    db.switch_user("p1")
+    active = db.ledger.get_active_program()
+    program = active.model_dump()
+    program.pop("created_at", None)
+    first_day = program["days"][0]
+    first_day["week_order"] = 1
+    second_day = {**first_day, "week_order": 2}
+    program["days"] = [first_day, second_day]
+    program["weeks"] = [
+        {"week_name": "Base", "week_order": 1, "days": [first_day]},
+        {"week_name": "Build", "week_order": 2, "days": [second_day]},
+    ]
+    db.ledger.save_training_program(
+        program, published_by_coach_account_id=coach_account_id
+    )
+    active = db.ledger.get_active_program()
+    db.ledger.log_workout_session(
+        "completed-week-one",
+        "2026-10-10",
+        "Full A",
+        "2026-10-10T10:00:00+00:00",
+        "2026-10-10T11:00:00+00:00",
+        program_version=active.version,
+        program_week_order=1,
+        program_day_order=1,
+    )
     monkeypatch.setattr(chat_router, "admit_model_request", lambda *args, **kwargs: None)
 
     content = "swap bench press for dumbbell press"
@@ -942,6 +1106,8 @@ def test_chat_api_suggests_prefilled_substitution_only_from_resolved_ledger_fact
     assert done["request_suggestion"] == {
         "kind": "exercise_substitution",
         "day_name": "Full A",
+        "week_order": 2,
+        "day_order": 1,
         "exercise_id": "bp",
         "replacement_exercise_id": "dbp",
         "reason": content,
@@ -953,23 +1119,19 @@ def test_chat_api_suggests_prefilled_substitution_only_from_resolved_ledger_fact
     assert unresolved_done["request_suggestion"]["exercise_id"] is None
     assert unresolved_done["request_suggestion"]["replacement_exercise_id"] == "dbp"
 
-    long_reason = f"{content} " + "details " * 100
-    db.switch_user("p1")
-    substitution_suggestion = assistant_graph._substitution_request_suggestion(
-        db,
-        db.ledger,
-        long_reason,
-        {"source_exercise": "Bench Press", "target_exercise": "Dumbbell Press"},
-    )
+    long_reason = f"{content} " + "details " * 40
+    long_reason_suggestion = _chat_done_event(client, player_headers, long_reason)[
+        "request_suggestion"
+    ]
     split_suggestion = assistant_graph._split_change_request_suggestion(
         long_reason, {}
     )
-    assert substitution_suggestion["reason"] == long_reason[:MAX_REASON_CHARS]
+    assert long_reason_suggestion["reason"] == long_reason[:MAX_REASON_CHARS].strip()
     assert split_suggestion["reason"] == long_reason[:MAX_REASON_CHARS]
     history = client.get("/chat/history", headers=player_headers).json()
     assert all("request_suggestion" not in message for message in history)
     db.switch_user("p1")
-    assert db.ledger.get_active_program().version == 1
+    assert db.ledger.get_active_program().version == 2
 
 
 def test_chat_api_suggests_split_change_for_coach_controlled_mutation(api, monkeypatch):
@@ -1015,6 +1177,8 @@ def test_chat_api_composite_refusal_keeps_only_the_first_suggestion(api, monkeyp
     assert done["request_suggestion"] == {
         "kind": "exercise_substitution",
         "day_name": "Full A",
+        "week_order": 1,
+        "day_order": 1,
         "exercise_id": "bp",
         "replacement_exercise_id": "dbp",
         "reason": "swap bench press for dumbbell press",

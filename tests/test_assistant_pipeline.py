@@ -8,6 +8,12 @@ sys.path.append(str(BASE_DIR))
 
 from langchain_core.messages import HumanMessage
 
+from agent.ProgramState import (
+    PersistedProgramDaySchema,
+    PersistedProgramExerciseSchema,
+    PersistedProgramSchema,
+    PersistedProgramWeekSchema,
+)
 from agent.assistant_graph import (
     RE_ACTION_HINT,
     hydrate_context_node,
@@ -204,13 +210,29 @@ def test_deload_routing_does_not_override_clinical_or_negated_requests():
 
 
 def test_deload_pipeline_says_nothing_to_change_in_both_wrong_directions(fresh_store):
-    from types import SimpleNamespace
-
     from agent.assistant_graph import stream_assistant_turn
 
     ledger = fresh_store.ledger
+    program_day = PersistedProgramDaySchema(
+        day_name="Day 1",
+        day_order=1,
+        exercises=[
+            PersistedProgramExerciseSchema(
+                exercise_id="sq",
+                exercise_name="Squat",
+                target_reps_min=5,
+                target_reps_max=8,
+            )
+        ],
+    )
+    program = PersistedProgramSchema(
+        program_name="Test program",
+        split_type="custom",
+        weekly_frequency=1,
+        days=[program_day],
+    )
     ledger.get_active_program = MagicMock(
-        return_value=SimpleNamespace(days=[SimpleNamespace(day_order=1, exercises=[])])
+        return_value=program
     )
     cases = [
         ("apply the deload", "applied"),
@@ -387,9 +409,35 @@ def test_phase3_substitution_lookup_candidates(fresh_store):
         "response_content": None,
     }
 
-    mock_ex = MagicMock(exercise_id="ex_123", exercise_name="Hack Squat")
-    mock_day = MagicMock(day_name="Lower A", day_order=1, exercises=[mock_ex])
-    mock_prog = MagicMock(days=[mock_day])
+    first_day = PersistedProgramDaySchema(
+        day_name="Lower A",
+        day_order=1,
+        week_order=1,
+        exercises=[
+            PersistedProgramExerciseSchema(
+                exercise_id="ex_123",
+                exercise_name="Hack Squat",
+                target_reps_min=5,
+                target_reps_max=8,
+            )
+        ],
+    )
+    second_day = first_day.model_copy(update={"week_order": 2})
+    mock_prog = PersistedProgramSchema(
+        program_name="Two-week plan",
+        split_type="Full Body",
+        weekly_frequency=1,
+        days=[first_day, second_day],
+        weeks=[
+            PersistedProgramWeekSchema(
+                week_name="Base", week_order=1, days=[first_day]
+            ),
+            PersistedProgramWeekSchema(
+                week_name="Build", week_order=2, days=[second_day]
+            ),
+        ],
+        version=1,
+    )
 
     mock_cur_instance = MagicMock()
     mock_cur_instance.fetchone.return_value = ("quadriceps", "quadriceps", "machine")
@@ -454,9 +502,35 @@ def test_phase3_substitution_direct_swap(fresh_store):
         "response_content": None,
     }
 
-    mock_ex = MagicMock(exercise_id="ex_123", exercise_name="Hack Squat")
-    mock_day = MagicMock(day_name="Lower A", day_order=1, exercises=[mock_ex])
-    mock_prog = MagicMock(days=[mock_day])
+    first_day = PersistedProgramDaySchema(
+        day_name="Lower A",
+        day_order=1,
+        week_order=1,
+        exercises=[
+            PersistedProgramExerciseSchema(
+                exercise_id="ex_123",
+                exercise_name="Hack Squat",
+                target_reps_min=5,
+                target_reps_max=8,
+            )
+        ],
+    )
+    second_day = first_day.model_copy(update={"week_order": 2})
+    mock_prog = PersistedProgramSchema(
+        program_name="Two-week plan",
+        split_type="custom",
+        weekly_frequency=1,
+        days=[first_day, second_day],
+        weeks=[
+            PersistedProgramWeekSchema(
+                week_name="Base", week_order=1, days=[first_day]
+            ),
+            PersistedProgramWeekSchema(
+                week_name="Build", week_order=2, days=[second_day]
+            ),
+        ],
+        version=1,
+    )
 
     mock_cur_instance = MagicMock()
     mock_cur_instance.fetchone.return_value = ("quadriceps", "quadriceps", "machine")

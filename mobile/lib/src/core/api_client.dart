@@ -1393,6 +1393,8 @@ class ApiClient {
   Future<ProgramRequest> createPlayerProgramRequest({
     required String kind,
     String? dayName,
+    int? weekOrder,
+    int? dayOrder,
     String? exerciseId,
     String? replacementExerciseId,
     int? desiredWeeklyFrequency,
@@ -1402,6 +1404,8 @@ class ApiClient {
     final Map<String, dynamic> body = <String, dynamic>{
       'kind': kind,
       if (dayName != null) 'day_name': dayName,
+      if (weekOrder != null) 'week_order': weekOrder,
+      if (dayOrder != null) 'day_order': dayOrder,
       if (exerciseId != null) 'exercise_id': exerciseId,
       if (replacementExerciseId != null)
         'replacement_exercise_id': replacementExerciseId,
@@ -2004,6 +2008,8 @@ class ApiClient {
   /// Saves one complete working-set list as a Program edit.
   Future<TrainingProgram> editProgramDay({
     required String dayName,
+    required int weekOrder,
+    required int dayOrder,
     required int expectedActiveVersion,
     required List<ProgramEditExerciseEntry> exercises,
   }) async {
@@ -2014,6 +2020,8 @@ class ApiClient {
         '/programs/active/edits',
         data: <String, dynamic>{
           'day_name': dayName,
+          'week_order': weekOrder,
+          'day_order': dayOrder,
           'expected_active_version': expectedActiveVersion,
           'exercises': requestedExercises,
         },
@@ -2043,6 +2051,8 @@ class ApiClient {
     required String dayName,
     required String exerciseId,
     required String replacementExerciseId,
+    int weekOrder = 1,
+    int dayOrder = 1,
     bool allOccurrences = false,
     int? expectedActiveVersion,
   }) async {
@@ -2051,6 +2061,8 @@ class ApiClient {
         '/programs/active/substitutions',
         data: <String, dynamic>{
           'day_name': dayName,
+          'week_order': weekOrder,
+          'day_order': dayOrder,
           'exercise_id': exerciseId,
           'replacement_exercise_id': replacementExerciseId,
           'all_occurrences': allOccurrences,
@@ -2132,10 +2144,13 @@ class ApiClient {
   }
 
   /// Auto-regulated targets for one training day (`GET /workouts/prescription`).
-  Future<Prescription> prescription(int dayOrder) async {
+  Future<Prescription> prescription(int dayOrder, {int weekOrder = 1}) async {
     final response = await _send(
       () => _dio.get<dynamic>('/workouts/prescription',
-          queryParameters: <String, dynamic>{'day_order': dayOrder}),
+          queryParameters: <String, dynamic>{
+            'day_order': dayOrder,
+            'week_order': weekOrder,
+          }),
     );
     return _parseBody(response.data, Prescription.fromJson,
         'The service returned invalid prescription data.');

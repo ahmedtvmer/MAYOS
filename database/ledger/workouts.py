@@ -178,6 +178,8 @@ class LedgerWorkoutsMixin:
         performed_timezone: str | None = None,
         program_version: int | None = None,
         active_program_version_at_sync: int | None = None,
+        program_week_order: int | None = None,
+        program_day_order: int | None = None,
         captured_at: str | None = None,
         uploaded_at: str | None = None,
     ) -> None:
@@ -187,8 +189,8 @@ class LedgerWorkoutsMixin:
             INSERT INTO workout_sessions (
                 id, session_date, split_name, started_at, completed_at, session_notes, readiness_score,
                 client_session_id, performed_timezone, program_version, active_program_version_at_sync,
-                captured_at, uploaded_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                program_week_order, program_day_order, captured_at, uploaded_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 session_id,
@@ -202,11 +204,38 @@ class LedgerWorkoutsMixin:
                 performed_timezone,
                 program_version,
                 active_program_version_at_sync,
+                program_week_order,
+                program_day_order,
                 captured_at,
                 uploaded_at,
             ),
         )
         self._commit_ledger()
+
+    def completed_program_days(self, program_version: int) -> set[tuple[int, int]]:
+        """Distinct committed week/day positions recorded against one version."""
+        rows = self.conn.execute(
+            "SELECT DISTINCT program_week_order, program_day_order FROM workout_sessions"
+            " WHERE program_version = ? AND program_week_order IS NOT NULL"
+            " AND program_day_order IS NOT NULL",
+            (int(program_version),),
+        ).fetchall()
+        return {(int(row[0]), int(row[1])) for row in rows}
+
+    def latest_program_day_order(self, program_version: int, week_order: int) -> int | None:
+        """Last committed day order in one Program week and version."""
+        columns = {
+            row[1]
+            for row in self.conn.execute("PRAGMA table_info(workout_sessions)").fetchall()
+        }
+        ordering = "session_date DESC, rowid DESC" if "session_date" in columns else "rowid DESC"
+        row = self.conn.execute(
+            "SELECT program_day_order FROM workout_sessions"
+            " WHERE program_version = ? AND program_week_order = ?"
+            f" AND program_day_order IS NOT NULL ORDER BY {ordering} LIMIT 1",
+            (int(program_version), int(week_order)),
+        ).fetchone()
+        return int(row[0]) if row is not None else None
 
     def log_workout_set(
         self,
@@ -363,14 +392,14 @@ class LedgerWorkoutsMixin:
     def get_latest_committed_session(self) -> dict[str, Any] | None:
         """The player's most recent committed session, for Home's next day (#53).
 
-        Reads only the ledger identity columns. ``split_name`` is the day name
-        written at commit; ``day_order`` is not stored on the ledger, so it is
-        reported as null and the client matches the program day by name. Ordering
+        Reads the session's captured program version and week/day coordinates.
+        Older sessions without coordinates still include ``split_name`` for name matching. Ordering
         is by performed date, then commit start time, then rowid as a stable tie.
         """
         cursor = self.conn.cursor()
         cursor.execute("""
-            SELECT id, session_date, split_name, program_version
+            SELECT id, session_date, split_name, program_version,
+                   program_week_order, program_day_order
             FROM workout_sessions
             ORDER BY session_date DESC, started_at DESC, rowid DESC
             LIMIT 1
@@ -382,7 +411,8 @@ class LedgerWorkoutsMixin:
             "session_id": row[0],
             "session_date": row[1],
             "split_name": row[2],
-            "day_order": None,
+            "day_order": row[5],
+            "week_order": row[4],
             "program_version": row[3],
             "warmup_movements": self.list_session_warmup_movements(row[0]),
             "cardio": self.get_session_cardio(row[0]),

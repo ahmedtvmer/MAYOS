@@ -18,6 +18,8 @@ import '../../../providers.dart';
 class ProgramSubstitutionRequestPrefill {
   const ProgramSubstitutionRequestPrefill({
     required this.dayName,
+    required this.weekOrder,
+    required this.dayOrder,
     required this.exerciseId,
     required this.exerciseName,
     required this.replacementExerciseId,
@@ -25,6 +27,8 @@ class ProgramSubstitutionRequestPrefill {
   });
 
   final String dayName;
+  final int weekOrder;
+  final int dayOrder;
   final String exerciseId;
   final String exerciseName;
   final String replacementExerciseId;
@@ -97,6 +101,8 @@ Future<ProgramRequest> _createProgramRequest(
     ref.read(apiClientProvider).createPlayerProgramRequest(
           kind: draft.kind,
           dayName: draft.dayName,
+          weekOrder: draft.weekOrder,
+          dayOrder: draft.dayOrder,
           exerciseId: draft.exerciseId,
           replacementExerciseId: draft.replacementExerciseId,
           desiredWeeklyFrequency: draft.desiredWeeklyFrequency,
@@ -219,6 +225,8 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
         kind: _kind,
         reason: _reason.text.trim(),
         dayName: _kind == 'exercise_substitution' ? _day.text.trim() : null,
+        weekOrder: widget.substitution?.weekOrder ?? widget.initialDraft?.weekOrder,
+        dayOrder: widget.substitution?.dayOrder ?? widget.initialDraft?.dayOrder,
         exerciseId:
             _kind == 'exercise_substitution' ? _exercise.text.trim() : null,
         replacementExerciseId:

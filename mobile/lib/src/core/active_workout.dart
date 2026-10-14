@@ -824,6 +824,8 @@ class ActiveWorkout {
     this.commitAttempted = false,
     required this.startedAt,
     required this.dayOrder,
+    this.weekOrder = 1,
+    this.programWeekCount = 1,
     required this.dayName,
     required this.exercises,
     this.warmupMovements = const <ActiveWarmupMovement>[],
@@ -841,6 +843,8 @@ class ActiveWorkout {
     commitAttempted: json['commit_attempted'] as bool? ?? false,
     startedAt: json['started_at'] as String,
     dayOrder: (json['day_order'] as num).toInt(),
+    weekOrder: (json['week_order'] as num?)?.toInt() ?? 1,
+    programWeekCount: (json['program_week_count'] as num?)?.toInt() ?? 1,
     dayName: json['day_name'] as String? ?? 'Day',
     programVersion: (json['program_version'] as num?)?.toInt(),
     exercises: (json['exercises'] as List<dynamic>? ?? const <dynamic>[])
@@ -894,6 +898,10 @@ class ActiveWorkout {
 
   /// The program day it started from.
   final int dayOrder;
+  final int weekOrder;
+
+  /// Number of weeks in the program version captured by this workout.
+  final int programWeekCount;
   final String dayName;
 
   /// The program version the day came from; null when none was known, which
@@ -941,6 +949,8 @@ class ActiveWorkout {
     commitAttempted: commitAttempted ?? this.commitAttempted,
     startedAt: startedAt,
     dayOrder: dayOrder,
+    weekOrder: weekOrder,
+    programWeekCount: programWeekCount,
     dayName: dayName,
     programVersion: programVersion ?? this.programVersion,
     exercises: exercises ?? this.exercises,
@@ -958,6 +968,8 @@ class ActiveWorkout {
     if (commitAttempted) 'commit_attempted': true,
     'started_at': startedAt,
     'day_order': dayOrder,
+    'week_order': weekOrder,
+    'program_week_count': programWeekCount,
     'day_name': dayName,
     'program_version': programVersion,
     'exercises': <Map<String, dynamic>>[
@@ -1006,6 +1018,7 @@ class ActiveWorkout {
         _loggedWarmupMovements(warmupMovements);
     return <String, dynamic>{
       'day_order': dayOrder,
+      'week_order': weekOrder,
       'readiness': readiness,
       'session_notes': notes,
       'sets': loggedExercises,
@@ -1063,6 +1076,7 @@ class ActiveWorkout {
       performedTimezone: timezone,
       programVersion: version,
       dayOrder: dayOrder,
+      weekOrder: weekOrder,
       dayName: dayName,
       capturedAt: iso,
       exercises: <DraftExercise>[

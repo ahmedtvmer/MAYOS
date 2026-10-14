@@ -16,6 +16,8 @@ from database.migration_manager import INTAKE_DDL
 from database.migration_manager import ONBOARDING_ANALYTICS_DDL
 from database.migration_manager import PERFORMED_DATE_CORRECTIONS_DDL
 from database.migration_manager import PROGRAM_DRAFTS_DDL
+from database.migration_manager import PROGRAM_WEEKS_DDL
+from database.migration_manager import PROGRAM_VERSION_POSITIONS_DDL
 from database.migration_manager import SESSION_CARDIO_DDL
 from database.migration_manager import SESSION_WARMUP_SETS_DDL
 from database.migration_manager import WEIGHT_HISTORY_DDL
@@ -162,10 +164,12 @@ class SchemaMixin:
             CREATE TABLE IF NOT EXISTS program_days (
                 id TEXT PRIMARY KEY,
                 program_id TEXT NOT NULL,
+                week_id TEXT NOT NULL,
                 day_name TEXT NOT NULL,
                 day_order INTEGER NOT NULL,
                 warmup_json TEXT,
                 cardio TEXT,
+                FOREIGN KEY(week_id) REFERENCES program_weeks(id) ON DELETE CASCADE,
                 FOREIGN KEY(program_id) REFERENCES training_programs(id) ON DELETE CASCADE
             );
             CREATE TABLE IF NOT EXISTS program_exercises (
@@ -201,6 +205,8 @@ class SchemaMixin:
                 performed_timezone TEXT,
                 program_version INTEGER,
                 active_program_version_at_sync INTEGER,
+                program_week_order INTEGER,
+                program_day_order INTEGER,
                 captured_at TEXT,
                 uploaded_at TEXT,
                 edited_at TEXT
@@ -319,6 +325,8 @@ class SchemaMixin:
                 *CHECKPOINT_REVIEWS_DDL,
                 *DELOAD_CHOICES_DDL,
                 *PROGRAM_DRAFTS_DDL,
+                *PROGRAM_WEEKS_DDL,
+                *PROGRAM_VERSION_POSITIONS_DDL,
                 *WEIGHT_HISTORY_DDL,
                 *EQUIPMENT_ACCESS_DDL,
             )
@@ -574,6 +582,8 @@ class SchemaMixin:
                     kind TEXT NOT NULL CHECK (kind IN ('exercise_substitution', 'split_change')),
                     program_version INTEGER NOT NULL,
                     day_name TEXT,
+                    week_order INTEGER,
+                    day_order INTEGER,
                     exercise_id TEXT,
                     replacement_exercise_id TEXT,
                     desired_weekly_frequency INTEGER,
@@ -785,6 +795,7 @@ class SchemaMixin:
             self._ensure_model_usage_turn_id_column()
             self._ensure_model_usage_cached_input_tokens_column()
             self._ensure_linked_sign_in_account_provider()
+            self._ensure_program_request_week_columns()
             self._ensure_coach_invites_revoked_at()
             self.catalog_conn.execute("DROP TRIGGER IF EXISTS first_touch_acquisition_no_update")
             self.catalog_conn.execute(
@@ -804,6 +815,15 @@ class SchemaMixin:
             )
             self._commit_catalog()
             self._account_schema_ready = True
+
+    def _ensure_program_request_week_columns(self) -> None:
+        columns = {
+            row[1] for row in self.catalog_conn.execute("PRAGMA table_info(program_requests)")
+        }
+        if "week_order" not in columns:
+            self.catalog_conn.execute("ALTER TABLE program_requests ADD COLUMN week_order INTEGER")
+        if "day_order" not in columns:
+            self.catalog_conn.execute("ALTER TABLE program_requests ADD COLUMN day_order INTEGER")
 
     def _ensure_assignment_notice_summary_column(self) -> None:
         columns = self._table_columns(self.catalog_conn.cursor(), "assignment_notices")

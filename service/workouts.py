@@ -92,10 +92,10 @@ class SyncMetadata:
     captured_offline: bool = False
 
 
-def day_plan_from(program: Any, day_order: int) -> Any:
+def day_plan_from(program: Any, day_order: int, week_order: int = 1) -> Any:
     """The requested training day, or ``DayPlanNotFoundError`` (shared by service and router)."""
     for day in program.days:
-        if day.day_order == day_order:
+        if day.day_order == day_order and day.week_order == week_order:
             return day
     raise DayPlanNotFoundError(day_order)
 
@@ -559,6 +559,8 @@ def _persist_session(
         performed_timezone=sync.performed_timezone,
         program_version=sync.program_version,
         active_program_version_at_sync=active_program_version_at_sync,
+        program_week_order=int(getattr(day_plan, "week_order", 1)),
+        program_day_order=int(day_plan.day_order),
         captured_at=sync.captured_at,
         uploaded_at=now_iso,
     )
@@ -949,6 +951,7 @@ def commit_logged_session(
     sets_by_exercise: list[dict[str, Any]],
     *,
     sync: SyncMetadata,
+    week_order: int = 1,
     account_id: str | None = None,
     now_iso: str | None = None,
     ledger: Any | None = None,
@@ -998,7 +1001,7 @@ def commit_logged_session(
                 active_version = program.version
                 resolved = resolve_sync_program(db, ledger, program, sync.program_version)
                 committed_program = resolved
-                day_plan = day_plan_from(resolved, day_order)
+                day_plan = day_plan_from(resolved, day_order, week_order)
 
                 body = _persist_session(
                     db,

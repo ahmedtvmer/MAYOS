@@ -31,8 +31,82 @@ from service import coach_history as coach_history_service
 from service import programs as programs_service
 from svc.app import create_app
 from svc.dependencies import get_db
+from svc.schemas import (
+    CoachProgramDraftIn,
+    ProgramDraftDayIn,
+    ProgramDraftWeekIn,
+    SessionCommitIn,
+)
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
+
+
+def test_multiweek_draft_accepts_flat_compatibility_days_beyond_one_week():
+    days = [
+        {
+            "day_name": f"Day {index}",
+            "day_order": (index - 1) % 3 + 1,
+            "week_order": 1 if index <= 3 else 2,
+            "exercises": [],
+        }
+        for index in range(1, 7)
+    ]
+    draft = CoachProgramDraftIn.model_validate(
+        {
+            "days": days,
+            "weeks": [
+                {"week_name": "Base", "week_order": 1, "days": days[:3]},
+                {"week_name": "Build", "week_order": 2, "days": days[3:]},
+            ],
+        }
+    )
+    assert len(draft.days) == 6
+    assert len(draft.weeks) == 2
+
+    with pytest.raises(ValueError, match="at most 5 training days per week"):
+        CoachProgramDraftIn.model_validate({"days": days})
+
+
+def test_program_week_order_schemas_enforce_the_twelve_week_limit():
+    with pytest.raises(ValueError):
+        ProgramDaySchema.model_validate(
+            {
+                "day_name": "Day 1",
+                "day_order": 1,
+                "week_order": 13,
+                "exercises": [
+                    {
+                        "exercise_id": "sq",
+                        "exercise_name": "Squat",
+                        "target_reps_min": 5,
+                        "target_reps_max": 8,
+                    }
+                ],
+            }
+        )
+    with pytest.raises(ValueError):
+        ProgramDraftDayIn(week_order=13)
+    with pytest.raises(ValueError):
+        ProgramDraftWeekIn(week_order=13)
+    with pytest.raises(ValueError):
+        SessionCommitIn.model_validate(
+            {
+                "day_order": 1,
+                "week_order": 13,
+                "readiness": 3,
+                "sets": [
+                    {
+                        "exercise": {
+                            "exercise_id": "sq",
+                            "exercise_name": "Squat",
+                            "target_reps_min": 5,
+                            "target_reps_max": 8,
+                        },
+                        "sets": [{"weight_kg": 20, "reps": 5}],
+                    }
+                ],
+            }
+        )
 
 
 @pytest.fixture
@@ -359,6 +433,42 @@ def test_generate_draft_rejects_split_invalid_for_frequency_without_writes(api, 
     with db.open_ledger(player["ledger_id"]) as ledger:
         assert ledger.conn.execute("SELECT COUNT(*) FROM training_programs").fetchone()[0] == 0
     assert client.get("/assignments/notices", headers=player_headers).json()["notices"] == []
+def test_coach_can_publish_and_read_a_multiweek_program(api):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _coach_id, _player_id = _assigned_player(api)
+    draft_path = _program_draft_path(assignment_id)
+    week_one_day = _one_day_draft()["days"][0]
+    week_two_day = copy.deepcopy(week_one_day)
+    week_two_day["day_name"] = "Full A Build"
+    week_two_day["exercises"][0]["target_sets"] = 4
+    draft = {
+        "program_name": "Two-week block",
+        "split_type": "Full Body",
+        "weekly_frequency": 1,
+        "instructions": "",
+        "days": [],
+        "weeks": [
+            {"week_name": "Base", "week_order": 1, "days": [week_one_day]},
+            {"week_name": "Build", "week_order": 2, "days": [week_two_day]},
+        ],
+    }
+
+    saved = client.post(draft_path, headers=coach_headers, json=draft)
+    assert saved.status_code == 200, saved.text
+    published = client.post(f"{draft_path}/publish", headers=coach_headers)
+    assert published.status_code == 200, published.text
+    assert [week["week_name"] for week in published.json()["weeks"]] == ["Base", "Build"]
+    assert [day["week_order"] for day in published.json()["days"]] == [1, 2]
+
+    active = client.get("/programs/active", headers=player_headers)
+    assert active.status_code == 200, active.text
+    assert (active.json()["current_week"], active.json()["week_count"]) == (1, 2)
+    assert active.json()["weeks"][1]["days"][0]["exercises"][0]["target_sets"] == 4
+    db.switch_user("p1")
+    assert [week.week_name for week in db.ledger.get_active_program().weeks] == [
+        "Base",
+        "Build",
+    ]
 
 
 def test_publish_notice_summarizes_previous_automatic_program(api):
@@ -630,6 +740,77 @@ def test_approve_active_program_rejects_stale_version_without_changes(api, recor
     assert not [event for event in recording_analytics.events if event["event"] == "coach_program_published"]
 
 
+def test_new_coach_draft_restarts_position_and_active_approval_carries_it(api, monkeypatch):
+    client, db, _ = api
+    coach_headers, _, assignment_id, coach_account_id, _ = _assigned_player(api)
+    _coach_generation(monkeypatch)
+    initial = _publish(
+        client,
+        coach_headers,
+        assignment_id,
+        split_id="upper_lower",
+        frequency_override=3,
+    )
+    assert initial.status_code == 200, initial.text
+
+    db.switch_user("p1")
+    existing = _three_week_program_data(db.ledger.get_active_program().model_dump())
+    db.ledger.save_training_program(
+        existing, published_by_coach_account_id=coach_account_id
+    )
+    active = db.ledger.get_active_program()
+    _record_week_two_day_three(db.ledger, active.version, "before-coach-draft")
+    position = db.ledger.get_program_position(active)
+    assert (position.current_week, position.next_day_order) == (2, 3)
+
+    draft = _one_day_draft()
+    template = draft["days"][0]
+    weeks = []
+    for week_order, week_name in enumerate(("Base", "Build", "Peak"), start=1):
+        week_days = []
+        for day_order in range(1, 4):
+            day = copy.deepcopy(template)
+            day.update(
+                day_name=f"Full {day_order}",
+                day_order=day_order,
+                week_order=week_order,
+            )
+            week_days.append(day)
+        weeks.append(
+            {"week_name": week_name, "week_order": week_order, "days": week_days}
+        )
+    draft.update(
+        weekly_frequency=3,
+        weeks=weeks,
+        days=[day for week in weeks for day in week["days"]],
+    )
+    draft_path = _program_draft_path(assignment_id)
+    saved = client.post(draft_path, headers=coach_headers, json=draft)
+    assert saved.status_code == 200, saved.text
+    published = client.post(f"{draft_path}/publish", headers=coach_headers)
+    assert published.status_code == 200, published.text
+
+    db.switch_user("p1")
+    active = db.ledger.get_active_program()
+    position = db.ledger.get_program_position(active)
+    assert (position.current_week, position.next_day_order) == (1, 1)
+
+    _record_week_two_day_three(db.ledger, active.version, "before-active-approval")
+    position = db.ledger.get_program_position(active)
+    assert (position.current_week, position.next_day_order) == (2, 3)
+    approved = client.post(
+        f"/coach/assignments/{assignment_id}/program/approve",
+        headers=coach_headers,
+        json={"expected_active_version": active.version},
+    )
+    assert approved.status_code == 200, approved.text
+
+    db.switch_user("p1")
+    active = db.ledger.get_active_program()
+    position = db.ledger.get_program_position(active)
+    assert (position.current_week, position.next_day_order) == (2, 3)
+
+
 def test_approve_invalid_active_program_returns_issues_without_changes(api, recording_analytics):
     client, db, _ = api
     coach_headers, player_headers, assignment_id, _, player_account_id = _assigned_player(api)
@@ -836,6 +1017,31 @@ def test_generated_draft_can_be_edited_and_published(api, monkeypatch):
     assert published.json()["days"][0]["day_name"] == "Coach edited day"
 
 
+def test_single_week_publish_preserves_frequency_and_day_orders(api, monkeypatch):
+    client, _, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+    _coach_generation(monkeypatch)
+    generated = _generate_draft(
+        client, coach_headers, assignment_id, frequency_override=2
+    )
+    assert generated.status_code == 200, generated.text
+    draft = generated.json()["draft"]
+    draft["weekly_frequency"] = 1
+    draft["days"][1]["day_order"] = 3
+    saved = client.put(
+        _program_draft_path(assignment_id), headers=coach_headers, json=draft
+    )
+    assert saved.status_code == 200, saved.text
+
+    published = client.post(
+        f"{_program_draft_path(assignment_id)}/publish", headers=coach_headers
+    )
+
+    assert published.status_code == 200, published.text
+    assert published.json()["weekly_frequency"] == 1
+    assert [day["day_order"] for day in published.json()["days"]] == [1, 3]
+
+
 def test_generate_draft_requires_confirmation_to_replace_existing_draft(api, monkeypatch):
     client, db, _ = api
     coach_headers, _, assignment_id, _, _ = _assigned_player(api)
@@ -973,6 +1179,46 @@ def _one_day_draft(exercise_id="sq", **exercise_fields):
         "instructions": "Keep the reps controlled.",
         "days": [{"day_name": "Full A", "day_order": 1, "exercises": [exercise]}],
     }
+
+
+def _three_week_program_data(program_data):
+    program = copy.deepcopy(program_data)
+    for key in ("id", "version", "created_at"):
+        program.pop(key, None)
+    template_days = program["days"]
+    weeks = []
+    for week_order, week_name in enumerate(("Base", "Build", "Peak"), start=1):
+        days = []
+        for day_order, template in enumerate(template_days, start=1):
+            day = copy.deepcopy(template)
+            day.pop("id", None)
+            day.update(day_order=day_order, week_order=week_order)
+            for exercise in day.get("exercises", []):
+                exercise.pop("id", None)
+            days.append(day)
+        weeks.append({"week_name": week_name, "week_order": week_order, "days": days})
+    program["weekly_frequency"] = len(template_days)
+    program["weeks"] = weeks
+    program["days"] = [day for week in weeks for day in week["days"]]
+    return program
+
+
+def _record_week_two_day_three(ledger, version, prefix):
+    for index, (week_order, day_order) in enumerate(
+        ((1, 1), (1, 2), (1, 3), (2, 1), (2, 2)),
+        start=1,
+    ):
+        session_date = f"2026-10-{index:02}"
+        ledger.log_workout_session(
+            f"{prefix}-{index}",
+            session_date,
+            f"Full {day_order}",
+            f"{session_date}T10:00:00+00:00",
+            f"{session_date}T11:00:00+00:00",
+            program_version=version,
+            program_week_order=week_order,
+            program_day_order=day_order,
+        )
 
 
 def _create_substitution_request(client, player_headers, exercise_id="sq"):
@@ -1325,9 +1571,18 @@ def test_copy_active_program_to_draft_preserves_the_complete_program(api):
 
     assert copied.status_code == 200, copied.text
     expected_draft = _without_coach_program_labels(active)
-    for metadata in ("version", "provenance", "active_since"):
+    for metadata in (
+        "version",
+        "provenance",
+        "active_since",
+        "current_week",
+        "week_count",
+    ):
         expected_draft.pop(metadata, None)
-    for day in expected_draft["days"]:
+    expected_days = expected_draft["days"] + [
+        day for week in expected_draft["weeks"] for day in week["days"]
+    ]
+    for day in expected_days:
         for exercise in day["exercises"]:
             exercise["target_rir"] = 10 - exercise.pop("target_rpe")
     expected_draft["generation_options"] = None
@@ -2257,7 +2512,10 @@ def _without_coach_program_labels(program):
         "load_type",
         "coach_equipment",
     )
-    for day in stripped["days"]:
+    days = stripped["days"] + [
+        day for week in stripped.get("weeks", []) for day in week["days"]
+    ]
+    for day in days:
         for exercise in day["exercises"]:
             for field in display_fields:
                 exercise.pop(field, None)

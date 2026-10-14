@@ -46,6 +46,7 @@ from agent.program_blueprints import (
     experience_level_for_training_age,
 )
 from agent.program_rules import SPLIT_FREQUENCY_NAMES, get_split_plan, match_split_keyword
+from agent.program_weeks import normalize_program_weeks
 from agent.prompts import (
     ARABIC_CLINICAL_SAFEGUARD_RESPONSE,
     ARABIC_DIAGNOSIS_SAFEGUARD_RESPONSE,
@@ -88,6 +89,7 @@ from database.exercise_library.names import near_miss_exercise_ids
 from service import programs as programs_service
 from service.program_requests import MAX_REASON_CHARS
 from service.program_substitution import ProgramSubstitution, substitute_program_exercise
+from agent.program_weeks import find_program_day
 from utils.logger import MyosLogger
 from utils.equipment_access import COMMERCIAL_GYM, equipment_access_allows, map_equipment_access
 from utils.model_downloader import llm, structured_output_model
@@ -2308,10 +2310,13 @@ def _target_is_name_like(target_desc: str, candidates: list[dict[str, Any]]) -> 
     return False
 
 
-def _requested_substitution_day(program: Any, query: str) -> str | None:
+def _requested_substitution_day(
+    program: Any, query: str, days: list[Any] | None = None
+) -> str | None:
     """Resolve a day only when the message uses an explicit day reference."""
     normalized_query = query.strip().rstrip(".!?,").casefold()
-    for day in sorted(program.days, key=lambda candidate: len(candidate.day_name), reverse=True):
+    available_days = days if days is not None else program.days
+    for day in sorted(available_days, key=lambda candidate: len(candidate.day_name), reverse=True):
         day_name = day.day_name.strip()
         base_name = re.sub(r"\s+day$", "", day_name, flags=re.IGNORECASE)
         names = {day_name, base_name}
@@ -2331,28 +2336,43 @@ def _requested_substitution_day(program: Any, query: str) -> str | None:
 
 
 def _source_request_fields(
-    program: Any, source_name: str, requested_day: str | None
-) -> tuple[str | None, str | None]:
+    program: Any,
+    source_name: str,
+    requested_day: str | None,
+    days: list[Any],
+) -> tuple[str | None, str | None, int | None, int | None]:
     if not program or not source_name:
-        return None, None
+        return None, None, None, None
     resolved_source = expand_fitness_abbreviations(
         _remove_day_suffix(source_name.strip(), requested_day)
     )
     source_stem = clean_movement_stem(resolved_source.lower())
     matches = [
         (day, exercise)
-        for day in program.days
+        for day in days
         if requested_day is None or day.day_name == requested_day
         for exercise in day.exercises
         if _substitution_source_similarity(resolved_source, source_stem, exercise) == 1.0
     ]
     exercise_ids = {str(exercise.exercise_id) for _, exercise in matches}
     if len(exercise_ids) != 1:
-        return None, None
+        return None, None, None, None
     exercise_id = exercise_ids.pop()
-    matching_days = {day.day_name for day, exercise in matches if str(exercise.exercise_id) == exercise_id}
-    day_name = next(iter(matching_days)) if len(matching_days) == 1 else None
-    return day_name, exercise_id
+    matching_positions = {
+        (day.week_order, day.day_order)
+        for day, exercise in matches
+        if str(exercise.exercise_id) == exercise_id
+    }
+    if len(matching_positions) != 1:
+        return None, None, None, None
+    week_order, day_order = next(iter(matching_positions))
+    day_name = next(
+        day.day_name
+        for day, exercise in matches
+        if str(exercise.exercise_id) == exercise_id
+        and (day.week_order, day.day_order) == (week_order, day_order)
+    )
+    return day_name, exercise_id, week_order, day_order
 
 
 def _substitution_request_suggestion(
@@ -2361,8 +2381,26 @@ def _substitution_request_suggestion(
     source_name = str(metadata.get("source_exercise") or "").strip()
     target_name = str(metadata.get("target_exercise") or "").strip()
     program = ledger.get_active_program()
-    requested_day = _requested_substitution_day(program, query) if program else None
-    day_name, exercise_id = _source_request_fields(program, source_name, requested_day)
+    current_week = ledger.get_program_position(program).current_week if program else 1
+    normalized_weeks = normalize_program_weeks(program) if program else []
+    current_days = [
+        day for day in (program.days if program else []) if day.week_order == current_week
+    ]
+    requested_day = _requested_substitution_day(program, query, current_days) if program else None
+    requested_day_data = (
+        find_program_day(normalized_weeks, current_week, day_name=requested_day)
+        if requested_day is not None
+        else None
+    )
+    if requested_day_data is not None:
+        current_days = [
+            day
+            for day in current_days
+            if day.day_order == requested_day_data["day_order"]
+        ]
+    day_name, exercise_id, week_order, day_order = _source_request_fields(
+        program, source_name, requested_day, current_days
+    )
     replacement_name = (
         expand_fitness_abbreviations(_remove_day_suffix(target_name, requested_day))
         if target_name
@@ -2378,6 +2416,8 @@ def _substitution_request_suggestion(
     return {
         "kind": "exercise_substitution",
         "day_name": day_name,
+        "week_order": week_order,
+        "day_order": day_order,
         "exercise_id": exercise_id,
         "replacement_exercise_id": replacement_id,
         "reason": _request_suggestion_reason(query),
@@ -2557,8 +2597,17 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
     equipment_access = map_equipment_access(player_profile.get("equipment_access", COMMERCIAL_GYM))
     experience_level = experience_level_for_training_age(player_profile.get("training_age_years", 0.0))
 
-    requested_day_name = _requested_substitution_day(active_program, query)
-
+    current_week = ledger.get_program_position(active_program).current_week
+    current_week_days = [
+        day
+        for day in active_program.days
+        if day.week_order == current_week
+    ]
+    if not current_week_days:
+        current_week_days = active_program.days
+    requested_day_name = _requested_substitution_day(
+        active_program, query, current_week_days
+    )
     raw_source = source_name
     raw_target = _remove_day_suffix(target_desc, requested_day_name)
     target_desc = raw_target
@@ -2591,9 +2640,13 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
         if resolved_tgt:
             target_desc = expand_fitness_abbreviations(resolved_tgt)
 
-    matched_ex, target_day, best_similarity = _match_substitution_source(active_program.days, source_name)
+    matched_ex, target_day, best_similarity = _match_substitution_source(
+        current_week_days, source_name
+    )
     if requested_day_name:
-        requested_day = next(day for day in active_program.days if day.day_name == requested_day_name)
+        requested_day = next(
+            day for day in current_week_days if day.day_name == requested_day_name
+        )
         requested_match = _match_substitution_source([requested_day], source_name)
         if requested_match[0] and requested_match[2] >= SUBSTITUTION_SOURCE_SIMILARITY_THRESHOLD:
             matched_ex, target_day, best_similarity = requested_match
@@ -2605,7 +2658,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
     ):
         matching_days = [
             day
-            for day in active_program.days
+            for day in current_week_days
             if any(str(ex.exercise_id) == str(matched_ex.exercise_id) for ex in day.exercises)
         ]
         if len(matching_days) > 1:
@@ -2616,7 +2669,7 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
     if not matched_ex or best_similarity < SUBSTITUTION_SOURCE_SIMILARITY_THRESHOLD:
         routine_exercises = [
             (day, exercise)
-            for day in active_program.days
+            for day in current_week_days
             for exercise in day.exercises
         ]
         descriptions = describe_exercises(
@@ -2866,6 +2919,8 @@ def exercise_substitution_node(state: AssistantState, config: dict[str, Any] | N
         active_program,
         ProgramSubstitution(
             day_name=target_day.day_name,
+            week_order=current_week,
+            day_order=target_day.day_order,
             exercise_id=matched_ex.exercise_id,
             replacement_exercise_id=str(replacement["id"]),
         ),

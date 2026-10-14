@@ -6,6 +6,8 @@ import json
 import logging
 from typing import Any
 
+from agent.program_weeks import normalize_program_weeks
+
 logger = logging.getLogger(__name__)
 
 # Four times the stall-alert threshold of eight gives a useful trend window
@@ -106,12 +108,14 @@ def recount_assignment(db: Any, assignment: dict[str, Any]) -> tuple[int, str | 
         if program is None or program.version is None:
             length, window_start = 0, None
         else:
+            weeks = normalize_program_weeks(program)
             exercise_ids = sorted(
                 {
-                    str(exercise.exercise_id)
-                    for day in program.days
-                    for exercise in day.exercises
-                    if exercise.exercise_id
+                    str(exercise["exercise_id"])
+                    for week in weeks
+                    for day in week["days"]
+                    for exercise in day["exercises"]
+                    if exercise["exercise_id"]
                 }
             )
             sessions = ledger.stall_recount_facts(STALL_LOOKBACK_SESSIONS)

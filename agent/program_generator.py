@@ -708,7 +708,9 @@ def generate_program_pipeline(
         ledger.update_player_frequency(weekly_frequency)
     program, markdown = _build_program(profile, request, weekly_frequency, ledger)
     ledger.save_training_program(
-        program.model_dump(), published_by_coach_account_id=published_by_coach_account_id
+        program.model_dump(),
+        published_by_coach_account_id=published_by_coach_account_id,
+        starting_position=None,
     )
     return program, markdown
 

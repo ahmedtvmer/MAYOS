@@ -2,7 +2,10 @@
 
 from typing import Any
 
+from pydantic import BaseModel
+
 from agent.program_generator import generate_program_pipeline
+from agent.program_weeks import flatten_program_days, normalize_program_weeks
 from service._base import ledger_scope
 from service import analytics
 from service.program_analytics import ProgramAnalyticsActor, capture_program_exercise_swapped, capture_program_generated
@@ -44,18 +47,22 @@ def with_library_equipment(program: Any, db: Any) -> dict[str, Any]:
     the program so an Active workout created from a cached program has the same
     equipment facts as a newly generated one.
     """
-    payload = program.model_dump() if hasattr(program, "model_dump") else dict(program)
-    for day in payload.get("days", []):
-        program_movements = [
-            *day.get("exercises", []),
-            *day.get("warmup_exercises", []),
-        ]
-        for exercise in program_movements:
-            entry = db.get_exercise_library_entry(
-                str(exercise.get("exercise_id", ""))
-            )
-            if entry is not None:
-                exercise["equipment"] = entry.get("equipment")
+    payload = program.model_dump() if isinstance(program, BaseModel) else dict(program)
+    weeks = normalize_program_weeks(payload)
+    for week in weeks:
+        for day in week["days"]:
+            program_movements = [
+                *day.get("exercises", []),
+                *day.get("warmup_exercises", []),
+            ]
+            for exercise in program_movements:
+                entry = db.get_exercise_library_entry(
+                    str(exercise.get("exercise_id", ""))
+                )
+                if entry is not None:
+                    exercise["equipment"] = entry.get("equipment")
+    payload["weeks"] = weeks
+    payload["days"] = flatten_program_days(weeks)
     return payload
 
 

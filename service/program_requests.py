@@ -45,6 +45,7 @@ from service.program_substitution import (
     SubstitutionErrorCode,
     substitute_program_exercise,
 )
+from agent.program_weeks import find_program_day, normalize_program_weeks
 
 logger = logging.getLogger(__name__)
 
@@ -102,15 +103,34 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _find_day(program: Any, day_name: Any) -> Any:
-    return next((day for day in program.days if day.day_name == day_name), None)
-
-
-def _day_contains(program: Any, day_name: Any, exercise_id: Any) -> bool:
-    day = _find_day(program, day_name)
+def _day_contains(
+    program: Any,
+    week_order: Any,
+    day_order: Any,
+    exercise_id: Any,
+    *,
+    fallback_week_order: int = 1,
+    day_name: str | None = None,
+) -> bool:
+    weeks = normalize_program_weeks(program)
+    if week_order is None or day_order is None:
+        target_week_order = fallback_week_order
+        target_day_order = None
+    else:
+        target_week_order = int(week_order)
+        target_day_order = int(day_order)
+    day = find_program_day(
+        weeks,
+        target_week_order,
+        day_order=target_day_order,
+        day_name=day_name,
+    )
     if day is None:
         return False
-    return any(str(exercise.exercise_id) == str(exercise_id) for exercise in day.exercises)
+    return any(
+        str(exercise["exercise_id"]) == str(exercise_id)
+        for exercise in day["exercises"]
+    )
 
 
 def _request_exercise_name(
@@ -315,6 +335,7 @@ def create_request(
             )
 
         day_name = exercise_id = replacement_exercise_id = None
+        week_order = day_order = None
         desired_weekly_frequency = None
         desired_split_preference = None
 
@@ -332,12 +353,35 @@ def create_request(
                     "program_request.same_replacement.v1",
                     "Choose a different replacement exercise.",
                 )
-            if _find_day(active, day_name) is None:
+            progress = ledger.get_program_position(active)
+            week_order = payload.get("week_order") or progress.current_week
+            weeks = normalize_program_weeks(active)
+            if payload.get("day_order") is not None:
+                day_order = int(payload["day_order"])
+                day = find_program_day(
+                    weeks,
+                    int(week_order),
+                    day_order=day_order,
+                    day_name=day_name,
+                )
+            else:
+                day = find_program_day(
+                    weeks, int(week_order), day_name=day_name
+                )
+                day_order = day["day_order"] if day else None
+            if day is None:
                 return _refusal(
                     "program_request.day_not_in_program.v1",
                     "That day is not part of your current program.",
                 )
-            if not _day_contains(active, day_name, exercise_id):
+            if not _day_contains(
+                active,
+                week_order,
+                day_order,
+                exercise_id,
+                fallback_week_order=int(week_order),
+                day_name=day_name,
+            ):
                 return _refusal(
                     "program_request.exercise_not_in_day.v1",
                     "That exercise is not in that day of your current program.",
@@ -387,6 +431,8 @@ def create_request(
             desired_split_preference=desired_split_preference,
             reason=reason,
             now_iso=now_iso,
+            week_order=week_order,
+            day_order=day_order,
         )
         email_sent = _notify_coach(db, coach_account_id, assignment["assignment_id"], account["username"], now_iso)
 
@@ -492,7 +538,15 @@ def apply_request(
             or player_controls_program(db, ledger, request["player_account_id"])
         )
         if not stale and request["kind"] == EXERCISE_SUBSTITUTION:
-            stale = not _day_contains(active, request["day_name"], request["exercise_id"])
+            current_week = ledger.get_program_position(active).current_week
+            stale = not _day_contains(
+                active,
+                request.get("week_order"),
+                request.get("day_order"),
+                request["exercise_id"],
+                fallback_week_order=current_week,
+                day_name=request.get("day_name"),
+            )
         if stale:
             return _refusal("program_request.stale.v1", STALE_REQUEST_ERROR, stale=True)
         if (
@@ -552,6 +606,8 @@ def apply_request(
                     active,
                     ProgramSubstitution(
                         day_name=request["day_name"],
+                        week_order=request["week_order"],
+                        day_order=request["day_order"],
                         exercise_id=request["exercise_id"],
                         replacement_exercise_id=request["replacement_exercise_id"],
                         published_by_coach_account_id=coach_account_id,

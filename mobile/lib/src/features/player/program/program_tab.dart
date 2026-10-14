@@ -24,6 +24,7 @@ import '../../../core/workout_storage.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import '../assignment/program_request_dialog.dart';
+import '../dashboard/home_planning.dart';
 import '../exercise_picker_dialog.dart';
 import '../workout/active_workout_prompt.dart';
 import '../workout/deload_banner.dart';
@@ -37,6 +38,8 @@ enum _SwapDirection { apply, undo }
 class _ProgramSwap {
   const _ProgramSwap({
     required this.dayName,
+    required this.weekOrder,
+    required this.dayOrder,
     required this.sourceId,
     required this.sourceName,
     required this.replacement,
@@ -45,6 +48,8 @@ class _ProgramSwap {
   });
 
   final String dayName;
+  final int weekOrder;
+  final int dayOrder;
   final String sourceId;
   final String sourceName;
   final ExerciseCatalogEntry replacement;
@@ -363,6 +368,8 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     await _performProgramSwap(
       _ProgramSwap(
         dayName: day.dayName,
+        weekOrder: day.weekOrder,
+        dayOrder: day.dayOrder,
         sourceId: exercise.exerciseId,
         sourceName: exercise.exerciseName,
         replacement: replacement,
@@ -518,6 +525,8 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       builder: (BuildContext context) => ProgramRequestDialog.forSubstitution(
         substitution: ProgramSubstitutionRequestPrefill(
           dayName: day.dayName,
+          weekOrder: day.weekOrder,
+          dayOrder: day.dayOrder,
           exerciseId: exercise.exerciseId,
           exerciseName: exercise.exerciseName,
           replacementExerciseId: replacement.id,
@@ -542,6 +551,8 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       await ref.read(apiClientProvider).createPlayerProgramRequest(
             kind: draft.kind,
             dayName: draft.dayName,
+            weekOrder: draft.weekOrder,
+            dayOrder: draft.dayOrder,
             exerciseId: draft.exerciseId,
             replacementExerciseId: draft.replacementExerciseId,
             desiredWeeklyFrequency: draft.desiredWeeklyFrequency,
@@ -691,6 +702,8 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     } else {
       mutation = await api.substituteProgramExercise(
         dayName: swap.dayName,
+        weekOrder: swap.weekOrder,
+        dayOrder: swap.dayOrder,
         exerciseId: swap.sourceId,
         replacementExerciseId: swap.replacement.id,
         allOccurrences: swap.allOccurrences,
@@ -784,6 +797,8 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     final TrainingProgram updated =
         await ref.read(apiClientProvider).editProgramDay(
               dayName: day.dayName,
+              weekOrder: day.weekOrder,
+              dayOrder: day.dayOrder,
               expectedActiveVersion: expectedVersion,
               exercises: exercises,
             );
@@ -844,6 +859,16 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   void _openExercise(ProgramDay day, ProgramExercise exercise) {
     context
         .push('$exerciseDetailPath/${exercise.exerciseId}?day=${day.dayOrder}');
+  }
+
+  ProgramDay? _nextWorkoutDay(TrainingProgram program) {
+    if (program.weekCount <= 1) return null;
+    final List<TrainedDay> trained = ref
+        .read(draftSyncServiceProvider)
+        .drafts
+        .map(TrainedDay.fromDraft)
+        .toList(growable: false);
+    return selectNextDay(program, trained);
   }
 
   @override
@@ -911,6 +936,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         onAction: () => context.push(chatPath),
       );
     }
+    final ProgramDay? nextWorkoutDay = _nextWorkoutDay(program);
     final MayosThemeExtension c = MayosTheme.of(context);
     final ({
       String message,
@@ -964,6 +990,16 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
             style:
                 MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           ),
+          if (program.weekCount > 1) ...<Widget>[
+            const SizedBox(height: MayosSpacing.xs),
+            Text(
+              displayCopyOf(context)
+                  .programWeekLabel(program.currentWeek, program.weekCount),
+              key: const ValueKey<String>('program.current_week'),
+              style: MayosTypography.of(context).bodySecondary
+                  .copyWith(color: c.textSecondary),
+            ),
+          ],
           if (program.isCoachPublished) ...<Widget>[
             const SizedBox(height: MayosSpacing.xs),
             _ProvenanceLabel(
@@ -1001,13 +1037,32 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
             ),
           ),
           const SizedBox(height: MayosSpacing.lg),
-          for (final ProgramDay day in program.days)
+          for (final ProgramDay day in program.days) ...<Widget>[
+            if (program.weekCount > 1 && day.dayOrder == 1) ...<Widget>[
+              Padding(
+                padding: const EdgeInsets.only(bottom: MayosSpacing.xs),
+                child: Text(
+                  program.weeks
+                      .firstWhere((ProgramWeek week) =>
+                          week.weekOrder == day.weekOrder)
+                      .weekName,
+                  style: MayosTypography.of(context).sectionHeading
+                      .copyWith(color: c.textPrimary),
+                ),
+              ),
+            ],
             Padding(
               padding: const EdgeInsets.only(bottom: MayosSpacing.md),
               child: MayosCard(
                 padding: EdgeInsets.zero,
                 child: ExpansionTile(
-                  initiallyExpanded: day.dayOrder == 1,
+                  key: ValueKey<String>(
+                    'program_day_${day.weekOrder}_${day.dayOrder}',
+                  ),
+                  initiallyExpanded: program.weekCount > 1
+                      ? nextWorkoutDay?.weekOrder == day.weekOrder &&
+                          nextWorkoutDay?.dayOrder == day.dayOrder
+                      : day.dayOrder == 1,
                   tilePadding:
                       const EdgeInsets.symmetric(horizontal: MayosSpacing.md),
                   childrenPadding: const EdgeInsets.fromLTRB(
@@ -1024,6 +1079,14 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
                               .copyWith(color: c.textPrimary),
                         ),
                       ),
+                      if (program.weekCount > 1 &&
+                          nextWorkoutDay?.weekOrder == day.weekOrder &&
+                          nextWorkoutDay?.dayOrder == day.dayOrder)
+                        Icon(
+                          Icons.play_arrow_rounded,
+                          key: const ValueKey<String>('program.next_day'),
+                          color: c.accent,
+                        ),
                       if (program.playerControlsProgram)
                         IconButton(
                           key: Key('program_edit_day_${day.dayOrder}'),
@@ -1050,6 +1113,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
                           ref,
                           day: day,
                           programVersion: program.version,
+                          programWeekCount: program.weekCount,
                         );
                       },
                     ),
@@ -1079,6 +1143,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
                 ),
               ),
             ),
+          ],
         ],
       ),
     );

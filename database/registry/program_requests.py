@@ -9,7 +9,7 @@ from typing import Any
 class RegistryProgramRequestsMixin:
     _PROGRAM_REQUEST_COLUMNS = (
         "request_id, assignment_id, coach_account_id, player_account_id, kind, program_version,"
-        " day_name, exercise_id, replacement_exercise_id, desired_weekly_frequency,"
+        " day_name, week_order, day_order, exercise_id, replacement_exercise_id, desired_weekly_frequency,"
         " desired_split_preference, reason, status, response, created_at, resolved_at, resolved_by"
     )
     #: The same columns qualified for the joined cross-roster listing (#118).
@@ -29,16 +29,18 @@ class RegistryProgramRequestsMixin:
             "kind": str(row[4]),
             "program_version": int(row[5]),
             "day_name": row[6],
-            "exercise_id": row[7],
-            "replacement_exercise_id": row[8],
-            "desired_weekly_frequency": int(row[9]) if row[9] is not None else None,
-            "desired_split_preference": row[10],
-            "reason": str(row[11]),
-            "status": str(row[12]),
-            "response": row[13],
-            "created_at": str(row[14]),
-            "resolved_at": row[15],
-            "resolved_by": row[16],
+            "week_order": int(row[7]) if row[7] is not None else None,
+            "day_order": int(row[8]) if row[8] is not None else None,
+            "exercise_id": row[9],
+            "replacement_exercise_id": row[10],
+            "desired_weekly_frequency": int(row[11]) if row[11] is not None else None,
+            "desired_split_preference": row[12],
+            "reason": str(row[13]),
+            "status": str(row[14]),
+            "response": row[15],
+            "created_at": str(row[16]),
+            "resolved_at": row[17],
+            "resolved_by": row[18],
         }
 
     def create_program_request(
@@ -56,6 +58,8 @@ class RegistryProgramRequestsMixin:
         desired_split_preference: str | None,
         reason: str,
         now_iso: str,
+        week_order: int | None = None,
+        day_order: int | None = None,
     ) -> str:
         """Inserts a pending player program request. Never touches the player ledger."""
         self.ensure_account_schema()
@@ -63,9 +67,9 @@ class RegistryProgramRequestsMixin:
             self.catalog_conn.execute(
                 "INSERT INTO program_requests"
                 " (request_id, assignment_id, coach_account_id, player_account_id, kind, program_version,"
-                " day_name, exercise_id, replacement_exercise_id, desired_weekly_frequency,"
+                " day_name, week_order, day_order, exercise_id, replacement_exercise_id, desired_weekly_frequency,"
                 " desired_split_preference, reason, status, response, created_at, resolved_at, resolved_by)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?, NULL, NULL)",
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?, NULL, NULL)",
                 (
                     str(request_id),
                     str(assignment_id),
@@ -74,6 +78,8 @@ class RegistryProgramRequestsMixin:
                     str(kind),
                     int(program_version),
                     day_name,
+                    week_order,
+                    day_order,
                     exercise_id,
                     replacement_exercise_id,
                     desired_weekly_frequency,

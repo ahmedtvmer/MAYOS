@@ -6,6 +6,7 @@ from agent.program_prescription import (
     MAX_REPS,
     MAX_EXERCISES_PER_DAY,
     MAX_PROGRAM_DAYS,
+    MAX_PROGRAM_WEEKS,
     MAX_PROGRAM_NOTES_LENGTH,
     MAX_RAMPED_WARMUP_SETS,
     MAX_TEMPO_LENGTH,
@@ -103,6 +104,7 @@ class WarmupExerciseSchema(BaseModel):
 class ProgramDaySchema(BaseModel):
     day_name: str = Field(description="e.g., 'Upper 1', 'Lower 1'")
     day_order: int = Field(ge=1, le=MAX_PROGRAM_DAYS)
+    week_order: int = Field(default=1, ge=1, le=MAX_PROGRAM_WEEKS)
     warmup_exercises: list[WarmupExerciseSchema] = Field(
         default_factory=list, description="2-3 general preparation movements performed before the session"
     )
@@ -150,6 +152,7 @@ class PersistedProgramExerciseSchema(ProgramExerciseSchema):
 class PersistedProgramDaySchema(BaseModel):
     day_name: str = Field(description="e.g., 'Upper 1', 'Lower 1'")
     day_order: int = Field(ge=1, le=MAX_PROGRAM_DAYS)
+    week_order: int = Field(default=1, ge=1, le=MAX_PROGRAM_WEEKS)
     warmup_exercises: list[WarmupExerciseSchema] = Field(default_factory=list)
     exercises: list[PersistedProgramExerciseSchema] = Field(
         min_length=1, max_length=MAX_EXERCISES_PER_DAY
@@ -157,10 +160,20 @@ class PersistedProgramDaySchema(BaseModel):
     cardio: str | None = None
 
 
+class PersistedProgramWeekSchema(BaseModel):
+    week_name: str = Field(min_length=1, max_length=100)
+    week_order: int = Field(ge=1, le=MAX_PROGRAM_WEEKS)
+    days: list[PersistedProgramDaySchema] = Field(
+        min_length=1,
+        max_length=MAX_PROGRAM_DAYS,
+    )
+
+
 class PersistedProgramSchema(GeneratedProgramSchema):
     """A saved program; coach-authored prescriptions may use the broader range."""
 
-    days: list[PersistedProgramDaySchema] = Field(max_length=MAX_PROGRAM_DAYS)
+    days: list[PersistedProgramDaySchema]
+    weeks: list[PersistedProgramWeekSchema] = Field(default_factory=list, max_length=MAX_PROGRAM_WEEKS)
 
 
 # --- LangGraph Node State ---

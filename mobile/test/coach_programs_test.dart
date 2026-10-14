@@ -316,6 +316,42 @@ Future<void> _openSettings(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('coach editor adds, renames, reorders, and removes weeks',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _openProgramEditor(tester, fake);
+
+    expect(find.byKey(const Key('program_draft_week_tab_1')), findsNothing);
+    expect(find.byKey(const Key('program_draft_week_name')), findsNothing);
+    final Finder addWeek = find.byKey(const Key('program_draft_add_week'));
+    await tester.ensureVisible(addWeek);
+    await tester.tap(addWeek);
+    await tester.pump();
+
+    expect(find.byKey(const Key('program_draft_week_tab_1')), findsOneWidget);
+    expect(find.byKey(const Key('program_draft_week_tab_2')), findsOneWidget);
+    final Finder weekName = find.byKey(const Key('program_draft_week_name'));
+    await tester.ensureVisible(weekName);
+    await tester.enterText(weekName, 'Build');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('program_draft_week_up')));
+    await tester.pump();
+    expect(tester.widget<TextField>(weekName).controller?.text, 'Build');
+    final Text firstWeekTab = tester.widget<Text>(
+      find.descendant(
+        of: find.byKey(const Key('program_draft_week_tab_1')),
+        matching: find.byType(Text),
+      ),
+    );
+    expect(firstWeekTab.data, '1 · Build');
+
+    await tester.tap(find.byKey(const Key('program_draft_week_remove')));
+    await tester.pump();
+    expect(find.byKey(const Key('program_draft_week_tab_1')), findsNothing);
+    expect(find.byKey(const Key('program_draft_week_name')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('coach picker sends Equipment category and Load type filters',
       (tester) async {
     final FakeMayosApi fake = _coachFake();
