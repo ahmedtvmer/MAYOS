@@ -19,7 +19,11 @@ MOCK_RESPONSES = {
     "intent_routing": '{"intent":"coaching_qa","source_exercise":null,"target_exercise":null,"target_frequency":null,"search_query":null}',
     "substitution_resolution": '{"source_exercise":"barbell bench press","target_exercise":"incline dumbbell press"}',
     "abbreviation_expansion": '{"is_fitness_movement":true,"canonical_name":"Bench Press"}',
-    "dynamic_split_plan": '{"split_name":"Custom","days":[]}',
+    "dynamic_split_plan": (
+        '{"split_name":"Custom","days":['
+        '{"day_order":1,"day_name":"Upper","target_slots":["incline_press","horizontal_row","vertical_pull"]},'
+        '{"day_order":2,"day_name":"Lower","target_slots":["quad_compound","ham_hinge","ham_curl"]}]}'
+    ),
     "checkpoint_review": "You trained consistently and your volume rose.",
 }
 
@@ -33,6 +37,21 @@ class ExerciseStoreFixture:
 @dataclass
 class EmptyProgramFixture:
     days: list[object] = field(default_factory=list)
+
+
+def _mock_message(call_site: str, request_body: dict) -> dict:
+    tools = request_body.get("tools") or []
+    if call_site != "dynamic_split_plan" or not tools:
+        return {"role": "assistant", "content": MOCK_RESPONSES[call_site]}
+    return {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [{
+            "id": "call_split",
+            "type": "function",
+            "function": {"name": tools[0]["function"]["name"], "arguments": MOCK_RESPONSES[call_site]},
+        }],
+    }
 
 
 def _captured_player_requests(monkeypatch, call_site: str, *, streaming: bool = False):
@@ -49,7 +68,7 @@ def _captured_player_requests(monkeypatch, call_site: str, *, streaming: bool = 
                 "model": "DeepSeek-V4-Flash",
                 "choices": [{
                     "index": 0,
-                    "message": {"role": "assistant", "content": MOCK_RESPONSES[call_site]},
+                    "message": _mock_message(call_site, request_bodies[-1]),
                     "finish_reason": "stop",
                 }],
                 "usage": {"prompt_tokens": 20, "completion_tokens": 8, "total_tokens": 28},
