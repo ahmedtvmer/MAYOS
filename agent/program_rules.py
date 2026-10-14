@@ -20,7 +20,13 @@ from agent.program_blueprints import (
     resolve_split_type,
 )
 from agent.movement_signatures import matches_movement_signature
-from agent.ProgramState import CustomDayPlan, DynamicSplitPlan
+from agent.program_prescription import MAX_EXERCISES_PER_DAY
+from agent.ProgramState import (
+    MAX_DYNAMIC_DOUBLE_SLOTS_PER_DAY,
+    MAX_DYNAMIC_TARGET_SLOTS_PER_DAY,
+    CustomDayPlan,
+    DynamicSplitPlan,
+)
 from database.exercise_library.ranking import replacement_rank_sql
 from database.exercise_library.schema import exercise_library_visible_sql
 from database.exercise_library.values import split_curation_values
@@ -329,18 +335,61 @@ def valid_splits_for(frequency: int, gender: str = "male") -> list[tuple[str, st
     ]
 
 
+def _valid_llm_plan_slots(day: CustomDayPlan) -> list[str]:
+    return list(dict.fromkeys(slot for slot in day.target_slots if slot in SLOT_SPECS))
+
+
+def _llm_plan_has_usable_shape(plan: DynamicSplitPlan, frequency: int) -> bool:
+    return len(plan.days) == frequency and all(_valid_llm_plan_slots(day) for day in plan.days)
+
+
+def _truncate_excess_llm_plan_days(plan: DynamicSplitPlan, frequency: int) -> DynamicSplitPlan:
+    if len(plan.days) <= frequency:
+        return plan
+    return plan.model_copy(update={"days": plan.days[:frequency]})
+
+
+def _cap_llm_day_slots(day: CustomDayPlan, slots: list[str]) -> tuple[list[str], list[str]]:
+    double_slots = list(dict.fromkeys(slot for slot in day.double_slots if slot in slots))
+    double_slots = double_slots[:MAX_DYNAMIC_DOUBLE_SLOTS_PER_DAY]
+    overflow = len(slots) + len(double_slots) - MAX_EXERCISES_PER_DAY
+    if overflow > 0:
+        dropped_double_slots = min(overflow, len(double_slots))
+        if dropped_double_slots:
+            double_slots = double_slots[:-dropped_double_slots]
+            overflow -= dropped_double_slots
+        if overflow:
+            slots = slots[:-overflow]
+            double_slots = [slot for slot in double_slots if slot in slots]
+    if len(slots) > MAX_DYNAMIC_TARGET_SLOTS_PER_DAY:
+        slots = slots[:MAX_DYNAMIC_TARGET_SLOTS_PER_DAY]
+        double_slots = [slot for slot in double_slots if slot in slots]
+    return slots, double_slots
+
+
+def _sanitize_llm_day(day: CustomDayPlan) -> CustomDayPlan:
+    slots = _valid_llm_plan_slots(day)
+    if not slots and day.target_body_parts:
+        slots = body_parts_to_slots(day.target_body_parts)
+    slots, double_slots = _cap_llm_day_slots(day, list(dict.fromkeys(slots)))
+    family = day.warmup_family if day.warmup_family in WARMUP_FAMILIES else "full"
+    return day.model_copy(
+        update={
+            "target_slots": slots,
+            "double_slots": double_slots,
+            "warmup_family": family,
+        }
+    )
+
+
 def _sanitize_llm_plan(plan: DynamicSplitPlan, frequency: int, gender: str) -> DynamicSplitPlan:
-    """Filters hallucinated slot keys and falls back to the deterministic default plan."""
-    valid_slots = set(SLOT_SPECS)
-    sanitized_days: list[CustomDayPlan] = []
-    for day in plan.days:
-        slots = [slot for slot in day.target_slots if slot in valid_slots]
-        if not slots and day.target_body_parts:
-            slots = body_parts_to_slots(day.target_body_parts)
-        slots = list(dict.fromkeys(slots))
-        family = day.warmup_family if day.warmup_family in WARMUP_FAMILIES else "full"
-        sanitized_days.append(day.model_copy(update={"target_slots": slots, "warmup_family": family}))
-    if len(sanitized_days) != frequency or any(len(day.target_slots) < 3 for day in sanitized_days):
+    """Truncates and filters model days, falling back when the result is unusable."""
+    plan = _truncate_excess_llm_plan_days(plan, frequency)
+    if len(plan.days) != frequency or any(not day.target_slots for day in plan.days):
+        return get_default_split(frequency, gender)
+
+    sanitized_days = [_sanitize_llm_day(day) for day in plan.days]
+    if any(len(day.target_slots) < 3 for day in sanitized_days):
         return get_default_split(frequency, gender)
     return plan.model_copy(update={"days": sanitized_days})
 
@@ -421,15 +470,37 @@ def resolve_split(
             content=f"Frequency: {clamped_freq} days/week. Trainee: {gender_context}. User Split Request: '{preference}'"
         ),
     ]
-    if inference_call is None:
-        response = structured_llm.invoke(prompt)
-    else:
-        response = inference_call(structured_llm.invoke, prompt)
+
+    def invoke_split_plan(messages: list[Any]) -> Any:
+        if inference_call is None:
+            return structured_llm.invoke(messages)
+        return inference_call(structured_llm.invoke, messages)
+
+    response = invoke_split_plan(prompt)
     plan = _parsed_dynamic_split_plan(response)
-    if plan is None:
-        return get_default_split(clamped_freq, gender=gender)
-    if len(plan.days) > clamped_freq:
-        plan.days = plan.days[:clamped_freq]
+    if plan is not None:
+        plan = _truncate_excess_llm_plan_days(plan, clamped_freq)
+
+    if plan is None or not _llm_plan_has_usable_shape(plan, clamped_freq):
+        retry_prompt = [
+            *prompt,
+            HumanMessage(
+                content=(
+                    f"Repair the split plan: return exactly {clamped_freq} training days, with non-empty valid "
+                    "target_slots in every day. Keep each day within the slot cap: at most "
+                    f"{MAX_DYNAMIC_TARGET_SLOTS_PER_DAY} target_slots plus "
+                    f"{MAX_DYNAMIC_DOUBLE_SLOTS_PER_DAY} double_slots "
+                    f"({MAX_EXERCISES_PER_DAY} combined). Preserve the requested split emphasis."
+                )
+            ),
+        ]
+        plan = _parsed_dynamic_split_plan(invoke_split_plan(retry_prompt))
+        if plan is None:
+            return get_default_split(clamped_freq, gender=gender)
+        plan = _truncate_excess_llm_plan_days(plan, clamped_freq)
+        if not _llm_plan_has_usable_shape(plan, clamped_freq):
+            return get_default_split(clamped_freq, gender=gender)
+
     return _sanitize_llm_plan(plan, clamped_freq, gender)
 
 

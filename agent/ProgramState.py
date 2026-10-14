@@ -25,6 +25,9 @@ from agent.program_prescription import (
     DEFAULT_WARMUP_MOVEMENT_SETS,
 )
 
+MAX_DYNAMIC_DOUBLE_SLOTS_PER_DAY = 2
+MAX_DYNAMIC_TARGET_SLOTS_PER_DAY = MAX_EXERCISES_PER_DAY - MAX_DYNAMIC_DOUBLE_SLOTS_PER_DAY
+
 # --- Pydantic Output Contracts ---
 
 
@@ -181,7 +184,11 @@ class CustomDayPlan(BaseModel):
     day_name: str = Field(description="e.g., 'Chest & Back', 'Upper', 'Arms & Delts'")
     target_slots: list[str] = Field(
         default_factory=list,
-        description="Ordered movement slot keys for this session, e.g. ['incline_press', 'horizontal_row', 'biceps_preacher']",
+        max_length=MAX_DYNAMIC_TARGET_SLOTS_PER_DAY,
+        description=(
+            "Ordered movement slot keys for this session, e.g. ['incline_press', 'horizontal_row', "
+            f"'biceps_preacher']; at most {MAX_DYNAMIC_TARGET_SLOTS_PER_DAY} target slots per day"
+        ),
     )
     target_body_parts: list[str] = Field(
         default_factory=list,
@@ -195,11 +202,23 @@ class CustomDayPlan(BaseModel):
         default=None, description="Working-set profile: standard, leg, arms or full (defaults from warmup_family)"
     )
     double_slots: list[str] = Field(
-        default_factory=list, description="Full-body priority slots that earn a second working set"
+        default_factory=list,
+        max_length=MAX_DYNAMIC_DOUBLE_SLOTS_PER_DAY,
+        description=(
+            "Full-body priority slots that earn a second working set; at most "
+            f"{MAX_DYNAMIC_DOUBLE_SLOTS_PER_DAY} per day, with target slots capped so their combined count "
+            f"does not exceed {MAX_EXERCISES_PER_DAY}"
+        ),
     )
     cardio: str | None = Field(default=None, description="Optional cardio note")
 
 
 class DynamicSplitPlan(BaseModel):
     split_name: str = Field(description="Clean descriptive title for this split")
-    days: list[CustomDayPlan] = Field(description="Exact list of days matching committed frequency")
+    days: list[CustomDayPlan] = Field(
+        min_length=1,
+        max_length=MAX_PROGRAM_DAYS,
+        description=(
+            f"Between 1 and {MAX_PROGRAM_DAYS} days; runtime requires the exact committed frequency"
+        ),
+    )

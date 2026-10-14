@@ -9,7 +9,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from agent import program_generator
-from agent.program_blueprints import match_split_keyword
+from agent.program_blueprints import SLOT_SPECS, match_split_keyword
 from agent.program_generator import (
     ProgramGenerationRequest,
     _recognized_split_preference,
@@ -22,7 +22,7 @@ from agent.program_rules import (
     resolve_split,
     valid_splits_for,
 )
-from tests.fakes.chat_model import ScriptedChatModel
+from tests.fakes.chat_model import ScriptedChatModel, StructuredValue
 from utils.logger import MyosLogger
 from utils.player_output_budgets import DYNAMIC_SPLIT_PLAN_MAX_OUTPUT_TOKENS
 
@@ -146,7 +146,14 @@ def test_mechanics_for_real_curated_exercises_use_joint_actions(fresh_store):
     assert get_biomechanical_cue(entries["43"], "intermediate") == MECHANIC_CUES["compound_lower"]
 
 
-def test_dynamic_split_plan_uses_its_own_output_budget(monkeypatch):
+def test_dynamic_split_uses_bounded_schema_and_output_budget(monkeypatch):
+    from agent.ProgramState import (
+        MAX_DYNAMIC_DOUBLE_SLOTS_PER_DAY,
+        MAX_DYNAMIC_TARGET_SLOTS_PER_DAY,
+        MAX_PROGRAM_DAYS,
+    )
+    from agent.program_prescription import MAX_EXERCISES_PER_DAY
+
     monkeypatch.setenv("PROGRAM_GENERATION_REASONING_ENABLED", "false")
     model = ScriptedChatModel([get_default_split(3)])
     monkeypatch.setattr("agent.program_rules.llm", model)
@@ -162,6 +169,187 @@ def test_dynamic_split_plan_uses_its_own_output_budget(monkeypatch):
     assert model.calls[0]["kwargs"]["schema"] == "DynamicSplitPlan"
     assert model.calls[0]["kwargs"]["max_completion_tokens"] == DYNAMIC_SPLIT_PLAN_MAX_OUTPUT_TOKENS
     assert model.calls[0]["kwargs"]["method"] == "function_calling"
+    schema = model.calls[0]["kwargs"]["structured_schema"].model_json_schema()
+    day_schema = schema["$defs"]["CustomDayPlan"]["properties"]
+    assert day_schema["target_slots"]["maxItems"] == MAX_DYNAMIC_TARGET_SLOTS_PER_DAY
+    assert day_schema["double_slots"]["maxItems"] == MAX_DYNAMIC_DOUBLE_SLOTS_PER_DAY
+    assert day_schema["target_slots"]["maxItems"] + day_schema["double_slots"]["maxItems"] <= MAX_EXERCISES_PER_DAY
+    assert schema["properties"]["days"]["minItems"] == 1
+    assert schema["properties"]["days"]["maxItems"] == MAX_PROGRAM_DAYS
+
+
+def test_dynamic_split_retries_short_plan_through_inference_call(monkeypatch):
+    monkeypatch.setenv("PROGRAM_GENERATION_REASONING_ENABLED", "false")
+    default_plan = get_default_split(3)
+    short_plan = default_plan.model_copy(update={"days": default_plan.days[:2]})
+    good_plan = default_plan.model_copy(update={"split_name": "Recovered custom plan"})
+    model = ScriptedChatModel([short_plan, good_plan])
+    monkeypatch.setattr("agent.program_rules.llm", model)
+    inference_calls = []
+
+    def injected_inference(invoke, prompt):
+        inference_calls.append(prompt)
+        return invoke(prompt)
+
+    plan = resolve_split(
+        3,
+        preference="Custom weekly arrangement with separate emphasis days",
+        inference_call=injected_inference,
+    )
+
+    assert plan == good_plan
+    assert len(inference_calls) == len(model.calls) == 2
+    assert model.calls[0]["kwargs"] == model.calls[1]["kwargs"]
+    assert model.calls[0]["kwargs"]["max_completion_tokens"] == DYNAMIC_SPLIT_PLAN_MAX_OUTPUT_TOKENS
+
+
+def test_dynamic_split_falls_back_when_retry_has_empty_slot_days(monkeypatch):
+    from agent.program_rules import _sanitize_llm_plan
+
+    monkeypatch.setenv("PROGRAM_GENERATION_REASONING_ENABLED", "false")
+    default_plan = get_default_split(3)
+    short_plan = default_plan.model_copy(update={"days": default_plan.days[:2]})
+    retry_days = list(default_plan.days)
+    retry_days[1] = retry_days[1].model_copy(
+        update={"target_slots": [], "target_body_parts": ["chest", "lats", "triceps"]}
+    )
+    empty_slot_retry = default_plan.model_copy(
+        update={"split_name": "Invalid retry", "days": retry_days}
+    )
+    model = ScriptedChatModel([short_plan, empty_slot_retry])
+    monkeypatch.setattr("agent.program_rules.llm", model)
+    inference_calls = []
+
+    def injected_inference(invoke, prompt):
+        inference_calls.append(prompt)
+        return invoke(prompt)
+
+    plan = resolve_split(
+        3,
+        preference="Custom weekly arrangement with separate emphasis days",
+        inference_call=injected_inference,
+    )
+
+    assert plan == default_plan
+    assert _sanitize_llm_plan(empty_slot_retry, 3, "male") == default_plan
+    assert len(inference_calls) == len(model.calls) == 2
+    assert plan != empty_slot_retry
+    assert all(day.target_slots for day in plan.days)
+
+
+def test_dynamic_split_truncates_overlong_plan_without_retry(monkeypatch):
+    monkeypatch.setenv("PROGRAM_GENERATION_REASONING_ENABLED", "false")
+    overlong_plan = get_default_split(4).model_copy(update={"split_name": "Overlong custom plan"})
+    model = ScriptedChatModel([overlong_plan])
+    monkeypatch.setattr("agent.program_rules.llm", model)
+
+    plan = resolve_split(
+        3,
+        preference="Custom weekly arrangement with separate emphasis days",
+    )
+
+    assert plan.split_name == "Overlong custom plan"
+    assert plan.days == overlong_plan.days[:3]
+    assert len(model.calls) == 1
+
+
+def test_dynamic_split_uses_good_first_plan_without_retry(monkeypatch):
+    monkeypatch.setenv("PROGRAM_GENERATION_REASONING_ENABLED", "false")
+    good_plan = get_default_split(3)
+    model = ScriptedChatModel([good_plan])
+    monkeypatch.setattr("agent.program_rules.llm", model)
+    inference_calls = []
+
+    def injected_inference(invoke, prompt):
+        inference_calls.append(prompt)
+        return invoke(prompt)
+
+    plan = resolve_split(
+        3,
+        preference="Custom weekly arrangement with separate emphasis days",
+        inference_call=injected_inference,
+    )
+
+    assert plan == good_plan
+    assert len(inference_calls) == len(model.calls) == 1
+
+
+def test_dynamic_split_caps_overfull_day_for_generated_program(monkeypatch, fresh_store):
+    from agent.ProgramState import GeneratedProgramSchema, MAX_DYNAMIC_TARGET_SLOTS_PER_DAY
+    from agent.program_prescription import MAX_EXERCISES_PER_DAY
+
+    monkeypatch.setenv("PROGRAM_GENERATION_REASONING_ENABLED", "false")
+    default_plan = get_default_split(3)
+    target_slots = list(SLOT_SPECS)[:16]
+    days = list(default_plan.days)
+    days[0] = days[0].model_copy(
+        update={"target_slots": target_slots, "double_slots": target_slots[:4]}
+    )
+    overfull_plan = default_plan.model_copy(update={"days": days})
+    model = ScriptedChatModel([StructuredValue(overfull_plan)])
+    monkeypatch.setattr("agent.program_rules.llm", model)
+    resolved_plan = resolve_split(
+        3,
+        preference="Custom weekly arrangement with separate emphasis days",
+    )
+    request = ProgramGenerationRequest(frequency_override=3)
+    generated_days = program_generator._generate_program_days(
+        _split_generation_profile(), request, resolved_plan, fresh_store.ledger
+    )
+    generated = GeneratedProgramSchema(
+        program_name=resolved_plan.split_name,
+        split_type=resolved_plan.split_name,
+        weekly_frequency=len(resolved_plan.days),
+        days=generated_days,
+    )
+
+    assert len(target_slots) + 4 > MAX_EXERCISES_PER_DAY
+    assert len(model.calls) == 1
+    assert resolved_plan.days[0].target_slots == target_slots[:MAX_DYNAMIC_TARGET_SLOTS_PER_DAY]
+    assert resolved_plan.days[0].double_slots == []
+    assert all(len(day.exercises) <= MAX_EXERCISES_PER_DAY for day in generated.days)
+    assert GeneratedProgramSchema.model_validate(generated.model_dump()) == generated
+
+
+def test_dynamic_split_retries_empty_target_slots(monkeypatch):
+    monkeypatch.setenv("PROGRAM_GENERATION_REASONING_ENABLED", "false")
+    default_plan = get_default_split(3)
+    days = list(default_plan.days)
+    days[0] = days[0].model_copy(update={"target_slots": []})
+    empty_slot_plan = default_plan.model_copy(update={"days": days})
+    model = ScriptedChatModel([empty_slot_plan, default_plan])
+    monkeypatch.setattr("agent.program_rules.llm", model)
+
+    plan = resolve_split(
+        3,
+        preference="Custom weekly arrangement with separate emphasis days",
+    )
+
+    assert plan == default_plan
+    assert len(model.calls) == 2
+
+
+def test_dynamic_split_retries_overlong_structured_response_before_fallback(monkeypatch):
+    from agent.ProgramState import (
+        MAX_DYNAMIC_DOUBLE_SLOTS_PER_DAY,
+        MAX_DYNAMIC_TARGET_SLOTS_PER_DAY,
+    )
+
+    monkeypatch.setenv("PROGRAM_GENERATION_REASONING_ENABLED", "false")
+    default_plan = get_default_split(3)
+    overlong_payload = default_plan.model_dump()
+    overlong_payload["days"][0]["target_slots"] = list(SLOT_SPECS)[: MAX_DYNAMIC_TARGET_SLOTS_PER_DAY + 1]
+    overlong_payload["days"][0]["double_slots"] = list(SLOT_SPECS)[: MAX_DYNAMIC_DOUBLE_SLOTS_PER_DAY + 1]
+    model = ScriptedChatModel([overlong_payload, overlong_payload])
+    monkeypatch.setattr("agent.program_rules.llm", model)
+
+    plan = resolve_split(
+        3,
+        preference="Custom weekly arrangement with separate emphasis days",
+    )
+
+    assert plan == default_plan
+    assert len(model.calls) == 2
 
 
 def test_dynamic_split_plan_schema_constrains_warmup_family():
@@ -175,11 +363,13 @@ def test_split_plan_with_invented_warmup_family_falls_back_to_default(monkeypatc
     monkeypatch.setenv("PROGRAM_GENERATION_REASONING_ENABLED", "false")
     invalid = get_default_split(3).model_dump()
     invalid["days"][0]["warmup_family"] = "dynamic lower body + banded glute activation"
-    monkeypatch.setattr("agent.program_rules.llm", ScriptedChatModel([invalid]))
+    model = ScriptedChatModel([invalid, invalid])
+    monkeypatch.setattr("agent.program_rules.llm", model)
 
     plan = resolve_split(3, preference="Custom weekly arrangement with separate emphasis days")
 
     assert plan == get_default_split(3)
+    assert len(model.calls) == 2
 
 
 def test_split_plan_keeps_separate_reasoning_metadata_out_of_parsed_fields(monkeypatch):
@@ -222,9 +412,8 @@ def test_split_plan_keeps_separate_reasoning_metadata_out_of_parsed_fields(monke
 def test_406_truncated_or_unparseable_dynamic_split_falls_back_to_default(
     monkeypatch, content, finish_reason
 ):
-    model = ScriptedChatModel(
-        [AIMessage(content=content, response_metadata={"finish_reason": finish_reason})]
-    )
+    invalid_response = AIMessage(content=content, response_metadata={"finish_reason": finish_reason})
+    model = ScriptedChatModel([invalid_response, invalid_response])
     monkeypatch.setattr("agent.program_rules.llm", model)
 
     plan = resolve_split(
@@ -233,6 +422,7 @@ def test_406_truncated_or_unparseable_dynamic_split_falls_back_to_default(
     )
 
     assert plan == get_default_split(3)
+    assert len(model.calls) == 2
 
 
 def test_dynamic_split_uses_the_generation_metering_scope(monkeypatch):
