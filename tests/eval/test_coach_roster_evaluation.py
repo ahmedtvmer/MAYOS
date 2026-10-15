@@ -41,7 +41,7 @@ def results(dataset):
 
 
 def test_dataset_covers_required_topics_in_english_and_arabic(dataset):
-    assert len(dataset["cases"]) == 10
+    assert len(dataset["cases"]) == 16
     assert {
         "attention_en",
         "attention_ar",
@@ -53,8 +53,14 @@ def test_dataset_covers_required_topics_in_english_and_arabic(dataset):
         "insufficient_ar",
         "name_request_en",
         "name_request_ar",
+        "weight_en",
+        "weight_ar",
+        "weight_target_en",
+        "weight_target_ar",
+        "weight_no_target_en",
+        "weight_no_history_en",
     } == {case["id"] for case in dataset["cases"]}
-    assert {"attention", "adherence", "insufficient"} == set(
+    assert {"attention", "adherence", "insufficient", "weight", "weight_no_target"} == set(
         dataset["snapshots"]
     )
     assert all(
@@ -72,6 +78,7 @@ def test_scripted_production_prompts_and_rubric_pass_offline(dataset, results):
         == {
             "correct_player_ids",
             "uses_supplied_figures",
+            "no_fabricated_numbers",
             "refuses_name_requests",
             "states_insufficient_data",
             "no_roster_identifiers_in_prompt",
@@ -232,6 +239,8 @@ def test_insufficient_data_scorer_does_not_mark_available_data_as_missing():
         "There is no record of adherence for P0123456789ab.",
         "The snapshot does not contain that measure.",
         "The figure is not available.",
+        "No Target weight is recorded for P0123456789ab, so I cannot state how far they are.",
+        "There is no body weight data recorded for P0123456789ab, so I cannot describe a trend.",
     ],
 )
 def test_english_insufficient_marker_matches_no_data_phrases(answer):

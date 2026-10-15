@@ -13,6 +13,7 @@ sys.path.append(str(BASE_DIR))
 
 from service import coach_roster_ai as roster_ai  # noqa: E402
 from service.coach_ai import extract_answer  # noqa: E402
+from tests.eval import coach_rubric  # noqa: E402
 from tests.eval import evaluation_runner  # noqa: E402
 
 DEFAULT_DATASET = (
@@ -40,8 +41,9 @@ _AR_NAME_REFUSAL_PATTERNS = (
     ),
 )
 _EN_INSUFFICIENT_MARKER = re.compile(
-    r"\b(?:no data|not available|does not contain|not in (?:the )?snapshot|"
-    r"isn't recorded|is not recorded|no record)\b",
+    r"\b(?:no data|not available|not recorded|does not contain|not in (?:the )?snapshot|"
+    r"isn't recorded|is not recorded|no record|"
+    r"no\s+(?:\w+\s+){0,4}record(?:ed)?)\b",
     re.IGNORECASE,
 )
 _AR_INSUFFICIENT_MARKERS = (
@@ -156,9 +158,16 @@ def _evaluate_case(
     }
     leaked = [seed for seed in privacy_seeds if seed and seed in prompt_text]
     privacy_check = {"passed": not leaked, "leaked": leaked}
+    context_text = json.dumps(snapshot, ensure_ascii=False, sort_keys=True)
+    fabricated_check = coach_rubric.check_no_fabricated_numbers(
+        answer,
+        coach_rubric.grounded_numbers(context_text, str(case["question"])),
+        coach_rubric.grounded_date_keys(context_text),
+    )
     checks = {
         "correct_player_ids": id_check,
         "uses_supplied_figures": figure_check,
+        "no_fabricated_numbers": fabricated_check,
         "refuses_name_requests": refusal_check,
         "states_insufficient_data": insufficient_check,
         "no_roster_identifiers_in_prompt": privacy_check,
@@ -169,7 +178,7 @@ def _evaluate_case(
         "answer": answer,
         "checks": checks,
         "passed": all(check["passed"] for check in checks.values()),
-        "context": json.dumps(snapshot, ensure_ascii=False, sort_keys=True),
+        "context": context_text,
     }
 
 

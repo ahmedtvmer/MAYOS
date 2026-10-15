@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from svc.llm import InferenceScope
 
-CONTEXT_VERSION = "coach-roster-context-v1"
+CONTEXT_VERSION = "coach-roster-context-v2"
 REPORT_VERSION = 1
 ROSTER_SNAPSHOT_TOKEN_BUDGET = 2500
 PLAYER_ALIAS_PREFIX = "P"
@@ -52,8 +52,14 @@ Rules:
 - Use supplied figures as written. Do not calculate new totals or percentages,
   invent figures, or reorder the provided urgency order. Mention only facts or
   figures in the current roster signals, question, or history.
+- For a weight question, use only the supplied dated body weight points, the
+  overall change, the Target weight, and the latest-minus-Target figure. State
+  the comparison against Target only when a Target weight is supplied; if it is
+  missing, say that no Target weight is recorded. Describe the change in plain
+  coaching language and never subtract or otherwise compute a new figure.
 - Never quote internal field names or machine values such as
-  `missed_expected_days_7d`, `stall_threshold_met`, `snapshot`, or `null`.
+  `missed_expected_days_7d`, `stall_threshold_met`, `bodyweight_trend`,
+  `target_weight_kg`, `latest_minus_target_kg`, `snapshot`, or `null`.
   Describe the figures in plain coaching language, such as “missed 3 of the
   expected training days in the last 7 days” or “no data on missed days”.
 - If asked for a name or identity, say that player names are not visible to
@@ -114,7 +120,16 @@ CANONICAL_SNAPSHOT: dict[str, Any] = {
             "stall_threshold_met": False,
             "effort_rising_same_load_main_lift": False,
             "days_since_last_check_in": 9,
-            "bodyweight_trend": None,
+            "bodyweight_trend": {
+                "points": [
+                    {"date": "2026-09-20", "weight_kg": 82.0},
+                    {"date": "2026-09-27", "weight_kg": 81.0},
+                    {"date": "2026-10-04", "weight_kg": 80.5},
+                ],
+                "change_kg": -1.5,
+                "target_weight_kg": 78.0,
+                "latest_minus_target_kg": 2.5,
+            },
             "coaching_subscription_end": None,
         }
     ],

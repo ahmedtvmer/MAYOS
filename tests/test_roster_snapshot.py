@@ -439,6 +439,75 @@ def test_no_schedule_keeps_attendance_null_and_uses_player_local_today(api):
     assert signal["urgency_inputs"]["follow_up_overdue_days"] == 2
 
 
+def _record_weight_history(db, player, entries, *, target=None):
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        profile = dict(ledger.get_player_profile() or {})
+        if target is not None:
+            profile["target_weight_kg"] = target
+        first_day, first_weight = entries[0]
+        ledger.upsert_player_profile_with_weight_history(
+            {**profile, "weight_kg": first_weight}, first_day
+        )
+        for day, weight in entries[1:]:
+            ledger.upsert_weight_history_entry(day, weight)
+
+
+def test_bodyweight_trend_reports_points_and_distance_from_target(api):
+    client, db = api
+    coach_headers, coach_id = _make_coach(client, db)
+    player = _assign(client, db, coach_headers, "weighttrendsignal")
+    _record_weight_history(
+        db,
+        player,
+        [("2026-09-20", 82.0), ("2026-10-04", 80.0)],
+        target=78.0,
+    )
+
+    signal = _snapshot(db, coach_id, datetime(2026, 10, 5, 12, tzinfo=UTC))[
+        "snapshot"
+    ]["players"][0]
+
+    assert signal["bodyweight_trend"] == {
+        "points": [
+            {"date": "2026-09-20", "weight_kg": 82.0},
+            {"date": "2026-10-04", "weight_kg": 80.0},
+        ],
+        "change_kg": -2.0,
+        "target_weight_kg": 78.0,
+        "latest_minus_target_kg": 2.0,
+    }
+
+
+def test_bodyweight_trend_without_a_target_keeps_points_and_omits_distance(api):
+    client, db = api
+    coach_headers, coach_id = _make_coach(client, db)
+    player = _assign(client, db, coach_headers, "weightnotargetsignal")
+    _record_weight_history(
+        db, player, [("2026-09-20", 82.0), ("2026-10-04", 80.0)]
+    )
+
+    signal = _snapshot(db, coach_id, datetime(2026, 10, 5, 12, tzinfo=UTC))[
+        "snapshot"
+    ]["players"][0]
+
+    trend = signal["bodyweight_trend"]
+    assert trend["change_kg"] == -2.0
+    assert trend["target_weight_kg"] is None
+    assert trend["latest_minus_target_kg"] is None
+
+
+def test_bodyweight_trend_is_null_without_weight_history(api):
+    client, db = api
+    coach_headers, coach_id = _make_coach(client, db)
+    _assign(client, db, coach_headers, "weightnohistorysignal")
+
+    signal = _snapshot(db, coach_id, datetime(2026, 10, 5, 12, tzinfo=UTC))[
+        "snapshot"
+    ]["players"][0]
+
+    assert signal["bodyweight_trend"] is None
+
+
 def test_personal_record_weeks_use_unbounded_pr_event_history(api):
     client, db = api
     coach_headers, coach_id = _make_coach(client, db)

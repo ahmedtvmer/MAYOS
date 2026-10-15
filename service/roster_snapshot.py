@@ -12,6 +12,7 @@ from service import assignments as assignments_service
 from service import coach_ai
 from service import missed_day_alerts
 from service import stalling
+from service import weight_history
 from service.coach_settings import DEFAULT_STALL_THRESHOLD_WEEKS
 from service.schedule import local_date_in
 
@@ -128,6 +129,37 @@ def _weeks_without_personal_record(ledger: Any, program: Any, today: date) -> in
     return days // 7
 
 
+def _bodyweight_trend(
+    db: Any, ledger: Any, ledger_id: str, today: date
+) -> dict[str, Any] | None:
+    """Dated weight points and Python-computed comparison against Target weight."""
+    trend = weight_history.get_weight_trend(
+        db,
+        weight_history.WeightTrendQuery(
+            ledger_id=ledger_id, weeks=coach_ai.BODYWEIGHT_TREND_WEEKS, as_of=today
+        ),
+        ledger,
+    )
+    if not trend.points:
+        return None
+    target = (ledger.get_player_profile() or {}).get("target_weight_kg")
+    target_kg = float(target) if target is not None else None
+    latest_kg = float(trend.points[-1].weight_kg)
+    return {
+        "points": [
+            {"date": point.date.isoformat(), "weight_kg": point.weight_kg}
+            for point in trend.points
+        ],
+        "change_kg": (
+            round(float(trend.change_kg), 2) if trend.change_kg is not None else None
+        ),
+        "target_weight_kg": target_kg,
+        "latest_minus_target_kg": (
+            round(latest_kg - target_kg, 2) if target_kg is not None else None
+        ),
+    }
+
+
 def _effort_rising_same_load(
     program: Any, alerts: list[dict[str, Any]], assignment_id: str
 ) -> bool:
@@ -164,6 +196,7 @@ def _empty_ledger_signals() -> dict[str, Any]:
         "adherence_pct_28d": None,
         "weeks_without_personal_record": None,
         "effort_rising_same_load_main_lift": False,
+        "bodyweight_trend": None,
     }
 
 
@@ -181,6 +214,9 @@ def _ledger_signals(
         local_today = attendance_today or local_today
         program = ledger.get_active_program()
         weeks_without_record = _weeks_without_personal_record(ledger, program, local_today)
+        bodyweight_trend = _bodyweight_trend(
+            context.db, ledger, str(player["ledger_id"]), local_today
+        )
         preferred_name = ledger.get_assistant_memory().get("preferred_name")
     return {
         "missed_expected_days_7d": missed_7,
@@ -190,6 +226,7 @@ def _ledger_signals(
         "effort_rising_same_load_main_lift": _effort_rising_same_load(
             program, context.active_alerts, str(assignment["assignment_id"])
         ),
+        "bodyweight_trend": bodyweight_trend,
     }, local_today, str(preferred_name).strip() if preferred_name else None
 
 
@@ -217,7 +254,7 @@ def _player_signal(
     signal["days_since_last_check_in"] = _elapsed_days(
         local_today, context.db.latest_check_in_on(str(assignment["assignment_id"]))
     )
-    signal.update({"bodyweight_trend": None, "coaching_subscription_end": None})
+    signal["coaching_subscription_end"] = None
     display_name = preferred_name or str(player["username"])
     return signal, _client_mapping(opaque_id, assignment, display_name)
 

@@ -116,6 +116,79 @@
           "coaching_subscription_end": null
         }
       ]
+    },
+    "weight": {
+      "as_of": "2026-10-11",
+      "stall_threshold_weeks": 3,
+      "players": [
+        {
+          "player_id": "P0123456789ab",
+          "urgency_rank": 1,
+          "urgency_inputs": {
+            "new_lapsing_alerts": 0,
+            "other_new_coach_alerts": 0,
+            "pending_program_requests": 0,
+            "missed_day_streak": 0,
+            "follow_up_overdue_days": 0,
+            "days_since_last_workout": 1,
+            "stall_length_sessions": 0
+          },
+          "missed_expected_days_7d": 0,
+          "missed_expected_days_14d": 0,
+          "adherence_pct_28d": 90.0,
+          "weeks_without_personal_record": 0,
+          "stall_threshold_met": false,
+          "effort_rising_same_load_main_lift": false,
+          "days_since_last_check_in": 1,
+          "bodyweight_trend": {
+            "points": [
+              {"date": "2026-09-13", "weight_kg": 82.0},
+              {"date": "2026-09-27", "weight_kg": 81.0},
+              {"date": "2026-10-11", "weight_kg": 80.5}
+            ],
+            "change_kg": -1.5,
+            "target_weight_kg": 78.0,
+            "latest_minus_target_kg": 2.5
+          },
+          "coaching_subscription_end": null
+        }
+      ]
+    },
+    "weight_no_target": {
+      "as_of": "2026-10-11",
+      "stall_threshold_weeks": 3,
+      "players": [
+        {
+          "player_id": "P0123456789ab",
+          "urgency_rank": 1,
+          "urgency_inputs": {
+            "new_lapsing_alerts": 0,
+            "other_new_coach_alerts": 0,
+            "pending_program_requests": 0,
+            "missed_day_streak": 0,
+            "follow_up_overdue_days": 0,
+            "days_since_last_workout": 1,
+            "stall_length_sessions": 0
+          },
+          "missed_expected_days_7d": 0,
+          "missed_expected_days_14d": 0,
+          "adherence_pct_28d": 90.0,
+          "weeks_without_personal_record": 0,
+          "stall_threshold_met": false,
+          "effort_rising_same_load_main_lift": false,
+          "days_since_last_check_in": 1,
+          "bodyweight_trend": {
+            "points": [
+              {"date": "2026-09-13", "weight_kg": 82.0},
+              {"date": "2026-10-11", "weight_kg": 80.5}
+            ],
+            "change_kg": -1.5,
+            "target_weight_kg": null,
+            "latest_minus_target_kg": null
+          },
+          "coaching_subscription_end": null
+        }
+      ]
     }
   },
   "cases": [
@@ -198,6 +271,54 @@
       "history": [],
       "scripted_answer": "أسماء اللاعبين مش ظاهرة لي في اللقطة. تطبيق MAYOS يقدر يوضح لك مين المقصود بـ P0123456789ab.",
       "expect": {"player_ids": ["P0123456789ab"], "forbidden_player_ids": ["Pabcdef987654"], "figures": [], "refusal": true, "insufficient": false}
+    },
+    {
+      "id": "weight_en",
+      "snapshot": "weight",
+      "question": "How is P0123456789ab's weight trending?",
+      "history": [],
+      "scripted_answer": "P0123456789ab's weight went from 82 kg on 2026-09-13 to 80.5 kg on 2026-10-11, a change of 1.5 kg.",
+      "expect": {"player_ids": ["P0123456789ab"], "figures": ["82", "80.5", "1.5"], "refusal": false, "insufficient": false}
+    },
+    {
+      "id": "weight_ar",
+      "snapshot": "weight",
+      "question": "إيه اتجاه وزن P0123456789ab؟",
+      "history": [],
+      "scripted_answer": "وزن P0123456789ab نزل من 82 كجم يوم 2026-09-13 لـ 80.5 كجم يوم 2026-10-11، بتغيير 1.5 كجم.",
+      "expect": {"player_ids": ["P0123456789ab"], "figures": ["82", "80.5", "1.5"], "refusal": false, "insufficient": false}
+    },
+    {
+      "id": "weight_target_en",
+      "snapshot": "weight",
+      "question": "How far is P0123456789ab from the Target weight?",
+      "history": [],
+      "scripted_answer": "P0123456789ab is 2.5 kg above the Target weight of 78 kg.",
+      "expect": {"player_ids": ["P0123456789ab"], "figures": ["2.5", "78"], "refusal": false, "insufficient": false}
+    },
+    {
+      "id": "weight_target_ar",
+      "snapshot": "weight",
+      "question": "قد إيه P0123456789ab بعيد عن الوزن المستهدف؟",
+      "history": [],
+      "scripted_answer": "P0123456789ab أعلى من الوزن المستهدف بـ 2.5 كجم؛ الوزن المستهدف 78 كجم.",
+      "expect": {"player_ids": ["P0123456789ab"], "figures": ["2.5", "78"], "refusal": false, "insufficient": false}
+    },
+    {
+      "id": "weight_no_target_en",
+      "snapshot": "weight_no_target",
+      "question": "How far is P0123456789ab from the Target weight?",
+      "history": [],
+      "scripted_answer": "The snapshot does not contain a Target weight for P0123456789ab, so the distance to Target is not available.",
+      "expect": {"player_ids": ["P0123456789ab"], "figures": [], "refusal": false, "insufficient": true}
+    },
+    {
+      "id": "weight_no_history_en",
+      "snapshot": "adherence",
+      "question": "How is P0123456789ab's weight trending?",
+      "history": [],
+      "scripted_answer": "No weight trend is recorded for P0123456789ab, so the weight trend is not available.",
+      "expect": {"player_ids": ["P0123456789ab"], "figures": [], "refusal": false, "insufficient": true}
     }
   ]
 }
