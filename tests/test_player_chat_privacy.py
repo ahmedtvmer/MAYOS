@@ -57,6 +57,14 @@ def _done_content(body: str) -> str:
     return next(payload["response_content"] for payload in payloads if payload.get("done"))
 
 
+def _streamed_token_content(body: str) -> str:
+    return "".join(
+        json.loads(line.removeprefix("data: "))["token"]
+        for line in body.splitlines()
+        if line.startswith("data: ") and '"token"' in line
+    )
+
+
 FRANCO_REFUSAL = (
     "ممكن تكتب رسالتك بالعربي أو بالإنجليزي لو سمحت؟\n"
     "Please write your message in Arabic or English."
@@ -1904,7 +1912,7 @@ def test_clinical_and_franco_messages_are_intercepted_before_chat_model(api, mon
 
 
 def test_clinical_chat_records_injury_and_clarifies_only_area_replies(api, monkeypatch):
-    client, db = api
+    client, _db = api
     headers = _authed(_register(client, "injury-chat")['access_token'])
     safety_model = ScriptedChatModel(default_turn="CHAT MODEL RAN")
     monkeypatch.setattr(assistant_graph, "llm", safety_model)
@@ -1916,11 +1924,18 @@ def test_clinical_chat_records_injury_and_clarifies_only_area_replies(api, monke
         body = response.read().decode("utf-8")
         assert response.status_code == 200
     assert _done_content(body) == assistant_graph.CLINICAL_SAFEGUARD_RESPONSE
-    injuries = client.get("/profile/injuries", headers=headers)
-    assert injuries.status_code == 200
-    assert len(injuries.json()) == 1
-    assert injuries.json()[0]["body_area"] == "knee"
-    assert injuries.json()[0]["status"] == "reported"
+    records = client.get("/profile/injuries", headers=headers).json()
+    assert len(records) == 1
+    assert records[0]["body_area"] == "knee"
+    assert records[0]["status"] == "reported"
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "I saw a physician."}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert "recorded the injury status as physician seen" in _done_content(body)
+    assert client.get("/profile/injuries", headers=headers).json()[0]["status"] == "physician_seen"
 
     with client.stream(
         "POST", "/chat/messages", headers=headers,
@@ -1929,10 +1944,10 @@ def test_clinical_chat_records_injury_and_clarifies_only_area_replies(api, monke
         body = response.read().decode("utf-8")
         assert response.status_code == 200
     assert _done_content(body) == assistant_graph.CLINICAL_SAFEGUARD_RESPONSE
-    injuries = client.get("/profile/injuries", headers=headers).json()
-    assert len(injuries) == 2
-    assert injuries[0]["body_area"] is None
-    assert injuries[0]["clarification_pending"] is True
+    records = client.get("/profile/injuries", headers=headers).json()
+    assert len(records) == 2
+    assert records[0]["body_area"] is None
+    assert records[0]["clarification_pending"] is True
 
     with client.stream(
         "POST", "/chat/messages", headers=headers, json={"content": "knee"}
@@ -1969,6 +1984,24 @@ def test_clinical_chat_records_injury_and_clarifies_only_area_replies(api, monke
         body = response.read().decode("utf-8")
         assert response.status_code == 200
     assert _done_content(body) == "CHAT MODEL RAN"
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "Thanks."}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == (
+        "CHAT MODEL RAN\n\nHave you seen a physician about this injury?"
+    )
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "Thanks."}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == (
+        "CHAT MODEL RAN\n\nHave you seen a physician about this injury?"
+    )
 
 
 def test_pending_injury_clarification_expires_after_one_unrelated_turn(api, monkeypatch):
@@ -2028,6 +2061,15 @@ def test_pending_injury_clarification_expires_after_one_unrelated_turn(api, monk
     assert _done_content(body) == "CHAT MODEL RAN"
     assert client.get("/profile/injuries", headers=headers).json()[0]["clarification_pending"] is False
 
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "Thanks."}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == (
+        "CHAT MODEL RAN\n\nHave you seen a physician about this injury?"
+    )
+
 
 def test_injury_area_clarification_uses_arabic_labels(api, monkeypatch):
     client, _db = api
@@ -2072,13 +2114,13 @@ def test_injury_status_reply_uses_arabic_label(api, monkeypatch):
     assert created.status_code == 201, created.text
 
     with client.stream(
-        "POST", "/chat/messages", headers=headers, json={"content": "ركبتي خفيت."}
+        "POST", "/chat/messages", headers=headers, json={"content": "كشفت على ركبتي"}
     ) as response:
         body = response.read().decode("utf-8")
         assert response.status_code == 200
     reply = _done_content(body)
-    assert "تم التعافي" in reply
-    assert "resolved" not in reply
+    assert "تمت مراجعة الطبيب" in reply
+    assert "physician_seen" not in reply
 
 
 def test_profile_injury_text_import_survives_later_chat_injury_write(api, monkeypatch):
@@ -2177,6 +2219,15 @@ def test_pending_injury_ordinary_area_chat_does_not_attach_area(api, monkeypatch
     assert record["body_area"] is None
     assert record["clarification_pending"] is False
 
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "Thanks."}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == (
+        "CHAT MODEL RAN\n\nHave you seen a physician about this injury?"
+    )
+
 
 def test_clinical_fixed_reply_survives_any_recording_failure(api, monkeypatch):
     from service import injuries as injuries_service
@@ -2209,7 +2260,8 @@ def test_player_chat_reads_injuries_through_the_read_tool(api, monkeypatch):
                 calls=[{"name": "get_player_injuries", "args": {}, "id": "injury-read"}]
             ),
             "You reported knee pain during squats; its status is reported.",
-        ]
+        ],
+        default_turn="I found your injury record.",
     )
     monkeypatch.setattr(assistant_graph, "llm", model)
     with client.stream(
@@ -2218,10 +2270,332 @@ def test_player_chat_reads_injuries_through_the_read_tool(api, monkeypatch):
     ) as response:
         body = response.read().decode("utf-8")
         assert response.status_code == 200
-    assert _done_content(body) == "You reported knee pain during squats; its status is reported."
+    assert _done_content(body) == (
+        "You reported knee pain during squats; its status is reported.\n\n"
+        "Have you seen a physician about this injury?"
+    )
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "Can you read my injury records?"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == "I found your injury record."
     assert "get_player_injuries" in model.calls[0]["tools"]
     tool_payload = "\n".join(
         str(getattr(message, "content", message)) for message in model.calls[1]["messages"]
     )
     assert "Pain during squats" in tool_payload
     assert '"status":"reported"' in tool_payload
+
+
+def test_player_injury_tool_clearances_hide_internal_ids_but_keep_player_wording(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    headers = _authed(_register(client, "injury-clearance-tool")['access_token'])
+    db.catalog_conn.execute(
+        "INSERT INTO exercises (id, name, body_part, target_muscle) "
+        "VALUES ('private-clearance-exercise', 'Squat', 'Upper Legs', 'Quads')"
+    )
+    db.catalog_conn.commit()
+    with db.open_ledger("injury-clearance-tool") as ledger:
+        injury, _ = ledger.create_injury_record(
+            "knee", "Pain during squats", status="physician_seen"
+        )
+        linked, _ = ledger.create_exercise_clearance(
+            injury_id=injury["id"],
+            exercise_id="private-clearance-exercise",
+            exercise_name="Squat",
+            original_wording="My physician cleared squats.",
+            verdict="cleared",
+            note="Pain free only",
+        )
+        raw, _ = ledger.create_exercise_clearance(
+            injury_id=injury["id"],
+            exercise_id=None,
+            exercise_name="fictional glute gliders",
+            original_wording="My physician said no fictional glute gliders.",
+            verdict="not_cleared",
+            note="Avoid for now",
+        )
+
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(
+                calls=[{"name": "get_player_injuries", "args": {}, "id": "clearance-read"}]
+            ),
+            "I found your injury and clearance notes.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "Can you read my injury and clearance records?"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    assert _done_content(body) == "I found your injury and clearance notes."
+    tool_messages = [
+        message.content
+        for call in model.calls
+        for message in call["messages"]
+        if getattr(message, "type", "") == "tool"
+    ]
+    assert len(tool_messages) == 1
+    result = json.loads(tool_messages[0])
+    clearances = result["injuries"][0]["clearances"]
+    assert len(clearances) == 2
+    expected_fields = {
+        "exercise_name", "original_wording", "verdict", "note", "recorded_at", "source"
+    }
+    assert all(
+        set(row) == expected_fields
+        for row in clearances
+    )
+    assert all(not {"id", "injury_id", "exercise_id"} & set(row) for row in clearances)
+    assert {
+        (row["exercise_name"], row["original_wording"], row["verdict"])
+        for row in clearances
+    } == {
+        ("Squat", "My physician cleared squats.", "cleared"),
+        (
+            "fictional glute gliders",
+            "My physician said no fictional glute gliders.",
+            "not_cleared",
+        ),
+    }
+    clearance_payload = json.dumps(clearances)
+    result_payload = json.dumps(result)
+    assert injury["id"] not in result_payload
+    assert linked["id"] not in clearance_payload
+    assert linked["exercise_id"] not in clearance_payload
+    assert raw["id"] not in clearance_payload
+
+
+def test_physician_followup_appends_without_swallowing_chat_and_reasks_for_area_advice(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, _db = api
+    headers = _authed(_register(client, "injury-followup-chat")["access_token"])
+    model = ScriptedChatModel(default_turn="CHAT MODEL RAN")
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "I felt sharp pain in my knee."},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == assistant_graph.CLINICAL_SAFEGUARD_RESPONSE
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "What should I train today?"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == (
+        "CHAT MODEL RAN\n\nHave you seen a physician about this injury?"
+    )
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "Thanks."}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == "CHAT MODEL RAN"
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "Can I train my knee today?"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == (
+        "CHAT MODEL RAN\n\nHave you seen a physician about this injury?"
+    )
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "yes, I saw a physician"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert "recorded that you saw a physician" in _done_content(body)
+    assert client.get("/profile/injuries", headers=headers).json()[0]["status"] == "physician_seen"
+
+
+@pytest.mark.parametrize(
+    "question_reply",
+    ["Are you asking me to clarify?", "هل تريد توضيحًا؟"],
+)
+def test_physician_followup_only_skips_a_reply_ending_with_a_question_mark(
+    api, monkeypatch, question_reply
+):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    model = ScriptedChatModel(
+        [
+            "This includes a question? The answer continues here.",
+            question_reply,
+            "Here is the answer without a closing question.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    first_headers = _authed(_register(client, "followup-mid-question")['access_token'])
+    with client.stream(
+        "POST", "/chat/messages", headers=first_headers,
+        json={"content": "I felt sharp pain in my knee."},
+    ) as response:
+        assert response.status_code == 200
+        response.read()
+    with client.stream(
+        "POST", "/chat/messages", headers=first_headers,
+        json={"content": "What should I do about my schedule?"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == (
+        "This includes a question? The answer continues here.\n\n"
+        "Have you seen a physician about this injury?"
+    )
+
+    second_headers = _authed(_register(client, "followup-ending-question")['access_token'])
+    with client.stream(
+        "POST", "/chat/messages", headers=second_headers,
+        json={"content": "I felt sharp pain in my knee."},
+    ) as response:
+        assert response.status_code == 200
+        response.read()
+    with client.stream(
+        "POST", "/chat/messages", headers=second_headers,
+        json={"content": "What should I do about my schedule?"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == question_reply
+    with db.open_ledger("followup-ending-question") as ledger:
+        injury = ledger.list_injury_records()[0]
+        assert injury["physician_followup_pending"] == 0
+        assert injury["physician_followup_asked_at"] is None
+
+    with client.stream(
+        "POST", "/chat/messages", headers=second_headers,
+        json={"content": "Thanks."},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert "without a closing question" in _done_content(body).casefold()
+    assert _done_content(body).endswith(
+        "\n\nHave you seen a physician about this injury?"
+    )
+
+
+def test_physician_followup_stream_tokens_match_done_reply(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    headers = _authed(_register(client, "injury-followup-stream")["access_token"])
+    with db.open_ledger("injury-followup-stream") as ledger:
+        ledger.create_injury_record("knee", "Pain during squats")
+    monkeypatch.setattr(
+        assistant_graph,
+        "llm",
+        ScriptedChatModel(default_turn="Your plan has a lighter session today.", chunk_size=8),
+    )
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "How should I train today?"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    assert _streamed_token_content(body) == _done_content(body)
+    assert _done_content(body) == (
+        "Your plan has a lighter session today.\n\n"
+        "Have you seen a physician about this injury?"
+    )
+    history = client.get("/chat/history", headers=headers).json()
+    assert history[-1]["role"] == "assistant"
+    assert history[-1]["content"] == _done_content(body)
+
+
+def test_arabic_chat_appends_arabic_physician_followup(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    headers = _authed(_register(client, "injury-followup-arabic")["access_token"])
+    with db.open_ledger("injury-followup-arabic") as ledger:
+        ledger.create_injury_record("knee", "Pain during squats")
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel(default_turn="تمام، اتبع برنامجك المعتاد."))
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "إيه أعمل في التمرين النهارده؟"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    assert _done_content(body) == "تمام، اتبع برنامجك المعتاد.\n\nهل راجعت طبيبًا بخصوص الإصابة؟"
+
+
+@pytest.mark.parametrize("message", [
+    "the doctor said I'm fully cleared",
+    "my doctor said I'm fully cleared",
+    "my physician fully cleared me",
+    "doctor cleared me completely",
+])
+def test_full_physician_clearance_requires_player_confirmation(api, monkeypatch, message):
+    client, db = api
+    username = "full-clearance-player"
+    headers = _authed(_register(client, username)["access_token"])
+    with db.open_ledger(username) as ledger:
+        injury, _created = ledger.create_injury_record("knee", "Pain during squats")
+        injury = ledger.update_injury_record(
+            injury["id"], body_area="knee", description="Pain during squats", status="physician_seen"
+        )
+        assert injury["status"] == "physician_seen"
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel(default_turn="CHAT MODEL RAN"))
+
+    with client.stream("POST", "/chat/messages", headers=headers, json={"content": message}) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == (
+        "Your physician fully cleared you. Do you confirm that I should mark this injury resolved?"
+    )
+    assert client.get("/profile/injuries", headers=headers).json()[0]["status"] == "physician_seen"
+
+    with client.stream("POST", "/chat/messages", headers=headers, json={"content": "yes"}) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == "I marked the injury as resolved."
+    assert client.get("/profile/injuries", headers=headers).json()[0]["status"] == "resolved"
+
+
+def test_doctor_cleared_my_knee_is_not_saved_as_an_exercise_clearance(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "doctor-cleared-knee"
+    headers = _authed(_register(client, username)["access_token"])
+    with db.open_ledger(username) as ledger:
+        injury, _created = ledger.create_injury_record("knee", "Pain during squats")
+        ledger.update_injury_record(
+            injury["id"], body_area="knee", description="Pain during squats", status="physician_seen"
+        )
+    monkeypatch.setattr(
+        assistant_graph,
+        "llm",
+        ScriptedChatModel(default_turn="Which exercise did your physician clear?"),
+    )
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "my doctor cleared my knee"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == "Which exercise did your physician clear?"
+    injury = client.get("/profile/injuries", headers=headers).json()[0]
+    assert injury["status"] == "physician_seen"
+    assert injury["clearances"] == []

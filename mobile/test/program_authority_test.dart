@@ -167,6 +167,123 @@ void main() {
     expect(find.text('Pain during squats'), findsOneWidget);
   });
 
+  testWidgets('Profile lists, edits and deletes an exercise clearance in English',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake();
+    fake.injuries.add(<String, dynamic>{
+      'id': 'injury-clearance-en',
+      'body_area': 'knee',
+      'catalog_body_parts': <String>['upper legs', 'lower legs'],
+      'description': 'Knee pain during training',
+      'reported_at': '2026-10-01T10:00:00+00:00',
+      'status': 'physician_seen',
+      'clarification_pending': false,
+      'clearances': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': 'clearance-en-1',
+          'injury_id': 'injury-clearance-en',
+          'exercise_id': 'leg-curl',
+          'exercise_name': 'Leg Curls',
+          'original_wording': 'My physician said no leg curls.',
+          'verdict': 'not_cleared',
+          'note': null,
+          'recorded_at': '2026-10-02T10:00:00+00:00',
+          'source': 'player-reported physician advice',
+        },
+      ],
+    });
+    await _pumpApp(tester, fake);
+    await _openProfile(tester);
+
+    expect(find.text('Leg Curls · Not cleared'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('edit_clearance_clearance-en-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('clearance_verdict_dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cleared').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('save_clearance_button')));
+    await tester.pumpAndSettle();
+
+    expect(fake.clearanceUpdateRequests, 1);
+    expect(fake.lastClearanceUpdatePayload?['verdict'], 'cleared');
+    expect(find.text('Leg Curls · Cleared'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('delete_clearance_clearance-en-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirm_delete_clearance_clearance-en-1')));
+    await tester.pumpAndSettle();
+    expect(fake.clearanceDeleteRequests, 1);
+    expect(find.text('Leg Curls · Cleared'), findsNothing);
+  });
+
+  testWidgets('Profile edits and deletes an exercise clearance in Arabic',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake()..displayLanguage = 'ar';
+    fake.injuries.add(<String, dynamic>{
+      'id': 'injury-clearance-ar',
+      'body_area': 'knee',
+      'catalog_body_parts': <String>['upper legs', 'lower legs'],
+      'description': 'ألم في الركبة',
+      'reported_at': '2026-10-01T10:00:00+00:00',
+      'status': 'physician_seen',
+      'clarification_pending': false,
+      'clearances': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': 'clearance-ar-1',
+          'injury_id': 'injury-clearance-ar',
+          'exercise_id': 'leg-curl',
+          'exercise_name': 'Leg Curls',
+          'original_wording': 'قال الدكتور إن تمرين Leg Curls غير مسموح.',
+          'verdict': 'not_cleared',
+          'note': null,
+          'recorded_at': '2026-10-02T10:00:00+00:00',
+          'source': 'player-reported physician advice',
+        },
+      ],
+    });
+    await _pumpApp(tester, fake);
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await _pumpUntilFound(tester, find.text('المظهر'));
+    await tester.scrollUntilVisible(
+      find.text('تسجيل الدخول المرتبط'),
+      250,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('settings_section_list')),
+        matching: find.byType(Scrollable),
+      ).first,
+    );
+    await tester.scrollUntilVisible(
+      find.text('الملف التدريبي'),
+      -250,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('settings_section_list')),
+        matching: find.byType(Scrollable),
+      ).first,
+    );
+    await tester.tap(find.text('الملف التدريبي'));
+    await _pumpUntilFound(tester, find.byKey(const Key('weight_kg_field')));
+
+    expect(find.text('Leg Curls · غير مسموح'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('edit_clearance_clearance-ar-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('clearance_verdict_dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('مسموح').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('save_clearance_button')));
+    await tester.pumpAndSettle();
+    expect(fake.lastClearanceUpdatePayload?['verdict'], 'cleared');
+    expect(find.text('Leg Curls · مسموح'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('delete_clearance_clearance-ar-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirm_delete_clearance_clearance-ar-1')));
+    await tester.pumpAndSettle();
+    expect(fake.clearanceDeleteRequests, 1);
+    expect(find.text('Leg Curls · مسموح'), findsNothing);
+  });
+
   testWidgets('Profile requires confirmation before resolving an injury',
       (tester) async {
     final FakeMayosApi fake = _playerFake();

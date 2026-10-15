@@ -496,6 +496,16 @@ def test_chat_injury_and_profile_status_change_share_one_coach_alert(api):
         json={"content": "ركبتي خفيت."},
     )
     assert physician_update.status_code == 200, physician_update.text
+    assert client.get("/profile/injuries", headers=player_headers).json()[0]["status"] == "physician_seen"
+    resolution_prompt = client.post(
+        "/chat/messages",
+        headers=player_headers,
+        json={"content": "My physician fully cleared my knee injury."},
+    )
+    assert "Do you confirm" in resolution_prompt.text
+    assert client.get("/profile/injuries", headers=player_headers).json()[0]["status"] == "physician_seen"
+    confirmed = client.post("/chat/messages", headers=player_headers, json={"content": "yes"})
+    assert confirmed.status_code == 200, confirmed.text
     alerts = _profile_alerts(client, coach_headers)
     assert len(alerts) == 1
     assert alerts[0]["injury_changes"][injury["id"]]["status"] == "resolved"
@@ -511,6 +521,79 @@ def test_chat_injury_and_profile_status_change_share_one_coach_alert(api):
     assert len(alerts) == 1
     assert alerts[0]["injury_changes"][profile_created.json()["id"]]["status"] == "reported"
 
+
+def test_each_exercise_clearance_change_alerts_only_the_active_assignment(api):
+    client, db = api
+    coach_headers, player_headers, assignment_id, _ = _assign(
+        api, "clearance-coach", "clearance-player"
+    )
+    other_coach_headers = _make_coach(client, db, "clearance-other-coach")
+    injury_response = client.post(
+        "/profile/injuries",
+        headers=player_headers,
+        json={"body_area": "knee", "description": "Knee pain during training"},
+    )
+    assert injury_response.status_code == 201, injury_response.text
+    injury_id = injury_response.json()["id"]
+    player = db.get_active_account_by_username("clearance-player")
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        from service import injuries as injuries_service
+
+        clearance = injuries_service.create_exercise_clearance(
+            db,
+            ledger,
+            injury_id,
+            player_account_id=player["account_id"],
+            exercise_name="Leg Curl",
+            original_wording="My physician said no leg curls.",
+            verdict="not_cleared",
+            exercise_id="leg-curl",
+        )
+    assert clearance is not None
+    edited = client.put(
+        f"/profile/injuries/{injury_id}/clearances/{clearance['id']}",
+        headers=player_headers,
+        json={
+            "exercise_name": "Leg Curl",
+            "original_wording": "My physician said no leg curls.",
+            "verdict": "cleared_with_limits",
+            "note": "Light load only",
+        },
+    )
+    assert edited.status_code == 200, edited.text
+
+    alerts = _profile_alerts(client, coach_headers)
+    clearance_alerts = [alert for alert in alerts if alert.get("clearance_changes")]
+    assert len(clearance_alerts) == 2
+    assert {alert["clearance_changes"][0]["verdict"] for alert in clearance_alerts} == {
+        "not_cleared", "cleared_with_limits"
+    }
+    summary = client.get(
+        f"/coach/assignments/{assignment_id}/player/summary", headers=coach_headers
+    )
+    assert summary.status_code == 200, summary.text
+    assert any(
+        row["verdict"] == "cleared_with_limits"
+        for injury in summary.json()["injuries"]
+        for row in injury["clearances"]
+    )
+    assert _profile_alerts(client, other_coach_headers) == []
+    denied = client.get(
+        f"/coach/assignments/{assignment_id}/player/summary",
+        headers=other_coach_headers,
+    )
+    assert denied.status_code == 403
+    deleted = client.delete(
+        f"/profile/injuries/{injury_id}/clearances/{clearance['id']}",
+        headers=player_headers,
+    )
+    assert deleted.status_code == 204
+    final_alerts = _profile_alerts(client, coach_headers)
+    clearance_alerts = [alert for alert in final_alerts if alert.get("clearance_changes")]
+    assert len(clearance_alerts) == 3
+    assert {alert["clearance_changes"][0]["change"] for alert in clearance_alerts} == {
+        "created", "updated", "deleted"
+    }
 
 def test_profile_change_does_not_fire_for_goal_weight_or_unassigned_player(api, monkeypatch):
     client, db = api

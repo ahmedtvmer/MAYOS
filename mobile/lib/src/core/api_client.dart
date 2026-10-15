@@ -1826,6 +1826,42 @@ class ApiClient {
     );
   }
 
+  Future<ExerciseClearance> updateExerciseClearance({
+    required String injuryId,
+    required String id,
+    required String exerciseName,
+    required String originalWording,
+    required String verdict,
+    required String? note,
+  }) async {
+    final response = await _send(
+      () => _dio.put<dynamic>(
+        '/profile/injuries/$injuryId/clearances/$id',
+        data: <String, dynamic>{
+          'exercise_name': exerciseName,
+          'original_wording': originalWording,
+          'verdict': verdict,
+          'note': note,
+        },
+      ),
+    );
+    return _parseBody(
+      response.data,
+      ExerciseClearance.fromJson,
+      _invalidProfile,
+      failureMessage: _invalidProfileFailure,
+    );
+  }
+
+  Future<void> deleteExerciseClearance({
+    required String injuryId,
+    required String id,
+  }) async {
+    await _send(
+      () => _dio.delete<dynamic>('/profile/injuries/$injuryId/clearances/$id'),
+    );
+  }
+
   /// Saves the player's Assistant style and optional wording instructions.
   Future<PlayerProfile> updateAssistantStyle({
     required String style,

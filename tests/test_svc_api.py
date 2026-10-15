@@ -661,6 +661,309 @@ def test_profile_injury_rejects_unknown_area_and_status(client):
     ).status_code == 422
 
 
+def test_injury_followup_and_player_reported_clearance_use_http_chat_seam(client, monkeypatch):
+    import json
+
+    from agent import assistant_graph
+
+    model = ScriptedChatModel(
+        ["Your physician cleared leg curls."],
+        default_turn="Your physician cleared leg curls.",
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    assert client.post(
+        "/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"}
+    ).status_code == 201
+    assert client.put("/profile", json={"current_goal": "Strength"}).status_code == 200
+
+    db = client.app.state.test_db
+    db.catalog_conn.execute(
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment, instructions) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        ("leg-curl", "Leg Curls", "Upper Legs", "Hamstrings", "Machine", "Curl with control."),
+    )
+    db.catalog_conn.execute(
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment, instructions) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        ("leg-extension", "Leg Extensions", "Upper Legs", "Quadriceps", "Machine", "Extend with control."),
+    )
+    db.catalog_conn.commit()
+    with db.open_ledger("alice") as ledger:
+        ledger.save_training_program({
+            "program_name": "Leg day",
+            "weekly_frequency": 1,
+            "split_type": "custom",
+            "days": [{
+                "day_name": "Legs",
+                "day_order": 1,
+                "exercises": [
+                    {"exercise_id": "leg-curl", "exercise_name": "Leg Curls"},
+                    {"exercise_id": "leg-extension", "exercise_name": "Leg Extensions"},
+                ],
+            }],
+        })
+    created = client.post(
+        "/profile/injuries",
+        json={"body_area": "knee", "description": "Knee pain during training"},
+    )
+    assert created.status_code == 201, created.text
+    injury = created.json()
+
+    def send(content):
+        with client.stream("POST", "/chat/messages", json={"content": content}) as response:
+            assert response.status_code == 200
+            events = [
+                json.loads(line[6:])
+                for line in response.iter_lines()
+                if line.startswith("data: ")
+            ]
+        return next(event for event in events if event.get("done"))
+
+    first = send("How was my training this week?")
+    assert first["response_content"] == (
+        "Your physician cleared leg curls.\n\n"
+        "Have you seen a physician about this injury?"
+    )
+    with db.open_ledger("alice") as ledger:
+        marked = ledger.get_injury_record(injury["id"])
+        assert marked["physician_followup_asked_at"]
+        assert ledger.list_exercise_clearances(injury["id"]) == []
+
+    claimed_by_model = send("Tell me something unrelated.")
+    assert claimed_by_model["response_content"] == "Your physician cleared leg curls."
+    with db.open_ledger("alice") as ledger:
+        assert ledger.list_exercise_clearances(injury["id"]) == []
+
+    repeated_for_advice = send("Can I train my knee?")
+    assert "seen a physician" in repeated_for_advice["response_content"]
+    seen = send("Yes.")
+    assert seen["response_content"].endswith("What did your physician say about Leg Curls?")
+    recorded = send("My physician said no leg curls.")
+    assert "not cleared" in recorded["response_content"]
+    assert recorded["response_content"].endswith("What did your physician say about Leg Extensions?")
+    second_recorded = send("Leg Extensions are cleared.")
+    assert second_recorded["response_content"].startswith("Recorded the physician's advice: Leg Extensions")
+    assert "What did your physician say about" not in second_recorded["response_content"]
+
+    persisted = client.get("/profile/injuries").json()[0]
+    assert persisted["status"] == "physician_seen"
+    assert len(persisted["clearances"]) == 2
+    clearance = next(row for row in persisted["clearances"] if row["exercise_id"] == "leg-curl")
+    assert clearance["exercise_id"] == "leg-curl"
+    assert clearance["verdict"] == "not_cleared"
+    assert clearance["original_wording"] == "My physician said no leg curls."
+
+    edited = client.put(
+        f"/profile/injuries/{injury['id']}/clearances/{clearance['id']}",
+        json={
+            "exercise_name": "Leg Curls",
+            "original_wording": "My physician said no leg curls.",
+            "verdict": "cleared_with_limits",
+            "note": "Light weight only",
+        },
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["verdict"] == "cleared_with_limits"
+    assert edited.json()["original_wording"] == "My physician said no leg curls."
+    deleted = client.delete(
+        f"/profile/injuries/{injury['id']}/clearances/{clearance['id']}"
+    )
+    assert deleted.status_code == 204
+    remaining = client.get("/profile/injuries").json()[0]["clearances"]
+    assert len(remaining) == 1
+    assert remaining[0]["exercise_id"] == "leg-extension"
+
+    resolution_prompt = send("My physician fully cleared my knee injury.")
+    assert "Do you confirm" in resolution_prompt["response_content"]
+    assert client.get("/profile/injuries").json()[0]["status"] == "physician_seen"
+    confirmed = send("yes")
+    assert "marked the injury as resolved" in confirmed["response_content"]
+    assert client.get("/profile/injuries").json()[0]["status"] == "resolved"
+
+
+def test_ambiguous_and_unmatched_exercise_clearances_wait_for_selection_and_stay_raw(
+    client, monkeypatch
+):
+    import json
+
+    from agent import assistant_graph, player_tools
+
+    model = ScriptedChatModel(default_turn="A model reply cannot write a clearance.")
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    class FakeEmbeddings:
+        def embed_query(self, _query):
+            return [0.0] * 384
+
+    from core import embeddings
+
+    monkeypatch.setattr(embeddings, "get_embedding_model", lambda: FakeEmbeddings())
+    assert client.post(
+        "/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"}
+    ).status_code == 201
+    assert client.put("/profile", json={"current_goal": "Strength"}).status_code == 200
+    db = client.app.state.test_db
+    db.catalog_conn.executemany(
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment, instructions) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            ("leg-curl-a", "Leg Curls", "Upper Legs", "Hamstrings", "Machine", "Curl steadily."),
+            ("leg-curl-b", "Leg Curls", "Upper Legs", "Hamstrings", "Machine", "Curl steadily."),
+        ],
+    )
+    db.catalog_conn.commit()
+    injury = client.post(
+        "/profile/injuries",
+        json={"body_area": "knee", "description": "Knee pain during training"},
+    ).json()
+
+    def send(content):
+        with client.stream("POST", "/chat/messages", json={"content": content}) as response:
+            assert response.status_code == 200
+            events = [
+                json.loads(line[6:])
+                for line in response.iter_lines()
+                if line.startswith("data: ")
+            ]
+        return next(event for event in events if event.get("done"))
+
+    ambiguous = send("No leg curls.")
+    assert "Which exercise" in ambiguous["response_content"]
+    with db.open_ledger("alice") as ledger:
+        assert ledger.list_exercise_clearances(injury["id"]) == []
+        assert ledger.get_pending_exercise_clearance(injury["id"]) is not None
+
+    selected = send("اختيار ٢")
+    assert "سجلت توصية الطبيب" in selected["response_content"]
+    unmatched_wording = "My physician said no fictional glute gliders."
+    send(unmatched_wording)
+    records = client.get("/profile/injuries").json()[0]["clearances"]
+    assert len(records) == 2
+    assert records[0]["exercise_id"] is None
+    assert records[0]["original_wording"] == unmatched_wording
+    assert records[1]["exercise_id"] in {"leg-curl-a", "leg-curl-b"}
+    with db.open_ledger("alice") as ledger:
+        tool_result = player_tools._read_player_injuries(ledger)
+    raw_clearance = next(
+        entry for entry in tool_result["injuries"][0]["clearances"]
+        if entry["exercise_name"] == "fictional glute gliders"
+    )
+    assert raw_clearance["exercise_name"] == "fictional glute gliders"
+    assert raw_clearance["original_wording"] == unmatched_wording
+    assert raw_clearance["verdict"] == "not_cleared"
+    assert not {"id", "injury_id", "exercise_id"} & set(raw_clearance)
+
+
+def test_arabic_clearance_candidate_name_is_accepted_through_http_chat(client, monkeypatch):
+    import json
+
+    from agent import assistant_graph
+
+    model = ScriptedChatModel(default_turn="A model reply cannot write a clearance.")
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    assert client.post(
+        "/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"}
+    ).status_code == 201
+    injury = client.post(
+        "/profile/injuries",
+        json={"body_area": "knee", "description": "ألم في الركبة"},
+    ).json()
+    with client.app.state.test_db.open_ledger("alice") as ledger:
+        ledger.set_pending_exercise_clearance(
+            injury["id"],
+            original_wording="قال الطبيب إن تمرين ثني الساق مسموح.",
+            verdict="cleared",
+            note=None,
+            candidates=[
+                {"id": "arabic-curl", "name": "ثني الساق"},
+                {"id": "arabic-extension", "name": "مد الساق"},
+            ],
+        )
+
+    with client.stream(
+        "POST", "/chat/messages", json={"content": "أقصد تمرين ثني الساق"}
+    ) as response:
+        assert response.status_code == 200
+        events = [
+            json.loads(line[6:])
+            for line in response.iter_lines()
+            if line.startswith("data: ")
+        ]
+    done = next(event for event in events if event.get("done"))
+    assert "ثني الساق" in done["response_content"]
+    assert "أنهي تمرين تقصد؟" not in done["response_content"]
+    with client.app.state.test_db.open_ledger("alice") as ledger:
+        clearance = ledger.list_exercise_clearances(injury["id"])[0]
+    assert clearance["exercise_id"] == "arabic-curl"
+    assert clearance["exercise_name"] == "ثني الساق"
+
+
+def test_clearance_exercise_question_stops_after_two_asks_until_player_reopens(
+    client, monkeypatch
+):
+    import json
+
+    from agent import assistant_graph
+
+    model = ScriptedChatModel(default_turn="MODEL RAN")
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    assert client.post(
+        "/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"}
+    ).status_code == 201
+    assert client.put("/profile", json={"current_goal": "Strength"}).status_code == 200
+    db = client.app.state.test_db
+    db.catalog_conn.executemany(
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment, instructions) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            ("leg-curl", "Leg Curls", "Upper Legs", "Hamstrings", "Machine", "Curl steadily."),
+            ("leg-extension", "Leg Extensions", "Upper Legs", "Quadriceps", "Machine", "Extend steadily."),
+        ],
+    )
+    db.catalog_conn.commit()
+    with db.open_ledger("alice") as ledger:
+        ledger.save_training_program({
+            "program_name": "Leg day",
+            "weekly_frequency": 1,
+            "split_type": "custom",
+            "days": [{
+                "day_name": "Legs",
+                "day_order": 1,
+                "exercises": [
+                    {"exercise_id": "leg-curl", "exercise_name": "Leg Curls"},
+                    {"exercise_id": "leg-extension", "exercise_name": "Leg Extensions"},
+                ],
+            }],
+        })
+    injury = client.post(
+        "/profile/injuries",
+        json={"body_area": "knee", "description": "Knee pain during training"},
+    ).json()
+
+    def send(content):
+        with client.stream("POST", "/chat/messages", json={"content": content}) as response:
+            assert response.status_code == 200
+            events = [
+                json.loads(line[6:])
+                for line in response.iter_lines()
+                if line.startswith("data: ")
+            ]
+        return next(event for event in events if event.get("done"))["response_content"]
+
+    first_question = send("I saw a physician about my knee.")
+    assert first_question.endswith("What did your physician say about Leg Curls?")
+    repeated_question = send("Thanks.")
+    assert repeated_question == "What did your physician say about Leg Curls?"
+    assert send("Thanks again.") == "MODEL RAN"
+    assert send("I will decide later.") == "MODEL RAN"
+
+    resumed = send("Leg Curls are cleared.")
+    assert resumed.endswith("What did your physician say about Leg Extensions?")
+    with db.open_ledger("alice") as ledger:
+        updated = ledger.get_injury_record(injury["id"])
+    assert updated["exercise_followup_asked_count"] == 1
+
+
 def test_assistant_style_api_roundtrip_and_refusals(client):
     client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
     assert client.put("/profile", json={"current_goal": "Strength"}).status_code == 200

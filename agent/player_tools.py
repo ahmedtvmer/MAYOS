@@ -16,7 +16,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 
 from database.ledger.profile import PLAYER_PROFILE_STORAGE_DEFAULTS
-from core.injuries import render_injury_record
+from service.injuries import render_public_injury_record
 from service.player_weight_context import render_player_weight_context
 from service.weight_history import WeightTrendQuery, get_weight_trend, player_local_date
 from agent.player_prompt import (
@@ -29,6 +29,14 @@ logger = logging.getLogger(__name__)
 MAX_TOOL_RESULT_BYTES = 4 * 1024
 TOOL_TIMEOUT_SECONDS = 5.0
 _TRUNCATED_PROMPT_RESULT = '{"status":"truncated"}'
+_INJURY_CLEARANCE_TOOL_FIELDS = (
+    "exercise_name",
+    "original_wording",
+    "verdict",
+    "note",
+    "recorded_at",
+    "source",
+)
 
 
 class EmptyToolArgs(BaseModel):
@@ -146,7 +154,19 @@ def _read_weight_trend(ledger: Any) -> dict[str, Any]:
 
 
 def _read_player_injuries(ledger: Any) -> dict[str, Any]:
-    records = [render_injury_record(record) for record in ledger.list_injury_records()]
+    records = []
+    for record in ledger.list_injury_records():
+        rendered = render_public_injury_record(record)
+        rendered.pop("id", None)
+        rendered["clearances"] = [
+            {
+                key: clearance[key]
+                for key in _INJURY_CLEARANCE_TOOL_FIELDS
+                if key in clearance
+            }
+            for clearance in ledger.list_exercise_clearances(str(record["id"]))
+        ]
+        records.append(rendered)
     return {"status": "ok", "injuries": records}
 
 

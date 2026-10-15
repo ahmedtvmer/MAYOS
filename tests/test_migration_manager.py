@@ -99,6 +99,28 @@ def test_v27_upgrade_imports_a_non_none_injury_once(
         )
 
 
+def test_v28_upgrade_adds_physician_followup_and_exercise_clearance_schema(temp_db_env):
+    db, _, backups_dir = temp_db_env
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        "CREATE TABLE injury_records (id TEXT PRIMARY KEY, body_area TEXT, description TEXT NOT NULL, "
+        "reported_at TEXT NOT NULL, status TEXT NOT NULL, source_event_key TEXT, clarification_pending INTEGER NOT NULL DEFAULT 0);"
+        "PRAGMA user_version = 28;"
+    )
+
+    apply_lazy_migrations(conn, "clearance-migration", db.ledgers_dir, backups_dir)
+
+    injury_columns = {row[1] for row in conn.execute("PRAGMA table_info(injury_records)")}
+    assert {
+        "physician_followup_asked_at", "physician_followup_pending", "resolution_pending",
+        "pending_exercise_id", "pending_exercise_name", "exercise_followup_asked_count",
+    } <= injury_columns
+    assert {row[0] for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table'"
+    )} >= {"exercise_clearances", "pending_exercise_clearances"}
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
+
+
 def test_v18_upgrade_adds_deload_choice(temp_db_env):
     db, ledgers_dir, _ = temp_db_env
     legacy_path = ledgers_dir / "v18lifter.db"
@@ -117,7 +139,7 @@ def test_v18_upgrade_adds_deload_choice(temp_db_env):
         default_ledger_id="v18lifter",
     )
     try:
-        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 28
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION
         assert migrated.ledger.conn.execute(
             "SELECT started_at FROM onboarding_analytics WHERE id = 1"
         ).fetchone() is None
@@ -175,7 +197,7 @@ def test_v20_upgrade_allows_most_reps_records_without_backfilling(temp_db_env):
 
     apply_lazy_migrations(conn, "v20player", db.ledgers_dir, backups_dir)
 
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 28
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
     assert conn.execute(
         "SELECT id, record_type, value FROM personal_records"
     ).fetchall() == [("old", "max_weight", 100.0)]
@@ -198,7 +220,7 @@ def test_v22_upgrade_adds_program_drafts(temp_db_env):
 
     columns = {row[1] for row in conn.execute("PRAGMA table_info(program_drafts)")}
     assert columns == {"assignment_id", "draft_json", "created_at", "updated_at"}
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 28
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
     conn.close()
 
 
@@ -230,7 +252,7 @@ def test_v24_upgrade_seeds_profile_weight_only_when_present(
     apply_lazy_migrations(conn, "v24player", db.ledgers_dir, backups_dir)
 
     assert conn.execute("SELECT entry_date, weight_kg FROM weight_history").fetchall() == expected_history
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 28
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
     conn.close()
 
 
@@ -277,7 +299,7 @@ def test_v25_upgrade_adds_nullable_target_weight(temp_db_env):
     columns = {row[1] for row in conn.execute("PRAGMA table_info(user_profile)")}
     assert "target_weight_kg" in columns
     assert conn.execute("SELECT target_weight_kg FROM user_profile").fetchone() == (None,)
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 28
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
     conn.close()
 
 
@@ -325,7 +347,7 @@ def test_v23_upgrade_adds_tempo_to_program_exercises(temp_db_env):
     assert conn.execute(
         "SELECT notes, tempo FROM program_exercises WHERE id = 'exercise-1'"
     ).fetchone() == ("Keep control", None)
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 28
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
     conn.close()
 
 

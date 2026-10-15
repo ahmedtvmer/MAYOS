@@ -963,6 +963,12 @@ class CoachCopy {
         'resolved' => isArabic ? 'تم التعافي' : 'Resolved',
         _ => status,
       };
+  String clearanceVerdict(String verdict) => switch (verdict) {
+        'cleared' => isArabic ? 'مسموح' : 'Cleared',
+        'not_cleared' => isArabic ? 'غير مسموح' : 'Not cleared',
+        'cleared_with_limits' => isArabic ? 'مسموح بقيود' : 'Cleared with limits',
+        _ => verdict,
+      };
   String injuryArea(String? area) => switch (area) {
         'knee' => isArabic ? 'الركبة' : 'Knee',
         'hip' => isArabic ? 'الورك' : 'Hip',

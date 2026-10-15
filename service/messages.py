@@ -517,6 +517,8 @@ def _profile_change(evidence: Mapping[str, Any]) -> dict[str, Any]:
     fields = [field for field in _PROFILE_FIELDS if isinstance(changes, Mapping) and field in changes]
     if evidence.get("injury_changes") and "injuries_or_limitations" not in fields:
         fields.append("injuries_or_limitations")
+    if evidence.get("clearance_changes") and "injuries_or_limitations" not in fields:
+        fields.append("injuries_or_limitations")
     if not fields:
         return structured_message(None, {}, "Training profile changed.")
     return structured_message(

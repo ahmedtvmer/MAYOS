@@ -4,6 +4,7 @@ Extracted from DatabaseManager; behaviour is unchanged.
 """
 
 from datetime import UTC, datetime
+import json
 from typing import Any
 import uuid
 from core.deload_choices import DELOAD_CHOICES
@@ -31,7 +32,9 @@ PLAYER_PROFILE_STORAGE_DEFAULTS = {
 }
 
 INJURY_RECORD_COLUMNS = (
-    "id, body_area, description, reported_at, status, clarification_pending"
+    "id, body_area, description, reported_at, status, clarification_pending, "
+    "physician_followup_asked_at, physician_followup_pending, resolution_pending, "
+    "pending_exercise_id, pending_exercise_name, exercise_followup_asked_count"
 )
 
 
@@ -125,6 +128,167 @@ class LedgerProfileMixin:
             )
             self._commit_ledger()
         return self.get_injury_record(injury_id)
+
+    def mark_physician_followup_asked(self, injury_id: str, asked_at: str) -> dict[str, Any] | None:
+        self.conn.execute(
+            "UPDATE injury_records SET physician_followup_asked_at = ?, "
+            "physician_followup_pending = 1 WHERE id = ?",
+            (asked_at, str(injury_id)),
+        )
+        self._commit_ledger()
+        return self.get_injury_record(injury_id)
+
+    def set_physician_followup_pending(
+        self, injury_id: str, pending: bool
+    ) -> dict[str, Any] | None:
+        self.conn.execute(
+            "UPDATE injury_records SET physician_followup_pending = ? WHERE id = ?",
+            (1 if pending else 0, str(injury_id)),
+        )
+        self._commit_ledger()
+        return self.get_injury_record(injury_id)
+
+    def set_resolution_pending(self, injury_id: str, pending: bool) -> dict[str, Any] | None:
+        self.conn.execute(
+            "UPDATE injury_records SET resolution_pending = ? WHERE id = ?",
+            (1 if pending else 0, str(injury_id)),
+        )
+        self._commit_ledger()
+        return self.get_injury_record(injury_id)
+
+    def set_pending_exercise_followup(
+        self, injury_id: str, exercise_id: str, exercise_name: str
+    ) -> dict[str, Any] | None:
+        self.conn.execute(
+            "UPDATE injury_records SET pending_exercise_id = ?, pending_exercise_name = ?, "
+            "exercise_followup_asked_count = exercise_followup_asked_count + 1 "
+            "WHERE id = ?",
+            (str(exercise_id), exercise_name, str(injury_id)),
+        )
+        self._commit_ledger()
+        return self.get_injury_record(injury_id)
+
+    def reset_exercise_followup_asked_count(self, injury_id: str) -> dict[str, Any] | None:
+        self.conn.execute(
+            "UPDATE injury_records SET exercise_followup_asked_count = 0 WHERE id = ?",
+            (str(injury_id),),
+        )
+        self._commit_ledger()
+        return self.get_injury_record(injury_id)
+
+    def clear_pending_exercise_followup(self, injury_id: str) -> dict[str, Any] | None:
+        self.conn.execute(
+            "UPDATE injury_records SET pending_exercise_id = NULL, pending_exercise_name = NULL "
+            "WHERE id = ?",
+            (str(injury_id),),
+        )
+        self._commit_ledger()
+        return self.get_injury_record(injury_id)
+
+    def list_exercise_clearances(self, injury_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            "SELECT id, injury_id, exercise_id, exercise_name, original_wording, verdict, "
+            "note, recorded_at, source FROM exercise_clearances "
+            "WHERE injury_id = ? ORDER BY recorded_at DESC, id DESC",
+            (str(injury_id),),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_exercise_clearance(self, clearance_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT id, injury_id, exercise_id, exercise_name, original_wording, verdict, "
+            "note, recorded_at, source FROM exercise_clearances WHERE id = ?",
+            (str(clearance_id),),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def create_exercise_clearance(
+        self,
+        *,
+        injury_id: str,
+        exercise_id: str | None,
+        exercise_name: str,
+        original_wording: str,
+        verdict: str,
+        note: str | None = None,
+        source_event_key: str | None = None,
+        recorded_at: str | None = None,
+    ) -> tuple[dict[str, Any] | None, bool]:
+        clearance_id = uuid.uuid4().hex
+        with self.ledger_transaction():
+            inserted = self.conn.execute(
+                "INSERT OR IGNORE INTO exercise_clearances "
+                "(id, injury_id, exercise_id, exercise_name, original_wording, verdict, note, recorded_at, source_event_key) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    clearance_id, str(injury_id), exercise_id, str(exercise_name)[:200],
+                    str(original_wording)[:2000], verdict, note, recorded_at or datetime.now(UTC).isoformat(),
+                    source_event_key,
+                ),
+            )
+            if source_event_key:
+                row = self.conn.execute(
+                    "SELECT id, injury_id, exercise_id, exercise_name, original_wording, verdict, "
+                    "note, recorded_at, source FROM exercise_clearances WHERE source_event_key = ?",
+                    (source_event_key,),
+                ).fetchone()
+            else:
+                row = self.conn.execute(
+                    "SELECT id, injury_id, exercise_id, exercise_name, original_wording, verdict, "
+                    "note, recorded_at, source FROM exercise_clearances WHERE id = ?",
+                    (clearance_id,),
+                ).fetchone()
+        return (dict(row) if row else None), bool(row and inserted.rowcount == 1)
+
+    def update_exercise_clearance(
+        self, clearance_id: str, *, exercise_name: str, original_wording: str,
+        verdict: str, note: str | None,
+    ) -> dict[str, Any] | None:
+        self.conn.execute(
+            "UPDATE exercise_clearances SET exercise_name = ?, original_wording = ?, "
+            "verdict = ?, note = ?, recorded_at = ? WHERE id = ?",
+            (str(exercise_name)[:200], str(original_wording)[:2000], verdict, note,
+             datetime.now(UTC).isoformat(), str(clearance_id)),
+        )
+        self._commit_ledger()
+        return self.get_exercise_clearance(clearance_id)
+
+    def delete_exercise_clearance(self, clearance_id: str) -> bool:
+        cursor = self.conn.execute(
+            "DELETE FROM exercise_clearances WHERE id = ?", (str(clearance_id),)
+        )
+        self._commit_ledger()
+        return cursor.rowcount == 1
+
+    def get_pending_exercise_clearance(self, injury_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT injury_id, original_wording, verdict, note, candidates_json "
+            "FROM pending_exercise_clearances WHERE injury_id = ?", (str(injury_id),)
+        ).fetchone()
+        if not row:
+            return None
+        return {**dict(row), "candidates": json.loads(row["candidates_json"])}
+
+    def set_pending_exercise_clearance(
+        self, injury_id: str, *, original_wording: str, verdict: str,
+        note: str | None, candidates: list[dict[str, Any]],
+    ) -> None:
+        self.conn.execute(
+            "INSERT INTO pending_exercise_clearances "
+            "(injury_id, original_wording, verdict, note, candidates_json, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(injury_id) DO UPDATE SET "
+            "original_wording = excluded.original_wording, verdict = excluded.verdict, "
+            "note = excluded.note, candidates_json = excluded.candidates_json, updated_at = excluded.updated_at",
+            (str(injury_id), original_wording[:2000], verdict, note,
+             json.dumps(candidates, ensure_ascii=False), datetime.now(UTC).isoformat()),
+        )
+        self._commit_ledger()
+
+    def clear_pending_exercise_clearance(self, injury_id: str) -> None:
+        self.conn.execute(
+            "DELETE FROM pending_exercise_clearances WHERE injury_id = ?", (str(injury_id),)
+        )
+        self._commit_ledger()
 
     def get_latest_active_injury(self, body_area: str | None = None) -> dict[str, Any] | None:
         area_clause = " AND body_area = ?" if body_area is not None else ""

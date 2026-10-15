@@ -18,7 +18,7 @@ from utils.equipment_access import (
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 28
+CURRENT_LEDGER_SCHEMA_VERSION: int = 29
 
 PROGRAM_DRAFTS_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS program_drafts ("
@@ -186,9 +186,40 @@ INJURY_RECORDS_DDL: tuple[str, ...] = (
     " status TEXT NOT NULL CHECK (status IN ('reported', 'physician_seen', 'resolved')) ,"
     " source_event_key TEXT UNIQUE,"
     " clarification_pending INTEGER NOT NULL DEFAULT 0 CHECK (clarification_pending IN (0, 1))"
+    ", physician_followup_asked_at TEXT"
+    ", physician_followup_pending INTEGER NOT NULL DEFAULT 0 CHECK (physician_followup_pending IN (0, 1))"
+    ", resolution_pending INTEGER NOT NULL DEFAULT 0 CHECK (resolution_pending IN (0, 1))"
+    ", pending_exercise_id TEXT"
+    ", pending_exercise_name TEXT"
+    ", exercise_followup_asked_count INTEGER NOT NULL DEFAULT 0 CHECK (exercise_followup_asked_count >= 0)"
     ")",
     "CREATE INDEX IF NOT EXISTS idx_injury_records_reported_at "
     "ON injury_records(reported_at DESC, id)",
+)
+
+EXERCISE_CLEARANCES_DDL: tuple[str, ...] = (
+    "CREATE TABLE IF NOT EXISTS exercise_clearances ("
+    " id TEXT PRIMARY KEY,"
+    " injury_id TEXT NOT NULL REFERENCES injury_records(id) ON DELETE CASCADE,"
+    " exercise_id TEXT,"
+    " exercise_name TEXT NOT NULL CHECK (length(exercise_name) BETWEEN 1 AND 200),"
+    " original_wording TEXT NOT NULL CHECK (length(original_wording) BETWEEN 1 AND 2000),"
+    " verdict TEXT NOT NULL CHECK (verdict IN ('cleared', 'not_cleared', 'cleared_with_limits')) ,"
+    " note TEXT,"
+    " recorded_at TEXT NOT NULL,"
+    " source TEXT NOT NULL DEFAULT 'player-reported physician advice',"
+    " source_event_key TEXT UNIQUE"
+    ")",
+    "CREATE INDEX IF NOT EXISTS idx_exercise_clearances_injury_recorded "
+    "ON exercise_clearances(injury_id, recorded_at DESC, id)",
+    "CREATE TABLE IF NOT EXISTS pending_exercise_clearances ("
+    " injury_id TEXT PRIMARY KEY REFERENCES injury_records(id) ON DELETE CASCADE,"
+    " original_wording TEXT NOT NULL,"
+    " verdict TEXT NOT NULL CHECK (verdict IN ('cleared', 'not_cleared', 'cleared_with_limits')) ,"
+    " note TEXT,"
+    " candidates_json TEXT NOT NULL,"
+    " updated_at TEXT NOT NULL"
+    ")",
 )
 
 
@@ -787,6 +818,33 @@ def _migrate_v27_to_v28(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_v28_to_v29(conn: sqlite3.Connection) -> None:
+    """Adds deterministic physician follow-up and exercise-clearance records (#274)."""
+    if _ledger_table_exists(conn, "injury_records"):
+        columns = {column[1] for column in conn.execute("PRAGMA table_info(injury_records)")}
+        if "physician_followup_asked_at" not in columns:
+            conn.execute("ALTER TABLE injury_records ADD COLUMN physician_followup_asked_at TEXT")
+        if "physician_followup_pending" not in columns:
+            conn.execute(
+                "ALTER TABLE injury_records ADD COLUMN physician_followup_pending INTEGER NOT NULL DEFAULT 0"
+            )
+        if "resolution_pending" not in columns:
+            conn.execute(
+                "ALTER TABLE injury_records ADD COLUMN resolution_pending INTEGER NOT NULL DEFAULT 0"
+            )
+        if "pending_exercise_id" not in columns:
+            conn.execute("ALTER TABLE injury_records ADD COLUMN pending_exercise_id TEXT")
+        if "pending_exercise_name" not in columns:
+            conn.execute("ALTER TABLE injury_records ADD COLUMN pending_exercise_name TEXT")
+        if "exercise_followup_asked_count" not in columns:
+            conn.execute(
+                "ALTER TABLE injury_records ADD COLUMN exercise_followup_asked_count "
+                "INTEGER NOT NULL DEFAULT 0 CHECK (exercise_followup_asked_count >= 0)"
+            )
+    for statement in EXERCISE_CLEARANCES_DDL:
+        conn.execute(statement)
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -900,6 +958,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     25: _migrate_v25_to_v26,
     26: _migrate_v26_to_v27,
     27: _migrate_v27_to_v28,
+    28: _migrate_v28_to_v29,
 }
 
 

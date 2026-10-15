@@ -98,6 +98,9 @@ class FakeMayosApi {
   int injuryCreateRequests = 0;
   int injuryUpdateRequests = 0;
   Map<String, dynamic>? lastInjuryUpdatePayload;
+  int clearanceUpdateRequests = 0;
+  int clearanceDeleteRequests = 0;
+  Map<String, dynamic>? lastClearanceUpdatePayload;
   String? recoveryEmail;
   bool recoveryEmailVerified = true;
   String? pendingRecoveryEmail;
@@ -3052,10 +3055,47 @@ class FakeMayosApi {
     if (request.method == 'POST') {
       return _createInjury(request);
     }
+    final List<String> segments = request.path.split('/');
+    if (segments.length == 6 && segments[4] == 'clearances') {
+      final Map<String, dynamic>? injury = injuries.cast<Map<String, dynamic>?>().firstWhere(
+        (Map<String, dynamic>? item) => item?['id'] == segments[3],
+        orElse: () => null,
+      );
+      if (injury == null) {
+        return const FakeResponse(404, <String, dynamic>{'detail': 'Injury not found.'});
+      }
+      final List<Map<String, dynamic>> clearances =
+          (injury['clearances'] as List<dynamic>? ?? <dynamic>[])
+              .cast<Map<String, dynamic>>();
+      final int clearanceIndex = clearances.indexWhere(
+        (Map<String, dynamic> item) => item['id'] == segments[5],
+      );
+      if (request.method == 'PUT') {
+        clearanceUpdateRequests++;
+        lastClearanceUpdatePayload = Map<String, dynamic>.from(request.body);
+        if (clearanceIndex < 0) {
+          return const FakeResponse(404, <String, dynamic>{'detail': 'Clearance not found.'});
+        }
+        final Map<String, dynamic> updated = <String, dynamic>{
+          ...clearances[clearanceIndex],
+          ...request.body,
+        };
+        clearances[clearanceIndex] = updated;
+        return FakeResponse(200, updated);
+      }
+      if (request.method == 'DELETE') {
+        clearanceDeleteRequests++;
+        if (clearanceIndex < 0) {
+          return const FakeResponse(404, <String, dynamic>{'detail': 'Clearance not found.'});
+        }
+        clearances.removeAt(clearanceIndex);
+        injury['clearances'] = clearances;
+        return const FakeResponse(204, null);
+      }
+    }
     if (request.method == 'PUT') {
       injuryUpdateRequests++;
       lastInjuryUpdatePayload = Map<String, dynamic>.from(request.body);
-      final List<String> segments = request.path.split('/');
       if (segments.length == 4) {
         final int index = injuries.indexWhere(
           (Map<String, dynamic> item) => item['id'] == segments.last,

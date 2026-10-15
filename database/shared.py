@@ -4,6 +4,7 @@ These names are re-exported from :mod:`database.database_manager` so existing
 importers keep working (e.g. ``from database.database_manager import LedgerDeletedError``).
 """
 import re
+import unicodedata
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,5 +21,11 @@ class LedgerDeletedError(RuntimeError):
 
 
 def _normalize_exercise_name(name: str) -> str:
-    """Lowercase and collapse punctuation so "push up" ≡ "push-up" and "two arm" ≡ "two-arm"."""
-    return re.sub(r"[^a-z0-9]+", " ", (name or "").lower()).strip()
+    """Case-fold names and collapse punctuation, including in non-Latin scripts."""
+    normalized = "".join(
+        character
+        for character in unicodedata.normalize("NFKC", name or "").casefold()
+        if not unicodedata.category(character).startswith("M") and character != "ـ"
+    )
+    normalized = re.sub(r"[\W_]+", " ", normalized, flags=re.UNICODE)
+    return re.sub(r"\s+", " ", normalized).strip()

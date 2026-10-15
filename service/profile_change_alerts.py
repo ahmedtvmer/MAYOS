@@ -253,3 +253,72 @@ def record_injury_change(
             )
         except Exception:
             logger.warning("Could not notify the Coach about an injury record change.", exc_info=True)
+
+
+def record_clearance_change(
+    db: Any,
+    player_account_id: str | None,
+    clearance: dict[str, Any],
+    *,
+    change: str,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
+) -> None:
+    """Creates one assignment-gated Coach alert for each clearance write or edit."""
+    if not player_account_id:
+        return
+    now_iso = datetime.now(UTC).isoformat()
+    assignment = None
+    created_alert = None
+    try:
+        with db.catalog_transaction():
+            assignment = db.get_active_assignment_for_player(str(player_account_id))
+            if assignment is None:
+                return
+            event_key = f"clearance:{clearance['id']}:{change}:{clearance.get('recorded_at') or now_iso}"
+            inserted = coach_analytics.create_coach_alert(
+                db,
+                coach_analytics.CoachAlertDraft(
+                    alert_id=uuid.uuid4().hex,
+                    assignment_id=assignment["assignment_id"],
+                    coach_account_id=assignment["coach_account_id"],
+                    player_account_id=str(player_account_id),
+                    alert_kind=PROFILE_CHANGE_KIND,
+                    dedupe_key=event_key,
+                    details={
+                        "clearance_changes": [{
+                            "id": str(clearance["id"]),
+                            "injury_id": str(clearance["injury_id"]),
+                            "exercise_name": clearance.get("exercise_name", ""),
+                            "verdict": clearance.get("verdict", ""),
+                            "change": change,
+                            "changed_at": now_iso,
+                        }],
+                    },
+                    created_at=now_iso,
+                ),
+                client=client or analytics_service.UNKNOWN_CLIENT,
+            )
+            if inserted["created"]:
+                created_alert = inserted["alert"]
+    except Exception:
+        logger.warning("Could not create exercise-clearance Coach alert for account %s.", player_account_id, exc_info=True)
+        return
+    if assignment is not None and created_alert is not None:
+        try:
+            player_name = player_display_name(db, assignment)
+            notify_coach(
+                db,
+                build_assignment_notice_record(
+                    AssignmentNoticeRecord(
+                        account_id=assignment["coach_account_id"],
+                        assignment_id=assignment["assignment_id"],
+                        kind=PROFILE_CHANGE_KIND,
+                    message=f"{player_name} changed an exercise clearance. Review the alert in your roster.",
+                        created_at=now_iso,
+                    ),
+                    "assignment_notice.profile_change.v1",
+                    {"player_name": player_name},
+                ),
+            )
+        except Exception:
+            logger.warning("Could not notify the Coach about an exercise clearance change.", exc_info=True)

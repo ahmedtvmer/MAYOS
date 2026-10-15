@@ -9,6 +9,7 @@ from core.injuries import (
     injury_status_label,
     normalize_body_area,
 )
+from service import injuries as injuries_service
 
 
 def test_body_area_to_exercise_catalog_body_parts_is_pinned():
@@ -109,3 +110,31 @@ def test_player_facing_injury_area_labels(area, arabic):
 def test_player_facing_injury_status_labels(status, arabic):
     assert injury_status_label(status, "en") == status.replace("_", " ")
     assert injury_status_label(status, "ar") == arabic
+
+
+@pytest.mark.parametrize("message", [
+    "the doctor said I'm fully cleared",
+    "my doctor said I'm fully cleared",
+    "my physician fully cleared me",
+    "doctor cleared me completely",
+])
+def test_full_physician_clearance_phrases_are_recognized(message):
+    assert injuries_service.full_physician_clearance(message)
+
+
+def test_doctor_cleared_my_knee_is_not_an_exercise_clearance_statement():
+    assert injuries_service.parse_clearance_statement("my doctor cleared my knee") is None
+
+
+def test_clearance_candidate_numbers_only_apply_to_bare_numeric_replies():
+    candidates = [
+        {"id": "one", "name": "Cable Curl"},
+        {"id": "two", "name": "Leg Extension"},
+    ]
+    assert injuries_service.choose_clearance_candidate(candidates, "2") == candidates[1]
+    assert injuries_service.choose_clearance_candidate(candidates, "the 2nd") == candidates[1]
+    assert injuries_service.choose_clearance_candidate(candidates, "2 sets of leg curls") is None
+
+
+def test_arabic_physician_visit_is_recognized_by_status_parser():
+    assert injuries_service._status_from_message("رحت للدكتور") == "physician_seen"

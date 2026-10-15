@@ -331,6 +331,17 @@ class CoachHistorySegment extends StatelessWidget {
                       ),
                 ),
                 Text(injury.description),
+                for (final ExerciseClearance clearance in injury.clearances)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(
+                      start: MayosSpacing.sm,
+                      top: MayosSpacing.xxs,
+                    ),
+                    child: Text(
+                      '${clearance.exerciseName}: ${copy.clearanceVerdict(clearance.verdict)}'
+                      '${clearance.note == null ? '' : ' · ${clearance.note}'}',
+                    ),
+                  ),
               ],
             ),
           ),

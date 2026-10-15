@@ -409,6 +409,92 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
+  Future<void> _editClearance(
+    InjuryRecord injury,
+    ExerciseClearance clearance,
+  ) async {
+    final _ClearanceEdit? edit = await showDialog<_ClearanceEdit>(
+      context: context,
+      builder: (BuildContext context) => _ClearanceEditorDialog(
+        copy: _copy,
+        clearance: clearance,
+      ),
+    );
+    if (edit == null || !mounted) return;
+    setState(() {
+      _savingInjury = true;
+      _injuryFailure = null;
+    });
+    try {
+      final ApiClient api = ref.read(apiClientProvider);
+      await api.updateExerciseClearance(
+        injuryId: injury.id,
+        id: clearance.id,
+        exerciseName: edit.exerciseName,
+        originalWording: edit.originalWording,
+        verdict: edit.verdict,
+        note: edit.note,
+      );
+      final PlayerProfile profile = await api.profile();
+      if (!mounted) return;
+      setState(() {
+        _savingInjury = false;
+        _injuries = profile.injuries;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _savingInjury = false;
+        _injuryFailure = _mutationFailure(error);
+      });
+    }
+  }
+
+  Future<void> _deleteClearance(
+    InjuryRecord injury,
+    ExerciseClearance clearance,
+  ) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: Text(_copy.deleteClearance),
+        content: Text('${clearance.exerciseName} · ${_copy.clearanceVerdictLabel(clearance.verdict)}'),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(_copy.cancel),
+          ),
+          FilledButton(
+            key: Key('confirm_delete_clearance_${clearance.id}'),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(_copy.deleteClearance),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _savingInjury = true;
+      _injuryFailure = null;
+    });
+    try {
+      final ApiClient api = ref.read(apiClientProvider);
+      await api.deleteExerciseClearance(injuryId: injury.id, id: clearance.id);
+      final PlayerProfile profile = await api.profile();
+      if (!mounted) return;
+      setState(() {
+        _savingInjury = false;
+        _injuries = profile.injuries;
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _savingInjury = false;
+        _injuryFailure = _mutationFailure(error);
+      });
+    }
+  }
+
   Widget _injuriesSection(ProfileCopy copy) {
     final MayosThemeExtension c = MayosTheme.of(context);
     return Column(
@@ -420,7 +506,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             padding: const EdgeInsets.only(top: MayosSpacing.xs),
             child: Text(copy.noInjuries),
           ),
-        for (final InjuryRecord injury in _injuries)
+        for (final InjuryRecord injury in _injuries) ...<Widget>[
           Card(
             key: Key('injury_record_${injury.id}'),
             margin: const EdgeInsets.only(top: MayosSpacing.xs),
@@ -437,6 +523,47 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
             ),
           ),
+        for (final ExerciseClearance clearance in injury.clearances)
+          Card(
+            key: Key('exercise_clearance_${clearance.id}'),
+            margin: const EdgeInsetsDirectional.only(
+              start: MayosSpacing.md,
+              top: MayosSpacing.xxs,
+            ),
+            child: ListTile(
+              title: Text(
+                '${clearance.exerciseName} · ${copy.clearanceVerdictLabel(clearance.verdict)}',
+              ),
+              subtitle: Text(
+                <String>[
+                  clearance.originalWording,
+                  if ((clearance.note ?? '').isNotEmpty) clearance.note!,
+                ].join('\n'),
+              ),
+              trailing: Wrap(
+                spacing: MayosSpacing.xxs,
+                children: <Widget>[
+                  IconButton(
+                    key: Key('edit_clearance_${clearance.id}'),
+                    tooltip: copy.editClearance,
+                    onPressed: _savingInjury
+                        ? null
+                        : () => _editClearance(injury, clearance),
+                    icon: const Icon(Icons.edit_outlined),
+                  ),
+                  IconButton(
+                    key: Key('delete_clearance_${clearance.id}'),
+                    tooltip: copy.deleteClearance,
+                    onPressed: _savingInjury
+                        ? null
+                        : () => _deleteClearance(injury, clearance),
+                    icon: const Icon(Icons.delete_outline),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
         if (_injuryFailure != null)
           Padding(
             padding: const EdgeInsets.only(top: MayosSpacing.xs),
@@ -1093,6 +1220,141 @@ class _InjuryEditorDialogState extends State<_InjuryEditorDialog> {
             );
           },
           child: Text(copy.saveInjury),
+        ),
+      ],
+    );
+  }
+}
+
+class _ClearanceEdit {
+  const _ClearanceEdit({
+    required this.exerciseName,
+    required this.originalWording,
+    required this.verdict,
+    required this.note,
+  });
+
+  final String exerciseName;
+  final String originalWording;
+  final String verdict;
+  final String? note;
+}
+
+class _ClearanceEditorDialog extends StatefulWidget {
+  const _ClearanceEditorDialog({required this.copy, required this.clearance});
+
+  final ProfileCopy copy;
+  final ExerciseClearance clearance;
+
+  @override
+  State<_ClearanceEditorDialog> createState() => _ClearanceEditorDialogState();
+}
+
+class _ClearanceEditorDialogState extends State<_ClearanceEditorDialog> {
+  late final TextEditingController _exerciseName;
+  late final TextEditingController _wording;
+  late final TextEditingController _note;
+  late String _verdict;
+  bool _invalid = false;
+
+  static const List<String> _verdicts = <String>[
+    'cleared',
+    'not_cleared',
+    'cleared_with_limits',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _exerciseName = TextEditingController(text: widget.clearance.exerciseName);
+    _wording = TextEditingController(text: widget.clearance.originalWording);
+    _note = TextEditingController(text: widget.clearance.note ?? '');
+    _verdict = widget.clearance.verdict;
+  }
+
+  @override
+  void dispose() {
+    _exerciseName.dispose();
+    _wording.dispose();
+    _note.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ProfileCopy copy = widget.copy;
+    return AlertDialog(
+      title: Text(copy.editClearance),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            TextField(
+              key: const Key('clearance_exercise_name_field'),
+              controller: _exerciseName,
+              readOnly: widget.clearance.exerciseId != null,
+              decoration: InputDecoration(labelText: copy.exerciseName),
+            ),
+            const SizedBox(height: MayosSpacing.sm),
+            TextField(
+              key: const Key('clearance_original_wording_field'),
+              controller: _wording,
+              readOnly: true,
+              maxLength: 2000,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: copy.originalWording,
+                errorText: _invalid && _wording.text.trim().isEmpty
+                    ? copy.checkFieldAndRetry(copy.originalWording)
+                    : null,
+              ),
+            ),
+            DropdownButtonFormField<String>(
+              key: const Key('clearance_verdict_dropdown'),
+              initialValue: _verdict,
+              decoration: InputDecoration(labelText: copy.clearanceVerdict),
+              items: <DropdownMenuItem<String>>[
+                for (final String verdict in _verdicts)
+                  DropdownMenuItem<String>(
+                    value: verdict,
+                    child: Text(copy.clearanceVerdictLabel(verdict)),
+                  ),
+              ],
+              onChanged: (String? value) => setState(() => _verdict = value ?? 'cleared'),
+            ),
+            const SizedBox(height: MayosSpacing.sm),
+            TextField(
+              key: const Key('clearance_note_field'),
+              controller: _note,
+              maxLength: 1000,
+              maxLines: 2,
+              decoration: InputDecoration(labelText: copy.clearanceNote),
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(copy.cancel),
+        ),
+        FilledButton(
+          key: const Key('save_clearance_button'),
+          onPressed: () {
+            final String exerciseName = _exerciseName.text.trim();
+            final String wording = _wording.text.trim();
+            if (exerciseName.isEmpty || wording.isEmpty) {
+              setState(() => _invalid = true);
+              return;
+            }
+            Navigator.of(context).pop(_ClearanceEdit(
+              exerciseName: exerciseName,
+              originalWording: wording,
+              verdict: _verdict,
+              note: _note.text.trim().isEmpty ? null : _note.text.trim(),
+            ));
+          },
+          child: Text(copy.saveClearance),
         ),
       ],
     );

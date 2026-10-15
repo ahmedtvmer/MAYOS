@@ -30,6 +30,20 @@ class ProfileCopy {
   String get confirmResolveInjuryDetails => isArabic
       ? 'هل تؤكد أن هذه الإصابة انتهت؟'
       : 'Confirm that this injury is resolved.';
+  String get exerciseClearances => isArabic ? 'توصيات الطبيب للتمارين' : 'Exercise clearances';
+  String get editClearance => isArabic ? 'تعديل التوصية' : 'Edit clearance';
+  String get deleteClearance => isArabic ? 'حذف التوصية' : 'Delete clearance';
+  String get exerciseName => isArabic ? 'اسم التمرين' : 'Exercise name';
+  String get clearanceVerdict => isArabic ? 'التوصية' : 'Verdict';
+  String get originalWording => isArabic ? 'كلامك الأصلي' : 'Original wording';
+  String get clearanceNote => isArabic ? 'ملاحظة' : 'Note';
+  String get saveClearance => isArabic ? 'حفظ التوصية' : 'Save clearance';
+  String clearanceVerdictLabel(String verdict) => switch (verdict) {
+        'cleared' => isArabic ? 'مسموح' : 'Cleared',
+        'not_cleared' => isArabic ? 'غير مسموح' : 'Not cleared',
+        'cleared_with_limits' => isArabic ? 'مسموح بقيود' : 'Cleared with limits',
+        _ => verdict,
+      };
   String get saveInjury => isArabic ? 'حفظ الإصابة' : 'Save injury';
   String bodyArea(String area) => switch (area) {
         'knee' => isArabic ? 'الركبة' : 'Knee',

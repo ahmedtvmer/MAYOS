@@ -210,6 +210,10 @@ _Arabic_: الملف التدريبي
 A per-Player Training ledger record with an optional fixed body area, the player's description, its reported time, and a status of reported, physician seen, or resolved. An unknown body area stays unknown until clarified. Active Coaches can read the record only while their Assignment is active.
 _Arabic_: إصابة
 
+**Exercise clearance**:
+A per-Injury record of the Player's report about whether a physician cleared a catalog Exercise, did not clear it, or cleared it with limits. It keeps the Player's original wording, any note, and the time recorded. The assistant never decides or gives an Exercise clearance; an unmatched exercise name is kept as raw text and cannot exclude an Exercise from the Training program.
+_Arabic_: توصية الطبيب بشأن التمرين
+
 **Weight history**:
 The dated record of a Player's bodyweight in the Training ledger, with at most one entry per Player-local calendar day. A later entry on the same day replaces that day's value; the Training profile shows the latest weight.
 _Arabic_: سجل الوزن

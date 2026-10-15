@@ -1855,6 +1855,7 @@ class InjuryRecord {
     this.bodyArea,
     this.catalogBodyParts = const <String>[],
     this.clarificationPending = false,
+    this.clearances = const <ExerciseClearance>[],
   });
 
   factory InjuryRecord.fromJson(Map<String, dynamic> json) => InjuryRecord(
@@ -1867,6 +1868,10 @@ class InjuryRecord {
         reportedAt: json['reported_at'] as String,
         status: json['status'] as String,
         clarificationPending: json['clarification_pending'] as bool? ?? false,
+        clearances: (json['clearances'] as List<dynamic>? ?? const <dynamic>[])
+            .map((dynamic item) => ExerciseClearance.fromJson(
+                item as Map<String, dynamic>))
+            .toList(growable: false),
       );
 
   final String id;
@@ -1876,6 +1881,41 @@ class InjuryRecord {
   final String reportedAt;
   final String status;
   final bool clarificationPending;
+  final List<ExerciseClearance> clearances;
+}
+
+class ExerciseClearance {
+  const ExerciseClearance({
+    required this.id,
+    required this.injuryId,
+    required this.exerciseName,
+    required this.originalWording,
+    required this.verdict,
+    required this.recordedAt,
+    this.exerciseId,
+    this.note,
+  });
+
+  factory ExerciseClearance.fromJson(Map<String, dynamic> json) =>
+      ExerciseClearance(
+        id: json['id'] as String,
+        injuryId: json['injury_id'] as String,
+        exerciseId: json['exercise_id'] as String?,
+        exerciseName: json['exercise_name'] as String,
+        originalWording: json['original_wording'] as String,
+        verdict: json['verdict'] as String,
+        note: json['note'] as String?,
+        recordedAt: json['recorded_at'] as String,
+      );
+
+  final String id;
+  final String injuryId;
+  final String? exerciseId;
+  final String exerciseName;
+  final String originalWording;
+  final String verdict;
+  final String? note;
+  final String recordedAt;
 }
 
 class PlayerProfile {

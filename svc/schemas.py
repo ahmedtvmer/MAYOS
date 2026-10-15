@@ -146,6 +146,8 @@ __all__ = [
     "InjuryRecordOut",
     "InjuryRecordCreateIn",
     "InjuryRecordUpdateIn",
+    "ExerciseClearanceOut",
+    "ExerciseClearanceIn",
     "IntakeProgramOut",
     "MessageOut",
     "PasswordChangeIn",
@@ -592,6 +594,7 @@ class CoachAlertOut(BaseModel):
     player_deload_choice: dict[str, Any] | None = None
     profile_changes: dict[str, dict[str, Any]] | None = None
     injury_changes: dict[str, dict[str, Any]] | None = None
+    clearance_changes: list[dict[str, Any]] | None = None
     weight_points: list[WeightTrendPointOut] | None = None
     target_weight_kg: float | None = None
     distance_change_kg: float | None = None
@@ -764,6 +767,28 @@ class InjuryRecordOut(BaseModel):
     reported_at: str
     status: Literal["reported", "physician_seen", "resolved"]
     clarification_pending: bool = False
+    clearances: list["ExerciseClearanceOut"] = []
+
+
+class ExerciseClearanceOut(BaseModel):
+    id: str
+    injury_id: str
+    exercise_id: str | None = None
+    exercise_name: str
+    original_wording: str
+    verdict: Literal["cleared", "not_cleared", "cleared_with_limits"]
+    note: str | None = None
+    recorded_at: str
+    source: str = "player-reported physician advice"
+
+
+class ExerciseClearanceIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    exercise_name: str = Field(min_length=1, max_length=200)
+    original_wording: str = Field(min_length=1, max_length=2000)
+    verdict: Literal["cleared", "not_cleared", "cleared_with_limits"]
+    note: str | None = Field(default=None, max_length=1000)
 
 
 class InjuryRecordCreateIn(BaseModel):

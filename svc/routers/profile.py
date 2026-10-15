@@ -3,7 +3,7 @@
 import asyncio
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, status
 
 from service import analytics, profile as profile_service
 from service import injuries as injuries_service
@@ -28,6 +28,8 @@ from svc.schemas import (
     InjuryRecordCreateIn,
     InjuryRecordOut,
     InjuryRecordUpdateIn,
+    ExerciseClearanceIn,
+    ExerciseClearanceOut,
 )
 
 router = APIRouter(prefix="/profile", tags=["profile"])
@@ -141,6 +143,63 @@ async def update_injury(
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Injury record not found.")
     return InjuryRecordOut(**record)
+
+
+@router.put(
+    "/injuries/{injury_id}/clearances/{clearance_id}",
+    response_model=ExerciseClearanceOut,
+)
+async def update_exercise_clearance(
+    request: Request,
+    injury_id: str,
+    clearance_id: str,
+    body: ExerciseClearanceIn,
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    existing = await asyncio.to_thread(ledger.get_exercise_clearance, clearance_id)
+    if existing is None or str(existing["injury_id"]) != injury_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exercise clearance not found.")
+    try:
+        record = await asyncio.to_thread(
+            injuries_service.update_exercise_clearance,
+            db,
+            ledger,
+            clearance_id,
+            player_account_id=account_id_of(player),
+            exercise_name=body.exercise_name,
+            original_wording=body.original_wording,
+            verdict=body.verdict,
+            note=body.note,
+            client=analytics.client_context(request),
+        )
+    except injuries_service.InjuryValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+    return ExerciseClearanceOut(**record)
+
+
+@router.delete("/injuries/{injury_id}/clearances/{clearance_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_exercise_clearance(
+    request: Request,
+    injury_id: str,
+    clearance_id: str,
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    existing = await asyncio.to_thread(ledger.get_exercise_clearance, clearance_id)
+    if existing is None or str(existing["injury_id"]) != injury_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Exercise clearance not found.")
+    await asyncio.to_thread(
+        injuries_service.delete_exercise_clearance,
+        db,
+        ledger,
+        clearance_id,
+        player_account_id=account_id_of(player),
+        client=analytics.client_context(request),
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/weight", response_model=WeightEntryOut)

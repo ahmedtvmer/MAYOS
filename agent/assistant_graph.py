@@ -24,6 +24,7 @@ sys.path.append(str(BASE_DIR))
 
 from core.effort import rir_label
 from core.injuries import (
+    body_area_in_text,
     clarification_body_area_in_text,
     injury_body_area_label,
     injury_status_label,
@@ -61,6 +62,7 @@ from agent.prompts import (
     FRANCO_ARABIC_INPUT_RESPONSE,
 )
 from agent.player_prompt import (
+    CONTEXT_TOO_LONG_RESPONSE,
     PromptBudgetError,
     HOSTED_PROMPT_TOKEN_BUDGET as HOSTED_PROMPT_TOKEN_BUDGET,
     STATIC_SYSTEM_CORE as STATIC_SYSTEM_CORE,
@@ -115,6 +117,8 @@ INJURY_AREA_CLARIFICATION_EN = (
 INJURY_AREA_CLARIFICATION_AR = (
     "الإصابة في أنهي منطقة: الركبة، الورك، أسفل الظهر، الكتف، الكوع، الرسغ، الكاحل، ولا الرقبة؟"
 )
+PHYSICIAN_FOLLOWUP_EN = "Have you seen a physician about this injury?"
+PHYSICIAN_FOLLOWUP_AR = "هل راجعت طبيبًا بخصوص الإصابة؟"
 ARABIC_ONE_AT_A_TIME_NOTE = "هبدّل التمرين ده الأول، وبعدها قولي تحب أساعدك في إيه كمان؟"
 ARABIC_PREFERRED_NAME_TRIGGERS = ("اسمي", "ناديني", "قولي يا", "قوللي يا")
 _MAX_PREFERRED_NAME_WORDS = 4
@@ -151,6 +155,9 @@ IntentType = Literal[
     "catalog_search",
     "injury_area_clarification",
     "injury_status_update",
+    "injury_physician_followup",
+    "exercise_clearance_update",
+    "exercise_clearance_disambiguation",
     "coaching_qa",
     "composite_intent",
 ]
@@ -1635,8 +1642,79 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
             }
 
     if ledger is not None:
+        pending_clearance = injuries_service.pending_clearance_question(ledger)
+        if pending_clearance is not None:
+            injury, pending = pending_clearance
+            return {
+                "intent": "exercise_clearance_disambiguation",
+                "intent_metadata": {"injury_id": injury["id"], "pending": pending},
+                "active_intents": [],
+            }
+        resolution = injuries_service.pending_resolution(ledger)
+        if resolution is not None:
+            return {
+                "intent": "injury_status_update",
+                "intent_metadata": {"mode": "confirm_resolution", "injury_id": resolution["id"]},
+                "active_intents": [],
+            }
+        physician_followup_answer = injuries_service.pending_physician_followup_answer(ledger)
+        if physician_followup_answer is not None:
+            answer = injuries_service.confirmation_reply(query)
+            explicit_visit = injuries_service.has_matching_status_update(ledger, query)
+            if answer is not None or explicit_visit:
+                return {
+                    "intent": "injury_status_update",
+                    "intent_metadata": {
+                        "mode": "physician_followup_answer",
+                        "injury_id": physician_followup_answer["id"],
+                        "seen": answer if answer is not None else True,
+                    },
+                    "active_intents": [],
+                }
+            ledger.set_physician_followup_pending(
+                str(physician_followup_answer["id"]), False
+            )
+        pending_exercise = injuries_service.pending_exercise_followup(ledger)
+        pending_exercise_name = (
+            pending_exercise.get("pending_exercise_name") if pending_exercise else None
+        )
+        if injuries_service.full_physician_clearance(query):
+            injury = ledger.get_latest_active_injury(body_area_in_text(query))
+            if injury is not None:
+                return {
+                    "intent": "injury_status_update",
+                    "intent_metadata": {"mode": "ask_resolution", "injury_id": injury["id"]},
+                    "active_intents": [],
+                }
+        clearance = injuries_service.parse_clearance_statement(query, pending_exercise_name)
+        if clearance and (clearance.get("exercise_name") or pending_exercise_name):
+            area = body_area_in_text(query)
+            injury = (
+                pending_exercise if area is None and pending_exercise is not None
+                else ledger.get_latest_active_injury(area)
+            )
+            return {
+                "intent": "exercise_clearance_update",
+                "intent_metadata": {
+                    **clearance,
+                    "injury_id": injury["id"] if injury else None,
+                    "original_wording": query,
+                },
+                "active_intents": [],
+            }
         if injuries_service.has_matching_status_update(ledger, query):
             return {"intent": "injury_status_update", "intent_metadata": {}, "active_intents": []}
+        if (
+            pending_exercise is not None
+            and pending_exercise.get("pending_exercise_id")
+            and int(pending_exercise.get("exercise_followup_asked_count") or 0)
+            < injuries_service.MAX_EXERCISE_FOLLOWUP_QUESTIONS
+        ):
+            return {
+                "intent": "injury_physician_followup",
+                "intent_metadata": {"injury_id": pending_exercise["id"], "exercise_followup": True},
+                "active_intents": [],
+            }
 
     choice = _deload_choice(query)
     if choice:
@@ -1776,6 +1854,196 @@ def injury_area_clarification_node(
     return _response(content)
 
 
+def injury_physician_followup_node(
+    state: AssistantState, config: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    from service import injuries as injuries_service
+
+    meta = state.get("intent_metadata", {})
+    injury_id = meta.get("injury_id")
+    ledger, _store = _graph_context(config)
+    query = _get_message_text(state["messages"][-1]) if state.get("messages") else ""
+    arabic = bool(ARABIC_SCRIPT_RE.search(query))
+    injury = ledger.get_injury_record(str(injury_id)) if ledger is not None and injury_id else None
+    if injury is not None and meta.get("exercise_followup"):
+        exercise_name = injury.get("pending_exercise_name") or "this exercise"
+        ledger.set_pending_exercise_followup(
+            str(injury_id), str(injury["pending_exercise_id"]), str(exercise_name)
+        )
+        content = (
+            f"الدكتور قال إيه بخصوص تمرين {exercise_name}؟"
+            if arabic else f"What did your physician say about {exercise_name}?"
+        )
+    else:
+        if injury is not None:
+            injuries_service.mark_physician_followup_asked(ledger, str(injury_id))
+        content = PHYSICIAN_FOLLOWUP_AR if arabic else PHYSICIAN_FOLLOWUP_EN
+    return _response(content)
+
+
+def _clearance_verdict_label(verdict: str, arabic: bool) -> str:
+    if arabic:
+        return {
+            "cleared": "مسموح",
+            "not_cleared": "غير مسموح",
+            "cleared_with_limits": "مسموح بقيود",
+        }.get(verdict, verdict)
+    return {
+        "cleared": "cleared",
+        "not_cleared": "not cleared",
+        "cleared_with_limits": "cleared with limits",
+    }.get(verdict, verdict)
+
+
+def _ask_next_clearance_exercise(
+    ledger: Any, store: Any, injury: dict[str, Any], *, arabic: bool
+) -> str | None:
+    from service import injuries as injuries_service
+
+    exercise = injuries_service.matching_program_exercise(ledger, store, injury)
+    if (
+        exercise is None
+        or int(injury.get("exercise_followup_asked_count") or 0)
+        >= injuries_service.MAX_EXERCISE_FOLLOWUP_QUESTIONS
+    ):
+        return None
+    ledger.set_pending_exercise_followup(
+        str(injury["id"]), str(exercise["id"]), str(exercise["name"])
+    )
+    return (
+        f"والدكتور قال إيه عن تمرين {exercise['name']}؟"
+        if arabic else f"What did your physician say about {exercise['name']}?"
+    )
+
+
+def _clearance_ambiguity_message(candidates: list[dict[str, Any]], *, arabic: bool) -> str:
+    choices = "\n".join(
+        f"{index + 1}. {candidate.get('name', candidate.get('id'))}"
+        for index, candidate in enumerate(candidates)
+    )
+    return (
+        f"أنهي تمرين تقصد؟\n{choices}"
+        if arabic else f"Which exercise did you mean?\n{choices}"
+    )
+
+
+def injury_clearance_update_node(
+    state: AssistantState, config: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    from service import injuries as injuries_service
+
+    meta = state.get("intent_metadata", {})
+    ledger, store = _graph_context(config)
+    query = _get_message_text(state["messages"][-1]) if state.get("messages") else ""
+    arabic = bool(ARABIC_SCRIPT_RE.search(query))
+    injury_id = meta.get("injury_id")
+    if ledger is None or store is None or not isinstance(injury_id, str):
+        content = "لا توجد إصابة مسجلة لربط التوصية بها." if arabic else "There is no recorded injury to link this advice to."
+        return _response(content)
+    injury = ledger.get_injury_record(injury_id)
+    if injury is None:
+        return _response("لم أجد سجل الإصابة." if arabic else "I couldn't find that injury record.")
+
+    parsed = dict(meta)
+    parsed["exercise_name"] = str(meta.get("exercise_name") or "").strip()
+    matches = injuries_service.resolve_exercise_matches(store, parsed["exercise_name"]) if parsed["exercise_name"] else []
+    candidates = [{"id": str(item["id"]), "name": str(item.get("name") or item["id"])} for item in matches]
+    if len(candidates) > 1:
+        ledger.set_pending_exercise_clearance(
+            injury_id,
+            original_wording=str(meta.get("original_wording") or query),
+            verdict=str(meta.get("verdict")),
+            note=meta.get("note") or None,
+            candidates=candidates,
+        )
+        return _response(_clearance_ambiguity_message(candidates, arabic=arabic))
+
+    exercise_id = candidates[0]["id"] if candidates else None
+    exercise_name = candidates[0]["name"] if candidates else parsed["exercise_name"]
+    if injury.get("status") == "reported":
+        injuries_service.update_injury(
+            store,
+            ledger,
+            injury_id,
+            player_account_id=state.get("player_account_id"),
+            body_area=injury.get("body_area"),
+            description=injury.get("description"),
+            status="physician_seen",
+        )
+    clearance = injuries_service.create_exercise_clearance(
+        store,
+        ledger,
+        injury_id,
+        player_account_id=state.get("player_account_id"),
+        exercise_name=exercise_name,
+        original_wording=str(meta.get("original_wording") or query),
+        verdict=str(meta.get("verdict")),
+        note=meta.get("note") or None,
+        exercise_id=exercise_id,
+        source_event_key=injuries_service.source_event_key(ledger, query),
+    )
+    if clearance is None:
+        return _response("لم أستطع حفظ التوصية." if arabic else "I couldn't save that clearance.")
+    if str(injury.get("pending_exercise_id") or "") == str(exercise_id or ""):
+        injury = ledger.clear_pending_exercise_followup(injury_id) or injury
+    ledger.reset_exercise_followup_asked_count(injury_id)
+    injury = ledger.get_injury_record(injury_id) or injury
+    next_question = _ask_next_clearance_exercise(ledger, store, injury, arabic=arabic)
+    verdict = _clearance_verdict_label(str(meta.get("verdict")), arabic)
+    content = (
+        f"سجلت توصية الطبيب: {exercise_name} — {verdict}."
+        if arabic else f"Recorded the physician's advice: {exercise_name} — {verdict}."
+    )
+    if next_question:
+        content += "\n\n" + next_question
+    return _response(content)
+
+
+def exercise_clearance_disambiguation_node(
+    state: AssistantState, config: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    from service import injuries as injuries_service
+
+    ledger, store = _graph_context(config)
+    query = _get_message_text(state["messages"][-1]) if state.get("messages") else ""
+    arabic = bool(ARABIC_SCRIPT_RE.search(query))
+    pending_pair = injuries_service.pending_clearance_question(ledger) if ledger is not None else None
+    if pending_pair is None or store is None:
+        return _response("لم أعد بحاجة لاختيار تمرين." if arabic else "There is no pending exercise choice.")
+    injury, pending = pending_pair
+    selected = injuries_service.choose_clearance_candidate(pending["candidates"], query)
+    if selected is None:
+        return _response(_clearance_ambiguity_message(pending["candidates"], arabic=arabic))
+    ledger.clear_pending_exercise_clearance(str(injury["id"]))
+    if injury.get("status") == "reported":
+        injuries_service.update_injury(
+            store, ledger, str(injury["id"]),
+            player_account_id=state.get("player_account_id"),
+            body_area=injury.get("body_area"), description=injury.get("description"),
+            status="physician_seen",
+        )
+    injuries_service.create_exercise_clearance(
+        store, ledger, str(injury["id"]),
+        player_account_id=state.get("player_account_id"),
+        exercise_name=str(selected["name"]),
+        original_wording=str(pending["original_wording"]),
+        verdict=str(pending["verdict"]), note=pending.get("note"),
+        exercise_id=str(selected["id"]),
+        source_event_key=injuries_service.source_event_key(ledger, query),
+    )
+    injury = ledger.clear_pending_exercise_followup(str(injury["id"])) or injury
+    ledger.reset_exercise_followup_asked_count(str(injury["id"]))
+    injury = ledger.get_injury_record(str(injury["id"])) or injury
+    next_question = _ask_next_clearance_exercise(ledger, store, injury, arabic=arabic)
+    content = (
+        f"سجلت توصية الطبيب لتمرين {selected['name']}."
+        if arabic else f"Recorded the physician's advice for {selected['name']}."
+    )
+    if next_question:
+        content += "\n\n" + next_question
+    return _response(content)
+
+
 def injury_status_update_node(
     state: AssistantState, config: dict[str, Any] | None = None
 ) -> dict[str, Any]:
@@ -1783,6 +2051,69 @@ def injury_status_update_node(
     query = _get_message_text(state["messages"][-1]) if state.get("messages") else ""
     if ledger is not None and store is not None:
         from service import injuries as injuries_service
+
+        meta = state.get("intent_metadata", {})
+        mode = meta.get("mode")
+        injury_id = meta.get("injury_id")
+        if mode == "ask_resolution" and isinstance(injury_id, str):
+            injury = ledger.get_injury_record(injury_id)
+            if injury:
+                if injury.get("status") == "reported":
+                    injury = injuries_service.update_injury(
+                        store, ledger, injury_id,
+                        player_account_id=state.get("player_account_id"),
+                        body_area=injury.get("body_area"), description=injury.get("description"),
+                        status="physician_seen",
+                    ) or injury
+                ledger.set_resolution_pending(injury_id, True)
+                content = (
+                    "هل تؤكد تسجيل الإصابة على أنها محلولة بعد أن أكد الطبيب التعافي الكامل؟"
+                    if ARABIC_SCRIPT_RE.search(query)
+                    else "Your physician fully cleared you. Do you confirm that I should mark this injury resolved?"
+                )
+                return _response(content)
+        if mode == "physician_followup_answer" and isinstance(injury_id, str):
+            injury = ledger.get_injury_record(injury_id)
+            ledger.set_physician_followup_pending(injury_id, False)
+            if injury and meta.get("seen") is True:
+                updated = injuries_service.update_injury(
+                    store, ledger, injury_id,
+                    player_account_id=state.get("player_account_id"),
+                    body_area=injury.get("body_area"), description=injury.get("description"),
+                    status="physician_seen",
+                ) or injury
+                next_question = _ask_next_clearance_exercise(
+                    ledger, store, updated, arabic=bool(ARABIC_SCRIPT_RE.search(query))
+                )
+                content = "سجلت مراجعة الطبيب." if ARABIC_SCRIPT_RE.search(query) else "I recorded that you saw a physician."
+                if next_question:
+                    content += "\n\n" + next_question
+                return _response(content)
+            content = (
+                "حسنًا، سأبقي الإصابة كما هي."
+                if ARABIC_SCRIPT_RE.search(query) else "Okay, I left the injury as reported."
+            )
+            return _response(content)
+        if mode == "confirm_resolution" and isinstance(injury_id, str):
+            injury = ledger.get_injury_record(injury_id)
+            confirmation = injuries_service.confirmation_reply(query)
+            if injury and confirmation is True:
+                updated = injuries_service.update_injury(
+                    store, ledger, injury_id,
+                    player_account_id=state.get("player_account_id"),
+                    body_area=injury.get("body_area"), description=injury.get("description"),
+                    status="resolved",
+                )
+                ledger.set_resolution_pending(injury_id, False)
+                ledger.clear_pending_exercise_followup(injury_id)
+                content = "سجلت الإصابة كمحلولة." if ARABIC_SCRIPT_RE.search(query) else "I marked the injury as resolved."
+                return _response(content)
+            if injury and confirmation is False:
+                ledger.set_resolution_pending(injury_id, False)
+                content = "حسنًا، سأُبقي الإصابة غير محلولة." if ARABIC_SCRIPT_RE.search(query) else "Okay, I left the injury unresolved."
+                return _response(content)
+            content = "يرجى التأكيد بنعم أو لا." if ARABIC_SCRIPT_RE.search(query) else "Please confirm yes or no."
+            return _response(content)
 
         updated = injuries_service.update_from_chat(
             store,
@@ -1798,6 +2129,15 @@ def injury_status_update_node(
                 if language == "ar"
                 else f"I recorded the injury status as {status_label}."
             )
+            next_question = (
+                _reopen_exercise_followup(
+                    ledger, store, updated, query, arabic=language == "ar"
+                )
+                if updated["status"] == "physician_seen"
+                else None
+            )
+            if next_question:
+                content += "\n\n" + next_question
             return _response(content)
     content = (
         "مش لاقي إصابة مسجلة أقدر أحدث حالتها. تقدر تعدّلها من الملف التدريبي."
@@ -1805,6 +2145,17 @@ def injury_status_update_node(
         else "I couldn't match that to a current injury record. You can update it in Profile."
     )
     return _response(content)
+
+
+def _reopen_exercise_followup(
+    ledger: Any, store: Any, injury: dict[str, Any], query: str, *, arabic: bool
+) -> str | None:
+    from service import injuries as injuries_service
+
+    if injuries_service.has_matching_status_update(ledger, query):
+        ledger.reset_exercise_followup_asked_count(str(injury["id"]))
+        injury = ledger.get_injury_record(str(injury["id"])) or injury
+    return _ask_next_clearance_exercise(ledger, store, injury, arabic=arabic)
 
 
 def banned_movement_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -3620,6 +3971,9 @@ def composite_intent_node(state: AssistantState, config: dict[str, Any] | None =
         "catalog_search": catalog_search_node,
         "injury_area_clarification": injury_area_clarification_node,
         "injury_status_update": injury_status_update_node,
+        "injury_physician_followup": injury_physician_followup_node,
+        "exercise_clearance_update": injury_clearance_update_node,
+        "exercise_clearance_disambiguation": exercise_clearance_disambiguation_node,
         "coaching_qa": generation_node,
     }
 
@@ -3703,6 +4057,9 @@ builder.add_node("deload_choice", _safe_node(deload_choice_node))
 builder.add_node("catalog_search", _safe_node(catalog_search_node))
 builder.add_node("injury_area_clarification", _safe_node(injury_area_clarification_node))
 builder.add_node("injury_status_update", _safe_node(injury_status_update_node))
+builder.add_node("injury_physician_followup", _safe_node(injury_physician_followup_node))
+builder.add_node("exercise_clearance_update", _safe_node(injury_clearance_update_node))
+builder.add_node("exercise_clearance_disambiguation", _safe_node(exercise_clearance_disambiguation_node))
 builder.add_node("composite_intent", _safe_node(composite_intent_node))
 builder.add_node("generation", _safe_node(generation_node))
 
@@ -3724,6 +4081,9 @@ builder.add_conditional_edges(
         "catalog_search": "catalog_search",
         "injury_area_clarification": "injury_area_clarification",
         "injury_status_update": "injury_status_update",
+        "injury_physician_followup": "injury_physician_followup",
+        "exercise_clearance_update": "exercise_clearance_update",
+        "exercise_clearance_disambiguation": "exercise_clearance_disambiguation",
         "composite_intent": "composite_intent",
         "coaching_qa": "generation",
     },
@@ -3733,6 +4093,7 @@ for node in [
     "clinical_intercept", "banned_movement", "telemetry_intercept",
     "exercise_substitution", "arabic_swap_clarification", "program_mutation",
     "catalog_search", "injury_area_clarification", "injury_status_update",
+    "injury_physician_followup", "exercise_clearance_update", "exercise_clearance_disambiguation",
     "composite_intent", "generation",
 ]:
     builder.add_edge(node, END)
@@ -3806,6 +4167,50 @@ def _record_telemetry_event(
     _telemetry_handler.flush()
 
 
+def _can_append_physician_followup(
+    intent: str,
+    content: str,
+    pending_area_clarification: bool,
+) -> bool:
+    if pending_area_clarification or intent == "clinical_intercept":
+        return False
+    if intent.startswith(("injury_", "exercise_clearance_")) or "clarification" in intent:
+        return False
+    reply = content.strip()
+    if not reply or any(
+        reply.startswith(error_prefix)
+        for error_prefix in (
+            CONTEXT_TOO_LONG_RESPONSE,
+            PIPELINE_ERROR_RESPONSE,
+            "Failed to search the exercise catalog.",
+            "Could not complete action for:",
+        )
+    ):
+        return False
+    return not reply.endswith(("?", "؟"))
+
+
+def _mark_physician_followup_asked(ledger: Any, injury_id: str) -> bool:
+    from service import injuries as injuries_service
+
+    try:
+        injuries_service.mark_physician_followup_asked(ledger, injury_id)
+    except sqlite3.Error:
+        logger.exception("Could not mark physician follow-up as asked")
+        return False
+    return True
+
+
+def _pending_physician_followup(ledger: Any, query: str) -> dict[str, Any] | None:
+    from service import injuries as injuries_service
+
+    try:
+        return injuries_service.pending_physician_followup(ledger, query)
+    except sqlite3.Error:
+        logger.exception("Could not read pending physician follow-up")
+        return None
+
+
 def stream_assistant_turn(
     state: dict[str, Any],
     *,
@@ -3829,7 +4234,13 @@ def stream_assistant_turn(
     intent = "coaching_qa"
     router_ms = 0.0
     telemetry_recorded = False
+    query = _get_message_text(original_messages[-1]) if original_messages else ""
+    pending_area_clarification = False
     try:
+        if ledger is not None:
+            from service import injuries as injuries_service
+
+            pending_area_clarification = injuries_service.pending_clarification(ledger) is not None
         state.update(hydrate_context_node(state, config))
         state.update(router_node(state, config))
         intent = state.get("intent", "coaching_qa")
@@ -3845,6 +4256,9 @@ def stream_assistant_turn(
             "catalog_search": catalog_search_node,
             "injury_area_clarification": injury_area_clarification_node,
             "injury_status_update": injury_status_update_node,
+            "injury_physician_followup": injury_physician_followup_node,
+            "exercise_clearance_update": injury_clearance_update_node,
+            "exercise_clearance_disambiguation": exercise_clearance_disambiguation_node,
             "composite_intent": composite_intent_node,
         }
         if intent == "exercise_history":
@@ -3935,6 +4349,22 @@ def stream_assistant_turn(
         visible.append(piece)
         yield piece
     content = "".join(visible)
+    if ledger is not None and _can_append_physician_followup(
+        intent, content, pending_area_clarification
+    ):
+        followup = _pending_physician_followup(ledger, query)
+        if followup is not None:
+            injury_id = str(followup["id"])
+            if _mark_physician_followup_asked(ledger, injury_id):
+                question = (
+                    PHYSICIAN_FOLLOWUP_AR
+                    if ARABIC_SCRIPT_RE.search(query)
+                    else PHYSICIAN_FOLLOWUP_EN
+                )
+                followup_chunk = f"\n\n{question}"
+                visible.append(followup_chunk)
+                content += followup_chunk
+                yield followup_chunk
     state.update(
         response_content=content,
         program_updated=bool(result and result.get("program_updated")),
