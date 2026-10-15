@@ -317,9 +317,12 @@ CANONICAL_HISTORY: list[dict[str, str]] = [
 ]
 
 
-def canonical_messages_text() -> str:
+def canonical_messages_text(messages: list[Any] | None = None) -> str:
     """The exact messages the canonical fixture produces, role-tagged."""
-    messages = build_messages(render_context(CANONICAL_FIXTURE), CANONICAL_QUESTION, CANONICAL_HISTORY)
+    if messages is None:
+        messages = build_messages(
+            render_context(CANONICAL_FIXTURE), CANONICAL_QUESTION, CANONICAL_HISTORY
+        )
     return "\n".join(f"{type(message).__name__}: {getattr(message, 'content', message)}" for message in messages)
 
 
@@ -1151,6 +1154,20 @@ def build_messages(
     return messages
 
 
+def history_messages(history: list[dict[str, Any]]) -> list[Any]:
+    """Builds model messages from client-held Coach and assistant turns."""
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    messages: list[Any] = []
+    for turn in history:
+        content = str(turn.get("content", ""))
+        if turn.get("role") == "assistant":
+            messages.append(AIMessage(content=content))
+        else:
+            messages.append(HumanMessage(content=content))
+    return messages
+
+
 def _context_identity(
     context_text: str, section_header: str, field_name: str, fallback: str
 ) -> str:
@@ -1307,6 +1324,7 @@ __all__ = [
     "extract_answer",
     "format_number",
     "gather_player_context",
+    "history_messages",
     "log_enable_gate_at_startup",
     "prompt_version_hash",
     "prepare_messages",

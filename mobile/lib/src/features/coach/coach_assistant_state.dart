@@ -60,13 +60,7 @@ class CoachAssistantController
     if (transcript == null || transcript.assignmentId != assignmentId) {
       return const <CoachAssistantTurn>[];
     }
-    final List<CoachAssistantTurn> turns = transcript.turns;
-    if (turns.length <= coachAssistantHistoryMaxTurns) {
-      return List<CoachAssistantTurn>.unmodifiable(turns);
-    }
-    return List<CoachAssistantTurn>.unmodifiable(
-      turns.sublist(turns.length - coachAssistantHistoryMaxTurns),
-    );
+    return _historyTail(transcript.turns, coachAssistantHistoryMaxTurns);
   }
 
   /// Appends one completed exchange, unless another player is now selected (or
@@ -94,9 +88,9 @@ class CoachAssistantController
     ];
     state = CoachAssistantTranscript(
       assignmentId: assignmentId,
-      turns: turns.length <= coachAssistantTranscriptMaxTurns
-          ? turns
-          : turns.sublist(turns.length - coachAssistantTranscriptMaxTurns),
+      turns: turns.sublist(
+        _tailStart(turns.length, coachAssistantTranscriptMaxTurns),
+      ),
     );
   }
 
@@ -124,6 +118,79 @@ class CoachAssistantController
   }
 }
 
+/// A displayed roster answer keeps the raw alias text for future model history
+/// and the mapping only for rendering names and one-player links.
+@immutable
+class CoachRosterAssistantExchange {
+  const CoachRosterAssistantExchange({
+    required this.question,
+    required this.answer,
+    required this.coverageSummary,
+    required this.assignmentByPlayerId,
+    required this.displayNameByPlayerId,
+  });
+
+  final String question;
+  final String answer;
+  final String coverageSummary;
+  final Map<String, String> assignmentByPlayerId;
+  final Map<String, String> displayNameByPlayerId;
+}
+
+@immutable
+class CoachRosterAssistantTranscript {
+  const CoachRosterAssistantTranscript({
+    this.exchanges = const <CoachRosterAssistantExchange>[],
+  });
+
+  final List<CoachRosterAssistantExchange> exchanges;
+
+  List<CoachAssistantTurn> get turns => <CoachAssistantTurn>[
+        for (final CoachRosterAssistantExchange exchange in exchanges) ...<CoachAssistantTurn>[
+          CoachAssistantTurn(role: 'coach', content: exchange.question),
+          CoachAssistantTurn(role: 'assistant', content: exchange.answer),
+        ],
+      ];
+}
+
+/// Holds the roster transcript in memory only. Names and assignment ids are
+/// kept beside each answer for rendering, never copied into model history.
+class CoachRosterAssistantController
+    extends StateNotifier<CoachRosterAssistantTranscript> {
+  CoachRosterAssistantController()
+      : super(const CoachRosterAssistantTranscript());
+
+  List<CoachAssistantTurn> history() =>
+      _historyTail(state.turns, coachAssistantHistoryMaxTurns);
+
+  void recordExchange(
+    String question,
+    CoachRosterAssistantReply reply,
+  ) {
+    final List<CoachRosterAssistantExchange> exchanges = <CoachRosterAssistantExchange>[
+      ...state.exchanges,
+      CoachRosterAssistantExchange(
+        question: _bounded(question, coachAssistantQuestionMaxChars),
+        answer: _bounded(reply.answer, coachAssistantTurnMaxChars),
+        coverageSummary: reply.coverageSummary,
+        assignmentByPlayerId:
+            Map<String, String>.unmodifiable(reply.assignmentByPlayerId),
+        displayNameByPlayerId:
+            Map<String, String>.unmodifiable(reply.displayNameByPlayerId),
+      ),
+    ];
+    state = CoachRosterAssistantTranscript(
+      exchanges: List<CoachRosterAssistantExchange>.unmodifiable(
+        exchanges.sublist(
+          _tailStart(exchanges.length, coachAssistantTranscriptMaxTurns ~/ 2),
+        ),
+      ),
+    );
+  }
+
+  void clear() => state = const CoachRosterAssistantTranscript();
+}
+
 /// Bounds [content] to [maxChars], never splitting a UTF-16 surrogate pair, so
 /// a stored turn is always well-formed and always within the wire limit.
 String _bounded(String content, int maxChars) {
@@ -137,3 +204,13 @@ String _bounded(String content, int maxChars) {
   }
   return content.substring(0, end);
 }
+
+List<CoachAssistantTurn> _historyTail(
+  List<CoachAssistantTurn> turns,
+  int maxTurns,
+) =>
+    List<CoachAssistantTurn>.unmodifiable(
+      turns.sublist(_tailStart(turns.length, maxTurns)),
+    );
+
+int _tailStart(int length, int limit) => length > limit ? length - limit : 0;

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,7 +7,9 @@ import 'package:go_router/go_router.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
+import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_markdown.dart';
 import 'package:mayos_mobile/src/features/coach/coach_assistant_state.dart';
 import 'package:mayos_mobile/src/providers.dart';
 import 'package:mayos_mobile/src/router.dart';
@@ -54,13 +58,21 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
   await _pumpUntilFound(tester, find.text('Roster'));
 }
 
-FakeMayosApi _coachFake({required bool coachAiEnabled}) {
+FakeMayosApi _coachFake({
+  required bool coachAiEnabled,
+  bool coachRosterAiEnabled = false,
+  bool coachPro = false,
+  bool? coachRosterAiAvailable,
+}) {
   final FakeMayosApi fake = FakeMayosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
   fake.coach = true;
   fake.coachAiEnabled = coachAiEnabled;
+  fake.coachRosterAiEnabled = coachRosterAiEnabled;
+  fake.coachPlan = coachPro ? 'pro' : 'free';
+  fake.coachRosterAiAvailable = coachRosterAiAvailable ?? coachPro;
   fake.profileExists = true;
   fake.recoveryEmail = 'alice@example.com';
   fake.coachDisplayName = 'Coach Alice';
@@ -91,11 +103,17 @@ ProviderContainer _container(WidgetTester tester) =>
     ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
 
 Future<void> _choosePlayer(WidgetTester tester, String username) async {
-  await tester.tap(find.byType(DropdownButtonFormField<String>));
+  final Finder picker = find.byType(DropdownButtonFormField<String>);
+  await tester.ensureVisible(picker);
+  await tester.tap(picker);
   await tester.pumpAndSettle();
   await tester.tap(find.text(username).last);
   await tester.pumpAndSettle();
 }
+
+Finder _rosterMarkdown(String source) => find.byWidgetPredicate(
+      (Widget widget) => widget is MayosMarkdown && widget.source == source,
+    );
 
 void main() {
   testWidgets(
@@ -120,7 +138,9 @@ void main() {
       answer: 'Existing answer',
     );
 
-    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    final Finder picker = find.byType(DropdownButtonFormField<String>);
+    await tester.ensureVisible(picker);
+    await tester.tap(picker);
     await tester.pumpAndSettle();
     expect(find.text('former-player'), findsNothing);
     await tester.tap(find.text('bob').last);
@@ -225,6 +245,132 @@ void main() {
     expect(find.byType(DropdownButtonFormField<String>), findsNothing);
     expect(find.byKey(const Key('coach_assistant_open_player')), findsNothing);
     expect(find.byKey(const Key('coach_assistant_question')), findsNothing);
+  });
+
+  testWidgets(
+      'roster replies keep aliases and coverage separate, show names, and link players',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake(
+      coachAiEnabled: true,
+      coachRosterAiEnabled: true,
+      coachPro: true,
+    );
+    await _pumpApp(tester, fake);
+    await tester.tap(find.text('Assistant'));
+    await _pumpUntilFound(tester, find.text('Ask about the roster'));
+
+    expect(find.textContaining('Player chat'), findsOneWidget);
+    expect(
+      find.textContaining('The hosted model receives only the Roster signal snapshot'),
+      findsOneWidget,
+    );
+    final Finder questionField =
+        find.byKey(const Key('coach_roster_assistant_question'));
+    await tester.ensureVisible(questionField);
+    await tester.enterText(questionField, 'Who needs attention today?');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('coach_roster_assistant_send')));
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('coach_roster_player_link_Pabcdef123456')),
+    );
+
+    expect(
+      _rosterMarkdown('Pabcdef123456 (Bob Display) needs attention.'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('coach_roster_coverage_summary')), findsOneWidget);
+    expect(fake.coachRosterAssistantRequests, hasLength(1));
+    expect(fake.coachRosterAssistantRequests.single['question'],
+        'Who needs attention today?');
+    expect(fake.coachRosterAssistantRequests.single['history'], isEmpty);
+    final CoachRosterAssistantTranscript transcript = _container(tester)
+        .read(coachRosterAssistantControllerProvider);
+    expect(transcript.exchanges.single.answer,
+        'Pabcdef123456 needs attention.');
+    expect(transcript.exchanges.single.coverageSummary,
+        startsWith('Snapshot coverage:'));
+    expect(
+        transcript.exchanges.single.assignmentByPlayerId['Pabcdef123456'],
+        'assignment-1');
+
+    await tester.enterText(questionField, 'What about that player?');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('coach_roster_assistant_send')));
+    await _pumpUntilFound(
+      tester,
+      _rosterMarkdown('Pabcdef123456 (Bob Display) needs attention.'),
+    );
+    final Map<String, dynamic> followUp = fake.coachRosterAssistantRequests[1];
+    expect(followUp['history'], <Map<String, String>>[
+      <String, String>{'role': 'coach', 'content': 'Who needs attention today?'},
+      <String, String>{
+        'role': 'assistant',
+        'content': 'Pabcdef123456 needs attention.',
+      },
+    ]);
+    expect(jsonEncode(followUp), isNot(contains('bob')));
+
+    final Finder link = find.byKey(
+      const Key('coach_roster_player_link_Pabcdef123456'),
+    );
+    await tester.ensureVisible(link.last);
+    await tester.tap(link.last);
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('coach_assistant_question')),
+    );
+    expect(find.byKey(const Key('coach_assistant_question')), findsOneWidget);
+  });
+
+  testWidgets('a Free Coach sees the roster urgency order and upgrade note',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake(
+      coachAiEnabled: true,
+      coachRosterAiEnabled: true,
+      coachPro: false,
+    );
+    await _pumpApp(tester, fake);
+    await tester.tap(find.text('Assistant'));
+    await _pumpUntilFound(tester, find.text('Ask about the roster'));
+
+    expect(
+      find.text(
+        'The Roster urgency order is available. AI roster questions require Coach Pro.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('coach_roster_urgency_order')), findsOneWidget);
+    expect(find.text('1. bob'), findsOneWidget);
+    expect(find.text('2. carol'), findsOneWidget);
+    expect(find.byKey(const Key('coach_roster_assistant_question')),
+        findsNothing);
+    expect(find.text('Roster'), findsOneWidget);
+  });
+
+  testWidgets('a trial Coach without a Coach plan row sees roster chat',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake(
+      coachAiEnabled: true,
+      coachRosterAiEnabled: true,
+      coachPro: false,
+      coachRosterAiAvailable: true,
+    )..coachPlan = null;
+    await _pumpApp(tester, fake);
+    await tester.tap(find.text('Assistant'));
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('coach_roster_assistant_question')),
+    );
+
+    final Account account = _container(tester)
+        .read(authControllerProvider)
+        .session!
+        .account;
+    expect(account.plans.coach, isNull);
+    expect(account.coachRosterAiAvailable, isTrue);
+    expect(find.byKey(const Key('coach_roster_assistant_question')), findsOneWidget);
+    expect(find.text('The Roster urgency order is available. AI roster questions require Coach Pro.'), findsNothing);
   });
 }
 

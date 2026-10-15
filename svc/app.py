@@ -50,6 +50,7 @@ from svc.routers import (
     coach,
     coach_ai,
     coach_exercises,
+    coach_roster_ai,
     checkpoint_reviews,
     dashboard,
     media,
@@ -273,6 +274,13 @@ async def lifespan(app: FastAPI):
     gate = log_enable_gate_at_startup()
     if gate.enabled:
         logger.info("Coach AI enabled: %s", gate.reason)
+    from service.coach_roster_ai import (
+        log_enable_gate_at_startup as log_coach_roster_ai_gate,
+    )
+
+    roster_gate = log_coach_roster_ai_gate()
+    if roster_gate.enabled:
+        logger.info("Coach roster AI enabled: %s", roster_gate.reason)
     from service.program_import_ai import log_enable_gate_at_startup as log_program_import_gate
 
     program_import_gate = log_program_import_gate()
@@ -492,6 +500,7 @@ def create_app() -> FastAPI:
     app.include_router(coach.router)
     app.include_router(coach_exercises.router)
     app.include_router(coach_ai.router)
+    app.include_router(coach_roster_ai.router)
     app.include_router(assignments.coach_router)
     app.include_router(assignments.coach_roster_router)
     app.include_router(assignments.player_router)

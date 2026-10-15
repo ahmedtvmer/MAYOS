@@ -16,6 +16,7 @@ import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_card.dart';
 import '../../providers.dart';
 import 'coach_assistant_screen.dart';
+import 'coach_roster_assistant_panel.dart';
 import 'coach_roster_loader.dart';
 
 /// The Coach shell's Assistant tab (#309), with the existing one-player
@@ -122,12 +123,9 @@ class _CoachAssistantTabScreenState
       roster ?? <CoachRosterEntry>[],
     );
     final bool rosterReady = roster != null && cacheRevision == rosterRevision;
-    final bool assistantEnabled =
-        ref.watch(authControllerProvider).session?.account.coachAiEnabled ??
-            false;
+    final Account? account =
+        ref.watch(authControllerProvider).session?.account;
     final CoachCopy copy = coachCopyOf(context);
-    if (!assistantEnabled) return _disabledState(copy.coachAiDisabled);
-
     final String? error =
         _error == null ? null : displayCopyOf(context).failureMessage(_error!);
     return _assistantTab(
@@ -136,6 +134,9 @@ class _CoachAssistantTabScreenState
       MayosTheme.of(context),
       assignments,
       rosterReady,
+      account?.coachRosterAiEnabled ?? false,
+      account?.coachAiEnabled ?? false,
+      account?.coachRosterAiAvailable ?? false,
     );
   }
 
@@ -145,18 +146,32 @@ class _CoachAssistantTabScreenState
     MayosThemeExtension colors,
     List<CoachRosterEntry> assignments,
     bool rosterReady,
+    bool rosterAiEnabled,
+    bool playerAiEnabled,
+    bool coachPro,
   ) =>
       SingleChildScrollView(
         padding: const EdgeInsets.all(MayosSpacing.lg),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 760),
-            child: _playerAssistantSection(
-              copy,
-              colors,
-              error,
-              assignments,
-              rosterReady,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                CoachRosterAssistantPanel(
+                  enabled: rosterAiEnabled,
+                  coachPro: coachPro,
+                  assignments: assignments,
+                ),
+                _playerAssistantSection(
+                  copy,
+                  colors,
+                  error,
+                  assignments,
+                  rosterReady,
+                  playerAiEnabled,
+                ),
+              ],
             ),
           ),
         ),
@@ -168,6 +183,7 @@ class _CoachAssistantTabScreenState
     String? error,
     List<CoachRosterEntry> assignments,
     bool rosterReady,
+    bool playerAiEnabled,
   ) =>
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -182,7 +198,10 @@ class _CoachAssistantTabScreenState
                 .copyWith(color: colors.textSecondary),
           ),
           const SizedBox(height: MayosSpacing.md),
-          _playerControls(copy, error, assignments, rosterReady),
+          if (!playerAiEnabled)
+            _disabledState(copy.coachAiDisabled)
+          else
+            _playerControls(copy, error, assignments, rosterReady),
         ],
       );
 

@@ -218,7 +218,9 @@ def _snapshot(db, coach_id, now):
     return roster_snapshot_service.roster_signal_snapshot(db, coach_id, now=now)
 
 
-def test_legacy_assignment_enters_snapshot_only_after_disclosure_and_revokes(api):
+def test_legacy_assignment_enters_snapshot_only_after_disclosure_and_revokes(
+    api, monkeypatch
+):
     client, db = api
     coach_headers, coach_id = _make_coach(client, db)
     player = _assign(client, db, coach_headers, "legacyrosterplayer")
@@ -231,9 +233,18 @@ def test_legacy_assignment_enters_snapshot_only_after_disclosure_and_revokes(api
         )
         db.catalog_conn.commit()
 
+    get_account = db.get_account
+    account_lookups = []
+
+    def track_account_lookup(account_id):
+        account_lookups.append(account_id)
+        return get_account(account_id)
+
+    monkeypatch.setattr(db, "get_account", track_account_lookup)
     before = client.get("/coach/roster/snapshot", headers=coach_headers)
     assert before.status_code == 200, before.text
     assert before.json()["snapshot"]["players"] == []
+    assert player["account_id"] not in account_lookups
     assert client.get("/assignments/me", headers=player["headers"]).json()["roster_ai_disclosed_at"] is None
 
     recorded = client.post(

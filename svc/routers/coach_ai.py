@@ -77,8 +77,12 @@ async def _prepare_stream(endpoint: _CoachAssistantRequest) -> _CoachAssistantSt
     account_id = account_id_of(endpoint.coach)
     client = analytics.client_context(endpoint.request)
     messages = await _load_assignment_messages(endpoint, account_id)
-    scope = _coach_inference_scope(endpoint.db, account_id, client)
-    _admit_coach_turn(endpoint, account_id, client)
+    scope = coach_inference_scope(
+        endpoint.db, account_id, client, purpose="coach_assistant"
+    )
+    admit_coach_turn(
+        account_id, client, endpoint.db, endpoint.background_tasks
+    )
     return _CoachAssistantStream(
         endpoint.request, endpoint.background_tasks, messages, scope
     )
@@ -107,26 +111,33 @@ async def _load_assignment_messages(
     return messages
 
 
-def _coach_inference_scope(db: Any, account_id: str, client: Any) -> InferenceScope:
+def coach_inference_scope(
+    db: Any, account_id: str, client: Any, *, purpose: str = "coach_assistant"
+) -> InferenceScope:
+    """Builds the non-admitting inference scope for a Coach model turn."""
     return InferenceScope(
         account_id=account_id,
         role="coach",
-        purpose="coach_assistant",
+        purpose=purpose,
         admit=False,
         store=db,
         client=client,
     )
 
 
-def _admit_coach_turn(
-    endpoint: _CoachAssistantRequest, account_id: str, client: Any
+def admit_coach_turn(
+    account_id: str,
+    client: Any,
+    db: Any,
+    background_tasks: BackgroundTasks,
 ) -> None:
+    """Admits and meters one Coach request under the shared Coach allowance."""
     admit_model_request(
         account_id,
         guard=False,
-        db=endpoint.db,
+        db=db,
         context=ModelAdmissionContext(
-            role="coach", client=client, background_tasks=endpoint.background_tasks
+            role="coach", client=client, background_tasks=background_tasks
         ),
     )
 

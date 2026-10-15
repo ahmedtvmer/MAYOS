@@ -1524,6 +1524,30 @@ class ApiClient {
         ),
       );
 
+  /// Asks one roster question with an in-memory, de-identified transcript.
+  /// The returned assignment map is used only to render player names/links.
+  Future<CoachRosterAssistantReply> coachRosterAssistant({
+    required String question,
+    required List<CoachAssistantTurn> history,
+  }) async {
+    final Response<dynamic> response = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/assistant/roster',
+        data: <String, dynamic>{
+          'question': question,
+          'history': <Map<String, dynamic>>[
+            for (final CoachAssistantTurn turn in history) turn.toJson(),
+          ],
+        },
+      ),
+    );
+    return _parseBody(
+      response.data,
+      CoachRosterAssistantReply.fromJson,
+      'The service returned an invalid roster assistant reply.',
+    );
+  }
+
   List<ProgramRequest> _parseProgramRequestList(dynamic data) {
     if (data is! Map<String, dynamic> || data['requests'] is! List<dynamic>) {
       throw const ApiException(

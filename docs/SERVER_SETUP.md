@@ -158,7 +158,8 @@ configured application variable unless it is Fly-specific or set by Compose.
 - Product and model limits: `MAYOS_ENV`, `MAYOS_RELEASE_PHASE`,
   `COACH_CLOSED_TRIAL_OVERRIDE`, `MODEL_RATE_LIMIT_REQUESTS`,
   `MODEL_DAILY_TOKEN_LIMIT`, `MODEL_PRICING_JSON`, `MODEL_SPEND_ALERT_USD`,
-  `COACH_AI_ENABLED`, `COACH_AI_EVAL_REPORT`, `CHECKPOINT_REVIEW_AI_ENABLED`,
+  `COACH_AI_ENABLED`, `COACH_AI_EVAL_REPORT`, `COACH_ROSTER_AI_ENABLED`,
+  `COACH_ROSTER_AI_EVAL_REPORT`, `CHECKPOINT_REVIEW_AI_ENABLED`,
   `CHECKPOINT_REVIEW_EVAL_REPORT`.
 - Request limits: `RATE_LIMIT_LOGIN`, `RATE_LIMIT_REGISTER`,
   `RATE_LIMIT_USERNAME_CHECK`, `RATE_LIMIT_PASSWORD`, `RATE_LIMIT_RESET`,
@@ -187,6 +188,11 @@ configuration also sets `MAYOS_ENV=production`,
 `COACH_AI_ENABLED=true`, and
 `COACH_AI_EVAL_REPORT=/app/reports/coach_ai_eval.json`; carry these over if they
 remain the intended production settings.
+
+Coach roster questions (#311) have their own opt-in settings and report gate:
+keep `COACH_ROSTER_AI_ENABLED=false` until
+`COACH_ROSTER_AI_EVAL_REPORT=/app/reports/coach_roster_ai_eval.json` points to a
+passing live report for the current roster prompt and Coach model.
 
 Add the production values below. The #376 deploy script writes
 `MAYOS_IMAGE_TAG` to `/opt/mayos/app/deploy/.image.env` for each Compose command;

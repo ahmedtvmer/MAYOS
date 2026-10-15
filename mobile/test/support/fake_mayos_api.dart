@@ -91,7 +91,7 @@ class FakeMayosApi {
   int deleteAccountRequests = 0;
   String? lastDeletePassword;
   String lifterPlan = 'free';
-  String coachPlan = 'free';
+  String? coachPlan = 'free';
   bool profileExists = false;
   String? recoveryEmail;
   bool recoveryEmailVerified = true;
@@ -433,6 +433,15 @@ class FakeMayosApi {
   // reported on `/auth/me` AND enforced on the assistant route, so flipping it
   // off mid-session reproduces the service answering 404 to a stale entry.
   bool coachAiEnabled = false;
+  bool coachRosterAiEnabled = false;
+  bool coachRosterAiAvailable = false;
+  String coachRosterAssistantAnswer =
+      'Pabcdef123456 needs attention.';
+  int coachRosterLeftOutForBudget = 0;
+  int coachRosterExcludedForDisclosure = 0;
+  bool coachRosterAssistantDenied = false;
+  final List<Map<String, dynamic>> coachRosterAssistantRequests =
+      <Map<String, dynamic>>[];
   // When true the assistant route denies with the generic 403 of an assignment
   // that is no longer active (revoked/foreign).
   bool coachAssistantDenied = false;
@@ -662,6 +671,8 @@ class FakeMayosApi {
         return _coachSettings(request);
       case '/coach/roster/snapshot':
         return _coachRosterSnapshot(request);
+      case '/coach/assistant/roster':
+        return _coachRosterAssistant(request);
       case '/coach/program-requests':
         return _coachCrossRosterProgramRequests(request);
       case '/coach/assignments':
@@ -983,6 +994,8 @@ class FakeMayosApi {
       },
       'plans': _plansBody(),
       'coach_ai_enabled': coachAiEnabled,
+      'coach_roster_ai_enabled': coachRosterAiEnabled,
+      'coach_roster_ai_available': coachRosterAiAvailable,
       'has_password': hasPassword,
       'linked_sign_ins': linkedSignIns.toList(growable: false),
       'display_language':
@@ -1026,7 +1039,7 @@ class FakeMayosApi {
 
   Map<String, dynamic> _plansBody() => <String, dynamic>{
         'lifter': <String, dynamic>{'plan': lifterPlan, 'status': 'active'},
-        if (coach)
+        if (coach && coachPlan != null)
           'coach': <String, dynamic>{'plan': coachPlan, 'status': 'active'},
       };
 
@@ -1210,6 +1223,8 @@ class FakeMayosApi {
       'plans': _plansBody(),
       'display_language': displayLanguage,
       'coach_ai_enabled': coachAiEnabled,
+      'coach_roster_ai_enabled': coachRosterAiEnabled,
+      'coach_roster_ai_available': coachRosterAiAvailable,
       'recovery_email_verified':
           recoveryEmail != null && recoveryEmailVerified,
     });
@@ -1602,6 +1617,64 @@ class FakeMayosApi {
       'data: ${jsonEncode(<String, dynamic>{'token': second})}\n\n',
       'data: ${jsonEncode(<String, dynamic>{'done': true, 'answer': coachAssistantAnswer})}\n\n',
     ]);
+  }
+
+  FakeResponse _coachRosterAssistant(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    if (!coachRosterAiEnabled) {
+      return const FakeResponse(404,
+          <String, dynamic>{'detail': 'Coach roster assistant is not available.'});
+    }
+    if (!coachRosterAiAvailable) {
+      return const FakeResponse(403,
+          <String, dynamic>{'detail': 'Coach Pro is required for roster questions.'});
+    }
+    if (coachRosterAssistantDenied || assignments.isEmpty) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'No active assignments.'});
+    }
+    final String question = request.body['question'] as String? ?? '';
+    final List<dynamic> history =
+        request.body['history'] as List<dynamic>? ?? const <dynamic>[];
+    final bool badTurn = history.any((dynamic turn) {
+      final dynamic content =
+          turn is Map<String, dynamic> ? turn['content'] : null;
+      return content is! String || content.isEmpty || content.length > 2000;
+    });
+    if (question.isEmpty ||
+        question.length > 1000 ||
+        history.length > 12 ||
+        badTurn) {
+      return const FakeResponse(422,
+          <String, dynamic>{'detail': 'Invalid roster assistant request.'});
+    }
+    coachRosterAssistantRequests.add(
+      <String, dynamic>{
+        'question': question,
+        'history': jsonDecode(jsonEncode(history)) as List<dynamic>,
+      },
+    );
+    return FakeResponse(200, <String, dynamic>{
+      'answer': coachRosterAssistantAnswer,
+      'coverage_summary':
+          'Snapshot coverage: 1 included; 0 eligible players left out.',
+      'client_mapping': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'player_id': 'Pabcdef123456',
+          'assignment_id': assignments.first['assignment_id'],
+          'player_display_name': 'Bob Display',
+        },
+      ],
+      'left_out_for_budget': coachRosterLeftOutForBudget,
+      'excluded_for_missing_disclosure': coachRosterExcludedForDisclosure,
+    });
   }
 
   FakeResponse _coachPlayerHistory(FakeRequest request) {

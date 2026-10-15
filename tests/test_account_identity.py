@@ -365,6 +365,8 @@ def test_current_account_reports_capabilities_from_durable_registry(api):
         "analytics_allowed": True,
         "capabilities": {"player": True, "coach": False},
         "coach_ai_enabled": False,
+        "coach_roster_ai_enabled": False,
+        "coach_roster_ai_available": False,
         "has_password": True,
         "linked_sign_ins": [],
         "recovery_email_verified": False,

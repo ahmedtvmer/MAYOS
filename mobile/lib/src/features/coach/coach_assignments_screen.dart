@@ -242,6 +242,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
       ref.read(authControllerProvider.notifier).markCoachDisabled();
       // Every assignment just ended: no assistant context survives it (#45).
       ref.read(coachAssistantControllerProvider.notifier).clear();
+      ref.read(coachRosterAssistantControllerProvider.notifier).clear();
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {

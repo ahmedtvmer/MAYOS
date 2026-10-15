@@ -29,6 +29,32 @@ String _resolveProgramImport(
     ).replaceAll('\u2066', '').replaceAll('\u2069', '');
 
 void main() {
+  test('roster assistant refusals use localized message codes', () {
+    for (final (String code, String english, String arabic) in <(String, String, String)>[
+      (
+        'coach.roster_ai_unavailable.v1',
+        'Roster questions are unavailable right now.',
+        'أسئلة قائمة اللاعبين غير متاحة حاليًا.',
+      ),
+      (
+        'coach.roster_ai_pro_required.v1',
+        'Coach Pro is required to ask questions about the roster.',
+        'تتطلب الأسئلة عن قائمة اللاعبين Coach Pro.',
+      ),
+    ]) {
+      expect(
+        resolveStructuredMessage(
+          messageCode: code,
+          messageParams: const <String, dynamic>{},
+          englishFallback: 'Safe fallback.',
+          displayLanguage: 'en',
+        ),
+        english,
+      );
+      expect(_resolve(code, const <String, dynamic>{}), arabic);
+    }
+  });
+
   test('supported coach alert codes render their typed evidence in Arabic', () {
     expect(
       _resolve('coach_alert.missed_expected_days.v1', <String, dynamic>{

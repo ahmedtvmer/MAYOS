@@ -94,6 +94,8 @@ class Account {
     required this.capabilities,
     this.plans = const AccountPlans(),
     this.coachAiEnabled = false,
+    this.coachRosterAiEnabled = false,
+    this.coachRosterAiAvailable = false,
     this.hasPassword = false,
     this.linkedSignIns = const <String>[],
     this.displayLanguage = 'en',
@@ -116,6 +118,9 @@ class Account {
       capabilities: capabilities,
       plans: AccountPlans.fromJson(rawPlans),
       coachAiEnabled: json['coach_ai_enabled'] as bool? ?? false,
+      coachRosterAiEnabled: json['coach_roster_ai_enabled'] as bool? ?? false,
+      coachRosterAiAvailable:
+          json['coach_roster_ai_available'] as bool? ?? false,
       hasPassword: json['has_password'] as bool? ?? false,
       linkedSignIns: rawLinked is List<dynamic>
           ? rawLinked.whereType<String>().toList(growable: false)
@@ -138,6 +143,12 @@ class Account {
   /// itself answers 404 so a stale entry fails closed.
   final bool coachAiEnabled;
 
+  /// Effective roster-assistant feature state (separate ADR 049 gate).
+  final bool coachRosterAiEnabled;
+
+  /// Server-derived Coach Pro entitlement used by the roster assistant route.
+  final bool coachRosterAiAvailable;
+
   /// Whether the account can sign in with a password (`/auth/me`, #114).
   final bool hasPassword;
 
@@ -157,6 +168,8 @@ class Account {
     Capabilities? capabilities,
     AccountPlans? plans,
     bool? coachAiEnabled,
+    bool? coachRosterAiEnabled,
+    bool? coachRosterAiAvailable,
     bool? hasPassword,
     List<String>? linkedSignIns,
     String? displayLanguage,
@@ -169,6 +182,10 @@ class Account {
         capabilities: capabilities ?? this.capabilities,
         plans: plans ?? this.plans,
         coachAiEnabled: coachAiEnabled ?? this.coachAiEnabled,
+        coachRosterAiEnabled:
+            coachRosterAiEnabled ?? this.coachRosterAiEnabled,
+        coachRosterAiAvailable:
+            coachRosterAiAvailable ?? this.coachRosterAiAvailable,
         hasPassword: hasPassword ?? this.hasPassword,
         linkedSignIns: linkedSignIns ?? this.linkedSignIns,
         displayLanguage: displayLanguage ?? this.displayLanguage,
@@ -719,6 +736,56 @@ class CoachAssistantTurn {
 
   @override
   String toString() => 'CoachAssistantTurn($role)';
+}
+
+/// Reply to `POST /coach/assistant/roster` (#311). Assignment ids stay in this
+/// client-only map; turns sent back to the model retain only temporary labels.
+class CoachRosterAssistantReply {
+  const CoachRosterAssistantReply({
+    required this.answer,
+    required this.coverageSummary,
+    required this.assignmentByPlayerId,
+    required this.displayNameByPlayerId,
+    required this.leftOutForBudget,
+    required this.excludedForMissingDisclosure,
+  });
+
+  factory CoachRosterAssistantReply.fromJson(Map<String, dynamic> json) {
+    final Map<String, String> mapping = <String, String>{};
+    final Map<String, String> displayNames = <String, String>{};
+    final dynamic rawMapping = json['client_mapping'];
+    if (rawMapping is List<dynamic>) {
+      for (final dynamic raw in rawMapping) {
+        if (raw is Map<String, dynamic> &&
+            raw['player_id'] is String &&
+            raw['assignment_id'] is String) {
+          mapping[raw['player_id'] as String] = raw['assignment_id'] as String;
+          if (raw['player_display_name'] is String &&
+              (raw['player_display_name'] as String).isNotEmpty) {
+            displayNames[raw['player_id'] as String] =
+                raw['player_display_name'] as String;
+          }
+        }
+      }
+    }
+    return CoachRosterAssistantReply(
+      answer: json['answer'] as String? ?? '',
+      coverageSummary: json['coverage_summary'] as String? ?? '',
+      assignmentByPlayerId: Map<String, String>.unmodifiable(mapping),
+      displayNameByPlayerId: Map<String, String>.unmodifiable(displayNames),
+      leftOutForBudget:
+          (json['left_out_for_budget'] as num?)?.toInt() ?? 0,
+      excludedForMissingDisclosure:
+          (json['excluded_for_missing_disclosure'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  final String answer;
+  final String coverageSummary;
+  final Map<String, String> assignmentByPlayerId;
+  final Map<String, String> displayNameByPlayerId;
+  final int leftOutForBudget;
+  final int excludedForMissingDisclosure;
 }
 
 /// `GET /coach/alerts`: one catalog-side alert (ADR 030/031/032).

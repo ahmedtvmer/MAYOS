@@ -14,6 +14,7 @@ from service import analytics as analytics_service
 from service import auth as auth_service
 from service import coach as coach_service
 from service import coach_ai as coach_ai_service
+from service import coach_roster_ai as coach_roster_ai_service
 from service import google_sign_in as google_service
 from service import password_reset as reset_service
 from service.email_verification import GENERIC_CODE_ERROR
@@ -483,6 +484,7 @@ async def read_current_account(
         analytics_allowed=account["analytics_allowed"],
         recovery_email_verified=recovery_email_verified,
         coach_ai_enabled=coach_ai_service.coach_ai_enabled(),
+        coach_roster_ai_enabled=coach_roster_ai_service.coach_roster_ai_enabled(),
     )
 
 

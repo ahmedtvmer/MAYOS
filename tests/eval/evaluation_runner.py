@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ class EvaluationRunnerConfig:
     context_version: str
     ensure_ascii: bool
     no_privacy_help: str
+    case_loader: Callable[[Path, str], list[dict[str, Any]]] | None = None
     check_title: str | None = None
     check_report_help: str = "Re-check an existing report without loading any model."
 
@@ -38,9 +40,15 @@ def load_cases(dataset_path: Path, dataset_label: str) -> list[dict[str, Any]]:
 
 
 def run_privacy_suite(privacy_suite: str, base_dir: Path) -> bool:
+    """Runs a hermetic pytest privacy suite from the repository root."""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        filter(None, (str(base_dir), env.get("PYTHONPATH", "")))
+    )
     completed = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", privacy_suite],
         cwd=str(base_dir),
+        env=env,
         capture_output=True,
         text=True,
         check=False,
@@ -57,7 +65,8 @@ def build_report(
     config: EvaluationRunnerConfig,
 ) -> dict[str, Any]:
     model_id, backend = config.report_config.model_identity()
-    threshold = len(load_cases(dataset_path, config.dataset_label))
+    case_loader = config.case_loader or load_cases
+    threshold = len(case_loader(dataset_path, config.dataset_label))
     evaluation_ok, reasons, stats = evaluate_gate(
         results,
         threshold,
@@ -140,7 +149,8 @@ def run_main(
             print(f"  x {reason}", file=sys.stderr)
         return 0 if ok else 1
 
-    cases = load_cases(args.dataset, config.dataset_label)
+    case_loader = config.case_loader or load_cases
+    cases = case_loader(args.dataset, config.dataset_label)
     mode = "mock" if args.mock else "live"
     print(f"{config.title} evaluation: {len(cases)} cases ({mode} mode)")
     results = run_cases(cases, args.mock, args.dataset)

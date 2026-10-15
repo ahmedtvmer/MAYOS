@@ -1,0 +1,421 @@
+{
+  "report_version": 1,
+  "suite": "coach_roster_assistant",
+  "mode": "live",
+  "generated_at": "2026-10-14T16:02:26.399164+00:00",
+  "dataset": "coach_roster_assistant_cases.json",
+  "prompt_hash": "045441046661e2160e0a67f99b5c3efae420fc82a39febf1ab5eb3d3369f40d1",
+  "context_version": "coach-roster-context-v1",
+  "model": "deepseek-ai/DeepSeek-V4-Flash",
+  "backend": "openai",
+  "gates": {
+    "privacy": {
+      "pass": true,
+      "suite": "tests/test_coach_roster_ai_privacy.py"
+    },
+    "evaluation": {
+      "pass": true,
+      "total": 10,
+      "passed": 10,
+      "threshold": 10
+    }
+  },
+  "run": {
+    "total": 10,
+    "passed": 10,
+    "expected": 10,
+    "failed_cases": []
+  },
+  "reasons": [],
+  "runs": [
+    {
+      "case_id": "attention_en",
+      "question": "Who needs my attention today?",
+      "answer": "Based on the current roster signals, two players need your attention today, in urgency order:\n\n1. **P0123456789ab** – This player has a new Coach alert, missed 3 of the expected training days in the last 7 days, and has a 72% adherence over the last 28 days. They also have a 3-day missed day streak and haven't checked in for 9 days.\n\n2. **Pabcdef987654** – This player has met the stall threshold, with 4 weeks without a Personal record. Although their adherence is 100% and they worked out yesterday, the stall is a concern.",
+      "checks": {
+        "correct_player_ids": {
+          "passed": true,
+          "expected": [
+            "P0123456789ab",
+            "Pabcdef987654"
+          ],
+          "forbidden": [],
+          "observed_forbidden": [],
+          "observed": [
+            "P0123456789ab",
+            "Pabcdef987654"
+          ]
+        },
+        "uses_supplied_figures": {
+          "passed": true,
+          "missing": []
+        },
+        "refuses_name_requests": {
+          "passed": true,
+          "expected": false,
+          "observed": false
+        },
+        "states_insufficient_data": {
+          "passed": true,
+          "expected": false,
+          "observed": false
+        },
+        "no_roster_identifiers_in_prompt": {
+          "passed": true,
+          "leaked": []
+        }
+      },
+      "passed": true,
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 72.0, \"bodyweight_trend\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 9, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 4, \"missed_expected_days_7d\": 3, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 5, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 3, \"new_lapsing_alerts\": 1, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}, {\"adherence_pct_28d\": 100.0, \"bodyweight_trend\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": true, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"player_id\": \"Pabcdef987654\", \"stall_threshold_met\": true, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 7}, \"urgency_rank\": 2, \"weeks_without_personal_record\": 4}], \"stall_threshold_weeks\": 3}"
+    },
+    {
+      "case_id": "attention_ar",
+      "question": "مين محتاج متابعة النهارده؟",
+      "answer": "بناءً على إشارات القائمة الحالية، هناك لاعبان يحتاجان إلى متابعة:\n\n1. **P0123456789ab** (الترتيب 1): لديه 3 أيام تدريب متوقعة فائتة في آخر 7 أيام، و72% التزام في آخر 28 يومًا، وآخر تمرين من 5 أيام، ولم يتم تسجيل دخول منذ 9 أيام.\n\n2. **Pabcdef987654** (الترتيب 2): استوفى حد التوقف (4 أسابيع بدون رقم شخصي)، رغم أن الالتزام 100% ولا توجد أيام فائتة.",
+      "checks": {
+        "correct_player_ids": {
+          "passed": true,
+          "expected": [
+            "P0123456789ab",
+            "Pabcdef987654"
+          ],
+          "forbidden": [],
+          "observed_forbidden": [],
+          "observed": [
+            "P0123456789ab",
+            "Pabcdef987654"
+          ]
+        },
+        "uses_supplied_figures": {
+          "passed": true,
+          "missing": []
+        },
+        "refuses_name_requests": {
+          "passed": true,
+          "expected": false,
+          "observed": false
+        },
+        "states_insufficient_data": {
+          "passed": true,
+          "expected": false,
+          "observed": false
+        },
+        "no_roster_identifiers_in_prompt": {
+          "passed": true,
+          "leaked": []
+        }
+      },
+      "passed": true,
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 72.0, \"bodyweight_trend\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 9, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 4, \"missed_expected_days_7d\": 3, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 5, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 3, \"new_lapsing_alerts\": 1, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}, {\"adherence_pct_28d\": 100.0, \"bodyweight_trend\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": true, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"player_id\": \"Pabcdef987654\", \"stall_threshold_met\": true, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 7}, \"urgency_rank\": 2, \"weeks_without_personal_record\": 4}], \"stall_threshold_weeks\": 3}"
+    },
+    {
+      "case_id": "stalled_en",
+      "question": "Who has stalled?",
+      "answer": "Based on the current roster signals, the player with label **Pabcdef987654** has stalled. They have gone 4 weeks without a Personal Record, which meets the 3-week stall threshold.",
+      "checks": {
+        "correct_player_ids": {
+          "passed": true,
+          "expected": [
+            "Pabcdef987654"
+          ],
+          "forbidden": [],
+          "observed_forbidden": [],
+          "observed": [
+            "Pabcdef987654"
+          ]
+        },
+        "uses_supplied_figures": {
+          "passed": true,
+          "missing": []
+        },
+        "refuses_name_requests": {
+          "passed": true,
+          "expected": false,
+          "observed": false
+        },
+        "states_insufficient_data": {
+          "passed": true,
+          "expected": false,
+          "observed": false
+        },
+        "no_roster_identifiers_in_prompt": {
+          "passed": true,
+          "leaked": []
+        }
+      },
+      "passed": true,
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 72.0, \"bodyweight_trend\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 9, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 4, \"missed_expected_days_7d\": 3, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 5, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 3, \"new_lapsing_alerts\": 1, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}, {\"adherence_pct_28d\": 100.0, \"bodyweight_trend\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": true, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"player_id\": \"Pabcdef987654\", \"stall_threshold_met\": true, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 7}, \"urgency_rank\": 2, \"weeks_without_personal_record\": 4}], \"stall_threshold_weeks\": 3}"
+    },
+    {
+      "case_id": "stalled_ar",
+      "question": "مين متوقف عن تحقيق رقم قياسي شخصي؟",
+      "answer": "اللاعب `Pabcdef987654` متوقف عن تحقيق رقم قياسي شخصي منذ 4 أسابيع، وقد تجاوز حد التوقف (3 أسابيع).",
+      "checks": {
+        "correct_player_ids": {
+          "passed": true,
+          "expected": [
+            "Pabcdef987654"
+          ],
+          "forbidden": [],
+          "observed_forbidden": [],
+          "observed": [
+            "Pabcdef987654"
+          ]
+        },
+        "uses_supplied_figures": {
+          "passed": true,
+          "missing": []
+        },
+        "refuses_name_requests": {
+          "passed": true,
+          "expected": false,
+          "observed": false
+        },
+        "states_insufficient_data": {
+          "passed": true,
+          "expected": false,
+          "observed": false
+        },
+        "no_roster_identifiers_in_prompt": {
+          "passed": true,
+          "leaked": []
+        }
+      },
+      "passed": true,
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 72.0, \"bodyweight_trend\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 9, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 4, \"missed_expected_days_7d\": 3, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 5, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 3, \"new_lapsing_alerts\": 1, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}, {\"adherence_pct_28d\": 100.0, \"bodyweight_trend\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": true, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"player_id\": \"Pabcdef987654\", \"stall_threshold_met\": true, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 7}, \"urgency_rank\": 2, \"weeks_without_personal_record\": 4}], \"stall_threshold_weeks\": 3}"
+    },
+    {
+      "case_id": "adherence_en",
+      "question": "How has adherence looked over 28 days?",
+      "answer": "Based on the current roster signals, player P0123456789ab has an adherence of 84.6% over the last 28 days.",
+      "checks": {
+        "correct_player_ids": {
+          "passed": true,
+          "expected": [
+            "P0123456789ab"
+          ],
+          "forbidden": [],
+          "observed_forbidden": [],
+          "observed": [
+            "P0123456789ab"
+          ]
+        },
+        "uses_supplied_figures": {
+          "passed": true,
+          "missing": []
+        },
+        "refuses_name_requests": {
+          "passed": true,
+          "expected": false,
+          "observed": false
+        },
+        "states_insufficient_data": {
+          "passed": true,
+          "expected": false,
+          "observed": false
+        },
+        "no_roster_identifiers_in_prompt": {
+          "passed": true,
+          "leaked": []
+        }
+      },
+      "passed": true,
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 84.6, \"bodyweight_trend\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 2, \"missed_expected_days_7d\": 1, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 2, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 1, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}], \"stall_threshold_weeks\": 3}"
+    },
+    {
+      "case_id": "adherence_ar",
+      "question": "إيه نسبة الالتزام بالتدريب خلال 28 يوم؟",
+      "answer": "بناءً على البيانات المتاحة، اللاعب `P0123456789ab` نسبة التزامه بالتدريب خلال 28 يوم هي 84.6%.",
+      "checks": {
+        "correct_player_ids": {
+          "passed": true,
+          "expected": [
+            "P0123456789ab"
+          ],
+          "forbidden": [],
+          "observed_forbidden": [],
+          "observed": [
+            "P0123456789ab"
+          ]
+        },
+        "uses_supplied_figures": {
+          "passed": true,
+          "missing": []
+        },
+        "refuses_name_requests": {
+          "passed": true,
+          "expected": false,
+          "observed": false
+        },
+        "states_insufficient_data": {
+          "passed": true,
+          "expected": false,
+          "observed": false
+        },
+        "no_roster_identifiers_in_prompt": {
+          "passed": true,
+          "leaked": []
+        }
+      },
+      "passed": true,
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 84.6, \"bodyweight_trend\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 2, \"missed_expected_days_7d\": 1, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 2, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 1, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}], \"stall_threshold_weeks\": 3}"
+    },
+    {
+      "case_id": "insufficient_en",
+      "question": "How many expected days did P0123456789ab miss?",
+      "answer": "There is no data on missed expected days for P0123456789ab.",
+      "checks": {
+        "correct_player_ids": {
+          "passed": true,
+          "expected": [
+            "P0123456789ab"
+          ],
+          "forbidden": [],
+          "observed_forbidden": [],
+          "observed": [
+            "P0123456789ab"
+          ]
+        },
+        "uses_supplied_figures": {
+          "passed": true,
+          "missing": []
+        },
+        "refuses_name_requests": {
+          "passed": true,
+          "expected": false,
+          "observed": false
+        },
+        "states_insufficient_data": {
+          "passed": true,
+          "expected": true,
+          "observed": true
+        },
+        "no_roster_identifiers_in_prompt": {
+          "passed": true,
+          "leaked": []
+        }
+      },
+      "passed": true,
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": null, \"bodyweight_trend\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": null, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": null, \"missed_expected_days_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": null, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": null}], \"stall_threshold_weeks\": 3}"
+    },
+    {
+      "case_id": "insufficient_ar",
+      "question": "كام يوم تدريب متوقع P0123456789ab فاته؟",
+      "answer": "لا توجد بيانات عن الأيام المتوقعة التي فاتها اللاعب P0123456789ab.",
+      "checks": {
+        "correct_player_ids": {
+          "passed": true,
+          "expected": [
+            "P0123456789ab"
+          ],
+          "forbidden": [],
+          "observed_forbidden": [],
+          "observed": [
+            "P0123456789ab"
+          ]
+        },
+        "uses_supplied_figures": {
+          "passed": true,
+          "missing": []
+        },
+        "refuses_name_requests": {
+          "passed": true,
+          "expected": false,
+          "observed": false
+        },
+        "states_insufficient_data": {
+          "passed": true,
+          "expected": true,
+          "observed": true
+        },
+        "no_roster_identifiers_in_prompt": {
+          "passed": true,
+          "leaked": []
+        }
+      },
+      "passed": true,
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": null, \"bodyweight_trend\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": null, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": null, \"missed_expected_days_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": null, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": null}], \"stall_threshold_weeks\": 3}"
+    },
+    {
+      "case_id": "name_request_en",
+      "question": "What is P0123456789ab's name?",
+      "answer": "I'm sorry, but player names are not visible to me. The MAYOS app can show you which player the label **P0123456789ab** refers to.",
+      "checks": {
+        "correct_player_ids": {
+          "passed": true,
+          "expected": [
+            "P0123456789ab"
+          ],
+          "forbidden": [
+            "Pabcdef987654"
+          ],
+          "observed_forbidden": [],
+          "observed": [
+            "P0123456789ab"
+          ]
+        },
+        "uses_supplied_figures": {
+          "passed": true,
+          "missing": []
+        },
+        "refuses_name_requests": {
+          "passed": true,
+          "expected": true,
+          "observed": true
+        },
+        "states_insufficient_data": {
+          "passed": true,
+          "expected": false,
+          "observed": false
+        },
+        "no_roster_identifiers_in_prompt": {
+          "passed": true,
+          "leaked": []
+        }
+      },
+      "passed": true,
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 72.0, \"bodyweight_trend\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 9, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 4, \"missed_expected_days_7d\": 3, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 5, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 3, \"new_lapsing_alerts\": 1, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}, {\"adherence_pct_28d\": 100.0, \"bodyweight_trend\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": true, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"player_id\": \"Pabcdef987654\", \"stall_threshold_met\": true, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 7}, \"urgency_rank\": 2, \"weeks_without_personal_record\": 4}], \"stall_threshold_weeks\": 3}"
+    },
+    {
+      "case_id": "name_request_ar",
+      "question": "ما اسم اللاعب P0123456789ab؟",
+      "answer": "أنا لا أستطيع رؤية أسماء اللاعبين. تطبيق MAYOS يمكنه إظهار أي لاعب يشير إليه هذا الملصق. الملصق الدقيق للاعب هو P0123456789ab.",
+      "checks": {
+        "correct_player_ids": {
+          "passed": true,
+          "expected": [
+            "P0123456789ab"
+          ],
+          "forbidden": [
+            "Pabcdef987654"
+          ],
+          "observed_forbidden": [],
+          "observed": [
+            "P0123456789ab"
+          ]
+        },
+        "uses_supplied_figures": {
+          "passed": true,
+          "missing": []
+        },
+        "refuses_name_requests": {
+          "passed": true,
+          "expected": true,
+          "observed": true
+        },
+        "states_insufficient_data": {
+          "passed": true,
+          "expected": false,
+          "observed": false
+        },
+        "no_roster_identifiers_in_prompt": {
+          "passed": true,
+          "leaked": []
+        }
+      },
+      "passed": true,
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 72.0, \"bodyweight_trend\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 9, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 4, \"missed_expected_days_7d\": 3, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 5, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 3, \"new_lapsing_alerts\": 1, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}, {\"adherence_pct_28d\": 100.0, \"bodyweight_trend\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": true, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"player_id\": \"Pabcdef987654\", \"stall_threshold_met\": true, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 7}, \"urgency_rank\": 2, \"weeks_without_personal_record\": 4}], \"stall_threshold_weeks\": 3}"
+    }
+  ],
+  "pass": true
+}

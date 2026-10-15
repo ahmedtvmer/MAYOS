@@ -24,11 +24,19 @@ class SnapshotContext:
     active_alerts: list[dict[str, Any]]
 
 
+@dataclass(frozen=True)
+class _EligibleAssignment:
+    roster_entry: dict[str, Any]
+    assignment: dict[str, Any]
+    player: dict[str, Any]
+
+
 def _eligible_assignments(
     db: Any, coach_account_id: str, roster_rows: list[dict[str, Any]]
-) -> list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]]:
-    """The single roster-snapshot eligibility boundary (#326 extends this)."""
+) -> tuple[list[_EligibleAssignment], int]:
+    """Returns live, owned Assignments with recorded roster-AI disclosure."""
     eligible = []
+    excluded_for_missing_disclosure = 0
     for roster_entry in roster_rows:
         assignment = db.get_active_assignment_for_coach(
             coach_account_id, str(roster_entry["assignment_id"])
@@ -40,11 +48,13 @@ def _eligible_assignments(
             != assignments_service.ROSTER_AI_DISCLOSURE_VERSION
             or assignment.get("roster_ai_disclosed_at") is None
         ):
+            excluded_for_missing_disclosure += 1
             continue
         player = db.get_account(assignment["player_account_id"])
-        if db.is_live_account(player):
-            eligible.append((roster_entry, assignment, player))
-    return eligible
+        if not db.is_live_account(player):
+            continue
+        eligible.append(_EligibleAssignment(roster_entry, assignment, player))
+    return eligible, excluded_for_missing_disclosure
 
 
 def _elapsed_days(today: date, date_value: Any) -> int | None:
@@ -138,11 +148,12 @@ def _threshold(db: Any, coach_account_id: str) -> int:
 
 
 def _client_mapping(
-    opaque_id: str, assignment: dict[str, Any]
+    opaque_id: str, assignment: dict[str, Any], player_display_name: str
 ) -> dict[str, str]:
     return {
         "player_id": opaque_id,
         "assignment_id": str(assignment["assignment_id"]),
+        "player_display_name": player_display_name,
     }
 
 
@@ -158,11 +169,11 @@ def _empty_ledger_signals() -> dict[str, Any]:
 
 def _ledger_signals(
     player: dict[str, Any], assignment: dict[str, Any], context: SnapshotContext
-) -> tuple[dict[str, Any], date]:
+) -> tuple[dict[str, Any], date, str | None]:
     local_timezone = context.db.get_roster_timezone(str(assignment["assignment_id"])) or "UTC"
     local_today = local_date_in(context.now, local_timezone)
     if not context.db.ledger_exists(player["ledger_id"]):
-        return _empty_ledger_signals(), local_today
+        return _empty_ledger_signals(), local_today, None
     with context.db.open_ledger(player["ledger_id"]) as ledger:
         missed_7, missed_14, adherence, attendance_today = _attendance_signals(
             ledger, assignment, player["ledger_id"], context.now
@@ -170,6 +181,7 @@ def _ledger_signals(
         local_today = attendance_today or local_today
         program = ledger.get_active_program()
         weeks_without_record = _weeks_without_personal_record(ledger, program, local_today)
+        preferred_name = ledger.get_assistant_memory().get("preferred_name")
     return {
         "missed_expected_days_7d": missed_7,
         "missed_expected_days_14d": missed_14,
@@ -178,7 +190,7 @@ def _ledger_signals(
         "effort_rising_same_load_main_lift": _effort_rising_same_load(
             program, context.active_alerts, str(assignment["assignment_id"])
         ),
-    }, local_today
+    }, local_today, str(preferred_name).strip() if preferred_name else None
 
 
 def _player_signal(
@@ -188,7 +200,9 @@ def _player_signal(
     context: SnapshotContext,
 ) -> tuple[dict[str, Any], dict[str, str]]:
     opaque_id = uuid.uuid4().hex
-    ledger_signals, local_today = _ledger_signals(player, assignment, context)
+    ledger_signals, local_today, preferred_name = _ledger_signals(
+        player, assignment, context
+    )
     weeks_without_record = ledger_signals["weeks_without_personal_record"]
     pending_requests = int(roster_entry.get("pending_requests") or 0)
     signal = {
@@ -204,7 +218,8 @@ def _player_signal(
         local_today, context.db.latest_check_in_on(str(assignment["assignment_id"]))
     )
     signal.update({"bodyweight_trend": None, "coaching_subscription_end": None})
-    return signal, _client_mapping(opaque_id, assignment)
+    display_name = preferred_name or str(player["username"])
+    return signal, _client_mapping(opaque_id, assignment, display_name)
 
 
 def roster_signal_snapshot(
@@ -214,21 +229,31 @@ def roster_signal_snapshot(
     instant = now or datetime.now(UTC)
     threshold = _threshold(db, coach_account_id)
     roster_rows = assignments_service.list_coach_assignments(db, coach_account_id, now=instant)
-    eligible = _eligible_assignments(db, coach_account_id, roster_rows)
+    eligible, excluded_for_missing_disclosure = _eligible_assignments(
+        db, coach_account_id, roster_rows
+    )
     active_alerts = db.list_coach_alerts(coach_account_id, ("new", "acknowledged"))
     context = SnapshotContext(db, instant, threshold, active_alerts)
     players, client_mapping = _ranked_signals(eligible, context)
-    return _snapshot_response(instant, threshold, players, client_mapping)
+    return _snapshot_response(
+        instant,
+        threshold,
+        players,
+        client_mapping,
+        excluded_for_missing_disclosure,
+    )
 
 
 def _ranked_signals(
-    eligible: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]],
+    eligible: list[_EligibleAssignment],
     context: SnapshotContext,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     players = []
     client_mapping = []
-    for roster_entry, assignment, player in eligible:
-        signal, mapping = _player_signal(roster_entry, assignment, player, context)
+    for item in eligible:
+        signal, mapping = _player_signal(
+            item.roster_entry, item.assignment, item.player, context
+        )
         signal["urgency_rank"] = len(players) + 1
         players.append(signal)
         client_mapping.append(mapping)
@@ -240,6 +265,7 @@ def _snapshot_response(
     threshold: int,
     players: list[dict[str, Any]],
     client_mapping: list[dict[str, str]],
+    excluded_for_missing_disclosure: int,
 ) -> dict[str, Any]:
     return {
         "snapshot": {
@@ -248,4 +274,5 @@ def _snapshot_response(
             "players": players,
         },
         "client_mapping": client_mapping,
+        "excluded_for_missing_disclosure": excluded_for_missing_disclosure,
     }

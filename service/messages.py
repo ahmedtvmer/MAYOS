@@ -192,6 +192,8 @@ ERROR_MESSAGE_PARAM_ALLOWLISTS = {
     "intake.in_progress.v1": frozenset(),
     "intake.program_generation_unavailable.v1": frozenset(),
     "coach.ai_unavailable.v1": frozenset(),
+    "coach.roster_ai_unavailable.v1": frozenset(),
+    "coach.roster_ai_pro_required.v1": frozenset(),
     "media.unavailable.v1": frozenset(),
     "media.not_found.v1": frozenset(),
 }

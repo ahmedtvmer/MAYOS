@@ -16,6 +16,7 @@ from service import analytics as analytics_service
 from service import auth as auth_service
 from service import coach as coach_service
 from service import coach_ai as coach_ai_service
+from service import coach_roster_ai as coach_roster_ai_service
 from service import coach_settings as coach_settings_service
 from service import roster_snapshot as roster_snapshot_service
 from service.messages import MessageMetadata
@@ -79,6 +80,7 @@ async def redeem_coach_invite(
         display_language=result["display_language"],
         recovery_email_verified=result["recovery_email_verified"],
         coach_ai_enabled=coach_ai_service.coach_ai_enabled(),
+        coach_roster_ai_enabled=coach_roster_ai_service.coach_roster_ai_enabled(),
     )
 
 

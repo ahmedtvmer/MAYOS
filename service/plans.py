@@ -79,6 +79,11 @@ def effective_coach_plan(
     return coach_plan["plan"] if coach_plan is not None else None
 
 
+def coach_roster_ai_available(effective_plan: str | None) -> bool:
+    """Whether an effective Coach plan grants the roster assistant entitlement."""
+    return effective_plan == PLAN_PRO
+
+
 def effective_plans_for_account(db: Any, account: dict[str, Any] | None) -> dict[str, dict[str, Any] | None]:
     """Returns account plans with the Coach plan's closed-trial entitlement applied."""
     plans = plans_for_account(db, account)

@@ -215,6 +215,42 @@ final StateNotifierProvider<CoachAssistantController, CoachAssistantTranscript?>
       controller.clear();
     }
   });
+  ref.listen<AppModeState>(appModeControllerProvider, (
+    AppModeState? previous,
+    AppModeState next,
+  ) {
+    if (previous != null && previous.mode != next.mode) controller.clear();
+  });
+  return controller;
+});
+
+/// The Coach roster assistant's in-memory, de-identified conversation.
+/// Assignment mappings are retained only beside replies for rendering names
+/// and links; the server never stores them with the transcript.
+final StateNotifierProvider<CoachRosterAssistantController,
+        CoachRosterAssistantTranscript> coachRosterAssistantControllerProvider =
+    StateNotifierProvider<CoachRosterAssistantController,
+        CoachRosterAssistantTranscript>((ref) {
+  final CoachRosterAssistantController controller =
+      CoachRosterAssistantController();
+  ref.listen<AuthState>(authControllerProvider, (
+    AuthState? previous,
+    AuthState next,
+  ) {
+    final Account? account = next.session?.account;
+    if (!next.isAuthenticated ||
+        account == null ||
+        !account.isCoach ||
+        !account.coachRosterAiEnabled) {
+      controller.clear();
+    }
+  });
+  ref.listen<AppModeState>(appModeControllerProvider, (
+    AppModeState? previous,
+    AppModeState next,
+  ) {
+    if (previous != null && previous.mode != next.mode) controller.clear();
+  });
   return controller;
 });
 

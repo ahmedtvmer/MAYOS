@@ -5,6 +5,11 @@ typedef _MessageTemplate = String? Function(
   MessageCopy copy,
 );
 
+const Set<String> _englishSpecificErrorCodes = <String>{
+  'coach.roster_ai_unavailable.v1',
+  'coach.roster_ai_pro_required.v1',
+};
+
 const Set<String> _regressionBadges = <String>{
   'BASELINE',
   'CONSOLIDATING',
@@ -35,7 +40,8 @@ String resolveStructuredMessage({
       ? englishFallback!.trim()
       : copy.unavailable;
   if (displayLanguage != 'ar' &&
-      messageCode != 'assignment.split_override_unrecognized.v1') {
+      messageCode != 'assignment.split_override_unrecognized.v1' &&
+      !_englishSpecificErrorCodes.contains(messageCode)) {
     return fallback;
   }
   if (messageCode is! String || messageParams is! Map<String, dynamic>) {
@@ -265,6 +271,8 @@ const Map<String, Set<String>> _paramKeys = <String, Set<String>>{
   'intake.rep_preference.option.balanced.v1': <String>{},
   'intake.rep_preference.option.high.v1': <String>{},
   'coach.ai_unavailable.v1': <String>{},
+  'coach.roster_ai_unavailable.v1': <String>{},
+  'coach.roster_ai_pro_required.v1': <String>{},
   'media.unavailable.v1': <String>{},
   'media.not_found.v1': <String>{},
 };

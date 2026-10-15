@@ -123,6 +123,42 @@ class CoachCopy {
 
   String get assistant => isArabic ? 'المساعد' : 'Assistant';
   String get askAssistant => isArabic ? 'اسأل المساعد' : 'Ask assistant';
+  String get askAboutRoster =>
+      isArabic ? 'اسأل عن قائمة اللاعبين' : 'Ask about the roster';
+  String get rosterAssistantLead => isArabic
+      ? 'اسأل عن اللاعبين الذين يحتاجون إلى متابعة، أو التوقف، أو الالتزام بالتدريب.'
+      : 'Ask which players need attention, have stalled, or are keeping up with training.';
+  String get rosterAssistantPrivacyNote => isArabic
+      ? 'يتلقى النموذج المستضاف لقطة إشارات قائمة اللاعبين وسؤالك وسجل هذه المحادثة فقط. لا تتضمن اللقطة أسماء اللاعبين أو بيانات التواصل أو أرقام الحسابات وعلاقات التدريب أو الملاحظات أو النصوص الحرة أو محادثات اللاعب. لا تُحفظ المحادثة.'
+      : 'The hosted model receives only the Roster signal snapshot, your question, and this conversation history. The snapshot excludes player names, contact details, Account or Assignment ids, notes, free text, and Player chat. This conversation is not saved.';
+  String get rosterQuestionHint =>
+      isArabic ? 'مثال: من يحتاج إلى متابعة اليوم؟' : 'For example: Who needs my attention today?';
+  String get rosterAssistantDisabled => isArabic
+      ? 'مساعد قائمة اللاعبين غير متاح لأن بوابة الخصوصية والتقييم لم تُفعّل.'
+      : 'Roster questions are unavailable because the privacy and evaluation gate is not enabled.';
+  String get rosterAssistantUpgrade => isArabic
+      ? 'ترتيب قائمة اللاعبين حسب الحاجة متاح. أسئلة الذكاء الاصطناعي عن القائمة تتطلب Coach Pro.'
+      : 'The Roster urgency order is available. AI roster questions require Coach Pro.';
+  String get rosterUrgencyOrderHeading =>
+      isArabic ? 'ترتيب قائمة اللاعبين حسب الحاجة' : 'Roster urgency order';
+  String rosterUrgencyPlayer(int rank, String player) => isArabic
+      ? '${_ltr(rank.toString())}. ${_ltr(player)}'
+      : '$rank. $player';
+  String rosterUrgencySignals({
+    required int alerts,
+    required int requests,
+    required int missedDays,
+    required int stallSessions,
+  }) =>
+      isArabic
+          ? 'التنبيهات: ${_ltr(alerts.toString())} · الطلبات: ${_ltr(requests.toString())} · '
+              'أيام التدريب الفائتة المتتالية: ${_ltr(missedDays.toString())} · '
+              'الحصص دون رقم قياسي شخصي: ${_ltr(stallSessions.toString())}'
+          : 'Alerts: $alerts · requests: $requests · missed-day streak: $missedDays · '
+              'sessions without a Personal record: $stallSessions';
+  String get rosterAssistantNoHistory => isArabic
+      ? 'اسأل سؤالًا عن أرقام التدريب المجمّعة للاعبين الذين سجّلوا الإفصاح.'
+      : 'Ask about the combined training signals for players who have recorded the disclosure.';
   String get askAboutOnePlayer =>
       isArabic ? 'اسأل عن لاعب واحد' : 'Ask about one player';
   String get assistantPickerLead => isArabic

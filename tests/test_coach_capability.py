@@ -161,6 +161,8 @@ def test_owner_issued_invite_grants_capability_without_reissuing_token(api, monk
         "display_language": "en",
         "capabilities": {"player": True, "coach": True},
         "coach_ai_enabled": False,
+        "coach_roster_ai_enabled": False,
+        "coach_roster_ai_available": True,
         "has_password": True,
         "linked_sign_ins": [],
         "recovery_email_verified": False,
@@ -187,6 +189,7 @@ def test_invite_redemption_uses_stored_coach_plan_when_override_is_off(api, monk
 
     assert redeemed.status_code == 200, redeemed.text
     assert redeemed.json()["plans"]["coach"] == {"plan": "free", "status": "active"}
+    assert redeemed.json()["coach_roster_ai_available"] is False
 
 
 def test_coach_invite_redemption_returns_saved_display_language(api):

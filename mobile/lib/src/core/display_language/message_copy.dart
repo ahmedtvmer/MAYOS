@@ -1,6 +1,13 @@
 import 'arabic_count.dart';
 import 'intake_copy.dart';
 
+const Map<String, String> _specificEnglishErrors = <String, String>{
+  'coach.roster_ai_unavailable.v1':
+      'Roster questions are unavailable right now.',
+  'coach.roster_ai_pro_required.v1':
+      'Coach Pro is required to ask questions about the roster.',
+};
+
 const Map<String, ({String english, String arabic})> _programImportMessages =
     <String, ({String english, String arabic})>{
   'program_import.file_too_large.v1': (
@@ -270,7 +277,7 @@ class MessageCopy {
   }
 
   String? specificError(String code, {int? limit}) {
-    if (!isArabic) return null;
+    if (!isArabic) return _specificEnglishErrors[code];
     if (code == 'http.input_too_long.v1') {
       return limit == null
           ? null
@@ -613,6 +620,10 @@ const Map<String, String> _specificArabicErrors = <String, String>{
   'intake.structured_active.v1': 'يوجد تسجيل منظم جارٍ بالفعل. أكمله قبل بدء تسجيل آخر.',
   'intake.in_progress.v1': 'يجري إنشاء البرنامج التدريبي لهذا التسجيل. انتظر ثم حاول مجددًا.',
   'coach.ai_unavailable.v1': 'مساعد المدرب غير متاح حاليًا.',
+  'coach.roster_ai_unavailable.v1':
+      'أسئلة قائمة اللاعبين غير متاحة حاليًا.',
+  'coach.roster_ai_pro_required.v1':
+      'تتطلب الأسئلة عن قائمة اللاعبين Coach Pro.',
   'media.unavailable.v1': 'تعذر تحميل الوسائط حاليًا. حاول مجددًا.',
   'media.not_found.v1': 'لم يُعثر على الوسائط المطلوبة.',
   'google.invalid_token.v1': 'تعذر التحقق من بيانات Google.',

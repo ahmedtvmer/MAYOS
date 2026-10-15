@@ -97,6 +97,8 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `COACH_CLOSED_TRIAL_OVERRIDE` | `true` | Grants Coach Pro behaviour to every Coach during the closed trial; set to `false` at public launch to use each account's stored Coach plan |
 | `COACH_AI_ENABLED` | `false` | Enables the optional coach AI assistant (#45); refused unless `COACH_AI_EVAL_REPORT` records a passing **live** report for the current prompt version and configured hosted coach model |
 | `COACH_AI_EVAL_REPORT` | unset | Path to the recorded coach privacy + evaluation report JSON (see §4, "Enabling the optional coach AI assistant") |
+| `COACH_ROSTER_AI_ENABLED` | `false` | Enables Coach roster questions (#311); refused unless its report records a passing **live** privacy + evaluation run for the current roster prompt and configured hosted coach model |
+| `COACH_ROSTER_AI_EVAL_REPORT` | unset | Path to the separate Coach roster privacy + evaluation report JSON |
 | `PROGRAM_IMPORT_AI_ENABLED` | `false` | Enables free-form coach spreadsheet import (#349); refused unless its report records a passing live evaluation for the current prompt/schema and configured hosted coach model |
 | `PROGRAM_IMPORT_AI_EVAL_REPORT` | unset | Path to the recorded free-form Program import evaluation report; template imports do not use this gate |
 | `RATE_LIMIT_COACH_ASSISTANT` | `30/minute` | Per-client limit on `POST /coach/assignments/{id}/assistant`; the per-account model limits (`MODEL_*`) still apply |
@@ -202,6 +204,35 @@ canonical fixture, not just the prompt text), and changing `COACH_MODEL`
 changes the model identity the report is bound to and invalidates
 an existing report: re-run step 2 before enabling again. The report is a JSON file, safe
 to commit — it contains fixture questions/answers, never production data.
+
+### Enabling Coach roster questions (issue #311, ADR 076)
+
+`POST /coach/assistant/roster` is a separate feature from the one-player Coach
+assistant. It is off unless `COACH_ROSTER_AI_ENABLED=true` and
+`COACH_ROSTER_AI_EVAL_REPORT` points to a passing live report bound to the
+roster prompt hash and configured Coach model. Free Coaches are refused after
+the closed-trial Coach Pro override is disabled; their deterministic Roster
+urgency order remains available. The Assistant tab shows the Coach Pro upgrade
+note for those accounts.
+
+The runner's synthetic dataset covers attention, Stalling, adherence,
+insufficient data, and name requests in English and Arabic. Its privacy suite
+captures the production model payload and verifies that roster names, contact
+details, Account and Assignment ids, notes, free text, and Player chat are not
+sent. `--write-report` also runs that privacy suite before recording the report.
+Run the hermetic plumbing check first, then have the release owner run the live
+evaluation and record the separate report:
+
+```bash
+.venv/bin/python tests/eval/run_coach_roster_evaluation.py --mock
+.venv/bin/python tests/eval/run_coach_roster_evaluation.py --write-report reports/coach_roster_ai_eval.json
+.venv/bin/python tests/eval/run_coach_roster_evaluation.py --check-report reports/coach_roster_ai_eval.json
+```
+
+Only then configure `COACH_ROSTER_AI_ENABLED=true` and
+`COACH_ROSTER_AI_EVAL_REPORT=reports/coach_roster_ai_eval.json`. The roster
+report is independent of `reports/coach_ai_eval.json`; changing the roster
+prompt, signal allowlist, or snapshot token budget requires a new live report.
 
 ### Enabling free-form Program import (issue #349)
 

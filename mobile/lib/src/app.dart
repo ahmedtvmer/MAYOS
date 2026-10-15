@@ -124,6 +124,7 @@ class _MayosAppState extends ConsumerState<MayosApp>
       // The coach-assistant transcript is memory-only: drop it as the process
       // leaves so nothing lingers into a later launch (issue #45).
       ref.read(coachAssistantControllerProvider.notifier).clear();
+      ref.read(coachRosterAssistantControllerProvider.notifier).clear();
     }
   }
 

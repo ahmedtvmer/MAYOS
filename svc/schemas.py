@@ -3,7 +3,8 @@
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
+from service import plans as plans_service
 from service.analytics import PROPERTY_TYPES, WORKOUT_SYNC_FAILURE_REASONS
 from service.display_language import DisplayLanguage
 from service.intake import IntakeValidationError, validate_answer
@@ -77,6 +78,7 @@ __all__ = [
     "CoachAlertOut",
     "CoachAssistantIn",
     "CoachAssistantTurn",
+    "CoachRosterAssistantOut",
     "CoachActiveProgramDetailsOut",
     "CoachActiveProgramDayOut",
     "CoachActiveProgramExerciseOut",
@@ -301,9 +303,11 @@ class AccountOut(BaseModel):
     (issue #114): providers only, never a subject, so a client can render
     "Connected: Google" without ever seeing Google's ``sub``.
 
-    ``coach_ai_enabled`` is the server's effective feature state (flag plus
-    recorded eval/privacy report, ADR 049), so a client can hide the coach
-    assistant entry point when the operator has not enabled it.
+    ``coach_ai_enabled`` and ``coach_roster_ai_enabled`` are each the server's
+    effective feature state (flag plus its recorded eval/privacy report), so
+    the client can hide the corresponding assistant entry point until enabled.
+    ``coach_roster_ai_available`` is derived from the effective Coach plan,
+    including the closed-trial override.
     """
 
     account_id: str
@@ -316,6 +320,13 @@ class AccountOut(BaseModel):
     analytics_allowed: bool = True
     recovery_email_verified: bool = False
     coach_ai_enabled: bool = False
+    coach_roster_ai_enabled: bool = False
+
+    @computed_field
+    @property
+    def coach_roster_ai_available(self) -> bool:
+        effective_plan = self.plans.coach.plan if self.plans.coach is not None else None
+        return plans_service.coach_roster_ai_available(effective_plan)
 
 
 class CoachInviteRedeemIn(BaseModel):
@@ -383,11 +394,21 @@ class CoachRosterSignalSnapshotOut(BaseModel):
 class CoachRosterClientMappingOut(BaseModel):
     player_id: str
     assignment_id: str
+    player_display_name: str
 
 
 class CoachRosterSnapshotResponseOut(BaseModel):
     snapshot: CoachRosterSignalSnapshotOut
     client_mapping: list[CoachRosterClientMappingOut]
+    excluded_for_missing_disclosure: int = 0
+
+
+class CoachRosterAssistantOut(BaseModel):
+    answer: str
+    coverage_summary: str
+    client_mapping: list[CoachRosterClientMappingOut]
+    left_out_for_budget: int = 0
+    excluded_for_missing_disclosure: int = 0
 
 
 #: Bounds for the coach assistant request (issue #45). The client holds the
