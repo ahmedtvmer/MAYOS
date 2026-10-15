@@ -1781,6 +1781,51 @@ class ApiClient {
     );
   }
 
+  Future<InjuryRecord> createInjury({
+    required String? bodyArea,
+    required String description,
+  }) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/profile/injuries',
+        data: <String, dynamic>{
+          'body_area': bodyArea,
+          'description': description,
+        },
+      ),
+    );
+    return _parseBody(
+      response.data,
+      InjuryRecord.fromJson,
+      _invalidProfile,
+      failureMessage: _invalidProfileFailure,
+    );
+  }
+
+  Future<InjuryRecord> updateInjury({
+    required String id,
+    required String? bodyArea,
+    required String description,
+    required String status,
+  }) async {
+    final response = await _send(
+      () => _dio.put<dynamic>(
+        '/profile/injuries/$id',
+        data: <String, dynamic>{
+          'body_area': bodyArea,
+          'description': description,
+          'status': status,
+        },
+      ),
+    );
+    return _parseBody(
+      response.data,
+      InjuryRecord.fromJson,
+      _invalidProfile,
+      failureMessage: _invalidProfileFailure,
+    );
+  }
+
   /// Saves the player's Assistant style and optional wording instructions.
   Future<PlayerProfile> updateAssistantStyle({
     required String style,

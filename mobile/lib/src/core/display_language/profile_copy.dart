@@ -12,8 +12,42 @@ class ProfileCopy {
       ? 'حدّث معلومات الملف التي تساعد على تخصيص تدريبك.'
       : 'Update the profile facts used to personalize your training.';
   String get currentGoal => isArabic ? 'الهدف الحالي' : 'Current goal';
-  String get injuriesLimitations =>
-      isArabic ? 'الإصابات أو القيود' : 'Injuries or limitations';
+  String get injuries => isArabic ? 'الإصابات' : 'Injuries';
+  String get injuriesLead => isArabic
+      ? 'سجّل الإصابات الحالية ومتابعتها.'
+      : 'Track current injuries and their follow-up status.';
+  String get addInjury => isArabic ? 'إضافة إصابة' : 'Add injury';
+  String get editInjury => isArabic ? 'تعديل الإصابة' : 'Edit injury';
+  String get injuryArea => isArabic ? 'منطقة الإصابة' : 'Body area';
+  String get injuryDescription => isArabic ? 'الوصف' : 'Description';
+  String get injuryStatus => isArabic ? 'الحالة' : 'Status';
+  String get noInjuries => isArabic ? 'لا توجد إصابات مسجلة.' : 'No injuries recorded.';
+  String get unknownArea => isArabic ? 'غير محددة' : 'Unknown';
+  String get physicianSeen => isArabic ? 'تمت مراجعة طبيب' : 'Physician seen';
+  String get injuryReported => isArabic ? 'تم الإبلاغ' : 'Reported';
+  String get injuryResolved => isArabic ? 'تم التعافي' : 'Resolved';
+  String get confirmResolveInjury => isArabic ? 'تأكيد حل الإصابة' : 'Confirm injury resolved';
+  String get confirmResolveInjuryDetails => isArabic
+      ? 'هل تؤكد أن هذه الإصابة انتهت؟'
+      : 'Confirm that this injury is resolved.';
+  String get saveInjury => isArabic ? 'حفظ الإصابة' : 'Save injury';
+  String bodyArea(String area) => switch (area) {
+        'knee' => isArabic ? 'الركبة' : 'Knee',
+        'hip' => isArabic ? 'الورك' : 'Hip',
+        'lower_back' => isArabic ? 'أسفل الظهر' : 'Lower back',
+        'shoulder' => isArabic ? 'الكتف' : 'Shoulder',
+        'elbow' => isArabic ? 'الكوع' : 'Elbow',
+        'wrist' => isArabic ? 'الرسغ' : 'Wrist',
+        'ankle' => isArabic ? 'الكاحل' : 'Ankle',
+        'neck' => isArabic ? 'الرقبة' : 'Neck',
+        _ => area,
+      };
+  String injuryStatusLabel(String status) => switch (status) {
+        'reported' => injuryReported,
+        'physician_seen' => physicianSeen,
+        'resolved' => injuryResolved,
+        _ => status,
+      };
   String get weightKg => isArabic ? 'الوزن (\u2066kg\u2069)' : 'Weight (kg)';
   String get targetWeightKg => isArabic
       ? 'الوزن المستهدف (\u2066kg\u2069، اختياري)'

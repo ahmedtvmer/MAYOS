@@ -143,6 +143,9 @@ __all__ = [
     "IntakeFieldOut",
     "IntakeOut",
     "IntakeProgressOut",
+    "InjuryRecordOut",
+    "InjuryRecordCreateIn",
+    "InjuryRecordUpdateIn",
     "IntakeProgramOut",
     "MessageOut",
     "PasswordChangeIn",
@@ -588,6 +591,7 @@ class CoachAlertOut(BaseModel):
     latest_session_date: str | None = None
     player_deload_choice: dict[str, Any] | None = None
     profile_changes: dict[str, dict[str, Any]] | None = None
+    injury_changes: dict[str, dict[str, Any]] | None = None
     weight_points: list[WeightTrendPointOut] | None = None
     target_weight_kg: float | None = None
     distance_change_kg: float | None = None
@@ -752,6 +756,27 @@ class CoachPlayerPauseOut(BaseModel):
     ends_on: str
 
 
+class InjuryRecordOut(BaseModel):
+    id: str
+    body_area: str | None = None
+    catalog_body_parts: list[str] = []
+    description: str
+    reported_at: str
+    status: Literal["reported", "physician_seen", "resolved"]
+    clarification_pending: bool = False
+
+
+class InjuryRecordCreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    body_area: str | None = None
+    description: str = Field(min_length=1, max_length=2000)
+
+
+class InjuryRecordUpdateIn(InjuryRecordCreateIn):
+    status: Literal["reported", "physician_seen", "resolved"]
+
+
 class CoachPlayerSummaryOut(BaseModel):
     """Roster identity plus the assigned player's volume and session activity."""
 
@@ -763,6 +788,7 @@ class CoachPlayerSummaryOut(BaseModel):
     recent_sessions: list[CoachPlayerRecentSessionOut] = []
     schedule: CoachPlayerScheduleOut | None = None
     pauses: list[CoachPlayerPauseOut] = []
+    injuries: list[InjuryRecordOut] = []
 
 
 class CoachPlayerExerciseOut(BaseModel):

@@ -106,7 +106,8 @@ def record_profile_change(
             if assignment is None:
                 return
             dedupe_key, existing = _episode_key(db, assignment["assignment_id"])
-            merged = dict(existing["details"].get("profile_changes", {})) if existing else {}
+            existing_details = dict(existing["details"]) if existing else {}
+            merged = dict(existing_details.get("profile_changes", {}))
             for field, change in changes.items():
                 prior = merged.get(field)
                 earliest = prior.get("before", change["before"]) if isinstance(prior, dict) else change["before"]
@@ -116,13 +117,13 @@ def record_profile_change(
                 else:
                     merged[field] = {"before": earliest, "after": latest}
 
-            if existing is not None and not merged:
-                db.update_coach_alert_details(existing["alert_id"], {"profile_changes": {}})
+            if existing is not None and not merged and not existing_details.get("injury_changes"):
+                db.update_coach_alert_details(existing["alert_id"], {**existing_details, "profile_changes": {}})
                 db.resolve_open_coach_alerts_for_dedupe(
                     assignment["assignment_id"], PROFILE_CHANGE_KIND, dedupe_key, now_iso
                 )
                 return
-            details = {"profile_changes": merged}
+            details = {**existing_details, "profile_changes": merged}
             if existing is not None:
                 db.update_coach_alert_details(existing["alert_id"], details)
                 return
@@ -167,3 +168,88 @@ def record_profile_change(
             )
         except Exception:
             logger.warning("Could not notify the Coach about a profile-change alert.", exc_info=True)
+
+
+def record_injury_change(
+    db: Any,
+    player_account_id: str | None,
+    injury: dict[str, Any],
+    *,
+    change: str,
+    previous_status: str | None = None,
+    client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
+) -> None:
+    """Adds a new injury or record edit to the active profile-change alert episode."""
+    if not player_account_id:
+        return
+    client = client or analytics_service.UNKNOWN_CLIENT
+    now_iso = datetime.now(UTC).isoformat()
+    assignment = None
+    created_alert = None
+    try:
+        with db.catalog_transaction():
+            assignment = db.get_active_assignment_for_player(str(player_account_id))
+            if assignment is None:
+                return
+            dedupe_key, existing = _episode_key(db, assignment["assignment_id"])
+            details = dict(existing.get("details", {})) if existing else {}
+            injury_changes = dict(details.get("injury_changes", {}))
+            injury_id = str(injury["id"])
+            prior = injury_changes.get(injury_id)
+            update = {
+                "body_area": injury.get("body_area"),
+                "description": injury.get("description", ""),
+                "status": injury.get("status", "reported"),
+                "change": change,
+                "changed_at": now_iso,
+            }
+            earliest_previous_status = (
+                prior.get("previous_status")
+                if isinstance(prior, dict) and "previous_status" in prior
+                else previous_status
+            )
+            if earliest_previous_status is not None:
+                update["previous_status"] = earliest_previous_status
+            injury_changes[injury_id] = update
+            details["injury_changes"] = injury_changes
+            if existing is not None:
+                db.update_coach_alert_details(existing["alert_id"], details)
+                return
+            inserted = coach_analytics.create_coach_alert(
+                db,
+                coach_analytics.CoachAlertDraft(
+                    alert_id=uuid.uuid4().hex,
+                    assignment_id=assignment["assignment_id"],
+                    coach_account_id=assignment["coach_account_id"],
+                    player_account_id=str(player_account_id),
+                    alert_kind=PROFILE_CHANGE_KIND,
+                    dedupe_key=dedupe_key,
+                    details=details,
+                    created_at=now_iso,
+                ),
+                client=client,
+            )
+            if inserted["created"]:
+                created_alert = inserted["alert"]
+    except Exception:
+        logger.warning("Could not create injury-change Coach alert for account %s.", player_account_id, exc_info=True)
+        return
+    if assignment is not None and created_alert is not None:
+        try:
+            player_name = player_display_name(db, assignment)
+            notify_coach(
+                db,
+                build_assignment_notice_record(
+                    AssignmentNoticeRecord(
+                        account_id=assignment["coach_account_id"],
+                        assignment_id=assignment["assignment_id"],
+                        kind=PROFILE_CHANGE_KIND,
+                        message=f"{player_name} updated an injury record. Review the alert in your roster.",
+                        created_at=now_iso,
+                    ),
+                    "assignment_notice.profile_change.v1",
+                    {"player_name": player_name},
+                ),
+            )
+        except Exception:
+            logger.warning("Could not notify the Coach about an injury record change.", exc_info=True)

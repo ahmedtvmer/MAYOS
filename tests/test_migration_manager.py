@@ -1,4 +1,5 @@
 # tests/test_migration_manager.py
+import json
 import sqlite3
 from datetime import date as calendar_date
 from datetime import datetime
@@ -49,6 +50,55 @@ def test_schema_version_stamping(temp_db_env):
     assert version == CURRENT_LEDGER_SCHEMA_VERSION
 
 
+@pytest.mark.parametrize(
+    ("legacy_value", "intake_value", "expected"),
+    [
+        ("Left shoulder impingement", None, ("shoulder", "Left shoulder impingement", 1)),
+        ("None", "Left knee pain", ("knee", "Left knee pain", 1)),
+        ("None", "None", (None, None, 0)),
+    ],
+)
+def test_v27_upgrade_imports_a_non_none_injury_once(
+    temp_db_env, legacy_value: str, intake_value: str | None, expected: tuple
+):
+    db, _, backups_dir = temp_db_env
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        "CREATE TABLE user_profile (id INTEGER PRIMARY KEY, injuries_or_limitations TEXT, updated_at TEXT);"
+        "CREATE TABLE intake_answers (field TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL);"
+        "PRAGMA user_version = 27;"
+    )
+    conn.execute(
+        "INSERT INTO user_profile VALUES (1, ?, '2026-10-01T12:00:00+00:00')",
+        (legacy_value,),
+    )
+    if intake_value is not None:
+        conn.execute(
+            "INSERT INTO intake_answers VALUES ('injuries_or_limitations', ?, '2026-10-02T12:00:00+00:00')",
+            (json.dumps(intake_value),),
+        )
+    conn.commit()
+    apply_lazy_migrations(conn, "injury-migration", db.ledgers_dir, backups_dir)
+    first_count = conn.execute("SELECT COUNT(*) FROM injury_records").fetchone()[0]
+    migrated_version = get_ledger_schema_version(conn)
+    apply_lazy_migrations(conn, "injury-migration", db.ledgers_dir, backups_dir)
+    body_area, description, expected_count = expected
+    assert first_count == expected_count
+    assert conn.execute("SELECT COUNT(*) FROM injury_records").fetchone()[0] == expected_count
+    assert migrated_version == get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
+    if expected_count:
+        record = conn.execute(
+            "SELECT body_area, description, status, reported_at FROM injury_records"
+        ).fetchone()
+        assert tuple(record) == (
+            body_area,
+            description,
+            "reported",
+            "2026-10-02T12:00:00+00:00" if intake_value else "2026-10-01T12:00:00+00:00",
+        )
+
+
 def test_v18_upgrade_adds_deload_choice(temp_db_env):
     db, ledgers_dir, _ = temp_db_env
     legacy_path = ledgers_dir / "v18lifter.db"
@@ -67,7 +117,7 @@ def test_v18_upgrade_adds_deload_choice(temp_db_env):
         default_ledger_id="v18lifter",
     )
     try:
-        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 27
+        assert get_ledger_schema_version(migrated.conn) == CURRENT_LEDGER_SCHEMA_VERSION == 28
         assert migrated.ledger.conn.execute(
             "SELECT started_at FROM onboarding_analytics WHERE id = 1"
         ).fetchone() is None
@@ -125,7 +175,7 @@ def test_v20_upgrade_allows_most_reps_records_without_backfilling(temp_db_env):
 
     apply_lazy_migrations(conn, "v20player", db.ledgers_dir, backups_dir)
 
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 27
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 28
     assert conn.execute(
         "SELECT id, record_type, value FROM personal_records"
     ).fetchall() == [("old", "max_weight", 100.0)]
@@ -148,7 +198,7 @@ def test_v22_upgrade_adds_program_drafts(temp_db_env):
 
     columns = {row[1] for row in conn.execute("PRAGMA table_info(program_drafts)")}
     assert columns == {"assignment_id", "draft_json", "created_at", "updated_at"}
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 27
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 28
     conn.close()
 
 
@@ -180,7 +230,7 @@ def test_v24_upgrade_seeds_profile_weight_only_when_present(
     apply_lazy_migrations(conn, "v24player", db.ledgers_dir, backups_dir)
 
     assert conn.execute("SELECT entry_date, weight_kg FROM weight_history").fetchall() == expected_history
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 27
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 28
     conn.close()
 
 
@@ -227,7 +277,7 @@ def test_v25_upgrade_adds_nullable_target_weight(temp_db_env):
     columns = {row[1] for row in conn.execute("PRAGMA table_info(user_profile)")}
     assert "target_weight_kg" in columns
     assert conn.execute("SELECT target_weight_kg FROM user_profile").fetchone() == (None,)
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 27
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 28
     conn.close()
 
 
@@ -275,7 +325,7 @@ def test_v23_upgrade_adds_tempo_to_program_exercises(temp_db_env):
     assert conn.execute(
         "SELECT notes, tempo FROM program_exercises WHERE id = 'exercise-1'"
     ).fetchone() == ("Keep control", None)
-    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 27
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION == 28
     conn.close()
 
 

@@ -143,16 +143,170 @@ void main() {
     expect(fake.weeklyFrequency, 3);
   });
 
+  testWidgets('Profile adds a structured injury record', (tester) async {
+    final FakeMayosApi fake = _playerFake();
+    await _pumpApp(tester, fake);
+    await _openProfile(tester);
+
+    await tester.tap(find.byKey(const Key('add_injury_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('injury_body_area_dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Knee').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('injury_description_field')),
+      'Pain during squats',
+    );
+    await tester.tap(find.byKey(const Key('save_injury_button')));
+    await tester.pumpAndSettle();
+
+    expect(fake.injuryCreateRequests, 1);
+    expect(fake.injuries.single['body_area'], 'knee');
+    expect(find.text('Knee · Reported'), findsOneWidget);
+    expect(find.text('Pain during squats'), findsOneWidget);
+  });
+
+  testWidgets('Profile requires confirmation before resolving an injury',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake();
+    fake.injuries.add(<String, dynamic>{
+      'id': 'injury-existing',
+      'body_area': 'knee',
+      'catalog_body_parts': <String>['upper legs', 'lower legs'],
+      'description': 'Pain during squats',
+      'reported_at': '2026-10-01T10:00:00+00:00',
+      'status': 'reported',
+      'clarification_pending': false,
+    });
+    await _pumpApp(tester, fake);
+    await _openProfile(tester);
+
+    await tester.tap(find.byKey(const Key('edit_injury_injury-existing')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('injury_status_dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Resolved').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('save_injury_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Confirm injury resolved'), findsOneWidget);
+    expect(fake.injuryUpdateRequests, 0);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(fake.injuryUpdateRequests, 0);
+    expect(fake.injuries.single['status'], 'reported');
+
+    await tester.tap(find.byKey(const Key('edit_injury_injury-existing')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('injury_status_dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Physician seen').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('injury_description_field')),
+      'Checked by a physician',
+    );
+    await tester.tap(find.byKey(const Key('save_injury_button')));
+    await tester.pumpAndSettle();
+
+    expect(fake.injuryUpdateRequests, 1);
+    expect(fake.injuries.single['status'], 'physician_seen');
+    expect(fake.injuries.single['description'], 'Checked by a physician');
+
+    await tester.tap(find.byKey(const Key('edit_injury_injury-existing')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('injury_status_dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Resolved').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('save_injury_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('injury_resolve_confirm_button')));
+    await tester.pumpAndSettle();
+
+    expect(fake.injuryUpdateRequests, 2);
+    expect(fake.lastInjuryUpdatePayload?['status'], 'resolved');
+    expect(fake.injuries.single['status'], 'resolved');
+  });
+
+  testWidgets('Arabic Profile shows Arabic injury resolution confirmation',
+      (tester) async {
+    final FakeMayosApi fake = _playerFake()..displayLanguage = 'ar';
+    fake.injuries.add(<String, dynamic>{
+      'id': 'injury-arabic-confirm',
+      'body_area': 'knee',
+      'catalog_body_parts': <String>['upper legs', 'lower legs'],
+      'description': 'ألم في الركبة',
+      'reported_at': '2026-10-01T10:00:00+00:00',
+      'status': 'reported',
+      'clarification_pending': false,
+    });
+    await _pumpApp(tester, fake);
+    await tester.tap(find.byIcon(Icons.settings_outlined));
+    await _pumpUntilFound(tester, find.text('المظهر'));
+    await tester.scrollUntilVisible(
+      find.text('تسجيل الدخول المرتبط'),
+      250,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('settings_section_list')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.scrollUntilVisible(
+      find.text('الملف التدريبي'),
+      -250,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('settings_section_list')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.tap(find.text('الملف التدريبي'));
+    await _pumpUntilFound(tester, find.byKey(const Key('weight_kg_field')));
+
+    expect(find.text('الركبة · تم الإبلاغ'), findsOneWidget);
+    expect(find.text('ألم في الركبة'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('edit_injury_injury-arabic-confirm')));
+    await tester.pumpAndSettle();
+    expect(find.text('تعديل الإصابة'), findsOneWidget);
+    expect(find.text('منطقة الإصابة'), findsOneWidget);
+    expect(find.text('الوصف'), findsOneWidget);
+    expect(find.text('الحالة'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('injury_status_dropdown')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('تم التعافي').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('save_injury_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('تأكيد حل الإصابة'), findsOneWidget);
+    expect(find.text('هل تؤكد أن هذه الإصابة انتهت؟'), findsOneWidget);
+  });
+
   testWidgets('Training profile pre-fills editable values and saves goal/weight without rebuild',
       (tester) async {
     final FakeMayosApi fake = _playerFake();
     fake.currentGoal = 'Build muscle';
-    fake.injuriesOrLimitations = 'Right shoulder limitation';
+    fake.injuries.add(<String, dynamic>{
+      'id': 'legacy-injury',
+      'body_area': 'shoulder',
+      'catalog_body_parts': <String>['shoulders', 'upper arms'],
+      'description': 'Right shoulder limitation',
+      'reported_at': '2026-10-01T10:00:00+00:00',
+      'status': 'reported',
+      'clarification_pending': false,
+    });
     fake.weightKg = 82.5;
     await _pumpApp(tester, fake);
     await _openProfile(tester);
 
     expect(find.text('Build muscle'), findsOneWidget);
+    expect(find.text('Shoulder · Reported'), findsOneWidget);
     expect(find.text('Right shoulder limitation'), findsOneWidget);
     expect(find.text('82.5'), findsOneWidget);
 
@@ -239,11 +393,6 @@ void main() {
     ('missing equipment', 'equipment_access', null),
     ('missing reps', 'rep_preference', null),
     ('unsupported goal', 'current_goal', <String, dynamic>{'type': 'enum'}),
-    (
-      'unsupported injuries',
-      'injuries_or_limitations',
-      <String, dynamic>{'type': 'int'}
-    ),
     ('unsupported weight', 'weight_kg', <String, dynamic>{'type': 'text'}),
     (
       'unsupported frequency',

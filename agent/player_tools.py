@@ -16,6 +16,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 
 from database.ledger.profile import PLAYER_PROFILE_STORAGE_DEFAULTS
+from core.injuries import render_injury_record
 from service.player_weight_context import render_player_weight_context
 from service.weight_history import WeightTrendQuery, get_weight_trend, player_local_date
 from agent.player_prompt import (
@@ -72,6 +73,7 @@ _PROFILE_FIELDS = (
     ("training_age_years", "training_age_years"),
     ("rep_preference", "rep_preference"),
     ("equipment_access", "equipment_access"),
+    # Backward-compatible projection maintained by the injury-record writer.
     ("injuries_or_limitations", "injuries_or_limitations"),
     ("weekly_frequency", "weekly_frequency"),
     ("stress_and_sleep", "stress_and_sleep"),
@@ -141,6 +143,11 @@ def _read_weight_trend(ledger: Any) -> dict[str, Any]:
             trend, profile.get("target_weight_kg"), as_of=as_of
         ),
     }
+
+
+def _read_player_injuries(ledger: Any) -> dict[str, Any]:
+    records = [render_injury_record(record) for record in ledger.list_injury_records()]
+    return {"status": "ok", "injuries": records}
 
 
 def _read_active_program(ledger: Any) -> dict[str, Any]:
@@ -214,6 +221,17 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
         reader=_read_weight_trend,
         status_en="Checking your weight trend…",
         status_ar="ببص على تغيّر وزنك…",
+    ),
+    PlayerReadTool(
+        name="get_player_injuries",
+        description=(
+            "Read the current player's injury records, body areas, descriptions, and statuses. "
+            "Use this before answering questions about injuries or physician follow-up."
+        ),
+        args_schema=EmptyToolArgs,
+        reader=_read_player_injuries,
+        status_en="Checking your injury records…",
+        status_ar="ببص على سجلات إصاباتك…",
     ),
 )
 

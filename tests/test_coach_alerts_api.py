@@ -445,6 +445,73 @@ def test_profile_change_from_unset_injury_value_fires_and_ai_excludes_evidence(a
     assert coach_account_id == db.get_active_account_by_username("coach")["account_id"]
 
 
+def test_chat_injury_and_profile_status_change_share_one_coach_alert(api):
+    client, _db = api
+    coach_headers, player_headers, _, _ = _assign(api, "injury-coach", "injury-player")
+
+    chat = client.post(
+        "/chat/messages",
+        headers=player_headers,
+        json={"content": "My right knee has sharp pain when I squat."},
+    )
+    assert chat.status_code == 200, chat.text
+    records = client.get("/profile/injuries", headers=player_headers).json()
+    assert len(records) == 1
+    injury = records[0]
+    assert injury["body_area"] == "knee"
+
+    updated = client.put(
+        f"/profile/injuries/{injury['id']}",
+        headers=player_headers,
+        json={
+            "body_area": "knee",
+            "description": injury["description"],
+            "status": "physician_seen",
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    alerts = _profile_alerts(client, coach_headers)
+    assert len(alerts) == 1
+    assert alerts[0]["injury_changes"][injury["id"]]["status"] == "physician_seen"
+
+    unrelated_update = client.post(
+        "/chat/messages",
+        headers=player_headers,
+        json={"content": "I cleared my schedule."},
+    )
+    assert unrelated_update.status_code == 200, unrelated_update.text
+    assert client.get("/profile/injuries", headers=player_headers).json()[0]["status"] == "physician_seen"
+
+    cleared_by_doctor = client.post(
+        "/chat/messages",
+        headers=player_headers,
+        json={"content": "My knee was cleared by a physician."},
+    )
+    assert cleared_by_doctor.status_code == 200, cleared_by_doctor.text
+    assert client.get("/profile/injuries", headers=player_headers).json()[0]["status"] == "physician_seen"
+
+    physician_update = client.post(
+        "/chat/messages",
+        headers=player_headers,
+        json={"content": "ركبتي خفيت."},
+    )
+    assert physician_update.status_code == 200, physician_update.text
+    alerts = _profile_alerts(client, coach_headers)
+    assert len(alerts) == 1
+    assert alerts[0]["injury_changes"][injury["id"]]["status"] == "resolved"
+    assert alerts[0]["injury_changes"][injury["id"]]["previous_status"] == "reported"
+
+    profile_created = client.post(
+        "/profile/injuries",
+        headers=player_headers,
+        json={"body_area": "shoulder", "description": "Shoulder pain during pressing"},
+    )
+    assert profile_created.status_code == 201, profile_created.text
+    alerts = _profile_alerts(client, coach_headers)
+    assert len(alerts) == 1
+    assert alerts[0]["injury_changes"][profile_created.json()["id"]]["status"] == "reported"
+
+
 def test_profile_change_does_not_fire_for_goal_weight_or_unassigned_player(api, monkeypatch):
     client, db = api
     coach_headers, player_headers, _, _ = _assign(api)
@@ -468,6 +535,35 @@ def test_profile_change_does_not_fire_for_goal_weight_or_unassigned_player(api, 
     )
     assert response.status_code == 200, response.text
     assert _profile_alerts(client, coach_headers) == []
+
+
+def test_area_and_description_edits_do_not_change_the_coach_alert(api):
+    client, _db = api
+    coach_headers, player_headers, _, _ = _assign(api, "edit-coach", "edit-player")
+    created = client.post(
+        "/profile/injuries",
+        headers=player_headers,
+        json={"body_area": "knee", "description": "Pain during squats"},
+    )
+    assert created.status_code == 201, created.text
+    injury_id = created.json()["id"]
+    initial_alerts = _profile_alerts(client, coach_headers)
+    assert len(initial_alerts) == 1
+    initial_change = initial_alerts[0]["injury_changes"][injury_id]
+
+    edited = client.put(
+        f"/profile/injuries/{injury_id}",
+        headers=player_headers,
+        json={
+            "body_area": "shoulder",
+            "description": "Shoulder feels sore during presses",
+            "status": "reported",
+        },
+    )
+    assert edited.status_code == 200, edited.text
+    alerts_after_edit = _profile_alerts(client, coach_headers)
+    assert len(alerts_after_edit) == 1
+    assert alerts_after_edit[0]["injury_changes"][injury_id] == initial_change
 
 
 def test_profile_alert_write_failure_does_not_block_training_profile_edit(api, monkeypatch):

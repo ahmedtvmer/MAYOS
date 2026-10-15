@@ -818,6 +818,7 @@ class CoachAlert {
     this.resolvedBy,
     this.playerDeloadChoice,
     this.profileChanges,
+    this.injuryChanges,
     this.weightPoints,
     this.targetWeightKg,
     this.distanceChangeKg,
@@ -869,6 +870,14 @@ class CoachAlert {
                 ),
             )
             : null,
+        injuryChanges: json['injury_changes'] is Map<String, dynamic>
+            ? (json['injury_changes'] as Map<String, dynamic>).map(
+                (String key, dynamic value) => MapEntry<String, Map<String, dynamic>>(
+                  key,
+                  Map<String, dynamic>.from(value as Map<String, dynamic>),
+                ),
+              )
+            : null,
         weightPoints: json['weight_points'] is List<dynamic>
             ? (json['weight_points'] as List<dynamic>)
                 .map((dynamic point) => WeightTrendPoint.fromJson(
@@ -912,6 +921,7 @@ class CoachAlert {
   final String? resolvedBy;
   final Map<String, dynamic>? playerDeloadChoice;
   final Map<String, Map<String, String?>>? profileChanges;
+  final Map<String, Map<String, dynamic>>? injuryChanges;
   final List<WeightTrendPoint>? weightPoints;
   final double? targetWeightKg;
   final double? distanceChangeKg;
@@ -1341,6 +1351,7 @@ class CoachPlayerSummary {
     this.recentSessions = const <CoachPlayerRecentSession>[],
     this.schedule,
     this.pauses = const <CoachPlayerPause>[],
+    this.injuries = const <InjuryRecord>[],
   });
 
   factory CoachPlayerSummary.fromJson(Map<String, dynamic> json) =>
@@ -1367,6 +1378,10 @@ class CoachPlayerSummary {
             .map((dynamic p) =>
                 CoachPlayerPause.fromJson(p as Map<String, dynamic>))
             .toList(growable: false),
+        injuries: (json['injuries'] as List<dynamic>? ?? const [])
+            .map((dynamic i) =>
+                InjuryRecord.fromJson(i as Map<String, dynamic>))
+            .toList(growable: false),
       );
 
   final String playerUsername;
@@ -1377,6 +1392,7 @@ class CoachPlayerSummary {
   final List<CoachPlayerRecentSession> recentSessions;
   final CoachPlayerSchedule? schedule;
   final List<CoachPlayerPause> pauses;
+  final List<InjuryRecord> injuries;
 }
 
 /// `GET /coach/assignments/{id}/program` for an actively assigned player.
@@ -1830,6 +1846,38 @@ class IntakeConfirmation {
 
 /// `GET /profile`: the player's stored training profile. Only the fields the
 /// profile editor writes are modeled; unknown keys are ignored.
+class InjuryRecord {
+  const InjuryRecord({
+    required this.id,
+    required this.description,
+    required this.reportedAt,
+    required this.status,
+    this.bodyArea,
+    this.catalogBodyParts = const <String>[],
+    this.clarificationPending = false,
+  });
+
+  factory InjuryRecord.fromJson(Map<String, dynamic> json) => InjuryRecord(
+        id: json['id'] as String,
+        bodyArea: json['body_area'] as String?,
+        catalogBodyParts:
+            (json['catalog_body_parts'] as List<dynamic>? ?? const <dynamic>[])
+                .cast<String>(),
+        description: json['description'] as String,
+        reportedAt: json['reported_at'] as String,
+        status: json['status'] as String,
+        clarificationPending: json['clarification_pending'] as bool? ?? false,
+      );
+
+  final String id;
+  final String? bodyArea;
+  final List<String> catalogBodyParts;
+  final String description;
+  final String reportedAt;
+  final String status;
+  final bool clarificationPending;
+}
+
 class PlayerProfile {
   const PlayerProfile({
     this.repPreference = 'balanced',
@@ -1843,6 +1891,7 @@ class PlayerProfile {
     this.assistantInstructions = '',
     this.preferredName,
     this.playerControlsProgram = true,
+    this.injuries = const <InjuryRecord>[],
   });
 
   factory PlayerProfile.fromJson(Map<String, dynamic> json) => PlayerProfile(
@@ -1859,6 +1908,10 @@ class PlayerProfile {
         assistantInstructions: json['custom_instructions'] as String? ?? '',
         preferredName: json['preferred_name'] as String?,
         playerControlsProgram: json['player_controls_program'] as bool? ?? true,
+        injuries: (json['injuries'] as List<dynamic>? ?? const <dynamic>[])
+            .map((dynamic item) =>
+                InjuryRecord.fromJson(item as Map<String, dynamic>))
+            .toList(growable: false),
       );
 
   final String repPreference;
@@ -1872,6 +1925,7 @@ class PlayerProfile {
   final String assistantInstructions;
   final String? preferredName;
   final bool playerControlsProgram;
+  final List<InjuryRecord> injuries;
 
   PlayerProfile copyWith({double? weightKg, double? targetWeightKg}) => PlayerProfile(
         repPreference: repPreference,
@@ -1885,6 +1939,7 @@ class PlayerProfile {
         assistantInstructions: assistantInstructions,
         preferredName: preferredName,
         playerControlsProgram: playerControlsProgram,
+        injuries: injuries,
       );
 }
 

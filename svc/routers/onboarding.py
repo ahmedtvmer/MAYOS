@@ -117,7 +117,15 @@ async def save_intake_answer(
 
     def _run():
         try:
-            return intake_service.save_answer(db, str(player), field, body.value, ledger=ledger)
+            return intake_service.save_answer(
+                db,
+                str(player),
+                field,
+                body.value,
+                ledger=ledger,
+                player_account_id=account_id_of(player),
+                client=analytics_service.client_context(request),
+            )
         except intake_service.IntakeDisclosureRequired as exc:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from None
         except intake_service.IntakeAlreadyConfirmed as exc:

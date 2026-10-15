@@ -23,6 +23,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
 from core.effort import rir_label
+from core.injuries import (
+    clarification_body_area_in_text,
+    injury_body_area_label,
+    injury_status_label,
+)
 from core.deload_choices import DELOAD_CHOICE_APPLY, DELOAD_CHOICE_UNDO, DELOAD_CHOICES
 from core.display_language import DisplayLanguage
 from core.reply_language import normalize_display_language, resolve_reply_language
@@ -104,6 +109,12 @@ ARABIC_PROGRAM_CHANGE_CLARIFICATION_RESPONSE = (
 ARABIC_HISTORY_CLARIFICATION_RESPONSE = (
     "مش لاقي التمرين ده في برنامجك أو مكتبة التمارين. تقصد أنهي تمرين؟"
 )
+INJURY_AREA_CLARIFICATION_EN = (
+    "Which body area is injured: knee, hip, lower back, shoulder, elbow, wrist, ankle, or neck?"
+)
+INJURY_AREA_CLARIFICATION_AR = (
+    "الإصابة في أنهي منطقة: الركبة، الورك، أسفل الظهر، الكتف، الكوع، الرسغ، الكاحل، ولا الرقبة؟"
+)
 ARABIC_ONE_AT_A_TIME_NOTE = "هبدّل التمرين ده الأول، وبعدها قولي تحب أساعدك في إيه كمان؟"
 ARABIC_PREFERRED_NAME_TRIGGERS = ("اسمي", "ناديني", "قولي يا", "قوللي يا")
 _MAX_PREFERRED_NAME_WORDS = 4
@@ -138,6 +149,8 @@ IntentType = Literal[
     "program_mutation",
     "deload_choice",
     "catalog_search",
+    "injury_area_clarification",
+    "injury_status_update",
     "coaching_qa",
     "composite_intent",
 ]
@@ -1561,6 +1574,17 @@ def _last_history_exchange(messages: Sequence[BaseMessage]) -> str | None:
     return None
 
 
+def _previous_assistant_message_is_injury_area_question(
+    messages: Sequence[BaseMessage],
+) -> bool:
+    if len(messages) < 2 or _message_role(messages[-2]) != "assistant":
+        return False
+    return _get_message_text(messages[-2]) in {
+        INJURY_AREA_CLARIFICATION_EN,
+        INJURY_AREA_CLARIFICATION_AR,
+    }
+
+
 def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     if state.get("pipeline_error"):
         return {"intent": "telemetry_intercept", "intent_metadata": {"response_content": state["pipeline_error"]}}
@@ -1572,9 +1596,47 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
     telemetry = state.get("telemetry_context") or ""
     arabic_dominant = _is_arabic_dominant(query)
 
+    ledger, _store = _graph_context(config)
+    pending = None
+    if ledger is not None:
+        from service import injuries as injuries_service
+
+        pending = injuries_service.pending_clarification(ledger)
+
     clinical = _clinical_turn_metadata(query)
     if clinical is not None:
+        if (
+            pending is not None
+            and isinstance(pending.get("id"), str)
+            and _previous_assistant_message_is_injury_area_question(messages)
+        ):
+            from service import injuries as injuries_service
+
+            injuries_service.consume_pending_clarification(ledger, pending["id"])
         return {"intent": "clinical_intercept", "intent_metadata": clinical, "active_intents": []}
+
+    if pending is not None and isinstance(pending.get("id"), str):
+        from service import injuries as injuries_service
+
+        area = clarification_body_area_in_text(query)
+        if area is not None:
+            return {
+                "intent": "injury_area_clarification",
+                "intent_metadata": {"body_area": area, "injury_id": pending["id"]},
+                "active_intents": [],
+            }
+        if _previous_assistant_message_is_injury_area_question(messages):
+            injuries_service.consume_pending_clarification(ledger, pending["id"])
+        else:
+            return {
+                "intent": "injury_area_clarification",
+                "intent_metadata": {"body_area": None, "injury_id": pending["id"]},
+                "active_intents": [],
+            }
+
+    if ledger is not None:
+        if injuries_service.has_matching_status_update(ledger, query):
+            return {"intent": "injury_status_update", "intent_metadata": {}, "active_intents": []}
 
     choice = _deload_choice(query)
     if choice:
@@ -1669,7 +1731,80 @@ def clinical_intercept_node(state: AssistantState, config: dict[str, Any] | None
         response_type = "diagnosis" if meta.get("mode") == "diagnosis" else "clinical"
         response_key = (language, response_type)
     content = CLINICAL_SAFEGUARD_RESPONSES[response_key]
+    ledger, store = _graph_context(config)
+    if ledger is not None and store is not None and raw_query:
+        from service import injuries as injuries_service
+
+        try:
+            injuries_service.record_from_clinical_message(
+                store,
+                ledger,
+                player_account_id=state.get("player_account_id"),
+                message=raw_query,
+            )
+        except Exception:
+            logger.exception("Could not record an injury from the clinical intercept")
     return {"program_updated": False, "response_content": content, "messages": [AIMessage(content=content)]}
+
+
+def injury_area_clarification_node(
+    state: AssistantState, config: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    meta = state.get("intent_metadata", {})
+    area = meta.get("body_area")
+    query = _get_message_text(state["messages"][-1]) if state.get("messages") else ""
+    language = "ar" if ARABIC_SCRIPT_RE.search(query) else "en"
+    ledger, _store = _graph_context(config)
+    injury_id = meta.get("injury_id")
+    if area is None:
+        content = (
+            INJURY_AREA_CLARIFICATION_AR
+            if language == "ar"
+            else INJURY_AREA_CLARIFICATION_EN
+        )
+    else:
+        if ledger is not None and isinstance(injury_id, str):
+            from service import injuries as injuries_service
+
+            injuries_service.record_clarified_area(ledger, injury_id, area)
+        area_label = injury_body_area_label(area, language)
+        content = (
+            f"تمام، سجلت منطقة الإصابة: {area_label}."
+            if language == "ar"
+            else f"Thanks, I recorded the injury area as {area_label}."
+        )
+    return _response(content)
+
+
+def injury_status_update_node(
+    state: AssistantState, config: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    ledger, store = _graph_context(config)
+    query = _get_message_text(state["messages"][-1]) if state.get("messages") else ""
+    if ledger is not None and store is not None:
+        from service import injuries as injuries_service
+
+        updated = injuries_service.update_from_chat(
+            store,
+            ledger,
+            player_account_id=state.get("player_account_id"),
+            message=query,
+        )
+        if updated is not None:
+            language = "ar" if ARABIC_SCRIPT_RE.search(query) else "en"
+            status_label = injury_status_label(updated["status"], language)
+            content = (
+                f"سجلت تحديث الحالة: {status_label}."
+                if language == "ar"
+                else f"I recorded the injury status as {status_label}."
+            )
+            return _response(content)
+    content = (
+        "مش لاقي إصابة مسجلة أقدر أحدث حالتها. تقدر تعدّلها من الملف التدريبي."
+        if ARABIC_SCRIPT_RE.search(query)
+        else "I couldn't match that to a current injury record. You can update it in Profile."
+    )
+    return _response(content)
 
 
 def banned_movement_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -3483,6 +3618,8 @@ def composite_intent_node(state: AssistantState, config: dict[str, Any] | None =
         "program_mutation": program_mutation_node,
         "deload_choice": deload_choice_node,
         "catalog_search": catalog_search_node,
+        "injury_area_clarification": injury_area_clarification_node,
+        "injury_status_update": injury_status_update_node,
         "coaching_qa": generation_node,
     }
 
@@ -3564,6 +3701,8 @@ builder.add_node("arabic_swap_clarification", _safe_node(arabic_swap_clarificati
 builder.add_node("program_mutation", _safe_node(program_mutation_node))
 builder.add_node("deload_choice", _safe_node(deload_choice_node))
 builder.add_node("catalog_search", _safe_node(catalog_search_node))
+builder.add_node("injury_area_clarification", _safe_node(injury_area_clarification_node))
+builder.add_node("injury_status_update", _safe_node(injury_status_update_node))
 builder.add_node("composite_intent", _safe_node(composite_intent_node))
 builder.add_node("generation", _safe_node(generation_node))
 
@@ -3583,6 +3722,8 @@ builder.add_conditional_edges(
         "program_mutation": "program_mutation",
         "deload_choice": "deload_choice",
         "catalog_search": "catalog_search",
+        "injury_area_clarification": "injury_area_clarification",
+        "injury_status_update": "injury_status_update",
         "composite_intent": "composite_intent",
         "coaching_qa": "generation",
     },
@@ -3591,7 +3732,8 @@ builder.add_conditional_edges(
 for node in [
     "clinical_intercept", "banned_movement", "telemetry_intercept",
     "exercise_substitution", "arabic_swap_clarification", "program_mutation",
-    "catalog_search", "composite_intent", "generation",
+    "catalog_search", "injury_area_clarification", "injury_status_update",
+    "composite_intent", "generation",
 ]:
     builder.add_edge(node, END)
 
@@ -3701,6 +3843,8 @@ def stream_assistant_turn(
             "program_mutation": program_mutation_node,
             "deload_choice": deload_choice_node,
             "catalog_search": catalog_search_node,
+            "injury_area_clarification": injury_area_clarification_node,
+            "injury_status_update": injury_status_update_node,
             "composite_intent": composite_intent_node,
         }
         if intent == "exercise_history":

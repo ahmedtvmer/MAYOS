@@ -34,7 +34,6 @@ const AppFailureMessage _profileContractFailure = AppFailureMessage(
 
 const Map<String, String> _profileFieldTypes = <String, String>{
   'current_goal': 'text',
-  'injuries_or_limitations': 'text',
   'weight_kg': 'float',
   'target_weight_kg': 'float',
   'weekly_frequency': 'int',
@@ -62,16 +61,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   String _repPreference = 'balanced';
   String _equipmentAccess = equipmentAccessCommercialGym;
   final TextEditingController _currentGoalController = TextEditingController();
-  final TextEditingController _injuriesOrLimitationsController =
-      TextEditingController();
   final TextEditingController _weightController =
       TextEditingController(text: '75');
   final TextEditingController _targetWeightController = TextEditingController();
   PlayerProfile? _savedProfile;
+  List<InjuryRecord> _injuries = const <InjuryRecord>[];
   OnboardingIntake? _intake;
 
   bool _loading = true;
   bool _saving = false;
+  bool _savingInjury = false;
+  FailureMessage? _injuryFailure;
   FailureMessage? _loadError;
   String? _notice;
   FailureMessage? _noticeFailure;
@@ -112,7 +112,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _injuriesOrLimitationsController.text = _copy.none;
     _load();
   }
 
@@ -120,7 +119,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   void dispose() {
     _timezone.dispose();
     _currentGoalController.dispose();
-    _injuriesOrLimitationsController.dispose();
     _weightController.dispose();
     _targetWeightController.dispose();
     super.dispose();
@@ -206,7 +204,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ? profile.equipmentAccess
             : equipmentOptions.first;
         _currentGoalController.text = profile.currentGoal;
-        _injuriesOrLimitationsController.text = profile.injuriesOrLimitations;
+        _injuries = profile.injuries;
         _weightController.text = profile.weightKg.toString();
         _targetWeightController.text = profile.targetWeightKg?.toString() ?? '';
         _repPreference = repOptions.contains(profile.repPreference)
@@ -239,7 +237,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ? _weightController.text.trim() != saved.weightKg.toString()
         : parsedWeight != saved.weightKg;
     final String currentGoal = _currentGoalController.text.trim();
-    final String injuries = _injuriesOrLimitationsController.text.trim();
     final String targetWeightText = _targetWeightController.text.trim();
     final double? parsedTargetWeight = targetWeightText.isEmpty
         ? null
@@ -255,8 +252,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (_equipmentAccess != saved.equipmentAccess)
         'equipment_access': _equipmentAccess,
       if (currentGoal != saved.currentGoal) 'current_goal': currentGoal,
-      if (injuries != saved.injuriesOrLimitations)
-        'injuries_or_limitations': injuries,
       if (weightChanged) 'weight_kg': parsedWeight ?? _weightController.text,
       if (targetWeightChanged)
         'target_weight_kg': parsedTargetWeight ?? targetWeightText,
@@ -309,8 +304,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 weeklyFrequency: changedValues['weekly_frequency'] as int?,
                 repPreference: changedValues['rep_preference'] as String?,
                 currentGoal: changedValues['current_goal'] as String?,
-                injuriesOrLimitations:
-                    changedValues['injuries_or_limitations'] as String?,
                 weightKg: changedValues.containsKey('weight_kg')
                     ? parsedWeight
                     : null,
@@ -330,7 +323,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               repPreference: _repPreference,
               equipmentAccess: _equipmentAccess,
               currentGoal: currentGoal,
-              injuriesOrLimitations: injuries,
               weightKg: parsedWeight ?? saved.weightKg,
               targetWeightKg: targetWeightChanged
                   ? parsedTargetWeight
@@ -351,6 +343,117 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         _noticeIsError = true;
       });
     }
+  }
+
+  Future<void> _editInjury({InjuryRecord? injury}) async {
+    final _InjuryEdit? edit = await showDialog<_InjuryEdit>(
+      context: context,
+      builder: (BuildContext context) => _InjuryEditorDialog(
+        copy: _copy,
+        injury: injury,
+      ),
+    );
+    if (edit == null || !mounted) return;
+    if (edit.status == 'resolved' && injury?.status != 'resolved') {
+      final bool? confirmed = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext context) => AlertDialog(
+          title: Text(_copy.confirmResolveInjury),
+          content: Text(_copy.confirmResolveInjuryDetails),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(_copy.cancel),
+            ),
+            FilledButton(
+              key: const Key('injury_resolve_confirm_button'),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(_copy.continueAction),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+    setState(() {
+      _savingInjury = true;
+      _injuryFailure = null;
+    });
+    try {
+      final ApiClient api = ref.read(apiClientProvider);
+      final InjuryRecord saved = injury == null
+          ? await api.createInjury(
+              bodyArea: edit.bodyArea,
+              description: edit.description,
+            )
+          : await api.updateInjury(
+              id: injury.id,
+              bodyArea: edit.bodyArea,
+              description: edit.description,
+              status: edit.status,
+            );
+      if (!mounted) return;
+      setState(() {
+        _savingInjury = false;
+        _injuries = <InjuryRecord>[
+          saved,
+          ..._injuries.where((InjuryRecord current) => current.id != saved.id),
+        ];
+      });
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _savingInjury = false;
+        _injuryFailure = _mutationFailure(error);
+      });
+    }
+  }
+
+  Widget _injuriesSection(ProfileCopy copy) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        MayosSectionHeader(title: copy.injuries, subtitle: copy.injuriesLead),
+        if (_injuries.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: MayosSpacing.xs),
+            child: Text(copy.noInjuries),
+          ),
+        for (final InjuryRecord injury in _injuries)
+          Card(
+            key: Key('injury_record_${injury.id}'),
+            margin: const EdgeInsets.only(top: MayosSpacing.xs),
+            child: ListTile(
+              title: Text(
+                '${injury.bodyArea == null ? copy.unknownArea : copy.bodyArea(injury.bodyArea!)} · ${copy.injuryStatusLabel(injury.status)}',
+              ),
+              subtitle: Text(injury.description),
+              trailing: IconButton(
+                key: Key('edit_injury_${injury.id}'),
+                tooltip: copy.editInjury,
+                onPressed: _savingInjury ? null : () => _editInjury(injury: injury),
+                icon: const Icon(Icons.edit_outlined),
+              ),
+            ),
+          ),
+        if (_injuryFailure != null)
+          Padding(
+            padding: const EdgeInsets.only(top: MayosSpacing.xs),
+            child: Text(
+              displayCopyOf(context).failureMessage(_injuryFailure!),
+              style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
+            ),
+          ),
+        const SizedBox(height: MayosSpacing.xs),
+        OutlinedButton.icon(
+          key: const Key('add_injury_button'),
+          onPressed: _savingInjury ? null : () => _editInjury(),
+          icon: const Icon(Icons.add),
+          label: Text(copy.addInjury),
+        ),
+      ],
+    );
   }
 
   Future<void> _logWeight() async {
@@ -608,14 +711,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           textCapitalization: TextCapitalization.sentences,
         ),
         const SizedBox(height: MayosSpacing.sm),
-        MayosTextField(
-          fieldKey: const Key('injuries_or_limitations_field'),
-          controller: _injuriesOrLimitationsController,
-          label: copy.injuriesLimitations,
-          enabled: !_saving,
-          textCapitalization: TextCapitalization.sentences,
-        ),
-        const SizedBox(height: MayosSpacing.sm),
+        _injuriesSection(copy),
+        const SizedBox(height: MayosSpacing.md),
         MayosTextField(
           fieldKey: const Key('weight_kg_field'),
           controller: _weightController,
@@ -853,6 +950,150 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
             ),
         const SizedBox(height: MayosSpacing.xxl),
+      ],
+    );
+  }
+}
+
+class _InjuryEdit {
+  const _InjuryEdit({
+    required this.bodyArea,
+    required this.description,
+    required this.status,
+  });
+
+  final String? bodyArea;
+  final String description;
+  final String status;
+}
+
+class _InjuryEditorDialog extends StatefulWidget {
+  const _InjuryEditorDialog({required this.copy, this.injury});
+
+  final ProfileCopy copy;
+  final InjuryRecord? injury;
+
+  @override
+  State<_InjuryEditorDialog> createState() => _InjuryEditorDialogState();
+}
+
+class _InjuryEditorDialogState extends State<_InjuryEditorDialog> {
+  late final TextEditingController _description;
+  late String _bodyArea;
+  late String _status;
+  bool _descriptionInvalid = false;
+
+  static const List<String> _areas = <String>[
+    'knee',
+    'hip',
+    'lower_back',
+    'shoulder',
+    'elbow',
+    'wrist',
+    'ankle',
+    'neck',
+  ];
+  static const List<String> _statuses = <String>[
+    'reported',
+    'physician_seen',
+    'resolved',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _description = TextEditingController(text: widget.injury?.description ?? '');
+    _bodyArea = widget.injury?.bodyArea ?? '';
+    _status = widget.injury?.status ?? 'reported';
+  }
+
+  @override
+  void dispose() {
+    _description.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ProfileCopy copy = widget.copy;
+    return AlertDialog(
+      title: Text(widget.injury == null ? copy.addInjury : copy.editInjury),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            DropdownButtonFormField<String>(
+              key: const Key('injury_body_area_dropdown'),
+              initialValue: _bodyArea,
+              decoration: InputDecoration(labelText: copy.injuryArea),
+              items: <DropdownMenuItem<String>>[
+                DropdownMenuItem<String>(
+                  value: '',
+                  child: Text(copy.unknownArea),
+                ),
+                for (final String area in _areas)
+                  DropdownMenuItem<String>(
+                    value: area,
+                    child: Text(copy.bodyArea(area)),
+                  ),
+              ],
+              onChanged: (String? value) => setState(() => _bodyArea = value ?? ''),
+            ),
+            const SizedBox(height: MayosSpacing.sm),
+            TextField(
+              key: const Key('injury_description_field'),
+              controller: _description,
+              maxLength: 2000,
+              maxLines: 3,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
+                labelText: copy.injuryDescription,
+                errorText: _descriptionInvalid ? copy.checkFieldAndRetry(copy.injuryDescription) : null,
+              ),
+              onChanged: (_) {
+                if (_descriptionInvalid) setState(() => _descriptionInvalid = false);
+              },
+            ),
+            const SizedBox(height: MayosSpacing.sm),
+            DropdownButtonFormField<String>(
+              key: const Key('injury_status_dropdown'),
+              initialValue: _status,
+              decoration: InputDecoration(labelText: copy.injuryStatus),
+              items: <DropdownMenuItem<String>>[
+                for (final String status in _statuses)
+                  DropdownMenuItem<String>(
+                    value: status,
+                    child: Text(copy.injuryStatusLabel(status)),
+                  ),
+              ],
+              onChanged: (String? value) => setState(() => _status = value ?? 'reported'),
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(copy.cancel),
+        ),
+        FilledButton(
+          key: const Key('save_injury_button'),
+          onPressed: () {
+            final String description = _description.text.trim();
+            if (description.isEmpty) {
+              setState(() => _descriptionInvalid = true);
+              return;
+            }
+            Navigator.of(context).pop(
+              _InjuryEdit(
+                bodyArea: _bodyArea.isEmpty ? null : _bodyArea,
+                description: description,
+                status: _status,
+              ),
+            );
+          },
+          child: Text(copy.saveInjury),
+        ),
       ],
     );
   }

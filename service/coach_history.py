@@ -11,6 +11,7 @@ from typing import Any
 from service import analytics as analytics_service
 from service import coach_analytics
 from service import dashboard as dashboard_service
+from service import injuries as injuries_service
 from service.assignments import (  # noqa: F401  (DENIED_ERROR re-exported for routers)
     DENIED_ERROR,
     authorized_player_ledger,
@@ -252,6 +253,7 @@ def player_summary(
             "recent_sessions": recent,
             "schedule": schedule,
             "pauses": pauses,
+            "injuries": injuries_service.list_injuries(ledger),
         }
     coach_analytics.capture_player_history_viewed(
         db,

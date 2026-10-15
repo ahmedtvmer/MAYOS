@@ -206,6 +206,10 @@ _Avoid_: Program migration, program upload
 The editable facts a player can update after onboarding: current goal, Equipment access, injuries or limitations, latest weight, and optional Target weight. Weight history records each local-day weight entry; the profile continues to show the latest value. Body proportions remain onboarding-only.
 _Arabic_: الملف التدريبي
 
+**Injury**:
+A per-Player Training ledger record with an optional fixed body area, the player's description, its reported time, and a status of reported, physician seen, or resolved. An unknown body area stays unknown until clarified. Active Coaches can read the record only while their Assignment is active.
+_Arabic_: إصابة
+
 **Weight history**:
 The dated record of a Player's bodyweight in the Training ledger, with at most one entry per Player-local calendar day. A later entry on the same day replaces that day's value; the Training profile shows the latest weight.
 _Arabic_: سجل الوزن

@@ -498,6 +498,7 @@ class MessageCopy {
 
   String profileChangeEvidence(
     Map<String, Map<String, String?>>? profileChanges,
+    Map<String, Map<String, dynamic>>? injuryChanges,
   ) {
     const Map<String, String> englishLabels = <String, String>{
       'injuries_or_limitations': 'Injuries or limitations',
@@ -508,7 +509,7 @@ class MessageCopy {
       'equipment_access': 'المعدات المتاحة',
     };
     final Map<String, String> labels = isArabic ? arabicLabels : englishLabels;
-    return (profileChanges ?? const <String, Map<String, String?>>{})
+    final List<String> profileEvidence = (profileChanges ?? const <String, Map<String, String?>>{})
         .entries
         .where((MapEntry<String, Map<String, String?>> entry) =>
             labels.containsKey(entry.key))
@@ -517,7 +518,36 @@ class MessageCopy {
           final String after = _profileValue(entry.value['after']);
           return '${labels[entry.key]}: $before → $after';
         })
-        .join('\n');
+        .toList(growable: false);
+    const Map<String, String> englishAreas = <String, String>{
+      'knee': 'Knee', 'hip': 'Hip', 'lower_back': 'Lower back',
+      'shoulder': 'Shoulder', 'elbow': 'Elbow', 'wrist': 'Wrist',
+      'ankle': 'Ankle', 'neck': 'Neck',
+    };
+    const Map<String, String> arabicAreas = <String, String>{
+      'knee': 'الركبة', 'hip': 'الورك', 'lower_back': 'أسفل الظهر',
+      'shoulder': 'الكتف', 'elbow': 'الكوع', 'wrist': 'الرسغ',
+      'ankle': 'الكاحل', 'neck': 'الرقبة',
+    };
+    const Map<String, String> englishStatuses = <String, String>{
+      'reported': 'Reported', 'physician_seen': 'Physician seen', 'resolved': 'Resolved',
+    };
+    const Map<String, String> arabicStatuses = <String, String>{
+      'reported': 'تم الإبلاغ', 'physician_seen': 'تمت مراجعة طبيب', 'resolved': 'تم التعافي',
+    };
+    final Map<String, String> areas = isArabic ? arabicAreas : englishAreas;
+    final Map<String, String> statuses = isArabic ? arabicStatuses : englishStatuses;
+    final List<String> injuryEvidence = (injuryChanges ?? const <String, Map<String, dynamic>>{})
+        .values
+        .map((Map<String, dynamic> item) {
+          final String area = '${item['body_area'] ?? ''}';
+          final String status = '${item['status'] ?? ''}';
+          final String areaLabel = areas[area] ?? (isArabic ? 'منطقة غير محددة' : 'Unknown area');
+          final String statusLabel = statuses[status] ?? status;
+          return '$areaLabel: $statusLabel';
+        })
+        .toList(growable: false);
+    return <String>[...profileEvidence, ...injuryEvidence].join('\n');
   }
 
   String weightTrendEvidence(List<String> points, double? targetWeightKg) {

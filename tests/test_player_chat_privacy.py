@@ -369,6 +369,7 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
         "get_player_profile",
         "get_active_program",
         "get_player_weight_trend",
+        "get_player_injuries",
     ]
     first_payload = "\n".join(
         str(getattr(message, "content", message)) for message in model.calls[0]["messages"]
@@ -488,6 +489,7 @@ def test_turn_without_tool_call_sends_no_profile_telemetry_or_program_data(api, 
         "get_player_profile",
         "get_active_program",
         "get_player_weight_trend",
+        "get_player_injuries",
     )
     assert "PROFILE_MUST_STAY_PRIVATE" not in payload
     assert "PROGRAM_MUST_STAY_PRIVATE" not in payload
@@ -1899,3 +1901,327 @@ def test_clinical_and_franco_messages_are_intercepted_before_chat_model(api, mon
             assert response.status_code == 200
         expected = getattr(assistant_graph, response_name)
         assert _done_content(body) == expected
+
+
+def test_clinical_chat_records_injury_and_clarifies_only_area_replies(api, monkeypatch):
+    client, db = api
+    headers = _authed(_register(client, "injury-chat")['access_token'])
+    safety_model = ScriptedChatModel(default_turn="CHAT MODEL RAN")
+    monkeypatch.setattr(assistant_graph, "llm", safety_model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "My right knee has sharp pain when I squat."},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == assistant_graph.CLINICAL_SAFEGUARD_RESPONSE
+    injuries = client.get("/profile/injuries", headers=headers)
+    assert injuries.status_code == 200
+    assert len(injuries.json()) == 1
+    assert injuries.json()[0]["body_area"] == "knee"
+    assert injuries.json()[0]["status"] == "reported"
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "I felt sharp pain after training."},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == assistant_graph.CLINICAL_SAFEGUARD_RESPONSE
+    injuries = client.get("/profile/injuries", headers=headers).json()
+    assert len(injuries) == 2
+    assert injuries[0]["body_area"] is None
+    assert injuries[0]["clarification_pending"] is True
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "knee"}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert "recorded the injury area as knee" in _done_content(body)
+    records = client.get("/profile/injuries", headers=headers).json()
+    assert records[0]["body_area"] == "knee"
+    assert records[0]["clarification_pending"] is False
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "I felt sharp pain again after training."},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == assistant_graph.CLINICAL_SAFEGUARD_RESPONSE
+    records = client.get("/profile/injuries", headers=headers).json()
+    assert records[0]["body_area"] is None
+    assert records[0]["clarification_pending"] is True
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "left side"}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert "Which body area is injured" in _done_content(body)
+    assert client.get("/profile/injuries", headers=headers).json()[0]["clarification_pending"] is True
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "Thanks."}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == "CHAT MODEL RAN"
+
+
+def test_pending_injury_clarification_expires_after_one_unrelated_turn(api, monkeypatch):
+    client, _db = api
+    headers = _authed(_register(client, "injury-expiry")['access_token'])
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel(default_turn="CHAT MODEL RAN"))
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "I felt sharp pain after training."},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == assistant_graph.CLINICAL_SAFEGUARD_RESPONSE
+    assert client.get("/profile/injuries", headers=headers).json()[0]["clarification_pending"] is True
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "What should I train today?"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert "Which body area is injured" in _done_content(body)
+    record = client.get("/profile/injuries", headers=headers).json()[0]
+    assert record["body_area"] is None
+    assert record["clarification_pending"] is True
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "knee"}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert "recorded the injury area as knee" in _done_content(body)
+    assert client.get("/profile/injuries", headers=headers).json()[0]["body_area"] == "knee"
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "I felt sharp pain again after training."},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == assistant_graph.CLINICAL_SAFEGUARD_RESPONSE
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "Thanks."}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert "Which body area is injured" in _done_content(body)
+    assert client.get("/profile/injuries", headers=headers).json()[0]["clarification_pending"] is True
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "Maybe later."}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == "CHAT MODEL RAN"
+    assert client.get("/profile/injuries", headers=headers).json()[0]["clarification_pending"] is False
+
+
+def test_injury_area_clarification_uses_arabic_labels(api, monkeypatch):
+    client, _db = api
+    headers = _authed(_register(client, "injury-arabic-label")["access_token"])
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel(default_turn="CHAT MODEL RAN"))
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "I felt sharp pain after training."},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == assistant_graph.CLINICAL_SAFEGUARD_RESPONSE
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "أنا هنا"}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert "الإصابة في أنهي منطقة" in _done_content(body)
+    assert client.get("/profile/injuries", headers=headers).json()[0]["clarification_pending"] is True
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "أسفل الظهر"}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert "أسفل الظهر" in _done_content(body)
+    assert "lower_back" not in _done_content(body)
+    assert client.get("/profile/injuries", headers=headers).json()[0]["body_area"] == "lower_back"
+
+
+def test_injury_status_reply_uses_arabic_label(api, monkeypatch):
+    client, _db = api
+    headers = _authed(_register(client, "injury-status-arabic")["access_token"])
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel(default_turn="CHAT MODEL RAN"))
+    created = client.post(
+        "/profile/injuries",
+        headers=headers,
+        json={"body_area": "knee", "description": "ألم في الركبة"},
+    )
+    assert created.status_code == 201, created.text
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "ركبتي خفيت."}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    reply = _done_content(body)
+    assert "تم التعافي" in reply
+    assert "resolved" not in reply
+
+
+def test_profile_injury_text_import_survives_later_chat_injury_write(api, monkeypatch):
+    client, db = api
+    headers = _authed(_register(client, "profile-injury-import")["access_token"])
+    monkeypatch.setattr(
+        "service.profile.generate_program_draft_pipeline",
+        lambda *_args, **_kwargs: (None, None),
+    )
+
+    profile = client.put(
+        "/profile",
+        headers=headers,
+        json={"injuries_or_limitations": "Left knee pain"},
+    )
+    assert profile.status_code == 200, profile.text
+    records = client.get("/profile/injuries", headers=headers).json()
+    assert len(records) == 1
+    assert records[0]["description"] == "Left knee pain"
+    assert records[0]["body_area"] == "knee"
+
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel(default_turn="CHAT MODEL RAN"))
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "I felt sharp pain after training."},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == assistant_graph.CLINICAL_SAFEGUARD_RESPONSE
+    records = client.get("/profile/injuries", headers=headers).json()
+    assert {record["description"] for record in records} == {
+        "Left knee pain",
+        "I felt sharp pain after training.",
+    }
+    with db.open_ledger("profile-injury-import") as ledger:
+        assert "Left knee pain" in ledger.get_player_profile()["injuries_or_limitations"]
+
+
+def test_onboarding_injury_answers_import_records_but_none_does_not(api):
+    client, _db = api
+    text_headers = _authed(_register(client, "onboarding-injury-import")["access_token"])
+    assert client.post("/onboarding/intake/disclosure", headers=text_headers).status_code == 200
+    saved = client.put(
+        "/onboarding/intake/answers/injuries_or_limitations",
+        headers=text_headers,
+        json={"value": "Shoulder pain on presses"},
+    )
+    assert saved.status_code == 200, saved.text
+    imported = client.get("/profile/injuries", headers=text_headers)
+    assert imported.status_code == 200
+    assert len(imported.json()) == 1
+    assert imported.json()[0]["body_area"] == "shoulder"
+
+    none_headers = _authed(_register(client, "onboarding-no-injury")["access_token"])
+    assert client.post("/onboarding/intake/disclosure", headers=none_headers).status_code == 200
+    saved_none = client.put(
+        "/onboarding/intake/answers/injuries_or_limitations",
+        headers=none_headers,
+        json={"value": "None"},
+    )
+    assert saved_none.status_code == 200, saved_none.text
+    assert client.get("/profile/injuries", headers=none_headers).json() == []
+
+
+def test_pending_injury_ordinary_area_chat_does_not_attach_area(api, monkeypatch):
+    client, _db = api
+    headers = _authed(_register(client, "injury-area-chat")['access_token'])
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel(default_turn="CHAT MODEL RAN"))
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "I felt sharp pain after training."},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == assistant_graph.CLINICAL_SAFEGUARD_RESPONSE
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "How's my knee workout?"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert "Which body area is injured" in _done_content(body)
+    record = client.get("/profile/injuries", headers=headers).json()[0]
+    assert record["body_area"] is None
+    assert record["clarification_pending"] is True
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "Thanks."}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == "CHAT MODEL RAN"
+    record = client.get("/profile/injuries", headers=headers).json()[0]
+    assert record["body_area"] is None
+    assert record["clarification_pending"] is False
+
+
+def test_clinical_fixed_reply_survives_any_recording_failure(api, monkeypatch):
+    from service import injuries as injuries_service
+
+    client, _db = api
+    headers = _authed(_register(client, "injury-write-failure")["access_token"])
+    monkeypatch.setattr(
+        injuries_service,
+        "record_from_clinical_message",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("test failure")),
+    )
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "I felt sharp pain in my knee."},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == assistant_graph.CLINICAL_SAFEGUARD_RESPONSE
+
+
+def test_player_chat_reads_injuries_through_the_read_tool(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    headers = _authed(_register(client, "injury-tool")['access_token'])
+    with db.open_ledger("injury-tool") as ledger:
+        ledger.create_injury_record("knee", "Pain during squats")
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(
+                calls=[{"name": "get_player_injuries", "args": {}, "id": "injury-read"}]
+            ),
+            "You reported knee pain during squats; its status is reported.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "Can you read my injury records?"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+    assert _done_content(body) == "You reported knee pain during squats; its status is reported."
+    assert "get_player_injuries" in model.calls[0]["tools"]
+    tool_payload = "\n".join(
+        str(getattr(message, "content", message)) for message in model.calls[1]["messages"]
+    )
+    assert "Pain during squats" in tool_payload
+    assert '"status":"reported"' in tool_payload

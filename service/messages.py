@@ -514,9 +514,9 @@ def _regression(evidence: Mapping[str, Any]) -> dict[str, Any]:
 
 def _profile_change(evidence: Mapping[str, Any]) -> dict[str, Any]:
     changes = evidence.get("profile_changes")
-    if not isinstance(changes, Mapping):
-        return structured_message(None, {}, "Training profile changed.")
-    fields = [field for field in _PROFILE_FIELDS if field in changes]
+    fields = [field for field in _PROFILE_FIELDS if isinstance(changes, Mapping) and field in changes]
+    if evidence.get("injury_changes") and "injuries_or_limitations" not in fields:
+        fields.append("injuries_or_limitations")
     if not fields:
         return structured_message(None, {}, "Training profile changed.")
     return structured_message(

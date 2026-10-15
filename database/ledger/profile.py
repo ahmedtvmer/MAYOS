@@ -5,6 +5,7 @@ Extracted from DatabaseManager; behaviour is unchanged.
 
 from datetime import UTC, datetime
 from typing import Any
+import uuid
 from core.deload_choices import DELOAD_CHOICES
 from utils.equipment_access import map_equipment_access
 
@@ -29,8 +30,126 @@ PLAYER_PROFILE_STORAGE_DEFAULTS = {
     "stress_and_sleep": "normal",
 }
 
+INJURY_RECORD_COLUMNS = (
+    "id, body_area, description, reported_at, status, clarification_pending"
+)
+
 
 class LedgerProfileMixin:
+    def list_injury_records(self) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            f"SELECT {INJURY_RECORD_COLUMNS} FROM injury_records "
+            "ORDER BY reported_at DESC, id DESC"
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_injury_record(self, injury_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            f"SELECT {INJURY_RECORD_COLUMNS} FROM injury_records WHERE id = ?",
+            (str(injury_id),),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def get_pending_injury_clarification(self) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            f"SELECT {INJURY_RECORD_COLUMNS} FROM injury_records "
+            "WHERE body_area IS NULL AND clarification_pending = 1 "
+            "AND status != 'resolved' ORDER BY reported_at DESC, id DESC LIMIT 1"
+        ).fetchone()
+        return dict(row) if row else None
+
+    def create_injury_record(
+        self,
+        body_area: str | None,
+        description: str,
+        *,
+        status: str = "reported",
+        clarification_pending: bool = False,
+        source_event_key: str | None = None,
+        reported_at: str | None = None,
+    ) -> tuple[dict[str, Any], bool]:
+        injury_id = uuid.uuid4().hex
+        with self.ledger_transaction():
+            inserted = self.conn.execute(
+                "INSERT OR IGNORE INTO injury_records "
+                "(id, body_area, description, reported_at, status, source_event_key, clarification_pending) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    injury_id,
+                    body_area,
+                    str(description).strip()[:2000],
+                    reported_at or datetime.now(UTC).isoformat(),
+                    status,
+                    source_event_key,
+                    1 if clarification_pending else 0,
+                ),
+            )
+            if source_event_key:
+                row = self.conn.execute(
+                    f"SELECT {INJURY_RECORD_COLUMNS} FROM injury_records WHERE source_event_key = ?",
+                    (source_event_key,),
+                ).fetchone()
+            else:
+                row = self.conn.execute(
+                    f"SELECT {INJURY_RECORD_COLUMNS} FROM injury_records WHERE id = ?",
+                    (injury_id,),
+                ).fetchone()
+        result = dict(row) if row else {}
+        return result, bool(result and inserted.rowcount == 1)
+
+    def update_injury_record(
+        self,
+        injury_id: str,
+        *,
+        body_area: str | None = None,
+        update_body_area: bool = False,
+        description: str | None = None,
+        status: str | None = None,
+        clarification_pending: bool | None = None,
+    ) -> dict[str, Any] | None:
+        updates: dict[str, Any] = {}
+        if body_area is not None or update_body_area:
+            updates["body_area"] = body_area
+            updates["clarification_pending"] = 0
+        if description is not None:
+            updates["description"] = str(description).strip()[:2000]
+        if status is not None:
+            updates["status"] = status
+        if clarification_pending is not None:
+            updates["clarification_pending"] = 1 if clarification_pending else 0
+        if updates:
+            assignments = ", ".join(f"{field} = ?" for field in updates)
+            self.conn.execute(
+                f"UPDATE injury_records SET {assignments} WHERE id = ?",
+                (*updates.values(), str(injury_id)),
+            )
+            self._commit_ledger()
+        return self.get_injury_record(injury_id)
+
+    def get_latest_active_injury(self, body_area: str | None = None) -> dict[str, Any] | None:
+        area_clause = " AND body_area = ?" if body_area is not None else ""
+        params = (body_area,) if body_area is not None else ()
+        row = self.conn.execute(
+            f"SELECT {INJURY_RECORD_COLUMNS} FROM injury_records "
+            f"WHERE status != 'resolved'{area_clause} "
+            "ORDER BY reported_at DESC, id DESC LIMIT 1",
+            params,
+        ).fetchone()
+        return dict(row) if row else None
+
+    def sync_legacy_injuries_projection(self) -> None:
+        """Refreshes the legacy profile field from active structured injuries."""
+        with self.ledger_transaction():
+            rows = self.conn.execute(
+                "SELECT description FROM injury_records WHERE status != 'resolved' "
+                "ORDER BY reported_at DESC, id DESC"
+            ).fetchall()
+            projection = "; ".join(str(row[0]) for row in rows) or "None"
+            self.conn.execute(
+                "UPDATE user_profile SET injuries_or_limitations = ?, updated_at = ? WHERE id = 1",
+                (projection[:2000], datetime.now(UTC).isoformat()),
+            )
+
     def upsert_player_profile_with_weight_history(self, profile_data: dict, entry_date: str) -> None:
         """Writes an explicit profile weight together with its dated ledger entry."""
         with self.ledger_transaction():

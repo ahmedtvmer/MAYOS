@@ -611,6 +611,56 @@ def test_profile_crud_without_body_identity(client):
     assert client.get("/profile").json()["custom_instructions"] == ""
 
 
+def test_profile_injury_records_create_and_update_through_http(client):
+    client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
+    assert client.put("/profile", json={"current_goal": "Strength"}).status_code == 200
+
+    created = client.post(
+        "/profile/injuries",
+        json={"body_area": "shoulder", "description": "Left shoulder pain when pressing"},
+    )
+    assert created.status_code == 201, created.text
+    record = created.json()
+    assert record["body_area"] == "shoulder"
+    assert record["catalog_body_parts"] == ["shoulders", "upper arms"]
+    assert record["status"] == "reported"
+    assert record["reported_at"]
+
+    profile = client.get("/profile")
+    assert profile.status_code == 200
+    assert profile.json()["injuries"] == [record]
+
+    updated = client.put(
+        f"/profile/injuries/{record['id']}",
+        json={
+            "body_area": "shoulder",
+            "description": "Left shoulder pain when pressing",
+            "status": "physician_seen",
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["status"] == "physician_seen"
+    assert client.put(
+        "/profile/injuries/missing",
+        json={"body_area": "knee", "description": "Pain", "status": "reported"},
+    ).status_code == 404
+
+
+def test_profile_injury_rejects_unknown_area_and_status(client):
+    client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
+    assert client.put("/profile", json={"current_goal": "Strength"}).status_code == 200
+    assert client.post(
+        "/profile/injuries", json={"body_area": "finger", "description": "Pain"}
+    ).status_code == 400
+    record = client.post(
+        "/profile/injuries", json={"body_area": "knee", "description": "Pain"}
+    ).json()
+    assert client.put(
+        f"/profile/injuries/{record['id']}",
+        json={"body_area": "knee", "description": "Pain", "status": "unknown"},
+    ).status_code == 422
+
+
 def test_assistant_style_api_roundtrip_and_refusals(client):
     client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
     assert client.put("/profile", json={"current_goal": "Strength"}).status_code == 200

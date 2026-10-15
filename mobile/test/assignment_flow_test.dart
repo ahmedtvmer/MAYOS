@@ -264,6 +264,15 @@ void main() {
     final FakeMayosApi fake = _signedInFake(coach: false)
       ..displayLanguage = 'ar'
       ..currentGoal = 'Build strength.';
+    fake.injuries.add(<String, dynamic>{
+      'id': 'injury-arabic',
+      'body_area': 'shoulder',
+      'catalog_body_parts': <String>['shoulders', 'upper arms'],
+      'description': 'ألم في الكتف',
+      'reported_at': '2026-10-01T10:00:00+00:00',
+      'status': 'reported',
+      'clarification_pending': false,
+    });
     await _pumpApp(tester, fake);
 
     await tester.tap(find.byIcon(Icons.settings_outlined));
@@ -296,6 +305,13 @@ void main() {
     expect(find.text('جدول التدريب'), findsOneWidget);
     expect(find.text('طرق تسجيل الدخول'), findsNothing);
     expect(find.text('Build strength.'), findsOneWidget);
+    expect(find.text('الكتف · تم الإبلاغ'), findsOneWidget);
+    expect(find.text('ألم في الكتف'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('edit_injury_injury-arabic')));
+    await _pumpUntilFound(tester, find.byKey(const Key('save_injury_button')));
+    expect(find.text('منطقة الإصابة'), findsOneWidget);
+    expect(find.text('الحالة'), findsOneWidget);
+    expect(find.text('حفظ الإصابة'), findsOneWidget);
     final TextField weightField =
         tester.widget<TextField>(find.byKey(const Key('weight_kg_field')));
     // The English and Arabic fields both use profile.weightKg.toString(), so

@@ -6,6 +6,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
+from core.injuries import body_area_in_text, is_none_answer
 from agent.prompts import DEFAULT_ASSISTANT_STYLE
 from agent.program_weeks import default_week_name
 from utils.logger import MyosLogger
@@ -17,7 +18,7 @@ from utils.equipment_access import (
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 27
+CURRENT_LEDGER_SCHEMA_VERSION: int = 28
 
 PROGRAM_DRAFTS_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS program_drafts ("
@@ -173,6 +174,21 @@ DELOAD_CHOICES_DDL: tuple[str, ...] = (
     " id INTEGER PRIMARY KEY CHECK (id = 1),"
     " choice TEXT NOT NULL CHECK (choice IN ('undo', 'apply'))"
     ")",
+)
+
+INJURY_RECORDS_DDL: tuple[str, ...] = (
+    "CREATE TABLE IF NOT EXISTS injury_records ("
+    " id TEXT PRIMARY KEY,"
+    " body_area TEXT CHECK (body_area IS NULL OR body_area IN "
+    "('knee', 'hip', 'lower_back', 'shoulder', 'elbow', 'wrist', 'ankle', 'neck')) ,"
+    " description TEXT NOT NULL CHECK (length(description) BETWEEN 1 AND 2000),"
+    " reported_at TEXT NOT NULL,"
+    " status TEXT NOT NULL CHECK (status IN ('reported', 'physician_seen', 'resolved')) ,"
+    " source_event_key TEXT UNIQUE,"
+    " clarification_pending INTEGER NOT NULL DEFAULT 0 CHECK (clarification_pending IN (0, 1))"
+    ")",
+    "CREATE INDEX IF NOT EXISTS idx_injury_records_reported_at "
+    "ON injury_records(reported_at DESC, id)",
 )
 
 
@@ -721,6 +737,56 @@ def _add_program_position_to_workouts(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE workout_sessions ADD COLUMN program_day_order INTEGER")
 
 
+
+
+def _migrate_v27_to_v28(conn: sqlite3.Connection) -> None:
+    """Adds structured injury records and imports a legacy profile answer once."""
+    for statement in INJURY_RECORDS_DDL:
+        conn.execute(statement)
+
+    if not _ledger_table_exists(conn, "user_profile"):
+        return
+    columns = {column[1] for column in conn.execute("PRAGMA table_info(user_profile)")}
+    if "injuries_or_limitations" not in columns:
+        return
+
+    candidates: list[tuple[str, str]] = []
+    profile = conn.execute(
+        "SELECT injuries_or_limitations, updated_at FROM user_profile WHERE id = 1"
+    ).fetchone()
+    if profile is not None and profile[0] is not None:
+        candidates.append((str(profile[1] or ""), str(profile[0]).strip()))
+
+    if _ledger_table_exists(conn, "intake_answers"):
+        answer = conn.execute(
+            "SELECT value, updated_at FROM intake_answers "
+            "WHERE field = 'injuries_or_limitations'"
+        ).fetchone()
+        if answer is not None:
+            try:
+                value = json.loads(answer[0])
+            except (TypeError, ValueError):
+                value = answer[0]
+            if value is not None:
+                candidates.append((str(answer[1] or ""), str(value).strip()))
+
+    reported_candidates = [candidate for candidate in candidates if not is_none_answer(candidate[1])]
+    if not reported_candidates:
+        return
+    reported_at, description = max(reported_candidates)
+    if conn.execute("SELECT 1 FROM injury_records LIMIT 1").fetchone() is not None:
+        return
+
+    reported_at = reported_at or datetime.now(UTC).isoformat()
+    record_id = uuid.uuid5(uuid.NAMESPACE_URL, f"mayos:legacy-injury:{description.casefold()}").hex
+    conn.execute(
+        "INSERT OR IGNORE INTO injury_records "
+        "(id, body_area, description, reported_at, status, source_event_key) "
+        "VALUES (?, ?, ?, ?, 'reported', 'migration:v28:legacy-profile')",
+        (record_id, body_area_in_text(description), description[:2000], reported_at),
+    )
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -833,6 +899,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     24: _migrate_v24_to_v25,
     25: _migrate_v25_to_v26,
     26: _migrate_v26_to_v27,
+    27: _migrate_v27_to_v28,
 }
 
 

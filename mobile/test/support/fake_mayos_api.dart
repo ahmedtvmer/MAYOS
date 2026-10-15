@@ -93,6 +93,11 @@ class FakeMayosApi {
   String lifterPlan = 'free';
   String? coachPlan = 'free';
   bool profileExists = false;
+  final List<Map<String, dynamic>> injuries = <Map<String, dynamic>>[];
+  int _injuryId = 0;
+  int injuryCreateRequests = 0;
+  int injuryUpdateRequests = 0;
+  Map<String, dynamic>? lastInjuryUpdatePayload;
   String? recoveryEmail;
   bool recoveryEmailVerified = true;
   String? pendingRecoveryEmail;
@@ -529,6 +534,9 @@ class FakeMayosApi {
     }
     if (path == '/chat/history') {
       return _chatHistoryResponse(request);
+    }
+    if (path.startsWith('/profile/injuries')) {
+      return _injuries(request);
     }
     if (path == '/chat/messages') {
       return _chatMessage(request);
@@ -3024,6 +3032,7 @@ class FakeMayosApi {
         'equipment_access': equipmentAccess,
         'current_goal': currentGoal,
         'injuries_or_limitations': injuriesOrLimitations,
+        'injuries': injuries,
         'weight_kg': weightKg,
         'target_weight_kg': targetWeightKg,
         'coach_tone': assistantStyle,
@@ -3031,6 +3040,64 @@ class FakeMayosApi {
         'preferred_name': preferredName,
         'player_controls_program': !coachControlsProgram,
       };
+
+  FakeResponse _injuries(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (request.method == 'GET') {
+      return FakeResponse(200, injuries);
+    }
+    if (request.method == 'POST') {
+      return _createInjury(request);
+    }
+    if (request.method == 'PUT') {
+      injuryUpdateRequests++;
+      lastInjuryUpdatePayload = Map<String, dynamic>.from(request.body);
+      final List<String> segments = request.path.split('/');
+      if (segments.length == 4) {
+        final int index = injuries.indexWhere(
+          (Map<String, dynamic> item) => item['id'] == segments.last,
+        );
+        if (index >= 0) {
+          final Map<String, dynamic> updated = <String, dynamic>{
+            ...injuries[index],
+            'body_area': request.body['body_area'],
+            'description': request.body['description'],
+            'status': request.body['status'],
+            'clarification_pending': false,
+          };
+          injuries[index] = updated;
+          return FakeResponse(200, updated);
+        }
+      }
+      return const FakeResponse(404, <String, dynamic>{'detail': 'Injury not found.'});
+    }
+    return const FakeResponse(405, <String, dynamic>{'detail': 'Method not allowed.'});
+  }
+
+  FakeResponse _createInjury(FakeRequest request) {
+    injuryCreateRequests++;
+    _injuryId++;
+    final String? area = request.body['body_area'] as String?;
+    final Map<String, dynamic> record = <String, dynamic>{
+      'id': 'injury-$_injuryId',
+      'body_area': area,
+      'catalog_body_parts': switch (area) {
+        'knee' => <String>['upper legs', 'lower legs'],
+        'shoulder' => <String>['shoulders', 'upper arms'],
+        'lower_back' => <String>['back', 'waist'],
+        _ => <String>[],
+      },
+      'description': request.body['description'],
+      'reported_at': DateTime.now().toUtc().toIso8601String(),
+      'status': 'reported',
+      'clarification_pending': false,
+    };
+    injuries.insert(0, record);
+    return FakeResponse(201, record);
+  }
 
   FakeResponse _profilePersona(FakeRequest request) {
     if (!_authorized(request)) {

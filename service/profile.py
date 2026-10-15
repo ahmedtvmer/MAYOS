@@ -10,6 +10,7 @@ from service.profile_change_alerts import normalize_profile_value
 from service.programs import COACH_CONTROLLED_ERROR, player_controls_program
 from service.program_analytics import ProgramAnalyticsActor, capture_program_generated
 from service import profile_change_alerts
+from service import injuries as injuries_service
 from service import weight_history
 from service.profile_fields import PROFILE_REBUILD_FIELDS
 from service.weight_trend_alerts import evaluate_for_player
@@ -57,7 +58,8 @@ def record_weight_entry(db: Any, ledger: Any, command: WeightEntryCommand) -> we
 
 def get_profile(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, Any] | None:
     with ledger_scope(db, ledger, ledger_id) as ledger:
-        return _profile_with_preferred_name(ledger, ledger.get_player_profile())
+        profile = _profile_with_preferred_name(ledger, ledger.get_player_profile())
+        return {**profile, "injuries": injuries_service.list_injuries(ledger)} if profile else None
 
 
 def _profile_with_preferred_name(
@@ -127,6 +129,16 @@ def update_profile(
                     ledger.upsert_player_profile(updated)
                 for field in PROFILE_ANSWER_FIELDS & payload.keys():
                     ledger.save_intake_answer(field, payload[field], prefilled=False)
+                if "injuries_or_limitations" in payload:
+                    injuries_service.import_legacy_injury_text(
+                        db,
+                        ledger,
+                        injuries_service.LegacyInjuryImport(
+                            player_account_id,
+                            payload["injuries_or_limitations"],
+                            client,
+                        ),
+                    )
 
         profile_change_alerts.record_profile_change(
             db,

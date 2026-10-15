@@ -6,6 +6,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 
 from service import analytics, profile as profile_service
+from service import injuries as injuries_service
 from service import weight_history as weight_history_service
 from service.weight_history import WeightTrendQuery
 from service.programs import player_controls_program
@@ -24,6 +25,9 @@ from svc.schemas import (
     WeightEntryIn,
     WeightEntryOut,
     WeightTrendOut,
+    InjuryRecordCreateIn,
+    InjuryRecordOut,
+    InjuryRecordUpdateIn,
 )
 
 router = APIRouter(prefix="/profile", tags=["profile"])
@@ -78,6 +82,65 @@ async def update_profile(
         ),
     }
     return result
+
+
+@router.get("/injuries", response_model=list[InjuryRecordOut])
+async def read_injuries(
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+):
+    return await asyncio.to_thread(injuries_service.list_injuries, ledger)
+
+
+@router.post("/injuries", response_model=InjuryRecordOut, status_code=status.HTTP_201_CREATED)
+async def create_injury(
+    request: Request,
+    body: InjuryRecordCreateIn,
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    try:
+        record = await asyncio.to_thread(
+            injuries_service.create_injury,
+            db,
+            ledger,
+            player_account_id=account_id_of(player),
+            body_area=body.body_area,
+            description=body.description,
+            client=analytics.client_context(request),
+        )
+    except injuries_service.InjuryValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+    return InjuryRecordOut(**record)
+
+
+@router.put("/injuries/{injury_id}", response_model=InjuryRecordOut)
+async def update_injury(
+    request: Request,
+    injury_id: str,
+    body: InjuryRecordUpdateIn,
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    try:
+        record = await asyncio.to_thread(
+            injuries_service.update_injury,
+            db,
+            ledger,
+            injury_id,
+            player_account_id=account_id_of(player),
+            body_area=body.body_area,
+            description=body.description,
+            status=body.status,
+            client=analytics.client_context(request),
+        )
+    except injuries_service.InjuryValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
+    if record is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Injury record not found.")
+    return InjuryRecordOut(**record)
 
 
 @router.post("/weight", response_model=WeightEntryOut)

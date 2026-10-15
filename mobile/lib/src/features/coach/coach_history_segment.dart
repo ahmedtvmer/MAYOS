@@ -98,6 +98,8 @@ class CoachHistorySegment extends StatelessWidget {
             _scheduleCard(context),
             const SizedBox(height: MayosSpacing.sm),
           ],
+        _injuriesCard(context),
+        const SizedBox(height: MayosSpacing.sm),
         _recentSessionsCard(context),
         const SizedBox(height: MayosSpacing.sm),
         _recordsCard(context),
@@ -295,6 +297,44 @@ class CoachHistorySegment extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _injuriesCard(BuildContext context) {
+    final copy = coachCopyOf(context);
+    if (data.summary.injuries.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: MayosSpacing.sm,
+          vertical: MayosSpacing.xxs,
+        ),
+        child: Text(
+          '${copy.injuries}: ${copy.noInjuries}',
+          style: MayosTypography.of(context).bodySecondary,
+        ),
+      );
+    }
+    return _section(
+      context,
+      copy.injuries,
+      <Widget>[
+        for (final InjuryRecord injury in data.summary.injuries)
+          Padding(
+            padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '${copy.injuryArea(injury.bodyArea)} · ${copy.injuryStatus(injury.status)}',
+                  style: MayosTypography.of(context).body.copyWith(
+                        color: MayosTheme.of(context).textPrimary,
+                      ),
+                ),
+                Text(injury.description),
+              ],
+            ),
+          ),
+      ],
     );
   }
 

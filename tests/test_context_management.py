@@ -350,6 +350,24 @@ def test_routes(graph, query, expected):
     assert graph._classify_single_clause(query)["intent"] == expected
 
 
+def test_magicmock_ledger_cannot_hijack_injury_status_chat(graph):
+    ledger = MagicMock()
+    result = graph.router_node(
+        state("My knee injury has resolved."),
+        {"configurable": {"ledger": ledger, "store": MagicMock()}},
+    )
+    assert result["intent"] == "coaching_qa"
+
+
+def test_magicmock_pending_clarification_does_not_hijack_unrelated_chat(graph):
+    ledger = MagicMock()
+    result = graph.router_node(
+        state("Thanks."),
+        {"configurable": {"ledger": ledger, "store": MagicMock()}},
+    )
+    assert result["intent"] == "coaching_qa"
+
+
 @pytest.fixture
 def comparison(graph):
     def aggregate(weight, reps=8, rpe=8):

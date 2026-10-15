@@ -30,6 +30,7 @@ from typing import Any
 
 from service import onboarding as onboarding_service
 from service import analytics
+from service import injuries as injuries_service
 from service.program_analytics import ProgramAnalyticsActor, capture_program_generated
 from service._base import ledger_scope
 from service.messages import (
@@ -522,7 +523,14 @@ def acknowledge_disclosure(db: Any, ledger_id: str, ledger: Any | None = None) -
 
 
 def save_answer(
-    db: Any, ledger_id: str, field_name: str, raw: Any, ledger: Any | None = None
+    db: Any,
+    ledger_id: str,
+    field_name: str,
+    raw: Any,
+    ledger: Any | None = None,
+    *,
+    player_account_id: str | None = None,
+    client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> dict[str, Any]:
     """Validates and persists one answer; refuses after confirmation.
 
@@ -541,7 +549,14 @@ def save_answer(
                 "Acknowledge the onboarding privacy notice before saving answers."
             )
         value = validate_answer(field_name, raw)
-        ledger.save_intake_answer(field_name, value, prefilled=False)
+        with ledger.ledger_transaction():
+            ledger.save_intake_answer(field_name, value, prefilled=False)
+            if field_name == "injuries_or_limitations":
+                injuries_service.import_legacy_injury_text(
+                    db,
+                    ledger,
+                    injuries_service.LegacyInjuryImport(player_account_id, value, client),
+                )
     return build_view(db, ledger_id, ledger=ledger)
 
 
@@ -603,9 +618,19 @@ def confirm_intake(
             raise IntakeConfirmInProgress("A program is already being generated for this intake.")
 
         profile = {FIELD_BY_NAME[name].profile_key: answers[name]["value"] for name in answers}
-        ledger.upsert_player_profile_with_weight_history(
-            profile, player_local_date(ledger, ledger_id, confirmed_instant).isoformat()
-        )
+        with ledger.ledger_transaction():
+            ledger.upsert_player_profile_with_weight_history(
+                profile, player_local_date(ledger, ledger_id, confirmed_instant).isoformat()
+            )
+            injuries_service.import_legacy_injury_text(
+                db,
+                ledger,
+                injuries_service.LegacyInjuryImport(
+                    player_account_id,
+                    profile.get("injuries_or_limitations"),
+                    client,
+                ),
+            )
         if player_account_id:
             evaluate_for_player(db, player_account_id, ledger=ledger)
 

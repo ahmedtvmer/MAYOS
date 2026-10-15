@@ -34,11 +34,12 @@ String resolveCoachAlertDescription(
   final String normalizedFallback = fallback?.trim().isNotEmpty == true
       ? fallback!.trim()
       : copy.unavailable;
-  if (displayLanguage == 'ar' &&
+  if ((displayLanguage == 'ar' || alert.injuryChanges?.isNotEmpty == true) &&
       alert.isProfileChange &&
       alert.supportedMessageCode == 'coach_alert.profile_change.v1' &&
       description != normalizedFallback) {
-    final String evidence = copy.profileChangeEvidence(alert.profileChanges);
+    final String evidence =
+        copy.profileChangeEvidence(alert.profileChanges, alert.injuryChanges);
     return evidence.isEmpty ? description : '$description\n$evidence';
   }
   if (alert.isWeightOffTargetTrend && alert.weightPoints != null) {
@@ -71,7 +72,8 @@ String? _legacyAlertFallback(CoachAlert alert, MessageCopy copy) {
         alert.e1rmDelta,
         alert.statusBadge,
       ),
-    CoachAlert.profileChangeKind => copy.profileChangeEvidence(alert.profileChanges),
+    CoachAlert.profileChangeKind =>
+      copy.profileChangeEvidence(alert.profileChanges, alert.injuryChanges),
     CoachAlert.weightOffTargetTrendKind => alert.distanceChangeKg == null ||
             alert.targetWeightKg == null ||
             alert.windowDays == null ||

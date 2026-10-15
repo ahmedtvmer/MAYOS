@@ -955,6 +955,25 @@ class CoachCopy {
   String coachingSinceDate(String date) => isArabic ? _ltr(date) : date;
   String get lastSession => isArabic ? 'آخر حصة' : 'Last session';
   String get weeklyVolume => isArabic ? 'الحجم الأسبوعي' : 'Weekly volume';
+  String get injuries => isArabic ? 'الإصابات' : 'Injuries';
+  String get noInjuries => isArabic ? 'لا توجد إصابات مسجلة.' : 'No injuries recorded.';
+  String injuryStatus(String status) => switch (status) {
+        'reported' => isArabic ? 'تم الإبلاغ' : 'Reported',
+        'physician_seen' => isArabic ? 'تمت مراجعة طبيب' : 'Physician seen',
+        'resolved' => isArabic ? 'تم التعافي' : 'Resolved',
+        _ => status,
+      };
+  String injuryArea(String? area) => switch (area) {
+        'knee' => isArabic ? 'الركبة' : 'Knee',
+        'hip' => isArabic ? 'الورك' : 'Hip',
+        'lower_back' => isArabic ? 'أسفل الظهر' : 'Lower back',
+        'shoulder' => isArabic ? 'الكتف' : 'Shoulder',
+        'elbow' => isArabic ? 'الكوع' : 'Elbow',
+        'wrist' => isArabic ? 'الرسغ' : 'Wrist',
+        'ankle' => isArabic ? 'الكاحل' : 'Ankle',
+        'neck' => isArabic ? 'الرقبة' : 'Neck',
+        _ => isArabic ? 'غير محددة' : 'Unknown area',
+      };
   String get sessionVolumeColumn =>
       isArabic ? 'إجمالي الوزن المرفوع (${_ltr('kg')})' : 'Volume (kg)';
   String get sessionDateColumn => isArabic ? 'التاريخ' : 'Date';

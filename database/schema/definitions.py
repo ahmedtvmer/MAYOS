@@ -13,6 +13,7 @@ from database.migration_manager import EQUIPMENT_ACCESS_DDL
 from database.migration_manager import CHECKPOINT_REVIEWS_DDL
 from database.migration_manager import DELOAD_CHOICES_DDL
 from database.migration_manager import INTAKE_DDL
+from database.migration_manager import INJURY_RECORDS_DDL
 from database.migration_manager import ONBOARDING_ANALYTICS_DDL
 from database.migration_manager import PERFORMED_DATE_CORRECTIONS_DDL
 from database.migration_manager import PROGRAM_DRAFTS_DDL
@@ -324,6 +325,7 @@ class SchemaMixin:
                 *SESSION_CARDIO_DDL,
                 *CHECKPOINT_REVIEWS_DDL,
                 *DELOAD_CHOICES_DDL,
+                *INJURY_RECORDS_DDL,
                 *PROGRAM_DRAFTS_DDL,
                 *PROGRAM_WEEKS_DDL,
                 *PROGRAM_VERSION_POSITIONS_DDL,

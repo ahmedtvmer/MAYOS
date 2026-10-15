@@ -186,6 +186,8 @@ def test_coach_reads_all_drill_downs_for_active_assignment(api):
     coach_headers, _, assignment_id = _assigned_player(api)
     _seed_session(db, "p1", 100.0, 5, "2026-09-24T10:00:00+00:00")
     _seed_session(db, "p1", 105.0, 5, "2026-09-25T10:00:00+00:00")
+    with db.open_ledger("p1") as ledger:
+        ledger.create_injury_record("knee", "Knee pain during squats")
 
     base = f"/coach/assignments/{assignment_id}/player"
     summary = client.get(f"{base}/summary", headers=coach_headers)
@@ -197,6 +199,8 @@ def test_coach_reads_all_drill_downs_for_active_assignment(api):
     assert body["latest_session"]["total_volume_kg"] == 105.0 * 5
     assert len(body["recent_sessions"]) == 2
     assert body["recent_sessions"][0]["total_volume_kg"] == 105.0 * 5
+    assert body["injuries"][0]["body_area"] == "knee"
+    assert body["injuries"][0]["status"] == "reported"
 
     records = client.get(f"{base}/personal-records", headers=coach_headers)
     assert records.status_code == 200, records.text
@@ -500,6 +504,8 @@ def test_other_coach_and_unknown_and_revoked_are_indistinguishable(api):
     client, db, _ = api
     coach_headers, player_headers, assignment_id = _assigned_player(api)
     _seed_session(db, "p1", 100.0, 5, "2026-09-24T10:00:00+00:00")
+    with db.open_ledger("p1") as ledger:
+        ledger.create_injury_record("knee", "Private knee injury record")
 
     other_headers = _make_coach(client, db, "intruder", capacity=5)
     base = f"/coach/assignments/{assignment_id}/player"
@@ -507,6 +513,7 @@ def test_other_coach_and_unknown_and_revoked_are_indistinguishable(api):
     unknown = client.get("/coach/assignments/does-not-exist/player/summary", headers=other_headers)
     assert other.status_code == unknown.status_code == 403
     assert other.json()["detail"] == unknown.json()["detail"] == coach_history_service.DENIED_ERROR
+    assert "Private knee injury record" not in other.text
     other_checkpoint = client.get(
         f"{base}/checkpoint-reviews/10", headers=other_headers
     )
@@ -524,6 +531,7 @@ def test_other_coach_and_unknown_and_revoked_are_indistinguishable(api):
     revoked = client.get(f"{base}/summary", headers=coach_headers)
     assert revoked.status_code == 403
     assert revoked.json()["detail"] == coach_history_service.DENIED_ERROR
+    assert "Private knee injury record" not in revoked.text
 
 
 @pytest.mark.parametrize("ended_by", ["coach", "player"])
