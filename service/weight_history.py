@@ -62,6 +62,7 @@ def record_weight(
     ledger.upsert_player_profile_with_weight_history(
         {**profile, "weight_kg": weight}, day.isoformat()
     )
+    ledger.save_intake_answer("weight_kg", weight, prefilled=False)
     return WeightTrendPoint(date=day, weight_kg=weight)
 
 

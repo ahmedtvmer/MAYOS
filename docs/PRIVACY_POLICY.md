@@ -192,14 +192,15 @@ hosted, OpenAI-compatible model provider (the closed-trial deployment uses
 DeepInfra by default, configured by the operator). When a hosted provider is
 configured, the following is sent to it:
 
-- **Assistant chat**: the message you sent, the recent turns of your
-  conversation, and a compact training summary built from your profile (for
-  example gender, age, weight, height, proportions, goal, split and rep
-  preference), your active program's name/frequency/split, your most recent
-  session's top set, and your current fatigue/deload state, plus the assistant
-  tone, custom instructions and preferred name you wrote. It does **not**
-  include your username, your recovery email, your coach's name or contact
-  details, your coach's private notes, or anything a coach wrote about you.
+- **Assistant chat**: your message, the last 10 chat messages (excluding
+  session pointers), your preferred name if set, and your Assistant style and
+  custom instructions. If your question needs profile, active-program, or
+  body-weight trend details, the assistant looks them up from your Player ledger
+  and sends the tool result to the hosted model in a follow-up call. A turn
+  without a relevant lookup sends none of those facts. No compact training
+  summary or latest-session comparison is added automatically. It does **not**
+  include your username, recovery email, your coach's name or contact details, your
+  coach's private notes, or anything a coach wrote about you.
 - **Checkpoint review wording (when enabled)**: only the reduced training totals
   and computed rating parts for that Checkpoint, your Display language, your
   chosen Assistant style, and your trimmed optional wording instructions (up to

@@ -12,6 +12,24 @@ from agent.prompts import DEFAULT_ASSISTANT_STYLE
 from utils.preferred_name import validate_preferred_name
 
 
+PLAYER_PROFILE_STORAGE_DEFAULTS = {
+    "gender": "male",
+    "proportions": "balanced",
+    "age": 25,
+    "weight_kg": 75.0,
+    "target_weight_kg": None,
+    "height_cm": 175.0,
+    "rep_preference": "balanced",
+    "current_goal": "hypertrophy",
+    "long_term_goal": "progressive overload",
+    "weekly_frequency": 4,
+    "training_age_years": 1.0,
+    "equipment_access": map_equipment_access(None),
+    "injuries_or_limitations": "None",
+    "stress_and_sleep": "normal",
+}
+
+
 class LedgerProfileMixin:
     def upsert_player_profile_with_weight_history(self, profile_data: dict, entry_date: str) -> None:
         """Writes an explicit profile weight together with its dated ledger entry."""
@@ -94,25 +112,71 @@ class LedgerProfileMixin:
         cursor = self.conn.cursor()
         params = {
             "id": int(profile_data.get("id", user_id)),
-            "gender": str(profile_data.get("gender", "male")).lower(),
-            "proportions": str(profile_data.get("proportions", "balanced")),
-            "age": int(profile_data.get("age", 25)),
-            "weight_kg": float(profile_data.get("weight_kg", 75.0)),
+            "gender": str(
+                profile_data.get("gender", PLAYER_PROFILE_STORAGE_DEFAULTS["gender"])
+            ).lower(),
+            "proportions": str(
+                profile_data.get("proportions", PLAYER_PROFILE_STORAGE_DEFAULTS["proportions"])
+            ),
+            "age": int(
+                profile_data.get("age", PLAYER_PROFILE_STORAGE_DEFAULTS["age"])
+            ),
+            "weight_kg": float(
+                profile_data.get("weight_kg", PLAYER_PROFILE_STORAGE_DEFAULTS["weight_kg"])
+            ),
             "target_weight_kg": (
                 float(profile_data["target_weight_kg"])
                 if profile_data.get("target_weight_kg") is not None
                 else None
             ),
             "target_weight_present": int("target_weight_kg" in profile_data),
-            "height_cm": float(profile_data.get("height_cm", 175.0)),
-            "rep_preference": str(profile_data.get("rep_preference", "balanced")),
-            "current_goal": str(profile_data.get("current_goal", "hypertrophy")),
-            "long_term_goal": str(profile_data.get("long_term_goal", "progressive overload")),
-            "weekly_frequency": min(max(int(profile_data.get("weekly_frequency", 4)), 1), 5),
-            "training_age_years": float(profile_data.get("training_age_years", 1.0)),
-            "equipment_access": map_equipment_access(profile_data.get("equipment_access")),
-            "injuries_or_limitations": str(profile_data.get("injuries_or_limitations", "None")),
-            "stress_and_sleep": str(profile_data.get("stress_and_sleep", "normal")),
+            "height_cm": float(
+                profile_data.get("height_cm", PLAYER_PROFILE_STORAGE_DEFAULTS["height_cm"])
+            ),
+            "rep_preference": str(
+                profile_data.get("rep_preference", PLAYER_PROFILE_STORAGE_DEFAULTS["rep_preference"])
+            ),
+            "current_goal": str(
+                profile_data.get("current_goal", PLAYER_PROFILE_STORAGE_DEFAULTS["current_goal"])
+            ),
+            "long_term_goal": str(
+                profile_data.get("long_term_goal", PLAYER_PROFILE_STORAGE_DEFAULTS["long_term_goal"])
+            ),
+            "weekly_frequency": min(
+                max(
+                    int(
+                        profile_data.get(
+                            "weekly_frequency",
+                            PLAYER_PROFILE_STORAGE_DEFAULTS["weekly_frequency"],
+                        )
+                    ),
+                    1,
+                ),
+                5,
+            ),
+            "training_age_years": float(
+                profile_data.get(
+                    "training_age_years",
+                    PLAYER_PROFILE_STORAGE_DEFAULTS["training_age_years"],
+                )
+            ),
+            "equipment_access": map_equipment_access(
+                profile_data.get(
+                    "equipment_access", PLAYER_PROFILE_STORAGE_DEFAULTS["equipment_access"]
+                )
+            ),
+            "injuries_or_limitations": str(
+                profile_data.get(
+                    "injuries_or_limitations",
+                    PLAYER_PROFILE_STORAGE_DEFAULTS["injuries_or_limitations"],
+                )
+            ),
+            "stress_and_sleep": str(
+                profile_data.get(
+                    "stress_and_sleep",
+                    PLAYER_PROFILE_STORAGE_DEFAULTS["stress_and_sleep"],
+                )
+            ),
             "coach_tone": str(profile_data.get("coach_tone", DEFAULT_ASSISTANT_STYLE)),
             "custom_instructions": str(profile_data.get("custom_instructions", "")),
             "created_at": now,

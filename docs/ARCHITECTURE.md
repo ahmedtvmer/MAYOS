@@ -32,10 +32,10 @@ flowchart TD
         end
 
         subgraph Hosted_LLM ["Hosted Chat Model"]
-            Context_Clamper["6-Message Context Tail Clamper"]
-            Telemetry_Hydrator["5-Line Compact Telemetry Injection"]
-            Prompt_Assembler["System Core + Coaching Directives"]
-            LLM_Stream["SafeChatOpenAI (OpenAI-compatible endpoint)"]
+            Prompt_Assembler["Safety Core + Name + Style + Last 10 Messages"]
+            LLM_Stream["SafeChatOpenAI with read tools bound"]
+            Tool_Round_Loop["At most 3 tool rounds; parallel reads"]
+            Player_Read_Tools["Profile + Active Program + Weight Trend (turn ledger)"]
             Chunk_Sanitizer["Streamed Response Handling"]
         end
     end
@@ -58,12 +58,14 @@ flowchart TD
     Fast_Router -- "Search / Lookup Pattern" --> Node_Catalog
 
     %% Non-Deterministic Coaching Path
-    Fast_Router -- "Coaching Q&A Pass-Through" --> Context_Clamper
-
-    Context_Clamper --> Telemetry_Hydrator
-    Telemetry_Hydrator --> Prompt_Assembler
+    Fast_Router -- "Coaching Q&A Pass-Through" --> Prompt_Assembler
     Prompt_Assembler --> LLM_Stream
-    LLM_Stream --> Chunk_Sanitizer
+    LLM_Stream -- "Tool calls" --> Tool_Round_Loop
+    Tool_Round_Loop -- "Fixed localized status" --> API_SSE
+    Tool_Round_Loop --> Player_Read_Tools
+    Player_Read_Tools -- "Result ≤ 4 KB or unavailable" --> Tool_Round_Loop
+    Tool_Round_Loop -- "Tool messages" --> LLM_Stream
+    LLM_Stream -- "Answer chunks" --> Chunk_Sanitizer
     Chunk_Sanitizer --> API_SSE
     API_SSE --> UI_Render
 
@@ -280,7 +282,7 @@ catalog cannot resurrect the identity or its ledger. See
 
 ## 5. Token Streaming & Tool-Call Handling
 
-The hosted OpenAI-compatible chat model streams response chunks through the assistant graph, which forwards player-facing text as SSE. Structured calls and tool calls use the same LangChain chat model interface:
+Player free-form turns bind read-only tools while the hosted OpenAI-compatible model streams. A tool round may contain parallel calls; each tool has a timeout and returns at most 4 KB. The loop accepts at most three tool rounds. While tools run, the graph sends one fixed localized status frame per tool without arguments. The final answer streams as token frames; `done` and `error` keep their existing shapes. Clients that do not handle status frames ignore them.
 
 ```mermaid
 sequenceDiagram
@@ -289,21 +291,25 @@ sequenceDiagram
     participant Provider as OpenAI-compatible provider
     participant Graph as Assistant graph
     participant UI as SSE Client (FastAPI /chat/messages)
+    participant Ledger as Turn-scoped Player ledger
 
-    Engine->>Provider: stream(prompt_payload)
+    Engine->>Provider: stream(fixed prompt + bound read tools)
     
     rect rgb(240, 248, 255)
         Note over Provider,Graph: Provider chunks
-        Provider->>Graph: Text and tool-call chunks
-        Graph-->>UI: Yield text chunks as SSE
+        Provider->>Graph: Tool-call chunks
+        Graph-->>UI: event: status (fixed string, no arguments)
+        Graph->>Ledger: Run tools in parallel
+        Ledger-->>Graph: Bounded result or unavailable
+        Graph->>Provider: Continue with tool messages
     end
 
     rect rgb(255, 245, 245)
-        Note over Provider,Graph: Tool arguments are assembled by LangChain
-        Provider->>Graph: Completed tool call
+        Provider->>Graph: Stream final answer chunks
+        Graph-->>UI: data: {"token": ...}
     end
 
-    Note over UI: Client renders streamed assistant text
+    Note over UI: Status appears under the draft; first answer token clears it
 ```
 
 ---
@@ -346,50 +352,35 @@ flowchart TD
 
 ---
 
-## 7. Context Clamping & Telemetry Hydration Pipeline
+## 7. On-Demand Player Chat Context
 
-To maintain flat inference latency and prevent token evaluation degradation across long training histories, Myos replaces full chat serialization with a bounded context pipeline:
+Player free-form prompts contain the safety core, preferred name, Assistant style, and the last 10 chat messages without truncation. Session pointers are excluded. Profile, active-program, and body-weight trend facts are absent until the model calls the relevant read tool; a no-tool turn sends no profile, weight history, telemetry, or program summary.
 
 ```mermaid
 flowchart LR
     subgraph Raw_History ["Persistent SQLite State"]
-        H1["Turn 1...N-6 (Archived)"]
-        H2["Turn N-5"]
-        H3["Turn N-4"]
-        H4["Turn N-3"]
-        H5["Turn N-2"]
-        H6["Turn N-1"]
-        H7["Turn N (Current User Query)"]
+        History["Recent chat messages and session pointers"]
     end
 
-    subgraph Clamping_Pipeline ["Context Tail Clamper (TAIL_WINDOW_SIZE = 6)"]
-        H1 -.->|Dropped from Prompt| Trash["Evicted from Active n_ctx"]
-        H2 --> Tail
-        H3 --> Tail
-        H4 --> Tail
-        H5 --> Tail
-        H6 --> Tail
-        H7 --> Tail
-        Tail["6-Message Active Dialogue Tail"]
-    end
-
-    subgraph Telemetry_Synthesis ["Compact Telemetry Generator"]
-        DB_Profile[("user_profile")] --> Synth["get_compact_telemetry()"]
-        DB_Prog[("training_programs")] --> Synth
-        DB_Sets[("workout_sets")] --> Synth
-        DB_Fatigue[("readiness_eval")] --> Synth
-        Synth --> TelemetryStr["5-Line Compact Snapshot:\n- Trainee Biometrics & Proportions\n- Split & Frequency Metadata\n- Prior Session Top Set\n- Progression Trajectory Signals\n- Systemic Recovery State"]
+    subgraph Fixed_Prompt ["Fixed prompt (last 10; untruncated)"]
+        History --> Filter["Exclude session pointers; select last 10 chat messages"]
+        Filter --> Tail["Conversation tail"]
     end
 
     subgraph Prompt_Payload ["Constructed LLM Payload"]
-        SystemCore["STATIC_SYSTEM_CORE\n(Directives, Word Budgets, Scrubber Rules)"]
-        TelemetryStr --> SystemBlock["System Message"]
-        SystemCore --> SystemBlock
-        SystemBlock --> FinalPayload["Prompt budget (8192 UTF-8 bytes)"]
+        SystemCore["Safety core + preferred name + Assistant style"]
+        SystemCore --> FinalPayload["About 32 KB prompt ceiling"]
         Tail --> FinalPayload
     end
 
-    FinalPayload --> Inference["Hosted OpenAI-compatible chat model"]
+    subgraph Read_Tools ["Read-only tools scoped to the current ledger"]
+        DB_Profile[("Player profile")] --> Tool_Result["Result ≤ 4 KB or unavailable"]
+        DB_Prog[("Active Training program")] --> Tool_Result
+    end
+
+    FinalPayload --> Inference["Hosted model; up to 3 tool rounds"]
+    Inference -- "Relevant tool call" --> Read_Tools
+    Tool_Result --> Inference
 
 ---
 
@@ -427,8 +418,9 @@ sequenceDiagram
     API->>Dep: token_claims -> registry status/capability/epoch -> bind_user -> revocation check
     Dep-->>API: verified trainee id (never from the body)
     API->>Thread: _run_turn(db, trainee, content)
-    Thread->>DB: add user message, build tail (6-message window)
+    Thread->>DB: add user message, build last-10 message tail
     Thread->>Graph: stream_assistant_turn(state)
+    Graph-->>API: fixed localized status frames while tools run
     Graph-->>Thread: scrubbed token pieces
     Thread-->>API: queue.put(("token", piece))
     API-->>UI: data: {"token": ...} frames (SSE)

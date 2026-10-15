@@ -220,7 +220,7 @@ Volume review is a separate assessment and uses the term «مراجعة مجمو
 | Ask your assistant about training, technique, or your program. | اسأل المساعد عن التدريب أو الأسلوب أو برنامجك التدريبي. |
 | Accept the disclosure to start chatting. | وافق على الإفصاح لبدء المحادثة. |
 | Before you start | قبل أن تبدأ |
-| Chat is answered by a hosted AI model. Your message and the training context needed to answer it are sent to that model provider. Free text can contain identifying details, so do not include anything you do not want processed there. | يرد على المحادثة نموذج ذكاء اصطناعي مستضاف. تُرسل رسالتك وسياق التدريب اللازم للإجابة إلى مزود النموذج. قد يتضمن النص الحر تفاصيل تكشف هويتك، لذا لا تكتب ما لا ترغب في معالجته هناك. |
+| Chat uses a hosted AI model. It receives your message, last 10 chat messages, preferred name and assistant settings. Profile or program details it looks up are sent too. Free text can identify you; avoid details you do not want processed there. | يستخدم المساعد نموذج ذكاء اصطناعي مستضاف. تُرسل رسالتك وآخر 10 رسائل واسمك المفضل وإعدادات المساعد إلى مزوده. تُرسل أيضًا تفاصيل الملف أو البرنامج التي يبحث عنها للإجابة. قد يكشف النص الحر هويتك؛ تجنب كتابة ما لا ترغب في معالجته هناك. |
 | Accept the disclosure above to enable chat. | وافق على الإفصاح أعلاه لتفعيل المحادثة. |
 
 ## Onboarding questions and choices

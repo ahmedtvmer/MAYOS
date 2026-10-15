@@ -16,6 +16,7 @@ import '../../../core/chat_storage.dart';
 import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
+import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_card.dart';
 import '../../../core/ui/mayos_markdown.dart';
@@ -58,6 +59,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _sending = false;
   String? _streamingText;
   String? _streamingMessageId;
+  String? _toolStatus;
   String? _sendError;
   FailureMessage? _sendFailure;
   String? _failedContent;
@@ -198,6 +200,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _failedContent = null;
       _streamingText = '';
       _streamingMessageId = assistantMessageId;
+      _toolStatus = null;
       if (addUserBubble) {
         _messages = <ChatMessage>[
           ..._messages,
@@ -219,7 +222,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         switch (event) {
           case ChatToken(:final String token):
             buffer += token;
-            _setStateIfMounted(() => _streamingText = buffer);
+            _setStateIfMounted(() {
+              _streamingText = buffer;
+              _toolStatus = null;
+            });
+          case ChatStatus(:final String status):
+            _setStateIfMounted(() => _toolStatus = status);
           case ChatDone(
               :final String responseContent,
               :final bool programUpdated,
@@ -240,6 +248,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ];
               _streamingText = null;
               _streamingMessageId = null;
+              _toolStatus = null;
               _sending = false;
               _offline = false;
               _historyFailure = null;
@@ -318,6 +327,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _setStateIfMounted(() {
       _streamingText = null;
       _streamingMessageId = null;
+      _toolStatus = null;
       _sending = false;
       _offline = _offline || offline;
       _sendError = message;
@@ -545,15 +555,32 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget _buildMessageItem(BuildContext context, int index) {
     if (index >= _messages.length) {
       final String text = _streamingText ?? '';
+      final MayosThemeExtension colors = MayosTheme.of(context);
       return _bubble(
         context,
         role: 'assistant',
-        child: text.isEmpty
-            ? const _TypingIndicator()
-            : MayosMarkdown(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            if (text.isEmpty)
+              const _TypingIndicator()
+            else
+              MayosMarkdown(
                 key: ValueKey<String>(_streamingMessageId!),
                 source: text,
               ),
+            if (_toolStatus != null) ...<Widget>[
+              const SizedBox(height: MayosSpacing.xxs),
+              Text(
+                _toolStatus!,
+                key: const Key('chat_tool_status'),
+                style: MayosTypography.of(context)
+                    .caption
+                    .copyWith(color: colors.textSecondary),
+              ),
+            ],
+          ],
+        ),
       );
     }
     final ChatMessage message = _messages[index];

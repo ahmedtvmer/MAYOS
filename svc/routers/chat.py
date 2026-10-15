@@ -91,8 +91,19 @@ def _run_turn(
                     custom_instructions=profile.get("custom_instructions", ""),
                     player_account_id=account_id,
                 )
-                for piece in bound_stream(stream_assistant_turn, state, ledger=ledger, store=db, scope=scope):
-                    out.put(("token", piece))
+                for piece in bound_stream(
+                    stream_assistant_turn,
+                    state,
+                    ledger=ledger,
+                    store=db,
+                    status_callback=lambda status_text: out.put(("status", status_text)),
+                    scope=scope,
+                ):
+                    delivered = threading.Event()
+                    out.put(("token", (piece, delivered)))
+                    while not delivered.wait(timeout=0.1):
+                        if disconnected.is_set():
+                            break
                 chat_service.persist_assistant_message(ledger, state.get("response_content"))
                 change = state.get("program_change")
                 persisted = ledger.get_active_program() if change else None
@@ -180,7 +191,13 @@ async def post_message(
                     disconnected.set()
                     break
                 if kind == "token":
-                    yield f"data: {json.dumps({'token': payload})}\n\n"
+                    token_text, delivered = payload
+                    try:
+                        yield f"data: {json.dumps({'token': token_text})}\n\n"
+                    finally:
+                        delivered.set()
+                elif kind == "status":
+                    yield f"event: status\ndata: {json.dumps({'status': payload})}\n\n"
                 elif kind == "done":
                     yield f"data: {json.dumps({'done': True, **payload})}\n\n"
                 elif kind == "error":

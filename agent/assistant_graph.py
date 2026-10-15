@@ -6,14 +6,14 @@ import sqlite3
 import sys
 import time
 import unicodedata
-from collections.abc import Generator, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Generator, Sequence
+from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Annotated, Any, Dict, Literal
 
 from dotenv import load_dotenv
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
@@ -65,8 +65,12 @@ from agent.player_prompt import (
     message_role as _message_role,
     prompt_budget as _prompt_budget,
     prompt_token_count as _prompt_token_count,
-    player_prompt_history_settings,
     valid_preferred_name as _valid_preferred_name,
+)
+from agent.player_tools import (
+    build_player_read_tools,
+    cap_tool_results_for_prompt,
+    run_player_tool_calls,
 )
 from agent.telemetry_reconciler import (
     clean_movement_stem,
@@ -75,16 +79,6 @@ from agent.telemetry_reconciler import (
 )
 from database.exercise_library.schema import exercise_library_visible_sql
 from service.exercise_context import describe_exercise, describe_exercises
-from service.player_weight_context import (
-    is_weight_context_relevant,
-    render_player_weight_context,
-)
-from service.weight_history import (
-    WeightTrend,
-    WeightTrendQuery,
-    get_weight_trend,
-    player_local_date,
-)
 from database.exercise_library.names import near_miss_exercise_ids
 from service import programs as programs_service
 from service.program_requests import MAX_REASON_CHARS
@@ -780,8 +774,8 @@ def hydrate_context_node(state: AssistantState, config: dict[str, Any] | None = 
     name = _valid_preferred_name(memory.get("preferred_name")) if isinstance(memory, dict) else None
     telemetry = state.get("telemetry_context") or ledger.get_compact_telemetry()
     recent = " ".join(
-        _get_message_text(m)
-        for m in state.get("messages", [])[-player_prompt_history_settings().window_size :]
+        _get_message_text(message)
+        for message in state.get("messages", [])[-TAIL_WINDOW_SIZE:]
     )
     needs_comparison = state.get("intent") == "exercise_history_fallback" or re.search(
         r"\b(?:session|workout|performance|compare|comparison|progress|sets?|reps?|rpe|load|heavier|improve)\b",
@@ -802,29 +796,11 @@ def hydrate_context_node(state: AssistantState, config: dict[str, Any] | None = 
     telemetry = _append_ledger_history_facts(
         recent_user, str(telemetry or ""), (ledger, store), display_language
     )
-    weight_context = None
-    if is_weight_context_relevant(recent_user):
-        try:
-            as_of = player_local_date(ledger, str(state.get("trainee_id", "")))
-            weight_trend = get_weight_trend(
-                store,
-                WeightTrendQuery(
-                    ledger_id=str(state.get("trainee_id", "")), weeks=8, as_of=as_of
-                ),
-                ledger,
-            )
-        except sqlite3.Error:
-            logger.exception("Player weight history could not be loaded for assistant context.")
-            weight_trend = WeightTrend(points=(), change_kg=None)
-            as_of = None
-        weight_context = render_player_weight_context(
-            weight_trend, profile.get("target_weight_kg"), as_of=as_of
-        )
     return {
         "coach_tone": state.get("coach_tone") or profile.get("coach_tone") or DEFAULT_ASSISTANT_STYLE,
         "custom_instructions": state.get("custom_instructions") or profile.get("custom_instructions", ""),
         "telemetry_context": telemetry,
-        "weight_context": weight_context,
+        "weight_context": None,
         "preferred_name": name,
         "display_language": display_language,
     }
@@ -3247,6 +3223,200 @@ def _finish_limited(message: Any) -> bool:
     return any(m.get("finish_reason") in {"length", "max_tokens"} or m.get("stop_reason") == "max_tokens" for m in (metadata, info))
 
 
+@dataclass
+class _PlayerStreamOutput:
+    visible: list[str]
+    scrubber: CoachOutputScrubber | None = None
+    pending_output: str = ""
+    round_visible_count: int = 0
+
+    def begin_answer(self) -> None:
+        self.round_visible_count = len(self.visible)
+        self.scrubber = CoachOutputScrubber()
+        self.pending_output = ""
+
+    def add_text(self, text: str) -> Generator[str, None, None]:
+        for character in text:
+            cleaned = self.scrubber.feed(character)
+            if not cleaned:
+                continue
+            self.pending_output += cleaned
+            complete_end = _last_complete_sentence_end(self.pending_output)
+            if complete_end:
+                complete_text = self.pending_output[:complete_end]
+                self.pending_output = self.pending_output[complete_end:]
+                self.visible.append(complete_text)
+                yield complete_text
+
+    def finish_answer(self, limited: bool) -> Generator[str, None, None]:
+        cleaned = self.scrubber.finish()
+        if cleaned:
+            self.pending_output += cleaned
+        if limited:
+            self.pending_output = _trim_to_last_complete_sentence(self.pending_output)
+        if self.pending_output:
+            self.visible.append(self.pending_output)
+            yield self.pending_output
+            self.pending_output = ""
+        if len(self.visible) == self.round_visible_count and not limited:
+            self.visible.append(EMPTY_RESPONSE_FALLBACK)
+            yield EMPTY_RESPONSE_FALLBACK
+        if limited:
+            note = ("\n\n" if self.visible else "") + OUTPUT_LIMIT_RESPONSE
+            self.visible.append(note)
+            yield note
+
+
+@dataclass
+class _PlayerModelStream:
+    started_at: float = field(default_factory=time.perf_counter)
+    response: AIMessageChunk | BaseMessage | None = None
+    raw_pieces: list[str] = field(default_factory=list)
+    limited: bool = False
+    ttft_seconds: float = 0.0
+    tool_mode: bool = False
+    warned_missing_content: bool = False
+
+    def accept(self, chunk: Any) -> None:
+        if self.ttft_seconds == 0:
+            self.ttft_seconds = time.perf_counter() - self.started_at
+        self.limited = self.limited or _finish_limited(chunk)
+        tool_chunks = getattr(chunk, "tool_call_chunks", None) or getattr(chunk, "tool_calls", None)
+        self.tool_mode = self.tool_mode or bool(tool_chunks)
+        if isinstance(chunk, AIMessageChunk):
+            self.response = chunk if self.response is None else self.response + chunk
+        elif isinstance(chunk, BaseMessage):
+            self.response = chunk
+        if not hasattr(chunk, "content") and not self.warned_missing_content:
+            logger.warning("LLM stream chunk %s lacks .content; coercing via str().", type(chunk).__name__)
+            self.warned_missing_content = True
+        piece = chunk.content if hasattr(chunk, "content") else str(chunk)
+        self.raw_pieces.append(str(piece))
+
+    def message(self) -> BaseMessage:
+        if isinstance(self.response, AIMessageChunk):
+            return AIMessage(
+                content=self.response.content,
+                tool_calls=self.response.tool_calls,
+                invalid_tool_calls=self.response.invalid_tool_calls,
+                usage_metadata=self.response.usage_metadata,
+                response_metadata=self.response.response_metadata,
+                id=self.response.id,
+                name=self.response.name,
+            )
+        if isinstance(self.response, BaseMessage):
+            return self.response
+        return AIMessage(content="")
+
+    def telemetry(self) -> dict[str, float | int]:
+        generation_seconds = max(
+            0.0,
+            (time.perf_counter() - self.started_at) - self.ttft_seconds,
+        )
+        tokens = _count_display_tokens("".join(self.raw_pieces))
+        tokens_per_second = tokens / generation_seconds if generation_seconds > 0 else 0.0
+        if tokens and generation_seconds >= 0.5 and tokens_per_second < 8.0:
+            logger.warning(
+                "[PERF DEGRADATION] Low inference throughput detected: %.2f TPS (Threshold: 8.0 TPS). "
+                "Check CPU temperature or background processes.",
+                tokens_per_second,
+            )
+        return {
+            "ttft_ms": self.ttft_seconds * 1000.0,
+            "gen_time_s": generation_seconds,
+            "tokens": tokens,
+            "tps": tokens_per_second,
+        }
+
+
+@dataclass(frozen=True)
+class _StreamedPlayerAnswer:
+    message: BaseMessage
+    tool_calls: list[dict[str, Any]]
+    telemetry: dict[str, float | int]
+
+
+def _stream_player_answer(
+    chunks: Any,
+    output: _PlayerStreamOutput,
+) -> Generator[str, None, _StreamedPlayerAnswer]:
+    output.begin_answer()
+    capture = _PlayerModelStream()
+    for chunk in chunks:
+        tool_chunks = getattr(chunk, "tool_call_chunks", None) or getattr(chunk, "tool_calls", None)
+        has_tool_calls = bool(tool_chunks)
+        capture.accept(chunk)
+        if has_tool_calls:
+            # Keep complete sentences already shown, but discard the rest of
+            # this tool-call round. The next answer round gets a fresh scrubber.
+            output.scrubber = None
+            output.pending_output = ""
+            continue
+        if not capture.tool_mode:
+            piece = chunk.content if hasattr(chunk, "content") else str(chunk)
+            yield from output.add_text(str(piece))
+    message = capture.message()
+    tool_calls = list(getattr(message, "tool_calls", ()) or ())
+    capture.tool_mode = capture.tool_mode or bool(tool_calls)
+    if capture.tool_mode:
+        output.scrubber = None
+        output.pending_output = ""
+        return _StreamedPlayerAnswer(message, tool_calls, {})
+    yield from output.finish_answer(capture.limited)
+    return _StreamedPlayerAnswer(message, [], capture.telemetry())
+
+
+MAX_PLAYER_TOOL_ROUNDS = 3
+
+
+def _tool_reply_language(state: dict[str, Any]) -> str:
+    latest = next(
+        (
+            _get_message_text(message)
+            for message in reversed(state.get("messages", []))
+            if _message_role(message) == "user"
+        ),
+        "",
+    )
+    return "ar" if resolve_reply_language(
+        latest, normalize_display_language(state.get("display_language"))
+    ) == "ar" else "en"
+
+
+def _invoke_player_tool_loop(
+    state: AssistantState,
+    config: dict[str, Any] | None,
+    payload: list[BaseMessage],
+) -> Any:
+    """Invokes the same bounded read-tool loop for non-streaming graph callers."""
+    ledger, _store = _graph_context(config)
+    tools, definitions = build_player_read_tools(ledger)
+    bound_model = llm.bind_tools(tools)
+    messages = list(payload)
+    for _round in range(MAX_PLAYER_TOOL_ROUNDS):
+        response = bound_model.invoke(messages)
+        tool_calls = list(getattr(response, "tool_calls", ()) or ())
+        if not tool_calls:
+            return response
+        _ensure_tool_call_ids(tool_calls)
+        response = response.model_copy(update={"tool_calls": tool_calls})
+        tool_messages, _telemetry = run_player_tool_calls(
+            tool_calls,
+            tools=tools,
+            definitions=definitions,
+            language=_tool_reply_language(state),
+        )
+        tool_messages = cap_tool_results_for_prompt([*messages, response], tool_messages)
+        messages.extend([response, *tool_messages])
+    return llm.invoke(messages)
+
+
+def _ensure_tool_call_ids(tool_calls: list[dict[str, Any]]) -> None:
+    for index, call in enumerate(tool_calls):
+        if not call.get("id"):
+            call["id"] = f"player-tool-call-{index + 1}"
+
+
 def _last_complete_sentence_end(text: str) -> int:
     """Return the end of the last sentence with terminal punctuation."""
     sentence_end = 0
@@ -3269,7 +3439,7 @@ def _trim_to_last_complete_sentence(text: str) -> str:
 def generation_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     try:
         payload = build_prompt_payload(state)
-        response = llm.invoke(payload)
+        response = _invoke_player_tool_loop(state, config, payload)
         content = finalize_coach_output(response.content)
         if _finish_limited(response):
             content = _trim_to_last_complete_sentence(content)
@@ -3471,18 +3641,35 @@ def _record_telemetry_event(
     tokens: int = 0,
     tps: float = 0.0,
     user_id: str = "default",
+    tool_metrics: Sequence[tuple[str, float]] = (),
 ) -> None:
+    tool_totals: dict[str, list[float]] = {}
+    for name, latency_ms in tool_metrics:
+        totals = tool_totals.setdefault(name, [0.0, 0.0])
+        totals[0] += 1
+        totals[1] += max(0.0, latency_ms)
+    tool_summary = ""
+    if tool_totals:
+        tool_summary = " | Tools: " + ", ".join(
+            f"{name} count={int(count)} latency_ms={latency:.1f}"
+            for name, (count, latency) in tool_totals.items()
+        )
     log_payload = (
         f"[TELEMETRY] User: {user_id} | Intent: {intent} | "
         f"Router: {fast_path_ms:.3f}ms | TTFT: {ttft_ms:.1f}ms | "
         f"Tokens: {tokens} | GenTime: {gen_time_s:.2f}s | Speed: {tps:.2f} TPS"
+        f"{tool_summary}"
     )
     logger.info(log_payload)
     _telemetry_handler.flush()
 
 
 def stream_assistant_turn(
-    state: dict[str, Any], *, ledger: Any, store: Any
+    state: dict[str, Any],
+    *,
+    ledger: Any,
+    store: Any,
+    status_callback: Callable[[str], None] | None = None,
 ) -> Generator[str, None, None]:
     """Streams one assistant turn against the caller-owned ledger handle.
 
@@ -3495,8 +3682,11 @@ def stream_assistant_turn(
     original_messages = list(state.get("messages", []))
     result = None
     visible = []
-    scrubber = None
-    pending_output = ""
+    stream_output = _PlayerStreamOutput(visible)
+    tool_metrics: list[tuple[str, float]] = []
+    intent = "coaching_qa"
+    router_ms = 0.0
+    telemetry_recorded = False
     try:
         state.update(hydrate_context_node(state, config))
         state.update(router_node(state, config))
@@ -3530,68 +3720,70 @@ def stream_assistant_turn(
             telemetry = {}
         else:
             payload = build_prompt_payload(state)
-            scrubber = CoachOutputScrubber()
-            limited = False
-            contract_warned = False
-            raw_pieces: list[str] = []
-            gen_start = time.perf_counter()
-            ttft_s = 0.0
-            for chunk in llm.stream(payload):
-                if ttft_s == 0.0:
-                    ttft_s = time.perf_counter() - gen_start
-                limited = limited or _finish_limited(chunk)
-                if not hasattr(chunk, "content") and not contract_warned:
-                    logger.warning("LLM stream chunk %s lacks .content; coercing via str().", type(chunk).__name__)
-                    contract_warned = True
-                piece = chunk.content if hasattr(chunk, "content") else str(chunk)
-                raw_pieces.append(str(piece))
-                for char in piece:
-                    cleaned = scrubber.feed(char)
-                    if cleaned:
-                        pending_output += cleaned
-                        complete_end = _last_complete_sentence_end(pending_output)
-                        if complete_end:
-                            complete_text = pending_output[:complete_end]
-                            pending_output = pending_output[complete_end:]
-                            visible.append(complete_text)
-                            yield complete_text
-            cleaned = scrubber.finish()
-            if cleaned:
-                pending_output += cleaned
-            if limited:
-                pending_output = _trim_to_last_complete_sentence(pending_output)
-            if pending_output:
-                visible.append(pending_output)
-                yield pending_output
-            if not visible and not limited:
-                visible.append(EMPTY_RESPONSE_FALLBACK)
-                yield EMPTY_RESPONSE_FALLBACK
-            if limited:
-                note = ("\n\n" if visible else "") + OUTPUT_LIMIT_RESPONSE
-                visible.append(note)
-                yield note
-            gen_time_s = max(0.0, (time.perf_counter() - gen_start) - ttft_s)
-            tokens = _count_display_tokens("".join(raw_pieces))
-            tps = tokens / gen_time_s if gen_time_s > 0 else 0.0
-            telemetry = {"ttft_ms": ttft_s * 1000.0, "gen_time_s": gen_time_s, "tokens": tokens, "tps": tps}
-            if tokens and gen_time_s >= 0.5 and tps < 8.0:
-                logger.warning(
-                    "[PERF DEGRADATION] Low inference throughput detected: %.2f TPS (Threshold: 8.0 TPS). "
-                    "Check CPU temperature or background processes.",
-                    tps,
+            tools, definitions = build_player_read_tools(ledger)
+            bound_model = llm.bind_tools(tools)
+            model_messages = list(payload)
+
+            for _round_index in range(MAX_PLAYER_TOOL_ROUNDS):
+                streamed_answer = yield from _stream_player_answer(
+                    bound_model.stream(model_messages), stream_output
                 )
-        _record_telemetry_event(intent, router_ms, user_id=state.get("trainee_id", "default"), **telemetry)
+                if not streamed_answer.tool_calls:
+                    telemetry = streamed_answer.telemetry
+                    break
+                _ensure_tool_call_ids(streamed_answer.tool_calls)
+                response_message = streamed_answer.message.model_copy(
+                    update={"tool_calls": streamed_answer.tool_calls}
+                )
+                tool_messages, round_metrics = run_player_tool_calls(
+                    streamed_answer.tool_calls,
+                    tools=tools,
+                    definitions=definitions,
+                    language=_tool_reply_language(state),
+                    status_callback=status_callback,
+                )
+                tool_messages = cap_tool_results_for_prompt(
+                    [*model_messages, response_message], tool_messages
+                )
+                tool_metrics.extend(round_metrics)
+                model_messages.extend([response_message, *tool_messages])
+            else:
+                # The three tool rounds are complete. A plain model call gets
+                # the results and must answer without starting another round.
+                final_answer = yield from _stream_player_answer(
+                    llm.stream(model_messages), stream_output
+                )
+                telemetry = final_answer.telemetry
+            _record_telemetry_event(
+                intent,
+                router_ms,
+                user_id=state.get("trainee_id", "default"),
+                tool_metrics=tool_metrics,
+                **telemetry,
+            )
+            telemetry_recorded = True
+        if result is not None:
+            _record_telemetry_event(
+                intent, router_ms, user_id=state.get("trainee_id", "default")
+            )
     except PromptBudgetError as exc:
         result = _response(str(exc))
     except Exception:
+        if tool_metrics and not telemetry_recorded:
+            _record_telemetry_event(
+                intent,
+                router_ms,
+                user_id=state.get("trainee_id", "default"),
+                tool_metrics=tool_metrics,
+            )
         logger.exception("Assistant turn failed")
-        if scrubber is not None:
-            cleaned = scrubber.finish()
+        if stream_output.scrubber is not None:
+            cleaned = stream_output.scrubber.finish()
             if cleaned:
-                pending_output += cleaned
-            if pending_output:
-                visible.append(pending_output)
-                yield pending_output
+                stream_output.pending_output += cleaned
+            if stream_output.pending_output:
+                visible.append(stream_output.pending_output)
+                yield stream_output.pending_output
         result = _response(PIPELINE_ERROR_RESPONSE, bool(result and result.get("program_updated")))
     if result is not None:
         cleaned = finalize_coach_output(result.get("response_content") or "")

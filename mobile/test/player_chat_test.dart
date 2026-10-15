@@ -355,14 +355,33 @@ void main() {
     expect(find.byTooltip('مسح سجل المحادثة'), findsOneWidget);
     expect(find.text('قبل أن تبدأ'), findsOneWidget);
     expect(
-        find.text(
-            'يرد على المحادثة نموذج ذكاء اصطناعي مستضاف. تُرسل رسالتك وسياق التدريب اللازم للإجابة إلى مزود النموذج. قد يتضمن النص الحر تفاصيل تكشف هويتك، لذا لا تكتب ما لا ترغب في معالجته هناك.'),
-        findsOneWidget);
+      find.text(
+        'يستخدم المساعد نموذج ذكاء اصطناعي مستضاف. تُرسل رسالتك وآخر 10 رسائل واسمك المفضل وإعدادات المساعد إلى مزوده. تُرسل أيضًا تفاصيل الملف أو البرنامج التي يبحث عنها للإجابة. قد يكشف النص الحر هويتك؛ تجنب كتابة ما لا ترغب في معالجته هناك.',
+      ),
+      findsOneWidget,
+    );
     expect(_chatMarkdown('Server supplied coaching text.'), findsOneWidget);
     expect(
       Directionality.of(tester.element(find.byTooltip('مسح سجل المحادثة'))),
       TextDirection.rtl,
     );
+  });
+
+  testWidgets('chat displays the transient tool status then clears it at reply start',
+      (tester) async {
+    final FakeMayosApi fake = _fakePlayer('tool-status-player');
+    fake.chatStatuses = <String>['Checking your profile…'];
+    await _pumpChat(tester, fake, store: InMemoryChatCacheStore());
+    await _acceptDisclosure(tester);
+
+    await tester.enterText(
+        find.byKey(const Key('chat_composer')), 'What do you know about me?');
+    await tester.tap(find.byKey(const Key('chat_send')));
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(find.text('Checking your profile…'), findsOneWidget);
+
+    await _pumpUntilFound(tester, _chatMarkdown('Keep your elbows tucked.'));
+    expect(find.byKey(const Key('chat_tool_status')), findsNothing);
   });
 
   testWidgets('preferred name captured in chat appears in Settings',

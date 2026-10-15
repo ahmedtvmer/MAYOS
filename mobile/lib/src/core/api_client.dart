@@ -2794,6 +2794,10 @@ class ApiClient {
         messageFallback: metadata?.messageFallback,
       );
     }
+    if (event.event == 'status') {
+      final dynamic status = decoded['status'];
+      return status is String && status.isNotEmpty ? ChatStatus(status) : null;
+    }
     if (decoded['done'] == true) {
       return parseDone(decoded);
     }

@@ -395,6 +395,7 @@ class FakeMayosApi {
   // When true, the done frame reports `program_updated: true`.
   bool chatProgramUpdated = false;
   Map<String, dynamic>? chatRequestSuggestion;
+  List<String> chatStatuses = <String>[];
   List<String> chatReplyChunks = <String>['Keep your ', 'elbows tucked.'];
 
   // Exact method+path pairs that fail as a dropped connection (offline
@@ -1930,6 +1931,8 @@ class FakeMayosApi {
       'created_at': '2026-09-26T12:00:01Z',
     });
     return FakeResponse(200, null, <String>[
+      for (final String status in chatStatuses)
+        'event: status\ndata: {"status": ${jsonEncode(status)}}\n\n',
       for (final String chunk in replyChunks)
         'data: {"token": ${jsonEncode(chunk)}}\n\n',
       'data: {"done": true, "response_content": ${jsonEncode(reply)}, '

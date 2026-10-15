@@ -45,11 +45,7 @@ Myos implements a deterministic fast-path router (`agent/assistant_graph.py`) th
 
 ## 2. Context Window Scaling & Memory Management
 
-Without context clamping, conversational history expands linearly across multi-session training cycles and can exceed the prompt-size budget.
-
-Myos maintains a constant compute footprint through two mechanisms:
-1. **Context Window Clamping**: The conversation payload passed to the LLM is clamped to a fixed 6-message tail (`TAIL_WINDOW_SIZE = 6`).
-2. **Compact Telemetry Hydration**: Workout history is dynamically distilled into a compact 5-line string containing current trainee biometrics, routine metadata, last session performance, and systemic fatigue states.
+The benchmark below records the former six-message tail and compact telemetry prompt. Since #269, free-form Player chat sends the last 10 messages without truncation, excludes session pointers and does not inject a training summary. Profile, active-program, and body-weight trend facts are fetched through read-only tools when requested. The historical latency measurements below do not describe this current prompt path.
 
 ### Recorded Context Scaling Benchmark (2026-09)
 
@@ -61,7 +57,7 @@ Myos maintains a constant compute footprint through two mechanisms:
 | **20 Turns** | 7.59 s | 4.23 s | 1.8× faster |
 | **30 Turns** | 10.14 s | **4.18 s** | **2.4× faster — flat ceiling** |
 
-The recorded clamped path held an asymptotic **~4.2 s ceiling** regardless of history length, while the unclamped path grew past 10 s by turn 30. These model response times are historical; the bounded six-message tail and prompt-size limit remain the current behavior.
+The recorded clamped path held an asymptotic **~4.2 s ceiling** regardless of history length, while the unclamped path grew past 10 s by turn 30. These model response times and the six-message tail are historical.
 
 ---
 

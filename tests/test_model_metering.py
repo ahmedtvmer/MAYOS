@@ -26,7 +26,7 @@ from service.model_limits import ModelLimitExceeded, admit_model_request, reset_
 from svc.app import create_app
 from svc.dependencies import get_db
 from svc.llm import InferenceScope, run_inference_sync
-from tests.fakes.chat_model import ScriptedChatModel
+from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 from utils import model_metering as utils_metering
 from utils.model_metering import MeteringCallback
 
@@ -297,6 +297,42 @@ def test_multicall_chat_turn_emits_one_metered_event(api, monkeypatch, recording
     assert len(rows) == 1
     assert rows[0]["requests"] == 2
     _assert_ai_usage_event(recording_analytics, db, account_id, "chat", 2)
+
+
+def test_tool_call_chat_turn_uses_one_allowance_and_meters_each_model_call(
+    api, monkeypatch, recording_analytics
+):
+    client, db = api
+    token = _register(client, "tool-metered-player")
+    account_id = _account_id(db, "tool-metered-player")
+    fake = _fake_model()
+    fake.reset(
+        [
+            ToolCallsTurn(
+                calls=[
+                    {"name": "get_player_profile", "args": {}, "id": "profile-lookup"}
+                ]
+            ),
+            "Your saved profile is not set yet.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", fake)
+
+    response = _post_chat(client, token)
+    assert response.status_code == 200, response.text
+
+    rows = _usage_rows(db, account_id)
+    assert len(rows) == 1
+    assert rows[0]["requests"] == 2
+    assert rows[0]["input_tokens"] == 240
+    assert rows[0]["output_tokens"] == 60
+    _assert_ai_usage_event(recording_analytics, db, account_id, "chat", 2)
+    completed = next(
+        event
+        for event in recording_analytics.events
+        if event["event"] == "ai_request_completed"
+    )
+    assert completed["properties"]["turns_today"] == 1
 
 
 def test_resolve_split_meters_only_model_path_through_injected_inference(api, monkeypatch):
@@ -970,7 +1006,7 @@ def test_trial_cap_chat_api_seam_uses_utc_reset_and_refuses_before_stream(api, m
     reset_model_limits()
     stream_calls: list[str] = []
 
-    def deterministic_stream(state, *, ledger, store):
+    def deterministic_stream(state, *, ledger, store, status_callback=None):
         stream_calls.append(state["messages"][-1].content)
         state["response_content"] = "Recorded reply."
         yield "Recorded reply."

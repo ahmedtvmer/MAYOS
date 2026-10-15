@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Literal
 
-PLAYER_CHAT_REPLY_MAX_OUTPUT_TOKENS = 200
+PLAYER_CHAT_REPLY_MAX_OUTPUT_TOKENS = 400
 INTENT_ROUTING_MAX_OUTPUT_TOKENS = 112
 # The correctly capped #199 gate truncated all five cases at 56; retain the former ceiling.
 SUBSTITUTION_RESOLUTION_MAX_OUTPUT_TOKENS = 200

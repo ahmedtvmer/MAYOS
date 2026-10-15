@@ -14,11 +14,16 @@ Proves the stated guarantees through the real HTTP surface:
 
 import json
 import sqlite3
+import time
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from agent import assistant_graph
+from agent import player_tools
+from agent import player_prompt
 from agent.ProgramState import GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema
 from database.database_manager import DatabaseManager
 from service import coach as coach_service
@@ -26,7 +31,7 @@ from service import workouts as workouts_service
 from svc.app import create_app
 from svc.dependencies import get_db
 from svc.schemas import CHAT_MESSAGE_MAX_CHARS
-from tests.fakes.chat_model import ScriptedChatModel
+from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
 
@@ -105,6 +110,19 @@ def _register(client, username, password="correct-horse-1"):
 
 def _authed(token):
     return {"Authorization": f"Bearer {token}"}
+
+
+def _force_free_form_coaching_intent(monkeypatch):
+    monkeypatch.setattr(
+        assistant_graph,
+        "_classify_intent_with_llm",
+        lambda _query: assistant_graph.IntentClassification(intent="coaching_qa"),
+    )
+    monkeypatch.setattr(
+        assistant_graph,
+        "_classify_arabic_intent",
+        lambda _query, _config: {"intent": "coaching_qa", "intent_metadata": {}},
+    )
 
 
 def test_structured_intake_confirmation_does_not_call_hosted_model(api, monkeypatch):
@@ -254,8 +272,7 @@ def test_player_model_input_excludes_identifying_fields(api, monkeypatch):
 
     llm = ScriptedChatModel(["Keep the elbows tucked."])
     monkeypatch.setattr(assistant_graph, "llm", llm)
-    # Keep the prompt budget generous so the trimming loop cannot drop the
-    # context block and mask the privacy assertion.
+    # Keep the prompt budget generous so the full fixed prompt is captured.
     monkeypatch.setattr(assistant_graph, "_prompt_budget", lambda: 100_000)
 
     with client.stream(
@@ -265,14 +282,644 @@ def test_player_model_input_excludes_identifying_fields(api, monkeypatch):
         stream.read()
 
     rendered = _last_rendered(llm)
-    # The player's own message and the needed context reach the model.
+    # Only the fixed prompt reaches the model; ledger facts wait for a tool call.
     assert "How should I cue my bench?" in rendered
-    assert "[TRAINEE CONTEXT]" in rendered
+    assert "[TRAINEE CONTEXT]" not in rendered
+    assert "Hypertrophy" not in rendered
+    assert "weekly_frequency" not in rendered
     assert "Prefer short answers." in rendered  # intended: user-authored instructions
     # Identifying account fields never do.
     assert username not in rendered
     assert email not in rendered
     assert "secretpineapple" not in rendered
+
+
+def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
+    api, monkeypatch, caplog
+):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "private-tool-player"
+    email = "private-tool-player@example.com"
+    registered = _register(client, username)
+    headers = _authed(registered["access_token"])
+    assert client.post("/auth/email", headers=headers, json={"email": email}).status_code == 200
+    with db.open_ledger(username) as ledger:
+        ledger.upsert_player_profile(
+            {
+                "gender": "female",
+                "age": 31,
+                "height_cm": 165,
+                "weight_kg": 67,
+                "current_goal": "PROFILE_GOAL_PRIVATE",
+                "long_term_goal": "PROFILE_LONG_GOAL_PRIVATE",
+                "training_age_years": 3,
+                "equipment_access": "Commercial gym",
+                "injuries_or_limitations": "PROFILE_LIMITATION_PRIVATE",
+                "weekly_frequency": 3,
+                "stress_and_sleep": "PROFILE_STRESS_PRIVATE",
+            }
+        )
+        program = GeneratedProgramSchema(
+            program_name="PROGRAM_COACH_ID_PRIVATE",
+            split_type="Full Body",
+            weekly_frequency=3,
+            days=[
+                _day_plan().model_copy(
+                    update={
+                        "day_name": "Leg Day",
+                        "exercises": [
+                            _day_plan().exercises[0].model_copy(
+                                update={"notes": "PRIVATE COACH NOTES", "note": "PRIVATE COACH NOTE"}
+                            )
+                        ],
+                    }
+                )
+            ],
+        )
+        ledger.save_training_program(
+            program.model_dump(), published_by_coach_account_id="COACH_ACCOUNT_ID_PRIVATE"
+        )
+
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(
+                calls=[
+                    {"name": "get_player_profile", "args": {}, "id": "profile-call"},
+                    {"name": "get_active_program", "args": {}, "id": "program-call"},
+                ]
+            ),
+            "Your goal and training age are recorded. Leg Day includes Squat.",
+        ],
+        chunk_size=14,
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST",
+        "/chat/messages",
+        headers=headers,
+        json={"content": "What do you know about my profile and program?"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    assert _done_content(body) == "Your goal and training age are recorded. Leg Day includes Squat."
+    assert [name for name in model.calls[0]["tools"]] == [
+        "get_player_profile",
+        "get_active_program",
+        "get_player_weight_trend",
+    ]
+    first_payload = "\n".join(
+        str(getattr(message, "content", message)) for message in model.calls[0]["messages"]
+    )
+    assert "PROFILE_GOAL_PRIVATE" not in first_payload
+    assert "PROFILE_LIMITATION_PRIVATE" not in first_payload
+    assert "Squat" not in first_payload
+
+    followup = model.calls[1]["messages"]
+    tool_results = [message.content for message in followup if getattr(message, "type", "") == "tool"]
+    assert len(tool_results) == 2
+    combined_results = "\n".join(tool_results)
+    assert "PROFILE_GOAL_PRIVATE" in combined_results
+    assert "PROFILE_LONG_GOAL_PRIVATE" in combined_results
+    assert "PROFILE_LIMITATION_PRIVATE" in combined_results
+    assert "PROFILE_STRESS_PRIVATE" in combined_results
+    assert "Leg Day" in combined_results and "Squat" in combined_results
+    for private_value in (
+        username,
+        email,
+        "COACH_ACCOUNT_ID_PRIVATE",
+        "PROGRAM_COACH_ID_PRIVATE",
+        "PRIVATE COACH NOTES",
+        "PRIVATE COACH NOTE",
+    ):
+        assert private_value not in "\n".join(
+            str(getattr(message, "content", message)) for message in followup
+        )
+
+    status_events = [
+        block for block in body.split("\n\n") if block.startswith("event: status\n")
+    ]
+    assert len(status_events) == 2
+    status_payloads = [
+        json.loads(block.splitlines()[1].removeprefix("data: "))
+        for block in status_events
+    ]
+    assert status_payloads[0]["status"] == "Checking your profile…"
+    assert status_payloads[1]["status"] == "Checking your Training program…"
+    assert all("profile-call" not in block and "program-call" not in block for block in status_events)
+    telemetry = "\n".join(
+        record.getMessage() for record in caplog.records if "Tools:" in record.getMessage()
+    )
+    assert "get_player_profile count=1 latency_ms=" in telemetry
+    assert "get_active_program count=1 latency_ms=" in telemetry
+    for private_value in ("PROFILE_GOAL_PRIVATE", "PROFILE_LIMITATION_PRIVATE", "Squat"):
+        assert private_value not in telemetry
+    token_frames = [
+        json.loads(line.removeprefix("data: "))
+        for line in body.splitlines()
+        if line.startswith("data: ") and '"token"' in line
+    ]
+    assert len(token_frames) >= 2
+
+
+def test_arabic_tool_status_uses_fixed_localized_text(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, _db = api
+    headers = _authed(_register(client, "arabic-tool-status")["access_token"])
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(
+                calls=[{"name": "get_player_profile", "args": {}, "id": "profile-call"}]
+            ),
+            "ملفك مفيهوش بيانات محفوظة.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "إيه اللي في ملفي؟"}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    status_frames = [
+        frame for frame in body.split("\n\n") if frame.startswith("event: status\n")
+    ]
+    assert len(status_frames) == 1
+    assert json.loads(status_frames[0].splitlines()[1].removeprefix("data: ")) == {
+        "status": "ببص على بياناتك…"
+    }
+    assert "profile-call" not in status_frames[0]
+
+
+def test_turn_without_tool_call_sends_no_profile_telemetry_or_program_data(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "no-tool-data-player"
+    registered = _register(client, username)
+    headers = _authed(registered["access_token"])
+    with db.open_ledger(username) as ledger:
+        ledger.upsert_player_profile(
+            {"current_goal": "PROFILE_MUST_STAY_PRIVATE", "weight_kg": 99}
+        )
+        ledger.save_training_program(
+            GeneratedProgramSchema(
+                program_name="PROGRAM_MUST_STAY_PRIVATE",
+                split_type="Full Body",
+                weekly_frequency=3,
+                days=[_day_plan()],
+            ).model_dump()
+        )
+    model = ScriptedChatModel(["Keep the next set controlled."])
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "Give me a general cue."}
+    ) as response:
+        response.read()
+        assert response.status_code == 200
+
+    payload = "\n".join(
+        str(getattr(message, "content", message)) for message in model.calls[0]["messages"]
+    )
+    assert model.calls[0]["tools"] == (
+        "get_player_profile",
+        "get_active_program",
+        "get_player_weight_trend",
+    )
+    assert "PROFILE_MUST_STAY_PRIVATE" not in payload
+    assert "PROGRAM_MUST_STAY_PRIVATE" not in payload
+    assert "99" not in payload
+    assert "[TRAINEE CONTEXT]" not in payload
+
+
+def test_unset_profile_fields_return_not_set_without_invented_defaults(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "unset-profile-tool"
+    headers = _authed(_register(client, username)["access_token"])
+    with db.open_ledger(username) as ledger:
+        ledger.upsert_player_profile({})
+        ledger.save_intake_state(status="in_progress")
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(
+                calls=[{"name": "get_player_profile", "args": {}, "id": "unset-profile"}]
+            ),
+            "Your profile has no saved details yet.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "What is on my profile?"}
+    ) as response:
+        response.read()
+        assert response.status_code == 200
+
+    result = model.calls[1]["messages"][-1].content
+    assert result.count("not set") == 14
+    for invented in ("male", "hypertrophy", "25", "75", "175"):
+        assert invented not in result
+
+
+def test_legacy_completed_profile_keeps_values_equal_to_storage_defaults(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "legacy-default-profile"
+    headers = _authed(_register(client, username)["access_token"])
+    with db.open_ledger(username) as ledger:
+        ledger.upsert_player_profile({})
+        ledger.save_training_program(
+            GeneratedProgramSchema(
+                program_name="Legacy Plan",
+                split_type="Full Body",
+                weekly_frequency=4,
+                days=[_day_plan()],
+            ).model_dump()
+        )
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(
+                calls=[{"name": "get_player_profile", "args": {}, "id": "legacy-defaults"}]
+            ),
+            "Your saved values include male, age 25, 75 kg, 175 cm, and hypertrophy.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "What is on my profile?"}
+    ) as response:
+        response.read()
+        assert response.status_code == 200
+
+    profile = json.loads(model.calls[1]["messages"][-1].content)["profile"]
+    assert {
+        "gender": profile["gender"],
+        "age": profile["age"],
+        "weight_kg": profile["weight_kg"],
+        "height_cm": profile["height_cm"],
+        "current_goal": profile["current_goal"],
+    } == {
+        "gender": "male",
+        "age": 25,
+        "weight_kg": 75.0,
+        "height_cm": 175.0,
+        "current_goal": "hypertrophy",
+    }
+
+
+def test_explicit_none_limitations_answer_is_reported_as_none(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, _db = api
+    headers = _authed(_register(client, "none-limitations-profile")["access_token"])
+    saved = client.put(
+        "/profile", headers=headers, json={"injuries_or_limitations": "None"}
+    )
+    assert saved.status_code == 200, saved.text
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(
+                calls=[{"name": "get_player_profile", "args": {}, "id": "none-answer"}]
+            ),
+            "You reported no injuries or limitations.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "What limitations did I report?"}
+    ) as response:
+        response.read()
+        assert response.status_code == 200
+
+    profile = json.loads(model.calls[1]["messages"][-1].content)["profile"]
+    assert profile["injuries_or_limitations"] == "None"
+
+
+def test_weight_trend_tool_returns_bounded_dated_progress_facts(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "weight-trend-tool"
+    headers = _authed(_register(client, username)["access_token"])
+    today = datetime.now(UTC).date()
+    with db.open_ledger(username) as ledger:
+        ledger.upsert_player_profile({"weight_kg": 70.0, "target_weight_kg": 70.0})
+        ledger.upsert_weight_history_entry((today - timedelta(days=13)).isoformat(), 72.0)
+        ledger.upsert_weight_history_entry((today - timedelta(days=1)).isoformat(), 70.0)
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(
+                calls=[{"name": "get_player_weight_trend", "args": {}, "id": "weight-trend"}]
+            ),
+            "Your recorded weight moved from 72 kg to 70 kg, reaching your target.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "How is my weight trending?"}
+    ) as response:
+        response.read()
+        assert response.status_code == 200
+
+    trend = json.loads(model.calls[1]["messages"][-1].content)
+    assert trend["status"] == "ok"
+    assert f"{(today - timedelta(days=13)).isoformat()}: 72 kg" in trend["weight_context"]
+    assert f"{(today - timedelta(days=1)).isoformat()}: 70 kg" in trend["weight_context"]
+    assert "8-week change (latest minus earliest): -2 kg" in trend["weight_context"]
+    assert "14-day change (latest minus earliest): -2 kg" in trend["weight_context"]
+    assert "14-day movement relative to target: toward target" in trend["weight_context"]
+
+
+def test_unyielded_text_before_tool_call_is_discarded(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, _db = api
+    headers = _authed(_register(client, "tool-round-text-buffer")["access_token"])
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(
+                calls=[{"name": "get_player_profile", "args": {}, "id": "buffered-profile"}],
+                content="I saw 12 sets at 75 kg in your latest session",
+            ),
+            "I can't see those session figures yet.",
+        ],
+        chunk_size=8,
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "How many sets did I do?"}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    token_text = "".join(
+        json.loads(line.removeprefix("data: "))["token"]
+        for line in body.splitlines()
+        if line.startswith("data: ") and '"token"' in line
+    )
+    assert "I saw 12 sets at 75 kg" not in token_text
+    assert "I can't see those session figures yet." in token_text
+
+
+def test_yielded_text_before_tool_call_is_not_retracted(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, _db = api
+    headers = _authed(_register(client, "tool-round-yielded-text")["access_token"])
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(
+                calls=[{"name": "get_player_profile", "args": {}, "id": "yielded-profile"}],
+                content="Your profile is ready. ",
+            ),
+            "Your saved profile is ready.",
+        ],
+        chunk_size=8,
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "What is in my profile?"}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    token_text = "".join(
+        json.loads(line.removeprefix("data: "))["token"]
+        for line in body.splitlines()
+        if line.startswith("data: ") and '"token"' in line
+    )
+    assert "Your profile is ready." in token_text
+    assert "Your saved profile is ready." in token_text
+
+
+def test_http_stream_emits_before_model_requests_final_chunk(api, monkeypatch):
+    from threading import Event
+
+    from langchain_core.messages import AIMessageChunk
+
+    _force_free_form_coaching_intent(monkeypatch)
+    client, _db = api
+    headers = _authed(_register(client, "http-incremental-stream")["access_token"])
+    first_token_sent = Event()
+
+    class ObserveTokenFrames:
+        def __init__(self, app):
+            self.app = app
+
+        async def __call__(self, scope, receive, send):
+            async def observe_send(message):
+                await send(message)
+                if (
+                    scope.get("type") == "http"
+                    and message.get("type") == "http.response.body"
+                    and b'"token"' in message.get("body", b"")
+                ):
+                    first_token_sent.set()
+
+            await self.app(scope, receive, observe_send)
+
+    class IncrementalModel:
+        second_chunk_requested_after_first_token = False
+
+        def bind_tools(self, _tools):
+            return self
+
+        def stream(self, _messages):
+            yield AIMessageChunk(content="First sentence. ")
+            self.second_chunk_requested_after_first_token = first_token_sent.is_set()
+            yield AIMessageChunk(content="Second sentence.")
+
+    model = IncrementalModel()
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with TestClient(ObserveTokenFrames(client.app)) as streaming_client:
+        with streaming_client.stream(
+            "POST", "/chat/messages", headers=headers, json={"content": "How can I improve?"}
+        ) as response:
+            body = response.read().decode("utf-8")
+            assert response.status_code == 200
+
+    token_text = "".join(
+        json.loads(line.removeprefix("data: "))["token"]
+        for line in body.splitlines()
+        if line.startswith("data: ") and '"token"' in line
+    )
+    assert model.second_chunk_requested_after_first_token
+    assert token_text == "First sentence. Second sentence."
+
+
+def test_partial_profile_update_does_not_expose_storage_defaults(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, _db = api
+    headers = _authed(_register(client, "partial-profile-tool")["access_token"])
+    assert client.put(
+        "/profile", headers=headers, json={"current_goal": "Build strength"}
+    ).status_code == 200
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(
+                calls=[{"name": "get_player_profile", "args": {}, "id": "partial-profile"}]
+            ),
+            "Your saved goal is strength; other profile details are not set.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "What do you know about me?"}
+    ) as response:
+        response.read()
+        assert response.status_code == 200
+
+    tool_result = model.calls[1]["messages"][-1].content
+    assert "Build strength" in tool_result
+    for invented in ("male", "hypertrophy", "25", "75", "175", "balanced"):
+        assert invented not in tool_result
+
+
+def test_tool_loop_stops_after_three_rounds_and_still_streams_a_reply(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, _db = api
+    headers = _authed(_register(client, "three-tool-rounds")["access_token"])
+    model = ScriptedChatModel(
+        [
+            *[
+                ToolCallsTurn(
+                    calls=[
+                        {
+                            "name": "get_player_profile",
+                            "args": {},
+                            "id": f"profile-round-{round_number}",
+                        }
+                    ]
+                )
+                for round_number in range(1, 4)
+            ],
+            "I checked the available profile details.",
+        ],
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "What do you know about me?"}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    assert _done_content(body) == "I checked the available profile details."
+    assert len(model.calls) == 4
+    assert [call["mode"] for call in model.calls] == ["tools", "tools", "tools", "stream"]
+
+
+def test_tool_timeout_returns_unavailable_and_turn_continues(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, _db = api
+    headers = _authed(_register(client, "slow-profile-tool")["access_token"])
+
+    def slow_profile(_ledger):
+        time.sleep(0.05)
+        return {"status": "ok"}
+
+    monkeypatch.setattr(
+        player_tools,
+        "PLAYER_READ_TOOL_REGISTRY",
+        tuple(
+            replace(definition, reader=slow_profile, timeout_seconds=0.005)
+            if definition.name == "get_player_profile"
+            else definition
+            for definition in player_tools.PLAYER_READ_TOOL_REGISTRY
+        ),
+    )
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(
+                calls=[{"name": "get_player_profile", "args": {}, "id": "slow-profile"}]
+            ),
+            "Your profile lookup is unavailable right now.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "What is in my profile?"}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    assert _done_content(body) == "Your profile lookup is unavailable right now."
+    assert '{"status":"unavailable"}' in str(
+        model.calls[1]["messages"][-1].content
+    )
+
+
+def test_oversized_tool_result_is_capped_at_four_kilobytes(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "oversized-profile-tool"
+    headers = _authed(_register(client, username)["access_token"])
+    with db.open_ledger(username) as ledger:
+        ledger.upsert_player_profile(
+            {"injuries_or_limitations": "Long profile value " * 1000}
+        )
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(
+                calls=[{"name": "get_player_profile", "args": {}, "id": "large-profile"}]
+            ),
+            "The profile result was too large to include.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "Tell me about my profile."}
+    ) as response:
+        response.read()
+        assert response.status_code == 200
+
+    tool_result = model.calls[1]["messages"][-1].content
+    assert len(tool_result.encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES
+    assert '"status":"truncated"' in tool_result
+
+
+def test_tool_result_keeps_followup_payload_under_the_prompt_ceiling(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "prompt-ceiling-tool"
+    headers = _authed(_register(client, username)["access_token"])
+    with db.open_ledger(username) as ledger:
+        for _ in range(9):
+            ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 2_900)
+        ledger.upsert_player_profile(
+            {"injuries_or_limitations": "PLAYER_LIMITATION " + "knee pain " * 260}
+        )
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(
+                calls=[{"name": "get_player_profile", "args": {}, "id": "ceiling-profile"}]
+            ),
+            "The remaining profile details were omitted to fit this turn.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "What is in my profile?"}
+    ) as response:
+        response.read()
+        assert response.status_code == 200
+
+    followup = model.calls[1]["messages"]
+    payload_bytes = sum(
+        len(str(message.content).encode("utf-8")) for message in followup
+    )
+    assert payload_bytes <= player_prompt.HOSTED_PROMPT_MAX_BYTES
+    assert '"status":"truncated"' in followup[-1].content
 
 
 @pytest.mark.parametrize(
@@ -510,7 +1157,7 @@ def test_profile_preferred_name_reaches_prompt_and_clearing_removes_it(api, monk
         "how did I do on moonwalking curls last session?",
     ],
 )
-def test_unresolved_history_reads_fall_back_to_model_with_comparison(api, monkeypatch, content):
+def test_unresolved_history_reads_keep_the_hosted_fallback_without_injected_comparison(api, monkeypatch, content):
     client, db = api
     registered = _register(client, "history-fallback")
     headers = _authed(registered["access_token"])
@@ -532,11 +1179,11 @@ def test_unresolved_history_reads_fall_back_to_model_with_comparison(api, monkey
     assert "I couldn't find" not in body
     assert len(model.calls) == 1
     prompt = _last_rendered(model)
-    assert "baseline=" in prompt
-    assert "Squat" in prompt
+    assert "baseline=" not in prompt
+    assert "Squat" not in prompt
 
 
-def test_all_exercises_followup_reaches_model_with_session_comparison(api, monkeypatch):
+def test_all_exercises_followup_reaches_model_without_injected_comparison(api, monkeypatch):
     client, db = api
     registered = _register(client, "history-followup")
     headers = _authed(registered["access_token"])
@@ -572,8 +1219,8 @@ def test_all_exercises_followup_reaches_model_with_session_comparison(api, monke
         str(getattr(message, "content", message))
         for message in model.calls[1]["messages"]
     )
-    assert "baseline=" in second_prompt
-    assert "Squat" in second_prompt
+    assert "baseline=" not in second_prompt
+    assert "Squat" not in second_prompt
     assert "all of them" not in catalog_targets
 
 
@@ -1074,7 +1721,7 @@ def test_arabic_frequency_change_preserves_glute_priority_split_family(api, monk
     )
 
 
-def test_arabic_history_question_returns_verified_figures_through_http_chat(api, monkeypatch):
+def test_arabic_history_fallback_does_not_inject_ledger_figures(api, monkeypatch):
     client, db = api
     player = "arabic-history"
     headers = _authed(_register(client, player)["access_token"])
@@ -1083,7 +1730,7 @@ def test_arabic_history_question_returns_verified_figures_through_http_chat(api,
     model = ScriptedChatModel(
         [
             {"intent": "exercise_history", "history_exercise": "Squat"},
-            "آخر مرة سجلت 100 kg × 5 عدّات، بإجمالي 500 kg.",
+            "مش ظاهر في الرسالة دي رقم موثّق لآخر مرة.",
         ]
     )
     monkeypatch.setattr(assistant_graph, "llm", model)
@@ -1096,11 +1743,12 @@ def test_arabic_history_question_returns_verified_figures_through_http_chat(api,
         body = response.read().decode("utf-8")
         assert response.status_code == 200
 
-    assert _done_content(body) == "آخر مرة سجلت 100 kg × 5 عدّات، بإجمالي 500 kg."
+    assert _done_content(body) == "مش ظاهر في الرسالة دي رقم موثّق لآخر مرة."
     grounded_context = _last_rendered(model)
-    assert "Squat" in grounded_context
-    assert "100 kg × 5 reps" in grounded_context
-    assert "500 kg volume" in grounded_context
+    assert "عملت كام في السكوات آخر مرة؟" in grounded_context
+    assert "Squat" not in grounded_context
+    assert "100 kg × 5 reps" not in grounded_context
+    assert "500 kg volume" not in grounded_context
 
 
 @pytest.mark.parametrize(

@@ -26,6 +26,26 @@ class WeightEntryCommand:
     weight_kg: float
 
 
+PROFILE_ANSWER_FIELDS = frozenset(
+    {
+        "gender",
+        "proportions",
+        "age",
+        "height_cm",
+        "weight_kg",
+        "target_weight_kg",
+        "rep_preference",
+        "current_goal",
+        "long_term_goal",
+        "weekly_frequency",
+        "training_age_years",
+        "equipment_access",
+        "injuries_or_limitations",
+        "stress_and_sleep",
+    }
+)
+
+
 def record_weight_entry(db: Any, ledger: Any, command: WeightEntryCommand) -> weight_history.WeightTrendPoint:
     """Writes a date-only weight entry, then evaluates its active Coach alert."""
     point = weight_history.record_weight(
@@ -97,13 +117,16 @@ def update_profile(
         updated = {**profile, **payload}
 
         def persist_profile() -> None:
-            if "weight_kg" in payload:
-                ledger.upsert_player_profile_with_weight_history(
-                    updated,
-                    weight_history.player_local_date(ledger, ledger_id).isoformat(),
-                )
-            else:
-                ledger.upsert_player_profile(updated)
+            with ledger.ledger_transaction():
+                if "weight_kg" in payload:
+                    ledger.upsert_player_profile_with_weight_history(
+                        updated,
+                        weight_history.player_local_date(ledger, ledger_id).isoformat(),
+                    )
+                else:
+                    ledger.upsert_player_profile(updated)
+                for field in PROFILE_ANSWER_FIELDS & payload.keys():
+                    ledger.save_intake_answer(field, payload[field], prefilled=False)
 
         profile_change_alerts.record_profile_change(
             db,

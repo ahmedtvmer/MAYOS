@@ -102,9 +102,9 @@ def test_report_covers_every_measured_player_call_site():
         "dynamic_split_plan": 1200,
         "checkpoint_review": 200,
     }
-    assert report["call_sites"]["chat_reply"]["configured_budget_tokens"] == (
-        player_output_budgets.PLAYER_CHAT_REPLY_MAX_OUTPUT_TOKENS
-    )
+    # The checked-in measurement remains historical (#269 raises the live cap).
+    assert report["call_sites"]["chat_reply"]["configured_budget_tokens"] == 200
+    assert player_output_budgets.PLAYER_CHAT_REPLY_MAX_OUTPUT_TOKENS == 400
     abbreviations = [sample["input"].lower() for sample in report["call_sites"]["abbreviation_expansion"]["samples"]]
     assert len(set(abbreviations)) == report["call_sites"]["abbreviation_expansion"]["n"]
     assert set(abbreviations) <= FITNESS_ABBREVIATIONS.keys()

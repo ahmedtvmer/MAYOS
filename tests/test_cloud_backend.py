@@ -6,6 +6,7 @@ import time
 import pytest
 
 from utils import model_downloader as md
+from utils.player_output_budgets import PLAYER_CHAT_REPLY_MAX_OUTPUT_TOKENS
 
 
 def _reset_models():
@@ -43,7 +44,7 @@ def test_cloud_builds_configured_openai_models(monkeypatch):
     coach = md.get_coach_llm()
 
     assert (player.model_name, player.max_tokens, player.streaming) == (
-        "deepseek-ai/DeepSeek-V4-Flash", 200, True
+        "deepseek-ai/DeepSeek-V4-Flash", PLAYER_CHAT_REPLY_MAX_OUTPUT_TOKENS, True
     )
     assert (judge.model_name, judge.max_tokens, judge.streaming) == ("Qwen/Qwen3.5-27B", 700, False)
     assert (secondary_judge.model_name, secondary_judge.max_tokens, secondary_judge.streaming) == (
@@ -268,7 +269,10 @@ def test_hosted_model_ids_are_the_only_configured_ids(monkeypatch):
 def test_hosted_role_output_budgets_are_scoped():
     assert md.CLOUD_MODEL_REGISTRY["judge"]["default_max_tokens"] == 700
     assert md.CLOUD_MODEL_REGISTRY["judge_secondary"]["default_max_tokens"] == 700
-    assert md.CLOUD_MODEL_REGISTRY["production"]["default_max_tokens"] == 200
+    assert (
+        md.CLOUD_MODEL_REGISTRY["production"]["default_max_tokens"]
+        == PLAYER_CHAT_REPLY_MAX_OUTPUT_TOKENS
+    )
     assert md.CLOUD_MODEL_REGISTRY["coach"]["default_max_tokens"] == 512
 
 

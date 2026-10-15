@@ -269,10 +269,12 @@ def test_ttft_baseline_uses_fixed_english_and_arabic_prompts_and_reports_categor
     assert all(result.p90_seconds == pytest.approx(0.01) for result in baseline.categories)
     assert all(len(sample.attempts) == 1 for sample in baseline.samples)
     assert all(isinstance(prompt, list) for prompt in model.prompts)
-    assert "Training age: 3 years" in model.prompts[0][0].content
+    assert model.prompts[0][0].content.startswith("You are ")
+    assert "Alex" in model.prompts[0][0].content
+    assert "Training age: 3 years" not in model.prompts[0][0].content
     assert "Recent history:" not in model.prompts[0][0].content
-    assert "Recent history:" in model.prompts[2][0].content
-    assert "Session comparison:" in model.prompts[4][0].content
+    assert "Recent history:" not in model.prompts[2][0].content
+    assert "Session comparison:" not in model.prompts[4][0].content
     assert {sample.category for sample in baseline.samples} == {
         "profile", "history", "last_session", "free_form_coaching"
     }

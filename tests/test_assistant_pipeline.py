@@ -24,7 +24,7 @@ from agent.assistant_graph import (
 )
 from utils.logger import MyosLogger
 from tests.fakes.chat_model import ScriptedChatModel
-from utils.model_downloader import llm
+from utils.model_downloader import CLOUD_MODEL_REGISTRY
 
 logger = MyosLogger().get_logger(__name__)
 
@@ -83,9 +83,7 @@ def test_phase1_engine_configuration():
     """Validates the hosted model's response token limit."""
     logger.info("Verifying Phase 1 Engine Configuration & Directives...")
 
-    assert getattr(llm, "max_tokens", None) == 200, (
-        f"Expected llm.max_tokens == 200, found {getattr(llm, 'max_tokens', None)}"
-    )
+    assert CLOUD_MODEL_REGISTRY["production"]["default_max_tokens"] == 400
 
     logger.info("✅ Phase 1 hosted model configuration verified.")
 

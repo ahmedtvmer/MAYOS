@@ -114,7 +114,7 @@ class LedgerOnboardingMixin:
             """,
             (str(field), json.dumps(value), 1 if prefilled else 0, datetime.now(UTC).isoformat()),
         )
-        self.conn.commit()
+        self._commit_ledger()
 
     def load_intake_answers(self) -> dict[str, dict[str, Any]]:
         cursor = self.conn.cursor()

@@ -4,6 +4,10 @@ Source: `reports/player_gate_live.json` from the `gate-1013` worktree, generated
 2026-10-12 22:51:52 UTC for `deepseek-ai/DeepSeek-V4-Flash`. Judges were
 `Qwen/Qwen3.5-27B` and `zai-org/GLM-5.3`.
 
+This is a historical prompt review from before #269. Its prompt and context
+descriptions record the version evaluated on 2026-10-12; ADR 078 now replaces
+the injected training summary with on-demand profile and active-program tools.
+
 ## Coaching Q&A losses
 
 The suite ran each of its 25 cases twice. Repetition 1 scored 24/25 overall

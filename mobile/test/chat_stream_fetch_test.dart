@@ -32,6 +32,30 @@ void main() {
     expect(events.last, isA<ChatDone>());
   });
 
+  test('chat status events decode while older token and done frames still work',
+      () async {
+    final _FakeFetch fetch = _FakeFetch((Uri url, Map<String, String> headers,
+        String body) {
+      return _FakeRequest(ChatStreamFetchResponse(
+        statusCode: 200,
+        body: Stream<List<int>>.fromIterable(<List<int>>[
+          utf8.encode(
+              'event: status\ndata: {"status":"Checking your profile…"}\n\n'),
+          utf8.encode('data: {"token":"Answer."}\n\n'),
+          utf8.encode('data: {"done":true,"response_content":"Answer."}\n\n'),
+        ]),
+      ));
+    });
+
+    final List<ChatStreamEvent> events =
+        await (await _client(fetch)).streamChatMessage('What do you know?').toList();
+
+    expect(events[0], isA<ChatStatus>());
+    expect((events[0] as ChatStatus).status, 'Checking your profile…');
+    expect((events[1] as ChatToken).token, 'Answer.');
+    expect(events[2], isA<ChatDone>());
+  });
+
   test('coach assistant reuses fetch transport and answer-frame decoding',
       () async {
     final _FakeFetch fetch = _FakeFetch((Uri url, Map<String, String> headers,

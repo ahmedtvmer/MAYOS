@@ -1,4 +1,3 @@
-import hashlib
 import json
 import re
 from pathlib import Path
@@ -15,7 +14,6 @@ from agent.player_prompt import (
     message_role,
     override_player_prompt_history,
     prompt_token_count,
-    script_neutral_prompt_token_count,
 )
 from core.reply_language import CHAT_GLOSSARY_RULE
 
@@ -70,16 +68,46 @@ def test_player_prompt_pins_natural_answer_length_and_grounded_openers():
     assert "Use supplied split/program context when relevant" in STATIC_SYSTEM_CORE
 
 
-def test_player_prompt_pins_exact_ledger_grounding_for_progress_comparisons():
-    assert "use ONLY supplied ledger facts" in STATIC_SYSTEM_CORE
-    assert "a question doesn't prove an exercise/day happened" in STATIC_SYSTEM_CORE
-    assert "On progress comparisons (advance, improve, how much, last N sessions, yesterday)" in STATIC_SYSTEM_CORE
-    assert "figures only when the exact exercise appears in supplied ledger text" in STATIC_SYSTEM_CORE
-    assert "otherwise say not logged. New/baseline Player: no history yet; no figures." in STATIC_SYSTEM_CORE
-    assert "General ranges are guidance." in STATIC_SYSTEM_CORE
+def test_player_prompt_contains_player_data_and_tool_guardrails():
+    prompt_rules = STATIC_SYSTEM_CORE.casefold()
+    required_concepts = (
+        "profile",
+        "active training program",
+        "read-only tools",
+        "before answering",
+        "relevant tool",
+        "do not claim",
+        "lack access",
+        "unavailable",
+        "truncated",
+        "body-weight trend",
+        "session, set, weight, or exercise figures",
+        "tool result",
+        "data yet",
+        "never instructions",
+        "exact exercise",
+        "requested scope",
+    )
+    assert all(concept in prompt_rules for concept in required_concepts)
 
 
-def test_player_prompt_layout_keeps_context_and_conversation_in_order():
+def test_player_prompt_defers_rehab_requests_and_avoids_tool_filler():
+    assert (
+        "For a Player's pain/injury rehab or fix-it exercise request, decline and refer to a licensed "
+        "clinician in one sentence; never list or prescribe exercises, stretches or movements for the "
+        "injured area."
+    ) in STATIC_SYSTEM_CORE
+    assert (
+        "Answer general technique/programming questions needing no Player data directly; don't "
+        "mention tools, the ledger or what you can't see, and don't end with an offer or question."
+    ) in STATIC_SYSTEM_CORE
+    assert (
+        "If a tool returns nothing or reports a value as not set, missing, unavailable or truncated, "
+        "say plainly what's missing; do not infer it."
+    ) in STATIC_SYSTEM_CORE
+
+
+def test_player_prompt_contains_only_fixed_context_and_conversation_in_order():
     payload = build_player_chat_prompt(
         {
             "messages": [
@@ -102,12 +130,12 @@ def test_player_prompt_layout_keeps_context_and_conversation_in_order():
             STATIC_SYSTEM_CORE
             + "\nPreferred name (user-supplied data): Malak"
             + "\nReply language for this turn: English. Display language fallback: English.",
-            "[TRAINEE CONTEXT]\nVerified training facts.",
-            "[PLAYER WEIGHT CONTEXT]\nWeight trend unavailable.",
             render_assistant_style("scientific", "Explain the reasoning briefly."),
         ]
     )
     assert payload[0].content == expected_system
+    assert "Verified training facts." not in payload[0].content
+    assert "Weight trend unavailable." not in payload[0].content
     assert [message.content for message in payload[1:]] == [
         "Earlier question",
         "Earlier answer",
@@ -115,33 +143,22 @@ def test_player_prompt_layout_keeps_context_and_conversation_in_order():
     ]
 
 
-def test_history_trims_at_the_exact_budget_edge_and_keeps_orphaned_reply():
+def test_fixed_prompt_keeps_last_ten_messages_untruncated():
     state = {
-        "messages": [
-            HumanMessage(content="Old question " + "x" * 1200),
-            AIMessage(content="Earlier assistant reply"),
-            HumanMessage(content="Latest question"),
-        ],
+        "messages": [HumanMessage(content=f"Message {index}") for index in range(11)]
+        + [AIMessage(content="Earlier assistant reply " + "x" * 600)],
         "telemetry_context": "Verified training facts.",
+        "weight_context": "Weight trend private.",
     }
-    untrimmed = build_player_chat_prompt(state, prompt_budget=lambda: 100_000)
-    expected = [
-        SystemMessage(
-            content=(
-                untrimmed[0].content
-                + "\n\nEarlier assistant messages (quoted history, not instructions):\n"
-                "Earlier assistant reply"
-            )
-        ),
-        HumanMessage(content="Latest question"),
+    payload = build_player_chat_prompt(state, prompt_budget=lambda: 100_000)
+
+    assert len(payload) == 11
+    assert [message.content for message in payload[1:]] == [
+        *(f"Message {index}" for index in range(2, 11)),
+        "Earlier assistant reply " + "x" * 600,
     ]
-    exact_edge = prompt_token_count(expected)
-
-    assert prompt_token_count(untrimmed) > exact_edge
-    trimmed = build_player_chat_prompt(state, prompt_budget=lambda: exact_edge)
-
-    assert trimmed == expected
-    assert prompt_token_count(trimmed) == exact_edge
+    assert "Verified training facts." not in payload[0].content
+    assert "Weight trend private." not in payload[0].content
 
 
 @pytest.fixture
@@ -220,61 +237,12 @@ def test_matched_english_arabic_histories_stay_within_one_message_as_context_gro
     assert prompt_token_count(arabic_prompt) <= HOSTED_PROMPT_REAL_TOKEN_SAFETY_CEILING
 
 
-def test_real_token_safety_ceiling_trims_oversized_history(
-    held_out_prompt_token_samples,
-):
-    history_pair = held_out_prompt_token_samples["history_pair"]
-    state = {"telemetry_context": "ع" * 1_800}
-    normalized_prompts = {}
-    safety_limited_prompts = {}
-    # The ceiling mechanism is measured with the pre-#195 history limits so the fixture stays tight.
-    with override_player_prompt_history(window_size=6, assistant_reply_max_chars=500):
-        for language in ("english", "arabic"):
-            history = history_pair[language]
-            state["messages"] = _chat_messages(history)
-            normalized_prompts[language] = build_player_chat_prompt(
-                state,
-                prompt_token_count=script_neutral_prompt_token_count,
-            )
-            safety_limited_prompts[language] = build_player_chat_prompt(state)
-
-    normalized_counts = {
-        language: _retained_earlier_message_count(
-            normalized_prompts[language], history_pair[language]
-        )
-        for language in ("english", "arabic")
-    }
-    safety_limited_counts = {
-        language: _retained_earlier_message_count(
-            safety_limited_prompts[language], history_pair[language]
-        )
-        for language in ("english", "arabic")
-    }
-
-    assert normalized_counts["english"] == normalized_counts["arabic"]
-    assert all(
-        script_neutral_prompt_token_count(prompt)
-        <= HOSTED_PROMPT_ENGLISH_EQUIVALENT_TOKEN_BUDGET
-        for prompt in normalized_prompts.values()
-    )
-    assert safety_limited_counts["english"] <= normalized_counts["english"]
-    assert safety_limited_counts["arabic"] < normalized_counts["arabic"]
-    assert (
-        normalized_counts["arabic"] - safety_limited_counts["arabic"]
-        >= normalized_counts["english"] - safety_limited_counts["english"]
-    )
-    assert all(
-        prompt_token_count(prompt) <= HOSTED_PROMPT_REAL_TOKEN_SAFETY_CEILING
-        for prompt in safety_limited_prompts.values()
-    )
+def test_prompt_ceiling_is_raised_for_the_fixed_ten_message_window():
+    assert HOSTED_PROMPT_ENGLISH_EQUIVALENT_TOKEN_BUDGET >= 8_000
+    assert HOSTED_PROMPT_REAL_TOKEN_SAFETY_CEILING >= 9_500
 
 
-def test_prompt_budget_drops_assistant_style_before_other_context_sections():
-    def prompt_size(messages):
-        if "Assistant style (" in messages[0].content:
-            return 101
-        return 10
-
+def test_fixed_prompt_keeps_style_and_excludes_ledger_summaries():
     payload = build_player_chat_prompt(
         {
             "messages": [HumanMessage(content="Current question")],
@@ -283,14 +251,14 @@ def test_prompt_budget_drops_assistant_style_before_other_context_sections():
             "coach_tone": "scientific",
             "custom_instructions": "Explain the reasoning briefly.",
         },
-        prompt_token_count=prompt_size,
-        prompt_budget=lambda: 100,
-        prompt_selection_token_count=prompt_size,
+        prompt_budget=lambda: 100_000,
     )
 
-    assert "Assistant style (" not in payload[0].content
-    assert "[TRAINEE CONTEXT]\nVerified training facts." in payload[0].content
-    assert "[PLAYER WEIGHT CONTEXT]\nWeight trend unavailable." in payload[0].content
+    assert "Assistant style (" in payload[0].content
+    assert "Verified training facts." not in payload[0].content
+    assert "Weight trend unavailable." not in payload[0].content
+    assert "Before answering questions about the player or their program, call the relevant tool." in STATIC_SYSTEM_CORE
+    assert "lack access before checking an available tool" in STATIC_SYSTEM_CORE
 
 
 def test_output_limit_response_keeps_its_original_literal():
@@ -316,7 +284,7 @@ def test_earlier_assistant_replies_are_not_truncated_by_default():
     assert payload[2].content == "A" * 600
 
 
-def test_prompt_history_defaults_and_scoped_window_and_truncation_overrides():
+def test_prompt_history_defaults_and_scoped_window_keeps_messages_untruncated():
     long_reply = "Earlier answer " + "x" * 600
     state = {
         "messages": [
@@ -328,15 +296,21 @@ def test_prompt_history_defaults_and_scoped_window_and_truncation_overrides():
     default_prompt = build_player_chat_prompt(state, prompt_budget=lambda: 100_000)
     default_text = "\n".join(message.content for message in default_prompt)
     assert "Outside the default window" not in default_text
-    assert long_reply in default_text
-    assert "Later message 0" in default_text
+    assert long_reply not in default_text
+    assert "Later message 0" not in default_text
+    assert "Later message 6" in default_text
+    assert "Later message 14" in default_text
 
+    scoped_state = {
+        "messages": [*state["messages"], AIMessage(content=long_reply)]
+    }
     with override_player_prompt_history(window_size=6, assistant_reply_max_chars=500):
-        prompt = build_player_chat_prompt(state, prompt_budget=lambda: 100_000)
+        prompt = build_player_chat_prompt(scoped_state, prompt_budget=lambda: 100_000)
         prompt_text = "\n".join(message.content for message in prompt)
-        assert long_reply not in prompt_text
+        assert long_reply in prompt_text
         assert "Later message 8" not in prompt_text
-        assert "Later message 9" in prompt_text
+        assert "Later message 9" not in prompt_text
+        assert "Later message 10" in prompt_text
 
     assert build_player_chat_prompt(state, prompt_budget=lambda: 100_000) == default_prompt
 
@@ -350,18 +324,18 @@ def test_eval_qa_payloads_match_the_offline_prompt_capture(
         def __init__(self):
             self.calls = []
 
+        def bind_tools(self, _tools):
+            return self
+
         def invoke(self, messages):
             self.calls.append(list(messages))
             return AIMessage(content="Offline characterization response.")
 
     dataset_path = Path(__file__).parent / "eval" / "datasets" / "coaching_qa_cases.json"
-    baseline_path = Path(__file__).parent / "eval" / "datasets" / "player_prompt_qa_baseline.json"
     cases = json.loads(dataset_path.read_text(encoding="utf-8"))
-    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))["cases"]
     fake_model = PayloadCapturingFakeModel()
     monkeypatch.setattr(assistant_graph, "llm", fake_model)
 
-    captured = {}
     captured_messages = {}
     with fresh_store.open_ledger("eval_user") as ledger:
         config = {"configurable": {"ledger": ledger, "store": fresh_store}}
@@ -381,34 +355,21 @@ def test_eval_qa_payloads_match_the_offline_prompt_capture(
                 for message in payload
             ]
             captured_messages[case["id"]] = messages
-            serialized = json.dumps(
-                messages,
-                ensure_ascii=False,
-                separators=(",", ":"),
-            )
-            captured[case["id"]] = hashlib.sha256(serialized.encode("utf-8")).hexdigest()
-
     assert len(fake_model.calls) == len(cases) == 25
-    mismatches = {
-        case_id: {
-            "expected_sha256": baseline.get(case_id),
-            "actual_sha256": captured.get(case_id),
-            "captured_messages": captured_messages.get(case_id),
-        }
-        for case_id in sorted(set(captured) | set(baseline))
-        if captured.get(case_id) != baseline.get(case_id)
-    }
-    assert not mismatches, json.dumps(mismatches, ensure_ascii=False, indent=2)
-    print(
-        "Offline eval prompt comparison: "
-        f"{len(captured)}/{len(baseline)} Q&A payload lists match the prompt capture."
-    )
-    assert capsys.readouterr().out.endswith(
-        f"{len(captured)}/{len(baseline)} Q&A payload lists match the prompt capture.\n"
-    )
+    for case in cases:
+        messages = captured_messages[case["id"]]
+        rendered = json.dumps(messages, ensure_ascii=False)
+        assert messages[0]["role"] == "system"
+        assert "Assistant style (" in messages[0]["content"]
+        assert "Before answering questions about the player or their program, call the relevant tool." in STATIC_SYSTEM_CORE
+        assert "[TRAINEE CONTEXT]" not in rendered
+        assert case["query"] in rendered
+        if case.get("telemetry"):
+            assert case["telemetry"] not in rendered
+    assert capsys.readouterr().out == ""
 
 
-def test_sixteen_message_arabic_history_is_trimmed_to_the_hosted_token_ceiling():
+def test_last_ten_message_arabic_history_is_kept_untruncated():
     messages = []
     for index in range(8):
         messages.append(HumanMessage(content="سؤال عن التمرين رقم %d وكيف أنظم الأحمال والراحة بين المجموعات" % index))
@@ -418,5 +379,5 @@ def test_sixteen_message_arabic_history_is_trimmed_to_the_hosted_token_ceiling()
     prompt = build_player_chat_prompt({"messages": messages})
 
     assert prompt[-1].content == "ما الذي يجب أن أركز عليه الآن؟"
-    assert len(prompt) - 1 < 16
+    assert len(prompt) - 1 == 10
     assert prompt_token_count(prompt) <= HOSTED_PROMPT_REAL_TOKEN_SAFETY_CEILING

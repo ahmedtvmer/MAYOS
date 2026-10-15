@@ -207,7 +207,7 @@ When `deload_recommended == True`, Tab 2 automatically adjusts training targets:
    $$\text{sets}_{\text{deload}} = \max\left(1, \text{round}\left(\text{target\_sets} \times \text{volume\_multiplier}\right)\right)$$
 2. **RPE Ceiling Clamping**: The maximal permitted target RPE is capped:
    $$\text{RPE}_{\text{target}} = \min(\text{prescribed\_rpe}, \text{intensity\_cap\_rpe})$$
-3. **Telemetry State Flagging**: The state snapshot injected into the LLM system prompt switches to `[DELOAD RECOMMENDED]`, instructing the assistant to emphasize recovery compliance.
+3. **Telemetry State Flagging**: The deload state remains a deterministic workout recommendation and changes target volume and intensity. Player chat no longer receives it as an injected prompt summary (#269); on-demand tools expose profile, active-program, and body-weight trend data when requested.
 
 ---
 

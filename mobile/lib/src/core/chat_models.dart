@@ -6,10 +6,10 @@ import 'models.dart';
 ///
 /// Kept short and honest per ADR 016: it names the hosted provider and admits
 /// that user-written free text may contain identifying information.
-const String hostedChatDisclosure = 'Chat is answered by a hosted AI model. '
-    'Your message and the training context needed to answer it are sent to that '
-    'model provider. Free text can contain identifying details, so do not include '
-    'anything you do not want processed there.';
+const String hostedChatDisclosure = 'Chat uses a hosted AI model. It receives your '
+    'message, last 10 chat messages, preferred name and assistant settings. '
+    'Profile or program details it looks up are sent too. Free text can identify '
+    'you; avoid details you do not want processed there.';
 
 /// One persisted turn in the player's chat history (`GET /chat/history`).
 class ChatMessage {
@@ -71,6 +71,13 @@ class ChatToken extends ChatStreamEvent {
   const ChatToken(this.token);
 
   final String token;
+}
+
+/// A transient server status while a read-only player tool is running.
+class ChatStatus extends ChatStreamEvent {
+  const ChatStatus(this.status);
+
+  final String status;
 }
 
 /// The turn finished: the reply is final and may have changed the program.

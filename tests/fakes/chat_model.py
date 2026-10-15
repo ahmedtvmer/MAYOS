@@ -92,7 +92,9 @@ class ScriptedChatModel(BaseChatModel):
         **kwargs: Any,
     ) -> ChatResult:
         schema = kwargs.pop("structured_schema", None)
-        mode = "structured" if schema is not None else "invoke"
+        mode = kwargs.pop(
+            "_scripted_mode", "structured" if schema is not None else "invoke"
+        )
         if schema is not None:
             kwargs["schema"] = _schema_name(schema)
             kwargs["structured_schema"] = schema
@@ -112,12 +114,15 @@ class ScriptedChatModel(BaseChatModel):
         **kwargs: Any,
     ):
         self._streamed_chunk_count = 0
-        turn = self._next_turn(messages, mode="stream", stop=stop, **kwargs)
+        mode = kwargs.pop("_scripted_mode", "stream")
+        turn = self._next_turn(messages, mode=mode, stop=stop, **kwargs)
         if isinstance(turn, StreamErrorTurn):
             yield from self._text_chunks(turn.content)
             raise turn.error
         response = self._with_metadata(_as_response(turn))
         if response.tool_calls:
+            content = response.content if isinstance(response.content, str) else ""
+            yield from self._text_chunks(content)
             chunks = [
                 {
                     "name": call["name"],
@@ -130,6 +135,22 @@ class ScriptedChatModel(BaseChatModel):
             ]
             self._streamed_chunk_count += 1
             yield ChatGenerationChunk(message=AIMessageChunk(content="", tool_call_chunks=chunks))
+            if self.emit_usage and response.usage_metadata is not None:
+                self._streamed_chunk_count += 1
+                yield ChatGenerationChunk(
+                    message=AIMessageChunk(
+                        content="",
+                        usage_metadata=response.usage_metadata,
+                        response_metadata=response.response_metadata,
+                    )
+                )
+            elif response.response_metadata:
+                self._streamed_chunk_count += 1
+                yield ChatGenerationChunk(
+                    message=AIMessageChunk(
+                        content="", response_metadata=response.response_metadata
+                    )
+                )
             return
         content = response.content if isinstance(response.content, str) else ""
         yield from self._text_chunks(content)
@@ -156,15 +177,12 @@ class ScriptedChatModel(BaseChatModel):
     def bind_tools(self, tools: Sequence[Any], *, tool_choice: str | None = None, **kwargs: Any):
         bound_tools = tuple(tools)
         tool_names = tuple(_tool_name(tool) for tool in bound_tools)
-        return RunnableLambda(
-            lambda prompt, **call_kwargs: self._next_response(
-                _as_messages(prompt),
-                mode="tools",
-                tools=tool_names,
-                bound_tools=bound_tools,
-                tool_choice=tool_choice,
-                **{**kwargs, **call_kwargs},
-            )
+        return _ScriptedToolBinding(
+            self,
+            tool_names=tool_names,
+            bound_tools=bound_tools,
+            tool_choice=tool_choice,
+            bind_kwargs=kwargs,
         )
 
     def with_structured_output(self, schema: Any, *, include_raw: bool = False, **kwargs: Any):
@@ -248,6 +266,45 @@ def _as_messages(prompt: Any) -> list[BaseMessage]:
     if hasattr(prompt, "to_messages"):
         return list(prompt.to_messages())
     return list(prompt)
+
+
+class _ScriptedToolBinding:
+    """Tool-bound facade that keeps BaseChatModel callbacks and chunking active."""
+
+    def __init__(
+        self,
+        model: ScriptedChatModel,
+        *,
+        tool_names: tuple[str, ...],
+        bound_tools: tuple[Any, ...],
+        tool_choice: str | None,
+        bind_kwargs: dict[str, Any],
+    ) -> None:
+        self._model = model
+        self._tool_names = tool_names
+        self._bound_tools = bound_tools
+        self._tool_choice = tool_choice
+        self._bind_kwargs = bind_kwargs
+
+    def invoke(self, prompt: Any, **kwargs: Any) -> AIMessage:
+        return self._model.invoke(
+            _as_messages(prompt),
+            _scripted_mode="tools",
+            tools=self._tool_names,
+            bound_tools=self._bound_tools,
+            tool_choice=self._tool_choice,
+            **{**self._bind_kwargs, **kwargs},
+        )
+
+    def stream(self, prompt: Any, **kwargs: Any):
+        yield from self._model.stream(
+            _as_messages(prompt),
+            _scripted_mode="tools",
+            tools=self._tool_names,
+            bound_tools=self._bound_tools,
+            tool_choice=self._tool_choice,
+            **{**self._bind_kwargs, **kwargs},
+        )
 
 
 def _as_response(turn: Any) -> AIMessage:
