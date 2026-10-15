@@ -161,6 +161,7 @@ def admit_model_request(
     *,
     guard: bool = True,
     db: Any = None,
+    now: datetime | None = None,
     context: ModelAdmissionContext | None = None,
 ) -> Token[str | None] | None:
     """Checks and reserves one request for ``account_id``; raises :class:`ModelLimitExceeded`.
@@ -177,10 +178,15 @@ def admit_model_request(
     pass it explicitly (ADR 041). An attributed call (``account_id`` set) with
     no store raises rather than silently skipping the daily token ceiling;
     unattributed calls are never limited.
+
+    ``now`` overrides the clock used for the daily-window start, so a
+    deterministic replay (for example the paired trial measurement) checks the
+    day it is simulating instead of wall-clock today; production callers leave
+    it unset.
     """
     if _admission_is_skipped(account_id, guard, db):
         return None
-    refusal = _check_admission_window(account_id, db)
+    refusal = _check_admission_window(account_id, db, now)
     if refusal is not None:
         _raise_model_limit(account_id, db, context, refusal)
     return _admitted.set(account_id) if guard else None
@@ -200,22 +206,22 @@ def _admission_is_skipped(account_id: str | None, guard: bool, db: Any) -> bool:
 
 
 def _check_admission_window(
-    account_id: str, db: Any
+    account_id: str, db: Any, now: datetime | None = None
 ) -> tuple[Literal["rate", "daily_tokens"], str] | None:
     request_limit = request_limit_per_minute()
     token_limit = daily_token_limit()
     refusal: tuple[Literal["rate", "daily_tokens"], str] | None = None
     with _lock:
-        now = time.monotonic()
-        in_window = _check_request_window(account_id, now)
+        monotonic_now = time.monotonic()
+        in_window = _check_request_window(account_id, monotonic_now)
         if request_limit > 0 and in_window >= request_limit:
             refusal = ("rate", REQUEST_LIMIT_DETAIL)
         elif token_limit > 0:
-            used = db.sum_model_tokens_for_account(account_id, utc_day_start_iso())
+            used = db.sum_model_tokens_for_account(account_id, utc_day_start_iso(now))
             if used >= token_limit:
                 refusal = ("daily_tokens", DAILY_TOKEN_LIMIT_DETAIL)
         if refusal is None:
-            _request_window.setdefault(account_id, deque()).append(now)
+            _request_window.setdefault(account_id, deque()).append(monotonic_now)
     return refusal
 
 

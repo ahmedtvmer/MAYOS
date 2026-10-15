@@ -35,7 +35,7 @@ def test_player_prompt_matches_experience_based_effort_and_rest_prescriptions():
 
 def test_player_prompt_pins_polite_egyptian_register_for_all_arabic_replies():
     assert (
-        "Arabic/mixed input, even in MSA: polite everyday Egyptian replies, including refusals/no-data; no street slang."
+        "Arabic/mixed input, even in MSA: polite everyday Egyptian Arabic replies, including refusals/no-data; no street slang."
     ) in STATIC_SYSTEM_CORE
     assert "Open the first reply sentence with مش/مفيش/ده/عشان/تمام; no حسب opener" in STATIC_SYSTEM_CORE
     assert "عايز/ده-دي/مش/إزاي/كده/هـ-future/-ش" in STATIC_SYSTEM_CORE

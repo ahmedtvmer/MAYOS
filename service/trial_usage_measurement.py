@@ -97,7 +97,7 @@ def _record_admitted_turn(
 ) -> dict[str, Any]:
     exempt = turn.get("purpose") == "checkpoint_review"
     if not exempt:
-        model_limits.admit_model_request(account_id, guard=False, db=store)
+        model_limits.admit_model_request(account_id, guard=False, db=store, now=store.now)
     turn_id = f"{account_id}:{turn.get('turn_id') or turn.get('case_id') or index}"
     for call in turn.get("calls", []):
         store.record_call(account_id, turn, call, turn_id)
