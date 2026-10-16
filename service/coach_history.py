@@ -67,8 +67,19 @@ def _active_program_response(
         if program.published_by_coach_account_id == assignment_coach_id
         else "automatic"
     )
+    content["source_template_name"] = _source_template_name(
+        db, assignment_coach_id, program.source_template_id
+    )
     content["active_since"] = program.created_at
     return {"program": content, "has_draft": has_draft}
+
+
+def _source_template_name(db: Any, coach_account_id: str, template_id: str | None) -> str | None:
+    """The owning Coach's template name for a program copied from one (#306)."""
+    if not template_id:
+        return None
+    template = db.get_program_template(coach_account_id, template_id)
+    return template["name"] if template else None
 
 
 def _enrich_program_exercises(db: Any, program_content: dict[str, Any]) -> None:

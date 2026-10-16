@@ -120,6 +120,12 @@ class _CoachProgramViewState extends State<CoachProgramView> {
       runSpacing: MayosSpacing.xxs,
       children: <Widget>[
         _factText(context, colors, provenance),
+        if (widget.active.sourceTemplateName != null)
+          _factText(
+            context,
+            colors,
+            copy.fromTemplate(widget.active.sourceTemplateName!),
+          ),
         if (activeDate != null)
           _factText(context, colors, copy.activeProgramSince(activeDate)),
         if (widget.active.editedByPlayer)

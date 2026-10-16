@@ -1042,6 +1042,17 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
             style:
                 MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           ),
+          if (program.sourceTemplateName != null) ...<Widget>[
+            const SizedBox(height: MayosSpacing.xs),
+            Text(
+              displayCopyOf(context)
+                  .programFromTemplate(program.sourceTemplateName!),
+              key: const Key('player_program_source_template'),
+              style: MayosTypography.of(context)
+                  .bodySecondary
+                  .copyWith(color: c.textSecondary),
+            ),
+          ],
           if (program.weekCount > 1) ...<Widget>[
             const SizedBox(height: MayosSpacing.xs),
             Text(

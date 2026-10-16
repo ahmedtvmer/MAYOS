@@ -1479,3 +1479,39 @@ keep their server English fallbacks.
 | --- | --- |
 | program.template_not_found.v1 | لم يُعثر على قالب البرنامج التدريبي. |
 | program.template_invalid.v1 | راجع تفاصيل قالب البرنامج التدريبي وحاول مجددًا. |
+
+## Template assignment and publication (#306; pending owner review)
+
+These are the exact Arabic UI strings added for bulk assignment, per-Player
+outcomes, provenance and Publish all. They use simple standard Arabic and are
+pending owner review; this status does not block the feature.
+
+| English | Arabic |
+| --- | --- |
+| Assign {template name} | إسناد {template name} |
+| Choose players to receive an independent copy. The coach can customise each copy. | اختر اللاعبين الذين سيتلقون نسخة مستقلة. يمكنك تعديل كل نسخة على حدة. |
+| Replace draft | استبدال المسودة |
+| Skip if a draft exists | تخطي المسودة الحالية |
+| Assign | إسناد |
+| Assigned: {assigned} · Replaced: {replaced} · Kept: {skipped} · Rejected: {rejected} | أُسند: {assigned} · استُبدل: {replaced} · بقي: {skipped} · رُفض: {rejected} |
+| No assigned players yet. | لا يوجد لاعبون معينون بعد. |
+| Assignment results | نتائج الإسناد |
+| Publish results | نتائج النشر |
+| Customize draft | تعديل المسودة |
+| Unknown player | لاعب غير معروف |
+| Draft assigned | أُسندت المسودة |
+| Draft replaced | استُبدلت المسودة |
+| Existing draft kept | أُبقيت المسودة الحالية |
+| Program published | نُشر البرنامج |
+| Draft needs correction | المسودة غير صالحة |
+| No draft found | لا توجد مسودة |
+| Could not complete | تعذر إكمال العملية |
+| Program requests resolved: {count} | طلبات البرنامج التي حُلّت: {count} |
+| No active assignment. | لا توجد علاقة تدريب نشطة. |
+| Program draft not found. | لا توجد مسودة برنامج. |
+| The draft changed before publication. | تغيرت المسودة قبل النشر. |
+| Program requests could not be verified. | تعذر التحقق من طلبات البرنامج. |
+| From template: {name} | من القالب: {name} |
+| Publish each selected player's Program now? It will become their active program. | نشر برامج اللاعبين المحددين الآن؟ سيصبح برنامج كل لاعب هو البرنامج النشط. |
+| Publish all | نشر الكل |
+| Published: {published} · Invalid: {invalid} · No draft: {no draft} · Rejected: {rejected} | نُشر: {published} · غير صالح: {invalid} · بلا مسودة: {no draft} · رُفض: {rejected} |

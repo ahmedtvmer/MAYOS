@@ -101,6 +101,10 @@
       "kind": "method",
       "signature": "(self, request_id: str, assignment_id: str, coach_account_id: str, player_account_id: str, kind: str, program_version: int, day_name: str | None, exercise_id: str | None, replacement_exercise_id: str | None, desired_weekly_frequency: int | None, desired_split_preference: str | None, reason: str, now_iso: str, week_order: int | None = None, day_order: int | None = None) -> str"
     },
+    "create_program_template": {
+      "kind": "method",
+      "signature": "(self, coach_account_id: str, fields: database.registry.program_templates.ProgramTemplateCreate) -> dict[str, typing.Any]"
+    },
     "delete_account": {
       "kind": "method",
       "signature": "(self, account_id: str, now_iso: str | None = None, ledger_id: str | None = None) -> dict[str, typing.Any]"
@@ -245,6 +249,14 @@
       "kind": "method",
       "signature": "(self, request_id: str) -> dict[str, typing.Any] | None"
     },
+    "get_program_template": {
+      "kind": "method",
+      "signature": "(self, coach_account_id: str, template_id: str) -> dict[str, typing.Any] | None"
+    },
+    "get_program_template_name_for_provenance": {
+      "kind": "method",
+      "signature": "(self, template_id: str) -> str | None"
+    },
     "get_roster_alert_badges": {
       "kind": "method",
       "signature": "(self, coach_account_id: str) -> dict[str, dict[str, int]]"
@@ -376,6 +388,10 @@
     "list_program_requests_for_player": {
       "kind": "method",
       "signature": "(self, player_account_id: str) -> list[dict[str, typing.Any]]"
+    },
+    "list_program_templates": {
+      "kind": "method",
+      "signature": "(self, coach_account_id: str, *, archived: bool = False) -> list[dict[str, typing.Any]]"
     },
     "list_roster_follow_up_basis": {
       "kind": "method",
@@ -545,6 +561,10 @@
       "kind": "method",
       "signature": "(self, account_id: str, capability: str, plan: str, status: str = 'active') -> None"
     },
+    "set_program_template_archived": {
+      "kind": "method",
+      "signature": "(self, coach_account_id: str, template_id: str, *, archived: bool) -> dict[str, typing.Any] | None"
+    },
     "set_roster_program_name": {
       "kind": "method",
       "signature": "(self, assignment_id: str, program_name: str | None) -> None"
@@ -572,6 +592,10 @@
     "update_coach_alert_details": {
       "kind": "method",
       "signature": "(self, alert_id: str, details: dict[str, typing.Any]) -> int"
+    },
+    "update_program_template": {
+      "kind": "method",
+      "signature": "(self, coach_account_id: str, template_id: str, *, name: str, description: str | None, program: dict[str, typing.Any]) -> dict[str, typing.Any] | None"
     },
     "upsert_alert_signal_state": {
       "kind": "method",

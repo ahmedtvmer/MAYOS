@@ -161,7 +161,8 @@ class SchemaMixin:
                 is_active INTEGER DEFAULT 1,
                 created_at TEXT NOT NULL,
                 version INTEGER NOT NULL DEFAULT 0,
-                published_by_coach_account_id TEXT
+                published_by_coach_account_id TEXT,
+                source_template_id TEXT
             );
             CREATE TABLE IF NOT EXISTS program_days (
                 id TEXT PRIMARY KEY,

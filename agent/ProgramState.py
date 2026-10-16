@@ -174,6 +174,10 @@ class PersistedProgramSchema(GeneratedProgramSchema):
 
     days: list[PersistedProgramDaySchema]
     weeks: list[PersistedProgramWeekSchema] = Field(default_factory=list, max_length=MAX_PROGRAM_WEEKS)
+    source_template_id: str | None = Field(
+        default=None, description="Coach Program template this program was copied from, if any"
+    )
+    source_template_name: str | None = None
 
 
 # --- LangGraph Node State ---

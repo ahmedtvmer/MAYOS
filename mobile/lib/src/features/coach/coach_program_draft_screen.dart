@@ -93,6 +93,7 @@ class _CoachProgramDraftScreenState
   FailureMessage? _failure;
   String? _inputError;
   String? _serverSummary;
+  String? _sourceTemplateName;
   final Map<_EditorErrorLocation, String> _serverErrors =
       <_EditorErrorLocation, String>{};
   late final TextEditingController _templateName;
@@ -217,6 +218,7 @@ class _CoachProgramDraftScreenState
       if (name != null) _templateName.text = name;
       _templateDescription.text = envelope['description'] as String? ?? '';
     }
+    _sourceTemplateName = envelope['source_template_name'] as String?;
     setState(() {
       _draft = draft;
       _loading = false;
@@ -974,6 +976,16 @@ class _CoachProgramDraftScreenState
                           child: ListView(
                             padding: MayosSpacing.screen,
                             children: <Widget>[
+                              if (!widget.isTemplateMode &&
+                                  _sourceTemplateName != null) ...<Widget>[
+                                Text(
+                                  copy.fromTemplate(_sourceTemplateName!),
+                                  key: const Key('program_draft_source_template'),
+                                  style: MayosTypography.of(context)
+                                      .bodySecondary,
+                                ),
+                                const SizedBox(height: MayosSpacing.sm),
+                              ],
                               if (widget.isTemplateMode) ...<Widget>[
                                 TextField(
                                   key: const Key('program_template_name'),

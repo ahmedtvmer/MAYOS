@@ -6,6 +6,7 @@ import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/program_prescription.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/features/coach/coach_program_templates_screen.dart';
+import 'package:mayos_mobile/src/features/coach/coach_template_assignment_screen.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
@@ -70,6 +71,48 @@ Future<void> _pumpLibrary(
     ),
   );
   await _pumpUntilFound(tester, find.byKey(const Key('program_templates_new')));
+}
+
+Future<void> _pumpAssignment(
+  WidgetTester tester,
+  FakeMayosApi fake, {
+  String templateId = 'tmpl:upper',
+  String templateName = 'Upper Block',
+  String language = 'en',
+  bool narrow = false,
+}) async {
+  tester.view.physicalSize = narrow ? const Size(360, 800) : const Size(1080, 2400);
+  tester.view.devicePixelRatio = narrow ? 1.0 : 2.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+
+  final InMemoryTokenStore tokens = InMemoryTokenStore();
+  await tokens.save('token-alice');
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: <Override>[
+        tokenStoreProvider.overrideWithValue(tokens),
+        systemDisplayLanguageProvider.overrideWithValue(language),
+        apiClientProvider.overrideWith((ref) {
+          final ApiClient client = ApiClient(
+            tokens: ref.watch(tokenStoreProvider),
+            baseUrl: 'http://test.local',
+            adapter: fake.adapter,
+          );
+          client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
+          return client;
+        }),
+      ],
+      child: MaterialApp(
+        home: CoachTemplateAssignmentScreen(
+          templateId: templateId,
+          templateName: templateName,
+        ),
+      ),
+    ),
+  );
+  await _pumpUntilFound(
+      tester, find.byKey(const Key('template_assign_submit')));
 }
 
 FakeMayosApi _coachFake() {
@@ -374,5 +417,183 @@ void main() {
 
     expect(find.text('قوالب البرامج التدريبية'), findsOneWidget);
     expect(find.text('قالب جديد'), findsOneWidget);
+  });
+
+  testWidgets('bulk assignment picks players and reports a per-player summary',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    _seedTemplate(fake, id: 'tmpl:upper', name: 'Upper Block');
+    fake.assignments.addAll(<Map<String, dynamic>>[
+      <String, dynamic>{
+        'assignment_id': 'asg:1',
+        'player_username': 'bob',
+        'started_at': '2026-10-01T00:00:00Z',
+        'status': 'active',
+      },
+      <String, dynamic>{
+        'assignment_id': 'asg:2',
+        'player_username': 'carol',
+        'started_at': '2026-10-01T00:00:00Z',
+        'status': 'active',
+      },
+    ]);
+    // Carol already holds a draft, so her 'keep existing' choice is respected.
+    fake.templateAssignedDrafts['asg:2'] = <String, dynamic>{
+      'program_name': 'Existing',
+      'days': <dynamic>[],
+    };
+
+    await _pumpAssignment(tester, fake);
+    expect(find.text('bob'), findsOneWidget);
+    expect(find.text('carol'), findsOneWidget);
+
+    await tester.tap(
+        find.byKey(const Key('template_assign_player_asg:1')));
+    await tester.pump();
+    await tester.tap(
+        find.byKey(const Key('template_assign_player_asg:2')));
+    await tester.pump();
+    // Carol's existing draft is skipped by the safe default.
+    await tester.tap(find.descendant(
+      of: find.byKey(const Key('template_assign_player_asg:2')),
+      matching: find.text('Skip if a draft exists'),
+    ));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('template_assign_submit')));
+    await _pumpUntilFound(
+      tester,
+      find.text('Assigned: 1 · Replaced: 0 · Kept: 1 · Rejected: 0'),
+    );
+
+    expect(fake.programTemplateAssignRequests, 1);
+    final Map<String, dynamic> skipTarget =
+        fake.lastProgramTemplateAssignTargets.firstWhere(
+      (Map<String, dynamic> target) => target['assignment_id'] == 'asg:2',
+    );
+    expect(skipTarget['existing_draft'], 'skip');
+    expect(fake.templateAssignedDrafts['asg:2']?['program_name'], 'Existing');
+    expect(find.text('bob: Draft assigned'), findsOneWidget);
+    expect(find.text('carol: Existing draft kept'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('template_publish_all')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('template_publish_all_confirm')));
+    await tester.tap(find.byKey(const Key('template_publish_all_confirm')));
+    await _pumpUntilFound(
+        tester, find.text('Published: 1 · Invalid: 0 · No draft: 0 · Rejected: 0'));
+    expect(fake.lastProgramTemplatePublishAllIds, <String>['asg:1']);
+    expect(find.text('bob: Program published'), findsOneWidget);
+    expect(find.text('carol: Existing draft kept'), findsOneWidget);
+  });
+
+  testWidgets('publish all publishes the assigned players after confirmation',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    _seedTemplate(fake, id: 'tmpl:upper', name: 'Upper Block');
+    fake.assignments.add(<String, dynamic>{
+      'assignment_id': 'asg:1',
+      'player_username': 'bob',
+      'started_at': '2026-10-01T00:00:00Z',
+      'status': 'active',
+    });
+
+    await _pumpAssignment(tester, fake);
+    await tester.tap(find.byKey(const Key('template_assign_player_asg:1')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('template_assign_submit')));
+    await _pumpUntilFound(
+      tester,
+      find.text('Assigned: 1 · Replaced: 0 · Kept: 0 · Rejected: 0'),
+    );
+
+    await tester.tap(find.byKey(const Key('template_publish_all')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('template_publish_all_confirm')));
+    await tester.tap(find.byKey(const Key('template_publish_all_confirm')));
+    await _pumpUntilFound(
+      tester,
+      find.text('Published: 1 · Invalid: 0 · No draft: 0 · Rejected: 0'),
+    );
+
+    expect(fake.programTemplatePublishAllRequests, 1);
+    expect(fake.lastProgramTemplatePublishAllIds, <String>['asg:1']);
+  });
+
+  testWidgets('publish all keeps player validation details and customize access',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    _seedTemplate(fake, id: 'tmpl:upper', name: 'Upper Block');
+    fake.assignments.addAll(<Map<String, dynamic>>[
+      <String, dynamic>{
+        'assignment_id': 'asg:1',
+        'player_username': 'bob',
+        'started_at': '2026-10-01T00:00:00Z',
+        'status': 'active',
+      },
+      <String, dynamic>{
+        'assignment_id': 'asg:2',
+        'player_username': 'carol',
+        'started_at': '2026-10-01T00:00:00Z',
+        'status': 'active',
+      },
+    ]);
+    fake.templatePublishResultOverrides['asg:2'] = <String, dynamic>{
+      'status': 'invalid',
+      'message_code': 'assignment.program_draft_invalid.v1',
+      'errors': <Map<String, dynamic>>[
+        <String, dynamic>{'code': 'invalid_rir'},
+      ],
+    };
+    await _pumpAssignment(tester, fake);
+
+    for (final String id in <String>['asg:1', 'asg:2']) {
+      await tester.tap(find.byKey(Key('template_assign_player_$id')));
+      await tester.pump();
+    }
+    await tester.tap(find.byKey(const Key('template_assign_submit')));
+    await _pumpUntilFound(
+        tester, find.text('Assigned: 2 · Replaced: 0 · Kept: 0 · Rejected: 0'));
+    await tester.tap(find.byKey(const Key('template_publish_all')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('template_publish_all_confirm')));
+    await tester.tap(find.byKey(const Key('template_publish_all_confirm')));
+    await _pumpUntilFound(tester, find.byKey(const Key('template_assignment_customize_asg:2')));
+
+    expect(find.text('bob: Program published'), findsOneWidget);
+    expect(find.text('carol: Draft needs correction'), findsOneWidget);
+    expect(find.text('Target RIR must be from 0 to 5.'), findsOneWidget);
+  });
+
+  testWidgets('Arabic assignment screen renders Arabic copy', (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    _seedTemplate(fake, id: 'tmpl:upper', name: 'Upper Block');
+    fake.assignments.add(<String, dynamic>{
+      'assignment_id': 'asg:1',
+      'player_username': 'bob',
+      'started_at': '2026-10-01T00:00:00Z',
+      'status': 'active',
+    });
+
+    await _pumpAssignment(tester, fake, language: 'ar');
+
+    expect(
+        find.text('اختر اللاعبين الذين سيتلقون نسخة مستقلة. يمكنك تعديل كل نسخة على حدة.'),
+        findsOneWidget);
+    expect(find.text('إسناد'), findsOneWidget);
+  });
+
+  testWidgets('Arabic assignment actions fit a narrow screen', (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    _seedTemplate(fake, id: 'tmpl:upper', name: 'Upper Block');
+    fake.assignments.add(<String, dynamic>{
+      'assignment_id': 'asg:1',
+      'player_username': 'bob',
+      'started_at': '2026-10-01T00:00:00Z',
+      'status': 'active',
+    });
+    await _pumpAssignment(tester, fake, language: 'ar', narrow: true);
+    expect(find.byKey(const Key('template_assign_submit')), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

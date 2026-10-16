@@ -749,6 +749,58 @@ class CoachCopy {
       isArabic ? 'عرض المؤرشفة' : 'Show archived';
   String get hideArchivedTemplates =>
       isArabic ? 'إخفاء المؤرشفة' : 'Hide archived';
+  String get assignTemplate => isArabic ? 'إسناد للاعبين' : 'Assign to players';
+  String assignTemplateTitle(String name) => isArabic
+      ? 'إسناد ${_ltr(name)}'
+      : 'Assign $name';
+  String get assignTemplateLead => isArabic
+      ? 'اختر اللاعبين الذين سيتلقون نسخة مستقلة. يمكنك تعديل كل نسخة على حدة.'
+      : 'Choose players to receive an independent copy. The coach can customise each copy.';
+  String get existingDraftReplace => isArabic ? 'استبدال المسودة' : 'Replace draft';
+  String get existingDraftKeep => isArabic ? 'تخطي المسودة الحالية' : 'Skip if a draft exists';
+  String get assignSelectedPlayers => isArabic ? 'إسناد' : 'Assign';
+  String get templateAssignmentResults => isArabic ? 'نتائج الإسناد' : 'Assignment results';
+  String get templatePublishResults => isArabic ? 'نتائج النشر' : 'Publish results';
+  String get customizeDraft => isArabic ? 'تعديل المسودة' : 'Customize draft';
+  String get unknownPlayer => isArabic ? 'لاعب غير معروف' : 'Unknown player';
+  String templatePlayerResult(String name, String status) {
+    final String state = switch (status) {
+      'assigned' => isArabic ? 'أُسندت المسودة' : 'Draft assigned',
+      'replaced' => isArabic ? 'استُبدلت المسودة' : 'Draft replaced',
+      'skipped' => isArabic ? 'أُبقيت المسودة الحالية' : 'Existing draft kept',
+      'published' => isArabic ? 'نُشر البرنامج' : 'Program published',
+      'invalid' => isArabic ? 'المسودة غير صالحة' : 'Draft needs correction',
+      'no_draft' => isArabic ? 'لا توجد مسودة' : 'No draft found',
+      _ => isArabic ? 'تعذر إكمال العملية' : 'Could not complete',
+    };
+    return isArabic ? '${_ltr(name)}: $state' : '$name: $state';
+  }
+  String resolvedProgramRequests(int count) => isArabic
+      ? 'طلبات البرنامج التي حُلّت: ${_ltr(count.toString())}'
+      : 'Program requests resolved: $count';
+  String templateResultMessage(String code, String fallback) => switch (code) {
+        'assignment.none_active.v1' => isArabic ? 'لا توجد علاقة تدريب نشطة.' : 'No active assignment.',
+        'assignment.program_draft_not_found.v1' => isArabic ? 'لا توجد مسودة برنامج.' : 'Program draft not found.',
+        'assignment.program_draft_changed.v1' => isArabic ? 'تغيرت المسودة قبل النشر.' : 'The draft changed before publication.',
+        'program_request.selection_invalid.v1' => isArabic ? 'تعذر التحقق من طلبات البرنامج.' : 'Program requests could not be verified.',
+        _ => fallback,
+      };
+  String get noPlayersToAssign =>
+      isArabic ? 'لا يوجد لاعبون معينون بعد.' : 'No assigned players yet.';
+  String templateAssignSummary(int assigned, int replaced, int skipped, int rejected) =>
+      isArabic
+          ? 'أُسند: ${_ltr(assigned.toString())} · استُبدل: ${_ltr(replaced.toString())} · بقي: ${_ltr(skipped.toString())} · رُفض: ${_ltr(rejected.toString())}'
+          : 'Assigned: $assigned · Replaced: $replaced · Kept: $skipped · Rejected: $rejected';
+  String get publishAll => isArabic ? 'نشر الكل' : 'Publish all';
+  String get confirmPublishAll => isArabic
+      ? 'نشر برامج اللاعبين المحددين الآن؟ سيصبح برنامج كل لاعب هو البرنامج النشط.'
+      : "Publish each selected player's Program now? It will become their active program.";
+  String publishAllSummary(int published, int invalid, int noDraft, int rejected) =>
+      isArabic
+          ? 'نُشر: ${_ltr(published.toString())} · غير صالح: ${_ltr(invalid.toString())} · بلا مسودة: ${_ltr(noDraft.toString())} · رُفض: ${_ltr(rejected.toString())}'
+          : 'Published: $published · Invalid: $invalid · No draft: $noDraft · Rejected: $rejected';
+  String fromTemplate(String name) =>
+      isArabic ? 'من القالب: ${_ltr(name)}' : 'From template: $name';
   String get invalidSetCount => isArabic
       ? 'أدخل مجموعة تدريب واحدة على الأقل لكل تمرين.'
       : 'Enter at least one working set for each exercise.';

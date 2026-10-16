@@ -534,7 +534,9 @@ def _save_imported_draft(
     try:
         if replace:
             try:
-                return coach_program_drafts.replace_program_draft(db, coach_account_id, assignment_id, draft)
+                return coach_program_drafts.replace_program_draft(
+                    db, coach_account_id, assignment_id, draft, preserve_source_template=False
+                )
             except coach_program_drafts.ProgramDraftNotFound:
                 return coach_program_drafts.create_program_draft(db, coach_account_id, assignment_id, draft)
         return coach_program_drafts.create_program_draft(db, coach_account_id, assignment_id, draft)

@@ -486,13 +486,12 @@ def get_active_player_assignment_id(db: Any, player_account_id: str) -> str | No
     return assignment["assignment_id"]
 
 
-def authorized_player_ledger(db: Any, coach_account_id: str, assignment_id: Any) -> tuple[Any, dict[str, Any]] | None:
-    """Resolves an active assignment owned by this coach, then opens its ledger handle.
+def authorized_active_assignment(db: Any, coach_account_id: str, assignment_id: Any) -> dict[str, Any] | None:
+    """Resolves an active assignment owned by this coach without opening a ledger.
 
-    The catalog gate runs first; no ledger is opened unless the assignment
-    belongs to this coach and is active (ADR 025). ``None`` covers unknown,
-    ended, and other-coach assignments alike so callers deny them identically.
-    Returns ``(ledger, context)``; the caller closes the ledger.
+    The catalog-only half of :func:`authorized_player_ledger`, for callers that
+    only need the ADR 025 gate and will open the player's ledger themselves.
+    ``None`` covers unknown, ended, and other-coach assignments alike.
     """
     if not isinstance(assignment_id, str) or not assignment_id:
         return None
@@ -502,8 +501,22 @@ def authorized_player_ledger(db: Any, coach_account_id: str, assignment_id: Any)
     player = db.get_account(assignment["player_account_id"])
     if not db.is_live_account(player):
         return None
-    ledger = db.open_ledger(player["ledger_id"])
-    return ledger, {"assignment": assignment, "player": player}
+    return {"assignment": assignment, "player": player}
+
+
+def authorized_player_ledger(db: Any, coach_account_id: str, assignment_id: Any) -> tuple[Any, dict[str, Any]] | None:
+    """Resolves an active assignment owned by this coach, then opens its ledger handle.
+
+    The catalog gate runs first; no ledger is opened unless the assignment
+    belongs to this coach and is active (ADR 025). ``None`` covers unknown,
+    ended, and other-coach assignments alike so callers deny them identically.
+    Returns ``(ledger, context)``; the caller closes the ledger.
+    """
+    context = authorized_active_assignment(db, coach_account_id, assignment_id)
+    if context is None:
+        return None
+    ledger = db.open_ledger(context["player"]["ledger_id"])
+    return ledger, context
 
 
 def end_assignment(

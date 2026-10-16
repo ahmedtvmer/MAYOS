@@ -225,6 +225,7 @@ class FakeMayosApi {
   int _publishedVersion = 0;
   int? programVersion;
   String? programPublishedByCoachAccountId;
+  String? programSourceTemplateName;
   List<Map<String, dynamic>>? programWeeksOverride;
   int? programCurrentWeekOverride;
   bool programFinalWeekCompleted = false;
@@ -305,6 +306,16 @@ class FakeMayosApi {
   Object? programTemplateListError;
   Object? programTemplateCreateError;
   Map<String, dynamic>? lastProgramTemplateBody;
+  // Bulk assignment (#306): per-assignment draft copies and the last payloads.
+  int programTemplateAssignRequests = 0;
+  int programTemplatePublishAllRequests = 0;
+  List<Map<String, dynamic>> lastProgramTemplateAssignTargets =
+      <Map<String, dynamic>>[];
+  List<String> lastProgramTemplatePublishAllIds = <String>[];
+  final Map<String, Map<String, dynamic>> templateAssignedDrafts =
+      <String, Map<String, dynamic>>{};
+  final Map<String, Map<String, dynamic>> templatePublishResultOverrides =
+      <String, Map<String, dynamic>>{};
   // Simulates a single-template read that differs from the stale list row.
   final Map<String, Map<String, dynamic>> programTemplateReadOverrides =
       <String, Map<String, dynamic>>{};
@@ -2689,6 +2700,99 @@ class FakeMayosApi {
       existing['archived_at'] = null;
       return FakeResponse(200, existing);
     }
+    if (request.path.endsWith('/assign')) {
+      programTemplateAssignRequests++;
+      final List<dynamic> targets =
+          request.body['targets'] as List<dynamic>? ?? <dynamic>[];
+      lastProgramTemplateAssignTargets = <Map<String, dynamic>>[
+        for (final dynamic target in targets)
+          Map<String, dynamic>.from(target as Map),
+      ];
+      final List<Map<String, dynamic>> results = <Map<String, dynamic>>[];
+      for (final dynamic rawTarget in targets) {
+        final Map<String, dynamic> target =
+            Map<String, dynamic>.from(rawTarget as Map);
+        final String assignmentId = target['assignment_id'] as String;
+        final bool owned = assignments.any(
+          (Map<String, dynamic> entry) =>
+              entry['assignment_id'] == assignmentId,
+        );
+        if (!owned) {
+          results.add(<String, dynamic>{
+            'assignment_id': assignmentId,
+            'status': 'rejected',
+            'message_code': 'assignment.none_active.v1',
+            'message_fallback': 'No active assignment.',
+          });
+          continue;
+        }
+        final bool keep = target['existing_draft'] == 'skip';
+        final Map<String, dynamic>? current = templateAssignedDrafts[assignmentId];
+        final String status = current == null
+            ? 'assigned'
+            : (keep ? 'skipped' : 'replaced');
+        if (current == null || !keep) {
+          templateAssignedDrafts[assignmentId] = Map<String, dynamic>.from(
+            existing['program'] as Map,
+          );
+        }
+        results.add(<String, dynamic>{
+          'assignment_id': assignmentId,
+          'status': status,
+          'source_template_id': existing['template_id'],
+          'source_template_name': existing['name'],
+          'draft': <String, dynamic>{
+            'assignment_id': assignmentId,
+            'draft': templateAssignedDrafts[assignmentId],
+            'source_template_id': existing['template_id'],
+            'source_template_name': existing['name'],
+            'created_at': '2026-10-05T10:00:00Z',
+            'updated_at': '2026-10-05T10:00:00Z',
+          },
+        });
+      }
+      return FakeResponse(200, <String, dynamic>{'results': results});
+    }
+    if (request.path.endsWith('/publish-all')) {
+      programTemplatePublishAllRequests++;
+      final List<dynamic> ids =
+          request.body['assignment_ids'] as List<dynamic>? ?? <dynamic>[];
+      lastProgramTemplatePublishAllIds = <String>[
+        for (final dynamic id in ids) id as String,
+      ];
+      final List<Map<String, dynamic>> results = <Map<String, dynamic>>[];
+      for (final String assignmentId in lastProgramTemplatePublishAllIds) {
+        final Map<String, dynamic>? override =
+            templatePublishResultOverrides[assignmentId];
+        if (override != null) {
+          results.add(<String, dynamic>{
+            'assignment_id': assignmentId,
+            ...override,
+          });
+          continue;
+        }
+        final Map<String, dynamic>? draft = templateAssignedDrafts[assignmentId];
+        if (draft == null) {
+          results.add(<String, dynamic>{
+            'assignment_id': assignmentId,
+            'status': 'no_draft',
+            'message_code': 'assignment.program_draft_not_found.v1',
+            'message_fallback': 'Program draft not found.',
+          });
+          continue;
+        }
+        templateAssignedDrafts.remove(assignmentId);
+        results.add(<String, dynamic>{
+          'assignment_id': assignmentId,
+          'status': 'published',
+          'version': 1,
+          'resolved_request_ids': <String>[],
+          'resolved_request_count': 0,
+          'errors': <Map<String, dynamic>>[],
+        });
+      }
+      return FakeResponse(200, <String, dynamic>{'results': results});
+    }
     return const FakeResponse(
         404, <String, dynamic>{'detail': 'Program template not found.'});
   }
@@ -4092,6 +4196,8 @@ class FakeMayosApi {
         if (programVersion != null) 'version': programVersion,
         if (programPublishedByCoachAccountId != null)
           'published_by_coach_account_id': programPublishedByCoachAccountId,
+        if (programSourceTemplateName != null)
+          'source_template_name': programSourceTemplateName,
         'player_controls_program': !coachControlsProgram,
       };
 

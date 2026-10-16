@@ -1577,6 +1577,8 @@ def test_copy_active_program_to_draft_preserves_the_complete_program(api):
         "active_since",
         "current_week",
         "week_count",
+        "source_template_id",
+        "source_template_name",
     ):
         expected_draft.pop(metadata, None)
     expected_days = expected_draft["days"] + [

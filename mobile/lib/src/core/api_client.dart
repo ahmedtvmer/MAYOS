@@ -1421,6 +1421,56 @@ class ApiClient {
     return _parseProgramTemplate(response.data);
   }
 
+  /// Copies a Program template into each target assignment as an independent
+  /// Program draft (ticket #306). Each target carries its own decision for an
+  /// existing draft: `replace` or `skip`. Returns one result per assignment; a
+  /// revoked, foreign, or non-owned assignment is rejected on its own.
+  Future<List<Map<String, dynamic>>> coachAssignProgramTemplate(
+    String templateId, {
+    required List<Map<String, dynamic>> targets,
+  }) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/program-templates/$templateId/assign',
+        data: <String, dynamic>{'targets': targets},
+      ),
+    );
+    return _parseTemplateResults(response.data, 'results');
+  }
+
+  /// Publishes each listed assignment's Program draft through the normal
+  /// publish path (ticket #306), resolving each player's open program requests
+  /// by default. Returns one result per assignment.
+  Future<List<Map<String, dynamic>>> coachPublishAllProgramTemplate(
+    String templateId, {
+    required List<String> assignmentIds,
+  }) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/program-templates/$templateId/publish-all',
+        data: <String, dynamic>{'assignment_ids': assignmentIds},
+      ),
+    );
+    return _parseTemplateResults(response.data, 'results');
+  }
+
+  List<Map<String, dynamic>> _parseTemplateResults(
+    dynamic responseData,
+    String key,
+  ) {
+    if (responseData is Map<String, dynamic> &&
+        responseData[key] is List<dynamic>) {
+      return <Map<String, dynamic>>[
+        for (final dynamic item in responseData[key] as List<dynamic>)
+          if (item is Map<String, dynamic>) item,
+      ];
+    }
+    throw ApiException(
+      _invalidCoachProgramTemplates,
+      failureMessage: _invalidServiceDataFailure(_invalidCoachProgramTemplates),
+    );
+  }
+
   Map<String, dynamic> _programTemplateBody(
     String name,
     String? description,

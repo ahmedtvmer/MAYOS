@@ -420,6 +420,9 @@ class MayosCopy {
   String get programFinalWeek => isArabic
       ? 'الأسبوع الأخير في برنامجك التدريبي'
       : "Your program's final week";
+  String programFromTemplate(String name) => isArabic
+      ? 'من القالب: ${_ltr(name)}'
+      : 'From template: $name';
   String get waitingForCoachNextBlock => isArabic
       ? 'بانتظار المرحلة التالية من مدربك'
       : "Waiting for your coach's next block";

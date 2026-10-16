@@ -1403,6 +1403,7 @@ class CoachActiveProgram {
     required this.activeSince,
     required this.editedByPlayer,
     required this.hasDraft,
+    this.sourceTemplateName,
   });
 
   factory CoachActiveProgram.fromJson(Map<String, dynamic> json) {
@@ -1416,6 +1417,7 @@ class CoachActiveProgram {
       activeSince: programJson?['active_since'] as String?,
       editedByPlayer: json['edited_by_player'] as bool? ?? false,
       hasDraft: json['has_draft'] as bool? ?? false,
+      sourceTemplateName: programJson?['source_template_name'] as String?,
     );
   }
 
@@ -1424,6 +1426,7 @@ class CoachActiveProgram {
   final String? activeSince;
   final bool editedByPlayer;
   final bool hasDraft;
+  final String? sourceTemplateName;
 }
 
 /// One server-catalogued Split choice for a Coach's generation options.
@@ -2747,6 +2750,8 @@ class TrainingProgram {
     this.finalWeekCompleted = false,
     this.version,
     this.publishedByCoachAccountId,
+    this.sourceTemplateId,
+    this.sourceTemplateName,
     this.playerControlsProgram = false,
   });
 
@@ -2775,6 +2780,8 @@ class TrainingProgram {
         version: (json['version'] as num?)?.toInt(),
         publishedByCoachAccountId:
             json['published_by_coach_account_id'] as String?,
+        sourceTemplateId: json['source_template_id'] as String?,
+        sourceTemplateName: json['source_template_name'] as String?,
         playerControlsProgram:
             json['player_controls_program'] as bool? ?? false,
       );
@@ -2795,6 +2802,12 @@ class TrainingProgram {
 
   /// Publishing coach's account id, or null for player self-service.
   final String? publishedByCoachAccountId;
+
+  /// Catalog identity of the Coach-owned Program template this copy came from.
+  final String? sourceTemplateId;
+
+  /// Coach-owned Program template name resolved by the server for display.
+  final String? sourceTemplateName;
 
   /// Server-computed Program-authority decision for the active program.
   final bool playerControlsProgram;
@@ -2817,6 +2830,8 @@ class TrainingProgram {
         'final_week_completed': finalWeekCompleted,
         'version': version,
         'published_by_coach_account_id': publishedByCoachAccountId,
+        'source_template_id': sourceTemplateId,
+        'source_template_name': sourceTemplateName,
         'player_controls_program': playerControlsProgram,
       };
 }

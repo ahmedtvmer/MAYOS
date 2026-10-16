@@ -751,6 +751,16 @@ void main() {
         containsPair('desired_weekly_frequency', 4));
   });
 
+  testWidgets('player program shows its source template name', (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..programPublishedByCoachAccountId = 'account-coach-1'
+      ..programSourceTemplateName = 'Strength Base'
+      ..coachControlsProgram = true;
+    await _pumpProgram(tester, fake);
+
+    expect(find.text('From template: Strength Base'), findsOneWidget);
+  });
+
   testWidgets('Arabic coach authority message uses the coaching vocabulary',
       (tester) async {
     final FakeMayosApi fake = _signedInFake()

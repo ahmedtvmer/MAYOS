@@ -59,6 +59,21 @@ class RegistryProgramTemplatesMixin:
             ).fetchone()
         return self._program_template_from_row(row)
 
+    def get_program_template_name_for_provenance(self, template_id: str) -> str | None:
+        """Returns only the name linked by a persisted Program template origin.
+
+        Player-owned versions retain ``source_template_id`` after Program
+        authority returns to the Player and the publishing Coach id is cleared.
+        This lookup is used only when serving that server-written provenance;
+        it is not an endpoint for arbitrary template reads.
+        """
+        with self._catalog_lock:
+            row = self.catalog_conn.execute(
+                "SELECT name FROM program_templates WHERE template_id = ?",
+                (str(template_id),),
+            ).fetchone()
+        return str(row[0]) if row else None
+
     def list_program_templates(
         self, coach_account_id: str, *, archived: bool = False
     ) -> list[dict[str, Any]]:

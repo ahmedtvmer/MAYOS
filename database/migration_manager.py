@@ -18,12 +18,13 @@ from utils.equipment_access import (
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 29
+CURRENT_LEDGER_SCHEMA_VERSION: int = 30
 
 PROGRAM_DRAFTS_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS program_drafts ("
     " assignment_id TEXT PRIMARY KEY,"
     " draft_json TEXT NOT NULL,"
+    " source_template_id TEXT,"
     " created_at TEXT NOT NULL,"
     " updated_at TEXT NOT NULL"
     ")",
@@ -845,6 +846,23 @@ def _migrate_v28_to_v29(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
+def _migrate_v29_to_v30(conn: sqlite3.Connection) -> None:
+    """Records the Coach Program template a draft or program was copied from (#306).
+
+    ``source_template_id`` is catalog-side identity only: it names the Coach-owned
+    template an independent copy came from and never carries player data. Legacy
+    drafts and programs keep NULL (no template origin).
+    """
+    if _ledger_table_exists(conn, "training_programs"):
+        columns = {column[1] for column in conn.execute("PRAGMA table_info(training_programs)")}
+        if "source_template_id" not in columns:
+            conn.execute("ALTER TABLE training_programs ADD COLUMN source_template_id TEXT")
+    if _ledger_table_exists(conn, "program_drafts"):
+        columns = {column[1] for column in conn.execute("PRAGMA table_info(program_drafts)")}
+        if "source_template_id" not in columns:
+            conn.execute("ALTER TABLE program_drafts ADD COLUMN source_template_id TEXT")
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -959,6 +977,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     26: _migrate_v26_to_v27,
     27: _migrate_v27_to_v28,
     28: _migrate_v28_to_v29,
+    29: _migrate_v29_to_v30,
 }
 
 

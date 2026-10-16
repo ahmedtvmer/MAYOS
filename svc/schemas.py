@@ -129,6 +129,13 @@ __all__ = [
     "ProgramTemplateIn",
     "ProgramTemplateListOut",
     "ProgramTemplateOut",
+    "ProgramTemplateAssignIn",
+    "ProgramTemplateAssignOut",
+    "ProgramTemplateAssignResultOut",
+    "ProgramTemplateAssignTargetIn",
+    "ProgramTemplatePublishAllIn",
+    "ProgramTemplatePublishAllOut",
+    "ProgramTemplatePublishAllResultOut",
     "CoachExerciseCreateIn",
     "CoachExerciseOut",
     "ProgramDraftDayIn",
@@ -1323,6 +1330,8 @@ class CoachProgramPublicationOut(PersistedProgramSchema):
 class CoachProgramDraftOut(BaseModel):
     assignment_id: str
     draft: CoachProgramDraftIn
+    source_template_id: str | None = None
+    source_template_name: str | None = None
     created_at: str
     updated_at: str
 
@@ -1376,6 +1385,64 @@ class ProgramTemplateOut(BaseModel):
 
 class ProgramTemplateListOut(BaseModel):
     templates: list[ProgramTemplateOut]
+
+
+class ProgramTemplateAssignTargetIn(BaseModel):
+    """One assignment to copy a template into, with its existing-draft decision."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    assignment_id: str = Field(min_length=1, max_length=200)
+    existing_draft: Literal["replace", "skip"] = "skip"
+
+
+class ProgramTemplateAssignIn(BaseModel):
+    """Bulk assignment payload: one independent Program draft per target."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    targets: list[ProgramTemplateAssignTargetIn] = Field(min_length=1, max_length=200)
+
+
+class ProgramTemplateAssignResultOut(BaseModel):
+    """Per-player outcome of a bulk template assignment (partial failures allowed)."""
+
+    assignment_id: str
+    status: Literal["assigned", "replaced", "skipped", "rejected"]
+    source_template_id: str | None = None
+    source_template_name: str | None = None
+    draft: CoachProgramDraftOut | None = None
+    message_code: str | None = None
+    message_fallback: str | None = None
+
+
+class ProgramTemplateAssignOut(BaseModel):
+    results: list[ProgramTemplateAssignResultOut]
+
+
+class ProgramTemplatePublishAllIn(BaseModel):
+    """Assignment ids whose Program drafts a 'Publish all' publishes."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    assignment_ids: list[str] = Field(min_length=1, max_length=200)
+
+
+class ProgramTemplatePublishAllResultOut(BaseModel):
+    """Per-player outcome of a 'Publish all' (success, validation, or rejection)."""
+
+    assignment_id: str
+    status: Literal["published", "invalid", "no_draft", "rejected"]
+    version: int | None = None
+    resolved_request_ids: list[str] = Field(default_factory=list)
+    resolved_request_count: int = 0
+    errors: list[dict[str, Any]] = Field(default_factory=list)
+    message_code: str | None = None
+    message_fallback: str | None = None
+
+
+class ProgramTemplatePublishAllOut(BaseModel):
+    results: list[ProgramTemplatePublishAllResultOut]
 
 
 class ProgramImportDraftRowIn(BaseModel):
@@ -1442,6 +1509,8 @@ class CoachActiveProgramDetailsOut(BaseModel):
     week_count: int = 1
     version: int | None = None
     provenance: Literal["automatic", "coach"]
+    source_template_id: str | None = None
+    source_template_name: str | None = None
     active_since: str | None = None
 
 

@@ -11,16 +11,21 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from service import program_templates as program_templates_service
+from service import analytics
 from service.coach_program_drafts import ProgramDraftValidationError
 from service.messages import MessageMetadata
 from svc.dependencies import VerifiedPlayer, get_current_coach, get_db
 from svc.errors import message_http_exception
 from svc.rate_limit import ASSIGNMENT_MUTATE_LIMIT, limiter
 from svc.schemas import (
+    ProgramTemplateAssignIn,
+    ProgramTemplateAssignOut,
     ProgramTemplateDuplicateIn,
     ProgramTemplateIn,
     ProgramTemplateListOut,
     ProgramTemplateOut,
+    ProgramTemplatePublishAllIn,
+    ProgramTemplatePublishAllOut,
 )
 
 router = APIRouter(prefix="/coach/program-templates", tags=["coach"])
@@ -180,3 +185,55 @@ async def unarchive_program_template(
         template_id,
         archived=False,
     )
+
+
+@router.post("/{template_id}/assign", response_model=ProgramTemplateAssignOut)
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def assign_program_template(
+    request: Request,
+    template_id: str,
+    body: ProgramTemplateAssignIn,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Copies a template into each target assignment's Program draft (ticket #306).
+
+    Template ownership decides the call first (uniform 404). Each assignment is
+    then gated by ADR 025 and handled on its own, so a revoked, foreign, or
+    non-owned assignment is rejected in its result without failing the rest.
+    """
+    results = await asyncio.to_thread(
+        _run,
+        program_templates_service.assign_program_template,
+        db,
+        coach.account_id,
+        template_id,
+        [target.model_dump() for target in body.targets],
+    )
+    return {"results": results}
+
+
+@router.post("/{template_id}/publish-all", response_model=ProgramTemplatePublishAllOut)
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def publish_all_program_template(
+    request: Request,
+    template_id: str,
+    body: ProgramTemplatePublishAllIn,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Publishes each assignment's Program draft through the normal publish path.
+
+    Each player's open program requests resolve by default. Each player reports
+    its own success, validation errors, or rejection without failing the batch.
+    """
+    results = await asyncio.to_thread(
+        _run,
+        program_templates_service.publish_all_template_drafts,
+        db,
+        coach.account_id,
+        template_id,
+        body.assignment_ids,
+        analytics.client_context(request),
+    )
+    return {"results": results}

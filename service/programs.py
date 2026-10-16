@@ -75,6 +75,12 @@ def with_library_equipment(program: Any, db: Any) -> dict[str, Any]:
                     exercise["equipment"] = entry.get("equipment")
     payload["weeks"] = weeks
     payload["days"] = flatten_program_days(weeks)
+    source_template_id = payload.get("source_template_id")
+    payload["source_template_name"] = (
+        db.get_program_template_name_for_provenance(source_template_id)
+        if source_template_id
+        else None
+    )
     return payload
 
 
@@ -85,8 +91,9 @@ def active_program_response(
     version = getattr(program, "version", None)
     completed_days = ledger.completed_program_days(int(version)) if version is not None else set()
     position = ledger.get_program_position(program)
+    payload = with_library_equipment(program, db)
     return {
-        **with_library_equipment(program, db),
+        **payload,
         "player_controls_program": player_controls_program(db, ledger, player_account_id),
         "current_week": position.current_week,
         "week_count": position.week_count,

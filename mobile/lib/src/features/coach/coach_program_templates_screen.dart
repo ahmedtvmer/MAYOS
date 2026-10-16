@@ -14,6 +14,7 @@ import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_card.dart';
 import '../../providers.dart';
 import 'coach_program_draft_screen.dart';
+import 'coach_template_assignment_screen.dart';
 
 /// The Coach-owned Program template library (ticket #305): lists reusable
 /// Training program templates and opens them in the editor's template mode,
@@ -85,6 +86,18 @@ class _CoachProgramTemplatesScreenState
       MaterialPageRoute<void>(
         builder: (BuildContext context) =>
             const CoachProgramDraftScreen.newTemplate(),
+      ),
+    );
+    if (mounted) await _load();
+  }
+
+  Future<void> _assignTemplate(Map<String, dynamic> template) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (BuildContext context) => CoachTemplateAssignmentScreen(
+          templateId: template['template_id'] as String,
+          templateName: template['name'] as String? ?? '',
+        ),
       ),
     );
     if (mounted) await _load();
@@ -272,6 +285,13 @@ class _CoachProgramTemplatesScreenState
                     expand: false,
                     loading: busy,
                     onPressed: busy ? null : () => _duplicateTemplate(template),
+                  ),
+                  MayosButton(
+                    key: Key('program_template_assign_$id'),
+                    label: copy.assignTemplate,
+                    variant: MayosButtonVariant.secondary,
+                    expand: false,
+                    onPressed: busy ? null : () => _assignTemplate(template),
                   ),
                   MayosButton(
                     key: Key('program_template_archive_$id'),

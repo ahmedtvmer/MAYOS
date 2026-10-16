@@ -27,6 +27,20 @@ from utils.logger import MyosLogger
 logger = MyosLogger().get_logger(__name__)
 
 
+class _KeepSourceTemplate:
+    """Sentinel: leave a draft's stored ``source_template_id`` unchanged on replace."""
+
+
+_KEEP_SOURCE_TEMPLATE = _KeepSourceTemplate()
+
+
+class _SourceTemplateFromPayload:
+    """Sentinel: infer a program's origin from its own payload when omitted."""
+
+
+_SOURCE_TEMPLATE_FROM_PAYLOAD = _SourceTemplateFromPayload()
+
+
 def _with_current_name(movement: Any, current_names: dict[str, str]) -> Any:
     """Copy of a stored substitute or warm-up movement carrying its current name, when known."""
     name = current_names.get(str(movement.exercise_id))
@@ -59,6 +73,7 @@ class LedgerTrainingProgramMixin:
         published_by_coach_account_id: str | None = None,
         *,
         starting_position: ProgramPosition | None = None,
+        source_template_id: Any = _SOURCE_TEMPLATE_FROM_PAYLOAD,
     ) -> str:
         """Persists an active program version and its provenance.
 
@@ -66,7 +81,14 @@ class LedgerTrainingProgramMixin:
         assigning coach's account id for a coach publication (ADR 026).
         ``starting_position`` is supplied only when republishing the same program
         after an edit; new programs start at Week 1, Day 1.
+        ``source_template_id`` records the Coach Program template an independent
+        copy came from, if any (#306). When omitted it is inferred from the
+        program payload, so a same-program edit, substitution, undo, or repeat
+        keeps the origin it loaded, while a fresh generation or import that never
+        carried one cannot inherit an unrelated active origin.
         """
+        if source_template_id is _SOURCE_TEMPLATE_FROM_PAYLOAD:
+            source_template_id = program_data.get("source_template_id")
         cursor = self.conn.cursor()
         try:
             if starting_position is None:
@@ -111,6 +133,9 @@ class LedgerTrainingProgramMixin:
             if "published_by_coach_account_id" in existing_cols:
                 cols.append("published_by_coach_account_id")
                 vals.append(published_by_coach_account_id)
+            if "source_template_id" in existing_cols:
+                cols.append("source_template_id")
+                vals.append(source_template_id)
 
             cursor.execute(
                 f"INSERT INTO training_programs ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(vals))})", vals
@@ -255,10 +280,15 @@ class LedgerTrainingProgramMixin:
             if "published_by_coach_account_id" in program_cols
             else "NULL AS published_by_coach_account_id"
         )
+        source_template_expr = (
+            "source_template_id"
+            if "source_template_id" in program_cols
+            else "NULL AS source_template_id"
+        )
         created_at_expr = "created_at" if "created_at" in program_cols else "NULL AS created_at"
         cursor.execute(f"""
             SELECT id, COALESCE(program_name, name), weekly_frequency, split_type, {instructions_expr},
-                   {version_expr}, {provenance_expr}, {created_at_expr}
+                   {version_expr}, {provenance_expr}, {source_template_expr}, {created_at_expr}
             FROM training_programs
             WHERE {where_sql}
             ORDER BY created_at DESC
@@ -268,7 +298,17 @@ class LedgerTrainingProgramMixin:
         if not row:
             return None
 
-        prog_id, prog_name, freq, split_type, instructions, version, published_by, created_at = row
+        (
+            prog_id,
+            prog_name,
+            freq,
+            split_type,
+            instructions,
+            version,
+            published_by,
+            source_template_id,
+            created_at,
+        ) = row
 
         cursor.execute("PRAGMA table_info(program_days)")
         day_cols = {col[1] for col in cursor.fetchall()}
@@ -438,6 +478,7 @@ class LedgerTrainingProgramMixin:
                 weeks=weeks,
                 version=int(version) if version is not None else None,
                 published_by_coach_account_id=published_by,
+                source_template_id=source_template_id,
                 created_at=created_at,
             )
         except Exception as exc:
@@ -480,7 +521,8 @@ class LedgerTrainingProgramMixin:
 
     def get_program_draft(self, assignment_id: str) -> dict | None:
         cursor = self.conn.execute(
-            "SELECT draft_json, created_at, updated_at FROM program_drafts WHERE assignment_id = ?",
+            "SELECT draft_json, source_template_id, created_at, updated_at FROM program_drafts"
+            " WHERE assignment_id = ?",
             (str(assignment_id),),
         )
         row = cursor.fetchone()
@@ -489,27 +531,61 @@ class LedgerTrainingProgramMixin:
         return {
             "assignment_id": str(assignment_id),
             "draft": json.loads(row[0]),
-            "created_at": str(row[1]),
-            "updated_at": str(row[2]),
+            "source_template_id": row[1],
+            "created_at": str(row[2]),
+            "updated_at": str(row[3]),
         }
 
-    def create_program_draft(self, assignment_id: str, draft: dict) -> dict | None:
+    def create_program_draft(
+        self, assignment_id: str, draft: dict, source_template_id: str | None = None
+    ) -> dict | None:
         now = datetime.now(UTC).isoformat()
         cursor = self.conn.execute(
-            "INSERT OR IGNORE INTO program_drafts (assignment_id, draft_json, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?)",
-            (str(assignment_id), json.dumps(draft, ensure_ascii=False), now, now),
+            "INSERT OR IGNORE INTO program_drafts"
+            " (assignment_id, draft_json, source_template_id, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (
+                str(assignment_id),
+                json.dumps(draft, ensure_ascii=False),
+                source_template_id,
+                now,
+                now,
+            ),
         )
         self._commit_ledger()
         if cursor.rowcount != 1:
             return None
         return self.get_program_draft(assignment_id)
 
-    def replace_program_draft(self, assignment_id: str, draft: dict) -> dict | None:
-        self.conn.execute(
-            "UPDATE program_drafts SET draft_json = ?, updated_at = ? WHERE assignment_id = ?",
-            (json.dumps(draft, ensure_ascii=False), datetime.now(UTC).isoformat(), str(assignment_id)),
-        )
+    def replace_program_draft(
+        self,
+        assignment_id: str,
+        draft: dict,
+        source_template_id: Any = _KEEP_SOURCE_TEMPLATE,
+    ) -> dict | None:
+        """Replaces a draft, optionally re-pointing its source template.
+
+        When ``source_template_id`` is omitted the stored origin is preserved, so a
+        Coach customising a draft never drops the template it was copied from.
+        """
+        updated_at = datetime.now(UTC).isoformat()
+        if source_template_id is _KEEP_SOURCE_TEMPLATE:
+            self.conn.execute(
+                "UPDATE program_drafts SET draft_json = ?, updated_at = ?"
+                " WHERE assignment_id = ?",
+                (json.dumps(draft, ensure_ascii=False), updated_at, str(assignment_id)),
+            )
+        else:
+            self.conn.execute(
+                "UPDATE program_drafts SET draft_json = ?, source_template_id = ?, updated_at = ?"
+                " WHERE assignment_id = ?",
+                (
+                    json.dumps(draft, ensure_ascii=False),
+                    source_template_id,
+                    updated_at,
+                    str(assignment_id),
+                ),
+            )
         self._commit_ledger()
         return self.get_program_draft(assignment_id)
 

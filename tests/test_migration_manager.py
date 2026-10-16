@@ -219,8 +219,68 @@ def test_v22_upgrade_adds_program_drafts(temp_db_env):
     apply_lazy_migrations(conn, "v22player", db.ledgers_dir, backups_dir)
 
     columns = {row[1] for row in conn.execute("PRAGMA table_info(program_drafts)")}
-    assert columns == {"assignment_id", "draft_json", "created_at", "updated_at"}
+    assert columns == {
+        "assignment_id",
+        "draft_json",
+        "source_template_id",
+        "created_at",
+        "updated_at",
+    }
     assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
+    conn.close()
+
+
+def test_v29_upgrade_preserves_legacy_program_and_draft_with_null_origin(temp_db_env):
+    db, _, backups_dir = temp_db_env
+    legacy_path = db.ledgers_dir / "v29player.db"
+    conn = sqlite3.connect(legacy_path)
+    conn.execute(
+        "CREATE TABLE training_programs ("
+        " id TEXT PRIMARY KEY, program_name TEXT, is_active INTEGER, created_at TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO training_programs (id, program_name, is_active, created_at)"
+        " VALUES ('legacy-prog', 'Legacy Block', 1, '2026-01-01T00:00:00+00:00')"
+    )
+    conn.execute(
+        "CREATE TABLE program_drafts ("
+        " assignment_id TEXT PRIMARY KEY, draft_json TEXT, created_at TEXT, updated_at TEXT)"
+    )
+    legacy_draft = json.dumps({"program_name": "Legacy Draft", "days": []})
+    conn.execute(
+        "INSERT INTO program_drafts (assignment_id, draft_json, created_at, updated_at)"
+        " VALUES ('asg:legacy', ?, '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')",
+        (legacy_draft,),
+    )
+    conn.execute("PRAGMA user_version = 29")
+    conn.commit()
+
+    apply_lazy_migrations(conn, "v29player", db.ledgers_dir, backups_dir)
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
+    program_columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(training_programs)")
+    }
+    draft_columns = {row[1] for row in conn.execute("PRAGMA table_info(program_drafts)")}
+    assert "source_template_id" in program_columns
+    assert "source_template_id" in draft_columns
+    assert conn.execute(
+        "SELECT program_name, source_template_id FROM training_programs WHERE id = 'legacy-prog'"
+    ).fetchone() == ("Legacy Block", None)
+    assert conn.execute(
+        "SELECT draft_json, source_template_id FROM program_drafts WHERE assignment_id = 'asg:legacy'"
+    ).fetchone() == (legacy_draft, None)
+
+    # Reopen the file and reapply the public lazy-migration entry point twice.
+    conn.close()
+    conn = sqlite3.connect(legacy_path)
+    apply_lazy_migrations(conn, "v29player", db.ledgers_dir, backups_dir)
+    conn.close()
+    conn = sqlite3.connect(legacy_path)
+    apply_lazy_migrations(conn, "v29player", db.ledgers_dir, backups_dir)
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
+    assert conn.execute(
+        "SELECT draft_json, source_template_id FROM program_drafts WHERE assignment_id = 'asg:legacy'"
+    ).fetchone() == (legacy_draft, None)
     conn.close()
 
 

@@ -50,7 +50,7 @@ class ProgramPublicationResult:
 class _ProgramPublishContext:
     db: Any
     coach_account_id: str
-    ledger: Any | None
+    ledger_handle: Any | None
 
 
 @dataclass(frozen=True)
@@ -79,6 +79,10 @@ class ActiveProgramVersionMismatch(Exception):
 
 class ProgramDraftAlreadyExists(Exception):
     """Raised when an assignment already has its one open Program draft."""
+
+
+class ProgramDraftSourceMismatch(Exception):
+    """Raised when a template publish finds the draft's origin changed (#306)."""
 
 
 class ProgramDraftValidationError(Exception):
@@ -119,6 +123,35 @@ def _assignment_still_active(db: Any, coach_account_id: str, assignment_id: str)
     return db.get_active_assignment_for_coach(coach_account_id, assignment_id) is not None
 
 
+def draft_source_template_name(
+    db: Any, coach_account_id: str, record: dict[str, Any] | None
+) -> str | None:
+    """Resolves the owning Coach's template name recorded as a draft's origin (#306).
+
+    The id is stored server-side on the draft; the label is resolved from the
+    catalog at read time. A template that no longer exists yields ``None`` and
+    never fails the draft read.
+    """
+    if not record:
+        return None
+    template_id = record.get("source_template_id")
+    if not template_id:
+        return None
+    template = db.get_program_template(coach_account_id, template_id)
+    return template["name"] if template else None
+
+
+def _with_source_template_label(
+    db: Any, coach_account_id: str, record: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    if record is None:
+        return None
+    return {
+        **record,
+        "source_template_name": draft_source_template_name(db, coach_account_id, record),
+    }
+
+
 def create_program_draft(
     db: Any, coach_account_id: str, assignment_id: str, draft: dict[str, Any]
 ) -> dict[str, Any] | None:
@@ -133,7 +166,7 @@ def create_program_draft(
         if not _assignment_still_active(db, coach_account_id, assignment_id):
             ledger.discard_program_draft(assignment_id)
             return None
-        return created
+        return _with_source_template_label(db, coach_account_id, created)
 
 
 def read_program_draft(db: Any, coach_account_id: str, assignment_id: str) -> dict[str, Any] | None:
@@ -145,24 +178,32 @@ def read_program_draft(db: Any, coach_account_id: str, assignment_id: str) -> di
         draft = ledger.get_program_draft(assignment_id)
     if draft is None:
         raise ProgramDraftNotFound("Program draft not found.")
-    return draft
+    return _with_source_template_label(db, coach_account_id, draft)
 
 
 def replace_program_draft(
-    db: Any, coach_account_id: str, assignment_id: str, draft: dict[str, Any]
+    db: Any,
+    coach_account_id: str,
+    assignment_id: str,
+    draft: dict[str, Any],
+    *,
+    preserve_source_template: bool = True,
 ) -> dict[str, Any] | None:
     authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
     if authorized is None:
         return None
     ledger, _ = authorized
     with ledger:
-        replaced = ledger.replace_program_draft(assignment_id, draft)
+        if preserve_source_template:
+            replaced = ledger.replace_program_draft(assignment_id, draft)
+        else:
+            replaced = ledger.replace_program_draft(assignment_id, draft, source_template_id=None)
         if replaced is None:
             raise ProgramDraftNotFound("Program draft not found.")
         if not _assignment_still_active(db, coach_account_id, assignment_id):
             ledger.discard_program_draft(assignment_id)
             return None
-        return replaced
+        return _with_source_template_label(db, coach_account_id, replaced)
 
 
 def ensure_generated_program_draft_available(
@@ -181,13 +222,15 @@ def create_generated_program_draft(ledger: Any, assignment_id: str, draft: dict[
 
 
 def replace_generated_program_draft(ledger: Any, assignment_id: str, draft: dict[str, Any]) -> Any:
-    replaced = ledger.replace_program_draft(assignment_id, draft)
+    # A freshly generated draft has no template origin; clearing any stale stored
+    # origin keeps provenance honest when generation replaces a template draft.
+    replaced = ledger.replace_program_draft(assignment_id, draft, source_template_id=None)
     if replaced is not None:
         return replaced
-    created = ledger.create_program_draft(assignment_id, draft)
+    created = ledger.create_program_draft(assignment_id, draft, source_template_id=None)
     if created is not None:
         return created
-    replaced = ledger.replace_program_draft(assignment_id, draft)
+    replaced = ledger.replace_program_draft(assignment_id, draft, source_template_id=None)
     if replaced is None:
         raise ProgramDraftAlreadyExists("The Program draft changed while it was being generated.")
     return replaced
@@ -283,7 +326,13 @@ def _active_program_as_draft(program: PersistedProgramSchema) -> dict[str, Any]:
     try:
         return CoachProgramDraftIn.model_validate(
             program.model_dump(
-                exclude={"version", "published_by_coach_account_id", "created_at"}
+                exclude={
+                    "version",
+                    "published_by_coach_account_id",
+                    "source_template_id",
+                    "source_template_name",
+                    "created_at",
+                }
             )
         ).model_dump()
     except ValidationError as error:
@@ -308,18 +357,25 @@ def copy_active_program_to_draft(
         if program is None:
             raise ActiveProgramNotFound("No active program to copy.")
         draft = _active_program_as_draft(program)
+        source_template_id = program.source_template_id
         if replace:
-            stored = ledger.replace_program_draft(assignment_id, draft)
+            stored = ledger.replace_program_draft(
+                assignment_id, draft, source_template_id=source_template_id
+            )
             if stored is None:
-                stored = ledger.create_program_draft(assignment_id, draft)
+                stored = ledger.create_program_draft(
+                    assignment_id, draft, source_template_id=source_template_id
+                )
         else:
-            stored = ledger.create_program_draft(assignment_id, draft)
+            stored = ledger.create_program_draft(
+                assignment_id, draft, source_template_id=source_template_id
+            )
         if stored is None:
             raise ProgramDraftAlreadyExists("A Program draft already exists for this assignment.")
         if not _assignment_still_active(db, coach_account_id, assignment_id):
             ledger.discard_program_draft(assignment_id)
             return None
-        return stored
+        return _with_source_template_label(db, coach_account_id, stored)
 
 
 def _published_program(
@@ -462,7 +518,11 @@ def _program_exercise_entry(
     if entry is None:
         entry = context.db.get_coach_exercise(context.coach_account_id, exercise_id)
         is_coach_exercise = entry is not None
-    if entry is None and context.ledger is not None and context.ledger.has_exercise_in_program_history(exercise_id):
+    if (
+        entry is None
+        and context.ledger_handle is not None
+        and context.ledger_handle.has_exercise_in_program_history(exercise_id)
+    ):
         entry = context.db.get_coach_exercise_unscoped(exercise_id)
         is_coach_exercise = entry is not None
     return entry, is_coach_exercise
@@ -611,6 +671,7 @@ def _publish_program(
     *,
     approve_version: int | None = None,
     resolve_request_ids: list[str] | None = None,
+    expected_source_template_id: str | None = None,
 ) -> Any | None:
     authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
     if authorized is None:
@@ -637,6 +698,17 @@ def _publish_program(
                 if draft_record is None:
                     raise ProgramDraftNotFound("Program draft not found.")
                 source_draft = draft_record["draft"]
+                source_template_id = draft_record.get("source_template_id")
+                if (
+                    expected_source_template_id is not None
+                    and source_template_id != expected_source_template_id
+                ):
+                    # Verify the draft's origin inside the same gated transaction
+                    # that would publish it, so a draft swapped between assign and
+                    # publish can never be published as the expected template (#306).
+                    raise ProgramDraftSourceMismatch(
+                        "The Program draft changed before it could be published."
+                    )
             else:
                 active_program = previous_program
                 if active_program is None:
@@ -644,6 +716,7 @@ def _publish_program(
                 if active_program.version != approve_version:
                     raise ActiveProgramVersionMismatch(active_program.version)
                 source_draft = _active_program_as_draft(active_program)
+                source_template_id = active_program.source_template_id
             program_data = _published_program(
                 source_draft, db, coach_account_id, ledger
             )
@@ -656,6 +729,7 @@ def _publish_program(
                 program_data,
                 published_by_coach_account_id=coach_account_id,
                 starting_position=starting_position,
+                source_template_id=source_template_id,
             )
             if publishes_draft:
                 ledger.discard_program_draft(assignment_id)
@@ -702,6 +776,7 @@ def publish_program_draft(
     client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
     *,
     resolve_request_ids: list[str] | None = None,
+    expected_source_template_id: str | None = None,
 ) -> Any | None:
     return _publish_program(
         db,
@@ -709,6 +784,7 @@ def publish_program_draft(
         assignment_id,
         client,
         resolve_request_ids=resolve_request_ids,
+        expected_source_template_id=expected_source_template_id,
     )
 
 
