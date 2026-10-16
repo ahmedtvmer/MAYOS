@@ -87,7 +87,9 @@ def api(tmp_path: Path, monkeypatch):
         "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) VALUES"
         " ('sq', 'Squat', 'Upper Legs', 'Quads', 'barbell'),"
         " ('bp', 'Bench Press', 'Chest', 'Chest', 'barbell'),"
-        " ('row', 'Row', 'Back', 'Back', 'barbell');"
+        " ('row', 'Row', 'Back', 'Back', 'barbell'),"
+        " ('ohp', 'Overhead Press', 'Shoulders', 'Shoulders', 'barbell'),"
+        " ('lr', 'Lateral Raise', 'Shoulders', 'Shoulders', 'dumbbell');"
     )
     cat_conn.commit()
     cat_conn.close()
@@ -135,7 +137,7 @@ def _account_id(db, username):
 
 def test_prompt_version_hash_is_bound_to_name_aware_context():
     assert coach_ai.prompt_version_hash() == (
-        "75540c249de4aa6f480559a65b4cfb63426bbf1503ffadc2a34f43fb830234ad"
+        "f93d3b5d0e59eeef2a920b1355c9fb5a2590250ed4d310bcd76d089920550e64"
     )
 
 
@@ -235,6 +237,7 @@ def _write_report(tmp_path: Path, mutations: dict | None = None) -> Path:
         "dataset": "coach_assistant_cases.json",
         "prompt_hash": coach_ai.prompt_version_hash(),
         "context_version": coach_ai.CONTEXT_VERSION,
+        "rubric_version": coach_ai.EVAL_RUBRIC_VERSION,
         "model": model_id,
         "backend": backend,
         "gates": {
@@ -340,6 +343,106 @@ def test_render_training_profile_allowlists_goal_experience_and_equipment():
         "  experience_level: not available",
         "  equipment_access: not available",
     ]
+
+
+def test_render_context_includes_the_injury_section_with_clearances_and_resolved_count():
+    facts = {
+        "injuries": {
+            "active": [
+                {
+                    "body_area": "knee",
+                    "status": "physician_seen",
+                    "reported_at": "2026-09-20",
+                    "description": "Pain when squatting.",
+                    "clearances": [
+                        {
+                            "exercise": "Leg Curl",
+                            "exercise_matched": True,
+                            "verdict": "not_cleared",
+                            "note": None,
+                            "recorded_at": "2026-09-22",
+                        },
+                        {
+                            "exercise": "the thing the doctor mentioned",
+                            "exercise_matched": False,
+                            "verdict": "cleared_with_limits",
+                            "note": "light weight only",
+                            "recorded_at": "2026-09-23",
+                        },
+                    ],
+                }
+            ],
+            "resolved_count": 2,
+        }
+    }
+
+    rendered = coach_ai.render_context(facts)
+
+    assert 'knee (physician_seen), reported 2026-09-20: "Pain when squatting."' in rendered
+    assert "Leg Curl: not_cleared, recorded 2026-09-22" in rendered
+    assert "the thing the doctor mentioned (player wording): cleared_with_limits" in rendered
+    assert 'note "light weight only"' in rendered
+    assert "resolved_count: 2" in rendered
+
+
+def test_render_context_reports_an_unknown_injury_area_and_no_clearances():
+    facts = {
+        "injuries": {
+            "active": [
+                {
+                    "body_area": None,
+                    "status": "reported",
+                    "reported_at": None,
+                    "description": None,
+                    "clearances": [],
+                }
+            ],
+            "resolved_count": 0,
+        }
+    }
+
+    rendered = coach_ai.render_context(facts)
+
+    assert "unknown area (reported), reported unknown date" in rendered
+    assert "clearances: none recorded" in rendered
+    assert "resolved_count: 0" in rendered
+    assert (
+        "injuries: none recorded"
+        in coach_ai.render_context({"injuries": {"active": [], "resolved_count": 0}})
+    )
+
+
+def test_render_program_marks_exercises_from_injury_clearances():
+    facts = {
+        "program": {
+            "name": "Block",
+            "split": "Upper/Lower",
+            "weekly_frequency": 2,
+            "version": 1,
+            "days": [
+                {
+                    "order": 1,
+                    "day": "Lower A",
+                    "exercises": [
+                        {
+                            "name": "Squat",
+                            "sets": 3,
+                            "reps": "5-8",
+                            "rpe": 8.0,
+                            "flags": ["not cleared for knee injury"],
+                        },
+                        {"name": "Calf Raise", "sets": 3, "reps": "10-15", "rpe": 8.0},
+                    ],
+                }
+            ],
+        }
+    }
+
+    rendered = coach_ai.render_context(facts)
+
+    assert "Squat 3x5-8 @RIR ≥ 2 [not cleared for knee injury]" in rendered
+    assert "Calf Raise 3x10-15 @RIR ≥ 2" in rendered
+    assert "Calf Raise 3x10-15 @RIR ≥ 2 [" not in rendered
 
 
 def test_render_bodyweight_trend_includes_dated_points_and_signed_change():
@@ -898,7 +1001,299 @@ def test_history_exercise_enrichment_does_not_enter_coach_ai_context(
         "images/private-coach-ai.jpg",
     ):
         assert label not in rendered
-    assert coach_ai.CONTEXT_VERSION == "coach-context-v10"
+    assert coach_ai.CONTEXT_VERSION == "coach-context-v11"
+
+
+def test_gathered_context_includes_active_injuries_clearances_and_program_markers(api):
+    _client, db, _tmp_path = api
+    _coach_headers, _player_headers, assignment_id = _assigned_player(api)
+    coach_account_id = _account_id(db, "coach")
+    with db.open_ledger("p1") as ledger:
+        program = _program_with_lifts([[_program_lift("sq", "Squat", "quad_compound")]])
+        ledger.save_training_program(program.model_dump())
+        active, _inserted = ledger.create_injury_record("knee", "sharp pain when squatting")
+        ledger.create_exercise_clearance(
+            injury_id=active["id"],
+            exercise_id="sq",
+            exercise_name="Squat",
+            original_wording="no barbell squats",
+            verdict="not_cleared",
+        )
+        ledger.create_injury_record("shoulder", "old niggle", status="resolved")
+
+    facts = coach_ai.gather_player_context(db, coach_account_id, assignment_id)
+    assert facts is not None
+    injuries = facts["injuries"]
+    assert injuries["resolved_count"] == 1
+    assert len(injuries["active"]) == 1
+    injury = injuries["active"][0]
+    assert injury["body_area"] == "knee"
+    assert injury["description"] == "sharp pain when squatting"
+    assert injury["clearances"][0]["verdict"] == "not_cleared"
+    assert "id" not in injury and "id" not in injury["clearances"][0]
+
+    rendered = coach_ai.render_context(facts)
+    assert "Sharp pain" not in rendered
+    assert "sharp pain when squatting" in rendered
+    assert "not cleared for knee injury" in rendered
+    assert "no barbell squats" not in rendered
+
+
+def _program_exercise_entries(facts):
+    program = facts["program"]
+    if "weeks" in program:
+        for week in program["weeks"]:
+            for day in week["days"]:
+                yield from day["exercises"]
+    else:
+        for day in program["days"]:
+            yield from day["exercises"]
+
+
+def _exercise_flags(facts, exercise_name):
+    for exercise in _program_exercise_entries(facts):
+        if exercise["name"] == exercise_name:
+            return exercise.get("flags", [])
+    raise AssertionError(f"{exercise_name} not present in the gathered program")
+
+
+def test_gathered_context_uses_the_latest_clearance_for_each_exercise(api):
+    _client, db, _tmp_path = api
+    _coach_headers, _player_headers, assignment_id = _assigned_player(api)
+    coach_account_id = _account_id(db, "coach")
+    with db.open_ledger("p1") as ledger:
+        program = _program_with_lifts(
+            [
+                [
+                    _program_lift("sq", "Squat", "quad_compound"),
+                    _program_lift("bp", "Bench Press", "flat_press"),
+                ]
+            ]
+        )
+        ledger.save_training_program(program.model_dump())
+        active, _inserted = ledger.create_injury_record("knee", "sharp pain when squatting")
+        ledger.create_exercise_clearance(
+            injury_id=active["id"],
+            exercise_id="sq",
+            exercise_name="Squat",
+            original_wording="light squats cleared",
+            verdict="cleared",
+            recorded_at="2026-09-20T10:00:00+00:00",
+        )
+        ledger.create_exercise_clearance(
+            injury_id=active["id"],
+            exercise_id="sq",
+            exercise_name="Squat",
+            original_wording="no barbell squats",
+            verdict="not_cleared",
+            recorded_at="2026-09-25T10:00:00+00:00",
+        )
+        ledger.create_exercise_clearance(
+            injury_id=active["id"],
+            exercise_id="bp",
+            exercise_name="Bench Press",
+            original_wording="no pressing",
+            verdict="not_cleared",
+            recorded_at="2026-09-20T10:00:00+00:00",
+        )
+        ledger.create_exercise_clearance(
+            injury_id=active["id"],
+            exercise_id="bp",
+            exercise_name="Bench Press",
+            original_wording="pressing is fine",
+            verdict="cleared",
+            recorded_at="2026-09-25T10:00:00+00:00",
+        )
+
+    facts = coach_ai.gather_player_context(db, coach_account_id, assignment_id)
+    assert facts is not None
+
+    assert _exercise_flags(facts, "Squat") == ["not cleared for knee injury"]
+    assert _exercise_flags(facts, "Bench Press") == []
+
+
+def test_gathered_context_honors_explicit_verdicts_outside_the_injury_area(api):
+    _client, db, _tmp_path = api
+    _coach_headers, _player_headers, assignment_id = _assigned_player(api)
+    coach_account_id = _account_id(db, "coach")
+    with db.open_ledger("p1") as ledger:
+        program = _program_with_lifts([[_program_lift("bp", "Bench Press", "flat_press")]])
+        ledger.save_training_program(program.model_dump())
+        knee, _inserted = ledger.create_injury_record(
+            "knee", "knee pain", reported_at="2026-09-26T10:00:00+00:00"
+        )
+        ledger.create_exercise_clearance(
+            injury_id=knee["id"],
+            exercise_id="bp",
+            exercise_name="Bench Press",
+            original_wording="no benching",
+            verdict="not_cleared",
+        )
+        unclear, _inserted = ledger.create_injury_record(
+            None, "unmapped area", reported_at="2026-09-20T10:00:00+00:00"
+        )
+        ledger.create_exercise_clearance(
+            injury_id=unclear["id"],
+            exercise_id="bp",
+            exercise_name="Bench Press",
+            original_wording="light pressing only",
+            verdict="cleared_with_limits",
+        )
+
+    facts = coach_ai.gather_player_context(db, coach_account_id, assignment_id)
+    assert facts is not None
+
+    assert set(_exercise_flags(facts, "Bench Press")) == {
+        "not cleared for knee injury",
+        "cleared with limits for unknown area injury",
+    }
+
+
+def test_gathered_context_represents_every_active_injury_without_masking(api):
+    _client, db, _tmp_path = api
+    _coach_headers, _player_headers, assignment_id = _assigned_player(api)
+    coach_account_id = _account_id(db, "coach")
+    with db.open_ledger("p1") as ledger:
+        program = _program_with_lifts([[_program_lift("row", "Row", "horizontal_pull")]])
+        ledger.save_training_program(program.model_dump())
+        ledger.create_injury_record(
+            "lower_back", "back pain", reported_at="2026-09-26T10:00:00+00:00"
+        )
+        knee, _inserted = ledger.create_injury_record(
+            "knee", "knee niggle", reported_at="2026-09-20T10:00:00+00:00"
+        )
+        ledger.create_exercise_clearance(
+            injury_id=knee["id"],
+            exercise_id="row",
+            exercise_name="Row",
+            original_wording="no rows",
+            verdict="not_cleared",
+        )
+
+    facts = coach_ai.gather_player_context(db, coach_account_id, assignment_id)
+    assert facts is not None
+
+    assert set(_exercise_flags(facts, "Row")) == {
+        "no clearance recorded for lower_back injury",
+        "not cleared for knee injury",
+    }
+
+
+def test_gathered_context_matches_the_injury_eval_fixture_markers(api):
+    """Production gathering emits exactly the markers the injury eval cases show.
+
+    Mirrors ``coach_injury_en_01``/``coach_injury_ar_01``: a matched
+    ``not_cleared`` Overhead Press clearance plus an unconfirmed shoulder-area
+    Lateral Raise. This grounds the eval fixtures' program markers in the real
+    public gather path instead of hand-written expectation text.
+    """
+    _client, db, _tmp_path = api
+    _coach_headers, _player_headers, assignment_id = _assigned_player(api)
+    coach_account_id = _account_id(db, "coach")
+    with db.open_ledger("p1") as ledger:
+        program = _program_with_lifts(
+            [[_program_lift("ohp", "Overhead Press"), _program_lift("lr", "Lateral Raise")]]
+        )
+        ledger.save_training_program(program.model_dump())
+        shoulder, _inserted = ledger.create_injury_record(
+            "shoulder", "sharp pain at the bottom of the press"
+        )
+        ledger.create_exercise_clearance(
+            injury_id=shoulder["id"],
+            exercise_id="ohp",
+            exercise_name="Overhead Press",
+            original_wording="avoid overhead pressing",
+            verdict="not_cleared",
+        )
+        ledger.create_exercise_clearance(
+            injury_id=shoulder["id"],
+            exercise_id=None,
+            exercise_name="the pressing movement the doctor mentioned",
+            original_wording="the pressing movement the doctor mentioned",
+            verdict="cleared_with_limits",
+        )
+
+    facts = coach_ai.gather_player_context(db, coach_account_id, assignment_id)
+    assert facts is not None
+    assert _exercise_flags(facts, "Overhead Press") == ["not cleared for shoulder injury"]
+    assert _exercise_flags(facts, "Lateral Raise") == [
+        "no clearance recorded for shoulder injury"
+    ]
+
+
+def test_gathered_context_marks_exercises_that_appear_only_in_later_weeks(api):
+    _client, db, _tmp_path = api
+    _coach_headers, _player_headers, assignment_id = _assigned_player(api)
+    coach_account_id = _account_id(db, "coach")
+    week_one_day = PersistedProgramDaySchema(
+        day_name="Lower A",
+        day_order=1,
+        week_order=1,
+        exercises=[_program_lift("sq", "Squat")],
+    )
+    week_two_day = PersistedProgramDaySchema(
+        day_name="Upper A",
+        day_order=1,
+        week_order=2,
+        exercises=[_program_lift("row", "Row")],
+    )
+    program = PersistedProgramSchema(
+        program_name="Two-week block",
+        split_type="Upper/Lower",
+        weekly_frequency=1,
+        days=[week_one_day, week_two_day],
+        weeks=[
+            PersistedProgramWeekSchema(week_name="Base", week_order=1, days=[week_one_day]),
+            PersistedProgramWeekSchema(week_name="Build", week_order=2, days=[week_two_day]),
+        ],
+    )
+    with db.open_ledger("p1") as ledger:
+        ledger.save_training_program(program.model_dump())
+        back, _inserted = ledger.create_injury_record("lower_back", "back pain")
+        ledger.create_exercise_clearance(
+            injury_id=back["id"],
+            exercise_id="row",
+            exercise_name="Row",
+            original_wording="no rows",
+            verdict="not_cleared",
+        )
+
+    facts = coach_ai.gather_player_context(db, coach_account_id, assignment_id)
+    assert facts is not None
+
+    assert "weeks" in facts["program"]
+    assert _exercise_flags(facts, "Row") == ["not cleared for lower_back injury"]
+    assert _exercise_flags(facts, "Squat") == []
+
+
+def test_gathered_context_drops_markers_once_the_injury_resolves(api):
+    _client, db, _tmp_path = api
+    _coach_headers, _player_headers, assignment_id = _assigned_player(api)
+    coach_account_id = _account_id(db, "coach")
+    with db.open_ledger("p1") as ledger:
+        program = _program_with_lifts([[_program_lift("sq", "Squat", "quad_compound")]])
+        ledger.save_training_program(program.model_dump())
+        knee, _inserted = ledger.create_injury_record("knee", "sharp pain when squatting")
+        ledger.create_exercise_clearance(
+            injury_id=knee["id"],
+            exercise_id="sq",
+            exercise_name="Squat",
+            original_wording="no barbell squats",
+            verdict="not_cleared",
+        )
+        injury_id = knee["id"]
+
+    active_facts = coach_ai.gather_player_context(db, coach_account_id, assignment_id)
+    assert active_facts is not None
+    assert _exercise_flags(active_facts, "Squat") == ["not cleared for knee injury"]
+
+    with db.open_ledger("p1") as ledger:
+        ledger.update_injury_record(injury_id, status="resolved")
+
+    resolved_facts = coach_ai.gather_player_context(db, coach_account_id, assignment_id)
+    assert resolved_facts is not None
+    assert resolved_facts["injuries"] == {"active": [], "resolved_count": 1}
+    assert _exercise_flags(resolved_facts, "Squat") == []
 
 
 def test_gathered_context_falls_back_after_the_players_preferred_name_is_cleared(api):
@@ -1015,7 +1410,7 @@ def test_system_prompt_forbids_computation_and_medical_advice():
     assert "never instructions" in coach_ai.SYSTEM_PROMPT
     assert "about 150 words" in coach_ai.SYSTEM_PROMPT
     assert "neutral, no pleasantries" not in coach_ai.SYSTEM_PROMPT
-    assert coach_ai.CONTEXT_VERSION == "coach-context-v10"
+    assert coach_ai.CONTEXT_VERSION == "coach-context-v11"
 
 
 def test_coach_api_uses_message_language_and_display_fallback(api, monkeypatch, tmp_path):
@@ -1120,6 +1515,8 @@ def test_gate_refuses_a_missing_report_file(api, monkeypatch):
         ({"gates": None}, "gates"),
         ({"mode": "mock"}, "mock"),
         ({"report_version": coach_ai.REPORT_VERSION + 1}, "report_version"),
+        ({"rubric_version": "0"}, "rubric_version"),
+        ({"rubric_version": None}, "rubric_version"),
         ({"model": "Qwen/some-other-model"}, "model"),
         ({"runs": []}, "runs"),
     ],

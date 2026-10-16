@@ -817,6 +817,15 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 
 ## Coach assistant and check-ins (Chunk C)
 
+Amended 2026-10-15 (#315): the hosted-model disclosure now also names active
+injuries and the player's reports of physician advice on exercise clearances.
+The Arabic below follows the CONTEXT.md glossary term «توصية الطبيب بشأن
+التمرين» and simple standard Arabic UI (not Egyptian). Owner-approved
+2026-10-16: the added clause only,
+«والإصابات النشطة وتوصيات الطبيب بشأن التمرين كما أبلغ بها اللاعب (الوصف
+والملاحظات حتى 300 حرف لكل منها)». The rest of this row and the other Chunk C
+strings remain **pending owner review**.
+
 | English | Arabic |
 | --- | --- |
 | Assistant | المساعد |
@@ -824,7 +833,7 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 | Open alerts | التنبيهات المفتوحة |
 | Ask about {player}'s training figures: volume, sessions, records, and schedule. | اسأل عن أرقام تدريب {player}: مجموعات التدريب، والحصص، والأرقام القياسية، والجدول. |
 | Thinking… | جارٍ التفكير… |
-| The hosted model receives {player}'s name (preferred name if set), your coach display name and bio, {player}'s goal, Experience level, Equipment access, bodyweight and e1RM trends, and your last 5 check-in notes (up to 300 characters each). Notes and your bio may contain identifying details. This exchange isn't saved. | يتلقى النموذج المستضاف اسم {player} (والاسم المفضل إن وُجد)، واسمك كمدرب ونبذتك، وهدف اللاعب ومستوى خبرته والمعدات المتاحة واتجاهات وزن الجسم و⁦e1RM⁩، وآخر 5 ملاحظات تواصل كتبتها (حتى 300 حرف لكل ملاحظة). قد تحتوي الملاحظات والنبذة على تفاصيل تكشف الهوية. لا تُحفظ المحادثة. |
+| The hosted model receives {player}'s name (preferred name if set), your coach display name and bio, {player}'s goal, Experience level, Equipment access, bodyweight and e1RM trends, active injuries and the player's reports of physician advice on exercise clearances (descriptions and notes up to 300 characters each), and your last 5 check-in notes (up to 300 characters each). Notes, injury details, and your bio may contain identifying details. This exchange isn't saved. | يتلقى النموذج المستضاف اسم {player} (والاسم المفضل إن وُجد)، واسمك كمدرب ونبذتك، وهدف اللاعب ومستوى خبرته والمعدات المتاحة واتجاهات وزن الجسم و⁦e1RM⁩، والإصابات النشطة وتوصيات الطبيب بشأن التمرين كما أبلغ بها اللاعب (الوصف والملاحظات حتى 300 حرف لكل منها)، وآخر 5 ملاحظات تواصل كتبتها (حتى 300 حرف لكل ملاحظة). قد تحتوي الملاحظات والإصابات والنبذة على تفاصيل تكشف الهوية. لا تُحفظ المحادثة. |
 | Ask about this player | اسأل عن هذا اللاعب |
 | You no longer coach this player | لم تعد مدربًا لهذا اللاعب. |
 | Log check-in | تسجيل تواصل |

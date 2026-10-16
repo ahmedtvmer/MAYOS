@@ -46,6 +46,10 @@ def test_live_report_enables_only_its_configured_feature(
         "runs": [{"case_id": "one", "passed": True, "checks": {}}],
         "pass": True,
     }
+    if gate is coach_ai:
+        # A passing current report records the enforced rubric version; the
+        # checkpoint gate leaves its optional rubric version unset.
+        report["rubric_version"] = coach_ai.EVAL_RUBRIC_VERSION
     report_path = tmp_path / "live-evaluation-report.json"
     report_path.write_text(json.dumps(report), encoding="utf-8")
     monkeypatch.setenv(enabled_flag, "true")

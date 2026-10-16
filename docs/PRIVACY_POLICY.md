@@ -258,7 +258,15 @@ When it is enabled, each question sends to the model:
   at 300 characters). It also receives your current goal, Experience level,
   Equipment access, your dated bodyweight trend for the last 8 weeks, and the
   weekly best e1RM trend for the main lifts in your active Training program
-  for the last 12 weeks.
+  for the last 12 weeks; and
+- your active injuries — the fixed body area, status, reported date, and your
+  description (capped at 300 characters) — together with the physician-reported
+  exercise clearances linked to them (the matched exercise or your own wording,
+  the physician's verdict, the recorded date, and any note, capped at 300
+  characters). Resolved injuries are sent only as a count, never as
+  descriptions. Exercises in your active program that an active injury affects
+  carry a marker in this block so your coach can see the recorded clearance, or
+  that none is recorded.
 
 The model also receives your roster username and your preferred name when you
 have set one, along with your coach's display name and bio. These names identify
@@ -272,7 +280,9 @@ instructions, the reason or response on a program request, or other
 program-request free text. Every number (volume, e1RM and bodyweight trends,
 adherence, and streaks) is calculated by the service before the call; the model
 is told to rely on those figures and to say when data is not available. It gives
-no medical advice and does not disclose contact details or account information.
+no medical advice: it may repeat your recorded report of physician advice on an
+exercise, but it never decides, guesses, or changes one, and it does not
+disclose contact details or account information.
 
 Nothing about the exchange is stored. The app keeps the short conversation in
 memory for the one selected player and clears it when the player is switched,

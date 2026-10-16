@@ -30,6 +30,7 @@ class EvaluationRunnerConfig:
     case_loader: Callable[[Path, str], list[dict[str, Any]]] | None = None
     check_title: str | None = None
     check_report_help: str = "Re-check an existing report without loading any model."
+    rubric_version: str | None = None
 
 
 def load_cases(dataset_path: Path, dataset_label: str) -> list[dict[str, Any]]:
@@ -95,6 +96,8 @@ def build_report(
         "reasons": reasons,
         "runs": results,
     }
+    if config.rubric_version is not None:
+        report["rubric_version"] = config.rubric_version
     report["pass"] = bool(privacy_pass and evaluation_ok)
     return report
 

@@ -10,7 +10,8 @@ same way ``tests/test_player_chat_privacy.py`` captures the player graph entry:
    recovery email, account ids, player-assistant chat, saved Assistant style
    and instructions, and program-request reasons/responses. Coach-written
    notes on the five most recent check-ins are an explicit, 300-character-capped
-   input.
+   input. Active injury descriptions and physician-reported clearance notes are
+   bounded (300 characters) supplied data; resolved injuries are counted only.
 2. The deterministic figures in the prompt match the service computations
    (volume, attendance/adherence).
 3. Nothing about the exchange is persisted: catalog and ledger tables are
@@ -56,6 +57,8 @@ REQUEST_RESPONSE = "IDENTIFY_REQUEST_RESPONSE_8e31 use the next program instead"
 ASSISTANT_STYLE = "PRIVATE_ASSISTANT_STYLE_15fd"
 ASSISTANT_INSTRUCTIONS = "PRIVATE_ASSISTANT_INSTRUCTIONS_37ab"
 PREFERRED_NAME = "PRIVATE_PREFERRED_NAME_64c2"
+INJURY_DESCRIPTION = "IDENTIFY_INJURY_DESCRIPTION_2c9e hurts when I squat"
+CLEARANCE_NOTE = "IDENTIFY_CLEARANCE_NOTE_6f14 keep the load light"
 
 COACH_MODEL_ID = "deepseek-ai/DeepSeek-V4-Flash"
 
@@ -242,6 +245,7 @@ def _write_report(tmp_path: Path, mutations: dict | None = None) -> Path:
         "dataset": "coach_assistant_cases.json",
         "prompt_hash": coach_ai.prompt_version_hash(),
         "context_version": coach_ai.CONTEXT_VERSION,
+        "rubric_version": coach_ai.EVAL_RUBRIC_VERSION,
         "model": model_id,
         "backend": backend,
         "gates": {
@@ -311,6 +315,16 @@ def _seed_identifiers(client, db, coach_headers, player_headers, assignment_id) 
         )
         ledger.update_player_persona(ASSISTANT_STYLE, ASSISTANT_INSTRUCTIONS)
         ledger.set_assistant_memory("preferred_name", PREFERRED_NAME)
+        active, _inserted = ledger.create_injury_record("knee", INJURY_DESCRIPTION)
+        ledger.create_exercise_clearance(
+            injury_id=active["id"],
+            exercise_id="sq",
+            exercise_name="Squat",
+            original_wording="no heavy squats",
+            verdict="not_cleared",
+            note=CLEARANCE_NOTE,
+        )
+        ledger.create_injury_record("shoulder", "IDENTIFY_RESOLVED_INJURY_11ab", status="resolved")
 
     today = datetime.now(UTC).date().isoformat()
     assert (
@@ -483,6 +497,15 @@ def test_prompt_carries_only_necessary_telemetry_and_deterministic_figures(api, 
     today = datetime.now(UTC).date().isoformat()
     assert f"check_ins (dates and channels): {today} video" in rendered
     assert f"{today}: {CHECK_IN_NOTE}" in rendered
+    # Active injuries and their physician-reported clearances are supplied as
+    # bounded data; the resolved injury contributes a count only.
+    assert INJURY_DESCRIPTION in rendered
+    assert CLEARANCE_NOTE in rendered
+    assert "knee (reported), reported" in rendered
+    assert "Squat: not_cleared, recorded" in rendered
+    assert "not cleared for knee injury" in rendered
+    assert "resolved_count: 1" in rendered
+    assert "IDENTIFY_RESOLVED_INJURY_11ab" not in rendered
     assert "current_goal: Hypertrophy" in rendered
     assert "experience_level: intermediate" in rendered
     assert "equipment_access: Home gym" in rendered
@@ -540,6 +563,39 @@ def test_model_prompt_limits_real_check_in_notes_to_five_and_300_characters(api,
         for note in note_texts
     )
     assert long_note not in prompt
+
+
+def test_model_prompt_caps_injury_descriptions_and_clearance_notes(api, monkeypatch):
+    client, db, tmp_path = api
+    coach_headers, _player_headers, assignment_id = _assigned_player(api)
+    _enable(monkeypatch, tmp_path)
+    stub = _capturing_coach_llm(monkeypatch)
+    long_description = "IDENTIFY_LONG_INJURY_" + ("d" * 400)
+    long_note = "IDENTIFY_LONG_CLEARANCE_" + ("n" * 400)
+
+    with db.open_ledger(PLAYER_USERNAME) as ledger:
+        active, _inserted = ledger.create_injury_record("knee", long_description)
+        ledger.create_exercise_clearance(
+            injury_id=active["id"],
+            exercise_id="sq",
+            exercise_name="Squat",
+            original_wording="no squats",
+            verdict="not_cleared",
+            note=long_note,
+        )
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/assistant", headers=coach_headers, json=QUESTION
+    )
+    assert response.status_code == 200, response.text
+    prompt = "\n".join(
+        str(getattr(message, "content", message)) for message in stub.calls[0]["messages"]
+    )
+
+    assert long_description not in prompt
+    assert long_note not in prompt
+    assert ("IDENTIFY_LONG_INJURY_" + ("d" * 278) + "…") in prompt
+    assert ("IDENTIFY_LONG_CLEARANCE_" + ("n" * 275) + "…") in prompt
 
 
 # --------------------------------------------------------------------------

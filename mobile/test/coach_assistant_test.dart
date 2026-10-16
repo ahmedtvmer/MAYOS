@@ -197,7 +197,8 @@ void main() {
     expect(disclosure, contains('\u2066e1RM\u2069'));
     expect(disclosure, contains('آخر 5 ملاحظات'));
     expect(disclosure, contains('300 حرف'));
-    expect(disclosure, contains('الملاحظات والنبذة'));
+    expect(disclosure, contains('الإصابات النشطة وتوصيات الطبيب بشأن التمرين'));
+    expect(disclosure, contains('الملاحظات والإصابات والنبذة'));
   });
 
   testWidgets('the Ask assistant entry is hidden while the feature is off',
@@ -229,9 +230,10 @@ void main() {
       find.text(
         "The hosted model receives bob's name (preferred name if set), "
         "your coach display name and bio, bob's goal, Experience level, Equipment access, "
-        'bodyweight and e1RM trends, and your last 5 check-in notes '
-        '(up to 300 characters each). Notes and your bio may contain identifying details. '
-        "This exchange isn't saved.",
+        "bodyweight and e1RM trends, active injuries and the player's reports of physician advice on exercise clearances "
+        '(descriptions and notes up to 300 characters each), and your last 5 check-in notes '
+        '(up to 300 characters each). Notes, injury details, and your bio may contain '
+        "identifying details. This exchange isn't saved.",
       ),
       findsOneWidget,
     );
@@ -339,16 +341,66 @@ void main() {
       await _openRoster(tester);
       await _openAssistant(tester, 'bob');
       await _ask(tester, '**Keep** this question plain.');
-      await _pumpUntilFound(
-          tester, _assistantMarkdown(fake.coachAssistantAnswer));
-
       expect(find.text('**Keep** this question plain.'), findsOneWidget);
+      // The disclosure has grown (it now names injuries and clearances), so at
+      // 360 dp the answer can start below the transcript's lazy viewport.
+      await tester.scrollUntilVisible(
+        _assistantMarkdown(fake.coachAssistantAnswer),
+        200,
+        // The transcript's own Scrollable comes before the SelectableText
+        // scrollables inside its built answer bubbles.
+        scrollable: find
+            .descendant(
+              of: find.byKey(const Key('coach_assistant_transcript')),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      );
+
       expect(_assistantMarkdown(fake.coachAssistantAnswer), findsOneWidget);
       expect(find.text('Coaching notes', findRichText: true), findsOneWidget);
       expect(find.text('Stay patient', findRichText: true), findsOneWidget);
       expect(tester.takeException(), isNull);
+      // Let the transcript's scroll physics settle before the tree is disposed.
+      for (int i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
       await tester.pumpWidget(const SizedBox());
     }
+  });
+
+  testWidgets('the assistant survives a keyboard inset at 360 dp',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachAssistantAnswer =
+          '# Coaching notes\n\nKeep **one** lift moving.\n\n- Stay patient\n- Add weight slowly';
+    await _pumpApp(tester, fake, size: const Size(360, 640));
+    await _openRoster(tester);
+    await _openAssistant(tester, 'bob');
+    await _ask(tester, 'How is the bench progressing?');
+    await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
+
+    // An on-screen keyboard shrinks the scaffold body; the disclosure must flex
+    // and scroll instead of overflowing the transcript and composer.
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await tester.pump(const Duration(milliseconds: 200));
+
+    final Rect composer =
+        tester.getRect(find.byKey(const Key('coach_assistant_composer')));
+    expect(composer.bottom, lessThanOrEqualTo(640 - 300 + 1));
+    expect(composer.top, greaterThanOrEqualTo(0));
+    expect(tester.takeException(), isNull);
+
+    final ScrollableState disclosure = tester.state<ScrollableState>(
+      find.descendant(
+        of: find.byKey(const Key('coach_assistant_disclosure')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    expect(disclosure.position.maxScrollExtent, greaterThan(0));
+
+    tester.view.viewInsets = const FakeViewPadding();
+    await tester.pump(const Duration(milliseconds: 200));
   });
 
   testWidgets('the next question carries the previous exchange as history',

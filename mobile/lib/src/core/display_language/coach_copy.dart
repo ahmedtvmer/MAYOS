@@ -182,12 +182,14 @@ class CoachCopy {
   String assistantNote(String player) => isArabic
       ? 'يتلقى النموذج المستضاف اسم ${_ltr(player)} (والاسم المفضل إن وُجد)، واسمك كمدرب ونبذتك، '
           'وهدف اللاعب ومستوى خبرته والمعدات المتاحة واتجاهات وزن الجسم و\u2066e1RM\u2069، '
+          'والإصابات النشطة وتوصيات الطبيب بشأن التمرين كما أبلغ بها اللاعب (الوصف والملاحظات حتى 300 حرف لكل منها)، '
           'وآخر 5 ملاحظات تواصل كتبتها (حتى 300 حرف لكل ملاحظة). '
-          'قد تحتوي الملاحظات والنبذة على تفاصيل تكشف الهوية. لا تُحفظ المحادثة.'
+          'قد تحتوي الملاحظات والإصابات والنبذة على تفاصيل تكشف الهوية. لا تُحفظ المحادثة.'
       : "The hosted model receives $player's name (preferred name if set), "
           "your coach display name and bio, $player's goal, Experience level, Equipment access, "
-          'bodyweight and e1RM trends, and your last 5 check-in notes '
-          '(up to 300 characters each). Notes and your bio may contain '
+          "bodyweight and e1RM trends, active injuries and the player's reports of physician advice on exercise clearances "
+          '(descriptions and notes up to 300 characters each), and your last 5 check-in notes '
+          '(up to 300 characters each). Notes, injury details, and your bio may contain '
           "identifying details. This exchange isn't saved.";
   String get askAboutPlayer =>
       isArabic ? 'اسأل عن هذا اللاعب' : 'Ask about this player';

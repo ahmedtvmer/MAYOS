@@ -66,6 +66,7 @@ RUNNER_CONFIG = evaluation_runner.EvaluationRunnerConfig(
     no_privacy_help="Do not run the privacy suite; records the privacy gate as failed.",
     check_title="coach",
     check_report_help="Re-check an existing report without loading any model.",
+    rubric_version=coach_ai_service.EVAL_RUBRIC_VERSION,
 )
 
 

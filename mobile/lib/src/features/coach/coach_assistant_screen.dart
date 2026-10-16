@@ -212,12 +212,22 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
       body: Column(
         children: <Widget>[
           Expanded(
+            flex: 2,
             child: turns.isEmpty && !_sending
                 ? _emptyState(c)
                 : _transcript(turns, c),
           ),
           if (_error != null) _errorBanner(c),
-          _note(c),
+          // The disclosure grows with what is sent; let it scroll inside the
+          // space left after the composer so a body shrunk by the keyboard can
+          // never overflow it (#315).
+          Flexible(
+            flex: 1,
+            child: SingleChildScrollView(
+              key: const Key('coach_assistant_disclosure'),
+              child: _note(c),
+            ),
+          ),
           _composer(c),
         ],
       ),
@@ -351,7 +361,11 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
     );
   }
 
-  /// The one-line disclosure: figures in, prose out, nothing kept (issue #45).
+  /// The disclosure: figures in, prose out, nothing kept (issue #45).
+  ///
+  /// The note spans many lines at narrow widths and grows as more data is
+  /// disclosed (#315). The caller bounds it with a flexible scroll area so the
+  /// transcript and composer stay usable on a short, keyboard-shrunk screen.
   Widget _note(MayosThemeExtension c) {
     return Padding(
       padding: const EdgeInsetsDirectional.fromSTEB(

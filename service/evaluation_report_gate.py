@@ -37,6 +37,10 @@ class EvaluationReportConfig:
     missing_report_reason: str
     evaluation_gate_name: str
     strict: bool = False
+    #: When set, the report must record this exact rubric version. A rubric-only
+    #: change (new checks over unchanged prompt/context) still invalidates older
+    #: evidence instead of reusing it. ``None`` leaves a feature unchecked.
+    rubric_version: str | None = None
 
 
 # The path + file identity + configured model key is intentionally shared by
@@ -105,6 +109,8 @@ def validate_report(report: Any, config: EvaluationReportConfig) -> tuple[bool, 
         reasons.append(f"report backend {report.get('backend')!r} does not match the configured backend {backend!r}")
     if report.get("prompt_hash") != config.prompt_hash():
         reasons.append("evaluation report is for a different prompt version (prompt_hash mismatch)")
+    if config.rubric_version is not None and report.get("rubric_version") != config.rubric_version:
+        reasons.append(f"rubric_version must be {config.rubric_version}")
 
     gates = report.get("gates")
     if not isinstance(gates, dict):
