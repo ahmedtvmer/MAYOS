@@ -156,6 +156,8 @@ ERROR_MESSAGE_PARAM_ALLOWLISTS = {
     "program_import.exercise_ambiguous.v1": frozenset(),
     "assignment.notice_not_found.v1": frozenset(),
     "program.no_active.v1": frozenset(),
+    "program.template_not_found.v1": frozenset(),
+    "program.template_invalid.v1": frozenset(),
     "program.coach_controls.v1": frozenset(),
     "program.substitution.day_not_found.v1": frozenset(),
     "program.substitution.source_not_on_day.v1": frozenset(),

@@ -523,6 +523,22 @@ class SchemaMixin:
                 CREATE INDEX IF NOT EXISTS idx_coach_exercises_owner_name
                     ON coach_exercises(coach_account_id, name COLLATE NOCASE);
 
+                -- Coach-owned Program templates (ticket #305). Catalog-side and
+                -- player-free: the program is stored as normalized JSON in the
+                -- same shape as a Program draft, with no Assignment or player id.
+                CREATE TABLE IF NOT EXISTS program_templates (
+                    template_id TEXT PRIMARY KEY,
+                    coach_account_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    program_json TEXT NOT NULL,
+                    archived_at TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_program_templates_owner
+                    ON program_templates(coach_account_id, archived_at, created_at);
+
                 -- Coach-issued player assignment invites (ADR 014, ticket #24). The code
                 -- is a bearer code, not recipient bound: only the SHA-256 hash is stored,
                 -- it is single-use, expiring, and bounded by roster capacity. Redemption

@@ -125,6 +125,10 @@ __all__ = [
     "CoachProgramSplitCatalogOut",
     "ProgramImportCreateIn",
     "ProgramImportDraftRowIn",
+    "ProgramTemplateDuplicateIn",
+    "ProgramTemplateIn",
+    "ProgramTemplateListOut",
+    "ProgramTemplateOut",
     "CoachExerciseCreateIn",
     "CoachExerciseOut",
     "ProgramDraftDayIn",
@@ -1321,6 +1325,57 @@ class CoachProgramDraftOut(BaseModel):
     draft: CoachProgramDraftIn
     created_at: str
     updated_at: str
+
+
+MAX_PROGRAM_TEMPLATE_NAME_LENGTH = 120
+
+
+def _trim_program_template_name(value: str) -> str:
+    """Trims a template name and enforces the shared non-blank, length bound."""
+    trimmed = value.strip()
+    if not trimmed:
+        raise ValueError("Enter a template name.")
+    if len(trimmed) > MAX_PROGRAM_TEMPLATE_NAME_LENGTH:
+        raise ValueError(
+            f"A template name is at most {MAX_PROGRAM_TEMPLATE_NAME_LENGTH} characters."
+        )
+    return trimmed
+
+
+class ProgramTemplateIn(ProgramDraftInput):
+    """Create/replace payload for a Coach-owned Program template (ticket #305)."""
+
+    name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=MAX_PROGRAM_NOTES_LENGTH)
+    program: CoachProgramDraftIn
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, value: str) -> str:
+        return _trim_program_template_name(value)
+
+
+class ProgramTemplateDuplicateIn(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, value: str | None) -> str | None:
+        return None if value is None else _trim_program_template_name(value)
+
+
+class ProgramTemplateOut(BaseModel):
+    template_id: str
+    name: str
+    description: str | None = None
+    program: CoachProgramDraftIn
+    archived_at: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class ProgramTemplateListOut(BaseModel):
+    templates: list[ProgramTemplateOut]
 
 
 class ProgramImportDraftRowIn(BaseModel):

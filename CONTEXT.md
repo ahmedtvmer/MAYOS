@@ -193,6 +193,11 @@ _Arabic_: أسبوع البرنامج
 An unpublished Training program a Coach is writing for a Player on an active Assignment. It lives in the Player's Training ledger, is keyed to that Assignment, and is visible only to that Coach while the Assignment is active. There is at most one open Program draft per Assignment. It keeps the existing program fields; the editor shows target RIR and storage keeps `target_rpe` (RIR = 10 − RPE). Publishing activates it as a new program version and removes the draft. Ending the Assignment discards it.
 _Arabic_: مسودة برنامج تدريبي
 
+**Program template**:
+A reusable, Coach-owned Training program a Coach can save once and reuse across Players. It has a name, an optional description, and the same days → exercises structure and fields as a Program draft, but it is not tied to a Player, an Assignment or a program version. Each template is owned by the Coach who created it, and editing a template never changes any Player's program; publishing a template into a Player's program is a separate action.
+_Avoid_: Program import template (the XLSX/CSV spreadsheet), program preset
+_Arabic_: قالب برنامج تدريبي
+
 **Swap exercise**:
 Changing one exercise in a Program draft for a different one in the same place, keeping that place's prescription. It is distinct from Replace exercise, which changes one workout only, and Exercise substitution, which the player makes in their own program.
 _Avoid_: Inject exercise

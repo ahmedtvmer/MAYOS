@@ -50,7 +50,7 @@ class ProgramPublicationResult:
 class _ProgramPublishContext:
     db: Any
     coach_account_id: str
-    ledger: Any
+    ledger: Any | None
 
 
 @dataclass(frozen=True)
@@ -323,7 +323,7 @@ def copy_active_program_to_draft(
 
 
 def _published_program(
-    draft: dict[str, Any], db: Any, coach_account_id: str, ledger: Any
+    draft: dict[str, Any], db: Any, coach_account_id: str, ledger: Any | None
 ) -> dict[str, Any]:
     weeks = normalize_program_weeks(draft)
     if not any(week.get("days") for week in weeks):
@@ -345,6 +345,34 @@ def _published_program(
     if issues:
         raise ProgramDraftValidationError(issues)
     return _validate_published_program(program)
+
+
+def normalize_program_draft(draft: dict[str, Any]) -> dict[str, Any]:
+    """Normalizes a Program draft to the stored multiweek shape (weeks + flat days)."""
+    weeks = normalize_program_weeks(draft)
+    return {
+        **draft,
+        "weekly_frequency": (
+            draft.get("weekly_frequency", 1)
+            if len(weeks) == 1
+            else max((len(week["days"]) for week in weeks), default=1)
+        ),
+        "days": flatten_program_days(weeks),
+        "weeks": weeks,
+    }
+
+
+def validate_publishable_program(
+    draft: dict[str, Any], db: Any, coach_account_id: str
+) -> dict[str, Any]:
+    """Validates a draft exactly as publication would, then returns it normalized.
+
+    The owning coach's Coach exercises resolve. A template has no player ledger,
+    so no player history is consulted: a Coach exercise from another coach is
+    rejected even when some player's history contains its id (ticket #305).
+    """
+    _published_program(draft, db, coach_account_id, None)
+    return normalize_program_draft(draft)
 
 
 def _published_weeks(
@@ -434,7 +462,7 @@ def _program_exercise_entry(
     if entry is None:
         entry = context.db.get_coach_exercise(context.coach_account_id, exercise_id)
         is_coach_exercise = entry is not None
-    if entry is None and context.ledger.has_exercise_in_program_history(exercise_id):
+    if entry is None and context.ledger is not None and context.ledger.has_exercise_in_program_history(exercise_id):
         entry = context.db.get_coach_exercise_unscoped(exercise_id)
         is_coach_exercise = entry is not None
     return entry, is_coach_exercise

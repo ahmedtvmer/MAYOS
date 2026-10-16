@@ -331,6 +331,12 @@ class AccountDeletionMixin:
                 "UPDATE coach_exercises SET note = NULL, video_url = NULL WHERE coach_account_id = ?",
                 (account_id,),
             )
+            # Program templates are coach-only and hold no player history, so
+            # they are removed with the coach (ticket #305).
+            cursor.execute(
+                "DELETE FROM program_templates WHERE coach_account_id = ?",
+                (account_id,),
+            )
             cursor.execute("DELETE FROM account_plans WHERE account_id = ?", (account_id,))
             cursor.execute(
                 "DELETE FROM assignment_invites"

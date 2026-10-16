@@ -40,6 +40,7 @@ from database.registry.coach_analytics import RegistryCoachAnalyticsMixin
 from database.registry.check_ins import RegistryCheckInsMixin
 from database.registry.model_usage import RegistryModelUsageMixin
 from database.registry.coach_exercises import RegistryCoachExercisesMixin
+from database.registry.program_templates import RegistryProgramTemplatesMixin
 from database.exercise_library.lookup import ExerciseLookupMixin
 from database.exercise_library.schema import EXERCISE_COLUMNS, effective_exercise_name_sql
 from database.exercise_library.similarity import ExerciseSimilarityMixin
@@ -69,6 +70,7 @@ class DatabaseManager(
     RegistryCheckInsMixin,
     RegistryModelUsageMixin,
     RegistryCoachExercisesMixin,
+    RegistryProgramTemplatesMixin,
     ExerciseLookupMixin,
     ExerciseSimilarityMixin,
     ExerciseSeedingMixin,

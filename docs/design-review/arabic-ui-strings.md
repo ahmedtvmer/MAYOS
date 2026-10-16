@@ -1444,3 +1444,38 @@ catalog instructions.
 | Mention an available equipment variant | *(ضفت النسخة الأساسية **{equipment}**. لو عايز **{alternate_exercise}**، قولّي: `swap {source_exercise} for {alternate_exercise}`.)* |
 
 Status: owner reviewed by Thomas on 2026-10-14.
+
+## Coach Program templates (#305; pending owner review)
+
+The Coach-owned Program template library and the editor's template mode. These
+simple standard-Arabic strings are drafts and need owner review before release;
+the two structured message codes carry Arabic templates in the app catalog and
+keep their server English fallbacks.
+
+| English | Arabic |
+| --- | --- |
+| Program templates | قوالب البرامج التدريبية |
+| Build reusable Training program templates, then edit, duplicate or archive them. | أنشئ قوالب برامج تدريبية قابلة لإعادة الاستخدام وعدّلها وانسخها وأرشفها. |
+| No Program templates yet. | لا توجد قوالب برامج تدريبية بعد. |
+| New template | قالب جديد |
+| Edit template | تعديل القالب |
+| Write template | تحرير القالب |
+| Template name | اسم القالب |
+| Description (optional) | الوصف (اختياري) |
+| Enter a template name. | أدخل اسم القالب. |
+| Save template | حفظ القالب |
+| Template saved. | تم حفظ القالب. |
+| Duplicate | نسخ |
+| Duplicated {name}. | تم نسخ {name}. |
+| Archive | أرشفة |
+| Unarchive | إلغاء الأرشفة |
+| Template archived. | تمت أرشفة القالب. |
+| Template unarchived. | تم إلغاء أرشفة القالب. |
+| Archived templates | القوالب المؤرشفة |
+| Show archived | عرض المؤرشفة |
+| Hide archived | إخفاء المؤرشفة |
+
+| Message code | Arabic |
+| --- | --- |
+| program.template_not_found.v1 | لم يُعثر على قالب البرنامج التدريبي. |
+| program.template_invalid.v1 | راجع تفاصيل قالب البرنامج التدريبي وحاول مجددًا. |

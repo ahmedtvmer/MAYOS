@@ -615,6 +615,8 @@ const Map<String, String> _specificArabicErrors = <String, String>{
   'assignment.notice_not_found.v1': 'لم يُعثر على الإشعار.',
   'assignment.request_invalid.v1': 'تعذر تنفيذ طلب علاقة التدريب. راجع البيانات وحاول مجددًا.',
   'program.no_active.v1': 'لا يوجد برنامج تدريبي نشط.',
+  'program.template_not_found.v1': 'لم يُعثر على قالب البرنامج التدريبي.',
+  'program.template_invalid.v1': 'راجع تفاصيل قالب البرنامج التدريبي وحاول مجددًا.',
   'program.coach_controls.v1': 'يتحكم مدربك في برنامجك التدريبي. اطلب منه إجراء التغييرات.',
   'program.substitution.day_not_found.v1': 'هذا اليوم غير موجود في برنامجك التدريبي الحالي.',
   'program.substitution.source_not_on_day.v1': 'هذا التمرين غير موجود في ذلك اليوم من برنامجك الحالي.',

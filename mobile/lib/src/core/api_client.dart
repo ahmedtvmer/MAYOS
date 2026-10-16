@@ -173,6 +173,8 @@ class ApiClient {
       'The service returned invalid program data.';
   static const String _invalidCoachProgramDraft =
       'The service returned invalid Program draft data.';
+  static const String _invalidCoachProgramTemplates =
+      'The service returned invalid Program template data.';
   static const String _invalidCoachProgramSplitCatalog =
       'The service returned invalid Program Split options.';
   static const String _invalidCoachExercises =
@@ -1318,6 +1320,128 @@ class ApiClient {
       response.data,
       ExerciseCatalogEntry.fromJson,
       _invalidCoachExercises,
+    );
+  }
+
+  /// Lists the coach's Program templates (ticket #305), active by default or
+  /// archived when [archived] is true.
+  Future<List<Map<String, dynamic>>> coachListProgramTemplates({
+    bool archived = false,
+  }) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+        '/coach/program-templates',
+        queryParameters: archived ? <String, dynamic>{'archived': true} : null,
+      ),
+    );
+    final dynamic data = response.data;
+    if (data is! Map<String, dynamic> || data['templates'] is! List<dynamic>) {
+      throw ApiException(
+        _invalidCoachProgramTemplates,
+        failureMessage:
+            _invalidServiceDataFailure(_invalidCoachProgramTemplates),
+      );
+    }
+    return <Map<String, dynamic>>[
+      for (final dynamic item in data['templates'] as List<dynamic>)
+        _parseProgramTemplate(item),
+    ];
+  }
+
+  /// Reads a single Coach-owned Program template by id.
+  Future<Map<String, dynamic>> coachReadProgramTemplate(String templateId) async {
+    final response = await _send(
+      () => _dio.get<dynamic>('/coach/program-templates/$templateId'),
+    );
+    return _parseProgramTemplate(response.data);
+  }
+
+  /// Creates a Coach-owned Program template from the editor's Program payload.
+  Future<Map<String, dynamic>> coachCreateProgramTemplate({
+    required String name,
+    String? description,
+    required Map<String, dynamic> program,
+  }) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/program-templates',
+        data: _programTemplateBody(name, description, program),
+      ),
+    );
+    return _parseProgramTemplate(response.data);
+  }
+
+  /// Replaces a Coach-owned Program template's name, description and Program.
+  Future<Map<String, dynamic>> coachUpdateProgramTemplate(
+    String templateId, {
+    required String name,
+    String? description,
+    required Map<String, dynamic> program,
+  }) async {
+    final response = await _send(
+      () => _dio.put<dynamic>(
+        '/coach/program-templates/$templateId',
+        data: _programTemplateBody(name, description, program),
+      ),
+    );
+    return _parseProgramTemplate(response.data);
+  }
+
+  /// Duplicates a template into a new independent template.
+  Future<Map<String, dynamic>> coachDuplicateProgramTemplate(
+    String templateId, {
+    String? name,
+  }) async {
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/program-templates/$templateId/duplicate',
+        data: name == null ? null : <String, dynamic>{'name': name},
+      ),
+    );
+    return _parseProgramTemplate(response.data);
+  }
+
+  Future<Map<String, dynamic>> coachArchiveProgramTemplate(
+    String templateId,
+  ) async {
+    final response = await _send(
+      () => _dio
+          .post<dynamic>('/coach/program-templates/$templateId/archive'),
+    );
+    return _parseProgramTemplate(response.data);
+  }
+
+  Future<Map<String, dynamic>> coachUnarchiveProgramTemplate(
+    String templateId,
+  ) async {
+    final response = await _send(
+      () => _dio
+          .post<dynamic>('/coach/program-templates/$templateId/unarchive'),
+    );
+    return _parseProgramTemplate(response.data);
+  }
+
+  Map<String, dynamic> _programTemplateBody(
+    String name,
+    String? description,
+    Map<String, dynamic> program,
+  ) =>
+      <String, dynamic>{
+        'name': name,
+        if (description != null && description.trim().isNotEmpty)
+          'description': description,
+        'program': program,
+      };
+
+  Map<String, dynamic> _parseProgramTemplate(dynamic responseData) {
+    if (responseData is Map<String, dynamic> &&
+        responseData['template_id'] is String &&
+        responseData['program'] is Map<String, dynamic>) {
+      return responseData;
+    }
+    throw ApiException(
+      _invalidCoachProgramTemplates,
+      failureMessage: _invalidServiceDataFailure(_invalidCoachProgramTemplates),
     );
   }
 

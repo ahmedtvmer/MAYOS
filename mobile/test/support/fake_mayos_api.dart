@@ -291,6 +291,23 @@ class FakeMayosApi {
   bool repeatBenchPressOnOtherDays = false;
   final List<Map<String, dynamic>> coachExerciseRows = <Map<String, dynamic>>[];
   int _coachExerciseSeq = 0;
+
+  // Coach-owned Program templates (#305).
+  final List<Map<String, dynamic>> programTemplates = <Map<String, dynamic>>[];
+  int _programTemplateSeq = 0;
+  int programTemplateListRequests = 0;
+  int programTemplateArchivedListRequests = 0;
+  int programTemplateCreateRequests = 0;
+  int programTemplateUpdateRequests = 0;
+  int programTemplateDuplicateRequests = 0;
+  int programTemplateArchiveRequests = 0;
+  int programTemplateUnarchiveRequests = 0;
+  Object? programTemplateListError;
+  Object? programTemplateCreateError;
+  Map<String, dynamic>? lastProgramTemplateBody;
+  // Simulates a single-template read that differs from the stale list row.
+  final Map<String, Map<String, dynamic>> programTemplateReadOverrides =
+      <String, Map<String, dynamic>>{};
   List<Map<String, dynamic>>? programDaysOverride;
   final List<Map<String, dynamic>> programSubstitutionRequests =
       <Map<String, dynamic>>[];
@@ -571,6 +588,9 @@ class FakeMayosApi {
     }
     if (path == '/coach/exercises') {
       return _coachExercises(request);
+    }
+    if (path.startsWith('/coach/program-templates')) {
+      return _coachProgramTemplates(request);
     }
     if (path.startsWith('/coach/program-import/template.')) {
       if (!_authorized(request)) {
@@ -2490,8 +2510,190 @@ class FakeMayosApi {
     });
   }
 
-  FakeResponse _coachProgramImport(FakeRequest request) {
+  Map<String, dynamic> _newProgramTemplate(Map<String, dynamic> body) {
+    _programTemplateSeq++;
+    return <String, dynamic>{
+      'template_id': 'tmpl:$_programTemplateSeq',
+      'name': body['name'],
+      'description': body['description'],
+      'program': body['program'],
+      'archived_at': null,
+      'created_at': '2026-10-05T09:00:00Z',
+      'updated_at': '2026-10-05T09:00:00Z',
+    };
+  }
+
+  /// Representative subset of the server's publish validation: enough that a
+  /// template UI test cannot save an empty or nonsensical program against a
+  /// fake that would accept anything.
+  List<Map<String, dynamic>> _templateProgramIssues(dynamic program) {
+    List<Map<String, dynamic>> issue(
+            String code, String message, Map<String, dynamic> location) =>
+        <Map<String, dynamic>>[
+          <String, dynamic>{
+            'code': code,
+            'message': message,
+            'location': location,
+          },
+        ];
+    final Map<String, dynamic>? draft =
+        program is Map ? Map<String, dynamic>.from(program) : null;
+    final List<dynamic> weeks = draft?['weeks'] as List<dynamic>? ?? <dynamic>[];
+    final List<Map<String, dynamic>> days = <Map<String, dynamic>>[
+      for (final dynamic week in weeks)
+        if (week is Map)
+          for (final dynamic day
+              in (week['days'] as List<dynamic>? ?? <dynamic>[]))
+            if (day is Map) Map<String, dynamic>.from(day),
+    ];
+    if (days.isEmpty) {
+      return issue('no_days', 'Add at least one training day.',
+          <String, dynamic>{'field': 'days'});
+    }
+    final List<Map<String, dynamic>> issues = <Map<String, dynamic>>[];
+    for (int dayIndex = 0; dayIndex < days.length; dayIndex++) {
+      final List<dynamic> exercises =
+          days[dayIndex]['exercises'] as List<dynamic>? ?? <dynamic>[];
+      if (exercises.isEmpty) {
+        issues.addAll(issue('empty_day',
+            'Add at least one exercise to this training day.', <String, dynamic>{
+          'day_index': dayIndex,
+          'field': 'days',
+        }));
+        continue;
+      }
+      for (int exerciseIndex = 0;
+          exerciseIndex < exercises.length;
+          exerciseIndex++) {
+        final dynamic exercise = exercises[exerciseIndex];
+        if (exercise is! Map) continue;
+        final num? sets = exercise['target_sets'] as num?;
+        if (sets != null && sets < 1) {
+          issues.addAll(issue(
+              'invalid_sets', 'Each exercise needs at least one set.', <String, dynamic>{
+            'day_index': dayIndex,
+            'exercise_index': exerciseIndex,
+            'field': 'target_sets',
+          }));
+        }
+        final num? repsMin = exercise['target_reps_min'] as num?;
+        final num? repsMax = exercise['target_reps_max'] as num?;
+        if (repsMin != null && repsMax != null && repsMin > repsMax) {
+          issues.addAll(issue('invalid_reps',
+              'Enter reps or a range such as 6-8.', <String, dynamic>{
+            'day_index': dayIndex,
+            'exercise_index': exerciseIndex,
+            'field': 'target_reps_min',
+          }));
+        }
+      }
+    }
+    return issues;
+  }
+
+  FakeResponse? _rejectInvalidTemplate(dynamic program) {
+    final List<Map<String, dynamic>> issues = _templateProgramIssues(program);
+    if (issues.isEmpty) return null;
+    return FakeResponse(400, <String, dynamic>{
+      'detail': <String, dynamic>{'errors': issues},
+    });
+  }
+
+  FakeResponse _coachProgramTemplates(FakeRequest request) {
     if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'Coach capability required.'});
+    }
+    final List<String> segments = request.path.split('/');
+    final String id = segments.length > 3 ? segments[3] : '';
+    if (request.method == 'GET' && id.isEmpty) {
+      final bool archived = request.query['archived'] == true ||
+          request.query['archived'] == 'true';
+      if (archived) {
+        programTemplateArchivedListRequests++;
+      } else {
+        programTemplateListRequests++;
+      }
+      if (programTemplateListError != null) {
+        return FakeResponse(
+            400, <String, dynamic>{'detail': programTemplateListError});
+      }
+      final List<Map<String, dynamic>> rows = programTemplates
+          .where((Map<String, dynamic> template) =>
+              (template['archived_at'] != null) == archived)
+          .toList(growable: false);
+      return FakeResponse(200, <String, dynamic>{'templates': rows});
+    }
+    if (request.method == 'POST' && id.isEmpty) {
+      programTemplateCreateRequests++;
+      if (programTemplateCreateError != null) {
+        return FakeResponse(
+            400, <String, dynamic>{'detail': programTemplateCreateError});
+      }
+      lastProgramTemplateBody = Map<String, dynamic>.from(request.body);
+      final FakeResponse? rejected =
+          _rejectInvalidTemplate(request.body['program']);
+      if (rejected != null) return rejected;
+      final Map<String, dynamic> created = _newProgramTemplate(request.body);
+      programTemplates.add(created);
+      return FakeResponse(201, created);
+    }
+    Map<String, dynamic>? existing;
+    for (final Map<String, dynamic> template in programTemplates) {
+      if (template['template_id'] == id) existing = template;
+    }
+    if (existing == null) {
+      return const FakeResponse(
+          404, <String, dynamic>{'detail': 'Program template not found.'});
+    }
+    if (request.method == 'GET') {
+      final Map<String, dynamic>? override = programTemplateReadOverrides[id];
+      if (override == null) return FakeResponse(200, existing);
+      return FakeResponse(200, <String, dynamic>{...existing, ...override});
+    }
+    if (request.method == 'PUT') {
+      programTemplateUpdateRequests++;
+      lastProgramTemplateBody = Map<String, dynamic>.from(request.body);
+      final FakeResponse? rejected =
+          _rejectInvalidTemplate(request.body['program']);
+      if (rejected != null) return rejected;
+      existing['name'] = request.body['name'];
+      existing['description'] = request.body['description'];
+      existing['program'] = request.body['program'];
+      existing['updated_at'] = '2026-10-05T10:00:00Z';
+      return FakeResponse(200, existing);
+    }
+    if (request.path.endsWith('/duplicate')) {
+      programTemplateDuplicateRequests++;
+      final Map<String, dynamic> duplicate = _newProgramTemplate(
+        <String, dynamic>{
+          'name': request.body['name'] ?? '${existing['name']} (copy)',
+          'description': existing['description'],
+          'program': existing['program'],
+        },
+      );
+      programTemplates.add(duplicate);
+      return FakeResponse(201, duplicate);
+    }
+    if (request.path.endsWith('/archive')) {
+      programTemplateArchiveRequests++;
+      existing['archived_at'] = '2026-10-05T10:00:00Z';
+      return FakeResponse(200, existing);
+    }
+    if (request.path.endsWith('/unarchive')) {
+      programTemplateUnarchiveRequests++;
+      existing['archived_at'] = null;
+      return FakeResponse(200, existing);
+    }
+    return const FakeResponse(
+        404, <String, dynamic>{'detail': 'Program template not found.'});
+  }
+
+  FakeResponse _coachProgramImport(FakeRequest request) {    if (!_authorized(request)) {
       return const FakeResponse(
           401, <String, dynamic>{'detail': 'Token has been revoked.'});
     }

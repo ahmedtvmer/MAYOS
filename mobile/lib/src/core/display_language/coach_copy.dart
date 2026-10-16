@@ -717,6 +717,38 @@ class CoachCopy {
       ? 'حذف مسودة البرنامج التدريبي؟ لا يمكن التراجع عن ذلك.'
       : 'Discard this Program draft? This cannot be undone.';
   String get draftSaved => isArabic ? 'تم حفظ المسودة.' : 'Draft saved.';
+  String get programTemplates =>
+      isArabic ? 'قوالب البرامج التدريبية' : 'Program templates';
+  String get programTemplatesLead => isArabic
+      ? 'أنشئ قوالب برامج تدريبية قابلة لإعادة الاستخدام وعدّلها وانسخها وأرشفها.'
+      : 'Build reusable Training program templates, then edit, duplicate or archive them.';
+  String get noProgramTemplates =>
+      isArabic ? 'لا توجد قوالب برامج تدريبية بعد.' : 'No Program templates yet.';
+  String get newProgramTemplate => isArabic ? 'قالب جديد' : 'New template';
+  String get editProgramTemplate => isArabic ? 'تعديل القالب' : 'Edit template';
+  String get writeTemplate => isArabic ? 'تحرير القالب' : 'Write template';
+  String get templateName => isArabic ? 'اسم القالب' : 'Template name';
+  String get templateDescription =>
+      isArabic ? 'الوصف (اختياري)' : 'Description (optional)';
+  String get templateNameRequired =>
+      isArabic ? 'أدخل اسم القالب.' : 'Enter a template name.';
+  String get saveTemplate => isArabic ? 'حفظ القالب' : 'Save template';
+  String get templateSaved => isArabic ? 'تم حفظ القالب.' : 'Template saved.';
+  String get duplicateTemplate => isArabic ? 'نسخ' : 'Duplicate';
+  String templateDuplicated(String name) =>
+      isArabic ? 'تم نسخ ${_ltr(name)}.' : 'Duplicated $name.';
+  String get archiveTemplate => isArabic ? 'أرشفة' : 'Archive';
+  String get unarchiveTemplate => isArabic ? 'إلغاء الأرشفة' : 'Unarchive';
+  String get templateArchived =>
+      isArabic ? 'تمت أرشفة القالب.' : 'Template archived.';
+  String get templateUnarchived =>
+      isArabic ? 'تم إلغاء أرشفة القالب.' : 'Template unarchived.';
+  String get archivedTemplates =>
+      isArabic ? 'القوالب المؤرشفة' : 'Archived templates';
+  String get showArchivedTemplates =>
+      isArabic ? 'عرض المؤرشفة' : 'Show archived';
+  String get hideArchivedTemplates =>
+      isArabic ? 'إخفاء المؤرشفة' : 'Hide archived';
   String get invalidSetCount => isArabic
       ? 'أدخل مجموعة تدريب واحدة على الأقل لكل تمرين.'
       : 'Enter at least one working set for each exercise.';

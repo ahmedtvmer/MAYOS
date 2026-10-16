@@ -39,10 +39,39 @@ class CoachProgramDraftScreen extends ConsumerStatefulWidget {
     super.key,
     required this.assignmentId,
     required this.playerUsername,
-  });
+  })  : templateId = null,
+        templateName = null,
+        templateDescription = null,
+        isNewTemplate = false;
 
-  final String assignmentId;
-  final String playerUsername;
+  /// Opens an existing Coach-owned Program template (ticket #305), where the
+  /// Publish action is replaced by Save.
+  const CoachProgramDraftScreen.template({
+    super.key,
+    required this.templateId,
+    required this.templateName,
+    this.templateDescription,
+  })  : assignmentId = null,
+        playerUsername = null,
+        isNewTemplate = false;
+
+  /// Opens a blank Program template; the first Save creates it.
+  const CoachProgramDraftScreen.newTemplate({super.key})
+      : assignmentId = null,
+        playerUsername = null,
+        templateId = null,
+        templateName = null,
+        templateDescription = null,
+        isNewTemplate = true;
+
+  final String? assignmentId;
+  final String? playerUsername;
+  final String? templateId;
+  final String? templateName;
+  final String? templateDescription;
+  final bool isNewTemplate;
+
+  bool get isTemplateMode => isNewTemplate || templateId != null;
 
   @override
   ConsumerState<CoachProgramDraftScreen> createState() =>
@@ -66,6 +95,8 @@ class _CoachProgramDraftScreenState
   String? _serverSummary;
   final Map<_EditorErrorLocation, String> _serverErrors =
       <_EditorErrorLocation, String>{};
+  late final TextEditingController _templateName;
+  late final TextEditingController _templateDescription;
 
   bool get _busy => _saving || _publishing || _discarding;
   List<_DraftDayEditor> get _days => _weeks[_selectedWeekIndex].days;
@@ -73,6 +104,9 @@ class _CoachProgramDraftScreenState
   @override
   void initState() {
     super.initState();
+    _templateName = TextEditingController(text: widget.templateName ?? '');
+    _templateDescription =
+        TextEditingController(text: widget.templateDescription ?? '');
     _loadDraft();
   }
 
@@ -81,21 +115,32 @@ class _CoachProgramDraftScreenState
     for (final _DraftWeekEditor week in _weeks) {
       week.dispose();
     }
+    _templateName.dispose();
+    _templateDescription.dispose();
     super.dispose();
   }
 
   Future<void> _loadDraft() async {
+    await null;
     final ApiClient api = ref.read(apiClientProvider);
     try {
       Map<String, dynamic> envelope;
-      try {
-        envelope = await api.coachReadProgramDraft(widget.assignmentId);
-      } on ApiException catch (error) {
-        if (error.statusCode != 404) rethrow;
-        envelope = await api.coachCreateProgramDraft(
-          widget.assignmentId,
-          draft: _emptyDraft(),
-        );
+      if (widget.isTemplateMode) {
+        if (widget.isNewTemplate) {
+          envelope = <String, dynamic>{'program': _emptyDraft()};
+        } else {
+          envelope = await api.coachReadProgramTemplate(widget.templateId!);
+        }
+      } else {
+        try {
+          envelope = await api.coachReadProgramDraft(widget.assignmentId!);
+        } on ApiException catch (error) {
+          if (error.statusCode != 404) rethrow;
+          envelope = await api.coachCreateProgramDraft(
+            widget.assignmentId!,
+            draft: _emptyDraft(),
+          );
+        }
       }
       if (mounted) _applyEnvelope(envelope);
     } on ApiException catch (error) {
@@ -134,7 +179,7 @@ class _CoachProgramDraftScreenState
 
   void _applyEnvelope(Map<String, dynamic> envelope) {
     final Map<String, dynamic> draft = _copyMap(
-      envelope['draft'] as Map<String, dynamic>,
+      (envelope['draft'] ?? envelope['program']) as Map<String, dynamic>,
     );
     final List<dynamic> sourceWeeks = draft['weeks'] as List<dynamic>? ?? <dynamic>[];
     final List<dynamic> weeks = sourceWeeks.isEmpty
@@ -166,6 +211,11 @@ class _CoachProgramDraftScreenState
     _selectedWeekIndex = 0;
     if (_weeks.isEmpty) {
       _weeks.add(_newWeek(1));
+    }
+    if (widget.isTemplateMode && !widget.isNewTemplate) {
+      final String? name = envelope['name'] as String?;
+      if (name != null) _templateName.text = name;
+      _templateDescription.text = envelope['description'] as String? ?? '';
     }
     setState(() {
       _draft = draft;
@@ -511,8 +561,15 @@ class _CoachProgramDraftScreenState
   }
 
   Future<void> _saveDraft() async {
+    final CoachCopy copy = coachCopyOf(context);
     final Map<String, dynamic>? draft = _draftForSave();
     if (draft == null) return;
+    final String templateName =
+        widget.isTemplateMode ? _templateName.text.trim() : '';
+    if (widget.isTemplateMode && templateName.isEmpty) {
+      setState(() => _inputError = copy.templateNameRequired);
+      return;
+    }
     setState(() {
       _saving = true;
       _failure = null;
@@ -520,16 +577,37 @@ class _CoachProgramDraftScreenState
       _clearServerErrors();
     });
     try {
-      final Map<String, dynamic> saved = await ref
-          .read(apiClientProvider)
-          .coachReplaceProgramDraft(widget.assignmentId, draft);
+      final ApiClient api = ref.read(apiClientProvider);
+      if (widget.isTemplateMode) {
+        final String description = _templateDescription.text.trim();
+        final Map<String, dynamic> saved = widget.isNewTemplate
+            ? await api.coachCreateProgramTemplate(
+                name: templateName,
+                description: description,
+                program: draft,
+              )
+            : await api.coachUpdateProgramTemplate(
+                widget.templateId!,
+                name: templateName,
+                description: description,
+                program: draft,
+              );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(copy.templateSaved)),
+        );
+        _popEditor(saved);
+        return;
+      }
+      final Map<String, dynamic> saved = await api
+          .coachReplaceProgramDraft(widget.assignmentId!, draft);
       if (!mounted) return;
       setState(() {
         _draft = _copyMap(saved['draft'] as Map<String, dynamic>);
         _hasUnsavedChanges = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(coachCopyOf(context).draftSaved)),
+        SnackBar(content: Text(copy.draftSaved)),
       );
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -577,7 +655,7 @@ class _CoachProgramDraftScreenState
         await showProgramPublishConfirmation(
       context,
       api,
-      widget.assignmentId,
+      widget.assignmentId!,
       ProgramPublishConfirmation(
         title: copy.publishDraft,
         prompt: copy.confirmPublishDraft,
@@ -599,13 +677,13 @@ class _CoachProgramDraftScreenState
     });
     try {
       await api.coachReplaceProgramDraft(
-            widget.assignmentId,
+            widget.assignmentId!,
             draft,
       );
       if (mounted) setState(() => _hasUnsavedChanges = false);
       final CoachProgramPublication publication =
           await api.coachPublishProgramDraft(
-        widget.assignmentId,
+        widget.assignmentId!,
         resolveRequestIds: resolveRequestIds,
       );
       if (mounted) _popEditor(publication);
@@ -638,7 +716,7 @@ class _CoachProgramDraftScreenState
     try {
       await ref
           .read(apiClientProvider)
-          .coachDiscardProgramDraft(widget.assignmentId);
+          .coachDiscardProgramDraft(widget.assignmentId!);
       if (mounted) _popEditor();
     } on ApiException catch (error) {
       if (!mounted) return;
@@ -865,20 +943,22 @@ class _CoachProgramDraftScreenState
       child: Scaffold(
       appBar: AppBar(
         leading: BackButton(onPressed: _requestPop),
-        title: Text(copy.writeProgram),
+        title: Text(widget.isTemplateMode ? copy.writeTemplate : copy.writeProgram),
         actions: <Widget>[
-          IconButton(
-            key: const Key('program_template_xlsx_download'),
-            tooltip: copy.downloadProgramTemplate,
-            onPressed: _downloadingTemplate ? null : () => _downloadTemplate('xlsx'),
-            icon: const Icon(Icons.download_outlined),
-          ),
-          IconButton(
-            key: const Key('program_template_csv_download'),
-            tooltip: copy.downloadProgramTemplateCsv,
-            onPressed: _downloadingTemplate ? null : () => _downloadTemplate('csv'),
-            icon: const Icon(Icons.table_view_outlined),
-          ),
+          if (!widget.isTemplateMode) ...<Widget>[
+            IconButton(
+              key: const Key('program_template_xlsx_download'),
+              tooltip: copy.downloadProgramTemplate,
+              onPressed: _downloadingTemplate ? null : () => _downloadTemplate('xlsx'),
+              icon: const Icon(Icons.download_outlined),
+            ),
+            IconButton(
+              key: const Key('program_template_csv_download'),
+              tooltip: copy.downloadProgramTemplateCsv,
+              onPressed: _downloadingTemplate ? null : () => _downloadTemplate('csv'),
+              icon: const Icon(Icons.table_view_outlined),
+            ),
+          ],
         ],
       ),
       body: _loading
@@ -894,8 +974,41 @@ class _CoachProgramDraftScreenState
                           child: ListView(
                             padding: MayosSpacing.screen,
                             children: <Widget>[
-                              Text(widget.playerUsername,
-                                  style: MayosTypography.of(context).sectionHeading),
+                              if (widget.isTemplateMode) ...<Widget>[
+                                TextField(
+                                  key: const Key('program_template_name'),
+                                  controller: _templateName,
+                                  enabled: !_busy,
+                                  decoration: InputDecoration(
+                                    labelText: copy.templateName,
+                                  ),
+                                  onChanged: (_) {
+                                    setState(() {
+                                      _hasUnsavedChanges = true;
+                                      _inputError = null;
+                                    });
+                                  },
+                                ),
+                                const SizedBox(height: MayosSpacing.sm),
+                                TextField(
+                                  key: const Key('program_template_description'),
+                                  controller: _templateDescription,
+                                  enabled: !_busy,
+                                  minLines: 1,
+                                  maxLines: 3,
+                                  decoration: InputDecoration(
+                                    labelText: copy.templateDescription,
+                                  ),
+                                  onChanged: (_) {
+                                    setState(() {
+                                      _hasUnsavedChanges = true;
+                                      _inputError = null;
+                                    });
+                                  },
+                                ),
+                              ] else
+                                Text(widget.playerUsername ?? '',
+                                    style: MayosTypography.of(context).sectionHeading),
                               const SizedBox(height: MayosSpacing.md),
                               if (_weeks.length > 1) ...<Widget>[
                                 _weekControls(copy),
@@ -948,25 +1061,31 @@ class _CoachProgramDraftScreenState
                           children: <Widget>[
                             MayosButton(
                               key: const Key('program_draft_save'),
-                              label: copy.saveDraft,
-                              variant: MayosButtonVariant.secondary,
+                              label: widget.isTemplateMode
+                                  ? copy.saveTemplate
+                                  : copy.saveDraft,
+                              variant: widget.isTemplateMode
+                                  ? MayosButtonVariant.primary
+                                  : MayosButtonVariant.secondary,
                               loading: _saving,
                               onPressed: _busy ? null : _saveDraft,
                             ),
-                            const SizedBox(height: MayosSpacing.xs),
-                            MayosButton(
-                              key: const Key('program_draft_publish'),
-                              label: copy.publishDraft,
-                              loading: _publishing,
-                              onPressed: _busy ? null : _publishDraft,
-                            ),
-                            MayosButton(
-                              key: const Key('program_draft_discard'),
-                              label: copy.discardDraft,
-                              variant: MayosButtonVariant.tertiary,
-                              loading: _discarding,
-                              onPressed: _busy ? null : _discardDraft,
-                            ),
+                            if (!widget.isTemplateMode) ...<Widget>[
+                              const SizedBox(height: MayosSpacing.xs),
+                              MayosButton(
+                                key: const Key('program_draft_publish'),
+                                label: copy.publishDraft,
+                                loading: _publishing,
+                                onPressed: _busy ? null : _publishDraft,
+                              ),
+                              MayosButton(
+                                key: const Key('program_draft_discard'),
+                                label: copy.discardDraft,
+                                variant: MayosButtonVariant.tertiary,
+                                loading: _discarding,
+                                onPressed: _busy ? null : _discardDraft,
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -986,8 +1105,9 @@ class _CoachProgramDraftScreenState
       );
 
   Widget _loadError(BuildContext context) {
+    final CoachCopy copy = coachCopyOf(context);
     final String message = _failure == null
-        ? coachCopyOf(context).noActiveAssignment
+        ? (widget.isTemplateMode ? copy.programTemplates : copy.noActiveAssignment)
         : displayCopyOf(context).failureMessage(_failure!);
     return Center(
       child: Padding(

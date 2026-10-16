@@ -17,6 +17,7 @@ import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_card.dart';
 import '../../core/ui/first_strong_direction.dart';
 import '../../providers.dart';
+import 'coach_program_templates_screen.dart';
 
 /// Coach profile tab of the Coach mode shell (#119): display name, bio,
 /// specialization, capacity, the player invite, assignment notices, and the
@@ -380,10 +381,25 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
           const SizedBox(height: MayosSpacing.sm),
           _stallThresholdSelector(copy),
           _stallThresholdStatus(context, c),
+          const SizedBox(height: MayosSpacing.sm),
+          MayosButton(
+            key: const Key('coach_program_templates_open'),
+            label: copy.programTemplates,
+            variant: MayosButtonVariant.secondary,
+            icon: Icons.library_books_outlined,
+            onPressed: _openProgramTemplates,
+          ),
         ],
       ),
     );
   }
+
+  Future<void> _openProgramTemplates() => Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (BuildContext context) =>
+              const CoachProgramTemplatesScreen(),
+        ),
+      );
 
   Widget _coachSettingsHeading(
     BuildContext context,
