@@ -72,6 +72,7 @@ class CoachCopy {
     };
     return 'حلّه $label';
   }
+
   String get alertNew => isArabic ? 'جديد' : 'New';
   String get alertAcknowledged =>
       isArabic ? 'تم تأكيد الاطلاع' : 'Acknowledged';
@@ -131,8 +132,9 @@ class CoachCopy {
   String get rosterAssistantPrivacyNote => isArabic
       ? 'يتلقى النموذج المستضاف لقطة إشارات قائمة اللاعبين وسؤالك وسجل هذه المحادثة فقط. لا تتضمن اللقطة أسماء اللاعبين أو بيانات التواصل أو أرقام الحسابات وعلاقات التدريب أو الملاحظات أو النصوص الحرة أو محادثات اللاعب. لا تُحفظ المحادثة.'
       : 'The hosted model receives only the Roster signal snapshot, your question, and this conversation history. The snapshot excludes player names, contact details, Account or Assignment ids, notes, free text, and Player chat. This conversation is not saved.';
-  String get rosterQuestionHint =>
-      isArabic ? 'مثال: من يحتاج إلى متابعة اليوم؟' : 'For example: Who needs my attention today?';
+  String get rosterQuestionHint => isArabic
+      ? 'مثال: من يحتاج إلى متابعة اليوم؟'
+      : 'For example: Who needs my attention today?';
   String get rosterAssistantDisabled => isArabic
       ? 'مساعد قائمة اللاعبين غير متاح لأن بوابة الخصوصية والتقييم لم تُفعّل.'
       : 'Roster questions are unavailable because the privacy and evaluation gate is not enabled.';
@@ -141,9 +143,8 @@ class CoachCopy {
       : 'The Roster urgency order is available. AI roster questions require Coach Pro.';
   String get rosterUrgencyOrderHeading =>
       isArabic ? 'ترتيب قائمة اللاعبين حسب الحاجة' : 'Roster urgency order';
-  String rosterUrgencyPlayer(int rank, String player) => isArabic
-      ? '${_ltr(rank.toString())}. ${_ltr(player)}'
-      : '$rank. $player';
+  String rosterUrgencyPlayer(int rank, String player) =>
+      isArabic ? '${_ltr(rank.toString())}. ${_ltr(player)}' : '$rank. $player';
   String rosterUrgencySignals({
     required int alerts,
     required int requests,
@@ -279,8 +280,7 @@ class CoachCopy {
       ? 'يجب أن تكون السعة بين ${_ltr('$min')} و${_ltr('$max')}.'
       : 'Capacity must be between $min and $max.';
   String get retry => isArabic ? 'إعادة المحاولة' : 'Retry';
-  String get invitePlayer =>
-      isArabic ? 'دعوة لاعب للتدريب' : 'Invite a player';
+  String get invitePlayer => isArabic ? 'دعوة لاعب للتدريب' : 'Invite a player';
   String get inviteExplanation => isArabic
       ? 'أنشئ رمز دعوة للتدريب مع مدرب لمرة واحدة وقدّمه للاعب. تنتهي صلاحيته، ولا يمكن استخدامه إلا عند توفر مكان في قائمة اللاعبين. سيظهر تاريخ الانتهاء بعد إنشاء الرمز.'
       : 'Create a single-use code and give it to one player. It expires and can only be redeemed while you have roster room; the exact expiry is shown when the code is issued.';
@@ -296,8 +296,7 @@ class CoachCopy {
   String get resolvedAlerts =>
       isArabic ? 'التنبيهات المحلولة' : 'Resolved alerts';
 
-  String get generateDraft =>
-      isArabic ? 'إنشاء مسودة' : 'Generate draft';
+  String get generateDraft => isArabic ? 'إنشاء مسودة' : 'Generate draft';
   String get cardioDays => isArabic ? 'أيام تمارين اللياقة' : 'Cardio days';
   String get cardioMinutesPerSession =>
       isArabic ? 'دقائق لكل حصة' : 'Minutes per session';
@@ -338,9 +337,9 @@ class CoachCopy {
   String importRowsSummary(int total, int valid) => isArabic
       ? 'الصفوف: ${_ltr('$total')} · الصالحة: ${_ltr('$valid')}'
       : 'Rows: $total · valid: $valid';
-  String rowLabel(int row) =>
-      isArabic ? 'الصف ${_ltr('$row')}' : 'Row $row';
-  String importPrescription(String day, int sets, int repsMin, int repsMax, double rir) =>
+  String rowLabel(int row) => isArabic ? 'الصف ${_ltr('$row')}' : 'Row $row';
+  String importPrescription(
+          String day, int sets, int repsMin, int repsMax, double rir) =>
       isArabic
           ? '$day · ${_ltr('$sets')} مجموعات · ${_ltr('$repsMin-$repsMax')} تكرارات · RIR ${_ltr('$rir')}'
           : '$day · $sets sets · $repsMin-$repsMax reps · RIR $rir';
@@ -348,8 +347,9 @@ class CoachCopy {
       isArabic ? 'إنشاء مسودة البرنامج' : 'Create Program draft';
   String get createAsCoachExercise =>
       isArabic ? 'إنشاء كتمرين من إنشاء المدرب' : 'Create as your exercise';
-  String get unresolvedExercise =>
-      isArabic ? 'اختر تمرينًا لهذه التسمية' : 'Choose a match for this exercise';
+  String get unresolvedExercise => isArabic
+      ? 'اختر تمرينًا لهذه التسمية'
+      : 'Choose a match for this exercise';
   String weeksNotImported(List<String> weeks, String? selectedWeek) => isArabic
       ? 'سيتم استيراد ${_ltr(selectedWeek ?? '')} فقط. لم تُستورد هذه الأسابيع: ${_ltr(weeks.join(', '))}.'
       : 'Only ${selectedWeek ?? 'one week'} will be imported. These weeks were not imported: ${weeks.join(', ')}.';
@@ -365,8 +365,12 @@ class CoachCopy {
     Map<String, List<int>> rowsByWeek,
     List<int> unassigned,
   ) {
-    final String dayText = days.isEmpty ? (isArabic ? 'غير محددة' : 'none detected') : days.join('، ');
-    final String weekText = weeks.isEmpty ? (isArabic ? 'غير محددة' : 'none detected') : weeks.join(', ');
+    final String dayText = days.isEmpty
+        ? (isArabic ? 'غير محددة' : 'none detected')
+        : days.join('، ');
+    final String weekText = weeks.isEmpty
+        ? (isArabic ? 'غير محددة' : 'none detected')
+        : weeks.join(', ');
     final String assignments = <String>[
       for (final String week in weeks)
         isArabic
@@ -381,6 +385,7 @@ class CoachCopy {
         ? 'الأيام المكتشفة: $dayText. الأسابيع المكتشفة: ${_ltr(weekText)}. توزيع الصفوف: ${assignments.isEmpty ? 'لا توجد صفوف' : assignments}.'
         : 'Days found: $dayText. Weeks found: $weekText. Row assignments: ${assignments.isEmpty ? 'no rows' : assignments}.';
   }
+
   String get confirmLayoutAndContinue =>
       isArabic ? 'تأكيد ومتابعة' : 'Confirm and continue';
   String get layoutNotRight => isArabic ? 'التنسيق غير صحيح' : 'Not right';
@@ -398,10 +403,11 @@ class CoachCopy {
       : 'There are no valid rows ready to import.';
   String programImportRowMessage(String code, int row, String column) {
     final String label = _importColumn(column);
-    final String fallback = const MessageCopy('en').programImportMessage(code) ??
-        (isArabic
-            ? 'راجع هذه القيمة وصححها في الورقة.'
-            : 'Review this value and correct it in the sheet.');
+    final String fallback =
+        const MessageCopy('en').programImportMessage(code) ??
+            (isArabic
+                ? 'راجع هذه القيمة وصححها في الورقة.'
+                : 'Review this value and correct it in the sheet.');
     final String explanation = resolveStructuredMessage(
       messageCode: code,
       messageParams: const <String, dynamic>{},
@@ -412,6 +418,7 @@ class CoachCopy {
         ? 'الصف ${_ltr('$row')} · $label: $explanation'
         : 'Row $row · $label: $explanation';
   }
+
   String get importReplaceTitle => isArabic
       ? 'استبدال مسودة البرنامج الحالية؟'
       : 'Replace the current Program draft?';
@@ -427,14 +434,17 @@ class CoachCopy {
   String get importCreateFailure => isArabic
       ? 'تعذر إنشاء مسودة البرنامج من هذا الاستيراد.'
       : 'Could not create a Program draft from this import.';
-  String programImportError(String? code, {Map<String, dynamic>? messageParams}) {
-    if (code == 'assignment.program_draft_exists.v1') return importReplacePrompt;
+  String programImportError(String? code,
+      {Map<String, dynamic>? messageParams}) {
+    if (code == 'assignment.program_draft_exists.v1') {
+      return importReplacePrompt;
+    }
     if (code == null) return importCreateFailure;
     final String? englishFallback =
         const MessageCopy('en').programImportMessage(
-          code,
-          maxCells: messageParams?['max_cells'] as int?,
-        );
+      code,
+      maxCells: messageParams?['max_cells'] as int?,
+    );
     if (englishFallback == null) return importCreateFailure;
     return resolveStructuredMessage(
       messageCode: code,
@@ -479,12 +489,12 @@ class CoachCopy {
       _ => fallback,
     };
   }
+
   String get repRangePreference =>
       isArabic ? 'تفضيل نطاق التكرارات' : 'Rep range preference';
-  String get replaceProgramDraftTitle =>
-      isArabic
-          ? 'استبدال مسودة البرنامج التدريبي الحالية؟'
-          : 'Replace the current Program draft?';
+  String get replaceProgramDraftTitle => isArabic
+      ? 'استبدال مسودة البرنامج التدريبي الحالية؟'
+      : 'Replace the current Program draft?';
   String get replaceProgramDraftPrompt => isArabic
       ? 'سيؤدي إنشاء مسودة جديدة إلى استبدال مسودة البرنامج التدريبي الحالية، بما فيها أيامها. هل تريد المتابعة؟'
       : 'Generating a new draft will replace the current Program draft, including its days. Continue?';
@@ -496,19 +506,18 @@ class CoachCopy {
   String get publishedByYou => isArabic ? 'نشرته أنت' : 'Published by you';
   String get editedByPlayer =>
       isArabic ? 'عدّله اللاعب' : 'Edited by the player';
-  String get pendingProgramDraft => isArabic
-      ? 'مسودة بانتظار المراجعة'
-      : 'Draft pending';
+  String get pendingProgramDraft =>
+      isArabic ? 'مسودة بانتظار المراجعة' : 'Draft pending';
   String programVersionChip(int version) =>
       isArabic ? 'إصدار ${_ltr('$version')}' : 'v$version';
   String get activeProgramStatus => isArabic ? 'نشط' : 'Active';
   String get trainingDaysSummary => isArabic ? 'أيام التدريب' : 'Training days';
   String get totalExercisesSummary =>
       isArabic ? 'إجمالي التمارين' : 'Total exercises';
-  String get workingSetsSummary => isArabic ? 'مجموعات التدريب' : 'Working sets';
-  String programStatSemantics(int count, String label) => isArabic
-      ? '${_ltr('$count')} $label'
-      : '$count $label';
+  String get workingSetsSummary =>
+      isArabic ? 'مجموعات التدريب' : 'Working sets';
+  String programStatSemantics(int count, String label) =>
+      isArabic ? '${_ltr('$count')} $label' : '$count $label';
   String get programNumberColumn => '#';
   String get programExerciseColumn => isArabic ? 'التمرين' : 'Exercise';
   String get programActionColumn => isArabic ? 'الحركة' : 'Action';
@@ -528,9 +537,8 @@ class CoachCopy {
   }
 
   String programExerciseRepRange(int minimum, int maximum) {
-    final String value = minimum == maximum
-        ? '$minimum'
-        : '$minimum – $maximum';
+    final String value =
+        minimum == maximum ? '$minimum' : '$minimum – $maximum';
     return isArabic ? _ltr(value) : value;
   }
 
@@ -559,23 +567,30 @@ class CoachCopy {
     return 'عرض ${_count(count, ArabicCountNoun.exercise)}$suffix';
   }
 
-  String compactProgramPrescription((
-    {String sets, String reps, String rir, String rest, String equipment}
-  ) prescription) => isArabic
-      ? '${_ltr(prescription.sets)} × ${_ltr(prescription.reps)} · '
-          'RIR ${_ltr(prescription.rir)} · ${prescription.rest} · '
-          '${prescription.equipment}'
-      : '${prescription.sets} × ${prescription.reps} · '
-          'RIR ${prescription.rir} · ${prescription.rest} · '
-          '${prescription.equipment}';
+  String compactProgramPrescription(
+          ({
+            String sets,
+            String reps,
+            String rir,
+            String rest,
+            String equipment
+          }) prescription) =>
+      isArabic
+          ? '${_ltr(prescription.sets)} × ${_ltr(prescription.reps)} · '
+              'RIR ${_ltr(prescription.rir)} · ${prescription.rest} · '
+              '${prescription.equipment}'
+          : '${prescription.sets} × ${prescription.reps} · '
+              'RIR ${prescription.rir} · ${prescription.rest} · '
+              '${prescription.equipment}';
 
   String get noActiveProgram =>
       isArabic ? 'لا يوجد برنامج تدريبي نشط.' : 'No active program.';
   String get editActiveProgram => isArabic ? 'تعديل' : 'Edit';
   String get approveProgramAsIs =>
       isArabic ? 'اعتماد البرنامج كما هو' : 'Approve as is';
-  String get programDraftChoiceTitle =>
-      isArabic ? 'توجد مسودة للبرنامج التدريبي' : 'A Program draft already exists';
+  String get programDraftChoiceTitle => isArabic
+      ? 'توجد مسودة للبرنامج التدريبي'
+      : 'A Program draft already exists';
   String get programDraftChoicePrompt => isArabic
       ? 'يمكنك متابعة المسودة الحالية أو استبدالها بنسخة من البرنامج النشط.'
       : 'Continue the current draft or replace it with a copy of the active program.';
@@ -596,20 +611,21 @@ class CoachCopy {
   String get publishRequestResolveLabel =>
       isArabic ? 'معالجة الطلب' : 'Resolve';
   String publishRequestKind(String kind) => switch (kind) {
-        'exercise_substitution' => isArabic
-            ? 'طلب تبديل تمرين من المدرب'
-            : 'Substitution request',
-        _ => isArabic ? 'طلب تغيير البرنامج التدريبي' : 'Program change request',
+        'exercise_substitution' =>
+          isArabic ? 'طلب تبديل تمرين من المدرب' : 'Substitution request',
+        _ =>
+          isArabic ? 'طلب تغيير البرنامج التدريبي' : 'Program change request',
       };
   String publishRequestDetails(String? exercise, String date) {
     final String dateText = _ltr(date);
-    final String dateLabel = isArabic ? 'التاريخ: $dateText' : 'Date: $dateText';
+    final String dateLabel =
+        isArabic ? 'التاريخ: $dateText' : 'Date: $dateText';
     if (exercise == null || exercise.isEmpty) return dateLabel;
     return '$exercise · $dateLabel';
   }
-  String activeProgramSince(String date) => isArabic
-      ? 'بدأ البرنامج في ${_ltr(date)}'
-      : 'Active since $date';
+
+  String activeProgramSince(String date) =>
+      isArabic ? 'بدأ البرنامج في ${_ltr(date)}' : 'Active since $date';
   String programTempo(String tempo) =>
       isArabic ? 'الإيقاع: ${_ltr(tempo)}' : 'Tempo: $tempo';
   String programNotes(String notes) =>
@@ -632,9 +648,8 @@ class CoachCopy {
   String get removeWeek => isArabic ? 'حذف الأسبوع' : 'Remove week';
   String get moveWeekUp => isArabic ? 'نقل الأسبوع لأعلى' : 'Move week up';
   String get moveWeekDown => isArabic ? 'نقل الأسبوع لأسفل' : 'Move week down';
-  String trainingDayNumber(int number) => isArabic
-      ? 'يوم التدريب ${_ltr('$number')}'
-      : 'Training day $number';
+  String trainingDayNumber(int number) =>
+      isArabic ? 'يوم التدريب ${_ltr('$number')}' : 'Training day $number';
   String dayDuplicateName(String name) =>
       isArabic ? '$name (نسخة)' : '$name copy';
   String get addDay => isArabic ? 'إضافة يوم تدريب' : 'Add training day';
@@ -644,19 +659,31 @@ class CoachCopy {
   String get moveDayDown => isArabic ? 'نقل اليوم لأسفل' : 'Move day down';
   String get duplicateExerciseAction => isArabic ? 'نسخ التمرين' : 'Duplicate';
   String get swapExercise => isArabic ? 'تبديل التمرين' : 'Swap exercise';
-  String get insertExerciseAbove => isArabic ? 'إضافة تمرين قبل' : 'Insert exercise above';
-  String get insertExerciseBelow => isArabic ? 'إضافة تمرين بعد' : 'Insert exercise below';
+  String get insertExerciseAbove =>
+      isArabic ? 'إضافة تمرين قبل' : 'Insert exercise above';
+  String get insertExerciseBelow =>
+      isArabic ? 'إضافة تمرين بعد' : 'Insert exercise below';
   String get deleteExercise => isArabic ? 'حذف التمرين' : 'Delete';
-  String get exerciseActions => isArabic ? 'إجراءات التمرين' : 'Exercise actions';
-  String get reorderExercise => isArabic ? 'إعادة ترتيب التمرين' : 'Reorder exercise';
-  String get addWarmupMovement => isArabic ? 'إضافة حركة إحماء' : 'Add warm-up movement';
-  String get removeWarmupMovement => isArabic ? 'حذف حركة الإحماء' : 'Remove warm-up movement';
-  String get insertWarmupAbove => isArabic ? 'إضافة حركة إحماء قبل' : 'Insert above';
-  String get insertWarmupBelow => isArabic ? 'إضافة حركة إحماء بعد' : 'Insert below';
-  String get warmupMovementActions => isArabic ? 'إجراءات حركة الإحماء' : 'Warm-up movement actions';
-  String get moveWarmupMovementUp => isArabic ? 'نقل حركة الإحماء لأعلى' : 'Move warm-up movement up';
-  String get moveWarmupMovementDown => isArabic ? 'نقل حركة الإحماء لأسفل' : 'Move warm-up movement down';
-  String get warmupMovementName => isArabic ? 'اسم حركة الإحماء' : 'Warm-up movement';
+  String get exerciseActions =>
+      isArabic ? 'إجراءات التمرين' : 'Exercise actions';
+  String get reorderExercise =>
+      isArabic ? 'إعادة ترتيب التمرين' : 'Reorder exercise';
+  String get addWarmupMovement =>
+      isArabic ? 'إضافة حركة إحماء' : 'Add warm-up movement';
+  String get removeWarmupMovement =>
+      isArabic ? 'حذف حركة الإحماء' : 'Remove warm-up movement';
+  String get insertWarmupAbove =>
+      isArabic ? 'إضافة حركة إحماء قبل' : 'Insert above';
+  String get insertWarmupBelow =>
+      isArabic ? 'إضافة حركة إحماء بعد' : 'Insert below';
+  String get warmupMovementActions =>
+      isArabic ? 'إجراءات حركة الإحماء' : 'Warm-up movement actions';
+  String get moveWarmupMovementUp =>
+      isArabic ? 'نقل حركة الإحماء لأعلى' : 'Move warm-up movement up';
+  String get moveWarmupMovementDown =>
+      isArabic ? 'نقل حركة الإحماء لأسفل' : 'Move warm-up movement down';
+  String get warmupMovementName =>
+      isArabic ? 'اسم حركة الإحماء' : 'Warm-up movement';
   String get movementSets => isArabic ? 'المجموعات' : 'Sets';
   String get movementReps => isArabic ? 'التكرارات' : 'Reps';
   String get restSeconds => isArabic ? 'الراحة بالثواني' : 'Rest (seconds)';
@@ -664,7 +691,8 @@ class CoachCopy {
       ? 'مجموعات الإحماء المتدرجة (${_ltr('${ProgramDraftPrescription.minWarmupSets}')}–${_ltr('${ProgramDraftPrescription.maxWarmupSets}')})'
       : 'Ramped warm-up sets (${ProgramDraftPrescription.minWarmupSets}–${ProgramDraftPrescription.maxWarmupSets})';
   String get tempo => isArabic ? 'الإيقاع (اختياري)' : 'Tempo (optional)';
-  String get notesOptional => isArabic ? 'ملاحظات (اختيارية)' : 'Notes (optional)';
+  String get notesOptional =>
+      isArabic ? 'ملاحظات (اختيارية)' : 'Notes (optional)';
   String get leaveUnsavedChangesTitle =>
       isArabic ? 'تغييرات غير محفوظة' : 'Unsaved changes';
   String get leaveUnsavedChangesPrompt => isArabic
@@ -689,20 +717,33 @@ class CoachCopy {
   String get notesTooLong => isArabic
       ? 'يجب ألا تتجاوز الملاحظات ${_ltr('${ProgramDraftPrescription.maxProgramNotesLength}')} حرفًا.'
       : 'Notes must be at most ${ProgramDraftPrescription.maxProgramNotesLength} characters.';
-  String get cardioNote => isArabic ? 'ملاحظة اللياقة (اختيارية)' : 'Cardio note (optional)';
-  String get noTrainingDays => isArabic ? 'أضف يوم تدريب لبدء البرنامج.' : 'Add a training day to start the program.';
-  String get invalidWholeNumber => isArabic ? 'أدخل عددًا صحيحًا.' : 'Enter a whole number.';
+  String get cardioNote =>
+      isArabic ? 'ملاحظة اللياقة (اختيارية)' : 'Cardio note (optional)';
+  String get noTrainingDays => isArabic
+      ? 'أضف يوم تدريب لبدء البرنامج.'
+      : 'Add a training day to start the program.';
+  String get invalidWholeNumber =>
+      isArabic ? 'أدخل عددًا صحيحًا.' : 'Enter a whole number.';
   String get addExercise => isArabic ? 'إضافة تمرين' : 'Add exercise';
   String get createExercise => isArabic ? 'إنشاء تمرين' : 'Create exercise';
   String get yourExercise => isArabic ? 'تمرينك' : 'Your exercise';
-  String get noMatchingExercise => isArabic ? 'لا توجد تمارين مطابقة.' : 'No matching exercises.';
+  String get noMatchingExercise =>
+      isArabic ? 'لا توجد تمارين مطابقة.' : 'No matching exercises.';
   String get exerciseName => isArabic ? 'اسم التمرين' : 'Exercise name';
-  String get bodyPartTag => isArabic ? 'العضلة أو الجزء المستهدف (اختياري)' : 'Body part tag (optional)';
-  String get equipmentTag => isArabic ? 'المعدات (اختياري)' : 'Equipment tag (optional)';
-  String get exerciseNoteOptional => isArabic ? 'ملاحظة (اختيارية)' : 'Note (optional)';
-  String get videoLinkOptional => isArabic ? 'رابط الفيديو (اختياري)' : 'Video link (optional)';
-  String get exerciseNameRequired => isArabic ? 'أدخل اسم التمرين.' : 'Enter an exercise name.';
-  String get videoLinkMustUseHttps => isArabic ? 'يجب أن يبدأ رابط الفيديو بـ https.' : 'The video link must use https.';
+  String get bodyPartTag => isArabic
+      ? 'العضلة أو الجزء المستهدف (اختياري)'
+      : 'Body part tag (optional)';
+  String get equipmentTag =>
+      isArabic ? 'المعدات (اختياري)' : 'Equipment tag (optional)';
+  String get exerciseNoteOptional =>
+      isArabic ? 'ملاحظة (اختيارية)' : 'Note (optional)';
+  String get videoLinkOptional =>
+      isArabic ? 'رابط الفيديو (اختياري)' : 'Video link (optional)';
+  String get exerciseNameRequired =>
+      isArabic ? 'أدخل اسم التمرين.' : 'Enter an exercise name.';
+  String get videoLinkMustUseHttps => isArabic
+      ? 'يجب أن يبدأ رابط الفيديو بـ https.'
+      : 'The video link must use https.';
   String get saveExercise => isArabic ? 'حفظ التمرين' : 'Save exercise';
   String get workingSets => isArabic ? 'مجموعات التدريب' : 'Working sets';
   String get repsOrRange => isArabic ? 'التكرارات أو النطاق' : 'Reps or range';
@@ -722,8 +763,9 @@ class CoachCopy {
   String get programTemplatesLead => isArabic
       ? 'أنشئ قوالب برامج تدريبية قابلة لإعادة الاستخدام وعدّلها وانسخها وأرشفها.'
       : 'Build reusable Training program templates, then edit, duplicate or archive them.';
-  String get noProgramTemplates =>
-      isArabic ? 'لا توجد قوالب برامج تدريبية بعد.' : 'No Program templates yet.';
+  String get noProgramTemplates => isArabic
+      ? 'لا توجد قوالب برامج تدريبية بعد.'
+      : 'No Program templates yet.';
   String get newProgramTemplate => isArabic ? 'قالب جديد' : 'New template';
   String get editProgramTemplate => isArabic ? 'تعديل القالب' : 'Edit template';
   String get writeTemplate => isArabic ? 'تحرير القالب' : 'Write template';
@@ -733,6 +775,19 @@ class CoachCopy {
   String get templateNameRequired =>
       isArabic ? 'أدخل اسم القالب.' : 'Enter a template name.';
   String get saveTemplate => isArabic ? 'حفظ القالب' : 'Save template';
+  String get saveAsTemplate => isArabic ? 'حفظ كقالب' : 'Save as template';
+  String get saveAsTemplateNotesNotice => isArabic
+      ? 'راجع ملاحظات التمارين وتعليمات البرنامج ووصفات تمارين اللياقة قبل الحفظ. لن يُحفظ النص إلا إذا أبقيته أو عدّلته.'
+      : 'Review exercise notes, program instructions, and cardio prescriptions before saving. Text is copied only if you keep or edit it.';
+  String get saveAsTemplateNotesHeading =>
+      isArabic ? 'مراجعة النصوص والوصفات' : 'Review notes and prescriptions';
+  String get saveAsTemplateNoNotes => isArabic
+      ? 'لا توجد ملاحظات أو وصفات نصية لمراجعتها.'
+      : 'There are no notes or text prescriptions to review.';
+  String get programInstructions =>
+      isArabic ? 'تعليمات البرنامج' : 'Program instructions';
+  String get cardioPrescription =>
+      isArabic ? 'وصفة تمارين اللياقة' : 'Cardio prescription';
   String get templateSaved => isArabic ? 'تم حفظ القالب.' : 'Template saved.';
   String get duplicateTemplate => isArabic ? 'نسخ' : 'Duplicate';
   String templateDuplicated(String name) =>
@@ -831,7 +886,9 @@ class CoachCopy {
         'invalid_movement_reps' => invalidMovementReps,
         'tempo_too_long' => tempoTooLong,
         'notes_too_long' => notesTooLong,
-        'invalid_day_order' || 'invalid_weekly_frequency' || 'too_many_days' =>
+        'invalid_day_order' ||
+        'invalid_weekly_frequency' ||
+        'too_many_days' =>
           invalidProgramDays,
         _ => isArabic
             ? 'راجع هذا الحقل في البرنامج التدريبي.'
@@ -853,6 +910,7 @@ class CoachCopy {
         : 'Resolved ${requestsCount(resolvedRequestCount)}';
     return '$published · $addressed';
   }
+
   String get programRequests =>
       isArabic ? 'طلبات البرنامج التدريبي' : 'Program requests';
   String get noProgramRequests => isArabic
@@ -915,6 +973,7 @@ class CoachCopy {
             '${_count(reps, ArabicCountNoun.repetition)} (${_ltr(date)})'
         : '$label · $value kg × ${_englishRepetitions(reps)} ($date)';
   }
+
   String weekday(int weekday) {
     const List<String> english = <String>[
       'Mon',
@@ -1036,13 +1095,13 @@ class CoachCopy {
 
   String get noPlayersHistory =>
       isArabic ? 'لا يوجد سجل تدريب بعد.' : 'No training history yet.';
-  String get coachingSince =>
-      isArabic ? 'يتدرب معك منذ' : 'Coaching since';
+  String get coachingSince => isArabic ? 'يتدرب معك منذ' : 'Coaching since';
   String coachingSinceDate(String date) => isArabic ? _ltr(date) : date;
   String get lastSession => isArabic ? 'آخر حصة' : 'Last session';
   String get weeklyVolume => isArabic ? 'الحجم الأسبوعي' : 'Weekly volume';
   String get injuries => isArabic ? 'الإصابات' : 'Injuries';
-  String get noInjuries => isArabic ? 'لا توجد إصابات مسجلة.' : 'No injuries recorded.';
+  String get noInjuries =>
+      isArabic ? 'لا توجد إصابات مسجلة.' : 'No injuries recorded.';
   String injuryStatus(String status) => switch (status) {
         'reported' => isArabic ? 'تم الإبلاغ' : 'Reported',
         'physician_seen' => isArabic ? 'تمت مراجعة طبيب' : 'Physician seen',
@@ -1052,7 +1111,8 @@ class CoachCopy {
   String clearanceVerdict(String verdict) => switch (verdict) {
         'cleared' => isArabic ? 'مسموح' : 'Cleared',
         'not_cleared' => isArabic ? 'غير مسموح' : 'Not cleared',
-        'cleared_with_limits' => isArabic ? 'مسموح بقيود' : 'Cleared with limits',
+        'cleared_with_limits' =>
+          isArabic ? 'مسموح بقيود' : 'Cleared with limits',
         _ => verdict,
       };
   String injuryArea(String? area) => switch (area) {
@@ -1183,7 +1243,9 @@ class CoachCopy {
     ];
     if (rir != null) {
       fields.add(
-        isArabic ? '$programRirColumn: ${_ltr(rir)}' : '$programRirColumn: $rir',
+        isArabic
+            ? '$programRirColumn: ${_ltr(rir)}'
+            : '$programRirColumn: $rir',
       );
     }
     if (e1rm != null) {
@@ -1194,8 +1256,7 @@ class CoachCopy {
     return fields.join(' · ');
   }
 
-  String _englishRepetitions(int reps) =>
-      '$reps ${reps == 1 ? 'rep' : 'reps'}';
+  String _englishRepetitions(int reps) => '$reps ${reps == 1 ? 'rep' : 'reps'}';
   String historicalProgram(int captured, int current) => isArabic
       ? 'سُجلت الحصة على إصدار البرنامج ${_ltr('$captured')} (الحالي ${_ltr('$current')})'
       : 'Logged against program v$captured (current v$current)';

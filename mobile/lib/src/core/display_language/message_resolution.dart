@@ -211,6 +211,7 @@ const Map<String, Set<String>> _paramKeys = <String, Set<String>>{
   'program.no_active.v1': <String>{},
   'program.template_not_found.v1': <String>{},
   'program.template_invalid.v1': <String>{},
+  'program.source_changed.v1': <String>{},
   'program.coach_controls.v1': <String>{},
   'program.substitution.day_not_found.v1': <String>{},
   'program.substitution.source_not_on_day.v1': <String>{},

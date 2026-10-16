@@ -71,6 +71,20 @@ class RegistryCoachExercisesMixin:
             ).fetchone()
         return self._coach_exercise_from_row(row)
 
+    def get_coach_exercise_for_template_copy(
+        self, exercise_id: str
+    ) -> tuple[str, dict[str, Any]] | None:
+        """Returns an existing Coach exercise's owner and visible definition."""
+        with self._catalog_lock:
+            row = self.catalog_conn.execute(
+                "SELECT coach_account_id, "
+                f"{COACH_EXERCISE_COLUMNS} FROM coach_exercises WHERE id = ?",
+                (str(exercise_id),),
+            ).fetchone()
+        if row is None:
+            return None
+        return str(row[0]), self._coach_exercise_from_row(row[1:])
+
     def get_coach_exercises_unscoped(
         self, exercise_ids: Iterable[str]
     ) -> dict[str, dict[str, Any]]:

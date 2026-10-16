@@ -2743,6 +2743,7 @@ class TrainingProgram {
     required this.splitType,
     required this.weeklyFrequency,
     required this.days,
+    this.instructions,
     this.weeks = const <ProgramWeek>[],
     this.currentWeek = 1,
     this.weekCount = 1,
@@ -2769,6 +2770,7 @@ class TrainingProgram {
         splitType: json['split_type'] as String? ?? 'custom',
         weeklyFrequency: (json['weekly_frequency'] as num).toInt(),
         days: days,
+        instructions: json['instructions'] as String?,
         weeks: weeks.isEmpty
             ? <ProgramWeek>[ProgramWeek(weekName: 'Week 1', weekOrder: 1, days: days)]
             : weeks,
@@ -2791,6 +2793,7 @@ class TrainingProgram {
   final String splitType;
   final int weeklyFrequency;
   final List<ProgramDay> days;
+  final String? instructions;
   final List<ProgramWeek> weeks;
   final int currentWeek;
   final int weekCount;
@@ -2821,6 +2824,7 @@ class TrainingProgram {
         'days': <Map<String, dynamic>>[
           for (final ProgramDay day in days) day.toJson(),
         ],
+        'instructions': instructions,
         'weeks': <Map<String, dynamic>>[
           for (final ProgramWeek week in weeks) week.toJson(),
         ],

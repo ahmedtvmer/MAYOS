@@ -320,7 +320,7 @@ def _pydantic_issue(error: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _active_program_as_draft(program: PersistedProgramSchema) -> dict[str, Any]:
+def active_program_as_draft(program: PersistedProgramSchema) -> dict[str, Any]:
     from svc.schemas import CoachProgramDraftIn
 
     try:
@@ -356,8 +356,9 @@ def copy_active_program_to_draft(
         program = ledger.get_active_program()
         if program is None:
             raise ActiveProgramNotFound("No active program to copy.")
-        draft = _active_program_as_draft(program)
+        draft = active_program_as_draft(program)
         source_template_id = program.source_template_id
+
         if replace:
             stored = ledger.replace_program_draft(
                 assignment_id, draft, source_template_id=source_template_id
@@ -429,6 +430,22 @@ def validate_publishable_program(
     """
     _published_program(draft, db, coach_account_id, None)
     return normalize_program_draft(draft)
+
+
+def canonical_publishable_draft(
+    draft: dict[str, Any], db: Any, coach_account_id: str
+) -> dict[str, Any]:
+    """Returns the publication-normalized draft with trusted catalog metadata.
+
+    ``validate_publishable_program`` only proves publishability and echoes the
+    caller's draft, including any free text it carried. This instead returns the
+    sanitized article a publication would persist: exercise names, equipment,
+    media and catalog notes are re-derived from trusted catalog/coach-library
+    entries, so untrusted free text on a copied draft can never reach a stored
+    template (ticket #307).
+    """
+    published = _published_program(draft, db, coach_account_id, None)
+    return active_program_as_draft(PersistedProgramSchema.model_validate(published))
 
 
 def _published_weeks(
@@ -693,6 +710,7 @@ def _publish_program(
                 if not publishes_draft and previous_program is not None
                 else None
             )
+            source_template_id = None
             if publishes_draft:
                 draft_record = ledger.get_program_draft(assignment_id)
                 if draft_record is None:
@@ -715,8 +733,9 @@ def _publish_program(
                     raise ActiveProgramNotFound("No active program to approve.")
                 if active_program.version != approve_version:
                     raise ActiveProgramVersionMismatch(active_program.version)
-                source_draft = _active_program_as_draft(active_program)
+                source_draft = active_program_as_draft(active_program)
                 source_template_id = active_program.source_template_id
+
             program_data = _published_program(
                 source_draft, db, coach_account_id, ledger
             )

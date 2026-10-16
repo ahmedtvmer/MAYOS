@@ -21,6 +21,7 @@ import '../../providers.dart';
 import 'coach_exercise_picker_dialog.dart';
 import 'program_publish_confirmation.dart';
 import 'program_import_files.dart';
+import 'program_template_save_sheet.dart';
 
 part 'program_editor/day_card.dart';
 part 'program_editor/exercise_card.dart';
@@ -88,7 +89,9 @@ class _CoachProgramDraftScreenState
   bool _publishing = false;
   bool _discarding = false;
   bool _downloadingTemplate = false;
+  bool _savingTemplateCopy = false;
   bool _hasUnsavedChanges = false;
+  String? _draftRevision;
   bool _allowPop = false;
   FailureMessage? _failure;
   String? _inputError;
@@ -99,7 +102,7 @@ class _CoachProgramDraftScreenState
   late final TextEditingController _templateName;
   late final TextEditingController _templateDescription;
 
-  bool get _busy => _saving || _publishing || _discarding;
+  bool get _busy => _saving || _publishing || _discarding || _savingTemplateCopy;
   List<_DraftDayEditor> get _days => _weeks[_selectedWeekIndex].days;
 
   @override
@@ -219,6 +222,10 @@ class _CoachProgramDraftScreenState
       _templateDescription.text = envelope['description'] as String? ?? '';
     }
     _sourceTemplateName = envelope['source_template_name'] as String?;
+
+    if (!widget.isTemplateMode) {
+      _draftRevision = envelope['updated_at'] as String?;
+    }
     setState(() {
       _draft = draft;
       _loading = false;
@@ -606,6 +613,7 @@ class _CoachProgramDraftScreenState
       if (!mounted) return;
       setState(() {
         _draft = _copyMap(saved['draft'] as Map<String, dynamic>);
+        _draftRevision = saved['updated_at'] as String?;
         _hasUnsavedChanges = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -623,6 +631,52 @@ class _CoachProgramDraftScreenState
       });
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _saveAsTemplate() async {
+    final CoachCopy copy = coachCopyOf(context);
+    final Map<String, dynamic>? draft = _draftForSave();
+    if (draft == null) return;
+    final ProgramTemplateSaveRequest? request = await showProgramTemplateSaveSheet(
+      context,
+      notes: programTemplateNoteReviews(draft),
+    );
+    if (!mounted || request == null) return;
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    setState(() {
+      _savingTemplateCopy = true;
+      _failure = null;
+      _inputError = null;
+      _clearServerErrors();
+    });
+    try {
+      final ApiClient api = ref.read(apiClientProvider);
+      // Persist pending edits first so the server copies exactly what the coach
+      // reviewed, then bind the copy to the revision the server reports: a
+      // concurrent replace must not be silently copied from the stale review.
+      String? revision = _draftRevision;
+      if (_hasUnsavedChanges) {
+        final Map<String, dynamic> saved = await api
+            .coachReplaceProgramDraft(widget.assignmentId!, draft);
+        revision = saved['updated_at'] as String?;
+        _draftRevision = revision;
+        if (mounted) setState(() => _hasUnsavedChanges = false);
+      }
+      await api.coachSaveAssignedProgramAsTemplate(
+        assignmentId: widget.assignmentId!,
+        fromDraft: true,
+        sourceRevision: revision ?? '',
+        name: request.name,
+        description: request.description,
+        notes: request.notes,
+      );
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text(copy.templateSaved)));
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _failure = apiFailureMessage(error));
+    } finally {
+      if (mounted) setState(() => _savingTemplateCopy = false);
     }
   }
 
@@ -678,11 +732,16 @@ class _CoachProgramDraftScreenState
       _clearServerErrors();
     });
     try {
-      await api.coachReplaceProgramDraft(
+      final Map<String, dynamic> saved = await api.coachReplaceProgramDraft(
             widget.assignmentId!,
             draft,
       );
-      if (mounted) setState(() => _hasUnsavedChanges = false);
+      if (mounted) {
+        setState(() {
+          _draftRevision = saved['updated_at'] as String?;
+          _hasUnsavedChanges = false;
+        });
+      }
       final CoachProgramPublication publication =
           await api.coachPublishProgramDraft(
         widget.assignmentId!,
@@ -959,6 +1018,12 @@ class _CoachProgramDraftScreenState
               tooltip: copy.downloadProgramTemplateCsv,
               onPressed: _downloadingTemplate ? null : () => _downloadTemplate('csv'),
               icon: const Icon(Icons.table_view_outlined),
+            ),
+            IconButton(
+              key: const Key('program_draft_save_as_template'),
+              tooltip: copy.saveAsTemplate,
+              onPressed: _busy ? null : _saveAsTemplate,
+              icon: const Icon(Icons.bookmark_add_outlined),
             ),
           ],
         ],

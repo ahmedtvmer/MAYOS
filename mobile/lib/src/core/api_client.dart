@@ -1471,6 +1471,38 @@ class ApiClient {
     );
   }
 
+  /// Saves an assigned player's program as a new Coach-owned template (#307).
+  ///
+  /// [fromDraft] copies the player's open Program draft; otherwise the active
+  /// program is copied. [sourceRevision] is the version the coach reviewed; the
+  /// server refuses the save with a 409 if the source changed in the meantime.
+  /// The server derives the copied structure itself; the client only sends the
+  /// coach's name and the reviewed note decisions.
+  Future<Map<String, dynamic>> coachSaveAssignedProgramAsTemplate({
+    required String assignmentId,
+    required bool fromDraft,
+    required String sourceRevision,
+    required String name,
+    String? description,
+    List<Map<String, dynamic>> notes = const <Map<String, dynamic>>[],
+  }) async {
+    final String suffix =
+        fromDraft ? 'program-draft' : 'program';
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/assignments/$assignmentId/$suffix/save-as-template',
+        data: <String, dynamic>{
+          'name': name,
+          'expected_source_revision': sourceRevision,
+          if (description != null && description.trim().isNotEmpty)
+            'description': description,
+          'notes': notes,
+        },
+      ),
+    );
+    return _parseProgramTemplate(response.data);
+  }
+
   Map<String, dynamic> _programTemplateBody(
     String name,
     String? description,

@@ -1444,6 +1444,59 @@ class ProgramTemplatePublishAllResultOut(BaseModel):
 class ProgramTemplatePublishAllOut(BaseModel):
     results: list[ProgramTemplatePublishAllResultOut]
 
+class ProgramTemplateNoteIn(ProgramDraftInput):
+    """One reviewed free-text item copied from a player's program (#307).
+
+    The location is identified by the source's stable week/day order and the
+    item's position when needed, so the server can rebuild the exact copy
+    without trusting any client-supplied program shape. Instructions are global;
+    cardio is identified by week/day; exercise and warm-up notes also use an
+    item index.
+    """
+
+    week_order: int | None = Field(default=None, ge=1, le=MAX_PROGRAM_WEEKS)
+    day_order: int | None = Field(default=None, ge=1, le=MAX_PROGRAM_DAYS)
+    field: Literal[
+        "program_instructions", "day_cardio", "exercise_notes", "warmup_note"
+    ]
+    item_index: int | None = Field(default=None, ge=0)
+    value: str | None = Field(default=None, max_length=MAX_PROGRAM_NOTES_LENGTH)
+
+    @model_validator(mode="after")
+    def _validate_review_location(self) -> "ProgramTemplateNoteIn":
+        has_week_day = self.week_order is not None and self.day_order is not None
+        has_item = self.item_index is not None
+        if self.field == "program_instructions":
+            valid_location = (
+                self.week_order is None and self.day_order is None and not has_item
+            )
+        elif self.field == "day_cardio":
+            valid_location = has_week_day and not has_item
+        else:
+            valid_location = has_week_day and has_item
+        if not valid_location:
+            raise ValueError("Reviewed text item has an invalid source location.")
+        return self
+
+
+class ProgramSaveAsTemplateIn(ProgramDraftInput):
+    """Save-as-template payload: the coach's name plus reviewed note decisions.
+
+    Only the program structure and these explicit note decisions are copied; a
+    note absent from ``notes`` is dropped, so nothing identifying is ever
+    silently carried over.
+    """
+
+    name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=MAX_PROGRAM_NOTES_LENGTH)
+    notes: list[ProgramTemplateNoteIn] = Field(default_factory=list)
+    expected_source_revision: str | None = Field(default=None, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, value: str) -> str:
+        return _trim_program_template_name(value)
+
 
 class ProgramImportDraftRowIn(BaseModel):
     """One Coach-confirmed canonical row sent back without its file or raw cells."""

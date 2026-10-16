@@ -1515,3 +1515,20 @@ pending owner review; this status does not block the feature.
 | Publish each selected player's Program now? It will become their active program. | نشر برامج اللاعبين المحددين الآن؟ سيصبح برنامج كل لاعب هو البرنامج النشط. |
 | Publish all | نشر الكل |
 | Published: {published} · Invalid: {invalid} · No draft: {no draft} · Rejected: {rejected} | نُشر: {published} · غير صالح: {invalid} · بلا مسودة: {no draft} · رُفض: {rejected} |
+
+## Save a player's Program as a template (#307; pending owner review)
+
+The "Save as template" action on the Coach Player page's Program section and
+in the Program editor, plus the note-review sheet. These simple standard-Arabic
+strings are drafts and need owner review before release; the action reuses the
+existing `program.template_invalid.v1` code and adds no new message code.
+
+| English | Arabic |
+| --- | --- |
+| Save as template | حفظ كقالب |
+| Review notes and prescriptions | مراجعة النصوص والوصفات |
+| There are no notes or text prescriptions to review. | لا توجد ملاحظات أو وصفات نصية لمراجعتها. |
+| Review exercise notes, program instructions, and cardio prescriptions before saving. Text is copied only if you keep or edit it. | راجع ملاحظات التمارين وتعليمات البرنامج ووصفات تمارين اللياقة قبل الحفظ. لن يُحفظ النص إلا إذا أبقيته أو عدّلته. |
+| Program instructions | تعليمات البرنامج |
+| Cardio prescription | وصفة تمارين اللياقة |
+| Template saved. | تم حفظ القالب. |

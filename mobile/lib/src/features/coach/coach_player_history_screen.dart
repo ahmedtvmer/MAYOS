@@ -33,6 +33,7 @@ import 'program_import_screen.dart';
 import 'coach_request_sheet.dart';
 import 'coach_shared.dart';
 import 'program_publish_confirmation.dart';
+import 'program_template_save_sheet.dart';
 
 /// The player page (#120): one assigned player's open coach alerts on top,
 /// then the **Program · History · Check-ins · Requests** segments.
@@ -565,6 +566,7 @@ class _CoachPlayerHistoryScreenState
   bool _copyingActiveProgram = false;
   bool _approvingActiveProgram = false;
   bool _downloadingProgramTemplate = false;
+  bool _savingProgramTemplate = false;
   FailureMessage? _programActionError;
   List<ProgramRequest> _programRequests = const <ProgramRequest>[];
   FailureMessage? _requestError;
@@ -1028,6 +1030,7 @@ class _CoachPlayerHistoryScreenState
         copyingActiveProgram: _copyingActiveProgram,
         approvingActiveProgram: _approvingActiveProgram,
         downloadingProgramTemplate: _downloadingProgramTemplate,
+        savingProgramTemplate: _savingProgramTemplate,
       ),
       actionError: _programActionError == null
           ? null
@@ -1039,6 +1042,7 @@ class _CoachPlayerHistoryScreenState
         downloadTemplate: _downloadProgramTemplate,
         editActiveProgram: _editActiveProgram,
         approveActiveProgram: _approveActiveProgramAsIs,
+        saveAsTemplate: _saveProgramAsTemplate,
       ),
     );
   }
@@ -1205,6 +1209,42 @@ class _CoachPlayerHistoryScreenState
       }
     } finally {
       if (mounted) setState(() => _copyingActiveProgram = false);
+    }
+  }
+
+  Future<void> _saveProgramAsTemplate() async {
+    final TrainingProgram? program = _activeProgram?.program;
+    final int? version = program?.version;
+    if (program == null || version == null) return;
+    final ProgramTemplateSaveRequest? request = await showProgramTemplateSaveSheet(
+      context,
+      notes: programTemplateNoteReviews(program.toJson()),
+    );
+    if (!mounted || request == null) return;
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    setState(() {
+      _savingProgramTemplate = true;
+      _programActionError = null;
+    });
+    try {
+      await ref.read(apiClientProvider).coachSaveAssignedProgramAsTemplate(
+            assignmentId: _entry.assignmentId,
+            fromDraft: false,
+            sourceRevision: version.toString(),
+            name: request.name,
+            description: request.description,
+            notes: request.notes,
+          );
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text(coachCopyOf(context).templateSaved)),
+      );
+    } on ApiException catch (error) {
+      if (mounted) {
+        setState(() => _programActionError = apiFailureMessage(error));
+      }
+    } finally {
+      if (mounted) setState(() => _savingProgramTemplate = false);
     }
   }
 

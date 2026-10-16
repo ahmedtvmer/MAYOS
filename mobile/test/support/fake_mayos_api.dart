@@ -286,6 +286,7 @@ class FakeMayosApi {
   int programDraftGenerationRequests = 0;
   Map<String, dynamic>? programDraftPublishError;
   Object? programDraftReplaceError;
+  int programDraftReplaceRequests = 0;
   String? _programNameOverride;
   String? _splitTypeOverride;
   int? _weeklyFrequencyOverride;
@@ -316,6 +317,17 @@ class FakeMayosApi {
       <String, Map<String, dynamic>>{};
   final Map<String, Map<String, dynamic>> templatePublishResultOverrides =
       <String, Map<String, dynamic>>{};
+
+  // Save-as-template (#307).
+  int programTemplateSaveRequests = 0;
+  bool programTemplateSaveDenied = false;
+  String? lastProgramTemplateSaveSource;
+  Map<String, dynamic>? lastProgramTemplateSaveBody;
+  // Bumped on every draft write so save-as-template binding can be exercised.
+  int programDraftRevisionSeq = 1;
+  String get programDraftRevision => 'draft-rev-$programDraftRevisionSeq';
+  String? get activeProgramRevision =>
+      '${(coachActiveProgram['program'] as Map<String, dynamic>?)?['version']}';
   // Simulates a single-template read that differs from the stale list row.
   final Map<String, Map<String, dynamic>> programTemplateReadOverrides =
       <String, Map<String, dynamic>>{};
@@ -636,6 +648,14 @@ class FakeMayosApi {
     if (path.startsWith('/coach/assignments/') &&
         path.endsWith('/program/approve')) {
       return _coachApproveProgram(request);
+    }
+    if (path.startsWith('/coach/assignments/') &&
+        path.endsWith('/program/save-as-template')) {
+      return _coachSaveProgramAsTemplate(request, fromDraft: false);
+    }
+    if (path.startsWith('/coach/assignments/') &&
+        path.endsWith('/program-draft/save-as-template')) {
+      return _coachSaveProgramAsTemplate(request, fromDraft: true);
     }
     if (path.startsWith('/coach/assignments/') && path.endsWith('/program')) {
       return _coachPlayerHistory(request);
@@ -2324,6 +2344,7 @@ class FakeMayosApi {
       programImportReplaceRequests.add(replace);
       final List<dynamic> importedRows =
           request.body['rows'] as List<dynamic>? ?? <dynamic>[];
+      programDraftRevisionSeq++;
       programDraft = <String, dynamic>{
         'program_name': request.body['program_name'] ?? 'Imported program',
         'split_type': 'custom',
@@ -2359,7 +2380,7 @@ class FakeMayosApi {
         'assignment_id': assignmentId,
         'draft': programDraft,
         'created_at': '2026-10-04T10:00:00Z',
-        'updated_at': '2026-10-04T10:00:00Z',
+        'updated_at': programDraftRevision,
       });
     }
     if (request.path.endsWith('/program-draft/generate')) {
@@ -2386,6 +2407,7 @@ class FakeMayosApi {
         'arnold_x_ul': 'Arnold × Upper/Lower',
         'ppl_x_ul': 'PPL × UL',
       };
+      programDraftRevisionSeq++;
       programDraft = <String, dynamic>{
         'program_name': 'Generated plan',
         'split_type': splitNames[splitId] ?? 'Full Body',
@@ -2423,7 +2445,7 @@ class FakeMayosApi {
         'assignment_id': assignmentId,
         'draft': programDraft,
         'created_at': '2026-10-04T10:00:00Z',
-        'updated_at': '2026-10-04T10:00:00Z',
+        'updated_at': programDraftRevision,
       });
     }
     if (request.path.endsWith('/program-draft/copy-active')) {
@@ -2446,6 +2468,7 @@ class FakeMayosApi {
           },
         );
       }
+      programDraftRevisionSeq++;
       programDraft = Map<String, dynamic>.from(activeProgram)
         ..remove('version')
         ..remove('provenance')
@@ -2468,7 +2491,7 @@ class FakeMayosApi {
         'assignment_id': assignmentId,
         'draft': programDraft,
         'created_at': '2026-10-04T10:00:00Z',
-        'updated_at': '2026-10-04T10:00:00Z',
+        'updated_at': programDraftRevision,
       });
     }
     if (request.path.endsWith('/publish')) {
@@ -2499,7 +2522,12 @@ class FakeMayosApi {
       return const FakeResponse(
           404, <String, dynamic>{'detail': 'Program draft not found.'});
     }
-    if (request.method == 'POST') programDraft ??= request.body;
+    if (request.method == 'POST') {
+      if (programDraft == null) {
+        programDraftRevisionSeq++;
+        programDraft = request.body;
+      }
+    }
     if (request.method == 'PUT') {
       if (programDraftReplaceError != null) {
         return FakeResponse(
@@ -2507,6 +2535,8 @@ class FakeMayosApi {
           <String, dynamic>{'detail': programDraftReplaceError},
         );
       }
+      programDraftReplaceRequests++;
+      programDraftRevisionSeq++;
       programDraft = request.body;
     }
     if (request.method == 'DELETE') {
@@ -2517,7 +2547,7 @@ class FakeMayosApi {
       'assignment_id': assignmentId,
       'draft': programDraft,
       'created_at': '2026-10-04T10:00:00Z',
-      'updated_at': '2026-10-04T10:00:00Z',
+      'updated_at': programDraftRevision,
     });
   }
 
@@ -2795,6 +2825,145 @@ class FakeMayosApi {
     }
     return const FakeResponse(
         404, <String, dynamic>{'detail': 'Program template not found.'});
+  }
+
+  /// Save-as-template (#307): copies the source program, keeping only the
+  /// reviewed note decisions (every other note is dropped).
+  FakeResponse _coachSaveProgramAsTemplate(
+    FakeRequest request, {
+    required bool fromDraft,
+  }) {
+    programTemplateSaveRequests++;
+    lastProgramTemplateSaveSource = fromDraft ? 'draft' : 'active';
+    lastProgramTemplateSaveBody = Map<String, dynamic>.from(request.body);
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (!coach || coachHistoryDenied || programTemplateSaveDenied) {
+      return const FakeResponse(
+          403, <String, dynamic>{'detail': 'No active assignment.'});
+    }
+    final Map<String, dynamic>? source = fromDraft
+        ? programDraft
+        : coachActiveProgram['program'] as Map<String, dynamic>?;
+    if (source == null) {
+      return FakeResponse(
+        404,
+        <String, dynamic>{
+          'detail': fromDraft
+              ? 'Program draft not found.'
+              : 'No active program to copy.',
+        },
+      );
+    }
+    final String? currentRevision =
+        fromDraft ? programDraftRevision : activeProgramRevision;
+    final dynamic providedRevision = request.body['expected_source_revision'];
+    if (currentRevision == null ||
+        providedRevision == null ||
+        providedRevision.toString() != currentRevision) {
+      return FakeResponse(
+        409,
+        <String, dynamic>{
+          'detail': <String, dynamic>{'message_code': 'program.source_changed.v1'},
+        },
+      );
+    }
+    final Map<String, dynamic> created = _newProgramTemplate(<String, dynamic>{
+      'name': request.body['name'],
+      'description': request.body['description'],
+      'program': _templateProgramFromSource(source, request.body['notes']),
+    });
+    programTemplates.add(created);
+    return FakeResponse(201, created);
+  }
+
+  Map<String, dynamic> _templateProgramFromSource(
+    Map<String, dynamic> source,
+    dynamic rawNotes,
+  ) {
+    final Map<String, dynamic> program = Map<String, dynamic>.from(
+      jsonDecode(jsonEncode(source)) as Map<String, dynamic>,
+    )
+      ..remove('version')
+      ..remove('provenance')
+      ..remove('active_since')
+      ..remove('current_week')
+      ..remove('week_count')
+      ..remove('published_by_coach_account_id');
+    final List<dynamic> rawWeeks =
+        program['weeks'] as List<dynamic>? ?? <dynamic>[];
+    final List<Map<String, dynamic>> weeks = rawWeeks.isEmpty
+        ? <Map<String, dynamic>>[
+            <String, dynamic>{
+              'week_name': 'Week 1',
+              'week_order': 1,
+              'days': <Map<String, dynamic>>[
+                for (final dynamic day
+                    in program['days'] as List<dynamic>? ?? <dynamic>[])
+                  Map<String, dynamic>.from(day as Map),
+              ],
+            },
+          ]
+        : <Map<String, dynamic>>[
+            for (final dynamic week in rawWeeks)
+              Map<String, dynamic>.from(week as Map),
+          ];
+    for (final Map<String, dynamic> week in weeks) {
+      for (final dynamic rawDay
+          in week['days'] as List<dynamic>? ?? <dynamic>[]) {
+        final Map<String, dynamic> day = rawDay as Map<String, dynamic>;
+        for (final dynamic movement
+            in day['warmup_exercises'] as List<dynamic>? ?? <dynamic>[]) {
+          (movement as Map<String, dynamic>)['notes'] = null;
+        }
+        for (final dynamic exercise
+            in day['exercises'] as List<dynamic>? ?? <dynamic>[]) {
+          (exercise as Map<String, dynamic>)['notes'] = null;
+        }
+      }
+    }
+    for (final dynamic raw
+        in rawNotes as List<dynamic>? ?? <dynamic>[]) {
+      final Map<String, dynamic> decision = Map<String, dynamic>.from(raw as Map);
+      final Map<String, dynamic>? day = _findProgramDay(
+        weeks,
+        (decision['week_order'] as num?)?.toInt(),
+        (decision['day_order'] as num?)?.toInt(),
+      );
+      if (day == null) continue;
+      final List<dynamic> items = decision['field'] == 'warmup_note'
+          ? day['warmup_exercises'] as List<dynamic>? ?? <dynamic>[]
+          : day['exercises'] as List<dynamic>? ?? <dynamic>[];
+      final int index = (decision['item_index'] as num?)?.toInt() ?? -1;
+      if (index < 0 || index >= items.length) continue;
+      (items[index] as Map<String, dynamic>)['notes'] = decision['value'];
+    }
+    program['weeks'] = weeks;
+    program['days'] = <Map<String, dynamic>>[
+      for (final Map<String, dynamic> week in weeks)
+        for (final dynamic day in week['days'] as List<dynamic>)
+          day as Map<String, dynamic>,
+    ];
+    return program;
+  }
+
+  Map<String, dynamic>? _findProgramDay(
+    List<Map<String, dynamic>> weeks,
+    int? weekOrder,
+    int? dayOrder,
+  ) {
+    for (final Map<String, dynamic> week in weeks) {
+      if ((week['week_order'] as num?)?.toInt() != weekOrder) continue;
+      for (final dynamic day in week['days'] as List<dynamic>? ?? <dynamic>[]) {
+        final Map<String, dynamic> candidate = day as Map<String, dynamic>;
+        if ((candidate['day_order'] as num?)?.toInt() == dayOrder) {
+          return candidate;
+        }
+      }
+    }
+    return null;
   }
 
   FakeResponse _coachProgramImport(FakeRequest request) {    if (!_authorized(request)) {

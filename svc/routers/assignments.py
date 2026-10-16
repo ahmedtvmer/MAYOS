@@ -30,6 +30,7 @@ from service import coach_programs as coach_programs_service
 from service import coach_program_drafts as coach_program_drafts_service
 from service import program_import as program_import_service
 from service import program_requests as program_requests_service
+from service import program_templates as program_templates_service
 from service.messages import (
     MessageMetadata,
     http_error_message,
@@ -97,6 +98,8 @@ from svc.schemas import (
     ProgramImportCreateIn,
     ProgramRequestDeclineIn,
     ProgramRequestOut,
+    ProgramSaveAsTemplateIn,
+    ProgramTemplateOut,
 )
 
 coach_router = APIRouter(prefix="/coach/assignments", tags=["coach"])
@@ -123,6 +126,54 @@ def _no_active_assignment() -> HTTPException:
         coach_history_service.DENIED_ERROR,
         MessageMetadata("assignment.none_active.v1"),
     )
+
+
+def _save_program_as_template(
+    db: Any,
+    coach_account_id: str,
+    assignment_id: str,
+    source: str,
+    body: ProgramSaveAsTemplateIn,
+) -> dict[str, Any]:
+    """Saves an assigned player's program as a template (ticket #307)."""
+    try:
+        saved = program_templates_service.save_program_as_template(
+            db,
+            coach_account_id,
+            assignment_id,
+            source=source,
+            name=body.name,
+            description=body.description,
+            notes=[note.model_dump() for note in body.notes],
+            source_revision=body.expected_source_revision,
+        )
+    except coach_program_drafts_service.ProgramDraftNotFound as exc:
+        raise message_http_exception(
+            status.HTTP_404_NOT_FOUND,
+            str(exc),
+            MessageMetadata("assignment.program_draft_not_found.v1"),
+        ) from exc
+    except coach_program_drafts_service.ActiveProgramNotFound as exc:
+        raise message_http_exception(
+            status.HTTP_404_NOT_FOUND,
+            str(exc),
+            MessageMetadata("program.no_active.v1"),
+        ) from exc
+    except coach_program_drafts_service.ProgramDraftValidationError as exc:
+        raise message_http_exception(
+            status.HTTP_400_BAD_REQUEST,
+            {"errors": exc.issues},
+            MessageMetadata("program.template_invalid.v1"),
+        ) from exc
+    except program_templates_service.ProgramSourceChanged as exc:
+        raise message_http_exception(
+            status.HTTP_409_CONFLICT,
+            str(exc),
+            MessageMetadata("program.source_changed.v1"),
+        ) from exc
+    if saved is None:
+        raise _no_active_assignment()
+    return saved
 
 
 def _program_import_error(error: program_import_service.ProgramImportError) -> HTTPException:
@@ -609,6 +660,54 @@ async def copy_assigned_player_active_program_to_draft(
         return copied
 
     return await asyncio.to_thread(_run)
+
+
+@coach_router.post(
+    "/{assignment_id}/program/save-as-template",
+    response_model=ProgramTemplateOut,
+    status_code=status.HTTP_201_CREATED,
+)
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def save_assigned_player_active_program_as_template(
+    request: Request,
+    assignment_id: str,
+    body: ProgramSaveAsTemplateIn,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Copies the player's active program into a new coach-owned template."""
+    return await asyncio.to_thread(
+        _save_program_as_template,
+        db,
+        coach.account_id,
+        assignment_id,
+        program_templates_service.SOURCE_ACTIVE_PROGRAM,
+        body,
+    )
+
+
+@coach_router.post(
+    "/{assignment_id}/program-draft/save-as-template",
+    response_model=ProgramTemplateOut,
+    status_code=status.HTTP_201_CREATED,
+)
+@limiter.limit(ASSIGNMENT_MUTATE_LIMIT)
+async def save_assigned_player_program_draft_as_template(
+    request: Request,
+    assignment_id: str,
+    body: ProgramSaveAsTemplateIn,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Copies the player's open Program draft into a new coach-owned template."""
+    return await asyncio.to_thread(
+        _save_program_as_template,
+        db,
+        coach.account_id,
+        assignment_id,
+        program_templates_service.SOURCE_PROGRAM_DRAFT,
+        body,
+    )
 
 
 @coach_router.post("/{assignment_id}/program/approve", response_model=CoachProgramPublicationOut)
