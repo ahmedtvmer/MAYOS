@@ -142,7 +142,7 @@ training talk. Measured values:
 | `البنش بيعمل شد في الكتف` (bench stretches my shoulder) | benign | 0.8837 |
 | `ركبتي بتزقزق شوية بعد التمرين` (knee crackles) | benign | 0.8811 |
 | `ar-gen-01` (highest reviewed benign, non-fatigue) | benign | 0.8696 |
-| `ركبتي تؤلمني` (plain pain) | unreviewed clinical | 0.8526 |
+| `ركبتي تؤلمني` (plain pain; `sup-pain-01`, owner-approved) | clinical | 0.8526 |
 
 `ar-inj-07` (0.8888) sits only 0.0035 above the worst benign phrase, so no
 defensible threshold can carry it in the semantic tier; it is caught by the
@@ -189,11 +189,13 @@ below 0.90.
    `mean_sqrt_len` loudly; the revision is pinned for both paths.
 5. **Honest measurement and status** (this document).
 
-## Owner review (approved 2026-10-17, except `sup-benign-02`)
+## Owner review (2026-10-17)
 
-The runtime Arabic anchor strings are MAYOS-authored internal prompts and the
-supplemental cases below are **not owner-reviewed**. Neither is part of the
-owner-reviewed `arabic_reviewed_cases.json` set.
+The owner approved the runtime Arabic anchor strings, supplemental cases and
+the listed deterministic lexical coverage on 2026-10-17. The supplemental
+probes remain separate from the owner-reviewed `arabic_reviewed_cases.json`
+fixture; this approval does not establish broad recall on an unseen labelled
+set.
 
 | Anchor # | Arabic anchor string | Status |
 | --- | --- | --- |
@@ -206,7 +208,8 @@ owner-reviewed `arabic_reviewed_cases.json` set.
 | 7 | `فقدان مفاجئ للسيطرة على الحركة أو العضو يفلت منك أو عدم القدرة على تحمل الوزن.` | APPROVED 2026-10-17 |
 | 8 | `انحشار حاد في المفصل يتبعه فقدان فوري للشد وتورم موضعي.` | APPROVED 2026-10-17 |
 
-Supplemental cases (owner-approved 2026-10-17 except `sup-benign-02`), measured with the current guard:
+Supplemental cases (owner-approved 2026-10-17), with the original guard
+measurement retained where the implementation has since changed:
 
 | Proposed id | Text | Proposed kind | Guard result |
 | --- | --- | --- | --- |
@@ -214,7 +217,7 @@ Supplemental cases (owner-approved 2026-10-17 except `sup-benign-02`), measured 
 | `sup-pain-02` | `ركبتي تؤلمني أثناء البنش` | clinical | intercept (lexical) |
 | `sup-pain-03` | `ركبتي تؤلمني وحرقان` | clinical | intercept (lexical) |
 | `sup-benign-01` | `عندي حرقان في رجلي` | benign | benign below 0.90 (semantic) |
-| `sup-benign-02` | `أنا تعبان وحاسس بحاجة غريبة في ركبتي` | UNDECIDED (OWNER REVIEW REQUIRED) | observed non-interception (semantic 0.8886 < 0.90) |
+| `sup-benign-02` | `أنا تعبان وحاسس بحاجة غريبة في ركبتي` | **clinical — intercept** (owner-confirmed 2026-10-17) | original behavior: non-interception (semantic 0.8886 < 0.90); corrected behavior: deterministic intercept |
 
 Additional deterministic cases and lexical coverage (owner-approved 2026-10-17):
 
@@ -229,32 +232,34 @@ Additional deterministic cases and lexical coverage (owner-approved 2026-10-17):
 | `ظهري بيحرقني` | `يحرقني` | APPROVED 2026-10-17 |
 | `كتفي اتقصف` | new `اتقصف` stem | APPROVED 2026-10-17 |
 
-The generic ta-marbuta alternation and new stems `مصاب`, `مصابين`, `مصابات`,
-`تورمت`, `تنمل`, `يحرقني`, and `اتقصف` are deterministic additions, not
-owner-reviewed clinical labels. These supplements remain separate from the
+The owner approved the generic ta-marbuta alternation and deterministic lexical
+coverage including `مصاب`, `مصابين`, `مصابات`, `تورمت`, `تنمل`, `يحرقني`, and
+`اتقصف` on 2026-10-17. These supplemental probes remain separate from the
 owner-reviewed dataset.
 
-`sup-benign-02` is the honest residual, and it is **not** a known-benign case.
-Its text is UNREVIEWED and its desired clinical label is **UNDECIDED / OWNER
-REVIEW REQUIRED**: a fatigue word plus an **unknown** Arabic symptom in the knee.
-The current guard does **not** intercept it (observed semantic score 0.8886,
-below the 0.90 threshold). That observed non-interception is a measurement of
-present behavior, **not** a clinical or safety judgment that the message is
-benign; the model agreeing does not establish the ground truth of an unreviewed
-symptom. This is the residual recall risk: an unknown symptom can score below
-threshold and reach ordinary coaching, so a larger owner-reviewed labelled set
-is required before broad recall can be claimed.
+The owner subsequently reviewed `sup-benign-02` on 2026-10-17 and labeled it
+**clinical — intercept**. Its original semantic score (0.8886) remains a
+historical measurement below the unchanged 0.90 threshold. A narrow Tier-0
+pattern now intercepts the reviewed expression `حاسس بحاجة غريبة في ركبتي`
+after Arabic normalization. It requires the reported unusual-feeling wording
+and the knee body area; neither fatigue nor `غريبة` alone triggers this rule.
+The approved wording is the supported case; this correction does not validate
+unreviewed paraphrases or complete broad recall. Other unknown Arabic symptoms
+can still score below threshold, so a larger owner-reviewed labelled set is
+required before broad recall can be claimed.
 
 ## Known gaps and limitations
 
 * The semantic tier is a high-precision backstop with conservative recall; the
   reviewed required block is carried by the deterministic lexical tier.
-* Unknown Arabic symptom wording accompanied by a fatigue word can still escape
-  interception when the semantic score is below threshold (see `sup-benign-02`,
-  whose desired label is UNDECIDED/OWNER REVIEW REQUIRED); the benign ceiling
-  (0.8853) is estimated from the reviewed set plus a small unreviewed sample.
-* The Arabic anchor descriptions are MAYOS-authored and owner-unreviewed (table
-  above).
+* Unknown Arabic symptom wording can still escape interception when the
+  semantic score is below threshold; the approved `sup-benign-02` wording is
+  covered by its narrow deterministic pattern, while broader unseen recall is
+  not established. The benign ceiling (0.8853) is retained as historical
+  calibration evidence from the reviewed set plus a small supplemental sample.
+* The Arabic anchor descriptions, supplemental cases and listed lexical
+  coverage were owner-approved on 2026-10-17 (table above); a larger labelled
+  set remains outstanding.
 * The measured scoped model-process peak (~908 MB, interpreter +
   `core.embeddings` only) exceeds 512 MB RAM. The owner chose 512 MB RAM plus
   existing 512 MB swap; deployed RSS and latency remain to be verified.

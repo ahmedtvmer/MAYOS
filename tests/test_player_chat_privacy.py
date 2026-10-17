@@ -1984,6 +1984,24 @@ def test_clinical_and_franco_messages_are_intercepted_before_chat_model(api, mon
         assert _done_content(body) == expected
 
 
+def test_owner_reviewed_arabic_knee_sensation_intercepts_through_http_chat(api, monkeypatch):
+    client, _db = api
+    headers = _authed(_register(client, "arabic-unusual-knee-sensation")["access_token"])
+    safety_model = ScriptedChatModel(default_turn="CHAT MODEL RAN")
+    monkeypatch.setattr(assistant_graph, "llm", safety_model)
+
+    with client.stream(
+        "POST",
+        "/chat/messages",
+        headers=headers,
+        json={"content": "أنا تعبان وحاسس بحاجة غريبة في ركبتي"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    assert _done_content(body) == assistant_graph.ARABIC_CLINICAL_SAFEGUARD_RESPONSE
+
+
 def test_clinical_chat_records_injury_and_clarifies_only_area_replies(api, monkeypatch):
     client, _db = api
     headers = _authed(_register(client, "injury-chat")['access_token'])

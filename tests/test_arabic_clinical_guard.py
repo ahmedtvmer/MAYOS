@@ -217,6 +217,13 @@ def test_arabic_routine_fatigue_questions_stay_below_the_semantic_threshold(quer
     assert score < clinical_guard.ARABIC_SEMANTIC_THRESHOLD
 
 
+def test_owner_reviewed_fatigue_with_unusual_knee_sensation_intercepts():
+    query = "أنا تعبان وحاسس بحاجة غريبة في ركبتي"
+
+    assert clinical_guard.evaluate_clinical_semantic_guard(query) == (True, 1.0)
+    assert graph.router_node(_state(query))["intent"] == "clinical_intercept"
+
+
 @pytest.mark.parametrize(
     "query",
     [

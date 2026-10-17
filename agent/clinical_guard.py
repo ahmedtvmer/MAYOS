@@ -83,6 +83,12 @@ _ARABIC_STEMS = sorted(
     reverse=True,
 )
 _ARABIC_STEM_PATTERN = _arabic_stem_pattern(_ARABIC_STEMS)
+# The owner-reviewed #149 report describes an unusual sensation in the knee.
+# Match that symptom/body-area phrase specifically; fatigue or "strange" alone
+# must continue to the normal semantic tier.
+_ARABIC_UNUSUAL_KNEE_SENSATION = re.compile(
+    rf"(?<![{_ARABIC_LETTERS}])(?:و|ف)?حاسس\s+بحاجه\s+غريبه\s+في\s+ركبتي(?![{_ARABIC_LETTERS}])"
+)
 
 _FRANCO_DIGRAPHS = {"sh": ("ش",), "kh": ("خ",), "gh": ("غ",), "th": ("ث",), "dh": ("ذ",)}
 _FRANCO_CHARACTERS = {
@@ -360,7 +366,10 @@ def _arabic_semantic_guard(query: str) -> tuple[bool, float]:
     """
     try:
         normalized = normalize_arabic_text(query)
-        if _ARABIC_STEM_PATTERN.search(normalized):
+        if (
+            _ARABIC_STEM_PATTERN.search(normalized)
+            or _ARABIC_UNUSUAL_KNEE_SENSATION.search(normalized)
+        ):
             return True, 1.0
         if RE_TRAUMA_SENSATIONS.search(query) or RE_ACUTE_PAIN_SIGNALS.search(query):
             return True, 1.0
