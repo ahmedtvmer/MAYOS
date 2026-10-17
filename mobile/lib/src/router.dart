@@ -38,6 +38,7 @@ import 'features/player/workout/logger_top_bar.dart';
 import 'features/player/workout/workout_drafts_screen.dart';
 import 'features/player/workout/workout_logger_screen.dart';
 import 'features/settings/personalization_screen.dart';
+import 'features/settings/assistant_preferences_screen.dart';
 import 'features/settings/player_notifications_screen.dart';
 import 'features/settings/recovery_email_settings_screen.dart';
 import 'features/settings/settings_screen.dart';
@@ -59,6 +60,7 @@ const String homePath = '/home';
 const String settingsPath = '/settings';
 const String recoveryEmailSettingsPath = '/settings/recovery-email';
 const String personalizationPath = '/personalization';
+const String assistantPreferencesPath = '/assistant-preferences';
 const String lifterPlanPath = '/lifter-plan';
 const String coachPlanPath = '/coach-plan';
 const String profilePath = '/profile';
@@ -447,6 +449,18 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
                 title: (String languageCode) =>
                     SettingsCopy(languageCode).personalization,
                 body: const PersonalizationScreen(),
+              ),
+            ),
+      ),
+      GoRoute(
+        path: assistantPreferencesPath,
+        builder: (BuildContext context, GoRouterState state) =>
+            _withRecoveryEmailReminder(
+              state,
+              _localizedPlayerPage(
+                title: (String languageCode) =>
+                    SettingsCopy(languageCode).assistantPreferences,
+                body: const AssistantPreferencesScreen(),
               ),
             ),
       ),

@@ -194,11 +194,11 @@ configured, the following is sent to it:
 
 - **Assistant chat**: your message, the last 10 chat messages (excluding
   session pointers), your preferred name if set, and your Assistant style and
-  custom instructions. If your question needs profile, active-program, or
-  body-weight trend details, the assistant looks them up from your Player ledger
-  and sends the tool result to the hosted model in a follow-up call. A turn
-  without a relevant lookup sends none of those facts. No compact training
-  summary or latest-session comparison is added automatically. It does **not**
+  custom instructions. If relevant, the assistant can retrieve saved Assistant
+  preferences and selected profile, training-history, active-program, or
+  body-weight trend details from your Player ledger and send those results to
+  the hosted model. These facts are retrieved only when relevant; they are not
+  injected into every turn. It does **not**
   include your username, recovery email, your coach's name or contact details, your
   coach's private notes, or anything a coach wrote about you.
 - **Checkpoint review wording (when enabled)**: only the reduced training totals

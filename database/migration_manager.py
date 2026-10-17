@@ -18,7 +18,23 @@ from utils.equipment_access import (
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 30
+CURRENT_LEDGER_SCHEMA_VERSION: int = 31
+
+ASSISTANT_PREFERENCES_DDL: tuple[str, ...] = (
+    "CREATE TABLE IF NOT EXISTS assistant_preferences ("
+    " id TEXT PRIMARY KEY,"
+    " text TEXT NOT NULL CHECK (length(text) BETWEEN 1 AND 200),"
+    " created_at TEXT NOT NULL,"
+    " updated_at TEXT NOT NULL"
+    ")",
+    "CREATE INDEX IF NOT EXISTS idx_assistant_preferences_created"
+    " ON assistant_preferences(created_at, id)",
+    "CREATE TABLE IF NOT EXISTS assistant_preference_pending ("
+    " id TEXT PRIMARY KEY CHECK (id = 'forget'),"
+    " preference_id TEXT NOT NULL,"
+    " created_at TEXT NOT NULL"
+    ")",
+)
 
 PROGRAM_DRAFTS_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS program_drafts ("
@@ -863,6 +879,12 @@ def _migrate_v29_to_v30(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE program_drafts ADD COLUMN source_template_id TEXT")
 
 
+def _migrate_v30_to_v31(conn: sqlite3.Connection) -> None:
+    """Adds player-controlled assistant preferences (#272)."""
+    for statement in ASSISTANT_PREFERENCES_DDL:
+        conn.execute(statement)
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -978,6 +1000,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     27: _migrate_v27_to_v28,
     28: _migrate_v28_to_v29,
     29: _migrate_v29_to_v30,
+    30: _migrate_v30_to_v31,
 }
 
 

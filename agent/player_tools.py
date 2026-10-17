@@ -170,6 +170,15 @@ def _read_player_injuries(ledger: Any) -> dict[str, Any]:
     return {"status": "ok", "injuries": records}
 
 
+def _read_assistant_preferences(ledger: Any) -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "preferences": [
+            preference["text"] for preference in ledger.list_assistant_preferences()
+        ],
+    }
+
+
 def _read_active_program(ledger: Any) -> dict[str, Any]:
     program = ledger.get_active_program()
     if program is None:
@@ -252,6 +261,17 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
         reader=_read_player_injuries,
         status_en="Checking your injury records…",
         status_ar="ببص على سجلات إصاباتك…",
+    ),
+    PlayerReadTool(
+        name="get_assistant_preferences",
+        description=(
+            "Read preferences the current player explicitly asked the assistant to remember. "
+            "Use when answering how the player likes to train. Do not infer or write preferences."
+        ),
+        args_schema=EmptyToolArgs,
+        reader=_read_assistant_preferences,
+        status_en="Checking your saved preferences…",
+        status_ar="ببص على تفضيلاتك المحفوظة…",
     ),
 )
 

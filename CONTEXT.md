@@ -57,6 +57,10 @@ How the player's assistant talks to that player: a chosen tone and optional inst
 _Arabic_: أسلوب المساعد
 _Avoid_: Persona, coach tone
 
+**Assistant preference**:
+A free-text instruction the Player explicitly asks the assistant to remember about how they like to train. The Player can review, edit and delete these private preferences in Settings; the assistant reads them on demand, and a Coach never sees them.
+_Arabic_: تفضيل للمساعد
+
 **Active account**:
 An account that completed a workout or recorded a coaching action in the previous 30 days. A login alone does not make an account active.
 

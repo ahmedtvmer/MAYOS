@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -116,6 +118,134 @@ Future<void> _pumpApp(
 }
 
 void main() {
+  testWidgets('Assistant preference Settings edit and delete saved items',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()
+      ..issuedToken = 'token-alice'
+      ..currentUsername = 'alice'
+      ..assistantPreferenceWriteFailuresRemaining = 1
+      ..assistantPreferences.add(<String, dynamic>{
+        'id': 'pref-one',
+        'text': 'I train in the mornings',
+        'created_at': '2026-10-17T10:00:00+00:00',
+        'updated_at': '2026-10-17T10:00:00+00:00',
+      });
+    await _pumpApp(
+      tester,
+      mode: AppMode.player,
+      size: const Size(390, 844),
+      fakeApi: fake,
+    );
+    await _expectVisible(tester, 'Assistant preferences');
+    await tester.tap(find.text('Assistant preferences').first);
+    await _pumpUntilFound(tester, find.text('I train in the mornings'));
+    await tester.tap(find.byTooltip('Edit preference'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'I train before breakfast');
+    await tester.tap(find.text('Save preference'));
+    await _pumpUntilFound(
+      tester,
+      find.text('The service is unavailable. Please retry.'),
+    );
+    expect(find.text('I train before breakfast'), findsOneWidget);
+    expect(fake.assistantPreferences.single['text'], 'I train in the mornings');
+    await tester.tap(find.text('Save preference'));
+    await tester.pumpAndSettle();
+    await _pumpUntilFound(tester, find.text('I train before breakfast'));
+    expect(
+        fake.assistantPreferences.single['text'], 'I train before breakfast');
+    fake.assistantPreferenceWriteFailuresRemaining = 1;
+    await tester.tap(find.byTooltip('Delete preference'));
+    await _pumpUntilFound(
+      tester,
+      find.text('The service is unavailable. Please retry.'),
+    );
+    expect(fake.assistantPreferences, hasLength(1));
+    await tester.tap(find.byTooltip('Delete preference'));
+    await _pumpUntilFound(tester, find.text('No saved preferences.'));
+    expect(fake.assistantPreferences, isEmpty);
+  });
+
+  testWidgets('Assistant preference write completion after disposal is safe',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()
+      ..issuedToken = 'token-alice'
+      ..currentUsername = 'alice'
+      ..assistantPreferences.add(<String, dynamic>{
+        'id': 'pref-delayed',
+        'text': 'I train in the mornings',
+        'created_at': '2026-10-17T10:00:00+00:00',
+        'updated_at': '2026-10-17T10:00:00+00:00',
+      });
+    await _pumpApp(
+      tester,
+      mode: AppMode.player,
+      size: const Size(390, 844),
+      fakeApi: fake,
+    );
+    await _expectVisible(tester, 'Assistant preferences');
+    await tester.tap(find.text('Assistant preferences').first);
+    await _pumpUntilFound(tester, find.text('I train in the mornings'));
+    await tester.tap(find.byTooltip('Edit preference'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'I train before breakfast');
+
+    final Completer<void> completeRequest = Completer<void>();
+    fake.adapter.beforeRespond = (request) async {
+      if (request.method != 'PUT') return;
+      await completeRequest.future;
+    };
+    await tester.tap(find.text('Save preference'));
+    await tester.pump();
+    for (int attempt = 0;
+        attempt < 20 &&
+            !fake.adapter.requests.any((request) => request.method == 'PUT');
+        attempt++) {
+      await tester.pump(const Duration(milliseconds: 25));
+    }
+    expect(
+      fake.adapter.requests.any((request) => request.method == 'PUT'),
+      isTrue,
+    );
+    await tester.binding.handlePopRoute(); // dismiss the open edit dialog
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.arrow_back)); // dispose its screen
+    await tester.pump();
+    completeRequest.complete();
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Arabic Assistant preference Settings displays saved items',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = FakeMayosApi()
+      ..assistantPreferences.add(<String, dynamic>{
+        'id': 'pref-ar',
+        'text': 'بتمرن الصبح',
+        'created_at': '2026-10-17T10:00:00+00:00',
+        'updated_at': '2026-10-17T10:00:00+00:00',
+      });
+    await _pumpApp(
+      tester,
+      mode: AppMode.player,
+      size: const Size(390, 844),
+      displayLanguage: 'ar',
+      fakeApi: fake,
+    );
+    await _expectVisible(tester, 'تفضيلات المساعد');
+    await tester.tap(find.text('تفضيلات المساعد').first);
+    await _pumpUntilFound(tester, find.text('بتمرن الصبح'));
+    expect(find.byTooltip('تعديل التفضيل'), findsOneWidget);
+    expect(find.byTooltip('حذف التفضيل'), findsOneWidget);
+    fake.assistantPreferenceWriteFailuresRemaining = 1;
+    await tester.tap(find.byTooltip('حذف التفضيل'));
+    await _pumpUntilFound(tester, find.text('الخدمة غير متاحة. حاول مجددًا.'));
+    expect(fake.assistantPreferences, hasLength(1));
+    await tester.tap(find.byTooltip('حذف التفضيل'));
+    await _pumpUntilFound(tester, find.text('لا توجد تفضيلات محفوظة.'));
+    expect(fake.assistantPreferences, isEmpty);
+  });
+
   for (final (String layout, Size size) in <(String, Size)>[
     ('Android phone', const Size(390, 844)),
     ('web desktop', const Size(1440, 900)),
@@ -143,7 +273,8 @@ void main() {
       }
       expect(find.byKey(const Key('player_notifications_entry')), findsNothing);
       await _expectVisible(tester, 'Expiry and attention alerts');
-      expect(find.byKey(const Key('coach_notifications_entry')), findsOneWidget);
+      expect(
+          find.byKey(const Key('coach_notifications_entry')), findsOneWidget);
       await _expectVisible(tester, 'Account');
       await _expectVisible(tester, 'Password');
     });
@@ -177,8 +308,7 @@ void main() {
       (AppMode.player, 'Player'),
       (AppMode.coach, 'Coach'),
     ]) {
-      testWidgets(
-          'Account controls are available in $label mode on $layout',
+      testWidgets('Account controls are available in $label mode on $layout',
           (WidgetTester tester) async {
         await _pumpApp(tester, mode: mode, size: size);
 
@@ -288,7 +418,8 @@ void main() {
     final Finder markAllRead = find.text('Mark all read');
     await tester.ensureVisible(markAllRead);
     await tester.tap(markAllRead);
-    expect(find.byKey(const Key('player_notifications_surface')), findsOneWidget);
+    expect(
+        find.byKey(const Key('player_notifications_surface')), findsOneWidget);
     expect(
       find.text('Your coach published a new Training program.'),
       findsOneWidget,

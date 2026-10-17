@@ -9,6 +9,7 @@ from typing import Any
 from agent.prompts import DEFAULT_ASSISTANT_STYLE
 from database.exercise_library.curation import apply_exercise_curation
 from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION
+from database.migration_manager import ASSISTANT_PREFERENCES_DDL
 from database.migration_manager import EQUIPMENT_ACCESS_DDL
 from database.migration_manager import CHECKPOINT_REVIEWS_DDL
 from database.migration_manager import DELOAD_CHOICES_DDL
@@ -334,6 +335,7 @@ class SchemaMixin:
                 *PROGRAM_VERSION_POSITIONS_DDL,
                 *WEIGHT_HISTORY_DDL,
                 *EQUIPMENT_ACCESS_DDL,
+                *ASSISTANT_PREFERENCES_DDL,
             )
         ))
         if get_ledger_schema_version(conn) < CURRENT_LEDGER_SCHEMA_VERSION:

@@ -1897,6 +1897,17 @@ class ChatMessageIn(BaseModel):
     content: str = Field(min_length=1, max_length=CHAT_MESSAGE_MAX_CHARS)
 
 
+class AssistantPreferenceUpdateIn(BaseModel):
+    text: str = Field(min_length=1, max_length=200)
+
+
+class AssistantPreferenceOut(BaseModel):
+    id: str
+    text: str
+    created_at: str
+    updated_at: str
+
+
 class ChatMessageOut(BaseModel):
     response_content: str
     program_updated: bool

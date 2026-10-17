@@ -16,6 +16,19 @@ class SettingsCopy {
   String get dark => isArabic ? 'داكن' : 'Dark';
   String get personalization => isArabic ? 'التخصيص' : 'Personalization';
   String get assistantStyle => isArabic ? 'أسلوب المساعد' : 'Assistant style';
+  String get assistantPreferences =>
+      isArabic ? 'تفضيلات المساعد' : 'Assistant preferences';
+  String get assistantPreferencesLead => isArabic
+      ? 'التفضيلات التي طلبت من المساعد تذكرها.'
+      : 'Preferences you asked the assistant to remember.';
+  String get editPreference => isArabic ? 'تعديل التفضيل' : 'Edit preference';
+  String get deletePreference => isArabic ? 'حذف التفضيل' : 'Delete preference';
+  String get savePreference => isArabic ? 'حفظ التفضيل' : 'Save preference';
+  String get noAssistantPreferences =>
+      isArabic ? 'لا توجد تفضيلات محفوظة.' : 'No saved preferences.';
+  String get assistantPreferencesLoadFailed => isArabic
+      ? 'تعذر تحميل التفضيلات.'
+      : 'Could not load preferences.';
   String get preferredName => isArabic ? 'الاسم المفضّل' : 'Preferred name';
   String get preferredNameLead => isArabic
       ? 'الاسم الذي يناديك به المساعد في المحادثة.'

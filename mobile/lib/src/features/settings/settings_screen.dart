@@ -174,11 +174,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               MayosCard(
                 padding: const EdgeInsets.symmetric(
                     horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
-                child: MayosSettingsTile(
-                  key: const Key('personalization_entry'),
-                  icon: Icons.forum_outlined,
-                  title: ui.assistantStyle,
-                  onTap: () => context.push(personalizationPath),
+                child: Column(
+                  children: <Widget>[
+                    MayosSettingsTile(
+                      key: const Key('personalization_entry'),
+                      icon: Icons.forum_outlined,
+                      title: ui.assistantStyle,
+                      onTap: () => context.push(personalizationPath),
+                    ),
+                    Divider(height: 1, color: c.border),
+                    MayosSettingsTile(
+                      key: const Key('assistant_preferences_entry'),
+                      icon: Icons.bookmark_outline,
+                      title: ui.assistantPreferences,
+                      subtitle: ui.assistantPreferencesLead,
+                      onTap: () => context.push(assistantPreferencesPath),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: MayosSpacing.xl),

@@ -436,6 +436,9 @@ class FakeMayosApi {
 
   // Hosted player-assistant chat (#37).
   final List<Map<String, dynamic>> chatHistory = <Map<String, dynamic>>[];
+  final List<Map<String, dynamic>> assistantPreferences =
+      <Map<String, dynamic>>[];
+  int assistantPreferenceWriteFailuresRemaining = 0;
   int _chatSeq = 0;
   // When true, chat reads/sends fail as a dropped connection (offline).
   bool chatOffline = false;
@@ -582,6 +585,9 @@ class FakeMayosApi {
     }
     if (path.startsWith('/checkpoint-reviews')) {
       return _checkpointReview(request);
+    }
+    if (path.startsWith('/chat/preferences')) {
+      return _assistantPreferences(request);
     }
     if (path == '/chat/history') {
       return _chatHistoryResponse(request);
@@ -1921,6 +1927,34 @@ class FakeMayosApi {
     return FakeResponse(200, <String, dynamic>{
       'check_ins': List<Map<String, dynamic>>.from(checkIns),
     });
+  }
+
+  FakeResponse _assistantPreferences(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(401, <String, dynamic>{'detail': 'Unauthorized'});
+    }
+    if (request.method == 'GET' && request.path == '/chat/preferences') {
+      return FakeResponse(200, assistantPreferences);
+    }
+    if ((request.method == 'PUT' || request.method == 'DELETE') &&
+        assistantPreferenceWriteFailuresRemaining > 0) {
+      assistantPreferenceWriteFailuresRemaining--;
+      return const FakeResponse(503, <String, dynamic>{'detail': 'Unavailable'});
+    }
+    final String id = Uri.decodeComponent(request.path.split('/').last);
+    final int index = assistantPreferences.indexWhere((row) => row['id'] == id);
+    if (index < 0) {
+      return const FakeResponse(404, <String, dynamic>{'detail': 'Not found'});
+    }
+    if (request.method == 'PUT') {
+      assistantPreferences[index]['text'] = request.body['text'] as String? ?? '';
+      return FakeResponse(200, assistantPreferences[index]);
+    }
+    if (request.method == 'DELETE') {
+      assistantPreferences.removeAt(index);
+      return const FakeResponse(204, null);
+    }
+    return const FakeResponse(405, <String, dynamic>{'detail': 'Method not allowed'});
   }
 
   FakeResponse _chatHistoryResponse(FakeRequest request) {

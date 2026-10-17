@@ -378,6 +378,7 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
         "get_active_program",
         "get_player_weight_trend",
         "get_player_injuries",
+        "get_assistant_preferences",
     ]
     first_payload = "\n".join(
         str(getattr(message, "content", message)) for message in model.calls[0]["messages"]
@@ -498,6 +499,7 @@ def test_turn_without_tool_call_sends_no_profile_telemetry_or_program_data(api, 
         "get_active_program",
         "get_player_weight_trend",
         "get_player_injuries",
+        "get_assistant_preferences",
     )
     assert "PROFILE_MUST_STAY_PRIVATE" not in payload
     assert "PROGRAM_MUST_STAY_PRIVATE" not in payload
@@ -1394,6 +1396,7 @@ def test_coach_surfaces_never_expose_player_chat_or_preferred_name(api):
     preferred_name = "PREFERRED_NAME_SECRET_8d7c"
     assert db.switch_user("p1")
     db.ledger.set_assistant_memory("preferred_name", preferred_name)
+    db.ledger.add_assistant_preference("PRIVATE_ASSISTANT_PREFERENCE_6e23 trains in the morning")
 
     outcome = _seed_session(db, "p1", "2026-09-24T10:00:00+00:00").body
     pointer = outcome["pointer"]
@@ -1443,6 +1446,7 @@ def test_coach_surfaces_never_expose_player_chat_or_preferred_name(api):
         assert PRIVATE_USER_CHAT not in body, (method, path)
         assert PRIVATE_ASSISTANT_CHAT not in body, (method, path)
         assert preferred_name not in body, (method, path)
+        assert "PRIVATE_ASSISTANT_PREFERENCE_6e23" not in body, (method, path)
         assert pointer not in body, (method, path)
         assert debrief[:40] not in body, (method, path)
 
@@ -1455,6 +1459,7 @@ def test_coach_surfaces_never_expose_player_chat_or_preferred_name(api):
     assert PRIVATE_USER_CHAT not in program.text
     assert PRIVATE_ASSISTANT_CHAT not in program.text
     assert preferred_name not in program.text
+    assert "PRIVATE_ASSISTANT_PREFERENCE_6e23" not in program.text
     assert pointer not in program.text
 
     # Every coach route registered in the app is accounted for by the exercised
@@ -2688,3 +2693,171 @@ def test_doctor_cleared_my_knee_is_not_saved_as_an_exercise_clearance(api, monke
     injury = client.get("/profile/injuries", headers=headers).json()[0]
     assert injury["status"] == "physician_seen"
     assert injury["clearances"] == []
+
+
+@pytest.mark.parametrize(
+    ("message", "expected_text"),
+    [
+        ("Remember that I train in the mornings", "I train in the mornings"),
+        ("افتكر إني بتمرن الصبح", "بتمرن الصبح"),
+    ],
+)
+def test_remember_intent_saves_once_without_model(api, monkeypatch, message, expected_text):
+    client, db = api
+    username = "remember-preference"
+    headers = _authed(_register(client, username)["access_token"])
+    model = ScriptedChatModel(default_turn="MODEL MUST NOT WRITE PREFERENCES")
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream("POST", "/chat/messages", headers=headers, json={"content": message}) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    assert expected_text in _done_content(body)
+    assert model.calls == []
+    assert [row["text"] for row in client.get("/chat/preferences", headers=headers).json()] == [expected_text]
+
+
+def test_forget_proposes_closest_preference_and_requires_confirmation(api, monkeypatch):
+    client, _db = api
+    username = "forget-preference"
+    headers = _authed(_register(client, username)["access_token"])
+    model = ScriptedChatModel(default_turn="MODEL MUST NOT DELETE PREFERENCES")
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    original = client.post(
+        "/chat/messages", headers=headers,
+        json={"content": "Remember that I prefer dumbbells for pressing"},
+    )
+    assert original.status_code == 200
+
+    with client.stream("POST", "/chat/messages", headers=headers,
+                       json={"content": "Forget that I prefer dumbbells for pressing"}) as response:
+        proposal = response.read().decode("utf-8")
+    assert "I prefer dumbbells for pressing" in _done_content(proposal)
+    assert len(client.get("/chat/preferences", headers=headers).json()) == 1
+
+    with client.stream("POST", "/chat/messages", headers=headers, json={"content": "no"}) as response:
+        declined = response.read().decode("utf-8")
+    assert "kept" in _done_content(declined).lower()
+    assert len(client.get("/chat/preferences", headers=headers).json()) == 1
+
+    with client.stream("POST", "/chat/messages", headers=headers,
+                       json={"content": "Forget that I prefer dumbbells for pressing"}) as response:
+        response.read()
+    with client.stream("POST", "/chat/messages", headers=headers, json={"content": "yes"}) as response:
+        confirmed = response.read().decode("utf-8")
+    assert "forgot" in _done_content(confirmed).lower()
+    assert client.get("/chat/preferences", headers=headers).json() == []
+    assert model.calls == []
+
+
+def test_stale_forget_confirmation_cannot_answer_physician_question(api, monkeypatch):
+    client, db = api
+    username = "stale-preference-confirmation"
+    headers = _authed(_register(client, username)["access_token"])
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel(default_turn="unused"))
+
+    for content in (
+        "Remember that I train in the mornings",
+        "Forget that I train in the mornings",
+        "I felt sharp pain in my knee.",
+    ):
+        with client.stream(
+            "POST", "/chat/messages", headers=headers, json={"content": content}
+        ) as response:
+            response.read()
+            assert response.status_code == 200
+
+    injuries = client.get("/profile/injuries", headers=headers).json()
+    assert injuries
+    with db.open_ledger(username) as ledger:
+        ledger.set_physician_followup_pending(injuries[0]["id"], True)
+        # Model the physician question as the most recent assistant turn while
+        # retaining the older, now-stale forget proposal in its pending row.
+        ledger.add_chat_message("assistant", "Have you seen a physician about this injury?")
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": "yes"}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    assert "recorded that you saw a physician" in _done_content(body)
+    assert client.get("/profile/injuries", headers=headers).json()[0]["status"] == "physician_seen"
+    assert [row["text"] for row in client.get("/chat/preferences", headers=headers).json()] == [
+        "I train in the mornings"
+    ]
+
+
+def test_preference_limits_are_enforced_and_clear_chat_keeps_preferences(api, monkeypatch):
+    client, db = api
+    username = "preference-limits"
+    headers = _authed(_register(client, username)["access_token"])
+    monkeypatch.setattr(assistant_graph, "llm", ScriptedChatModel(default_turn="unused"))
+    exactly_200 = "x" * 200
+    with client.stream("POST", "/chat/messages", headers=headers,
+                       json={"content": f"Remember {exactly_200}"}) as response:
+        response.read()
+    saved = client.get("/chat/preferences", headers=headers).json()
+    assert saved[0]["text"] == exactly_200
+    assert client.delete(f"/chat/preferences/{saved[0]['id']}", headers=headers).status_code == 204
+
+    too_long = "x" * 201
+    with client.stream("POST", "/chat/messages", headers=headers,
+                       json={"content": f"Remember {too_long}"}) as response:
+        body = response.read().decode("utf-8")
+    assert "200 characters" in _done_content(body)
+    assert client.get("/chat/preferences", headers=headers).json() == []
+
+    with db.open_ledger(username) as ledger:
+        for index in range(50):
+            ledger.add_assistant_preference(f"Preference {index}")
+    with client.stream("POST", "/chat/messages", headers=headers,
+                       json={"content": "Remember that I prefer morning workouts"}) as response:
+        limit_reply = response.read().decode("utf-8")
+    assert "50" in _done_content(limit_reply)
+    assert len(client.get("/chat/preferences", headers=headers).json()) == 50
+    assert client.delete("/chat/history", headers=headers).status_code == 204
+    assert len(client.get("/chat/preferences", headers=headers).json()) == 50
+
+
+def test_preferences_api_edit_is_read_by_later_tool_call_and_ordinary_chat_does_not_write(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, _db = api
+    headers = _authed(_register(client, "preference-tool") ["access_token"])
+    model = ScriptedChatModel(default_turn="Understood.")
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    with client.stream("POST", "/chat/messages", headers=headers,
+                       json={"content": "I hate lunges"}) as response:
+        response.read()
+    assert client.get("/chat/preferences", headers=headers).json() == []
+
+    with client.stream("POST", "/chat/messages", headers=headers,
+                       json={"content": "Remember that I train in the morning"}) as response:
+        response.read()
+    preference = client.get("/chat/preferences", headers=headers).json()[0]
+    edited = client.put(
+        f"/chat/preferences/{preference['id']}", headers=headers,
+        json={"text": "I train before breakfast"},
+    )
+    assert edited.status_code == 200
+    assert edited.json()["text"] == "I train before breakfast"
+    assert client.delete("/chat/history", headers=headers).status_code == 204
+    assert client.get("/chat/preferences", headers=headers).json()[0]["text"] == "I train before breakfast"
+
+    model.reset(
+        [
+            ToolCallsTurn(calls=[{"name": "get_assistant_preferences", "args": {}, "id": "pref-read"}]),
+            "I’ll account for your morning training preference.",
+        ]
+    )
+    with client.stream("POST", "/chat/messages", headers=headers,
+                       json={"content": "How should I plan my training around my schedule?"}) as response:
+        response.read()
+    tool_results = [
+        str(message.content)
+        for message in model.calls[1]["messages"]
+        if getattr(message, "type", "") == "tool"
+    ]
+    assert len(tool_results) == 1
+    assert "I train before breakfast" in tool_results[0]

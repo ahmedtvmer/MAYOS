@@ -1602,6 +1602,141 @@ def _previous_assistant_message_is_injury_area_question(
     }
 
 
+def _memory_write_request(query: str) -> tuple[str, str] | None:
+    remember = re.match(
+        r"^\s*(?:please\s+)?remember\s+(?:that\s+)?(.+?)\s*[.!؟?]*\s*$",
+        query,
+        re.IGNORECASE,
+    ) or re.match(r"^\s*(?:افتكر|تذكّر|تذكر)\s+(?:إنّي|إني|انني|أنني|إن|ان|أن)?\s*(.+?)\s*[.!؟?]*\s*$", query)
+    if remember:
+        return "remember", remember.group(1).strip()
+    forget = re.match(
+        r"^\s*(?:please\s+)?forget\s+(?:that\s+)?(.+?)\s*[.!؟?]*\s*$",
+        query,
+        re.IGNORECASE,
+    ) or re.match(r"^\s*(?:انسَ|انسى|احذف|امسح)\s+(?:إنّي|إني|انني|أنني|إن|ان|أن)?\s*(.+?)\s*[.!؟?]*\s*$", query)
+    if forget:
+        return "forget", forget.group(1).strip()
+    return None
+
+
+def _forget_confirmation(query: str) -> bool | None:
+    normalized = " ".join(query.casefold().strip(" ؟?.!,;:").split())
+    if re.fullmatch(r"(?:yes|yes delete it|confirm|do it|أيوة|أيوه|ايوة|نعم|آه|اه|ماشي|احذفها)", normalized):
+        return True
+    if re.fullmatch(r"(?:no|no thanks|cancel|keep it|لا|لأ|لأ شكرا|مش دلوقتي|خليها)", normalized):
+        return False
+    return None
+
+
+def _preference_intent_reply(reply: str) -> dict[str, Any]:
+    return {"intent": "telemetry_intercept", "intent_metadata": {"response_content": reply}}
+
+
+def _forget_proposal(text: str, language: str) -> str:
+    if language == "en":
+        return f'Do you want me to forget this preference: “{text}”? Reply yes to delete it or no to keep it.'
+    return f'تحب أحذف التفضيل ده: «{text}»؟ رد بنعم للحذف أو لا للاحتفاظ به.'
+
+
+def _pending_preference_confirmation(
+    query: str, ledger: Any, messages: list[Any]
+) -> dict[str, Any] | None:
+    pending = ledger.get_pending_assistant_preference_deletion()
+    confirmation = _forget_confirmation(query)
+    if pending is None or confirmation is None:
+        if pending is not None:
+            ledger.clear_pending_assistant_preference_deletion()
+        return None
+    latest_assistant = next(
+        (
+            _get_message_text(message)
+            for message in reversed(messages[:-1])
+            if isinstance(message, AIMessage)
+        ),
+        None,
+    )
+    preference = next(
+        (
+            item
+            for item in ledger.list_assistant_preferences()
+            if item["id"] == pending["id"]
+        ),
+        None,
+    )
+    if preference is None:
+        ledger.clear_pending_assistant_preference_deletion()
+        return None
+    text = preference["text"]
+    proposals = {_forget_proposal(text, "en"), _forget_proposal(text, "ar")}
+    if latest_assistant not in proposals:
+        ledger.clear_pending_assistant_preference_deletion()
+        return None
+    if confirmation:
+        return {
+            "intent": "assistant_preference_delete_confirmed",
+            "intent_metadata": {"preference_id": pending["id"]},
+        }
+    ledger.clear_pending_assistant_preference_deletion()
+    language = _tool_reply_language({"messages": [HumanMessage(content=query)]})
+    reply = "Okay, I kept that preference." if language == "en" else "تمام، سبت التفضيل زي ما هو."
+    return _preference_intent_reply(reply)
+
+def _remember_preference(text: str, ledger: Any, language: str) -> dict[str, Any]:
+    if not text or len(text) > 200:
+        reply = "A preference must be between 1 and 200 characters. Nothing was saved." if language == "en" else "لازم التفضيل يكون من حرف لـ٢٠٠ حرف. ما اتحفظش أي تفضيل."
+        return _preference_intent_reply(reply)
+    preference = ledger.add_assistant_preference(text)
+    if preference is None:
+        reply = (
+            "You have reached the limit of 50 saved preferences. Delete one in Settings before adding another."
+            if language == "en"
+            else "وصلت للحد الأقصى وهو ٥٠ تفضيل. احذف واحدًا من الإعدادات قبل إضافة غيره."
+        )
+    else:
+        reply = f"I’ll remember: {preference['text']}" if language == "en" else f"هفتكر: {preference['text']}"
+    return _preference_intent_reply(reply)
+
+
+def _forget_preference(text: str, ledger: Any, language: str) -> dict[str, Any]:
+    preference = ledger.closest_assistant_preference(text)
+    if preference is None:
+        reply = "You don’t have any saved preferences yet." if language == "en" else "مافيش تفضيلات محفوظة لسه."
+    else:
+        ledger.set_pending_assistant_preference_deletion(preference["id"])
+        reply = _forget_proposal(preference["text"], language)
+    return _preference_intent_reply(reply)
+
+
+def _preference_write_intent(
+    query: str, ledger: Any, messages: list[Any], *, allow_write: bool = True
+) -> dict[str, Any] | None:
+    confirmation = _pending_preference_confirmation(query, ledger, messages)
+    if confirmation is not None:
+        return confirmation
+    if not allow_write:
+        return None
+    request = _memory_write_request(query)
+    if request is None:
+        return None
+    mode, text = request
+    language = _tool_reply_language({"messages": [HumanMessage(content=query)]})
+    return _remember_preference(text, ledger, language) if mode == "remember" else _forget_preference(text, ledger, language)
+
+
+def assistant_preference_delete_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
+    ledger, _store = _graph_context(config)
+    meta = state.get("intent_metadata", {})
+    deleted = ledger.delete_assistant_preference(str(meta["preference_id"])) if ledger else False
+    language = _tool_reply_language(state)
+    reply = (
+        "I forgot that preference." if deleted else "That preference is no longer saved."
+    ) if language == "en" else (
+        "حذفت التفضيل ده." if deleted else "التفضيل ده مبقاش محفوظ."
+    )
+    return {"program_updated": False, "response_content": reply, "messages": [AIMessage(content=reply)]}
+
+
 def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> dict[str, Any]:
     if state.get("pipeline_error"):
         return {"intent": "telemetry_intercept", "intent_metadata": {"response_content": state["pipeline_error"]}}
@@ -1622,6 +1757,8 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
 
     clinical = _clinical_turn_metadata(query)
     if clinical is not None:
+        if ledger is not None:
+            ledger.clear_pending_assistant_preference_deletion()
         if (
             not clinical.get("franco")
             and pending is not None
@@ -1633,8 +1770,24 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
             injuries_service.consume_pending_clarification(ledger, pending["id"])
         return {"intent": "clinical_intercept", "intent_metadata": clinical, "active_intents": []}
 
+    safety_classification = _classify_single_clause(query, telemetry, messages)
+    if safety_classification and safety_classification.get("intent") == "banned_movement":
+        if ledger is not None:
+            ledger.clear_pending_assistant_preference_deletion()
+        return {key: value for key, value in safety_classification.items() if key != "query"}
+
+    if ledger is not None:
+        preference_intent = _preference_write_intent(
+            query, ledger, messages, allow_write=False
+        )
+        if preference_intent is not None:
+            return preference_intent
+
     if pending is not None and isinstance(pending.get("id"), str):
         from service import injuries as injuries_service
+
+        if ledger is not None:
+            ledger.clear_pending_assistant_preference_deletion()
 
         area = clarification_body_area_in_text(query)
         if area is not None:
@@ -1655,6 +1808,7 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
     if ledger is not None:
         pending_clearance = injuries_service.pending_clearance_question(ledger)
         if pending_clearance is not None:
+            ledger.clear_pending_assistant_preference_deletion()
             injury, pending = pending_clearance
             return {
                 "intent": "exercise_clearance_disambiguation",
@@ -1663,6 +1817,7 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
             }
         resolution = injuries_service.pending_resolution(ledger)
         if resolution is not None:
+            ledger.clear_pending_assistant_preference_deletion()
             return {
                 "intent": "injury_status_update",
                 "intent_metadata": {"mode": "confirm_resolution", "injury_id": resolution["id"]},
@@ -1673,6 +1828,7 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
             answer = injuries_service.confirmation_reply(query)
             explicit_visit = injuries_service.has_matching_status_update(ledger, query)
             if answer is not None or explicit_visit:
+                ledger.clear_pending_assistant_preference_deletion()
                 return {
                     "intent": "injury_status_update",
                     "intent_metadata": {
@@ -1692,6 +1848,7 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
         if injuries_service.full_physician_clearance(query):
             injury = ledger.get_latest_active_injury(body_area_in_text(query))
             if injury is not None:
+                ledger.clear_pending_assistant_preference_deletion()
                 return {
                     "intent": "injury_status_update",
                     "intent_metadata": {"mode": "ask_resolution", "injury_id": injury["id"]},
@@ -1699,6 +1856,7 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
                 }
         clearance = injuries_service.parse_clearance_statement(query, pending_exercise_name)
         if clearance and (clearance.get("exercise_name") or pending_exercise_name):
+            ledger.clear_pending_assistant_preference_deletion()
             area = body_area_in_text(query)
             injury = (
                 pending_exercise if area is None and pending_exercise is not None
@@ -1714,6 +1872,7 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
                 "active_intents": [],
             }
         if injuries_service.has_matching_status_update(ledger, query):
+            ledger.clear_pending_assistant_preference_deletion()
             return {"intent": "injury_status_update", "intent_metadata": {}, "active_intents": []}
         if (
             pending_exercise is not None
@@ -1721,11 +1880,17 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
             and int(pending_exercise.get("exercise_followup_asked_count") or 0)
             < injuries_service.MAX_EXERCISE_FOLLOWUP_QUESTIONS
         ):
+            ledger.clear_pending_assistant_preference_deletion()
             return {
                 "intent": "injury_physician_followup",
                 "intent_metadata": {"injury_id": pending_exercise["id"], "exercise_followup": True},
                 "active_intents": [],
             }
+
+    if ledger is not None:
+        preference_intent = _preference_write_intent(query, ledger, messages)
+        if preference_intent is not None:
+            return preference_intent
 
     choice = _deload_choice(query)
     if choice:
@@ -4305,6 +4470,7 @@ builder.add_node("injury_status_update", _safe_node(injury_status_update_node))
 builder.add_node("injury_physician_followup", _safe_node(injury_physician_followup_node))
 builder.add_node("exercise_clearance_update", _safe_node(injury_clearance_update_node))
 builder.add_node("exercise_clearance_disambiguation", _safe_node(exercise_clearance_disambiguation_node))
+builder.add_node("assistant_preference_delete_confirmed", _safe_node(assistant_preference_delete_node))
 builder.add_node("composite_intent", _safe_node(composite_intent_node))
 builder.add_node("generation", _safe_node(generation_node))
 
@@ -4329,6 +4495,7 @@ builder.add_conditional_edges(
         "injury_physician_followup": "injury_physician_followup",
         "exercise_clearance_update": "exercise_clearance_update",
         "exercise_clearance_disambiguation": "exercise_clearance_disambiguation",
+        "assistant_preference_delete_confirmed": "assistant_preference_delete_confirmed",
         "composite_intent": "composite_intent",
         "coaching_qa": "generation",
     },
@@ -4339,6 +4506,7 @@ for node in [
     "exercise_substitution", "arabic_swap_clarification", "program_mutation",
     "catalog_search", "injury_area_clarification", "injury_status_update",
     "injury_physician_followup", "exercise_clearance_update", "exercise_clearance_disambiguation",
+    "assistant_preference_delete_confirmed",
     "composite_intent", "generation",
 ]:
     builder.add_edge(node, END)
@@ -4504,6 +4672,7 @@ def stream_assistant_turn(
             "injury_physician_followup": injury_physician_followup_node,
             "exercise_clearance_update": injury_clearance_update_node,
             "exercise_clearance_disambiguation": exercise_clearance_disambiguation_node,
+            "assistant_preference_delete_confirmed": assistant_preference_delete_node,
             "composite_intent": composite_intent_node,
         }
         if intent == "exercise_history":

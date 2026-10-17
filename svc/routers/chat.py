@@ -10,7 +10,7 @@ import queue
 import threading
 from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from agent.assistant_graph import stream_assistant_turn
@@ -29,7 +29,11 @@ from svc.llm import (
     register_ai_analytics_background_tasks,
 )
 from svc.rate_limit import CHAT_LIMIT, limiter
-from svc.schemas import ChatMessageIn
+from svc.schemas import (
+    AssistantPreferenceOut,
+    AssistantPreferenceUpdateIn,
+    ChatMessageIn,
+)
 from utils.text_scrubber import PIPELINE_ERROR_RESPONSE
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -52,6 +56,40 @@ async def clear_history(
 ):
     await asyncio.to_thread(chat_service.clear_history, db, str(player), ledger)
     return None
+
+
+@router.get("/preferences", response_model=list[AssistantPreferenceOut])
+async def read_preferences(
+    ledger: Annotated[Any, Depends(get_ledger)],
+):
+    return await asyncio.to_thread(ledger.list_assistant_preferences)
+
+
+@router.put("/preferences/{preference_id}", response_model=AssistantPreferenceOut)
+async def update_preference(
+    preference_id: str,
+    body: AssistantPreferenceUpdateIn,
+    ledger: Annotated[Any, Depends(get_ledger)],
+):
+    try:
+        preference = await asyncio.to_thread(
+            ledger.update_assistant_preference, preference_id, body.text
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    if preference is None:
+        raise HTTPException(status_code=404, detail="Assistant preference not found.")
+    return preference
+
+
+@router.delete("/preferences/{preference_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_preference(
+    preference_id: str,
+    ledger: Annotated[Any, Depends(get_ledger)],
+):
+    deleted = await asyncio.to_thread(ledger.delete_assistant_preference, preference_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Assistant preference not found.")
 
 
 def _run_turn(

@@ -50,6 +50,22 @@ def test_schema_version_stamping(temp_db_env):
     assert version == CURRENT_LEDGER_SCHEMA_VERSION
 
 
+def test_v30_upgrade_adds_assistant_preference_storage(temp_db_env):
+    db, _, backups_dir = temp_db_env
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA user_version = 30")
+
+    apply_lazy_migrations(conn, "assistant-preferences", db.ledgers_dir, backups_dir)
+
+    tables = {
+        row[0]
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+    }
+    assert {"assistant_preferences", "assistant_preference_pending"} <= tables
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
+
+
 @pytest.mark.parametrize(
     ("legacy_value", "intake_value", "expected"),
     [

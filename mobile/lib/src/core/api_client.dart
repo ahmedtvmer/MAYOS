@@ -2748,6 +2748,50 @@ class ApiClient {
     await _send(() => _dio.delete<dynamic>('/chat/history'));
   }
 
+  Future<List<Map<String, dynamic>>> assistantPreferences() async {
+    final response = await _send(() => _dio.get<dynamic>('/chat/preferences'));
+    final dynamic body = response.data;
+    if (body is! List<dynamic> ||
+        body.any((dynamic row) => row is! Map<String, dynamic>)) {
+      const String message =
+          'The service returned invalid Assistant preference data.';
+      throw ApiException(
+        message,
+        failureMessage: _invalidServiceDataFailure(message),
+      );
+    }
+    return body.cast<Map<String, dynamic>>();
+  }
+
+  Future<Map<String, dynamic>> updateAssistantPreference(
+    String preferenceId,
+    String text,
+  ) async {
+    final response = await _send(
+      () => _dio.put<dynamic>(
+        '/chat/preferences/${Uri.encodeComponent(preferenceId)}',
+        data: <String, dynamic>{'text': text},
+      ),
+    );
+    if (response.data is! Map<String, dynamic>) {
+      const String message =
+          'The service returned invalid Assistant preference data.';
+      throw ApiException(
+        message,
+        failureMessage: _invalidServiceDataFailure(message),
+      );
+    }
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<void> deleteAssistantPreference(String preferenceId) async {
+    await _send(
+      () => _dio.delete<dynamic>(
+        '/chat/preferences/${Uri.encodeComponent(preferenceId)}',
+      ),
+    );
+  }
+
   /// Streams one player-assistant turn as decoded SSE events.
   ///
   /// Tokens arrive incrementally via [ChatToken]; the final [ChatDone] reports
