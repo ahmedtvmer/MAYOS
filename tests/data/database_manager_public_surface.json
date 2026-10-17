@@ -15,7 +15,7 @@
     },
     "ai_allowance_usage": {
       "kind": "method",
-      "signature": "(self, account_id: str, capability: str, *, now: datetime.datetime | None = None) -> dict[str, int]"
+      "signature": "(self, account_id: str, capability: str, *, now: datetime.datetime | None = None, projected_completed_turn_id: str | None = None) -> dict[str, int]"
     },
     "analytics_preference_allows": {
       "kind": "method",

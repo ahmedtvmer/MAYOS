@@ -804,6 +804,101 @@ def test_partial_template_header_uses_freeform_reader(api, monkeypatch, tmp_path
     assert response.json()["freeform_available"] is True
 
 
+def test_freeform_import_runs_metered_at_coach_resource_cutoff(
+    api, monkeypatch, tmp_path
+):
+    from tests.fakes.chat_model import ScriptedChatModel
+    from utils import model_downloader
+    from utils.model_metering import MeteringCallback
+
+    client, db = api
+    coach_headers, _player_headers, assignment_id = _assignment(
+        client, db, prefix="import-cutoff"
+    )
+    coach_account_id = db.get_active_account_by_username("import-cutoff-coach")[
+        "account_id"
+    ]
+    monkeypatch.setenv("AI_LAUNCH_ALLOWANCES_ENABLED", "true")
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "1")
+    monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "0")
+    for capability in ("COACH", "LIFTER"):
+        for plan in ("FREE", "PRO"):
+            monkeypatch.setenv(f"{capability}_AI_{plan}_DAILY_REQUESTS", "2")
+            monkeypatch.setenv(
+                f"{capability}_AI_{plan}_DAILY_RESOURCE_TOKENS", "10"
+            )
+    db.record_model_usage(
+        coach_account_id,
+        "coach",
+        "deepseek-ai/DeepSeek-V4-Flash",
+        10,
+        0,
+        0.0,
+        False,
+        purpose="coach_assistant",
+        created_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+    )
+    _enable_program_import_ai(monkeypatch, tmp_path)
+    import_model = ScriptedChatModel(
+        turns=[{
+            "rows": [{
+                "source_row": 2,
+                "day": 1,
+                "day_name": "Push",
+                "order": 1,
+                "exercise": "Squat",
+                "sets": 3,
+                "reps_min": 6,
+                "reps_max": 8,
+                "reps_original": "6-8",
+                "rir": 2,
+                "original_text": "Squat,3,6-8",
+            }],
+            "layout": {
+                "days": [{"day": 1, "name": "Push"}],
+                "weeks": [],
+                "confidence": 0.98,
+                "confirm_layout": False,
+            },
+        }],
+        model_name="deepseek-ai/DeepSeek-V4-Flash",
+        usage_metadata={
+            "input_tokens": 40,
+            "output_tokens": 20,
+            "total_tokens": 60,
+            "input_token_details": {},
+        },
+        callbacks=[MeteringCallback("deepseek-ai/DeepSeek-V4-Flash")],
+    )
+    monkeypatch.setattr(
+        model_downloader, "get_coach_import_llm", lambda: import_model
+    )
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={
+            "file": (
+                "own-layout.csv",
+                b"Exercise,Sets,Reps\nSquat,3,6-8",
+                "text/csv",
+            )
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    allowance = client.get("/auth/me", headers=coach_headers).json()["coach_ai_allowance"]
+    assert allowance["status"] == "resource_cutoff"
+    assert allowance["requests_used"] == 0
+    assert allowance["resource_used"] == 70
+    usage = db.catalog_conn.execute(
+        "SELECT input_tokens, output_tokens FROM model_usage"
+        " WHERE account_id = ? AND purpose = 'coach_program_import'",
+        (coach_account_id,),
+    ).fetchone()
+    assert tuple(usage) == (40, 20)
+
+
 def test_malformed_freeform_reply_retries_then_returns_a_clean_failure(
     api, monkeypatch, tmp_path, scripted_chat_model
 ):

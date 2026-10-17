@@ -60,9 +60,13 @@ class _CoachAssistantStream:
     events: "queue.Queue[tuple[str, Any]]" = field(default_factory=queue.Queue)
     disconnected: threading.Event = field(default_factory=threading.Event)
     worker_done: threading.Event = field(default_factory=threading.Event)
+    answer_delivered: bool = False
 
     def __post_init__(self) -> None:
-        self.turn = InferenceTurnState(self.scope)
+        self.turn = InferenceTurnState(
+            self.scope, defer_allowance_finalization=True
+        )
+        self.turn.background_tasks = self.background_tasks
 
 
 async def _prepare_stream(endpoint: _CoachAssistantRequest) -> _CoachAssistantStream:
@@ -80,12 +84,11 @@ async def _prepare_stream(endpoint: _CoachAssistantRequest) -> _CoachAssistantSt
     scope = coach_inference_scope(
         endpoint.db, account_id, client, purpose="coach_assistant"
     )
-    admit_coach_turn(
-        account_id, client, endpoint.db, endpoint.background_tasks
-    )
-    return _CoachAssistantStream(
+    stream = _CoachAssistantStream(
         endpoint.request, endpoint.background_tasks, messages, scope
     )
+    admit_coach_turn(stream.turn)
+    return stream
 
 
 async def _load_assignment_messages(
@@ -126,18 +129,34 @@ def coach_inference_scope(
 
 
 def admit_coach_turn(
-    account_id: str,
-    client: Any,
-    db: Any,
-    background_tasks: BackgroundTasks,
+    turn: InferenceTurnState,
 ) -> None:
-    """Admits and meters one Coach request under the shared Coach allowance."""
+    """Applies abuse limits and reserves one launch Coach answer slot."""
+    from service.ai_allowance import admit_coach_turn as reserve_coach_turn
+    from service.ai_allowance import launch_allowances_enabled
+
+    account_id = turn.scope.account_id
+    if account_id is None:
+        raise RuntimeError("Coach inference needs an attributed account.")
+    _admit_coach_model_request(turn, account_id, launch_allowances_enabled())
+    turn.allowance_reserved = reserve_coach_turn(
+        turn.scope.store, account_id, turn.turn_id, turn.scope.purpose
+    )
+
+
+def _admit_coach_model_request(
+    turn: InferenceTurnState, account_id: str, launch_enabled: bool
+) -> None:
+    """Applies the shared rate guard while launch resource limits stay separate."""
     admit_model_request(
         account_id,
         guard=False,
-        db=db,
+        db=turn.scope.store,
         context=ModelAdmissionContext(
-            role="coach", client=client, background_tasks=background_tasks
+            role="coach",
+            client=turn.scope.client,
+            background_tasks=turn.background_tasks,
+            skip_daily_token_limit=launch_enabled,
         ),
     )
 
@@ -152,17 +171,19 @@ def _consume_model_stream(stream: _CoachAssistantStream) -> str:
                 stream.events.put(("token", payload))
             elif kind == "done":
                 answer = payload
-    if answer is None:
-        raise RuntimeError("Coach assistant stream ended without a final answer.")
+        if answer is None:
+            raise RuntimeError("Coach assistant stream ended without a final answer.")
+        if stream.disconnected.is_set():
+            stream.turn.mark_interrupted()
+        else:
+            stream.turn.mark_answer_completed(answer)
     return answer
 
 
 def _run_stream_turn(stream: _CoachAssistantStream) -> None:
     try:
         answer = _consume_model_stream(stream)
-        if stream.disconnected.is_set():
-            stream.turn.mark_interrupted()
-        stream.events.put(("done", answer))
+        stream.events.put(("done", _coach_done_payload(stream, answer)))
     except Exception:
         if stream.disconnected.is_set():
             stream.turn.mark_interrupted()
@@ -170,6 +191,35 @@ def _run_stream_turn(stream: _CoachAssistantStream) -> None:
     finally:
         stream.worker_done.set()
         stream.events.put(("end", None))
+
+
+def _coach_done_payload(
+    stream: _CoachAssistantStream, answer: str
+) -> dict[str, Any]:
+    from service.ai_allowance import launch_allowances_enabled
+
+    payload: dict[str, Any] = {"answer": answer}
+    if not launch_allowances_enabled():
+        return payload
+    payload["outcome"] = stream.turn.answer_outcome
+    payload["coach_allowance"] = _coach_allowance_snapshot(stream)
+    return payload
+
+
+def _coach_allowance_snapshot(stream: _CoachAssistantStream) -> dict[str, Any]:
+    from service.ai_allowance import coach_plan, get_coach_allowance
+
+    account_id = str(stream.scope.account_id)
+    return get_coach_allowance(
+        stream.scope.store,
+        account_id,
+        coach_plan(stream.scope.store, account_id),
+        projected_completed_turn_id=(
+            stream.turn.turn_id
+            if stream.turn.answer_outcome == "completed"
+            else None
+        ),
+    )
 
 
 def _stream_error_payload() -> dict[str, Any]:
@@ -183,7 +233,7 @@ def _sse_frame(kind: str, payload: Any) -> str:
     if kind == "token":
         return f"data: {json.dumps({'token': payload})}\n\n"
     if kind == "done":
-        return f"data: {json.dumps({'done': True, 'answer': payload})}\n\n"
+        return f"data: {json.dumps({'done': True, **payload})}\n\n"
     return f"event: error\ndata: {json.dumps(payload)}\n\n"
 
 
@@ -197,10 +247,15 @@ async def _event_stream(stream: _CoachAssistantStream):
                 stream.disconnected.set()
                 break
             yield _sse_frame(kind, payload)
+            if kind == "done":
+                stream.answer_delivered = True
     finally:
-        if not stream.worker_done.is_set():
+        if not stream.worker_done.is_set() or not stream.answer_delivered:
             stream.disconnected.set()
-            stream.turn.mark_interrupted()
+            if stream.turn.answer_outcome in {"pending", "completed"}:
+                # A disconnect during the done-frame yield errs toward not charging.
+                stream.turn.mark_interrupted()
+        stream.turn.finalize_allowance()
 
 
 def _start_stream(stream: _CoachAssistantStream) -> StreamingResponse:

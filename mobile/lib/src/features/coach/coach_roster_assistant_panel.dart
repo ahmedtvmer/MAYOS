@@ -64,6 +64,17 @@ class _CoachRosterAssistantPanelState
           .read(apiClientProvider)
           .coachRosterAssistant(question: question, history: history);
       if (!mounted) return;
+      final String? accountId = ref
+          .read(authControllerProvider)
+          .session
+          ?.account
+          .accountId;
+      if (reply.coachAiAllowance != null && accountId != null) {
+        ref.read(authControllerProvider.notifier).updateCoachAiAllowance(
+              accountId,
+              reply.coachAiAllowance!,
+            );
+      }
       ref
           .read(coachRosterAssistantControllerProvider.notifier)
           .recordExchange(question, reply);
@@ -72,6 +83,12 @@ class _CoachRosterAssistantPanelState
     } on ApiException catch (failure) {
       if (!mounted) return;
       if (failure.statusCode == 404) {
+        unawaited(ref.read(authControllerProvider.notifier).refreshAccount());
+      }
+      if (failure.statusCode == 429 || failure.statusCode == 503) {
+        unawaited(ref.read(authControllerProvider.notifier).refreshAccount());
+      }
+      if (failure.statusCode == 429) {
         unawaited(ref.read(authControllerProvider.notifier).refreshAccount());
       }
       setState(() {

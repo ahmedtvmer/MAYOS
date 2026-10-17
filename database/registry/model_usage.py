@@ -141,7 +141,7 @@ class RegistryModelUsageMixin:
                 cursor, account_id, capability, start_iso
             )
             active = self._active_allowance_turns(
-                cursor, reservation, stale_before
+                cursor, reservation, start_iso, stale_before
             )
             resource_used = self._sum_capability_tokens(
                 cursor, account_id, role, start_iso
@@ -188,8 +188,9 @@ class RegistryModelUsageMixin:
         capability: str,
         *,
         now: datetime | None = None,
+        projected_completed_turn_id: str | None = None,
     ) -> dict[str, int]:
-        """Returns completed answers and metered tokens for one capability today."""
+        """Returns capability usage, optionally projecting a pending completion."""
         if capability not in {"lifter", "coach"}:
             raise ValueError("Unknown AI allowance capability.")
         start_iso = utc_day_start_iso(now)
@@ -200,6 +201,21 @@ class RegistryModelUsageMixin:
             completed = self._completed_allowance_turns(
                 cursor, account_id, capability, start_iso
             )
+            if projected_completed_turn_id is not None:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM ai_allowance_turns"
+                    " WHERE turn_id = ? AND account_id = ? AND capability = ?"
+                    " AND updated_at >= ? AND outcome = 'in_progress'"
+                    " AND (purpose IS NULL OR purpose <> ?)",
+                    (
+                        projected_completed_turn_id,
+                        str(account_id),
+                        capability,
+                        start_iso,
+                        ALLOWANCE_EXEMPT_PURPOSE,
+                    ),
+                )
+                completed += int(cursor.fetchone()[0] or 0)
             resource_used = self._sum_capability_tokens(cursor, account_id, role, start_iso)
         return {"requests_used": completed, "resource_used": resource_used}
 
@@ -231,13 +247,16 @@ class RegistryModelUsageMixin:
 
     @staticmethod
     def _active_allowance_turns(
-        cursor: Any, reservation: AllowanceReservation, stale_before: str
+        cursor: Any,
+        reservation: AllowanceReservation,
+        start_iso: str,
+        stale_before: str,
     ) -> int:
         cursor.execute(
             "SELECT COUNT(*) FROM ai_allowance_turns"
             " WHERE account_id = ? AND capability = ?"
-            " AND updated_at >= ? AND outcome = 'in_progress'",
-            (reservation.account_id, reservation.capability, stale_before),
+            " AND updated_at >= ? AND updated_at >= ? AND outcome = 'in_progress'",
+            (reservation.account_id, reservation.capability, start_iso, stale_before),
         )
         return int(cursor.fetchone()[0] or 0)
 

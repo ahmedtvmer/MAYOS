@@ -346,6 +346,33 @@ def test_roster_payload_is_deidentified_and_only_usage_is_persisted(api, monkeyp
     assert "highest Roster urgency rank" not in usage_text
 
 
+def test_roster_answer_returns_projected_coach_allowance(api, monkeypatch):
+    client, db, tmp_path, _ = api
+    coach_headers, _coach_id = _make_coach(client, db)
+    _assign(client, db, coach_headers, "rosterallowancereply")
+    _enable(monkeypatch, tmp_path)
+    monkeypatch.setenv("AI_LAUNCH_ALLOWANCES_ENABLED", "true")
+    for plan in ("FREE", "PRO"):
+        monkeypatch.setenv(f"COACH_AI_{plan}_DAILY_REQUESTS", "3")
+        monkeypatch.setenv(f"COACH_AI_{plan}_DAILY_RESOURCE_TOKENS", "1000")
+    monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "0")
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "200000")
+    _capturing_model(monkeypatch)
+
+    response = client.post(
+        "/coach/assistant/roster",
+        headers=coach_headers,
+        json={"question": "Who needs my attention today?"},
+    )
+
+    assert response.status_code == 200, response.text
+    allowance = response.json()["coach_ai_allowance"]
+    assert allowance["request_limit"] == 3
+    assert allowance["requests_used"] == 1
+    assert allowance["requests_remaining"] == 2
+    assert allowance["resource_used"] == 124
+
+
 def test_roster_route_is_off_without_its_separate_enable_gate(api, monkeypatch):
     client, db, _tmp_path, _ = api
     coach_headers, _coach_id = _make_coach(client, db)

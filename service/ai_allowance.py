@@ -1,6 +1,7 @@
 """Capability-scoped completed-answer and resource entitlements (#66/#67)."""
 
 import os
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal, NoReturn
 
@@ -10,6 +11,30 @@ from utils.utc_day import utc_day_bounds
 
 LAUNCH_ALLOWANCES_ENABLED_ENV = "AI_LAUNCH_ALLOWANCES_ENABLED"
 _CAPABILITY_PREFIX = {"lifter": "LIFTER", "coach": "COACH"}
+Capability = Literal["lifter", "coach"]
+
+# Structured, owner-reviewed program work stays metered, but its launch sizing
+# is deferred to #263 and it does not consume Coach allowance admission.
+COACH_ALLOWANCE_EXCLUDED_PURPOSES = frozenset(
+    {"coach_program_import", "coach_program_request"}
+)
+
+
+@dataclass(frozen=True)
+class CapabilityAllowanceQuery:
+    account_id: str
+    capability: Capability
+    plan: str
+    now: datetime | None = None
+    projected_completed_turn_id: str | None = None
+
+
+@dataclass(frozen=True)
+class AllowanceTurn:
+    account_id: str
+    capability: Capability
+    turn_id: str
+    purpose: str | None
 
 
 def launch_allowances_enabled() -> bool:
@@ -44,9 +69,24 @@ def _day_bounds(now: datetime | None = None) -> tuple[datetime, datetime]:
 
 
 def lifter_plan(db: Any, account_id: str) -> str:
-    from service.plans import CAPABILITY_LIFTER, plans_for_account
+    return capability_plan(db, account_id, "lifter")
+
+
+def coach_plan(db: Any, account_id: str) -> str:
+    return capability_plan(db, account_id, "coach")
+
+
+def capability_plan(db: Any, account_id: str, capability: Capability) -> str:
+    from service.plans import (
+        CAPABILITY_LIFTER,
+        effective_coach_plan,
+        plans_for_account,
+    )
 
     account = db.get_account(account_id)
+    if capability == "coach":
+        plan = effective_coach_plan(db, account)
+        return str(plan or "free")
     plan = plans_for_account(db, account).get(CAPABILITY_LIFTER)
     if plan is None:
         # A missing stored grant means Free, and a transient plan lookup gap
@@ -62,11 +102,41 @@ def get_lifter_allowance(
     *,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Returns the current durable Lifter state, using the shared trial policy until launch."""
-    start, reset = _day_bounds(now)
+    return get_capability_allowance(
+        db,
+        CapabilityAllowanceQuery(account_id, "lifter", plan, now),
+    )
+
+
+def get_coach_allowance(
+    db: Any,
+    account_id: str,
+    plan: str,
+    *,
+    now: datetime | None = None,
+    projected_completed_turn_id: str | None = None,
+) -> dict[str, Any]:
+    return get_capability_allowance(
+        db,
+        CapabilityAllowanceQuery(
+            account_id,
+            "coach",
+            plan,
+            now,
+            projected_completed_turn_id,
+        ),
+    )
+
+
+def get_capability_allowance(
+    db: Any,
+    query: CapabilityAllowanceQuery,
+) -> dict[str, Any]:
+    """Returns durable capability state, using the shared trial policy until launch."""
+    start, reset = _day_bounds(query.now)
     if not launch_allowances_enabled():
-        return _trial_allowance(db, account_id, start, reset)
-    return _launch_allowance(db, account_id, plan, start, reset)
+        return _trial_allowance(db, query.account_id, start, reset)
+    return _launch_allowance(db, query, start, reset)
 
 
 def _trial_allowance(
@@ -89,11 +159,19 @@ def _trial_allowance(
 
 
 def _launch_allowance(
-    db: Any, account_id: str, plan: str, start: datetime, reset: datetime
+    db: Any,
+    query: CapabilityAllowanceQuery,
+    start: datetime,
+    reset: datetime,
 ) -> dict[str, Any]:
-    request_limit = _configured_limit("lifter", plan, "requests")
-    resource_limit = _configured_limit("lifter", plan, "resource_tokens")
-    usage = db.ai_allowance_usage(account_id, "lifter", now=start)
+    request_limit = _configured_limit(query.capability, query.plan, "requests")
+    resource_limit = _configured_limit(query.capability, query.plan, "resource_tokens")
+    usage = db.ai_allowance_usage(
+        query.account_id,
+        query.capability,
+        now=start,
+        projected_completed_turn_id=query.projected_completed_turn_id,
+    )
     remaining = max(0, request_limit - usage["requests_used"])
     return {
         "mode": "launch",
@@ -123,35 +201,72 @@ def admit_lifter_turn(
     turn_id: str,
     purpose: str | None,
 ) -> bool:
-    """Reserves one Lifter answer slot and checks its independent resource budget."""
-    if purpose == "checkpoint_review" or not launch_allowances_enabled():
+    return admit_capability_turn(
+        db, AllowanceTurn(account_id, "lifter", turn_id, purpose)
+    )
+
+
+def admit_coach_turn(
+    db: Any,
+    account_id: str,
+    turn_id: str,
+    purpose: str | None,
+) -> bool:
+    return admit_capability_turn(
+        db, AllowanceTurn(account_id, "coach", turn_id, purpose)
+    )
+
+
+def admit_capability_turn(
+    db: Any,
+    request: AllowanceTurn,
+) -> bool:
+    """Reserves one completed-answer slot and checks its capability resources."""
+    if (
+        request.capability == "lifter"
+        and request.purpose == "checkpoint_review"
+    ) or (
+        request.capability == "coach"
+        and request.purpose in COACH_ALLOWANCE_EXCLUDED_PURPOSES
+    ) or not launch_allowances_enabled():
         return False
-    effective_plan = lifter_plan(db, account_id)
-    request_limit = _configured_limit("lifter", effective_plan, "requests")
-    resource_limit = _configured_limit("lifter", effective_plan, "resource_tokens")
+    return _reserve_capability_turn(db, request)
+
+
+def _reserve_capability_turn(db: Any, request: AllowanceTurn) -> bool:
+    effective_plan = capability_plan(db, request.account_id, request.capability)
+    request_limit = _configured_limit(request.capability, effective_plan, "requests")
+    resource_limit = _configured_limit(request.capability, effective_plan, "resource_tokens")
     result = db.reserve_ai_allowance_turn(
         AllowanceReservation(
-            account_id=account_id,
-            capability="lifter",
-            purpose=purpose,
-            turn_id=turn_id,
+            account_id=request.account_id,
+            capability=request.capability,
+            purpose=request.purpose,
+            turn_id=request.turn_id,
             request_limit=request_limit,
             resource_limit=resource_limit,
         )
     )
-    if result["refusal"] is None:
-        return True
-    _raise_allowance_refusal(result["refusal"], result, request_limit)
+    if result["refusal"] is not None:
+        _raise_allowance_refusal(
+            result["refusal"], result, request_limit, request.capability
+        )
+    return True
 
 
 def _raise_allowance_refusal(
-    refusal: str, state: dict[str, Any], request_limit: int
+    refusal: str,
+    state: dict[str, Any],
+    request_limit: int,
+    capability: Capability,
 ) -> NoReturn:
     from service.model_limits import ModelLimitExceeded
 
     reset_at = str(state["reset_at"])
     remaining = max(0, request_limit - int(state["requests_used"]))
-    code, params, detail = _allowance_refusal_message(refusal, remaining, reset_at)
+    code, params, detail = _allowance_refusal_message(
+        refusal, remaining, reset_at, capability
+    )
     raise ModelLimitExceeded(
         detail,
         refusal,
@@ -161,26 +276,35 @@ def _raise_allowance_refusal(
 
 
 def _allowance_refusal_message(
-    refusal: str, remaining: int, reset_at: str
+    refusal: str, remaining: int, reset_at: str, capability: Capability = "lifter"
 ) -> tuple[str, dict[str, Any], str]:
     date = reset_at[:10]
+    label = "Lifter" if capability == "lifter" else "Coach"
     if refusal == "resource_cutoff":
         code = "ai_allowance.resource_cutoff.v1"
         params = {"remaining_requests": remaining, "reset_at": reset_at}
-        detail = (
-            f"The daily Lifter resource limit has been reached. "
-            f"{_request_remaining_phrase(remaining)}. "
-            f"The allowance resets at {date} 00:00 UTC."
-        )
     elif refusal == "request_in_progress":
         code = "ai_allowance.request_in_progress.v1"
         params = {"remaining_requests": remaining, "reset_at": reset_at}
-        detail = "All remaining daily Lifter requests are currently in progress. Please retry shortly."
     else:
         code = "ai_allowance.requests_exhausted.v1"
         params = {"remaining_requests": 0, "reset_at": reset_at}
-        detail = f"The daily Lifter request allowance is exhausted. It resets at {date} 00:00 UTC."
+    detail = _allowance_refusal_detail(refusal, remaining, date, label)
     return code, params, detail
+
+
+def _allowance_refusal_detail(
+    refusal: str, remaining: int, date: str, label: str
+) -> str:
+    if refusal == "resource_cutoff":
+        return (
+            f"The daily {label} resource limit has been reached. "
+            f"{_request_remaining_phrase(remaining)}. "
+            f"The allowance resets at {date} 00:00 UTC."
+        )
+    if refusal == "request_in_progress":
+        return f"All remaining daily {label} requests are currently in progress. Please retry shortly."
+    return f"The daily {label} request allowance is exhausted. It resets at {date} 00:00 UTC."
 
 
 def _request_remaining_phrase(remaining: int) -> str:

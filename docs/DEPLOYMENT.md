@@ -85,6 +85,8 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `AI_LAUNCH_ALLOWANCES_ENABLED` | `false` | Keeps the closed trial on the shared account cap; enable only after launch sizing |
 | `LIFTER_AI_FREE_DAILY_REQUESTS` / `LIFTER_AI_PRO_DAILY_REQUESTS` | unset | Required positive completed-answer ceilings when launch allowances are enabled; final values are selected from measured evidence |
 | `LIFTER_AI_FREE_DAILY_RESOURCE_TOKENS` / `LIFTER_AI_PRO_DAILY_RESOURCE_TOKENS` | unset | Required positive per-capability resource budgets when launch allowances are enabled; no language multiplier or discount |
+| `COACH_AI_FREE_DAILY_REQUESTS` / `COACH_AI_PRO_DAILY_REQUESTS` | unset | Required positive completed-answer ceilings when launch allowances are enabled; final values are selected from measured evidence |
+| `COACH_AI_FREE_DAILY_RESOURCE_TOKENS` / `COACH_AI_PRO_DAILY_RESOURCE_TOKENS` | unset | Required positive Coach resource budgets when launch allowances are enabled; separate from Lifter and the shared closed-trial cap |
 | `MODEL_PRICING_JSON` | built-in defaults | `{model: {"input": usd, "output": usd, "cached_input": usd}}` per 1M tokens; `cached_input` is optional and defaults to the input price; unknown model ⇒ cost 0 + warning |
 | `MODEL_SPEND_ALERT_USD` | `50` | Owner alert when projected month spend reaches this (evaluated on the hourly sweep) |
 | `LLM_API_KEY` | **required** | Credential for the hosted OpenAI-compatible chat API; missing credentials fail at model build |
@@ -108,6 +110,10 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `PRIVACY_CONTACT_EMAIL` | unset (⇒ placeholder + warning) | Owner contact rendered on the public privacy policy at `GET /privacy`; unset still serves the page |
 | `OWNER_ALERT_EMAIL` | unset | Recipient for model-spend and `/admin` login alerts. Model-spend alerts retry on the sweep; an admin login still succeeds if this is unset or email delivery fails, and the dashboard shows a red banner and audit event |
 | `COACH_EXTRA_BODY` | unset | Coach sends no extra body by default and ignores the player and judge body settings; a JSON object replaces its body, and `{}` sends none |
+
+Structured, owner-reviewed Coach program requests and free-form imports remain
+metered into Coach resource totals but are excluded from Coach allowance
+admission. Their launch sizing is deferred to #263.
 
 **Caller IP and rate-limit keying.** Every route limit (`RATE_LIMIT_*`) is keyed
 by caller address — plus a bearer-token suffix for authenticated calls — in

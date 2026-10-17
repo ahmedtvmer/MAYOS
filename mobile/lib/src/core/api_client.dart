@@ -1727,6 +1727,14 @@ class ApiClient {
           responseContent:
               frame['answer'] is String ? frame['answer'] as String : '',
           programUpdated: false,
+          outcome: frame['outcome'] is String
+              ? frame['outcome'] as String
+              : 'completed',
+          coachAllowance: frame['coach_allowance'] is Map<String, dynamic>
+              ? AiAllowance.fromJson(
+                  frame['coach_allowance'] as Map<String, dynamic>,
+                )
+              : null,
         ),
       );
 

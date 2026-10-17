@@ -93,6 +93,7 @@ class FakeMayosApi {
   String lifterPlan = 'free';
   String? coachPlan = 'free';
   Map<String, dynamic>? lifterAiAllowance;
+  Map<String, dynamic>? coachAiAllowance;
   bool profileExists = false;
   final List<Map<String, dynamic>> injuries = <Map<String, dynamic>>[];
   int _injuryId = 0;
@@ -501,6 +502,8 @@ class FakeMayosApi {
   bool coachAssistantDenied = false;
   // When true the assistant route answers the app-wide model-limit 429.
   bool coachAssistantRateLimited = false;
+  String? coachAssistantOutcome;
+  Map<String, dynamic>? coachAssistantAllowance;
   // Fail the next N streamed turns after sending a partial draft.
   int coachAssistantStreamFailuresRemaining = 0;
   String coachAssistantAnswer =
@@ -1063,6 +1066,8 @@ class FakeMayosApi {
       'plans': _plansBody(),
       if (lifterAiAllowance != null)
         'lifter_ai_allowance': lifterAiAllowance,
+      if (coachAiAllowance != null)
+        'coach_ai_allowance': coachAiAllowance,
       'coach_ai_enabled': coachAiEnabled,
       'coach_roster_ai_enabled': coachRosterAiEnabled,
       'coach_roster_ai_available': coachRosterAiAvailable,
@@ -1674,6 +1679,9 @@ class FakeMayosApi {
     coachAssistantRequests.add(request.body);
     if (coachAssistantStreamFailuresRemaining > 0) {
       coachAssistantStreamFailuresRemaining -= 1;
+      if (coachAssistantAllowance != null) {
+        coachAiAllowance = coachAssistantAllowance;
+      }
       return FakeResponse(200, null, <String>[
         'data: ${jsonEncode(<String, dynamic>{'token': 'Partial answer'})}\n\n',
         'event: error\ndata: ${jsonEncode(<String, dynamic>{'detail': "I couldn't complete that request. Please try again."})}\n\n',
@@ -1685,7 +1693,14 @@ class FakeMayosApi {
     return FakeResponse(200, null, <String>[
       'data: ${jsonEncode(<String, dynamic>{'token': first})}\n\n',
       'data: ${jsonEncode(<String, dynamic>{'token': second})}\n\n',
-      'data: ${jsonEncode(<String, dynamic>{'done': true, 'answer': coachAssistantAnswer})}\n\n',
+      'data: ${jsonEncode(<String, dynamic>{
+        'done': true,
+        'answer': coachAssistantAnswer,
+        if (coachAssistantOutcome != null)
+          'outcome': coachAssistantOutcome,
+        if ((coachAssistantAllowance ?? coachAiAllowance) != null)
+          'coach_allowance': coachAssistantAllowance ?? coachAiAllowance,
+      })}\n\n',
     ]);
   }
 
@@ -1744,6 +1759,7 @@ class FakeMayosApi {
       ],
       'left_out_for_budget': coachRosterLeftOutForBudget,
       'excluded_for_missing_disclosure': coachRosterExcludedForDisclosure,
+      if (coachAiAllowance != null) 'coach_ai_allowance': coachAiAllowance,
     });
   }
 

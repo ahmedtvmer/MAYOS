@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/display_language/copy_context.dart';
+import '../../../core/display_language/catalog.dart';
 import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
 import '../../../core/theme/mayos_theme.dart';
@@ -59,6 +60,17 @@ class PlanScreen extends ConsumerWidget {
         _PlanCard(
           capability: copy.coachPlanLabel,
           plan: plans.coach!,
+          allowance: account.coachAiAllowance == null
+              ? null
+              : copy.coachDailyAllowance(
+                  account.coachAiAllowance!.requestLimit,
+                ),
+          resourceDisclosure: account.coachAiAllowance?.mode == 'launch'
+              ? copy.aiResourceSafeguardDisclosure
+              : null,
+          allowanceState: account.coachAiAllowance?.mode == 'launch'
+              ? _coachAllowanceState(copy, account.coachAiAllowance!)
+              : null,
           benefits: <String>[
             copy.coachProfileAndInvites,
             copy.activeRosterWithStatus,
@@ -87,6 +99,19 @@ class PlanScreen extends ConsumerWidget {
         ],
       ],
     );
+  }
+
+  String _coachAllowanceState(MayosCopy copy, AiAllowance allowance) {
+    final int remaining = allowance.requestsRemaining ?? 0;
+    return switch (allowance.status) {
+      'warning' => copy.coachAllowanceWarning(remaining, allowance.resetAt),
+      'resource_cutoff' => copy.coachAllowanceCutoff(remaining, allowance.resetAt),
+      'requests_exhausted'
+          when allowance.resourceUsed >= allowance.resourceLimit =>
+        copy.coachAllowanceCutoff(remaining, allowance.resetAt),
+      'requests_exhausted' => copy.coachAllowanceExhausted(allowance.resetAt),
+      _ => copy.coachAllowanceSummary(remaining, allowance.resetAt),
+    };
   }
 }
 

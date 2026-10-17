@@ -9,6 +9,7 @@ player cancel, and the generic denial for every non-active assignment case.
 """
 
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -335,6 +336,84 @@ def test_apply_request_targets_exact_week_and_day_in_two_week_program(api, monke
     active = db.ledger.get_active_program()
     assert active.weeks[0].days[0].exercises[0].exercise_id == "sq"
     assert active.weeks[1].days[0].exercises[0].exercise_id == "ohp"
+
+
+def test_program_request_generation_runs_metered_at_coach_resource_cutoff(
+    api, monkeypatch
+):
+    from utils.model_metering import record_usage
+
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, coach_account_id, _ = _assigned_player(api)
+    monkeypatch.setenv("AI_LAUNCH_ALLOWANCES_ENABLED", "true")
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "1")
+    monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "0")
+    for capability in ("COACH", "LIFTER"):
+        for plan in ("FREE", "PRO"):
+            monkeypatch.setenv(f"{capability}_AI_{plan}_DAILY_REQUESTS", "2")
+            monkeypatch.setenv(
+                f"{capability}_AI_{plan}_DAILY_RESOURCE_TOKENS", "10"
+            )
+    db.record_model_usage(
+        coach_account_id,
+        "coach",
+        "test-model",
+        10,
+        0,
+        0.0,
+        False,
+        purpose="coach_assistant",
+        created_at=datetime.now(UTC).isoformat(),
+    )
+    player_program = _program()
+    with db.open_ledger("p1") as ledger:
+        ledger.save_training_program(
+            player_program.model_dump(),
+            published_by_coach_account_id=coach_account_id,
+        )
+    created = _create(
+        client,
+        player_headers,
+        kind="split_change",
+        desired_weekly_frequency=2,
+        desired_split_preference="Upper/Lower",
+    )
+    assert created.status_code == 200, created.text
+
+    def generate(
+        *,
+        frequency_override,
+        published_by_coach_account_id,
+        ledger,
+        **_program_options,
+    ):
+        record_usage("test-model", 40, 20, False)
+        generated = _program(frequency=frequency_override)
+        ledger.save_training_program(
+            generated.model_dump(),
+            published_by_coach_account_id=published_by_coach_account_id,
+        )
+        return generated, "Synthetic program generation."
+
+    monkeypatch.setattr(
+        program_requests_service, "generate_program_pipeline", generate
+    )
+    applied = client.post(
+        f"/coach/assignments/{assignment_id}/program-requests/{created.json()['request_id']}/apply",
+        headers=coach_headers,
+    )
+
+    assert applied.status_code == 200, applied.text
+    allowance = client.get("/auth/me", headers=coach_headers).json()["coach_ai_allowance"]
+    assert allowance["status"] == "resource_cutoff"
+    assert allowance["requests_used"] == 0
+    assert allowance["resource_used"] == 70
+    usage = db.catalog_conn.execute(
+        "SELECT input_tokens, output_tokens FROM model_usage"
+        " WHERE account_id = ? AND purpose = 'coach_program_request'",
+        (coach_account_id,),
+    ).fetchone()
+    assert tuple(usage) == (40, 20)
 
 
 def test_program_request_responses_include_library_display_names_on_every_route(api, monkeypatch):

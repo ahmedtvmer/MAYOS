@@ -312,8 +312,8 @@ class AccountPlansOut(BaseModel):
     coach: PlanStateOut | None = None
 
 
-class LifterAiAllowanceOut(BaseModel):
-    """Durable Lifter request/resource state; trial mode preserves the shared cap."""
+class AiAllowanceOut(BaseModel):
+    """Durable capability request/resource state; trial mode preserves the shared cap."""
 
     mode: Literal["trial", "launch"]
     status: Literal["trial", "available", "warning", "resource_cutoff", "requests_exhausted"]
@@ -343,7 +343,8 @@ class AccountOut(BaseModel):
     trainee_id: str
     capabilities: AccountCapabilitiesOut
     plans: AccountPlansOut
-    lifter_ai_allowance: LifterAiAllowanceOut | None = None
+    lifter_ai_allowance: AiAllowanceOut | None = None
+    coach_ai_allowance: AiAllowanceOut | None = None
     has_password: bool
     linked_sign_ins: list[str]
     display_language: DisplayLanguage
@@ -439,6 +440,7 @@ class CoachRosterAssistantOut(BaseModel):
     client_mapping: list[CoachRosterClientMappingOut]
     left_out_for_budget: int = 0
     excluded_for_missing_disclosure: int = 0
+    coach_ai_allowance: AiAllowanceOut | None = None
 
 
 #: Bounds for the coach assistant request (issue #45). The client holds the

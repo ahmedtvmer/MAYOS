@@ -137,6 +137,7 @@ class _CoachAssistantTabScreenState
       account?.coachRosterAiEnabled ?? false,
       account?.coachAiEnabled ?? false,
       account?.coachRosterAiAvailable ?? false,
+      account?.coachAiAllowance,
     );
   }
 
@@ -149,6 +150,7 @@ class _CoachAssistantTabScreenState
     bool rosterAiEnabled,
     bool playerAiEnabled,
     bool coachPro,
+    AiAllowance? coachAllowance,
   ) =>
       SingleChildScrollView(
         padding: const EdgeInsets.all(MayosSpacing.lg),
@@ -158,6 +160,8 @@ class _CoachAssistantTabScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
+                if (coachAllowance != null)
+                  CoachAllowanceNotice(allowance: coachAllowance),
                 CoachRosterAssistantPanel(
                   enabled: rosterAiEnabled,
                   coachPro: coachPro,

@@ -11,12 +11,11 @@ from typing import TYPE_CHECKING, Any
 
 from agent.player_prompt import prompt_token_count
 from service import coach_ai, evaluation_report_gate
-from service.evaluation_report_gate import EvaluationReportConfig, GateStatus
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from svc.llm import InferenceScope
+    from svc.llm import InferenceScope, InferenceTurnState
 
 CONTEXT_VERSION = "coach-roster-context-v2"
 REPORT_VERSION = 1
@@ -285,7 +284,7 @@ def coach_model_identity() -> tuple[str, str]:
     return model_downloader.model_identity("coach")
 
 
-_EVALUATION_REPORT_CONFIG = EvaluationReportConfig(
+_EVALUATION_REPORT_CONFIG = evaluation_report_gate.EvaluationReportConfig(
     enabled_flag="COACH_ROSTER_AI_ENABLED",
     report_env_var="COACH_ROSTER_AI_EVAL_REPORT",
     model_identity=coach_model_identity,
@@ -311,7 +310,7 @@ def _validate_report_file(path: str) -> tuple[bool, str]:
     return evaluation_report_gate.validate_report_file(path, validate_report)
 
 
-def resolve_enable_gate() -> GateStatus:
+def resolve_enable_gate() -> evaluation_report_gate.GateStatus:
     """Resolves the flag and report required to enable roster questions."""
     return evaluation_report_gate.resolve_enable_gate(
         _EVALUATION_REPORT_CONFIG, _validate_report_file
@@ -323,7 +322,7 @@ def coach_roster_ai_enabled() -> bool:
     return resolve_enable_gate().enabled
 
 
-def log_enable_gate_at_startup() -> GateStatus:
+def log_enable_gate_at_startup() -> evaluation_report_gate.GateStatus:
     """Logs the startup verdict for the roster report gate."""
     return evaluation_report_gate.log_enable_gate_at_startup(
         _EVALUATION_REPORT_CONFIG,
@@ -370,13 +369,23 @@ def invoke_model(messages: list[Any]) -> str:
 
 
 def answer_question(
-    messages: list[Any], scope: InferenceScope, background_tasks: Any,
+    messages: list[Any],
+    scope: InferenceScope,
+    background_tasks: Any,
+    turn: InferenceTurnState | None = None,
 ) -> str:
     """Runs one admitted, metered coach-model call without retaining the exchange."""
-    from svc.llm import inference_turn, run_inference_sync
+    from svc.llm import InferenceTurnState, inference_turn, run_inference_sync
 
-    with inference_turn(scope, background_tasks=background_tasks):
-        return run_inference_sync(invoke_model, messages, scope=scope)
+    active_turn = turn or InferenceTurnState(scope)
+    with inference_turn(
+        scope,
+        background_tasks=background_tasks,
+        state=active_turn,
+    ):
+        answer = run_inference_sync(invoke_model, messages, scope=scope)
+        active_turn.mark_answer_completed(answer)
+        return answer
 
 
 __all__ = [

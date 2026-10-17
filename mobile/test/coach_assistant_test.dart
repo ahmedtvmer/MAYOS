@@ -287,10 +287,83 @@ void main() {
     expect(_assistantMarkdown(fake.coachAssistantAnswer), findsOneWidget);
   });
 
+  testWidgets('a truncated Coach answer is not added to the transcript',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..coachAssistantOutcome = 'truncated';
+    fake.coachAiAllowance = <String, dynamic>{
+      'mode': 'launch',
+      'status': 'available',
+      'request_limit': 5,
+      'requests_used': 1,
+      'requests_remaining': 4,
+      'resource_limit': 1000,
+      'resource_used': 500,
+      'reset_at': '2026-10-18T00:00:00+00:00',
+    };
+    fake.coachAssistantAllowance = <String, dynamic>{
+      'mode': 'launch',
+      'status': 'warning',
+      'request_limit': 5,
+      'requests_used': 2,
+      'requests_remaining': 3,
+      'resource_limit': 1000,
+      'resource_used': 800,
+      'reset_at': '2026-10-18T00:00:00+00:00',
+    };
+    await _pumpApp(tester, fake);
+    await _openRoster(tester);
+    await _openAssistant(tester, 'bob');
+
+    await _ask(tester, 'How is training progressing?');
+    await _pumpUntilFound(
+      tester,
+      find.byKey(const Key('coach_assistant_error')),
+    );
+
+    expect(find.byKey(const Key('coach_assistant_error')), findsOneWidget);
+    expect(find.textContaining('cut off before it finished'), findsOneWidget);
+    expect(find.byKey(const Key('coach_allowance_notice')), findsOneWidget);
+    expect(find.textContaining('Coach assistant resources are nearing'), findsOneWidget);
+    expect(find.byKey(const Key('coach_assistant_live_draft')), findsNothing);
+    final CoachAssistantTranscript? transcript =
+        _container(tester).read(coachAssistantControllerProvider);
+    expect(transcript!.turns, isEmpty);
+    expect(
+      _container(tester)
+          .read(authControllerProvider)
+          .session!
+          .account
+          .coachAiAllowance!
+          .requestsRemaining,
+      3,
+    );
+  });
+
   testWidgets('stream failure shows retry state and a retry can finish',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _coachFake()
       ..coachAssistantStreamFailuresRemaining = 1;
+    fake.coachAiAllowance = <String, dynamic>{
+      'mode': 'launch',
+      'status': 'available',
+      'request_limit': 5,
+      'requests_used': 1,
+      'requests_remaining': 4,
+      'resource_limit': 1000,
+      'resource_used': 500,
+      'reset_at': '2026-10-18T00:00:00+00:00',
+    };
+    fake.coachAssistantAllowance = <String, dynamic>{
+      'mode': 'launch',
+      'status': 'warning',
+      'request_limit': 5,
+      'requests_used': 1,
+      'requests_remaining': 4,
+      'resource_limit': 1000,
+      'resource_used': 800,
+      'reset_at': '2026-10-18T00:00:00+00:00',
+    };
     await _pumpApp(tester, fake);
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
@@ -300,6 +373,11 @@ void main() {
         tester, find.byKey(const Key('coach_assistant_error')));
 
     expect(find.byKey(const Key('coach_assistant_error')), findsOneWidget);
+    await _pumpUntilFound(
+      tester,
+      find.textContaining('Coach assistant resources are nearing'),
+    );
+    expect(find.byKey(const Key('coach_allowance_notice')), findsOneWidget);
     expect(find.byKey(const Key('coach_assistant_live_draft')), findsNothing);
     expect(
       tester
@@ -513,9 +591,20 @@ void main() {
   testWidgets('opening the assistant for another player clears the transcript',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _coachFake(secondPlayer: true);
+    fake.coachAiAllowance = <String, dynamic>{
+      'mode': 'launch',
+      'status': 'warning',
+      'request_limit': 5,
+      'requests_used': 2,
+      'requests_remaining': 3,
+      'resource_limit': 1000,
+      'resource_used': 800,
+      'reset_at': '2026-10-18T00:00:00+00:00',
+    };
     await _pumpApp(tester, fake);
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
+    expect(find.byKey(const Key('coach_allowance_notice')), findsOneWidget);
     await _ask(tester, 'Bob question?');
     await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
     expect(find.text('Bob question?'), findsOneWidget);
@@ -523,6 +612,8 @@ void main() {
     await _closeAssistant(tester);
     await _closeHistory(tester);
     await _openAssistant(tester, 'carol');
+    expect(find.byKey(const Key('coach_allowance_notice')), findsOneWidget);
+    expect(find.textContaining('3 requests remain'), findsOneWidget);
 
     expect(find.text('Bob question?'), findsNothing);
     expect(_assistantMarkdown(fake.coachAssistantAnswer), findsNothing);

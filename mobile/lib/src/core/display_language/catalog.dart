@@ -108,12 +108,22 @@ class MayosCopy {
       : '$count character${count == 1 ? '' : 's'} left';
   String lifterDailyAllowance(int? requestLimit) =>
       _allowanceCopy.lifterDailyAllowance(requestLimit);
+  String coachDailyAllowance(int? requestLimit) =>
+      _allowanceCopy.coachDailyAllowance(requestLimit);
   String get aiResourceSafeguardDisclosure =>
       _allowanceCopy.resourceSafeguardDisclosure;
   String lifterAllowanceSummary(int remaining, String resetAt) =>
       _allowanceCopy.allowanceSummary(remaining, resetAt);
   String lifterAllowanceExhausted(String resetAt) =>
       _allowanceCopy.requestsExhausted(resetAt);
+  String coachAllowanceSummary(int remaining, String resetAt) =>
+      _allowanceCopy.coachAllowanceSummary(remaining, resetAt);
+  String coachAllowanceExhausted(String resetAt) =>
+      _allowanceCopy.coachRequestsExhausted(resetAt);
+  String coachAllowanceWarning(int remaining, String resetAt) =>
+      _allowanceCopy.coachResourceWarning(remaining, resetAt);
+  String coachAllowanceCutoff(int remaining, String resetAt) =>
+      _allowanceCopy.coachResourceCutoff(remaining, resetAt);
   String aiAllowanceWarning(int remaining, String resetAt) =>
       _allowanceCopy.resourceWarning(remaining, resetAt);
   String aiAllowanceCutoff(int remaining, String resetAt) =>

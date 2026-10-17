@@ -16,6 +16,14 @@ class AiAllowanceCopy {
           ? 'حتى ${_ltr('$requestLimit')} إجابة مكتملة من المساعد يوميًا بتوقيت UTC.'
           : 'Up to $requestLimit complete assistant answers each UTC day.');
 
+  String coachDailyAllowance(int? requestLimit) => requestLimit == null
+      ? (isArabic
+          ? 'خلال الفترة التجريبية، يخضع استخدام مساعد المدرب لحد موارد يومي مشترك.'
+          : 'During the trial, Coach assistant use follows a shared daily resource limit.')
+      : (isArabic
+          ? 'حتى ${_ltr('$requestLimit')} إجابة مكتملة من مساعد المدرب يوميًا بتوقيت UTC.'
+          : 'Up to $requestLimit complete Coach assistant answers each UTC day.');
+
   String get resourceSafeguardDisclosure => isArabic
       ? 'قد يمنع حد يومي مستقل للموارد استخدام المساعد مع بقاء طلبات متاحة. قد تستهلك المحادثات الأطول والردود بالعربية موارد أكثر.'
       : 'A separate daily resource limit may stop assistant use while requests remain. Longer conversations and Arabic replies may use more resources.';
@@ -36,11 +44,33 @@ class AiAllowanceCopy {
           '${remaining == 1 ? 'request remains' : 'requests remain'}. '
           'Resets at ${_resetAtLabel(resetAt)}.';
 
+  String coachResourceWarning(int remaining, String resetAt) => isArabic
+      ? 'موارد مساعد المدرب تقترب من الحد اليومي. المتبقي من الطلبات: ${_ltr('$remaining')}. يُعاد الضبط في ${_ltr(_resetAtLabel(resetAt))}.'
+      : 'Coach assistant resources are nearing today’s limit. $remaining '
+          '${remaining == 1 ? 'request remains' : 'requests remain'}. '
+          'Resets at ${_resetAtLabel(resetAt)}.';
+
   String resourceCutoff(int remaining, String resetAt) => isArabic
       ? 'وصلت إلى حد موارد المساعد اليومي. المتبقي من الطلبات: ${_ltr('$remaining')}. يُعاد الضبط في ${_ltr(_resetAtLabel(resetAt))}.'
       : 'You have reached today’s assistant resource limit. $remaining '
           '${remaining == 1 ? 'request remains' : 'requests remain'}. '
           'Resets at ${_resetAtLabel(resetAt)}.';
+
+  String coachResourceCutoff(int remaining, String resetAt) => isArabic
+      ? 'وصلت إلى حد موارد مساعد المدرب اليومي. المتبقي من الطلبات: ${_ltr('$remaining')}. يُعاد الضبط في ${_ltr(_resetAtLabel(resetAt))}.'
+      : 'You have reached today’s Coach assistant resource limit. $remaining '
+          '${remaining == 1 ? 'request remains' : 'requests remain'}. '
+          'Resets at ${_resetAtLabel(resetAt)}.';
+
+  String coachAllowanceSummary(int remaining, String resetAt) => isArabic
+      ? 'المتبقي من طلبات مساعد المدرب اليوم: ${_ltr('$remaining')}. يُعاد الضبط في ${_ltr(_resetAtLabel(resetAt))}.'
+      : '$remaining Coach assistant '
+          '${remaining == 1 ? 'request remains' : 'requests remain'} today. '
+          'Resets at ${_resetAtLabel(resetAt)}.';
+
+  String coachRequestsExhausted(String resetAt) => isArabic
+      ? 'استنفدت طلبات مساعد المدرب لهذا اليوم. يُعاد الضبط في ${_ltr(_resetAtLabel(resetAt))}.'
+      : 'You have used today’s Coach assistant requests. Resets at ${_resetAtLabel(resetAt)}.';
 
   String resourceCutoffError(int remaining, String resetAt) =>
       resourceCutoff(remaining, resetAt);

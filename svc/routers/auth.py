@@ -464,7 +464,7 @@ async def read_current_account(
                 MessageMetadata("auth.invalid_or_expired_token.v1"),
             )
         plans = plans_service.effective_plans_for_account(db, account)
-        from service.ai_allowance import get_lifter_allowance
+        from service.ai_allowance import get_coach_allowance, get_lifter_allowance
 
         lifter_plan = plans[plans_service.CAPABILITY_LIFTER]
         lifter_allowance = (
@@ -472,22 +472,30 @@ async def read_current_account(
             if lifter_plan is not None
             else None
         )
+        coach_plan = plans[plans_service.CAPABILITY_COACH]
+        coach_allowance = (
+            get_coach_allowance(db, account["account_id"], coach_plan["plan"])
+            if coach_plan is not None
+            else None
+        )
         return (
             account,
             plans,
             lifter_allowance,
+            coach_allowance,
             auth_service.account_has_password(db, account),
             db.list_linked_sign_in_providers(account["account_id"]),
             db.is_recovery_email_verified(account["account_id"]),
         )
 
-    account, plans, lifter_allowance, has_password, linked_sign_ins, recovery_email_verified = await asyncio.to_thread(_run)
+    account, plans, lifter_allowance, coach_allowance, has_password, linked_sign_ins, recovery_email_verified = await asyncio.to_thread(_run)
     return AccountOut(
         account_id=account["account_id"],
         trainee_id=account["username"],
         capabilities=AccountCapabilitiesOut(player=account["is_player"], coach=account["is_coach"]),
         plans=AccountPlansOut(**plans),
         lifter_ai_allowance=lifter_allowance,
+        coach_ai_allowance=coach_allowance,
         has_password=has_password,
         linked_sign_ins=linked_sign_ins,
         display_language=account["display_language"],

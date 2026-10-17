@@ -70,11 +70,14 @@ class InferenceTurnState:
     outcome: str = "ok"
     answer_outcome: str = "pending"
     allowance_reserved: bool = False
+    defer_allowance_finalization: bool = False
     finish_reason: str | None = None
     _has_truncation: bool = field(default=False, init=False, repr=False)
     latency_ms: int = 0
     _emitted: bool = field(default=False, init=False, repr=False)
     _completion_suppressed: bool = field(default=False, init=False, repr=False)
+    _allowance_finalized: bool = field(default=False, init=False, repr=False)
+    _allowance_finalize_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
     _ready: threading.Event = field(default_factory=threading.Event, init=False, repr=False)
     _emit_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
     _usage_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
@@ -115,19 +118,22 @@ class InferenceTurnState:
 
     def _finalize_allowance_outcome(self) -> None:
         self._classify_allowance_outcome()
-        if (
-            self.scope.role != "player"
-            or not self.allowance_reserved
-            or self.scope.purpose == "checkpoint_review"
-        ):
+        capability = {"player": "lifter", "coach": "coach"}.get(self.scope.role)
+        if capability is None or not self.allowance_reserved:
             return
+        if self.scope.role == "player" and self.scope.purpose == "checkpoint_review":
+            return
+        with self._allowance_finalize_lock:
+            if self._allowance_finalized:
+                return
+            self._allowance_finalized = True
         from service.ai_allowance import finish_allowance_turn
 
-        finish_allowance_turn(
-            self.scope.store,
-            self.turn_id,
-            self.answer_outcome,  # type: ignore[arg-type]
-        )
+        finish_allowance_turn(self.scope.store, self.turn_id, self.answer_outcome)  # type: ignore[arg-type]
+
+    def finalize_allowance(self) -> None:
+        """Persists the final answer outcome after a deferred stream is delivered."""
+        self._finalize_allowance_outcome()
 
     def _classify_allowance_outcome(self) -> None:
         if self.answer_outcome == "pending":
@@ -267,7 +273,10 @@ def inference_turn(
             turn.mark_error()
         raise
     finally:
-        turn._finalize_allowance_outcome()
+        if turn.defer_allowance_finalization:
+            turn._classify_allowance_outcome()
+        else:
+            turn._finalize_allowance_outcome()
         turn.flush_limit_hits()
         turn._ready.set()
         if wait_for is None:
@@ -369,7 +378,7 @@ def _usage_scope(scope: InferenceScope) -> Iterator[None]:
 
 def _admit_scope(scope: InferenceScope, turn: InferenceTurnState | None) -> Token[str | None] | None:
     from service.model_limits import ModelAdmissionContext, admit_model_request
-    from service.ai_allowance import admit_lifter_turn, launch_allowances_enabled
+    from service.ai_allowance import launch_allowances_enabled
 
     if not scope.admit:
         return None
@@ -378,14 +387,36 @@ def _admit_scope(scope: InferenceScope, turn: InferenceTurnState | None) -> Toke
         client=scope.client,
         background_tasks=turn.background_tasks if turn is not None else None,
         defer_limit_hit=turn.defer_limit_hit if turn is not None else None,
-        skip_daily_token_limit=scope.role == "player" and launch_allowances_enabled(),
+        skip_daily_token_limit=(
+            scope.role in {"player", "coach"} and launch_allowances_enabled()
+        ),
     )
     token = admit_model_request(scope.account_id, db=scope.store, context=context)
-    if scope.role == "player" and turn is not None:
-        turn.allowance_reserved = turn.allowance_reserved or admit_lifter_turn(
-            scope.store, str(scope.account_id), turn.turn_id, scope.purpose
-        )
+    _reserve_scope_allowance(scope, turn)
     return token
+
+
+def _reserve_scope_allowance(
+    scope: InferenceScope, turn: InferenceTurnState | None
+) -> None:
+    if turn is None or scope.role not in {"player", "coach"}:
+        return
+    from service.ai_allowance import launch_allowances_enabled
+
+    if scope.account_id is None:
+        if launch_allowances_enabled():
+            raise RuntimeError("Capability inference needs an attributed account.")
+        return
+    from service.ai_allowance import admit_coach_turn, admit_lifter_turn
+
+    if scope.role == "player":
+        turn.allowance_reserved = turn.allowance_reserved or admit_lifter_turn(
+            scope.store, scope.account_id, turn.turn_id, scope.purpose
+        )
+    elif scope.role == "coach":
+        turn.allowance_reserved = turn.allowance_reserved or admit_coach_turn(
+            scope.store, scope.account_id, turn.turn_id, scope.purpose
+        )
 
 
 def _metering_context(

@@ -14,6 +14,7 @@ import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/mayos_markdown.dart';
+import '../../core/ui/mayos_card.dart';
 import '../../core/ui/mayos_scaffold.dart';
 import '../../core/ui/mayos_text_field.dart';
 import '../../core/ui/first_strong_direction.dart';
@@ -128,8 +129,32 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
       if (event is ChatToken) {
         setState(() => _draftAnswer += event.token);
       } else if (event is ChatDone) {
+        final AiAllowance? allowance = event.coachAllowance;
+        final String? accountId = ref
+            .read(authControllerProvider)
+            .session
+            ?.account
+            .accountId;
+        if (allowance != null && accountId != null) {
+          ref
+              .read(authControllerProvider.notifier)
+              .updateCoachAiAllowance(accountId, allowance);
+        }
+        if (event.outcome == 'truncated') {
+          final String message = displayCopyOf(context).aiAnswerTruncated;
+          _showStreamError(
+            ChatError(
+              message,
+              messageCode: 'ai_allowance.answer_truncated.v1',
+              messageParams: const <String, dynamic>{},
+              messageFallback: message,
+            ),
+          );
+          return;
+        }
         completion = event;
       } else if (event is ChatError) {
+        unawaited(ref.read(authControllerProvider.notifier).refreshAccount());
         _showStreamError(event);
         return;
       }
@@ -181,6 +206,9 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
     if (failure.statusCode == 404) {
       unawaited(ref.read(authControllerProvider.notifier).refreshAccount());
     }
+    if (failure.statusCode == 429 || failure.statusCode == 503) {
+      unawaited(ref.read(authControllerProvider.notifier).refreshAccount());
+    }
     setState(() {
       _sending = false;
       _draftAnswer = '';
@@ -206,11 +234,18 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
             : const <CoachAssistantTurn>[];
     final MayosThemeExtension c = MayosTheme.of(context);
     final copy = coachCopyOf(context);
+    final AiAllowance? allowance = ref
+        .watch(authControllerProvider)
+        .session
+        ?.account
+        .coachAiAllowance;
     return MayosScaffold(
       title: copy.assistant,
       showBack: true,
       body: Column(
         children: <Widget>[
+          if (allowance != null)
+            CoachAllowanceNotice(allowance: allowance),
           Expanded(
             flex: 2,
             child: turns.isEmpty && !_sending
@@ -431,6 +466,58 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Persistent launch-state warning shared by the Coach assistant entry points.
+class CoachAllowanceNotice extends StatelessWidget {
+  const CoachAllowanceNotice({super.key, required this.allowance});
+
+  final AiAllowance allowance;
+
+  String _allowanceMessage(BuildContext context) {
+    final copy = displayCopyOf(context);
+    final int remaining = allowance.requestsRemaining ?? 0;
+    return switch (allowance.status) {
+      'warning' => copy.coachAllowanceWarning(remaining, allowance.resetAt),
+      'resource_cutoff' =>
+        copy.coachAllowanceCutoff(remaining, allowance.resetAt),
+      'requests_exhausted'
+          when allowance.resourceUsed >= allowance.resourceLimit =>
+        copy.coachAllowanceCutoff(remaining, allowance.resetAt),
+      _ => copy.coachAllowanceExhausted(allowance.resetAt),
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (allowance.mode != 'launch' ||
+        !<String>{'warning', 'resource_cutoff', 'requests_exhausted'}
+            .contains(allowance.status)) {
+      return const SizedBox.shrink();
+    }
+    final String message = _allowanceMessage(context);
+    final MayosThemeExtension colors = MayosTheme.of(context);
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(
+        MayosSpacing.md,
+        MayosSpacing.xs,
+        MayosSpacing.md,
+        0,
+      ),
+      child: MayosCard(
+        child: FirstStrongDirection(
+          text: message,
+          child: Text(
+            message,
+            key: const Key('coach_allowance_notice'),
+            style: MayosTypography.of(context)
+                .bodySecondary
+                .copyWith(color: colors.textPrimary),
+          ),
         ),
       ),
     );

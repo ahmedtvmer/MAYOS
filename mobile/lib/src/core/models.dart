@@ -164,6 +164,7 @@ class Account {
     this.analyticsAllowed = true,
     this.recoveryEmailVerified = false,
     this.lifterAiAllowance,
+    this.coachAiAllowance,
   });
 
   factory Account.fromJson(Map<String, dynamic> json) {
@@ -193,6 +194,9 @@ class Account {
       recoveryEmailVerified: json['recovery_email_verified'] as bool? ?? false,
       lifterAiAllowance: json['lifter_ai_allowance'] is Map<String, dynamic>
           ? AiAllowance.fromJson(json['lifter_ai_allowance'] as Map<String, dynamic>)
+          : null,
+      coachAiAllowance: json['coach_ai_allowance'] is Map<String, dynamic>
+          ? AiAllowance.fromJson(json['coach_ai_allowance'] as Map<String, dynamic>)
           : null,
     );
   }
@@ -231,6 +235,9 @@ class Account {
   /// Current durable Lifter request/resource state, refreshed with the account.
   final AiAllowance? lifterAiAllowance;
 
+  /// Current durable Coach request/resource state, refreshed with the account.
+  final AiAllowance? coachAiAllowance;
+
   Account copyWith({
     String? accountId,
     String? traineeId,
@@ -245,6 +252,7 @@ class Account {
     bool? analyticsAllowed,
     bool? recoveryEmailVerified,
     AiAllowance? lifterAiAllowance,
+    AiAllowance? coachAiAllowance,
   }) =>
       Account(
         accountId: accountId ?? this.accountId,
@@ -263,6 +271,7 @@ class Account {
         recoveryEmailVerified:
             recoveryEmailVerified ?? this.recoveryEmailVerified,
         lifterAiAllowance: lifterAiAllowance ?? this.lifterAiAllowance,
+        coachAiAllowance: coachAiAllowance ?? this.coachAiAllowance,
       );
 
   bool get isCoach => capabilities.coach;
@@ -819,6 +828,7 @@ class CoachRosterAssistantReply {
     required this.displayNameByPlayerId,
     required this.leftOutForBudget,
     required this.excludedForMissingDisclosure,
+    this.coachAiAllowance,
   });
 
   factory CoachRosterAssistantReply.fromJson(Map<String, dynamic> json) {
@@ -848,6 +858,9 @@ class CoachRosterAssistantReply {
           (json['left_out_for_budget'] as num?)?.toInt() ?? 0,
       excludedForMissingDisclosure:
           (json['excluded_for_missing_disclosure'] as num?)?.toInt() ?? 0,
+      coachAiAllowance: json['coach_ai_allowance'] is Map<String, dynamic>
+          ? AiAllowance.fromJson(json['coach_ai_allowance'] as Map<String, dynamic>)
+          : null,
     );
   }
 
@@ -857,6 +870,7 @@ class CoachRosterAssistantReply {
   final Map<String, String> displayNameByPlayerId;
   final int leftOutForBudget;
   final int excludedForMissingDisclosure;
+  final AiAllowance? coachAiAllowance;
 }
 
 /// `GET /coach/alerts`: one catalog-side alert (ADR 030/031/032).

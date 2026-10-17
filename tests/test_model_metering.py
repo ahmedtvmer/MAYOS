@@ -5,6 +5,7 @@ double that emits usage metadata and fires the same metering callback the cloud
 and local builders attach. The catalog ledger is a temporary SQLite file.
 """
 
+import asyncio
 import json
 import sqlite3
 import threading
@@ -69,6 +70,28 @@ def _fake_model(
         finish_reason=finish_reason,
         callbacks=[MeteringCallback(model_id)],
     )
+
+
+class _SequentialCoachProvider:
+    """Runs multiple boundary calls through the real Coach stream path."""
+
+    def __init__(self, *providers: Any):
+        self.providers = providers
+
+    def stream(self, messages):
+        for provider in self.providers:
+            yield from provider.stream(messages)
+
+
+class _FailAfterMeteredCoachProvider:
+    """Reports usage from a provider call, then fails that call."""
+
+    def __init__(self, model: ScriptedChatModel):
+        self.model = model
+
+    def stream(self, messages):
+        self.model.invoke(messages)
+        raise RuntimeError("provider failed after an earlier model call")
 
 
 @pytest.fixture(autouse=True)
@@ -259,6 +282,23 @@ def _assigned_player(client, db, player: str = "player1"):
     return coach_headers, player_headers, redeemed.json()["assignment"]["assignment_id"]
 
 
+def _assign_player(client, coach_headers, username: str):
+    invite = client.post("/coach/assignments/invites", headers=coach_headers).json()
+    player_headers = _authed(_register(client, username))
+    redeemed = client.post(
+        "/assignments/invites/redeem",
+        headers=player_headers,
+        json={"token": invite["token"], "consent": True},
+    )
+    assert redeemed.status_code == 200, redeemed.text
+    assert client.put(
+        "/profile",
+        headers=player_headers,
+        json={"weekly_frequency": 4, "current_goal": "Hypertrophy"},
+    ).status_code == 200
+    return player_headers, redeemed.json()["assignment"]["assignment_id"]
+
+
 # --------------------------------------------------------------------------
 # AC1: metering by immutable account id and model
 # --------------------------------------------------------------------------
@@ -350,6 +390,33 @@ def _enable_synthetic_lifter_allowance(monkeypatch, *, requests: int = 3, tokens
     monkeypatch.setenv("LIFTER_AI_PRO_DAILY_RESOURCE_TOKENS", str(tokens))
 
 
+def _enable_synthetic_coach_allowance(monkeypatch, *, requests: int = 3, tokens: int = 1000):
+    _enable_synthetic_lifter_allowance(monkeypatch, requests=requests, tokens=tokens)
+    monkeypatch.setenv("COACH_CLOSED_TRIAL_OVERRIDE", "false")
+    monkeypatch.setenv("COACH_AI_FREE_DAILY_REQUESTS", str(requests))
+    monkeypatch.setenv("COACH_AI_PRO_DAILY_REQUESTS", str(requests))
+    monkeypatch.setenv("COACH_AI_FREE_DAILY_RESOURCE_TOKENS", str(tokens))
+    monkeypatch.setenv("COACH_AI_PRO_DAILY_RESOURCE_TOKENS", str(tokens))
+    monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "0")
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "200000")
+
+
+def _post_coach_assistant(client, headers, assignment_id: str):
+    return client.post(
+        f"/coach/assignments/{assignment_id}/assistant",
+        headers=headers,
+        json={"question": "How is training progressing?"},
+    )
+
+
+def _coach_done_frame(response):
+    return next(
+        json.loads(line.removeprefix("data: "))
+        for line in response.text.splitlines()
+        if line.startswith("data: ") and '"done"' in line
+    )
+
+
 def test_lifter_allowance_is_durable_across_tokens_and_counts_multicall_once(api, monkeypatch):
     client, db = api
     _enable_synthetic_lifter_allowance(monkeypatch, requests=3, tokens=1000)
@@ -400,6 +467,407 @@ def test_lifter_allowance_is_durable_across_tokens_and_counts_multicall_once(api
     ).json()["lifter_ai_allowance"]
     assert arabic_state["request_limit"] == 3
     assert arabic_state["requests_remaining"] == 1
+
+
+def test_coach_multicall_allowance_is_durable_across_players_and_revocation(
+    api, monkeypatch
+):
+    client, db = api
+    _enable_synthetic_coach_allowance(monkeypatch, requests=4, tokens=1000)
+    coach_headers, _player_headers, assignment_id = _assigned_player(client, db)
+    account_id = _account_id(db, "coach")
+    second_token = client.post(
+        "/auth/login",
+        json={"trainee_id": "coach", "password": "correct-horse-1"},
+    ).json()["access_token"]
+    second_headers = _authed(second_token)
+    monkeypatch.setattr("service.coach_ai.coach_ai_enabled", lambda: True)
+    provider = _SequentialCoachProvider(
+        _fake_model(input_tokens=100, output_tokens=50),
+        _fake_model(input_tokens=100, output_tokens=50),
+    )
+    monkeypatch.setattr(
+        "utils.model_downloader.get_coach_llm",
+        lambda *args, **kwargs: provider,
+    )
+    first = _post_coach_assistant(client, coach_headers, assignment_id)
+    assert first.status_code == 200, first.text
+    first_done = _coach_done_frame(first)
+    assert first_done["outcome"] == "completed"
+    assert first_done["coach_allowance"]["requests_used"] == 1
+    assert first_done["coach_allowance"]["requests_remaining"] == 3
+    state = client.get("/auth/me", headers=second_headers).json()["coach_ai_allowance"]
+    assert state["requests_used"] == 1
+    assert state["requests_remaining"] == 3
+    assert state["resource_used"] == 300
+
+    assert client.put(
+        "/auth/display-language",
+        headers=second_headers,
+        json={"display_language": "ar"},
+    ).status_code == 200
+    _second_player_headers, second_assignment_id = _assign_player(
+        client, coach_headers, "second-player"
+    )
+    second = _post_coach_assistant(client, second_headers, second_assignment_id)
+    assert second.status_code == 200, second.text
+    second_state = client.get("/auth/me", headers=coach_headers).json()["coach_ai_allowance"]
+    assert second_state["request_limit"] == state["request_limit"] == 4
+    assert second_state["requests_used"] == 2
+    assert second_state["resource_used"] == 600
+    revoked = client.post(
+        f"/coach/assignments/{second_assignment_id}/revoke", headers=coach_headers
+    )
+    assert revoked.status_code == 200, revoked.text
+    after_revocation = client.get("/auth/me", headers=coach_headers).json()["coach_ai_allowance"]
+    assert after_revocation["requests_used"] == 2
+    assert after_revocation["resource_used"] == 600
+    other_headers = _make_coach(client, db, "other-coach")
+    other_state = client.get("/auth/me", headers=other_headers).json()["coach_ai_allowance"]
+    assert other_state["requests_used"] == 0
+    assert other_state["resource_used"] == 0
+    rows = _usage_rows(db, account_id)
+    assert len(rows) == 1
+    assert rows[0]["requests"] == 4
+
+
+def test_coach_truncation_keeps_cost_without_completing_request(api, monkeypatch):
+    client, db = api
+    _enable_synthetic_coach_allowance(monkeypatch, requests=2, tokens=1000)
+    coach_headers, _player_headers, assignment_id = _assigned_player(client, db)
+    account_id = _account_id(db, "coach")
+    monkeypatch.setattr("service.coach_ai.coach_ai_enabled", lambda: True)
+    model = _fake_model(finish_reason="length")
+    monkeypatch.setattr("utils.model_downloader.get_coach_llm", lambda *args, **kwargs: model)
+
+    truncated = _post_coach_assistant(client, coach_headers, assignment_id)
+    assert truncated.status_code == 200, truncated.text
+    assert _coach_done_frame(truncated)["outcome"] == "truncated"
+    state = client.get("/auth/me", headers=coach_headers).json()["coach_ai_allowance"]
+    assert state["requests_used"] == 0
+    assert state["requests_remaining"] == 2
+    assert state["resource_used"] == 150
+
+    rows = _usage_rows(db, account_id)
+    assert len(rows) == 1
+    assert rows[0]["requests"] == 1
+    assert rows[0]["cost_usd"] > 0
+
+
+def test_coach_provider_failure_keeps_cost_without_completing_request(
+    api, monkeypatch
+):
+    client, db = api
+    _enable_synthetic_coach_allowance(monkeypatch, requests=2, tokens=1000)
+    coach_headers, _player_headers, assignment_id = _assigned_player(client, db)
+    account_id = _account_id(db, "coach")
+    monkeypatch.setattr("service.coach_ai.coach_ai_enabled", lambda: True)
+    broken_provider = _SequentialCoachProvider(
+        _fake_model(input_tokens=90, output_tokens=20),
+        _FailAfterMeteredCoachProvider(
+            _fake_model(input_tokens=90, output_tokens=20)
+        ),
+    )
+    monkeypatch.setattr(
+        "utils.model_downloader.get_coach_llm",
+        lambda *args, **kwargs: broken_provider,
+    )
+    failed = _post_coach_assistant(client, coach_headers, assignment_id)
+    assert failed.status_code == 200, failed.text
+    assert 'event: error' in failed.text
+    final_state = client.get("/auth/me", headers=coach_headers).json()["coach_ai_allowance"]
+    assert final_state["requests_used"] == 0
+    assert final_state["requests_remaining"] == 2
+    assert final_state["resource_used"] == 220
+    rows = [row for row in _usage_rows(db, account_id) if row["requests"] > 0]
+    assert len(rows) == 1
+    assert rows[0]["requests"] == 2
+    assert all(row["cost_usd"] > 0 for row in rows)
+
+
+def test_coach_cutoff_refuses_before_provider_and_leaves_lifter_available(
+    api, monkeypatch
+):
+    client, db = api
+    _enable_synthetic_coach_allowance(monkeypatch, requests=1, tokens=100)
+    _enable_synthetic_lifter_allowance(monkeypatch, requests=1, tokens=100)
+    coach_headers, _player_headers, assignment_id = _assigned_player(client, db)
+    coach_id = _account_id(db, "coach")
+    now = datetime.now(UTC)
+    db.record_model_usage(
+        account_id=coach_id,
+        role="coach",
+        model="deepseek-ai/DeepSeek-V4-Flash",
+        input_tokens=80,
+        output_tokens=20,
+        cost_usd=0.0,
+        estimated=False,
+        purpose="coach_assistant",
+        created_at=now.isoformat(),
+    )
+    monkeypatch.setattr("service.coach_ai.coach_ai_enabled", lambda: True)
+    provider = _fake_model()
+    monkeypatch.setattr(
+        "utils.model_downloader.get_coach_llm", lambda *args, **kwargs: provider
+    )
+    refused = _post_coach_assistant(client, coach_headers, assignment_id)
+    assert refused.status_code == 429
+    assert refused.json()["message_code"] == "ai_allowance.resource_cutoff.v1"
+    assert refused.json()["message_params"]["remaining_requests"] == 1
+    assert provider.calls == []
+
+    monkeypatch.setattr(assistant_graph, "llm", _fake_model())
+    lifter = _post_chat(
+        client, coach_headers["Authorization"].removeprefix("Bearer ")
+    )
+    assert lifter.status_code == 200, lifter.text
+
+
+def test_old_client_receives_english_detail_for_coach_resource_cutoff(api, monkeypatch):
+    client, db = api
+    _enable_synthetic_coach_allowance(monkeypatch, requests=2, tokens=100)
+    coach_headers, _player_headers, assignment_id = _assigned_player(client, db)
+    coach_id = _account_id(db, "coach")
+    db.record_model_usage(
+        account_id=coach_id,
+        role="coach",
+        model="deepseek-ai/DeepSeek-V4-Flash",
+        input_tokens=100,
+        output_tokens=0,
+        cost_usd=0.0,
+        estimated=False,
+        purpose="coach_assistant",
+        created_at=datetime.now(UTC).isoformat(),
+    )
+    monkeypatch.setattr("service.coach_ai.coach_ai_enabled", lambda: True)
+
+    response = _post_coach_assistant(client, coach_headers, assignment_id)
+
+    assert response.status_code == 429
+    detail = response.json()["detail"]
+    assert detail.startswith("The daily Coach resource limit has been reached.")
+    assert "2 requests remain." in detail
+    assert "00:00 UTC." in detail
+
+
+def test_coach_allowance_resets_at_utc_midnight(api, monkeypatch):
+    client, db = api
+    _enable_synthetic_coach_allowance(monkeypatch, requests=1, tokens=100)
+    coach_headers, _player_headers, _assignment_id = _assigned_player(client, db)
+    coach_id = _account_id(db, "coach")
+    now = datetime.now(UTC)
+    yesterday = now - timedelta(days=1)
+    old_turn = "coach-turn-before-utc-reset"
+    db.reserve_ai_allowance_turn(
+        AllowanceReservation(
+            account_id=coach_id,
+            capability="coach",
+            purpose="coach_assistant",
+            turn_id=old_turn,
+            request_limit=1,
+            resource_limit=1000,
+        ),
+        now=yesterday,
+    )
+    db.finish_ai_allowance_turn(old_turn, "completed", now=yesterday)
+    assert client.get("/auth/me", headers=coach_headers).json()["coach_ai_allowance"]["requests_used"] == 0
+    old_active = "coach-turn-active-before-utc-reset"
+    db.reserve_ai_allowance_turn(
+        AllowanceReservation(
+            account_id=coach_id,
+            capability="coach",
+            purpose="coach_assistant",
+            turn_id=old_active,
+            request_limit=1,
+            resource_limit=1000,
+        ),
+        now=yesterday.replace(hour=23, minute=59),
+    )
+    new_day = db.reserve_ai_allowance_turn(
+        AllowanceReservation(
+            account_id=coach_id,
+            capability="coach",
+            purpose="coach_assistant",
+            turn_id="coach-turn-after-utc-reset",
+            request_limit=1,
+            resource_limit=1000,
+        ),
+        now=now,
+    )
+    assert new_day["refusal"] is None
+
+
+def test_interrupted_coach_answer_releases_the_reserved_request(api, monkeypatch):
+    client, db = api
+    _enable_synthetic_coach_allowance(monkeypatch, requests=1, tokens=1000)
+    _assigned_player(client, db)
+    account_id = _account_id(db, "coach")
+    from fastapi import BackgroundTasks
+    from svc.routers import coach_ai as coach_ai_router
+
+    scope = InferenceScope(
+        account_id=account_id,
+        role="coach",
+        purpose="coach_assistant",
+        admit=False,
+        store=db,
+    )
+    class DisconnectedRequest:
+        async def is_disconnected(self):
+            return True
+
+    stream = coach_ai_router._CoachAssistantStream(
+        DisconnectedRequest(), BackgroundTasks(), [], scope
+    )
+    from service.ai_allowance import admit_coach_turn
+
+    stream.turn.allowance_reserved = admit_coach_turn(
+        db, account_id, stream.turn.turn_id, scope.purpose
+    )
+    db.record_model_usage(
+        account_id=account_id,
+        role="coach",
+        model="deepseek-ai/DeepSeek-V4-Flash",
+        input_tokens=100,
+        output_tokens=50,
+        cost_usd=0.000015,
+        estimated=False,
+        purpose="coach_assistant",
+        created_at=datetime.now(UTC).isoformat(),
+    )
+    stream.turn.mark_answer_completed("Complete answer already produced.")
+    stream.events.put(("done", {"answer": "Complete answer."}))
+    stream.worker_done.set()
+
+    async def collect_frames():
+        return [frame async for frame in coach_ai_router._event_stream(stream)]
+
+    frames = asyncio.run(collect_frames())
+
+    state = db.ai_allowance_usage(account_id, "coach")
+    assert frames == []
+    assert state["requests_used"] == 0
+    assert state["resource_used"] == 150
+    row = db.catalog_conn.execute(
+        "SELECT outcome FROM ai_allowance_turns WHERE turn_id = ?",
+        (stream.turn.turn_id,),
+    ).fetchone()
+    assert row[0] == "interrupted"
+
+
+@pytest.mark.parametrize(
+    ("tokens_used", "expected_status", "estimated"),
+    [(79, "available", True), (80, "warning", False), (100, "resource_cutoff", False)],
+)
+def test_coach_warning_threshold_counts_actual_and_estimated_usage(
+    api, monkeypatch, tokens_used, expected_status, estimated
+):
+    client, db = api
+    _enable_synthetic_coach_allowance(monkeypatch, requests=3, tokens=100)
+    coach_headers, _player_headers, _assignment_id = _assigned_player(client, db)
+    account_id = _account_id(db, "coach")
+    db.record_model_usage(
+        account_id=account_id,
+        role="coach",
+        model="deepseek-ai/DeepSeek-V4-Flash",
+        input_tokens=tokens_used,
+        output_tokens=0,
+        cost_usd=0.0,
+        estimated=estimated,
+        purpose="coach_assistant",
+        created_at=datetime.now(UTC).isoformat(),
+    )
+
+    allowance = client.get("/auth/me", headers=coach_headers).json()["coach_ai_allowance"]
+    assert allowance["status"] == expected_status
+    assert allowance["requests_remaining"] == 3
+    assert allowance["resource_used"] == tokens_used
+
+
+def test_lifter_resource_cutoff_does_not_block_coach_allowance(api, monkeypatch):
+    client, db = api
+    _enable_synthetic_coach_allowance(monkeypatch, requests=2, tokens=100)
+    _enable_synthetic_lifter_allowance(monkeypatch, requests=2, tokens=100)
+    coach_headers, _player_headers, assignment_id = _assigned_player(client, db)
+    account_id = _account_id(db, "coach")
+    db.record_model_usage(
+        account_id=account_id,
+        role="player",
+        model="Qwen/Qwen3.5-9B",
+        input_tokens=80,
+        output_tokens=20,
+        cost_usd=0.0,
+        estimated=True,
+        purpose="chat",
+        created_at=datetime.now(UTC).isoformat(),
+    )
+    monkeypatch.setattr("service.coach_ai.coach_ai_enabled", lambda: True)
+    provider = _fake_model()
+    monkeypatch.setattr(
+        "utils.model_downloader.get_coach_llm", lambda *args, **kwargs: provider
+    )
+
+    response = _post_coach_assistant(client, coach_headers, assignment_id)
+
+    assert response.status_code == 200, response.text
+    allowances = client.get("/auth/me", headers=coach_headers).json()
+    assert allowances["lifter_ai_allowance"]["status"] == "resource_cutoff"
+    assert allowances["lifter_ai_allowance"]["resource_used"] == 100
+    assert allowances["coach_ai_allowance"]["requests_used"] == 1
+    assert allowances["coach_ai_allowance"]["resource_used"] == 150
+
+
+def test_exhausting_one_capability_request_pool_does_not_block_the_other(
+    api, monkeypatch
+):
+    client, db = api
+    _enable_synthetic_coach_allowance(monkeypatch, requests=1, tokens=1000)
+    _enable_synthetic_lifter_allowance(monkeypatch, requests=1, tokens=1000)
+    coach_headers, _player_headers, assignment_id = _assigned_player(client, db)
+    coach_id = _account_id(db, "coach")
+    old_lifter_turn = "lifter-pool-filled-before-coach-request"
+    db.reserve_ai_allowance_turn(
+        AllowanceReservation(
+            account_id=coach_id,
+            capability="lifter",
+            purpose="chat",
+            turn_id=old_lifter_turn,
+            request_limit=1,
+            resource_limit=1000,
+        )
+    )
+    db.finish_ai_allowance_turn(old_lifter_turn, "completed")
+    monkeypatch.setattr("service.coach_ai.coach_ai_enabled", lambda: True)
+    coach_model = _fake_model()
+    monkeypatch.setattr(
+        "utils.model_downloader.get_coach_llm",
+        lambda *args, **kwargs: coach_model,
+    )
+    coach_answer = _post_coach_assistant(client, coach_headers, assignment_id)
+    assert coach_answer.status_code == 200, coach_answer.text
+
+    other_headers = _make_coach(client, db, "other-coach")
+    _other_player_headers, other_assignment_id = _assign_player(
+        client, other_headers, "other-player"
+    )
+    assert client.put(
+        "/profile",
+        headers=other_headers,
+        json={"weekly_frequency": 4, "current_goal": "Hypertrophy"},
+    ).status_code == 200
+    second_coach_answer = _post_coach_assistant(
+        client, other_headers, other_assignment_id
+    )
+    assert second_coach_answer.status_code == 200, second_coach_answer.text
+    exhausted_coach = _post_coach_assistant(client, other_headers, other_assignment_id)
+    assert exhausted_coach.status_code == 429
+    assert exhausted_coach.json()["message_code"] == "ai_allowance.requests_exhausted.v1"
+
+    monkeypatch.setattr(assistant_graph, "llm", _fake_model())
+    lifter_answer = _post_chat(
+        client, other_headers["Authorization"].removeprefix("Bearer ")
+    )
+    assert lifter_answer.status_code == 200, lifter_answer.text
 
 
 def test_lifter_truncation_is_not_a_completed_answer_but_remains_metered(api, monkeypatch):
@@ -541,6 +1009,44 @@ def test_stale_allowance_reservation_is_released_after_bounded_window(api):
     )
     assert outcomes[old_turn] == "interrupted"
     assert outcomes[new_turn] == "in_progress"
+
+
+def test_lifter_previous_utc_day_reservation_does_not_block_current_day(api):
+    _client, db = api
+    _register(_client, "lifter-prior-day-active-turn")
+    account_id = _account_id(db, "lifter-prior-day-active-turn")
+    now = datetime(2026, 10, 18, 0, 5, tzinfo=UTC)
+    previous_day = datetime(2026, 10, 17, 23, 59, tzinfo=UTC)
+    db.reserve_ai_allowance_turn(
+        AllowanceReservation(
+            account_id=account_id,
+            capability="lifter",
+            purpose="chat",
+            turn_id="lifter-active-before-utc-reset",
+            request_limit=1,
+            resource_limit=1000,
+        ),
+        now=previous_day,
+    )
+
+    current_day = db.reserve_ai_allowance_turn(
+        AllowanceReservation(
+            account_id=account_id,
+            capability="lifter",
+            purpose="chat",
+            turn_id="lifter-active-after-utc-reset",
+            request_limit=1,
+            resource_limit=1000,
+        ),
+        now=now,
+    )
+
+    assert current_day["refusal"] is None
+    old_outcome = db.catalog_conn.execute(
+        "SELECT outcome FROM ai_allowance_turns"
+        " WHERE turn_id = 'lifter-active-before-utc-reset'"
+    ).fetchone()[0]
+    assert old_outcome == "in_progress"
 
 
 def test_allowance_index_covers_updated_at_queries(api):

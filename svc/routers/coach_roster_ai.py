@@ -16,6 +16,7 @@ from service.messages import MessageMetadata
 from svc.dependencies import VerifiedPlayer, account_id_of, get_current_coach, get_db
 from svc.errors import message_http_exception
 from svc.llm import InferenceScope, register_ai_analytics_background_tasks
+from svc.llm import InferenceTurnState
 from svc.routers.coach_ai import admit_coach_turn, coach_inference_scope
 from svc.rate_limit import COACH_ASSISTANT_LIMIT, limiter
 from svc.schemas import (
@@ -34,6 +35,15 @@ class _RosterAssistantRequest:
     body: CoachAssistantIn
     coach: VerifiedPlayer
     db: Any
+
+
+@dataclass(frozen=True)
+class _AdmittedRosterTurn:
+    endpoint: _RosterAssistantRequest
+    account: dict[str, Any]
+    account_id: str
+    scope: InferenceScope
+    turn: InferenceTurnState
 
 
 async def _require_coach_pro(db: Any, account_id: str) -> dict[str, Any]:
@@ -68,6 +78,7 @@ async def _run_admitted_turn(
     endpoint: _RosterAssistantRequest,
     prepared: coach_roster_ai_service.PreparedRosterQuestion,
     scope: InferenceScope,
+    turn: InferenceTurnState,
 ) -> str:
     """Runs one admitted inference turn with the standard chat failure shape."""
     try:
@@ -76,6 +87,7 @@ async def _run_admitted_turn(
             prepared.messages,
             scope,
             endpoint.background_tasks,
+            turn,
         )
     except Exception:
         raise message_http_exception(
@@ -89,6 +101,7 @@ def _roster_reply(
     answer: str,
     display_language: str,
     prepared: coach_roster_ai_service.PreparedRosterQuestion,
+    allowance: dict[str, Any] | None = None,
 ) -> CoachRosterAssistantOut:
     return CoachRosterAssistantOut(
         answer=answer,
@@ -98,6 +111,7 @@ def _roster_reply(
         client_mapping=prepared.client_mapping,
         left_out_for_budget=prepared.left_out_for_budget,
         excluded_for_missing_disclosure=prepared.excluded_for_missing_disclosure,
+        coach_ai_allowance=allowance,
     )
 
 
@@ -115,21 +129,109 @@ async def _answer_roster_request(
     account_id = account_id_of(endpoint.coach)
     account = await _require_coach_pro(endpoint.db, account_id)
     client = analytics.client_context(endpoint.request)
-    admit_coach_turn(
-        account_id, client, endpoint.db, endpoint.background_tasks
-    )
+    admitted = _admit_roster_turn(endpoint, account, account_id, client)
+    return await _answer_reserved_roster_turn(admitted)
+
+
+def _admit_roster_turn(
+    endpoint: _RosterAssistantRequest,
+    account: dict[str, Any],
+    account_id: str,
+    client: Any,
+) -> _AdmittedRosterTurn:
     scope = coach_inference_scope(
         endpoint.db,
         account_id,
         client,
         purpose="coach_roster_assistant",
     )
-    prepared = await _prepare_snapshot_question(endpoint.db, account_id, endpoint.body)
-    answer = await _run_admitted_turn(endpoint, prepared, scope)
-    return _roster_reply(answer, account.get("display_language", "en"), prepared)
+    turn = InferenceTurnState(scope, defer_allowance_finalization=True)
+    turn.background_tasks = endpoint.background_tasks
+    admit_coach_turn(turn)
+    return _AdmittedRosterTurn(endpoint, account, account_id, scope, turn)
 
 
-@router.post("/assistant/roster", response_model=CoachRosterAssistantOut)
+async def _answer_reserved_roster_turn(
+    admitted: _AdmittedRosterTurn,
+) -> CoachRosterAssistantOut:
+    try:
+        return await _complete_roster_turn(admitted)
+    except BaseException as exc:
+        _mark_roster_turn_failure(admitted.turn, exc)
+        raise
+    finally:
+        admitted.turn.finalize_allowance()
+
+
+async def _complete_roster_turn(
+    admitted: _AdmittedRosterTurn,
+) -> CoachRosterAssistantOut:
+    endpoint = admitted.endpoint
+    prepared = await _prepare_snapshot_question(
+        endpoint.db, admitted.account_id, endpoint.body
+    )
+    answer = await _run_admitted_turn(
+        endpoint, prepared, admitted.scope, admitted.turn
+    )
+    _ensure_roster_answer_complete(admitted.turn)
+    return _completed_roster_reply(admitted, answer, prepared)
+
+
+def _ensure_roster_answer_complete(turn: InferenceTurnState) -> None:
+    from service.ai_allowance import launch_allowances_enabled
+
+    if turn.answer_outcome == "truncated" and launch_allowances_enabled():
+        raise message_http_exception(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "The answer was cut off before it finished. Please retry.",
+            MessageMetadata("ai_allowance.answer_truncated.v1"),
+        )
+
+
+def _completed_roster_reply(
+    admitted: _AdmittedRosterTurn,
+    answer: str,
+    prepared: coach_roster_ai_service.PreparedRosterQuestion,
+) -> CoachRosterAssistantOut:
+    return _roster_reply(
+        answer,
+        admitted.account.get("display_language", "en"),
+        prepared,
+        _completed_roster_allowance(admitted),
+    )
+
+
+def _completed_roster_allowance(
+    admitted: _AdmittedRosterTurn,
+) -> dict[str, Any] | None:
+    from service.ai_allowance import launch_allowances_enabled, get_coach_allowance
+
+    if not launch_allowances_enabled() or admitted.turn.answer_outcome != "completed":
+        return None
+    plan = plans_service.effective_coach_plan(
+        admitted.endpoint.db, admitted.account
+    )
+    return get_coach_allowance(
+        admitted.endpoint.db,
+        admitted.account_id,
+        str(plan or "free"),
+        projected_completed_turn_id=admitted.turn.turn_id,
+    )
+
+
+def _mark_roster_turn_failure(
+    turn: InferenceTurnState, error: BaseException
+) -> None:
+    if isinstance(error, (asyncio.CancelledError, GeneratorExit, InterruptedError)):
+        turn.mark_interrupted()
+    elif turn.answer_outcome == "pending":
+        turn.mark_error()
+
+
+@router.post(
+    "/assistant/roster",
+    response_model=CoachRosterAssistantOut,
+)
 @limiter.limit(COACH_ASSISTANT_LIMIT)
 async def coach_roster_assistant(
     request: Request,

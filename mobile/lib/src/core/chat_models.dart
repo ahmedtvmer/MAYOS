@@ -87,6 +87,7 @@ class ChatDone extends ChatStreamEvent {
     required this.programUpdated,
     this.outcome = 'completed',
     this.lifterAllowance,
+    this.coachAllowance,
     this.requestSuggestion,
   });
 
@@ -94,6 +95,7 @@ class ChatDone extends ChatStreamEvent {
   final bool programUpdated;
   final String outcome;
   final AiAllowance? lifterAllowance;
+  final AiAllowance? coachAllowance;
   final ProgramRequestDraft? requestSuggestion;
 }
 

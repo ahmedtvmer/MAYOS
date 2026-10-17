@@ -270,4 +270,74 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     }
   });
+
+  testWidgets('Coach plan shows its own warning and localized cutoff state',
+      (WidgetTester tester) async {
+    for (final String languageCode in <String>['en', 'ar']) {
+      for (final String status in <String>[
+        'warning',
+        'resource_cutoff',
+        'requests_exhausted',
+      ]) {
+        final FakeMayosApi fake = _signedInFake(coach: true);
+        fake.lifterAiAllowance = <String, dynamic>{
+          'mode': 'launch',
+          'status': 'warning',
+          'request_limit': 100,
+          'requests_used': 1,
+          'requests_remaining': 99,
+          'resource_limit': 1000,
+          'resource_used': 800,
+          'reset_at': '2026-10-18T00:00:00+00:00',
+        };
+        fake.coachAiAllowance = <String, dynamic>{
+          'mode': 'launch',
+          'status': status,
+          'request_limit': 8,
+          'requests_used': status == 'requests_exhausted' ? 8 : 2,
+          'requests_remaining': status == 'requests_exhausted' ? 0 : 6,
+          'resource_limit': 1000,
+          'resource_used': status == 'warning' ? 800 : 1000,
+          'reset_at': '2026-10-18T00:00:00+00:00',
+        };
+        await _pumpApp(tester, fake, languageCode: languageCode);
+        await _openPlan(tester, languageCode: languageCode);
+
+        if (languageCode == 'en') {
+          expect(find.textContaining('8 complete Coach assistant answers'), findsOneWidget);
+          expect(find.textContaining('Longer conversations and Arabic replies'), findsOneWidget);
+          expect(
+            find.textContaining(
+              status == 'requests_exhausted'
+                  ? '0 requests remain'
+                  : '6 requests remain',
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.textContaining(
+              status == 'warning'
+                  ? 'Coach assistant resources are nearing'
+                  : 'today’s Coach assistant resource limit',
+            ),
+            findsOneWidget,
+          );
+          expect(find.textContaining('99 assistant requests remain'), findsNothing);
+        } else {
+          expect(find.textContaining('إجابة مكتملة من مساعد المدرب'), findsOneWidget);
+          expect(find.textContaining('الردود بالعربية موارد أكثر'), findsOneWidget);
+          expect(find.textContaining('المتبقي من الطلبات'), findsOneWidget);
+          expect(
+            find.textContaining(
+              status == 'warning' ? 'موارد مساعد المدرب تقترب' : 'وصلت إلى حد موارد مساعد المدرب اليومي',
+            ),
+            findsOneWidget,
+          );
+        }
+        expect(find.textContaining('2026-10-18'), findsWidgets);
+        expect(find.textContaining('00:00 UTC'), findsWidgets);
+        await tester.pumpWidget(const SizedBox());
+      }
+    }
+  });
 }
