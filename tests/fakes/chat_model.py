@@ -167,6 +167,10 @@ class ScriptedChatModel(BaseChatModel):
                 message=AIMessageChunk(content="", response_metadata=response.response_metadata)
             )
 
+    async def astream(self, messages: list[BaseMessage], **kwargs: Any):
+        for chunk in self.stream(messages, **kwargs):
+            yield chunk
+
     def _text_chunks(self, content: str):
         for start in range(0, len(content), max(1, self.chunk_size)):
             self._streamed_chunk_count += 1
@@ -305,6 +309,17 @@ class _ScriptedToolBinding:
             tool_choice=self._tool_choice,
             **{**self._bind_kwargs, **kwargs},
         )
+
+    async def astream(self, prompt: Any, **kwargs: Any):
+        async for chunk in self._model.astream(
+            _as_messages(prompt),
+            _scripted_mode="tools",
+            tools=self._tool_names,
+            bound_tools=self._bound_tools,
+            tool_choice=self._tool_choice,
+            **{**self._bind_kwargs, **kwargs},
+        ):
+            yield chunk
 
 
 def _as_response(turn: Any) -> AIMessage:

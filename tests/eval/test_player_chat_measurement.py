@@ -230,7 +230,7 @@ def test_run_player_session_retains_partial_usage_on_a_failed_attempt(measuremen
     first, second = turn.attempts
     assert first.status == "error"
     assert first.usage_reported is True
-    assert first.usage_unknown is False
+    assert first.usage_unknown is True
     assert first.usage_state == "partial"
     assert first.input_tokens == 800
     assert second.status == "ok"
@@ -331,7 +331,7 @@ def test_build_report_and_markdown_name_the_identity_and_samples(measurement_sto
         max_seconds=300.0,
     )
 
-    assert report["report_version"] == 2
+    assert report["report_version"] == 3
     assert report["provider"] == "DeepInfra"
     assert report["model"] == MODEL_ID
     assert report["base_commit"]
@@ -354,6 +354,8 @@ def test_build_report_and_markdown_name_the_identity_and_samples(measurement_sto
     assert "End-to-end first text" in markdown
     assert "Per-attempt detail" in markdown
     assert "Successful-attempt visible latency" in markdown
+    assert "Worst user-visible first text" in markdown
+    assert "first-token deadline retries" in markdown
     assert "provider TTFT" not in markdown
     assert "share among recorded tokens" in markdown
     assert "## Acceptance criteria" in markdown

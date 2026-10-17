@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from langchain_core.messages import AIMessageChunk
 
 from agent import assistant_graph
 from agent import program_rules
@@ -1128,6 +1129,173 @@ def test_lifter_provider_failure_and_interruption_release_the_request_slot(
     assert state["requests_remaining"] == 2
     assert state["resource_used"] == 150
     assert _usage_rows(db, account_id)[0]["estimated_calls"] == 0
+
+
+def test_player_first_token_deadline_failure_returns_error_without_completed_debit(
+    api, monkeypatch, recording_analytics
+):
+    client, db = api
+    _enable_synthetic_lifter_allowance(monkeypatch, requests=2, tokens=1000)
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "200000")
+    monkeypatch.setenv("LLM_FIRST_TOKEN_TIMEOUT", "0.01")
+    monkeypatch.setenv("LLM_FIRST_TOKEN_MAX_ATTEMPTS", "2")
+    token = _register(client, "first-token-timeout-player")
+    account_id = _account_id(db, "first-token-timeout-player")
+
+    class StalledPlayerModel:
+        calls = 0
+
+        def bind_tools(self, _tools, **_kwargs):
+            return self
+
+        async def astream(self, _messages, **_kwargs):
+            self.calls += 1
+            await asyncio.Event().wait()
+            yield "unreachable"
+
+    model = StalledPlayerModel()
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=_authed(token), json={"content": CHAT_MESSAGE}
+    ) as response:
+        raw = response.read().decode()
+
+    assert response.status_code == 200
+    assert model.calls == 2
+    assert "event: error" in raw
+    assert '"message_code": "chat.failed.v1"' in raw
+    history = client.get("/chat/history", headers=_authed(token)).json()
+    assert [message["role"] for message in history] == ["user"]
+    allowance = client.get("/auth/me", headers=_authed(token)).json()["lifter_ai_allowance"]
+    assert allowance["requests_used"] == 0
+    assert allowance["requests_remaining"] == 2
+    outcomes = db.catalog_conn.execute(
+        "SELECT outcome FROM ai_allowance_turns WHERE account_id = ?",
+        (account_id,),
+    ).fetchall()
+    assert [row[0] for row in outcomes] == ["failed"]
+    completed = next(
+        event
+        for event in recording_analytics.events
+        if event["event"] == "ai_request_completed"
+    )
+    assert completed["properties"]["outcome"] == "error"
+
+
+def test_player_successful_first_token_retry_is_metered_and_debits_one_request(
+    api, monkeypatch, recording_analytics
+):
+    client, db = api
+    _enable_synthetic_lifter_allowance(monkeypatch, requests=2, tokens=1000)
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "200000")
+    monkeypatch.setenv("LLM_FIRST_TOKEN_TIMEOUT", "0.01")
+    monkeypatch.setenv("LLM_FIRST_TOKEN_MAX_ATTEMPTS", "2")
+    token = _register(client, "first-token-retry-player")
+    account_id = _account_id(db, "first-token-retry-player")
+    stream_attempts = {"count": 0}
+
+    class RetryOncePlayerModel(ScriptedChatModel):
+        async def astream(self, messages, **kwargs):
+            stream_attempts["count"] += 1
+            if stream_attempts["count"] == 1:
+                await asyncio.Event().wait()
+                yield AIMessageChunk(content="unreachable")
+            async for chunk in super().astream(messages, **kwargs):
+                yield chunk
+
+    model_id = "Qwen/Qwen3.5-9B"
+    model = RetryOncePlayerModel(
+        ["Keep the elbows tucked."],
+        model_name=model_id,
+        usage_metadata={
+            "input_tokens": 120,
+            "output_tokens": 30,
+            "total_tokens": 150,
+        },
+        finish_reason="stop",
+        callbacks=[MeteringCallback(model_id)],
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    response = _post_chat(client, token)
+
+    assert response.status_code == 200, response.text
+    assert stream_attempts["count"] == 2
+    rows = _usage_rows(db, account_id)
+    assert len(rows) == 1
+    assert rows[0]["requests"] == 1
+    assert rows[0]["input_tokens"] == 120 and rows[0]["output_tokens"] == 30
+    allowance = client.get("/auth/me", headers=_authed(token)).json()["lifter_ai_allowance"]
+    assert allowance["requests_used"] == 1
+    assert allowance["requests_remaining"] == 1
+    completed = next(
+        event
+        for event in recording_analytics.events
+        if event["event"] == "ai_request_completed"
+    )
+    assert completed["properties"]["outcome"] == "ok"
+
+
+def test_cancelled_deadline_attempt_meters_known_usage_and_omits_unknown_usage(
+    api, monkeypatch
+):
+    client, db = api
+    _enable_synthetic_lifter_allowance(monkeypatch, requests=2, tokens=1000)
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "200000")
+    monkeypatch.setenv("LLM_FIRST_TOKEN_TIMEOUT", "0.01")
+    monkeypatch.setenv("LLM_FIRST_TOKEN_MAX_ATTEMPTS", "3")
+    token = _register(client, "deadline-partial-usage-player")
+    account_id = _account_id(db, "deadline-partial-usage-player")
+    attempt_count = {"value": 0}
+
+    class DeadlineUsageModel(ScriptedChatModel):
+        async def astream(self, messages, **kwargs):
+            attempt_count["value"] += 1
+            if attempt_count["value"] == 1:
+                yield AIMessageChunk(
+                    content="",
+                    usage_metadata={
+                        "input_tokens": 45,
+                        "output_tokens": 7,
+                        "total_tokens": 52,
+                    },
+                )
+                await asyncio.Event().wait()
+            elif attempt_count["value"] == 2:
+                await asyncio.Event().wait()
+            else:
+                async for chunk in super().astream(messages, **kwargs):
+                    yield chunk
+
+    model_id = "Qwen/Qwen3.5-9B"
+    model = DeadlineUsageModel(
+        ["Keep the elbows tucked."],
+        model_name=model_id,
+        usage_metadata={
+            "input_tokens": 120,
+            "output_tokens": 30,
+            "total_tokens": 150,
+        },
+        finish_reason="stop",
+        callbacks=[MeteringCallback(model_id)],
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    response = _post_chat(client, token)
+
+    assert response.status_code == 200, response.text
+    assert attempt_count["value"] == 3
+    rows = _usage_rows(db, account_id)
+    assert len(rows) == 1
+    # The known cancelled call and completed call are persisted; the second
+    # cancelled attempt had no usage metadata and contributes no zero row.
+    assert rows[0]["requests"] == 2
+    assert rows[0]["input_tokens"] == 165
+    assert rows[0]["output_tokens"] == 37
+    allowance = client.get("/auth/me", headers=_authed(token)).json()["lifter_ai_allowance"]
+    assert allowance["requests_used"] == 1
+    assert allowance["requests_remaining"] == 1
 
 
 def test_lifter_resource_cutoff_is_pre_stream_and_ignores_coach_usage(api, monkeypatch):

@@ -32,7 +32,12 @@ def graph(monkeypatch):
         ],
         "agent.program_generator": ["extract_frequency_from_text", "generate_program_pipeline", "get_biomechanical_cue", "has_supported_split_keyword"],
         "database.database_manager": ["DatabaseManager"],
-        "utils.model_downloader": ["llm", "structured_output_model"],
+        "utils.model_downloader": [
+            "first_token_max_attempts",
+            "first_token_timeout_seconds",
+            "llm",
+            "structured_output_model",
+        ],
         "utils.logger": ["MyosLogger"],
     }.items():
         module = _StubModule(name)
@@ -46,6 +51,8 @@ def graph(monkeypatch):
     modules["agent.clinical_guard"].is_franco_clinical_franco_message.return_value = False
     modules["agent.clinical_guard"].ARABIC_SCRIPT_RE = re.compile(r"[\u0600-\u06ff]")
     modules["agent.program_generator"].extract_frequency_from_text.return_value = None
+    modules["utils.model_downloader"].first_token_max_attempts.return_value = 2
+    modules["utils.model_downloader"].first_token_timeout_seconds.return_value = 6.0
 
     class NullFileHandler(logging.NullHandler):
         def __init__(self, *args, **kwargs):
@@ -255,6 +262,48 @@ def test_turn_uses_the_passed_ledger_handle_on_a_foreign_thread(graph, compariso
     assert "Barbell Bench Press" in outcome["display"]
     graph.db.get_session_comparison_context.assert_called()
     graph.db.switch_user.assert_not_called()
+
+
+def test_async_stream_submission_preserves_metering_context():
+    from svc.llm import submit_async_stream
+    from utils.model_metering import UsageContext, record_usage, scoped_usage_recorder, usage_context
+
+    rows = []
+    usage_updates = []
+    finish_reasons = []
+
+    async def streamed_model_call():
+        record_usage("context-model", 17, 5, False, finish_reason="stop")
+
+    with scoped_usage_recorder(lambda **row: rows.append(row)):
+        with usage_context(
+            UsageContext(
+                account_id="stream-account",
+                role="player",
+                purpose="chat",
+                turn_id="stream-turn",
+                on_usage=lambda *usage: usage_updates.append(usage),
+                on_finish_reason=finish_reasons.append,
+            )
+        ):
+            submit_async_stream(streamed_model_call()).result(timeout=2)
+
+    assert rows == [
+        {
+            "store": None,
+            "account_id": "stream-account",
+            "role": "player",
+            "purpose": "chat",
+            "model": "context-model",
+            "input_tokens": 17,
+            "cached_input_tokens": 0,
+            "output_tokens": 5,
+            "estimated": False,
+            "turn_id": "stream-turn",
+        }
+    ]
+    assert usage_updates == [("context-model", 17, 5, False)]
+    assert finish_reasons == ["stop"]
 
 
 def test_tail_is_ten_untruncated_messages_and_input_is_not_mutated(graph):

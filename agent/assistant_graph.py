@@ -1,6 +1,8 @@
 # agent/assistant_graph.py
+import asyncio
 import logging
 import math
+import queue
 import re
 import sqlite3
 import sys
@@ -3831,6 +3833,240 @@ class _StreamedPlayerAnswer:
     telemetry: dict[str, float | int]
 
 
+class _FirstTokenDeadlineTimeout(TimeoutError):
+    """All configured player stream attempts missed their first-chunk deadline."""
+
+
+@dataclass(frozen=True)
+class _FirstTokenStreamSettings:
+    timeout_seconds: float
+    max_attempts: int
+
+
+async def _next_chunk_before_deadline(
+    stream: Any, model: Any, timeout_seconds: float
+) -> tuple[Any, list[Any]]:
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+    prefix_chunks = []
+    while True:
+        pending_chunk = asyncio.create_task(anext(stream))
+        remaining = max(0.0, deadline - asyncio.get_running_loop().time())
+        try:
+            done, _pending = await asyncio.wait({pending_chunk}, timeout=remaining)
+        except asyncio.CancelledError:
+            pending_chunk.cancel()
+            try:
+                await pending_chunk
+            except asyncio.CancelledError:
+                if not pending_chunk.cancelled():
+                    raise
+            except Exception:
+                pass
+            raise
+        if not done:
+            await _raise_first_token_deadline(
+                model, pending_chunk, timeout_seconds, prefix_chunks
+            )
+        try:
+            chunk = pending_chunk.result()
+        except StopAsyncIteration:
+            return None, prefix_chunks
+        if _player_stream_chunk_has_output(chunk):
+            return chunk, prefix_chunks
+        prefix_chunks.append(chunk)
+
+
+def _player_stream_chunk_has_output(chunk: Any) -> bool:
+    if getattr(chunk, "tool_call_chunks", None) or getattr(chunk, "tool_calls", None):
+        return True
+    content = getattr(chunk, "content", "")
+    if isinstance(content, str):
+        return bool(content)
+    if isinstance(content, list):
+        return any(str(part.get("text", "")) for part in content if isinstance(part, dict))
+    return bool(content)
+
+
+async def _raise_first_token_deadline(
+    model: Any, pending_chunk: Any, timeout_seconds: float, prefix_chunks: list[Any]
+) -> None:
+    record_deadline = getattr(model, "record_first_token_deadline", None)
+    if callable(record_deadline):
+        record_deadline()
+    pending_chunk.cancel()
+    try:
+        await pending_chunk
+    except asyncio.CancelledError:
+        current = asyncio.current_task()
+        if current is not None and current.cancelling():
+            raise
+    except Exception:
+        # The timed-out attempt may raise while being cancelled; its cleanup
+        # error must not prevent the configured retry.
+        pass
+    _record_cancelled_attempt_usage(model, prefix_chunks)
+    raise _FirstTokenDeadlineTimeout(
+        f"No first model chunk within {timeout_seconds:g} seconds."
+    )
+
+
+def _model_identifier(model: Any) -> str | None:
+    """Finds the hosted model id through LangChain's bound runnable wrappers."""
+    pending = [model]
+    seen = set()
+    while pending:
+        candidate = pending.pop()
+        if id(candidate) in seen:
+            continue
+        seen.add(id(candidate))
+        for attribute in ("model_name", "model"):
+            value = getattr(candidate, attribute, None)
+            if isinstance(value, str) and value:
+                return value
+        for attribute in ("bound", "_model"):
+            bound = getattr(candidate, attribute, None)
+            if bound is not None:
+                pending.append(bound)
+    return None
+
+
+def _record_cancelled_attempt_usage(model: Any, chunks: list[Any]) -> None:
+    """Records complete provider usage metadata seen before a deadline cancel.
+
+    Missing token fields stay unknown: the usage table requires integers, so
+    inventing zero here would incorrectly turn an unreported attempt into a
+    zero-cost attempt.
+    """
+    usage = {}
+    for chunk in chunks:
+        message = getattr(chunk, "message", chunk)
+        metadata = getattr(message, "usage_metadata", None)
+        if metadata:
+            usage.update(metadata)
+    if usage.get("input_tokens") is None or usage.get("output_tokens") is None:
+        return
+    model_id = _model_identifier(model)
+    if model_id is None:
+        return
+    details = usage.get("input_token_details") or {}
+    cached_tokens = details.get("cache_read", details.get("cached_tokens", 0))
+    from utils.model_metering import record_usage
+
+    record_usage(
+        model_id,
+        int(usage["input_tokens"]),
+        int(usage["output_tokens"]),
+        False,
+        cached_input_tokens=max(0, int(cached_tokens or 0)),
+    )
+
+
+async def _publish_stream_chunk(channel: queue.Queue, chunk: Any) -> None:
+    acknowledged = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    channel.put(("chunk", (chunk, acknowledged, loop)))
+    await acknowledged.wait()
+
+
+async def _produce_player_model_attempt(
+    model: Any, messages: Any, settings: _FirstTokenStreamSettings, channel: queue.Queue
+) -> None:
+    stream = model.astream(messages)
+    try:
+        first_chunk, prefix_chunks = await _next_chunk_before_deadline(
+            stream, model, settings.timeout_seconds
+        )
+        for chunk in prefix_chunks:
+            await _publish_stream_chunk(channel, chunk)
+        if first_chunk is None:
+            return
+        await _publish_stream_chunk(channel, first_chunk)
+        async for chunk in stream:
+            await _publish_stream_chunk(channel, chunk)
+    finally:
+        await stream.aclose()
+
+
+async def _retry_player_model_attempts(
+    model: Any, messages: Any, settings: _FirstTokenStreamSettings, channel: queue.Queue
+) -> None:
+    for attempt in range(1, settings.max_attempts + 1):
+        try:
+            await _produce_player_model_attempt(model, messages, settings, channel)
+            return
+        except _FirstTokenDeadlineTimeout:
+            if attempt == settings.max_attempts:
+                raise
+            logger.warning(
+                "Player stream missed its first-token deadline; retrying provider call",
+                extra={"attempt": attempt, "max_attempts": settings.max_attempts},
+            )
+
+
+async def _produce_player_stream(
+    model: Any, messages: Any, settings: _FirstTokenStreamSettings, channel: queue.Queue
+) -> None:
+    terminal_sent = False
+    try:
+        await _retry_player_model_attempts(model, messages, settings, channel)
+    except asyncio.CancelledError:
+        raise
+    except Exception as error:
+        terminal_sent = True
+        channel.put(("error", error))
+    else:
+        terminal_sent = True
+        channel.put(("done", None))
+    finally:
+        if not terminal_sent:
+            channel.put_nowait(("cancelled", None))
+
+
+def _receive_player_stream_event(channel: queue.Queue) -> Any:
+    kind, payload = channel.get()
+    if kind == "error":
+        raise payload
+    if kind == "cancelled":
+        raise asyncio.CancelledError
+    return None if kind == "done" else payload
+
+
+def _retry_first_chunk_attempts(
+    model: Any,
+    messages: Any,
+    settings: _FirstTokenStreamSettings,
+    channel: queue.Queue,
+) -> Generator[Any, None, None]:
+    from svc.llm import submit_async_stream
+    future = submit_async_stream(_produce_player_stream(model, messages, settings, channel))
+    try:
+        while True:
+            event = _receive_player_stream_event(channel)
+            if event is None:
+                return
+            chunk, acknowledged, loop = event
+            try:
+                yield chunk
+            finally:
+                loop.call_soon_threadsafe(acknowledged.set)
+    finally:
+        future.cancel()
+
+
+def _stream_model_with_first_token_deadline(
+    model: Any, messages: Any
+) -> Generator[Any, None, None]:
+    """Retries a player model call only before its first parsed chunk."""
+    from utils.model_downloader import first_token_max_attempts, first_token_timeout_seconds
+
+    settings = _FirstTokenStreamSettings(
+        first_token_timeout_seconds(), first_token_max_attempts()
+    )
+    # At most one unacknowledged chunk plus a terminal event can be queued when
+    # the async producer is cancelled; both are bounded by this two-slot queue.
+    yield from _retry_first_chunk_attempts(model, messages, settings, queue.Queue(maxsize=2))
+
+
 def _stream_player_answer(
     chunks: Any,
     output: _PlayerStreamOutput,
@@ -4293,7 +4529,8 @@ def stream_assistant_turn(
 
             for _round_index in range(MAX_PLAYER_TOOL_ROUNDS):
                 streamed_answer = yield from _stream_player_answer(
-                    bound_model.stream(model_messages), stream_output
+                    _stream_model_with_first_token_deadline(bound_model, model_messages),
+                    stream_output,
                 )
                 if not streamed_answer.tool_calls:
                     telemetry = streamed_answer.telemetry
@@ -4318,7 +4555,8 @@ def stream_assistant_turn(
                 # The three tool rounds are complete. A plain model call gets
                 # the results and must answer without starting another round.
                 final_answer = yield from _stream_player_answer(
-                    llm.stream(model_messages), stream_output
+                    _stream_model_with_first_token_deadline(llm, model_messages),
+                    stream_output,
                 )
                 telemetry = final_answer.telemetry
             _record_telemetry_event(
@@ -4333,6 +4571,15 @@ def stream_assistant_turn(
             _record_telemetry_event(
                 intent, router_ms, user_id=state.get("trainee_id", "default")
             )
+    except _FirstTokenDeadlineTimeout:
+        if tool_metrics and not telemetry_recorded:
+            _record_telemetry_event(
+                intent,
+                router_ms,
+                user_id=state.get("trainee_id", "default"),
+                tool_metrics=tool_metrics,
+            )
+        raise
     except PromptBudgetError as exc:
         result = _response(str(exc))
     except Exception:

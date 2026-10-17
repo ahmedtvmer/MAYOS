@@ -27,6 +27,7 @@ starts).
 
 import asyncio
 import contextlib
+import contextvars
 import logging
 import os
 import threading
@@ -218,6 +219,40 @@ class InferenceTurnState:
     def emit_after(self, ready_event: threading.Event) -> None:
         ready_event.wait()
         self.emit()
+
+
+class _AsyncStreamLoop:
+    """Keeps one asyncio loop alive for the hosted model's cached HTTP client."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    def submit(self, coroutine: Any) -> Any:
+        with self._lock:
+            if self._loop is None:
+                self._loop = asyncio.new_event_loop()
+                threading.Thread(
+                    target=self._run,
+                    args=(self._loop,),
+                    name="mayos-async-model-stream",
+                    daemon=True,
+                ).start()
+            context = contextvars.copy_context()
+            return context.run(asyncio.run_coroutine_threadsafe, coroutine, self._loop)
+
+    @staticmethod
+    def _run(loop: asyncio.AbstractEventLoop) -> None:
+        asyncio.set_event_loop(loop)
+        loop.run_forever()
+
+
+_ASYNC_STREAM_LOOP = _AsyncStreamLoop()
+
+
+def submit_async_stream(coroutine: Any) -> Any:
+    """Submits a model stream coroutine to the long-lived service loop."""
+    return _ASYNC_STREAM_LOOP.submit(coroutine)
 
 
 def register_ai_analytics_background_tasks(request: Any, background_tasks: Any) -> None:

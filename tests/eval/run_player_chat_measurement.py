@@ -107,9 +107,11 @@ MEASUREMENT_RETRY_POLICY = (
     "(HTTP 429/overloaded) or timeout failure with a fixed backoff; every attempt is recorded."
 )
 PRODUCTION_RETRY_POLICY = (
-    "Production player chat (utils.model_downloader.get_llm): OpenAI SDK retries inside one call "
-    "(LLM_MAX_RETRIES default 1, request timeout 60 s, stream-chunk timeout 30 s). Those SDK retries "
-    "are invisible to and uncounted by this harness."
+    "Production player chat (utils.model_downloader.get_llm): first-token deadline "
+    "LLM_FIRST_TOKEN_TIMEOUT (default 6 s) retries one model call up to "
+    "LLM_FIRST_TOKEN_MAX_ATTEMPTS total attempts (default 2, maximum 5); this harness records each "
+    "deadline retry. OpenAI SDK retries remain inside each call (LLM_MAX_RETRIES default 1), with "
+    "request timeout 60 s and later-chunk timeout 30 s."
 )
 ACCOUNTING_NOTE = (
     "Every attempt of a logical turn is retained with its elapsed time, retry backoff, error and known "
@@ -142,6 +144,8 @@ class FirstChunkSample:
 
     started: float
     first_chunk_at: float | None
+    ended_at: float | None = None
+    first_token_deadline_exceeded: bool = False
 
 
 @dataclass
@@ -155,6 +159,8 @@ class AttemptMeasurement:
     retry_backoff_seconds: float = 0.0
     first_visible_text_seconds: float | None = None
     first_model_chunk_seconds: float | None = None
+    first_token_deadline_retries: int = 0
+    model_attempts: list[dict[str, Any]] = field(default_factory=list)
     pre_stream_seconds: float | None = None
     intent: str | None = None
     input_tokens: int = 0
@@ -174,7 +180,7 @@ class AttemptMeasurement:
     def usage_state(self) -> str:
         """``reported`` | ``estimated`` | ``partial`` | ``unknown`` | ``none``."""
         if self.usage_unknown:
-            return "unknown"
+            return "partial" if self.usage_reported else "unknown"
         if self.status == "error" and self.usage_reported:
             return "partial"
         if self.estimated_calls:
@@ -236,6 +242,7 @@ class FirstChunkProbe:
         self._clock = clock
         self.samples: list[FirstChunkSample] = samples if samples is not None else []
         self.errors: list[Exception] = errors if errors is not None else []
+        self._deadline_exceeded = False
 
     def bind_tools(self, tools: Any, **kwargs: Any) -> "FirstChunkProbe":
         return FirstChunkProbe(
@@ -245,6 +252,7 @@ class FirstChunkProbe:
     def stream(self, messages: Any, *args: Any, **kwargs: Any):
         started = self._clock()
         first_chunk_at: float | None = None
+        self._deadline_exceeded = False
         try:
             for chunk in self._model.stream(messages, *args, **kwargs):
                 if first_chunk_at is None and _chunk_has_output(chunk):
@@ -254,7 +262,39 @@ class FirstChunkProbe:
             self.errors.append(error)
             raise
         finally:
-            self.samples.append(FirstChunkSample(started, first_chunk_at))
+            self.samples.append(
+                FirstChunkSample(
+                    started,
+                    first_chunk_at,
+                    first_token_deadline_exceeded=self._deadline_exceeded,
+                )
+            )
+
+    async def astream(self, messages: Any, *args: Any, **kwargs: Any):
+        started = self._clock()
+        first_chunk_at: float | None = None
+        self._deadline_exceeded = False
+        try:
+            async for chunk in self._model.astream(messages, *args, **kwargs):
+                if first_chunk_at is None and _chunk_has_output(chunk):
+                    first_chunk_at = self._clock()
+                yield chunk
+        except Exception as error:  # noqa: BLE001 - retained for failed-sample reports
+            self.errors.append(error)
+            raise
+        finally:
+            self.samples.append(
+                FirstChunkSample(
+                    started,
+                    first_chunk_at,
+                    self._clock(),
+                    self._deadline_exceeded,
+                )
+            )
+
+    def record_first_token_deadline(self) -> None:
+        """Marks the active model call as a cancelled first-token attempt."""
+        self._deadline_exceeded = True
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._model, name)
@@ -354,10 +394,15 @@ def _failed_attempt(
         elapsed_seconds=elapsed,
         retry_backoff_seconds=retry_backoff_seconds,
         first_model_chunk_seconds=_first_model_chunk(probe, sample_start, attempt_started),
+        first_token_deadline_retries=_first_token_deadline_retries(probe, sample_start),
+        model_attempts=_model_attempts(probe, sample_start),
         pre_stream_seconds=_pre_stream(probe, sample_start, attempt_started),
         timed_out=_is_timeout_error(error),
         error=f"{type(error).__name__}: {error}",
-        usage_unknown=not fields["usage_reported"],
+        usage_unknown=(
+            not fields["usage_reported"]
+            or len(probe.samples[sample_start:]) > fields["model_calls"]
+        ),
         **fields,
     )
     return attempt, []
@@ -394,12 +439,17 @@ def _completed_attempt(
         retry_backoff_seconds=retry_backoff_seconds,
         first_visible_text_seconds=first_visible,
         first_model_chunk_seconds=first_model_chunk,
+        first_token_deadline_retries=_first_token_deadline_retries(probe, sample_start),
+        model_attempts=_model_attempts(probe, sample_start),
         pre_stream_seconds=_pre_stream(probe, sample_start, attempt_started),
         intent=state.get("intent"),
         timed_out=any(_is_timeout_error(error) for error in turn_errors),
         reply_chars=len(reply),
         error="; ".join(f"{type(error).__name__}: {error}" for error in turn_errors),
-        usage_unknown=status == "error" and not fields["usage_reported"],
+        usage_unknown=(
+            (status == "error" and not fields["usage_reported"])
+            or len(probe.samples[sample_start:]) > fields["model_calls"]
+        ),
         **fields,
     )
     return attempt, list(state.get("messages", []))
@@ -416,6 +466,41 @@ def _first_model_chunk(probe: FirstChunkProbe, sample_start: int, attempt_starte
     if not samples or samples[0].first_chunk_at is None:
         return None
     return max(0.0, samples[0].first_chunk_at - attempt_started)
+
+
+def _model_attempts(probe: FirstChunkProbe, sample_start: int) -> list[dict[str, Any]]:
+    """Returns every provider stream attempt, including cancelled deadline retries."""
+    samples = probe.samples[sample_start:]
+    return [
+        _model_attempt_row(sample, index, index < len(samples))
+        for index, sample in enumerate(samples, start=1)
+    ]
+
+
+def _model_attempt_row(
+    sample: FirstChunkSample, index: int, has_later_attempt: bool
+) -> dict[str, Any]:
+    return {
+        "attempt": index,
+        "elapsed_seconds": (
+            max(0.0, sample.ended_at - sample.started) if sample.ended_at is not None else None
+        ),
+        "first_model_chunk_seconds": (
+            max(0.0, sample.first_chunk_at - sample.started)
+            if sample.first_chunk_at is not None
+            else None
+        ),
+        "first_token_deadline_exceeded": sample.first_token_deadline_exceeded,
+        "retried_after_deadline": sample.first_token_deadline_exceeded and has_later_attempt,
+    }
+
+
+def _first_token_deadline_retries(probe: FirstChunkProbe, sample_start: int) -> int:
+    samples = probe.samples[sample_start:]
+    return sum(
+        sample.first_token_deadline_exceeded and position < len(samples) - 1
+        for position, sample in enumerate(samples)
+    )
 
 
 def _pre_stream(probe: FirstChunkProbe, sample_start: int, attempt_started: float) -> float | None:
@@ -595,6 +680,10 @@ def _aggregate_attempts(attempts: list[AttemptMeasurement]) -> dict[str, Any]:
         "known_output_tokens": known_output,
         "known_cost_usd": known_cost,
         "model_calls": sum(attempt.model_calls for attempt in attempts),
+        "model_stream_attempts": sum(len(attempt.model_attempts) for attempt in attempts),
+        "first_token_deadline_retries": sum(
+            attempt.first_token_deadline_retries for attempt in attempts
+        ),
         "estimated_calls": sum(attempt.estimated_calls for attempt in attempts),
         "unreported_attempts": unreported,
         "partial_attempts": partial,
@@ -637,6 +726,7 @@ def summarize_session(session: PlayerSessionMeasurement) -> dict[str, Any]:
     turn_2 = _aggregate_attempts([attempt for turn in turns if turn.turn == 2 for attempt in turn.attempts])
 
     median_end_to_end = statistics.median(end_to_end) if end_to_end else None
+    worst_end_to_end = max(end_to_end) if end_to_end else None
     median_successful_visible_latency = (
         statistics.median(successful_visible_latency) if successful_visible_latency else None
     )
@@ -649,11 +739,14 @@ def summarize_session(session: PlayerSessionMeasurement) -> dict[str, Any]:
         "attempts_total": len(attempts),
         "attempts_failed": sum(attempt.status == "error" for attempt in attempts),
         "attempts_timed_out": sum(attempt.timed_out for attempt in attempts),
+        "model_stream_attempts": overall["model_stream_attempts"],
+        "first_token_deadline_retries": overall["first_token_deadline_retries"],
         "attempts_unreported_usage": overall["unreported_attempts"],
         "attempts_partial_usage": overall["partial_attempts"],
         "model_stream_samples": overall["model_calls"],
         "stopped_early": session.stopped_early,
         "median_end_to_end_first_visible_text_seconds": median_end_to_end,
+        "worst_end_to_end_first_visible_text_seconds": worst_end_to_end,
         "median_successful_attempt_visible_latency_seconds": median_successful_visible_latency,
         "median_first_model_chunk_seconds": statistics.median(model_chunks) if model_chunks else None,
         "median_pre_stream_seconds": statistics.median(pre_stream) if pre_stream else None,
@@ -772,9 +865,11 @@ def build_report(
     measured_at: str | None = None,
 ) -> dict[str, Any]:
     """The machine-readable report: metadata, per-attempt rows and aggregates."""
+    from utils.model_downloader import first_token_max_attempts, first_token_timeout_seconds
+
     aggregate = summarize_session(session)
     return {
-        "report_version": 2,
+        "report_version": 3,
         "generated_at": measured_at or datetime.now(UTC).isoformat(),
         "mode": "live",
         "path": "assistant_graph.stream_assistant_turn (SSE chat route generator)",
@@ -783,6 +878,8 @@ def build_report(
         "api_base": api_base,
         "base_commit": _base_commit(),
         "request_timeout_seconds": timeout_seconds,
+        "first_token_timeout_seconds": first_token_timeout_seconds(),
+        "first_token_max_attempts": first_token_max_attempts(),
         "max_seconds": max_seconds,
         "ttft_target_seconds": TTFT_TARGET_SECONDS,
         "ttft_definition": (
@@ -831,6 +928,20 @@ def _cell(value: Any) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ")
 
 
+def _model_attempt_label(attempts: list[dict[str, Any]]) -> str:
+    labels = []
+    for attempt in attempts:
+        elapsed = _format_seconds(attempt["elapsed_seconds"])
+        if attempt["retried_after_deadline"]:
+            status = "first-token deadline; retried"
+        elif attempt["first_token_deadline_exceeded"]:
+            status = "first-token deadline; final"
+        else:
+            status = f"first chunk {_format_seconds(attempt['first_model_chunk_seconds'])}"
+        labels.append(f"{attempt['attempt']}: {status} ({elapsed})")
+    return ", ".join(labels) or "-"
+
+
 def render_markdown(report: dict[str, Any]) -> str:
     aggregate = report["aggregate"]
     lines = [
@@ -846,11 +957,14 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- Base commit: `{report['base_commit']}`",
         f"- Request timeout: `{report['request_timeout_seconds']:.1f}s`; wall-clock budget: "
         f"`{report['max_seconds']:.1f}s`",
+        f"- First-token deadline: `{report['first_token_timeout_seconds']:.1f}s`; total attempts per "
+        f"model call: `{report['first_token_max_attempts']}`",
         f"- Turns: {aggregate['turns_measured']} measured / {aggregate['turns_failed']} failed / "
         f"{aggregate['turns_skipped']} skipped of {aggregate['turns_total']}; attempts: "
         f"{aggregate['attempts_total']} total, {aggregate['attempts_failed']} failed, "
-        f"{aggregate['attempts_timed_out']} timed out; model stream calls: "
-        f"{aggregate['model_stream_samples']}",
+        f"{aggregate['attempts_timed_out']} timed out; first-token deadline retries: "
+        f"{aggregate['first_token_deadline_retries']}; model stream attempts: "
+        f"{aggregate['model_stream_attempts']}",
         "",
         "## Accounting",
         "",
@@ -876,9 +990,9 @@ def render_markdown(report: dict[str, Any]) -> str:
         "",
         "## Per-attempt detail",
         "",
-        "| Turn | Attempt | Status | Backoff | Elapsed | First visible | First model chunk | "
+        "| Turn | Attempt | Status | Backoff | Elapsed | First visible | First model chunk | Model call attempts | "
         "Pre-stream | Input | Cached | Output | Cached share | Cost | Usage | Error |",
-        "| ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
+        "| ---: | ---: | --- | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
     ]
     for turn in report["turns"]:
         for attempt in turn["attempt_rows"]:
@@ -888,6 +1002,7 @@ def render_markdown(report: dict[str, Any]) -> str:
                 f"{_format_seconds(attempt['elapsed_seconds'])} | "
                 f"{_format_seconds(attempt['first_visible_text_seconds'])} | "
                 f"{_format_seconds(attempt['first_model_chunk_seconds'])} | "
+                f"{_cell(_model_attempt_label(attempt['model_attempts']))} | "
                 f"{_format_seconds(attempt['pre_stream_seconds'])} | {attempt['input_tokens']} | "
                 f"{attempt['cached_input_tokens']} | {attempt['output_tokens']} | "
                 f"{_format_share(attempt['cached_input_share'])} | {_format_cost(attempt['cost_usd'])} | "
@@ -907,6 +1022,8 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- Median user-visible first text (end-to-end, all attempts + backoff): "
         f"**{_format_seconds(aggregate['median_end_to_end_first_visible_text_seconds'])}** "
         f"(n={aggregate['first_visible_text_samples']})",
+        f"- Worst user-visible first text (end-to-end, all attempts + backoff): "
+        f"**{_format_seconds(aggregate['worst_end_to_end_first_visible_text_seconds'])}**",
         f"- Median successful-attempt visible latency: "
         f"**{_format_seconds(aggregate['median_successful_attempt_visible_latency_seconds'])}**",
         f"- Median first model chunk: {_format_seconds(aggregate['median_first_model_chunk_seconds'])}",

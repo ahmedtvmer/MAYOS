@@ -1,0 +1,404 @@
+{
+  "report_version": 3,
+  "generated_at": "2026-10-17T17:00:30.475956+00:00",
+  "mode": "live",
+  "path": "assistant_graph.stream_assistant_turn (SSE chat route generator)",
+  "provider": "DeepInfra",
+  "model": "deepseek-ai/DeepSeek-V4-Flash",
+  "api_base": "https://api.deepinfra.com/v1/openai",
+  "base_commit": "af88a2e3804678974da2de16ed6fb258ad326002",
+  "request_timeout_seconds": 60.0,
+  "first_token_timeout_seconds": 6.0,
+  "first_token_max_attempts": 2,
+  "max_seconds": 300.0,
+  "ttft_target_seconds": 2.0,
+  "ttft_definition": "End-to-end user wait = seconds from starting a logical turn to the successful answer's first visible text, including every earlier failed attempt and its retry backoff (an error placeholder is not counted). Successful-attempt visible latency = that answer attempt's own first-visible latency, which includes graph/output work and is not a pure provider/model-stream TTFT; the first model chunk time is recorded separately.",
+  "accounting": "Every attempt of a logical turn is retained with its elapsed time, retry backoff, error and known usage. Latency is split into the end-to-end user wait (all attempts + backoff) and the successful attempt's visible latency (its own first-visible text, not a pure provider/model-stream TTFT). Usage totals sum every known row, including the known rows of partial attempts; only the unreported remainder of a failed attempt is unknown and excluded (never counted as zero), so the known token and cost sums are a lower bound when any usage is unreported. A recorded-token cache share is not a lower bound: it is the fraction among reported tokens, and the overall share is unknown while usage is incomplete.",
+  "retry_policy": {
+    "measurement": "Measurement harness: model built with build_player_llm(timeout=..., max_retries=0); up to max_turn_attempts (live: 3) per logical turn, retrying only a transient provider-busy (HTTP 429/overloaded) or timeout failure with a fixed backoff; every attempt is recorded.",
+    "production": "Production player chat (utils.model_downloader.get_llm): first-token deadline LLM_FIRST_TOKEN_TIMEOUT (default 6 s) retries one model call up to LLM_FIRST_TOKEN_MAX_ATTEMPTS total attempts (default 2, maximum 5); this harness records each deadline retry. OpenAI SDK retries remain inside each call (LLM_MAX_RETRIES default 1), with request timeout 60 s and later-chunk timeout 30 s."
+  },
+  "questions": [
+    "How should I adjust my training if I feel tired this week?",
+    "What should I focus on during a warm-up before heavy squats?",
+    "How much protein do I need on the days I do not train?",
+    "My bench press feels stuck; what could help?",
+    "How do I know when to increase the weight on a lift?"
+  ],
+  "baseline_comparison": [
+    "#265 provider smoke (2026-10-11, direct `build_player_chat_prompt` stream, n=5 per category): median model TTFT 1.29-2.45 s with p90 outliers 32-63 s.",
+    "#192 player session (2026-10-12, median time to first token): 9.52 s on master and 9.17 s with a stable-prefix prompt order, provider-slow window; cached share was already nonzero in 256/512-token blocks."
+  ],
+  "acceptance_criteria": {
+    "median_visible_latency_within_target": {
+      "target_seconds": 2.0,
+      "median_end_to_end_first_visible_text_seconds": 3.833297447001314,
+      "status": "UNMET"
+    },
+    "nonzero_cached_share_from_turn_2_full_session": {
+      "required_turns": 5,
+      "turns_measured": 5,
+      "turn_2_input_tokens": 1741,
+      "turn_2_cached_input_tokens": 1536,
+      "turn_2_usage_complete": true,
+      "aggregate_cached_input_share_from_turn_2": 0.8991470145509283,
+      "status": "MET"
+    }
+  },
+  "aggregate": {
+    "turns_total": 5,
+    "turns_measured": 5,
+    "turns_deterministic": 0,
+    "turns_failed": 0,
+    "turns_skipped": 0,
+    "attempts_total": 5,
+    "attempts_failed": 0,
+    "attempts_timed_out": 0,
+    "model_stream_attempts": 6,
+    "first_token_deadline_retries": 0,
+    "attempts_unreported_usage": 0,
+    "attempts_partial_usage": 0,
+    "model_stream_samples": 6,
+    "stopped_early": false,
+    "median_end_to_end_first_visible_text_seconds": 3.833297447001314,
+    "worst_end_to_end_first_visible_text_seconds": 11.899488289998772,
+    "median_successful_attempt_visible_latency_seconds": 3.833297447001314,
+    "median_first_model_chunk_seconds": 3.428014125000118,
+    "median_pre_stream_seconds": 0.025833846000750782,
+    "first_visible_text_samples": 5,
+    "known_input_tokens": 11284,
+    "known_cached_input_tokens": 8704,
+    "known_output_tokens": 824,
+    "known_cost_usd": 0.0005371919999999999,
+    "known_cost_per_turn_usd": 0.00010743839999999998,
+    "usage_complete": true,
+    "from_turn_2_input_tokens": 7972,
+    "from_turn_2_cached_input_tokens": 7168,
+    "cached_input_share_from_turn_2": 0.8991470145509283,
+    "from_turn_2_usage_complete": true,
+    "turn_2_input_tokens": 1741,
+    "turn_2_cached_input_tokens": 1536,
+    "turn_2_usage_complete": true,
+    "median_first_visible_text_within_2_seconds": false,
+    "median_successful_attempt_visible_latency_within_2_seconds": false
+  },
+  "turns": [
+    {
+      "turn": 1,
+      "query": "How should I adjust my training if I feel tired this week?",
+      "status": "ok",
+      "intent": "coaching_qa",
+      "attempts": 1,
+      "end_to_end_seconds": 9.795952181999382,
+      "end_to_end_first_visible_text_seconds": 1.6801533959987864,
+      "successful_attempt_visible_latency_seconds": 1.6801533959987864,
+      "known_usage": {
+        "known_input_tokens": 3312,
+        "known_cached_input_tokens": 1536,
+        "known_output_tokens": 213,
+        "known_cost_usd": 0.00022582799999999997,
+        "model_calls": 2,
+        "model_stream_attempts": 2,
+        "first_token_deadline_retries": 0,
+        "estimated_calls": 0,
+        "unreported_attempts": 0,
+        "partial_attempts": 0,
+        "estimated_attempts": 0,
+        "usage_complete": true,
+        "first_model_chunk_seconds": 1.3453279719997226,
+        "pre_stream_seconds": 0.01660202799939725
+      },
+      "attempt_rows": [
+        {
+          "turn": 1,
+          "attempt": 1,
+          "status": "ok",
+          "elapsed_seconds": 9.795952181999382,
+          "retry_backoff_seconds": 0.0,
+          "first_visible_text_seconds": 1.6801533959987864,
+          "first_model_chunk_seconds": 1.3453279719997226,
+          "first_token_deadline_retries": 0,
+          "model_attempts": [
+            {
+              "attempt": 1,
+              "elapsed_seconds": 2.4794384599990735,
+              "first_model_chunk_seconds": 1.3287259440003254,
+              "first_token_deadline_exceeded": false,
+              "retried_after_deadline": false
+            },
+            {
+              "attempt": 2,
+              "elapsed_seconds": 7.297082724000575,
+              "first_model_chunk_seconds": 1.4086688380011765,
+              "first_token_deadline_exceeded": false,
+              "retried_after_deadline": false
+            }
+          ],
+          "pre_stream_seconds": 0.01660202799939725,
+          "intent": "coaching_qa",
+          "input_tokens": 3312,
+          "output_tokens": 213,
+          "cached_input_tokens": 1536,
+          "cached_input_share": 0.463768115942029,
+          "cost_usd": 0.00022582799999999997,
+          "model_calls": 2,
+          "estimated_calls": 0,
+          "usage_reported": true,
+          "usage_unknown": false,
+          "timed_out": false,
+          "reply_chars": 694,
+          "error": "",
+          "usage_state": "reported"
+        }
+      ]
+    },
+    {
+      "turn": 2,
+      "query": "What should I focus on during a warm-up before heavy squats?",
+      "status": "ok",
+      "intent": "coaching_qa",
+      "attempts": 1,
+      "end_to_end_seconds": 7.679881055000806,
+      "end_to_end_first_visible_text_seconds": 1.5419377860016539,
+      "successful_attempt_visible_latency_seconds": 1.5419377860016539,
+      "known_usage": {
+        "known_input_tokens": 1741,
+        "known_cached_input_tokens": 1536,
+        "known_output_tokens": 171,
+        "known_cost_usd": 7.6878e-05,
+        "model_calls": 1,
+        "model_stream_attempts": 1,
+        "first_token_deadline_retries": 0,
+        "estimated_calls": 0,
+        "unreported_attempts": 0,
+        "partial_attempts": 0,
+        "estimated_attempts": 0,
+        "usage_complete": true,
+        "first_model_chunk_seconds": 1.228476154999953,
+        "pre_stream_seconds": 0.025833846000750782
+      },
+      "attempt_rows": [
+        {
+          "turn": 2,
+          "attempt": 1,
+          "status": "ok",
+          "elapsed_seconds": 7.679881055000806,
+          "retry_backoff_seconds": 0.0,
+          "first_visible_text_seconds": 1.5419377860016539,
+          "first_model_chunk_seconds": 1.228476154999953,
+          "first_token_deadline_retries": 0,
+          "model_attempts": [
+            {
+              "attempt": 1,
+              "elapsed_seconds": 7.653569254000104,
+              "first_model_chunk_seconds": 1.2026423089992022,
+              "first_token_deadline_exceeded": false,
+              "retried_after_deadline": false
+            }
+          ],
+          "pre_stream_seconds": 0.025833846000750782,
+          "intent": "coaching_qa",
+          "input_tokens": 1741,
+          "output_tokens": 171,
+          "cached_input_tokens": 1536,
+          "cached_input_share": 0.8822515795519816,
+          "cost_usd": 7.6878e-05,
+          "model_calls": 1,
+          "estimated_calls": 0,
+          "usage_reported": true,
+          "usage_unknown": false,
+          "timed_out": false,
+          "reply_chars": 644,
+          "error": "",
+          "usage_state": "reported"
+        }
+      ]
+    },
+    {
+      "turn": 3,
+      "query": "How much protein do I need on the days I do not train?",
+      "status": "ok",
+      "intent": "coaching_qa",
+      "attempts": 1,
+      "end_to_end_seconds": 7.867194428001312,
+      "end_to_end_first_visible_text_seconds": 3.833297447001314,
+      "successful_attempt_visible_latency_seconds": 3.833297447001314,
+      "known_usage": {
+        "known_input_tokens": 1929,
+        "known_cached_input_tokens": 1792,
+        "known_output_tokens": 117,
+        "known_cost_usd": 6.564599999999999e-05,
+        "model_calls": 1,
+        "model_stream_attempts": 1,
+        "first_token_deadline_retries": 0,
+        "estimated_calls": 0,
+        "unreported_attempts": 0,
+        "partial_attempts": 0,
+        "estimated_attempts": 0,
+        "usage_complete": true,
+        "first_model_chunk_seconds": 3.428014125000118,
+        "pre_stream_seconds": 0.03308440100045118
+      },
+      "attempt_rows": [
+        {
+          "turn": 3,
+          "attempt": 1,
+          "status": "ok",
+          "elapsed_seconds": 7.867194428001312,
+          "retry_backoff_seconds": 0.0,
+          "first_visible_text_seconds": 3.833297447001314,
+          "first_model_chunk_seconds": 3.428014125000118,
+          "first_token_deadline_retries": 0,
+          "model_attempts": [
+            {
+              "attempt": 1,
+              "elapsed_seconds": 7.833645713999431,
+              "first_model_chunk_seconds": 3.3949297239996667,
+              "first_token_deadline_exceeded": false,
+              "retried_after_deadline": false
+            }
+          ],
+          "pre_stream_seconds": 0.03308440100045118,
+          "intent": "coaching_qa",
+          "input_tokens": 1929,
+          "output_tokens": 117,
+          "cached_input_tokens": 1792,
+          "cached_input_share": 0.928978745463971,
+          "cost_usd": 6.564599999999999e-05,
+          "model_calls": 1,
+          "estimated_calls": 0,
+          "usage_reported": true,
+          "usage_unknown": false,
+          "timed_out": false,
+          "reply_chars": 566,
+          "error": "",
+          "usage_state": "reported"
+        }
+      ]
+    },
+    {
+      "turn": 4,
+      "query": "My bench press feels stuck; what could help?",
+      "status": "ok",
+      "intent": "coaching_qa",
+      "attempts": 1,
+      "end_to_end_seconds": 15.533593606000068,
+      "end_to_end_first_visible_text_seconds": 11.899488289998772,
+      "successful_attempt_visible_latency_seconds": 11.899488289998772,
+      "known_usage": {
+        "known_input_tokens": 2059,
+        "known_cached_input_tokens": 1792,
+        "known_output_tokens": 169,
+        "known_cost_usd": 8.6706e-05,
+        "model_calls": 1,
+        "model_stream_attempts": 1,
+        "first_token_deadline_retries": 0,
+        "estimated_calls": 0,
+        "unreported_attempts": 0,
+        "partial_attempts": 0,
+        "estimated_attempts": 0,
+        "usage_complete": true,
+        "first_model_chunk_seconds": 6.024310171998877,
+        "pre_stream_seconds": 0.024511268000424025
+      },
+      "attempt_rows": [
+        {
+          "turn": 4,
+          "attempt": 1,
+          "status": "ok",
+          "elapsed_seconds": 15.533593606000068,
+          "retry_backoff_seconds": 0.0,
+          "first_visible_text_seconds": 11.899488289998772,
+          "first_model_chunk_seconds": 6.024310171998877,
+          "first_token_deadline_retries": 0,
+          "model_attempts": [
+            {
+              "attempt": 1,
+              "elapsed_seconds": 15.508584151999457,
+              "first_model_chunk_seconds": 5.999798903998453,
+              "first_token_deadline_exceeded": false,
+              "retried_after_deadline": false
+            }
+          ],
+          "pre_stream_seconds": 0.024511268000424025,
+          "intent": "coaching_qa",
+          "input_tokens": 2059,
+          "output_tokens": 169,
+          "cached_input_tokens": 1792,
+          "cached_input_share": 0.8703254006799417,
+          "cost_usd": 8.6706e-05,
+          "model_calls": 1,
+          "estimated_calls": 0,
+          "usage_reported": true,
+          "usage_unknown": false,
+          "timed_out": false,
+          "reply_chars": 680,
+          "error": "",
+          "usage_state": "reported"
+        }
+      ]
+    },
+    {
+      "turn": 5,
+      "query": "How do I know when to increase the weight on a lift?",
+      "status": "ok",
+      "intent": "coaching_qa",
+      "attempts": 1,
+      "end_to_end_seconds": 10.19449107499895,
+      "end_to_end_first_visible_text_seconds": 5.735111676000088,
+      "successful_attempt_visible_latency_seconds": 5.735111676000088,
+      "known_usage": {
+        "known_input_tokens": 2243,
+        "known_cached_input_tokens": 2048,
+        "known_output_tokens": 154,
+        "known_cost_usd": 8.213400000000001e-05,
+        "model_calls": 1,
+        "model_stream_attempts": 1,
+        "first_token_deadline_retries": 0,
+        "estimated_calls": 0,
+        "unreported_attempts": 0,
+        "partial_attempts": 0,
+        "estimated_attempts": 0,
+        "usage_complete": true,
+        "first_model_chunk_seconds": 4.767917621000379,
+        "pre_stream_seconds": 0.02964633000010508
+      },
+      "attempt_rows": [
+        {
+          "turn": 5,
+          "attempt": 1,
+          "status": "ok",
+          "elapsed_seconds": 10.19449107499895,
+          "retry_backoff_seconds": 0.0,
+          "first_visible_text_seconds": 5.735111676000088,
+          "first_model_chunk_seconds": 4.767917621000379,
+          "first_token_deadline_retries": 0,
+          "model_attempts": [
+            {
+              "attempt": 1,
+              "elapsed_seconds": 10.164377240000249,
+              "first_model_chunk_seconds": 4.738271291000274,
+              "first_token_deadline_exceeded": false,
+              "retried_after_deadline": false
+            }
+          ],
+          "pre_stream_seconds": 0.02964633000010508,
+          "intent": "coaching_qa",
+          "input_tokens": 2243,
+          "output_tokens": 154,
+          "cached_input_tokens": 2048,
+          "cached_input_share": 0.913062862238074,
+          "cost_usd": 8.213400000000001e-05,
+          "model_calls": 1,
+          "estimated_calls": 0,
+          "usage_reported": true,
+          "usage_unknown": false,
+          "timed_out": false,
+          "reply_chars": 547,
+          "error": "",
+          "usage_state": "reported"
+        }
+      ]
+    }
+  ]
+}

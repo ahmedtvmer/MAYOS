@@ -92,6 +92,8 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `LLM_API_KEY` | **required** | Credential for the hosted OpenAI-compatible chat API; missing credentials fail at model build |
 | `LLM_API_BASE` | `https://api.deepinfra.com/v1/openai` | OpenAI-compatible chat API base URL |
 | `LLM_MAX_CONCURRENT` | `1` | Maximum overlapping hosted inference calls; excess requests fail fast |
+| `LLM_FIRST_TOKEN_TIMEOUT` | `6` seconds | Player chat deadline for the first model chunk; a timed out call is cancelled before retry |
+| `LLM_FIRST_TOKEN_MAX_ATTEMPTS` | `2` | Total player chat attempts per model call, including the initial call; valid range is 1–5 |
 | `MODEL_DEVICE` | `cpu` | Accepted for compatibility; ONNX Runtime embeddings always use CPU |
 | `LLM_MODEL` | `deepseek-ai/DeepSeek-V4-Flash` | Hosted player model; set to override the default |
 | `LLM_EXTRA_BODY` | unset | Hosted player sends no extra body by default; a JSON object replaces only the player body, and `{}` sends none |
@@ -472,7 +474,7 @@ docker compose run --rm myos-api sqlite3 /app/db/catalog.db \
 
 ## 6. Hosted Chat Inference
 
-The service applies `LLM_MAX_CONCURRENT` (default `1`) to blocking, async, and streamed calls. Tune it to the provider quota and service capacity. Configure outbound HTTPS access to the hosted OpenAI-compatible API.
+The service applies `LLM_MAX_CONCURRENT` (default `1`) to blocking, async, and streamed calls. Tune it to the provider quota and service capacity. Player chat streaming uses `LLM_FIRST_TOKEN_TIMEOUT` (default `6` seconds) while waiting for the first model chunk and retries that same call up to `LLM_FIRST_TOKEN_MAX_ATTEMPTS` total attempts (default `2`, maximum `5`). Once a model chunk has arrived, the call is never restarted; later silence keeps the configured `LLM_STREAM_CHUNK_TIMEOUT` behavior. The deadline retry applies to player chat. Coach assistant streaming uses its separate service path. Configure outbound HTTPS access to the hosted OpenAI-compatible API.
 
 ## 7. Local Embedding Model
 

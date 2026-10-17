@@ -744,6 +744,11 @@ def test_http_stream_emits_before_model_requests_final_chunk(api, monkeypatch):
             self.second_chunk_requested_after_first_token = first_token_sent.is_set()
             yield AIMessageChunk(content="Second sentence.")
 
+        async def astream(self, _messages):
+            yield AIMessageChunk(content="First sentence. ")
+            self.second_chunk_requested_after_first_token = first_token_sent.is_set()
+            yield AIMessageChunk(content="Second sentence.")
+
     model = IncrementalModel()
     monkeypatch.setattr(assistant_graph, "llm", model)
 

@@ -48,6 +48,9 @@ DEFAULT_CLOUD_API_BASE = "https://api.deepinfra.com/v1/openai"
 DEFAULT_CLOUD_REQUEST_TIMEOUT = 60.0
 DEFAULT_CLOUD_MAX_RETRIES = 1
 DEFAULT_CLOUD_STREAM_CHUNK_TIMEOUT = 30.0
+DEFAULT_CLOUD_FIRST_TOKEN_TIMEOUT = 6.0
+DEFAULT_CLOUD_FIRST_TOKEN_MAX_ATTEMPTS = 2
+MAX_CLOUD_FIRST_TOKEN_ATTEMPTS = 5
 JUDGE_MODEL_ROLES = ("judge", "judge_secondary")
 
 
@@ -124,6 +127,23 @@ def _non_negative_int_env(name: str, default: int) -> int:
     except (TypeError, ValueError):
         return default
     return value if value >= 0 else default
+
+
+def first_token_timeout_seconds() -> float:
+    """First model-chunk deadline for hosted player chat streams."""
+    return _positive_float_env(
+        "LLM_FIRST_TOKEN_TIMEOUT", DEFAULT_CLOUD_FIRST_TOKEN_TIMEOUT
+    )
+
+
+def first_token_max_attempts() -> int:
+    """Total player-stream attempts, including the initial provider call."""
+    value = _int_env(
+        "LLM_FIRST_TOKEN_MAX_ATTEMPTS", DEFAULT_CLOUD_FIRST_TOKEN_MAX_ATTEMPTS
+    )
+    if value < 1 or value > MAX_CLOUD_FIRST_TOKEN_ATTEMPTS:
+        return DEFAULT_CLOUD_FIRST_TOKEN_MAX_ATTEMPTS
+    return value
 
 
 def _parse_extra_body(raw_extra_body: str, env_name: str) -> dict[str, Any]:
