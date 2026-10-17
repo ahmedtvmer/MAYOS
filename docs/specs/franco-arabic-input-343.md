@@ -432,7 +432,7 @@ Until steps 1-4 are complete, **the current Franco refusal must remain in force.
   `router_node`, `clinical_intercept_node`, `RE_ACUTE_INJURY`, `RE_DIAGNOSIS`,
   `RE_ARABIC_DIAGNOSIS`.
 - `agent/clinical_guard.py` — `normalize_arabic_text`, `ARABIC_CLINICAL_STEMS`,
-  `_arabic_clinical_hit`, `evaluate_clinical_semantic_guard`.
+  `_arabic_semantic_guard`, `evaluate_clinical_semantic_guard`.
 - `agent/prompts.py` — `FRANCO_ARABIC_INPUT_RESPONSE`.
 - `service/injuries.py` — `record_from_clinical_message`; `core/injuries.py` —
   body-area patterns.

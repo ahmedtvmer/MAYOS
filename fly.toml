@@ -57,6 +57,9 @@ swap_size_mb = 512
   # the default of 1 a minutes-long Program import blocked every other AI call.
   LLM_MAX_CONCURRENT = "4"
   MODEL_DEVICE = "cpu"
+  # Separate ONNX model for the Arabic clinical semantic guard (ADR 081). The
+  # English BGE model keeps EMBEDDING_MODEL's default for triage and search.
+  ARABIC_EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
   HF_HOME = "/app/.cache/huggingface"
   # Password-reset / App Link base: this app's public host. It must be identical
   # in RESET_LINK_BASE_URL, the Android App Link intent-filter host

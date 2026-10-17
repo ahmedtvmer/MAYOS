@@ -10,6 +10,7 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     HF_HOME=/app/.cache/huggingface \
     EMBEDDING_MODEL=BAAI/bge-small-en-v1.5 \
+    ARABIC_EMBEDDING_MODEL=intfloat/multilingual-e5-small \
     MODEL_DEVICE=cpu
 
 WORKDIR /app
@@ -27,10 +28,18 @@ COPY requirements-fly.txt .
 # ONNX Runtime replaces the former PyTorch embedding runtime.
 RUN uv pip install --system -r requirements-fly.txt
 
-# Bake the ONNX graph, tokenizer and Sentence Transformers configs so boot and
-# vector seeding never fetch from Hugging Face.
+# Bake the ONNX graphs, tokenizers and Sentence Transformers configs so boot and
+# vector seeding never fetch from Hugging Face: the English BGE model for triage
+# and catalog search, plus the separate multilingual-e5-small Arabic guard model
+# (ADR 081). The Arabic O4 graph adds roughly 235 MiB to the image. Measured in
+# the core.embeddings process (both models, scoped to that interpreter, not a
+# deployed-API measurement) it adds ~581 MB resident / ~648 MB peak, so the
+# combined model-process peak is ~908 MB. The owner chose to keep 512 MB RAM
+# with the existing 512 MB swap; the first Arabic semantic query loads lazily
+# and may incur swap pressure. Verify deployed RSS and latency after deployment;
+# see docs/design-review/149/.
 COPY core/embeddings.py /app/core/embeddings.py
-RUN python -c "from core.embeddings import download_model_files; download_model_files()"
+RUN python -c "from core.embeddings import download_model_files, download_arabic_model_files; download_model_files(); download_arabic_model_files()"
 ENV HF_HUB_OFFLINE=1
 
 # Keep explicit COPY instructions so the Fly build fails fast if either seed

@@ -410,6 +410,7 @@ services:
       - LLM_API_BASE=${LLM_API_BASE:-https://api.deepinfra.com/v1/openai}
       - LLM_MAX_CONCURRENT=${LLM_MAX_CONCURRENT:-1}
       - EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+      - ARABIC_EMBEDDING_MODEL=intfloat/multilingual-e5-small
       - MODEL_DEVICE=cpu
       - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in environment}
     healthcheck:
@@ -466,7 +467,9 @@ The service applies `LLM_MAX_CONCURRENT` (default `1`) to blocking, async, and s
 
 ## 7. Local Embedding Model
 
-The `BAAI/bge-small-en-v1.5` ONNX model remains local for clinical triage and Exercise library search. The image bakes the official `onnx/model.onnx`, `tokenizer.json`, `1_Pooling/config.json` and `sentence_bert_config.json` files into `HF_HOME`; startup uses Hugging Face offline mode and does not fetch model files. The runtime uses the configured CLS pooling, maximum sequence length and L2 normalization. `MODEL_DEVICE` (default `cpu`) is retained as a compatibility no-op because ONNX execution is CPU-only. If `EMBEDDING_MODEL` changes, bake that repo's files into the image as well.
+The `BAAI/bge-small-en-v1.5` ONNX model remains local for English clinical triage and Exercise library search, using configured CLS pooling. A second, separate ONNX model — `intfloat/multilingual-e5-small` (ADR 081) — backs the Arabic clinical semantic guard, using the ORT-optimized `onnx/model_O4.onnx` graph, mean pooling and the `query: ` task prefix the e5 family requires. The image bakes the `tokenizer.json`, `1_Pooling/config.json` and `sentence_bert_config.json` files for **both** models into `HF_HOME`; startup uses Hugging Face offline mode and does not fetch model files. Each runtime applies its own pooling, maximum sequence length and L2 normalization. `MODEL_DEVICE` (default `cpu`) is retained as a compatibility no-op because ONNX execution is CPU-only. Changing `EMBEDDING_MODEL` or `ARABIC_EMBEDDING_MODEL` requires baking that repo's files into the image as well.
+
+The Arabic graph loads lazily on the first Arabic clinical query that reaches semantic evaluation, while the English BGE model and its anchor vectors load when `agent/clinical_guard` is imported. That first Arabic query bears the cold model load and any swap pressure. Measured in the `core.embeddings` process (both models; scoped to that interpreter, excluding the wider API process, so it proves no deployed headroom), the Arabic model adds ~581 MB resident / ~648 MB peak RSS on top of the ~260 MB English-only process, for a **~908 MB combined model-process peak**. The owner chose to keep the `shared-cpu-1x` Machine in `fly.toml` at 512 MB RAM with its existing 512 MB swap, judging that the model-process peak fits this allocation. Verify deployed RSS and latency after deployment because the measurement excludes the wider API process. The measured numbers and threshold calibration live in `docs/design-review/149/`.
 
 ## 8. Operational Observability, Auth Ops & Health Monitoring
 
@@ -711,7 +714,7 @@ Frankfurt (`fra`) on a `shared-cpu-1x` Machine with a **10 GB volume** mounted a
 | Image | `Dockerfile.fly` + `requirements-fly.txt` | `python:3.12-slim`, ONNX Runtime and `tokenizers` for local embeddings; no PyTorch or Sentence Transformers |
 | Chat inference | hosted OpenAI-compatible endpoint (ADR 065) | Player, judge, and coach roles require `LLM_API_KEY`; the local BGE embedding model remains in the image |
 | Process | `uvicorn svc.app:app --workers 1` | SQLite is a single writer and the Machine owns the volume |
-| Region/VM | `primary_region = "fra"`, `shared-cpu-1x`, 512 MB plus `swap_size_mb = 512` (owner decision 2026-10-12) | in-image startup peak RSS is 364.8 MB with ONNX (667.9 MB with PyTorch). Deployed PyTorch RSS grew about 90 MB above its startup peak over a day; check deployed RSS after a day and move to 768 MB if it nears 512 MB or swaps heavily |
+| Region/VM | `primary_region = "fra"`, `shared-cpu-1x`, 512 MB RAM plus `swap_size_mb = 512` (owner decision for #149, 2026-10-17) | Earlier English-only startup peak was 364.8 MB with ONNX (667.9 MB with PyTorch); deployed PyTorch RSS grew about 90 MB over a day. The current combined model-process peak is ~908 MB and excludes the wider API process (see §7). Verify deployed RSS and latency after deployment, especially on the first Arabic query that loads the model lazily. |
 | Volume | `[[mounts]]` `mayos_data` → `/data`, `initial_size = "10gb"` | catalog, ledgers, and the migration/backup work area |
 | Snapshots | `scheduled_snapshots = false` | ADR 015: Fly snapshots disabled; backups are owned by #41 |
 | Availability | `auto_stop_machines = "off"`, `auto_start_machines = false`, `[[restart]] policy = "always"` | idle periods must not stop the always-on writer |

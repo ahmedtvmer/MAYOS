@@ -9,6 +9,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
     HF_HOME=/app/.cache/huggingface \
     EMBEDDING_MODEL=BAAI/bge-small-en-v1.5 \
+    ARABIC_EMBEDDING_MODEL=intfloat/multilingual-e5-small \
     MODEL_DEVICE=cpu
 
 # curl: container healthcheck. sqlite3: operator inspection.
@@ -23,9 +24,10 @@ COPY requirements.txt .
 
 RUN uv pip install --system -r requirements.txt
 
-# Bake the ONNX graph, tokenizer and Sentence Transformers configs.
+# Bake the ONNX graphs, tokenizers and Sentence Transformers configs: the English
+# BGE model plus the separate multilingual-e5-small Arabic guard model (ADR 081).
 COPY core/embeddings.py /app/core/embeddings.py
-RUN python -c "from core.embeddings import download_model_files; download_model_files()"
+RUN python -c "from core.embeddings import download_model_files, download_arabic_model_files; download_model_files(); download_arabic_model_files()"
 ENV HF_HUB_OFFLINE=1
 
 COPY . .
