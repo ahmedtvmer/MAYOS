@@ -33,6 +33,22 @@ class PlanScreen extends ConsumerWidget {
         _PlanCard(
           capability: copy.playerPlanLabel,
           plan: plans.lifter!,
+          allowance: copy.lifterDailyAllowance(
+            account.lifterAiAllowance?.requestLimit,
+          ),
+          resourceDisclosure: account.lifterAiAllowance?.mode == 'launch'
+              ? copy.aiResourceSafeguardDisclosure
+              : null,
+          allowanceState: account.lifterAiAllowance?.mode == 'launch'
+              ? (account.lifterAiAllowance!.requestsRemaining == 0
+                  ? copy.lifterAllowanceExhausted(
+                      account.lifterAiAllowance!.resetAt,
+                    )
+                  : copy.lifterAllowanceSummary(
+                      account.lifterAiAllowance!.requestsRemaining ?? 0,
+                      account.lifterAiAllowance!.resetAt,
+                    ))
+              : null,
           benefits: <String>[
             copy.automaticTrainingProgram,
             copy.weeklyVolumeAndRecords,
@@ -79,11 +95,17 @@ class _PlanCard extends StatelessWidget {
     required this.capability,
     required this.plan,
     required this.benefits,
+    this.allowance,
+    this.resourceDisclosure,
+    this.allowanceState,
   });
 
   final String capability;
   final PlanState plan;
   final List<String> benefits;
+  final String? allowance;
+  final String? resourceDisclosure;
+  final String? allowanceState;
 
   @override
   Widget build(BuildContext context) {
@@ -122,6 +144,27 @@ class _PlanCard extends StatelessWidget {
                 ],
               ),
             ),
+          if (allowance != null) ...<Widget>[
+            const SizedBox(height: MayosSpacing.sm),
+            Text(
+              allowance!,
+              style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
+            ),
+            if (resourceDisclosure != null) ...<Widget>[
+              const SizedBox(height: MayosSpacing.xs),
+              Text(
+                resourceDisclosure!,
+                style: MayosTypography.of(context).caption.copyWith(color: c.textSecondary),
+              ),
+            ],
+            if (allowanceState != null) ...<Widget>[
+              const SizedBox(height: MayosSpacing.xs),
+              Text(
+                allowanceState!,
+                style: MayosTypography.of(context).caption.copyWith(color: c.textSecondary),
+              ),
+            ],
+          ],
         ],
       ),
     );

@@ -4,12 +4,26 @@ Extracted from DatabaseManager; behaviour is unchanged.
 """
 
 import uuid
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
+
+from utils.utc_day import utc_day_bounds, utc_day_start_iso
 
 #: Model usage recorded under this purpose is metered and costed but never
 #: counts toward an account's daily token allowance (ADR 052).
 ALLOWANCE_EXEMPT_PURPOSE = "checkpoint_review"
+ALLOWANCE_RESERVATION_TTL = timedelta(minutes=10)
+
+
+@dataclass(frozen=True)
+class AllowanceReservation:
+    account_id: str
+    capability: Literal["lifter", "coach"]
+    purpose: str | None
+    turn_id: str
+    request_limit: int
+    resource_limit: int
 
 
 class RegistryModelUsageMixin:
@@ -99,6 +113,175 @@ class RegistryModelUsageMixin:
                 (str(account_id), str(since_iso), ALLOWANCE_EXEMPT_PURPOSE),
             ).fetchone()
         return int(row[0] or 0) if row else 0
+
+    def reserve_ai_allowance_turn(
+        self,
+        reservation: AllowanceReservation,
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Atomically reserves one completed-answer slot and checks capability usage."""
+        if reservation.capability not in {"lifter", "coach"}:
+            raise ValueError("Unknown AI allowance capability.")
+        account_id = str(reservation.account_id)
+        capability = reservation.capability
+        moment = (now or datetime.now(UTC)).astimezone(UTC)
+        start, reset = utc_day_bounds(moment)
+        start_iso = start.isoformat()
+        now_iso = moment.isoformat()
+        reset_iso = reset.isoformat()
+        role = "player" if capability == "lifter" else "coach"
+        stale_before = (moment - ALLOWANCE_RESERVATION_TTL).isoformat()
+        with self.catalog_transaction(immediate=True):
+            cursor = self.catalog_conn.cursor()
+            self._interrupt_stale_allowance_turns(
+                cursor, reservation, now_iso, stale_before
+            )
+            completed = self._completed_allowance_turns(
+                cursor, account_id, capability, start_iso
+            )
+            active = self._active_allowance_turns(
+                cursor, reservation, stale_before
+            )
+            resource_used = self._sum_capability_tokens(
+                cursor, account_id, role, start_iso
+            )
+            if completed >= reservation.request_limit:
+                return self._allowance_reservation_state(
+                    "requests_exhausted", completed, resource_used, reset_iso
+                )
+            if completed + active >= reservation.request_limit:
+                return self._allowance_reservation_state(
+                    "request_in_progress", completed, resource_used, reset_iso
+                )
+            if resource_used >= reservation.resource_limit:
+                return self._allowance_reservation_state(
+                    "resource_cutoff", completed, resource_used, reset_iso
+                )
+            self._insert_allowance_turn(cursor, reservation, now_iso)
+            return self._allowance_reservation_state(
+                None, completed, resource_used, reset_iso
+            )
+
+    def finish_ai_allowance_turn(
+        self,
+        turn_id: str,
+        outcome: str,
+        *,
+        now: datetime | None = None,
+    ) -> None:
+        """Releases an in-flight slot and records whether the answer completed."""
+        if outcome not in {"completed", "failed", "interrupted", "truncated"}:
+            raise ValueError("Unknown AI allowance outcome.")
+        timestamp = (now or datetime.now(UTC)).astimezone(UTC).isoformat()
+        with self._catalog_lock:
+            self.catalog_conn.execute(
+                "UPDATE ai_allowance_turns SET outcome = ?, updated_at = ?"
+                " WHERE turn_id = ? AND outcome = 'in_progress'",
+                (outcome, timestamp, str(turn_id)),
+            )
+            self._commit_catalog()
+
+    def ai_allowance_usage(
+        self,
+        account_id: str,
+        capability: str,
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, int]:
+        """Returns completed answers and metered tokens for one capability today."""
+        if capability not in {"lifter", "coach"}:
+            raise ValueError("Unknown AI allowance capability.")
+        start_iso = utc_day_start_iso(now)
+        role = "player" if capability == "lifter" else "coach"
+        self.ensure_account_schema()
+        with self._catalog_lock:
+            cursor = self.catalog_conn.cursor()
+            completed = self._completed_allowance_turns(
+                cursor, account_id, capability, start_iso
+            )
+            resource_used = self._sum_capability_tokens(cursor, account_id, role, start_iso)
+        return {"requests_used": completed, "resource_used": resource_used}
+
+    @staticmethod
+    def _interrupt_stale_allowance_turns(
+        cursor: Any,
+        reservation: AllowanceReservation,
+        now_iso: str,
+        stale_before: str,
+    ) -> None:
+        cursor.execute(
+            "UPDATE ai_allowance_turns SET outcome = 'interrupted', updated_at = ?"
+            " WHERE account_id = ? AND capability = ? AND outcome = 'in_progress'"
+            " AND updated_at < ?",
+            (now_iso, reservation.account_id, reservation.capability, stale_before),
+        )
+
+    @staticmethod
+    def _completed_allowance_turns(
+        cursor: Any, account_id: str, capability: str, since_iso: str
+    ) -> int:
+        cursor.execute(
+            "SELECT COUNT(*) FROM ai_allowance_turns"
+            " WHERE account_id = ? AND capability = ? AND updated_at >= ?"
+            " AND outcome = 'completed' AND (purpose IS NULL OR purpose <> ?)",
+            (str(account_id), capability, since_iso, ALLOWANCE_EXEMPT_PURPOSE),
+        )
+        return int(cursor.fetchone()[0] or 0)
+
+    @staticmethod
+    def _active_allowance_turns(
+        cursor: Any, reservation: AllowanceReservation, stale_before: str
+    ) -> int:
+        cursor.execute(
+            "SELECT COUNT(*) FROM ai_allowance_turns"
+            " WHERE account_id = ? AND capability = ?"
+            " AND updated_at >= ? AND outcome = 'in_progress'",
+            (reservation.account_id, reservation.capability, stale_before),
+        )
+        return int(cursor.fetchone()[0] or 0)
+
+    @staticmethod
+    def _allowance_reservation_state(
+        refusal: str | None,
+        completed: int,
+        resource_used: int,
+        reset_iso: str,
+    ) -> dict[str, Any]:
+        return {
+            "refusal": refusal,
+            "requests_used": completed,
+            "resource_used": resource_used,
+            "reset_at": reset_iso,
+        }
+
+    @staticmethod
+    def _insert_allowance_turn(
+        cursor: Any, reservation: AllowanceReservation, timestamp: str
+    ) -> None:
+        cursor.execute(
+            "INSERT INTO ai_allowance_turns"
+            " (turn_id, account_id, capability, purpose, outcome, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, 'in_progress', ?, ?)",
+            (
+                reservation.turn_id,
+                reservation.account_id,
+                reservation.capability,
+                reservation.purpose,
+                timestamp,
+                timestamp,
+            ),
+        )
+
+    @staticmethod
+    def _sum_capability_tokens(cursor: Any, account_id: str, role: str, start_iso: str) -> int:
+        cursor.execute(
+            "SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM model_usage"
+            " WHERE account_id = ? AND role = ? AND created_at >= ?"
+            " AND (purpose IS NULL OR purpose <> ?)",
+            (str(account_id), role, start_iso, ALLOWANCE_EXEMPT_PURPOSE),
+        )
+        return int(cursor.fetchone()[0] or 0)
 
     def sum_model_cost(self, start_iso: str, end_iso: str | None = None) -> float:
         """Total metered USD cost in the half-open window ``[start, end)``."""
@@ -194,26 +377,54 @@ class RegistryModelUsageMixin:
 
     def sum_model_tokens_for_account(self, account_id: str, start_iso: str, end_iso: str | None = None) -> int:
         """Total (input + output) tokens for one account in ``[start, end)``."""
+        return self._sum_model_tokens(
+            account_id, start_iso, end_iso=end_iso
+        )
+
+    def sum_model_tokens_for_account_role(
+        self,
+        account_id: str,
+        role: str,
+        start_iso: str,
+        end_iso: str | None = None,
+    ) -> int:
+        """Total (input + output) tokens for one account role in ``[start, end)``."""
+        return self._sum_model_tokens(
+            account_id, start_iso, role=role, end_iso=end_iso
+        )
+
+    def _sum_model_tokens(
+        self,
+        account_id: str,
+        start_iso: str,
+        *,
+        role: str | None = None,
+        end_iso: str | None = None,
+    ) -> int:
+        """Sums metered tokens for an account, optionally limited to one role."""
         if not account_id:
             return 0
         self.ensure_account_schema()
+        filters = [
+            "account_id = ?",
+            "created_at >= ?",
+            "(purpose IS NULL OR purpose <> ?)",
+        ]
+        parameters: list[Any] = [
+            str(account_id), start_iso, ALLOWANCE_EXEMPT_PURPOSE
+        ]
+        if role is not None:
+            filters.append("role = ?")
+            parameters.append(role)
+        if end_iso is not None:
+            filters.append("created_at < ?")
+            parameters.append(end_iso)
+        query = (
+            "SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM model_usage"
+            " WHERE " + " AND ".join(filters)
+        )
         with self._catalog_lock:
-            cursor = self.catalog_conn.cursor()
-            if end_iso is None:
-                cursor.execute(
-                    "SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM model_usage"
-                    " WHERE account_id = ? AND created_at >= ?"
-                    " AND (purpose IS NULL OR purpose <> ?)",
-                    (str(account_id), start_iso, ALLOWANCE_EXEMPT_PURPOSE),
-                )
-            else:
-                cursor.execute(
-                    "SELECT COALESCE(SUM(input_tokens + output_tokens), 0) FROM model_usage"
-                    " WHERE account_id = ? AND created_at >= ? AND created_at < ?"
-                    " AND (purpose IS NULL OR purpose <> ?)",
-                    (str(account_id), start_iso, end_iso, ALLOWANCE_EXEMPT_PURPOSE),
-                )
-            row = cursor.fetchone()
+            row = self.catalog_conn.execute(query, parameters).fetchone()
         return int(row[0] or 0) if row else 0
 
     def _aggregate_model_usage_for_account(

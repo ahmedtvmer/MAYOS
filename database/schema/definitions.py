@@ -728,6 +728,22 @@ class SchemaMixin:
                     ON model_usage(account_id, created_at);
                 CREATE INDEX IF NOT EXISTS idx_model_usage_created ON model_usage(created_at);
 
+                -- One durable outcome per admitted assistant turn. Usage rows stay
+                -- per provider call; this table counts only completed answers and
+                -- holds in-flight request reservations per capability (#66/#67).
+                CREATE TABLE IF NOT EXISTS ai_allowance_turns (
+                    turn_id TEXT PRIMARY KEY,
+                    account_id TEXT NOT NULL,
+                    capability TEXT NOT NULL CHECK (capability IN ('lifter', 'coach')),
+                    purpose TEXT,
+                    outcome TEXT NOT NULL CHECK (outcome IN ('in_progress', 'completed', 'failed', 'interrupted', 'truncated')),
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                DROP INDEX IF EXISTS idx_ai_allowance_turns_account_day;
+                CREATE INDEX IF NOT EXISTS idx_ai_allowance_turns_account_day
+                    ON ai_allowance_turns(account_id, capability, updated_at, outcome);
+
                 -- Model-limit refusals are operational metadata, retained for 400 days.
                 CREATE TABLE IF NOT EXISTS model_limit_hits (
                     id TEXT PRIMARY KEY,

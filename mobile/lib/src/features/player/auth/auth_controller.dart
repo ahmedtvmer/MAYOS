@@ -305,6 +305,21 @@ class AuthController extends StateNotifier<AuthState> {
     return true;
   }
 
+  /// Applies the allowance snapshot carried by a completed player turn.
+  void updateLifterAiAllowance(String accountId, AiAllowance allowance) {
+    final AccountSession? session = state.session;
+    if (session == null || !ownsAccount(accountId)) return;
+    state = AuthState.authenticated(
+      AccountSession(
+        account: session.account.copyWith(lifterAiAllowance: allowance),
+        onboarded: session.onboarded,
+        hasRecoveryEmail: session.hasRecoveryEmail,
+        recoveryEmail: session.recoveryEmail,
+      ),
+      notice: state.notice,
+    );
+  }
+
   Future<bool> updateAnalyticsAllowed(String accountId, bool allowed) async {
     if (!ownsAccount(accountId)) return false;
     await _repository.updateAnalyticsAllowed(allowed);

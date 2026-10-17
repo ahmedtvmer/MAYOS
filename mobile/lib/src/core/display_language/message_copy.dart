@@ -1,4 +1,5 @@
 import 'arabic_count.dart';
+import 'ai_allowance_copy.dart';
 import 'intake_copy.dart';
 
 const Map<String, String> _specificEnglishErrors = <String, String>{
@@ -177,6 +178,7 @@ class MessageCopy {
 
   final String languageCode;
   bool get isArabic => languageCode == 'ar';
+  AiAllowanceCopy get _allowanceCopy => AiAllowanceCopy(languageCode);
 
   String get unavailable =>
       isArabic ? 'تعذر عرض الرسالة.' : 'Message unavailable.';
@@ -233,6 +235,17 @@ class MessageCopy {
   String get aiDailyLimit => isArabic
       ? 'وصلت إلى حد استخدام المساعد اليوم. أعد المحاولة غدًا.'
       : 'You have reached your daily AI usage limit. Please try again tomorrow.';
+
+  String aiAllowanceResourceCutoff(int remaining, String resetAt) =>
+      _allowanceCopy.resourceCutoffError(remaining, resetAt);
+
+  String aiAllowanceRequestsExhausted(String resetAt) =>
+      _allowanceCopy.requestsExhausted(resetAt);
+
+  String aiAllowanceRequestInProgress(int remaining, String resetAt) =>
+      _allowanceCopy.requestInProgress(remaining, resetAt);
+
+  String get aiAnswerTruncated => _allowanceCopy.answerTruncated;
 
   String get requestUnavailable => isArabic
       ? 'تعذر إكمال الطلب. حاول مجددًا.'

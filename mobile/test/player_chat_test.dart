@@ -70,6 +70,23 @@ FakeMayosApi _fakePlayer(String username) {
   return fake;
 }
 
+Map<String, dynamic> _lifterAllowance({
+  required String status,
+  required int resourceUsed,
+  int remaining = 2,
+  String resetAt = '2026-10-18T00:00:00+00:00',
+}) =>
+    <String, dynamic>{
+      'mode': 'launch',
+      'status': status,
+      'request_limit': 5,
+      'requests_used': 3 - remaining,
+      'requests_remaining': remaining,
+      'resource_limit': 100,
+      'resource_used': resourceUsed,
+      'reset_at': resetAt,
+    };
+
 Future<void> _pumpChat(
   WidgetTester tester,
   FakeMayosApi fake, {
@@ -441,6 +458,163 @@ void main() {
     await _pumpChat(tester, bob, store: store, scopeKey: UniqueKey());
     expect(find.byKey(const Key('chat_disclosure')), findsOneWidget);
     expect(_composer(tester).enabled, isFalse);
+  });
+
+  for (final ({String label, int used, String status, bool warning}) item in
+      <({String label, int used, String status, bool warning})>[
+    (label: 'below 80 percent has no warning', used: 79, status: 'available', warning: false),
+    (label: 'exactly 80 percent shows a warning', used: 80, status: 'warning', warning: true),
+    (label: 'above 80 percent shows a warning', used: 81, status: 'warning', warning: true),
+  ]) {
+    testWidgets('Lifter resource threshold: ${item.label}', (tester) async {
+      for (final String language in <String>['en', 'ar']) {
+        final FakeMayosApi fake = _fakePlayer('allowance-$language-${item.used}');
+        fake.lifterAiAllowance = _lifterAllowance(
+          status: item.status,
+          resourceUsed: item.used,
+        );
+        await _pumpChat(
+          tester,
+          fake,
+          store: InMemoryChatCacheStore(),
+          scopeKey: UniqueKey(),
+          languageCode: language,
+        );
+
+        expect(find.byKey(const Key('chat_allowance_summary')), findsOneWidget);
+        if (item.warning) {
+          expect(find.byKey(const Key('chat_allowance_warning')), findsOneWidget);
+          expect(find.textContaining('2'), findsWidgets);
+          expect(find.textContaining('2026-10-18'), findsWidgets);
+        } else {
+          expect(find.byKey(const Key('chat_allowance_warning')), findsNothing);
+          expect(find.byKey(const Key('chat_allowance_cutoff')), findsNothing);
+        }
+        await tester.pumpWidget(const SizedBox());
+      }
+    });
+  }
+
+  testWidgets('resource cutoff state stays visible in English and Arabic',
+      (tester) async {
+    for (final String language in <String>['en', 'ar']) {
+      final FakeMayosApi fake = _fakePlayer('allowance-cutoff-$language');
+      fake.lifterAiAllowance = _lifterAllowance(
+        status: 'resource_cutoff',
+        resourceUsed: 100,
+      );
+      await _pumpChat(
+        tester,
+        fake,
+        store: InMemoryChatCacheStore(),
+        scopeKey: UniqueKey(),
+        languageCode: language,
+      );
+
+      expect(find.byKey(const Key('chat_allowance_cutoff')), findsOneWidget);
+      expect(find.textContaining('2'), findsWidgets);
+      expect(find.textContaining('2026-10-18'), findsWidgets);
+      if (language == 'ar') {
+        expect(find.textContaining('حد موارد'), findsWidgets);
+        expect(find.textContaining('المتبقي من الطلبات'), findsWidgets);
+      }
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
+
+  testWidgets('pre-stream resource cutoff errors show remaining and reset in both languages',
+      (tester) async {
+    for (final String language in <String>['en', 'ar']) {
+      final FakeMayosApi fake = _fakePlayer('resource-refusal-$language');
+      fake.chatRefusal = <String, dynamic>{
+        'detail': 'The daily Lifter resource limit has been reached. '
+            '3 requests remain. The allowance resets at 2026-10-18 00:00 UTC.',
+        'message_code': 'ai_allowance.resource_cutoff.v1',
+        'message_params': <String, dynamic>{
+          'remaining_requests': 3,
+          'reset_at': '2026-10-18T00:00:00+00:00',
+        },
+        'message_fallback': 'The daily Lifter resource limit has been reached. '
+            '3 requests remain. The allowance resets at 2026-10-18 00:00 UTC.',
+      };
+      await _pumpChat(
+        tester,
+        fake,
+        store: InMemoryChatCacheStore(),
+        scopeKey: UniqueKey(),
+        languageCode: language,
+      );
+      await _acceptDisclosure(tester);
+      await tester.enterText(
+        find.byKey(const Key('chat_composer')),
+        'Help me train.',
+      );
+      await tester.tap(find.byKey(const Key('chat_send')));
+
+      if (language == 'en') {
+        await _pumpUntilFound(tester, find.textContaining('3 requests remain'));
+        expect(find.textContaining('daily Lifter resource limit has been reached'), findsOneWidget);
+      } else {
+        await _pumpUntilFound(tester, find.textContaining('المتبقي من الطلبات'));
+        expect(find.textContaining('وصلت إلى حد موارد المساعد اليومي'), findsOneWidget);
+      }
+      expect(find.textContaining('2026-10-18 00:00 UTC'), findsWidgets);
+      expect(fake.chatHistory.map((row) => row['role']), <String>['user']);
+      await tester.pumpWidget(const SizedBox());
+    }
+  });
+
+  testWidgets('a completed turn refreshes the persistent allowance warning',
+      (tester) async {
+    final FakeMayosApi fake = _fakePlayer('allowance-after-turn');
+    fake.lifterAiAllowance = _lifterAllowance(
+      status: 'available',
+      resourceUsed: 10,
+    );
+    fake.chatDoneAllowance = _lifterAllowance(
+      status: 'warning',
+      resourceUsed: 80,
+      remaining: 1,
+    );
+    await _pumpChat(
+      tester,
+      fake,
+      store: InMemoryChatCacheStore(),
+    );
+    await _acceptDisclosure(tester);
+    await tester.enterText(find.byKey(const Key('chat_composer')), 'Help me train.');
+    await tester.tap(find.byKey(const Key('chat_send')));
+    await _pumpUntilFound(tester, find.byKey(const Key('chat_allowance_warning')));
+
+    expect(find.textContaining('1 assistant request remains today'), findsOneWidget);
+    expect(find.textContaining('2026-10-18 00:00 UTC'), findsWidgets);
+  });
+
+  testWidgets('refreshing after the UTC reset clears the old warning',
+      (tester) async {
+    final FakeMayosApi fake = _fakePlayer('allowance-reset-refresh');
+    final InMemoryChatCacheStore store = InMemoryChatCacheStore();
+    fake.lifterAiAllowance = _lifterAllowance(
+      status: 'warning',
+      resourceUsed: 80,
+      remaining: 1,
+      resetAt: '2026-10-17T00:00:00+00:00',
+    );
+    await _pumpChat(tester, fake, store: store);
+    expect(find.byKey(const Key('chat_allowance_warning')), findsOneWidget);
+
+    fake.lifterAiAllowance = _lifterAllowance(
+      status: 'available',
+      resourceUsed: 0,
+      remaining: 5,
+      resetAt: '2026-10-18T00:00:00+00:00',
+    );
+    await tester.pumpWidget(const SizedBox());
+    await _pumpChat(tester, fake, store: store, scopeKey: UniqueKey());
+
+    expect(find.byKey(const Key('chat_allowance_warning')), findsNothing);
+    expect(find.byKey(const Key('chat_allowance_cutoff')), findsNothing);
+    expect(find.textContaining('5 assistant requests remain today'), findsOneWidget);
   });
 
   testWidgets('streamed tokens render progressively and done finalizes',

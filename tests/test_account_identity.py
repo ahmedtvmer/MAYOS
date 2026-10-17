@@ -358,7 +358,9 @@ def test_current_account_reports_capabilities_from_durable_registry(api):
 
     me = client.get("/auth/me", headers=_authed(token))
     assert me.status_code == 200, me.text
-    assert me.json() == {
+    response = me.json()
+    assert isinstance(response.pop("lifter_ai_allowance", None), dict)
+    assert response == {
         "account_id": account_id,
         "trainee_id": "alice",
         "display_language": "en",

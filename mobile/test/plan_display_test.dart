@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
+import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
@@ -27,7 +28,9 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   }
 }
 
-Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
+Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake,
+    {String languageCode = 'en'}) async {
+  fake.displayLanguage = languageCode;
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 2.0;
   addTearDown(tester.view.resetPhysicalSize);
@@ -40,6 +43,7 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
       overrides: <Override>[
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
+        systemDisplayLanguageProvider.overrideWithValue(languageCode),
         apiClientProvider.overrideWith((ref) {
           final ApiClient client = ApiClient(
             tokens: ref.watch(tokenStoreProvider),
@@ -69,29 +73,42 @@ FakeMayosApi _signedInFake({required bool coach}) {
   return fake;
 }
 
-Future<void> _openPlan(WidgetTester tester) async {
-  await _openSettings(tester);
-  final Finder coachPlan = find.text('Coach plan');
+Future<void> _openPlan(WidgetTester tester, {String languageCode = 'en'}) async {
+  await _openSettings(tester, languageCode: languageCode);
+  final Finder coachPlan = find.text(
+    languageCode == 'ar' ? 'خطة المدرب' : 'Coach plan',
+  );
   if (coachPlan.evaluate().isNotEmpty) {
     await tester.tap(coachPlan);
-    await _pumpUntilFound(tester, find.text('Coach Free'));
+    await _pumpUntilFound(
+      tester,
+      find.text(languageCode == 'ar' ? 'المدرب Free' : 'Coach Free'),
+    );
   } else {
-    await tester.tap(find.text('Lifter plan'));
-    await _pumpUntilFound(tester, find.text('Lifter Free'));
+    await tester.tap(find.text(languageCode == 'ar' ? 'خطة اللاعب' : 'Lifter plan'));
+    await _pumpUntilFound(
+      tester,
+      find.text(languageCode == 'ar' ? 'اللاعب Free' : 'Lifter Free'),
+    );
   }
 }
 
 /// Player mode carries the header Settings icon; Coach mode reaches Settings
 /// from the mode sheet (#119).
-Future<void> _openSettings(WidgetTester tester) async {
+Future<void> _openSettings(WidgetTester tester,
+    {String languageCode = 'en'}) async {
   if (find.byIcon(Icons.settings_outlined).evaluate().isNotEmpty) {
     await tester.tap(find.byIcon(Icons.settings_outlined));
   } else {
     await tester.tap(find.byType(ModeAvatarButton));
-    await _pumpUntilFound(tester, find.text('Settings'));
-    await tester.tap(find.text('Settings'));
+    final Finder settings = find.text(languageCode == 'ar' ? 'الإعدادات' : 'Settings');
+    await _pumpUntilFound(tester, settings);
+    await tester.tap(settings);
   }
-  await _pumpUntilFound(tester, find.text('Appearance'));
+  await _pumpUntilFound(
+    tester,
+    find.text(languageCode == 'ar' ? 'المظهر' : 'Appearance'),
+  );
 }
 
 void main() {
@@ -122,6 +139,29 @@ void main() {
     // Dropping the coach capability drops only the Coach plan.
     expect(account.plans.withoutCoach().coach, isNull);
     expect(account.plans.withoutCoach().lifter!.isPro, isTrue);
+  });
+
+  test('unknown Lifter allowance status does not break account parsing', () {
+    final Account account = Account.fromJson(<String, dynamic>{
+      'account_id': 'account-alice',
+      'trainee_id': 'alice',
+      'capabilities': <String, dynamic>{'player': true, 'coach': false},
+      'plans': <String, dynamic>{
+        'lifter': <String, dynamic>{'plan': 'free', 'status': 'active'},
+      },
+      'lifter_ai_allowance': <String, dynamic>{
+        'mode': 'launch',
+        'status': 'future_allowance_status',
+        'request_limit': 5,
+        'requests_used': 1,
+        'requests_remaining': 4,
+        'resource_limit': 1000,
+        'resource_used': 200,
+        'reset_at': '2026-10-18T00:00:00+00:00',
+      },
+    });
+
+    expect(account.lifterAiAllowance!.status, 'available');
   });
 
   test('valid plans with malformed capabilities surfaces ApiException',
@@ -196,5 +236,38 @@ void main() {
 
     expect(find.text('Lifter Pro'), findsOneWidget);
     expect(find.text('Lifter Free'), findsNothing);
+  });
+
+  testWidgets('Lifter plan discloses the same allowance in English and Arabic',
+      (WidgetTester tester) async {
+    for (final String languageCode in <String>['en', 'ar']) {
+      final FakeMayosApi fake = _signedInFake(coach: false);
+      fake.lifterAiAllowance = <String, dynamic>{
+        'mode': 'launch',
+        'status': 'warning',
+        'request_limit': 12,
+        'requests_used': 3,
+        'requests_remaining': 9,
+        'resource_limit': 1000,
+        'resource_used': 800,
+        'reset_at': '2026-10-18T00:00:00+00:00',
+      };
+      await _pumpApp(tester, fake, languageCode: languageCode);
+      await _openPlan(tester, languageCode: languageCode);
+
+      if (languageCode == 'en') {
+        expect(find.textContaining('12 complete assistant answers'), findsOneWidget);
+        expect(find.textContaining('Longer conversations and Arabic replies'), findsOneWidget);
+        expect(find.textContaining('9 assistant requests remain today'), findsOneWidget);
+      } else {
+        expect(find.textContaining('12'), findsWidgets);
+        expect(find.textContaining('إجابة مكتملة من المساعد'), findsOneWidget);
+        expect(find.textContaining('الردود بالعربية موارد أكثر'), findsOneWidget);
+        expect(find.textContaining('المتبقي من طلبات المساعد اليوم'), findsOneWidget);
+      }
+      expect(find.textContaining('2026-10-18'), findsWidgets);
+      expect(find.textContaining('00:00 UTC'), findsWidgets);
+      await tester.pumpWidget(const SizedBox());
+    }
   });
 }

@@ -103,6 +103,10 @@ const Map<String, Set<String>> _paramKeys = <String, Set<String>>{
   'http.request_failed.v1': <String>{},
   'ai_limit.request_rate.v1': <String>{},
   'ai_limit.daily_usage.v1': <String>{},
+  'ai_allowance.resource_cutoff.v1': <String>{'remaining_requests', 'reset_at'},
+  'ai_allowance.requests_exhausted.v1': <String>{'remaining_requests', 'reset_at'},
+  'ai_allowance.request_in_progress.v1': <String>{'remaining_requests', 'reset_at'},
+  'ai_allowance.answer_truncated.v1': <String>{},
   'chat.failed.v1': <String>{},
   'google.account_already_linked.v1': <String>{},
   'google.invalid_token.v1': <String>{},
@@ -355,6 +359,10 @@ final Map<String, _MessageTemplate> _templates = <String, _MessageTemplate>{
   'http.request_failed.v1': _requestFailed,
   'ai_limit.request_rate.v1': _aiRequestRateLimited,
   'ai_limit.daily_usage.v1': _aiDailyLimit,
+  'ai_allowance.resource_cutoff.v1': _aiAllowanceResourceCutoff,
+  'ai_allowance.requests_exhausted.v1': _aiAllowanceRequestsExhausted,
+  'ai_allowance.request_in_progress.v1': _aiAllowanceRequestInProgress,
+  'ai_allowance.answer_truncated.v1': _aiAnswerTruncated,
   'chat.failed.v1': _chatFailed,
   'google.account_already_linked.v1': _googleAlreadyLinked,
   'workout.program_version_mismatch.v1': _programVersionMismatch,
@@ -438,6 +446,39 @@ String? _aiRequestRateLimited(
 
 String? _aiDailyLimit(Map<String, dynamic> params, MessageCopy copy) =>
     copy.aiDailyLimit;
+
+String? _aiAllowanceResourceCutoff(
+  Map<String, dynamic> params,
+  MessageCopy copy,
+) {
+  final Object? remaining = params['remaining_requests'];
+  final Object? resetAt = params['reset_at'];
+  return remaining is int && resetAt is String
+      ? copy.aiAllowanceResourceCutoff(remaining, resetAt)
+      : null;
+}
+
+String? _aiAllowanceRequestsExhausted(
+  Map<String, dynamic> params,
+  MessageCopy copy,
+) {
+  final Object? resetAt = params['reset_at'];
+  return resetAt is String ? copy.aiAllowanceRequestsExhausted(resetAt) : null;
+}
+
+String? _aiAllowanceRequestInProgress(
+  Map<String, dynamic> params,
+  MessageCopy copy,
+) {
+  final Object? remaining = params['remaining_requests'];
+  final Object? resetAt = params['reset_at'];
+  return remaining is int && resetAt is String
+      ? copy.aiAllowanceRequestInProgress(remaining, resetAt)
+      : null;
+}
+
+String? _aiAnswerTruncated(Map<String, dynamic> params, MessageCopy copy) =>
+    copy.aiAnswerTruncated;
 
 String? _requestUnavailable(Map<String, dynamic> params, MessageCopy copy) =>
     copy.requestUnavailable;

@@ -5,6 +5,7 @@ import '../effort.dart';
 import '../exercise_filters.dart';
 import '../personal_records.dart';
 import 'arabic_count.dart';
+import 'ai_allowance_copy.dart';
 import 'message_resolver.dart';
 
 /// Small hand-written app catalog entry point. Product copy is added here as
@@ -27,6 +28,7 @@ class MayosCopy {
   const MayosCopy(this.languageCode);
   final String languageCode;
   bool get isArabic => languageCode == 'ar';
+  AiAllowanceCopy get _allowanceCopy => AiAllowanceCopy(languageCode);
   String get home => isArabic ? 'الرئيسية' : 'Home';
   String get program => isArabic ? 'البرنامج التدريبي' : 'Program';
   String get progress => isArabic ? 'التقدم' : 'Progress';
@@ -104,6 +106,19 @@ class MayosCopy {
           isolateCount: true,
         )}'
       : '$count character${count == 1 ? '' : 's'} left';
+  String lifterDailyAllowance(int? requestLimit) =>
+      _allowanceCopy.lifterDailyAllowance(requestLimit);
+  String get aiResourceSafeguardDisclosure =>
+      _allowanceCopy.resourceSafeguardDisclosure;
+  String lifterAllowanceSummary(int remaining, String resetAt) =>
+      _allowanceCopy.allowanceSummary(remaining, resetAt);
+  String lifterAllowanceExhausted(String resetAt) =>
+      _allowanceCopy.requestsExhausted(resetAt);
+  String aiAllowanceWarning(int remaining, String resetAt) =>
+      _allowanceCopy.resourceWarning(remaining, resetAt);
+  String aiAllowanceCutoff(int remaining, String resetAt) =>
+      _allowanceCopy.resourceCutoff(remaining, resetAt);
+  String get aiAnswerTruncated => _allowanceCopy.answerTruncated;
   String get offline => isArabic ? 'غير متصل' : 'Offline';
   String get offlineBanner =>
       isArabic ? 'أنت غير متصل بالإنترنت' : "You're offline";
@@ -1021,6 +1036,7 @@ class MayosCopy {
       isArabic ? 'المتابعة مع Google' : 'Continue with Google';
 
   String _ltr(String value) => '\u2066$value\u2069';
+
 }
 
 String _formatCount(num value) => value == value.roundToDouble()

@@ -85,6 +85,68 @@ class AccountPlans {
   AccountPlans withoutCoach() => AccountPlans(lifter: lifter);
 }
 
+/// The Lifter's durable daily request and resource state from `GET /auth/me`.
+class AiAllowance {
+  const AiAllowance({
+    required this.mode,
+    required this.status,
+    required this.resourceLimit,
+    required this.resourceUsed,
+    required this.resetAt,
+    this.requestLimit,
+    this.requestsUsed,
+    this.requestsRemaining,
+  });
+
+  factory AiAllowance.fromJson(Map<String, dynamic> json) {
+    final dynamic rawMode = json['mode'];
+    final dynamic rawStatus = json['status'];
+    final dynamic rawReset = json['reset_at'];
+    final dynamic rawResourceLimit = json['resource_limit'];
+    final dynamic rawResourceUsed = json['resource_used'];
+    if ((rawMode != 'trial' && rawMode != 'launch') ||
+        rawStatus is! String ||
+        rawReset is! String ||
+        rawResourceLimit is! int ||
+        rawResourceUsed is! int) {
+      throw const FormatException('Invalid AI allowance state.');
+    }
+    const Set<String> statuses = <String>{
+      'trial',
+      'available',
+      'warning',
+      'resource_cutoff',
+      'requests_exhausted',
+    };
+    final String status = statuses.contains(rawStatus)
+        ? rawStatus
+        : rawMode == 'trial'
+            ? 'trial'
+            : 'available';
+    return AiAllowance(
+      mode: rawMode as String,
+      status: status,
+      requestLimit: json['request_limit'] is int ? json['request_limit'] as int : null,
+      requestsUsed: json['requests_used'] is int ? json['requests_used'] as int : null,
+      requestsRemaining: json['requests_remaining'] is int
+          ? json['requests_remaining'] as int
+          : null,
+      resourceLimit: rawResourceLimit,
+      resourceUsed: rawResourceUsed,
+      resetAt: rawReset,
+    );
+  }
+
+  final String mode;
+  final String status;
+  final int? requestLimit;
+  final int? requestsUsed;
+  final int? requestsRemaining;
+  final int resourceLimit;
+  final int resourceUsed;
+  final String resetAt;
+}
+
 /// Current account identity, capabilities, effective Coach and stored Lifter
 /// plan states, coach-AI state, and sign-in methods from `GET /auth/me`.
 class Account {
@@ -101,6 +163,7 @@ class Account {
     this.displayLanguage = 'en',
     this.analyticsAllowed = true,
     this.recoveryEmailVerified = false,
+    this.lifterAiAllowance,
   });
 
   factory Account.fromJson(Map<String, dynamic> json) {
@@ -128,6 +191,9 @@ class Account {
       displayLanguage: normalizeDisplayLanguage(json['display_language']),
       analyticsAllowed: json['analytics_allowed'] as bool? ?? true,
       recoveryEmailVerified: json['recovery_email_verified'] as bool? ?? false,
+      lifterAiAllowance: json['lifter_ai_allowance'] is Map<String, dynamic>
+          ? AiAllowance.fromJson(json['lifter_ai_allowance'] as Map<String, dynamic>)
+          : null,
     );
   }
 
@@ -162,6 +228,9 @@ class Account {
   /// Whether `/auth/me` confirms the current recovery email address.
   final bool recoveryEmailVerified;
 
+  /// Current durable Lifter request/resource state, refreshed with the account.
+  final AiAllowance? lifterAiAllowance;
+
   Account copyWith({
     String? accountId,
     String? traineeId,
@@ -175,6 +244,7 @@ class Account {
     String? displayLanguage,
     bool? analyticsAllowed,
     bool? recoveryEmailVerified,
+    AiAllowance? lifterAiAllowance,
   }) =>
       Account(
         accountId: accountId ?? this.accountId,
@@ -192,6 +262,7 @@ class Account {
         analyticsAllowed: analyticsAllowed ?? this.analyticsAllowed,
         recoveryEmailVerified:
             recoveryEmailVerified ?? this.recoveryEmailVerified,
+        lifterAiAllowance: lifterAiAllowance ?? this.lifterAiAllowance,
       );
 
   bool get isCoach => capabilities.coach;

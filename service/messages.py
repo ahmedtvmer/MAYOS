@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Any, Callable
 
 _REGRESSION_BADGES = {
@@ -64,6 +64,7 @@ COACH_ALERT_MESSAGE_PARAM_ALLOWLISTS = {
     "coach_alert.program_final_week_started.v1": frozenset(),
     "coach_alert.program_final_week_completed.v1": frozenset(),
 }
+_AI_ALLOWANCE_REQUEST_MESSAGE_PARAMS = frozenset({"remaining_requests", "reset_at"})
 ERROR_MESSAGE_PARAM_ALLOWLISTS = {
     "app.update_required.v1": frozenset({"min_build"}),
     "http.bad_request.v1": frozenset(),
@@ -78,6 +79,10 @@ ERROR_MESSAGE_PARAM_ALLOWLISTS = {
     "http.request_failed.v1": frozenset(),
     "ai_limit.request_rate.v1": frozenset(),
     "ai_limit.daily_usage.v1": frozenset(),
+    "ai_allowance.resource_cutoff.v1": _AI_ALLOWANCE_REQUEST_MESSAGE_PARAMS,
+    "ai_allowance.requests_exhausted.v1": _AI_ALLOWANCE_REQUEST_MESSAGE_PARAMS,
+    "ai_allowance.request_in_progress.v1": _AI_ALLOWANCE_REQUEST_MESSAGE_PARAMS,
+    "ai_allowance.answer_truncated.v1": frozenset(),
     "chat.failed.v1": frozenset(),
     "google.account_already_linked.v1": frozenset(),
     "google.invalid_token.v1": frozenset(),
@@ -265,7 +270,7 @@ def structured_message(
         code is None
         or allowlist is None
         or params.keys() != allowlist
-        or not _valid_message_params(code, params)
+        or not _valid_message_params(code, params, allowlist)
     ):
         return {"message_code": None, "message_params": {}, "message_fallback": fallback}
     return {
@@ -275,9 +280,21 @@ def structured_message(
     }
 
 
-def _valid_message_params(code: str, params: Mapping[str, Any]) -> bool:
+def _valid_message_params(
+    code: str, params: Mapping[str, Any], allowlist: frozenset[str]
+) -> bool:
     if code in ASSIGNMENT_NOTICE_MESSAGE_PARAM_ALLOWLISTS:
         return _valid_assignment_notice_params(code, params)
+    if allowlist == _AI_ALLOWANCE_REQUEST_MESSAGE_PARAMS:
+        remaining = params.get("remaining_requests")
+        reset_at = params.get("reset_at")
+        if type(remaining) is not int or remaining < 0 or not isinstance(reset_at, str):
+            return False
+        try:
+            parsed = datetime.fromisoformat(reset_at)
+        except ValueError:
+            return False
+        return parsed.tzinfo is not None and parsed.utcoffset() == timedelta(0)
     if code in _POSITIVE_LIMIT_CODES:
         key = "max_cells" if code == "program_import.too_many_cells.v1" else "limit"
         limit = params.get(key)

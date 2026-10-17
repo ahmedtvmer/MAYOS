@@ -29,7 +29,7 @@ def test_structured_message_codes_match_dart_resolver_and_server_allowlists():
     resolver_source = resolver_path.read_text(encoding="utf-8")
 
     code_prefixes = (
-        "coach_alert|http|ai_limit|chat|google|workout|auth|assignment|"
+        "coach_alert|http|ai_limit|ai_allowance|chat|google|workout|auth|assignment|"
         "assignment_notice|program_import|program|program_request|intake|coach|media|recovery|coach_invite|app"
     )
     service_codes = set(

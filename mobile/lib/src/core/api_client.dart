@@ -2758,6 +2758,14 @@ class ApiClient {
             ? frame['response_content'] as String
             : '',
         programUpdated: frame['program_updated'] == true,
+        outcome: frame['outcome'] is String
+            ? frame['outcome'] as String
+            : 'completed',
+        lifterAllowance: frame['lifter_allowance'] is Map<String, dynamic>
+            ? AiAllowance.fromJson(
+                frame['lifter_allowance'] as Map<String, dynamic>,
+              )
+            : null,
         requestSuggestion: _parseRequestSuggestion(frame['request_suggestion']),
       ),
     );

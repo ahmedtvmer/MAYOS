@@ -13,6 +13,10 @@
       "kind": "method",
       "signature": "(self, account_id: str) -> dict[str, int]"
     },
+    "ai_allowance_usage": {
+      "kind": "method",
+      "signature": "(self, account_id: str, capability: str, *, now: datetime.datetime | None = None) -> dict[str, int]"
+    },
     "analytics_preference_allows": {
       "kind": "method",
       "signature": "(self, account_id: str) -> bool"
@@ -136,6 +140,10 @@
     "find_unique_exercise_id_by_exact_name": {
       "kind": "method",
       "signature": "(self, query: str) -> str | None"
+    },
+    "finish_ai_allowance_turn": {
+      "kind": "method",
+      "signature": "(self, turn_id: str, outcome: str, *, now: datetime.datetime | None = None) -> None"
     },
     "get_account": {
       "kind": "method",
@@ -509,6 +517,10 @@
       "kind": "method",
       "signature": "(self, *, full: bool = False) -> int"
     },
+    "reserve_ai_allowance_turn": {
+      "kind": "method",
+      "signature": "(self, reservation: database.registry.model_usage.AllowanceReservation, *, now: datetime.datetime | None = None) -> dict[str, typing.Any]"
+    },
     "resolve_coach_alert_transition": {
       "kind": "method",
       "signature": "(self, alert_id: str, coach_account_id: str, now_iso: str, resolved_by: str) -> tuple[dict[str, typing.Any] | None, bool]"
@@ -584,6 +596,10 @@
     "sum_model_tokens_for_account": {
       "kind": "method",
       "signature": "(self, account_id: str, start_iso: str, end_iso: str | None = None) -> int"
+    },
+    "sum_model_tokens_for_account_role": {
+      "kind": "method",
+      "signature": "(self, account_id: str, role: str, start_iso: str, end_iso: str | None = None) -> int"
     },
     "summarize_model_limit_hits_by_account": {
       "kind": "method",

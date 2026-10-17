@@ -140,6 +140,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _historyFailure = null;
         _loadingHistory = false;
       });
+      unawaited(ref.read(authControllerProvider.notifier).refreshAccount());
     } on ApiException catch (error) {
       _setStateIfMounted(() {
         _loadingHistory = false;
@@ -156,6 +157,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   /// The offline banner's retry: reload from the server and, on success, leave
   /// the offline state so the composer re-enables.
   Future<void> _retryHistory() => _loadHistory();
+
+  void _refreshAllowanceAfterIncompleteTurn() {
+    if (_disposed) return;
+    unawaited(ref.read(authControllerProvider.notifier).refreshAccount());
+  }
 
   Future<void> _acceptDisclosure() async {
     final String? accountId = _accountId;
@@ -231,8 +237,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           case ChatDone(
               :final String responseContent,
               :final bool programUpdated,
+              :final String outcome,
+              :final AiAllowance? lifterAllowance,
               :final ProgramRequestDraft? requestSuggestion
             ):
+            if (outcome == 'truncated') {
+              finished = true;
+              _refreshAllowanceAfterIncompleteTurn();
+              final String message =
+                  MayosCopy(ref.read(displayLanguageProvider)).aiAnswerTruncated;
+              await _failTurn(content, message);
+              return;
+            }
+            if (lifterAllowance != null) {
+              ref.read(authControllerProvider.notifier).updateLifterAiAllowance(
+                    accountId,
+                    lifterAllowance,
+                  );
+            } else {
+              unawaited(ref.read(authControllerProvider.notifier).refreshAccount());
+            }
             finished = true;
             final String reply =
                 responseContent.isNotEmpty ? responseContent : buffer;
@@ -264,6 +288,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               :final String? messageFallback
             ):
             finished = true;
+            _refreshAllowanceAfterIncompleteTurn();
             final ServerFailureMessage failure = ServerFailureMessage(
               detail,
               messageCode: messageCode,
@@ -280,6 +305,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         }
       }
     } on ApiException catch (error) {
+      _refreshAllowanceAfterIncompleteTurn();
       final bool offline = error.statusCode == null;
       final FailureMessage failure = offline
           ? const AppFailureMessage(
@@ -295,6 +321,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
       return;
     } on Object {
+      _refreshAllowanceAfterIncompleteTurn();
       const FailureMessage failure = AppFailureMessage(
         AppFailureId.assistantDidNotFinish,
         'The assistant did not finish. Please retry.',
@@ -428,6 +455,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(authControllerProvider);
     final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
     return MayosScaffold(
       title: copy.assistant,
@@ -503,8 +531,36 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   /// scroll view. A short history is anchored to the top of the remaining
   /// space; the composer below is always pinned to the bottom (#54).
   Widget _scrollableBody() {
+    final AiAllowance? allowance =
+        ref.read(authControllerProvider).session?.account.lifterAiAllowance;
     final List<Widget> banners = <Widget>[
       if (!_disclosureAccepted) _disclosureCard(),
+      if (allowance?.mode == 'launch')
+        _AllowanceBanner(
+          key: const Key('chat_allowance_summary'),
+          message: allowance!.requestsRemaining == 0
+              ? displayCopyOf(context).lifterAllowanceExhausted(allowance.resetAt)
+              : displayCopyOf(context).lifterAllowanceSummary(
+                  allowance.requestsRemaining ?? 0,
+                  allowance.resetAt,
+                ),
+        ),
+      if (allowance?.status == 'warning')
+        _AllowanceBanner(
+          key: const Key('chat_allowance_warning'),
+          message: displayCopyOf(context).aiAllowanceWarning(
+            allowance!.requestsRemaining ?? 0,
+            allowance.resetAt,
+          ),
+        ),
+      if (allowance?.status == 'resource_cutoff')
+        _AllowanceBanner(
+          key: const Key('chat_allowance_cutoff'),
+          message: displayCopyOf(context).aiAllowanceCutoff(
+            allowance!.requestsRemaining ?? 0,
+            allowance.resetAt,
+          ),
+        ),
       if (_offline) _OfflineChatBanner(onRetry: _retryHistory),
       if (_historyFailure != null)
         _ErrorBanner(
@@ -744,6 +800,37 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         ),
                       )
                     : const Icon(Icons.send),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AllowanceBanner extends StatelessWidget {
+  const _AllowanceBanner({super.key, required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final MayosThemeExtension colors = MayosTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(MayosSpacing.md),
+      child: MayosCard(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Icon(Icons.info_outline, size: 20, color: colors.accent),
+            const SizedBox(width: MayosSpacing.xs),
+            Expanded(
+              child: Text(
+                message,
+                style: MayosTypography.of(context).body.copyWith(
+                      color: colors.textPrimary,
+                    ),
               ),
             ),
           ],

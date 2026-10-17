@@ -27,6 +27,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Callable, Literal, NoReturn
 
 from service.analytics import ClientContext, UNKNOWN_CLIENT
+from utils.utc_day import utc_day_start_iso as _utc_day_start_iso
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ class ModelAdmissionContext:
     client: ClientContext
     background_tasks: Any | None = None
     defer_limit_hit: Callable[[str], None] | None = None
+    skip_daily_token_limit: bool = False
 
 
 @dataclass(frozen=True)
@@ -64,13 +66,18 @@ class ModelLimitExceeded(Exception):
     def __init__(
         self,
         detail: str,
-        kind: Literal["rate", "daily_tokens"],
+        kind: str,
         context: ModelLimitContext | None = None,
+        *,
+        message_code: str | None = None,
+        message_params: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(detail)
         self.detail = detail
         self.kind = kind
         self.context = context
+        self.message_code = message_code
+        self.message_params = message_params or {}
 
 
 def _int_env(name: str, default: int) -> int:
@@ -93,8 +100,7 @@ def daily_token_limit() -> int:
 
 def utc_day_start_iso(now: datetime | None = None) -> str:
     """Start of the current UTC calendar day as an ISO string (comparable form)."""
-    moment = now or datetime.now(UTC)
-    return moment.astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    return _utc_day_start_iso(now or datetime.now(UTC))
 
 
 _lock = threading.Lock()
@@ -186,7 +192,15 @@ def admit_model_request(
     """
     if _admission_is_skipped(account_id, guard, db):
         return None
-    refusal = _check_admission_window(account_id, db, now)
+    refusal = _check_admission_window(
+        account_id,
+        db,
+        now,
+        context=context,
+        daily_token_limit_override=(
+            0 if context and context.skip_daily_token_limit else None
+        ),
+    )
     if refusal is not None:
         _raise_model_limit(account_id, db, context, refusal)
     return _admitted.set(account_id) if guard else None
@@ -206,10 +220,19 @@ def _admission_is_skipped(account_id: str | None, guard: bool, db: Any) -> bool:
 
 
 def _check_admission_window(
-    account_id: str, db: Any, now: datetime | None = None
+    account_id: str,
+    db: Any,
+    now: datetime | None = None,
+    *,
+    context: ModelAdmissionContext | None = None,
+    daily_token_limit_override: int | None = None,
 ) -> tuple[Literal["rate", "daily_tokens"], str] | None:
     request_limit = request_limit_per_minute()
-    token_limit = daily_token_limit()
+    token_limit = (
+        daily_token_limit()
+        if daily_token_limit_override is None
+        else daily_token_limit_override
+    )
     refusal: tuple[Literal["rate", "daily_tokens"], str] | None = None
     with _lock:
         monotonic_now = time.monotonic()
@@ -217,12 +240,29 @@ def _check_admission_window(
         if request_limit > 0 and in_window >= request_limit:
             refusal = ("rate", REQUEST_LIMIT_DETAIL)
         elif token_limit > 0:
-            used = db.sum_model_tokens_for_account(account_id, utc_day_start_iso(now))
+            used = _sum_admission_tokens(account_id, db, context, now)
             if used >= token_limit:
                 refusal = ("daily_tokens", DAILY_TOKEN_LIMIT_DETAIL)
         if refusal is None:
             _request_window.setdefault(account_id, deque()).append(monotonic_now)
     return refusal
+
+
+def _sum_admission_tokens(
+    account_id: str,
+    db: Any,
+    context: ModelAdmissionContext | None,
+    now: datetime | None,
+) -> int:
+    """Keeps Coach admission isolated in launch mode, preserving the trial cap."""
+    if context is not None and context.role == "coach":
+        from service.ai_allowance import launch_allowances_enabled
+
+        if launch_allowances_enabled():
+            return db.sum_model_tokens_for_account_role(
+                account_id, "coach", utc_day_start_iso(now)
+            )
+    return db.sum_model_tokens_for_account(account_id, utc_day_start_iso(now))
 
 
 def _raise_model_limit(

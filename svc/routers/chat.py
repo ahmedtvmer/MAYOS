@@ -105,6 +105,10 @@ def _run_turn(
                         if disconnected.is_set():
                             break
                 chat_service.persist_assistant_message(ledger, state.get("response_content"))
+                if disconnected.is_set():
+                    turn.mark_interrupted()
+                else:
+                    turn.mark_answer_completed(state.get("response_content"))
                 change = state.get("program_change")
                 persisted = ledger.get_active_program() if change else None
                 if change and persisted is not None:
@@ -114,15 +118,25 @@ def _run_turn(
                         persisted,
                         client=scope.client,
                     )
-            if disconnected.is_set():
-                turn.mark_interrupted()
-            done_payload = {
-                "response_content": state.get("response_content") or "",
-                "program_updated": bool(state.get("program_updated")),
-            }
-            if state.get("request_suggestion") is not None:
-                done_payload["request_suggestion"] = state["request_suggestion"]
-            out.put(("done", done_payload))
+        if disconnected.is_set():
+            turn.mark_interrupted()
+        allowance = None
+        if turn.answer_outcome == "completed":
+            from service.ai_allowance import get_lifter_allowance, lifter_plan
+
+            allowance = get_lifter_allowance(
+                db, account_id, lifter_plan(db, account_id)
+            )
+        done_payload = {
+            "response_content": state.get("response_content") or "",
+            "program_updated": bool(state.get("program_updated")),
+            "outcome": turn.answer_outcome,
+        }
+        if allowance is not None:
+            done_payload["lifter_allowance"] = allowance
+        if state.get("request_suggestion") is not None:
+            done_payload["request_suggestion"] = state["request_suggestion"]
+        out.put(("done", done_payload))
     except Exception:
         if disconnected.is_set():
             turn.mark_interrupted()
@@ -162,13 +176,25 @@ async def post_message(
         store=db,
         client=client,
     )
+    from service.ai_allowance import launch_allowances_enabled
+
     admit_model_request(
         account_id,
         guard=False,
         db=db,
-        context=ModelAdmissionContext(role="player", client=client, background_tasks=background_tasks),
+        context=ModelAdmissionContext(
+            role="player",
+            client=client,
+            background_tasks=background_tasks,
+            skip_daily_token_limit=launch_allowances_enabled(),
+        ),
     )
     turn = InferenceTurnState(scope)
+    from service.ai_allowance import admit_lifter_turn
+
+    turn.allowance_reserved = admit_lifter_turn(
+        db, account_id, turn.turn_id, scope.purpose
+    )
 
     out: "queue.Queue[tuple[str, Any]]" = queue.Queue()
     disconnected = threading.Event()

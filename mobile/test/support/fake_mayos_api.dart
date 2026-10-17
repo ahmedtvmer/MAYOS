@@ -92,6 +92,7 @@ class FakeMayosApi {
   String? lastDeletePassword;
   String lifterPlan = 'free';
   String? coachPlan = 'free';
+  Map<String, dynamic>? lifterAiAllowance;
   bool profileExists = false;
   final List<Map<String, dynamic>> injuries = <Map<String, dynamic>>[];
   int _injuryId = 0;
@@ -440,9 +441,13 @@ class FakeMayosApi {
   // When true, `POST /chat/messages` emits an SSE error frame after the user
   // message is stored (a failed turn; no assistant reply is persisted).
   bool chatSendError = false;
+  // When set, `POST /chat/messages` is refused before SSE starts, matching a
+  // structured server-side admission refusal such as the resource cutoff.
+  Map<String, dynamic>? chatRefusal;
   // When true, the done frame reports `program_updated: true`.
   bool chatProgramUpdated = false;
   Map<String, dynamic>? chatRequestSuggestion;
+  Map<String, dynamic>? chatDoneAllowance;
   List<String> chatStatuses = <String>[];
   List<String> chatReplyChunks = <String>['Keep your ', 'elbows tucked.'];
 
@@ -1056,6 +1061,8 @@ class FakeMayosApi {
         'coach': coach,
       },
       'plans': _plansBody(),
+      if (lifterAiAllowance != null)
+        'lifter_ai_allowance': lifterAiAllowance,
       'coach_ai_enabled': coachAiEnabled,
       'coach_roster_ai_enabled': coachRosterAiEnabled,
       'coach_roster_ai_available': coachRosterAiAvailable,
@@ -1963,6 +1970,9 @@ class FakeMayosApi {
         'created_at': '2026-09-26T12:00:00Z',
       });
     }
+    if (chatRefusal != null) {
+      return FakeResponse(429, chatRefusal);
+    }
     if (chatSendError) {
       return const FakeResponse(200, null, <String>[
         'data: {"token":"partial reply"}\n\n',
@@ -1986,6 +1996,9 @@ class FakeMayosApi {
     final String suggestionJson = chatRequestSuggestion == null
         ? ''
         : ', "request_suggestion": ${jsonEncode(chatRequestSuggestion)}';
+    final String allowanceJson = chatDoneAllowance == null
+        ? ''
+        : ', "lifter_allowance": ${jsonEncode(chatDoneAllowance)}';
     chatHistory.add(<String, dynamic>{
       'id': 'chat-${++_chatSeq}',
       'role': 'assistant',
@@ -1998,8 +2011,8 @@ class FakeMayosApi {
       for (final String chunk in replyChunks)
         'data: {"token": ${jsonEncode(chunk)}}\n\n',
       'data: {"done": true, "response_content": ${jsonEncode(reply)}, '
-          '"program_updated": ${chatProgramUpdated ? 'true' : 'false'}'
-          '$suggestionJson}\n\n',
+          '"program_updated": ${chatProgramUpdated ? 'true' : 'false'}, '
+          '"outcome": "completed"$suggestionJson$allowanceJson}\n\n',
     ]);
   }
 

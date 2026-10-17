@@ -19,10 +19,17 @@ from agent import assistant_graph
 from agent import program_rules
 from agent.program_rules import get_default_split, resolve_split
 from database.database_manager import DatabaseManager
+from database.registry.model_usage import AllowanceReservation
 from service import coach as coach_service
 from service import coach_programs as coach_programs_service
 from service import model_metering as metering_service
-from service.model_limits import ModelLimitExceeded, admit_model_request, reset_model_limits
+from service.analytics import UNKNOWN_CLIENT
+from service.model_limits import (
+    ModelAdmissionContext,
+    ModelLimitExceeded,
+    admit_model_request,
+    reset_model_limits,
+)
 from svc.app import create_app
 from svc.dependencies import get_db
 from svc.llm import InferenceScope, run_inference_sync
@@ -333,6 +340,468 @@ def test_tool_call_chat_turn_uses_one_allowance_and_meters_each_model_call(
         if event["event"] == "ai_request_completed"
     )
     assert completed["properties"]["turns_today"] == 1
+
+
+def _enable_synthetic_lifter_allowance(monkeypatch, *, requests: int = 3, tokens: int = 1000):
+    monkeypatch.setenv("AI_LAUNCH_ALLOWANCES_ENABLED", "true")
+    monkeypatch.setenv("LIFTER_AI_FREE_DAILY_REQUESTS", str(requests))
+    monkeypatch.setenv("LIFTER_AI_PRO_DAILY_REQUESTS", str(requests))
+    monkeypatch.setenv("LIFTER_AI_FREE_DAILY_RESOURCE_TOKENS", str(tokens))
+    monkeypatch.setenv("LIFTER_AI_PRO_DAILY_RESOURCE_TOKENS", str(tokens))
+
+
+def test_lifter_allowance_is_durable_across_tokens_and_counts_multicall_once(api, monkeypatch):
+    client, db = api
+    _enable_synthetic_lifter_allowance(monkeypatch, requests=3, tokens=1000)
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "200000")
+    token = _register(client, "allowance-player")
+    second_token = client.post(
+        "/auth/login",
+        json={"trainee_id": "allowance-player", "password": "correct-horse-1"},
+    ).json()["access_token"]
+    account_id = _account_id(db, "allowance-player")
+    fake = _fake_model()
+
+    def fake_turn(state, **_kwargs):
+        fake.invoke("first model call")
+        fake.invoke("second model call")
+        state["response_content"] = "One completed answer."
+        yield "One completed answer."
+
+    monkeypatch.setattr("svc.routers.chat.stream_assistant_turn", fake_turn)
+    first = _post_chat(client, token)
+    assert first.status_code == 200, first.text
+    done = next(
+        json.loads(line.removeprefix("data: "))
+        for line in first.text.splitlines()
+        if line.startswith("data: ") and '"done"' in line
+    )
+    assert done["outcome"] == "completed"
+    assert done["lifter_allowance"]["requests_used"] == 1
+    assert done["lifter_allowance"]["requests_remaining"] == 2
+    assert done["lifter_allowance"]["resource_used"] == 300
+    assert sum(row["requests"] for row in _usage_rows(db, account_id)) == 2
+
+    second = _post_chat(client, second_token)
+    assert second.status_code == 200, second.text
+    state = client.get("/auth/me", headers=_authed(second_token)).json()["lifter_ai_allowance"]
+    assert state["request_limit"] == 3
+    assert state["requests_used"] == 2
+    assert state["requests_remaining"] == 1
+    assert state["resource_used"] == 600
+    changed_language = client.put(
+        "/auth/display-language",
+        headers=_authed(second_token),
+        json={"display_language": "ar"},
+    )
+    assert changed_language.status_code == 200
+    arabic_state = client.get(
+        "/auth/me", headers=_authed(second_token)
+    ).json()["lifter_ai_allowance"]
+    assert arabic_state["request_limit"] == 3
+    assert arabic_state["requests_remaining"] == 1
+
+
+def test_lifter_truncation_is_not_a_completed_answer_but_remains_metered(api, monkeypatch):
+    client, db = api
+    _enable_synthetic_lifter_allowance(monkeypatch, requests=2, tokens=1000)
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "200000")
+    token = _register(client, "truncated-allowance")
+    account_id = _account_id(db, "truncated-allowance")
+    monkeypatch.setattr(
+        assistant_graph,
+        "llm",
+        _fake_model(finish_reason="length"),
+    )
+
+    response = _post_chat(client, token)
+    assert response.status_code == 200, response.text
+    done = next(
+        json.loads(line.removeprefix("data: "))
+        for line in response.text.splitlines()
+        if line.startswith("data: ") and '"done"' in line
+    )
+    assert done["outcome"] == "truncated"
+    assert done["response_content"].startswith("Keep the elbows tucked.")
+    state = client.get("/auth/me", headers=_authed(token)).json()["lifter_ai_allowance"]
+    assert state["requests_used"] == 0
+    assert state["requests_remaining"] == 2
+    assert state["resource_used"] == 150
+    rows = [row for row in _usage_rows(db, account_id) if row["requests"] > 0]
+    assert rows and rows[0]["output_tokens"] > 0 and rows[0]["estimated_calls"] == 0
+    assert rows[0]["cost_usd"] > 0
+    history = client.get("/chat/history", headers=_authed(token)).json()
+    assert [message["role"] for message in history] == ["user", "assistant"]
+    assert history[-1]["content"] == done["response_content"]
+
+
+def test_lifter_turn_uses_free_semantics_when_plan_lookup_is_missing(api, monkeypatch):
+    from service import plans
+
+    client, _db = api
+    _enable_synthetic_lifter_allowance(monkeypatch, requests=2, tokens=1000)
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "200000")
+    token = _register(client, "missing-lifter-plan")
+
+    monkeypatch.setattr(
+        plans,
+        "plans_for_account",
+        lambda _db, _account: {"lifter": None, "coach": None},
+    )
+    monkeypatch.setattr(assistant_graph, "llm", _fake_model())
+
+    response = _post_chat(client, token)
+
+    assert response.status_code == 200, response.text
+    done = next(
+        json.loads(line.removeprefix("data: "))
+        for line in response.text.splitlines()
+        if line.startswith("data: ") and '"done"' in line
+    )
+    assert done["outcome"] == "completed"
+    assert done["lifter_allowance"]["request_limit"] == 2
+
+
+def test_active_program_generation_is_metered_without_lifter_request_admission(
+    api, monkeypatch
+):
+    from service import programs as programs_service
+    from utils.model_metering import record_usage
+
+    client, db = api
+    monkeypatch.setenv("AI_LAUNCH_ALLOWANCES_ENABLED", "false")
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "1")
+    token = _register(client, "program-generation-outside-allowance")
+    account_id = _account_id(db, "program-generation-outside-allowance")
+    db.record_model_usage(
+        account_id, "player", "test-model", 1, 0, 0.0, False,
+        purpose="prior_player_use", created_at=datetime.now(UTC).isoformat(),
+    )
+    with db.open_ledger("program-generation-outside-allowance") as ledger:
+        ledger.upsert_player_profile({"current_goal": "Strength"})
+
+    def synthesize(*_args, ledger, **_kwargs):
+        record_usage("test-model", 40, 10, False)
+        program = _simple_program()
+        ledger.save_training_program(program.model_dump())
+        return program, "Synthetic program generation."
+
+    monkeypatch.setattr(programs_service, "generate_program_pipeline", synthesize)
+
+    response = client.get("/programs/active", headers=_authed(token))
+
+    assert response.status_code == 200, response.text
+    allowance = db.ai_allowance_usage(account_id, "lifter")
+    assert allowance["requests_used"] == 0
+    assert allowance["resource_used"] == 51
+    purpose = db.catalog_conn.execute(
+        "SELECT purpose FROM model_usage WHERE account_id = ? AND purpose = ?",
+        (account_id, "program_active"),
+    ).fetchone()[0]
+    assert purpose == "program_active"
+
+
+def test_stale_allowance_reservation_is_released_after_bounded_window(api):
+    client, db = api
+    _register(client, "stale-reservation")
+    account_id = _account_id(db, "stale-reservation")
+    now = datetime.now(UTC)
+    old_turn = "stale-in-progress"
+    new_turn = "replacement-in-progress"
+    db.reserve_ai_allowance_turn(
+        AllowanceReservation(
+            account_id=account_id,
+            capability="lifter",
+            purpose="chat",
+            turn_id=old_turn,
+            request_limit=1,
+            resource_limit=1000,
+        ),
+        now=now - timedelta(minutes=11),
+    )
+
+    result = db.reserve_ai_allowance_turn(
+        AllowanceReservation(
+            account_id=account_id,
+            capability="lifter",
+            purpose="chat",
+            turn_id=new_turn,
+            request_limit=1,
+            resource_limit=1000,
+        ),
+        now=now,
+    )
+
+    assert result["refusal"] is None
+    outcomes = dict(
+        db.catalog_conn.execute(
+            "SELECT turn_id, outcome FROM ai_allowance_turns WHERE account_id = ?",
+            (account_id,),
+        ).fetchall()
+    )
+    assert outcomes[old_turn] == "interrupted"
+    assert outcomes[new_turn] == "in_progress"
+
+
+def test_allowance_index_covers_updated_at_queries(api):
+    _client, db = api
+    db.ensure_account_schema()
+
+    columns = [
+        row[2]
+        for row in db.catalog_conn.execute(
+            "PRAGMA index_info(idx_ai_allowance_turns_account_day)"
+        ).fetchall()
+    ]
+
+    assert columns == ["account_id", "capability", "updated_at", "outcome"]
+
+
+def test_launch_coach_resource_window_excludes_lifter_usage_but_trial_stays_shared(
+    api, monkeypatch
+):
+    client, db = api
+    _register(client, "coach-window-isolation")
+    account_id = _account_id(db, "coach-window-isolation")
+    now = datetime.now(UTC).isoformat()
+    monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "0")
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "100")
+    monkeypatch.setenv("AI_LAUNCH_ALLOWANCES_ENABLED", "true")
+    db.record_model_usage(
+        account_id, "player", "test-model", 150, 0, 0.0, False,
+        purpose="chat", created_at=now,
+    )
+    db.record_model_usage(
+        account_id, "coach", "test-model", 50, 0, 0.0, False,
+        purpose="coach_assistant", created_at=now,
+    )
+    context = ModelAdmissionContext(role="coach", client=UNKNOWN_CLIENT)
+
+    admit_model_request(account_id, guard=False, db=db, context=context)
+    assert db.sum_model_tokens_for_account_role(
+        account_id, "coach", now[:10] + "T00:00:00+00:00"
+    ) == 50
+
+    db.record_model_usage(
+        account_id, "coach", "test-model", 50, 0, 0.0, False,
+        purpose="coach_assistant", created_at=now,
+    )
+    with pytest.raises(ModelLimitExceeded):
+        admit_model_request(account_id, guard=False, db=db, context=context)
+
+    monkeypatch.setenv("AI_LAUNCH_ALLOWANCES_ENABLED", "false")
+    reset_model_limits()
+    with pytest.raises(ModelLimitExceeded):
+        admit_model_request(account_id, guard=False, db=db, context=context)
+
+
+@pytest.mark.parametrize(
+    ("failure", "outcome"),
+    [(RuntimeError("provider failed"), "failed"), (InterruptedError("stream stopped"), "interrupted")],
+)
+def test_lifter_provider_failure_and_interruption_release_the_request_slot(
+    api, monkeypatch, failure, outcome
+):
+    client, db = api
+    _enable_synthetic_lifter_allowance(monkeypatch, requests=2, tokens=1000)
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "200000")
+    token = _register(client, f"{outcome}-allowance")
+    account_id = _account_id(db, f"{outcome}-allowance")
+    fake = _fake_model()
+
+    def failed_turn(_state, **_kwargs):
+        fake.invoke("metered before failure")
+        raise failure
+        yield "unreachable"
+
+    monkeypatch.setattr("svc.routers.chat.stream_assistant_turn", failed_turn)
+    response = _post_chat(client, token)
+    assert response.status_code == 200
+    state = client.get("/auth/me", headers=_authed(token)).json()["lifter_ai_allowance"]
+    assert state["requests_used"] == 0
+    assert state["requests_remaining"] == 2
+    assert state["resource_used"] == 150
+    assert _usage_rows(db, account_id)[0]["estimated_calls"] == 0
+
+
+def test_lifter_resource_cutoff_is_pre_stream_and_ignores_coach_usage(api, monkeypatch):
+    client, db = api
+    _enable_synthetic_lifter_allowance(monkeypatch, requests=3, tokens=100)
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "200000")
+    token = _register(client, "resource-isolation")
+    account_id = _account_id(db, "resource-isolation")
+    now = datetime.now(UTC).isoformat()
+    db.record_model_usage(
+        account_id=account_id,
+        role="coach",
+        model="deepseek-ai/DeepSeek-V4-Flash",
+        input_tokens=500,
+        output_tokens=500,
+        cost_usd=0.0,
+        estimated=False,
+        purpose="coach_assistant",
+        created_at=now,
+    )
+    calls: list[str] = []
+
+    def fake_turn(state, **_kwargs):
+        calls.append("stream")
+        state["response_content"] = "Completed."
+        yield "Completed."
+
+    monkeypatch.setattr("svc.routers.chat.stream_assistant_turn", fake_turn)
+    accepted = _post_chat(client, token)
+    assert accepted.status_code == 200, accepted.text
+    assert calls == ["stream"]
+
+    cutoff = _register(client, "resource-cutoff")
+    cutoff_id = _account_id(db, "resource-cutoff")
+    db.record_model_usage(
+        account_id=cutoff_id,
+        role="player",
+        model="deepseek-ai/DeepSeek-V4-Flash",
+        input_tokens=70,
+        output_tokens=30,
+        cost_usd=0.0,
+        estimated=False,
+        purpose="chat",
+        created_at=now,
+    )
+    calls.clear()
+    refused = _post_chat(client, cutoff)
+    assert refused.status_code == 429
+    payload = refused.json()
+    assert payload["message_code"] == "ai_allowance.resource_cutoff.v1"
+    assert payload["message_params"]["remaining_requests"] == 3
+    assert payload["message_params"]["reset_at"].endswith("T00:00:00+00:00")
+    assert payload["message_fallback"] == payload["detail"]
+    assert calls == []
+
+
+def test_lifter_completed_request_reservation_is_atomic_and_resets_at_utc_day(api, monkeypatch):
+    client, db = api
+    _enable_synthetic_lifter_allowance(monkeypatch, requests=1, tokens=1000)
+    monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "0")
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "200000")
+    token = _register(client, "concurrent-allowance")
+    second_token = client.post(
+        "/auth/login",
+        json={"trainee_id": "concurrent-allowance", "password": "correct-horse-1"},
+    ).json()["access_token"]
+    started = threading.Event()
+    release = threading.Event()
+    stream_calls: list[str] = []
+
+    def slow_turn(state, **_kwargs):
+        stream_calls.append("stream")
+        started.set()
+        assert release.wait(timeout=5)
+        state["response_content"] = "One answer."
+        yield "One answer."
+
+    monkeypatch.setattr("svc.routers.chat.stream_assistant_turn", slow_turn)
+    first_result: list[Any] = []
+
+    def first_request():
+        first_result.append(_post_chat(client, token))
+
+    worker = threading.Thread(target=first_request)
+    worker.start()
+    assert started.wait(timeout=5)
+    concurrent = _post_chat(client, second_token)
+    assert concurrent.status_code == 429
+    assert concurrent.json()["message_code"] == "ai_allowance.request_in_progress.v1"
+    release.set()
+    worker.join(timeout=5)
+    assert first_result and first_result[0].status_code == 200
+    exhausted = _post_chat(client, second_token)
+    assert exhausted.status_code == 429
+    assert exhausted.json()["message_code"] == "ai_allowance.requests_exhausted.v1"
+    assert stream_calls == ["stream"]
+
+    current = client.get("/auth/me", headers=_authed(second_token)).json()["lifter_ai_allowance"]
+    assert current["requests_used"] == 1
+    assert current["requests_remaining"] == 0
+
+    reset_token = _register(client, "reset-allowance")
+    reset_account_id = _account_id(db, "reset-allowance")
+    yesterday = datetime.now(UTC) - timedelta(days=1)
+    old_turn = "yesterday-completed-turn"
+    db.reserve_ai_allowance_turn(
+        AllowanceReservation(
+            account_id=reset_account_id,
+            capability="lifter",
+            purpose="chat",
+            turn_id=old_turn,
+            request_limit=1,
+            resource_limit=1000,
+        ),
+        now=yesterday,
+    )
+    db.finish_ai_allowance_turn(old_turn, "completed", now=yesterday)
+    db.record_model_usage(
+        account_id=reset_account_id,
+        role="player",
+        model="deepseek-ai/DeepSeek-V4-Flash",
+        input_tokens=800,
+        output_tokens=100,
+        cost_usd=0.0,
+        estimated=False,
+        purpose="chat",
+        created_at=yesterday.isoformat(),
+    )
+    reset = client.get("/auth/me", headers=_authed(reset_token)).json()["lifter_ai_allowance"]
+    assert reset["requests_used"] == 0
+    assert reset["requests_remaining"] == 1
+    assert reset["resource_used"] == 0
+
+
+def test_lifter_warning_threshold_uses_real_usage_and_exempts_checkpoint(api, monkeypatch):
+    client, db = api
+    _enable_synthetic_lifter_allowance(monkeypatch, requests=3, tokens=100)
+    monkeypatch.setenv("MODEL_DAILY_TOKEN_LIMIT", "200000")
+    now = datetime.now(UTC).isoformat()
+    for username, used, expected in (
+        ("resource-79", 79, "available"),
+        ("resource-80", 80, "warning"),
+        ("resource-81", 81, "warning"),
+        ("resource-100", 100, "resource_cutoff"),
+    ):
+        token = _register(client, username)
+        account_id = _account_id(db, username)
+        db.record_model_usage(
+            account_id=account_id,
+            role="player",
+            model="deepseek-ai/DeepSeek-V4-Flash",
+            input_tokens=used,
+            output_tokens=0,
+            cost_usd=0.0,
+            estimated=False,
+            purpose="chat",
+            created_at=now,
+        )
+        state = client.get("/auth/me", headers=_authed(token)).json()["lifter_ai_allowance"]
+        assert state["status"] == expected
+        assert state["requests_remaining"] == 3
+
+    checkpoint_token = _register(client, "checkpoint-resource")
+    checkpoint_id = _account_id(db, "checkpoint-resource")
+    db.record_model_usage(
+        account_id=checkpoint_id,
+        role="player",
+        model="deepseek-ai/DeepSeek-V4-Flash",
+        input_tokens=1000,
+        output_tokens=0,
+        cost_usd=0.0,
+        estimated=False,
+        purpose="checkpoint_review",
+        created_at=now,
+    )
+    checkpoint_state = client.get(
+        "/auth/me", headers=_authed(checkpoint_token)
+    ).json()["lifter_ai_allowance"]
+    assert checkpoint_state["resource_used"] == 0
+    assert checkpoint_state["status"] == "available"
 
 
 def test_resolve_split_meters_only_model_path_through_injected_inference(api, monkeypatch):

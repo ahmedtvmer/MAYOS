@@ -312,6 +312,19 @@ class AccountPlansOut(BaseModel):
     coach: PlanStateOut | None = None
 
 
+class LifterAiAllowanceOut(BaseModel):
+    """Durable Lifter request/resource state; trial mode preserves the shared cap."""
+
+    mode: Literal["trial", "launch"]
+    status: Literal["trial", "available", "warning", "resource_cutoff", "requests_exhausted"]
+    request_limit: int | None = None
+    requests_used: int | None = None
+    requests_remaining: int | None = None
+    resource_limit: int
+    resource_used: int
+    reset_at: str
+
+
 class AccountOut(BaseModel):
     """Current account identity, capabilities, and plan states, read from the durable registry.
 
@@ -330,6 +343,7 @@ class AccountOut(BaseModel):
     trainee_id: str
     capabilities: AccountCapabilitiesOut
     plans: AccountPlansOut
+    lifter_ai_allowance: LifterAiAllowanceOut | None = None
     has_password: bool
     linked_sign_ins: list[str]
     display_language: DisplayLanguage

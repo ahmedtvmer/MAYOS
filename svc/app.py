@@ -397,15 +397,22 @@ def create_app() -> FastAPI:
     @app.exception_handler(ModelLimitExceeded)
     async def model_limit_handler(request: Request, exc: ModelLimitExceeded):
         """One 429 shape for every per-account model limit refusal (ADR 038)."""
-        refusal = ai_limit_message(exc.kind, exc.detail)
+        if exc.message_code:
+            message_metadata = MessageMetadata(
+                code=exc.message_code,
+                params=exc.message_params,
+            )
+        else:
+            refusal = ai_limit_message(exc.kind, exc.detail)
+            message_metadata = MessageMetadata(
+                code=refusal["message_code"],
+                params=refusal["message_params"],
+            )
         response = JSONResponse(status_code=429, content={"detail": exc.detail})
         return _add_error_metadata(
             request,
             response,
-            MessageMetadata(
-                code=refusal["message_code"],
-                params=refusal["message_params"],
-            ),
+            message_metadata,
         )
 
     @app.exception_handler(RequestValidationError)

@@ -68,7 +68,10 @@ class InferenceTurnState:
     scope: InferenceScope
     turn_id: str = field(default_factory=lambda: uuid.uuid4().hex)
     outcome: str = "ok"
+    answer_outcome: str = "pending"
+    allowance_reserved: bool = False
     finish_reason: str | None = None
+    _has_truncation: bool = field(default=False, init=False, repr=False)
     latency_ms: int = 0
     _emitted: bool = field(default=False, init=False, repr=False)
     _completion_suppressed: bool = field(default=False, init=False, repr=False)
@@ -81,6 +84,8 @@ class InferenceTurnState:
 
     def record_finish_reason(self, reason: str) -> None:
         self.finish_reason = reason
+        if reason in {"length", "max_tokens"}:
+            self._has_truncation = True
 
     def record_inference(self, outcome: str, latency_ms: int) -> None:
         if outcome != "ok":
@@ -89,10 +94,52 @@ class InferenceTurnState:
 
     def mark_interrupted(self) -> None:
         self.outcome = "interrupted"
+        self.answer_outcome = "interrupted"
 
     def mark_error(self) -> None:
         if self.outcome == "ok":
             self.outcome = "error"
+        if self.answer_outcome == "pending":
+            self.answer_outcome = "failed"
+
+    def mark_answer_completed(self, answer: str | None = None) -> str:
+        """Classifies the delivered answer independently of transport completion."""
+        if self._has_truncation:
+            self.outcome = "truncated"
+            self.answer_outcome = "truncated"
+        elif not answer:
+            self.mark_error()
+        else:
+            self.answer_outcome = "completed"
+        return self.answer_outcome
+
+    def _finalize_allowance_outcome(self) -> None:
+        self._classify_allowance_outcome()
+        if (
+            self.scope.role != "player"
+            or not self.allowance_reserved
+            or self.scope.purpose == "checkpoint_review"
+        ):
+            return
+        from service.ai_allowance import finish_allowance_turn
+
+        finish_allowance_turn(
+            self.scope.store,
+            self.turn_id,
+            self.answer_outcome,  # type: ignore[arg-type]
+        )
+
+    def _classify_allowance_outcome(self) -> None:
+        if self.answer_outcome == "pending":
+            if self._has_truncation:
+                self.outcome = "truncated"
+                self.answer_outcome = "truncated"
+            elif self.outcome == "ok":
+                self.answer_outcome = "completed"
+            elif self.outcome == "interrupted":
+                self.answer_outcome = "interrupted"
+            else:
+                self.answer_outcome = "failed"
 
     def record_usage(self, model: str, input_tokens: int, output_tokens: int, estimated: bool) -> None:
         with self._usage_lock:
@@ -220,6 +267,7 @@ def inference_turn(
             turn.mark_error()
         raise
     finally:
+        turn._finalize_allowance_outcome()
         turn.flush_limit_hits()
         turn._ready.set()
         if wait_for is None:
@@ -321,6 +369,7 @@ def _usage_scope(scope: InferenceScope) -> Iterator[None]:
 
 def _admit_scope(scope: InferenceScope, turn: InferenceTurnState | None) -> Token[str | None] | None:
     from service.model_limits import ModelAdmissionContext, admit_model_request
+    from service.ai_allowance import admit_lifter_turn, launch_allowances_enabled
 
     if not scope.admit:
         return None
@@ -329,8 +378,14 @@ def _admit_scope(scope: InferenceScope, turn: InferenceTurnState | None) -> Toke
         client=scope.client,
         background_tasks=turn.background_tasks if turn is not None else None,
         defer_limit_hit=turn.defer_limit_hit if turn is not None else None,
+        skip_daily_token_limit=scope.role == "player" and launch_allowances_enabled(),
     )
-    return admit_model_request(scope.account_id, db=scope.store, context=context)
+    token = admit_model_request(scope.account_id, db=scope.store, context=context)
+    if scope.role == "player" and turn is not None:
+        turn.allowance_reserved = turn.allowance_reserved or admit_lifter_turn(
+            scope.store, str(scope.account_id), turn.turn_id, scope.purpose
+        )
+    return token
 
 
 def _metering_context(

@@ -154,19 +154,21 @@ async def read_active_program(
 
     def _run():
         account_id = account_id_of(player)
-        # Reads that return a saved program never call the model, so they are
-        # attributed but not admitted; any synthesizing call is still metered.
+        # Reads of a missing program can synthesize model output. Keep that
+        # path metered without putting it in the Lifter chat request allowance.
+        saved = ledger.get_active_program()
+        needs_generation = saved is None and bool(ledger.get_player_profile()) and programs_service.player_controls_program(
+            db, ledger, account_id
+        )
         scope = InferenceScope(
             account_id=account_id,
             role="player",
             purpose="program_active",
+            # Program synthesis remains metered but outside the Lifter chat
+            # request allowance; #263 should assess launch resource coverage.
             admit=False,
             store=db,
             client=analytics.client_context(request),
-        )
-        saved = ledger.get_active_program()
-        needs_generation = saved is None and bool(ledger.get_player_profile()) and programs_service.player_controls_program(
-            db, ledger, account_id
         )
         if needs_generation:
             with inference_turn(scope, background_tasks=background_tasks):
