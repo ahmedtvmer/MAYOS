@@ -189,7 +189,7 @@ below 0.90.
    `mean_sqrt_len` loudly; the revision is pinned for both paths.
 5. **Honest measurement and status** (this document).
 
-## Owner review required (UNREVIEWED)
+## Owner review (approved 2026-10-17, except `sup-benign-02`)
 
 The runtime Arabic anchor strings are MAYOS-authored internal prompts and the
 supplemental cases below are **not owner-reviewed**. Neither is part of the
@@ -197,16 +197,16 @@ owner-reviewed `arabic_reviewed_cases.json` set.
 
 | Anchor # | Arabic anchor string | Status |
 | --- | --- | --- |
-| 1 | `أحسست كأن شيئًا يتمزق أو يتقطع بعمق داخل ألياف العضلة أثناء التمدد.` | UNREVIEWED |
-| 2 | `تنميل أو وخز أو إحساس ببرودة شديدة ينتشر إلى الأصابع أو الأطراف.` | UNREVIEWED |
-| 3 | `ألم حارق عميق أو إحساس بزجاج ساخن أو صعقة كهربائية حادة داخل محفظة المفصل.` | UNREVIEWED |
-| 4 | `المفصل يبدو غير ثابت أو غير مستقر أو كأن العظم ينزلق من مكانه.` | UNREVIEWED |
-| 5 | `ألم خفيف مستمر يشبه وجع الأسنان بعمق داخل العظم أو محفظة الورك.` | UNREVIEWED |
-| 6 | `صوت طحن أو فرقعة أو طقطقة مسموعة مصحوبة بضعف فوري في المفصل.` | UNREVIEWED |
-| 7 | `فقدان مفاجئ للسيطرة على الحركة أو العضو يفلت منك أو عدم القدرة على تحمل الوزن.` | UNREVIEWED |
-| 8 | `انحشار حاد في المفصل يتبعه فقدان فوري للشد وتورم موضعي.` | UNREVIEWED |
+| 1 | `أحسست كأن شيئًا يتمزق أو يتقطع بعمق داخل ألياف العضلة أثناء التمدد.` | APPROVED 2026-10-17 |
+| 2 | `تنميل أو وخز أو إحساس ببرودة شديدة ينتشر إلى الأصابع أو الأطراف.` | APPROVED 2026-10-17 |
+| 3 | `ألم حارق عميق أو إحساس بزجاج ساخن أو صعقة كهربائية حادة داخل محفظة المفصل.` | APPROVED 2026-10-17 |
+| 4 | `المفصل يبدو غير ثابت أو غير مستقر أو كأن العظم ينزلق من مكانه.` | APPROVED 2026-10-17 |
+| 5 | `ألم خفيف مستمر يشبه وجع الأسنان بعمق داخل العظم أو محفظة الورك.` | APPROVED 2026-10-17 |
+| 6 | `صوت طحن أو فرقعة أو طقطقة مسموعة مصحوبة بضعف فوري في المفصل.` | APPROVED 2026-10-17 |
+| 7 | `فقدان مفاجئ للسيطرة على الحركة أو العضو يفلت منك أو عدم القدرة على تحمل الوزن.` | APPROVED 2026-10-17 |
+| 8 | `انحشار حاد في المفصل يتبعه فقدان فوري للشد وتورم موضعي.` | APPROVED 2026-10-17 |
 
-Proposed supplemental cases (UNREVIEWED), measured with the current guard:
+Supplemental cases (owner-approved 2026-10-17 except `sup-benign-02`), measured with the current guard:
 
 | Proposed id | Text | Proposed kind | Guard result |
 | --- | --- | --- | --- |
@@ -216,18 +216,18 @@ Proposed supplemental cases (UNREVIEWED), measured with the current guard:
 | `sup-benign-01` | `عندي حرقان في رجلي` | benign | benign below 0.90 (semantic) |
 | `sup-benign-02` | `أنا تعبان وحاسس بحاجة غريبة في ركبتي` | UNDECIDED (OWNER REVIEW REQUIRED) | observed non-interception (semantic 0.8886 < 0.90) |
 
-Additional deterministic cases and lexical coverage are **UNREVIEWED**:
+Additional deterministic cases and lexical coverage (owner-approved 2026-10-17):
 
 | Query | Deterministic match | Status |
 | --- | --- | --- |
-| `اصابتي في الكتف` | `اصابه` stem also matches `اصابت` before pronoun suffixes; regression cases cover `ي`, `ك`, `ه`, `ها`, `نا`, `هم`, `كم` | UNREVIEWED |
-| `كتفي مصابة` | `مصاب` (also explicit `مصابين`, `مصابات`) | UNREVIEWED |
-| `ركبتي تورمت` | `تورمت` | UNREVIEWED |
-| `ركبتي وارمة` | existing `وارم` stem with normalized feminine suffix | UNREVIEWED |
-| `رجلي بتنمل` | `تنمل` | UNREVIEWED |
-| `عندي تنميل` | existing `تنميل` stem | UNREVIEWED |
-| `ظهري بيحرقني` | `يحرقني` | UNREVIEWED |
-| `كتفي اتقصف` | new `اتقصف` stem | UNREVIEWED |
+| `اصابتي في الكتف` | `اصابه` stem also matches `اصابت` before pronoun suffixes; regression cases cover `ي`, `ك`, `ه`, `ها`, `نا`, `هم`, `كم` | APPROVED 2026-10-17 |
+| `كتفي مصابة` | `مصاب` (also explicit `مصابين`, `مصابات`) | APPROVED 2026-10-17 |
+| `ركبتي تورمت` | `تورمت` | APPROVED 2026-10-17 |
+| `ركبتي وارمة` | existing `وارم` stem with normalized feminine suffix | APPROVED 2026-10-17 |
+| `رجلي بتنمل` | `تنمل` | APPROVED 2026-10-17 |
+| `عندي تنميل` | existing `تنميل` stem | APPROVED 2026-10-17 |
+| `ظهري بيحرقني` | `يحرقني` | APPROVED 2026-10-17 |
+| `كتفي اتقصف` | new `اتقصف` stem | APPROVED 2026-10-17 |
 
 The generic ta-marbuta alternation and new stems `مصاب`, `مصابين`, `مصابات`,
 `تورمت`, `تنمل`, `يحرقني`, and `اتقصف` are deterministic additions, not
