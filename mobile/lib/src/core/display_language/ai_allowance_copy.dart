@@ -76,8 +76,8 @@ class AiAllowanceCopy {
       resourceCutoff(remaining, resetAt);
 
   String requestInProgress(int remaining, String resetAt) => isArabic
-      ? 'طلبات المساعد المتبقية قيد التنفيذ الآن. المتبقي: ${_ltr('$remaining')}. يُعاد الضبط في ${_ltr(_resetAtLabel(resetAt))}.'
-      : 'Your remaining daily assistant requests are in progress. $remaining remain. Resets at ${_resetAtLabel(resetAt)}.';
+      ? 'يوجد طلب آخر للمساعد قيد التنفيذ الآن. انتظر حتى يكتمل ثم حاول مرة أخرى.'
+      : 'Another assistant request is still in progress. Wait for it to finish, then try again.';
 
   String get answerTruncated => isArabic
       ? 'توقف الرد قبل اكتماله. حاول مرة أخرى.'
