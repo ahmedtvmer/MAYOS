@@ -1613,7 +1613,8 @@ def router_node(state: AssistantState, config: dict[str, Any] | None = None) -> 
     clinical = _clinical_turn_metadata(query)
     if clinical is not None:
         if (
-            pending is not None
+            not clinical.get("franco")
+            and pending is not None
             and isinstance(pending.get("id"), str)
             and _previous_assistant_message_is_injury_area_question(messages)
         ):
@@ -1810,7 +1811,7 @@ def clinical_intercept_node(state: AssistantState, config: dict[str, Any] | None
         response_key = (language, response_type)
     content = CLINICAL_SAFEGUARD_RESPONSES[response_key]
     ledger, store = _graph_context(config)
-    if ledger is not None and store is not None and raw_query:
+    if ledger is not None and store is not None and raw_query and not meta.get("franco"):
         from service import injuries as injuries_service
 
         try:

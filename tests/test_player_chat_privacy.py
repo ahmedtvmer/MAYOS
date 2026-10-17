@@ -935,15 +935,15 @@ def test_tool_result_keeps_followup_payload_under_the_prompt_ceiling(api, monkey
 @pytest.mark.parametrize(
     "content",
     [
-        "ana 3ayez a8ayar el bench",
-        "7aseet be alam 7ad fe ketfy we ana ba3mel bench",
+        "ana 3ayez abadel el squat",
+        "rokbety bt-wga3ny awy ba3d el squat",
     ],
 )
 def test_franco_chat_is_refused_before_model_or_training_action(api, monkeypatch, content):
     client, db = api
     username = "franco-intercept-player"
-    registered = _register(client, username)
-    headers = _authed(registered["access_token"])
+    coach_headers, headers, _assignment_id = _assigned_player(api, username)
+    baseline_alerts = client.get("/coach/alerts", headers=coach_headers).json()["alerts"]
     account = db.get_active_account_by_username(username)
     ledger_id = account["ledger_id"]
     with db.open_ledger(ledger_id) as ledger:
@@ -972,6 +972,69 @@ def test_franco_chat_is_refused_before_model_or_training_action(api, monkeypatch
     assert history[-1]["content"] == FRANCO_REFUSAL
     with db.open_ledger(ledger_id) as ledger:
         assert ledger.get_active_program().version == version_before
+        assert ledger.list_injury_records() == []
+        assert ledger.get_pending_injury_clarification() is None
+    assert client.get("/coach/alerts", headers=coach_headers).json()["alerts"] == baseline_alerts
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "ana 3ayez abadel el squat",
+        "rokbety bt-wga3ny awy ba3d el squat",
+    ],
+    ids=["benign", "clinical"],
+)
+def test_buffered_franco_chat_refusal_has_no_training_or_coach_side_effects(
+    api, monkeypatch, content
+):
+    client, db = api
+    username = "buffered-franco-intercept-player"
+    coach_headers, headers, _assignment_id = _assigned_player(api, username)
+    baseline_alerts = client.get("/coach/alerts", headers=coach_headers).json()["alerts"]
+    ledger_id = db.get_active_account_by_username(username)["ledger_id"]
+
+    model = ScriptedChatModel(["THE MODEL MUST NOT RUN"])
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    response = client.post(
+        "/chat/messages", headers=headers, json={"content": content}
+    )
+
+    assert response.status_code == 200
+    assert _done_content(response.text) == FRANCO_REFUSAL
+    assert model.calls == []
+    with db.open_ledger(ledger_id) as ledger:
+        assert ledger.list_injury_records() == []
+        assert ledger.get_pending_injury_clarification() is None
+    assert client.get("/coach/alerts", headers=coach_headers).json()["alerts"] == baseline_alerts
+
+
+def test_franco_refusal_does_not_consume_pending_injury_clarification(api, monkeypatch):
+    client, db = api
+    username = "franco-pending-clarification"
+    headers = _authed(_register(client, username)["access_token"])
+    account = db.get_active_account_by_username(username)
+    ledger_id = account["ledger_id"]
+    with db.open_ledger(ledger_id) as ledger:
+        pending, _created = ledger.create_injury_record(
+            None, "Prior English injury report", clarification_pending=True
+        )
+        ledger.add_chat_message("assistant", assistant_graph.INJURY_AREA_CLARIFICATION_EN)
+
+    model = ScriptedChatModel(["THE MODEL MUST NOT RUN"])
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "rokbety bt-wga3ny awy ba3d el squat"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    assert _done_content(body) == FRANCO_REFUSAL
+    assert model.calls == []
+    with db.open_ledger(ledger_id) as ledger:
+        assert ledger.get_injury_record(pending["id"])["clarification_pending"] == 1
 
 
 @pytest.mark.parametrize(
@@ -2002,6 +2065,27 @@ def test_clinical_chat_records_injury_and_clarifies_only_area_replies(api, monke
     assert _done_content(body) == (
         "CHAT MODEL RAN\n\nHave you seen a physician about this injury?"
     )
+
+
+def test_arabic_clinical_chat_still_records_injury(api, monkeypatch):
+    client, _db = api
+    headers = _authed(_register(client, "arabic-injury-chat")["access_token"])
+    model = ScriptedChatModel(default_turn="CHAT MODEL RAN")
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    message = "ركبتي بتوجعني أثناء السكوات"
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": message}
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    assert _done_content(body) == assistant_graph.ARABIC_CLINICAL_SAFEGUARD_RESPONSE
+    assert model.calls == []
+    records = client.get("/profile/injuries", headers=headers).json()
+    assert len(records) == 1
+    assert records[0]["body_area"] == "knee"
+    assert records[0]["description"] == message
 
 
 def test_pending_injury_clarification_expires_after_one_unrelated_turn(api, monkeypatch):
