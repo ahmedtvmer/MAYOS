@@ -106,6 +106,9 @@ load_dotenv()
 logger = MyosLogger().get_logger(__name__)
 
 OUTPUT_LIMIT_RESPONSE = "I reached the response limit. Ask me to continue if you'd like more."
+# Target the first visible prefix at a word boundary near 40 characters.
+_FIRST_VISIBLE_PREFIX_TARGET = 40
+_FIRST_VISIBLE_PREFIX_START = 39
 ARABIC_SWAP_CLARIFICATION_RESPONSE = "أنهي تمرين عايز تغيّره؟"
 ARABIC_ACTION_CLARIFICATION_RESPONSE = (
     "مش لاقي اليوم أو التمرين ده في برنامجك. ممكن تحدد يوم أو تمرين موجود؟"
@@ -3891,31 +3894,50 @@ class _PlayerStreamOutput:
     scrubber: CoachOutputScrubber | None = None
     pending_output: str = ""
     round_visible_count: int = 0
+    first_visible_released: bool = False
 
     def begin_answer(self) -> None:
         self.round_visible_count = len(self.visible)
         self.scrubber = CoachOutputScrubber()
         self.pending_output = ""
+        self.first_visible_released = False
 
     def add_text(self, text: str) -> Generator[str, None, None]:
         for character in text:
             cleaned = self.scrubber.feed(character)
             if not cleaned:
                 continue
+            # Partial lead and unsafe matches remain inside the scrubber until safe.
             self.pending_output += cleaned
-            complete_end = _last_complete_sentence_end(self.pending_output)
-            if complete_end:
-                complete_text = self.pending_output[:complete_end]
-                self.pending_output = self.pending_output[complete_end:]
-                self.visible.append(complete_text)
-                yield complete_text
+            release_end = self._visible_prefix_end()
+            if release_end:
+                visible_text = self.pending_output[:release_end]
+                self.pending_output = self.pending_output[release_end:]
+                self.visible.append(visible_text)
+                self.first_visible_released = True
+                yield visible_text
+
+    def _visible_prefix_end(self) -> int:
+        sentence_end = _last_complete_sentence_end(self.pending_output)
+        if sentence_end:
+            return sentence_end
+        if not self.first_visible_released:
+            return _first_clean_prefix_end(
+                self.pending_output,
+                followed_by_whitespace=bool(self.scrubber.spacing),
+            )
+        return 0
 
     def finish_answer(self, limited: bool) -> Generator[str, None, None]:
         cleaned = self.scrubber.finish()
         if cleaned:
             self.pending_output += cleaned
         if limited:
-            self.pending_output = _trim_to_last_complete_sentence(self.pending_output)
+            # An early clause cannot be withdrawn after it reaches the Player.
+            # Keep it, discard any unfinished continuation, and append the limit notice.
+            self.pending_output = _trim_to_last_complete_sentence(self.pending_output).rstrip(
+                " \t\r\n,;:—،؛"
+            )
         if self.pending_output:
             self.visible.append(self.pending_output)
             yield self.pending_output
@@ -4326,6 +4348,27 @@ def _last_complete_sentence_end(text: str) -> int:
         if end == len(text) or text[end].isspace():
             sentence_end = end
     return sentence_end
+
+
+def _first_clean_prefix_end(text: str, followed_by_whitespace: bool = False) -> int:
+    """Return a clean clause boundary, or a word boundary near 40 characters."""
+    for index, character in enumerate(text):
+        if character in "—،؛":
+            return len(text[:index].rstrip())
+        if character not in ",;:":
+            continue
+        if index + 1 < len(text):
+            has_following_whitespace = text[index + 1].isspace()
+            between_digits = index > 0 and text[index - 1].isdigit() and text[index + 1].isdigit()
+        else:
+            has_following_whitespace = followed_by_whitespace
+            between_digits = False
+        if has_following_whitespace and not between_digits:
+            return len(text[:index].rstrip())
+    if len(text) < _FIRST_VISIBLE_PREFIX_TARGET:
+        return 0
+    word_boundary = re.search(r"\s", text[_FIRST_VISIBLE_PREFIX_START:])
+    return _FIRST_VISIBLE_PREFIX_START + word_boundary.start() if word_boundary else 0
 
 
 def _trim_to_last_complete_sentence(text: str) -> str:

@@ -112,8 +112,153 @@ def test_complete_sentence_is_visible_before_generation_finishes(graph):
     assert output == request["response_content"] == request["messages"][-1].content
 
 
+@pytest.mark.parametrize(
+    ("raw", "first"),
+    [
+        (
+            "Keep each repetition controlled, and breathe steadily throughout the lift.",
+            "Keep each repetition controlled",
+        ),
+        (
+            "خلي الحركة مظبوطة، وخد نفسك بهدوء طول التمرين.",
+            "خلي الحركة مظبوطة",
+        ),
+    ],
+)
+def test_first_clean_clause_streams_before_sentence_ends_in_english_and_arabic(graph, raw, first):
+    graph.llm.reset([raw])
+    graph.llm.chunk_size = 1
+    request = state("How many squat reps?")
+    stream = graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db)
+
+    first_chunk = next(stream)
+    assert first_chunk == first
+    assert graph.llm.streamed_chunk_count < len(raw)
+    output = first_chunk + "".join(stream)
+    assert output == finalize_coach_output(raw)
+    assert output == request["response_content"] == request["messages"][-1].content
+
+
+@pytest.mark.parametrize(
+    ("raw", "first"),
+    [
+        ("For 1,000 reps, keep the pace steady for each working set.", "For 1,000 reps"),
+        ("At 12:30, keep the pace steady for each working set.", "At 12:30"),
+        ("Use a 3:1 ratio, then keep the pace steady for each working set.", "Use a 3:1 ratio"),
+        ("Use 2,5 kg, then keep the pace steady for each working set.", "Use 2,5 kg"),
+    ],
+)
+def test_numeric_separators_do_not_trigger_first_release(graph, raw, first):
+    graph.llm.reset([raw])
+    graph.llm.chunk_size = 1
+    request = state("How many squat reps?")
+    stream = graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db)
+
+    first_chunk = next(stream)
+    assert first_chunk == first
+    output = first_chunk + "".join(stream)
+    assert output == finalize_coach_output(raw)
+    assert output == request["response_content"] == request["messages"][-1].content
+
+
+@pytest.mark.parametrize(
+    ("raw", "fragment"),
+    [
+        (
+            "Keep the semicolon;then breathe steadily through the entire lift and finish with control.",
+            ";then",
+        ),
+        (
+            "Keep the ratio:then breathe steadily through the entire lift and finish with control.",
+            ":then",
+        ),
+        (
+            "Keep the comma,then breathe steadily through the entire lift and finish with control.",
+            ",then",
+        ),
+    ],
+)
+def test_clause_punctuation_without_following_space_does_not_trigger_first_release(graph, raw, fragment):
+    graph.llm.reset([raw])
+    graph.llm.chunk_size = 1
+    request = state("How many squat reps?")
+    stream = graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db)
+
+    first_chunk = next(stream)
+    assert fragment in first_chunk
+    output = first_chunk + "".join(stream)
+    assert output == raw
+    assert output == request["response_content"] == request["messages"][-1].content
+
+
+def test_first_clean_prefix_releases_at_a_word_boundary_near_40_characters(graph):
+    raw = "Build strength with steady repetitions and smooth movement across every workout."
+    graph.llm.reset([raw])
+    graph.llm.chunk_size = 1
+    request = state("How many squat reps?")
+    stream = graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db)
+
+    first_chunk = next(stream)
+    assert 40 <= len(first_chunk) <= 50
+    assert first_chunk[-1].isalnum()
+    assert graph.llm.streamed_chunk_count < len(raw)
+    output = first_chunk + "".join(stream)
+    assert output == raw
+    assert output == request["response_content"] == request["messages"][-1].content
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "Sure thing! Keep each repetition controlled, and breathe steadily. Hope this helps!",
+        "Great question! Keep each repetition controlled, and breathe steadily. Keep crushing it!",
+        "Certainly. Keep each repetition controlled, and breathe steadily. Let me know if you have any other questions.",
+        "Keep each repetition controlled, and you have tendonitis in your shoulder.",
+        "Keep each repetition controlled, and train through the sharp pain.",
+        "Keep each repetition controlled, and take ibuprofen before lifting.",
+    ],
+)
+def test_early_stream_never_shows_banned_leads_trails_or_unsafe_medical_text(graph, raw):
+    graph.llm.reset([raw])
+    graph.llm.chunk_size = 1
+    request = state("How many squat reps?")
+    chunks = list(graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db))
+    output = "".join(chunks)
+
+    assert output == finalize_coach_output(raw)
+    assert output == request["response_content"] == request["messages"][-1].content
+    assert all(not pattern.search(output) for pattern in UNSAFE_MEDICAL_PATTERNS)
+    assert all(not pattern.search(output) for pattern in BANNED_TRAIL_PATTERNS)
+    assert all(not pattern.match(output) for pattern in BANNED_LEAD_PATTERNS)
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "Use controlled reps, then keep a steady tempo",
+        "Use controlled reps , then keep a steady tempo",
+    ],
+)
+def test_limited_stream_keeps_released_clause_and_discards_unfinished_continuation(graph, content):
+    raw = AIMessage(
+        content=content,
+        response_metadata={"finish_reason": "length"},
+    )
+    graph.llm.reset([raw])
+    graph.llm.chunk_size = 1
+    request = state("How many squat reps?")
+    stream = graph.stream_assistant_turn(request, ledger=graph.db, store=graph.db)
+
+    first_chunk = next(stream)
+    assert first_chunk == "Use controlled reps"
+    output = first_chunk + "".join(stream)
+    expected = "Use controlled reps\n\n" + graph.OUTPUT_LIMIT_RESPONSE
+    assert output == expected
+    assert output == request["response_content"] == request["messages"][-1].content
+
+
 def test_stream_releases_a_complete_sentence_as_one_unit(graph):
-    raw = "Use controlled reps while keeping each repetition smooth and balanced."
+    raw = "Keep reps smooth and balanced."
     graph.llm.reset([raw])
     graph.llm.chunk_size = len(raw)
     request = state("How many squat reps?")
