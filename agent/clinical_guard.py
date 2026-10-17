@@ -1,4 +1,5 @@
 # agent/clinical_guard.py
+import heapq
 import re
 import threading
 
@@ -31,7 +32,7 @@ def normalize_arabic_text(text: str) -> str:
 ARABIC_CLINICAL_STEMS = {
     "injury": (
         "اصابه", "مصاب", "مصابين", "مصابات", "جرح", "مصدوم", "اتلوي", "تلوي", "التواء", "كسور", "مكسور", "اتكسر", "انكسر", "خلع",
-        "تمزق", "ممزق", "اتقطع", "اتقطعت", "انقطع", "انخلع", "التهاب", "تخون", "يخون",
+        "تمزق", "ممزق", "اتقطع", "اتقطعت", "انقطع", "انخلع", "اتقصف", "التهاب", "تخون", "يخون",
         "غير ثابت", "غير ثابته", "مش ثابت", "عدم الثبات", "عدم استقرار", "غير مستقر",
         "تفلت", "اتفلت",
     ),
@@ -82,6 +83,143 @@ _ARABIC_STEMS = sorted(
     reverse=True,
 )
 _ARABIC_STEM_PATTERN = _arabic_stem_pattern(_ARABIC_STEMS)
+
+_FRANCO_DIGRAPHS = {"sh": ("ش",), "kh": ("خ",), "gh": ("غ",), "th": ("ث",), "dh": ("ذ",)}
+_FRANCO_CHARACTERS = {
+    "a": ("", "ا", "ع"), "b": ("ب",), "c": ("ك", "س"), "d": ("د",),
+    "e": ("", "ا", "ي"), "f": ("ف",), "g": ("ج", "غ"), "h": ("ه", "ح"),
+    "i": ("ي", ""), "j": ("ج",), "k": ("ك", "ق"), "l": ("ل",),
+    "m": ("م",), "n": ("ن",), "o": ("و", ""), "p": ("ب",),
+    "q": ("ق",), "r": ("ر",), "s": ("س", "ص"), "t": ("ت", "ط", ""),
+    "u": ("و", ""), "v": ("ف",), "w": ("و",), "y": ("ي",), "z": ("ز", "ذ"),
+    "2": ("ء", "ق"), "3": ("ع",), "5": ("خ",), "6": ("ط",),
+    "7": ("ح",), "8": ("غ",), "9": ("ص",),
+}
+_FRANCO_MAX_CANDIDATES = 128
+FRANCO_GUARD_VERSION = "419.2"
+_FRANCO_TECH_TOKENS = frozenset({
+    "b2b", "b2c", "c2b", "c2c", "e2e", "h2o", "m2m", "p2p", "r2d2", "x2x",
+})
+_FRANCO_UNIT_SUFFIX = re.compile(
+    r"^[2356789](?:kgs?|lbs?|km|mi|mins?|secs?|hrs?|am|pm|x|rm|reps?|sets?|days?|wks?|"
+    r"st|nd|rd|th|rpe|rir|k|m|s|h|d|w)$",
+    re.IGNORECASE,
+)
+
+
+def _franco_token_is_excluded(token: str) -> bool:
+    normalized = token.casefold()
+    return bool(
+        normalized in _FRANCO_TECH_TOKENS
+        or _FRANCO_UNIT_SUFFIX.fullmatch(normalized)
+        or re.fullmatch(r"\d+[xX]\d+", normalized)
+        or re.fullmatch(r"\d+(?:st|nd|rd|th)", normalized)
+        or re.fullmatch(r"[a-z]+\d+", normalized)
+    )
+
+
+def has_franco_digit_evidence(token: str) -> bool:
+    normalized = token.casefold()
+    if _franco_token_is_excluded(normalized):
+        return False
+    return bool(
+        re.fullmatch(r"[2356789][a-z]+", normalized)
+        or re.search(r"[a-z][2356789][a-z]", normalized)
+    )
+
+
+def _franco_character_choices(token: str) -> list[tuple[str, ...]]:
+    choices = []
+    index = 0
+    while index < len(token):
+        if index == 0 and token.startswith("el"):
+            choices.append(("ال",))
+            index += 2
+            continue
+        digraph = token[index:index + 2]
+        if digraph in _FRANCO_DIGRAPHS:
+            choices.append(_FRANCO_DIGRAPHS[digraph])
+            index += 2
+            continue
+        alternatives = _FRANCO_CHARACTERS.get(token[index])
+        if index == 0 and token[index] == "e":
+            alternatives = ("ا", "", "ي")
+        if alternatives is None:
+            return []
+        choices.append(alternatives)
+        index += 1
+    return choices
+
+
+def _bounded_franco_forms(choices: list[tuple[str, ...]]) -> set[str]:
+    first = tuple(0 for _ in choices)
+    pending = [(0, first)]
+    seen = {first}
+    forms = set()
+    while pending and len(forms) < _FRANCO_MAX_CANDIDATES:
+        cost, indexes = heapq.heappop(pending)
+        forms.add("".join(choices[position][choice] for position, choice in enumerate(indexes)))
+        for position, choice in enumerate(indexes):
+            if choice + 1 >= len(choices[position]):
+                continue
+            next_indexes = indexes[:position] + (choice + 1,) + indexes[position + 1:]
+            if next_indexes not in seen:
+                seen.add(next_indexes)
+                heapq.heappush(pending, (cost + 1, next_indexes))
+    return forms
+
+
+def _franco_arabic_candidates(token: str) -> set[str]:
+    normalized_token = token.casefold()
+    choices = _franco_character_choices(normalized_token)
+    if not choices:
+        return set()
+    candidates = _bounded_franco_forms(choices)
+    return {normalize_arabic_text(candidate) for candidate in candidates if candidate}
+
+
+_FRANCO_CLINICAL_WORDS = frozenset({
+    "rokba", "rokbety", "rokbeti", "rokbty", "ro2ba", "ro2bety",
+    "ketf", "ketfy", "ketfi", "dahr", "dahry", "dahri", "regl", "regly", "regli",
+    "ka7l", "ka7ly", "sedr", "sedry", "sedri", "sawab3", "sawab3y", "sawabe3",
+    "wag3", "waga3", "waga3ny", "wga3", "wga3ny", "wagani", "bywga3ny",
+    "tewga3ny", "btwga3ny", "alam", "waram", "werm", "wermet", "waramet",
+    "tanmeel", "tanmil", "nakhz", "et2ata3", "et2ata3et", "etlewet", "et2asfet",
+    "etkasar", "2arfa3a", "arfa3a", "masken", "sabab", "bet2alemny", "by2lemny",
+    "te2alemny", "betwag3ny",
+})
+
+
+def _eligible_franco_clinical_tokens(text: str):
+    for token in re.findall(r"[A-Za-z0-9]+", text):
+        lexical_word = token.casefold() in _FRANCO_CLINICAL_WORDS
+        if lexical_word or (not _franco_token_is_excluded(token) and has_franco_digit_evidence(token)):
+            yield token
+
+
+def _franco_message_tokens(text: str):
+    for token in re.findall(r"[A-Za-z0-9]+", text):
+        if token.casefold() in _FRANCO_CLINICAL_WORDS or not _franco_token_is_excluded(token):
+            yield token
+
+
+def _has_franco_clinical_candidate(tokens) -> bool:
+    try:
+        for token in tokens:
+            if any(_ARABIC_STEM_PATTERN.fullmatch(candidate) for candidate in _franco_arabic_candidates(token)):
+                return True
+        return False
+    except Exception:
+        # A transliteration failure must never send an unreadable clinical turn to the model.
+        return True
+
+
+def is_franco_clinical(text: str) -> bool:
+    return _has_franco_clinical_candidate(_eligible_franco_clinical_tokens(text))
+
+
+def is_franco_clinical_franco_message(text: str) -> bool:
+    return _has_franco_clinical_candidate(_franco_message_tokens(text))
 
 RE_BENIGN_FATIGUE = re.compile(
     r"\b(fatigue|fatigued|tired|exhaustion|exhausted|sluggish|lethargic|drained|wiped|"

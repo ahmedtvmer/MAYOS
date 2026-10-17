@@ -1,0 +1,390 @@
+{
+  "report_version": 1,
+  "guard_version": "419.2",
+  "base_commit": "68b35cc9",
+  "guard_commit": "uncommitted correction on base 68b35cc9",
+  "held_out_scored_after_tuning": true,
+  "scoring_order": [
+    "tuning",
+    "held_out"
+  ],
+  "splits": {
+    "tuning": {
+      "case_count": 22,
+      "clinical_case_count": 13,
+      "clinical_intercepted_count": 13,
+      "intercept_misses": [],
+      "failures": [],
+      "cases": [
+        {
+          "id": "fr-inj-01",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fr-inj-02",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fr-inj-03",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fr-inj-04",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fr-inj-05",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fr-benign-01",
+          "clinical_expected": false,
+          "clinical_observed": false,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fr-benign-02",
+          "clinical_expected": false,
+          "clinical_observed": false,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fr-benign-03",
+          "clinical_expected": false,
+          "clinical_observed": false,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-pain-01",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-pain-02",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-inj-01",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": false,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-inj-02",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-numb-01",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-benign-01",
+          "clinical_expected": false,
+          "clinical_observed": false,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-benign-02",
+          "clinical_expected": false,
+          "clinical_observed": false,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-benign-03",
+          "clinical_expected": false,
+          "clinical_observed": false,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-en-01",
+          "clinical_expected": false,
+          "clinical_observed": false,
+          "detector_observed": false,
+          "launch_block_expected": false,
+          "intercepted": false,
+          "pass": true
+        },
+        {
+          "id": "fx-en-02",
+          "clinical_expected": false,
+          "clinical_observed": false,
+          "detector_observed": false,
+          "launch_block_expected": false,
+          "intercepted": false,
+          "pass": true
+        },
+        {
+          "id": "fx-en-03",
+          "clinical_expected": false,
+          "clinical_observed": false,
+          "detector_observed": false,
+          "launch_block_expected": false,
+          "intercepted": false,
+          "pass": true
+        },
+        {
+          "id": "fx-mixed-01",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-variant-01",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-variant-03",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        }
+      ]
+    },
+    "held_out": {
+      "case_count": 12,
+      "clinical_case_count": 7,
+      "clinical_intercepted_count": 7,
+      "intercept_misses": [],
+      "failures": [],
+      "cases": [
+        {
+          "id": "fx-pain-03",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-inj-03",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-inj-04",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-diag-01",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-diag-02",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-med-01",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-benign-04",
+          "clinical_expected": false,
+          "clinical_observed": false,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-benign-05",
+          "clinical_expected": false,
+          "clinical_observed": false,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-benign-06",
+          "clinical_expected": false,
+          "clinical_observed": false,
+          "detector_observed": true,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        },
+        {
+          "id": "fx-en-04",
+          "clinical_expected": false,
+          "clinical_observed": false,
+          "detector_observed": false,
+          "launch_block_expected": false,
+          "intercepted": false,
+          "pass": true
+        },
+        {
+          "id": "fx-en-05",
+          "clinical_expected": false,
+          "clinical_observed": false,
+          "detector_observed": false,
+          "launch_block_expected": false,
+          "intercepted": false,
+          "pass": true
+        },
+        {
+          "id": "fx-variant-02",
+          "clinical_expected": true,
+          "clinical_observed": true,
+          "detector_observed": false,
+          "launch_block_expected": true,
+          "intercepted": true,
+          "pass": true
+        }
+      ]
+    }
+  },
+  "english_negative_set": {
+    "case_count": 296,
+    "master_intercepted_count": 0,
+    "current_intercepted_count": 0,
+    "matches_master_count": 296,
+    "new_interception_count": 0,
+    "mismatches": [],
+    "master_commit": "dcfb0b04"
+  },
+  "unreviewed_adversarial_holdout": [
+    {
+      "id": "fx-adv-01",
+      "clinical_observed": false,
+      "detector_observed": true,
+      "status": "UNREVIEWED",
+      "gate": false
+    },
+    {
+      "id": "fx-adv-02",
+      "clinical_observed": true,
+      "detector_observed": true,
+      "status": "UNREVIEWED",
+      "gate": false
+    },
+    {
+      "id": "fx-adv-03",
+      "clinical_observed": false,
+      "detector_observed": true,
+      "status": "UNREVIEWED",
+      "gate": false
+    },
+    {
+      "id": "fx-adv-04",
+      "clinical_observed": true,
+      "detector_observed": false,
+      "status": "UNREVIEWED",
+      "gate": false
+    },
+    {
+      "id": "fx-adv-05",
+      "clinical_observed": false,
+      "detector_observed": false,
+      "status": "UNREVIEWED",
+      "gate": false
+    },
+    {
+      "id": "fx-adv-06",
+      "clinical_observed": false,
+      "detector_observed": false,
+      "status": "UNREVIEWED",
+      "gate": false
+    }
+  ]
+}

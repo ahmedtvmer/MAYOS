@@ -1,0 +1,1486 @@
+{
+  "version": 1,
+  "master_commit": "dcfb0b04",
+  "cases": [
+    {
+      "id": "en-001",
+      "text": "form",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-002",
+      "text": "form check",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-003",
+      "text": "perform",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-004",
+      "text": "format",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-005",
+      "text": "warm",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-006",
+      "text": "warm up",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-007",
+      "text": "warm-up",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-008",
+      "text": "worm",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-009",
+      "text": "took",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-010",
+      "text": "T2 vs T3 split",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-011",
+      "text": "omega3",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-012",
+      "text": "H2O",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-013",
+      "text": "e2e",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-014",
+      "text": "Zone2",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-015",
+      "text": "plan2",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-016",
+      "text": "mp3",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-017",
+      "text": "week12",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-018",
+      "text": "top10",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-019",
+      "text": "b2b",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-020",
+      "text": "1RM",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-021",
+      "text": "3RM",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-022",
+      "text": "x3",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-023",
+      "text": "PR",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-024",
+      "text": "rack pull",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-025",
+      "text": "RDL",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-026",
+      "text": "Romanian deadlift",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-027",
+      "text": "deload",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-028",
+      "text": "rest day",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-029",
+      "text": "sore after legs",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-030",
+      "text": "Phase2",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-031",
+      "text": "Bench2",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-032",
+      "text": "squat2",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-033",
+      "text": "Program2",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-034",
+      "text": "LDL3",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-035",
+      "text": "Ahmed",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-036",
+      "text": "Omar",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-037",
+      "text": "Karim",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-038",
+      "text": "Hossam",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-039",
+      "text": "Tamer",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-040",
+      "text": "Mona",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-041",
+      "text": "Sara",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-042",
+      "text": "ok",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-043",
+      "text": "thanks",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-044",
+      "text": "3x10",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-045",
+      "text": "5kg",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-046",
+      "text": "rpe8",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-047",
+      "text": "day2",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-048",
+      "text": "W3",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-049",
+      "text": "2 sets of 8",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-050",
+      "text": "80kg x 5",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-051",
+      "text": "2nd set",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-052",
+      "text": "5x5 then 3x8",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-053",
+      "text": "The mesh shirt fits well",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-054",
+      "text": "I gamed the system",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-055",
+      "text": "I took omega3 and creatine",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-056",
+      "text": "my form was off on bench",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-057",
+      "text": "my warm up was short today",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-058",
+      "text": "I did a worm farm workout joke",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-059",
+      "text": "The format looks good",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-060",
+      "text": "T2 vs T3 split looks balanced",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-061",
+      "text": "Zone2 cardio for forty minutes",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-062",
+      "text": "My plan2 starts next week",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-063",
+      "text": "The mp3 playlist was great",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-064",
+      "text": "week12 starts on Monday",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-065",
+      "text": "top10 exercises for back day",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-066",
+      "text": "b2b sessions worked fine",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-067",
+      "text": "I hit a new PR on bench",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-068",
+      "text": "Rack pull day was fun",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-069",
+      "text": "Romanian deadlift felt smooth",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-070",
+      "text": "I might deload next month",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-071",
+      "text": "Tomorrow is a rest day",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-072",
+      "text": "sore after legs, still going to walk",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-073",
+      "text": "I did three sets of ten",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-074",
+      "text": "Bench press at 80kg for five reps",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-075",
+      "text": "My first set was easy",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-076",
+      "text": "The third set felt smooth",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-077",
+      "text": "I logged the workout after lunch",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-078",
+      "text": "I trained upper body this morning",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-079",
+      "text": "I trained lower body yesterday",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-080",
+      "text": "Push day is on Monday",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-081",
+      "text": "Pull day is on Wednesday",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-082",
+      "text": "Leg day is on Friday",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-083",
+      "text": "My split is upper lower",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-084",
+      "text": "I changed my split to four days",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-085",
+      "text": "I added a rest day to the week",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-086",
+      "text": "I moved chest day to Tuesday",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-087",
+      "text": "I am training back later",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-088",
+      "text": "I will do shoulders tomorrow",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-089",
+      "text": "Arms are on the weekend",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-090",
+      "text": "I did squats before lunch",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-091",
+      "text": "I did rows after bench",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-092",
+      "text": "I switched from barbell to dumbbells",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-093",
+      "text": "I used the cable station today",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-094",
+      "text": "The gym was busy after work",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-095",
+      "text": "I got there early today",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-096",
+      "text": "I forgot my headphones at home",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-097",
+      "text": "The playlist made the session better",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-098",
+      "text": "I brought a water bottle",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-099",
+      "text": "I trained with my cousin today",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-100",
+      "text": "My coach sent the new plan",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-101",
+      "text": "I saved the workout notes",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-102",
+      "text": "I finished the last set",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-103",
+      "text": "I kept the same weight today",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-104",
+      "text": "I added five kilos to the bar",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-105",
+      "text": "I used 20kg dumbbells",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-106",
+      "text": "I did four rounds of accessories",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-107",
+      "text": "I did three warm up sets",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-108",
+      "text": "The warm up felt easy",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-109",
+      "text": "I like the new bench setup",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-110",
+      "text": "The rack was free after lunch",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-111",
+      "text": "I used the incline bench",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-112",
+      "text": "I tried a cable fly variation",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-113",
+      "text": "I did lat pulldowns after rows",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-114",
+      "text": "I used the leg press machine",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-115",
+      "text": "I did calf raises at the end",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-116",
+      "text": "I trained abs for ten minutes",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-117",
+      "text": "I stretched after training",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-118",
+      "text": "I walked home from the gym",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-119",
+      "text": "I did cardio before lifting",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-120",
+      "text": "I rode the bike for twenty minutes",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-121",
+      "text": "I used the treadmill today",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-122",
+      "text": "I tracked my steps after training",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-123",
+      "text": "I got eight hours of sleep",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-124",
+      "text": "I had a big breakfast before training",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-125",
+      "text": "I had coffee on the way to the gym",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-126",
+      "text": "I ate lunch after my session",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-127",
+      "text": "I packed a snack for later",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-128",
+      "text": "I usually train in the evening",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-129",
+      "text": "I prefer morning workouts",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-130",
+      "text": "The gym opens at six",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-131",
+      "text": "The gym closes at ten",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-132",
+      "text": "I train four days per week",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-133",
+      "text": "I have two sessions left this week",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-134",
+      "text": "I am starting a new block next week",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-135",
+      "text": "The program has three training days",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-136",
+      "text": "I want to keep the same schedule",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-137",
+      "text": "I can train on Thursday instead",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-138",
+      "text": "Move the workout to Saturday",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-139",
+      "text": "Can I swap the order of these days",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-140",
+      "text": "What is on my program today",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-141",
+      "text": "Show me the exercises for day one",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-142",
+      "text": "How many sets are in this session",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-143",
+      "text": "How many reps should I use",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-144",
+      "text": "What weight did I use last time",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-145",
+      "text": "Can you show my last workout",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-146",
+      "text": "I want to log today's session",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-147",
+      "text": "Add one more set next week",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-148",
+      "text": "Keep the same reps for now",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-149",
+      "text": "The bench press is first today",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-150",
+      "text": "Deadlifts are on the second day",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-151",
+      "text": "My favorite lift is the squat",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-152",
+      "text": "I like dumbbell rows better",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-153",
+      "text": "I usually use a close grip",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-154",
+      "text": "The new shoes feel great",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-155",
+      "text": "I bought lifting straps",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-156",
+      "text": "I forgot my belt today",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-157",
+      "text": "I used chalk on the bar",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-158",
+      "text": "The plates were already loaded",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-159",
+      "text": "I changed the seat height",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-160",
+      "text": "The cable handle was missing",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-161",
+      "text": "I found an open squat rack",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-162",
+      "text": "I shared the bench with a friend",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-163",
+      "text": "I listened to the coach's advice",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-164",
+      "text": "We finished the session on time",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-165",
+      "text": "That was a good workout",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-166",
+      "text": "I felt focused during training",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-167",
+      "text": "The session went by quickly",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-168",
+      "text": "I have more energy this week",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-169",
+      "text": "I kept my rest periods short",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-170",
+      "text": "I took two minutes between sets",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-171",
+      "text": "I wrote down the weights",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-172",
+      "text": "I checked the plan on my phone",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-173",
+      "text": "I will review my notes later",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-174",
+      "text": "I have a question about the split",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-175",
+      "text": "Can we change the exercise order",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-176",
+      "text": "I prefer three sets for accessories",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-177",
+      "text": "I like five reps on heavy lifts",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-178",
+      "text": "I used a lighter bar today",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-179",
+      "text": "I added a pause to the bench",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-180",
+      "text": "I practiced the movement slowly",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-181",
+      "text": "The new variation is interesting",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-182",
+      "text": "The machine was open today",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-183",
+      "text": "I did not use the smith machine",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-184",
+      "text": "I trained at a different gym",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-185",
+      "text": "This gym has a nice platform",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-186",
+      "text": "The music was loud today",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-187",
+      "text": "I met Ahmed near the entrance",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-188",
+      "text": "Omar joined the session late",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-189",
+      "text": "Karim helped load the plates",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-190",
+      "text": "Hossam picked the playlist",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-191",
+      "text": "Tamer saved me a rack",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-192",
+      "text": "Mona is training on Friday",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-193",
+      "text": "Sara asked about the schedule",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-194",
+      "text": "Ahmed and Omar trained together",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-195",
+      "text": "Karim and Sara were at the gym",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-196",
+      "text": "Hossam brought a new notebook",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-197",
+      "text": "Tamer is doing pull day tomorrow",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-198",
+      "text": "Mona finished her workout early",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-199",
+      "text": "I sent the routine to Sara",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-200",
+      "text": "Thanks for sharing the exercise list",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-201",
+      "text": "Ok, I will check the plan",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-202",
+      "text": "Thanks, that helps",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-203",
+      "text": "All good for tomorrow",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-204",
+      "text": "Sounds good to me",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-205",
+      "text": "See you at the gym",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-206",
+      "text": "I will be there at seven",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-207",
+      "text": "The session starts at five",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-208",
+      "text": "I have a meeting after training",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-209",
+      "text": "I am free after work",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-210",
+      "text": "The gym is close to my office",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-211",
+      "text": "I left my bag in the locker",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-212",
+      "text": "I found my keys in the car",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-213",
+      "text": "I bought a new shaker bottle",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-214",
+      "text": "The water fountain is near the entrance",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-215",
+      "text": "The front desk has my membership card",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-216",
+      "text": "I booked a class for Saturday",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-217",
+      "text": "The class starts at noon",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-218",
+      "text": "I like training with a timer",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-219",
+      "text": "I use a notebook for my sets",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-220",
+      "text": "I track my progress every month",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-221",
+      "text": "I changed the playlist again",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-222",
+      "text": "The app saved my workout",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-223",
+      "text": "My phone battery was low",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-224",
+      "text": "I checked the weekly schedule",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-225",
+      "text": "Next week looks busy",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-226",
+      "text": "This week has three workouts",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-227",
+      "text": "I can add a session on Sunday",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-228",
+      "text": "I moved cardio to the weekend",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-229",
+      "text": "I usually rest on Friday",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-230",
+      "text": "I trained twice this week",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-231",
+      "text": "I will train again tomorrow",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-232",
+      "text": "I am doing the same routine today",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-233",
+      "text": "I want to keep my current program",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-234",
+      "text": "What is the name of this exercise",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-235",
+      "text": "Is this the flat bench setup",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-236",
+      "text": "Can you list the warm up movements",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-237",
+      "text": "I like the Romanian deadlift variation",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-238",
+      "text": "The rack pull starts below the knee",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-239",
+      "text": "I did a light set before the work sets",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-240",
+      "text": "I finished with face pulls",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-241",
+      "text": "I added lateral raises at the end",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-242",
+      "text": "I did curls between sets",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-243",
+      "text": "I used the rope attachment",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-244",
+      "text": "I tried a different grip today",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-245",
+      "text": "I lowered the bench angle",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-246",
+      "text": "The bar felt balanced",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-247",
+      "text": "The dumbbells were in the right place",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-248",
+      "text": "My workout took an hour",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-249",
+      "text": "I finished before the crowd arrived",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-250",
+      "text": "The locker room was quiet",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-251",
+      "text": "I need to wash my gym clothes",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-252",
+      "text": "I will pack my bag tonight",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-253",
+      "text": "I left a towel in the car",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-254",
+      "text": "The parking lot was full",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-255",
+      "text": "I got a ride with Omar",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-256",
+      "text": "We went for coffee afterward",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-257",
+      "text": "I am planning next week's sessions",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-258",
+      "text": "My calendar is up to date",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-259",
+      "text": "The class was fun",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-260",
+      "text": "I will try that routine soon",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-261",
+      "text": "I saved the program as a note",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-262",
+      "text": "The exercise list is easy to follow",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-263",
+      "text": "The app shows the right training day",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-264",
+      "text": "The timer went off between sets",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-265",
+      "text": "I used the same weights as last week",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-266",
+      "text": "I want to compare my logs",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-267",
+      "text": "I recorded the reps after each set",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-268",
+      "text": "The final set was my favorite",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-269",
+      "text": "I trained before breakfast",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-270",
+      "text": "I usually eat after the gym",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-271",
+      "text": "I took the stairs to the studio",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-272",
+      "text": "The new bench is comfortable",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-273",
+      "text": "The training floor was clean",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-274",
+      "text": "I asked the staff about opening hours",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-275",
+      "text": "The coach updated the weekly plan",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-276",
+      "text": "I got a message about tomorrow's class",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-277",
+      "text": "The gym has new plates",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-278",
+      "text": "I prefer the older squat rack",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-279",
+      "text": "I moved the dumbbells back after use",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-280",
+      "text": "I wiped down the bench",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-281",
+      "text": "The cable machine was busy",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-282",
+      "text": "I used the other side of the room",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-283",
+      "text": "There was space by the mirrors",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-284",
+      "text": "My friend joined for the last set",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-285",
+      "text": "We took a group photo afterward",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-286",
+      "text": "I liked today's playlist",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-287",
+      "text": "The routine fits my schedule",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-288",
+      "text": "I can train earlier on Tuesday",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-289",
+      "text": "I have a busy week at work",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-290",
+      "text": "I am taking Sunday off",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-291",
+      "text": "My next session is on Wednesday",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-292",
+      "text": "I am heading to the gym now",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-293",
+      "text": "I got home after training",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-294",
+      "text": "I will check in after my workout",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-295",
+      "text": "pt2",
+      "master_intercepted": false
+    },
+    {
+      "id": "en-296",
+      "text": "took omega3 and creatine",
+      "master_intercepted": false
+    }
+  ]
+}

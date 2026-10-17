@@ -16,9 +16,9 @@ from agent.prompts import (
 
 FIXTURE_PATH = Path(__file__).parent / "eval" / "datasets" / "arabic_reviewed_cases.json"
 ARABIC_EVAL_SET = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
-#: Interim-guard required-block misses recorded by #245/#247. The #149 Arabic
-#: semantic tier is now expected to recover ``ar-inj-07``; the Franco gap stays.
-KNOWN_REQUIRED_BLOCK_MISSES = {"ar-inj-07", "fr-benign-02"}
+#: The Arabic semantic tier recovers the prior Arabic miss, and #419 closes the
+#: reviewed Franco detector gap without changing the recorded clinical label.
+KNOWN_REQUIRED_BLOCK_MISSES = {"ar-inj-07"}
 
 
 def _state(query: str) -> dict:
@@ -64,6 +64,7 @@ def test_arabic_normalization_and_attached_affixes_trigger(query):
         "رجلي بتنمل",
         "عندي تنميل",
         "ظهري بيحرقني",
+        "كتفي اتقصف",
     ],
 )
 def test_arabic_lexical_recall_cases_intercept_without_loading_model(query, monkeypatch):
@@ -372,11 +373,9 @@ def test_required_block_routes_match_reviewed_misses_and_fixed_replies():
                 ARABIC_DIAGNOSIS_SAFEGUARD_RESPONSE,
             }
 
-    # The Arabic semantic tier may recover an interim lexical miss, but it must
-    # never introduce a new one. The Franco refusal gap is intentionally kept
-    # (Franco handling is #343, not this ticket).
+    # The Arabic semantic tier and the #419 Franco guard may recover interim
+    # misses, but neither may introduce a new one.
     assert observed_misses <= KNOWN_REQUIRED_BLOCK_MISSES
-    assert "fr-benign-02" in observed_misses
     assert "ar-inj-07" not in observed_misses
     reviewed = {
         entry["id"]: entry

@@ -26,7 +26,10 @@ class _StubModule(ModuleType):
 def graph(monkeypatch):
     modules = {}
     for name, attrs in {
-        "agent.clinical_guard": ["ARABIC_SCRIPT_RE", "EMBED_MODEL", "evaluate_clinical_semantic_guard"],
+        "agent.clinical_guard": [
+            "ARABIC_SCRIPT_RE", "EMBED_MODEL", "evaluate_clinical_semantic_guard",
+            "has_franco_digit_evidence", "is_franco_clinical", "is_franco_clinical_franco_message",
+        ],
         "agent.program_generator": ["extract_frequency_from_text", "generate_program_pipeline", "get_biomechanical_cue", "has_supported_split_keyword"],
         "database.database_manager": ["DatabaseManager"],
         "utils.model_downloader": ["llm", "structured_output_model"],
@@ -38,6 +41,9 @@ def graph(monkeypatch):
         modules[name] = module
         monkeypatch.setitem(sys.modules, name, module)
     modules["agent.clinical_guard"].evaluate_clinical_semantic_guard.return_value = (False, 0.0)
+    modules["agent.clinical_guard"].has_franco_digit_evidence.return_value = False
+    modules["agent.clinical_guard"].is_franco_clinical.return_value = False
+    modules["agent.clinical_guard"].is_franco_clinical_franco_message.return_value = False
     modules["agent.clinical_guard"].ARABIC_SCRIPT_RE = re.compile(r"[\u0600-\u06ff]")
     modules["agent.program_generator"].extract_frequency_from_text.return_value = None
 

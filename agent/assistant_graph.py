@@ -36,6 +36,9 @@ from agent.clinical_guard import (
     ARABIC_SCRIPT_RE,
     EMBED_MODEL,
     evaluate_clinical_semantic_guard,
+    has_franco_digit_evidence,
+    is_franco_clinical,
+    is_franco_clinical_franco_message,
 )
 from agent.fitness_abbreviations import (
     expand_fitness_abbreviations,
@@ -171,26 +174,26 @@ RE_ACUTE_INJURY = re.compile(
 )
 
 FRANCO_ARABIC_RE = re.compile(
-    r"(?<![A-Za-z0-9])(?!(?:b2b)(?![A-Za-z0-9]))"
-    r"(?:[A-Za-z]+[2356789][A-Za-z]+|"
-    r"[2356789](?!(?:kgs?|lbs?|km|mi|mins?|secs?|hrs?|am|pm|x|rm|reps?|sets?|days?|wks?|"
-    r"st|nd|rd|th|rpe|rir|k|m|s|h|d)\b)"
-    r"[A-Za-z]+)(?![A-Za-z0-9])",
+    r"(?<![A-Za-z0-9])(?:[2356789][A-Za-z]+|[A-Za-z]+[2356789][A-Za-z]+)(?![A-Za-z0-9])",
     re.IGNORECASE,
 )
+FRANCO_WORD_RE = re.compile(r"[A-Za-z0-9]+")
 FRANCO_COMMON_WORDS = frozenset(
     {
         "ana", "enta", "enty", "3ayez", "keda", "delwa2ty",
-        "ezay", "leh", "awy", "wa3", "waga3ny", "alam",
+        "ezay", "leh", "awy", "wa3", "waga3ny", "alam", "mesh", "gamed", "embare7",
     }
 )
 
 
 def is_franco_arabic(text: str) -> bool:
-    if len(FRANCO_ARABIC_RE.findall(text)) >= 2:
+    words = [word.casefold() for word in FRANCO_WORD_RE.findall(text)]
+    if any(
+        has_franco_digit_evidence(token) and sum(char.isdigit() for char in token) == 1
+        for token in FRANCO_ARABIC_RE.findall(text)
+    ):
         return True
-    words = text.lower().replace("-", " ").split()
-    return any(word.strip(".,!?;:()[]{}\"'") in FRANCO_COMMON_WORDS for word in words)
+    return sum(word in FRANCO_COMMON_WORDS for word in words) >= 2
 
 #: Joints and tear-prone structures. Deliberately excludes the big DOMS muscle
 #: groups (quads, glutes, hamstrings, chest, lats...) whose slang
@@ -1534,7 +1537,12 @@ def arabic_swap_clarification_node(
 
 
 def _clinical_turn_metadata(query: str, sub_intents=()) -> dict[str, Any] | None:
-    if is_franco_arabic(query):
+    franco_detected = is_franco_arabic(query)
+    franco_clinical_check = (
+        is_franco_clinical_franco_message if franco_detected else is_franco_clinical
+    )
+    franco_clinical = franco_clinical_check(query)
+    if franco_detected or franco_clinical:
         return {"raw_query": query, "franco": True}
     queries = [query] + [part.strip() for part in RE_CLAUSE_SPLIT.split(query) if part.strip() != query]
     for sub in sub_intents:

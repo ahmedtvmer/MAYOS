@@ -227,11 +227,12 @@ Additional deterministic cases and lexical coverage are **UNREVIEWED**:
 | `رجلي بتنمل` | `تنمل` | UNREVIEWED |
 | `عندي تنميل` | existing `تنميل` stem | UNREVIEWED |
 | `ظهري بيحرقني` | `يحرقني` | UNREVIEWED |
+| `كتفي اتقصف` | new `اتقصف` stem | UNREVIEWED |
 
 The generic ta-marbuta alternation and new stems `مصاب`, `مصابين`, `مصابات`,
-`تورمت`, `تنمل`, and `يحرقني` are deterministic additions, not owner-reviewed
-clinical labels. These supplements remain separate from the owner-reviewed
-dataset.
+`تورمت`, `تنمل`, `يحرقني`, and `اتقصف` are deterministic additions, not
+owner-reviewed clinical labels. These supplements remain separate from the
+owner-reviewed dataset.
 
 `sup-benign-02` is the honest residual, and it is **not** a known-benign case.
 Its text is UNREVIEWED and its desired clinical label is **UNDECIDED / OWNER
