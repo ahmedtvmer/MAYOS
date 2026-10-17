@@ -189,13 +189,13 @@ below 0.90.
    `mean_sqrt_len` loudly; the revision is pinned for both paths.
 5. **Honest measurement and status** (this document).
 
-## Owner review (2026-10-17)
+## Owner review (approved 2026-10-17)
 
-The owner approved the runtime Arabic anchor strings, supplemental cases and
-the listed deterministic lexical coverage on 2026-10-17. The supplemental
-probes remain separate from the owner-reviewed `arabic_reviewed_cases.json`
-fixture; this approval does not establish broad recall on an unseen labelled
-set.
+The runtime Arabic anchor strings are MAYOS-authored internal prompts. The owner
+approved those anchors, the supplemental cases and the listed deterministic
+lexical coverage on 2026-10-17. Supplemental probes remain separate from the
+owner-reviewed `arabic_reviewed_cases.json` fixture; approval of these items
+does not establish broad recall on an unseen labelled set.
 
 | Anchor # | Arabic anchor string | Status |
 | --- | --- | --- |
@@ -217,7 +217,12 @@ measurement retained where the implementation has since changed:
 | `sup-pain-02` | `ركبتي تؤلمني أثناء البنش` | clinical | intercept (lexical) |
 | `sup-pain-03` | `ركبتي تؤلمني وحرقان` | clinical | intercept (lexical) |
 | `sup-benign-01` | `عندي حرقان في رجلي` | benign | benign below 0.90 (semantic) |
-| `sup-benign-02` | `أنا تعبان وحاسس بحاجة غريبة في ركبتي` | **clinical — intercept** (owner-confirmed 2026-10-17) | original behavior: non-interception (semantic 0.8886 < 0.90); corrected behavior: deterministic intercept |
+| `sup-benign-02` | `أنا تعبان وحاسس بحاجة غريبة في ركبتي` | **clinical — intercept** (owner-confirmed 2026-10-17) | original behavior: non-interception (semantic 0.8886 < 0.90); current behavior: deterministic lexical intercept |
+
+The general deterministic rule matches a حاجة/إحساس phrase marked غريب/مش
+طبيعي/مش مظبوط, followed by في/ف/ب and a recognized body part, including the
+canonical injury areas and common limb/body terms. Program, exercise and gym
+mentions alone do not match.
 
 Additional deterministic cases and lexical coverage (owner-approved 2026-10-17):
 
@@ -237,29 +242,18 @@ coverage including `مصاب`, `مصابين`, `مصابات`, `تورمت`, `ت
 `اتقصف` on 2026-10-17. These supplemental probes remain separate from the
 owner-reviewed dataset.
 
-The owner subsequently reviewed `sup-benign-02` on 2026-10-17 and labeled it
-**clinical — intercept**. Its original semantic score (0.8886) remains a
-historical measurement below the unchanged 0.90 threshold. A narrow Tier-0
-pattern now intercepts the reviewed expression `حاسس بحاجة غريبة في ركبتي`
-after Arabic normalization. It requires the reported unusual-feeling wording
-and the knee body area; neither fatigue nor `غريبة` alone triggers this rule.
-The approved wording is the supported case; this correction does not validate
-unreviewed paraphrases or complete broad recall. Other unknown Arabic symptoms
-can still score below threshold, so a larger owner-reviewed labelled set is
-required before broad recall can be claimed.
-
 ## Known gaps and limitations
 
 * The semantic tier is a high-precision backstop with conservative recall; the
   reviewed required block is carried by the deterministic lexical tier.
-* Unknown Arabic symptom wording can still escape interception when the
-  semantic score is below threshold; the approved `sup-benign-02` wording is
-  covered by its narrow deterministic pattern, while broader unseen recall is
-  not established. The benign ceiling (0.8853) is retained as historical
-  calibration evidence from the reviewed set plus a small supplemental sample.
+* Unknown Arabic symptom wording outside the deterministic lexical patterns can
+  still escape interception when the semantic score is below threshold; the
+  benign ceiling (0.8853) is estimated from the reviewed set plus a small
+  supplemental sample, so broad recall remains uncalibrated.
 * The Arabic anchor descriptions, supplemental cases and listed lexical
   coverage were owner-approved on 2026-10-17 (table above); a larger labelled
-  set remains outstanding.
+  set remains outstanding. The anchors are MAYOS-authored internal prompts,
+  not player messages in the labelled evaluation dataset.
 * The measured scoped model-process peak (~908 MB, interpreter +
   `core.embeddings` only) exceeds 512 MB RAM. The owner chose 512 MB RAM plus
   existing 512 MB swap; deployed RSS and latency remain to be verified.

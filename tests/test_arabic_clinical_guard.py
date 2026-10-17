@@ -25,6 +25,23 @@ def _state(query: str) -> dict:
     return {"messages": [HumanMessage(content=query)], "telemetry_context": "", "intent_metadata": {}}
 
 
+def _install_benign_arabic_model_stub(monkeypatch):
+    calls = {"load": 0, "embed": 0}
+
+    class BenignEmbedder:
+        def embed_query(self, _text):
+            calls["embed"] += 1
+            return [0.0, 1.0]
+
+    def load_benign_embedder():
+        calls["load"] += 1
+        return BenignEmbedder()
+
+    monkeypatch.setattr(clinical_guard, "_ARABIC_ANCHOR_VECTORS", [[1.0, 0.0]])
+    monkeypatch.setattr(clinical_guard, "get_arabic_embedding_model", load_benign_embedder)
+    return calls
+
+
 @pytest.mark.parametrize(
     "query",
     [
@@ -68,16 +85,32 @@ def test_arabic_normalization_and_attached_affixes_trigger(query):
     ],
 )
 def test_arabic_lexical_recall_cases_intercept_without_loading_model(query, monkeypatch):
-    model_loads = []
+    model_calls = _install_benign_arabic_model_stub(monkeypatch)
+    normalized = clinical_guard.normalize_arabic_text(query)
 
-    def fail_if_model_loads():
-        model_loads.append(True)
-        raise RuntimeError("lexical match should not load the semantic model")
-
-    monkeypatch.setattr(clinical_guard, "get_arabic_embedding_model", fail_if_model_loads)
-
+    assert clinical_guard._arabic_lexical_hit(normalized)
     assert clinical_guard.evaluate_clinical_semantic_guard(query) == (True, 1.0)
-    assert model_loads == []
+    assert model_calls == {"load": 0, "embed": 0}
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "أنا تعبان وحاسس بحاجة غريبة في ركبتي",
+        "حاسس بحاجة مش طبيعية في كتفي",
+        "في احساس غريب في ظهري",
+        "أحس بحاجة غريبة في الركبة",
+        "بحس بحاجة غريبة فكتفي",
+        "أحس بإحساس غريب بركبتي",
+    ],
+)
+def test_unknown_sensation_in_body_part_intercepts_without_loading_model(query, monkeypatch):
+    model_calls = _install_benign_arabic_model_stub(monkeypatch)
+    normalized = clinical_guard.normalize_arabic_text(query)
+
+    assert clinical_guard._arabic_lexical_hit(normalized)
+    assert clinical_guard.evaluate_clinical_semantic_guard(query) == (True, 1.0)
+    assert model_calls == {"load": 0, "embed": 0}
 
 
 def test_normalize_arabic_text_removes_marks_and_unifies_letter_variants():
@@ -174,6 +207,9 @@ def test_arabic_semantic_threshold_clears_benign_training_talk():
         cases["ar-gen-01"]["text"],
         "عايز أبدّل البنش بضغط مائل بالبار.",
         "غيّر البرنامج لتقسيمة Upper / Lower.",
+        "حاجة غريبة في البرنامج",
+        "حاسس إن التمرين ده غريب",
+        "عايز أجرب حاجة غريبة في الجيم النهارده",
         "البنش بيعمل شد في الكتف",
         "ركبتي بتزقزق شوية بعد التمرين",
         "عندي حرقان في رجلي",

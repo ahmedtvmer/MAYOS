@@ -5,6 +5,7 @@ import threading
 
 import numpy as np
 from core.embeddings import get_arabic_embedding_model, get_embedding_model
+from core.injuries import INJURY_BODY_AREA_LABELS
 
 # ONNX Runtime is CPU-only; MODEL_DEVICE remains accepted as a config no-op.
 EMBED_MODEL = get_embedding_model()
@@ -61,6 +62,7 @@ ARABIC_CLINICAL_STEMS = {
     ),
 }
 _ARABIC_PRONOUN_SUFFIXES = ("ني", "كم", "كن", "هم", "هن", "ها", "نا", "ك", "ه", "ي")
+_ARABIC_CLITIC_PREFIX = r"(?:[وف]?(?:[بل])?(?:ال)?|ل{1,2}|)"
 
 
 def _arabic_stem_pattern(stems) -> re.Pattern[str]:
@@ -71,7 +73,7 @@ def _arabic_stem_pattern(stems) -> re.Pattern[str]:
     ordered = sorted(expanded_stems, key=len, reverse=True)
     suffixes = "|".join(_ARABIC_PRONOUN_SUFFIXES)
     return re.compile(
-        rf"(?<![{_ARABIC_LETTERS}])(?:[وف]?(?:[بل])?(?:ال)?|ل{{1,2}}|)"
+        rf"(?<![{_ARABIC_LETTERS}]){_ARABIC_CLITIC_PREFIX}"
         rf"(?:{'|'.join(re.escape(stem) for stem in ordered)})"
         rf"(?:{suffixes})?(?![{_ARABIC_LETTERS}])"
     )
@@ -83,11 +85,35 @@ _ARABIC_STEMS = sorted(
     reverse=True,
 )
 _ARABIC_STEM_PATTERN = _arabic_stem_pattern(_ARABIC_STEMS)
-# The owner-reviewed #149 report describes an unusual sensation in the knee.
-# Match that symptom/body-area phrase specifically; fatigue or "strange" alone
-# must continue to the normal semantic tier.
-_ARABIC_UNUSUAL_KNEE_SENSATION = re.compile(
-    rf"(?<![{_ARABIC_LETTERS}])(?:و|ف)?حاسس\s+بحاجه\s+غريبه\s+في\s+ركبتي(?![{_ARABIC_LETTERS}])"
+
+_ARABIC_BODY_PART_WORDS = sorted(
+    {
+        normalize_arabic_text(label)
+        for label in INJURY_BODY_AREA_LABELS["ar"].values()
+    }
+    | {
+        "ركبه", "ركبتي", "ركب", "ورك", "وركي", "حوض", "حوضي",
+        "ظهر", "ظهري", "ضهر", "ضهري", "كتف", "كتفي", "اكتاف",
+        "كوع", "كوعي", "مرفق", "مرفقي", "رسغ", "رسغي", "معصم",
+        "معصمي", "كاحل", "كاحلي", "كعب", "كعبي", "رقبه", "رقبتي",
+        "رجل", "رجلي", "ساق", "ساقي", "ذراع", "ذراعي", "دراع",
+        "دراعي", "ايد", "ايدي", "يد", "يدي", "قدم", "قدمي", "صدر",
+        "صدري",
+    },
+    key=len,
+    reverse=True,
+)
+_ARABIC_BODY_PART_PATTERN = "|".join(
+    re.escape(word) for word in _ARABIC_BODY_PART_WORDS
+)
+_ARABIC_FEELING_VERB_PATTERN = r"[وف]?(?:حاسس|حاسه|بحس|احس|حسيت)"
+_ARABIC_STRANGE_SENSATION_PATTERN = r"(?:حاجه|احساس)\s+(?:غريب|غريبه|مش\s+طبيعيه?|مش\s+مظبوطه?)"
+_ARABIC_UNKNOWN_BODY_SENSATION_PATTERN = re.compile(
+    rf"(?:(?<![{_ARABIC_LETTERS}]){_ARABIC_FEELING_VERB_PATTERN}\s+)?"
+    rf"(?<![{_ARABIC_LETTERS}]){_ARABIC_CLITIC_PREFIX}{_ARABIC_STRANGE_SENSATION_PATTERN}"
+    rf"\s*(?<![{_ARABIC_LETTERS}])[وف]?(?:في|ف|ب)\s*"
+    rf"{_ARABIC_CLITIC_PREFIX}(?:{_ARABIC_BODY_PART_PATTERN})"
+    rf"(?![{_ARABIC_LETTERS}])"
 )
 
 _FRANCO_DIGRAPHS = {"sh": ("ش",), "kh": ("خ",), "gh": ("غ",), "th": ("ث",), "dh": ("ذ",)}
@@ -354,6 +380,13 @@ def _arabic_anchor_vectors() -> list[list[float]]:
     return _ARABIC_ANCHOR_VECTORS
 
 
+def _arabic_lexical_hit(normalized: str) -> bool:
+    return bool(
+        _ARABIC_UNKNOWN_BODY_SENSATION_PATTERN.search(normalized)
+        or _ARABIC_STEM_PATTERN.search(normalized)
+    )
+
+
 def _arabic_semantic_guard(query: str) -> tuple[bool, float]:
     """Layered Arabic path: lexical stems, acute signals, then e5 similarity.
 
@@ -366,10 +399,7 @@ def _arabic_semantic_guard(query: str) -> tuple[bool, float]:
     """
     try:
         normalized = normalize_arabic_text(query)
-        if (
-            _ARABIC_STEM_PATTERN.search(normalized)
-            or _ARABIC_UNUSUAL_KNEE_SENSATION.search(normalized)
-        ):
+        if _arabic_lexical_hit(normalized):
             return True, 1.0
         if RE_TRAUMA_SENSATIONS.search(query) or RE_ACUTE_PAIN_SIGNALS.search(query):
             return True, 1.0
