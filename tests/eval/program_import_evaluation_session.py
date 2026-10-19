@@ -49,6 +49,8 @@ class ProgramImportEvaluationSession:
         "POSTHOG_API_KEY": "",
         "PROGRAM_IMPORT_AI_ENABLED": "false",
         "PROGRAM_IMPORT_AI_EVAL_REPORT": "",
+        "PROGRAM_IMPORT_TEXT_AI_ENABLED": "false",
+        "PROGRAM_IMPORT_TEXT_AI_EVAL_REPORT": "",
         # The 21-sheet suite includes one extra request for its tab-choice fixture.
         "MODEL_RATE_LIMIT_REQUESTS": "25",
         "HF_HUB_OFFLINE": "1",
@@ -169,6 +171,13 @@ class ProgramImportEvaluationSession:
             headers=self.coach_headers,
             files={"file": (filename, _spreadsheet_bytes(case), mime_type)},
             data=data,
+        )
+
+    def import_text_case(self, case: dict[str, Any]):
+        return self.client.post(
+            f"/coach/assignments/{self.assignment_id}/program-import",
+            headers=self.coach_headers,
+            data={"text": case["text"]},
         )
 
     def __exit__(self, exc_type, exc, traceback) -> None:

@@ -264,6 +264,31 @@ configured coach model. Its usual report path is
 `reports/program_import_text_eval.json`. The text gate does not enable or
 disable spreadsheet imports.
 
+The text evaluation fixtures live in `tests/eval/datasets/program_import_text/`.
+Review the synthetic programs, then record the current fixture hash as the
+owner (run from the repository root):
+
+```sh
+cd tests
+../.venv/bin/python -m eval.run_program_import_evaluation --suite text \
+  --record-review --reviewer "Owner Name"
+```
+
+After review, run the live route evaluation with the configured hosted Coach
+model. This writes a separate text report and validates it through the
+production text report gate before returning:
+
+```sh
+cd tests
+../.venv/bin/python -m eval.run_program_import_evaluation --suite text \
+  --write-report ../reports/program_import_text_eval.json
+```
+
+Set `PROGRAM_IMPORT_TEXT_AI_ENABLED=true` and
+`PROGRAM_IMPORT_TEXT_AI_EVAL_REPORT=reports/program_import_text_eval.json` only
+after the command reports a valid passing live report. `--mock` is for local
+plumbing only and can never enable text import.
+
 The 19 synthetic fixture definitions live as one human-readable JSON file per
 sheet in `tests/eval/datasets/program_import/`. Together they contain 316
 expected exercise rows across full programs, including three- and four-day

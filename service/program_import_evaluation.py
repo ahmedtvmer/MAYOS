@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +55,30 @@ def load_fixture_entries(directory: Path | str) -> list[dict[str, Any]]:
 
 def dataset_hash_for_directory(directory: Path | str) -> str:
     return fixture_entries_hash(load_fixture_entries(directory))
+
+
+def load_owner_review(directory: Path | str) -> dict[str, Any]:
+    review_path = Path(directory) / REVIEW_FILENAME
+    if not review_path.is_file():
+        return dict(PENDING_REVIEW_RECORD)
+    review = json.loads(review_path.read_text(encoding="utf-8"))
+    return review if isinstance(review, dict) else dict(PENDING_REVIEW_RECORD)
+
+
+def record_owner_review(directory: Path | str, reviewer: str) -> dict[str, Any]:
+    reviewer = reviewer.strip()
+    if not reviewer:
+        raise ValueError("reviewer name must not be blank")
+    review = {
+        "reviewed": True,
+        "reviewed_by": reviewer,
+        "reviewed_on": datetime.now(timezone.utc).date().isoformat(),
+        "reviewed_dataset_hash": dataset_hash_for_directory(directory),
+    }
+    (Path(directory) / REVIEW_FILENAME).write_text(
+        json.dumps(review, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return review
 
 
 def valid_sha256(value: Any) -> bool:

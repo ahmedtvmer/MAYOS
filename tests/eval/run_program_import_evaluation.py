@@ -1,8 +1,8 @@
-"""Evaluate free-form Program import on synthetic coach spreadsheets (#350, #400).
+"""Evaluate sheet and plain-text Program import suites (#350, #400, #434).
 
-Live runs use the upload HTTP route and the configured hosted Coach model. The
-temporary account and Assignment contain no copied Training ledger; each model
-payload is made by the production import path from the selected fixture sheet.
+Live runs use the upload HTTP route and configured hosted Coach model. The
+temporary account and Assignment contain no copied Training ledger; the
+production import path builds each model payload from its selected fixture.
 """
 
 from __future__ import annotations
@@ -16,15 +16,17 @@ import math
 import os
 import sys
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator
+from unittest.mock import patch
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(BASE_DIR))
 
 from service import program_import_ai  # noqa: E402
-from service.evaluation_report_gate import GateStatus  # noqa: E402
+from service.evaluation_report_gate import EvaluationReportConfig, GateStatus  # noqa: E402
 from service.program_import_evaluation import (  # noqa: E402
     PENDING_REVIEW_RECORD,
     dataset_hash_for_directory,
@@ -36,13 +38,40 @@ from tests.eval import evaluation_runner  # noqa: E402
 from tests.eval.program_import_evaluation_session import ProgramImportEvaluationSession  # noqa: E402
 
 DEFAULT_DATASET = Path(__file__).resolve().parent / "datasets" / "program_import"
-REVIEW_FILENAME = "REVIEW.json"
+TEXT_DATASET = Path(__file__).resolve().parent / "datasets" / "program_import_text"
 PRIVACY_SUITE = "tests/test_program_import.py"
 PROVIDER_BUSY_RETRY_BACKOFF_ENV = "PROGRAM_IMPORT_EVAL_BUSY_RETRY_BACKOFF_SECONDS"
 DEFAULT_PROVIDER_BUSY_RETRY_BACKOFF_SECONDS = (30.0, 60.0, 120.0)
 
 
-def load_dataset(dataset_path: Path = DEFAULT_DATASET) -> dict[str, Any]:
+@dataclass(frozen=True)
+class EvaluationKind:
+    dataset_dir: Path
+    report_config: EvaluationReportConfig
+    report_version: int
+    suite_name: str
+    prompt_hash: Callable[[], str]
+    gate_resolver: Callable[[], GateStatus]
+    import_call: Callable[[ProgramImportEvaluationSession, dict[str, Any]], Any]
+    min_fixtures: int
+    max_fixtures: int
+
+
+SHEET_KIND = EvaluationKind(
+    DEFAULT_DATASET, program_import_ai.SHEET_EVALUATION_REPORT_CONFIG, program_import_ai.REPORT_VERSION,
+    "program_import", program_import_ai.prompt_version_hash, program_import_ai.resolve_enable_gate,
+    lambda session, case: session.import_case(case),
+    19, 21,
+)
+TEXT_KIND = EvaluationKind(
+    TEXT_DATASET, program_import_ai.TEXT_EVALUATION_REPORT_CONFIG, program_import_ai.TEXT_REPORT_VERSION,
+    "program_import_text", program_import_ai.text_prompt_version_hash, program_import_ai.resolve_text_enable_gate,
+    lambda session, case: session.import_text_case(case), 12, 15,
+)
+
+
+def load_dataset(dataset_path: Path | None = None, *, kind: EvaluationKind = SHEET_KIND) -> dict[str, Any]:
+    dataset_path = dataset_path or kind.dataset_dir
     dataset_directory = Path(dataset_path)
     if not dataset_directory.is_dir():
         raise ValueError(f"Program import eval dataset must be a directory: {dataset_path}")
@@ -50,42 +79,28 @@ def load_dataset(dataset_path: Path = DEFAULT_DATASET) -> dict[str, Any]:
     cases = [entry["fixture"] for entry in fixture_entries]
     if not cases:
         raise ValueError(f"Program import eval dataset must contain cases: {dataset_path}")
-    if not 19 <= len(cases) <= 21:
-        raise ValueError(f"Program import eval dataset must contain between 19 and 21 cases: {dataset_path}")
+    if not kind.min_fixtures <= len(cases) <= kind.max_fixtures:
+        raise ValueError(f"Program import eval dataset must contain between {kind.min_fixtures} and {kind.max_fixtures} cases: {dataset_path}")
     ids = [case.get("id") for case in cases if isinstance(case, dict)]
     if len(ids) != len(cases) or any(not item for item in ids) or len(set(ids)) != len(ids):
         raise ValueError("Program import eval case ids must be present and unique")
-    review_path = dataset_directory / REVIEW_FILENAME
-    if review_path.is_file():
-        owner_review = json.loads(review_path.read_text(encoding="utf-8"))
-    else:
-        owner_review = dict(PENDING_REVIEW_RECORD)
+    from service.program_import_evaluation import load_owner_review
+    owner_review = load_owner_review(dataset_directory)
     return {"owner_review": owner_review, "fixture_entries": fixture_entries, "cases": cases}
 
 
-def load_cases(dataset_path: Path = DEFAULT_DATASET) -> list[dict[str, Any]]:
-    return load_dataset(dataset_path)["cases"]
+def load_cases(dataset_path: Path | None = None, *, kind: EvaluationKind = SHEET_KIND) -> list[dict[str, Any]]:
+    return load_dataset(dataset_path, kind=kind)["cases"]
 
 
 def compute_dataset_hash(dataset_path: Path = DEFAULT_DATASET) -> str:
     return dataset_hash_for_directory(dataset_path)
 
 
-def record_owner_review(dataset_path: Path, reviewer: str) -> dict[str, Any]:
-    reviewer = reviewer.strip()
-    if not reviewer:
-        raise ValueError("reviewer name must not be blank")
-    load_dataset(dataset_path)
-    review = {
-        "reviewed": True,
-        "reviewed_by": reviewer,
-        "reviewed_on": datetime.now(timezone.utc).date().isoformat(),
-        "reviewed_dataset_hash": compute_dataset_hash(dataset_path),
-    }
-    (Path(dataset_path) / REVIEW_FILENAME).write_text(
-        json.dumps(review, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
-    return review
+def record_owner_review(dataset_path: Path, reviewer: str, *, kind: EvaluationKind = SHEET_KIND) -> dict[str, Any]:
+    load_dataset(dataset_path, kind=kind)
+    from service.program_import_evaluation import record_owner_review as record_review
+    return record_review(dataset_path, reviewer)
 
 
 def spreadsheet_bytes(case: dict[str, Any]) -> bytes:
@@ -115,14 +130,14 @@ def spreadsheet_bytes(case: dict[str, Any]) -> bytes:
     return output.getvalue()
 
 
-def expected_translation_reply(case: dict[str, Any]) -> dict[str, Any]:
+def expected_translation_reply(case: dict[str, Any], *, kind: EvaluationKind = SHEET_KIND) -> dict[str, Any]:
     """Creates a clearly synthetic happy-path reply for plumbing tests only."""
     rows = []
     for index, expected in enumerate(case["expected_rows"], start=1):
         markers = [
             {
                 "code": code,
-                "column": _approximation_column(code),
+                "column": approximation_column(code),
                 "original": expected.get("original_text", ""),
             }
             for code in expected["approximation_codes"]
@@ -130,17 +145,17 @@ def expected_translation_reply(case: dict[str, Any]) -> dict[str, Any]:
         ]
         rows.append(
             {
-                "source_row": expected["source_row"],
+                "source_row": expected[kind.report_config.source_position_key],
                 "week": expected["week"],
-                "exercise_search_terms": expected.get("suggestion_search_terms", []),
-                "day": expected["day"],
-                "day_name": expected["day_name"],
+                "exercise_search_terms": expected.get("suggestion_search_terms") or [],
+                "day": expected.get("day") if expected.get("day_placement_applicable", True) else 1,
+                "day_name": expected.get("day_name") if expected.get("day_placement_applicable", True) else "Workout",
                 "order": index,
                 "exercise": expected.get("input_exercise_name", expected["exercise_name"]),
                 "sets": expected["sets"],
                 "reps_min": expected["reps_min"],
                 "reps_max": expected["reps_max"],
-                "reps_original": None,
+                "reps_original": expected.get("reps_original"),
                 "rir": expected.get("rir"),
                 "rpe": expected.get("rpe"),
                 "rest_seconds": expected.get("rest_seconds"),
@@ -152,7 +167,9 @@ def expected_translation_reply(case: dict[str, Any]) -> dict[str, Any]:
         )
     days_by_number: dict[str, str] = {}
     for row in case["expected_rows"]:
-        days_by_number.setdefault(str(row["day"]), row["day_name"])
+        day = row.get("day") if row.get("day_placement_applicable", True) else 1
+        name = row.get("day_name") if row.get("day_placement_applicable", True) else "Workout"
+        days_by_number.setdefault(str(day), name)
     return {
         "rows": rows,
         "layout": {
@@ -165,15 +182,16 @@ def expected_translation_reply(case: dict[str, Any]) -> dict[str, Any]:
 
 
 class PlumbingModel:
-    """Keeps translation replies aligned when a sheet also needs suggestions."""
+    """Keeps synthetic translation replies aligned with fixture suggestions."""
 
-    def __init__(self):
+    def __init__(self, kind: EvaluationKind = SHEET_KIND):
         from tests.fakes.chat_model import ScriptedChatModel
 
         self.scripted_model = ScriptedChatModel(default_turn={"suggestions": []})
+        self.kind = kind
 
     def prepare_case(self, case: dict[str, Any], db: Any) -> None:
-        turns = [expected_translation_reply(case)]
+        turns = [expected_translation_reply(case, kind=self.kind)]
         suggestions = []
         for expected in case["expected_rows"]:
             if expected["expected_resolution"] != "unresolved":
@@ -193,21 +211,22 @@ class PlumbingModel:
         self.scripted_model.reset(turns, default_turn={"suggestions": []})
 
 
-def build_mock_model() -> PlumbingModel:
+def build_mock_model(kind: EvaluationKind = SHEET_KIND) -> PlumbingModel:
     """Returns the scripted fake used for plumbing runs; never a quality run."""
-    return PlumbingModel()
+    return PlumbingModel(kind)
 
 
 def _run_cases(
     cases: list[dict[str, Any]],
     session: ProgramImportEvaluationSession,
     model: Any | None,
+    kind: EvaluationKind = SHEET_KIND,
 ) -> list[dict[str, Any]]:
     scored = []
     for case in cases:
         if callable(getattr(model, "prepare_case", None)):
             model.prepare_case(case, session.db)
-        scored.append(_run_case(session, case))
+        scored.append(_run_case(session, case, kind))
     return scored
 
 
@@ -217,22 +236,24 @@ def _model_instance_used(model: Any | None) -> Any | None:
 
 
 @contextlib.contextmanager
-def _evaluation_path(model: Any | None) -> Iterator[None]:
+def _evaluation_path(model: Any | None, kind: EvaluationKind) -> Iterator[None]:
     from utils import model_downloader
 
     previous_model = model_downloader._coach_llm_instance
     previous_import_model = model_downloader._coach_import_llm_instance
-    previous_gate = program_import_ai.resolve_enable_gate
     if model is not None:
         model_downloader._coach_llm_instance = _model_instance_used(model)
         model_downloader._coach_import_llm_instance = _model_instance_used(model)
-    program_import_ai.resolve_enable_gate = lambda: GateStatus(requested=True, enabled=True, reason="evaluation runner")
     try:
-        yield
+        with patch.object(
+            program_import_ai,
+            kind.gate_resolver.__name__,
+            lambda: GateStatus(requested=True, enabled=True, reason="evaluation runner"),
+        ):
+            yield
     finally:
         model_downloader._coach_llm_instance = previous_model
         model_downloader._coach_import_llm_instance = previous_import_model
-        program_import_ai.resolve_enable_gate = previous_gate
 
 
 def run_suite(
@@ -241,9 +262,10 @@ def run_suite(
     model: Any | None = None,
     dataset_path: Path = DEFAULT_DATASET,
     session: ProgramImportEvaluationSession | None = None,
+    kind: EvaluationKind = SHEET_KIND,
 ) -> list[dict[str, Any]]:
-    """Uploads each synthetic sheet through the same HTTP route used by Coaches."""
-    cases = load_cases(dataset_path) if cases is None else cases
+    """Uploads each synthetic fixture through the same HTTP route used by Coaches."""
+    cases = load_cases(dataset_path, kind=kind) if cases is None else cases
     if session is None:
         with ProgramImportEvaluationSession() as owned_session:
             return run_suite(
@@ -251,20 +273,21 @@ def run_suite(
                 model=model,
                 dataset_path=dataset_path,
                 session=owned_session,
+                kind=kind,
             )
-    with _evaluation_path(model):
-        return _run_cases(cases, session, model)
+    with _evaluation_path(model, kind):
+        return _run_cases(cases, session, model, kind)
 
 
-def _run_case(session: ProgramImportEvaluationSession, case: dict[str, Any]) -> dict[str, Any]:
+def _run_case(session: ProgramImportEvaluationSession, case: dict[str, Any], kind: EvaluationKind = SHEET_KIND) -> dict[str, Any]:
     backoffs = provider_busy_retry_backoffs()
     for provider_busy_retries in range(len(backoffs) + 1):
-        preflight, final_response = _import_case_once(session, case)
+        preflight, final_response = _import_case_once(session, case, kind)
         if (
             _response_message_code(final_response) != program_import_ai.PROVIDER_BUSY_MESSAGE_CODE
             or provider_busy_retries == len(backoffs)
         ):
-            return _score_case_response(case, final_response, preflight, provider_busy_retries)
+            return _score_case_response(case, final_response, preflight, provider_busy_retries, kind)
         time.sleep(backoffs[provider_busy_retries])
 
 
@@ -285,19 +308,20 @@ def provider_busy_retry_backoffs(environ: dict[str, str] | None = None) -> tuple
 
 
 def _import_case_once(
-    session: ProgramImportEvaluationSession, case: dict[str, Any]
+    session: ProgramImportEvaluationSession, case: dict[str, Any], kind: EvaluationKind = SHEET_KIND
 ) -> tuple[dict[str, Any], Any]:
-    response = session.import_case(case)
+    response = kind.import_call(session, case)
     if response.status_code != 200:
         return {}, response
     preflight = response.json()
-    if preflight.get("requires_tab_choice"):
+    if kind.report_config.tab_selection_applicable and preflight.get("requires_tab_choice"):
         return preflight, session.import_case(case, case["expected_selected_tab"])
     return preflight, response
 
 
 def _score_case_response(
-    case: dict[str, Any], response: Any, preflight: dict[str, Any], provider_busy_retries: int
+    case: dict[str, Any], response: Any, preflight: dict[str, Any], provider_busy_retries: int,
+    kind: EvaluationKind = SHEET_KIND,
 ) -> dict[str, Any]:
     error_code = _response_message_code(response)
     imported, http_error = _import_result(response)
@@ -307,6 +331,7 @@ def _score_case_response(
         http_status=response.status_code,
         http_error=http_error,
         preflight=preflight or imported,
+        kind=kind,
     )
     scored["provider_busy_retries"] = provider_busy_retries
     scored["error_code"] = error_code
@@ -348,6 +373,7 @@ def score_import_result(
     http_status: int,
     http_error: str | None = None,
     preflight: dict[str, Any] | None = None,
+    kind: EvaluationKind = SHEET_KIND,
 ) -> dict[str, Any]:
     """Scores expected rows against the public import result, keeping row evidence."""
     # Normalise once at the API boundary; all scoring below works with this shape.
@@ -360,58 +386,54 @@ def score_import_result(
     used: set[int] = set()
     row_results = []
     for expected in case["expected_rows"]:
-        actual_index = _match_expected_row(expected, actual_rows, used)
+        actual_index = _match_expected_row(expected, actual_rows, used, kind)
         actual = actual_rows[actual_index] if actual_index is not None else None
         if actual_index is not None:
             used.add(actual_index)
         reported_error = any(
-            error.get("source_row") == expected["source_row"] and error.get("week") == expected["week"]
+            error.get("source_row") == expected[kind.report_config.source_position_key] and error.get("week") == expected["week"]
             for error in errors
             if isinstance(error, dict)
         )
         whole_sheet_error = not result and bool(http_error) and http_status != 200
-        present_or_reported = actual is not None or reported_error or whole_sheet_error
+        position_rows = [
+            candidate for candidate in actual_rows
+            if isinstance(candidate, dict)
+            and candidate.get("source_row") == expected[kind.report_config.source_position_key]
+            and candidate.get("week") == expected["week"]
+        ]
+        score = program_import_ai.score_import_row(
+            expected,
+            actual,
+            {"reported": reported_error, "whole_sheet_error": whole_sheet_error},
+            position_rows,
+        )
+        present_or_reported = score["present_or_reported"]
+        day_sets_reps_correct = score["day_sets_reps_correct"]
+        approximations_flagged = score["approximations_flagged"]
+        unresolved_only_suggested = score["unresolved_only_suggested"]
+        unresolved_auto_applied = score["unresolved_auto_applied"]
+        expected_codes = expected["approximation_codes"]
         failures = []
-        day_sets_reps_correct = actual is not None and _day_sets_reps_match(expected, actual)
         if not day_sets_reps_correct:
             failures.append("day, sets, or reps did not match")
         if not present_or_reported:
             failures.append("expected row was neither returned nor reported as an error")
         if whole_sheet_error:
             failures.append(f"sheet import failed: {http_error}")
-        warning_codes = set()
-        if actual is not None:
-            warning_codes.update(
-                warning.get("code") for warning in actual.get("warnings", []) if isinstance(warning, dict)
-            )
-        expected_codes = expected["approximation_codes"]
-        flagged_codes = [code for code in expected_codes if code in warning_codes]
-        approximations_flagged = len(flagged_codes) == len(expected_codes)
         if not approximations_flagged:
-            missing = sorted(set(expected_codes) - warning_codes)
-            failures.append("approximation warning missing: " + ", ".join(missing))
-
-        unresolved_only_suggested = True
-        if expected["expected_resolution"] == "unresolved":
-            unresolved_auto_applied = any(
-                candidate.get("source_row") == expected["source_row"]
-                and candidate.get("week") == expected["week"]
-                and candidate.get("exercise_id") is not None
-                for candidate in actual_rows
-                if isinstance(candidate, dict)
-            )
-            unresolved_only_suggested = not unresolved_auto_applied
-            if not unresolved_only_suggested:
-                failures.append("unresolved exercise was applied instead of left for Coach review")
+            failures.append(f"approximation warning missing for {expected_codes!r}")
+        if not unresolved_only_suggested:
+            failures.append("unresolved exercise was applied instead of left for Coach review")
         row_results.append(
             {
-                "source_row": expected["source_row"],
+                kind.report_config.source_position_key: expected[kind.report_config.source_position_key],
                 "expected_input_exercise_name": expected.get("input_exercise_name", expected["exercise_name"]),
                 "expected_exercise_id": expected.get("expected_exercise_id"),
                 "exercise_name": expected["exercise_name"],
                 "week": expected["week"],
-                "expected_day": expected["day"],
-                "expected_day_name": expected["day_name"],
+                "expected_day": expected.get("day"),
+                "expected_day_name": expected.get("day_name"),
                 "expected_sets": expected["sets"],
                 "expected_reps_min": expected["reps_min"],
                 "expected_reps_max": expected["reps_max"],
@@ -424,7 +446,7 @@ def score_import_result(
                     error
                     for error in errors
                     if isinstance(error, dict)
-                    and error.get("source_row") == expected["source_row"]
+                    and error.get("source_row") == expected[kind.report_config.source_position_key]
                     and error.get("week") == expected["week"]
                 ],
                 "observed": actual,
@@ -438,21 +460,22 @@ def score_import_result(
             }
         )
 
-    expected_tabs = case["expected_tabs"]
+    expected_tabs = case.get("expected_tabs", [])
     detected_tabs = result.get("detected_tabs", [])
     tabs_match = detected_tabs == expected_tabs
-    requires_tab_match = bool(preflight.get("requires_tab_choice")) == bool(case["expected_requires_tab_choice"])
-    selected_tab_match = result.get("selected_tab") == case["expected_selected_tab"]
-    tab_choice_correct = tabs_match and requires_tab_match and selected_tab_match
+    requires_tab_match = bool(preflight.get("requires_tab_choice")) == bool(case.get("expected_requires_tab_choice", False))
+    selected_tab_match = result.get("selected_tab") == case.get("expected_selected_tab")
+    tab_choice_correct = (tabs_match and requires_tab_match and selected_tab_match) if kind.report_config.tab_selection_applicable else True
 
     expected_weeks = case["expected_weeks"]
     detected_weeks = result.get("detected_weeks", [])
     selected_week = result.get("selected_week")
-    expected_not_imported = [week for week in expected_weeks if week != case["expected_chosen_week"]]
+    chosen_week = case.get("expected_chosen_week")
+    expected_not_imported = [week for week in expected_weeks if week != chosen_week]
     weeks_not_imported = result.get("weeks_not_imported", [])
     weeks_correct = (
         detected_weeks == expected_weeks
-        and selected_week == case["expected_chosen_week"]
+        and selected_week == chosen_week
         and weeks_not_imported == expected_not_imported
     )
     expected_confirm_layout = case.get("expected_confirm_layout", False)
@@ -484,14 +507,17 @@ def score_import_result(
         "expected_rows": len(case["expected_rows"]),
         "http_status": http_status,
         "http_error": http_error,
-        "import_mode": result.get("import_mode", "freeform"),
+        "import_mode": (
+            result.get("import_mode")
+            if kind.report_config.source_position_key == "source_line"
+            else result.get("import_mode", "freeform")
+        ),
         "produced_rows": actual_rows,
         "errors": errors,
         "extra_rows": extra_rows,
-        "preflight": {
-            "detected_tabs": preflight.get("detected_tabs", []),
-            "requires_tab_choice": bool(preflight.get("requires_tab_choice")),
-        },
+        **({"preflight": {"detected_tabs": preflight.get("detected_tabs", []),
+                          "requires_tab_choice": bool(preflight.get("requires_tab_choice"))}}
+           if kind.report_config.tab_selection_applicable else {}),
         "layout": {
             "detected_tabs": result.get("detected_tabs", []),
             "selected_tab": result.get("selected_tab"),
@@ -500,7 +526,7 @@ def score_import_result(
             "weeks_not_imported": weeks_not_imported,
             "confirm_layout": result.get("confirm_layout"),
         },
-        "tab_choice_correct": tab_choice_correct,
+        **({"tab_choice_correct": tab_choice_correct} if kind.report_config.tab_selection_applicable else {}),
         "week_layout_correct": weeks_correct,
         "confirm_layout_correct": confirm_layout_correct,
         "row_results": row_results,
@@ -510,13 +536,13 @@ def score_import_result(
     }
 
 
-def _match_expected_row(expected: dict[str, Any], actual_rows: list[dict[str, Any]], used: set[int]) -> int | None:
+def _match_expected_row(expected: dict[str, Any], actual_rows: list[dict[str, Any]], used: set[int], kind: EvaluationKind = SHEET_KIND) -> int | None:
     expected_name = _normalised_name(expected.get("input_exercise_name", expected.get("exercise_name")))
     expected_week = expected.get("week")
     for index, row in enumerate(actual_rows):
         if index in used or not isinstance(row, dict):
             continue
-        if row.get("source_row") != expected.get("source_row") or row.get("week") != expected_week:
+        if row.get("source_row") != expected.get(kind.report_config.source_position_key) or row.get("week") != expected_week:
             continue
         same_written_name = _normalised_name(row.get("exercise_name")) == expected_name
         same_resolved_id = expected.get("expected_exercise_id") is not None and str(row.get("exercise_id")) == str(
@@ -531,27 +557,9 @@ def _normalised_name(value: Any) -> str:
     return " ".join(str(value or "").split()).casefold()
 
 
-def _day_sets_reps_match(expected: dict[str, Any], actual: dict[str, Any]) -> bool:
-    return (
-        _number(actual.get("day")) == _number(expected["day"])
-        and _normalised_name(actual.get("day_name")) == _normalised_name(expected["day_name"])
-        and _number(actual.get("sets")) == _number(expected["sets"])
-        and _number(actual.get("reps_min")) == _number(expected["reps_min"])
-        and _number(actual.get("reps_max")) == _number(expected["reps_max"])
-    )
 
-
-def _number(value: Any) -> float | None:
-    if value is None or isinstance(value, bool):
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def aggregate_metrics(results: list[dict[str, Any]]) -> dict[str, int]:
-    row_results = [(case, row) for case in results for row in case["row_results"] if row.get("source_row") is not None]
+def aggregate_metrics(results: list[dict[str, Any]], kind: EvaluationKind = SHEET_KIND) -> dict[str, int]:
+    row_results = [(case, row) for case in results for row in case["row_results"] if row.get(kind.report_config.source_position_key) is not None]
     expected_approximations = sum(len(row.get("expected_approximation_codes", [])) for _, row in row_results)
     flagged_approximations = sum(
         sum(
@@ -567,7 +575,7 @@ def aggregate_metrics(results: list[dict[str, Any]]) -> dict[str, int]:
     )
     unresolved_expected = sum(row.get("expected_unresolved", False) for _, row in row_results)
     unresolved_auto_applied = sum(row.get("unresolved_auto_applied", False) for _, row in row_results)
-    return {
+    metrics = {
         "expected_rows": len(row_results),
         "correct_rows": sum(row["checks"].get("day_sets_reps_correct") is True for _, row in row_results),
         "silently_dropped_rows": sum(row["checks"].get("present_or_reported") is False for _, row in row_results),
@@ -576,10 +584,13 @@ def aggregate_metrics(results: list[dict[str, Any]]) -> dict[str, int]:
         "unresolved_names": unresolved_expected,
         "unresolved_auto_applied": unresolved_auto_applied,
         "layout_errors": sum(not case["week_layout_correct"] for case in results),
-        "tab_choice_errors": sum(not case["tab_choice_correct"] for case in results),
+        "tab_choice_errors": sum(not case.get("tab_choice_correct", True) for case in results),
         "confirm_layout_errors": sum(not case["confirm_layout_correct"] for case in results),
         "extra_rows": sum(case.get("extra_rows", 0) for case in results),
     }
+    if not kind.report_config.tab_selection_applicable:
+        metrics.pop("tab_choice_errors")
+    return metrics
 
 
 def _model_run_for_instance(model_instance: Any) -> str:
@@ -607,9 +618,10 @@ def build_report(
     dataset_entries: list[dict[str, Any]] | None = None,
     model_instance: Any | None = None,
     dataset_path: Path = DEFAULT_DATASET,
+    kind: EvaluationKind = SHEET_KIND,
 ) -> dict[str, Any]:
-    metrics = aggregate_metrics(results)
-    evaluation_ok, reasons, stats = program_import_ai.evaluate_pass_condition(metrics)
+    metrics = aggregate_metrics(results, kind)
+    evaluation_ok, reasons, stats = program_import_ai.evaluate_pass_condition(metrics, kind.report_config)
     dataset_review = dict(dataset_review or PENDING_REVIEW_RECORD)
     dataset_entries = dataset_entries or load_fixture_entries(dataset_path)
     dataset_hash = fixture_entries_hash(dataset_entries)
@@ -629,8 +641,9 @@ def build_report(
             "unresolved_only_suggested": all(row["checks"]["unresolved_only_suggested"] for row in row_results),
             "week_layout_correct": result["week_layout_correct"],
             "confirm_layout_correct": result["confirm_layout_correct"],
-            "tab_choice_correct": result["tab_choice_correct"],
         }
+        if kind.report_config.tab_selection_applicable:
+            row_checks["tab_choice_correct"] = result["tab_choice_correct"]
         sheet_results.append(
             {
                 "case_id": result["case_id"],
@@ -644,9 +657,9 @@ def build_report(
                 "error_code": result.get("error_code"),
                 "error_kind": result.get("error_kind"),
                 "extra_rows": result["extra_rows"],
-                "preflight": result["preflight"],
+                **({"preflight": result["preflight"]} if kind.report_config.tab_selection_applicable else {}),
                 "layout": result["layout"],
-                "tab_choice_correct": result["tab_choice_correct"],
+                **({"tab_choice_correct": result["tab_choice_correct"]} if kind.report_config.tab_selection_applicable else {}),
                 "week_layout_correct": result["week_layout_correct"],
                 "confirm_layout_correct": result["confirm_layout_correct"],
                 "checks": {name: {"passed": value} for name, value in row_checks.items()},
@@ -656,15 +669,15 @@ def build_report(
     aggregate_run = {
         "case_id": "program_import_sample_set",
         "passed": evaluation_ok,
-        "checks": {name: {"passed": passed} for name, passed in program_import_ai._metric_checks(metrics).items()},
+        "checks": {name: {"passed": passed} for name, passed in program_import_ai.metric_checks(metrics, kind.report_config).items()},
         "metrics": metrics,
         "sheets": sheet_results,
     }
     gate_ok = evaluation_ok
     dataset_fixtures = [{"filename": entry["filename"], "fixture": entry["fixture"]} for entry in dataset_entries]
     report = {
-        "report_version": program_import_ai.REPORT_VERSION,
-        "suite": "program_import",
+        "report_version": kind.report_version,
+        "suite": kind.suite_name,
         "mode": mode,
         "model_run": model_run,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -672,7 +685,7 @@ def build_report(
         "dataset_hash": dataset_hash,
         "dataset_review": dict(dataset_review),
         "dataset_fixtures": dataset_fixtures,
-        "prompt_hash": program_import_ai.prompt_version_hash(),
+        "prompt_hash": kind.prompt_hash(),
         "model": model_id,
         "backend": backend,
         "gates": {
@@ -704,18 +717,14 @@ def write_report(path: Path, report: dict[str, Any]) -> Path:
 
 
 def check_report(report_path: Path) -> tuple[bool, list[str]]:
-    return evaluation_runner.check_report(
-        report_path,
-        program_import_ai.validate_report,
-        strict=True,
-    )
+    return evaluation_runner.check_report(report_path, program_import_ai.validate_report, strict=True)
 
 
 def run_privacy_suite(base_dir: Path = BASE_DIR) -> bool:
     return evaluation_runner.run_privacy_suite(PRIVACY_SUITE, base_dir)
 
 
-def _approximation_column(code: str) -> str:
+def approximation_column(code: str) -> str:
     if code == "program_import.reps_approximated.v1":
         return "reps"
     if code == "program_import.load_preserved_as_note.v1":
@@ -725,7 +734,7 @@ def _approximation_column(code: str) -> str:
     return "prescription"
 
 
-def _print_results(results: list[dict[str, Any]], metrics: dict[str, int]) -> None:
+def _print_results(results: list[dict[str, Any]], metrics: dict[str, int], kind: EvaluationKind) -> None:
     for case in results:
         mark = "pass" if case["passed"] else "FAIL"
         print(
@@ -734,12 +743,12 @@ def _print_results(results: list[dict[str, Any]], metrics: dict[str, int]) -> No
         )
         for row in case["row_results"]:
             for failure in row.get("failures", []):
-                print(f"    x row {row.get('source_row')}: {row['exercise_name']}: {failure}")
+                print(f"    x row {row.get(kind.report_config.source_position_key)}: {row['exercise_name']}: {failure}")
         for failure in case.get("layout_failures", []):
             print(f"    x layout: {failure}")
         if case.get("http_error"):
             print(f"    x import error: {case['http_error']}")
-    passed, reasons, _stats = program_import_ai.evaluate_pass_condition(metrics)
+    passed, reasons, _stats = program_import_ai.evaluate_pass_condition(metrics, kind.report_config)
     accuracy = metrics["correct_rows"] / metrics["expected_rows"] if metrics["expected_rows"] else 0.0
     print(
         "evaluation gate: "
@@ -747,18 +756,20 @@ def _print_results(results: list[dict[str, Any]], metrics: dict[str, int]) -> No
         f"{metrics['silently_dropped_rows']} silently dropped; {metrics['extra_rows']} extra rows; "
         f"{metrics['approximations_flagged']}/{metrics['approximations']} approximations flagged; "
         f"{metrics['unresolved_auto_applied']} unresolved exercises applied; "
-        f"{metrics['layout_errors']} layout errors; {metrics['tab_choice_errors']} tab errors; "
-        f"{metrics['confirm_layout_errors']} confirmation errors "
-        f"({'passed' if passed else 'failed'})"
+        f"{metrics['layout_errors']} layout errors; "
+        + (f"{metrics.get('tab_choice_errors', 0)} tab errors; " if kind.report_config.tab_selection_applicable else "")
+        + f"{metrics['confirm_layout_errors']} confirmation errors "
+        + f"({'passed' if passed else 'failed'})"
     )
     for reason in reasons:
         print(f"  x {reason}", file=sys.stderr)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Evaluate free-form Program import against reviewed synthetic sheets.")
+    parser = argparse.ArgumentParser(description="Evaluate Program import against owner-reviewed synthetic fixtures.")
+    parser.add_argument("--suite", choices=("sheet", "text"), default="sheet", help="Import suite to evaluate.")
     parser.add_argument(
-        "--dataset", type=Path, default=DEFAULT_DATASET, help="Directory of reviewed sample sheet JSON files."
+        "--dataset", type=Path, default=None, help="Fixture directory (defaults to the selected suite dataset)."
     )
     parser.add_argument("--mock", action="store_true", help="Run plumbing checks against the scripted fake model.")
     parser.add_argument("--write-report", type=Path, default=None, help="Write the enablement report JSON here.")
@@ -771,12 +782,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--reviewer", type=str, default="", help="Owner name used with --record-review.")
     args = parser.parse_args(argv)
+    kind = TEXT_KIND if args.suite == "text" else SHEET_KIND
+    dataset_path = args.dataset or kind.dataset_dir
 
     if args.check_report is not None:
-        ok, reasons = check_report(args.check_report)
+        ok, reasons = evaluation_runner.check_report(
+            args.check_report, lambda report: program_import_ai.validate_report(report, kind.report_config), strict=True
+        )
         try:
             checked = json.loads(args.check_report.read_text(encoding="utf-8"))
-            current_hash = compute_dataset_hash(args.dataset)
+            current_hash = compute_dataset_hash(dataset_path)
             if checked.get("dataset_hash") != current_hash:
                 print("notice: report dataset hash differs from current fixture files; validator verdict is unchanged")
         except (OSError, ValueError, AttributeError):
@@ -787,13 +802,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if ok else 1
 
     try:
-        dataset = load_dataset(args.dataset)
+        dataset = load_dataset(dataset_path, kind=kind)
     except (OSError, ValueError) as error:
         print(f"could not load Program import dataset: {error}", file=sys.stderr)
         return 2
     if args.record_review:
         try:
-            review = record_owner_review(args.dataset, args.reviewer)
+            review = record_owner_review(dataset_path, args.reviewer, kind=kind)
         except (OSError, ValueError) as error:
             print(f"could not record Program import dataset review: {error}", file=sys.stderr)
             return 2
@@ -805,7 +820,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.reviewer:
         print("--reviewer requires --record-review", file=sys.stderr)
         return 2
-    current_dataset_hash = compute_dataset_hash(args.dataset)
+    current_dataset_hash = compute_dataset_hash(dataset_path)
     review = dataset.get("owner_review")
     if not args.mock and not review_matches_dataset(review, current_dataset_hash):
         print(
@@ -817,23 +832,23 @@ def main(argv: list[str] | None = None) -> int:
     cases = dataset["cases"]
     mode = "mock" if args.mock else "live"
     expected_row_count = sum(len(case["expected_rows"]) for case in cases)
-    print(f"Program import evaluation: {len(cases)} sheets, {expected_row_count} expected rows ({mode} mode)")
+    print(f"Program import evaluation ({kind.suite_name}): {len(cases)} fixtures, {expected_row_count} expected rows ({mode} mode)")
     if args.mock:
         print("!!! MOCK MODE: NOT A MODEL EVALUATION. This plumbing report cannot enable import. !!!")
     try:
         if args.mock:
-            model = build_mock_model()
+            model = build_mock_model(kind)
         else:
             from utils import model_downloader
 
             model = model_downloader.get_coach_import_llm()
         model_instance = _model_instance_used(model)
-        results = run_suite(cases, model=model, dataset_path=args.dataset)
+        results = run_suite(cases, model=model, dataset_path=dataset_path, kind=kind)
     except Exception as error:
         print(f"Program import evaluation could not run: {error}", file=sys.stderr)
         return 2
-    metrics = aggregate_metrics(results)
-    _print_results(results, metrics)
+    metrics = aggregate_metrics(results, kind)
+    _print_results(results, metrics, kind)
 
     if args.write_report is not None:
         privacy_pass = False
@@ -850,11 +865,12 @@ def main(argv: list[str] | None = None) -> int:
             dataset_review=review,
             dataset_entries=dataset["fixture_entries"],
             model_instance=model_instance,
-            dataset_path=args.dataset,
+            dataset_path=dataset_path,
+            kind=kind,
         )
         written_path = write_report(args.write_report, report)
         written_report = json.loads(written_path.read_text(encoding="utf-8"))
-        report_ok, report_reasons = program_import_ai.validate_report(written_report)
+        report_ok, report_reasons = program_import_ai.validate_report(written_report, kind.report_config)
         print(f"report written: {written_path}")
         print(f"report validator: {'ACCEPTED' if report_ok else 'REFUSED'}")
         for reason in report_reasons:
@@ -866,7 +882,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.mock:
         return 0
-    passed, _reasons, _stats = program_import_ai.evaluate_pass_condition(metrics)
+    passed, _reasons, _stats = program_import_ai.evaluate_pass_condition(metrics, kind.report_config)
     return 0 if passed else 1
 
 

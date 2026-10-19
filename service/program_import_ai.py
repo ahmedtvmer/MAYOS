@@ -221,7 +221,7 @@ def evaluate_pass_condition(
     metrics: Any, config: EvaluationReportConfig | None = None
 ) -> tuple[bool, list[str], dict[str, Any]]:
     """Re-derives the reviewed sample-set quality bar used by the gate and runner."""
-    config = config or _EVALUATION_REPORT_CONFIG
+    config = config or SHEET_EVALUATION_REPORT_CONFIG
     required = (
         "expected_rows", "correct_rows", "silently_dropped_rows", "approximations",
         "approximations_flagged", "unresolved_names", "unresolved_auto_applied",
@@ -261,7 +261,7 @@ def _valid_count(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
-_EVALUATION_REPORT_CONFIG = EvaluationReportConfig(
+SHEET_EVALUATION_REPORT_CONFIG = EvaluationReportConfig(
     enabled_flag="PROGRAM_IMPORT_AI_ENABLED",
     report_env_var="PROGRAM_IMPORT_AI_EVAL_REPORT",
     model_identity=coach_model_identity,
@@ -276,7 +276,7 @@ _EVALUATION_REPORT_CONFIG = EvaluationReportConfig(
     evaluation_gate_name="Program import evaluation gate",
 )
 
-_TEXT_EVALUATION_REPORT_CONFIG = EvaluationReportConfig(
+TEXT_EVALUATION_REPORT_CONFIG = EvaluationReportConfig(
     enabled_flag="PROGRAM_IMPORT_TEXT_AI_ENABLED",
     report_env_var="PROGRAM_IMPORT_TEXT_AI_EVAL_REPORT",
     model_identity=coach_model_identity,
@@ -294,15 +294,16 @@ _TEXT_EVALUATION_REPORT_CONFIG = EvaluationReportConfig(
 )
 
 
+
 def validate_report(
     report: Any, config: EvaluationReportConfig | None = None
 ) -> tuple[bool, list[str]]:
     if config is None:
         suite = report.get("suite") if isinstance(report, dict) else None
         config = (
-            _TEXT_EVALUATION_REPORT_CONFIG
-            if suite == _TEXT_EVALUATION_REPORT_CONFIG.suite_name
-            else _EVALUATION_REPORT_CONFIG
+            TEXT_EVALUATION_REPORT_CONFIG
+            if suite == TEXT_EVALUATION_REPORT_CONFIG.suite_name
+            else SHEET_EVALUATION_REPORT_CONFIG
         )
     if not isinstance(report, dict) or report.get("suite") != config.suite_name:
         return False, ["evaluation report is for a different suite"]
@@ -346,7 +347,7 @@ def validate_report(
     ):
         return False, ["recorded run summary disagrees with the per-sheet row results"]
     checks = aggregate_run.get("checks")
-    expected_checks = _metric_checks(metrics, config)
+    expected_checks = metric_checks(metrics, config)
     if (
         aggregate_run.get("metrics") != metrics
         or not isinstance(checks, dict)
@@ -399,15 +400,18 @@ def _same_number(actual: Any, expected: Any) -> bool:
         return actual is None and expected is None
 
 
-def _row_score(
+def score_import_row(
     expected: dict[str, Any], actual: dict[str, Any] | None,
     row_status: dict[str, Any], position_rows: list[dict[str, Any]],
 ) -> dict[str, bool | int]:
     observed = actual or {}
+    placement_applies = expected.get("day_placement_applicable") is not False
     correct = (
         actual is not None
-        and _normalised_name(observed.get("day_name")) == _normalised_name(expected.get("day_name"))
-        and _same_number(observed.get("day"), expected.get("day"))
+        and (not placement_applies or (
+            _normalised_name(observed.get("day_name")) == _normalised_name(expected.get("day_name"))
+            and _same_number(observed.get("day"), expected.get("day"))
+        ))
         and _same_number(observed.get("sets"), expected.get("sets"))
         and _same_number(observed.get("reps_min"), expected.get("reps_min"))
         and _same_number(observed.get("reps_max"), expected.get("reps_max"))
@@ -435,10 +439,8 @@ def _row_score(
     }
 
 
-def _metric_checks(
-    metrics: dict[str, Any], config: EvaluationReportConfig | None = None
-) -> dict[str, bool]:
-    config = config or _EVALUATION_REPORT_CONFIG
+def metric_checks(metrics: dict[str, Any], config: EvaluationReportConfig | None = None) -> dict[str, bool]:
+    config = config or SHEET_EVALUATION_REPORT_CONFIG
     expected = metrics.get("expected_rows", 0)
     correct = metrics.get("correct_rows", 0)
     checks = {
@@ -554,7 +556,7 @@ def _score_expected_row(
         and candidate.get("source_row") == expected.get(config.source_position_key)
         and candidate.get("week") == expected.get("week")
     ]
-    score = _row_score(
+    score = score_import_row(
         expected,
         actual,
         {"reported": bool(row_errors), "whole_sheet_error": evidence["whole_sheet_error"]},
@@ -625,7 +627,9 @@ def _score_sheet_rows(
     used = set()
     correct = dropped = approximations = flagged = unresolved = applied = 0
     for expected_row, row_result in zip(expected, row_results):
-        score, failure = _score_expected_row(expected_row, row_result, evidence, used, config)
+        score, failure = _score_expected_row(
+            expected_row, row_result, evidence, used, config,
+        )
         if failure:
             return None, failure
         correct += int(score["day_sets_reps_correct"])
@@ -651,7 +655,7 @@ def _sheet_layout_errors(
 ) -> SheetLayoutErrors:
     preflight = sheet.get("preflight")
     layout = sheet.get("layout")
-    if not isinstance(preflight, dict) or not isinstance(layout, dict):
+    if (config.tab_selection_applicable and not isinstance(preflight, dict)) or not isinstance(layout, dict):
         return SheetLayoutErrors(
             None, None, None, f"recorded tab or week layout is missing for sheet {case_id}"
         )
@@ -779,27 +783,27 @@ def _validate_report_file(
 
 def resolve_enable_gate() -> GateStatus:
     return evaluation_report_gate.resolve_enable_gate(
-        _EVALUATION_REPORT_CONFIG,
-        lambda path: _validate_report_file(path, _EVALUATION_REPORT_CONFIG),
+        SHEET_EVALUATION_REPORT_CONFIG,
+        lambda path: _validate_report_file(path, SHEET_EVALUATION_REPORT_CONFIG),
     )
 
 
 def resolve_text_enable_gate() -> GateStatus:
     return evaluation_report_gate.resolve_enable_gate(
-        _TEXT_EVALUATION_REPORT_CONFIG,
-        lambda path: _validate_report_file(path, _TEXT_EVALUATION_REPORT_CONFIG),
+        TEXT_EVALUATION_REPORT_CONFIG,
+        lambda path: _validate_report_file(path, TEXT_EVALUATION_REPORT_CONFIG),
     )
 
 
 def log_enable_gate_at_startup() -> GateStatus:
     return evaluation_report_gate.log_enable_gate_at_startup(
-        _EVALUATION_REPORT_CONFIG, resolve_enable_gate, logger
+        SHEET_EVALUATION_REPORT_CONFIG, resolve_enable_gate, logger
     )
 
 
 def log_text_enable_gate_at_startup() -> GateStatus:
     return evaluation_report_gate.log_enable_gate_at_startup(
-        _TEXT_EVALUATION_REPORT_CONFIG, resolve_text_enable_gate, logger
+        TEXT_EVALUATION_REPORT_CONFIG, resolve_text_enable_gate, logger
     )
 
 
