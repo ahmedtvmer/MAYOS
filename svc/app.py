@@ -287,6 +287,11 @@ async def lifespan(app: FastAPI):
     program_import_gate = log_program_import_gate()
     if program_import_gate.enabled:
         logger.info("Free-form Program import enabled: %s", program_import_gate.reason)
+    from service.program_import_ai import log_text_enable_gate_at_startup
+
+    program_import_text_gate = log_text_enable_gate_at_startup()
+    if program_import_text_gate.enabled:
+        logger.info("Plain-text Program import enabled: %s", program_import_text_gate.reason)
     from service.checkpoint_review_ai import log_enable_gate_at_startup as log_checkpoint_review_gate
 
     checkpoint_gate = log_checkpoint_review_gate()

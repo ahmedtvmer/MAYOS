@@ -375,6 +375,37 @@ void main() {
       ),
       'الورقة المحددة كبيرة جدًا لفهمها. قلّلها إلى 2,000 خلية غير فارغة أو أقل.',
     );
+    for (final (String code, String english, String arabic)
+        in <(String, String, String)>[
+      (
+        'program_import.input_required.v1',
+        'Provide either a file or pasted program text.',
+        'أرفق ملفًا أو الصق نص البرنامج.',
+      ),
+      (
+        'program_import.text_disabled.v1',
+        'Plain-text import is unavailable right now.',
+        'استيراد النص غير متاح الآن.',
+      ),
+      (
+        'program_import.text_empty.v1',
+        'Enter or upload program text.',
+        'أدخل نص البرنامج أو ارفع ملفًا نصيًا.',
+      ),
+      (
+        'program_import.text_encoding.v1',
+        'Text files must use UTF-8 encoding.',
+        'يجب أن تكون الملفات النصية بترميز UTF-8.',
+      ),
+      (
+        'program_import.text_too_large.v1',
+        'Shorten the program to 20,000 characters or fewer.',
+        'اجعل نص البرنامج 20,000 حرف أو أقل.',
+      ),
+    ]) {
+      expect(_resolveProgramImport(code, 'en'), english);
+      expect(_resolveProgramImport(code, 'ar'), arabic);
+    }
   });
 
   test('weight trend coach alert renders localized text and dated evidence', () {

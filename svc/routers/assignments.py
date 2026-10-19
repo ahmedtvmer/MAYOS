@@ -220,12 +220,25 @@ async def import_assigned_player_program_sheet(
     assignment_id: str,
     coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
     db: Annotated[Any, Depends(get_db)],
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(default=None),
     sheet: str | None = Form(default=None),
+    text: str | None = Form(default=None),
 ):
     register_ai_analytics_background_tasks(request, background_tasks)
-    payload = await file.read(program_import_service.MAX_PROGRAM_IMPORT_FILE_BYTES + 1)
+    payload = b""
+    filename = ""
+    if file is not None:
+        payload = await file.read(program_import_service.MAX_PROGRAM_IMPORT_FILE_BYTES + 1)
+        filename = file.filename or ""
     try:
+        has_file = file is not None
+        has_text = text is not None
+        if has_file == has_text:
+            raise program_import_service.ProgramImportError(
+                "program_import.input_required.v1",
+                "Provide either a file or pasted text, but not both.",
+                422,
+            )
         imported = await asyncio.to_thread(
             program_import_service.import_program_sheet,
             db,
@@ -233,7 +246,8 @@ async def import_assigned_player_program_sheet(
                 coach_account_id=coach.account_id,
                 assignment_id=assignment_id,
                 payload=payload,
-                filename=file.filename or "",
+                filename=filename,
+                text=text,
                 selected_tab=sheet,
                 client=analytics_service.client_context(request),
                 background_tasks=background_tasks,
@@ -291,6 +305,13 @@ async def download_program_import_template(
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="mayos-program-template.{file_format}"'},
     )
+
+
+@coach_roster_router.get("/program-import/capabilities")
+async def program_import_capabilities(
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+):
+    return program_import_service.program_import_capabilities()
 
 
 @coach_router.get("/{assignment_id}/program", response_model=CoachActiveProgramOut)

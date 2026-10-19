@@ -108,6 +108,8 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `COACH_ROSTER_AI_EVAL_REPORT` | unset | Path to the separate Coach roster privacy + evaluation report JSON |
 | `PROGRAM_IMPORT_AI_ENABLED` | `false` | Enables free-form coach spreadsheet import (#349); refused unless its report records a passing live evaluation for the current prompt/schema and configured hosted coach model |
 | `PROGRAM_IMPORT_AI_EVAL_REPORT` | unset | Path to the recorded free-form Program import evaluation report; template imports do not use this gate |
+| `PROGRAM_IMPORT_TEXT_AI_ENABLED` | `false` | Enables plain-text Program import only when its independent live report passes |
+| `PROGRAM_IMPORT_TEXT_AI_EVAL_REPORT` | unset | Path to the separate text report, normally `reports/program_import_text_eval.json` |
 | `RATE_LIMIT_COACH_ASSISTANT` | `30/minute` | Per-client limit on `POST /coach/assignments/{id}/assistant`; the per-account model limits (`MODEL_*`) still apply |
 | `PRIVACY_CONTACT_EMAIL` | unset (⇒ placeholder + warning) | Owner contact rendered on the public privacy policy at `GET /privacy`; unset still serves the page |
 | `OWNER_ALERT_EMAIL` | unset | Recipient for model-spend and `/admin` login alerts. Model-spend alerts retry on the sweep; an admin login still succeeds if this is unset or email delivery fails, and the dashboard shows a red banner and audit event |
@@ -254,6 +256,13 @@ coach model. The report gate re-derives the row accuracy, dropped-row,
 approximation, and confirm-only suggestion checks through
 `service.program_import_ai.evaluate_pass_condition`. Template imports remain
 available with this flag off and make no model call.
+
+Plain-text Program import is independently off unless
+`PROGRAM_IMPORT_TEXT_AI_ENABLED=true` and a passing live report at
+`PROGRAM_IMPORT_TEXT_AI_EVAL_REPORT` match the text prompt/schema hash and
+configured coach model. Its usual report path is
+`reports/program_import_text_eval.json`. The text gate does not enable or
+disable spreadsheet imports.
 
 The 19 synthetic fixture definitions live as one human-readable JSON file per
 sheet in `tests/eval/datasets/program_import/`. Together they contain 316

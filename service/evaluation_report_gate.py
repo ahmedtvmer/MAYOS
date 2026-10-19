@@ -41,6 +41,8 @@ class EvaluationReportConfig:
     #: change (new checks over unchanged prompt/context) still invalidates older
     #: evidence instead of reusing it. ``None`` leaves a feature unchecked.
     rubric_version: str | None = None
+    source_position_key: str = "source_row"
+    tab_selection_applicable: bool = True
 
 
 # The path + file identity + configured model key is intentionally shared by

@@ -5,6 +5,7 @@ import datetime as dt
 import io
 import math
 import re
+from collections.abc import Callable
 from bisect import bisect_right
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Iterable, Protocol
@@ -35,6 +36,7 @@ from service.program_import_constants import (
     MAX_PROGRAM_IMPORT_DAY_NAME_LENGTH,
     MAX_PROGRAM_IMPORT_EXERCISE_NAME_LENGTH,
     MAX_PROGRAM_IMPORT_FILE_BYTES,
+    MAX_PROGRAM_IMPORT_TEXT_CHARS,
     MAX_PROGRAM_IMPORT_CELLS,
     MAX_PROGRAM_IMPORT_REST_SECONDS,
     MAX_PROGRAM_IMPORT_ROWS,
@@ -218,6 +220,7 @@ class ProgramImportRequest:
     assignment_id: str
     payload: bytes
     filename: str
+    text: str | None = None
     selected_tab: str | None = None
     reader: "ProgramImportReader | None" = None
     client: analytics.ClientContext = analytics.UNKNOWN_CLIENT
@@ -240,7 +243,7 @@ class TemplateProgramImportReader:
             return _read_csv(payload)
         if extension == "xlsx":
             return _read_xlsx(payload, selected_tab)
-        raise ProgramImportError("program_import.file_type.v1", "Upload an XLSX or CSV file.")
+        raise ProgramImportError("program_import.file_type.v1", "Upload an XLSX, CSV, or TXT file.")
 
 
 class FreeFormProgramImportReader:
@@ -252,23 +255,40 @@ class FreeFormProgramImportReader:
     def read(self, prepared: FreeFormCellGrid) -> ReaderOutput:
         if prepared.grid is None:
             return ReaderOutput(prepared.tabs, prepared.selected_tab, True, import_mode="freeform")
-        try:
-            reply = program_import_ai.translate_sheet(
-                prepared.grid,
-                self.inference_scope,
-                implicit_week_count=_grid_implicit_week_count(prepared.grid),
-            )
-        except program_import_ai.ProgramImportAIError as error:
-            raise ProgramImportError(
-                "program_import.interpretation_failed.v1", str(error), 422
-            ) from None
-        except (program_import_ai.ProgramImportProviderUnavailable, TimeoutError):
-            raise ProgramImportError(
-                program_import_ai.PROVIDER_BUSY_MESSAGE_CODE,
-                "The import assistant is busy with another request. Try again in a minute.",
-                503,
-            ) from None
+        reply = _read_import_translation(lambda: program_import_ai.translate_sheet(
+            prepared.grid,
+            self.inference_scope,
+            implicit_week_count=_grid_implicit_week_count(prepared.grid),
+        ))
         return _freeform_reader_output(reply, prepared.tabs, prepared.selected_tab, prepared.grid)
+
+
+class PlainTextProgramImportReader:
+    """Translate coach-written program text through the hosted coach model."""
+
+    def __init__(self, inference_scope: "InferenceScope"):
+        self.inference_scope = inference_scope
+
+    def read(self, text: str) -> ReaderOutput:
+        reply = _read_import_translation(
+            lambda: program_import_ai.translate_text(text, self.inference_scope)
+        )
+        return _text_reader_output(reply, text)
+
+
+def _read_import_translation(translate: Callable[[], Any]) -> Any:
+    try:
+        return translate()
+    except program_import_ai.ProgramImportAIError as error:
+        raise ProgramImportError(
+            "program_import.interpretation_failed.v1", str(error), 422
+        ) from None
+    except (program_import_ai.ProgramImportProviderUnavailable, TimeoutError):
+        raise ProgramImportError(
+            program_import_ai.PROVIDER_BUSY_MESSAGE_CODE,
+            "The import assistant is busy with another request. Try again in a minute.",
+            503,
+        ) from None
 
 
 def import_program_sheet(db: Any, request: ProgramImportRequest) -> dict[str, Any] | None:
@@ -277,44 +297,86 @@ def import_program_sheet(db: Any, request: ProgramImportRequest) -> dict[str, An
         return None
     if len(request.payload) > MAX_PROGRAM_IMPORT_FILE_BYTES:
         raise ProgramImportError("program_import.file_too_large.v1", "Trim the file to 1 MB or less.", 413)
+    text_mode = request.text is not None or request.filename.lower().endswith(".txt")
+    text = None
+    if text_mode:
+        gate = program_import_ai.resolve_text_enable_gate()
+        if not gate.enabled:
+            raise ProgramImportError(
+                "program_import.text_disabled.v1",
+                "Plain-text import is unavailable.",
+                503,
+            )
+        text = _normalised_import_text(request)
     ledger, _ = authorized
     with ledger:
         draft_exists = ledger.get_program_draft(request.assignment_id) is not None
-    if request.reader is not None:
-        source = request.reader.read(request.payload, request.filename, request.selected_tab)
+    if text_mode:
+        source, rows = _run_text_import(db, request, text)
     else:
-        detection = _detect_program_reader(
-            request.payload, request.filename, request.selected_tab
-        )
-        if detection.requires_tab_choice:
-            source = ReaderOutput(
-                detection.detected_tabs,
-                detection.selected_tab,
-                True,
-                import_mode="freeform" if not detection.is_template else "template",
+        if request.reader is not None:
+            source = request.reader.read(request.payload, request.filename, request.selected_tab)
+        else:
+            detection = _detect_program_reader(
+                request.payload, request.filename, request.selected_tab
             )
+            if detection.requires_tab_choice:
+                source = ReaderOutput(
+                    detection.detected_tabs,
+                    detection.selected_tab,
+                    True,
+                    import_mode="freeform" if not detection.is_template else "template",
+                )
+                return _build_import_result(source, draft_exists, [])
+            source = (
+                TemplateProgramImportReader().read(
+                    request.payload,
+                    request.filename,
+                    detection.selected_tab
+                    if request.filename.lower().endswith(".xlsx")
+                    else None,
+                )
+                if detection.is_template
+                else None
+            )
+        if source is not None and source.requires_tab_choice:
             return _build_import_result(source, draft_exists, [])
-        source = (
-            TemplateProgramImportReader().read(
-                request.payload,
-                request.filename,
-                detection.selected_tab
-                if request.filename.lower().endswith(".xlsx")
-                else None,
-            )
-            if detection.is_template
-            else None
-        )
-    if source is not None and source.requires_tab_choice:
-        return _build_import_result(source, draft_exists, [])
-    if source is None:
-        freeform_result = _read_freeform_program(db, request)
-        if freeform_result is None:
-            return None
-        source, rows = freeform_result
-    else:
-        rows = validate_and_resolve_rows(db, request.coach_account_id, source.rows)
+        if source is None:
+            freeform_result = _read_freeform_program(db, request)
+            if freeform_result is None:
+                return None
+            source, rows = freeform_result
+        else:
+            rows = validate_and_resolve_rows(db, request.coach_account_id, source.rows)
+    if text_mode and db.get_active_assignment_for_coach(
+        request.coach_account_id, request.assignment_id
+    ) is None:
+        return None
     return _build_import_result(source, draft_exists, rows)
+
+
+def _normalised_import_text(request: ProgramImportRequest) -> str:
+    if request.text is not None:
+        text = request.text
+    else:
+        try:
+            text = request.payload.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            raise ProgramImportError(
+                "program_import.text_encoding.v1", "Text files must use UTF-8 encoding.", 422
+            ) from None
+    text = text.lstrip("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
+    if len(text) > MAX_PROGRAM_IMPORT_TEXT_CHARS:
+        raise ProgramImportError(
+            "program_import.text_too_large.v1",
+            f"Shorten the program to {MAX_PROGRAM_IMPORT_TEXT_CHARS:,} characters or fewer.",
+            422,
+        )
+    if not text.strip():
+        raise ProgramImportError(
+            "program_import.text_empty.v1", "Enter or upload program text.", 422
+        )
+    return text
 
 
 def _read_freeform_program(
@@ -371,7 +433,7 @@ def _detect_program_reader(
         header = _csv_header(payload)
         return ReaderDetection(["CSV"], "CSV", False, _is_template_header(header))
     if extension != "xlsx":
-        raise ProgramImportError("program_import.file_type.v1", "Upload an XLSX or CSV file.")
+        raise ProgramImportError("program_import.file_type.v1", "Upload an XLSX, CSV, or TXT file.")
     workbook = None
     try:
         workbook = load_workbook(io.BytesIO(payload), read_only=True, data_only=True)
@@ -592,12 +654,131 @@ def _build_import_result(source: ReaderOutput, draft_exists: bool, rows: list[di
         "layout_days": source.layout_days,
         "layout_confidence": source.layout_confidence,
         "draft_exists": draft_exists,
-        "freeform_available": program_import_ai.resolve_enable_gate().enabled,
+        **program_import_capabilities(),
         "rows": public_rows,
         "rows_by_week": rows_by_week,
         "errors": [error for row in rows for error in row["errors"]],
         "unresolved_names": _unresolved_names(rows),
     }
+
+
+def program_import_capabilities() -> dict[str, bool]:
+    return {
+        "freeform_available": program_import_ai.resolve_enable_gate().enabled,
+        "text_available": program_import_ai.resolve_text_enable_gate().enabled,
+    }
+
+
+def _run_text_import(
+    db: Any, request: ProgramImportRequest, text: str
+) -> tuple[ReaderOutput, list[dict[str, Any]]]:
+    from svc.llm import InferenceScope, inference_turn
+
+    scope = InferenceScope(
+        account_id=request.coach_account_id,
+        role="coach",
+        purpose="coach_program_import",
+        store=db,
+        client=request.client,
+    )
+    with inference_turn(scope, background_tasks=request.background_tasks):
+        source = PlainTextProgramImportReader(scope).read(text)
+        rows = validate_and_resolve_rows(db, request.coach_account_id, source.rows)
+        _add_model_suggestions(db, rows, scope)
+    return source, rows
+
+
+def _text_reader_output(
+    reply: program_import_ai.TextProgramImportReply, text: str
+) -> ReaderOutput:
+    context = _empty_freeform_context()
+    weeks = _resolved_week_labels(reply.layout.weeks, context)
+    selected_week = _default_import_week(weeks)
+    week_lookup = {_week_identity(week): week for week in weeks}
+    rows = _text_program_rows(reply, text, week_lookup, selected_week, context)
+    return ReaderOutput(
+        [], None, False, _renumber_out_of_range_orders(rows),
+        detected_weeks=weeks,
+        selected_week=selected_week,
+        weeks_not_imported=[week for week in weeks if week != selected_week],
+        confirm_layout=(
+            _text_layout_confirmation(reply, context)
+            or _has_unplaced_text_prescription_lines(text, reply.rows)
+        ),
+        layout_days=[day.model_dump() for day in reply.layout.days],
+        layout_confidence=reply.layout.confidence,
+        import_mode="text",
+    )
+
+
+def _text_program_rows(
+    reply: program_import_ai.TextProgramImportReply,
+    text: str,
+    week_lookup: dict[str, str],
+    selected_week: str | None,
+    context: FreeFormGridContext,
+) -> list[ProgramImportRow]:
+    return [
+        _program_import_row(
+            model_row,
+            _matched_row_week(model_row.week, week_lookup, selected_week),
+            FreeFormSourceRow({}, _line_text(text, model_row.source_row)),
+            context,
+        )
+        for model_row in reply.rows
+    ]
+
+
+def _text_layout_confirmation(
+    reply: program_import_ai.TextProgramImportReply, context: FreeFormGridContext
+) -> bool:
+    return _needs_layout_confirmation(
+        context,
+        reply.rows,
+        reply.layout.confirm_layout,
+        reply.layout.confidence,
+    )
+
+
+_TEXT_PRESCRIPTION_PATTERN = re.compile(
+    r"(?<![\w])(?:[0-9٠-٩۰-۹]+)\s*[xX×]\s*"
+    r"(?:[0-9٠-٩۰-۹]+)(?:\s*[-–]\s*[0-9٠-٩۰-۹]+)?"
+)
+
+
+def _has_unplaced_text_prescription_lines(text: str, model_rows: list[Any]) -> bool:
+    placed_lines = {row.source_row for row in model_rows}
+    return any(
+        line.strip() and line_number not in placed_lines and _TEXT_PRESCRIPTION_PATTERN.search(line)
+        for line_number, line in enumerate(text.split("\n"), 1)
+    )
+
+
+def _empty_freeform_context() -> FreeFormGridContext:
+    return FreeFormGridContext(
+        cells_by_row={},
+        columns={},
+        header_row=None,
+        week_labels=[],
+        title_week_labels=[],
+        explicit_week_labels=[],
+        implicit_week_columns={},
+        implicit_week_count=0,
+        day_names={},
+        day_numbers={},
+        row_facts=FreeFormGridRows(
+            columns_by_row={},
+            header_rows=frozenset(),
+            exercise_data_rows=(),
+            exercise_data_columns_by_schema={},
+            section_title_rows=frozenset(),
+        ),
+    )
+
+
+def _line_text(text: str, line_number: int) -> str:
+    lines = text.split("\n")
+    return lines[line_number - 1] if 0 < line_number <= len(lines) else ""
 
 
 def _grid_implicit_week_count(grid: dict[str, Any]) -> int:

@@ -51,6 +51,26 @@ const Map<String, ({String english, String arabic})> _programImportMessages =
     english: 'Free-form import is unavailable right now. Use the MAYOS template.',
     arabic: 'الاستيراد بالتنسيق الحر غير متاح الآن. استخدم قالب MAYOS.',
   ),
+  'program_import.input_required.v1': (
+    english: 'Provide either a file or pasted program text.',
+    arabic: 'أرفق ملفًا أو الصق نص البرنامج.',
+  ),
+  'program_import.text_disabled.v1': (
+    english: 'Plain-text import is unavailable right now.',
+    arabic: 'استيراد النص غير متاح الآن.',
+  ),
+  'program_import.text_empty.v1': (
+    english: 'Enter or upload program text.',
+    arabic: 'أدخل نص البرنامج أو ارفع ملفًا نصيًا.',
+  ),
+  'program_import.text_encoding.v1': (
+    english: 'Text files must use UTF-8 encoding.',
+    arabic: 'يجب أن تكون الملفات النصية بترميز UTF-8.',
+  ),
+  'program_import.text_too_large.v1': (
+    english: 'Shorten the program to 20,000 characters or fewer.',
+    arabic: 'اجعل نص البرنامج 20,000 حرف أو أقل.',
+  ),
   'program_import.interpretation_failed.v1': (
     english: 'The sheet could not be interpreted. Try the MAYOS template or simplify the layout.',
     arabic: 'تعذر فهم الورقة. جرّب قالب MAYOS أو بسّط تنسيق الورقة.',

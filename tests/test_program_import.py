@@ -4,6 +4,7 @@ import io
 import csv
 import datetime as dt
 import json
+import logging
 import sqlite3
 import zipfile
 from pathlib import Path
@@ -35,6 +36,8 @@ def api(tmp_path: Path, monkeypatch):
     # A developer .env may enable free-form import; tests opt in explicitly.
     monkeypatch.delenv("PROGRAM_IMPORT_AI_ENABLED", raising=False)
     monkeypatch.delenv("PROGRAM_IMPORT_AI_EVAL_REPORT", raising=False)
+    monkeypatch.delenv("PROGRAM_IMPORT_TEXT_AI_ENABLED", raising=False)
+    monkeypatch.delenv("PROGRAM_IMPORT_TEXT_AI_EVAL_REPORT", raising=False)
     from database.database_manager import DatabaseManager
     from svc.rate_limit import limiter
 
@@ -2394,3 +2397,322 @@ def test_full_inference_queue_reports_busy_not_uninterpretable(monkeypatch):
 
     assert raised.value.code == "program_import.model_busy.v1"
     assert raised.value.status_code == 503
+
+
+def _enable_text_import_for_route(monkeypatch):
+    from service import program_import_ai
+    from service.evaluation_report_gate import GateStatus
+
+    monkeypatch.setattr(program_import_ai, "resolve_text_enable_gate", lambda: GateStatus(True, True, "test report accepted"))
+
+
+def _text_reply(line=2, *, week=None, exercise="Squat", sets=3, notes=None, markers=None, search_terms=None):
+    return {
+        "rows": [{"source_row": line, "week": week, "day": 1, "day_name": "Push", "order": 1,
+                  "exercise": exercise, "sets": sets, "reps_min": 8, "reps_max": 10, "rir": 2,
+                  "notes": notes, "exercise_search_terms": search_terms or [],
+                  "approximation_markers": markers or [], "original_text": "coach line"}],
+        "layout": {"days": [{"day": 1, "name": "Push"}], "weeks": [week] if week else [],
+                   "confidence": 0.98, "confirm_layout": False},
+    }
+
+
+def _valid_text_evaluation_report():
+    import copy
+
+    from service import program_import_ai
+    from service.program_import_evaluation import fixture_entries_hash
+
+    report = json.loads((Path(__file__).parents[1] / "reports/program_import_eval.json").read_text(encoding="utf-8"))
+    report = copy.deepcopy(report)
+    report["suite"] = "program_import_text"
+    report["report_version"] = program_import_ai.TEXT_REPORT_VERSION
+    report["prompt_hash"] = program_import_ai.text_prompt_version_hash()
+    entries = report["dataset_fixtures"]
+    for entry in entries:
+        for row in entry["fixture"]["expected_rows"]:
+            row["source_line"] = row.pop("source_row")
+    report["dataset_hash"] = fixture_entries_hash(entries)
+    report["dataset_review"]["reviewed_dataset_hash"] = report["dataset_hash"]
+    for run in report["runs"]:
+        run["checks"].pop("tab_choice", None)
+        run["metrics"].pop("tab_choice_errors", None)
+        for sheet in run["sheets"]:
+            sheet.pop("tab_choice_correct", None)
+            sheet["checks"].pop("tab_choice_correct", None)
+            sheet["errors"] = [{**error, "source_line": error.pop("source_row")} for error in sheet["errors"]]
+            for row in sheet["row_results"]:
+                row["source_line"] = row.pop("source_row")
+                row["reported_errors"] = [
+                    {**error, "source_line": error.pop("source_row")}
+                    for error in row["reported_errors"]
+                ]
+    report["gates"]["evaluation"]["metrics"].pop("tab_choice_errors", None)
+    return report
+
+
+def test_text_upload_and_paste_share_the_same_http_pipeline(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-equivalence")
+    _enable_text_import_for_route(monkeypatch)
+    scripted_chat_model.script(_text_reply(line=2), _text_reply(line=2))
+    url = f"/coach/assignments/{assignment_id}/program-import"
+    uploaded = client.post(url, headers=coach_headers, files={"file": ("plan.txt", b"Day 1 - Push\nSquat 3x8-10", "text/plain")})
+    pasted = client.post(url, headers=coach_headers, data={"text": "Day 1 - Push\nSquat 3x8-10"})
+    assert uploaded.status_code == pasted.status_code == 200
+    assert uploaded.json() == pasted.json()
+    assert uploaded.json()["import_mode"] == "text"
+    assert uploaded.json()["text_available"] is True
+    assert uploaded.json()["rows"][0]["source_row"] == 2
+
+
+def test_text_route_requires_exactly_one_input(api, monkeypatch):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-input-choice")
+    _enable_text_import_for_route(monkeypatch)
+    url = f"/coach/assignments/{assignment_id}/program-import"
+    neither = client.post(url, headers=coach_headers)
+    empty = client.post(url, headers=coach_headers, data={"text": ""})
+    both = client.post(url, headers=coach_headers, data={"text": "program"}, files={"file": ("x.txt", b"program", "text/plain")})
+    assert neither.status_code == empty.status_code == both.status_code == 422
+    assert neither.json().get("message_code") == empty.json().get("message_code") == both.json().get("message_code") == "program_import.input_required.v1", (neither.text, empty.text, both.text)
+
+
+def test_text_empty_cap_invalid_utf8_and_bom(api, monkeypatch, scripted_chat_model):
+    from service.program_import_constants import MAX_PROGRAM_IMPORT_TEXT_CHARS
+
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-bounds")
+    _enable_text_import_for_route(monkeypatch)
+    url = f"/coach/assignments/{assignment_id}/program-import"
+    for text_value, code in ((" \r\n\t", "program_import.text_empty.v1"),
+                             ("x" * (MAX_PROGRAM_IMPORT_TEXT_CHARS + 1), "program_import.text_too_large.v1")):
+        response = client.post(url, headers=coach_headers, data={"text": text_value})
+        assert response.status_code == 422
+        assert response.json().get("message_code") == code, response.text
+    invalid = client.post(url, headers=coach_headers, files={"file": ("bad.txt", b"\xff", "text/plain")})
+    assert invalid.status_code == 422
+    assert invalid.json()["message_code"] == "program_import.text_encoding.v1"
+    assert scripted_chat_model.calls == []
+    scripted_chat_model.script(_text_reply(line=1))
+    bom = client.post(url, headers=coach_headers, files={"file": ("bom.txt", "\ufeffSquat 3x8".encode(), "text/plain")})
+    assert bom.status_code == 200, bom.text
+    assert len(scripted_chat_model.calls) == 1
+
+
+def test_text_week_selection_and_line_source_positions(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-weeks")
+    _enable_text_import_for_route(monkeypatch)
+    marker = {"code": "program_import.load_preserved_as_note.v1", "column": "notes", "original": "70% 1RM"}
+    first = _text_reply(line=2, week="Week 1", notes="70% 1RM", markers=[marker])
+    second = _text_reply(line=5, week="Week 2", exercise="Odd Lift", sets=0)["rows"][0]
+    scripted_chat_model.script({"rows": first["rows"] + [second], "layout": {
+        "days": [{"day": 1, "name": "Push"}], "weeks": ["Week 1", "Week 2"],
+        "confidence": 0.7, "confirm_layout": True,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": "Squat 3x8\nSquat 3x8\n\nWeek 2\nOdd Lift"})
+    assert response.status_code == 200, response.text
+    import_result = response.json()
+    assert import_result["selected_week"] == "Week 1"
+    assert import_result["weeks_not_imported"] == ["Week 2"]
+    assert import_result["confirm_layout"] is True
+    assert import_result["rows"][1]["source_row"] == 5
+    assert import_result["rows"][1]["errors"][0]["source_row"] == 5
+    assert import_result["rows"][0]["notes"].find("70% 1RM") >= 0
+    assert import_result["rows"][0]["warnings"][0]["source_row"] == 2
+
+
+def test_text_line_number_validation_repairs_an_invalid_source_position(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-line-repair")
+    _enable_text_import_for_route(monkeypatch)
+    scripted_chat_model.script(_text_reply(line=99), _text_reply(line=1))
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        data={"text": "Squat 3x8"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["rows"][0]["source_row"] == 1
+    assert len(scripted_chat_model.calls) == 2
+
+
+def test_text_unplaced_prescription_line_requires_layout_confirmation(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-unplaced")
+    _enable_text_import_for_route(monkeypatch)
+    scripted_chat_model.script(_text_reply(line=2))
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        data={"text": "Day 1 – Push\nSquat 3x8\nBench 4×10"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["confirm_layout"] is True
+
+
+def test_text_suggestions_are_confirm_only_and_catalog_is_not_sent_to_model(api, monkeypatch, caplog, tmp_path):
+    from tests.fakes.chat_model import ScriptedChatModel
+    from utils import model_downloader
+    from utils.model_metering import MeteringCallback
+
+    caplog.set_level(logging.DEBUG)
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-suggestions")
+    _enable_text_import_for_route(monkeypatch)
+    monkeypatch.setenv("AI_LAUNCH_ALLOWANCES_ENABLED", "true")
+    monkeypatch.setenv("MODEL_RATE_LIMIT_REQUESTS", "0")
+    for capability in ("COACH", "LIFTER"):
+        for plan in ("FREE", "PRO"):
+            monkeypatch.setenv(f"{capability}_AI_{plan}_DAILY_REQUESTS", "1")
+            monkeypatch.setenv(f"{capability}_AI_{plan}_DAILY_RESOURCE_TOKENS", "10000")
+    coach_text = "Mystery Press 3x8"
+    import_model = ScriptedChatModel(
+        turns=[
+            _text_reply(line=1, exercise="Mystery Press", search_terms=["Bench Press"]),
+            {"suggestions": [{"exercise_name": "Mystery Press", "exercise_ids": ["bp"]}]},
+        ],
+        model_name="deepseek-ai/DeepSeek-V4-Flash",
+        usage_metadata={"input_tokens": 40, "output_tokens": 20, "total_tokens": 60, "input_token_details": {}},
+        callbacks=[MeteringCallback("deepseek-ai/DeepSeek-V4-Flash")],
+    )
+    monkeypatch.setattr(model_downloader, "get_coach_import_llm", lambda: import_model)
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": coach_text})
+    assert response.status_code == 200, response.text
+    row = response.json()["rows"][0]
+    assert row["exercise_id"] is None
+    assert row["suggestions"][0]["name"] == "Bench Press"
+    assert len(import_model.calls) == 2
+    model_content = " ".join(str(message.content) for call in import_model.calls for message in call["messages"])
+    assert coach_text in model_content
+    assert "Bench Press" in model_content
+    assert coach_text not in caplog.text
+    account_id = db.get_active_account_by_username("text-suggestions-coach")["account_id"]
+    usage_count = db.catalog_conn.execute(
+        "SELECT COUNT(*) FROM model_usage WHERE account_id = ? AND purpose = 'coach_program_import'",
+        (account_id,),
+    ).fetchone()[0]
+    # The translation and suggestion calls share one admitted coach turn.
+    assert usage_count == 2
+    assert all(coach_text.encode() not in path.read_bytes() for path in tmp_path.rglob("*") if path.is_file())
+
+
+def test_text_gate_requires_its_own_prompt_bound_report(api, monkeypatch, tmp_path):
+    from service import program_import_ai
+
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-gate")
+    monkeypatch.setenv("PROGRAM_IMPORT_TEXT_AI_ENABLED", "true")
+    monkeypatch.delenv("PROGRAM_IMPORT_TEXT_AI_EVAL_REPORT", raising=False)
+    capability = client.get("/coach/program-import/capabilities", headers=coach_headers)
+    assert capability.status_code == 200
+    assert capability.json()["text_available"] is False
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+        data={"text": "Squat 3x8"},
+    )
+    assert response.status_code == 503
+    assert response.json()["message_code"] == "program_import.text_disabled.v1"
+    assert program_import_ai.text_prompt_version_hash() != program_import_ai.prompt_version_hash()
+
+
+def test_committed_sheet_report_and_prompt_hash_remain_valid():
+    from service import program_import_ai
+
+    report = json.loads((Path(__file__).parents[1] / "reports/program_import_eval.json").read_text(encoding="utf-8"))
+    assert program_import_ai.prompt_version_hash() == "a5c879aa7e28699a58ef47234425587fadabbe720b2b47471c1512788d1f3e7c"
+    assert program_import_ai.validate_report(report) == (True, [])
+
+
+def test_text_report_validator_uses_lines_and_skips_tab_selection(monkeypatch, tmp_path):
+    from service import program_import_ai
+    report = _valid_text_evaluation_report()
+
+    assert program_import_ai.validate_report(report) == (True, [])
+    report_path = tmp_path / "text-report.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    monkeypatch.setenv("PROGRAM_IMPORT_TEXT_AI_ENABLED", "true")
+    monkeypatch.setenv("PROGRAM_IMPORT_TEXT_AI_EVAL_REPORT", str(report_path))
+    monkeypatch.setenv("PROGRAM_IMPORT_AI_ENABLED", "true")
+    monkeypatch.delenv("PROGRAM_IMPORT_AI_EVAL_REPORT", raising=False)
+    assert program_import_ai.resolve_text_enable_gate().enabled is True
+    assert program_import_ai.resolve_enable_gate().enabled is False
+    monkeypatch.setenv("PROGRAM_IMPORT_TEXT_AI_ENABLED", "false")
+    _enable_program_import_ai(monkeypatch, tmp_path)
+    assert program_import_ai.resolve_enable_gate().enabled is True
+    assert program_import_ai.resolve_text_enable_gate().enabled is False
+
+
+def test_sheet_report_cannot_enable_text_gate_through_http_route(api, monkeypatch, tmp_path):
+    from service import program_import_ai
+
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-wrong-report")
+    _enable_program_import_ai(monkeypatch, tmp_path)
+    monkeypatch.setenv("PROGRAM_IMPORT_TEXT_AI_ENABLED", "true")
+    monkeypatch.setenv(
+        "PROGRAM_IMPORT_TEXT_AI_EVAL_REPORT", __import__("os").environ["PROGRAM_IMPORT_AI_EVAL_REPORT"]
+    )
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        data={"text": "Squat 3x8"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["message_code"] == "program_import.text_disabled.v1"
+    assert program_import_ai.resolve_enable_gate().enabled is True
+
+
+def test_text_report_cannot_enable_sheet_gate_through_http_route(api, monkeypatch, tmp_path):
+    from service import program_import_ai
+
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="sheet-wrong-report")
+    report_path = tmp_path / "text-report.json"
+    report_path.write_text(json.dumps(_valid_text_evaluation_report()), encoding="utf-8")
+    monkeypatch.setenv("PROGRAM_IMPORT_AI_ENABLED", "true")
+    monkeypatch.setenv("PROGRAM_IMPORT_AI_EVAL_REPORT", str(report_path))
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("program.csv", b"exercise_name,sets,reps\nSquat,3,8\n", "text/csv")},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["message_code"] == "program_import.freeform_disabled.v1"
+    assert program_import_ai.resolve_text_enable_gate().enabled is False
+
+
+def test_startup_logs_text_and_sheet_gates_separately(monkeypatch, caplog):
+    from service import program_import_ai
+    from service.evaluation_report_gate import GateStatus
+
+    caplog.set_level(logging.DEBUG)
+    monkeypatch.setattr(
+        program_import_ai,
+        "resolve_enable_gate",
+        lambda: GateStatus(True, False, "sheet report refused"),
+    )
+    monkeypatch.setattr(
+        program_import_ai,
+        "resolve_text_enable_gate",
+        lambda: GateStatus(True, False, "text report refused"),
+    )
+
+    program_import_ai.log_enable_gate_at_startup()
+    program_import_ai.log_text_enable_gate_at_startup()
+
+    assert "Free-form Program import requested" in caplog.text
+    assert "Plain-text Program import requested" in caplog.text
+    assert "sheet report refused" in caplog.text
+    assert "text report refused" in caplog.text

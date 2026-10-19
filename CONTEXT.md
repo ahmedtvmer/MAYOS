@@ -208,7 +208,7 @@ _Avoid_: Inject exercise
 _Arabic_: تبديل تمرين في مسودة البرنامج
 
 **Program import**:
-Turning a spreadsheet a Coach uploads into the Program draft of a Player on an active Assignment. A sheet in the MAYOS template is read directly; a sheet in the Coach's own layout is first translated into the same rows. Either way the result is only a Program draft: an import never publishes. A multi-week free-form sheet contributes one chosen week; the MAYOS template's `week` column imports all numbered weeks in order, with blank values defaulting to Week 1.
+Turning a program a Coach brings, as a spreadsheet (XLSX or CSV) or as plain text (a `.txt` file or pasted text), into the Program draft of a Player on an active Assignment. A sheet in the MAYOS template is read directly; a sheet in the Coach's own layout, and any plain text, is first translated into the same rows. Either way the result is only a Program draft: an import never publishes. A multi-week free-form sheet or text contributes one chosen week; the MAYOS template's `week` column imports all numbered weeks in order, with blank values defaulting to Week 1.
 _Avoid_: Program migration, program upload
 
 **Training profile**:
