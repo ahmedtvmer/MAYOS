@@ -1,0 +1,151 @@
+{
+  "case_id": "10_ambiguous_layout",
+  "rows": [
+    {
+      "source_row": 2,
+      "week": null,
+      "day": 1,
+      "day_name": "Day 1",
+      "order": 1,
+      "exercise": "bench press",
+      "original_text": "bench press 3x6/5/4 — راحة دقيقة — Keep your shoulder blades tucked and feet planted."
+    },
+    {
+      "source_row": 3,
+      "week": null,
+      "day": 1,
+      "day_name": "Day 1",
+      "order": 2,
+      "exercise": "lat pull",
+      "original_text": "lat pull 4×8-10 — راحة ٩٠ ث"
+    },
+    {
+      "source_row": 4,
+      "week": null,
+      "day": 1,
+      "day_name": "Day 1",
+      "order": 3,
+      "exercise": "high bar squat",
+      "original_text": "high bar squat 3 x 6-8"
+    },
+    {
+      "source_row": 5,
+      "week": null,
+      "day": 1,
+      "day_name": "Day 1",
+      "order": 4,
+      "exercise": "hip thrust",
+      "original_text": "hip thrust 4x8-10 @RIR2 — rest 90s"
+    },
+    {
+      "source_row": 6,
+      "week": null,
+      "day": 1,
+      "day_name": "Day 1",
+      "order": 5,
+      "exercise": "machine crunch",
+      "original_text": "machine crunch 3×10-15 RIR 1-2 — 2 min rest"
+    },
+    {
+      "source_row": 8,
+      "week": null,
+      "day": 1,
+      "day_name": "Day 1",
+      "order": 1,
+      "exercise": "DB row",
+      "original_text": "DB row 4 x 8-10 — Pull the elbow toward your back pocket."
+    },
+    {
+      "source_row": 9,
+      "week": null,
+      "day": 1,
+      "day_name": "Day 1",
+      "order": 2,
+      "exercise": "leg extension",
+      "original_text": "leg extension 3x12-15 — راحة دقيقة"
+    },
+    {
+      "source_row": 10,
+      "week": null,
+      "day": 1,
+      "day_name": "Day 1",
+      "order": 3,
+      "exercise": "cable lateral raise",
+      "original_text": "cable lateral raise 3×12-15 2 in reserve — راحة ٩٠ ث"
+    },
+    {
+      "source_row": 11,
+      "week": null,
+      "day": 1,
+      "day_name": "Day 1",
+      "order": 4,
+      "exercise": "deadlift",
+      "original_text": "deadlift 3 x 4-6 حتى قرب الفشل — Reset your brace on every rep."
+    },
+    {
+      "source_row": 12,
+      "week": null,
+      "day": 1,
+      "day_name": "Day 1",
+      "order": 5,
+      "exercise": "low cable fly",
+      "original_text": "low cable fly 3x10-12 — rest 90s"
+    },
+    {
+      "source_row": 14,
+      "week": null,
+      "day": 1,
+      "day_name": "Day 1",
+      "order": 1,
+      "exercise": "assisted pull up machine",
+      "original_text": "assisted pull up machine 3×6-8 — 2 min rest"
+    },
+    {
+      "source_row": 15,
+      "week": null,
+      "day": 1,
+      "day_name": "Day 1",
+      "order": 2,
+      "exercise": "side plank",
+      "original_text": "side plank 3 x 30 sec hold"
+    },
+    {
+      "source_row": 16,
+      "week": null,
+      "day": 1,
+      "day_name": "Day 1",
+      "order": 3,
+      "exercise": "ab wheel",
+      "original_text": "ab wheel 3x6-10 RPE 8 — راحة دقيقة"
+    },
+    {
+      "source_row": 17,
+      "week": null,
+      "day": 1,
+      "day_name": "Day 1",
+      "order": 4,
+      "exercise": "Bulgarian split squat",
+      "original_text": "Bulgarian split squat 3×8-10 RPE 7-8 — راحة ٩٠ ث — Keep your front heel down."
+    },
+    {
+      "source_row": 18,
+      "week": null,
+      "day": 1,
+      "day_name": "Day 1",
+      "order": 5,
+      "exercise": "leg curl machine",
+      "original_text": "leg curl machine 3 x 10-12 2 in reserve"
+    }
+  ],
+  "layout": {
+    "days": [
+      {
+        "day": 1,
+        "name": "Day 1"
+      }
+    ],
+    "weeks": [],
+    "confidence": 0.8,
+    "confirm_layout": false
+  }
+}

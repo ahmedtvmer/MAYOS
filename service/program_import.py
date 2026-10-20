@@ -49,6 +49,7 @@ from service.program_import_constants import (
     MAX_PROGRAM_IMPORT_HEADER_SCAN_ROWS,
     MIN_PROGRAM_IMPORT_LAYOUT_CONFIDENCE,
 )
+from service.text_normalization import normalize_digits
 from service import analytics, program_import_ai
 
 if TYPE_CHECKING:
@@ -140,6 +141,7 @@ class ProgramImportRow:
     week: str | None = None
     week_order: ImportValue = None
     suggestion_terms: tuple[str, ...] = ()
+    input_exercise_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -202,6 +204,12 @@ class FreeFormGridContext:
 class FreeFormSourceRow:
     fields: dict[str, str]
     text: str
+
+
+@dataclass(frozen=True)
+class TextSourceMarkerRow:
+    original_text: str
+    notes: str = ""
 
 
 @dataclass(frozen=True)
@@ -683,7 +691,9 @@ def _run_text_import(
     )
     with inference_turn(scope, background_tasks=request.background_tasks):
         source = PlainTextProgramImportReader(scope).read(text)
-        rows = validate_and_resolve_rows(db, request.coach_account_id, source.rows)
+        rows = validate_and_resolve_rows(
+            db, request.coach_account_id, source.rows, text_import=True
+        )
         _add_model_suggestions(db, rows, scope)
     return source, rows
 
@@ -692,20 +702,70 @@ def _text_reader_output(
     reply: program_import_ai.TextProgramImportReply, text: str
 ) -> ReaderOutput:
     context = _empty_freeform_context()
+    heading_scan = _text_heading_occurrences(reply.rows, text)
+    inferred_weeks = _text_repeated_block_weeks(reply.rows, text, heading_scan)
+    initially_inferred_weeks = inferred_weeks
+    identical_blocks = _text_has_strong_identical_blocks(reply.rows, text, inferred_weeks, heading_scan)
+    model_repeated_days = _text_model_assigns_repeated_headings_as_days(
+        reply, heading_scan
+    )
+    ambiguous_model_week_reading = identical_blocks and model_repeated_days
+    if ambiguous_model_week_reading:
+        inferred_weeks = {}
+    structural_weeks = bool(inferred_weeks) and not _text_has_explicit_week_titles(text)
     weeks = _resolved_week_labels(reply.layout.weeks, context)
+    model_weeks = list(dict.fromkeys(
+        label for week in reply.layout.weeks if (label := _canonical_week_label(week))
+    ))
+    if not weeks and len(model_weeks) == 1 and (_week_number(model_weeks[0]) or 1) != 1:
+        weeks = model_weeks
+    if inferred_weeks:
+        inferred_labels = {f"Week {week}" for week in inferred_weeks.values()}
+        model_labels = {label for row in reply.rows if row.source_row not in inferred_weeks
+                        if (label := _canonical_week_label(row.week))}
+        weeks = sorted(inferred_labels | model_labels, key=lambda label: (_week_number(label) or MAX_PROGRAM_WEEKS + 1, label))
     selected_week = _default_import_week(weeks)
-    week_lookup = {_week_identity(week): week for week in weeks}
-    rows = _text_program_rows(reply, text, week_lookup, selected_week, context)
+    day_assignments, day_conflict = _text_day_number_assignments(
+        reply.rows, inferred_weeks, structural_weeks, heading_scan
+    )
+    rows = _text_program_rows(reply, text, weeks, inferred_weeks, day_assignments)
+    week_conflict = _text_week_inference_conflicts(reply.rows, inferred_weeks)
+    progression_blocks = _text_has_strong_progression_blocks(
+        reply.rows, text, initially_inferred_weeks, heading_scan
+    )
+    model_confirmation = _text_layout_confirmation(reply, context, text, heading_scan)
+    same_name_day_read = progression_blocks and _text_repeated_heading_read_as_days(
+        reply, heading_scan, initially_inferred_weeks, text
+    )
+    progression_agrees = same_name_day_read or (
+        progression_blocks and _text_repeated_block_assignments_agree(reply.rows, day_assignments, inferred_weeks)
+    )
+    confirm_layout = (
+        model_confirmation
+        or _has_unplaced_text_prescription_lines(text, reply.rows)
+        or (week_conflict and not progression_blocks)
+        or (
+            _text_has_explicit_week_titles(text)
+            and len(weeks) > 1
+            and any(
+                _week_number(_canonical_week_label(row.week)) != inferred_weeks.get(row.source_row)
+                for row in reply.rows
+            )
+        )
+        or (day_conflict and not same_name_day_read)
+        or _text_headingless_layout_needs_confirmation(text, reply.rows, heading_scan)
+        or identical_blocks
+        or ambiguous_model_week_reading
+    )
+    if progression_agrees:
+        confirm_layout = False
     return ReaderOutput(
         [], None, False, _renumber_out_of_range_orders(rows),
         detected_weeks=weeks,
         selected_week=selected_week,
         weeks_not_imported=[week for week in weeks if week != selected_week],
-        confirm_layout=(
-            _text_layout_confirmation(reply, context)
-            or _has_unplaced_text_prescription_lines(text, reply.rows)
-        ),
-        layout_days=[day.model_dump() for day in reply.layout.days],
+        confirm_layout=confirm_layout,
+        layout_days=_text_layout_days(reply),
         layout_confidence=reply.layout.confidence,
         import_mode="text",
     )
@@ -714,30 +774,632 @@ def _text_reader_output(
 def _text_program_rows(
     reply: program_import_ai.TextProgramImportReply,
     text: str,
-    week_lookup: dict[str, str],
-    selected_week: str | None,
-    context: FreeFormGridContext,
+    weeks: list[str],
+    inferred_weeks: dict[int, int],
+    day_numbers: dict[tuple[str | None, int], int],
 ) -> list[ProgramImportRow]:
-    return [
-        _program_import_row(
-            model_row,
-            _matched_row_week(model_row.week, week_lookup, selected_week),
-            FreeFormSourceRow({}, _line_text(text, model_row.source_row)),
+    context = _empty_freeform_context()
+    selected_week = _default_import_week(weeks)
+    week_lookup = {_week_identity(week): week for week in weeks}
+    rows = []
+    for model_row in reply.rows:
+        source_text = _line_text(text, model_row.source_row)
+        if _text_heading_without_prescription(source_text, model_row.day_name):
+            continue
+        exercise = _text_exercise_name(source_text, model_row.exercise)
+        if not exercise:
+            continue
+        cleaned_day_name = _clean_day_name(model_row.day_name) or model_row.day_name
+        row = model_row.model_copy(update={"exercise": exercise, "day_name": cleaned_day_name})
+        inferred_week = inferred_weeks.get(model_row.source_row)
+        week_label = f"Week {inferred_week}" if inferred_week else (
+            _matched_row_week(model_row.week, week_lookup, selected_week) if model_row.week else selected_week
+        )
+        canonical = _program_import_row(
+            row,
+            week_label,
+            FreeFormSourceRow({}, source_text),
             context,
         )
-        for model_row in reply.rows
-    ]
+        canonical = replace(canonical, input_exercise_name=exercise)
+        if load_text := _text_load_value(source_text):
+            canonical = replace(canonical, notes=load_text)
+        hold = _text_hold_range(source_text)
+        rep_list = _text_per_set_rep_list(source_text)
+        if hold is not None and hold[1] <= MAX_REPS:
+            canonical = replace(canonical, reps_min=hold[0], reps_max=hold[1])
+        elif hold is not None:
+            canonical = replace(
+                canonical,
+                reps_min=DEFAULT_TARGET_REPS_MIN,
+                reps_max=DEFAULT_TARGET_REPS_MAX,
+            )
+        elif rep_list:
+            canonical = replace(canonical, reps_min=min(rep_list), reps_max=max(rep_list))
+        elif rep_bounds := _text_prescribed_rep_bounds(source_text):
+            canonical = replace(canonical, reps_min=rep_bounds[0], reps_max=rep_bounds[1])
+        source_markers = _text_source_approximation_markers(source_text)
+        if hold is not None and hold[1] > MAX_REPS:
+            duration = f"{hold[0]} sec hold" if hold[0] == hold[1] else f"{hold[0]}-{hold[1]} sec hold"
+            source_markers.append(Approximation(
+                "program_import.reps_approximated.v1", "reps", duration
+            ))
+        source_has_effort_approximation = any(
+            marker.code == "program_import.effort_approximated.v1" for marker in source_markers
+        )
+        markers = [
+            marker for marker in canonical.approximation_markers
+            if not (
+                marker.code == "program_import.effort_approximated.v1"
+                and (
+                    re.search(r"\bAMRAP\b", source_text, re.IGNORECASE)
+                    or not source_has_effort_approximation
+                )
+            )
+        ]
+        markers.extend(source_markers)
+        canonical = replace(
+            canonical,
+            approximation_markers=tuple(_dedupe_approximation_markers(markers)),
+        )
+        inferred_day = _text_day_number(row, day_numbers, inferred_week)
+        parsed_day = _parse_integer(row.day)
+        if inferred_day is not None and (
+            parsed_day is None or not 1 <= parsed_day <= MAX_PROGRAM_DAYS
+            or parsed_day != inferred_day
+        ):
+            canonical = replace(canonical, day=inferred_day)
+        rows.append(canonical)
+    return rows
+
+
+def _text_is_day_heading(source_text: str, day_name: Any) -> bool:
+    name = _text_heading_label(_cell_text(day_name))
+    if not name:
+        return False
+    return _day_name_key(_text_heading_label(source_text)) == _day_name_key(name)
+
+
+def _text_heading_label(value: str) -> str:
+    label = re.sub(r"^\s*\[[^\]\n]+\]\s*", "", value)
+    label = re.sub(r"^\s*[•▪◦]\s*", "", label)
+    label = re.sub(r"^\s*#+\s*", "", label)
+    label = re.sub(r"[*_`~]", "", label).strip()
+    label = re.sub(r"\s*\((?:week|wk)\s*\d+\)\s*$", "", label, flags=re.IGNORECASE)
+    label = re.sub(r"\s+day\s*$", "", label, flags=re.IGNORECASE)
+    return _clean_day_name(label)
+
+
+def _text_heading_without_prescription(value: str, day_name: Any = None) -> bool:
+    if _TEXT_PRESCRIPTION_PATTERN.search(value) or re.search(
+        r"\d+\s*(?:sets?|مجموعات|جولات)?\s*[x×]\s*\d+", normalize_digits(value), re.IGNORECASE
+    ):
+        return False
+    label = _text_heading_label(value)
+    explicit = bool(re.match(r"\s*#+\s*|\s*\*\*", value))
+    explicit = explicit or bool(re.search(r"\s+day\s*$|\(\s*(?:week|wk)\s*\d+\s*\)\s*$", value, re.IGNORECASE))
+    return bool(label and (explicit or _text_is_day_heading(value, day_name)))
+
+
+def _text_repeated_block_weeks(
+    model_rows: list[Any],
+    text: str,
+    heading_scan: list[tuple[int, str, list[Any]]] | None = None,
+) -> dict[int, int]:
+    week_titles: list[tuple[int, int]] = []
+    for line_number, line in enumerate(text.splitlines(), 1):
+        number = _text_standalone_week_number(line, start_title=(line_number == 1))
+        if number is not None:
+            week_titles.append((line_number, number))
+    if week_titles:
+        inferred = {}
+        for row in model_rows:
+            title = next((entry for entry in reversed(week_titles) if entry[0] < row.source_row), None)
+            if title:
+                inferred[row.source_row] = title[1]
+        return inferred
+    return _text_implicit_block_weeks(model_rows, text, heading_scan)
+
+
+def _text_has_explicit_week_titles(text: str) -> bool:
+    return any(
+        _text_standalone_week_number(line, start_title=(line_number == 1)) is not None
+        for line_number, line in enumerate(text.splitlines(), 1)
+    )
+
+
+def _text_implicit_block_weeks(
+    model_rows: list[Any], text: str, heading_scan: list[tuple[int, str, list[Any]]] | None = None
+) -> dict[int, int]:
+    occurrences = heading_scan if heading_scan is not None else _text_heading_occurrences(model_rows, text)
+    if len(occurrences) < 2:
+        return {}
+    block_size = _text_repeated_heading_block_size(occurrences)
+    if block_size is None or not _text_blocks_correspond(occurrences, block_size, text):
+        return {}
+    return {
+        row.source_row: index // block_size + 1
+        for index, occurrence in enumerate(occurrences)
+        for row in occurrence[2]
+    }
+
+
+def _text_repeated_heading_block_size(occurrences: list[tuple[int, str, list[Any]]]) -> int | None:
+    return next((size for size in range(1, len(occurrences) // 2 + 1)
+                 if len(occurrences) % size == 0 and all(
+                     occurrences[index][1] == occurrences[index % size][1]
+                     for index in range(size, len(occurrences))
+                 )), None)
+
+
+def _text_heading_occurrences(model_rows: list[Any], text: str) -> list[tuple[int, str, list[Any]]]:
+    day_names = {
+        _day_name_key(name): name
+        for row in model_rows
+        if (name := _clean_day_name(row.day_name))
+    }
+    headings = []
+    for line_number, line in enumerate(text.splitlines(), 1):
+        name = next((key for key, value in day_names.items() if _text_is_day_heading(line, value)), None)
+        if name:
+            headings.append((line_number, name, []))
+    for row in model_rows:
+        heading = next((entry for entry in reversed(headings) if entry[0] < row.source_row), None)
+        if heading:
+            heading[2].append(row)
+    return [heading for heading in headings if heading[2]]
+
+
+def _text_blocks_correspond(occurrences: list[tuple[int, str, list[Any]]], block_size: int, text: str) -> bool:
+    return _text_block_match_ratio(occurrences, block_size, text) >= 0.6
+
+
+def _text_block_match_ratio(occurrences: list[tuple[int, str, list[Any]]], block_size: int, text: str) -> float:
+    first_block = occurrences[:block_size]
+    compared = occurrences[block_size:]
+    total_rows = matched_rows = 0
+    for index, current in enumerate(compared):
+        reference = first_block[index % block_size]
+        if len(reference[2]) != len(current[2]):
+            return 0.0
+        for first_row, current_row in zip(reference[2], current[2], strict=True):
+            total_rows += 1
+            first_name = _text_exercise_name(_line_text(text, first_row.source_row), first_row.exercise)
+            current_name = _text_exercise_name(_line_text(text, current_row.source_row), current_row.exercise)
+            matched_rows += _text_exercise_names_equivalent(first_name, current_name)
+    return matched_rows / total_rows if total_rows else 0.0
+
+
+def _text_exercise_names_equivalent(first: str, second: str) -> bool:
+    def tokens(name: str) -> set[str]:
+        return {token[:-1] if len(token) > 4 and token.endswith("s") else token
+                for token in re.findall(r"\w+", name.casefold())}
+
+    first_tokens, second_tokens = tokens(first), tokens(second)
+    if not first_tokens or not second_tokens:
+        return False
+    overlap = len(first_tokens & second_tokens)
+    shared_movement_tokens = (first_tokens & second_tokens) - {
+        "barbell", "dumbbell", "machine", "cable", "smith", "band", "plate", "bodyweight",
+        "incline", "decline", "seated", "standing", "single", "front", "rear", "side",
+    }
+    return (
+        overlap / len(first_tokens | second_tokens) >= 0.5
+        or overlap == min(len(first_tokens), len(second_tokens))
+        or bool(shared_movement_tokens)
+    )
+
+
+def _text_standalone_week_number(line: str, *, start_title: bool) -> int | None:
+    normalized = normalize_digits(line).strip()
+    pattern = r"(?:week|wk|الأسبوع|اسبوع)\s*(\d+|الأول|الأولى|التاني|الثاني|التالت|الثالث)"
+    match = re.fullmatch(pattern, normalized, re.IGNORECASE)
+    if not match and start_title:
+        match = re.match(rf"^\s*{pattern}(?=\s*[-—:：]|\s+.+$)", normalized, re.IGNORECASE)
+    if not match:
+        return None
+    token = match.group(1).casefold()
+    ordinal = {"الأول": 1, "الأولى": 1, "التاني": 2, "الثاني": 2, "التالت": 3, "الثالث": 3}
+    return int(token) if token.isdigit() else ordinal.get(token)
+
+
+def _text_week_inference_conflicts(rows: list[Any], inferred: dict[int, int]) -> bool:
+    return any(
+        row.week and row.source_row in inferred
+        and _week_number(_canonical_week_label(row.week)) != inferred[row.source_row]
+        for row in rows
+    )
+
+
+def _text_repeated_block_assignments_agree(
+    rows: list[Any], day_numbers: dict[tuple[str | None, int], int], inferred: dict[int, int]
+) -> bool:
+    if not rows or any(
+        row.source_row not in inferred
+        or _week_number(_canonical_week_label(row.week)) != inferred[row.source_row]
+        for row in rows
+    ):
+        return False
+    return all(
+        _parse_integer(row.day) == _text_day_number(row, day_numbers, inferred[row.source_row])
+        for row in rows
+    )
+
+
+def _text_repeated_heading_read_as_days(
+    reply: Any, headings: list[tuple[int, str, list[Any]]], inferred: dict[int, int], text: str
+) -> bool:
+    if _text_has_explicit_week_titles(text) or len(set(inferred.values())) < 2:
+        return False
+    block_size = _text_repeated_heading_block_size(headings)
+    if not block_size or len(reply.layout.weeks) > 1 or len(reply.layout.days) != len(headings):
+        return False
+    names = [_day_name_key(day.name) for day in reply.layout.days]
+    if not names or len(set(names)) != 1 or len({heading[1] for heading in headings}) != 1:
+        return False
+    if any(_parse_integer(day.day) != index for index, day in enumerate(reply.layout.days, 1)):
+        return False
+    layout_weeks = {_week_identity(day.week) for day in reply.layout.days if day.week}
+    row_weeks = {_week_identity(row.week) for row in reply.rows if row.week}
+    if len(layout_weeks | row_weeks) > 1:
+        return False
+    return all(
+        {_parse_integer(row.day) for row in heading[2]} == {index}
+        for index, heading in enumerate(headings, 1)
+    )
+
+
+def _text_model_assigns_repeated_headings_as_days(
+    reply: Any, headings: list[tuple[int, str, list[Any]]]
+) -> bool:
+    if len(headings) < 2 or len(reply.layout.days) != len(headings):
+        return False
+    if any(_parse_integer(day.day) != index for index, day in enumerate(reply.layout.days, 1)):
+        return False
+    if any(_day_name_key(_clean_day_name(day.name)) != name
+           for day, (_, name, _) in zip(reply.layout.days, headings, strict=True)):
+        return False
+    week_ids = {_week_identity(week) for week in reply.layout.weeks if week}
+    week_ids.update(_week_identity(day.week) for day in reply.layout.days if day.week)
+    week_ids.update(_week_identity(row.week) for row in reply.rows if row.week)
+    if len(week_ids) > 1:
+        return False
+    return all(
+        {_parse_integer(row.day) for row in heading[2]} == {index}
+        for index, heading in enumerate(headings, 1)
+    )
+
+
+def _text_repeated_heading_blocks(
+    rows: list[Any], text: str, inferred: dict[int, int],
+    headings: list[tuple[int, str, list[Any]]],
+) -> tuple[list[tuple[int, str, list[Any]]], int] | None:
+    if not inferred or _text_has_explicit_week_titles(text):
+        return None
+    block_size = _text_repeated_heading_block_size(headings)
+    if block_size is None or _text_block_match_ratio(headings, block_size, text) < 0.75:
+        return None
+    return headings, block_size
+
+
+def _text_has_strong_progression_blocks(
+    rows: list[Any], text: str, inferred: dict[int, int], headings: list[tuple[int, str, list[Any]]]
+) -> bool:
+    repeated = _text_repeated_heading_blocks(rows, text, inferred, headings)
+    return bool(repeated and _text_blocks_show_progression(*repeated, text))
+
+
+def _text_has_strong_identical_blocks(
+    rows: list[Any], text: str, inferred: dict[int, int], headings: list[tuple[int, str, list[Any]]]
+) -> bool:
+    repeated = _text_repeated_heading_blocks(rows, text, inferred, headings)
+    return bool(repeated and not _text_blocks_show_progression(*repeated, text))
+
+
+def _text_blocks_show_progression(
+    headings: list[tuple[int, str, list[Any]]], block_size: int, text: str
+) -> bool:
+    first_block = headings[:block_size]
+    for index, current in enumerate(headings[block_size:]):
+        reference = first_block[index % block_size]
+        signatures = (
+            (_text_prescription_signature(_line_text(text, first_row.source_row)),
+             _text_prescription_signature(_line_text(text, current_row.source_row)))
+            for first_row, current_row in zip(reference[2], current[2], strict=True)
+        )
+        if any(first != second for first, second in signatures):
+            return True
+    return False
+
+
+def _text_prescription_signature(source_text: str) -> str:
+    normalized = normalize_digits(source_text).casefold()
+    match = _TEXT_PRESCRIPTION_PATTERN.search(normalized)
+    if match:
+        return re.sub(r"\s+", "", match.group(0).replace("×", "x"))
+    if hold := _text_hold_range(source_text):
+        return f"hold:{hold[0]}-{hold[1]}"
+    if rep_list := _text_per_set_rep_list(source_text):
+        return "reps:" + "/".join(map(str, rep_list))
+    return ""
+
+
+def _text_day_number_assignments(
+    model_rows: list[Any], inferred_weeks: dict[int, int], structural_weeks: bool,
+    heading_scan: list[tuple[int, str, list[Any]]],
+) -> tuple[dict[tuple[str | None, int], int], bool]:
+    rows = sorted(model_rows, key=lambda row: row.source_row)
+    headings = [(line, name) for line, name, _ in heading_scan]
+
+    occurrences: dict[tuple[str | None, int], list[Any]] = {}
+    fallback_occurrence: dict[str | None, int] = {}
+    fallback_name: dict[str | None, str] = {}
+    row_occurrences = {}
+    for row in rows:
+        week = f"number:{inferred_weeks[row.source_row]}" if row.source_row in inferred_weeks else (
+            _week_identity(row.week) if row.week else None
+        )
+        heading = next((entry for entry in reversed(headings) if entry[0] < row.source_row), None)
+        if heading:
+            occurrence = heading[0]
+        else:
+            key = _day_name_key(_clean_day_name(row.day_name))
+            if key != fallback_name.get(week):
+                fallback_occurrence[week] = fallback_occurrence.get(week, 0) + 1
+                fallback_name[week] = key
+            occurrence = -fallback_occurrence.get(week, 1)
+        occurrence_key = (week, occurrence)
+        row_occurrences[row.source_row] = occurrence_key
+        occurrences.setdefault(occurrence_key, []).append(row)
+
+    ordered_occurrences: dict[str | None, list[tuple[str | None, int]]] = {}
+    for occurrence_key in sorted(occurrences, key=lambda key: min(row.source_row for row in occurrences[key])):
+        ordered_occurrences.setdefault(occurrence_key[0], []).append(occurrence_key)
+
+    assignments = {}
+    conflicts = False
+    for week, week_occurrences in ordered_occurrences.items():
+        model_days = {}
+        for occurrence_key in week_occurrences:
+            day_values = {
+                day for row in occurrences[occurrence_key]
+                if (day := _parse_integer(row.day)) is not None and 1 <= day <= MAX_PROGRAM_DAYS
+            }
+            model_days[occurrence_key] = day_values
+        day_counts = {}
+        for day_values in model_days.values():
+            if len(day_values) == 1:
+                day = next(iter(day_values))
+                day_counts[day] = day_counts.get(day, 0) + 1
+        for index, occurrence_key in enumerate(week_occurrences, start=1):
+            day_values = model_days[occurrence_key]
+            model_day = next(iter(day_values)) if len(day_values) == 1 else None
+            if model_day is not None and day_counts[model_day] == 1 and model_day != index:
+                conflicts = True
+            if structural_weeks and model_day is not None and model_day != index:
+                resolved_day = index
+            elif model_day is not None and day_counts[model_day] == 1:
+                resolved_day = model_day
+            else:
+                resolved_day = index
+            for row in occurrences[occurrence_key]:
+                assignments[(week, row.source_row)] = resolved_day
+    return assignments, conflicts
+
+
+def _text_day_number(
+    row: Any, numbers: dict[tuple[str | None, int], int], inferred_week: int | None
+) -> int | None:
+    week = f"number:{inferred_week}" if inferred_week else _week_identity(row.week) if row.week else None
+    return numbers.get((week, row.source_row))
+
+
+def _text_layout_days(reply: Any) -> list[dict[str, Any]]:
+    layout_days = []
+    day_counts: dict[str | None, set[int]] = {}
+    day_positions: dict[str | None, int] = {}
+    for day in reply.layout.days:
+        week = _week_identity(day.week) if getattr(day, "week", None) else None
+        parsed = _parse_integer(day.day)
+        day_positions[week] = day_positions.get(week, 0) + 1
+        used = day_counts.setdefault(week, set())
+        if parsed is None or not 1 <= parsed <= MAX_PROGRAM_DAYS or parsed in used:
+            parsed = day_positions[week]
+        used.add(parsed)
+        layout_days.append({
+            "day": parsed,
+            "name": _clean_day_name(day.name) or day.name,
+        })
+    return layout_days
+
+
+_TEXT_EXERCISE_BOUNDARY = re.compile(
+    r"\s+(?=(?:\d+\s*(?:sets?|مجموعات|جولات)(?:\s*[x×]|\s+(?:of\s+)?\d+)|"
+    r"\d+\s*[x×]\s*(?:\d+|AMRAP)|\d+\s*(?:reps?|عدة|عدات)\b|"
+    r"(?:\d+\s*[/,]\s*)+\d+\s*(?:reps?|عدة|عدات)\b|"
+    r"x\s*\d+(?:\s*[,/]\s*\d+)+))",
+    re.IGNORECASE,
+)
+
+
+def _text_exercise_name(source_text: str, model_exercise: Any) -> str:
+    model_name = _cell_text(model_exercise).strip(" *`_")
+    normal_source = _normalise_exercise_source(source_text)
+    if model_name and _normalise_exercise_source(model_name) in normal_source:
+        return model_name[:MAX_PROGRAM_IMPORT_EXERCISE_NAME_LENGTH]
+    line = re.sub(r"^\s*(?:[-*•]+\s*)?", "", source_text.strip())
+    line = re.sub(r"^\s*(?:\d+[.)]|[A-Z]\d+[.)])\s*", "", line, flags=re.IGNORECASE)
+    line = re.sub(r"^[^\w]+", "", line)
+    line = re.sub(r"^\s*\d+\s*[x×]\s*\d+\s+", "", line)
+    line = re.sub(r"\s*[:：]\s*", " ", line, count=1)
+    match = _TEXT_EXERCISE_BOUNDARY.search(line)
+    if match:
+        line = line[:match.start()]
+    line = re.sub(r"\s*[—–:-]\s*$", "", line)
+    line = re.split(r"\s+[—–]\s+", line, maxsplit=1)[0].strip(" *`_")
+    candidate = line.strip(" *`_")
+    return candidate[:MAX_PROGRAM_IMPORT_EXERCISE_NAME_LENGTH]
+
+
+def _normalise_exercise_source(value: str) -> str:
+    return " ".join(re.sub(r"[*_`~]", "", value).split())
+
+
+def _text_per_set_rep_list(source_text: str) -> list[int]:
+    normal = normalize_digits(source_text)
+    token_matches = list(re.finditer(r"\d+\s*(?:sets?|مجموعات|جولات)?\s*[x×]\s*(\d+(?:\s*/\s*\d+)+)", normal, re.IGNORECASE))
+    reps_matches = list(re.finditer(r"\b(\d+(?:\s*/\s*\d+)+)\s*(?:reps?|عدة|عدات)\b", normal, re.IGNORECASE))
+    # Multiple prescription tokens are ambiguous (e.g. a top set and backoff).
+    if token_matches:
+        if len(token_matches) != 1:
+            return []
+        match = token_matches[0]
+    elif len(reps_matches) == 1:
+        match = reps_matches[0]
+    else:
+        return []
+    return [int(value) for value in re.findall(r"\d+", match.group(1))]
+
+
+def _text_prescribed_rep_bounds(source_text: str) -> tuple[int, int] | None:
+    normal = normalize_digits(source_text)
+    if _text_timed_non_hold_prescription(source_text):
+        return None
+    prescriptions = list(re.finditer(
+        r"\d+\s*(?:sets?|مجموعات|جولات)?\s*[x×]\s*(\d+)(?:\s*[-–]\s*(\d+))?\b",
+        normal, re.IGNORECASE,
+    ))
+    if not prescriptions:
+        prescriptions = list(re.finditer(r"\b(\d+)(?:\s*[-–]\s*(\d+))?\s*(?:reps?|عدة|عدات)\b", normal, re.IGNORECASE))
+    if len(prescriptions) != 1:
+        return None
+    first = int(prescriptions[0].group(1))
+    second = int(prescriptions[0].group(2) or first)
+    return min(first, second), max(first, second)
+
+
+def _text_timed_non_hold_prescription(source_text: str) -> bool:
+    normal = normalize_digits(source_text)
+    return (
+        _text_hold_range(source_text) is None
+        and bool(re.search(r"\d+\s*[x×]\s*\d+(?:\s*[-–]\s*\d+)?\s*(?:sec(?:ond)?s?|s|min(?:ute)?s?)\b", normal, re.IGNORECASE))
+    )
+
+
+def _text_hold_range(source_text: str) -> tuple[int, int] | None:
+    normal = normalize_digits(source_text)
+    hold_cue = re.search(r"\b(?:hold|plank|wall\s+sit|dead\s+hang|l[ -]?sit|hollow\s+hold|isometric)\b", normal, re.IGNORECASE)
+    if not hold_cue:
+        return None
+    match = re.search(
+        r"\d+\s*[x×]\s*(\d+)(?:\s*[-–]\s*(\d+))?\s*(s|sec(?:ond)?s?|min(?:ute)?s?)\b|"
+        r"\b(\d+)(?:\s*[-–]\s*(\d+))?\s*(s|sec(?:ond)?s?|min(?:ute)?s?)\s*hold\b",
+        normal, re.IGNORECASE,
+    )
+    if not match:
+        return None
+    first, second, unit = (match.group(1), match.group(2), match.group(3)) if match.group(1) else (match.group(4), match.group(5), match.group(6))
+    low, high = int(first), int(second or first)
+    if unit.casefold().startswith("min"):
+        low, high = low * 60, high * 60
+    return min(low, high), max(low, high)
+
+
+def _text_source_approximation_markers(source_text: str) -> list[Approximation]:
+    normal = normalize_digits(source_text)
+    source_fields = {}
+    if rep_list := _text_per_set_rep_list(source_text):
+        source_fields["reps_by_set"] = "/".join(map(str, rep_list))
+    elif re.search(r"\bAMRAP\b", normal, re.IGNORECASE):
+        source_fields["reps"] = "AMRAP"
+    markers = _source_approximation_markers(FreeFormSourceRow(source_fields, source_text))
+    if source_fields.get("reps") and _is_unsupported_rep_prescription(source_fields["reps"]):
+        markers.append(Approximation("program_import.reps_approximated.v1", "reps", "AMRAP"))
+    row = TextSourceMarkerRow(normal)
+    markers.extend(_detect_unsupported_prescriptions(row, markers, normal))
+    if load := _text_load_value(source_text):
+        markers.append(Approximation(
+            "program_import.unsupported_preserved_as_note.v1", "prescription", load
+        ))
+        markers.append(Approximation("program_import.load_preserved_as_note.v1", "load_kg", load))
+    if _text_timed_non_hold_prescription(source_text):
+        duration = re.search(
+            r"\d+\s*[x×]\s*\d+(?:\s*[-–]\s*\d+)?\s*(?:sec(?:ond)?s?|s|min(?:ute)?s?)\b",
+            normal, re.IGNORECASE,
+        )
+        if duration:
+            markers.append(Approximation(
+                "program_import.unsupported_preserved_as_note.v1", "prescription", duration.group(0)
+            ))
+    effort = re.search(
+        r"\b(?:to|until)\s+(?:near[ -]?)?failure\b|\bnear[ -]failure\b|"
+        r"\bRIR\s*\d+(?:\.\d+)?\s*[-–]\s*\d+(?:\.\d+)?|"
+        r"\b\d+(?:\.\d+)?\s*[-–]\s*\d+(?:\.\d+)?\s*in reserve\b|"
+        r"\bRPE\s*\d+(?:\.\d+)?\s*[-–]\s*\d+(?:\.\d+)?|"
+        r"حتى\s+قرب\s+الفشل|حتى\s+الفشل|قرب\s+الفشل|لحد\s+الفشل",
+        normal, re.IGNORECASE,
+    )
+    if effort and not re.search(r"\bAMRAP\b", normal, re.IGNORECASE):
+        markers.append(Approximation("program_import.effort_approximated.v1", "rir", effort.group(0)))
+    if _text_hold_range(source_text) is not None:
+        markers.append(Approximation("program_import.effort_approximated.v1", "rir", "hold duration"))
+    return _dedupe_approximation_markers(markers)
+
+
+def _text_load_value(source_text: str) -> str | None:
+    normal = normalize_digits(source_text)
+    load = re.search(
+        r"(?:\d+(?:\.\d+)?\s*%\s*1RM|bodyweight\s*\+\s*\d+(?:\.\d+)?\s*(?:kg|lb)?|\+\s*\d+(?:\.\d+)?\s*(?:kg|lb)|\b\d+(?:\.\d+)?\s*kg\b)",
+        normal, re.IGNORECASE,
+    )
+    return load.group(0) if load else None
 
 
 def _text_layout_confirmation(
-    reply: program_import_ai.TextProgramImportReply, context: FreeFormGridContext
+    reply: program_import_ai.TextProgramImportReply, context: FreeFormGridContext,
+    text: str, heading_scan: list[tuple[int, str, list[Any]]],
 ) -> bool:
+    if _text_day_headings_cover_rows(heading_scan, reply.rows, require_distinct_names=True):
+        return context.layout_ambiguous or _has_unplaced_exercise_rows(context, reply.rows)
     return _needs_layout_confirmation(
         context,
         reply.rows,
         reply.layout.confirm_layout,
         reply.layout.confidence,
     )
+
+
+def _text_day_headings_cover_rows(
+    heading_scan: list[tuple[int, str, list[Any]]], rows: list[Any], *, require_distinct_names: bool
+) -> bool:
+    headings = [(line, name) for line, name, _ in heading_scan]
+    if not headings or not rows:
+        return False
+    for row in rows:
+        expected = _day_name_key(_clean_day_name(row.day_name))
+        preceding = next(
+            (name for line, name in reversed(headings) if line < row.source_row),
+            None,
+        )
+        if not expected or preceding != expected:
+            return False
+    return not require_distinct_names or not any(_is_generic_day_name(name) for _, name in headings)
+
+
+def _text_headingless_layout_needs_confirmation(
+    text: str, rows: list[Any], heading_scan: list[tuple[int, str, list[Any]]]
+) -> bool:
+    if _text_day_headings_cover_rows(heading_scan, rows, require_distinct_names=False):
+        return False
+    prescription_count = sum(
+        bool(_TEXT_PRESCRIPTION_PATTERN.search(line)) for line in text.splitlines()
+    )
+    has_group_cue = any(
+        re.search(r"^\s*[-*_]{3,}|\b(?:alternate|alternative)\s+split\b|"
+                  r"\bpair\s+as\s+accessories\b|[?؟]\s*$", line, re.IGNORECASE)
+        for line in text.splitlines()
+    )
+    return has_group_cue or prescription_count > 8
 
 
 _TEXT_PRESCRIPTION_PATTERN = re.compile(
@@ -977,7 +1639,14 @@ def _store_day_label(
 
 def _clean_day_name(value: Any) -> str:
     name = _cell_text(value)
-    return re.sub(r"^\s*day\s*\d+\s*[-:—–.)]+\s*", "", name, flags=re.IGNORECASE).strip()
+    name = re.sub(r"^\s*day\s*\d+\s*[-:—–.)]+\s*", "", name, flags=re.IGNORECASE)
+    name = re.sub(
+        r"^\s*اليوم\s+(?:الأول|الأولى|الاول|الاولى|التاني|الثاني|الثانية|التانية|"
+        r"التالت|الثالث|الثالثة|الرابع|الرابعة|الخامس|الخامسة|السادس|السادسة|"
+        r"السابع|السابعة|الثامن|الثامنة|التاسع|التاسعة|العاشر|العاشرة|\d+)\s*[-:—–.)]+\s*",
+        "", name,
+    )
+    return name.strip()
 
 
 def _day_name_key(value: Any) -> str:
@@ -2196,7 +2865,11 @@ def _reader_reps(value: Any) -> tuple[ImportValue, ImportValue, tuple[Approximat
 
 
 def validate_and_resolve_rows(
-    db: Any, coach_account_id: str, source_rows: list[ProgramImportRow]
+    db: Any,
+    coach_account_id: str,
+    source_rows: list[ProgramImportRow],
+    *,
+    text_import: bool = False,
 ) -> list[dict[str, Any]]:
     """Shared normalization, row validation, row-level checks, and exercise resolution."""
     if len(source_rows) > MAX_PROGRAM_IMPORT_ROWS:
@@ -2204,7 +2877,7 @@ def validate_and_resolve_rows(
     output: list[dict[str, Any]] = []
     order_by_day: dict[tuple[str, str | int], int] = {}
     for source in source_rows:
-        row = _normalise_row(source, order_by_day)
+        row = _normalise_row(source, order_by_day, text_import=text_import)
         resolution = _resolve_exercise(db, coach_account_id, row["exercise_name"], source.confirmed_exercise_id)
         resolution_errors = resolution.pop("errors", [])
         resolution_warnings = resolution.pop("warnings", [])
@@ -2223,10 +2896,21 @@ def validate_and_resolve_rows(
 
 
 def _normalise_row(
-    source: ProgramImportRow, order_by_day: dict[tuple[str, str | int], int]
+    source: ProgramImportRow,
+    order_by_day: dict[tuple[str, str | int], int],
+    *,
+    text_import: bool = False,
 ) -> dict[str, Any]:
     errors: list[dict[str, Any]] = []
-    warnings = [_row_warning(item.code, source.source_row, item.column, "") for item in source.approximation_markers]
+    warnings = [
+        _row_warning(
+            item.code,
+            source.source_row,
+            item.column,
+            item.original if text_import and item.column == "load_kg" else "",
+        )
+        for item in source.approximation_markers
+    ]
     week, week_order, week_error = _normalise_template_week(
         source.week_order, source.week, source.source_row
     )
@@ -2236,7 +2920,8 @@ def _normalise_row(
     day_valid = day is not None and 1 <= day <= MAX_PROGRAM_DAYS
     if not day_valid:
         errors.append(_row_error("program_import.invalid_day.v1", source.source_row, "day", "Day is outside the supported range."))
-        day = 1
+        if day is None or not text_import:
+            day = 1
     if day_valid:
         day_key = (_week_group_key(week, week_order), day)
         order_by_day[day_key] = order_by_day.get(day_key, 0) + 1
@@ -2297,12 +2982,13 @@ def _normalise_row(
         f"{item.column}: {item.original}"
         for item in source.approximation_markers
         if item.original and item.column not in {"reps", "rir", "rpe"}
+        and item.original.casefold() not in (source.notes or "").casefold()
     ]
     notes = _join_notes(source.notes, reps_note, *effort_notes, *preserved_notes)
     if len(notes) > MAX_PROGRAM_NOTES_LENGTH:
         errors.append(_row_error("program_import.notes_too_long.v1", source.source_row, "notes", "Notes are too long."))
 
-    return {
+    normalized = {
         "source_row": source.source_row,
         "week": week,
         "week_order": week_order,
@@ -2327,6 +3013,9 @@ def _normalise_row(
         "errors": errors,
         "warnings": warnings,
     }
+    if text_import:
+        normalized["input_exercise_name"] = source.input_exercise_name
+    return normalized
 
 
 def _normalise_template_week(

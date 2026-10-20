@@ -203,6 +203,69 @@ def perfect_text_run(dataset, evaluation_session):
     return results, report
 
 
+class LiveTextEval2ReplayModel(runner.PlumbingModel):
+    def __init__(self, replay_cases):
+        super().__init__(runner.TEXT_KIND)
+        self.replay_cases = {case["case_id"]: case for case in replay_cases}
+
+    def prepare_case(self, case, db):
+        replay_case = self.replay_cases[case["id"]]
+        rows = []
+        for produced in replay_case["rows"]:
+            rows.append({
+                "source_row": produced["source_row"],
+                "week": produced["week"],
+                "day": 0,
+                "day_name": produced["day_name"],
+                "order": produced["order"],
+                "exercise": produced["exercise"],
+                "sets": produced["sets"],
+                "reps_min": produced["reps_min"],
+                "reps_max": produced["reps_max"],
+                "rir": produced["rir"],
+                "rpe": None,
+                "rest_seconds": produced["rest_seconds"],
+                "tempo": produced["tempo"],
+                "notes": produced["notes"],
+                "original_text": produced["original_text"],
+                "exercise_search_terms": [],
+                "approximation_markers": [
+                    marker for marker in produced["approximation_markers"]
+                    if isinstance(marker, dict) and marker.get("code") not in {
+                        "program_import.exercise_unresolved.v1",
+                        "program_import.exercise_ambiguous.v1",
+                        "program_import.rpe_converted.v1",
+                    }
+                ],
+            })
+        names = list(dict.fromkeys(row["day_name"] for row in rows))
+        reply = {
+            "rows": rows,
+            "layout": {
+                "days": [{"day": 1, "name": name} for name in names],
+                "weeks": replay_case["layout_weeks"],
+                "confidence": 0.8,
+                "confirm_layout": True,
+            },
+        }
+        self.scripted_model.reset([reply], default_turn={"suggestions": []})
+
+
+def test_issue_437_live_eval_2_produced_rows_replay_through_http(evaluation_session):
+    replay_path = Path(__file__).parents[1] / "fixtures/program_import_text_live_eval_2.json"
+    replay_cases = json.loads(replay_path.read_text(encoding="utf-8"))["cases"]
+    replay_ids = {case["case_id"] for case in replay_cases}
+    cases = [case for case in runner.load_cases(kind=runner.TEXT_KIND) if case["id"] in replay_ids]
+    model = LiveTextEval2ReplayModel(replay_cases)
+
+    results = runner.run_suite(cases, model=model, session=evaluation_session, kind=runner.TEXT_KIND)
+    metrics = runner.aggregate_metrics(results, kind=runner.TEXT_KIND)
+
+    assert metrics["expected_rows"] == 79
+    assert metrics["correct_rows"] == 79
+    assert metrics["extra_rows"] == 0
+
+
 def _write_fixtures(path: Path, entries):
     path.mkdir()
     for entry in entries:

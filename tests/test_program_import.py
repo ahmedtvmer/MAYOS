@@ -5,6 +5,7 @@ import csv
 import datetime as dt
 import json
 import logging
+import re
 import sqlite3
 import zipfile
 from pathlib import Path
@@ -2406,12 +2407,13 @@ def _enable_text_import_for_route(monkeypatch):
     monkeypatch.setattr(program_import_ai, "resolve_text_enable_gate", lambda: GateStatus(True, True, "test report accepted"))
 
 
-def _text_reply(line=2, *, week=None, exercise="Squat", sets=3, notes=None, markers=None, search_terms=None):
+def _text_reply(line=2, *, week=None, exercise="Squat", sets=3, notes=None, markers=None, search_terms=None,
+                original_text=None, day=1, day_name="Push"):
     return {
-        "rows": [{"source_row": line, "week": week, "day": 1, "day_name": "Push", "order": 1,
+        "rows": [{"source_row": line, "week": week, "day": day, "day_name": day_name, "order": 1,
                   "exercise": exercise, "sets": sets, "reps_min": 8, "reps_max": 10, "rir": 2,
                   "notes": notes, "exercise_search_terms": search_terms or [],
-                  "approximation_markers": markers or [], "original_text": "coach line"}],
+                  "approximation_markers": markers or [], "original_text": original_text or exercise}],
         "layout": {"days": [{"day": 1, "name": "Push"}], "weeks": [week] if week else [],
                    "confidence": 0.98, "confirm_layout": False},
     }
@@ -2528,17 +2530,801 @@ def test_text_line_number_validation_repairs_an_invalid_source_position(api, mon
     client, db = api
     coach_headers, _, assignment_id = _assignment(client, db, prefix="text-line-repair")
     _enable_text_import_for_route(monkeypatch)
-    scripted_chat_model.script(_text_reply(line=99), _text_reply(line=1))
+    scripted_chat_model.script(_text_reply(line=99, original_text="Squat 3x8"),
+                               _text_reply(line=2, original_text="Squat 3x8"))
 
     response = client.post(
         f"/coach/assignments/{assignment_id}/program-import",
         headers=coach_headers,
-        data={"text": "Squat 3x8"},
+        data={"text": "Day 1 - Push\nSquat 3x8\nSquat 3x8"},
     )
 
     assert response.status_code == 200, response.text
-    assert response.json()["rows"][0]["source_row"] == 1
+    assert response.json()["rows"][0]["source_row"] == 2
     assert len(scripted_chat_model.calls) == 2
+
+
+def test_text_live_failures_recover_day_line_name_and_markers(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-live-failures")
+    _enable_text_import_for_route(monkeypatch)
+    text = "Day 1 - Push\nbench 3x8\n\nDay 2 - Pull\nسحب أمامي 3x10 AMRAP"
+    first = _text_reply(
+        line=1, day=None, day_name="Push", exercise="Bench Press (Barbell)",
+        original_text="bench 3x8",
+    )["rows"][0]
+    second = _text_reply(
+        line=5, day=99, day_name="Pull", exercise="Lat Pulldown",
+        original_text="سحب أمامي 3x10 AMRAP",
+    )["rows"][0]
+    second["approximation_markers"] = []
+    scripted_chat_model.script({"rows": [first, second], "layout": {
+        "days": [{"day": None, "name": "Push"}, {"day": 99, "name": "Pull"}],
+        "weeks": [], "confidence": 0.4, "confirm_layout": True,
+    }})
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        data={"text": text},
+    )
+
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert [row["day"] for row in result["rows"]] == [1, 2]
+    assert all("program_import.invalid_day.v1" not in [error["code"] for error in row["errors"]]
+               for row in result["rows"])
+    assert [row["exercise_name"] for row in result["rows"]] == ["bench", "سحب أمامي"]
+    assert "program_import.unsupported_preserved_as_note.v1" in [
+        warning["code"] for warning in result["rows"][1]["warnings"]
+    ]
+    assert result["confirm_layout"] is False
+
+
+def test_text_source_line_remaps_shifted_number_when_original_text_is_unique(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-shifted-source")
+    _enable_text_import_for_route(monkeypatch)
+    scripted_chat_model.script(_text_reply(line=1, original_text="bench 3x8"))
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        data={"text": "Day 1 - Push\n\nbench 3x8"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["rows"][0]["source_row"] == 3
+
+
+def test_text_source_line_with_duplicate_original_requires_repair(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-ambiguous-source")
+    _enable_text_import_for_route(monkeypatch)
+    bad = _text_reply(line=1, original_text="Squat 3x8")
+    scripted_chat_model.script(bad, bad)
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        data={"text": "Day 1 - Push\nSquat 3x8\nSquat 3x8"},
+    )
+
+    assert response.status_code == 422
+    assert len(scripted_chat_model.calls) == 2
+
+
+def test_text_source_markers_cover_rep_lists_ranges_holds_and_failure(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-source-markers")
+    _enable_text_import_for_route(monkeypatch)
+    lines = [
+        "bench 3 مجموعات × 12/10/8 عدة",
+        "push ups 3x10 AMRAP",
+        "side plank 3 x 30 sec hold",
+        "side plank 3 x 30 sec hold — حتى قرب الفشل",
+        "cable row 3x10 RIR 1-2",
+        "hip thrust 3x8 حتى قرب الفشل",
+    ]
+    rows = []
+    for index, line in enumerate(lines, start=1):
+        rows.append(_text_reply(line=index, exercise="rewritten name", original_text=line)["rows"][0])
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [{"day": 1, "name": "Push"}], "weeks": [],
+        "confidence": 0.99, "confirm_layout": False,
+    }})
+
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        data={"text": "\n".join(lines)},
+    )
+
+    assert response.status_code == 200, response.text
+    warnings = [[warning["code"] for warning in row["warnings"]] for row in response.json()["rows"]]
+    assert "program_import.reps_approximated.v1" in warnings[0]
+    assert "program_import.reps_approximated.v1" in warnings[1]
+    assert "program_import.effort_approximated.v1" in warnings[2]
+    assert "program_import.effort_approximated.v1" in warnings[4]
+    assert "program_import.effort_approximated.v1" in warnings[5]
+    assert response.json()["rows"][3]["reps_min"] == 30
+    assert response.json()["rows"][3]["reps_max"] == 30
+    assert "program_import.effort_approximated.v1" in warnings[3]
+
+
+def test_text_week_labels_follow_model_and_repeated_day_names_alone_are_not(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-repeat-weeks")
+    _enable_text_import_for_route(monkeypatch)
+    case = json.loads((Path(__file__).parent / "eval/datasets/program_import_text/07_repeated_blocks.json").read_text())
+    lines = case["text"].splitlines()
+    second_block = lines.index("Full Body A", lines.index("Full Body A") + 1) + 1
+    rows = []
+    for line_number, line in enumerate(lines, 1):
+        if not re.search(r"\d+\s*[x×]\s*\d+", line):
+            continue
+        row = _text_reply(line=line_number, exercise="rewritten", original_text=line)["rows"][0]
+        row["day_name"] = "Full Body A"
+        row["week"] = "Week 1" if line_number < second_block else "Week 2"
+        rows.append(row)
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [{"day": 1, "name": "Full Body A"}], "weeks": ["Week 1", "Week 2"],
+        "confidence": 0.98, "confirm_layout": False,
+    }})
+
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": case["text"]})
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["detected_weeks"] == ["Week 1", "Week 2"]
+    assert [row["week"] for row in result["rows"]].count("Week 1") == 8
+    assert [row["week"] for row in result["rows"]].count("Week 2") == 8
+    assert result["confirm_layout"] is False
+
+    # Same six day labels in both halves do not establish a repeated week when
+    # each repeated day has a different exercise.
+    split_text = "\n".join(
+        f"{day}\n{exercise} 3x8"
+        for day, exercise in zip(
+            ["Push", "Pull", "Legs", "Push", "Pull", "Legs"],
+            ["Bench", "Row", "Squat", "Fly", "Curl", "Lunge"],
+        )
+    )
+    split_rows = []
+    for line_number, line in enumerate(split_text.splitlines(), 1):
+        if "3x8" in line:
+            day_name = split_text.splitlines()[line_number - 2]
+            split_rows.append(_text_reply(line=line_number, day_name=day_name, exercise="rewritten", original_text=line)["rows"][0])
+    scripted_chat_model.script({"rows": split_rows, "layout": {
+        "days": [{"day": None, "name": name} for name in ("Push", "Pull", "Legs")], "weeks": [],
+        "confidence": 0.98, "confirm_layout": False,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": split_text})
+    assert response.status_code == 200, response.text
+    assert response.json()["detected_weeks"] == []
+    assert [row["day"] for row in response.json()["rows"]] == [1, 2, 3, 4, 5, 6]
+    assert "program_import.invalid_day.v1" in [
+        error["code"] for error in response.json()["rows"][-1]["errors"]
+    ]
+
+
+def test_text_repeated_blocks_override_conflicting_model_weeks_and_keep_rows(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-repeat-weeks-conflict")
+    _enable_text_import_for_route(monkeypatch)
+    case = json.loads((Path(__file__).parent / "eval/datasets/program_import_text/07_repeated_blocks.json").read_text())
+    rows = []
+    for line_number, line in enumerate(case["text"].splitlines(), 1):
+        if re.search(r"\d+\s*[x×]\s*\d+", line):
+            rows.append(_text_reply(line=line_number, exercise="rewritten", day=1, day_name="Full Body A",
+                                    week="Week 2", original_text=line)["rows"][0])
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [{"day": 1, "name": "Full Body A"}], "weeks": ["Week 2"],
+        "confidence": 0.98, "confirm_layout": False,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": case["text"]})
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert len(result["rows"]) == 16
+    assert result["detected_weeks"] == ["Week 1", "Week 2"]
+    assert [row["week"] for row in result["rows"]].count("Week 1") == 8
+    assert [row["week"] for row in result["rows"]].count("Week 2") == 8
+    assert result["confirm_layout"] is False
+
+
+def test_text_live_eval_6_repeated_progression_reply_confirms_false(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-live6-repeat-progression")
+    _enable_text_import_for_route(monkeypatch)
+    case = json.loads((Path(__file__).parent / "eval/datasets/program_import_text/07_repeated_blocks.json").read_text())
+    replay = json.loads((Path(__file__).parent / "fixtures/program_import_text_live_eval_6_07.json").read_text())
+    rows = []
+    for recorded in replay["rows"]:
+        row = _text_reply(
+            line=recorded["source_row"], week=recorded["week"], day=recorded["day"],
+            day_name=recorded["day_name"], exercise=recorded["input_exercise_name"],
+            sets=recorded["sets"], notes=recorded["notes"], original_text=recorded["original_text"],
+        )["rows"][0]
+        row.update(
+            order=recorded["order"], reps_min=recorded["reps_min"], reps_max=recorded["reps_max"],
+            rir=recorded["target_rir"], rest_seconds=recorded["rest_seconds"], tempo=recorded["tempo"],
+        )
+        rows.append(row)
+    scripted_chat_model.script({"rows": rows, "layout": replay["layout"]})
+
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": case["text"]})
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert len(result["rows"]) == 16
+    assert [(row["week"], row["day"], row["day_name"]) for row in result["rows"]] == [
+        ("Week 1", 1, "Full Body A") for _ in range(8)
+    ] + [("Week 2", 1, "Full Body A") for _ in range(8)]
+    assert result["confirm_layout"] is False
+
+    scripted_chat_model.script({"rows": rows, "layout": {
+        **replay["layout"], "confidence": 0.5, "confirm_layout": True,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": case["text"]})
+    assert response.status_code == 200, response.text
+    assert response.json()["confirm_layout"] is False
+
+
+def test_text_raw_live_07_repeated_same_name_progression_replies_confirm_false(
+    api, monkeypatch, scripted_chat_model
+):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-raw-live07-replays")
+    _enable_text_import_for_route(monkeypatch)
+    case = json.loads((Path(__file__).parent / "eval/datasets/program_import_text/07_repeated_blocks.json").read_text())
+    replies = json.loads((Path(__file__).parent / "fixtures/program_import_text_raw_live_07.json").read_text())
+
+    for reply in replies:
+        scripted_chat_model.script(reply)
+        response = client.post(
+            f"/coach/assignments/{assignment_id}/program-import",
+            headers=coach_headers,
+            data={"text": case["text"]},
+        )
+        assert response.status_code == 200, response.text
+        result = response.json()
+        assert len(result["rows"]) == 16
+        assert [(row["week"], row["day"], row["day_name"]) for row in result["rows"]] == [
+            ("Week 1", 1, "Full Body A") for _ in range(8)
+        ] + [("Week 2", 1, "Full Body A") for _ in range(8)]
+        assert result["confirm_layout"] is False
+
+
+def test_text_progression_with_distinct_repeated_day_names_still_confirms(
+    api, monkeypatch, scripted_chat_model
+):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-distinct-repeat-day-name")
+    _enable_text_import_for_route(monkeypatch)
+    text = "Full Body A\nBench 3x8\nRow 3x8\nFull Body A\nBench 4x6\nRow 4x6"
+    rows = [
+        _text_reply(line=2, day=1, day_name="Full Body A", exercise="Bench", original_text="Bench 3x8")["rows"][0],
+        _text_reply(line=3, day=1, day_name="Full Body A", exercise="Row", original_text="Row 3x8")["rows"][0],
+        _text_reply(line=5, day=2, day_name="Full Body B", exercise="Bench", original_text="Bench 4x6")["rows"][0],
+        _text_reply(line=6, day=2, day_name="Full Body B", exercise="Row", original_text="Row 4x6")["rows"][0],
+    ]
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [{"day": 1, "name": "Full Body A"}, {"day": 2, "name": "Full Body B"}],
+        "weeks": ["Week 1"], "confidence": 1.0, "confirm_layout": False,
+    }})
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        data={"text": text},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["confirm_layout"] is True
+
+
+def test_text_partial_repeated_block_match_still_requests_confirmation(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-partial-repeat-weeks")
+    _enable_text_import_for_route(monkeypatch)
+    first = ["Bench", "Row", "Squat", "Fly", "Curl"]
+    second = ["Bench", "Row", "Squat", "Lunge", "Press"]
+    text = "\n".join(
+        ["Full Body A", *[f"{name} 3x8" for name in first], "Full Body A", *[f"{name} 4x8" for name in second]]
+    )
+    rows = []
+    for line_number, line in enumerate(text.splitlines(), 1):
+        if "x" in line:
+            rows.append(_text_reply(line=line_number, week="Week 2", day=1, day_name="Full Body A",
+                                    exercise="rewritten", original_text=line)["rows"][0])
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [{"day": 1, "name": "Full Body A"}], "weeks": ["Week 2"],
+        "confidence": 0.98, "confirm_layout": False,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": text})
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["detected_weeks"] == ["Week 1", "Week 2"]
+    assert result["confirm_layout"] is True
+
+
+def test_text_live_eval_5_headingless_alternatives_request_confirmation(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-live5-headingless-layout")
+    _enable_text_import_for_route(monkeypatch)
+    case = json.loads((Path(__file__).parent / "eval/datasets/program_import_text/10_ambiguous_layout.json").read_text())
+    replay = json.loads((Path(__file__).parent / "fixtures/program_import_text_live_eval_5_confirm.json").read_text())
+    rows = []
+    for recorded in replay["rows"]:
+        row = _text_reply(
+            line=recorded["source_row"], week=recorded["week"], day=recorded["day"],
+            day_name=recorded["day_name"], exercise=recorded["exercise"],
+            original_text=recorded["original_text"],
+        )["rows"][0]
+        row["order"] = recorded["order"]
+        rows.append(row)
+    scripted_chat_model.script({"rows": rows, "layout": replay["layout"]})
+
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": case["text"]})
+    assert response.status_code == 200, response.text
+    assert len(response.json()["rows"]) == 15
+    assert {row["day"] for row in response.json()["rows"]} == {1}
+    assert response.json()["confirm_layout"] is True
+
+    for text, expected_confirmation in (
+        ("Bench 3x8\n--- maybe alternate split ---\nRow 3x8", True),
+        ("Bench 3x8\nRow 3x8", False),
+    ):
+        rows = [
+            _text_reply(line=line_number, day=1, day_name="Day 1", exercise="rewritten",
+                        original_text=line)["rows"][0]
+            for line_number, line in enumerate(text.splitlines(), 1)
+            if "3x8" in line
+        ]
+        scripted_chat_model.script({"rows": rows, "layout": {
+            "days": [{"day": 1, "name": "Day 1"}], "weeks": [],
+            "confidence": 0.98, "confirm_layout": False,
+        }})
+        response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                               data={"text": text})
+        assert response.status_code == 200, response.text
+        assert response.json()["confirm_layout"] is expected_confirmation
+
+
+def test_text_identical_ppl_conflict_keeps_one_consistent_model_reading(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-identical-ppl-weeks")
+    _enable_text_import_for_route(monkeypatch)
+    split_text = "\n".join(
+        f"{day}\n{exercise} 3x8"
+        for day, exercise in zip(
+            ["Push", "Pull", "Legs", "Push", "Pull", "Legs"],
+            ["Bench", "Row", "Squat", "Bench", "Row", "Squat"],
+        )
+    )
+    lines = split_text.splitlines()
+    rows = []
+    for line_number, line in enumerate(lines, 1):
+        if "3x8" in line:
+            rows.append(_text_reply(line=line_number, day=line_number // 2, day_name=lines[line_number - 2],
+                                    exercise="rewritten", original_text=line)["rows"][0])
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [{"day": day, "name": name} for day, name in enumerate(("Push", "Pull", "Legs", "Push", "Pull", "Legs"), 1)],
+        "weeks": [], "confidence": 0.98, "confirm_layout": False,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": split_text})
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["detected_weeks"] == []
+    assert [row["day"] for row in result["rows"]] == [1, 2, 3, 4, 5, 6]
+    assert [row["week"] for row in result["rows"]] == [None] * 6
+    assert [item["day"] for item in result["layout_days"]] == [1, 2, 3, 4, 5, 6]
+    assert "program_import.invalid_day.v1" in [
+        error["code"] for error in result["rows"][-1]["errors"]
+    ]
+    assert result["confirm_layout"] is True
+
+
+def test_text_sixth_day_is_preview_error_and_only_five_days_enter_draft(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-sixth-day-domain-cap")
+    _enable_text_import_for_route(monkeypatch)
+    names = ["Push", "Pull", "Legs", "Upper", "Lower", "Arms"]
+    text_lines = []
+    rows = []
+    for day, name in enumerate(names, 1):
+        text_lines.extend([name, f"Squat 3x8 day{day}"])
+        rows.append(_text_reply(line=2 * day, week="Week 1", day=day, day_name=name, exercise="Squat",
+                                original_text=f"Squat 3x8 day{day}")["rows"][0])
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [{"day": day, "name": name, "week": "Week 1"} for day, name in enumerate(names, 1)],
+        "weeks": ["Week 1"], "confidence": 0.98, "confirm_layout": False,
+    }})
+    preview = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                          data={"text": "\n".join(text_lines)})
+    assert preview.status_code == 200, preview.text
+    body = preview.json()
+    sixth = body["rows"][5]
+    assert sixth["valid"] is False
+    assert "program_import.invalid_day.v1" in [error["code"] for error in sixth["errors"]]
+    created = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/import", headers=coach_headers,
+        json={"program_name": "five day cap", "rows": _confirmed_rows(body["rows"][:5])},
+    )
+    assert created.status_code == 200, created.text
+    assert [day["day_order"] for day in created.json()["draft"]["weeks"][0]["days"]] == [1, 2, 3, 4, 5]
+
+
+def test_text_long_holds_preview_and_confirm_with_representable_prescriptions(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    db.catalog_conn.execute(
+        "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) "
+        "VALUES ('plank', 'Plank', 'Core', 'Abs', 'bodyweight')"
+    )
+    db.catalog_conn.commit()
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-hold-confirm-roundtrip")
+    _enable_text_import_for_route(monkeypatch)
+    lines = ["Plank 3x30 sec hold", "Plank 3x45s hold", "Plank 3x60s hold"]
+    rows = [_text_reply(line=index, exercise="Plank", original_text=line)["rows"][0]
+            for index, line in enumerate(lines, 1)]
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [{"day": 1, "name": "Core"}], "weeks": [],
+        "confidence": 0.98, "confirm_layout": False,
+    }})
+    preview = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                          data={"text": "\n".join(lines)})
+    assert preview.status_code == 200, preview.text
+    body = preview.json()
+    assert [(row["reps_min"], row["reps_max"]) for row in body["rows"]] == [
+        (30, 30), (8, 12), (8, 12),
+    ]
+    for row, duration in zip(body["rows"][1:], (45, 60), strict=True):
+        assert row["valid"] is True
+        assert "program_import.reps_approximated.v1" in [warning["code"] for warning in row["warnings"]]
+        assert f"reps: {duration} sec hold" in row["notes"]
+    created = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/import", headers=coach_headers,
+        json={"program_name": "hold round trip", "rows": _confirmed_rows(body["rows"])},
+    )
+    assert created.status_code == 200, created.text
+    exercises = created.json()["draft"]["days"][0]["exercises"]
+    assert [(exercise["target_reps_min"], exercise["target_reps_max"]) for exercise in exercises] == [
+        (30, 30), (8, 12), (8, 12),
+    ]
+    assert "45 sec hold" in exercises[1]["notes"]
+    assert "60 sec hold" in exercises[2]["notes"]
+
+
+def test_text_repeated_identical_prescriptions_remain_ambiguous(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-identical-repeat-ambiguous")
+    _enable_text_import_for_route(monkeypatch)
+    text = "Full Body A\nBench 3x8\nRow 3x8\nFull Body A\nBench 3x8\nRow 3x8"
+    rows = [
+        _text_reply(line=2, week="Week 1", day=1, day_name="Full Body A", exercise="Bench",
+                    original_text="Bench 3x8")["rows"][0],
+        _text_reply(line=3, week="Week 1", day=1, day_name="Full Body A", exercise="Row",
+                    original_text="Row 3x8")["rows"][0],
+        _text_reply(line=5, week="Week 2", day=1, day_name="Full Body A", exercise="Bench",
+                    original_text="Bench 3x8")["rows"][0],
+        _text_reply(line=6, week="Week 2", day=1, day_name="Full Body A", exercise="Row",
+                    original_text="Row 3x8")["rows"][0],
+    ]
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [{"day": 1, "name": "Full Body A"}], "weeks": ["Week 1", "Week 2"],
+        "confidence": 0.98, "confirm_layout": False,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": text})
+    assert response.status_code == 200, response.text
+    assert [row["week"] for row in response.json()["rows"]] == ["Week 1", "Week 1", "Week 2", "Week 2"]
+    assert response.json()["confirm_layout"] is True
+
+
+def test_text_source_hold_and_per_set_reps_override_model_values(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-prescription-override")
+    _enable_text_import_for_route(monkeypatch)
+    lines = ["side plank 3x30s", "plank 3 x 30-45 sec", "bench 3x6/5/4", "Hold the bar at the top, 3x8"]
+    rows = []
+    for index, line in enumerate(lines, 1):
+        row = _text_reply(line=index, exercise="rewritten", original_text=line)["rows"][0]
+        row.update(reps_min=8, reps_max=12)
+        rows.append(row)
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [{"day": 1, "name": "Push"}], "weeks": [], "confidence": 0.98, "confirm_layout": False,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": "\n".join(lines)})
+    assert response.status_code == 200, response.text
+    imported = response.json()["rows"]
+    assert [(row["source_row"], row["reps_min"], row["reps_max"]) for row in imported] == [
+        (1, 30, 30), (2, 8, 12), (3, 4, 6), (4, 8, 8),
+    ]
+    assert "program_import.reps_approximated.v1" in [warning["code"] for warning in imported[1]["warnings"]]
+    assert "reps: 30-45 sec hold" in imported[1]["notes"]
+    assert "program_import.effort_approximated.v1" not in [warning["code"] for warning in imported[3]["warnings"]]
+
+
+def test_text_names_headings_multiline_source_and_layout_confirmation(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-extraction-and-layout")
+    _enable_text_import_for_route(monkeypatch)
+    examples = [
+        ("1. Squat 4x5", "Squat"), ("Squat: 4x5", "Squat"), ("Push-up - 3x15", "Push-up"),
+        ("A1. Bench 3x8", "Bench"), ("Bench press 3 sets of 8-10", "Bench press"),
+        ("Pull-ups 3xAMRAP", "Pull-ups"), ("Bench 5/5/3 reps", "Bench"),
+        ("3x5 squat", "squat"), ("Leg press x 12, 10, 8", "Leg press"),
+    ]
+    rows = []
+    source_lines = []
+    for index, (line, _expected) in enumerate(examples, 1):
+        source_lines.append(line)
+        row = _text_reply(line=index, exercise="rewritten model name", original_text=line)["rows"][0]
+        rows.append(row)
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [{"day": 1, "name": "Push"}], "weeks": [], "confidence": 0.98, "confirm_layout": False,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": "\n".join(source_lines)})
+    assert response.status_code == 200, response.text
+    assert [row["input_exercise_name"] for row in response.json()["rows"]] == [name for _, name in examples]
+
+    heading_text = "### Push\n**Push day**\nPush (Week 2)\nSquat 3x8"
+    heading_rows = []
+    for line_number, line in enumerate(heading_text.splitlines(), 1):
+        heading_rows.append(_text_reply(line=line_number, day_name="Push", exercise="Push" if line_number < 4 else "Squat",
+                                        original_text=line if line_number < 4 else "Squat 3x8")["rows"][0])
+    scripted_chat_model.script({"rows": heading_rows, "layout": {
+        "days": [{"day": 1, "name": "Push"}], "weeks": [], "confidence": 0.98, "confirm_layout": False,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": heading_text})
+    assert response.status_code == 200, response.text
+    assert [row["exercise_name"] for row in response.json()["rows"]] == ["Squat"]
+
+    multiline = "Squat 3x8\nKeep the brace tight"
+    row = _text_reply(line=1, exercise="Squat", original_text=multiline)["rows"][0]
+    scripted_chat_model.script({"rows": [row], "layout": {
+        "days": [{"day": 1, "name": "Push"}], "weeks": [], "confidence": 0.98, "confirm_layout": False,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": multiline})
+    assert response.status_code == 200, response.text
+    assert response.json()["rows"][0]["source_row"] == 1
+
+    arabic = "اليوم الأول – Full Body A\nSquat 3x8\nاليوم التاني – رجل\nSquat 3x8"
+    arabic_rows = [
+        _text_reply(line=2, day=None, day_name="Full Body A", original_text="Squat 3x8")["rows"][0],
+        _text_reply(line=4, day=None, day_name="اليوم التاني – رجل", original_text="Squat 3x8")["rows"][0],
+    ]
+    scripted_chat_model.script({"rows": arabic_rows, "layout": {
+        "days": [{"day": None, "name": "اليوم الأول – Full Body A"}, {"day": None, "name": "اليوم التاني – رجل"}],
+        "weeks": [], "confidence": 0.98, "confirm_layout": False,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": arabic})
+    assert response.status_code == 200, response.text
+    assert [row["day_name"] for row in response.json()["rows"]] == ["Full Body A", "رجل"]
+
+    by_week = "Week 1\nPush\nBench 3x8\nPull\nRow 3x8\nWeek 2\nLegs\nSquat 3x8"
+    week_rows = [
+        _text_reply(line=3, week="Week 1", day_name="Push", exercise="Bench", original_text="Bench 3x8")["rows"][0],
+        _text_reply(line=5, week="Week 1", day_name="Pull", exercise="Row", original_text="Row 3x8")["rows"][0],
+        _text_reply(line=8, week="Week 2", day_name="Legs", exercise="Squat", original_text="Squat 3x8")["rows"][0],
+    ]
+    scripted_chat_model.script({"rows": week_rows, "layout": {
+        "days": [{"day": 99, "name": "Legs", "week": "Week 2"}],
+        "weeks": ["Week 1", "Week 2"], "confidence": 0.98, "confirm_layout": False,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": by_week})
+    assert response.status_code == 200, response.text
+    assert response.json()["layout_days"] == [{"day": 1, "name": "Legs"}]
+
+
+def test_text_week_inference_requires_standalone_week_titles_and_confirms_exclusion(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-week-evidence")
+    _enable_text_import_for_route(monkeypatch)
+
+    six_day_lines = [
+        "Push", "Bench 4x8", "Pull", "Row 4x8", "Legs", "Squat 4x6",
+        "Push", "Incline press 4x10", "Pull", "Deadlift 3x5", "Legs", "Lunge 3x10",
+    ]
+    rows = []
+    for line_number, line in enumerate(six_day_lines, 1):
+        if re.search(r"\d+\s*[x×]\s*\d+", line):
+            day_name = six_day_lines[line_number - 2]
+            rows.append(_text_reply(line=line_number, week="Week 1", day=len(rows) + 1, day_name=day_name,
+                                    exercise="rewritten", original_text=line)["rows"][0])
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [
+            {"day": index, "name": name}
+            for index, name in enumerate(("Push", "Pull", "Legs", "Push", "Pull", "Legs"), start=1)
+        ],
+        "weeks": ["Week 1"], "confidence": 0.98, "confirm_layout": False,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": "\n".join(six_day_lines)})
+    assert response.status_code == 200, response.text
+    assert response.json()["detected_weeks"] == []
+    assert response.json()["weeks_not_imported"] == []
+    assert [(row["day"], row["day_name"]) for row in response.json()["rows"]] == [
+        (index, name) for index, name in enumerate(("Push", "Pull", "Legs", "Push", "Pull", "Legs"), start=1)
+    ], [(row["source_row"], row["day"], row["day_name"]) for row in response.json()["rows"]]
+    assert response.json()["layout_days"] == [
+        {"day": index, "name": name}
+        for index, name in enumerate(("Push", "Pull", "Legs", "Push", "Pull", "Legs"), start=1)
+    ]
+    assert response.json()["confirm_layout"] is False
+
+    text = "Push\nBench 3x8\nPull\nRow 3x8"
+    rows = [
+        _text_reply(line=2, week="Week 2", day_name="Push", exercise="Bench", original_text="Bench 3x8")["rows"][0],
+        _text_reply(line=4, week="Week 2", day_name="Pull", exercise="Row", original_text="Row 3x8")["rows"][0],
+    ]
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [{"day": 1, "name": "Push"}, {"day": 2, "name": "Pull"}],
+        "weeks": ["Week 2"], "confidence": 0.98, "confirm_layout": False,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": text})
+    assert response.status_code == 200, response.text
+    assert response.json()["detected_weeks"] == ["Week 2"]
+    assert [row["week"] for row in response.json()["rows"]] == ["Week 2", "Week 2"]
+
+    text = "Dips 3x12 superset with pushdowns, repeat\nBench 3x8"
+    rows = [
+        _text_reply(line=1, week="Week 1", day_name="Push", exercise="Dips", original_text="Dips 3x12 superset with pushdowns, repeat")["rows"][0],
+        _text_reply(line=2, week="Week 1", day_name="Push", exercise="Bench", original_text="Bench 3x8")["rows"][0],
+    ]
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [{"day": 1, "name": "Push"}], "weeks": ["Week 1"],
+        "confidence": 0.98, "confirm_layout": False,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": text})
+    assert response.status_code == 200, response.text
+    assert response.json()["detected_weeks"] == []
+    assert response.json()["weeks_not_imported"] == []
+
+    text = "Week 1\nPush\nBench 3x8\nWeek 2\nPull\nRow 3x8"
+    rows = [
+        _text_reply(line=3, week=None, day_name="Push", exercise="Bench", original_text="Bench 3x8")["rows"][0],
+        _text_reply(line=6, week=None, day_name="Pull", exercise="Row", original_text="Row 3x8")["rows"][0],
+    ]
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [{"day": None, "name": "Push"}, {"day": None, "name": "Pull"}],
+        "weeks": [], "confidence": 0.98, "confirm_layout": False,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": text})
+    assert response.status_code == 200, response.text
+    assert response.json()["detected_weeks"] == ["Week 1", "Week 2"]
+    assert response.json()["weeks_not_imported"] == ["Week 2"]
+    assert response.json()["confirm_layout"] is True
+
+    text = "الأسبوع الأول\nPush\nBench 3x8\nالأسبوع التاني\nPull\nRow 3x8"
+    rows = [
+        _text_reply(line=3, week=None, day_name="Push", exercise="Bench", original_text="Bench 3x8")["rows"][0],
+        _text_reply(line=6, week=None, day_name="Pull", exercise="Row", original_text="Row 3x8")["rows"][0],
+    ]
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [{"day": None, "name": "Push"}, {"day": None, "name": "Pull"}],
+        "weeks": [], "confidence": 0.98, "confirm_layout": False,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": text})
+    assert response.status_code == 200, response.text
+    assert response.json()["detected_weeks"] == ["Week 1", "Week 2"]
+    assert response.json()["confirm_layout"] is True
+
+
+def test_text_rep_list_is_anchored_and_exact_effort_is_not_approximate(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-list-bounds")
+    _enable_text_import_for_route(monkeypatch)
+    cases = [
+        ("Bench 3x12/10/8", 8, 12, 90),
+        ("Bench 3 x 12/10/8", 8, 12, 90),
+        ("12/10/8 reps", 8, 12, 90),
+        ("Bench 3x5, 90s rest", 5, 5, 90),
+        ("OHP 3x8, 2 min rest", 8, 8, 120),
+        ("Bench 1x5, 3x5", 8, 10, 90),
+        ("Bench 3x5 RPE 8", 5, 5, 90),
+    ]
+    rows = []
+    for line_number, (line, _low, _high, rest) in enumerate(cases, 1):
+        row = _text_reply(line=line_number, exercise="rewritten", original_text=line)["rows"][0]
+        row["rest_seconds"] = rest
+        rows.append(row)
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [{"day": 1, "name": "Push"}], "weeks": [], "confidence": 0.98, "confirm_layout": False,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": "\n".join(case[0] for case in cases)})
+    assert response.status_code == 200, response.text
+    imported = response.json()["rows"]
+    assert [(row["reps_min"], row["reps_max"], row["rest_seconds"]) for row in imported] == [
+        (low, high, rest) for _, low, high, rest in cases
+    ]
+    assert "program_import.effort_approximated.v1" not in [warning["code"] for warning in imported[-1]["warnings"]]
+
+
+def test_text_loads_reuse_load_and_unsupported_markers(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-load-markers")
+    _enable_text_import_for_route(monkeypatch)
+    lines = ["Dips 3x8 +10kg", "Squat 3x5 at 70% 1RM", "Pull-up 3x8 bodyweight + 10kg"]
+    rows = [_text_reply(line=i, exercise="rewritten", original_text=line)["rows"][0]
+            for i, line in enumerate(lines, 1)]
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [{"day": 1, "name": "Pull"}], "weeks": [], "confidence": 0.98, "confirm_layout": False,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": "\n".join(lines)})
+    assert response.status_code == 200, response.text
+    expected_loads = ["+10kg", "70% 1RM", "bodyweight + 10kg"]
+    for row, expected_load in zip(response.json()["rows"], expected_loads, strict=True):
+        codes = [warning["code"] for warning in row["warnings"]]
+        assert "program_import.unsupported_preserved_as_note.v1" in codes
+        assert "program_import.load_preserved_as_note.v1" in codes
+        assert row["notes"] == expected_load
+        load_marker = next(
+            warning for warning in row["warnings"]
+            if warning["code"] == "program_import.load_preserved_as_note.v1"
+        )
+        assert load_marker["message"] == expected_load
+
+
+def test_text_hold_requires_hold_evidence_and_numbered_names_are_clean(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-hold-guard")
+    _enable_text_import_for_route(monkeypatch)
+    lines = ["1) Squat 4x5", "Bike 3x10 min"]
+    rows = []
+    for index, line in enumerate(lines, 1):
+        row = _text_reply(line=index, exercise="rewritten", original_text=line)["rows"][0]
+        row.update(reps_min=8, reps_max=12)
+        rows.append(row)
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [{"day": 1, "name": "Push"}], "weeks": [], "confidence": 0.98, "confirm_layout": False,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": "\n".join(lines)})
+    assert response.status_code == 200, response.text
+    assert [row["input_exercise_name"] for row in response.json()["rows"]] == ["Squat", "Bike"]
+    assert [(row["reps_min"], row["reps_max"]) for row in response.json()["rows"]] == [(5, 5), (8, 12)]
+    assert "program_import.unsupported_preserved_as_note.v1" in [
+        warning["code"] for warning in response.json()["rows"][1]["warnings"]
+    ]
+    assert "program_import.effort_approximated.v1" not in [
+        warning["code"] for warning in response.json()["rows"][1]["warnings"]
+    ]
+
+
+def test_text_ambiguous_day_labels_keep_model_layout_hint(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-ambiguous-day-labels")
+    _enable_text_import_for_route(monkeypatch)
+    text = "Day 1\nSquat 3x8\nDay 2\nBench 3x8"
+    rows = [
+        _text_reply(line=2, day=1, day_name="Day 1", exercise="Squat", original_text="Squat 3x8")["rows"][0],
+        _text_reply(line=4, day=2, day_name="Day 2", exercise="Bench", original_text="Bench 3x8")["rows"][0],
+    ]
+    scripted_chat_model.script({"rows": rows, "layout": {
+        "days": [{"day": 1, "name": "Day 1"}, {"day": 2, "name": "Day 2"}],
+        "weeks": [], "confidence": 0.8, "confirm_layout": True,
+    }})
+    response = client.post(f"/coach/assignments/{assignment_id}/program-import", headers=coach_headers,
+                           data={"text": text})
+    assert response.status_code == 200, response.text
+    assert response.json()["confirm_layout"] is True
 
 
 def test_text_unplaced_prescription_line_requires_layout_confirmation(api, monkeypatch, scripted_chat_model):

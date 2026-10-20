@@ -18,6 +18,7 @@ from core.injuries import (
 )
 from database.shared import _normalize_exercise_name
 from service import profile_change_alerts
+from service.text_normalization import normalize_digits
 
 MAX_INJURY_DESCRIPTION_LENGTH = 2000
 LEGACY_INJURY_SOURCE_EVENT_KEY = "migration:v28:legacy-profile"
@@ -285,9 +286,7 @@ def pending_exercise_followup(ledger: Any) -> dict[str, Any] | None:
 
 
 def choose_clearance_candidate(candidates: list[dict[str, Any]], reply: str) -> dict[str, Any] | None:
-    normalized_reply = reply.translate(
-        str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
-    )
+    normalized_reply = normalize_digits(reply)
     number = re.fullmatch(
         r"(?:(?:the\s+)?(?:number\s*)?(\d{1,2})(?:st|nd|rd|th)?|"
         r"(?:اختيار|الاختيار|رقم)\s*(\d{1,2}))[.!?؟]*",
