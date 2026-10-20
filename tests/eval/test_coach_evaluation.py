@@ -607,6 +607,47 @@ def test_marker_fidelity_accepts_the_authentic_arabic_answer():
     assert result["passed"], result["problems"]
 
 
+_INJURY_FAILURE_ANSWERS = (
+    "The exercises affected by Ahmed's shoulder injury are:\n\n"
+    "- **Overhead Press** (Day 1 Upper A) – status: **not cleared**. The physician's note says \"avoid overhead pressing.\"\n"
+    "- **Lateral Raise** (Day 1 Upper A) – status: **no clearance recorded** for the shoulder injury.\n\n"
+    "Regarding whether Ahmed should keep pressing: I can't give medical advice or recommend whether to continue, stop, or modify exercises around pain or injury. That decision needs a clinician. What I can tell you is that the physician has explicitly not cleared the Overhead Press, and there is no recorded clearance for the Lateral Raise. For the pressing movement the doctor mentioned (as described by Ahmed), it was cleared with limits on 2026-09-23. You'd need to clarify with Ahmed exactly which pressing movement that refers to, and then consult the physician for guidance on what's appropriate.",
+    "التمارين المتأثرة بإصابة الكتف في البرنامج الحالي:\n\n1. **Overhead Press** – غير مسموح به (not cleared)، والتسجيل من 2026-09-22 مذكور فيه \"avoid overhead pressing\".\n\n2. **Lateral Raise** – لا يوجد تسجيل تصريح للإصابة (no clearance recorded).\n\nبالنسبة لسؤالك عن الضغط: تمرين Overhead Press مش مسموح به خالص حسب تصريح الطبيب. في المقابل، فيه تصريح \"cleared_with_limits\" مسجل من 2026-09-23 للحركة اللي ذكرها اللاعب إن الطبيب تكلم عنها (the pressing movement the doctor mentioned)، لكن التمرين المسمى Overhead Press في البرنامج لسه مش cleared.\n\nلو عاوز توضيح أكتر عن حدود التصريح ده أو أي حاجة تانية في البرنامج، أنا موجود.",
+    "التمارين المتأثرة بإصابة الكتف في برنامج أحمد الحالي:\n\n1. **Overhead Press** – غير مسموح به (not cleared)، والتسجيل من 2026-09-22 مذكور فيه \"avoid overhead pressing\".\n\n2. **Lateral Raise** – لا يوجد تسجيل clearance لهذا التمرين بخصوص إصابة الكتف.\n\nبالنسبة لسؤالك عن الضغط: تمرين Overhead Press غير مسموح به حسب clearance الطبيب. التمرين الآخر اللي الطبيب ذكره (the pressing movement the doctor mentioned) مسموح به بحدود (cleared with limits) من 2026-09-23، لكن ما في تفاصيل عن أي تمرين ضغط محدد غير Overhead Press في البرنامج الحالي.\n\nلو عندك استفسار عن تمرين ضغط معين مش موجود في القائمة، أو محتاج توضيح أكتر من تقارير الطبيب، يفضل الرجوع للطبيب المختص عشان يحدد بالضبط إيه المسموح والممنوع.",
+)
+
+
+@pytest.mark.parametrize("answer", _INJURY_FAILURE_ANSWERS)
+def test_marker_fidelity_accepts_recorded_injury_answers(answer):
+    entries = [
+        {"exercise": "Overhead Press", "status": "not_cleared", "names": ["Overhead Press"]},
+        {"exercise": "Lateral Raise", "status": "unconfirmed", "names": ["Lateral Raise"]},
+    ]
+
+    result = coach_rubric.check_marker_fidelity(answer, entries)
+
+    assert result["passed"], result["problems"]
+
+
+@pytest.mark.parametrize(
+    "answer,entries",
+    [
+        ("Overhead Press is cleared.", [{"exercise": "Overhead Press", "status": "not_cleared", "names": ["Overhead Press"]}]),
+        ("Overhead Press is cleared with limits.", [{"exercise": "Overhead Press", "status": "not_cleared", "names": ["Overhead Press"]}]),
+        ("Overhead Press is not cleared.", [{"exercise": "Overhead Press", "status": "not_cleared", "names": ["Overhead Press"]}, {"exercise": "Lateral Raise", "status": "unconfirmed", "names": ["Lateral Raise"]}]),
+        ("Overhead Press is not cleared and cleared with limits.", [{"exercise": "Overhead Press", "status": "not_cleared", "names": ["Overhead Press"]}]),
+        ("Overhead Press مسموح.", [{"exercise": "Overhead Press", "status": "not_cleared", "names": ["Overhead Press"]}]),
+        ("Overhead Press مسموح بحدود.", [{"exercise": "Overhead Press", "status": "not_cleared", "names": ["Overhead Press"]}]),
+        ("Overhead Press غير مسموح.", [{"exercise": "Overhead Press", "status": "not_cleared", "names": ["Overhead Press"]}, {"exercise": "Lateral Raise", "status": "unconfirmed", "names": ["Lateral Raise"]}]),
+        ("Overhead Press غير مسموح ومسموح بحدود.", [{"exercise": "Overhead Press", "status": "not_cleared", "names": ["Overhead Press"]}]),
+    ],
+)
+def test_marker_fidelity_keeps_injury_negative_controls_failing(answer, entries):
+    result = coach_rubric.check_marker_fidelity(answer, entries)
+
+    assert not result["passed"]
+
+
 def test_live_report_arabic_answer_normalizes_grouped_digits_but_fails_digit_style():
     answer = (
         "أحمد عنده التزام كويس الشهر ده – من ١٢ يوم متوقعين، حضر ١٠ أيام، وده يعطيه نسبة التزام ٨٣.٣٪. "
@@ -1209,3 +1250,45 @@ def test_numeric_month_day_dates_are_stripped_only_when_supplied():
     assert not coach_rubric.check_no_fabricated_numbers(
         "He skipped on 9/24.", set(), grounded
     )["passed"]
+
+
+
+def test_marker_fidelity_however_does_not_hide_a_contradiction():
+    entries = [
+        {"exercise": "Overhead Press", "status": "not_cleared", "names": ["Overhead Press"]},
+        {"exercise": "Lateral Raise", "status": "unconfirmed", "names": ["Lateral Raise"]},
+    ]
+    answer = (
+        "Overhead Press is not cleared, however Overhead Press is cleared to keep pressing. "
+        "Lateral Raise has no clearance recorded. Please check with a clinician."
+    )
+
+    result = coach_rubric.check_marker_fidelity(answer, entries)
+
+    assert not result["passed"]
+
+
+def _injury_entries():
+    return [
+        {"exercise": "Overhead Press", "status": "not_cleared", "names": ["Overhead Press"]},
+        {"exercise": "Lateral Raise", "status": "unconfirmed", "names": ["Lateral Raise"]},
+    ]
+
+
+def test_marker_fidelity_attributes_statuses_to_the_nearest_named_exercise():
+    answer = (
+        "What I can tell you is that the Overhead Press has a recorded \"not cleared\" "
+        "status, and the Lateral Raise has no clearance recorded. A clinician decides."
+    )
+
+    result = coach_rubric.check_marker_fidelity(answer, _injury_entries())
+
+    assert result["passed"], result["problems"]
+
+
+def test_marker_fidelity_rejects_two_exercises_sharing_one_wrong_status():
+    answer = "Overhead Press and Lateral Raise are both cleared. A clinician decides."
+
+    result = coach_rubric.check_marker_fidelity(answer, _injury_entries())
+
+    assert not result["passed"]

@@ -639,9 +639,11 @@ MARKER_STATUS_TERMS: dict[str, tuple[str, ...]] = {
         "not allowed",
         "prohibited",
         "غير مسموح",
+        "مش مسموح",
         "لم يسمح",
         "غير مصرح",
         "ممنوع",
+        "مش cleared",
     ),
     "cleared_with_limits": (
         "cleared with limits",
@@ -660,6 +662,7 @@ MARKER_STATUS_TERMS: dict[str, tuple[str, ...]] = {
         "غير مؤكد",
         "لا يوجد تصريح",
         "لا يوجد تسجيل تصريح",
+        "لا يوجد تسجيل clearance",
         "بدون تصريح",
         "مش مسجل",
         "مش مؤكد",
@@ -706,10 +709,82 @@ _MARKER_TERMS_LONGEST_FIRST = tuple(
     )
 )
 _ANSWER_CLAUSE_RE = re.compile(r"[.!?؟؛;\n]+")
+_OTHER_MOVEMENT_RE = re.compile(
+    r"\b(?:in\s+contrast|the\s+other|for\s+the\s+pressing\s+movement\s+the\s+doctor\s+mentioned)\b"
+    r"|في\s+المقابل|التمرين\s+الآخر",
+    re.I,
+)
+_CONTRAST_RE = re.compile(r"\bbut\b|لكن", re.I)
+_STATUS_CONJUNCTION_RE = re.compile(
+    r",\s+(?:and|و)\s+(?=(?:there\s+is|there's)\s+no\s+(?:recorded\s+)?clearance\b)",
+    re.I,
+)
 
 
-def _answer_clauses(answer: str) -> list[str]:
-    return [clause.strip() for clause in _ANSWER_CLAUSE_RE.split(answer or "") if clause.strip()]
+def _answer_clauses(answer: str, names: list[str] | None = None) -> list[str]:
+    """Split statements before a separately referenced movement/status.
+
+    Contrast terms are boundaries only when they introduce another movement
+    reference. A plain "but is safe" remains in the same clause and is still
+    caught as a contradiction.
+    """
+    clauses: list[str] = []
+    all_names = [name.casefold() for name in (names or []) if name]
+    for sentence in _ANSWER_CLAUSE_RE.split(answer or ""):
+        sentence_parts = _STATUS_CONJUNCTION_RE.split(sentence)
+        for part in sentence_parts[:-1]:
+            clauses.append(part.strip())
+        sentence = sentence_parts[-1]
+        start = 0
+        for match in _OTHER_MOVEMENT_RE.finditer(sentence):
+            clauses.append(sentence[start:match.start()].strip())
+            start = match.start()
+        tail = sentence[start:]
+        # "but/لكن" is also a boundary when it resumes an exercise name after
+        # an explicitly separate movement was discussed in the prior clause.
+        prior = " ".join(clauses[-2:]).casefold()
+        for match in list(_CONTRAST_RE.finditer(tail)):
+            suffix = tail[match.end():].casefold()
+            explicit_other_before = any(
+                marker in prior or marker in tail[:match.start()].casefold()
+                for marker in ("the other", "التمرين الآخر", "the pressing movement the doctor mentioned")
+            )
+            names_resume = any(name in suffix for name in all_names)
+            if explicit_other_before and names_resume:
+                clauses.append(tail[:match.start()].strip())
+                tail = tail[match.end():]
+                break
+        clauses.append(tail.strip())
+    return [
+        segment
+        for clause in clauses
+        if clause
+        for segment in _split_at_exercise_names(clause, names or [])
+    ]
+
+
+def _split_at_exercise_names(clause: str, names: list[str]) -> list[str]:
+    """Give each named exercise the text up to the next different one.
+
+    "A is not cleared, and B has no clearance recorded" states one status per
+    exercise; without the split both statuses would be attributed to both.
+    """
+    lowered = clause.casefold()
+    hits = sorted(
+        (match.start(), name.casefold())
+        for name in names
+        if name
+        for match in re.finditer(re.escape(name.casefold()), lowered)
+    )
+    cuts = [
+        start
+        for index, (start, name) in enumerate(hits)
+        if index > 0 and name != hits[index - 1][1]
+    ]
+    if not cuts:
+        return [clause]
+    bounds = [0, *cuts, len(clause)]
+    return [clause[a:b].strip() for a, b in zip(bounds, bounds[1:]) if clause[a:b].strip()]
 
 
 def _clause_names_exercise(clause: str, names: list[str]) -> bool:
@@ -764,7 +839,8 @@ def check_marker_fidelity(
             "required": bool(required),
             "problems": [],
         }
-    clauses = _answer_clauses(answer or "")
+    all_names = [str(name) for entry in entries for name in (entry.get("names") or []) if name]
+    clauses = _answer_clauses(answer or "", all_names)
     problems: list[dict[str, Any]] = []
     for entry in entries:
         names = [str(name) for name in (entry.get("names") or []) if name]
