@@ -61,17 +61,12 @@ class _CoachProgramViewState extends State<CoachProgramView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         _summaryHeader(context, copy),
-        if (widget.program.days.isNotEmpty && isDesktopLayout(context))
+        if (widget.program.days.isNotEmpty)
           ...<Widget>[
             const SizedBox(height: MayosSpacing.md),
             _dayTabs(context, selectedIndex),
             const SizedBox(height: MayosSpacing.sm),
             if (selectedDay != null) _selectedDay(context, copy, selectedDay),
-          ],
-        if (widget.program.days.isNotEmpty && !isDesktopLayout(context))
-          ...<Widget>[
-            const SizedBox(height: MayosSpacing.md),
-            _phoneProgramDays(context, copy),
           ],
       ],
     );
@@ -223,6 +218,7 @@ class _CoachProgramViewState extends State<CoachProgramView> {
   }
 
   Widget _dayTabs(BuildContext context, int selectedIndex) => SingleChildScrollView(
+        key: const Key('coach_program_day_tabs_scroll'),
         scrollDirection: Axis.horizontal,
         child: Row(
           children: <Widget>[
@@ -305,7 +301,10 @@ class _CoachProgramViewState extends State<CoachProgramView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        _desktopExerciseTable(context, copy, day, shownCount),
+        if (isDesktopLayout(context))
+          _desktopExerciseTable(context, copy, day, shownCount)
+        else
+          _phoneDayExercises(context, copy, day, shownCount),
         if (!_showAllExercises &&
             day.exercises.length > _collapsedExerciseCount &&
             day.exercises.length - shownCount > 0)
@@ -442,28 +441,25 @@ class _CoachProgramViewState extends State<CoachProgramView> {
             .copyWith(color: MayosTheme.of(context).textPrimary),
       );
 
-  Widget _phoneProgramDays(BuildContext context, CoachCopy copy) =>
+  Widget _phoneDayExercises(
+    BuildContext context,
+    CoachCopy copy,
+    ProgramDay day,
+    int shownCount,
+  ) =>
       MayosCardTable(
-        columns: <String>[
-          copy.programExerciseColumn,
-        ],
+        columns: <String>[copy.programExerciseColumn],
         sections: <MayosCardTableSection>[
-          for (final ProgramDay day in widget.program.days)
-            MayosCardTableSection(
-              heading: '${day.dayName} · '
-                  '${copy.programDaySummary(
-                day.exercises.length,
-                _workingSetCount(day.exercises),
-              )}',
-              rows: <MayosCardTableRow>[
-                for (final ProgramExercise exercise in day.exercises)
-                  _phoneExerciseCardRow(
-                    context,
-                    copy,
-                    exercise,
-                  ),
-              ],
-            ),
+          MayosCardTableSection(
+            rows: <MayosCardTableRow>[
+              for (int index = 0; index < shownCount; index++)
+                _phoneExerciseCardRow(
+                  context,
+                  copy,
+                  day.exercises[index],
+                ),
+            ],
+          ),
         ],
       );
 

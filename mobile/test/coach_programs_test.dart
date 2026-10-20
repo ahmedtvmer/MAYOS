@@ -2775,8 +2775,12 @@ void main() {
       TextDirection.rtl,
     );
     expect(
-      tester.getRect(find.textContaining('Full A').first).top,
-      lessThan(tester.getRect(find.textContaining('Lower B').first).top),
+      tester.getRect(find.byKey(const Key('coach_program_day_tab_0'))).center.dx,
+      greaterThan(
+        tester.getRect(find.byKey(const Key('coach_program_day_tab_1')))
+            .center
+            .dx,
+      ),
     );
     expect(
       tester.getRect(find.byIcon(Icons.fitness_center).first).center.dx,

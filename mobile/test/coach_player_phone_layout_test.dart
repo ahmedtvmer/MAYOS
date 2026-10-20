@@ -33,15 +33,17 @@ void main() {
                   'day_name': 'Full A',
                   'day_order': 1,
                   'exercises': <Map<String, dynamic>>[
-                    <String, dynamic>{
-                      'exercise_id': 'sq',
-                      'exercise_name': 'Squat',
-                      'target_sets': 4,
-                      'target_reps_min': 6,
-                      'target_reps_max': 8,
-                      'target_rpe': 8.0,
-                      'rest_seconds': 150,
-                    },
+                    for (int index = 1; index <= 9; index++)
+                      <String, dynamic>{
+                        'exercise_id': 'sq-$index',
+                        'exercise_name':
+                            index == 1 ? 'Squat' : 'Exercise $index',
+                        'target_sets': 4,
+                        'target_reps_min': 6,
+                        'target_reps_max': 8,
+                        'target_rpe': 8.0,
+                        'rest_seconds': 150,
+                      },
                   ],
                 },
                 <String, dynamic>{
@@ -68,6 +70,8 @@ void main() {
         of: find.byKey(const Key('coach_roster_list_screen')),
         matching: find.byType(Scrollable),
       ).first,
+      allowedInnerStrips: (_) =>
+          find.byKey(const Key('coach_program_day_tabs_scroll')),
       assertions: (WidgetTester tester, String language) async {
         final bool arabic = language == 'ar';
         final String program = arabic ? 'البرنامج التدريبي' : 'Program';
@@ -137,10 +141,30 @@ void main() {
         await tester.ensureVisible(programSegment);
         await tester.tap(programSegment);
         await tester.pumpAndSettle();
-        expect(find.textContaining('Full A'), findsOneWidget);
-        expect(find.textContaining('Full B'), findsWidgets);
+        expect(find.text('Full A'), findsWidgets);
+        expect(find.text('Full B'), findsOneWidget);
         expect(find.text('Squat'), findsOneWidget);
+        expect(find.text('Exercise 8'), findsOneWidget);
+        expect(find.text('Exercise 9'), findsNothing);
+        expect(find.text('Machine Row'), findsNothing);
+        final Finder showAll = find.byKey(
+          const Key('coach_program_show_remaining'),
+        );
+        expect(showAll, findsOneWidget);
+        await _scrollPlayerUntilVisible(tester, showAll);
+        await tester.tap(showAll);
+        await tester.pumpAndSettle();
+        expect(find.text('Exercise 9'), findsOneWidget);
+        expect(find.text('Machine Row'), findsNothing);
+        final Finder secondDayTab = find.byKey(
+          const Key('coach_program_day_tab_1'),
+        );
+        await _scrollPlayerUntilVisible(tester, secondDayTab);
+        await tester.tap(secondDayTab);
+        await tester.pumpAndSettle();
         expect(find.text('Machine Row'), findsOneWidget);
+        expect(find.text('Squat'), findsNothing);
+        expect(find.text('Exercise 9'), findsNothing);
         expect(find.textContaining('×'), findsWidgets);
         await _expectNoHorizontalPlayerScroll(tester);
 
@@ -169,6 +193,98 @@ void main() {
         await _expectNoHorizontalPlayerScroll(tester);
       },
     );
+  });
+
+  testWidgets('Player program tabs work at 900 by 700 in both languages',
+      (WidgetTester tester) async {
+    for (final String language in <String>['en', 'ar']) {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      final FakeMayosApi fake = createCoachFake(language: language)
+        ..assignments.add(<String, dynamic>{
+          'assignment_id': 'assignment-1',
+          'player_username': 'bob',
+          'started_at': '2026-09-24T10:00:00Z',
+          'status': 'active',
+        })
+        ..coachActiveProgram = <String, dynamic>{
+          'has_draft': false,
+          'program': <String, dynamic>{
+            'program_name': 'Full Body',
+            'split_type': 'Full Body',
+            'weekly_frequency': 2,
+            'instructions': '',
+            'version': 7,
+            'provenance': 'coach',
+            'days': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'day_name': 'Full A',
+                'day_order': 1,
+                'exercises': <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'exercise_id': 'sq',
+                    'exercise_name': 'Squat',
+                    'target_sets': 4,
+                    'target_reps_min': 6,
+                    'target_reps_max': 8,
+                    'target_rpe': 8.0,
+                    'rest_seconds': 150,
+                  },
+                ],
+              },
+              <String, dynamic>{
+                'day_name': 'Full B',
+                'day_order': 2,
+                'exercises': <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'exercise_id': 'row',
+                    'exercise_name': 'Machine Row',
+                    'target_sets': 3,
+                    'target_reps_min': 8,
+                    'target_reps_max': 12,
+                    'target_rpe': 8.0,
+                    'rest_seconds': 120,
+                  },
+                ],
+              },
+            ],
+          },
+        };
+      await pumpCoachApp(
+        tester,
+        fake,
+        logicalSize: const Size(900, 700),
+        language: language,
+      );
+      await _pumpUntilFound(
+        tester,
+        find.byKey(const Key('coach_roster_list_screen')),
+      );
+      await tester.tap(find.text('bob'));
+      await _pumpUntilFound(
+        tester,
+        find.byKey(const Key('coach_player_history_screen')),
+      );
+      await tester.pumpAndSettle();
+      final String program =
+          language == 'ar' ? 'البرنامج التدريبي' : 'Program';
+      final Finder programSegment = find.bySemanticsLabel(program);
+      await tester.ensureVisible(programSegment);
+      await tester.tap(programSegment);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Full A'), findsWidgets);
+      expect(find.text('Full B'), findsOneWidget);
+      expect(find.text('Squat'), findsOneWidget);
+      expect(find.text('Machine Row'), findsNothing);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.byKey(const Key('coach_program_day_tab_1')));
+      await tester.pumpAndSettle();
+      expect(find.text('Machine Row'), findsOneWidget);
+      expect(find.text('Squat'), findsNothing);
+      expect(tester.takeException(), isNull);
+    }
   });
 
   testWidgets('Player program keeps its desktop table at 1440 by 960',
@@ -270,6 +386,19 @@ Future<void> _expectNoHorizontalPlayerScroll(WidgetTester tester) async {
       .descendant(of: screen, matching: find.byType(Scrollable))
       .evaluate()) {
     final Scrollable scrollable = element.widget as Scrollable;
+    if (scrollable.axisDirection == AxisDirection.left ||
+        scrollable.axisDirection == AxisDirection.right) {
+      bool isDayTabStrip = false;
+      element.visitAncestorElements((Element ancestor) {
+        if (ancestor.widget.key ==
+            const Key('coach_program_day_tabs_scroll')) {
+          isDayTabStrip = true;
+          return false;
+        }
+        return true;
+      });
+      if (isDayTabStrip) continue;
+    }
     expect(
       scrollable.axisDirection,
       isNot(anyOf(AxisDirection.left, AxisDirection.right)),
@@ -285,6 +414,21 @@ Future<void> _scrollPlayerToTop(WidgetTester tester) async {
     matching: find.byType(Scrollable),
   ).first;
   tester.state<ScrollableState>(pageScrollable).position.jumpTo(0);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _scrollPlayerUntilVisible(
+  WidgetTester tester,
+  Finder target,
+) async {
+  await tester.scrollUntilVisible(
+    target,
+    300,
+    scrollable: find.descendant(
+      of: find.byKey(const Key('coach_player_history_scroll')),
+      matching: find.byType(Scrollable),
+    ).first,
+  );
   await tester.pumpAndSettle();
 }
 
