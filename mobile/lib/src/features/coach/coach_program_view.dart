@@ -184,7 +184,7 @@ class _CoachProgramViewState extends State<CoachProgramView> {
   int _workingSetCount(Iterable<ProgramExercise> exercises) =>
       exercises.fold<int>(
         0,
-        (int total, ProgramExercise exercise) => total + exercise.targetSets,
+        (int total, ProgramExercise exercise) => total + exercise.workingSetCount,
       );
 
   Widget _stat(
@@ -430,12 +430,18 @@ class _CoachProgramViewState extends State<CoachProgramView> {
               value: ProgramLoad.formatValue(exercise.load!.value),
             ),
         ].where((String value) => value.isNotEmpty).join(' · '),
-        copy.programSetsCell(exercise.targetSets, exercise.warmupSets),
-        copy.programExerciseRepRange(
-          exercise.targetRepsMin,
-          exercise.targetRepsMax,
-        ),
-        copy.programRirCell(minRirLabel(exercise.targetRpe)),
+        _showsGroups(exercise)
+            ? exercise.prescriptionFor(amrapLabel: displayCopyOf(context).amrapLabel)
+            : copy.programSetsCell(exercise.targetSets, exercise.warmupSets),
+        _showsGroups(exercise)
+            ? ''
+            : copy.programExerciseRepRange(
+                exercise.targetRepsMin,
+                exercise.targetRepsMax,
+              ),
+        _showsGroups(exercise)
+            ? ''
+            : copy.programRirCell(minRirLabel(exercise.targetRpe)),
         displayCopyOf(context).restTime(exercise.restSecondsOrDefault),
       ];
 
@@ -496,6 +502,9 @@ class _CoachProgramViewState extends State<CoachProgramView> {
     CoachCopy copy,
     ProgramExercise exercise,
   ) {
+    if (_showsGroups(exercise)) {
+      return exercise.prescriptionFor(amrapLabel: displayCopyOf(context).amrapLabel);
+    }
     final String summary = copy.compactProgramPrescription((
         sets: copy.programSetsCell(exercise.targetSets, exercise.warmupSets),
         reps: copy.programExerciseRepRange(
@@ -512,6 +521,12 @@ class _CoachProgramViewState extends State<CoachProgramView> {
       value: ProgramLoad.formatValue(exercise.load!.value),
     )}';
   }
+
+  bool _showsGroups(ProgramExercise exercise) =>
+      exercise.setGroups.length > 1 ||
+      exercise.setGroups.any(
+        (Map<String, dynamic> group) => group['amrap_last_set'] == true,
+      );
 
   String _phoneSecondaryLine(
     BuildContext context,

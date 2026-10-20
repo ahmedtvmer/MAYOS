@@ -182,6 +182,7 @@ const Map<String, Set<String>> _paramKeys = <String, Set<String>>{
   'program_import.too_many_rows.v1': <String>{},
   'program_import.too_many_columns.v1': <String>{},
   'program_import.template_columns.v1': <String>{},
+  'program_import.group_invalid.v1': <String>{'row', 'column'},
   'program_import.freeform_disabled.v1': <String>{},
   'program_import.input_required.v1': <String>{},
   'program_import.text_disabled.v1': <String>{},
@@ -322,6 +323,7 @@ final Map<String, _MessageTemplate> _templates = <String, _MessageTemplate>{
   'program_import.too_many_rows.v1': _programImport,
   'program_import.too_many_columns.v1': _programImport,
   'program_import.template_columns.v1': _programImport,
+  'program_import.group_invalid.v1': _programImport,
   'program_import.freeform_disabled.v1': _programImport,
   'program_import.input_required.v1': _programImport,
   'program_import.text_disabled.v1': _programImport,
@@ -729,6 +731,11 @@ double? _number(Object? value) {
 String? _programImport(Map<String, dynamic> params, MessageCopy copy) {
   final Object? code = params['_message_code'];
   return code is String
-      ? copy.programImportMessage(code, maxCells: _count(params['max_cells']))
+      ? copy.programImportMessage(
+          code,
+          maxCells: _count(params['max_cells']),
+          row: _count(params['row']),
+          column: params['column'] as String?,
+        )
       : null;
 }

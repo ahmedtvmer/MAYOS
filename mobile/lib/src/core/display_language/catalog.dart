@@ -51,6 +51,12 @@ class MayosCopy {
       ? 'أُرسل طلب تغيير البرنامج التدريبي إلى مدربك.'
       : 'Your program change request was sent to your coach.';
   String get editDay => isArabic ? 'تعديل اليوم' : 'Edit day';
+  // #323
+  String get amrapLabel => isArabic ? 'أكبر عدد ممكن من التكرارات' : 'AMRAP';
+  String get rirPerSetGroup => isArabic ? 'حسب مجموعة التدريب' : 'By set group';
+  String programBackoffSetsKept(int count) => isArabic
+      ? 'تبقى مجموعات خفض الحمل كما هي (${_ltr('$count')})'
+      : '$count back-off sets stay as prescribed';
   String removeExerciseNamed(String name) =>
       isArabic ? 'إزالة $name' : 'Remove $name';
   String decreaseProgramExerciseSets(String name) => isArabic

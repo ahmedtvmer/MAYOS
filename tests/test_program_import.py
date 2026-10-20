@@ -26,6 +26,7 @@ HEADERS = [
 CONFIRMED_ROW_FIELDS = (
     "source_row", "day", "day_name", "order", "exercise_name", "exercise_id",
     "sets", "reps_min", "reps_max", "target_rir", "rest_seconds", "tempo", "notes", "load",
+            "group",
 )
 
 
@@ -118,7 +119,7 @@ def _csv(rows):
 def _confirmed_rows(rows):
     return [
         {
-            **{field: row[field] for field in CONFIRMED_ROW_FIELDS},
+            **{field: row.get(field) for field in CONFIRMED_ROW_FIELDS},
             "week_order": row.get("week_order") or 1,
         }
         for row in rows
@@ -297,6 +298,49 @@ def test_template_percent_load_becomes_program_load(api):
         "kind": "pct_e1rm",
         "value": 1,
     }
+
+
+def test_template_consecutive_group_rows_build_one_ordered_exercise_prescription(api):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="groups")
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(["week", "day", "day_name", "order", "exercise", "group",
+                     "sets", "reps", "rir", "rpe", "load_kg", "load_pct_e1rm",
+                     "rest_sec", "tempo", "notes"])
+    writer.writerows([
+        [1, 1, "Push", 1, "Squat", "", 3, "5-8", 2, "", 100, "", 180, "", ""],
+        [1, 1, "Push", 1, "Squat", 3, 1, "15", 2, "", "", "", 120, "", ""],
+        [1, 1, "Push", 1, "Squat", 2, 2, "10-12", 1, "", "", "", 120, "", ""],
+    ])
+    upload = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("groups.csv", output.getvalue().encode(), "text/csv")},
+    )
+    assert upload.status_code == 200, upload.text
+    confirmed = _confirmed_rows(upload.json()["rows"])
+    created = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/import",
+        headers=coach_headers,
+        json={"program_name": "grouped", "rows": confirmed},
+    )
+    assert created.status_code == 200, created.text
+    exercise = created.json()["draft"]["days"][0]["exercises"][0]
+    assert len(created.json()["draft"]["days"][0]["exercises"]) == 1
+    assert [group["sets"] for group in exercise["set_groups"]] == [3, 2, 1]
+    assert exercise["target_sets"] == 3
+    assert exercise["target_reps_min"] == 5
+    bad_rows = [dict(row) for row in confirmed]
+    bad_rows[0]["group"] = "not a whole number"
+    invalid = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/import",
+        headers=coach_headers,
+        json={"program_name": "bad group", "rows": bad_rows},
+    )
+    assert invalid.status_code == 400, invalid.text
+    assert invalid.json()["message_code"] == "program_import.group_invalid.v1"
+    assert "column group" in invalid.json()["message_fallback"]
 
 
 @pytest.mark.parametrize(

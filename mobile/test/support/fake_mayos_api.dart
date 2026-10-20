@@ -362,6 +362,7 @@ class FakeMayosApi {
   /// test can pin a different target cap than the default program fixture and
   /// assert its equivalent minimum RIR (#111).
   final Map<String, double> prescriptionTargetRpe = <String, double>{};
+  final Map<String, int> prescriptionEffectiveSets = <String, int>{};
   bool prescriptionOffline = false;
   Map<String, dynamic> prescriptionDeload = <String, dynamic>{
     'state': 'none',
@@ -4766,7 +4767,8 @@ class FakeMayosApi {
             'is_barbell': (entry['exercise_name'] as String)
                 .toLowerCase()
                 .contains('barbell'),
-            'effective_sets': entry['target_sets'],
+            'effective_sets': prescriptionEffectiveSets[entry['exercise_id']] ??
+                entry['target_sets'],
             'target_rpe_cap': prescriptionTargetRpe[entry['exercise_id']] ??
                 (entry['target_rpe'] as num).toDouble(),
             'projected_weight': 60.0,

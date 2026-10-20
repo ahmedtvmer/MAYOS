@@ -62,7 +62,7 @@ if TYPE_CHECKING:
     from svc.llm import InferenceScope
 
 TEMPLATE_COLUMNS = (
-    "week", "day", "day_name", "order", "exercise", "sets", "reps", "rir", "rpe",
+    "week", "day", "day_name", "order", "exercise", "group", "sets", "reps", "rir", "rpe",
     "load_kg", "load_pct_e1rm", "rest_sec", "tempo", "notes",
 )
 _REP_RANGE = re.compile(r"^(\d+)\s*-\s*(\d+)$")
@@ -152,6 +152,7 @@ class ProgramImportRow:
     week_order: ImportValue = None
     suggestion_terms: tuple[str, ...] = ()
     input_exercise_name: str | None = None
+    group: ImportValue = None
 
 
 @dataclass(frozen=True)
@@ -628,7 +629,7 @@ def template_csv_bytes() -> bytes:
     output = io.StringIO(newline="")
     writer = csv.writer(output)
     writer.writerow(TEMPLATE_COLUMNS)
-    writer.writerow((1, 1, "Example: Push", 1, "Bench Press", 3, "6-8", 2, "", "", "", 120, "2-0-1", "Pause briefly at the chest"))
+    writer.writerow((1, 1, "Example: Push", 1, "Bench Press", 1, 3, "6-8", 2, "", "", "", 120, "2-0-1", "Pause briefly at the chest"))
     return output.getvalue().encode("utf-8-sig")
 
 
@@ -639,7 +640,7 @@ def template_xlsx_bytes() -> bytes:
     program.append(TEMPLATE_COLUMNS)
     example = workbook.create_sheet("Example")
     example.append(TEMPLATE_COLUMNS)
-    example.append((1, 1, "Push", 1, "Bench Press", 3, "6-8", 2, "", "", "", 120, "2-0-1", "Pause briefly at the chest"))
+    example.append((1, 1, "Push", 1, "Bench Press", 1, 3, "6-8", 2, "", "", "", 120, "2-0-1", "Pause briefly at the chest"))
     for worksheet in (program, example):
         for column in ("G", "H", "I"):
             worksheet.column_dimensions[column].number_format = "@"
@@ -2871,6 +2872,7 @@ def _template_row(
         load_pct_e1rm=load_pct_e1rm,
         approximation_markers=tuple(markers),
         week_order=week_order if has_week_column else None,
+        group=cells.get("group"),
     )
 
 
@@ -3107,6 +3109,8 @@ def _normalise_row(
         "errors": errors,
         "warnings": warnings,
     }
+    if source.group is not None:
+        normalized["group"] = source.group
     if text_import:
         normalized["input_exercise_name"] = source.input_exercise_name
     return normalized
@@ -3387,6 +3391,7 @@ def _confirmed_row(row: dict[str, Any]) -> ProgramImportRow:
         tempo=row.get("tempo"),
         notes=row.get("notes"),
         load=row.get("load"),
+        group=row.get("group"),
         original_text="",
         confirmed_exercise_id=row["exercise_id"],
         week_order=row.get("week_order", 1),
@@ -3457,7 +3462,38 @@ def _confirmed_rows_by_day(
             "week_order": week_order,
             "warmup_exercises": [], "exercises": [], "cardio": None,
         })
-        day["exercises"].append({
+        group_number = _parse_integer(row.get("group"))
+        if row.get("group") not in (None, "") and (group_number is None or group_number < 1):
+            source_row = row.get("source_row", "?")
+            raise ProgramImportError(
+                "program_import.group_invalid.v1",
+                f"Row {source_row}, column group: enter a positive whole number.",
+                message_params={
+                    "row": int(source_row) if str(source_row).isdigit() else None,
+                    "column": "group",
+                },
+            )
+        existing = next((candidate for candidate in day["exercises"]
+                         if candidate["exercise_id"] == exercise_id
+                         and candidate.get("_import_order") == row.get("order")), None)
+        prescription = {
+            "sets": row["sets"], "reps_min": row["reps_min"],
+            "reps_max": row["reps_max"], "target_rir": row["target_rir"],
+            "load": row.get("load"), "amrap_last_set": False,
+        }
+        if existing is not None and group_number is not None:
+            if "set_groups" not in existing:
+                existing["set_groups"] = [(1, {
+                    "sets": existing["target_sets"],
+                    "reps_min": existing["target_reps_min"],
+                    "reps_max": existing["target_reps_max"],
+                    "target_rir": existing["target_rir"],
+                    "load": existing.get("load"),
+                    "amrap_last_set": False,
+                })]
+            existing["set_groups"].append((group_number, prescription))
+            continue
+        exercise = {
             "exercise_id": exercise_id,
             "exercise_name": entry["name"],
             "body_part": entry.get("body_part") if is_coach else None,
@@ -3473,7 +3509,24 @@ def _confirmed_rows_by_day(
             "tempo": row["tempo"],
             "notes": row["notes"],
             "load": row.get("load"),
-        })
+            "_import_order": row.get("order"),
+        }
+        if group_number is not None:
+            exercise["set_groups"] = [(group_number, prescription)]
+        day["exercises"].append(exercise)
+    for day in days.values():
+        for exercise in day["exercises"]:
+            exercise.pop("_import_order", None)
+            if exercise.get("set_groups"):
+                exercise["set_groups"] = [
+                    group for _, group in sorted(exercise["set_groups"], key=lambda item: item[0])
+                ]
+                first_group = exercise["set_groups"][0]
+                exercise["target_sets"] = first_group["sets"]
+                exercise["target_reps_min"] = first_group["reps_min"]
+                exercise["target_reps_max"] = first_group["reps_max"]
+                exercise["target_rir"] = first_group["target_rir"]
+                exercise["load"] = first_group.get("load")
     if not days:
         raise ProgramImportError("program_import.no_rows.v1", "No valid confirmed rows are ready to create a draft.")
     return list(days.values())

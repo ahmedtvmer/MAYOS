@@ -129,6 +129,7 @@ ERROR_MESSAGE_PARAM_ALLOWLISTS = {
     "program_import.too_many_rows.v1": frozenset(),
     "program_import.too_many_columns.v1": frozenset(),
     "program_import.template_columns.v1": frozenset(),
+    "program_import.group_invalid.v1": frozenset({"row", "column"}),
     "program_import.freeform_disabled.v1": frozenset(),
     "program_import.text_disabled.v1": frozenset(),
     "program_import.input_required.v1": frozenset(),

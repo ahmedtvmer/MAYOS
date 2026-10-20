@@ -607,7 +607,9 @@ class _NextSessionExercise extends StatelessWidget {
             Directionality(
               textDirection: TextDirection.ltr,
               child: Text(
-                exercise.prescription,
+                exercise.prescriptionFor(
+                  amrapLabel: displayCopyOf(context).amrapLabel,
+                ),
                 style: MayosTypography.of(context).bodySecondary
                     .copyWith(color: c.textSecondary),
               ),

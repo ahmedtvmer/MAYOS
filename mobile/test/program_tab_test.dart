@@ -1033,6 +1033,40 @@ void main() {
     expect(find.text('Cardio'), findsOneWidget);
   });
 
+  testWidgets('program overview compactly shows each set group and AMRAP',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..programDaysOverride = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'day_name': 'Upper 1',
+          'day_order': 1,
+          'warmup_exercises': <dynamic>[],
+          'exercises': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'exercise_id': 'bench_press',
+              'exercise_name': 'Bench Press',
+              'target_sets': 1,
+              'target_reps_min': 5,
+              'target_reps_max': 5,
+              'target_rpe': 8,
+              'set_groups': <Map<String, dynamic>>[
+                <String, dynamic>{'sets': 1, 'reps_min': 5, 'reps_max': 5, 'target_rir': 2},
+                <String, dynamic>{
+                  'sets': 2, 'reps_min': 10, 'reps_max': 12, 'target_rir': 1,
+                  'load': <String, dynamic>{'kind': 'pct_of_first_group', 'value': 90},
+                  'amrap_last_set': true,
+                },
+              ],
+            },
+          ],
+        },
+      ];
+    await _pumpProgram(tester, fake);
+
+    expect(find.textContaining('1 × 5 @ RIR 2'), findsOneWidget);
+    expect(find.textContaining('2 × 10–12 @ RIR 1 · −10% · AMRAP'), findsOneWidget);
+  });
+
   testWidgets('program load line shows the e1RM estimate in English and Arabic',
       (tester) async {
     for (final String languageCode in <String>['en', 'ar']) {
@@ -1623,6 +1657,51 @@ void main() {
         'source_index': 2,
         'exercise_id': 'bench_press',
         'target_sets': 4,
+      },
+    ]);
+  });
+
+  testWidgets('grouped day edit changes first group and keeps back-offs read-only',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..programVersion = 1
+      ..programDaysOverride = <Map<String, dynamic>>[
+        <String, dynamic>{
+          'day_name': 'Upper 1',
+          'day_order': 1,
+          'warmup_exercises': <dynamic>[],
+          'exercises': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'exercise_id': 'bench_press',
+              'exercise_name': 'Bench Press',
+              'target_sets': 3,
+              'target_reps_min': 3,
+              'target_reps_max': 3,
+              'target_rpe': 9,
+              'set_groups': <Map<String, dynamic>>[
+                <String, dynamic>{'sets': 3, 'reps_min': 3, 'reps_max': 3, 'target_rir': 1},
+                <String, dynamic>{'sets': 2, 'reps_min': 8, 'reps_max': 8, 'target_rir': 2},
+              ],
+            },
+          ],
+        },
+      ];
+    await _pumpProgram(tester, fake);
+
+    await tester.tap(find.byKey(const Key('program_edit_day_1')));
+    await tester.pumpAndSettle();
+    expect(find.text('2 back-off sets stay as prescribed'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('program_edit_decrease_0')));
+    await tester.pump();
+    expect(find.text('2 back-off sets stay as prescribed'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('program_edit_save_button')));
+    await tester.pumpAndSettle();
+
+    expect(fake.programEditRequests.single['exercises'], <Map<String, dynamic>>[
+      <String, dynamic>{
+        'source_index': 0,
+        'exercise_id': 'bench_press',
+        'target_sets': 2,
       },
     ]);
   });

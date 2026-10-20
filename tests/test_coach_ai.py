@@ -20,6 +20,7 @@ from agent.ProgramState import (
     PersistedProgramSchema,
     PersistedProgramWeekSchema,
     ProgramLoadSchema,
+    ProgramSetGroupSchema,
 )
 from database.database_manager import DatabaseManager
 from database.registry.coach_exercises import CoachExerciseCreate
@@ -851,7 +852,10 @@ def test_coach_context_includes_week_structure_and_derived_current_week(api):
         day_name="Upper A",
         day_order=1,
         week_order=2,
-        exercises=[_program_lift("sq", "Squat").model_copy(update={"target_sets": 4})],
+        exercises=[_program_lift("sq", "Squat").model_copy(update={
+            "target_sets": 4,
+            "set_groups": [ProgramSetGroupSchema(sets=4, reps_min=5, reps_max=8, target_rir=2)],
+        })],
     )
     program = PersistedProgramSchema(
         program_name="Two-week block",
@@ -1379,7 +1383,13 @@ def test_active_coach_program_model_context_includes_curated_exercise_facts(
         },
     )
     exercise = _program_lift("bp", "Bench Press", "flat_press").model_copy(
-        update={"load": ProgramLoadSchema(kind="pct_e1rm", value=75)}
+        update={
+            "load": ProgramLoadSchema(kind="pct_e1rm", value=75),
+            "set_groups": [ProgramSetGroupSchema(
+                sets=2, reps_min=5, reps_max=8, target_rir=2,
+                load=ProgramLoadSchema(kind="pct_e1rm", value=75),
+            )],
+        }
     )
     program = _program_with_lifts([[exercise]])
     program_data = program.model_dump()

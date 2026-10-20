@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from agent.progression_engine import set_e1rm
+from agent.ProgramState import program_exercise_working_sets
 from agent.program_blueprints import SLOT_STAPLES, experience_level_for_training_age
 from agent.program_weeks import flatten_program_days, normalize_program_weeks
 from utils.equipment_access import equipment_access_allows
@@ -33,7 +34,8 @@ def review_facts(ledger: Any, program: Any, profile: dict[str, Any], as_of: date
             exercise_id = str(ex["exercise_id"])
             muscle = targets.get(exercise_id)
             if muscle:
-                sets_by_muscle[muscle] = sets_by_muscle.get(muscle, 0) + int(ex["target_sets"])
+                working_sets = program_exercise_working_sets(ex)
+                sets_by_muscle[muscle] = sets_by_muscle.get(muscle, 0) + working_sets
                 exercises_by_muscle.setdefault(muscle, []).append((day, ex, exercise_id))
     by_muscle, sessions = _history_by_muscle(ledger, active_version, changed, as_of, targets)
     adherence = _adherence(ledger, active_version, changed, as_of, elapsed_weeks, program.weekly_frequency)
@@ -170,7 +172,7 @@ def _trend_for_muscle(rows: list[dict[str, Any]], midpoint: date) -> str | None:
 
 def _placed_delta(placements: list[tuple[Any, Any, str]], edits: list[dict[str, Any]]) -> int:
     original = {
-        (int(day["week_order"]), int(day["day_order"]), exercise_id): int(exercise["target_sets"])
+        (int(day["week_order"]), int(day["day_order"]), exercise_id): program_exercise_working_sets(exercise)
         for day, exercise, exercise_id in placements
     }
     return sum(
@@ -184,8 +186,9 @@ def _place_delta(exercises: list[tuple[Any, Any, str]], delta: int) -> list[dict
     ordered = list(exercises if delta >= 0 else reversed(exercises))
     remaining = abs(delta)
     for day, exercise, exercise_id in ordered:
-        current = int(exercise["target_sets"])
-        capacity = max(0, 3 - current) if delta > 0 else max(0, current - 1)
+        current = program_exercise_working_sets(exercise)
+        minimum = _minimum_exercise_working_sets(exercise)
+        capacity = max(0, 3 - current) if delta > 0 else max(0, current - minimum)
         change = min(remaining, capacity)
         if change:
             edits.append({"week_order": int(day["week_order"]), "day_order": int(day["day_order"]), "day_name": day["day_name"], "exercise_id": exercise_id, "target_sets": current + change if delta > 0 else current - change})
@@ -193,6 +196,11 @@ def _place_delta(exercises: list[tuple[Any, Any, str]], delta: int) -> list[dict
         if not remaining:
             break
     return edits
+
+
+def _minimum_exercise_working_sets(exercise: dict[str, Any]) -> int:
+    groups = exercise.get("set_groups") or []
+    return 1 + sum(int(group["sets"]) for group in groups[1:]) if groups else 1
 
 
 def _second_staple(
@@ -346,6 +354,14 @@ def _apply_edits(program_data: dict[str, Any], payload: list[dict[str, Any]]) ->
             for exercise in day["exercises"]:
                 if str(exercise["exercise_id"]) == edit["exercise_id"]:
                     exercise["target_sets"] = edit["target_sets"]
+                    if exercise.get("set_groups"):
+                        others = sum(
+                            int(group["sets"]) for group in exercise["set_groups"][1:]
+                        )
+                        exercise["set_groups"][0]["sets"] = max(
+                            1, int(edit["target_sets"]) - others
+                        )
+                        exercise["target_sets"] = exercise["set_groups"][0]["sets"]
                     break
 
 

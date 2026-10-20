@@ -465,6 +465,8 @@ _EXERCISE_STRUCTURE_FIELDS = (
     "target_reps_min",
     "target_reps_max",
     "target_rir",
+    "load",
+    "set_groups",
     "rest_seconds",
     "tempo",
 )

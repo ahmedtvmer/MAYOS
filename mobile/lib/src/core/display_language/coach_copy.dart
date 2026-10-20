@@ -1384,6 +1384,14 @@ class CoachCopy {
   String get dayActions =>
       isArabic ? 'إجراءات يوم التدريب' : 'Training day actions';
   String get exerciseEditorDone => isArabic ? 'تم' : 'Done';
+  // #323 set group editor copy.
+  String get addBackoffSets => isArabic ? 'إضافة مجموعات خفض الحمل' : 'Add back-off sets';
+  String get removeSetGroup => isArabic ? 'إزالة المجموعة' : 'Remove group';
+  String get amrapLastSet => isArabic ? 'أكبر عدد ممكن من التكرارات' : 'AMRAP last set';
+  String backoffGroupTitle(int count) => isArabic
+      ? 'مجموعات خفض الحمل (${_ltr('$count')})'
+      : 'Back-off sets ($count)';
+  String get firstGroupLoadPercent => isArabic ? 'نسبة من حمل المجموعة الأولى' : '% of first group load';
   String get moveExerciseUp =>
       isArabic ? 'نقل التمرين لأعلى' : 'Move exercise up';
   String get moveExerciseDown =>

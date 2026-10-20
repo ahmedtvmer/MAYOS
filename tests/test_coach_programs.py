@@ -398,6 +398,80 @@ def test_program_draft_split_catalog_lists_exact_choices_for_each_frequency(api)
     }
 
 
+def test_set_groups_survive_coach_publish_and_are_returned_in_logger_prescription(api):
+    client, _db, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    draft = _one_day_draft(
+        "sq",
+        set_groups=[
+            {"sets": 3, "reps_min": 5, "reps_max": 8, "target_rir": 2},
+            {"sets": 2, "reps_min": 10, "reps_max": 12, "target_rir": 1,
+             "load": {"kind": "pct_of_first_group", "value": 80},
+             "amrap_last_set": True},
+        ],
+    )
+    saved = client.post(
+        _program_draft_path(assignment_id), headers=coach_headers, json=draft
+    )
+    assert saved.status_code == 200, saved.text
+    draft["days"][0]["exercises"][0]["set_groups"][1]["target_rir"] = 1.5
+    edited = client.put(
+        _program_draft_path(assignment_id), headers=coach_headers, json=draft
+    )
+    assert edited.status_code == 200, edited.text
+    published = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/publish",
+        headers=coach_headers,
+    )
+    assert published.status_code == 200, published.text
+
+    active = client.get("/programs/active", headers=player_headers).json()
+    exercise = active["days"][0]["exercises"][0]
+    assert [group["sets"] for group in exercise["set_groups"]] == [3, 2]
+    prescription = client.get(
+        "/workouts/prescription", params={"day_order": 1}, headers=player_headers
+    )
+    assert prescription.status_code == 200, prescription.text
+    target = next(row for row in prescription.json()["targets"] if row["exercise_id"] == "sq")
+    assert target["effective_sets"] == 5
+    assert target["set_groups"][1]["amrap_last_set"] is True
+
+    baseline = client.post(
+        "/workouts/sessions", headers=player_headers,
+        json={"day_order": 1, "readiness": 4, "sets": [{
+            "exercise": exercise, "sets": [{"weight_kg": 30, "reps": 4, "rpe": 8}],
+        }]},
+    )
+    assert baseline.status_code == 201, baseline.text
+
+    logged = client.post(
+        "/workouts/sessions",
+        headers=player_headers,
+        json={
+            "day_order": 1,
+            "readiness": 4,
+            "sets": [{
+                "exercise": exercise,
+                "sets": [
+                    {"weight_kg": 40, "reps": 5, "rpe": 8},
+                    {"weight_kg": 40, "reps": 5, "rpe": 8},
+                    {"weight_kg": 40, "reps": 5, "rpe": 8},
+                    {"weight_kg": 80, "reps": 10, "rpe": 9},
+                    {"weight_kg": 80, "reps": 14, "rpe": 10},
+                ],
+            }],
+        },
+    )
+    assert logged.status_code == 201, logged.text
+    assert logged.json()["total_working_sets"] == 5
+    personal_records = client.get("/dashboard/personal-records", headers=player_headers)
+    assert personal_records.status_code == 200, personal_records.text
+    assert any(
+        row["exercise_id"] == "sq" and row["record_type"] == "max_weight" and row["value"] == 80
+        for row in logged.json()["new_prs"]
+    ), logged.json()
+
+
 def test_generate_draft_rejects_split_invalid_for_frequency_without_writes(api, monkeypatch):
     client, db, _ = api
     coach_headers, player_headers, assignment_id, _, player_account_id = _assigned_player(api)
@@ -502,6 +576,10 @@ def test_publish_notice_summarizes_previous_automatic_program(api):
             "warmup_sets": 4,
         }
     )
+    upper_exercise["set_groups"] = [{
+        **upper_exercise["set_groups"][0], "sets": 5,
+        "reps_min": 5, "reps_max": 7, "target_rir": 2,
+    }]
     draft["days"] = [upper_day]
     draft["weekly_frequency"] = 1
     updated = client.put(draft_path, headers=coach_headers, json=draft)
@@ -1744,7 +1822,7 @@ def test_program_draft_publish_rejects_invalid_structure(api, draft, code, field
 
     assert published.status_code == 400
     issues = published.json()["detail"]["errors"]
-    assert any(issue["code"] == code for issue in issues)
+    assert any(issue["code"] == code for issue in issues), published.json()
     matching = next(issue for issue in issues if issue["code"] == code)
     assert matching["location"]["field"] == field
     assert matching["message"]
@@ -2370,6 +2448,10 @@ def test_coach_reads_active_program_without_account_ids(api):
             tempo="3-1-1",
             notes="Brace before each rep.",
         )
+        exercise["set_groups"] = [{
+            **exercise["set_groups"][0], "sets": 4,
+            "reps_min": 6, "reps_max": 8, "target_rir": 2,
+        }]
         ledger.save_training_program(program_data)
         active = ledger.get_active_program()
 

@@ -946,3 +946,9 @@ This document records the architectural, algorithmic, and heuristic decisions im
 * **Code References**: `service/volume_review.py`, `service/workouts.py` (post-commit evaluation), `database/migration_manager.py` (ledger v32), `svc/routers/programs.py`, `mobile/lib/src/features/player/program/program_tab.dart`.
 
 ---
+### ADR 085: Program exercises use ordered set groups
+
+* **Status**: Accepted (2026-10-20, #323).
+* **Decision**: A Program exercise stores one or more ordered set groups with sets, a rep range, target RIR, optional load, and an AMRAP-last-set flag. The first group mirrors the existing flat prescription fields for compatibility. Derived working sets sum all groups. A later group's `pct_of_first_group` load resolves against the first group's resolved kg load using the shared 2.5 kg rounding rule. AMRAP keeps its rep minimum and accepts any nonnegative logged rep count. Ledger v35 adds nullable `set_groups_json`; legacy rows remain unchanged and are read as one group from flat columns. The template import uses consecutive rows and a `group` column; AI and text import keep their existing single-group contract.
+* **Rationale**: Grouped prescriptions represent top sets and back-off work while preserving old readers and historical workouts.
+* **Code References**: `agent/ProgramState.py`, `database/migration_manager.py`, `database/ledger/training_program.py`, `service/program_import.py`, `service/workouts.py`.

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/models.dart';
+import '../../../core/theme/mayos_typography.dart';
 
 class ProgramDayEditDialog extends StatefulWidget {
   const ProgramDayEditDialog({super.key, required this.day});
@@ -32,7 +33,9 @@ class _ProgramDayEditDialogState extends State<ProgramDayEditDialog> {
       ProgramEditExerciseEntry(
         sourceIndex: index,
         exercise: exercise,
-        prescribedSets: exercise.targetSets,
+        prescribedSets: exercise.setGroups.length > 1
+            ? ((exercise.setGroups.first['sets'] as num?)?.toInt() ?? exercise.targetSets)
+            : exercise.targetSets,
       ),
   ];
 
@@ -86,6 +89,19 @@ class _ProgramDayEditDialogState extends State<ProgramDayEditDialog> {
             _increaseSetButton(context, entry),
           ],
         ),
+        if (exercise.setGroups.length > 1)
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: Padding(
+              padding: const EdgeInsetsDirectional.only(end: 16),
+              child: Text(
+                displayCopyOf(context).programBackoffSetsKept(
+                  exercise.backoffSetCount,
+                ),
+                style: MayosTypography.of(context).caption,
+              ),
+            ),
+          ),
         if (index < _exercises.length - 1) const Divider(height: 1),
       ],
     );

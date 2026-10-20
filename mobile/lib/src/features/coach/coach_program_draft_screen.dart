@@ -1725,7 +1725,21 @@ class _DraftExerciseEditor {
           text: '${(source['load'] as Map<String, dynamic>?)?['value'] ?? ''}',
         ),
         tempo = TextEditingController(text: source['tempo'] as String? ?? ''),
-        notes = TextEditingController(text: source['notes'] as String? ?? '');
+        notes = TextEditingController(text: source['notes'] as String? ?? '') {
+    final List<dynamic>? groups = source['set_groups'] as List<dynamic>?;
+    setGroups = groups == null || groups.isEmpty
+        ? <Map<String, dynamic>>[
+            <String, dynamic>{
+              'sets': int.tryParse(sets.text) ?? ProgramDraftPrescription.defaultSets,
+              'reps_min': source['target_reps_min'] ?? ProgramDraftPrescription.defaultMinReps,
+              'reps_max': source['target_reps_max'] ?? ProgramDraftPrescription.defaultMaxReps,
+              'target_rir': double.tryParse(rir.text) ?? ProgramDraftPrescription.defaultRir,
+              'load': source['load'],
+              'amrap_last_set': false,
+            },
+          ]
+        : groups.map((dynamic group) => Map<String, dynamic>.from(group as Map)).toList();
+  }
 
   final Map<String, dynamic> source;
   final TextEditingController sets;
@@ -1737,6 +1751,12 @@ class _DraftExerciseEditor {
   final TextEditingController loadValue;
   final TextEditingController tempo;
   final TextEditingController notes;
+  late final List<Map<String, dynamic>> setGroups;
+  final Map<Map<String, dynamic>, int> _groupIds = Map<Map<String, dynamic>, int>.identity();
+  int _nextGroupId = 0;
+
+  int groupId(Map<String, dynamic> group) =>
+      _groupIds.putIfAbsent(group, () => _nextGroupId++);
 
   String get exerciseName => source['exercise_name'] as String? ?? '';
 
@@ -1765,6 +1785,13 @@ class _DraftExerciseEditor {
       ..loadValue.text = loadValue.text
       ..tempo.text = tempo.text
       ..notes.text = notes.text;
+    duplicate.setGroups
+      ..clear()
+      ..addAll(setGroups.map((Map<String, dynamic> group) => Map<String, dynamic>.from(group)));
+    for (int index = 0; index < setGroups.length; index++) {
+      duplicate._groupIds[duplicate.setGroups[index]] = groupId(setGroups[index]);
+      duplicate._nextGroupId = duplicate._groupIds.values.reduce((int a, int b) => a > b ? a : b) + 1;
+    }
     return duplicate;
   }
 
@@ -1802,6 +1829,12 @@ class _DraftExerciseEditor {
       }
       load = <String, dynamic>{'kind': loadKind, 'value': value};
     }
+    setGroups[0]
+      ..['sets'] = workingSets
+      ..['reps_min'] = lowerReps
+      ..['reps_max'] = upperReps
+      ..['target_rir'] = targetRir
+      ..['load'] = load;
     return <String, dynamic>{
       ...source,
       'target_sets': workingSets,
@@ -1813,6 +1846,7 @@ class _DraftExerciseEditor {
       'tempo': _trimToNull(tempo.text),
       'notes': _trimToNull(notes.text),
       'load': load,
+      'set_groups': setGroups,
     };
   }
 

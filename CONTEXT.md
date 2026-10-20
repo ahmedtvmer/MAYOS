@@ -363,3 +363,7 @@ _Arabic_: تواصل; recording a Check-in is تسجيل تواصل.
 **Follow-up due**:
 The state of an assignment whose most recent check-in (or assignment start) is at least the weekly cadence in the past, measured in the player's timezone.
 _Arabic_: حان موعد المتابعة
+
+**Set group**:
+An ordered part of an Exercise's working-set prescription with its own set count, rep range, target RIR and optional load. A Program exercise has at least one Set group; a single group preserves the previous prescription. A later group may prescribe its load as a percentage of the first group's resolved load. AMRAP on the last set means reps are open-ended with the prescribed minimum retained.
+_Arabic_: مجموعة تدريب

@@ -11,6 +11,7 @@ from agent.ProgramState import (
     GeneratedProgramSchema,
     ProgramDaySchema,
     ProgramExerciseSchema,
+    ProgramSetGroupSchema,
 )
 from database.database_manager import DatabaseManager
 from service import coach as coach_service
@@ -451,6 +452,8 @@ def _program_with_duplicate_bench():
             "target_reps_min": 5,
             "target_reps_max": 8,
             "target_rpe": 8.5,
+            "set_groups": [ProgramSetGroupSchema(
+                sets=2, reps_min=5, reps_max=8, target_rir=1.5)],
             "rest_seconds": 90,
             "notes": "First bench prescription.",
         }
@@ -461,6 +464,8 @@ def _program_with_duplicate_bench():
             "target_reps_min": 8,
             "target_reps_max": 12,
             "target_rpe": 7.0,
+            "set_groups": [ProgramSetGroupSchema(
+                sets=4, reps_min=8, reps_max=12, target_rir=3.0)],
             "rest_seconds": 180,
             "notes": "Second bench prescription.",
         }
@@ -504,7 +509,10 @@ def test_program_edit_removes_reorders_and_trims_one_day_once(api, recording_ana
     assert edited["previous_version"] == 1
     assert edited["player_controls_program"] is True
     assert [item["exercise_id"] for item in edited["days"][0]["exercises"]] == ["row", "bp"]
-    assert edited["days"][0]["exercises"][0] == {**row, "target_sets": 2}
+    assert edited["days"][0]["exercises"][0] == {
+        **row, "target_sets": 2,
+        "set_groups": [{**row["set_groups"][0], "sets": 2}],
+    }
     assert edited["days"][0]["exercises"][1] == bench
     assert edited["days"][0]["warmup_exercises"] == original_first_day["warmup_exercises"]
     assert edited["days"][0]["cardio"] == original_first_day["cardio"]
@@ -514,6 +522,56 @@ def test_program_edit_removes_reorders_and_trims_one_day_once(api, recording_ana
     assert len(events) == 1
     assert events[0]["properties"]["role"] == "player"
     assert events[0]["distinct_id"] == db.get_active_account_by_username("player")["account_id"]
+
+
+def test_program_edit_changes_first_group_sets_and_retains_backoff_sets(api):
+    client, db = api
+    program = _program()
+    original = program.days[0].exercises[0]
+    grouped = original.model_copy(update={
+        "target_sets": 3,
+        "set_groups": [
+            ProgramSetGroupSchema(sets=3, reps_min=6, reps_max=9, target_rir=2),
+            ProgramSetGroupSchema(sets=2, reps_min=10, reps_max=12, target_rir=1),
+        ],
+    })
+    program = program.model_copy(update={
+        "days": [program.days[0].model_copy(update={"exercises": [grouped]}), program.days[1]],
+    })
+    headers = _make_player_with_program(client, db, program)
+
+    response = client.post(
+        "/programs/active/edits",
+        headers=headers,
+        json=_program_edit_request([{
+            "source_index": 0, "exercise_id": grouped.exercise_id, "target_sets": 2,
+        }]),
+    )
+
+    assert response.status_code == 200, response.text
+    exercise = response.json()["days"][0]["exercises"][0]
+    assert exercise["target_sets"] == 2
+    assert [group["sets"] for group in exercise["set_groups"]] == [2, 2]
+
+
+def test_legacy_program_row_without_groups_reads_as_one_group_through_api(api):
+    client, db = api
+    headers = _make_player_with_program(client, db)
+    db.ledger.conn.execute("UPDATE program_exercises SET set_groups_json = NULL")
+    db.ledger.conn.commit()
+
+    response = client.get("/programs/active", headers=headers)
+
+    assert response.status_code == 200, response.text
+    exercise = response.json()["days"][0]["exercises"][0]
+    assert exercise["set_groups"] == [{
+        "sets": exercise["target_sets"],
+        "reps_min": exercise["target_reps_min"],
+        "reps_max": exercise["target_reps_max"],
+        "target_rir": 10 - exercise["target_rpe"],
+        "load": None,
+        "amrap_last_set": False,
+    }]
 
 
 def test_program_edit_keeps_duplicate_entries_when_another_exercise_changes(api):
@@ -537,7 +595,10 @@ def test_program_edit_keeps_duplicate_entries_when_another_exercise_changes(api)
     assert response.status_code == 200, response.text
     edited = response.json()["days"][0]["exercises"]
     assert [exercise["exercise_id"] for exercise in edited] == ["sq", "bp", "bp", "row"]
-    assert edited[0] == {**original["exercises"][0], "target_sets": 2}
+    assert edited[0] == {
+        **original["exercises"][0], "target_sets": 2,
+        "set_groups": [{**original["exercises"][0]["set_groups"][0], "sets": 2}],
+    }
     assert edited[1]["notes"] == "First bench prescription."
     assert edited[1]["target_reps_min"] == 5
     assert edited[1]["target_rpe"] == 8.5

@@ -10,6 +10,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from agent.chat_markers import SessionPointerFacts, format_session_pointer
+from agent.ProgramState import program_exercise_working_sets
 from agent.debrief import generate_session_debrief
 from agent.progression_engine import (
     SessionExerciseRecord,
@@ -388,10 +389,11 @@ def _build_prescription(ledger: Any, day_plan: Any, assignment: dict[str, Any] |
     targets = []
     for ex_idx, ex in enumerate(day_plan.exercises, start=1):
         is_barbell = _is_barbell(ex)
-        effective_sets = ex.target_sets
+        groups = ex.set_groups or []
+        effective_sets = program_exercise_working_sets(ex)
         target_rpe_cap = ex.target_rpe or 8.5
         if deload_state["state"] == DELOAD_STATE_APPLIED:
-            effective_sets = max(1, round(ex.target_sets * fatigue_info["volume_multiplier"]))
+            effective_sets = max(1, round(effective_sets * fatigue_info["volume_multiplier"]))
             target_rpe_cap = min(target_rpe_cap, fatigue_info["intensity_cap_rpe"] or 10.0)
         last_perf = ledger.get_last_performance(ex.exercise_id)
         entry: dict[str, Any] = {
@@ -399,6 +401,7 @@ def _build_prescription(ledger: Any, day_plan: Any, assignment: dict[str, Any] |
             "exercise_name": ex.exercise_name,
             "is_barbell": is_barbell,
             "effective_sets": effective_sets,
+            "set_groups": [group.model_dump() for group in groups],
             "target_rpe_cap": target_rpe_cap,
             "last_perf": last_perf,
             "projected_weight": 20.0,

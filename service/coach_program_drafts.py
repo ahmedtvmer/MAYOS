@@ -285,6 +285,21 @@ def _pydantic_issue(error: dict[str, Any]) -> dict[str, Any]:
     elif loc:
         field = str(loc[0])
 
+    if "set_groups" in loc:
+        group_field = next(
+            (str(part) for part in reversed(loc) if isinstance(part, str) and part in {
+                "sets", "reps_min", "reps_max", "target_rir", "load",
+            }),
+            "reps_min",
+        )
+        field = {
+            "sets": "target_sets",
+            "reps_min": "target_reps_min",
+            "reps_max": "target_reps_max",
+            "target_rir": "target_rpe",
+            "load": "load",
+        }[group_field]
+
     error_type = str(error.get("type", ""))
     if field == "days" and error_type == "too_long":
         code, message = "too_many_days", f"A program can have at most {MAX_PROGRAM_DAYS} training days."
@@ -644,6 +659,8 @@ def _validate_program_rep_ranges(days: list[Any], week_count: int) -> None:
     for day in days:
         for exercise_index, exercise in enumerate(day.exercises):
             if exercise.target_reps_min > exercise.target_reps_max:
+                issues.append(_invalid_rep_range_issue(day, exercise_index, week_count))
+            elif any(group.reps_min > group.reps_max for group in exercise.set_groups):
                 issues.append(_invalid_rep_range_issue(day, exercise_index, week_count))
     if issues:
         raise ProgramDraftValidationError(issues)

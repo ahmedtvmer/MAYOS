@@ -1328,36 +1328,62 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     final PrescriptionTarget? target = prescription?.forExercise(
       exercise.exerciseId,
     );
-    final int setCount = target?.effectiveSets ?? exercise.targetSets;
+    final int setCount = target?.effectiveSets ?? exercise.workingSetCount;
     final PrescriptionHint? hint = _prescriptionHint(
       exercise.toJson(),
       target,
       baseline: baselines[exercise.exerciseId],
     );
+    final double? bestE1rmKg = baselines[exercise.exerciseId]?.bestE1rmKg;
+    final double? firstGroupResolvedKg = hint?.weightKg;
+    final List<ActiveWorkoutSet> prescribedSets = <ActiveWorkoutSet>[
+      for (int index = 0; index < setCount; index++)
+        ActiveWorkoutSet(
+          weightKg: _loadForSetIndex(exercise, index)
+                  ?.suggestedWeightKg(
+                    bestE1rmKg,
+                    firstGroupResolvedKg: firstGroupResolvedKg,
+                  ) ??
+              0,
+        ),
+    ];
     return ActiveWorkoutExercise(
       exercise: exercise.toJson(),
       // #108: the caption keeps the effective prescription and the frozen
       // projection — what the rows were actually seeded from — not the raw
       // program target the card might otherwise contradict.
-      targetLabel: prescriptionCaption(
+      // A deload that trims a grouped plan falls back to the flat caption
+      // so the label never promises more sets than were seeded.
+      targetLabel: exercise.setGroups.length > 1 &&
+              setCount == exercise.workingSetCount
+          ? exercise.prescription
+          : prescriptionCaption(
         setCount: setCount,
         minReps: exercise.targetRepsMin,
         maxReps: exercise.targetRepsMax,
         projectedWeightKg: hint?.weightKg,
         rir: hint?.rir,
       ),
-      sets: <ActiveWorkoutSet>[
-        for (int i = 0; i < setCount; i++)
-          ActiveWorkoutSet(
-            weightKg: exercise.load?.suggestedWeightKg(
-                  baselines[exercise.exerciseId]?.bestE1rmKg,
-                ) ??
-                0,
-          ),
-      ],
+      sets: prescribedSets,
       prescriptionHint: hint,
       effectiveSets: setCount,
     );
+  }
+
+  static ProgramLoad? _loadForSetIndex(ProgramExercise exercise, int setIndex) {
+    int groupEnd = 0;
+    for (final Map<String, dynamic> group in exercise.setGroups) {
+      groupEnd += (group['sets'] as num?)?.toInt() ?? 0;
+      if (setIndex < groupEnd) {
+        final dynamic rawLoad = group['load'];
+        return rawLoad is Map<String, dynamic>
+            ? ProgramLoad.fromJson(rawLoad)
+            : exercise.setGroups.length > 1
+                ? null
+                : exercise.load;
+      }
+    }
+    return exercise.load;
   }
 
   /// The prescription target an empty cell shows as its faded hint when there

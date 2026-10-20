@@ -196,10 +196,15 @@ def _read_active_program(ledger: Any) -> dict[str, Any]:
             exercises.append(
                 {
                     "name": str(getattr(exercise, "exercise_name", "not set")),
-                    "sets": getattr(exercise, "target_sets", "not set"),
+                    "sets": getattr(exercise, "working_sets", getattr(exercise, "target_sets", "not set")),
                     "reps_min": getattr(exercise, "target_reps_min", "not set"),
                     "reps_max": getattr(exercise, "target_reps_max", "not set"),
                     "rir": rir,
+                    "set_groups": [
+                        {"sets": group.sets, "reps_min": group.reps_min,
+                         "reps_max": group.reps_max, "rir": group.target_rir}
+                        for group in getattr(exercise, "set_groups", ()) or ()
+                    ],
                     "rest_seconds": getattr(exercise, "rest_seconds", "not set"),
                 }
             )

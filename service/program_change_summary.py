@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from agent.ProgramState import PersistedProgramSchema
+from agent.ProgramState import PersistedProgramSchema, program_exercise_working_sets
 
 
 @dataclass
@@ -212,10 +212,18 @@ def _append_prescription_change(context: _ExerciseChangeContext, before: Any, af
 
 def _prescription_fields(before: Any, after: Any) -> dict[str, dict[str, int | float | str]]:
     fields: dict[str, dict[str, int | float | str]] = {}
-    _add_field_change(fields, "sets", before.target_sets, after.target_sets)
+    _add_field_change(
+        fields,
+        "sets",
+        program_exercise_working_sets(before),
+        program_exercise_working_sets(after),
+    )
     _add_field_change(fields, "warmup_sets", before.warmup_sets, after.warmup_sets)
-    _add_field_change(fields, "reps", _reps(before), _reps(after))
-    _add_field_change(fields, "rir", _rir(before.target_rpe), _rir(after.target_rpe))
+    if len(before.set_groups) > 1 or len(after.set_groups) > 1:
+        _add_field_change(fields, "groups", _group_prescriptions(before), _group_prescriptions(after))
+    else:
+        _add_field_change(fields, "reps", _reps(before), _reps(after))
+        _add_field_change(fields, "rir", _rir_value(before.set_groups[0].target_rir), _rir_value(after.set_groups[0].target_rir))
     _add_field_change(fields, "rest_seconds", before.rest_seconds, after.rest_seconds)
     return fields
 
@@ -227,15 +235,25 @@ def _add_field_change(
         fields[name] = {"before": before, "after": after}
 
 
+def _group_prescriptions(exercise: Any) -> str:
+    return " · ".join(
+        f"{group.sets} × {_group_reps(group)} @ RIR {_rir_value(group.target_rir)}"
+        for group in exercise.set_groups or []
+    )
+
+
 def _reps(exercise: Any) -> str:
     if exercise.target_reps_min == exercise.target_reps_max:
         return str(exercise.target_reps_min)
     return f"{exercise.target_reps_min}–{exercise.target_reps_max}"
 
 
-def _rir(target_rpe: float) -> int | float:
-    rir = round(10 - target_rpe, 2)
-    return int(rir) if rir.is_integer() else rir
+def _group_reps(group: Any) -> str:
+    return str(group.reps_min) if group.reps_min == group.reps_max else f"{group.reps_min}–{group.reps_max}"
+
+
+def _rir_value(value: float) -> int | float:
+    return int(value) if value.is_integer() else value
 
 
 def _exercise_name(exercise: Any, resolve_name: Callable[[str], str | None]) -> str:

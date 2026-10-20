@@ -624,6 +624,26 @@ class ExerciseLoggingCard extends StatelessWidget {
   }
 
   String _prescriptionLine(WorkoutCopy copy) {
+    final List<dynamic> groups =
+        exercise.exercise['set_groups'] as List<dynamic>? ?? <dynamic>[];
+    final Map<String, dynamic>? amrapGroup = groups
+        .whereType<Map<String, dynamic>>()
+        .cast<Map<String, dynamic>?>()
+        .firstWhere((Map<String, dynamic>? group) => group?['amrap_last_set'] == true,
+            orElse: () => null);
+    if (amrapGroup != null) {
+      final int minimum = (amrapGroup['reps_min'] as num?)?.toInt() ?? 0;
+      final ProgramExercise planned = ProgramExercise.fromJson(exercise.exercise);
+      final String label = planned.prescriptionFor(
+        amrapLabel: copy.amrapAsManyRepsAsPossible,
+      );
+      return '$label · ${copy.amrapAsManyRepsAsPossible}${minimum > 0 ? ' · ${copy.amrapMinimumReps(minimum)}' : ''}';
+    }
+    if (groups.length > 1) {
+      return ProgramExercise.fromJson(exercise.exercise).prescriptionFor(
+        amrapLabel: copy.amrapAsManyRepsAsPossible,
+      );
+    }
     final int warmupSets =
         (exercise.exercise['warmup_sets'] as num?)?.toInt() ?? 0;
     if (!copy.isArabic) {
@@ -1124,6 +1144,7 @@ class SetLoggingRow extends StatelessWidget {
     required this.badges,
     required this.focus,
     required this.isCurrent,
+    this.groupPrescription,
     required this.onSelectCell,
     required this.onToggleWarmup,
     required this.onToggleTick,
@@ -1143,6 +1164,7 @@ class SetLoggingRow extends StatelessWidget {
 
   /// The derived Current set points here (#158): blue tint, no other change.
   final bool isCurrent;
+  final String? groupPrescription;
 
   final ValueChanged<LoggerField> onSelectCell;
   final VoidCallback onToggleWarmup;
@@ -1198,6 +1220,21 @@ class SetLoggingRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          if (groupPrescription != null)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(
+                start: MayosSpacing.xs,
+                end: MayosSpacing.xs,
+                top: MayosSpacing.xxs,
+              ),
+              child: Text(
+                groupPrescription!,
+                style: MayosTypography.of(context).caption.copyWith(
+                  color: c.textMuted,
+                ),
+                textAlign: copy.isArabic ? TextAlign.end : null,
+              ),
+            ),
           Row(
             children: <Widget>[
               SizedBox(

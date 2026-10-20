@@ -39,6 +39,7 @@ from agent.program_blueprints import (
     SLOT_SPECS,
     experience_level_for_training_age,
 )
+from agent.ProgramState import program_exercise_working_sets
 from agent.progression_engine import set_e1rm
 from core.display_language import DisplayLanguage
 from core.effort import min_rir_label, rir_label
@@ -591,9 +592,10 @@ def _program_day_facts(
         entry: dict[str, Any] = {
             "name": exercise["exercise_name"],
             "description": next(descriptions),
-            "sets": exercise["target_sets"],
+            "sets": program_exercise_working_sets(exercise),
             "reps": f"{exercise['target_reps_min']}-{exercise['target_reps_max']}",
             "rpe": exercise["target_rpe"],
+            "set_groups": exercise.get("set_groups") or [],
         }
         if exercise.get("load") is not None:
             entry["load"] = exercise["load"]
@@ -1030,6 +1032,12 @@ def _render_program_days(days: list[dict[str, Any]], *, indent: str) -> list[str
 
 
 def _render_prescription(exercise: dict[str, Any]) -> str:
+    groups = exercise.get("set_groups") or []
+    if len(groups) > 1:
+        return " · ".join(
+            f"{group['sets']}x{group['reps_min']}-{group['reps_max']} @RIR {group['target_rir']}"
+            for group in groups
+        )
     prescription = (
         f"{exercise.get('description') or exercise.get('name')} "
         f"{format_number(exercise.get('sets'))}x{exercise.get('reps')}"

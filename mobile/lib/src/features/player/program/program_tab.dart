@@ -1572,7 +1572,9 @@ class _ExerciseRow extends StatelessWidget {
                     textDirection: TextDirection.ltr,
                     child: Text(
                       <String>[
-                        exercise.prescription,
+                        exercise.prescriptionFor(
+                          amrapLabel: displayCopyOf(context).amrapLabel,
+                        ),
                         if (exercise.load != null)
                           displayCopyOf(context).programLoadLine(
                             exercise.load!.kind,

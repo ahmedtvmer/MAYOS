@@ -779,8 +779,7 @@ class ActiveWorkoutExercise {
   /// the seeded effective sets, else the program target, else today's rows.
   int get effectiveSetCount =>
       effectiveSets ??
-      (exercise['target_sets'] as num?)?.toInt() ??
-      sets.length;
+      ProgramExercise.fromJson(exercise).workingSetCount;
 
   ActiveWorkoutExercise copyWith({
     List<ActiveWorkoutSet>? sets,

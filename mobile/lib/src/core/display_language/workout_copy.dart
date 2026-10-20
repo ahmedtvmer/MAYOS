@@ -27,6 +27,31 @@ class WorkoutCopy {
       ? '${_ltr('$count')} مجموعات إحماء متدرجة'
       : '$count ramped warm-up sets';
   String get workingSetsHeading => isArabic ? 'مجموعات التدريب' : 'Working sets';
+  // #323 set group AMRAP display.
+  String get amrapAsManyRepsAsPossible =>
+      isArabic ? 'أكبر عدد ممكن من التكرارات' : 'As many reps as possible';
+  String amrapMinimumReps(int reps) => isArabic
+      ? 'الحد الأدنى ${_ltr('$reps')} تكرارات'
+      : 'minimum $reps reps';
+  String groupPrescription(Map<String, dynamic> group, {required bool amrap}) {
+    final int sets = (group['sets'] as num?)?.toInt() ?? 0;
+    final int low = (group['reps_min'] as num?)?.toInt() ?? 0;
+    final int high = (group['reps_max'] as num?)?.toInt() ?? low;
+    final double rir = (group['target_rir'] as num?)?.toDouble() ?? 0;
+    final String reps = low == high ? '$low' : '$low–$high';
+    final String load = switch ((group['load'] as Map<String, dynamic>?)?['kind']) {
+      'kg' => isArabic ? ' · ${_ltr('${group['load']['value']} kg')}' : ' · ${group['load']['value']} kg',
+      'pct_e1rm' => isArabic ? ' · ${_ltr('${group['load']['value']}% e1RM')}' : ' · ${group['load']['value']}% e1RM',
+      'pct_of_first_group' => isArabic ? ' · ${_ltr('${group['load']['value']}% من الحمل الأول')}' : ' · ${group['load']['value']}% of first group',
+      _ => '',
+    };
+    final String base = isArabic
+        ? '${_ltr('$sets × $reps')} · RIR ${_ltr('$rir')}$load'
+        : '$sets × $reps · RIR $rir$load';
+    return amrap
+        ? '$base · $amrapAsManyRepsAsPossible · ${amrapMinimumReps(low)}'
+        : base;
+  }
   String get warmupMovementTag => isArabic ? 'حركة إحماء' : 'Warm-up';
   String get unplanned => isArabic ? 'غير مخطط' : 'Unplanned';
   String get cardio => isArabic ? 'تمارين اللياقة' : 'Cardio';

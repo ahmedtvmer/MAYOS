@@ -1246,6 +1246,12 @@ void main() {
         await tester.tap(exerciseCard);
         await _pumpUntilFound(
             tester, find.byKey(const Key('program_draft_exercise_save')));
+        expect(find.byKey(const Key('program_draft_add_backoff')), findsOneWidget);
+        await tester.tap(find.byKey(const Key('program_draft_add_backoff')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('program_draft_group_0_0_0_remove')), findsOneWidget);
+        await tester.tap(find.byKey(const Key('program_draft_group_0_0_0_remove')));
+        await tester.pumpAndSettle();
         await tester.enterText(
             find.byKey(const Key('program_draft_sets_0_0')), '3');
         await tester.enterText(
@@ -1289,6 +1295,7 @@ void main() {
         expect(wireExercise['target_reps_min'], 8);
         expect(wireExercise['target_reps_max'], 10);
         expect(wireExercise['target_rir'], 1.0);
+        expect((wireExercise['set_groups'] as List<dynamic>).length, 1);
         expect(wireExercise['rest_seconds'], 150);
         expect(wireExercise['tempo'], '3-1-1');
         expect(wireExercise['notes'], 'Pause');
@@ -2174,6 +2181,37 @@ void main() {
     expect(find.text('v7'), findsNothing);
     expect(find.text('Generated automatically'), findsNothing);
     expect(find.text('Active since 2026-10-04'), findsNothing);
+  });
+
+  testWidgets('coach active program view shows compact grouped prescription', (tester) async {
+    final Map<String, dynamic> active = _coachActiveProgram(provenance: 'automatic');
+    final Map<String, dynamic> program = active['program'] as Map<String, dynamic>;
+    final Map<String, dynamic> day = (program['days'] as List<Map<String, dynamic>>).first;
+    final Map<String, dynamic> exercise =
+        (day['exercises'] as List<Map<String, dynamic>>).first;
+    exercise
+      ..['target_sets'] = 1
+      ..['target_reps_min'] = 3
+      ..['target_reps_max'] = 3
+      ..['target_rpe'] = 9
+      ..['set_groups'] = <Map<String, dynamic>>[
+        <String, dynamic>{'sets': 1, 'reps_min': 3, 'reps_max': 3, 'target_rir': 1},
+        <String, dynamic>{
+          'sets': 3,
+          'reps_min': 5,
+          'reps_max': 5,
+          'target_rir': 2,
+          'load': <String, dynamic>{'kind': 'pct_of_first_group', 'value': 90},
+        },
+      ];
+    final FakeMayosApi fake = _coachFake()..coachActiveProgram = active;
+    await _pumpApp(tester, fake, logicalWidth: 1440);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+
+    expect(find.textContaining('1 × 3 @ RIR 1 · 3 × 5 @ RIR 2 · −10%'), findsOneWidget);
+    expect(find.byKey(const Key('coach_program_stat_working_sets')), findsOneWidget);
   });
 
   testWidgets(

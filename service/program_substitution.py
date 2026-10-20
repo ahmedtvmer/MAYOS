@@ -129,6 +129,8 @@ def _adjust_class_prescription(
         reps = get_target_rep_window(replacement_mechanic, rep_preference)
         rest_seconds = rest_seconds_for_mechanic(replacement_mechanic)
     exercise["target_reps_min"], exercise["target_reps_max"] = reps
+    for group in exercise.get("set_groups") or []:
+        group["reps_min"], group["reps_max"] = reps
     exercise["rest_seconds"] = rest_seconds
 
 

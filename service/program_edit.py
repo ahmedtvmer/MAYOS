@@ -1,6 +1,7 @@
 """Permanent edits to a player's active program day."""
 
 from copy import deepcopy
+from agent.ProgramState import program_exercise_working_sets
 from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any
@@ -151,7 +152,11 @@ def _validate_program_edit(
         return _failure(ProgramEditErrorCode.EXERCISE_NOT_ON_DAY)
     if any(
         exercise.target_sets < 1
-        or exercise.target_sets > int(current_exercises[exercise.source_index]["target_sets"])
+        or exercise.target_sets > (
+            int(current_exercises[exercise.source_index]["set_groups"][0]["sets"])
+            if len(current_exercises[exercise.source_index].get("set_groups") or []) > 1
+            else program_exercise_working_sets(current_exercises[exercise.source_index])
+        )
         for exercise in requested_exercises
     ):
         return _failure(ProgramEditErrorCode.INVALID_SET_COUNT)
@@ -164,7 +169,11 @@ def _is_unchanged(
 ) -> bool:
     return len(current_exercises) == len(requested_exercises) and all(
         requested.source_index == index
-        and int(current["target_sets"]) == requested.target_sets
+        and (
+            int(current["set_groups"][0]["sets"])
+            if len(current.get("set_groups") or []) > 1
+            else program_exercise_working_sets(current)
+        ) == requested.target_sets
         for index, (current, requested) in enumerate(zip(current_exercises, requested_exercises))
     )
 
@@ -177,7 +186,13 @@ def _apply_program_edit(
     prepared.day["exercises"] = []
     for requested in requested_exercises:
         exercise_copy = deepcopy(current_exercises[requested.source_index])
-        exercise_copy["target_sets"] = requested.target_sets
+        groups = exercise_copy.get("set_groups") or []
+        if groups:
+            groups[0]["sets"] = requested.target_sets
+            exercise_copy["set_groups"] = groups
+            exercise_copy["target_sets"] = groups[0]["sets"]
+        else:
+            exercise_copy["target_sets"] = requested.target_sets
         prepared.day["exercises"].append(exercise_copy)
 
 

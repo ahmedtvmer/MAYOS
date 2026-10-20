@@ -21,7 +21,9 @@ from agent.ProgramState import (
     PersistedProgramWeekSchema,
     ProgramExerciseSchema,
     ProgramLoadSchema,
+    ProgramSetGroupSchema,
     SuggestedSubstitute,
+    validate_set_group_loads,
 )
 from agent.program_cardio import CardioType
 from agent.program_weeks import default_week_name
@@ -1251,9 +1253,15 @@ class ProgramDraftExerciseIn(ProgramDraftInput):
     tempo: str | None = Field(default=None, max_length=MAX_TEMPO_LENGTH)
     notes: str | None = Field(default=None, max_length=MAX_PROGRAM_NOTES_LENGTH)
     load: ProgramLoadSchema | None = None
+    set_groups: list[ProgramSetGroupSchema] = Field(default_factory=list)
     image_path: str | None = None
     gif_path: str | None = None
     suggested_substitutes: list[SuggestedSubstitute] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_group_loads(self) -> "ProgramDraftExerciseIn":
+        validate_set_group_loads(self.set_groups)
+        return self
 
     @model_validator(mode="before")
     @classmethod
@@ -1536,6 +1544,7 @@ class ProgramImportDraftRowIn(BaseModel):
     tempo: Any = None
     notes: Any = None
     load: ProgramLoadSchema | None = None
+    group: Any = None
 
 
 class ProgramImportCreateIn(BaseModel):

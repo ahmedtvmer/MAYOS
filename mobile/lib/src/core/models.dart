@@ -8,6 +8,7 @@ import 'display_language/catalog.dart';
 import 'display_language/localized_text.dart';
 import 'effort.dart';
 import 'program_load.dart';
+import 'program_prescription.dart';
 import 'rest_length.dart';
 
 export 'program_load.dart';
@@ -2533,16 +2534,29 @@ class ProgramExercise {
     this.loadType,
     this.coachEquipment,
     this.load,
+    this.setGroups = const <Map<String, dynamic>>[],
   });
 
-  factory ProgramExercise.fromJson(Map<String, dynamic> json) =>
-      ProgramExercise(
+  factory ProgramExercise.fromJson(Map<String, dynamic> json) {
+    final List<Map<String, dynamic>> groups =
+        (json['set_groups'] as List<dynamic>? ?? const <dynamic>[])
+            .whereType<Map<String, dynamic>>()
+            .map(Map<String, dynamic>.from)
+            .toList(growable: false);
+    final Map<String, dynamic>? first = groups.isEmpty ? null : groups.first;
+    final dynamic rawLoad = first == null ? json['load'] : first['load'];
+    return ProgramExercise(
         exerciseId: json['exercise_id'] as String,
         exerciseName: json['exercise_name'] as String,
-        targetSets: (json['target_sets'] as num?)?.toInt() ?? 2,
-        targetRepsMin: (json['target_reps_min'] as num?)?.toInt() ?? 0,
-        targetRepsMax: (json['target_reps_max'] as num?)?.toInt() ?? 0,
-        targetRpe: (json['target_rpe'] as num?)?.toDouble() ?? 8.5,
+        targetSets: (first?['sets'] as num?)?.toInt() ??
+            (json['target_sets'] as num?)?.toInt() ?? 2,
+        targetRepsMin: (first?['reps_min'] as num?)?.toInt() ??
+            (json['target_reps_min'] as num?)?.toInt() ?? 0,
+        targetRepsMax: (first?['reps_max'] as num?)?.toInt() ??
+            (json['target_reps_max'] as num?)?.toInt() ?? 0,
+        targetRpe: first?['target_rir'] is num
+            ? 10 - (first!['target_rir'] as num).toDouble()
+            : (json['target_rpe'] as num?)?.toDouble() ?? 8.5,
         equipment: json['equipment'] as String?,
         warmupSets: (json['warmup_sets'] as num?)?.toInt() ?? 0,
         // A missing `rest_seconds` is *unset*, not 180: the rest timer then
@@ -2570,10 +2584,12 @@ class ProgramExercise {
         equipmentCategory: json['equipment_category'] as String?,
         loadType: json['load_type'] as String?,
         coachEquipment: json['coach_equipment'] as String?,
-        load: json['load'] is Map<String, dynamic>
-            ? ProgramLoad.fromJson(json['load'] as Map<String, dynamic>)
+        load: rawLoad is Map<String, dynamic>
+            ? ProgramLoad.fromJson(rawLoad)
             : null,
+        setGroups: groups,
       );
+  }
 
   final String exerciseId;
   final String exerciseName;
@@ -2611,8 +2627,24 @@ class ProgramExercise {
   final String? loadType;
   final String? coachEquipment;
   final ProgramLoad? load;
+  final List<Map<String, dynamic>> setGroups;
 
   int get restSecondsOrDefault => restSeconds ?? kDefaultRestSeconds;
+
+  int get workingSetCount => setGroups.isEmpty
+      ? targetSets
+      : setGroups.fold<int>(
+          0,
+          (int total, Map<String, dynamic> group) =>
+              total + ((group['sets'] as num?)?.toInt() ?? 0),
+        );
+
+  /// Sets in the groups after the first: the back-offs a top-set edit keeps.
+  int get backoffSetCount => setGroups.skip(1).fold<int>(
+        0,
+        (int total, Map<String, dynamic> group) =>
+            total + ((group['sets'] as num?)?.toInt() ?? 0),
+      );
 
   bool get hasNotes => notes != null && notes!.isNotEmpty;
 
@@ -2642,10 +2674,18 @@ class ProgramExercise {
         loadType: loadType,
         coachEquipment: coachEquipment,
         load: load,
+        setGroups: setGroups,
       );
 
-  String get prescription =>
-      '$targetSets × $targetRepsMin–$targetRepsMax @ RIR ${minRirLabel(targetRpe)}';
+  String get prescription => prescriptionFor(amrapLabel: 'AMRAP');
+
+  String prescriptionFor({required String amrapLabel}) {
+    if (setGroups.length <= 1 &&
+        (setGroups.isEmpty || setGroups.first['amrap_last_set'] != true)) {
+      return '$targetSets × $targetRepsMin–$targetRepsMax @ RIR ${minRirLabel(targetRpe)}';
+    }
+    return formatSetGroups(setGroups, amrapLabel: amrapLabel);
+  }
 
   String get restLabel => 'rest ${restSecondsOrDefault}s';
 
@@ -2658,6 +2698,7 @@ class ProgramExercise {
       'target_reps_max': targetRepsMax,
       'target_rpe': targetRpe,
       'warmup_sets': warmupSets,
+      if (setGroups.isNotEmpty) 'set_groups': setGroups,
     };
     if (equipment != null) {
       json['equipment'] = equipment;

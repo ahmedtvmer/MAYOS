@@ -35,17 +35,33 @@ MIN_PROGRAM_LOAD_PCT_E1RM = 1.0
 MAX_PROGRAM_LOAD_PCT_E1RM = 100.0
 
 
+def program_exercise_working_sets(exercise: Any) -> int:
+    """Return the prescribed working set count for a schema or exercise mapping."""
+    groups = (exercise.get("set_groups") if isinstance(exercise, dict)
+              else getattr(exercise, "set_groups", None))
+    if groups:
+        return sum(int(group.get("sets") if isinstance(group, dict) else group.sets)
+                   for group in groups)
+    return int(exercise.get("target_sets") if isinstance(exercise, dict)
+               else exercise.target_sets)
+
+
+def validate_set_group_loads(groups: list[Any]) -> None:
+    if groups and groups[0].load and groups[0].load.kind == "pct_of_first_group":
+        raise ValueError("pct_of_first_group is valid only after the first group")
+
+
 class ProgramLoadSchema(BaseModel):
     """Optional coach-authored fixed or e1RM-relative exercise load."""
 
     model_config = {"extra": "forbid"}
 
-    kind: Literal["kg", "pct_e1rm"]
+    kind: Literal["kg", "pct_e1rm", "pct_of_first_group"]
     value: float = Field(gt=MIN_PROGRAM_LOAD_KG, le=MAX_PROGRAM_LOAD_KG)
 
     @model_validator(mode="after")
     def validate_value_for_kind(self) -> "ProgramLoadSchema":
-        if self.kind == "pct_e1rm" and not (
+        if self.kind in {"pct_e1rm", "pct_of_first_group"} and not (
             MIN_PROGRAM_LOAD_PCT_E1RM <= self.value <= MAX_PROGRAM_LOAD_PCT_E1RM
         ):
             raise ValueError(
@@ -53,6 +69,19 @@ class ProgramLoadSchema(BaseModel):
                 f"to {MAX_PROGRAM_LOAD_PCT_E1RM:g}."
             )
         return self
+
+
+class ProgramSetGroupSchema(BaseModel):
+    """One consecutive prescription for a number of working sets."""
+
+    model_config = {"extra": "forbid"}
+
+    sets: int = Field(ge=1, le=100)
+    reps_min: int = Field(ge=MIN_REPS, le=MAX_REPS)
+    reps_max: int = Field(ge=MIN_REPS, le=MAX_REPS)
+    target_rir: float = Field(ge=0, le=5)
+    load: ProgramLoadSchema | None = None
+    amrap_last_set: bool = False
 
 # --- Pydantic Output Contracts ---
 
@@ -83,6 +112,7 @@ class ProgramExerciseSchema(BaseModel):
         le=MAX_GENERATED_TARGET_SETS,
         description="Working sets count",
     )
+    set_groups: list[ProgramSetGroupSchema] | None = None
     target_reps_min: int = Field(ge=MIN_REPS, le=MAX_REPS, description="Lower bound of rep window")
     target_reps_max: int = Field(ge=MIN_REPS, le=MAX_REPS, description="Upper bound of rep window")
     target_rpe: float = Field(
@@ -105,6 +135,33 @@ class ProgramExerciseSchema(BaseModel):
         default_factory=list,
         description="Next Equipment access-compatible Staple exercises for this movement slot",
     )
+
+    @model_validator(mode="after")
+    def normalize_set_groups(self) -> "ProgramExerciseSchema":
+        if not self.set_groups:
+            self.set_groups = [ProgramSetGroupSchema(
+                sets=self.target_sets, reps_min=self.target_reps_min,
+                reps_max=self.target_reps_max, target_rir=10 - self.target_rpe,
+                load=self.load, amrap_last_set=False,
+            )]
+        persisted_limits = isinstance(self, PersistedProgramExerciseSchema)
+        max_group_sets = 100 if persisted_limits else MAX_GENERATED_TARGET_SETS
+        max_group_rir = 5 if persisted_limits else 10 - MIN_GENERATED_TARGET_RPE
+        validate_set_group_loads(self.set_groups)
+        for group in self.set_groups:
+            if group.sets > max_group_sets or group.target_rir > max_group_rir:
+                raise ValueError("set group values exceed the exercise prescription limits")
+        first = self.set_groups[0]
+        self.target_sets = first.sets
+        self.target_reps_min = first.reps_min
+        self.target_reps_max = first.reps_max
+        self.target_rpe = 10 - first.target_rir
+        self.load = first.load
+        return self
+
+    @property
+    def working_sets(self) -> int:
+        return program_exercise_working_sets(self)
 
 
 class WarmupExerciseSchema(BaseModel):

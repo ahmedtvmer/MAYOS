@@ -519,14 +519,20 @@ class _PrescriptionTrio extends StatelessWidget {
       children: <Widget>[
         Expanded(
           child: _PrescriptionStat(
-            value: '${exercise.targetSets} × '
-                '${exercise.targetRepsMin}–${exercise.targetRepsMax}',
+            value: exercise.setGroups.length > 1
+                ? exercise.prescriptionFor(
+                    amrapLabel: displayCopyOf(context).amrapLabel,
+                  )
+                : '${exercise.targetSets} × '
+                    '${exercise.targetRepsMin}–${exercise.targetRepsMax}',
             label: displayCopyOf(context).setsAndReps,
           ),
         ),
         Expanded(
           child: _PrescriptionStat(
-            value: 'RIR ${minRirLabel(exercise.targetRpe)}',
+            value: exercise.setGroups.length > 1
+                ? displayCopyOf(context).rirPerSetGroup
+                : 'RIR ${minRirLabel(exercise.targetRpe)}',
             label: displayCopyOf(context).intensity,
           ),
         ),

@@ -120,8 +120,9 @@ Future<_WebHarness> _pumpWebApp(
   required WebActiveWorkoutStore store,
   ActiveWorkout? initialWorkout,
   bool unexpectedCommitError = false,
+  Size viewportSize = const Size(1080, 2400),
 }) async {
-  tester.view.physicalSize = const Size(1080, 2400);
+  tester.view.physicalSize = viewportSize;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -234,6 +235,63 @@ class _DeniedBrowserStorage implements BrowserKeyValueStore {
 }
 
 void main() {
+  testWidgets('Arabic phone logger explains grouped AMRAP as a rep minimum',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _fake()..displayLanguage = 'ar';
+    final ActiveWorkout base = _workout();
+    final ActiveWorkoutExercise exercise = ActiveWorkoutExercise(
+      targetLabel: '1 × 5 @ RIR 2 · 2 × 10 @ RIR 1 · AMRAP',
+      exercise: <String, dynamic>{
+        ...base.exercises.single.exercise,
+        'set_groups': <Map<String, dynamic>>[
+          <String, dynamic>{'sets': 1, 'reps_min': 5, 'reps_max': 5},
+          <String, dynamic>{
+            'sets': 2,
+            'reps_min': 10,
+            'reps_max': 12,
+            'amrap_last_set': true,
+          },
+        ],
+      },
+      sets: <ActiveWorkoutSet>[
+        ActiveWorkoutSet(),
+        ActiveWorkoutSet(),
+        ActiveWorkoutSet(),
+      ],
+      effectiveSets: 3,
+    );
+    final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
+    await _pumpWebApp(
+      tester,
+      fake: fake,
+      browser: browser,
+      store: WebActiveWorkoutStore(storage: browser),
+      initialWorkout: base.copyWith(exercises: <ActiveWorkoutExercise>[exercise]),
+      viewportSize: const Size(360, 800),
+    );
+    await _pumpUntil(tester, find.text('حصة غير مكتملة'));
+    await tester.tap(find.text('استئناف'));
+    await _pumpUntil(tester, find.byType(WorkoutLoggerScreen));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('أكبر عدد ممكن من التكرارات'), findsWidgets);
+    expect(find.textContaining('الحد الأدنى'), findsWidgets);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('logger.row.0.0')),
+        matching: find.textContaining('RIR'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('logger.row.0.2')),
+        matching: find.textContaining('أكبر عدد ممكن من التكرارات'),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   test('web store restores across instances and isolates account keys',
       () async {
     final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();

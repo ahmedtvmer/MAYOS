@@ -2279,6 +2279,21 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   }) {
     final ActiveWorkoutExercise exercise = workout.exercises[exerciseIndex];
     final ActiveWorkoutSet set = exercise.sets[setIndex];
+    final List<dynamic> groups =
+        exercise.exercise['set_groups'] as List<dynamic>? ?? <dynamic>[];
+    String? groupPrescription;
+    int groupEnd = 0;
+    for (final dynamic rawGroup in groups) {
+      if (rawGroup is! Map<String, dynamic>) continue;
+      final int count = (rawGroup['sets'] as num?)?.toInt() ?? 0;
+      groupEnd += count;
+      if (setIndex < groupEnd) {
+        final bool isAmrapSet =
+            rawGroup['amrap_last_set'] == true && setIndex == groupEnd - 1;
+        groupPrescription = _copy.groupPrescription(rawGroup, amrap: isAmrapSet);
+        break;
+      }
+    }
     return SetLoggingRow(
       key: _rowKeys.putIfAbsent(set.id, GlobalKey.new),
       exerciseIndex: exerciseIndex,
@@ -2290,6 +2305,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       badges: badges[set.id] ?? const SetRecordBadges(),
       focus: _focus,
       isCurrent: isCurrent,
+      groupPrescription: groupPrescription,
       onSelectCell: (LoggerField field) => _changeFocusAndReveal(
         LoggerCellFocus(exerciseIndex, setIndex, field),
       ),

@@ -163,6 +163,10 @@ def test_substitution_all_occurrences_preserves_program_structure(program_data, 
 def test_substitution_class_change_uses_slot_archetype_and_swap_back_restores_slot(fresh_store):
     ledger = FakeLedger()
     program = _program_for_slots(["vertical_pull"], "150")
+    program["days"][0]["exercises"][0]["set_groups"] = [
+        {"sets": 2, "reps_min": 6, "reps_max": 9, "target_rir": 2},
+        {"sets": 3, "reps_min": 10, "reps_max": 12, "target_rir": 1},
+    ]
 
     result = substitute_program_exercise(
         ledger,
@@ -173,6 +177,7 @@ def test_substitution_class_change_uses_slot_archetype_and_swap_back_restores_sl
 
     assert result["ok"] is True
     changed = ledger.saved[-1][0]
+    assert [group["reps_min"] for group in changed["days"][0]["exercises"][0]["set_groups"]] == [10, 10]
     exercise = changed["days"][0]["exercises"][0]
     assert exercise["exercise_id"] == "237"
     assert (exercise["target_reps_min"], exercise["target_reps_max"], exercise["rest_seconds"]) == (10, 15, 150)

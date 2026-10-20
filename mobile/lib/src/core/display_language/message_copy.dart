@@ -191,6 +191,11 @@ const Map<String, ({String english, String arabic})> _programImportMessages =
     english: 'Several exercises match. Choose the correct suggestion.',
     arabic: 'تطابق عدة تمارين. اختر الاقتراح الصحيح.',
   ),
+  // #323
+  'program_import.group_invalid.v1': (
+    english: 'Row {row}, column {column}: enter a positive whole number for the set group.',
+    arabic: 'الصف {row}، العمود {column}: أدخل رقمًا صحيحًا موجبًا لمجموعة التمرين.',
+  ),
 };
 
 class MessageCopy {
@@ -294,7 +299,7 @@ class MessageCopy {
         : 'Unrecognized split override. Accepted split values: $values.';
   }
 
-  String? programImportMessage(String code, {int? maxCells}) {
+  String? programImportMessage(String code, {int? maxCells, int? row, String? column}) {
     final message = _programImportMessages[code];
     if (message == null) return null;
     final String text = isArabic ? message.arabic : message.english;
@@ -305,6 +310,12 @@ class MessageCopy {
               ? _ltr(_groupLimit(maxCells))
               : _groupLimit(maxCells));
       return text.replaceAll('{max_cells}', limit);
+    }
+    if (code == 'program_import.group_invalid.v1') {
+      final String columnLabel = isArabic && column == 'group' ? 'المجموعة' : column ?? 'group';
+      return text
+          .replaceAll('{row}', row == null ? '—' : isArabic ? _ltr('$row') : '$row')
+          .replaceAll('{column}', columnLabel);
     }
     return text;
   }

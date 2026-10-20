@@ -154,6 +154,41 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
                 onChanged: (_) => onChanged('load'),
               ),
             ],
+            if (isEditorForm) ...<Widget>[
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: Text(copy.amrapLastSet),
+                value: exercise.setGroups.first['amrap_last_set'] == true,
+                onChanged: busy ? null : (bool value) {
+                  exercise.setGroups.first['amrap_last_set'] = value;
+                  onChanged('set_groups');
+                },
+              ),
+              for (int groupIndex = 1; groupIndex < exercise.setGroups.length; groupIndex++)
+                _backoffGroup(context, copy, groupIndex),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: TextButton.icon(
+                  key: const Key('program_draft_add_backoff'),
+                  onPressed: busy ? null : () {
+                    exercise.setGroups.add(<String, dynamic>{
+                      'sets': ProgramDraftPrescription.defaultBackoffSets,
+                      'reps_min': exercise.setGroups.first['reps_min'],
+                      'reps_max': exercise.setGroups.first['reps_max'],
+                      'target_rir': exercise.setGroups.first['target_rir'],
+                      'load': <String, dynamic>{
+                        'kind': 'pct_of_first_group',
+                        'value': ProgramDraftPrescription.defaultBackoffLoadPercent,
+                      },
+                      'amrap_last_set': false,
+                    });
+                    onChanged('set_groups');
+                  },
+                  icon: const Icon(Icons.add),
+                  label: Text(copy.addBackoffSets),
+                ),
+              ),
+            ],
             const SizedBox(height: MayosSpacing.sm),
             Row(
               children: <Widget>[
@@ -227,9 +262,129 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
     );
   }
 
+  Widget _backoffGroup(BuildContext context, CoachCopy copy, int index) {
+    final Map<String, dynamic> group = exercise.setGroups[index];
+    final String prefix = 'program_draft_group_${dayIndex}_${exerciseIndex}_${exercise.groupId(group)}';
+    Widget field(String suffix, String label, String key, {bool integer = true}) => SizedBox(
+      width: 92,
+      child: TextFormField(
+        key: Key('${prefix}_$suffix'),
+        initialValue: '${group[key] ?? ''}',
+        keyboardType: TextInputType.numberWithOptions(decimal: !integer),
+        decoration: InputDecoration(labelText: label, isDense: true),
+        onChanged: (String value) {
+          final num? parsed = integer ? int.tryParse(value) : double.tryParse(value);
+          if (parsed != null) group[key] = parsed;
+          onChanged('set_groups');
+        },
+      ),
+    );
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(MayosSpacing.xs),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+          Row(children: <Widget>[
+            Expanded(child: Text(copy.backoffGroupTitle(index))),
+            IconButton(
+              key: Key('${prefix}_remove'),
+              tooltip: copy.removeSetGroup,
+              onPressed: busy ? null : () { exercise.setGroups.removeAt(index); onChanged('set_groups'); },
+              icon: const Icon(Icons.remove_circle_outline),
+            ),
+          ]),
+          Wrap(spacing: MayosSpacing.xs, runSpacing: MayosSpacing.xs, children: <Widget>[
+            field('sets', copy.workingSets, 'sets'),
+            field('reps', copy.repsOrRange, 'reps_min'),
+            field('reps_max', copy.repsOrRange, 'reps_max'),
+            field('rir', copy.targetRir, 'target_rir', integer: false),
+          ]),
+          _backoffLoadFields(context, copy, group, prefix),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: Text(copy.amrapLastSet),
+            value: group['amrap_last_set'] == true,
+            onChanged: (bool value) { group['amrap_last_set'] = value; onChanged('set_groups'); },
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _backoffLoadFields(
+    BuildContext context,
+    CoachCopy copy,
+    Map<String, dynamic> group,
+    String prefix,
+  ) => Column(
+        children: <Widget>[
+          DropdownButtonFormField<String>(
+            isExpanded: true,
+            initialValue:
+                (group['load'] as Map<String, dynamic>?)?['kind'] as String? ?? '',
+            decoration: InputDecoration(
+              labelText: copy.loadPrescription,
+              isDense: true,
+            ),
+            items: <DropdownMenuItem<String>>[
+              DropdownMenuItem<String>(value: '', child: Text(copy.noLoad)),
+              DropdownMenuItem<String>(value: 'kg', child: Text(copy.fixedLoadKg)),
+              DropdownMenuItem<String>(
+                value: 'pct_e1rm',
+                child: Text(copy.loadPercentE1rm),
+              ),
+              DropdownMenuItem<String>(
+                value: 'pct_of_first_group',
+                child: Text(copy.firstGroupLoadPercent),
+              ),
+            ],
+            onChanged: (String? kind) {
+              group['load'] = kind == null || kind.isEmpty
+                  ? null
+                  : <String, dynamic>{
+                      'kind': kind,
+                      'value':
+                          (group['load'] as Map<String, dynamic>?)?['value'] ??
+                              ProgramDraftPrescription.defaultBackoffLoadPercent,
+                    };
+              onChanged('set_groups');
+            },
+          ),
+          if ((group['load'] as Map<String, dynamic>?) != null)
+            TextFormField(
+              key: Key('${prefix}_load_value'),
+              initialValue: '${(group['load'] as Map<String, dynamic>)['value']}',
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                labelText: _backoffLoadLabel(copy, group),
+                isDense: true,
+              ),
+              onChanged: (String value) {
+                final double? parsed = double.tryParse(value);
+                if (parsed != null) {
+                  (group['load'] as Map<String, dynamic>)['value'] = parsed;
+                }
+                onChanged('set_groups');
+              },
+            ),
+        ],
+      );
+
+  String _backoffLoadLabel(CoachCopy copy, Map<String, dynamic> group) =>
+      switch ((group['load'] as Map<String, dynamic>)['kind']) {
+        'kg' => copy.fixedLoadKg,
+        'pct_of_first_group' => copy.firstGroupLoadPercent,
+        _ => copy.loadPercentE1rm,
+      };
+
   Widget _phoneCard(BuildContext context, CoachCopy copy) {
     final MayosThemeExtension colors = MayosTheme.of(context);
-    final String prescription = copy.exercisePrescriptionSummary(
+    final String prescription = exercise.setGroups.length > 1 ||
+            exercise.setGroups.first['amrap_last_set'] == true
+        ? formatSetGroups(
+            exercise.setGroups,
+            amrapLabel: displayCopyOf(context).amrapLabel,
+          )
+        : copy.exercisePrescriptionSummary(
       sets: exercise.sets.text,
       reps: exercise.reps.text,
       rir: exercise.rir.text,

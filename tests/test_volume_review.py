@@ -6,6 +6,7 @@ from agent.ProgramState import (
     PersistedProgramDaySchema,
     PersistedProgramExerciseSchema,
     PersistedProgramSchema,
+    ProgramSetGroupSchema,
 )
 from service.volume_review import accept_review, dismiss_review, evaluate_review, list_pending, review_facts
 from service.workouts import commit_session
@@ -66,6 +67,50 @@ def _seed_review(fresh_store, trend: str, *, weekly_frequency: int = 1):
     return ledger, active, {"training_age_years": 3, "weekly_frequency": weekly_frequency}, now, muscle
 
 
+def test_volume_review_counts_sets_across_groups(fresh_store):
+    ledger, program, profile, today, muscle = _seed_review(fresh_store, "progressing")
+    exercise = program.days[0].exercises[0]
+    exercise.set_groups = [
+        ProgramSetGroupSchema(sets=3, reps_min=8, reps_max=12, target_rir=2),
+        ProgramSetGroupSchema(sets=2, reps_min=10, reps_max=12, target_rir=1),
+    ]
+
+    result = review_facts(ledger, program, profile, today)
+
+    row = next(item for item in result["muscles"] if item["muscle"] == muscle)
+    assert row["weekly_sets"] == 5
+
+
+def test_grouped_volume_reduction_keeps_backoffs_and_places_remaining_cut(fresh_store):
+    db = fresh_store
+    ledger, program, profile, today, muscle = _seed_review(db, "regressing")
+    grouped = program.days[0].exercises[0]
+    grouped.set_groups = [
+        ProgramSetGroupSchema(sets=1, reps_min=5, reps_max=5, target_rir=1),
+        ProgramSetGroupSchema(sets=3, reps_min=8, reps_max=8, target_rir=2),
+    ]
+    second_id, second_name = db.catalog_conn.execute(
+        "SELECT e.id, e.name FROM exercise_curated_fields f "
+        "JOIN exercises e ON e.id = f.exercise_id "
+        "WHERE f.primary_muscle = ? AND e.id != ? ORDER BY e.id LIMIT 1",
+        (muscle, grouped.exercise_id),
+    ).fetchone()
+    simple = PersistedProgramExerciseSchema(
+        exercise_id=str(second_id), exercise_name=str(second_name), target_sets=3,
+        target_reps_min=8, target_reps_max=8,
+    )
+    program.days[0].exercises = [simple, grouped]
+
+    result = review_facts(ledger, program, profile, today)
+
+    row = next(item for item in result["muscles"] if item["muscle"] == muscle)
+    assert row["set_delta"] == -2
+    assert row["edits"] == [{
+        "week_order": 1, "day_order": 1, "day_name": "Full A",
+        "exercise_id": str(second_id), "target_sets": 1,
+    }]
+
+
 @pytest.mark.parametrize(
     ("trend", "frequency", "verdict", "delta"),
     [
@@ -96,7 +141,7 @@ def test_seeded_working_set_histories_produce_volume_verdicts(
 def test_beginner_ceiling_caps_stalled_volume(fresh_store):
     ledger, program, profile, today, muscle = _seed_review(fresh_store, "stalled")
     profile["training_age_years"] = 1
-    program.days[0].exercises[0].target_sets = 9
+    program.days[0].exercises[0].set_groups[0].sets = 9
     result = review_facts(ledger, program, profile, today)
     row = next((item for item in result["muscles"] if item["muscle"] == muscle), None)
     assert row is None or row["set_delta"] == 0
@@ -108,7 +153,7 @@ def test_beginner_ceiling_caps_stalled_volume(fresh_store):
 )
 def test_volume_limits_have_distinct_no_change_verdicts(fresh_store, trend, sets, verdict):
     ledger, program, profile, today, muscle = _seed_review(fresh_store, trend)
-    program.days[0].exercises[0].target_sets = sets
+    program.days[0].exercises[0].set_groups[0].sets = sets
     if trend == "stalled":
         profile["training_age_years"] = 1
 
@@ -129,7 +174,7 @@ def test_beginner_ceiling_allows_only_the_last_set_up_to_eight(fresh_store):
         "WHERE f.primary_muscle = ? AND e.id != ? ORDER BY e.id LIMIT 1",
         (muscle, program.days[0].exercises[0].exercise_id),
     ).fetchone()
-    program.days[0].exercises[0].target_sets = 2
+    program.days[0].exercises[0].set_groups[0].sets = 2
     program.days.append(PersistedProgramDaySchema(
         day_name="Full B", day_order=2,
         exercises=[PersistedProgramExerciseSchema(
@@ -379,7 +424,7 @@ def test_insufficient_exposure_waits_a_week(fresh_store):
 @pytest.mark.parametrize("signal", ["low_readiness", "overshoot"])
 def test_flat_performance_with_recovery_strain_reduces_volume(fresh_store, signal):
     ledger, program, profile, today, muscle = _seed_review(fresh_store, "stalled")
-    program.days[0].exercises[0].target_sets = 5
+    program.days[0].exercises[0].set_groups[0].sets = 5
     if signal == "low_readiness":
         ledger.conn.execute("UPDATE workout_sessions SET readiness_score = 1")
     else:

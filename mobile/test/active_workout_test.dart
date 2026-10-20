@@ -250,6 +250,33 @@ class _LatencyStore implements ActiveWorkoutStore {
 }
 
 void main() {
+  test('back-off load resolves from the first group load in 2.5 kg steps', () {
+    const ProgramLoad load =
+        ProgramLoad(kind: 'pct_of_first_group', value: 80);
+
+    expect(load.suggestedWeightKg(null, firstGroupResolvedKg: 100), 80);
+    expect(load.suggestedWeightKg(null), isNull);
+  });
+
+  test('a Program exercise carries its ordered groups into the workout draft', () {
+    final ProgramExercise exercise = ProgramExercise.fromJson(
+      <String, dynamic>{
+        'exercise_id': 'bench',
+        'exercise_name': 'Bench Press',
+        'target_sets': 3,
+        'target_reps_min': 5,
+        'target_reps_max': 8,
+        'target_rpe': 8,
+        'set_groups': <Map<String, dynamic>>[
+          <String, dynamic>{'sets': 3, 'reps_min': 5, 'reps_max': 8},
+          <String, dynamic>{'sets': 2, 'reps_min': 10, 'reps_max': 12},
+        ],
+      },
+    );
+
+    expect(exercise.toJson()['set_groups'], hasLength(2));
+  });
+
   group('Active workout lifecycle', () {
     test('load prescriptions seed editable suggestions from each load kind',
         () async {
@@ -633,6 +660,89 @@ void main() {
       expect(unplanned.prescriptionHint!.reps, 8);
       expect(unplanned.prescriptionHint!.rir, 2.0);
       expect(unplanned.prescriptionHint!.weightKg, isNull);
+    });
+
+    test('a deload that trims a grouped plan captions only the seeded sets', () async {
+      final Map<String, dynamic> grouped = <String, dynamic>{
+        'exercise_id': 'bench_press', 'exercise_name': 'Bench Press',
+        'target_sets': 1, 'target_reps_min': 3, 'target_reps_max': 3,
+        'target_rpe': 9,
+        'set_groups': <Map<String, dynamic>>[
+          <String, dynamic>{'sets': 1, 'reps_min': 3, 'reps_max': 3, 'target_rir': 1},
+          <String, dynamic>{'sets': 3, 'reps_min': 8, 'reps_max': 10, 'target_rir': 2},
+        ],
+      };
+      final FakeMayosApi fake = _signedInFake()
+        ..programDaysOverride = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'day_name': 'Upper', 'day_order': 1,
+            'warmup_exercises': <dynamic>[],
+            'exercises': <Map<String, dynamic>>[grouped],
+          },
+        ]
+        ..prescriptionEffectiveSets['bench_press'] = 2;
+      final ProviderContainer container = _container(
+        fake: fake,
+        tokens: await _tokens(),
+        store: InMemoryActiveWorkoutStore(),
+        cache: InMemoryBaselineCacheStore(),
+        drafts: InMemoryDraftStore(),
+        workoutCache: InMemoryWorkoutCacheStore(),
+      );
+      final ActiveWorkoutController controller =
+          container.read(activeWorkoutControllerProvider.notifier);
+      await controller.startFromDay(
+        accountId: _account,
+        day: ProgramDay(
+          dayName: 'Upper', dayOrder: 1,
+          exercises: <ProgramExercise>[ProgramExercise.fromJson(grouped)],
+        ),
+        programVersion: 3,
+      );
+
+      final ActiveWorkoutExercise planned = controller.workout!.exercises.single;
+      expect(planned.sets, hasLength(2));
+      expect(planned.targetLabel, startsWith('2 '));
+    });
+
+    test('offline grouped plan seeds all sets and an unloaded back-off stays unloaded', () async {
+      final FakeMayosApi fake = _signedInFake()
+        ..prescriptionOffline = true
+        ..baselinesBody = <Map<String, dynamic>>[
+          <String, dynamic>{..._baselineRow(), 'best_e1rm_kg': 120.0},
+        ];
+      final ProviderContainer container = _container(
+        fake: fake,
+        tokens: await _tokens(),
+        store: InMemoryActiveWorkoutStore(),
+        cache: InMemoryBaselineCacheStore(),
+        drafts: InMemoryDraftStore(),
+        workoutCache: InMemoryWorkoutCacheStore(),
+      );
+      final ProgramExercise exercise = ProgramExercise.fromJson(<String, dynamic>{
+        'exercise_id': 'bench_press', 'exercise_name': 'Bench Press',
+        'target_sets': 1, 'target_reps_min': 3, 'target_reps_max': 3,
+        'target_rpe': 9,
+        'load': <String, dynamic>{'kind': 'pct_e1rm', 'value': 75},
+        'set_groups': <Map<String, dynamic>>[
+          <String, dynamic>{'sets': 1, 'reps_min': 3, 'reps_max': 3,
+            'target_rir': 1, 'load': <String, dynamic>{'kind': 'pct_e1rm', 'value': 75}},
+          <String, dynamic>{'sets': 3, 'reps_min': 5, 'reps_max': 5,
+            'target_rir': 2, 'load': null},
+        ],
+      });
+      final ActiveWorkoutController controller =
+          container.read(activeWorkoutControllerProvider.notifier);
+      await controller.startFromDay(
+        accountId: _account,
+        day: ProgramDay(dayName: 'Upper', dayOrder: 1, exercises: <ProgramExercise>[exercise]),
+        programVersion: 3,
+      );
+
+      final ActiveWorkoutExercise planned = controller.workout!.exercises.single;
+      expect(planned.sets, hasLength(4));
+      expect(planned.sets.first.weightKg, 90);
+      expect(planned.sets[1].weightKg, 0);
     });
   });
 

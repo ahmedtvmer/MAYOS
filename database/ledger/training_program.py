@@ -235,6 +235,11 @@ class LedgerTrainingProgramMixin:
                             exercise_values["load_json"] = (
                                 json.dumps(load, ensure_ascii=False) if load is not None else None
                             )
+                        if "set_groups_json" in exercise_cols:
+                            groups = ex.get("set_groups")
+                            exercise_values["set_groups_json"] = (
+                                json.dumps(groups, ensure_ascii=False) if groups else None
+                            )
                         cursor.execute(
                             f"INSERT INTO program_exercises ({', '.join(exercise_values)}) "
                             f"VALUES ({', '.join(['?'] * len(exercise_values))})",
@@ -383,6 +388,7 @@ class LedgerTrainingProgramMixin:
         has_suggested_substitutes = "suggested_substitutes_json" in exercise_cols
         has_tempo = "tempo" in exercise_cols
         has_load = "load_json" in exercise_cols
+        has_set_groups = "set_groups_json" in exercise_cols
 
         days = []
         try:
@@ -410,6 +416,8 @@ class LedgerTrainingProgramMixin:
                     select_cols += ", pe.tempo"
                 if has_load:
                     select_cols += ", pe.load_json"
+                if has_set_groups:
+                    select_cols += ", pe.set_groups_json"
                 select_cols += (
                     f", {EXERCISE_DISPLAY_EQUIPMENT_SQL} AS equipment"
                     ", ce.body_part AS body_part"
@@ -439,11 +447,17 @@ class LedgerTrainingProgramMixin:
                         except (TypeError, ValueError):
                             logger.warning("Skipping malformed Staple substitute list on %s", r[1])
                     load = None
+                    set_groups = None
                     if row_by_column.get("load_json"):
                         try:
                             load = json.loads(row_by_column["load_json"])
                         except (TypeError, ValueError):
                             logger.warning("Skipping malformed Program load on %s", r[1])
+                    if row_by_column.get("set_groups_json"):
+                        try:
+                            set_groups = json.loads(row_by_column["set_groups_json"])
+                        except (TypeError, ValueError):
+                            logger.warning("Skipping malformed Program set groups on %s", r[1])
                     exercises.append(
                         PersistedProgramExerciseSchema(
                             exercise_id=str(r[0]),
@@ -466,6 +480,7 @@ class LedgerTrainingProgramMixin:
                             video_url=row_by_column.get("video_url"),
                             is_coach_exercise=bool(row_by_column.get("is_coach_exercise")),
                             load=load,
+                            set_groups=set_groups,
                         )
                     )
 
