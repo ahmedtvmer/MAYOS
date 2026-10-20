@@ -286,6 +286,7 @@ class _CoachRosterAssistantPanelState
           Align(
             alignment: AlignmentDirectional.centerStart,
             child: Container(
+              key: const Key('coach_roster_assistant_answer'),
               constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * 0.9,
               ),
@@ -346,9 +347,12 @@ class _CoachRosterAssistantPanelState
       Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          MayosMarkdown(
-            source: _displayAnswer(exchange, assignmentsById),
-            bodyStyle: MayosTypography.of(context).bodySecondary,
+          SelectionArea(
+            child: MayosMarkdown(
+              source: _displayAnswer(exchange, assignmentsById),
+              bodyStyle: MayosTypography.of(context).bodySecondary,
+              selectable: false,
+            ),
           ),
           if (exchange.coverageSummary.isNotEmpty) ...<Widget>[
             const SizedBox(height: MayosSpacing.xs),

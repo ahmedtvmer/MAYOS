@@ -19,6 +19,7 @@ class CoachInviteScreen extends StatelessWidget {
         title: coachCopyOf(context).becomeCoach,
         showBack: true,
         body: ListView(
+          key: const Key('coach_invite_screen_body'),
           padding: MayosSpacing.screen,
           children: <Widget>[
             Text(

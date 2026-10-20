@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/api_client.dart';
 import '../../core/app_failure.dart';
@@ -16,6 +19,7 @@ import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_card.dart';
 import '../../core/ui/first_strong_direction.dart';
+import '../../core/ui/is_desktop_layout.dart';
 import '../../providers.dart';
 import 'coach_program_templates_screen.dart';
 
@@ -154,6 +158,13 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
         _saveError = apiFailureMessage(error);
       });
     }
+  }
+
+  void _shareInvite(AssignmentInvite invite) {
+    unawaited(Clipboard.setData(ClipboardData(text: invite.token)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(coachCopyOf(context).inviteCopied)),
+    );
   }
 
   Future<void> _markRead() async {
@@ -481,6 +492,7 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
           ),
           const SizedBox(height: MayosSpacing.sm),
           MayosButton(
+            key: const Key('coach_create_player_invite'),
             label: coachCopyOf(context).createPlayerInvite,
             icon: Icons.add,
             loading: _issuing,
@@ -493,6 +505,16 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
               textDirection: TextDirection.ltr,
               style: MayosTypography.of(context).numeric.copyWith(color: c.textPrimary),
             ),
+            if (!isDesktopLayout(context)) ...<Widget>[
+              const SizedBox(height: MayosSpacing.xs),
+              MayosButton(
+                key: const Key('coach_invite_share'),
+                label: coachCopyOf(context).copyInviteCode,
+                variant: MayosButtonVariant.secondary,
+                icon: Icons.copy_outlined,
+                onPressed: () => _shareInvite(invite),
+              ),
+            ],
             const SizedBox(height: MayosSpacing.xxs),
             Text(coachCopyOf(context).inviteExpires(invite.expiresAt),
                 style: MayosTypography.of(context).caption.copyWith(color: c.textMuted)),

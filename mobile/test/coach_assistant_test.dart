@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
@@ -8,6 +9,7 @@ import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
+import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
@@ -19,6 +21,7 @@ import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/auth_harness.dart';
 import 'support/fake_mayos_api.dart';
+import 'support/coach_layout_harness.dart';
 
 /// Pumps finite frames until [finder] matches, then a few more so transitions
 /// settle without depending on `pumpAndSettle` (indeterminate spinners never
@@ -36,6 +39,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     }
     await tester.pump(const Duration(milliseconds: 100));
   }
+  expect(finder, findsWidgets, reason: 'Timed out waiting for $finder');
 }
 
 Future<void> _pumpApp(
@@ -43,6 +47,7 @@ Future<void> _pumpApp(
   FakeMayosApi fake, {
   ThemeMode? themeMode,
   Size? size,
+  String language = 'en',
 }) async {
   tester.view.physicalSize = size ?? const Size(1080, 2400);
   tester.view.devicePixelRatio = size == null ? 2.0 : 1.0;
@@ -56,6 +61,7 @@ Future<void> _pumpApp(
       overrides: <Override>[
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
+        systemDisplayLanguageProvider.overrideWithValue(language),
         themeModeStoreProvider.overrideWithValue(
             InMemoryThemeModeStore(themeMode)),
         chatCacheStoreProvider.overrideWithValue(InMemoryChatCacheStore()),
@@ -78,8 +84,11 @@ Future<void> _pumpApp(
       tester, find.text(fake.coach ? 'Roster' : 'Home'));
 }
 
-FakeMayosApi _coachFake(
-    {bool coachAiEnabled = true, bool secondPlayer = false}) {
+FakeMayosApi _coachFake({
+  bool coachAiEnabled = true,
+  bool secondPlayer = false,
+  String language = 'en',
+}) {
   final FakeMayosApi fake = FakeMayosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
@@ -88,6 +97,7 @@ FakeMayosApi _coachFake(
   fake.profileExists = true;
   fake.recoveryEmail = 'alice@example.com';
   fake.coachDisplayName = 'Coach Alice';
+  fake.displayLanguage = language;
   fake.coachAiEnabled = coachAiEnabled;
   fake.assignments.add(<String, dynamic>{
     'assignment_id': 'assignment-1',
@@ -114,8 +124,11 @@ Finder _assistantMarkdown(String source) => find.byWidgetPredicate(
     );
 
 /// The coach shell opens on the Roster tab (#119).
-Future<void> _openRoster(WidgetTester tester) async {
-  await _pumpUntilFound(tester, find.text('Active assignments'));
+Future<void> _openRoster(WidgetTester tester, {String language = 'en'}) async {
+  await _pumpUntilFound(
+    tester,
+    find.text(language == 'ar' ? 'علاقات التدريب النشطة' : 'Active assignments'),
+  );
 }
 
 /// Roster row → player history → the coach assistant button.
@@ -171,6 +184,7 @@ Future<void> _pumpUntil(WidgetTester tester, bool Function() condition,
   for (int j = 0; j < 4; j++) {
     await tester.pump(const Duration(milliseconds: 100));
   }
+  expect(condition(), isTrue, reason: 'Timed out waiting for condition');
 }
 
 /// Pumps until [finder] holds at least [count] widgets.
@@ -185,6 +199,7 @@ Future<void> _pumpUntilCount(WidgetTester tester, Finder finder, int count,
   for (int j = 0; j < 4; j++) {
     await tester.pump(const Duration(milliseconds: 100));
   }
+  expect(finder.evaluate().length, greaterThanOrEqualTo(count));
 }
 
 void main() {
@@ -258,6 +273,86 @@ void main() {
     expect(transcript, isNotNull);
     expect(transcript!.assignmentId, 'assignment-1');
     expect(transcript.turns, hasLength(2));
+  });
+
+  testWidgets('phone assistant reply stays in its bubble and remains selectable',
+      (WidgetTester tester) async {
+    FakeMayosApi? usedFake;
+    String? copiedText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (MethodCall call) async {
+        if (call.method == 'Clipboard.setData') {
+          copiedText = (call.arguments as Map<Object?, Object?>)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+    await expectCoachPhoneLayout(
+      tester,
+      configureFake: (FakeMayosApi fake) {
+        usedFake = fake;
+        fake.coachAiEnabled = true;
+        fake.assignments.add(<String, dynamic>{
+          'assignment_id': 'assignment-1',
+          'player_username': 'bob',
+          'started_at': '2026-09-24T10:00:00Z',
+          'status': 'active',
+        });
+        fake.coachAssistantAnswer =
+            '| Exercise | Sets | Notes |\n| --- | ---: | --- |\n'
+            '| Lat Pulldown | 3 | Keep the full range of motion |';
+      },
+      ready: (String language) => find.byKey(const ValueKey<String>('mayos_scaffold_body')),
+      pageScrollable: (String language) => find.byType(Scrollable).first,
+      allowedInnerStrips: (String language) => find.byKey(
+        const Key('coach_assistant_reply_bubble'),
+      ),
+      assertions: (WidgetTester tester, String language) async {
+        await tester.tap(find.text('bob'));
+        await _pumpUntilFound(tester, find.byKey(const Key('coach_assistant_entry')));
+        await tester.tap(find.byKey(const Key('coach_assistant_entry')));
+        await _pumpUntilFound(tester, find.byKey(const Key('coach_assistant_question')));
+        addTearDown(tester.view.resetViewInsets);
+        tester.view.viewInsets = const FakeViewPadding(bottom: 900);
+        await tester.enterText(
+          find.byKey(const Key('coach_assistant_question')),
+          language == 'ar' ? 'اعرض ملخص التمرين' : 'Show my exercise summary',
+        );
+        await tester.pump();
+        final Finder send = find.byKey(const Key('coach_assistant_send'));
+        expect(send.hitTestable(), findsOneWidget);
+        expect(tester.getBottomLeft(send).dy, lessThan(500));
+        await tester.tap(send);
+        await _pumpUntilFound(tester, _assistantMarkdown(
+          '| Exercise | Sets | Notes |\n| --- | ---: | --- |\n'
+          '| Lat Pulldown | 3 | Keep the full range of motion |',
+        ));
+        final Finder reply = find.byKey(const Key('coach_assistant_reply_bubble'));
+        expect(reply, findsOneWidget);
+        expect(find.descendant(of: reply, matching: find.byType(SelectionArea)), findsOneWidget);
+        expect(find.descendant(of: reply, matching: find.byType(SelectableRegion)), findsOneWidget);
+        expect(find.descendant(of: reply, matching: find.text('Lat Pulldown')), findsOneWidget);
+        final Finder exercise = find.text('Lat Pulldown');
+        await tester.ensureVisible(exercise);
+        await tester.longPress(exercise);
+        await tester.pumpAndSettle();
+        final Finder copyAction = find.text(language == 'ar' ? 'نسخ' : 'Copy');
+        await _pumpUntilFound(tester, copyAction);
+        expect(copyAction, findsOneWidget);
+        await tester.tap(copyAction);
+        await tester.pumpAndSettle();
+        expect(copiedText, isNotEmpty);
+        final List<Scrollable> inside = tester.widgetList<Scrollable>(find.descendant(
+          of: reply, matching: find.byType(Scrollable),
+        )).toList();
+        expect(inside.any((Scrollable item) => item.axisDirection == AxisDirection.left || item.axisDirection == AxisDirection.right), isTrue);
+        expect(usedFake!.coachAssistantRequests, hasLength(1));
+        expect(tester.takeException(), isNull);
+      },
+    );
   });
 
   testWidgets('assistant shows its draft before the done frame',
@@ -518,8 +613,12 @@ void main() {
     }
 
     await _ask(tester, 'Latest question?');
-    await _pumpUntilFound(tester, _assistantMarkdown(fake.coachAssistantAnswer));
+    await _pumpUntil(
+      tester,
+      () => fake.coachAssistantRequests.length == 1,
+    );
 
+    expect(fake.coachAssistantRequests, hasLength(1));
     final List<dynamic> history =
         fake.coachAssistantRequests.single['history'] as List<dynamic>;
     expect(history, hasLength(coachAssistantHistoryMaxTurns));

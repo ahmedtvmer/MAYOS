@@ -35,7 +35,7 @@ String _escapeBlockHtml(String source) {
   }).join('\n');
 }
 
-/// Selectable Markdown text styled with MAYOS roles and theme tokens.
+/// Markdown text, optionally selectable, styled with MAYOS roles and theme tokens.
 ///
 /// A non-scrolling body stays inside the chat list, and no animation keeps
 /// streamed updates and loaded history on the same rendering path.
@@ -44,10 +44,12 @@ class MayosMarkdown extends ConsumerWidget {
     super.key,
     required this.source,
     this.bodyStyle,
+    this.selectable = true,
   });
 
   final String source;
   final TextStyle? bodyStyle;
+  final bool selectable;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -138,7 +140,7 @@ class MayosMarkdown extends ConsumerWidget {
 
     return MarkdownBody(
       data: _escapeBlockHtml(source),
-      selectable: true,
+      selectable: selectable,
       softLineBreak: true,
       styleSheet: styleSheet,
       textDirectionBuilder: (String text, String blockTag) => blockTag == 'pre'

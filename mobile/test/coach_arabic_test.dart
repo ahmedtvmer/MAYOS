@@ -673,8 +673,8 @@ void main() {
       of: replyMarkdown,
       matching: find.byWidgetPredicate(
         (Widget widget) =>
-            widget is SelectableText &&
-            widget.textSpan?.toPlainText() == 'المصدر',
+            widget is RichText &&
+            widget.text.toPlainText() == 'المصدر',
       ),
     );
     await _pumpUntilFound(tester, referenceLink);
@@ -697,8 +697,8 @@ void main() {
           of: replyMarkdown,
           matching: find.byWidgetPredicate(
             (Widget widget) =>
-                widget is SelectableText &&
-                widget.textSpan?.toPlainText() == text,
+                widget is RichText &&
+                widget.text.toPlainText() == text,
           ),
         );
 
@@ -714,10 +714,10 @@ void main() {
       return span.children?.any(containsLinkRecognizer) ?? false;
     }
 
-    final SelectableText referenceText = tester.widget<SelectableText>(
+    final RichText referenceText = tester.widget<RichText>(
       referenceLink,
     );
-    expect(containsLinkRecognizer(referenceText.textSpan!), isTrue);
+    expect(containsLinkRecognizer(referenceText.text), isTrue);
     expect(find.text('المصدر', findRichText: true), findsOneWidget);
     expect(
       paragraphDirection('رد عربي أول مع Coach والرقم 42/5.'),

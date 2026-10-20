@@ -10,6 +10,7 @@ import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 
 import 'support/auth_harness.dart';
 import 'support/fake_mayos_api.dart';
+import 'support/coach_layout_harness.dart';
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     {int attempts = 40}) async {
@@ -22,14 +23,16 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     }
     await tester.pump(const Duration(milliseconds: 100));
   }
+  expect(finder, findsWidgets, reason: 'Timed out waiting for $finder');
 }
 
 Future<void> _pumpApp(
   WidgetTester tester,
   FakeMayosApi fake,
-  InMemoryAppModeStore modeStore,
-) async {
-  tester.view.physicalSize = const Size(1080, 2400);
+  InMemoryAppModeStore modeStore, {
+  Size logicalSize = const Size(540, 1200),
+}) async {
+  tester.view.physicalSize = Size(logicalSize.width * 2, logicalSize.height * 2);
   tester.view.devicePixelRatio = 2.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -217,6 +220,7 @@ void main() {
     await tester.tap(find.text('Player mode'));
 
     await _pumpUntilFound(tester, find.text('Home'));
+    expect(find.text('Home'), findsOneWidget);
     expect(find.text('Roster'), findsNothing);
     expect(
       find.descendant(
@@ -238,6 +242,25 @@ void main() {
     expect(modeStore.values, <String, AppMode>{
       'account-alice': AppMode.coach,
     });
+  });
+
+  testWidgets('Coach mode switch remains usable at phone width in both languages',
+      (WidgetTester tester) async {
+    await expectCoachPhoneLayout(
+      tester,
+      configureFake: (FakeMayosApi fake) {},
+      ready: (String language) => find.byKey(const ValueKey<String>('mayos_scaffold_body')),
+      pageScrollable: (String language) => find.byType(Scrollable).first,
+      assertions: (WidgetTester tester, String language) async {
+        await tester.tap(find.byType(ModeAvatarButton));
+        final String playerMode = language == 'ar' ? 'وضع اللاعب' : 'Player mode';
+        final String home = language == 'ar' ? 'الرئيسية' : 'Home';
+        await _pumpUntilFound(tester, find.text(playerMode));
+        await tester.tap(find.text(playerMode));
+        await _pumpUntilFound(tester, find.text(home));
+        expect(tester.takeException(), isNull);
+      },
+    );
   });
 
   testWidgets(
@@ -270,7 +293,7 @@ void main() {
     await tester.tap(find.text('Player mode'));
     await _pumpUntilFound(tester, find.text('Set up your own training'));
     await tester.tap(find.text('Start intake'));
-    await _pumpUntilFound(tester, find.text('Hosted AI processing'));
+    await _pumpUntilFound(tester, find.text('Your answers and privacy'));
   });
 
   test('the coach alerts badge resets when the account changes',

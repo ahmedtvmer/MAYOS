@@ -1292,6 +1292,13 @@ class CoachCopy {
       ? 'تغيير تقسيمة البرنامج إلى ${_ltr(frequency)} أيام أسبوعيًا${preference == null || preference.isEmpty ? '' : ' · ${_ltr(preference)}'}'
       : 'Split change → $frequency days/week${preference == null || preference.isEmpty ? '' : ' · $preference'}';
 
+  // #431
+  String get copyInviteCode =>
+      isArabic ? 'نسخ كود الدعوة' : 'Copy invite code';
+  String get inviteCopied => isArabic
+      ? 'تم نسخ رمز الدعوة. يمكنك مشاركته مع اللاعب.'
+      : 'Invite code copied. You can share it with the player.';
+
   String _count(int count, ArabicCountNoun noun) {
     final String phrase = arabicCountPhrase(count, noun);
     final RegExpMatch? leading = RegExp(r'^\d+').firstMatch(phrase);

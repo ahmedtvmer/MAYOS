@@ -295,9 +295,12 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
         return _bubble(
           role: turn.role,
           child: turn.role == 'assistant'
-              ? MayosMarkdown(
-                  source: turn.content,
-                  bodyStyle: MayosTypography.of(context).bodySecondary,
+              ? SelectionArea(
+                  child: MayosMarkdown(
+                    source: turn.content,
+                    bodyStyle: MayosTypography.of(context).bodySecondary,
+                    selectable: false,
+                  ),
                 )
               : FirstStrongDirection(
                   text: turn.content,
@@ -334,10 +337,13 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        MayosMarkdown(
-          key: const Key('coach_assistant_live_draft'),
-          source: _draftAnswer,
-          bodyStyle: MayosTypography.of(context).bodySecondary,
+        SelectionArea(
+          child: MayosMarkdown(
+            key: const Key('coach_assistant_live_draft'),
+            source: _draftAnswer,
+            bodyStyle: MayosTypography.of(context).bodySecondary,
+            selectable: false,
+          ),
         ),
         const SizedBox(height: MayosSpacing.xs),
         const SizedBox(
@@ -367,7 +373,12 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
           borderRadius: MayosRadii.mediumRadius,
           border: Border.all(color: coach ? c.accent : c.border),
         ),
-        child: child,
+        child: KeyedSubtree(
+          key: role == 'assistant'
+              ? const Key('coach_assistant_reply_bubble')
+              : null,
+          child: child,
+        ),
       ),
     );
   }

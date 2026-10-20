@@ -13,6 +13,10 @@ import 'package:mayos_mobile/src/providers.dart';
 import 'fake_mayos_api.dart';
 
 typedef CoachFakeSetup = void Function(FakeMayosApi fake);
+typedef CoachPhonePrepare = Future<void> Function(
+  WidgetTester tester,
+  String language,
+);
 typedef CoachLayoutAssertions = FutureOr<void> Function(
   WidgetTester tester,
   String language,
@@ -74,6 +78,7 @@ Future<void> pumpCoachApp(
 Future<void> expectCoachPhoneLayout(
   WidgetTester tester, {
   required CoachFakeSetup configureFake,
+  CoachPhonePrepare? prepare,
   required Finder Function(String language) ready,
   required Finder Function(String language) pageScrollable,
   Finder Function(String language)? allowedInnerStrips,
@@ -91,6 +96,7 @@ Future<void> expectCoachPhoneLayout(
       logicalSize: const Size(360, 800),
       language: language,
     );
+    await prepare?.call(tester, language);
     for (int attempt = 0; attempt < 60 && ready(language).evaluate().isEmpty;
         attempt++) {
       await tester.pump(const Duration(milliseconds: 100));

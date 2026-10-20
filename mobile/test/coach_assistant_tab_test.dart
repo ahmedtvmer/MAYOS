@@ -27,6 +27,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     }
     await tester.pump(const Duration(milliseconds: 100));
   }
+  expect(finder, findsWidgets, reason: 'Timed out waiting for $finder');
 }
 
 Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
