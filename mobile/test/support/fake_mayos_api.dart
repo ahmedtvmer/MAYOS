@@ -271,6 +271,7 @@ class FakeMayosApi {
   int programImportRequests = 0;
   bool programImportRequiresTabChoice = false;
   bool programImportDraftExists = false;
+  bool programImportTextAvailable = true;
   List<String> programImportDetectedTabs = <String>['Program', 'Notes'];
   final List<Map<String, dynamic>> programImportDraftRequests =
       <Map<String, dynamic>>[];
@@ -636,6 +637,16 @@ class FakeMayosApi {
       }
       programTemplateDownloadRequests++;
       return const FakeResponse(200, <int>[80, 75, 3, 4]);
+    }
+    if (path == '/coach/program-import/capabilities') {
+      if (!_authorized(request)) {
+        return const FakeResponse(
+            401, <String, dynamic>{'detail': 'Token has been revoked.'});
+      }
+      return FakeResponse(200, <String, dynamic>{
+        'freeform_available': true,
+        'text_available': programImportTextAvailable,
+      });
     }
     if (path.startsWith('/coach/assignments/') &&
         path.endsWith('/program-import')) {

@@ -33,6 +33,16 @@ class Capabilities {
   final bool coach;
 }
 
+/// Text input options returned by `GET /coach/program-import/capabilities`.
+class ProgramImportCapabilities {
+  const ProgramImportCapabilities({required this.textAvailable});
+
+  factory ProgramImportCapabilities.fromJson(Map<String, dynamic> json) =>
+      ProgramImportCapabilities(textAvailable: json['text_available'] == true);
+
+  final bool textAvailable;
+}
+
 /// One capability's server-owned plan state. Coach may reflect the effective
 /// closed-trial entitlement; the client never infers it from the device.
 class PlanState {

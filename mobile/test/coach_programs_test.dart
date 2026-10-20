@@ -82,6 +82,7 @@ Future<void> _pumpApp(
   double logicalWidth = 540,
   double logicalHeight = 1200,
   List<Override> providerOverrides = const <Override>[],
+  ProgramSpreadsheetPicker? picker,
 }) async {
   tester.view.physicalSize = Size(logicalWidth * 2, logicalHeight * 2);
   tester.view.devicePixelRatio = 2.0;
@@ -93,7 +94,6 @@ Future<void> _pumpApp(
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
-        ...providerOverrides,
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
         apiClientProvider.overrideWith((ref) {
@@ -106,7 +106,7 @@ Future<void> _pumpApp(
           return client;
         }),
         programSpreadsheetPickerProvider
-            .overrideWithValue(() async => PlatformFile(
+            .overrideWithValue(picker ?? ({required ProgramImportPickerMode mode}) async => PlatformFile(
                   name: 'plan.csv',
                   size: 4,
                   bytes: Uint8List.fromList(<int>[100, 97, 121, 10]),
@@ -116,6 +116,7 @@ Future<void> _pumpApp(
           fake.savedProgramTemplateNames.add(name);
           return name;
         }),
+        ...providerOverrides,
       ],
       child: const MayosApp(),
     ),
@@ -240,6 +241,33 @@ Future<void> _openProgramEditorFromHarness(
     tester,
     find.byKey(const Key('coach_program_draft_screen')),
   );
+}
+
+Future<void> _openProgramImport(
+  WidgetTester tester,
+  FakeMayosApi fake, {
+  double logicalWidth = 540,
+  double logicalHeight = 1200,
+  ProgramSpreadsheetPicker? picker,
+}) async {
+  final bool arabic = fake.displayLanguage == 'ar';
+  await _pumpApp(tester, fake,
+      logicalWidth: logicalWidth,
+      logicalHeight: logicalHeight,
+      picker: picker);
+  await _pumpUntilFound(
+      tester, find.text(arabic ? 'علاقات التدريب النشطة' : 'Active assignments'));
+  await tester.tap(find.text('bob'));
+  await _pumpUntilFound(
+      tester, find.text(arabic ? 'الحجم الأسبوعي' : 'Weekly volume'));
+  await _openProgramSegment(
+      tester, label: arabic ? 'البرنامج التدريبي' : 'Program');
+  await tester.tap(find.byKey(const Key('program_import_action')));
+  await _pumpUntilFound(
+      tester, find.byKey(const Key('program_import_input_mode')));
+  await tester.tap(find.text(arabic ? 'لصق البرنامج' : 'Paste program'));
+  await _pumpUntilFound(
+      tester, find.byKey(const Key('program_import_paste_input')));
 }
 
 Future<void> _selectCatalogExercise(
@@ -690,6 +718,412 @@ Future<void> _tapDayAction(
 }
 
 void main() {
+  test('Program import picker allows XLSX, CSV and TXT', () {
+    expect(programImportExtensions, <String>['xlsx', 'csv', 'txt']);
+    expect(
+      programImportAllowedExtensions(ProgramImportPickerMode.spreadsheetsOnly),
+      <String>['xlsx', 'csv'],
+    );
+    expect(
+      programImportAllowedExtensions(ProgramImportPickerMode.allSupported),
+      <String>['xlsx', 'csv', 'txt'],
+    );
+  });
+
+  testWidgets('empty and over-cap pastes cannot be submitted', (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _openProgramImport(tester, fake);
+    final Finder submit = find.byKey(const Key('program_import_submit_paste'));
+    expect(tester.widget<MayosButton>(submit).onPressed, isNull);
+
+    await tester.enterText(
+        find.byKey(const Key('program_import_paste_input')), '  \n  ');
+    await tester.pump();
+    expect(tester.widget<MayosButton>(submit).onPressed, isNull);
+    expect(fake.programImportRequests, 0);
+
+    final Finder input = find.byKey(const Key('program_import_paste_input'));
+    await tester.enterText(
+      input,
+      List<String>.filled(10000, 'a\r\n').join(),
+    );
+    await tester.pump();
+    expect(find.text('20,000 / 20,000 characters'), findsOneWidget);
+    expect(tester.widget<MayosButton>(submit).onPressed, isNotNull);
+
+    await tester.enterText(input, List<String>.filled(10001, 'a\r\n').join());
+    await tester.pump();
+    expect(find.text('Shorten the text to 20,000 characters or fewer.'), findsOneWidget);
+    expect(tester.widget<MayosButton>(submit).onPressed, isNull);
+    expect(fake.programImportRequests, 0);
+  });
+
+  testWidgets('desktop Program import keeps the review action within the page',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _openProgramImport(tester, fake,
+        logicalWidth: 1440, logicalHeight: 960);
+    await tester.enterText(
+        find.byKey(const Key('program_import_paste_input')),
+        'Day 1\nBench Press 3x8');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('program_import_submit_paste')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('program_import_create_draft')));
+    final Rect createAction =
+        tester.getRect(find.byKey(const Key('program_import_create_draft')));
+    expect(createAction.bottom, lessThanOrEqualTo(960));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('pasted Program import reviews a week and creates a draft',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    final Map<String, dynamic> first =
+        Map<String, dynamic>.from(fake.programImportResult['rows'].single)
+          ..['week'] = 'Week 1'
+          ..['week_order'] = 1
+          ..['warnings'] = <Map<String, dynamic>>[
+            <String, dynamic>{
+              'source_row': 2,
+              'column': 'notes',
+              'code': 'program_import.load_preserved_as_note.v1',
+            },
+          ];
+    final Map<String, dynamic> second = Map<String, dynamic>.from(first)
+      ..['source_row'] = 3
+      ..['week'] = 'Week 2'
+      ..['week_order'] = 2;
+    fake.programImportResult = <String, dynamic>{
+      ...fake.programImportResult,
+      'import_mode': 'text',
+      'detected_weeks': <String>['Week 1', 'Week 2'],
+      'selected_week': 'Week 1',
+      'rows': <Map<String, dynamic>>[first, second],
+    };
+    await _pumpApp(tester, fake);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await tester.tap(find.byKey(const Key('program_import_action')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_input_mode')));
+    await tester.tap(find.text('Paste program'));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_paste_input')));
+    await tester.enterText(find.byKey(const Key('program_import_paste_input')),
+        'Week 1\nPush: Bench Press 3x8\nWeek 2\nPull: Row 3x10');
+    await tester.pump();
+    expect(
+        tester.widget<TextField>(find.byKey(const Key('program_import_paste_input'))).controller!.text,
+        isNotEmpty);
+    expect(tester.widget<MayosButton>(find.byKey(const Key('program_import_submit_paste'))).onPressed,
+        isNotNull);
+    await tester.tap(find.byKey(const Key('program_import_submit_paste')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_week_picker')));
+    expect(fake.programImportRequests, 1);
+    for (int attempt = 0;
+        attempt < 5 && find.byKey(const Key('program_import_row_2')).evaluate().isEmpty;
+        attempt++) {
+      await tester.drag(find.byType(ListView).last, const Offset(0, -400));
+      await tester.pump();
+    }
+    await tester.ensureVisible(find.byKey(const Key('program_import_row_2')));
+    expect(find.textContaining('Line 2 · notes:'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('program_import_week_picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Week 2').last);
+    await tester.pump();
+    expect(find.byKey(const Key('program_import_row_2')), findsNothing);
+    expect(find.byKey(const Key('program_import_row_3')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('program_import_create_draft')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('coach_program_draft_screen')));
+
+    expect(fake.programImportRequests, 1);
+    expect(fake.programImportDraftRequests, hasLength(1));
+    expect(fake.programImportDraftRequests.single['rows'].single['week_order'], 2);
+  });
+
+  testWidgets('cursor movement keeps pasted row and exercise confirmation',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    final Map<String, dynamic> row =
+        Map<String, dynamic>.from(fake.programImportResult['rows'].single)
+          ..['exercise_id'] = null
+          ..['resolution'] = 'unresolved'
+          ..['warnings'] = <Map<String, dynamic>>[
+            <String, dynamic>{
+              'source_row': 2,
+              'column': 'exercise',
+              'code': 'program_import.exercise_unresolved.v1',
+            },
+          ]
+          ..['suggestions'] = <Map<String, dynamic>>[
+            <String, dynamic>{
+              'exercise_id': 'bench_press',
+              'name': 'Bench Press',
+            },
+          ];
+    fake.programImportResult = <String, dynamic>{
+      ...fake.programImportResult,
+      'import_mode': 'text',
+      'rows': <Map<String, dynamic>>[row],
+    };
+    await _openProgramImport(tester, fake, logicalWidth: 360, logicalHeight: 800);
+    await tester.enterText(
+      find.byKey(const Key('program_import_paste_input')),
+      'Day 1\nBench Press 3x8',
+    );
+    await tester.pump();
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('program_import_paste_input')))
+          .controller!.text,
+      'Day 1\nBench Press 3x8',
+    );
+    expect(
+      tester.widget<MayosButton>(
+        find.byKey(const Key('program_import_submit_paste')),
+      ).onPressed,
+      isNotNull,
+    );
+    await tester.tap(find.byKey(const Key('program_import_submit_paste')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_match_2')));
+    expect(fake.programImportRequests, 1);
+    expect(find.byKey(const Key('program_import_row_2')), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('program_import_match_2')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('program_import_match_2')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Bench Press').last.hitTestable());
+    await tester.pump();
+    expect(find.byKey(const Key('program_import_row_2')), findsOneWidget);
+    expect(find.text('Line 2 · Bench Press'), findsOneWidget);
+
+    final TextField pasteField =
+        tester.widget<TextField>(find.byKey(const Key('program_import_paste_input')));
+    pasteField.controller!.selection = const TextSelection.collapsed(offset: 0);
+    await tester.pump();
+
+    expect(find.byKey(const Key('program_import_row_2')), findsOneWidget);
+    expect(find.byKey(const Key('program_import_match_2')), findsNothing);
+    expect(find.text('Line 2 · Bench Press'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('program_import_create_draft')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('coach_program_draft_screen')));
+    expect(fake.programImportDraftRequests.single['rows'].single['exercise_id'],
+        'bench_press');
+  });
+
+  testWidgets('switching from paste to file clears the selected week',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    final Map<String, dynamic> week1 =
+        Map<String, dynamic>.from(fake.programImportResult['rows'].single)
+          ..['week'] = 'Week 1';
+    final Map<String, dynamic> week2 = Map<String, dynamic>.from(week1)
+      ..['source_row'] = 3
+      ..['week'] = 'Week 2';
+    fake.programImportResult = <String, dynamic>{
+      ...fake.programImportResult,
+      'import_mode': 'text',
+      'detected_weeks': <String>['Week 1', 'Week 2'],
+      'selected_week': 'Week 2',
+      'rows': <Map<String, dynamic>>[week1, week2],
+    };
+    final List<ProgramImportPickerMode> pickerModes =
+        <ProgramImportPickerMode>[];
+    await _openProgramImport(
+      tester,
+      fake,
+      picker: ({required ProgramImportPickerMode mode}) async {
+            pickerModes.add(mode);
+            fake.programImportResult = <String, dynamic>{
+              ...fake.programImportResult,
+              'import_mode': 'sheet',
+              'selected_week': null,
+            };
+            return PlatformFile(
+              name: 'plan.csv',
+              size: 4,
+              bytes: Uint8List.fromList(<int>[100, 97, 121, 10]),
+            );
+          },
+    );
+    await tester.enterText(
+      find.byKey(const Key('program_import_paste_input')),
+      'Week 1\nBench Press 3x8\nWeek 2\nBench Press 3x8',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('program_import_submit_paste')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_week_picker')));
+    expect(find.byKey(const Key('program_import_row_2')), findsNothing);
+    expect(find.byKey(const Key('program_import_row_3')), findsOneWidget);
+
+    for (int attempt = 0; attempt < 8; attempt++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.ensureVisible(find.text('Upload file'));
+    await tester.tap(find.text('Upload file'));
+    await tester.pump();
+    expect(find.byKey(const Key('program_import_pick_file')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('program_import_pick_file')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_row_2')));
+    expect(pickerModes.single, ProgramImportPickerMode.allSupported);
+    expect(find.byKey(const Key('program_import_row_2')), findsOneWidget);
+    expect(find.byKey(const Key('program_import_row_3')), findsOneWidget);
+  });
+
+  testWidgets('paste submit stays hit-testable with a 320 dp keyboard inset',
+      (tester) async {
+    addTearDown(() => tester.view.viewInsets = const FakeViewPadding());
+    await _openProgramImport(tester, _coachFake(),
+        logicalWidth: 360, logicalHeight: 800);
+    await tester.enterText(
+      find.byKey(const Key('program_import_paste_input')),
+      'Day 1\nBench Press 3x8',
+    );
+    tester.view.viewInsets = const FakeViewPadding(bottom: 640);
+    await tester.pump();
+    final Finder submit = find.byKey(const Key('program_import_submit_paste'));
+    expect(submit.hitTestable(), findsOneWidget);
+    expect(tester.getRect(submit).bottom, lessThanOrEqualTo(480));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('text import capability off hides Paste program', (tester) async {
+    final FakeMayosApi fake = _coachFake()..programImportTextAvailable = false;
+    final List<ProgramImportPickerMode> pickerModes =
+        <ProgramImportPickerMode>[];
+    await _pumpApp(
+      tester,
+      fake,
+      picker: ({required ProgramImportPickerMode mode}) async {
+            pickerModes.add(mode);
+            return PlatformFile(
+              name: 'plan.csv',
+              size: 4,
+              bytes: Uint8List.fromList(<int>[100, 97, 121, 10]),
+            );
+          },
+    );
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await tester.tap(find.byKey(const Key('program_import_action')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_pick_file')));
+
+    expect(find.text('Paste program'), findsNothing);
+    expect(find.byKey(const Key('program_import_paste_input')), findsNothing);
+    await tester.tap(find.byKey(const Key('program_import_pick_file')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_row_2')));
+    expect(pickerModes, <ProgramImportPickerMode>[
+      ProgramImportPickerMode.spreadsheetsOnly,
+    ]);
+    expect(
+      programImportAllowedExtensions(pickerModes.single),
+      isNot(contains('txt')),
+    );
+  });
+
+  testWidgets('text-enabled picker uses all supported file extensions',
+      (tester) async {
+    final FakeMayosApi fake = _coachFake();
+    final List<ProgramImportPickerMode> pickerModes =
+        <ProgramImportPickerMode>[];
+    await _openProgramImport(
+      tester,
+      fake,
+      picker: ({required ProgramImportPickerMode mode}) async {
+            pickerModes.add(mode);
+            return PlatformFile(
+              name: 'plan.csv',
+              size: 4,
+              bytes: Uint8List.fromList(<int>[100, 97, 121, 10]),
+            );
+          },
+    );
+    await tester.tap(find.text('Upload file'));
+    for (int attempt = 0; attempt < 8; attempt++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    await tester.tap(find.byKey(const Key('program_import_pick_file')));
+    await _pumpUntilFound(tester, find.byKey(const Key('program_import_row_2')));
+    expect(pickerModes, <ProgramImportPickerMode>[
+      ProgramImportPickerMode.allSupported,
+    ]);
+    expect(programImportAllowedExtensions(pickerModes.single),
+        <String>['xlsx', 'csv', 'txt']);
+  });
+
+  testWidgets('Coach import paste uses phone layout in English and Arabic',
+      (tester) async {
+    await expectCoachPhoneLayout(
+      tester,
+      configureFake: (FakeMayosApi fake) {
+        fake.assignments.add(<String, dynamic>{
+          'assignment_id': 'assignment-1',
+          'player_username': 'bob',
+          'started_at': '2026-09-24T10:00:00Z',
+          'status': 'active',
+        });
+      },
+      prepare: (WidgetTester tester, String language) async {
+        for (int attempt = 0;
+            attempt < 30 && find.text('bob').evaluate().isEmpty;
+            attempt++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        await tester.tap(find.text('bob'));
+        await _pumpUntilFound(
+          tester,
+          find.text(language == 'ar' ? 'الحجم الأسبوعي' : 'Weekly volume'),
+        );
+        await tester.tap(find.text(language == 'ar' ? 'البرنامج التدريبي' : 'Program').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('program_import_action')));
+      },
+      ready: (String language) => find.byKey(const Key('program_import_input_mode')),
+      pageScrollable: (String language) => find.descendant(
+        of: find.byKey(const Key('coach_program_import_screen')),
+        matching: find.byType(Scrollable),
+      ).first,
+      assertions: (WidgetTester tester, String language) async {
+        await tester.tap(find.text(language == 'ar' ? 'لصق البرنامج' : 'Paste program'));
+        await _pumpUntilFound(
+          tester,
+          find.byKey(const Key('program_import_paste_input')),
+        );
+        final String paste = language == 'ar'
+            ? 'اليوم الأول\nضغط صدر ٣ مجموعات'
+            : 'Day 1\nBench Press 3x8';
+        await tester.enterText(find.byKey(const Key('program_import_paste_input')), paste);
+        await tester.pump();
+        final Finder submit = find.byKey(const Key('program_import_submit_paste'));
+        expect(submit.hitTestable(), findsOneWidget);
+        expect(tester.getRect(submit).bottom, lessThanOrEqualTo(800));
+        expect(
+          find.text(CoachCopy(language).programImportCharacterCount(
+              paste.length, 20000)),
+          findsOneWidget,
+        );
+        for (final Element element in find
+            .descendant(
+              of: find.byKey(const Key('coach_program_import_screen')),
+              matching: find.byType(Scrollable),
+            )
+            .evaluate()) {
+          final AxisDirection direction =
+              (element.widget as Scrollable).axisDirection;
+          expect(
+            direction != AxisDirection.left &&
+                direction != AxisDirection.right,
+            isTrue,
+          );
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
   testWidgets('program draft phone layout edits and saves the same fields in both languages',
       (tester) async {
     final Map<String, Map<String, dynamic>> phonePayloads =
@@ -2525,7 +2959,7 @@ void main() {
       ).first,
       providerOverrides: <Override>[
         programSpreadsheetPickerProvider.overrideWithValue(
-          () async => PlatformFile(
+          ({required ProgramImportPickerMode mode}) async => PlatformFile(
             name: 'plan.csv',
             size: 4,
             bytes: Uint8List.fromList(<int>[100, 97, 121, 10]),
@@ -2630,7 +3064,7 @@ void main() {
       ).first,
       providerOverrides: <Override>[
         programSpreadsheetPickerProvider.overrideWithValue(
-          () async => PlatformFile(
+          ({required ProgramImportPickerMode mode}) async => PlatformFile(
             name: 'plan.csv',
             size: 4,
             bytes: Uint8List.fromList(<int>[100, 97, 121, 10]),
@@ -2722,7 +3156,7 @@ void main() {
       ).first,
       providerOverrides: <Override>[
         programSpreadsheetPickerProvider.overrideWithValue(
-          () async => PlatformFile(
+          ({required ProgramImportPickerMode mode}) async => PlatformFile(
             name: 'plan.csv',
             size: 4,
             bytes: Uint8List.fromList(<int>[100, 97, 121, 10]),

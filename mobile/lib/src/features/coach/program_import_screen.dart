@@ -11,9 +11,12 @@ import '../../core/connectivity_message.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/ui/mayos_button.dart';
 import '../../core/ui/is_desktop_layout.dart';
+import '../../core/ui/mayos_text_field.dart';
 import '../../providers.dart';
 import 'coach_program_draft_screen.dart';
 import 'program_import_files.dart';
+
+enum _ProgramImportInputMode { file, paste }
 
 class CoachProgramImportScreen extends ConsumerStatefulWidget {
   const CoachProgramImportScreen({
@@ -32,7 +35,13 @@ class CoachProgramImportScreen extends ConsumerStatefulWidget {
 
 class _CoachProgramImportScreenState
     extends ConsumerState<CoachProgramImportScreen> {
+  static const int _textImportLimit = 20000;
+
   PlatformFile? _file;
+  final TextEditingController _pasteController = TextEditingController();
+  String _lastPasteText = '';
+  bool _textAvailable = false;
+  _ProgramImportInputMode _inputMode = _ProgramImportInputMode.file;
   Map<String, dynamic>? _result;
   List<Map<String, dynamic>> _allRows = <Map<String, dynamic>>[];
   String? _selectedTab;
@@ -41,6 +50,66 @@ class _CoachProgramImportScreenState
   bool _busy = false;
   bool _layoutConfirmed = false;
   bool _layoutRejected = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _pasteController.addListener(_pasteChanged);
+    _loadTextCapability();
+  }
+
+  @override
+  void dispose() {
+    _pasteController.removeListener(_pasteChanged);
+    _pasteController.dispose();
+    super.dispose();
+  }
+
+  void _pasteChanged() {
+    final String text = _pasteController.text;
+    if (text == _lastPasteText) return;
+    _lastPasteText = text;
+    if (!mounted) return;
+    setState(() {
+      _result = null;
+      _error = null;
+    });
+  }
+
+  Future<void> _loadTextCapability() async {
+    try {
+      final ProgramImportCapabilities capabilities = await ref
+          .read(apiClientProvider)
+          .coachProgramImportCapabilities();
+      if (mounted) setState(() => _textAvailable = capabilities.textAvailable);
+    } on ApiException {
+      // Text input stays hidden if the capability service is unavailable.
+    }
+  }
+
+  int get _normalizedPasteLength {
+    final String normalized =
+        _pasteController.text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    return normalized.runes.length;
+  }
+
+  bool get _pasteCanSubmit =>
+      _pasteController.text.trim().isNotEmpty &&
+      _normalizedPasteLength <= _textImportLimit;
+
+  void _selectInputMode(_ProgramImportInputMode mode) {
+    if (mode == _inputMode) return;
+    setState(() {
+      _inputMode = mode;
+      _result = null;
+      _allRows = <Map<String, dynamic>>[];
+      _selectedTab = null;
+      _selectedWeek = null;
+      _error = null;
+      _layoutConfirmed = false;
+      _layoutRejected = false;
+    });
+  }
 
   List<String> get _detectedWeeks =>
       (_result?['detected_weeks'] as List<dynamic>? ?? const <dynamic>[])
@@ -55,6 +124,8 @@ class _CoachProgramImportScreenState
         .toList(growable: false);
   }
 
+  bool get _isTextImport => _result?['import_mode'] == 'text';
+
   List<String> get _weeksNotImported =>
       _detectedWeeks.where((String week) => week != _selectedWeek).toList();
 
@@ -63,7 +134,8 @@ class _CoachProgramImportScreenState
     final CoachCopy copy = coachCopyOf(context);
     final bool desktop = isDesktopLayout(context);
     return Scaffold(
-      appBar: AppBar(title: Text(copy.importFromSpreadsheet)),
+      key: const Key('coach_program_import_screen'),
+      appBar: AppBar(title: Text(copy.programImportTitle)),
       bottomNavigationBar: desktop ? null : _phoneBottomAction(context),
       body: SafeArea(
         child: ListView(
@@ -77,14 +149,71 @@ class _CoachProgramImportScreenState
           children: <Widget>[
             Text(copy.importPrivacyNote),
             const SizedBox(height: MayosSpacing.md),
-            MayosButton(
-              key: const Key('program_import_pick_file'),
-              label: _file?.name ?? copy.chooseSpreadsheet,
-              icon: Icons.upload_file,
-              variant: MayosButtonVariant.secondary,
-              loading: _busy && _result == null,
-              onPressed: _busy ? null : _pickFile,
-            ),
+            if (_textAvailable) ...<Widget>[
+              SegmentedButton<_ProgramImportInputMode>(
+                key: const Key('program_import_input_mode'),
+                segments: <ButtonSegment<_ProgramImportInputMode>>[
+                  ButtonSegment<_ProgramImportInputMode>(
+                    value: _ProgramImportInputMode.file,
+                    label: Text(copy.uploadProgramFile),
+                  ),
+                  ButtonSegment<_ProgramImportInputMode>(
+                    value: _ProgramImportInputMode.paste,
+                    label: Text(copy.pasteProgram),
+                  ),
+                ],
+                selected: <_ProgramImportInputMode>{_inputMode},
+                onSelectionChanged: _busy
+                    ? null
+                    : (Set<_ProgramImportInputMode> selection) =>
+                        _selectInputMode(selection.first),
+              ),
+              const SizedBox(height: MayosSpacing.md),
+            ],
+            if (_inputMode == _ProgramImportInputMode.file || !_textAvailable)
+              MayosButton(
+                key: const Key('program_import_pick_file'),
+                label: _file?.name ??
+                    (_textAvailable
+                        ? copy.chooseProgramFileWithText
+                        : copy.chooseSpreadsheet),
+                icon: Icons.upload_file,
+                variant: MayosButtonVariant.secondary,
+                loading: _busy && _result == null,
+                onPressed: _busy ? null : _pickFile,
+              ),
+            if (_inputMode == _ProgramImportInputMode.paste && _textAvailable) ...<Widget>[
+              MayosTextField(
+                key: const Key('program_import_paste_field'),
+                fieldKey: const Key('program_import_paste_input'),
+                controller: _pasteController,
+                label: copy.pasteProgram,
+                helperText: copy.pasteOnlyProgramReminder,
+                minLines: 6,
+                maxLines: 10,
+                keyboardType: TextInputType.multiline,
+                textInputAction: TextInputAction.newline,
+              ),
+              const SizedBox(height: MayosSpacing.xs),
+              Text(copy.programImportCharacterCount(
+                _normalizedPasteLength,
+                _textImportLimit,
+              )),
+              if (_normalizedPasteLength > _textImportLimit)
+                Text(
+                  copy.programImportOverLimit(_textImportLimit),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              const SizedBox(height: MayosSpacing.sm),
+              if (_result == null && isDesktopLayout(context))
+                MayosButton(
+                  key: const Key('program_import_submit_paste'),
+                  label: copy.reviewImport,
+                  icon: Icons.rate_review,
+                  loading: _busy,
+                  onPressed: _busy || !_pasteCanSubmit ? null : _readPastedText,
+                ),
+            ],
             if (_result?['requires_tab_choice'] == true) ...<Widget>[
               const SizedBox(height: MayosSpacing.md),
               DropdownButtonFormField<String>(
@@ -186,7 +315,17 @@ class _CoachProgramImportScreenState
   Widget? _phoneBottomAction(BuildContext context) {
     final CoachCopy copy = coachCopyOf(context);
     final Widget? action;
-    if (_result?['confirm_layout'] == true &&
+    if (_inputMode == _ProgramImportInputMode.paste &&
+        _result == null &&
+        _textAvailable) {
+      action = MayosButton(
+        key: const Key('program_import_submit_paste'),
+        label: copy.reviewImport,
+        icon: Icons.rate_review,
+        loading: _busy,
+        onPressed: _busy || !_pasteCanSubmit ? null : _readPastedText,
+      );
+    } else if (_result?['confirm_layout'] == true &&
         !_layoutConfirmed &&
         !_layoutRejected) {
       action = Column(
@@ -351,7 +490,7 @@ class _CoachProgramImportScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text('${copy.rowLabel(row['source_row'] as int)} · $name'),
+            Text('${_rowPositionLabel(copy, row)} · $name'),
             Text(copy.importPrescription(
               row['day_name'] as String? ?? '',
               row['sets'] as int? ?? 0,
@@ -381,16 +520,14 @@ class _CoachProgramImportScreenState
                 label: Text(copy.createAsCoachExercise),
               ),
             for (final dynamic raw in errors)
-              Text(copy.programImportRowMessage(
-                raw['code'] as String,
-                raw['source_row'] as int,
-                raw['column'] as String,
+              Text(_importPositionMessage(
+                copy,
+                Map<String, dynamic>.from(raw as Map),
               )),
             for (final dynamic raw in warnings)
-              Text(copy.programImportRowMessage(
-                raw['code'] as String,
-                raw['source_row'] as int,
-                raw['column'] as String,
+              Text(_importPositionMessage(
+                copy,
+                Map<String, dynamic>.from(raw as Map),
               )),
           ],
         ),
@@ -399,9 +536,15 @@ class _CoachProgramImportScreenState
   }
 
   Future<void> _pickFile() async {
-    final PlatformFile? selected = await ref.read(programSpreadsheetPickerProvider)();
+    final PlatformFile? selected = await ref
+        .read(programSpreadsheetPickerProvider)(
+          mode: _textAvailable
+              ? ProgramImportPickerMode.allSupported
+              : ProgramImportPickerMode.spreadsheetsOnly,
+        );
     if (!mounted || selected == null) return;
     setState(() {
+      _inputMode = _ProgramImportInputMode.file;
       _file = selected;
       _result = null;
       _allRows = <Map<String, dynamic>>[];
@@ -416,6 +559,60 @@ class _CoachProgramImportScreenState
       return;
     }
     await _readSelectedFile();
+  }
+
+  String _rowPositionLabel(CoachCopy copy, Map<String, dynamic> row) =>
+      _isTextImport
+          ? copy.lineLabel(row['source_row'] as int)
+          : copy.rowLabel(row['source_row'] as int);
+
+  String _importPositionMessage(
+      CoachCopy copy, Map<String, dynamic> message) =>
+      _isTextImport
+          ? copy.programImportLineMessage(
+              message['code'] as String,
+              message['source_row'] as int,
+              message['column'] as String,
+            )
+          : copy.programImportRowMessage(
+              message['code'] as String,
+              message['source_row'] as int,
+              message['column'] as String,
+            );
+
+  Future<void> _readPastedText() async {
+    if (!_pasteCanSubmit) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _file = null;
+    });
+    try {
+      final Map<String, dynamic> result = await ref.read(apiClientProvider)
+          .coachImportProgramText(
+            widget.assignmentId,
+            text: _pasteController.text,
+          );
+      if (!mounted) return;
+      _setImportResult(result);
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = _displayApiFailure(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _setImportResult(Map<String, dynamic> result) {
+    setState(() {
+      _result = result;
+      _allRows = (result['rows'] as List<dynamic>? ?? <dynamic>[])
+          .map((dynamic row) => Map<String, dynamic>.from(row as Map))
+          .toList();
+      _selectedTab = result['selected_tab'] as String? ?? _selectedTab;
+      _selectedWeek = result['selected_week'] as String? ?? _selectedWeek;
+      _layoutConfirmed = result['confirm_layout'] != true;
+      _layoutRejected = false;
+    });
   }
 
   Future<void> _readSelectedFile({String? sheet}) async {
@@ -436,16 +633,7 @@ class _CoachProgramImportScreenState
                 : null,
           );
       if (!mounted) return;
-      setState(() {
-        _result = result;
-        _allRows = (result['rows'] as List<dynamic>? ?? <dynamic>[])
-            .map((dynamic row) => Map<String, dynamic>.from(row as Map))
-            .toList();
-        _selectedTab = result['selected_tab'] as String? ?? _selectedTab;
-        _selectedWeek = result['selected_week'] as String? ?? _selectedWeek;
-        _layoutConfirmed = result['confirm_layout'] != true;
-        _layoutRejected = false;
-      });
+      _setImportResult(result);
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = _displayApiFailure(error));
     } finally {

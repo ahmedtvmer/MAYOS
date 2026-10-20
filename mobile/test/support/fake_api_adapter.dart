@@ -11,6 +11,7 @@ class FakeRequest {
     required this.body,
     required this.headers,
     required this.query,
+    required this.rawBody,
   });
 
   final String method;
@@ -18,6 +19,7 @@ class FakeRequest {
   final Map<String, dynamic> body;
   final Map<String, dynamic> headers;
   final Map<String, dynamic> query;
+  final String rawBody;
 }
 
 class FakeResponse {
@@ -82,6 +84,7 @@ class FakeApiAdapter implements HttpClientAdapter {
       body: decoded is Map<String, dynamic> ? decoded : <String, dynamic>{},
       headers: Map<String, dynamic>.from(options.headers),
       query: Map<String, dynamic>.from(options.queryParameters),
+      rawBody: raw,
     );
     requests.add(request);
     final Future<void> Function(FakeRequest request)? hook = beforeRespond;

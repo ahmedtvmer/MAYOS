@@ -1132,7 +1132,7 @@ class ApiClient {
     return _parseCoachProgramDraft(response.data);
   }
 
-  /// Reads an XLSX or CSV into a stateless Program import review result.
+  /// Reads an XLSX, CSV or TXT file into a stateless Program import review.
   Future<Map<String, dynamic>> coachImportProgramSheet(
     String assignmentId, {
     required Uint8List bytes,
@@ -1149,6 +1149,37 @@ class ApiClient {
         data: form,
         // A free-form sheet is translated by the coach model in one call,
         // which can take minutes (provider retries included).
+        options: Options(receiveTimeout: const Duration(minutes: 10)),
+      ),
+    );
+    if (response.data is! Map<String, dynamic>) {
+      throw const ApiException('The service returned invalid import data.');
+    }
+    return Map<String, dynamic>.from(response.data as Map<String, dynamic>);
+  }
+
+  Future<ProgramImportCapabilities> coachProgramImportCapabilities() async {
+    final response = await _send(
+      () => _dio.get<dynamic>('/coach/program-import/capabilities'),
+    );
+    if (response.data is! Map<String, dynamic>) {
+      throw const ApiException(
+          'The service returned invalid import capabilities.');
+    }
+    return ProgramImportCapabilities.fromJson(
+        Map<String, dynamic>.from(response.data as Map<String, dynamic>));
+  }
+
+  /// Reads pasted plain text into the same stateless Program import review.
+  Future<Map<String, dynamic>> coachImportProgramText(
+    String assignmentId, {
+    required String text,
+  }) async {
+    final FormData form = FormData.fromMap(<String, dynamic>{'text': text});
+    final response = await _send(
+      () => _dio.post<dynamic>(
+        '/coach/assignments/$assignmentId/program-import',
+        data: form,
         options: Options(receiveTimeout: const Duration(minutes: 10)),
       ),
     );

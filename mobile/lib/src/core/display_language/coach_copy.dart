@@ -337,8 +337,6 @@ class CoachCopy {
   String get importProgramAction => isArabic ? 'استيراد' : 'Import';
   String get downloadProgramTemplateAction =>
       isArabic ? 'تنزيل القالب' : 'Download template';
-  String get importFromSpreadsheet =>
-      isArabic ? 'استيراد من جدول بيانات' : 'Import from spreadsheet';
   String get downloadProgramTemplate =>
       isArabic ? 'تنزيل قالب البرنامج' : 'Download program template';
   String get downloadProgramTemplateCsv =>
@@ -346,8 +344,8 @@ class CoachCopy {
   String get chooseSpreadsheet =>
       isArabic ? 'اختيار ملف XLSX أو CSV' : 'Choose XLSX or CSV file';
   String get importPrivacyNote => isArabic
-      ? 'تُقرأ الورقة لإنشاء مسودة غير منشورة. لن تُرسل بيانات سجل اللاعب التدريبي مع الملف.'
-      : 'The sheet is read to create an unpublished draft. The player’s Training ledger is not sent with the file.';
+      ? 'يُستخدم الملف أو النص لإنشاء مسودة غير منشورة. لن تُرسل بيانات سجل اللاعب التدريبي.'
+      : 'The file or pasted text creates an unpublished draft. The player’s Training ledger is not sent.';
   String get chooseSheet => isArabic ? 'اختر ورقة العمل' : 'Choose a sheet';
   String get chooseWeek => isArabic ? 'اختر الأسبوع' : 'Choose a week';
   String get reviewImport => isArabic ? 'مراجعة الاستيراد' : 'Review import';
@@ -418,22 +416,27 @@ class CoachCopy {
   String get importNoValidRows => isArabic
       ? 'لا توجد صفوف صالحة للاستيراد بعد.'
       : 'There are no valid rows ready to import.';
-  String programImportRowMessage(String code, int row, String column) {
-    final String label = _importColumn(column);
+  String programImportRowMessage(String code, int row, String column) =>
+      _programImportPositionMessage(code, column, rowLabel(row));
+
+  String programImportLineMessage(String code, int line, String column) =>
+      _programImportPositionMessage(code, column, lineLabel(line));
+
+  String _programImportPositionMessage(
+      String code, String column, String positionLabel) {
+    final String columnLabel = _importColumn(column);
     final String fallback =
         const MessageCopy('en').programImportMessage(code) ??
             (isArabic
-                ? 'راجع هذه القيمة وصححها في الورقة.'
-                : 'Review this value and correct it in the sheet.');
+                ? 'راجع هذه القيمة وصححها في المصدر.'
+                : 'Review this value and correct it in the source.');
     final String explanation = resolveStructuredMessage(
       messageCode: code,
       messageParams: const <String, dynamic>{},
       englishFallback: fallback,
       displayLanguage: languageCode,
     );
-    return isArabic
-        ? 'الصف ${_ltr('$row')} · $label: $explanation'
-        : 'Row $row · $label: $explanation';
+    return '$positionLabel · $columnLabel: $explanation';
   }
 
   String get importReplaceTitle => isArabic
@@ -487,6 +490,25 @@ class CoachCopy {
         'notes' => isArabic ? 'الملاحظات' : 'notes',
         _ => isArabic ? 'القيمة' : 'value',
       };
+  // #433 English and Arabic display-language copy for pasted text import.
+  String get programImportTitle =>
+      isArabic ? 'استيراد برنامج تدريبي' : 'Import program';
+  String get chooseProgramFileWithText =>
+      isArabic ? 'اختيار ملف XLSX أو CSV أو TXT' : 'Choose XLSX, CSV or TXT file';
+  String get uploadProgramFile => isArabic ? 'رفع ملف' : 'Upload file';
+  String get pasteProgram => isArabic ? 'لصق البرنامج' : 'Paste program';
+  String get pasteOnlyProgramReminder => isArabic
+      ? 'الصق البرنامج فقط — دون أسماء أو أرقام هواتف أو محادثات.'
+      : 'Paste only the program — no names, phone numbers or chat.';
+  String programImportCharacterCount(int count, int limit) => isArabic
+      ? '${_count(count, ArabicCountNoun.character)} / ${_count(limit, ArabicCountNoun.character)}'
+      : '${_groupCount(count)} / ${_groupCount(limit)} characters';
+  String programImportOverLimit(int limit) => isArabic
+      ? 'اختصر النص إلى ${_count(limit, ArabicCountNoun.character)} كحد أقصى.'
+      : 'Shorten the text to ${_groupCount(limit)} characters or fewer.';
+  String lineLabel(int line) =>
+      isArabic ? 'السطر ${_ltr('$line')}' : 'Line $line';
+
   String get generate => isArabic ? 'إنشاء' : 'Generate';
   String get split => isArabic ? 'التقسيمة' : 'Split';
   String splitOptionName(String splitId, int days, String fallback) {
@@ -1304,10 +1326,14 @@ class CoachCopy {
 
   String _count(int count, ArabicCountNoun noun) {
     final String phrase = arabicCountPhrase(count, noun);
-    final RegExpMatch? leading = RegExp(r'^\d+').firstMatch(phrase);
+    final RegExpMatch? leading = RegExp(r'^[\d,]+').firstMatch(phrase);
     if (leading == null) return phrase;
     return '${_ltr(leading[0]!)}${phrase.substring(leading.end)}';
   }
+
+  String _groupCount(int count) => count
+      .toString()
+      .replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
 
   String _ltr(String value) => '\u2066$value\u2069';
 

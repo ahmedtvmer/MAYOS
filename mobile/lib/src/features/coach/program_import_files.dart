@@ -9,21 +9,31 @@ import '../../core/app_failure.dart';
 import '../../core/connectivity_message.dart';
 import '../../providers.dart';
 
-typedef ProgramSpreadsheetPicker = Future<PlatformFile?> Function();
+enum ProgramImportPickerMode { spreadsheetsOnly, allSupported }
+
+typedef ProgramSpreadsheetPicker = Future<PlatformFile?> Function(
+    {required ProgramImportPickerMode mode});
 typedef ProgramTemplateSaver = Future<String?> Function(
     Uint8List bytes, String fileName);
 typedef ProgramTemplateDownloader = Future<void> Function(String extension);
 
 final programSpreadsheetPickerProvider = Provider<ProgramSpreadsheetPicker>(
-  (ref) => () async {
+  (ref) => ({required ProgramImportPickerMode mode}) async {
     final FilePickerResult? result = await FilePicker.pickFiles(
       type: FileType.custom,
-      allowedExtensions: const <String>['xlsx', 'csv'],
+      allowedExtensions: programImportAllowedExtensions(mode),
       withData: true,
     );
     return result?.files.single;
   },
 );
+
+const List<String> programImportExtensions = <String>['xlsx', 'csv', 'txt'];
+
+List<String> programImportAllowedExtensions(ProgramImportPickerMode mode) =>
+    mode == ProgramImportPickerMode.allSupported
+        ? programImportExtensions
+        : const <String>['xlsx', 'csv'];
 
 final programTemplateSaverProvider = Provider<ProgramTemplateSaver>(
   (ref) => (Uint8List bytes, String fileName) => FilePicker.saveFile(
