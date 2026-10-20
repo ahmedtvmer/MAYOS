@@ -13,6 +13,12 @@ from typing import TYPE_CHECKING, Any, Iterable, Protocol
 from fastapi import BackgroundTasks
 from openpyxl import Workbook, load_workbook
 
+from agent.ProgramState import (
+    MAX_PROGRAM_LOAD_KG,
+    MAX_PROGRAM_LOAD_PCT_E1RM,
+    MIN_PROGRAM_LOAD_KG,
+    MIN_PROGRAM_LOAD_PCT_E1RM,
+)
 from agent.program_prescription import (
     DEFAULT_EXERCISE_REST_SECONDS,
     DEFAULT_TARGET_REPS_MAX,
@@ -60,6 +66,7 @@ TEMPLATE_COLUMNS = (
     "load_kg", "load_pct_e1rm", "rest_sec", "tempo", "notes",
 )
 _REP_RANGE = re.compile(r"^(\d+)\s*-\s*(\d+)$")
+_LOAD_PLACEHOLDERS = frozenset({"", "—", "-", "n/a", "none"})
 _PER_SET_REP_LIST = re.compile(r"^(?:\d+\s*[x×]\s*)?(\d+(?:\s*[,/]\s*\d+)+)$", re.IGNORECASE)
 _EFFORT_VALUE = re.compile(r"^(?:RIR\s*)?(\d+(?:\.\d+)?)$", re.IGNORECASE)
 _EFFORT_RANGE = re.compile(r"^(?:RIR\s*)?(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)$", re.IGNORECASE)
@@ -135,6 +142,9 @@ class ProgramImportRow:
     tempo: ImportValue
     notes: ImportValue
     original_text: str
+    load_kg: ImportValue = None
+    load_pct_e1rm: ImportValue = None
+    load: ImportValue = None
     reps_original: ImportValue = None
     approximation_markers: tuple[Approximation, ...] = ()
     confirmed_exercise_id: str | None = None
@@ -802,7 +812,12 @@ def _text_program_rows(
             context,
         )
         canonical = replace(canonical, input_exercise_name=exercise)
-        if load_text := _text_load_value(source_text):
+        canonical = replace(canonical, load_kg=model_row.load_kg)
+        if load_text := (
+            _text_load_value(source_text)
+            if model_row.load_kg in (None, "")
+            else None
+        ):
             canonical = replace(canonical, notes=load_text)
         hold = _text_hold_range(source_text)
         rep_list = _text_per_set_rep_list(source_text)
@@ -819,6 +834,18 @@ def _text_program_rows(
         elif rep_bounds := _text_prescribed_rep_bounds(source_text):
             canonical = replace(canonical, reps_min=rep_bounds[0], reps_max=rep_bounds[1])
         source_markers = _text_source_approximation_markers(source_text)
+        if model_row.load_kg not in (None, ""):
+            recognized_load = _text_load_value(source_text)
+            source_markers = [
+                marker for marker in source_markers
+                if not (
+                    marker.original == recognized_load
+                    and marker.code in {
+                        "program_import.load_preserved_as_note.v1",
+                        "program_import.unsupported_preserved_as_note.v1",
+                    }
+                )
+            ]
         if hold is not None and hold[1] > MAX_REPS:
             duration = f"{hold[0]} sec hold" if hold[0] == hold[1] else f"{hold[0]}-{hold[1]} sec hold"
             source_markers.append(Approximation(
@@ -830,10 +857,16 @@ def _text_program_rows(
         markers = [
             marker for marker in canonical.approximation_markers
             if not (
-                marker.code == "program_import.effort_approximated.v1"
-                and (
-                    re.search(r"\bAMRAP\b", source_text, re.IGNORECASE)
-                    or not source_has_effort_approximation
+                (
+                    model_row.load_kg not in (None, "")
+                    and marker.code == "program_import.load_preserved_as_note.v1"
+                )
+                or (
+                    marker.code == "program_import.effort_approximated.v1"
+                    and (
+                        re.search(r"\bAMRAP\b", source_text, re.IGNORECASE)
+                        or not source_has_effort_approximation
+                    )
                 )
             )
         ]
@@ -2332,6 +2365,8 @@ def _program_import_row(
         tempo=row.tempo,
         notes=row.notes,
         original_text=row.original_text,
+        load_kg=row.load_kg if row.load_kg not in (None, "") else source.fields.get("load_kg"),
+        load_pct_e1rm=source.fields.get("load_pct_e1rm"),
         approximation_markers=values.approximation_markers,
         week=week,
         suggestion_terms=tuple(row.exercise_search_terms),
@@ -2487,8 +2522,10 @@ def _freeform_approximation_markers(
 def _source_approximation_markers(source: FreeFormSourceRow) -> list[Approximation]:
     markers = []
     load = source.fields.get("load_kg")
-    if load and load.strip().casefold() not in {"—", "-", "n/a", "none"}:
-        markers.append(_load_approximation(load))
+    if not _is_load_placeholder(load):
+        parsed_load = _parse_load_value(load)
+        if parsed_load is None or not _load_in_range(parsed_load, "kg"):
+            markers.append(_load_approximation(_cell_text(load)))
     slot = source.fields.get("slot", "")
     if re.fullmatch(r"[A-Z]\d{1,2}", slot.strip(), re.IGNORECASE):
         markers.append(Approximation(
@@ -2505,11 +2542,9 @@ def _source_approximation_markers(source: FreeFormSourceRow) -> list[Approximati
     return markers
 
 
-def _load_approximation(value: Any) -> Approximation:
+def _load_approximation(value: Any, *, column: str = "load_kg") -> Approximation:
     original = _cell_text(value)
-    if original and not re.search(r"\bkg\b", original, re.IGNORECASE):
-        original = f"{original} kg"
-    return Approximation("program_import.load_preserved_as_note.v1", "load_kg", original)
+    return Approximation("program_import.load_preserved_as_note.v1", column, original)
 
 
 def _dedupe_approximation_markers(markers: list[Approximation]) -> list[Approximation]:
@@ -2810,11 +2845,8 @@ def _template_row(
     reps_min, reps_max, rep_markers = _reader_reps(reps)
     notes = _cell_text(cells.get("notes"))
     markers = list(rep_markers)
-    for column, label in (("load_kg", "load"), ("load_pct_e1rm", "% e1RM")):
-        value = _cell_text(cells.get(column))
-        if value:
-            notes = "\n".join(part for part in (notes, f"{label}: {value}") if part)
-            markers.append(Approximation("program_import.load_preserved_as_note.v1", column, value))
+    load_kg = cells.get("load_kg")
+    load_pct_e1rm = cells.get("load_pct_e1rm")
     raw_values = {key: _cell_text(value) for key, value in cells.items() if value is not None}
     week_order = cells.get("week")
     if has_week_column and not _cell_text(week_order):
@@ -2835,6 +2867,8 @@ def _template_row(
         tempo=cells.get("tempo"),
         notes=notes,
         original_text=" | ".join(f"{key}: {value}" for key, value in raw_values.items()),
+        load_kg=load_kg,
+        load_pct_e1rm=load_pct_e1rm,
         approximation_markers=tuple(markers),
         week_order=week_order if has_week_column else None,
     )
@@ -2978,22 +3012,81 @@ def _normalise_row(
     if tempo and len(tempo) > MAX_TEMPO_LENGTH:
         errors.append(_row_error("program_import.tempo_too_long.v1", source.source_row, "tempo", "Tempo is too long."))
 
-    preserved_notes = [
+    parsed_loads: dict[str, float] = {}
+    load_markers: list[Approximation] = []
+    for column, raw_load, kind in (
+        ("load_kg", source.load_kg, "kg"),
+        ("load_pct_e1rm", source.load_pct_e1rm, "pct_e1rm"),
+    ):
+        if _is_load_placeholder(raw_load):
+            continue
+        parsed_load = _parse_load_value(
+            raw_load, allow_percent=kind == "pct_e1rm"
+        )
+        if parsed_load is None:
+            marker = _load_approximation(_cell_text(raw_load), column=column)
+            load_markers.append(marker)
+            if not any(
+                item.code == marker.code
+                and item.column == marker.column
+                and item.original == marker.original
+                for item in source.approximation_markers
+            ):
+                warnings.append(
+                    _row_warning(marker.code, source.source_row, column, marker.original)
+                )
+        elif not _load_in_range(parsed_load, kind):
+            errors.append(
+                _row_error(
+                    "program_import.invalid_load.v1",
+                    source.source_row,
+                    column,
+                    (
+                        f"Load must be greater than {MIN_PROGRAM_LOAD_KG:g} and at most "
+                        f"{MAX_PROGRAM_LOAD_KG:g} kg."
+                        if kind == "kg"
+                        else f"e1RM load must be from {MIN_PROGRAM_LOAD_PCT_E1RM:g} "
+                        f"to {MAX_PROGRAM_LOAD_PCT_E1RM:g} percent."
+                    ),
+                )
+            )
+        else:
+            parsed_loads[kind] = parsed_load
+
+    if len(parsed_loads) > 1:
+        errors.append(
+            _row_error(
+                "program_import.multiple_loads.v1",
+                source.source_row,
+                "load",
+                "Choose either kg or percent of e1RM.",
+            )
+        )
+
+    preserved_notes = list(dict.fromkeys(
         f"{item.column}: {item.original}"
-        for item in source.approximation_markers
+        for item in (*source.approximation_markers, *load_markers)
         if item.original and item.column not in {"reps", "rir", "rpe"}
         and item.original.casefold() not in (source.notes or "").casefold()
-    ]
+    ))
     notes = _join_notes(source.notes, reps_note, *effort_notes, *preserved_notes)
     if len(notes) > MAX_PROGRAM_NOTES_LENGTH:
         errors.append(_row_error("program_import.notes_too_long.v1", source.source_row, "notes", "Notes are too long."))
+
+    load = source.load or (
+        {"kind": "kg", "value": parsed_loads["kg"]} if "kg" in parsed_loads else
+        {"kind": "pct_e1rm", "value": parsed_loads["pct_e1rm"]}
+        if "pct_e1rm" in parsed_loads else None
+    )
 
     normalized = {
         "source_row": source.source_row,
         "week": week,
         "week_order": week_order,
         "original_text": source.original_text,
-        "approximation_markers": [item.code for item in source.approximation_markers],
+        "approximation_markers": list(dict.fromkeys(
+            item.code for item in (*source.approximation_markers, *load_markers)
+        )),
         "suggestion_search_terms": list(source.suggestion_terms),
         "day": day,
         "day_valid": day_valid,
@@ -3010,6 +3103,7 @@ def _normalise_row(
         "rest_seconds": rest_seconds,
         "tempo": tempo,
         "notes": notes or None,
+        "load": load,
         "errors": errors,
         "warnings": warnings,
     }
@@ -3033,6 +3127,37 @@ def _normalise_template_week(
         )
         return "Week 1", 1, error
     return f"Week {week_order}", week_order, None
+
+
+def _is_load_placeholder(value: Any) -> bool:
+    return _cell_text(value).casefold() in _LOAD_PLACEHOLDERS
+
+
+def _load_in_range(value: float, kind: str) -> bool:
+    if kind == "kg":
+        return MIN_PROGRAM_LOAD_KG < value <= MAX_PROGRAM_LOAD_KG
+    return MIN_PROGRAM_LOAD_PCT_E1RM <= value <= MAX_PROGRAM_LOAD_PCT_E1RM
+
+
+def _parse_load_value(value: Any, *, allow_percent: bool = False) -> float | None:
+    if _is_load_placeholder(value):
+        return None
+    try:
+        text = _cell_text(value).casefold().strip()
+        if "%" in text:
+            if not allow_percent or not re.fullmatch(r"\d+(?:\.\d+)?\s*%", text):
+                return None
+            text = text.removesuffix("%").strip()
+        elif allow_percent and re.search(r"\bkg\b|\blb\b", text):
+            return None
+        else:
+            if re.search(r"\blb\b", text):
+                return None
+            text = re.sub(r"\s*kg\s*$", "", text)
+        parsed = float(text)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return parsed if math.isfinite(parsed) else None
 
 
 def _week_group_key(week: str | None, week_order: int | None) -> tuple[str, str | int]:
@@ -3261,6 +3386,7 @@ def _confirmed_row(row: dict[str, Any]) -> ProgramImportRow:
         rest_seconds=row["rest_seconds"],
         tempo=row.get("tempo"),
         notes=row.get("notes"),
+        load=row.get("load"),
         original_text="",
         confirmed_exercise_id=row["exercise_id"],
         week_order=row.get("week_order", 1),
@@ -3346,6 +3472,7 @@ def _confirmed_rows_by_day(
             "rest_seconds": row["rest_seconds"],
             "tempo": row["tempo"],
             "notes": row["notes"],
+            "load": row.get("load"),
         })
     if not days:
         raise ProgramImportError("program_import.no_rows.v1", "No valid confirmed rows are ready to create a draft.")

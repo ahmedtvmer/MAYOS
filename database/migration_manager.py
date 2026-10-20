@@ -18,7 +18,7 @@ from utils.equipment_access import (
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 33
+CURRENT_LEDGER_SCHEMA_VERSION: int = 34
 
 VOLUME_REVIEWS_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS volume_reviews ("
@@ -38,6 +38,8 @@ PROGRAM_DESIGN_OFFER_DDL: tuple[str, ...] = (
     " decision TEXT NOT NULL CHECK (decision IN ('accepted', 'dismissed'))"
     ")",
 )
+
+PROGRAM_EXERCISE_LOAD_COLUMN = "load_json TEXT"
 
 ASSISTANT_PREFERENCES_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS assistant_preferences ("
@@ -921,6 +923,17 @@ def _migrate_v32_to_v33(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
+def _migrate_v33_to_v34(conn: sqlite3.Connection) -> None:
+    """Stores optional coach-authored load prescriptions (#297)."""
+    if not _ledger_table_exists(conn, "program_exercises"):
+        return
+    columns = {column[1] for column in conn.execute("PRAGMA table_info(program_exercises)")}
+    if "load_json" not in columns:
+        conn.execute(
+            f"ALTER TABLE program_exercises ADD COLUMN {PROGRAM_EXERCISE_LOAD_COLUMN}"
+        )
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -1039,6 +1052,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     30: _migrate_v30_to_v31,
     31: _migrate_v31_to_v32,
     32: _migrate_v32_to_v33,
+    33: _migrate_v33_to_v34,
 }
 
 

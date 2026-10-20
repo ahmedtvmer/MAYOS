@@ -95,6 +95,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   bool _programDesignOfferDismissed = false;
   bool _dismissingProgramDesignOffer = false;
   Map<int, DeloadDecision> _deloadByDay = <int, DeloadDecision>{};
+  Map<String, double> _bestE1rmByExercise = <String, double>{};
 
   /// The player's active assignment, or null when none (used for coach
   /// provenance). [_assignmentKnown] is false when the assignment lookup failed
@@ -123,6 +124,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     setState(() {
       _loading = true;
       _loadError = null;
+      _bestE1rmByExercise = <String, double>{};
     });
     final String? accountId = _accountId;
     final WorkoutCacheStore cache = ref.read(workoutCacheStoreProvider);
@@ -150,6 +152,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       } else {
         _volumeReviews = <VolumeReview>[];
       }
+      unawaited(_loadBestE1rm(accountId));
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -199,6 +202,20 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         _decidingVolumeReview = null;
         _actionError = apiFailureMessage(error);
       });
+    }
+  }
+
+  Future<void> _loadBestE1rm(String? accountId) async {
+    if (accountId == null) return;
+    try {
+      final rows = await ref.read(apiClientProvider).baselines();
+      if (!mounted) return;
+      setState(() => _bestE1rmByExercise = <String, double>{
+            for (final row in rows)
+              if (row.bestE1rmKg != null) row.exerciseId: row.bestE1rmKg!,
+          });
+    } on Object {
+      // The prescription remains visible without a current e1RM estimate.
     }
   }
 
@@ -1415,6 +1432,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
                     for (final ProgramExercise exercise in day.exercises)
                       _ExerciseRow(
                         exercise: exercise,
+                        bestE1rmKg: _bestE1rmByExercise[exercise.exerciseId],
                         showCoachNotes: program.isCoachPublished,
                         onTap: () => _openExercise(day, exercise),
                         onSubstitute: _substituting || _pickerBusy
@@ -1514,12 +1532,14 @@ class _ProvenanceLabel extends StatelessWidget {
 class _ExerciseRow extends StatelessWidget {
   const _ExerciseRow({
     required this.exercise,
+    required this.bestE1rmKg,
     required this.showCoachNotes,
     required this.onTap,
     required this.onSubstitute,
   });
 
   final ProgramExercise exercise;
+  final double? bestE1rmKg;
   final bool showCoachNotes;
   final VoidCallback onTap;
   final VoidCallback? onSubstitute;
@@ -1551,7 +1571,16 @@ class _ExerciseRow extends StatelessWidget {
                   Directionality(
                     textDirection: TextDirection.ltr,
                     child: Text(
-                      exercise.prescription,
+                      <String>[
+                        exercise.prescription,
+                        if (exercise.load != null)
+                          displayCopyOf(context).programLoadLine(
+                            exercise.load!.kind,
+                            exercise.load!.value,
+                            estimatedKg:
+                                exercise.load!.suggestedWeightKg(bestE1rmKg),
+                          ),
+                      ].join(' · '),
                       style: MayosTypography.of(context).bodySecondary.copyWith(
                         color: c.textSecondary,
                       ),

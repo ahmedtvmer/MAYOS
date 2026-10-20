@@ -251,6 +251,108 @@ class _LatencyStore implements ActiveWorkoutStore {
 
 void main() {
   group('Active workout lifecycle', () {
+    test('load prescriptions seed editable suggestions from each load kind',
+        () async {
+      final scenarios = <({
+        ProgramLoad load,
+        Map<String, dynamic> baseline,
+        double expectedWeight,
+        double? expectedHint,
+        double? overrideWeight,
+      })>[
+        (
+          load: const ProgramLoad(kind: 'pct_e1rm', value: 77),
+          baseline: _baselineRow(),
+          expectedWeight: 92.5,
+          expectedHint: 92.5,
+          overrideWeight: null,
+        ),
+        (
+          load: const ProgramLoad(kind: 'pct_e1rm', value: 75),
+          baseline: <String, dynamic>{
+            ..._baselineRow(),
+            'best_e1rm_kg': 110,
+          },
+          expectedWeight: 82.5,
+          expectedHint: 82.5,
+          overrideWeight: null,
+        ),
+        (
+          load: const ProgramLoad(kind: 'kg', value: 80),
+          baseline: _baselineRow(),
+          expectedWeight: 80,
+          expectedHint: 80,
+          overrideWeight: 72.5,
+        ),
+        (
+          load: const ProgramLoad(kind: 'pct_e1rm', value: 75),
+          baseline: <String, dynamic>{
+            ..._baselineRow(),
+            'best_e1rm_kg': null,
+          },
+          expectedWeight: 0,
+          expectedHint: 60,
+          overrideWeight: null,
+        ),
+      ];
+
+      for (final scenario in scenarios) {
+        final FakeMayosApi fake = _signedInFake()
+          ..baselinesBody = <Map<String, dynamic>>[scenario.baseline];
+        final ProviderContainer container = _container(
+          fake: fake,
+          tokens: await _tokens(),
+          store: InMemoryActiveWorkoutStore(),
+          cache: InMemoryBaselineCacheStore(),
+          drafts: InMemoryDraftStore(),
+          workoutCache: InMemoryWorkoutCacheStore(),
+        );
+        final ProgramDay day = ProgramDay(
+          dayName: _day.dayName,
+          dayOrder: _day.dayOrder,
+          exercises: <ProgramExercise>[
+            ProgramExercise(
+              exerciseId: 'bench_press',
+              exerciseName: 'Bench Press',
+              targetSets: 1,
+              targetRepsMin: 5,
+              targetRepsMax: 8,
+              targetRpe: 8.5,
+              load: scenario.load,
+            ),
+          ],
+        );
+        final ActiveWorkoutController controller =
+            container.read(activeWorkoutControllerProvider.notifier);
+        await controller.startFromDay(
+          accountId: _account,
+          day: day,
+          programVersion: 3,
+        );
+
+        final ActiveWorkoutExercise exercise =
+            controller.workout!.exercises.single;
+        expect(exercise.sets.first.weightKg, scenario.expectedWeight);
+        expect(exercise.sets.first.ticked, isFalse);
+        expect(exercise.prescriptionHint!.weightKg, scenario.expectedHint);
+        if (scenario.overrideWeight != null) {
+          await controller.updateCell(
+            0,
+            0,
+            weightKg: scenario.overrideWeight,
+          );
+          expect(
+            controller.workout!.exercises.single.sets.first.weightKg,
+            scenario.overrideWeight,
+          );
+          expect(
+            controller.workout!.exercises.single.sets.first.ticked,
+            isFalse,
+          );
+        }
+      }
+    });
+
     test('Warm-up movements and Cardio survive an app restart',
         () async {
       final FakeMayosApi fake = _signedInFake();

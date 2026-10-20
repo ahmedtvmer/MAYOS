@@ -1720,6 +1720,10 @@ class _DraftExerciseEditor {
             text: '${source['warmup_sets'] ?? ProgramDraftPrescription.minWarmupSets}'),
         rest = TextEditingController(
             text: '${source['rest_seconds'] ?? ProgramDraftPrescription.defaultExerciseRestSeconds}'),
+        loadKind = (source['load'] as Map<String, dynamic>?)?['kind'] as String? ?? '',
+        loadValue = TextEditingController(
+          text: '${(source['load'] as Map<String, dynamic>?)?['value'] ?? ''}',
+        ),
         tempo = TextEditingController(text: source['tempo'] as String? ?? ''),
         notes = TextEditingController(text: source['notes'] as String? ?? '');
 
@@ -1729,6 +1733,8 @@ class _DraftExerciseEditor {
   final TextEditingController rir;
   final TextEditingController warmupSets;
   final TextEditingController rest;
+  String loadKind;
+  final TextEditingController loadValue;
   final TextEditingController tempo;
   final TextEditingController notes;
 
@@ -1755,6 +1761,8 @@ class _DraftExerciseEditor {
       ..rir.text = rir.text
       ..warmupSets.text = warmupSets.text
       ..rest.text = rest.text
+      ..loadKind = loadKind
+      ..loadValue.text = loadValue.text
       ..tempo.text = tempo.text
       ..notes.text = notes.text;
     return duplicate;
@@ -1786,6 +1794,14 @@ class _DraftExerciseEditor {
         rampedWarmupSets > ProgramDraftPrescription.maxWarmupSets) {
       throw FormatException(copy.invalidWarmupSets);
     }
+    Map<String, dynamic>? load;
+    if (loadKind.isNotEmpty) {
+      final double? value = double.tryParse(loadValue.text.trim());
+      if (value == null || !ProgramLoad.acceptsValue(loadKind, value)) {
+        throw FormatException(copy.invalidLoadPrescription);
+      }
+      load = <String, dynamic>{'kind': loadKind, 'value': value};
+    }
     return <String, dynamic>{
       ...source,
       'target_sets': workingSets,
@@ -1796,6 +1812,7 @@ class _DraftExerciseEditor {
       'rest_seconds': _wholeNumber(rest, copy),
       'tempo': _trimToNull(tempo.text),
       'notes': _trimToNull(notes.text),
+      'load': load,
     };
   }
 
@@ -1805,6 +1822,7 @@ class _DraftExerciseEditor {
     rir.dispose();
     warmupSets.dispose();
     rest.dispose();
+    loadValue.dispose();
     tempo.dispose();
     notes.dispose();
   }

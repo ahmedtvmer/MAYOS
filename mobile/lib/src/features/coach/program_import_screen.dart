@@ -491,6 +491,7 @@ class _CoachProgramImportScreenState
             'rest_seconds': row['rest_seconds'],
             'tempo': row['tempo'],
             'notes': row['notes'],
+            'load': row['load'],
           })
       .toList(growable: false);
 
@@ -518,6 +519,14 @@ class _CoachProgramImportScreenState
               row['reps_max'] as int? ?? 0,
               (row['target_rir'] as num?)?.toDouble() ?? 0,
             )),
+            if (row['load'] is Map<String, dynamic>)
+              Text(copy.prescribedLoad(
+                kind: (row['load'] as Map<String, dynamic>)['kind'] as String,
+                value: ProgramLoad.formatValue(
+                  ((row['load'] as Map<String, dynamic>)['value'] as num)
+                      .toDouble(),
+                ),
+              )),
             if (selectedId == null && suggestions.isNotEmpty)
               DropdownButtonFormField<String>(
                 key: Key('program_import_match_${row['source_row']}'),

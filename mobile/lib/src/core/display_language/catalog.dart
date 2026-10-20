@@ -4,6 +4,7 @@ import '../checkpoint_ordinal.dart';
 import '../effort.dart';
 import '../exercise_filters.dart';
 import '../personal_records.dart';
+import '../program_load.dart';
 import 'arabic_count.dart';
 import 'ai_allowance_copy.dart';
 import 'message_resolver.dart';
@@ -257,6 +258,19 @@ class MayosCopy {
   String get personalRecords =>
       isArabic ? 'الأرقام القياسية الشخصية' : 'Personal records';
   String get logWorkout => isArabic ? 'تسجيل حصة تدريبية' : 'Log workout';
+  // #297 Program load and the current e1RM estimate when one is available.
+  String programLoadLine(String kind, double value, {double? estimatedKg}) {
+    final String amount = ProgramLoad.formatValue(value);
+    if (kind == 'kg') {
+      return isArabic ? '\u2066$amount kg\u2069' : '$amount kg';
+    }
+    final String estimate = estimatedKg == null
+        ? ''
+        : ' ≈ ${ProgramLoad.formatValue(estimatedKg)} kg';
+    return isArabic
+        ? '\u2066$amount% e1RM$estimate\u2069'
+        : '$amount% e1RM$estimate';
+  }
   String get substituteExercise =>
       isArabic ? 'تبديل تمرين في البرنامج' : 'Substitute exercise';
   String get substituteExerciseQuestion =>

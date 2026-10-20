@@ -19,6 +19,7 @@ from agent.ProgramState import (
     PersistedProgramExerciseSchema,
     PersistedProgramSchema,
     PersistedProgramWeekSchema,
+    ProgramLoadSchema,
 )
 from database.database_manager import DatabaseManager
 from database.registry.coach_exercises import CoachExerciseCreate
@@ -137,7 +138,7 @@ def _account_id(db, username):
 
 def test_prompt_version_hash_is_bound_to_name_aware_context():
     assert coach_ai.prompt_version_hash() == (
-        "f93d3b5d0e59eeef2a920b1355c9fb5a2590250ed4d310bcd76d089920550e64"
+        "96ae33920efeba2f461e00ce574ff66ab9c299f7cae1e70d7db8bf6d21590648"
     )
 
 
@@ -1377,13 +1378,20 @@ def test_active_coach_program_model_context_includes_curated_exercise_facts(
             }
         },
     )
-    program = _program_with_lifts([[_program_lift("bp", "Bench Press", "flat_press")]])
+    exercise = _program_lift("bp", "Bench Press", "flat_press").model_copy(
+        update={"load": ProgramLoadSchema(kind="pct_e1rm", value=75)}
+    )
+    program = _program_with_lifts([[exercise]])
     program_data = program.model_dump()
     program_data.pop("created_at", None)
     db.switch_user("p1")
     db.ledger.save_training_program(program_data)
     facts = coach_ai.gather_player_context(db, _account_id(db, "coach"), assignment_id)
     assert facts is not None
+    assert facts["program"]["days"][0]["exercises"][0].get("load") == {
+        "kind": "pct_e1rm",
+        "value": 75.0,
+    }
     model = ScriptedChatModel(["The program includes a bench press."])
 
     model.invoke(
@@ -1398,6 +1406,7 @@ def test_active_coach_program_model_context_includes_curated_exercise_facts(
         "Secondary actions: Elbow Extension",
         "Primary muscle: Chest",
         "Equipment category: Free weight",
+        "load=75.0 pct_e1rm",
     ):
         assert field in model_context
 

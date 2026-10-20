@@ -289,7 +289,7 @@ String setPerformanceLabel(
 
 /// `100`, `92.5`, `33.33` — the cell/previous weight format.
 String formatCellWeight(double weight) =>
-    weight == weight.roundToDouble() ? weight.round().toString() : '$weight';
+    ProgramLoad.formatValue(weight);
 
 /// The frozen previous working set matched set by set: set N of the table is
 /// the Nth working set of the baseline's `last_session` (#107/#123), for

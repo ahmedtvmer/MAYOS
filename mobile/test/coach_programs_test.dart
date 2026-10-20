@@ -3099,7 +3099,11 @@ void main() {
       (fake.programImportResult['rows'] as List<Map<String, dynamic>>).single,
     )
       ..['week'] = 'Week 1'
-      ..['week_order'] = 1;
+      ..['week_order'] = 1
+      ..['load'] = <String, dynamic>{
+        'kind': 'pct_e1rm',
+        'value': 75.0,
+      };
     final Map<String, dynamic> secondRow = Map<String, dynamic>.from(firstRow)
       ..['source_row'] = 3
       ..['week'] = 'Week 2'
@@ -3124,6 +3128,8 @@ void main() {
 
     expect(find.textContaining('Push · 3 sets · 6-8 reps · RIR 2.0'),
         findsOneWidget);
+    expect(find.textContaining('75% e1RM'), findsWidgets);
+    expect(find.textContaining('75.0% e1RM'), findsNothing);
     expect(find.byKey(const Key('program_import_week_picker')), findsNothing);
     expect(find.text('Weeks to import: Week 1, Week 2.'), findsOneWidget);
     await tester.tap(find.byKey(const Key('program_import_create_draft')));
@@ -4323,6 +4329,13 @@ void main() {
     await tester.tap(find.text('Bench Press').last);
     await _pumpUntilFound(
         tester, find.byKey(const Key('program_draft_sets_0_0')));
+    await tester.tap(
+        find.byKey(const Key('program_draft_load_kind_0_0')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('% e1RM').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('program_draft_load_value_0_0')), '75');
     await tester.enterText(
         find.byKey(const Key('program_draft_sets_0_0')), '3');
     await tester.enterText(
@@ -4373,6 +4386,10 @@ void main() {
     expect(exercise['target_reps_min'], 6);
     expect(exercise['target_reps_max'], 8);
     expect(exercise['target_rpe'], 9);
+    expect(exercise['load'], <String, dynamic>{
+      'kind': 'pct_e1rm',
+      'value': 75,
+    });
     expect(exercise['warmup_sets'], 2);
     expect(exercise['rest_seconds'], 150);
     expect(exercise['tempo'], '3-1-1');

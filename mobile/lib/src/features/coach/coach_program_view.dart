@@ -422,7 +422,14 @@ class _CoachProgramViewState extends State<CoachProgramView> {
     ProgramExercise exercise,
   ) =>
       <String>[
-        coachExerciseEquipmentLabel(context, exercise),
+        <String>[
+          coachExerciseEquipmentLabel(context, exercise),
+          if (exercise.load != null)
+            copy.prescribedLoad(
+              kind: exercise.load!.kind,
+              value: ProgramLoad.formatValue(exercise.load!.value),
+            ),
+        ].where((String value) => value.isNotEmpty).join(' · '),
         copy.programSetsCell(exercise.targetSets, exercise.warmupSets),
         copy.programExerciseRepRange(
           exercise.targetRepsMin,
@@ -488,8 +495,8 @@ class _CoachProgramViewState extends State<CoachProgramView> {
     BuildContext context,
     CoachCopy copy,
     ProgramExercise exercise,
-  ) =>
-      copy.compactProgramPrescription((
+  ) {
+    final String summary = copy.compactProgramPrescription((
         sets: copy.programSetsCell(exercise.targetSets, exercise.warmupSets),
         reps: copy.programExerciseRepRange(
           exercise.targetRepsMin,
@@ -499,6 +506,12 @@ class _CoachProgramViewState extends State<CoachProgramView> {
         rest: displayCopyOf(context).restTime(exercise.restSecondsOrDefault),
         equipment: coachExerciseEquipmentLabel(context, exercise),
       ));
+    if (exercise.load == null) return summary;
+    return '$summary · ${copy.prescribedLoad(
+      kind: exercise.load!.kind,
+      value: ProgramLoad.formatValue(exercise.load!.value),
+    )}';
+  }
 
   String _phoneSecondaryLine(
     BuildContext context,

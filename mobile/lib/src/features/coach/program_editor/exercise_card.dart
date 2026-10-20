@@ -121,6 +121,40 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: MayosSpacing.sm),
+            DropdownButtonFormField<String>(
+              key: _fieldKey('load_kind'),
+              isExpanded: true,
+              initialValue: exercise.loadKind,
+              decoration: InputDecoration(
+                labelText: copy.loadPrescription,
+                border: const OutlineInputBorder(),
+                isDense: true,
+              ),
+              items: <DropdownMenuItem<String>>[
+                DropdownMenuItem<String>(value: '', child: Text(copy.noLoad)),
+                DropdownMenuItem<String>(value: 'kg', child: Text(copy.fixedLoadKg)),
+                DropdownMenuItem<String>(value: 'pct_e1rm', child: Text(copy.loadPercentE1rm)),
+              ],
+              onChanged: busy
+                  ? null
+                  : (String? value) {
+                      exercise.loadKind = value ?? '';
+                      onChanged('load');
+                    },
+            ),
+            if (exercise.loadKind.isNotEmpty) ...<Widget>[
+              const SizedBox(height: MayosSpacing.xs),
+              _editorNumberField(
+                key: _fieldKey('load_value'),
+                controller: exercise.loadValue,
+                label: exercise.loadKind == 'kg' ? copy.fixedLoadKg : copy.loadPercentE1rm,
+                enabled: !busy,
+                decimal: true,
+                errorText: errorFor('load'),
+                onChanged: (_) => onChanged('load'),
+              ),
+            ],
+            const SizedBox(height: MayosSpacing.sm),
             Row(
               children: <Widget>[
                 Expanded(

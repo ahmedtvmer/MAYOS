@@ -25,7 +25,7 @@ HEADERS = [
 ]
 CONFIRMED_ROW_FIELDS = (
     "source_row", "day", "day_name", "order", "exercise_name", "exercise_id",
-    "sets", "reps_min", "reps_max", "target_rir", "rest_seconds", "tempo", "notes",
+    "sets", "reps_min", "reps_max", "target_rir", "rest_seconds", "tempo", "notes", "load",
 )
 
 
@@ -216,13 +216,14 @@ def test_csv_import_creates_only_program_draft_and_replacement_requires_confirma
     upload = client.post(
         f"/coach/assignments/{assignment_id}/program-import",
         headers=coach_headers,
-        files={"file": ("plan.csv", _csv([["1", "Push", "1", "Squat", "3", "6-8", "2", "", "", "", "90", "301", "Keep form"]]), "text/csv")},
+        files={"file": ("plan.csv", _csv([["1", "Push", "1", "Squat", "3", "6-8", "2", "", "80", "", "90", "301", "Keep form"]]), "text/csv")},
     )
     assert upload.status_code == 200, upload.text
     result = upload.json()
     assert result["draft_exists"] is False
     assert result["rows"][0]["exercise_id"] == "sq"
     assert result["rows"][0]["target_rir"] == 2
+    assert result["rows"][0]["load"] == {"kind": "kg", "value": 80}
     assert "rest_seconds" in result["rows"][0]
     assert "rest_sec" not in result["rows"][0]
 
@@ -249,6 +250,7 @@ def test_csv_import_creates_only_program_draft_and_replacement_requires_confirma
     )
     assert created.status_code == 200, created.text
     assert created.json()["draft"]["days"][0]["exercises"][0]["exercise_id"] == "sq"
+    assert created.json()["draft"]["days"][0]["exercises"][0]["load"] == {"kind": "kg", "value": 80}
     assert len(created.json()["draft"]["weeks"]) == 1
     assert client.get("/programs/active", headers=player_headers).json() == active_before
     assert client.post(
@@ -256,6 +258,97 @@ def test_csv_import_creates_only_program_draft_and_replacement_requires_confirma
         headers=coach_headers,
         json={"program_name": "again", "rows": _confirmed_rows(result["rows"])},
     ).status_code == 409
+
+
+def test_template_percent_load_becomes_program_load(api):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="pct-load")
+    upload = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("plan.csv", _csv([["1", "Push", "1", "Squat", "3", "6-8", "2", "", "", "75", "90", "", ""]]), "text/csv")},
+    )
+    assert upload.status_code == 200, upload.text
+    row = upload.json()["rows"][0]
+    assert row["load"] == {"kind": "pct_e1rm", "value": 75}
+    created = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/import",
+        headers=coach_headers,
+        json={"program_name": "plan", "rows": _confirmed_rows([row])},
+    )
+    assert created.status_code == 200, created.text
+    assert created.json()["draft"]["days"][0]["exercises"][0]["load"] == {
+        "kind": "pct_e1rm",
+        "value": 75,
+    }
+    minimum_upload = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={
+            "file": (
+                "minimum.csv",
+                _csv([["1", "Push", "1", "Squat", "3", "6-8", "2", "", "", "1", "90", "", ""]]),
+                "text/csv",
+            )
+        },
+    )
+    assert minimum_upload.status_code == 200, minimum_upload.text
+    assert minimum_upload.json()["rows"][0]["load"] == {
+        "kind": "pct_e1rm",
+        "value": 1,
+    }
+
+
+@pytest.mark.parametrize(
+    ("raw_load", "expected_note"),
+    [
+        ("", None),
+        ("—", None),
+        ("-", None),
+        ("n/a", None),
+        ("60-70", "load_kg: 60-70"),
+        ("BW", "load_kg: BW"),
+        ("80 lb", "load_kg: 80 lb"),
+        ("3,5", "load_kg: 3,5"),
+        ("75%", "load_kg: 75%"),
+        ("nan", "load_kg: nan"),
+        ("inf", "load_kg: inf"),
+    ],
+)
+def test_template_unsupported_load_is_preserved_without_rejecting_row(
+    api, raw_load, expected_note
+):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="load-note")
+    upload = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={
+            "file": (
+                "plan.csv",
+                _csv([["1", "Push", "1", "Squat", "3", "6-8", "2", "", raw_load, "", "90", "", ""]]),
+                "text/csv",
+            )
+        },
+    )
+
+    assert upload.status_code == 200, upload.text
+    row = upload.json()["rows"][0]
+    assert row["valid"] is True
+    assert row["load"] is None
+    if expected_note is None:
+        assert row["notes"] is None
+        assert not any(
+            warning["code"] == "program_import.load_preserved_as_note.v1"
+            for warning in row["warnings"]
+        )
+    else:
+        assert expected_note in row["notes"]
+        marker = next(
+            warning for warning in row["warnings"]
+            if warning["code"] == "program_import.load_preserved_as_note.v1"
+        )
+        assert marker["message"] == raw_load
 
 
 def test_csv_bare_rpe_values_convert_to_rir(api):
@@ -305,9 +398,10 @@ def test_xlsx_requires_tab_choice_and_keeps_rpe_load_and_notes(api):
     assert second.status_code == 200, second.text
     row = second.json()["rows"][0]
     assert row["target_rir"] == 2
-    assert "load: 60" in row["notes"]
+    assert row["load"] == {"kind": "kg", "value": 60}
+    assert "load: 60" not in row["notes"]
     assert "ملاحظة أصلية" in row["notes"]
-    assert any("load" in warning["code"] for warning in row["warnings"])
+    assert not any("load" in warning["code"] for warning in row["warnings"])
 
 
 def test_unknown_exercise_is_reported_and_invalid_reps_are_row_scoped(api):
@@ -2134,12 +2228,12 @@ def test_freeform_source_preserves_kg_per_set_and_superset_approximations():
     row = program_import._normalise_row(source.rows[0], {})
     warning_codes = {warning["code"] for warning in row["warnings"]}
     assert warning_codes >= {
-        "program_import.load_preserved_as_note.v1",
         "program_import.reps_approximated.v1",
         "program_import.rpe_converted.v1",
         "program_import.unsupported_preserved_as_note.v1",
     }
-    assert "load_kg: 65 kg" in row["notes"]
+    assert row["load"] == {"kind": "kg", "value": 65}
+    assert "load_kg: 65 kg" not in row["notes"]
     assert "reps: 10/8/6" in row["notes"]
     assert "+2.5 kg/week" in row["notes"]
 
@@ -3282,6 +3376,68 @@ def test_text_loads_reuse_load_and_unsupported_markers(api, monkeypatch, scripte
         assert load_marker["message"] == expected_load
 
 
+def test_text_ai_load_kg_maps_to_load_without_prompt_schema_change(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-kg-load")
+    _enable_text_import_for_route(monkeypatch)
+    translated = _text_reply(
+        line=1,
+        exercise="Dips",
+        original_text="Dips 3x8 +10kg",
+    )["rows"][0]
+    translated["load_kg"] = 10
+    scripted_chat_model.script({"rows": [translated], "layout": {
+        "days": [{"day": 1, "name": "Push"}],
+        "weeks": [],
+        "confidence": 0.98,
+        "confirm_layout": False,
+    }})
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        data={"text": "Dips 3x8 +10kg"},
+    )
+    assert response.status_code == 200, response.text
+    imported = response.json()["rows"][0]
+    assert imported["load"] == {"kind": "kg", "value": 10}
+    assert imported["notes"] is None
+
+
+def test_text_ai_unsupported_load_is_preserved_as_note(api, monkeypatch, scripted_chat_model):
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db, prefix="text-unsupported-load")
+    _enable_text_import_for_route(monkeypatch)
+    translated = _text_reply(
+        line=1,
+        exercise="Dips",
+        original_text="Dips 3x8 BW+10",
+    )["rows"][0]
+    translated["load_kg"] = "BW+10"
+    scripted_chat_model.script({"rows": [translated], "layout": {
+        "days": [{"day": 1, "name": "Push"}],
+        "weeks": [],
+        "confidence": 0.98,
+        "confirm_layout": False,
+    }})
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        data={"text": "Dips 3x8 BW+10"},
+    )
+
+    assert response.status_code == 200, response.text
+    imported = response.json()["rows"][0]
+    assert imported["valid"] is True
+    assert imported["load"] is None
+    assert "BW+10" in imported["notes"]
+    assert "program_import.invalid_load.v1" not in [
+        warning["code"] for warning in imported["warnings"]
+    ]
+    assert "program_import.load_preserved_as_note.v1" in [
+        warning["code"] for warning in imported["warnings"]
+    ]
+
+
 def test_text_hold_requires_hold_evidence_and_numbered_names_are_clean(api, monkeypatch, scripted_chat_model):
     client, db = api
     coach_headers, _, assignment_id = _assignment(client, db, prefix="text-hold-guard")
@@ -3414,7 +3570,10 @@ def test_committed_sheet_report_and_prompt_hash_remain_valid():
 
     report = json.loads((Path(__file__).parents[1] / "reports/program_import_eval.json").read_text(encoding="utf-8"))
     assert program_import_ai.prompt_version_hash() == "a5c879aa7e28699a58ef47234425587fadabbe720b2b47471c1512788d1f3e7c"
+    assert program_import_ai.text_prompt_version_hash() == "fdd73d190b388369fabe9f0270d985bc038725e2aacf342209ee2603136a2120"
     assert program_import_ai.validate_report(report) == (True, [])
+    text_report = json.loads((Path(__file__).parents[1] / "reports/program_import_text_eval.json").read_text(encoding="utf-8"))
+    assert program_import_ai.validate_report(text_report) == (True, [])
 
 
 def test_text_report_validator_uses_lines_and_skips_tab_selection(monkeypatch, tmp_path):

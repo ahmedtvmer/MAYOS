@@ -10,6 +10,7 @@ from agent.prompts import DEFAULT_ASSISTANT_STYLE
 from database.exercise_library.curation import apply_exercise_curation
 from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION
 from database.migration_manager import ASSISTANT_PREFERENCES_DDL, PROGRAM_DESIGN_OFFER_DDL
+from database.migration_manager import PROGRAM_EXERCISE_LOAD_COLUMN
 from database.migration_manager import VOLUME_REVIEWS_DDL
 from database.migration_manager import EQUIPMENT_ACCESS_DDL
 from database.migration_manager import CHECKPOINT_REVIEWS_DDL
@@ -192,6 +193,7 @@ class SchemaMixin:
                 target_rpe REAL,
                 rest_seconds INTEGER DEFAULT 120,
                 tempo TEXT,
+                __PROGRAM_EXERCISE_LOAD_COLUMN__,
                 notes TEXT,
                 FOREIGN KEY(day_id) REFERENCES program_days(id) ON DELETE CASCADE
             );
@@ -320,7 +322,8 @@ class SchemaMixin:
                 expires_at TEXT NOT NULL,
                 revoked_at TEXT NOT NULL
             );
-        """.replace("__DEFAULT_ASSISTANT_STYLE__", DEFAULT_ASSISTANT_STYLE) + "\n".join(
+        """.replace("__DEFAULT_ASSISTANT_STYLE__", DEFAULT_ASSISTANT_STYLE)
+        .replace("__PROGRAM_EXERCISE_LOAD_COLUMN__", PROGRAM_EXERCISE_LOAD_COLUMN) + "\n".join(
             f"{statement};"
             for statement in (
                 *PERFORMED_DATE_CORRECTIONS_DDL,

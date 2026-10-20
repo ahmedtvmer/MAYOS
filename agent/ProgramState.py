@@ -1,6 +1,6 @@
 from typing import Any, Literal, TypedDict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from agent.program_prescription import (
     DEFAULT_TARGET_SETS,
     MAX_REPS,
@@ -28,6 +28,31 @@ from agent.program_prescription import (
 
 MAX_DYNAMIC_DOUBLE_SLOTS_PER_DAY = 2
 MAX_DYNAMIC_TARGET_SLOTS_PER_DAY = MAX_EXERCISES_PER_DAY - MAX_DYNAMIC_DOUBLE_SLOTS_PER_DAY
+
+MIN_PROGRAM_LOAD_KG = 0.0
+MAX_PROGRAM_LOAD_KG = 1000.0
+MIN_PROGRAM_LOAD_PCT_E1RM = 1.0
+MAX_PROGRAM_LOAD_PCT_E1RM = 100.0
+
+
+class ProgramLoadSchema(BaseModel):
+    """Optional coach-authored fixed or e1RM-relative exercise load."""
+
+    model_config = {"extra": "forbid"}
+
+    kind: Literal["kg", "pct_e1rm"]
+    value: float = Field(gt=MIN_PROGRAM_LOAD_KG, le=MAX_PROGRAM_LOAD_KG)
+
+    @model_validator(mode="after")
+    def validate_value_for_kind(self) -> "ProgramLoadSchema":
+        if self.kind == "pct_e1rm" and not (
+            MIN_PROGRAM_LOAD_PCT_E1RM <= self.value <= MAX_PROGRAM_LOAD_PCT_E1RM
+        ):
+            raise ValueError(
+                f"pct_e1rm load must be from {MIN_PROGRAM_LOAD_PCT_E1RM:g} "
+                f"to {MAX_PROGRAM_LOAD_PCT_E1RM:g}."
+            )
+        return self
 
 # --- Pydantic Output Contracts ---
 
@@ -73,6 +98,7 @@ class ProgramExerciseSchema(BaseModel):
         max_length=MAX_PROGRAM_NOTES_LENGTH,
         description="Execution steps from the exercise catalog (or a chat-supplied cue)",
     )
+    load: ProgramLoadSchema | None = Field(default=None, description="Optional fixed kg or percent of e1RM")
     image_path: str | None = Field(default=None, description="Local path or URL to demonstration image")
     gif_path: str | None = Field(default=None, description="Local path or URL to demonstration animated GIF")
     suggested_substitutes: list[SuggestedSubstitute] = Field(

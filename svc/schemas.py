@@ -20,6 +20,7 @@ from agent.ProgramState import (
     PersistedProgramSchema,
     PersistedProgramWeekSchema,
     ProgramExerciseSchema,
+    ProgramLoadSchema,
     SuggestedSubstitute,
 )
 from agent.program_cardio import CardioType
@@ -1249,6 +1250,7 @@ class ProgramDraftExerciseIn(ProgramDraftInput):
     rest_seconds: int = DEFAULT_EXERCISE_REST_SECONDS
     tempo: str | None = Field(default=None, max_length=MAX_TEMPO_LENGTH)
     notes: str | None = Field(default=None, max_length=MAX_PROGRAM_NOTES_LENGTH)
+    load: ProgramLoadSchema | None = None
     image_path: str | None = None
     gif_path: str | None = None
     suggested_substitutes: list[SuggestedSubstitute] = Field(default_factory=list)
@@ -1533,6 +1535,7 @@ class ProgramImportDraftRowIn(BaseModel):
     rest_seconds: Any
     tempo: Any = None
     notes: Any = None
+    load: ProgramLoadSchema | None = None
 
 
 class ProgramImportCreateIn(BaseModel):

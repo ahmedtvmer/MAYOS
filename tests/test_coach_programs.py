@@ -1751,6 +1751,66 @@ def test_program_draft_publish_rejects_invalid_structure(api, draft, code, field
 
 
 @pytest.mark.parametrize(
+    "load",
+    [{"kind": "kg", "value": 80}, {"kind": "pct_e1rm", "value": 75}],
+)
+def test_program_load_survives_draft_publish(api, load):
+    client, _, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    draft_path = _program_draft_path(assignment_id)
+    assert client.post(
+        draft_path,
+        headers=coach_headers,
+        json=_one_day_draft(load=load),
+    ).status_code == 200
+    published = client.post(f"{draft_path}/publish", headers=coach_headers)
+    assert published.status_code == 200
+    assert published.json()["days"][0]["exercises"][0]["load"] == load
+    active = client.get("/programs/active", headers=player_headers)
+    assert active.status_code == 200
+    assert active.json()["days"][0]["exercises"][0]["load"] == load
+
+
+def test_existing_program_with_null_load_reads_as_none_through_active_api(api):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, _, _ = _assigned_player(api)
+    draft_path = _program_draft_path(assignment_id)
+    assert client.post(
+        draft_path,
+        headers=coach_headers,
+        json=_one_day_draft(),
+    ).status_code == 200
+    assert client.post(f"{draft_path}/publish", headers=coach_headers).status_code == 200
+
+    db.switch_user("p1")
+    active = client.get("/programs/active", headers=player_headers)
+
+    assert active.status_code == 200
+    assert active.json()["days"][0]["exercises"][0]["load"] is None
+
+
+@pytest.mark.parametrize(
+    "load",
+    [
+        {"kind": "kg", "value": 0},
+        {"kind": "kg", "value": 1000.1},
+        {"kind": "pct_e1rm", "value": 0},
+        {"kind": "pct_e1rm", "value": 100.1},
+        {"kind": "unknown", "value": 50},
+    ],
+)
+def test_program_draft_rejects_invalid_load(api, load):
+    client, _, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+    response = client.post(
+        _program_draft_path(assignment_id),
+        headers=coach_headers,
+        json=_one_day_draft(load=load),
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
     ("field", "value", "expected_location"),
     [
         ("warmup_sets", 5, ["days", 0, "exercises", 0, "warmup_sets"]),

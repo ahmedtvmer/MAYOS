@@ -4,6 +4,7 @@ import 'message_copy.dart';
 import 'message_resolution.dart';
 import '../personal_records.dart';
 import '../program_prescription.dart';
+import '../program_load.dart';
 import '../shared_program_text.dart';
 
 /// App-owned coach mode labels. Server supplied notices, alert descriptions,
@@ -1415,4 +1416,21 @@ class CoachCopy {
     }
     return parts.join(' · ');
   }
+
+  // #297 load prescription editor.
+  String get loadPrescription => isArabic ? 'الحمل' : 'Load';
+  String get noLoad => isArabic ? 'بدون حمل محدد' : 'None';
+  String get fixedLoadKg => isArabic ? 'وزن ثابت (kg)' : 'Fixed weight (kg)';
+  String get loadPercentE1rm => isArabic ? 'نسبة من e1RM' : '% e1RM';
+  String get invalidLoadPrescription => isArabic
+      ? 'أدخل قيمة من ${ProgramLoad.formatValue(ProgramLoad.minimumPercentE1rm)} '
+          'إلى ${ProgramLoad.formatValue(ProgramLoad.maximumPercentE1rm)} للحمل النسبي، أو وزنًا أكبر من '
+          '${ProgramLoad.formatValue(ProgramLoad.minimumKg)}.'
+      : 'Enter ${ProgramLoad.formatValue(ProgramLoad.minimumPercentE1rm)}–'
+          '${ProgramLoad.formatValue(ProgramLoad.maximumPercentE1rm)} for a percentage, or a weight '
+          'greater than ${ProgramLoad.formatValue(ProgramLoad.minimumKg)}.';
+  String prescribedLoad({required String kind, required String value}) =>
+      kind == 'kg'
+          ? (isArabic ? '${_ltr(value)} kg' : '$value kg')
+          : (isArabic ? '${_ltr(value)}% e1RM' : '$value% e1RM');
 }

@@ -6,7 +6,13 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from agent.ProgramState import PersistedProgramSchema
+from agent.ProgramState import (
+    MAX_PROGRAM_LOAD_KG,
+    MAX_PROGRAM_LOAD_PCT_E1RM,
+    MIN_PROGRAM_LOAD_KG,
+    MIN_PROGRAM_LOAD_PCT_E1RM,
+    PersistedProgramSchema,
+)
 from agent.program_weeks import (
     default_week_name,
     flatten_program_days,
@@ -292,6 +298,13 @@ def _pydantic_issue(error: dict[str, Any]) -> dict[str, Any]:
         code, message = "invalid_reps", f"Reps must be from {MIN_REPS} to {MAX_REPS}."
     elif field == "target_rpe":
         code, message = "invalid_rir", f"Target RIR must be from {MIN_TARGET_RIR:g} to {MAX_TARGET_RIR:g}."
+    elif field == "load":
+        code = "invalid_load"
+        message = (
+            f"Load must be greater than {MIN_PROGRAM_LOAD_KG:g} and at most "
+            f"{MAX_PROGRAM_LOAD_KG:g} kg, or "
+            f"{MIN_PROGRAM_LOAD_PCT_E1RM:g}–{MAX_PROGRAM_LOAD_PCT_E1RM:g}% e1RM."
+        )
     elif field == "warmup_sets":
         code, message = "invalid_warmup_sets", f"Warm-up sets must be from {MIN_RAMPED_WARMUP_SETS} to {MAX_RAMPED_WARMUP_SETS}."
     elif field == "sets":

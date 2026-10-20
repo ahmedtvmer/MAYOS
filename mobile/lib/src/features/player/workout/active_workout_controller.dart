@@ -347,6 +347,11 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
     if (state.workout != null) {
       return StartWorkoutOutcome.activeExists;
     }
+    final Map<String, BaselineExercise> baselinesByExercise =
+        <String, BaselineExercise>{
+      for (final BaselineExercise baseline in resolution.baselines)
+        baseline.exerciseId: baseline,
+    };
     final ActiveWorkout created = ActiveWorkout(
       id: _newId(),
       accountId: accountId,
@@ -365,12 +370,13 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
       programVersion: programVersion,
       exercises: <ActiveWorkoutExercise>[
         for (final ProgramExercise exercise in day.exercises)
-          _seedExercise(exercise, prescription),
+          _seedExercise(
+            exercise,
+            prescription,
+            baselinesByExercise,
+          ),
       ],
-      baselines: <String, BaselineExercise>{
-        for (final BaselineExercise baseline in resolution.baselines)
-          baseline.exerciseId: baseline,
-      },
+      baselines: baselinesByExercise,
     );
     await _persist(created);
     return StartWorkoutOutcome.started;
@@ -1317,12 +1323,17 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   static ActiveWorkoutExercise _seedExercise(
     ProgramExercise exercise,
     Prescription? prescription,
+    Map<String, BaselineExercise> baselines,
   ) {
     final PrescriptionTarget? target = prescription?.forExercise(
       exercise.exerciseId,
     );
     final int setCount = target?.effectiveSets ?? exercise.targetSets;
-    final PrescriptionHint? hint = _prescriptionHint(exercise.toJson(), target);
+    final PrescriptionHint? hint = _prescriptionHint(
+      exercise.toJson(),
+      target,
+      baseline: baselines[exercise.exerciseId],
+    );
     return ActiveWorkoutExercise(
       exercise: exercise.toJson(),
       // #108: the caption keeps the effective prescription and the frozen
@@ -1336,7 +1347,13 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
         rir: hint?.rir,
       ),
       sets: <ActiveWorkoutSet>[
-        for (int i = 0; i < setCount; i++) ActiveWorkoutSet(),
+        for (int i = 0; i < setCount; i++)
+          ActiveWorkoutSet(
+            weightKg: exercise.load?.suggestedWeightKg(
+                  baselines[exercise.exerciseId]?.bestE1rmKg,
+                ) ??
+                0,
+          ),
       ],
       prescriptionHint: hint,
       effectiveSets: setCount,
@@ -1352,8 +1369,17 @@ class ActiveWorkoutController extends StateNotifier<ActiveWorkoutState> {
   static PrescriptionHint? _prescriptionHint(
     Map<String, dynamic> exercise,
     PrescriptionTarget? target,
+    {BaselineExercise? baseline}
   ) {
-    final double projected = target?.projectedWeight ?? 0;
+    final Map<String, dynamic>? load =
+        exercise['load'] as Map<String, dynamic>?;
+    double projected = target?.projectedWeight ?? 0;
+    if (load != null) {
+      final ProgramLoad prescriptionLoad = ProgramLoad.fromJson(load);
+      projected =
+          prescriptionLoad.suggestedWeightKg(baseline?.bestE1rmKg) ??
+              projected;
+    }
     final int reps = (exercise['target_reps_min'] as num?)?.toInt() ?? 0;
     final double rpe = target?.targetRpeCap ??
         (exercise['target_rpe'] as num?)?.toDouble() ??

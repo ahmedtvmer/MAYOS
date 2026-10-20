@@ -246,6 +246,7 @@ CANONICAL_FIXTURE: dict[str, Any] = {
                                 "sets": 3,
                                 "reps": "5-8",
                                 "rpe": 8.5,
+                                "load": {"kind": "pct_e1rm", "value": 75},
                                 "flags": ["not cleared for shoulder injury"],
                             },
                             {
@@ -299,6 +300,7 @@ CANONICAL_FIXTURE: dict[str, Any] = {
                         "sets": 3,
                         "reps": "5-8",
                         "rpe": 8.5,
+                        "load": {"kind": "pct_e1rm", "value": 75},
                         "flags": ["not cleared for shoulder injury"],
                     }
                 ],
@@ -593,6 +595,8 @@ def _program_day_facts(
             "reps": f"{exercise['target_reps_min']}-{exercise['target_reps_max']}",
             "rpe": exercise["target_rpe"],
         }
+        if exercise.get("load") is not None:
+            entry["load"] = exercise["load"]
         markers = flags.get(str(exercise["exercise_id"]))
         if markers:
             entry["flags"] = list(markers)
@@ -1031,6 +1035,9 @@ def _render_prescription(exercise: dict[str, Any]) -> str:
         f"{format_number(exercise.get('sets'))}x{exercise.get('reps')}"
         f" @RIR {min_rir_label(exercise.get('rpe'))}"
     )
+    load = exercise.get("load")
+    if isinstance(load, dict):
+        prescription += f" load={load.get('value')} {load.get('kind')}"
     flags = exercise.get("flags") or []
     if flags:
         prescription += " [" + "; ".join(str(flag) for flag in flags) + "]"

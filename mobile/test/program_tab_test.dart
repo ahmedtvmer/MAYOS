@@ -1033,6 +1033,54 @@ void main() {
     expect(find.text('Cardio'), findsOneWidget);
   });
 
+  testWidgets('program load line shows the e1RM estimate in English and Arabic',
+      (tester) async {
+    for (final String languageCode in <String>['en', 'ar']) {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      final FakeMayosApi fake = _signedInFake()
+        ..baselinesBody = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'exercise_id': 'bench_press',
+            'sessions_logged': 1,
+            'max_weight_kg': 100,
+            'best_e1rm_kg': 110,
+            'last_session': <String, dynamic>{},
+          },
+        ]
+        ..programDaysOverride = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'day_name': 'Upper 1',
+            'day_order': 1,
+            'warmup_exercises': <dynamic>[],
+            'exercises': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'exercise_id': 'bench_press',
+                'exercise_name': 'Bench Press',
+                'target_sets': 3,
+                'target_reps_min': 5,
+                'target_reps_max': 8,
+                'target_rpe': 8.5,
+                'load': <String, dynamic>{
+                  'kind': 'pct_e1rm',
+                  'value': 75,
+                },
+              },
+            ],
+          },
+        ];
+      await _pumpProgram(tester, fake, languageCode: languageCode);
+
+      final Finder loadLine = find.textContaining('75% e1RM');
+      expect(loadLine, findsOneWidget);
+      expect(
+        tester.widget<Text>(loadLine).data,
+        contains('75% e1RM ≈ 82.5 kg'),
+      );
+      expect(tester.takeException(), isNull);
+    }
+  });
+
   testWidgets('exercise detail keeps notes and technique available',
       (tester) async {
     final FakeMayosApi fake = _signedInFake();

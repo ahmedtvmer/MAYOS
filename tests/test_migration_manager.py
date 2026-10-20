@@ -1642,3 +1642,27 @@ def test_v26_to_v27_creates_one_implicit_week_and_is_idempotent(tmp_path: Path):
         assert {"program_week_order", "program_day_order"} <= columns
     finally:
         conn.close()
+
+
+def test_ledger_upgrade_from_v33_adds_optional_program_load(tmp_path: Path):
+    from database.migration_manager import (
+        CURRENT_LEDGER_SCHEMA_VERSION,
+        get_ledger_schema_version,
+    )
+
+    conn = sqlite3.connect(tmp_path / "v33-player.db")
+    conn.executescript(
+        "CREATE TABLE program_exercises (id TEXT PRIMARY KEY, exercise_id TEXT NOT NULL);"
+        "INSERT INTO program_exercises VALUES ('exercise-1', 'sq');"
+        "PRAGMA user_version = 33;"
+    )
+    try:
+        apply_lazy_migrations(conn, "v33-player", tmp_path, tmp_path / "backups")
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(program_exercises)")}
+        assert "load_json" in columns
+        assert conn.execute(
+            "SELECT exercise_id, load_json FROM program_exercises WHERE id = 'exercise-1'"
+        ).fetchone() == ("sq", None)
+        assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
+    finally:
+        conn.close()

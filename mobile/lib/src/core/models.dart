@@ -7,7 +7,10 @@ import 'app_failure.dart';
 import 'display_language/catalog.dart';
 import 'display_language/localized_text.dart';
 import 'effort.dart';
+import 'program_load.dart';
 import 'rest_length.dart';
+
+export 'program_load.dart';
 
 const String equipmentAccessCommercialGym = 'Commercial gym';
 const String equipmentAccessHomeGym = 'Home gym';
@@ -2526,6 +2529,7 @@ class ProgramExercise {
     this.equipmentCategory,
     this.loadType,
     this.coachEquipment,
+    this.load,
   });
 
   factory ProgramExercise.fromJson(Map<String, dynamic> json) =>
@@ -2563,6 +2567,9 @@ class ProgramExercise {
         equipmentCategory: json['equipment_category'] as String?,
         loadType: json['load_type'] as String?,
         coachEquipment: json['coach_equipment'] as String?,
+        load: json['load'] is Map<String, dynamic>
+            ? ProgramLoad.fromJson(json['load'] as Map<String, dynamic>)
+            : null,
       );
 
   final String exerciseId;
@@ -2600,6 +2607,7 @@ class ProgramExercise {
   final String? equipmentCategory;
   final String? loadType;
   final String? coachEquipment;
+  final ProgramLoad? load;
 
   int get restSecondsOrDefault => restSeconds ?? kDefaultRestSeconds;
 
@@ -2630,6 +2638,7 @@ class ProgramExercise {
         equipmentCategory: equipmentCategory,
         loadType: loadType,
         coachEquipment: coachEquipment,
+        load: load,
       );
 
   String get prescription =>
@@ -2659,6 +2668,7 @@ class ProgramExercise {
       json['rest_seconds'] = restSeconds;
     }
     json['notes'] = notes;
+    if (load != null) json['load'] = load!.toJson();
     if (tempo != null) {
       json['tempo'] = tempo;
     }
