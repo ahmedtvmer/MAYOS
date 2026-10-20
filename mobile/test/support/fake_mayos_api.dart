@@ -487,6 +487,7 @@ class FakeMayosApi {
     'has_draft': false,
   };
   Map<String, dynamic> coachPlayerSummary = _defaultCoachSummary();
+  Map<String, dynamic> coachVolumeReview = <String, dynamic>{'review': null};
   List<Map<String, dynamic>> coachPlayerRecords = _defaultCoachRecords();
   List<Map<String, dynamic>> coachPlayerExercises = _defaultCoachExercises();
   Map<String, Map<String, dynamic>> coachPlayerHistories =
@@ -1820,6 +1821,9 @@ class FakeMayosApi {
         ...coachActiveProgram,
         'has_draft': coachActiveProgram['has_draft'] == true || programDraft != null,
       });
+    }
+    if (path.endsWith('/player/volume-review')) {
+      return FakeResponse(200, coachVolumeReview);
     }
     if (path.endsWith('/player/checkpoint-reviews')) {
       return FakeResponse(

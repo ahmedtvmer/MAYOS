@@ -1033,6 +1033,7 @@ class CoachAlert {
   static const String missedExpectedDaysKind = 'missed_expected_days';
   static const String deloadRecommendedKind = 'deload_recommended';
   static const String performanceRegressionKind = 'performance_regression';
+  static const String volumeReviewKind = 'volume_review';
   static const String stallKind = 'stall';
   static const String profileChangeKind = 'profile_change';
   static const String weightOffTargetTrendKind = 'weight_off_target_trend';
@@ -1047,6 +1048,7 @@ class CoachAlert {
   bool get isFollowUpDue => kind == followUpDueKind;
   bool get isDeloadRecommended => kind == deloadRecommendedKind;
   bool get isPerformanceRegression => kind == performanceRegressionKind;
+  bool get isVolumeReview => kind == volumeReviewKind;
   bool get isStall => kind == stallKind;
   bool get isProfileChange => kind == profileChangeKind;
   bool get isWeightOffTargetTrend => kind == weightOffTargetTrendKind;
@@ -1063,6 +1065,7 @@ class CoachAlert {
         'coach_alert.program_final_week_started.v1',
     programFinalWeekCompletedKind:
         'coach_alert.program_final_week_completed.v1',
+    volumeReviewKind: 'coach_alert.volume_review.v1',
   };
 
   String? get supportedMessageCode {

@@ -441,6 +441,10 @@ class MessageCopy {
         '$sign$amount kg (${badge ?? 'regression'})';
   }
 
+  String get volumeReviewFallback => isArabic
+      ? 'تتوفر مراجعة جديدة لمجموعات التدريب لهذا اللاعب.'
+      : 'A new Volume review is ready for this player.';
+
   String profileChange(List<String> fields) {
     final List<String> labels = fields.map((String field) {
       return switch (field) {

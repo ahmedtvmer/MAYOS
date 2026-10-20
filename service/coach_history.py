@@ -6,12 +6,14 @@ An unknown, revoked, or other coach's assignment is denied with one generic erro
 so its existence is never revealed. Player-assistant chats are never read here.
 """
 
+import json
 from typing import Any
 
 from service import analytics as analytics_service
 from service import coach_analytics
 from service import dashboard as dashboard_service
 from service import injuries as injuries_service
+from service import programs
 from service.assignments import (  # noqa: F401  (DENIED_ERROR re-exported for routers)
     DENIED_ERROR,
     authorized_player_ledger,
@@ -51,6 +53,34 @@ def active_program(db: Any, coach_account_id: str, assignment_id: Any) -> dict[s
     return _active_program_response(
         db, program, has_draft, context["assignment"]["coach_account_id"]
     )
+
+
+def volume_review(
+    db: Any, coach_account_id: str, assignment_id: Any
+) -> dict[str, Any] | None:
+    """Latest review for the active coach controlled program, behind ADR 025."""
+    authorized = authorized_player_ledger(db, coach_account_id, assignment_id)
+    if authorized is None:
+        return None
+    ledger, context = authorized
+    with ledger:
+        program = ledger.get_active_program()
+        if not programs.coach_controls_program(context["assignment"], program):
+            return {"review": None}
+        row = ledger.latest_volume_review_record(int(program.version))
+    if row is None or row["status"] == "deferred":
+        return {"review": None}
+    return {"review": _volume_review_dict(row)}
+
+
+def _volume_review_dict(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "review_id": str(row["id"]),
+        "program_version": int(row["program_version"]),
+        "review_date": row["review_date"],
+        "status": row["status"],
+        "muscles": json.loads(row["payload_json"]),
+    }
 
 
 def _active_program_response(

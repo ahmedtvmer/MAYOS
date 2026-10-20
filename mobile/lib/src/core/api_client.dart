@@ -818,6 +818,26 @@ class ApiClient {
         response.data, CoachPlayerSummary.fromJson, _invalidCoachHistory);
   }
 
+  Future<VolumeReview?> coachPlayerVolumeReview(String assignmentId) async {
+    final response = await _send(
+      () => _dio.get<dynamic>(
+        '/coach/assignments/$assignmentId/player/volume-review',
+      ),
+    );
+    return _parseBody(
+      response.data,
+      (Map<String, dynamic> body) {
+        final dynamic review = body['review'];
+        if (review == null) return null;
+        if (review is! Map<String, dynamic>) {
+          throw const FormatException('Invalid coach Volume review.');
+        }
+        return VolumeReview.fromJson(review);
+      },
+      _invalidCoachHistory,
+    );
+  }
+
   /// Fetches the active program and Program draft state through its Assignment.
   Future<CoachActiveProgram> coachActiveProgram(String assignmentId) async {
     final response = await _send(

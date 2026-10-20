@@ -72,6 +72,7 @@ String? _legacyAlertFallback(CoachAlert alert, MessageCopy copy) {
         alert.e1rmDelta,
         alert.statusBadge,
       ),
+    CoachAlert.volumeReviewKind => copy.volumeReviewFallback,
     CoachAlert.profileChangeKind =>
       copy.profileChangeEvidence(alert.profileChanges, alert.injuryChanges),
     CoachAlert.weightOffTargetTrendKind => alert.distanceChangeKg == null ||

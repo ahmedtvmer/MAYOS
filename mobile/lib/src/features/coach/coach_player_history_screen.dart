@@ -557,6 +557,7 @@ class _CoachPlayerHistoryScreenState
   List<PersonalRecord> _records = const <PersonalRecord>[];
   List<CheckpointReviewListItem> _checkpointReviews =
       const <CheckpointReviewListItem>[];
+  VolumeReview? _volumeReview;
   List<CoachPlayerExercise> _exercises = const <CoachPlayerExercise>[];
   final Map<String, CoachExerciseHistory> _histories =
       <String, CoachExerciseHistory>{};
@@ -617,7 +618,7 @@ class _CoachPlayerHistoryScreenState
       final ApiClient api = ref.read(apiClientProvider);
       await _loadRouteEntry(api, seq);
       if (!mounted || seq != _loadSeq) return;
-      final List<Object> playerData = await _loadPlayerData(api);
+      final List<Object?> playerData = await _loadPlayerData(api);
       if (!mounted || seq != _loadSeq) return;
       _applyPlayerData(playerData);
     } on ApiException catch (error) {
@@ -640,8 +641,8 @@ class _CoachPlayerHistoryScreenState
     }
   }
 
-  Future<List<Object>> _loadPlayerData(ApiClient api) =>
-      Future.wait<Object>(<Future<Object>>[
+  Future<List<Object?>> _loadPlayerData(ApiClient api) =>
+      Future.wait<Object?>(<Future<Object?>>[
         api.coachAlerts(states: <String>['new', 'acknowledged']),
         api.coachPlayerSummary(_entry.assignmentId),
         api.coachPlayerPersonalRecords(_entry.assignmentId),
@@ -650,9 +651,10 @@ class _CoachPlayerHistoryScreenState
         api.coachProgramRequests(_entry.assignmentId),
         api.coachCheckIns(_entry.assignmentId),
         api.coachActiveProgram(_entry.assignmentId),
+        api.coachPlayerVolumeReview(_entry.assignmentId),
       ]);
 
-  void _applyPlayerData(List<Object> playerData) {
+  void _applyPlayerData(List<Object?> playerData) {
     setState(() {
       _alerts = _openAlerts(playerData[0] as List<CoachAlert>);
       _summary = playerData[1] as CoachPlayerSummary;
@@ -663,6 +665,7 @@ class _CoachPlayerHistoryScreenState
           sortCoachRequests(playerData[5] as List<ProgramRequest>);
       _checkIns = sortCheckInsNewestFirst(playerData[6] as List<CheckIn>);
       _activeProgram = playerData[7] as CoachActiveProgram;
+      _volumeReview = playerData[8] as VolumeReview?;
       _loading = false;
       _assignmentDenied = false;
       _requestError = null;
@@ -1536,6 +1539,7 @@ class _CoachPlayerHistoryScreenState
         summary: _summary!,
         records: _records,
         checkpointReviews: _checkpointReviews,
+        volumeReview: _volumeReview,
         exercises: _exercises,
         histories: _histories,
         openExerciseId: _openExerciseId,

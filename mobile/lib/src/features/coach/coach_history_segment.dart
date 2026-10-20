@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/display_language/coach_copy.dart';
+import '../../core/display_language/catalog.dart' show MayosCopy;
 import '../../core/display_language/copy_context.dart';
 import '../../core/display_language/feature_copy_context.dart';
 import '../../core/effort.dart';
@@ -40,6 +41,7 @@ class CoachHistorySegmentData {
     required this.summary,
     required this.records,
     required this.checkpointReviews,
+    this.volumeReview,
     required this.exercises,
     required this.histories,
     required this.openExerciseId,
@@ -50,6 +52,7 @@ class CoachHistorySegmentData {
   final CoachPlayerSummary summary;
   final List<PersonalRecord> records;
   final List<CheckpointReviewListItem> checkpointReviews;
+  final VolumeReview? volumeReview;
   final List<CoachPlayerExercise> exercises;
   final Map<String, CoachExerciseHistory> histories;
   final String? openExerciseId;
@@ -109,8 +112,38 @@ class CoachHistorySegment extends StatelessWidget {
         const SizedBox(height: MayosSpacing.sm),
         _checkpointReviewsCard(context),
         const SizedBox(height: MayosSpacing.sm),
+        if (data.volumeReview != null) ...<Widget>[
+          _volumeReviewCard(context),
+          const SizedBox(height: MayosSpacing.sm),
+        ],
         _exercisesCard(context),
       ],
+    );
+  }
+
+  Widget _volumeReviewCard(BuildContext context) {
+    final VolumeReview review = data.volumeReview!;
+    final MayosCopy copy = displayCopyOf(context);
+    return MayosCard(
+      padding: const EdgeInsets.all(MayosSpacing.md),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+        MayosSectionHeader(title: copy.volumeReview),
+        for (final VolumeReviewMuscle muscle in review.muscles) ...<Widget>[
+          const SizedBox(height: MayosSpacing.sm),
+          Text(
+            '${copy.primaryMuscleLabel(muscle.muscle)} · ${copy.volumeReviewChange(muscle.setDelta)}',
+            key: Key('coach_volume_review_muscle_${muscle.muscle}'),
+            style: MayosTypography.of(context).exerciseTitle,
+          ),
+          const SizedBox(height: MayosSpacing.xs),
+          Text(
+            copy.volumeReviewReason(
+              muscle.verdict,
+              copy.primaryMuscleLabel(muscle.muscle),
+            ),
+          ),
+        ],
+      ]),
     );
   }
 

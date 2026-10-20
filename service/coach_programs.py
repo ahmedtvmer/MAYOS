@@ -17,7 +17,7 @@ from database.registry.assignments import AssignmentNoticeRecord
 from service.assignments import authorized_player_ledger
 from service.coach_notices import build_assignment_notice_record
 from service.program_analytics import ProgramAnalyticsActor, capture_coach_program_published
-from service import program_end_alerts, stall_alerts
+from service import program_end_alerts, stall_alerts, volume_review_alerts
 from service import analytics
 
 logger = logging.getLogger(__name__)
@@ -194,6 +194,10 @@ def record_program_publication(
         stall_alerts.resolve_for_assignment(db, assignment_id, now)
     except Exception:
         logger.warning("Stall alert resolution failed after program publication", exc_info=True)
+    try:
+        volume_review_alerts.resolve_for_assignment(db, assignment_id)
+    except Exception:
+        logger.warning("Volume review alert resolution failed after program publication", exc_info=True)
     program_end_alerts.resolve_for_publish(db, assignment_id, now)
     message = f"Your coach published program version {published.version}."
     db.create_assignment_notice_record(

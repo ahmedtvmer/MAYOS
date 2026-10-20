@@ -42,14 +42,16 @@ def player_controls_program(db: Any, ledger: Any, player_account_id: str | None)
     assignment = db.get_active_assignment_for_player(player_account_id)
     if assignment is None:
         return True
-    active = ledger.get_active_program()
-    if active is None or active.published_by_coach_account_id is None:
-        return True
-    if active.published_by_coach_account_id != assignment["coach_account_id"]:
-        return True
-    if active.created_at is None or active.created_at < assignment["started_at"]:
-        return True
-    return False
+    return not coach_controls_program(assignment, ledger.get_active_program())
+
+
+def coach_controls_program(assignment: dict[str, Any] | None, program: Any) -> bool:
+    """True when the assignment's coach published this program during the assignment."""
+    if assignment is None or program is None:
+        return False
+    if program.published_by_coach_account_id != assignment["coach_account_id"]:
+        return False
+    return program.created_at is not None and program.created_at >= assignment["started_at"]
 
 
 def with_library_equipment(program: Any, db: Any) -> dict[str, Any]:

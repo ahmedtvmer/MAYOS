@@ -685,6 +685,19 @@ void main() {
         ),
         records: const <PersonalRecord>[],
         checkpointReviews: const <CheckpointReviewListItem>[],
+        volumeReview: const VolumeReview(
+          reviewId: 'review-1',
+          programVersion: 2,
+          status: 'pending',
+          muscles: <VolumeReviewMuscle>[
+            VolumeReviewMuscle(
+              muscle: 'Chest',
+              verdict: 'stalled',
+              reason: 'More sets proposed.',
+              setDelta: 1,
+            ),
+          ],
+        ),
         exercises: const <CoachPlayerExercise>[],
         histories: const <String, CoachExerciseHistory>{},
         openExerciseId: null,
@@ -725,6 +738,12 @@ void main() {
     await tester.tap(recentRow);
     await tester.pumpAndSettle();
     expect(find.text('Recent Cable Row'), findsOneWidget);
+    expect(find.text('مراجعة مجموعات التدريب'), findsOneWidget);
+    final Finder reviewMuscle =
+        find.byKey(const Key('coach_volume_review_muscle_Chest'));
+    expect(reviewMuscle, findsOneWidget);
+    expect(tester.widget<Text>(reviewMuscle).data, contains('الصدر'));
+    expect(find.textContaining('تُقترح زيادة المجموعات'), findsOneWidget);
     expect(find.text(copy.readiness(3)), findsOneWidget);
     expect(
       Directionality.of(
@@ -759,6 +778,36 @@ void main() {
       ),
       TextDirection.rtl,
     );
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('en'),
+        supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        theme: MayosTheme.lightForLanguage('en'),
+        home: MediaQuery(
+          data: const MediaQueryData(size: Size(1440, 960)),
+          child: SingleChildScrollView(child: segment),
+        ),
+      ),
+    );
+    expect(find.text('Volume review'), findsOneWidget);
+    expect(find.textContaining('more working sets are proposed'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('ar'),
+        supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        theme: MayosTheme.lightForLanguage('ar'),
+        home: MediaQuery(
+          data: const MediaQueryData(size: Size(360, 800)),
+          child: SingleChildScrollView(child: segment),
+        ),
+      ),
+    );
+    expect(find.text('مراجعة مجموعات التدريب'), findsOneWidget);
+    expect(find.textContaining('تُقترح زيادة المجموعات'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

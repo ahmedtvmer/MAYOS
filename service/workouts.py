@@ -32,6 +32,7 @@ from service import workout_analytics
 from service import stall_alerts, stalling
 from service import training_status as training_status_service
 from service import checkpoint_reviews as checkpoint_reviews_service
+from service import programs
 from service.schedule import latest_schedule_timezone, local_date_in, local_today, parse_iso_date
 from utils.plate_calculator import calculate_barbell_plates
 
@@ -941,7 +942,7 @@ def commit_session(
                     client=client,
                 ),
             )
-        _evaluate_volume_review(db, ledger, today_date)
+        _evaluate_volume_review(db, ledger, today_date, account_id)
 
     _run_post_commit_hooks(
         db,
@@ -1070,7 +1071,7 @@ def commit_logged_session(
                 ),
             )
         if outcome.created:
-            _evaluate_volume_review(db, ledger, sync.performed_date)
+            _evaluate_volume_review(db, ledger, sync.performed_date, account_id)
 
     _run_post_commit_hooks(
         db,
@@ -1083,7 +1084,9 @@ def commit_logged_session(
     return outcome
 
 
-def _evaluate_volume_review(db: Any, ledger: Any, performed_date: str) -> None:
+def _evaluate_volume_review(
+    db: Any, ledger: Any, performed_date: str, account_id: str | None
+) -> None:
     """Best-effort, idempotent post-commit volume review trigger (#234)."""
     try:
         from service.volume_review import evaluate_review
@@ -1091,7 +1094,15 @@ def _evaluate_volume_review(db: Any, ledger: Any, performed_date: str) -> None:
         program = ledger.get_active_program()
         profile = ledger.get_player_profile() or {}
         if program is not None:
-            evaluate_review(ledger, program, profile, date.fromisoformat(performed_date[:10]))
+            review_date = date.fromisoformat(performed_date[:10])
+            review = evaluate_review(ledger, program, profile, review_date)
+            from service import volume_review_alerts
+
+            assignment = (
+                db.get_active_assignment_for_player(account_id) if account_id else None
+            )
+            if programs.coach_controls_program(assignment, program):
+                volume_review_alerts.evaluate_review(db, assignment, review)
     except Exception:
         logger.exception("Volume review evaluation failed after workout commit")
 

@@ -9,13 +9,20 @@ of player-assistant chat data from every coach response.
 """
 
 import sqlite3
+from datetime import date, datetime, timedelta, timezone
+import uuid
 from pathlib import Path
 
 import jwt as pyjwt
 import pytest
 from fastapi.testclient import TestClient
 
-from agent.ProgramState import ProgramDaySchema, ProgramExerciseSchema
+from agent.ProgramState import (
+    PersistedProgramDaySchema,
+    PersistedProgramSchema,
+    ProgramDaySchema,
+    ProgramExerciseSchema,
+)
 from database.database_manager import DatabaseManager
 from service import coach as coach_service
 from service import coach_history as coach_history_service
@@ -32,6 +39,7 @@ DRILL_DOWN_SUFFIXES = (
     "/player/exercises/sq/history",
     "/player/checkpoint-reviews",
     "/player/checkpoint-reviews/10",
+    "/player/volume-review",
 )
 
 
@@ -128,6 +136,81 @@ def _day_plan():
             ProgramExerciseSchema(exercise_id="row", exercise_name="Row", target_reps_min=5, target_reps_max=8),
         ],
     )
+
+
+def _post_workout_commit(client, headers, exercise, version, performed_date, captured_at):
+    response = client.post(
+        "/workouts/sessions",
+        headers=headers,
+        json={
+            "day_order": 1,
+            "readiness": 4,
+            "session_notes": "",
+            "sets": [{
+                "exercise": exercise,
+                "sets": [{"weight_kg": 40, "reps": 8, "rpe": 8}],
+            }],
+            "client_session_id": str(uuid.uuid4()),
+            "performed_date": performed_date,
+            "performed_timezone": "UTC",
+            "program_version": version,
+            "captured_at": captured_at,
+        },
+    )
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def _seed_coach_controlled_volume_review(
+    db, coach_headers, player_headers, *, add_deferred_review=False
+):
+    player_id = _subject(player_headers["Authorization"].split()[1])
+    coach_id = _subject(coach_headers["Authorization"].split()[1])
+    ledger_id = db.get_account(player_id)["ledger_id"]
+    today = date.today()
+    captured_at = datetime.now(timezone.utc).isoformat()
+    with db.open_ledger(ledger_id) as ledger:
+        program = PersistedProgramSchema(
+            program_name="Coach plan",
+            split_type="Full Body",
+            weekly_frequency=1,
+            days=[PersistedProgramDaySchema.model_validate(_day_plan().model_dump())],
+        )
+        ledger.save_training_program(
+            program.model_dump(), published_by_coach_account_id=coach_id
+        )
+        active = ledger.get_active_program()
+        review_date = today - timedelta(days=1)
+        review_id = "volume-review-1"
+        ledger.save_volume_review({
+            "id": review_id,
+            "program_version": active.version,
+            "review_date": review_date.isoformat(),
+            "next_eligible_date": (today + timedelta(days=6)).isoformat(),
+            "status": "pending",
+            "payload_json": '[{"muscle":"Chest","verdict":"stalled","reason":"More sets proposed.","set_delta":1,"edits":[]}]',
+            "created_at": captured_at,
+        })
+        if add_deferred_review:
+            ledger.save_volume_review({
+                "id": "volume-review-deferred",
+                "program_version": active.version,
+                "review_date": today.isoformat(),
+                "next_eligible_date": (today + timedelta(days=7)).isoformat(),
+                "status": "deferred",
+                "payload_json": "[]",
+                "created_at": captured_at,
+            })
+        return {
+            "player_id": player_id,
+            "ledger_id": ledger_id,
+            "version": active.version,
+            "target_sets": active.days[0].exercises[0].target_sets,
+            "exercise": active.days[0].exercises[0].model_dump(),
+            "review_id": review_id,
+            "review_date": review_date,
+            "captured_at": captured_at,
+        }
 
 
 def _seed_session(db, player, weight_kg, reps, started_at):
@@ -513,6 +596,13 @@ def test_other_coach_and_unknown_and_revoked_are_indistinguishable(api):
     unknown = client.get("/coach/assignments/does-not-exist/player/summary", headers=other_headers)
     assert other.status_code == unknown.status_code == 403
     assert other.json()["detail"] == unknown.json()["detail"] == coach_history_service.DENIED_ERROR
+    denied_review = client.get(f"{base}/volume-review", headers=other_headers)
+    unknown_review = client.get(
+        "/coach/assignments/does-not-exist/player/volume-review", headers=other_headers
+    )
+    assert denied_review.status_code == unknown_review.status_code == 403
+    assert denied_review.json()["detail"] == unknown_review.json()["detail"]
+    assert denied_review.json()["detail"] == coach_history_service.DENIED_ERROR
     assert "Private knee injury record" not in other.text
     other_checkpoint = client.get(
         f"{base}/checkpoint-reviews/10", headers=other_headers
@@ -565,3 +655,179 @@ def test_non_coach_cannot_read_player_drill_down(api):
     )
     assert denied.status_code == 403
     assert denied.json()["detail"] == "Coach capability required."
+
+
+def test_pending_volume_review_alert_stays_open_after_later_workout(api):
+    client, db, _ = api
+    coach_headers, player_headers, _ = _assigned_player(api)
+    player_id = _subject(player_headers["Authorization"].split()[1])
+    ledger_id = db.get_account(player_id)["ledger_id"]
+    coach_id = _subject(coach_headers["Authorization"].split()[1])
+    today = date.today()
+    captured_at = datetime.now(timezone.utc).isoformat()
+    with db.open_ledger(ledger_id) as ledger:
+        program = PersistedProgramSchema(
+            program_name="Coach plan",
+            split_type="Full Body",
+            weekly_frequency=1,
+            days=[PersistedProgramDaySchema.model_validate(_day_plan().model_dump())],
+        )
+        ledger.save_training_program(
+            program.model_dump(), published_by_coach_account_id=coach_id
+        )
+        active = ledger.get_active_program()
+        ledger.save_volume_review({
+            "id": "review-from-earlier-session",
+            "program_version": active.version,
+            "review_date": (today - timedelta(days=1)).isoformat(),
+            "next_eligible_date": (today + timedelta(days=6)).isoformat(),
+            "status": "pending",
+            "payload_json": '[{"muscle":"Chest","verdict":"stalled","reason":"More sets proposed.","set_delta":1,"edits":[]}]',
+            "created_at": captured_at,
+        })
+        exercise = active.days[0].exercises[0].model_dump()
+        version = active.version
+
+    _post_workout_commit(
+        client, player_headers, exercise, version,
+        (today - timedelta(days=1)).isoformat(), captured_at,
+    )
+    first_alerts = client.get("/coach/alerts", headers=coach_headers).json()["alerts"]
+    assert len([row for row in first_alerts if row["kind"] == "volume_review"]) == 1
+    _post_workout_commit(
+        client, player_headers, exercise, version, today.isoformat(), captured_at
+    )
+    later_alerts = client.get("/coach/alerts", headers=coach_headers).json()["alerts"]
+    assert len([row for row in later_alerts if row["kind"] == "volume_review"]) == 1
+
+
+def test_player_controlled_program_does_not_raise_volume_review_alert(api):
+    client, db, _ = api
+    coach_headers, player_headers, _ = _assigned_player(api)
+    player_id = _subject(player_headers["Authorization"].split()[1])
+    ledger_id = db.get_account(player_id)["ledger_id"]
+    today = date.today()
+    captured_at = datetime.now(timezone.utc).isoformat()
+    with db.open_ledger(ledger_id) as ledger:
+        program = PersistedProgramSchema(
+            program_name="Player plan",
+            split_type="Full Body",
+            weekly_frequency=1,
+            days=[PersistedProgramDaySchema.model_validate(_day_plan().model_dump())],
+        )
+        ledger.save_training_program(program.model_dump())
+        active = ledger.get_active_program()
+        ledger.save_volume_review({
+            "id": "player-volume-review",
+            "program_version": active.version,
+            "review_date": today.isoformat(),
+            "next_eligible_date": (today + timedelta(days=7)).isoformat(),
+            "status": "pending",
+            "payload_json": '[{"muscle":"Chest","verdict":"stalled","reason":"More sets proposed.","set_delta":1,"edits":[]}]',
+            "created_at": captured_at,
+        })
+        exercise = active.days[0].exercises[0].model_dump()
+        version = active.version
+    _post_workout_commit(
+        client, player_headers, exercise, version, today.isoformat(), captured_at
+    )
+    alerts = client.get("/coach/alerts", headers=coach_headers).json()["alerts"]
+    assert not [row for row in alerts if row["kind"] == "volume_review"]
+
+
+def test_assigned_coach_reads_volume_review_and_player_cannot_decide_or_apply_it(api):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id = _assigned_player(api)
+    seed = _seed_coach_controlled_volume_review(
+        db, coach_headers, player_headers, add_deferred_review=True
+    )
+    url = f"/coach/assignments/{assignment_id}/player/volume-review"
+    visible = client.get(url, headers=coach_headers)
+    assert visible.status_code == 200, visible.text
+    assert visible.json()["review"]["muscles"][0] == {
+        "muscle": "Chest", "verdict": "stalled", "reason": "More sets proposed.",
+        "set_delta": 1, "edits": [],
+    }
+    assert client.get("/programs/volume-reviews", headers=player_headers).json() == []
+    for action in ("accept", "dismiss"):
+        refused = client.post(
+            f"/programs/volume-reviews/{seed['review_id']}/{action}", headers=player_headers
+        )
+        assert refused.status_code == 403
+        assert refused.json()["code"] == "coach_controlled"
+
+    _post_workout_commit(
+        client, player_headers, seed["exercise"], seed["version"],
+        seed["review_date"].isoformat(), seed["captured_at"],
+    )
+    with db.open_ledger(seed["ledger_id"]) as ledger:
+        after_commit = ledger.get_active_program()
+        assert after_commit.version == seed["version"]
+        assert after_commit.days[0].exercises[0].target_sets == seed["target_sets"]
+
+
+def test_coach_program_publication_resolves_volume_review_alert(api):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id = _assigned_player(api)
+    seed = _seed_coach_controlled_volume_review(db, coach_headers, player_headers)
+    _post_workout_commit(
+        client, player_headers, seed["exercise"], seed["version"],
+        seed["review_date"].isoformat(), seed["captured_at"],
+    )
+    alerts = client.get("/coach/alerts", headers=coach_headers).json()["alerts"]
+    review_alert = next(row for row in alerts if row["kind"] == "volume_review")
+
+    copied = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/copy-active",
+        headers=coach_headers,
+    )
+    assert copied.status_code == 200, copied.text
+    published = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/publish",
+        headers=coach_headers,
+    )
+    assert published.status_code == 200, published.text
+    assert published.json()["version"] > seed["version"]
+    assert db.get_coach_alert(review_alert["alert_id"])["state"] == "resolved"
+
+
+def test_ending_assignment_resolves_volume_review_alert(api):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id = _assigned_player(api)
+    seed = _seed_coach_controlled_volume_review(db, coach_headers, player_headers)
+    _post_workout_commit(
+        client, player_headers, seed["exercise"], seed["version"],
+        seed["review_date"].isoformat(), seed["captured_at"],
+    )
+    alerts = client.get("/coach/alerts", headers=coach_headers).json()["alerts"]
+    review_alert = next(row for row in alerts if row["kind"] == "volume_review")
+    ended = client.post(f"/coach/assignments/{assignment_id}/revoke", headers=coach_headers)
+    assert ended.status_code == 200
+    assert db.get_coach_alert(review_alert["alert_id"])["state"] == "resolved"
+    denied = client.get(
+        f"/coach/assignments/{assignment_id}/player/volume-review", headers=coach_headers
+    )
+    assert denied.status_code == 403
+    assert denied.json()["detail"] == coach_history_service.DENIED_ERROR
+
+
+def test_program_older_than_the_assignment_raises_no_coach_volume_review(api):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id = _assigned_player(api)
+    seed = _seed_coach_controlled_volume_review(db, coach_headers, player_headers)
+    later_start = datetime.now(timezone.utc) + timedelta(hours=1)
+    db.catalog_conn.execute(
+        "UPDATE assignments SET started_at = ? WHERE assignment_id = ?",
+        (later_start.isoformat(), assignment_id),
+    )
+    db.catalog_conn.commit()
+
+    _post_workout_commit(
+        client, player_headers, seed["exercise"], seed["version"],
+        seed["review_date"].isoformat(), seed["captured_at"],
+    )
+
+    alerts = client.get("/coach/alerts", headers=coach_headers).json()["alerts"]
+    assert not [row for row in alerts if row["kind"] == "volume_review"]
+    url = f"/coach/assignments/{assignment_id}/player/volume-review"
+    assert client.get(url, headers=coach_headers).json()["review"] is None

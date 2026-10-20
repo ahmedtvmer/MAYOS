@@ -67,6 +67,14 @@ class LedgerVolumeReviewsMixin:
         ).fetchone()
         return dict(row) if row else None
 
+    def latest_volume_review_record(self, version: int) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT * FROM volume_reviews WHERE program_version = ? AND status != 'deferred' "
+            "ORDER BY review_date DESC LIMIT 1",
+            (version,),
+        ).fetchone()
+        return dict(row) if row else None
+
     def save_volume_review(self, review: dict[str, Any]) -> None:
         self.conn.execute(
             "INSERT INTO volume_reviews "

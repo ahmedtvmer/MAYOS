@@ -388,6 +388,20 @@ async def read_assigned_player_summary(
     return CoachPlayerSummaryOut(**await asyncio.to_thread(_run))
 
 
+@coach_router.get("/{assignment_id}/player/volume-review")
+async def read_assigned_player_volume_review(
+    assignment_id: str,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    result = await asyncio.to_thread(
+        coach_history_service.volume_review, db, coach.account_id, assignment_id
+    )
+    if result is None:
+        raise _no_active_assignment()
+    return result
+
+
 @coach_router.get("/{assignment_id}/player/personal-records", response_model=list[CoachPersonalRecordOut])
 async def read_assigned_player_personal_records(
     request: Request,

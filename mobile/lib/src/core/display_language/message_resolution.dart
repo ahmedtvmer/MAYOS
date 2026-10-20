@@ -90,6 +90,7 @@ const Map<String, Set<String>> _paramKeys = <String, Set<String>>{
   },
   'coach_alert.program_final_week_started.v1': <String>{},
   'coach_alert.program_final_week_completed.v1': <String>{},
+  'coach_alert.volume_review.v1': <String>{},
   'app.update_required.v1': <String>{'min_build'},
   'http.bad_request.v1': <String>{},
   'http.unauthorized.v1': <String>{},
@@ -299,6 +300,7 @@ final Map<String, _MessageTemplate> _templates = <String, _MessageTemplate>{
   'coach_alert.weight_off_target_trend.v1': _weightOffTargetTrend,
   'coach_alert.program_final_week_started.v1': _programFinalWeekStarted,
   'coach_alert.program_final_week_completed.v1': _programFinalWeekCompleted,
+  'coach_alert.volume_review.v1': _volumeReview,
   'assignment_notice.assignment_redeemed.v1': _assignmentRedeemed,
   'assignment_notice.training_pause_scheduled.v1': _assignmentPause,
   'assignment_notice.missed_expected_days.v1': _assignmentMissedDays,
@@ -703,6 +705,9 @@ String? _programFinalWeekCompleted(
   MessageCopy copy,
 ) =>
     copy.programFinalWeekCompletedAlert;
+
+String? _volumeReview(Map<String, dynamic> params, MessageCopy copy) =>
+    copy.volumeReviewFallback;
 
 int? _count(Object? value) => value is int && value >= 0 ? value : null;
 

@@ -63,6 +63,7 @@ COACH_ALERT_MESSAGE_PARAM_ALLOWLISTS = {
     ),
     "coach_alert.program_final_week_started.v1": frozenset(),
     "coach_alert.program_final_week_completed.v1": frozenset(),
+    "coach_alert.volume_review.v1": frozenset(),
 }
 _AI_ALLOWANCE_REQUEST_MESSAGE_PARAMS = frozenset({"remaining_requests", "reset_at"})
 ERROR_MESSAGE_PARAM_ALLOWLISTS = {
@@ -598,6 +599,14 @@ def _program_final_week_completed(evidence: Mapping[str, Any]) -> dict[str, Any]
     )
 
 
+def _volume_review(evidence: Mapping[str, Any]) -> dict[str, Any]:
+    return structured_message(
+        "coach_alert.volume_review.v1",
+        {},
+        "A new Volume review is ready for this player.",
+    )
+
+
 _COACH_ALERT_BUILDERS: dict[str, Callable[[Mapping[str, Any]], dict[str, Any]]] = {
     "missed_expected_days": _missed_days,
     "follow_up_due": _follow_up,
@@ -608,4 +617,5 @@ _COACH_ALERT_BUILDERS: dict[str, Callable[[Mapping[str, Any]], dict[str, Any]]] 
     "weight_off_target_trend": _weight_off_target_trend,
     "program_final_week_started": _program_final_week_started,
     "program_final_week_completed": _program_final_week_completed,
+    "volume_review": _volume_review,
 }
