@@ -532,14 +532,25 @@ class _CoachProgramDraftScreenState
   Future<ExerciseCatalogEntry?> _pickExercise({
     String? replacingExerciseId,
     String? title,
-  }) =>
-      showDialog<ExerciseCatalogEntry>(
-        context: context,
-        builder: (BuildContext context) => CoachExercisePickerDialog(
-          replacingExerciseId: replacingExerciseId,
-          title: title,
-        ),
-      );
+  }) {
+    final bool desktop = isDesktopLayout(context);
+    final CoachExercisePickerDialog picker = CoachExercisePickerDialog(
+      replacingExerciseId: replacingExerciseId,
+      title: title,
+      phonePresentation: !desktop,
+    );
+    return desktop
+        ? showDialog<ExerciseCatalogEntry>(
+            context: context,
+            builder: (BuildContext context) => picker,
+          )
+        : Navigator.of(context).push<ExerciseCatalogEntry>(
+            MaterialPageRoute<ExerciseCatalogEntry>(
+              fullscreenDialog: true,
+              builder: (BuildContext context) => picker,
+            ),
+          );
+  }
 
   _DraftExerciseEditor _newExercise(ExerciseCatalogEntry selected) =>
       _DraftExerciseEditor(<String, dynamic>{

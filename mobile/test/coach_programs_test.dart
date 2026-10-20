@@ -281,6 +281,49 @@ Future<void> _selectCatalogExercise(
   await tester.tap(find.text(name).last);
 }
 
+Future<Map<String, dynamic>> _swapAndInsertDraftExercises(
+  WidgetTester tester, {
+  required FakeMayosApi fake,
+  required String language,
+  required bool phone,
+}) async {
+  final Finder swapMenu =
+      find.byKey(const Key('program_draft_exercise_menu_0_0'));
+  await _ensureDraftVisible(tester, swapMenu);
+  await tester.tap(swapMenu);
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('program_draft_exercise_swap_0_0')));
+  await _pumpUntilFound(tester, find.byKey(const Key('coach_exercise_search')));
+  if (phone) {
+    expect(find.byKey(const Key('coach_exercise_picker_phone')), findsOneWidget);
+  } else {
+    expect(find.byType(AlertDialog), findsOneWidget);
+  }
+  await _selectCatalogExercise(tester, 'Machine Row');
+  await tester.pumpAndSettle();
+
+  final Finder insertMenu =
+      find.byKey(const Key('program_draft_exercise_menu_0_1'));
+  await _ensureDraftVisible(tester, insertMenu);
+  await tester.tap(insertMenu);
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find.byKey(const Key('program_draft_exercise_insert_above_0_1')),
+  );
+  await _pumpUntilFound(tester, find.byKey(const Key('coach_exercise_search')));
+  await _selectCatalogExercise(tester, 'Bicep Curl');
+  await tester.pumpAndSettle();
+
+  final Finder saveDraft = find.byKey(const Key('program_draft_save'));
+  await _ensureDraftVisible(tester, saveDraft);
+  await tester.tap(saveDraft);
+  await _pumpUntilFound(tester, find.text(CoachCopy(language).draftSaved));
+  return fake.adapter.requests.lastWhere(
+    (FakeRequest request) =>
+        request.method == 'PUT' && request.path.endsWith('/program-draft'),
+  ).body;
+}
+
 Future<void> _expectDraftUnsaved(WidgetTester tester) async {
   await tester.tap(find.byTooltip('Back').hitTestable().last);
   await _pumpUntilFound(tester, find.text('Unsaved changes'));
@@ -499,6 +542,42 @@ Map<String, dynamic> _programDraftForPhoneLayout() {
     'days': weeks.first['days'],
   };
 }
+
+Map<String, dynamic> _programDraftForTemplatePhoneLayout() =>
+    <String, dynamic>{
+      'program_name': 'Template source',
+      'split_type': 'custom',
+      'weekly_frequency': 1,
+      'instructions': 'Keep a steady pace.',
+      'weeks': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'week_name': 'Week 1',
+          'week_order': 1,
+          'days': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'day_name': 'Training day 1',
+              'day_order': 1,
+              'warmup_exercises': <dynamic>[],
+              'exercises': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'exercise_id': 'sq-1',
+                  'exercise_name': 'Squat',
+                  'warmup_sets': 0,
+                  'target_sets': 4,
+                  'target_reps_min': 6,
+                  'target_reps_max': 8,
+                  'target_rir': 2.0,
+                  'rest_seconds': 120,
+                  'tempo': null,
+                  'notes': 'Pause at the bottom.',
+                },
+              ],
+              'cardio': 'Walk for ten minutes.',
+            },
+          ],
+        },
+      ],
+    };
 
 Future<Map<String, dynamic>> _editProgramDraftAcrossPhoneActions(
   WidgetTester tester, {
@@ -1340,6 +1419,242 @@ void main() {
       );
       expect(jsonEncode(phonePayloads[language]), jsonEncode(desktopPayload));
       expect(tester.takeException(), isNull);
+    }
+  });
+
+  testWidgets('phone saves a Program draft as a template in both languages',
+      (tester) async {
+    late FakeMayosApi phoneFake;
+    await expectCoachPhoneLayout(
+      tester,
+      configureFake: (FakeMayosApi fake) {
+        phoneFake = fake
+          ..assignments.add(<String, dynamic>{
+            'assignment_id': 'assignment-1',
+            'player_username': 'bob',
+            'started_at': '2026-09-24T10:00:00Z',
+            'status': 'active',
+          })
+          ..programDraft = _programDraftForTemplatePhoneLayout();
+      },
+      prepare: (WidgetTester tester, String language) async {
+        await _openProgramEditorFromHarness(tester, language);
+        await tester.tap(
+          find.byKey(const Key('program_draft_save_as_template')),
+        );
+      },
+      ready: (String language) =>
+          find.byKey(const Key('program_template_save_sheet')),
+      pageScrollable: (String language) => find.descendant(
+        of: find.byType(BottomSheet).last,
+        matching: find.byWidgetPredicate(
+          (Widget widget) =>
+              widget is Scrollable && widget.axisDirection == AxisDirection.down,
+        ),
+      ).first,
+      allowedInnerStrips: (String language) => find.descendant(
+        of: find.byKey(const Key('program_template_save_sheet')),
+        matching: find.byType(TextField),
+      ),
+      assertions: (WidgetTester tester, String language) async {
+        await tester.enterText(
+          find.byKey(const Key('program_template_save_name')),
+          'Phone template',
+        );
+        await tester.tap(
+          find.byKey(const Key('program_template_save_confirm')),
+        );
+        for (int attempt = 0;
+            attempt < 40 && phoneFake.programTemplateSaveRequests == 0;
+            attempt++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expect(phoneFake.programTemplateSaveRequests, 1);
+        expect(phoneFake.lastProgramTemplateSaveBody?['name'], 'Phone template');
+        final List<dynamic> notes =
+            phoneFake.lastProgramTemplateSaveBody?['notes'] as List<dynamic>;
+        expect(notes, hasLength(3));
+        expect((notes[0] as Map)['field'], 'program_instructions');
+        expect((notes[0] as Map)['value'], 'Keep a steady pace.');
+        expect((notes[1] as Map)['field'], 'day_cardio');
+        expect((notes[1] as Map)['value'], 'Walk for ten minutes.');
+        expect((notes[2] as Map)['field'], 'exercise_notes');
+        expect((notes[2] as Map)['value'], 'Pause at the bottom.');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
+  testWidgets('phone exercise picker selects a Coach exercise in both languages',
+      (tester) async {
+    late FakeMayosApi phoneFake;
+    await expectCoachPhoneLayout(
+      tester,
+      configureFake: (FakeMayosApi fake) {
+        phoneFake = fake
+          ..assignments.add(<String, dynamic>{
+            'assignment_id': 'assignment-1',
+            'player_username': 'bob',
+            'started_at': '2026-09-24T10:00:00Z',
+            'status': 'active',
+          })
+          ..programDraft = _programDraftForPhoneLayout()
+          ..coachExerciseRows.add(<String, dynamic>{
+            'id': 'coach:your-exercise',
+            'name': fake.displayLanguage == 'ar' ? 'ضغط الصدر' : 'Your Own Press',
+            'body_part': 'Chest',
+            'equipment': 'Barbell',
+            'equipment_category': 'Free Weights',
+            'load_type': null,
+            'note': null,
+            'video_url': null,
+            'image_path': null,
+            'gif_path': null,
+            'primary_muscle': null,
+            'primary_action': null,
+            'secondary_actions': <String>[],
+            'is_coach_exercise': true,
+          });
+      },
+      prepare: (WidgetTester tester, String language) async {
+        await _openProgramEditorFromHarness(tester, language);
+        final Finder menu =
+            find.byKey(const Key('program_draft_exercise_menu_0_0'));
+        await _ensureDraftVisible(tester, menu);
+        await tester.tap(menu);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('program_draft_exercise_swap_0_0')),
+        );
+        await _pumpUntilFound(
+            tester, find.byKey(const Key('coach_exercise_picker_phone')));
+        final String exerciseName =
+            language == 'ar' ? 'ضغط الصدر' : 'Your Own Press';
+        await tester.enterText(find.byType(TextField).last, exerciseName);
+        await tester.tap(find.byKey(const Key('coach_exercise_search')));
+        await _pumpUntilFound(tester, find.text(exerciseName));
+        await _pumpUntilFound(
+          tester,
+          find.text(language == 'ar' ? 'تمرينك' : 'Your exercise'),
+        );
+      },
+      ready: (String language) =>
+          find.byKey(const Key('coach_exercise_picker_phone')),
+      pageScrollable: (String language) => find.descendant(
+        of: find.byKey(const Key('coach_exercise_picker_phone')),
+        matching: find.byType(Scrollable),
+      ).first,
+      allowedInnerStrips: (String language) => find.byType(TextField),
+      assertions: (WidgetTester tester, String language) async {
+        final String exerciseName =
+            language == 'ar' ? 'ضغط الصدر' : 'Your Own Press';
+        expect(find.text(exerciseName), findsWidgets);
+        expect(find.text(language == 'ar' ? 'تمرينك' : 'Your exercise'),
+            findsOneWidget);
+        await tester.tap(find.text(exerciseName).last);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('coach_exercise_picker_phone')),
+            findsNothing);
+        await tester.tap(find.byKey(const Key('program_draft_save')));
+        await _pumpUntilFound(
+          tester,
+          find.text(language == 'ar' ? 'تم حفظ المسودة.' : 'Draft saved.'),
+        );
+        final List<dynamic> savedDays =
+            phoneFake.programDraft!['days'] as List<dynamic>;
+        final List<dynamic> savedExercises =
+            (savedDays.first as Map<String, dynamic>)['exercises'] as List<dynamic>;
+        expect((savedExercises.first as Map<String, dynamic>)['exercise_id'],
+            'coach:your-exercise');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
+  testWidgets('phone Swap and Insert keep the draft payload equal to desktop',
+      (tester) async {
+    final Map<String, Map<String, dynamic>> phonePayloads =
+        <String, Map<String, dynamic>>{};
+    late FakeMayosApi phoneFake;
+    await expectCoachPhoneLayout(
+      tester,
+      configureFake: (FakeMayosApi fake) {
+        phoneFake = fake
+          ..assignments.add(<String, dynamic>{
+            'assignment_id': 'assignment-1',
+            'player_username': 'bob',
+            'started_at': '2026-09-24T10:00:00Z',
+            'status': 'active',
+          })
+          ..programDraft = _programDraftForPhoneLayout();
+      },
+      prepare: _openProgramEditorFromHarness,
+      ready: (String language) =>
+          find.byKey(const Key('coach_program_draft_screen')),
+      pageScrollable: (String language) => find.descendant(
+        of: find.byKey(const Key('coach_program_draft_screen')),
+        matching: find.byType(Scrollable),
+      ).first,
+      allowedInnerStrips: (String language) => find.byType(TextField),
+      assertions: (WidgetTester tester, String language) async {
+        phonePayloads[language] = await _swapAndInsertDraftExercises(
+          tester,
+          fake: phoneFake,
+          language: language,
+          phone: true,
+        );
+        final List<dynamic> weeks =
+            phonePayloads[language]!['weeks'] as List<dynamic>;
+        final Map<String, dynamic> week =
+            Map<String, dynamic>.from(weeks.first as Map);
+        final List<dynamic> days = week['days'] as List<dynamic>;
+        final Map<String, dynamic> day =
+            Map<String, dynamic>.from(days.first as Map);
+        final List<dynamic> exercises = day['exercises'] as List<dynamic>;
+        expect(
+          exercises.map((dynamic entry) => (entry as Map)['exercise_id']),
+          <String>['machine_row', 'bicep_curl', 'row-1'],
+        );
+        final Map<String, dynamic> swapped =
+            Map<String, dynamic>.from(exercises.first as Map);
+        expect(swapped['target_sets'], 4);
+        expect(swapped['target_reps_min'], 6);
+        expect(swapped['target_reps_max'], 8);
+        expect(swapped['target_rir'], 2.0);
+        expect(swapped['warmup_sets'], 1);
+        expect(swapped['rest_seconds'], 120);
+        expect(swapped['tempo'], '2-0-2');
+        expect(swapped['notes'], 'Brace');
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    for (final String language in <String>['en', 'ar']) {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      final FakeMayosApi desktopFake = createCoachFake(language: language)
+        ..assignments.add(<String, dynamic>{
+          'assignment_id': 'assignment-1',
+          'player_username': 'bob',
+          'started_at': '2026-09-24T10:00:00Z',
+          'status': 'active',
+        })
+        ..programDraft = _programDraftForPhoneLayout();
+      await pumpCoachApp(
+        tester,
+        desktopFake,
+        logicalSize: const Size(1440, 960),
+        language: language,
+      );
+      await _openProgramEditorFromHarness(tester, language);
+      final Map<String, dynamic> desktopPayload =
+          await _swapAndInsertDraftExercises(
+        tester,
+        fake: desktopFake,
+        language: language,
+        phone: false,
+      );
+      expect(jsonEncode(desktopPayload), jsonEncode(phonePayloads[language]));
     }
   });
 

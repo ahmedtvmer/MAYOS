@@ -25,10 +25,12 @@ class CoachExercisePickerDialog extends ConsumerStatefulWidget {
     super.key,
     this.replacingExerciseId,
     this.title,
+    this.phonePresentation = false,
   });
 
   final String? replacingExerciseId;
   final String? title;
+  final bool phonePresentation;
 
   @override
   ConsumerState<CoachExercisePickerDialog> createState() =>
@@ -135,6 +137,47 @@ class _CoachExercisePickerDialogState
   Widget build(BuildContext context) {
     final CoachCopy coachCopy = coachCopyOf(context);
     final MayosCopy copy = displayCopyOf(context);
+    if (widget.phonePresentation) {
+      return Scaffold(
+        key: const Key('coach_exercise_picker_phone'),
+        appBar: AppBar(
+          leading: BackButton(
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          title: Text(widget.title ?? coachCopy.addExercise),
+        ),
+        resizeToAvoidBottomInset: false,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(
+              MayosSpacing.md,
+              MayosSpacing.sm,
+              MayosSpacing.md,
+              MayosSpacing.sm,
+            ),
+            child: Column(
+              children: <Widget>[
+                Expanded(child: _pickerContent(context, coachCopy, copy)),
+                AnimatedPadding(
+                  duration: const Duration(milliseconds: 150),
+                  padding: EdgeInsets.only(
+                    bottom: MediaQuery.of(context).viewInsets.bottom,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: MayosSpacing.sm),
+                    child: Row(
+                      children: _pickerActions(context, coachCopy, copy)
+                          .map((Widget action) => Expanded(child: action))
+                          .toList(growable: false),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return AlertDialog(
       title: Text(widget.title ?? coachCopy.addExercise),
       content: SizedBox(

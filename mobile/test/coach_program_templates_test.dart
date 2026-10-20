@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/display_language/controller.dart';
+import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
 import 'package:mayos_mobile/src/core/program_prescription.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/features/coach/coach_program_templates_screen.dart';
@@ -10,6 +11,7 @@ import 'package:mayos_mobile/src/features/coach/coach_template_assignment_screen
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
+import 'support/coach_layout_harness.dart';
 
 /// Pumps finite frames until [finder] matches, then a few more so transitions
 /// settle without relying on `pumpAndSettle` (indeterminate spinners never
@@ -25,6 +27,59 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     }
     await tester.pump(const Duration(milliseconds: 100));
   }
+  expect(finder, findsWidgets);
+}
+
+Future<void> _openTemplatesFromShell(
+  WidgetTester tester,
+  String language,
+) async {
+  final String profileLabel = language == 'ar' ? 'الملف الشخصي' : 'Profile';
+  final String profileTitle =
+      language == 'ar' ? 'الملف الشخصي للمدرب' : 'Coach profile';
+  await _pumpUntilFound(tester, find.text(profileLabel));
+  await tester.tap(find.text(profileLabel).hitTestable().last);
+  await _pumpUntilFound(tester, find.text(profileTitle));
+  final Finder openTemplates =
+      find.byKey(const Key('coach_program_templates_open'));
+  final Finder profileList = find.byType(ListView).last;
+  for (int attempt = 0;
+      attempt < 12 && openTemplates.hitTestable().evaluate().isEmpty;
+      attempt++) {
+    await tester.drag(profileList, const Offset(0, -450));
+    await tester.pumpAndSettle();
+  }
+  expect(openTemplates, findsOneWidget);
+  await tester.ensureVisible(openTemplates);
+  await tester.tap(openTemplates.hitTestable());
+}
+
+Future<void> _assignTemplateFromPhoneList(
+  WidgetTester tester,
+  String language,
+) async {
+  await _openTemplatesFromShell(tester, language);
+  final Finder assign =
+      find.byKey(const Key('program_template_assign_tmpl:upper'));
+  await _pumpUntilFound(tester, assign);
+  await tester.ensureVisible(assign);
+  await tester.tap(assign.hitTestable());
+  await _pumpUntilFound(
+      tester, find.byKey(const Key('template_assignment_screen')));
+  final Finder player =
+      find.byKey(const Key('template_assign_player_asg:phone'));
+  await tester.ensureVisible(player);
+  await tester.tap(player.hitTestable());
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(CoachCopy(language).existingDraftReplace).last);
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const Key('template_assign_submit')).hitTestable());
+  await _pumpUntilFound(
+    tester,
+    find.text(CoachCopy(language).templateAssignSummary(1, 0, 0, 0)),
+  );
+  await tester.tap(find.byType(BackButton));
+  await _pumpUntilFound(tester, find.byKey(const Key('program_templates_screen')));
 }
 
 Future<void> _pumpUntilGone(WidgetTester tester, Finder finder,
@@ -177,7 +232,8 @@ Future<void> _selectCatalogExercise(
   await tester.tap(find.byKey(const Key('coach_exercise_search')));
   await _pumpUntilFound(tester, find.text(name));
   await tester.tap(find.text(name).last);
-  await _pumpUntilFound(tester, find.byKey(const Key('program_draft_sets_0_0')));
+  await _pumpUntilFound(
+      tester, find.byKey(const Key('program_draft_exercise_card_0_0')));
 }
 
 void _seedTemplate(
@@ -199,6 +255,107 @@ void _seedTemplate(
 }
 
 void main() {
+  testWidgets('phone template list starts a draft from the selected template',
+      (tester) async {
+    late FakeMayosApi phoneFake;
+    await expectCoachPhoneLayout(
+      tester,
+      configureFake: (FakeMayosApi fake) {
+        phoneFake = fake;
+        _seedTemplate(fake,
+            id: 'tmpl:upper',
+            name: fake.displayLanguage == 'ar' ? 'الكتلة العلوية' : 'Upper Block',
+            description: 'Reusable split');
+        fake.assignments.add(<String, dynamic>{
+          'assignment_id': 'asg:phone',
+          'player_username': 'bob',
+          'started_at': '2026-10-01T00:00:00Z',
+          'status': 'active',
+        });
+      },
+      prepare: _assignTemplateFromPhoneList,
+      ready: (String language) =>
+          find.byKey(const Key('program_templates_screen')),
+      pageScrollable: (String language) => find.descendant(
+        of: find.byKey(const Key('program_templates_screen')),
+        matching: find.byType(Scrollable),
+      ).first,
+      assertions: (WidgetTester tester, String language) async {
+        final String templateName =
+            language == 'ar' ? 'الكتلة العلوية' : 'Upper Block';
+        expect(find.text(templateName), findsOneWidget);
+        expect(phoneFake.programTemplateAssignRequests, 1);
+        expect(
+          phoneFake.templateAssignedDrafts['asg:phone']?['program_name'],
+          templateName,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
+  testWidgets('desktop template list starts a draft from the selected template',
+      (tester) async {
+    const String language = 'en';
+    final FakeMayosApi fake = _coachFake();
+    const String templateName = 'Upper Block';
+    _seedTemplate(fake,
+        id: 'tmpl:upper', name: templateName, description: 'Reusable split');
+    fake.assignments.add(<String, dynamic>{
+      'assignment_id': 'asg:desktop',
+      'player_username': 'bob',
+      'started_at': '2026-10-01T00:00:00Z',
+      'status': 'active',
+    });
+    await pumpCoachApp(
+      tester,
+      fake,
+      logicalSize: const Size(1440, 960),
+      language: language,
+    );
+    await _openTemplatesFromShell(tester, language);
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('program_templates_screen')));
+    final Finder assign =
+        find.byKey(const Key('program_template_assign_tmpl:upper'));
+    expect(find.text(templateName), findsOneWidget);
+    await _pumpUntilFound(tester, assign);
+    await tester.ensureVisible(assign);
+    await tester.tap(assign.hitTestable());
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('template_assignment_screen')));
+    await tester.tap(
+        find.byKey(const Key('template_assign_player_asg:desktop')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(CoachCopy(language).existingDraftReplace).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('template_assign_submit')));
+    for (int attempt = 0;
+        attempt < 40 && fake.programTemplateAssignRequests == 0;
+        attempt++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(fake.programTemplateAssignRequests, 1);
+    expect(fake.lastProgramTemplateAssignTargets, <Map<String, dynamic>>[
+      <String, dynamic>{
+        'assignment_id': 'asg:desktop',
+        'existing_draft': 'replace',
+      },
+    ]);
+    final Map<String, dynamic> createdDraft =
+        fake.templateAssignedDrafts['asg:desktop']!;
+    expect(createdDraft['program_name'], templateName);
+    final List<dynamic> days = createdDraft['days'] as List<dynamic>;
+    expect(days, hasLength(1));
+    final Map<String, dynamic> day =
+        Map<String, dynamic>.from(days.single as Map);
+    expect(day['day_name'], 'Upper 1');
+    final List<dynamic> exercises = day['exercises'] as List<dynamic>;
+    expect(exercises, hasLength(1));
+    expect((exercises.single as Map)['exercise_id'], 'sq');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('library lists templates and opens the editor in template mode',
       (tester) async {
     final FakeMayosApi fake = _coachFake();

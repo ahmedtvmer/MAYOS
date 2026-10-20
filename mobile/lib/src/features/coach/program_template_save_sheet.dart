@@ -5,7 +5,9 @@ import '../../core/display_language/feature_copy_context.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
+import '../../core/ui/is_desktop_layout.dart';
 import '../../core/ui/mayos_button.dart';
+import '../../core/ui/mayos_bottom_sheet_editor.dart';
 
 /// One free-text value copied from a player's program after Coach review.
 class ProgramTemplateNoteReview {
@@ -129,11 +131,59 @@ Future<ProgramTemplateSaveRequest?> showProgramTemplateSaveSheet(
   BuildContext context, {
   required List<ProgramTemplateNoteReview> notes,
 }) {
-  return showModalBottomSheet<ProgramTemplateSaveRequest>(
-    context: context,
-    isScrollControlled: true,
-    builder: (BuildContext context) => _ProgramTemplateSaveSheet(notes: notes),
-  );
+  final bool desktop = isDesktopLayout(context);
+  final _ProgramTemplateSaveController controller =
+      _ProgramTemplateSaveController();
+  final Future<ProgramTemplateSaveRequest?> result;
+  if (desktop) {
+    result = showModalBottomSheet<ProgramTemplateSaveRequest>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: MayosSpacing.screen,
+            child: _ProgramTemplateSaveSheet(
+              notes: notes,
+              controller: controller,
+              includeActions: true,
+            ),
+          ),
+        ),
+      ),
+    );
+  } else {
+    result = showMayosBottomSheetEditor<ProgramTemplateSaveRequest>(
+      context: context,
+      content: _ProgramTemplateSaveSheet(
+        notes: notes,
+        controller: controller,
+      ),
+      actions: _ProgramTemplateSaveActions(controller: controller),
+    );
+  }
+  return result.whenComplete(controller.dispose);
+}
+
+class _ProgramTemplateSaveController extends ChangeNotifier {
+  VoidCallback? _submit;
+
+  void bind(VoidCallback submit) {
+    _submit = submit;
+    notifyListeners();
+  }
+
+  void unbind() {
+    _submit = null;
+  }
+
+  bool get canSubmit => _submit != null;
+
+  void submit() => _submit?.call();
 }
 
 List<Map<String, dynamic>> _normalizedWeeks(Map<String, dynamic> program) {
@@ -203,9 +253,15 @@ String? _text(dynamic value) {
 }
 
 class _ProgramTemplateSaveSheet extends StatefulWidget {
-  const _ProgramTemplateSaveSheet({required this.notes});
+  const _ProgramTemplateSaveSheet({
+    required this.notes,
+    required this.controller,
+    this.includeActions = false,
+  });
 
   final List<ProgramTemplateNoteReview> notes;
+  final _ProgramTemplateSaveController controller;
+  final bool includeActions;
 
   @override
   State<_ProgramTemplateSaveSheet> createState() =>
@@ -221,6 +277,7 @@ class _ProgramTemplateSaveSheetState extends State<_ProgramTemplateSaveSheet> {
   @override
   void initState() {
     super.initState();
+    widget.controller.bind(_submit);
     _notes = <TextEditingController>[
       for (final ProgramTemplateNoteReview note in widget.notes)
         TextEditingController(text: note.value),
@@ -229,6 +286,7 @@ class _ProgramTemplateSaveSheetState extends State<_ProgramTemplateSaveSheet> {
 
   @override
   void dispose() {
+    widget.controller.unbind();
     _name.dispose();
     _description.dispose();
     for (final TextEditingController controller in _notes) {
@@ -262,108 +320,152 @@ class _ProgramTemplateSaveSheetState extends State<_ProgramTemplateSaveSheet> {
   Widget build(BuildContext context) {
     final CoachCopy copy = coachCopyOf(context);
     final MayosThemeExtension colors = MayosTheme.of(context);
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
-      child: SafeArea(
-        top: false,
-        child: SingleChildScrollView(
-          padding: MayosSpacing.screen,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Text(copy.saveAsTemplate,
-                  style: MayosTypography.of(context).sectionHeading),
-              const SizedBox(height: MayosSpacing.xs),
-              Text(
-                copy.saveAsTemplateNotesNotice,
-                style: MayosTypography.of(context)
-                    .bodySecondary
-                    .copyWith(color: colors.textSecondary),
-              ),
-              const SizedBox(height: MayosSpacing.md),
-              if (widget.notes.isEmpty)
-                Text(
-                  copy.saveAsTemplateNoNotes,
-                  style: MayosTypography.of(context)
-                      .bodySecondary
-                      .copyWith(color: colors.textSecondary),
-                )
-              else ...<Widget>[
-                Text(copy.saveAsTemplateNotesHeading,
-                    style: MayosTypography.of(context).sectionHeading),
-                for (int index = 0;
-                    index < widget.notes.length;
-                    index++) ...<Widget>[
-                  const SizedBox(height: MayosSpacing.sm),
-                  Text(
-                    _reviewLocation(widget.notes[index], copy),
-                    style: MayosTypography.of(context)
-                        .bodySecondary
-                        .copyWith(color: colors.textSecondary),
-                  ),
-                  TextField(
-                    key: Key('program_template_save_note_$index'),
-                    controller: _notes[index],
-                    minLines: 1,
-                    maxLines: 3,
-                    decoration: const InputDecoration(labelText: ''),
-                  ),
-                ],
-              ],
-              const SizedBox(height: MayosSpacing.md),
-              TextField(
-                key: const Key('program_template_save_name'),
-                controller: _name,
-                decoration: InputDecoration(labelText: copy.templateName),
-                onChanged: (_) {
-                  if (_error != null) setState(() => _error = null);
-                },
-              ),
-              const SizedBox(height: MayosSpacing.sm),
-              TextField(
-                key: const Key('program_template_save_description'),
-                controller: _description,
-                minLines: 1,
-                maxLines: 3,
-                decoration:
-                    InputDecoration(labelText: copy.templateDescription),
-              ),
-              if (_error != null) ...<Widget>[
-                const SizedBox(height: MayosSpacing.sm),
-                Text(
-                  _error!,
-                  style: MayosTypography.of(context)
-                      .bodySecondary
-                      .copyWith(color: colors.danger),
-                ),
-              ],
-              const SizedBox(height: MayosSpacing.md),
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: MayosButton(
-                      key: const Key('program_template_save_cancel'),
-                      label: copy.cancel,
-                      variant: MayosButtonVariant.secondary,
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ),
-                  const SizedBox(width: MayosSpacing.xs),
-                  Expanded(
-                    child: MayosButton(
-                      key: const Key('program_template_save_confirm'),
-                      label: copy.saveTemplate,
-                      onPressed: _submit,
-                    ),
-                  ),
-                ],
-              ),
-            ],
+    return _form(copy, colors);
+  }
+
+  Widget _form(CoachCopy copy, MayosThemeExtension colors) => Column(
+        key: const Key('program_template_save_sheet'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          _titleAndNotice(copy, colors),
+          const SizedBox(height: MayosSpacing.md),
+          _reviewSection(copy, colors),
+          const SizedBox(height: MayosSpacing.md),
+          _nameField(copy),
+          const SizedBox(height: MayosSpacing.sm),
+          _descriptionField(copy),
+          if (_error != null) ...<Widget>[
+            const SizedBox(height: MayosSpacing.sm),
+            _errorMessage(colors),
+          ],
+          if (widget.includeActions) ...<Widget>[
+            const SizedBox(height: MayosSpacing.md),
+            _ProgramTemplateSaveActions(controller: widget.controller),
+          ],
+        ],
+      );
+
+  Widget _titleAndNotice(CoachCopy copy, MayosThemeExtension colors) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(
+            copy.saveAsTemplate,
+            style: MayosTypography.of(context).sectionHeading,
           ),
+          const SizedBox(height: MayosSpacing.xs),
+          Text(
+            copy.saveAsTemplateNotesNotice,
+            style: MayosTypography.of(context)
+                .bodySecondary
+                .copyWith(color: colors.textSecondary),
+          ),
+        ],
+      );
+
+  Widget _reviewSection(CoachCopy copy, MayosThemeExtension colors) {
+    if (widget.notes.isEmpty) {
+      return Text(
+        copy.saveAsTemplateNoNotes,
+        style: MayosTypography.of(context)
+            .bodySecondary
+            .copyWith(color: colors.textSecondary),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Text(
+          copy.saveAsTemplateNotesHeading,
+          style: MayosTypography.of(context).sectionHeading,
         ),
+        for (int index = 0; index < widget.notes.length; index++)
+          _reviewNote(index, copy, colors),
+      ],
+    );
+  }
+
+  Widget _reviewNote(
+    int index,
+    CoachCopy copy,
+    MayosThemeExtension colors,
+  ) =>
+      Padding(
+        padding: const EdgeInsets.only(top: MayosSpacing.sm),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(
+              _reviewLocation(widget.notes[index], copy),
+              style: MayosTypography.of(context)
+                  .bodySecondary
+                  .copyWith(color: colors.textSecondary),
+            ),
+            TextField(
+              key: Key('program_template_save_note_$index'),
+              controller: _notes[index],
+              minLines: 1,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: ''),
+            ),
+          ],
+        ),
+      );
+
+  Widget _nameField(CoachCopy copy) => TextField(
+        key: const Key('program_template_save_name'),
+        controller: _name,
+        decoration: InputDecoration(labelText: copy.templateName),
+        onChanged: (_) {
+          if (_error != null) setState(() => _error = null);
+        },
+      );
+
+  Widget _descriptionField(CoachCopy copy) => TextField(
+        key: const Key('program_template_save_description'),
+        controller: _description,
+        minLines: 1,
+        maxLines: 3,
+        decoration: InputDecoration(labelText: copy.templateDescription),
+      );
+
+  Widget _errorMessage(MayosThemeExtension colors) => Text(
+        _error!,
+        style: MayosTypography.of(context)
+            .bodySecondary
+            .copyWith(color: colors.danger),
+      );
+}
+
+class _ProgramTemplateSaveActions extends StatelessWidget {
+  const _ProgramTemplateSaveActions({required this.controller});
+
+  final _ProgramTemplateSaveController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final CoachCopy copy = coachCopyOf(context);
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (BuildContext context, Widget? child) => Row(
+        children: <Widget>[
+          Expanded(
+            child: MayosButton(
+              key: const Key('program_template_save_cancel'),
+              label: copy.cancel,
+              variant: MayosButtonVariant.secondary,
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ),
+          const SizedBox(width: MayosSpacing.xs),
+          Expanded(
+            child: MayosButton(
+              key: const Key('program_template_save_confirm'),
+              label: copy.saveTemplate,
+              onPressed: controller.canSubmit ? controller.submit : null,
+            ),
+          ),
+        ],
       ),
     );
   }
