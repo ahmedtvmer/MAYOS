@@ -1045,6 +1045,47 @@ class MayosCopy {
   String get googleName =>
       isArabic ? 'المتابعة مع Google' : 'Continue with Google';
 
+  // #234 Volume review copy.
+  String get volumeReview => isArabic ? 'مراجعة مجموعات التدريب' : 'Volume review';
+  String volumeReviewChange(int delta) => isArabic
+      ? '${delta > 0 ? '+' : ''}$delta مجموعة أسبوعيًا'
+      : '${delta > 0 ? '+' : ''}$delta sets per week';
+  String volumeReviewReason(String verdict, String muscle) {
+    if (isArabic) {
+      switch (verdict) {
+        case 'stalled':
+          return 'لم يتقدم أداء $muscle رغم التعافي الجيد؛ تُقترح زيادة المجموعات.';
+        case 'under_recovered':
+          return 'هناك تراجع أو إجهاد في التعافي لدى $muscle؛ تُقترح مجموعات أقل.';
+        case 'low_adherence':
+          return 'الانتظام أولًا؛ أكمل ٧٥٪ على الأقل من الحصص المخططة قبل تغيير حجم التدريب.';
+        case 'at_ceiling':
+          return '$muscle عند الحد الأعلى للمجموعات الأسبوعية؛ حافظ على العدد الحالي.';
+        case 'at_floor':
+          return '$muscle عند الحد الأدنى البالغ ٤ مجموعات أسبوعيًا؛ حافظ على العدد الحالي.';
+        default:
+          return 'يتقدم أداء $muscle؛ حافظ على عدد المجموعات الحالي.';
+      }
+    }
+    switch (verdict) {
+      case 'stalled':
+        return '$muscle has stalled despite good recovery; more working sets are proposed.';
+      case 'under_recovered':
+        return '$muscle is regressing or showing recovery strain; fewer sets are proposed.';
+      case 'low_adherence':
+        return 'Consistency comes first; complete at least 75% of planned sessions before changing volume.';
+      case 'at_ceiling':
+        return '$muscle is at its weekly set ceiling; keep the current set count.';
+      case 'at_floor':
+        return '$muscle is at the four-set weekly floor; keep the current set count.';
+      default:
+        return '$muscle is progressing; keep the current set count.';
+    }
+  }
+  String get acceptVolumeReview => isArabic ? 'قبول' : 'Accept';
+  String get dismissVolumeReview => isArabic ? 'تجاهل' : 'Dismiss';
+  String get volumeReviewSaved => isArabic ? 'تم تحديث البرنامج التدريبي.' : 'Your program was updated.';
+
   String _ltr(String value) => '\u2066$value\u2069';
 
 }

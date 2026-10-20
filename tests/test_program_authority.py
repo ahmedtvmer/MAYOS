@@ -11,7 +11,7 @@ import copy
 import json
 import sqlite3
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -1557,3 +1557,121 @@ def test_coach_controlled_program_rejects_player_repeat_choice(api):
         json={"expected_active_version": active.version},
     )
     assert response.status_code == 403
+
+
+def test_coach_controlled_volume_review_is_hidden_and_cannot_be_applied(api):
+    client, db, _ = api
+    _, player_headers, _, coach_account_id, _ = _assigned_player(api)
+    with db.open_ledger("p1") as ledger:
+        from service.volume_review import evaluate_review
+
+        program_data = _program().model_dump()
+        started = date.today() - timedelta(weeks=5)
+        ledger.save_training_program(program_data, published_by_coach_account_id=coach_account_id)
+        active = ledger.get_active_program()
+        active.created_at = started.isoformat()
+        for index, session_day in enumerate((1, 8, 29, 34)):
+            session_date = started + timedelta(days=session_day)
+            stamp = datetime.combine(session_date, datetime.min.time(), tzinfo=UTC).isoformat()
+            session_id = f"coach-volume-{index}"
+            ledger.log_workout_session(
+                session_id, session_date.isoformat(), "Full A", stamp, stamp,
+                program_version=active.version,
+            )
+            ledger.log_workout_set(
+                f"coach-volume-set-{index}", session_id, "bp", 1, 40, 8, 8, 0,
+            )
+        review = evaluate_review(
+            ledger, active, {"training_age_years": 3}, date.today()
+        )
+        assert review is not None and review["status"] == "pending"
+        review_id = review["review_id"]
+        version = active.version
+
+    assert client.get("/programs/volume-reviews", headers=player_headers).json() == []
+    response = client.post(
+        f"/programs/volume-reviews/{review_id}/accept",
+        headers=player_headers,
+    )
+    assert response.status_code == 403
+    with db.open_ledger("p1") as ledger:
+        assert ledger.get_active_program().version == version
+
+
+def test_player_volume_review_routes_accept_edits_and_dismiss(api):
+    client, db, _ = api
+    player = _register(client, "volume-player")
+    headers = _authed(player["access_token"])
+    with db.open_ledger("volume-player") as ledger:
+        program_data = _program().model_dump()
+        program_data["days"][0]["exercises"][1]["target_sets"] = 2
+        ledger.save_training_program(program_data)
+        active = ledger.get_active_program()
+        ledger.conn.execute(
+            "INSERT INTO volume_reviews "
+            "(id, program_version, review_date, next_eligible_date, status, payload_json, created_at) "
+            "VALUES (?, ?, ?, ?, 'pending', ?, ?)",
+            (
+                "player-volume-accept", active.version, "2026-10-20", "2026-10-27",
+                json.dumps([{
+                    "muscle": "Chest", "verdict": "stalled", "reason": "Chest stalled.",
+                    "set_delta": 1,
+                    "edits": [{"week_order": 1, "day_order": 1, "day_name": "Full A", "exercise_id": "bp", "target_sets": 3}],
+                }]),
+                "2026-10-20T00:00:00+00:00",
+            ),
+        )
+        ledger.commit_ledger()
+
+    listed = client.get("/programs/volume-reviews", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()[0]["review_id"] == "player-volume-accept"
+    accepted = client.post(
+        "/programs/volume-reviews/player-volume-accept/accept", headers=headers
+    )
+    assert accepted.status_code == 200, accepted.text
+    with db.open_ledger("volume-player") as ledger:
+        updated = ledger.get_active_program()
+        assert updated.version == active.version + 1
+        assert next(ex for ex in updated.days[0].exercises if ex.exercise_id == "bp").target_sets == 3
+        ledger.conn.execute(
+            "INSERT INTO volume_reviews "
+            "(id, program_version, review_date, next_eligible_date, status, payload_json, created_at) "
+            "VALUES (?, ?, ?, ?, 'pending', '[]', ?)",
+            ("player-volume-dismiss", updated.version, "2026-10-21", "2026-10-28", "2026-10-21T00:00:00+00:00"),
+        )
+        ledger.commit_ledger()
+    dismissed = client.post(
+        "/programs/volume-reviews/player-volume-dismiss/dismiss", headers=headers
+    )
+    assert dismissed.status_code == 200, dismissed.text
+    assert dismissed.json()["status"] == "dismissed"
+
+
+def test_player_can_dismiss_informational_volume_review(api):
+    client, db, _ = api
+    player = _register(client, "volume-info-player")
+    headers = _authed(player["access_token"])
+    with db.open_ledger("volume-info-player") as ledger:
+        ledger.save_training_program(_program().model_dump())
+        active = ledger.get_active_program()
+        ledger.conn.execute(
+            "INSERT INTO volume_reviews "
+            "(id, program_version, review_date, next_eligible_date, status, payload_json, created_at) "
+            "VALUES (?, ?, ?, ?, 'informational', ?, ?)",
+            (
+                "volume-info-dismiss", active.version, "2026-10-20", "2026-10-27",
+                json.dumps([{
+                    "muscle": "Chest", "verdict": "progressing", "reason": "Chest is progressing.",
+                    "set_delta": 0, "edits": [],
+                }]),
+                "2026-10-20T00:00:00+00:00",
+            ),
+        )
+        ledger.commit_ledger()
+
+    response = client.post(
+        "/programs/volume-reviews/volume-info-dismiss/dismiss", headers=headers
+    )
+    assert response.status_code in (200, 204), response.text
+    assert client.get("/programs/volume-reviews", headers=headers).json() == []

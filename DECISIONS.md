@@ -933,3 +933,14 @@ This document records the architectural, algorithmic, and heuristic decisions im
 * **Rationale**: Keeping the reviewed refusal through launch avoids treating unmeasured transliteration as understood input. Independent clinical screening can close clinical detector gaps before launch, while corroborating evidence limits false refusals for ambiguous words and ordinary gym notation. Separate tuning and held-out cases preserve an evaluation boundary, and the enable bar keeps understanding behind reviewed clinical and routing evidence.
 * **Code References**: `agent/assistant_graph.py` (`is_franco_arabic`, `router_node`, `clinical_intercept_node`), `tests/test_player_chat_privacy.py`, `tests/test_arabic_clinical_guard.py`, `docs/specs/franco-arabic-input-343.md`.
 * **Amendment (2026-10-17, #418 correction)**: The corroboration rule in the Decision is an implementation requirement for #419, not a description of the current detector. #419 must require a digit used as a letter or at least two Franco words; one ambiguous common word alone must not trigger refusal, and English/numeric gym notation must never be refused.
+
+---
+
+### ADR 084: Volume review is a consented, versioned proposal
+
+* **Status**: Accepted (2026-10-20, #234).
+* **Decision**: Evaluate after a committed workout, at most once per active program version and review date. Require four weeks since that version began, 75% of planned sessions and four muscle exposures. Compare working-set performance, excluding warm-ups; low adherence proposes consistency first, flat performance with good recovery adds sets, and regression or recovery strain removes sets. Ceilings are 8/10/13 by Experience level and removals stop at four weekly sets. Store each review and its concrete edits in the Training ledger. The player accepts or dismisses; acceptance creates a new immutable program version through `save_training_program`. Recheck Program authority and active version at decision time. Coach-controlled reviews remain stored for a coach surface and are never applied or shown to the player.
+* **Rationale**: A review is a per-muscle training signal, separate from player-level Stalling. Version-pinned proposals keep a changed program from receiving stale edits; explicit consent preserves program authority.
+* **Code References**: `service/volume_review.py`, `service/workouts.py` (post-commit evaluation), `database/migration_manager.py` (ledger v32), `svc/routers/programs.py`, `mobile/lib/src/features/player/program/program_tab.dart`.
+
+---

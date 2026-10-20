@@ -88,6 +88,8 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   FailureMessage? _loadError;
   FailureMessage? _actionError;
   TrainingProgram? _program;
+  List<VolumeReview> _volumeReviews = <VolumeReview>[];
+  String? _decidingVolumeReview;
   AssignmentNotice? _programChangeNotice;
   bool _dismissingProgramChange = false;
   Map<int, DeloadDecision> _deloadByDay = <int, DeloadDecision>{};
@@ -135,6 +137,17 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         fromCache: result.fromCache,
         loading: false,
       );
+      if (result.program?.playerControlsProgram ?? false) {
+        try {
+          final List<VolumeReview> reviews =
+              await ref.read(apiClientProvider).volumeReviews();
+          if (mounted) setState(() => _volumeReviews = reviews);
+        } on ApiException {
+          _volumeReviews = <VolumeReview>[];
+        }
+      } else {
+        _volumeReviews = <VolumeReview>[];
+      }
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -156,6 +169,35 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       // Leave the label as "Published by your coach" rather than guessing.
     }
     await _loadProgramChangeNotice();
+  }
+
+  Future<void> _decideVolumeReview(VolumeReview review, bool accept) async {
+    setState(() => _decidingVolumeReview = review.reviewId);
+    try {
+      await ref.read(apiClientProvider).decideVolumeReview(review.reviewId, accept: accept);
+      if (accept) {
+        final TrainingProgram? updated = await ref.read(apiClientProvider).activeProgram();
+        if (updated != null && mounted) _updateProgram(updated, _accountId, fromCache: false);
+      }
+      if (!mounted) return;
+      setState(() {
+        _volumeReviews = _volumeReviews
+            .where((VolumeReview item) => item.reviewId != review.reviewId)
+            .toList();
+        _decidingVolumeReview = null;
+      });
+      if (accept) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(displayCopyOf(context).volumeReviewSaved)),
+        );
+      }
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _decidingVolumeReview = null;
+        _actionError = apiFailureMessage(error);
+      });
+    }
   }
 
   Future<void> _refreshAssignment() async {
@@ -1017,6 +1059,15 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         padding: const EdgeInsets.fromLTRB(MayosSpacing.lg, MayosSpacing.md,
             MayosSpacing.lg, MayosSpacing.xxl),
         children: <Widget>[
+          for (final VolumeReview review in _volumeReviews)
+            _VolumeReviewCard(
+              review: review,
+              busy: _decidingVolumeReview == review.reviewId,
+              onAccept: () => _decideVolumeReview(review, true),
+              onDismiss: () => _decideVolumeReview(review, false),
+            ),
+          if (_volumeReviews.isNotEmpty)
+            const SizedBox(height: MayosSpacing.md),
           if (_showPreparingProgram) ...<Widget>[
             _preparingProgramBanner(),
             const SizedBox(height: MayosSpacing.md),
@@ -1581,6 +1632,60 @@ class _CardioRow extends StatelessWidget {
                     .copyWith(color: c.textSecondary),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VolumeReviewCard extends StatelessWidget {
+  const _VolumeReviewCard({
+    required this.review,
+    required this.busy,
+    required this.onAccept,
+    required this.onDismiss,
+  });
+
+  final VolumeReview review;
+  final bool busy;
+  final VoidCallback onAccept;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = displayCopyOf(context);
+    return MayosCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(copy.volumeReview,
+              style: MayosTypography.of(context).sectionHeading),
+          for (final VolumeReviewMuscle item in review.muscles) ...<Widget>[
+            const SizedBox(height: MayosSpacing.sm),
+            Text(item.setDelta == 0
+                ? copy.primaryMuscleLabel(item.muscle)
+                : '${copy.primaryMuscleLabel(item.muscle)} · ${copy.volumeReviewChange(item.setDelta)}',
+                style: MayosTypography.of(context).exerciseTitle),
+            const SizedBox(height: MayosSpacing.xxs),
+            FirstStrongDirection(
+              text: copy.volumeReviewReason(
+                  item.verdict, copy.primaryMuscleLabel(item.muscle)),
+              child: Text(
+                  copy.volumeReviewReason(
+                      item.verdict, copy.primaryMuscleLabel(item.muscle)),
+                  style: MayosTypography.of(context).bodySecondary),
+            ),
+          ],
+          const SizedBox(height: MayosSpacing.md),
+          Wrap(
+            spacing: MayosSpacing.sm,
+            runSpacing: MayosSpacing.xs,
+            children: <Widget>[
+              if (review.status == 'pending')
+                TextButton(onPressed: busy ? null : onAccept, child: Text(copy.acceptVolumeReview)),
+              TextButton(onPressed: busy ? null : onDismiss, child: Text(copy.dismissVolumeReview)),
+            ],
           ),
         ],
       ),

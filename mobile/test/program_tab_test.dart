@@ -342,6 +342,102 @@ Future<void> _chooseCableFly(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('volume review can be accepted or dismissed in Arabic on phone',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    Map<String, dynamic> proposal(String id) => <String, dynamic>{
+          'review_id': id,
+          'program_version': 1,
+          'status': 'pending',
+          'muscles': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'muscle': 'Chest',
+              'verdict': 'stalled',
+              'reason': 'Chest stalled with good recovery.',
+              'set_delta': 2,
+            },
+          ],
+        };
+    fake.volumeReviewPayload = <Map<String, dynamic>>[proposal('review-dismiss')];
+    await _pumpProgram(tester, fake,
+        languageCode: 'ar', size: const Size(360, 800));
+    await _pumpUntilFound(tester, find.text('مراجعة مجموعات التدريب'));
+    expect(find.textContaining('الصدر'), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('تجاهل'));
+    await tester.pumpAndSettle();
+    expect(fake.volumeReviewDecisions, contains('review-dismiss:dismiss'));
+
+    fake.volumeReviewPayload = <Map<String, dynamic>>[proposal('review-accept')];
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _pumpProgram(tester, fake,
+        languageCode: 'ar', size: const Size(360, 800));
+    await _pumpUntilFound(tester, find.text('مراجعة مجموعات التدريب'));
+    await tester.tap(find.text('قبول'));
+    await tester.pumpAndSettle();
+    expect(fake.volumeReviewDecisions, contains('review-accept:accept'));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('informational volume note has no accept action', (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    fake.volumeReviewPayload = <Map<String, dynamic>>[
+      <String, dynamic>{
+        'review_id': 'review-info',
+        'program_version': 1,
+        'status': 'informational',
+        'muscles': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'muscle': 'Chest',
+            'verdict': 'progressing',
+            'reason': 'Chest is progressing.',
+            'set_delta': 0,
+          },
+        ],
+      },
+    ];
+    await _pumpProgram(tester, fake,
+        languageCode: 'ar', size: const Size(360, 800));
+    await _pumpUntilFound(tester, find.text('مراجعة مجموعات التدريب'));
+    expect(find.text('قبول'), findsNothing);
+    expect(find.text('تجاهل'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('volume ceiling note explains the limit without a zero change',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake();
+    fake.volumeReviewPayload = <Map<String, dynamic>>[
+      <String, dynamic>{
+        'review_id': 'review-ceiling',
+        'program_version': 1,
+        'status': 'informational',
+        'muscles': <Map<String, dynamic>>[
+          <String, dynamic>{
+            'muscle': 'Chest',
+            'verdict': 'at_ceiling',
+            'reason': 'Chest is at its weekly set ceiling; keep volume steady.',
+            'set_delta': 0,
+          },
+          <String, dynamic>{
+            'muscle': 'Chest',
+            'verdict': 'at_floor',
+            'reason': 'Chest is at the four-set weekly floor; keep volume steady.',
+            'set_delta': 0,
+          },
+        ],
+      },
+    ];
+    await _pumpProgram(tester, fake,
+        languageCode: 'ar', size: const Size(360, 800));
+    await _pumpUntilFound(tester, find.text('مراجعة مجموعات التدريب'));
+
+    expect(find.textContaining('عند الحد الأعلى للمجموعات الأسبوعية'), findsOneWidget);
+    expect(find.textContaining('عند الحد الأدنى البالغ ٤ مجموعات أسبوعيًا'), findsOneWidget);
+    expect(find.textContaining('0 مجموعة أسبوعيًا'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Arabic program substitution keeps the permanent name distinct',
       (tester) async {
     final FakeMayosApi fake = _signedInFake();

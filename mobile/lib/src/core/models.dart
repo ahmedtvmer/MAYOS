@@ -2388,6 +2388,40 @@ class CheckpointReviewListItem {
   final bool opened;
 }
 
+class VolumeReviewMuscle {
+  const VolumeReviewMuscle({required this.muscle, required this.verdict, required this.reason, required this.setDelta});
+
+  factory VolumeReviewMuscle.fromJson(Map<String, dynamic> json) => VolumeReviewMuscle(
+        muscle: json['muscle'] as String,
+        verdict: json['verdict'] as String,
+        reason: json['reason'] as String,
+        setDelta: (json['set_delta'] as num).toInt(),
+      );
+
+  final String muscle;
+  final String verdict;
+  final String reason;
+  final int setDelta;
+}
+
+class VolumeReview {
+  const VolumeReview({required this.reviewId, required this.programVersion, required this.status, required this.muscles});
+
+  factory VolumeReview.fromJson(Map<String, dynamic> json) => VolumeReview(
+        reviewId: json['review_id'] as String,
+        programVersion: (json['program_version'] as num).toInt(),
+        status: json['status'] as String,
+        muscles: (json['muscles'] as List<dynamic>)
+            .map((dynamic item) => VolumeReviewMuscle.fromJson(item as Map<String, dynamic>))
+            .toList(growable: false),
+      );
+
+  final String reviewId;
+  final int programVersion;
+  final String status;
+  final List<VolumeReviewMuscle> muscles;
+}
+
 /// Full Checkpoint review returned by the player and active-assignment APIs.
 class CheckpointReview {
   const CheckpointReview({

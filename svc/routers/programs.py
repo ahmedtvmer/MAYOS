@@ -16,6 +16,7 @@ from service.program_edit import (
     ProgramEditExercise,
     edit_active_program_day,
 )
+from service import volume_review
 from service.program_substitution import (
     ProgramSubstitution,
     ProgramSubstitutionUndo,
@@ -38,6 +39,59 @@ from svc.schemas import (
 )
 
 router = APIRouter(prefix="/programs", tags=["programs"])
+
+
+def _volume_review_error_response(exc: ValueError) -> JSONResponse:
+    code = str(exc)
+    return JSONResponse(
+        status_code=403 if code == "coach_controlled" else 409,
+        content={"detail": code, "code": code},
+    )
+
+
+@router.get("/volume-reviews")
+async def list_volume_reviews(
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    """Returns pending proposals only while the player holds Program authority."""
+    if not programs_service.player_controls_program(db, ledger, account_id_of(player)):
+        return []
+    program = ledger.get_active_program()
+    if program is None:
+        return []
+    return await asyncio.to_thread(volume_review.list_pending, ledger, int(program.version))
+
+
+@router.post("/volume-reviews/{review_id}/accept")
+@limiter.limit(PROGRAM_MUTATE_LIMIT)
+async def accept_volume_review(
+    request: Request,
+    review_id: str,
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    try:
+        return await asyncio.to_thread(volume_review.accept_review, db, ledger, account_id_of(player), review_id)
+    except ValueError as exc:
+        return _volume_review_error_response(exc)
+
+
+@router.post("/volume-reviews/{review_id}/dismiss")
+@limiter.limit(PROGRAM_MUTATE_LIMIT)
+async def dismiss_volume_review(
+    request: Request,
+    review_id: str,
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    try:
+        return await asyncio.to_thread(volume_review.dismiss_review, db, ledger, account_id_of(player), review_id)
+    except ValueError as exc:
+        return _volume_review_error_response(exc)
 
 
 def _program_mutation_error_response(

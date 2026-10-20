@@ -353,6 +353,8 @@ class FakeMayosApi {
   bool programEditVersionConflict = false;
   // When true `GET /programs/active` returns an empty body (no active program).
   bool noActiveProgram = false;
+  List<Map<String, dynamic>> volumeReviewPayload = <Map<String, dynamic>>[];
+  final List<String> volumeReviewDecisions = <String>[];
 
   /// Per-exercise `target_rpe` overrides for `GET /workouts/prescription`, so a
   /// test can pin a different target cap than the default program fixture and
@@ -707,6 +709,17 @@ class FakeMayosApi {
     if (path.startsWith('/onboarding/intake')) {
       return _onboardingIntake(request);
     }
+    if (path.startsWith('/programs/volume-reviews/')) {
+      final String decision = path.endsWith('/accept') ? 'accept' : 'dismiss';
+      final String reviewId = path.split('/')[3];
+      volumeReviewDecisions.add('$reviewId:$decision');
+      volumeReviewPayload.removeWhere((Map<String, dynamic> item) => item['review_id'] == reviewId);
+      if (decision == 'accept') programVersion = (programVersion ?? 1) + 1;
+      return FakeResponse(200, <String, dynamic>{
+        'review_id': reviewId,
+        'status': decision == 'accept' ? 'accepted' : 'dismissed',
+      });
+    }
     switch (path) {
       case '/auth/register':
         return _register(request);
@@ -803,6 +816,8 @@ class FakeMayosApi {
         return _profile(request);
       case '/programs/active':
         return _activeProgram(request);
+      case '/programs/volume-reviews':
+        return FakeResponse(200, volumeReviewPayload);
       case '/programs/active/repeat-from-week-1':
         return _repeatProgramFromWeekOne(request);
       case '/programs/generate':

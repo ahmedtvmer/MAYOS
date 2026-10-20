@@ -2355,6 +2355,18 @@ class ApiClient {
     return TrainingProgram.fromJson(data as Map<String, dynamic>);
   }
 
+  Future<List<VolumeReview>> volumeReviews() async {
+    final dynamic data = (await _send(() => _dio.get<dynamic>('/programs/volume-reviews'))).data;
+    if (data is! List<dynamic>) throw const FormatException('Invalid volume reviews.');
+    return data.map((dynamic item) => VolumeReview.fromJson(item as Map<String, dynamic>)).toList(growable: false);
+  }
+
+  Future<void> decideVolumeReview(String reviewId, {required bool accept}) async {
+    await _send(() => _dio.post<dynamic>(
+          '/programs/volume-reviews/${Uri.encodeComponent(reviewId)}/${accept ? 'accept' : 'dismiss'}',
+        ));
+  }
+
   /// Starts the completed self-controlled Program block again at Week 1.
   Future<TrainingProgram> repeatProgramFromWeekOne({
     required int expectedActiveVersion,

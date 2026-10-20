@@ -941,6 +941,7 @@ def commit_session(
                     client=client,
                 ),
             )
+        _evaluate_volume_review(db, ledger, today_date)
 
     _run_post_commit_hooks(
         db,
@@ -1068,6 +1069,8 @@ def commit_logged_session(
                     program=committed_program,
                 ),
             )
+        if outcome.created:
+            _evaluate_volume_review(db, ledger, sync.performed_date)
 
     _run_post_commit_hooks(
         db,
@@ -1078,6 +1081,19 @@ def commit_logged_session(
         outcome.body["fatigue_post"],
     )
     return outcome
+
+
+def _evaluate_volume_review(db: Any, ledger: Any, performed_date: str) -> None:
+    """Best-effort, idempotent post-commit volume review trigger (#234)."""
+    try:
+        from service.volume_review import evaluate_review
+
+        program = ledger.get_active_program()
+        profile = ledger.get_player_profile() or {}
+        if program is not None:
+            evaluate_review(ledger, program, profile, date.fromisoformat(performed_date[:10]))
+    except Exception:
+        logger.exception("Volume review evaluation failed after workout commit")
 
 
 def correct_performed_date(
