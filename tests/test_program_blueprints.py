@@ -54,6 +54,14 @@ from utils.equipment_access import (
 )
 
 db = None
+BODYWEIGHT_UNAVAILABLE_SLOTS = {
+    "shrug",
+    "rear_delts",
+    "forearm_wrist",
+    "forearm_reverse",
+    "side_delts",
+    "ham_hinge",
+}
 
 
 @pytest.fixture(autouse=True)
@@ -392,7 +400,7 @@ def test_equipment_access_generation_uses_staples_then_signature_substitutes(scr
                         str(item["id"]) == str(expected["id"]) for item in allowed
                     )
                     if not expected_is_staple:
-                        assert _candidate_matches_slot_signature(slot, expected)
+                        assert _candidate_matches_slot_signature(source_slot, expected)
                         assert not any(str(item["id"]) not in prior for item in allowed), (
                             f"{access} skipped an unused Staple for {slot}"
                         )
@@ -424,7 +432,9 @@ def test_equipment_access_generation_uses_staples_then_signature_substitutes(scr
                         if str(item["id"]) != exercise.exercise_id and str(item["id"]) not in day_ids
                     ][:2]
                     actual_substitutes = [item.exercise_id for item in exercise.suggested_substitutes]
-                    assert actual_substitutes == expected_substitutes
+                    assert actual_substitutes == expected_substitutes, (
+                        f"{access} {slot} {exercise.exercise_id}"
+                    )
                     assert len(actual_substitutes) == len(set(actual_substitutes))
                     assert exercise.exercise_id not in actual_substitutes
                     assert all(
@@ -441,6 +451,8 @@ def test_equipment_access_generation_uses_staples_then_signature_substitutes(scr
                 item for item in direct if _candidate_matches_slot_signature(slot, item)
             ]
             if direct_staples or direct_signatures:
+                continue
+            if access == BODYWEIGHT_ONLY and slot in BODYWEIGHT_UNAVAILABLE_SLOTS:
                 continue
             options = (
                 *SLOT_FALLBACKS.get(slot, {}).get(None, ()),

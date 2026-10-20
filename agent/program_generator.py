@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from core.effort import min_rir_from_rpe
 from agent.program_blueprints import (
+    _SMALL_MUSCLE_OPENERS,
     ExperienceLevel,
     MAX_COACH_PATTERN_RECOVERY_CUTS_PER_DAY,
     MAX_RECOVERY_CUTS_PER_DAY,
@@ -49,7 +50,7 @@ from agent.ProgramState import (
     SuggestedSubstitute,
     WarmupExerciseSchema,
 )
-from utils.equipment_access import COMMERCIAL_GYM, map_equipment_access
+from utils.equipment_access import BODYWEIGHT_ONLY, COMMERCIAL_GYM, map_equipment_access
 from utils.logger import MyosLogger
 
 load_dotenv()
@@ -472,6 +473,21 @@ def _fetch_generation_candidates(
     return candidates, limitation_removed_staples
 
 
+def _pick_from_alternate_slot(
+    slot_key: str,
+    context: DayGenerationContext,
+    excluded_ids: set[str],
+    source_limited_staples: bool,
+    ledger: Any,
+) -> tuple[dict | None, list[dict]]:
+    candidates, alternate_limited_staples = _fetch_generation_candidates(
+        slot_key, context, excluded_ids, ledger=ledger
+    )
+    if source_limited_staples and not alternate_limited_staples:
+        candidates = _without_signature_candidates(candidates)
+    return _pick_candidate(candidates, slot_key, excluded_ids), candidates
+
+
 def assemble_deterministic_day(
     day: CustomDayPlan,
     context: DayGenerationContext,
@@ -501,6 +517,7 @@ def assemble_deterministic_day(
         )
         chosen = _pick_candidate(candidates, slot_key, excluded_ids)
         resolved_slot = slot_key
+        candidate_slot = slot_key
         if chosen is None:
             # A limitation or Equipment access filter can empty the pool; try
             # the blueprint's safe fallback slots instead of shrinking the day.
@@ -509,22 +526,21 @@ def assemble_deterministic_day(
                 *fallback_options.get(None, ()),
                 *fallback_options.get(context.equipment_access, ()),
             )
+            if context.equipment_access == BODYWEIGHT_ONLY and slot_key == "ham_hinge":
+                fallback_keys = ()
             for fallback_key in fallback_keys:
                 fallback_spec = SLOT_SPECS.get(fallback_key)
                 if fallback_spec is None:
                     continue
-                fallback_candidates, fallback_limitation_removed_staples = (
-                    _fetch_generation_candidates(
-                        fallback_key, context, excluded_ids, ledger=ledger
-                    )
+                fallback_chosen, fallback_candidates = _pick_from_alternate_slot(
+                    fallback_key, context, excluded_ids,
+                    limitation_removed_staples, ledger,
                 )
-                if limitation_removed_staples and not fallback_limitation_removed_staples:
-                    fallback_candidates = _without_signature_candidates(fallback_candidates)
-                fallback_chosen = _pick_candidate(fallback_candidates, fallback_key, excluded_ids)
                 if fallback_chosen is not None:
                     logger.info(f"Substituted '{fallback_key}' for limited slot '{slot_key}' (day '{day.day_name}').")
                     chosen, resolved_slot, spec = fallback_chosen, fallback_key, fallback_spec
                     candidates = fallback_candidates
+                    candidate_slot = fallback_key
                     break
         if chosen is None:
             logger.warning(f"No catalog candidate for slot '{slot_key}' (day '{day.day_name}').")
@@ -532,7 +548,7 @@ def assemble_deterministic_day(
 
         candidate_id = str(chosen["id"])
         excluded_ids.add(candidate_id)
-        substitute_options[candidate_id] = _suggestion_candidates(candidates, resolved_slot)
+        substitute_options[candidate_id] = _suggestion_candidates(candidates, candidate_slot)
         apply_cut = (
             context.recovery_cut
             and cuts_used < max_recovery_cuts
@@ -597,6 +613,17 @@ def assemble_deterministic_day(
             break
 
     prescribed_ids = {exercise.exercise_id for exercise in selected_exercises}
+    if context.equipment_access == BODYWEIGHT_ONLY and sets_family == "coach":
+        opener_index = next(
+            (
+                index
+                for index, exercise in enumerate(selected_exercises)
+                if exercise.slot_key in _SMALL_MUSCLE_OPENERS
+            ),
+            None,
+        )
+        if opener_index is not None:
+            selected_exercises.insert(0, selected_exercises.pop(opener_index))
     for exercise in selected_exercises:
         alternatives = []
         for candidate in substitute_options.get(exercise.exercise_id, []):
@@ -810,9 +837,18 @@ def _generate_program_days(
         recovery_cut=is_poor_recovery(profile.get("stress_and_sleep")),
         experience_level=experience_level_for_training_age(profile.get("training_age_years", 0.0)),
     )
-    days = [
-        assemble_deterministic_day(day=day, context=context, excluded_ids=set(), ledger=ledger)
-        for day in split_plan.days
-    ]
+    days = []
+    for day in split_plan.days:
+        if (
+            context.equipment_access == BODYWEIGHT_ONLY
+            and day.day_name.casefold() == "pull"
+            and "vertical_pull" not in day.target_slots
+        ):
+            day = day.model_copy(
+                update={"target_slots": ["vertical_pull", *day.target_slots]}
+            )
+        days.append(
+            assemble_deterministic_day(day=day, context=context, excluded_ids=set(), ledger=ledger)
+        )
     apply_program_cardio(days, split_plan.days, profile, request.coach_cardio)
     return days

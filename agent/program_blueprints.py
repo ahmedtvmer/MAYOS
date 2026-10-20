@@ -416,7 +416,8 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         rest_seconds=240,
         warmup_sets=2,
         exclude_sql="LOWER(name) NOT LIKE '%calf%' AND LOWER(name) NOT LIKE '%stretch%' "
-        "AND LOWER(name) NOT LIKE '%jump%' AND LOWER(name) NOT LIKE '%pistol%' "
+        "AND LOWER(name) NOT LIKE '%jump%' AND LOWER(name) NOT LIKE '%sissy squat%' "
+        "AND LOWER(name) NOT LIKE '%pistol%' "
         "AND LOWER(name) NOT LIKE '%sumo%' AND LOWER(name) NOT LIKE '%front squat%'",
         name_rank=("hack", "leg press", "smith hack", "smith squat", "squat"),
         primary_actions=("Knee Extension",),
@@ -431,7 +432,10 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         reps=(6, 8),
         rest_seconds=180,
         warmup_sets=1,
-        exclude_sql="LOWER(name) NOT LIKE '%jump%' AND LOWER(name) NOT LIKE '%stretch%'",
+        exclude_sql=(
+            "LOWER(name) NOT LIKE '%jump%' AND LOWER(name) NOT LIKE '%stretch%' "
+            "AND LOWER(name) NOT LIKE '%sissy squat%'"
+        ),
         primary_actions=("Knee Extension",),
         primary_muscles=("Quads",),
     ),
@@ -442,6 +446,9 @@ SLOT_SPECS: dict[str, SlotSpec] = {
         ("leverage machine", "resistance band", "cable"),
         reps=(6, 10),
         rest_seconds=180,
+        name_rank=("sissy squat",),
+        exclude_sql="LOWER(name) NOT LIKE '%squat%' AND LOWER(name) NOT LIKE '%lunge%'",
+        signature_name_exceptions=("sissy squat",),
         primary_actions=("Knee Extension",),
         primary_muscles=("Quads",),
     ),
@@ -682,26 +689,17 @@ MAX_COACH_PATTERN_RECOVERY_CUTS_PER_DAY = 2
 SLOT_FALLBACKS: dict[str, dict[str | None, tuple[str, ...]]] = {
     # The back limitation can empty this slot's hinge pool; leg curls are safe.
     "ham_hinge": {None: ("ham_curl",)},
-    # Bodyweight-only libraries cannot fill every gym-specific isolation slot.
-    # Use a nearby bodyweight slot while retaining the existing slot picker.
-    # Bodyweight-only has no direct Staples for these gym-specific slots.
+    # Remaining bodyweight fallbacks keep a day populated when a slot is empty.
     "incline_press": {BODYWEIGHT_ONLY: ("flat_press", "quad_lunge")},
-    "flat_press": {BODYWEIGHT_ONLY: ("quad_lunge", "vertical_pull")},
-    "chest_fly": {BODYWEIGHT_ONLY: ("quad_lunge", "vertical_pull")},
-    "pullover": {BODYWEIGHT_ONLY: ("vertical_pull", "horizontal_row")},
-    "shrug": {BODYWEIGHT_ONLY: ("upper_back_pull", "horizontal_row")},
-    "side_delts": {BODYWEIGHT_ONLY: ("upper_back_pull", "vertical_pull")},
-    "rear_delts": {BODYWEIGHT_ONLY: ("upper_back_pull", "horizontal_row")},
-    "shoulder_press": {BODYWEIGHT_ONLY: ("quad_lunge", "vertical_pull")},
-    "triceps_pushdown": {HOME_GYM: ("triceps_overhead",), BODYWEIGHT_ONLY: ("triceps_overhead", "vertical_pull")},
-    "triceps_overhead": {BODYWEIGHT_ONLY: ("vertical_pull", "biceps_alt")},
-    "biceps_preacher": {BODYWEIGHT_ONLY: ("biceps_alt", "vertical_pull")},
-    "biceps_alt": {BODYWEIGHT_ONLY: ("vertical_pull",)},
-    "forearm_wrist": {BODYWEIGHT_ONLY: ("biceps_alt", "vertical_pull")},
-    "forearm_reverse": {BODYWEIGHT_ONLY: ("biceps_alt", "vertical_pull")},
+    "flat_press": {BODYWEIGHT_ONLY: ("quad_lunge",)},
+    "chest_fly": {BODYWEIGHT_ONLY: ("quad_lunge",)},
+    "pullover": {BODYWEIGHT_ONLY: ("horizontal_row",)},
+    "shoulder_press": {BODYWEIGHT_ONLY: ("quad_lunge",)},
+    "triceps_pushdown": {HOME_GYM: ("triceps_overhead",), BODYWEIGHT_ONLY: ("triceps_overhead",)},
+    "triceps_overhead": {BODYWEIGHT_ONLY: ("biceps_alt",)},
+    "biceps_preacher": {BODYWEIGHT_ONLY: ("biceps_alt",)},
     "quad_iso": {BODYWEIGHT_ONLY: ("quad_lunge", "quad_compound")},
 }
-
 
 def resolve_sets_family(day_family: str, explicit: str | None = None) -> str:
     """Resolves the working-set profile for a session (explicit value wins)."""

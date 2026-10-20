@@ -30,7 +30,12 @@ from agent.ProgramState import (
 from database.exercise_library.ranking import replacement_rank_sql
 from database.exercise_library.schema import exercise_library_visible_sql
 from database.exercise_library.values import split_curation_values
-from utils.equipment_access import COMMERCIAL_GYM, equipment_access_sql, map_equipment_access
+from utils.equipment_access import (
+    BODYWEIGHT_ONLY,
+    COMMERCIAL_GYM,
+    equipment_access_sql,
+    map_equipment_access,
+)
 from utils.env_flags import env_flag
 from utils.model_downloader import llm, structured_output_model
 from utils import player_output_budgets
@@ -812,6 +817,13 @@ def fetch_slot_candidates(
     )
     cursor.execute(query, params)
     candidates = _candidate_rows(cursor, limit, spec)
+    if slot_key == "quad_iso" and map_equipment_access(equipment_access) == BODYWEIGHT_ONLY:
+        # The curated Sissy Squat is the bodyweight isolation match; keep it ahead of other signature rows.
+        candidates.sort(
+            key=lambda item: (
+                0 if str(item.get("name", "")).casefold() == "sissy squat" else 1
+            )
+        )
     for item in candidates:
         item["slot_key"] = slot_key
     return candidates
