@@ -23,7 +23,7 @@ def _seed_review(fresh_store, trend: str, *, weekly_frequency: int = 1):
     exercise_row = db.catalog_conn.execute(
         "SELECT name FROM exercises WHERE id = ?", (exercise_id,)
     ).fetchone()
-    now = date.today()
+    now = datetime.now(timezone.utc).date()
     started = now - timedelta(weeks=5)
     exercise = PersistedProgramExerciseSchema(
         exercise_id=exercise_id,
@@ -243,7 +243,7 @@ def test_placement_adds_existing_set_before_second_staple(fresh_store, slot_key)
         "SELECT id, name FROM exercises WHERE id NOT IN (?, ?) ORDER BY id LIMIT 1",
         (staple_id, second_id),
     ).fetchone()
-    now = date.today()
+    now = datetime.now(timezone.utc).date()
     started = now - timedelta(weeks=5)
     primary = PersistedProgramExerciseSchema(
         exercise_id=staple_id,
@@ -312,7 +312,7 @@ def test_removals_start_with_last_exercise_and_keep_four_weekly_sets(fresh_store
     ).fetchall()
     assert len(rows) == 2 and rows[0][2] == rows[1][2]
     by_id = {str(row[0]): str(row[1]) for row in rows}
-    started = date.today() - timedelta(weeks=5)
+    started = datetime.now(timezone.utc).date() - timedelta(weeks=5)
     days = [
         PersistedProgramDaySchema(
             day_name=f"Day {index}", day_order=index,
@@ -338,7 +338,7 @@ def test_removals_start_with_last_exercise_and_keep_four_weekly_sets(fresh_store
         session_id = f"removal-{index}"
         ledger.log_workout_session(session_id, session_date.isoformat(), "Day 1", stamp, stamp, program_version=active.version)
         ledger.log_workout_set(f"removal-set-{index}", session_id, first_id, 1, weight, 8, 8, 0)
-    result = review_facts(ledger, active, {"training_age_years": 3}, date.today())
+    result = review_facts(ledger, active, {"training_age_years": 3}, datetime.now(timezone.utc).date())
     chest = next(item for item in result["muscles"] if item["muscle"] == rows[0][2])
     assert chest["set_delta"] == -1
     assert chest["edits"][0]["exercise_id"] == second_id
@@ -356,7 +356,7 @@ def test_trend_waits_when_exercises_do_not_overlap_between_halves(fresh_store):
         (first_id, second_id),
     ).fetchall()
     by_id = {str(row[0]): str(row[1]) for row in rows}
-    started = date.today() - timedelta(weeks=5)
+    started = datetime.now(timezone.utc).date() - timedelta(weeks=5)
     exercises = [
         PersistedProgramExerciseSchema(
             exercise_id=exercise_id, exercise_name=by_id[exercise_id], target_sets=2,
@@ -378,7 +378,7 @@ def test_trend_waits_when_exercises_do_not_overlap_between_halves(fresh_store):
         session_id = f"split-trend-{index}"
         ledger.log_workout_session(session_id, session_date.isoformat(), "Full A", stamp, stamp, program_version=active.version)
         ledger.log_workout_set(f"split-trend-set-{index}", session_id, exercise_id, 1, 40, 8, 8, 0)
-    result = review_facts(ledger, active, {"weekly_frequency": 1}, date.today())
+    result = review_facts(ledger, active, {"weekly_frequency": 1}, datetime.now(timezone.utc).date())
     assert result["eligible"] is False
     assert result["muscles"] == []
 
@@ -397,7 +397,7 @@ def test_insufficient_exposure_waits_a_week(fresh_store):
     day = PersistedProgramDaySchema(day_name="Full A", day_order=1, exercises=[exercise])
     program = PersistedProgramSchema(
         program_name="New", split_type="Full Body", weekly_frequency=3,
-        days=[day], created_at=(date.today() - timedelta(weeks=5)).isoformat(),
+        days=[day], created_at=(datetime.now(timezone.utc).date() - timedelta(weeks=5)).isoformat(),
     )
     ledger.save_training_program(program.model_dump())
     active = ledger.get_active_program()
@@ -414,11 +414,12 @@ def test_insufficient_exposure_waits_a_week(fresh_store):
             f"few-exposures-set-{index}", f"few-exposures-{index}", exercise_id, 1, 40, 8, 8, 0,
         )
 
-    result = review_facts(ledger, active, {"weekly_frequency": 3}, date.today())
+    today = datetime.now(timezone.utc).date()
+    result = review_facts(ledger, active, {"weekly_frequency": 3}, today)
     assert result["eligible"] is False
-    assert result["next_eligible_date"] == (date.today() + timedelta(weeks=1)).isoformat()
-    assert evaluate_review(ledger, active, {"weekly_frequency": 3}, date.today()) is None
-    assert evaluate_review(ledger, active, {"weekly_frequency": 3}, date.today() + timedelta(days=3)) is None
+    assert result["next_eligible_date"] == (today + timedelta(weeks=1)).isoformat()
+    assert evaluate_review(ledger, active, {"weekly_frequency": 3}, today) is None
+    assert evaluate_review(ledger, active, {"weekly_frequency": 3}, today + timedelta(days=3)) is None
 
 
 @pytest.mark.parametrize("signal", ["low_readiness", "overshoot"])

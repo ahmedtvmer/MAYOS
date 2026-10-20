@@ -13,7 +13,7 @@ import json
 import sqlite3
 import threading
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -1749,7 +1749,7 @@ def test_coach_controlled_volume_review_is_hidden_and_cannot_be_applied(api):
         from service.volume_review import evaluate_review
 
         program_data = _program().model_dump()
-        started = date.today() - timedelta(weeks=5)
+        started = datetime.now(UTC).date() - timedelta(weeks=5)
         ledger.save_training_program(program_data, published_by_coach_account_id=coach_account_id)
         active = ledger.get_active_program()
         active.created_at = started.isoformat()
@@ -1765,7 +1765,7 @@ def test_coach_controlled_volume_review_is_hidden_and_cannot_be_applied(api):
                 f"coach-volume-set-{index}", session_id, "bp", 1, 40, 8, 8, 0,
             )
         review = evaluate_review(
-            ledger, active, {"training_age_years": 3}, date.today()
+            ledger, active, {"training_age_years": 3}, datetime.now(UTC).date()
         )
         assert review is not None and review["status"] == "pending"
         review_id = review["review_id"]

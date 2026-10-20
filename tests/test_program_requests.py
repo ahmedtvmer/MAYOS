@@ -805,6 +805,9 @@ def test_apply_substitution_publishes_new_version_preserving_provenance(api, mon
         rest_seconds=120,
         notes="Original cue",
     )
+    program_data["days"][0]["exercises"][0]["set_groups"][0].update(
+        sets=3, reps_min=6, reps_max=9, target_rir=2,
+    )
     program_data["days"][0]["warmup_exercises"] = [
         {"exercise_id": "warmup", "exercise_name": "Dead Bug", "sets": 2, "reps": 10}
     ]

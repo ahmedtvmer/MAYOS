@@ -9,7 +9,7 @@ of player-assistant chat data from every coach response.
 """
 
 import sqlite3
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 import uuid
 from pathlib import Path
 
@@ -167,7 +167,7 @@ def _seed_coach_controlled_volume_review(
     player_id = _subject(player_headers["Authorization"].split()[1])
     coach_id = _subject(coach_headers["Authorization"].split()[1])
     ledger_id = db.get_account(player_id)["ledger_id"]
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
     captured_at = datetime.now(timezone.utc).isoformat()
     with db.open_ledger(ledger_id) as ledger:
         program = PersistedProgramSchema(
@@ -663,7 +663,7 @@ def test_pending_volume_review_alert_stays_open_after_later_workout(api):
     player_id = _subject(player_headers["Authorization"].split()[1])
     ledger_id = db.get_account(player_id)["ledger_id"]
     coach_id = _subject(coach_headers["Authorization"].split()[1])
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
     captured_at = datetime.now(timezone.utc).isoformat()
     with db.open_ledger(ledger_id) as ledger:
         program = PersistedProgramSchema(
@@ -706,7 +706,7 @@ def test_player_controlled_program_does_not_raise_volume_review_alert(api):
     coach_headers, player_headers, _ = _assigned_player(api)
     player_id = _subject(player_headers["Authorization"].split()[1])
     ledger_id = db.get_account(player_id)["ledger_id"]
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
     captured_at = datetime.now(timezone.utc).isoformat()
     with db.open_ledger(ledger_id) as ledger:
         program = PersistedProgramSchema(
