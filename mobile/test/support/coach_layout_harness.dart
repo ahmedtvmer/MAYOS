@@ -39,6 +39,7 @@ Future<void> pumpCoachApp(
   Size logicalSize = const Size(1440, 960),
   String language = 'en',
   InMemoryAppModeStore? modeStore,
+  List<Override> providerOverrides = const <Override>[],
 }) async {
   final double devicePixelRatio = tester.view.devicePixelRatio;
   tester.view.physicalSize = Size(
@@ -51,6 +52,7 @@ Future<void> pumpCoachApp(
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
+        ...providerOverrides,
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider
             .overrideWithValue(modeStore ?? InMemoryAppModeStore()),
@@ -82,6 +84,7 @@ Future<void> expectCoachPhoneLayout(
   required Finder Function(String language) ready,
   required Finder Function(String language) pageScrollable,
   Finder Function(String language)? allowedInnerStrips,
+  List<Override> providerOverrides = const <Override>[],
   required CoachLayoutAssertions assertions,
 }) async {
   for (final String language in <String>['en', 'ar']) {
@@ -95,6 +98,7 @@ Future<void> expectCoachPhoneLayout(
       fake,
       logicalSize: const Size(360, 800),
       language: language,
+      providerOverrides: providerOverrides,
     );
     await prepare?.call(tester, language);
     for (int attempt = 0; attempt < 60 && ready(language).evaluate().isEmpty;

@@ -5,11 +5,13 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/display_language/controller.dart';
+import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
 import 'support/fake_api_adapter.dart';
+import 'support/coach_layout_harness.dart';
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     {int attempts = 40}) async {
@@ -228,6 +230,112 @@ Future<void> _openAlertCenter(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('all alert kinds fit a 360 dp phone and actions work in both languages',
+      (WidgetTester tester) async {
+    late FakeMayosApi fake;
+    final List<Map<String, dynamic>> alerts = <Map<String, dynamic>>[
+      _alert(),
+      _followUpAlert(),
+      _deloadAlert(),
+      _regressionAlert(),
+      _stallAlert(),
+      _profileChangeAlert(),
+      <String, dynamic>{
+        ..._profileChangeAlert(),
+        'alert_id': 'alert-injury',
+        'profile_changes': null,
+        'injury_changes': <String, dynamic>{
+          'injury-1': <String, dynamic>{
+            'body_area': 'knee',
+            'description': 'Pain during squats',
+            'status': 'reported',
+          },
+        },
+      },
+    ];
+    final List<String> englishDescriptions = <String>[
+      'Missed 2 expected training days',
+      'Follow-up due',
+      'Deload recommended',
+      'Performance regression',
+      'Stalling',
+      'Injuries or limitations',
+      'Knee',
+    ];
+    final List<String> arabicDescriptions = <String>[
+      'فات اللاعب يومان',
+      'حان موعد المتابعة',
+      'يوصى بتخفيف التدريب',
+      'تراجع الأداء',
+      'توقف التقدم',
+      'الإصابات أو القيود',
+      'الركبة',
+    ];
+    await expectCoachPhoneLayout(
+      tester,
+      configureFake: (FakeMayosApi configured) {
+        fake = configured;
+        fake.assignments.add(<String, dynamic>{
+          'assignment_id': 'assignment-1',
+          'player_username': 'bob',
+          'started_at': '2026-09-24T10:00:00Z',
+          'status': 'active',
+        });
+        fake.coachAlerts.addAll(
+          alerts.map((Map<String, dynamic> alert) =>
+              Map<String, dynamic>.from(alert)),
+        );
+      },
+      ready: (String language) => find.byKey(const Key('roster_row_assignment-1')),
+      pageScrollable: (String language) => find.descendant(
+        of: find.byKey(const Key('coach_roster_list_screen')),
+        matching: find.byType(Scrollable),
+      ).first,
+      assertions: (WidgetTester tester, String language) async {
+        final CoachCopy copy = CoachCopy(language);
+        await tester.tap(find.text(copy.alerts));
+        await tester.pumpAndSettle();
+        expect(find.text(copy.showResolved), findsOneWidget);
+        final Finder alertsList = find.byType(ListView).last;
+        final Finder alertsScroll = find.descendant(
+          of: alertsList,
+          matching: find.byType(Scrollable),
+        ).first;
+        final ScrollableState alertsScrollState =
+            tester.state<ScrollableState>(alertsScroll);
+        alertsScrollState.position.jumpTo(0);
+        await tester.pumpAndSettle();
+        for (int index = 0; index < alerts.length; index++) {
+          final Finder descriptionText = find.textContaining(
+            language == 'ar'
+                ? arabicDescriptions[index]
+                : englishDescriptions[index],
+          );
+          for (int attempt = 0;
+              attempt < 8 && descriptionText.evaluate().isEmpty;
+              attempt++) {
+            final ScrollPosition position = alertsScrollState.position;
+            position.jumpTo((position.pixels + 240)
+                .clamp(0.0, position.maxScrollExtent));
+            await tester.pumpAndSettle();
+          }
+          expect(descriptionText, findsWidgets);
+        }
+        expect(tester.takeException(), isNull);
+
+        alertsScrollState.position.jumpTo(0);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(copy.acknowledge).first);
+        await tester.pumpAndSettle();
+        expect(fake.coachAlerts.first['state'], 'acknowledged');
+        await tester.tap(find.text(copy.resolve).first);
+        await tester.pumpAndSettle();
+        expect(fake.coachAlerts.first['state'], 'resolved');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
   testWidgets('cached alert descriptions re-render when Display language changes',
       (tester) async {
     final FakeMayosApi fake = _coachFake()

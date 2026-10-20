@@ -7,11 +7,13 @@ Future<T?> showMayosBottomSheetEditor<T>({
   required BuildContext context,
   required Widget content,
   required Widget actions,
+  bool useRootNavigator = false,
 }) =>
     showModalBottomSheet<T>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
+      useRootNavigator: useRootNavigator,
       builder: (BuildContext context) {
         final MediaQueryData media = MediaQuery.of(context);
         return AnimatedPadding(

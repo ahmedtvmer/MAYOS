@@ -1299,6 +1299,9 @@ class CoachCopy {
       ? 'تم نسخ رمز الدعوة. يمكنك مشاركته مع اللاعب.'
       : 'Invite code copied. You can share it with the player.';
 
+  // #430 phone deep-link action.
+  String get reviewRequest => isArabic ? 'مراجعة الطلب' : 'Review request';
+
   String _count(int count, ArabicCountNoun noun) {
     final String phrase = arabicCountPhrase(count, noun);
     final RegExpMatch? leading = RegExp(r'^\d+').firstMatch(phrase);

@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
+import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_card.dart';
@@ -16,6 +17,7 @@ import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/features/coach/program_import_files.dart';
+import 'package:mayos_mobile/src/features/coach/program_import_screen.dart';
 import 'package:mayos_mobile/src/features/coach/coach_exercise_table.dart';
 import 'package:mayos_mobile/src/features/player/workout/logger_card_widgets.dart'
     show ExerciseCatalogThumbnail;
@@ -25,6 +27,7 @@ import 'support/fake_api_adapter.dart';
 import 'support/fake_media_http.dart';
 import 'support/fake_mayos_api.dart';
 import 'support/test_fonts.dart';
+import 'support/coach_layout_harness.dart';
 
 const List<String> _programActionKeys = <String>[
   'coach_program_approve_as_is',
@@ -75,9 +78,10 @@ Future<void> _pumpApp(
   WidgetTester tester,
   FakeMayosApi fake, {
   double logicalWidth = 540,
+  double logicalHeight = 1200,
   List<Override> providerOverrides = const <Override>[],
 }) async {
-  tester.view.physicalSize = Size(logicalWidth * 2, 2400);
+  tester.view.physicalSize = Size(logicalWidth * 2, logicalHeight * 2);
   tester.view.devicePixelRatio = 2.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -1769,6 +1773,316 @@ void main() {
           'Squat');
     });
   }
+
+  testWidgets('free-form import reaches review and creates a chosen week on a phone',
+      (WidgetTester tester) async {
+    late FakeMayosApi fake;
+    await expectCoachPhoneLayout(
+      tester,
+      configureFake: (FakeMayosApi configured) {
+        fake = configured;
+        configured.assignments.add(<String, dynamic>{
+          'assignment_id': 'assignment-1',
+          'player_username': configured.displayLanguage == 'ar' ? 'بوب' : 'bob',
+          'started_at': '2026-09-24T10:00:00Z',
+          'status': 'active',
+        });
+        configured.programImportRequiresTabChoice = false;
+        configured.programImportDraftExists = true;
+      },
+      ready: (String language) =>
+          find.byKey(const Key('coach_roster_list_screen')),
+      pageScrollable: (String language) => find.descendant(
+        of: find.byKey(const Key('coach_roster_list_screen')),
+        matching: find.byType(Scrollable),
+      ).first,
+      providerOverrides: <Override>[
+        programSpreadsheetPickerProvider.overrideWithValue(
+          () async => PlatformFile(
+            name: 'plan.csv',
+            size: 4,
+            bytes: Uint8List.fromList(<int>[100, 97, 121, 10]),
+          ),
+        ),
+      ],
+      assertions: (WidgetTester tester, String language) async {
+        final CoachCopy copy = CoachCopy(language);
+        final bool arabic = language == 'ar';
+        final String playerName = arabic ? 'بوب' : 'bob';
+        final String weekOne = arabic ? 'الأسبوع الأول' : 'Week 1';
+        final String weekTwo = arabic ? 'الأسبوع الثاني' : 'Week 2';
+      final Map<String, dynamic> first = Map<String, dynamic>.from(
+        (fake.programImportResult['rows'] as List<Map<String, dynamic>>).single,
+      )
+        ..['week'] = weekOne
+        ..['week_order'] = 1;
+      final Map<String, dynamic> second = Map<String, dynamic>.from(first)
+        ..['source_row'] = 3
+        ..['week'] = weekTwo
+        ..['week_order'] = 2
+        ..['exercise_name'] = arabic ? 'تمرين خاص' : 'Coach special'
+        ..['exercise_id'] = 'squat'
+        ..['suggestions'] = <dynamic>[]
+        ..['day_name'] = arabic ? 'سحب' : 'Pull';
+      first['exercise_id'] = 'bench_press';
+      fake.programImportResult.addAll(<String, dynamic>{
+        'import_mode': 'freeform',
+        'detected_weeks': <String>[weekOne, weekTwo],
+        'selected_week': weekOne,
+        'confirm_layout': false,
+        'layout_days': <Map<String, dynamic>>[
+          <String, dynamic>{'day': 1, 'name': arabic ? 'دفع' : 'Push'},
+          <String, dynamic>{'day': 2, 'name': arabic ? 'سحب' : 'Pull'},
+        ],
+        'rows': <Map<String, dynamic>>[first, second],
+      });
+        await tester.tap(find.text(playerName).first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(copy.program).first);
+        await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('program_import_action')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('program_import_pick_file')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('program_import_pick_file')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('program_import_week_picker')), findsOneWidget);
+        expect(find.byKey(const Key('program_import_row_2')), findsOneWidget);
+
+        final Finder weekPicker =
+            find.byKey(const Key('program_import_week_picker'));
+        await tester.ensureVisible(weekPicker);
+        await tester.tap(weekPicker);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(weekTwo).last);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('program_import_row_3')), findsOneWidget);
+        final Finder createDraft =
+            find.byKey(const Key('program_import_create_draft'));
+        await tester.ensureVisible(createDraft);
+        await tester.tap(createDraft);
+        await tester.pumpAndSettle();
+        expect(find.text(copy.importReplaceTitle), findsOneWidget);
+        await tester.tap(find.text(copy.importReplaceAction));
+        await tester.pumpAndSettle();
+        expect(fake.programImportDraftRequests.single['rows'], hasLength(1));
+        expect(fake.programImportReplaceRequests.single, isTrue);
+        expect(tester.takeException(), isNull);
+        for (final Element element in find.descendant(
+          of: find.byType(CoachProgramImportScreen),
+          matching: find.byType(Scrollable),
+        ).evaluate()) {
+          final Scrollable scrollable = element.widget as Scrollable;
+          expect(scrollable.axisDirection, isNot(AxisDirection.left));
+          expect(scrollable.axisDirection, isNot(AxisDirection.right));
+        }
+      },
+    );
+  });
+
+  testWidgets('phone layout confirmation and rejection work in both languages',
+      (WidgetTester tester) async {
+    await expectCoachPhoneLayout(
+      tester,
+      configureFake: (FakeMayosApi fake) {
+        fake.assignments.add(<String, dynamic>{
+          'assignment_id': 'assignment-1',
+          'player_username': fake.displayLanguage == 'ar' ? 'بوب' : 'bob',
+          'started_at': '2026-09-24T10:00:00Z',
+          'status': 'active',
+        });
+        fake.programImportResult['confirm_layout'] = true;
+        fake.programImportResult['layout_days'] = <Map<String, dynamic>>[
+          <String, dynamic>{'day': 1, 'name': fake.displayLanguage == 'ar' ? 'دفع' : 'Push'},
+        ];
+      },
+      ready: (String language) =>
+          find.byKey(const Key('coach_roster_list_screen')),
+      pageScrollable: (String language) => find.descendant(
+        of: find.byKey(const Key('coach_roster_list_screen')),
+        matching: find.byType(Scrollable),
+      ).first,
+      providerOverrides: <Override>[
+        programSpreadsheetPickerProvider.overrideWithValue(
+          () async => PlatformFile(
+            name: 'plan.csv',
+            size: 4,
+            bytes: Uint8List.fromList(<int>[100, 97, 121, 10]),
+          ),
+        ),
+      ],
+      assertions: (WidgetTester tester, String language) async {
+        final CoachCopy copy = CoachCopy(language);
+        final bool arabic = language == 'ar';
+        await tester.tap(find.text(arabic ? 'بوب' : 'bob').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(copy.program).first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('program_import_action')));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('program_import_pick_file')));
+        await tester.pumpAndSettle();
+        final Finder reject =
+            find.byKey(const Key('program_import_layout_not_right'));
+        final Finder confirm =
+            find.byKey(const Key('program_import_layout_confirm'));
+        expect(reject, findsOneWidget);
+        expect(confirm, findsOneWidget);
+        await tester.tap(reject);
+        await tester.pumpAndSettle();
+        expect(find.text(copy.layoutNotRightGuidance), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('program_import_pick_file')));
+        await tester.pumpAndSettle();
+        expect(confirm, findsOneWidget);
+        await tester.tap(confirm);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('program_import_create_draft')), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
+  testWidgets('phone import chooses a tab and resolves exercises in both languages',
+      (WidgetTester tester) async {
+    late FakeMayosApi fake;
+    await expectCoachPhoneLayout(
+      tester,
+      configureFake: (FakeMayosApi configured) {
+        fake = configured;
+        configured.assignments.add(<String, dynamic>{
+          'assignment_id': 'assignment-1',
+          'player_username': configured.displayLanguage == 'ar' ? 'بوب' : 'bob',
+          'started_at': '2026-09-24T10:00:00Z',
+          'status': 'active',
+        });
+        configured.programImportRequiresTabChoice = true;
+        configured.programImportDetectedTabs = configured.displayLanguage == 'ar'
+            ? <String>['برنامج', 'ملاحظات']
+            : <String>['Program', 'Notes'];
+        final Map<String, dynamic> matched = Map<String, dynamic>.from(
+          configured.programImportResult['rows'].single as Map<String, dynamic>,
+        )
+          ..['exercise_name'] = configured.displayLanguage == 'ar'
+              ? 'ضغط مائل'
+              : 'Incline press'
+          ..['exercise_id'] = null
+          ..['resolution'] = 'ambiguous'
+          ..['suggestions'] = <Map<String, dynamic>>[
+            <String, dynamic>{
+              'exercise_id': 'bench_press',
+              'name': configured.displayLanguage == 'ar'
+                  ? 'ضغط صدر'
+                  : 'Bench match',
+            },
+          ];
+        final Map<String, dynamic> created = Map<String, dynamic>.from(matched)
+          ..['source_row'] = 3
+          ..['exercise_name'] = configured.displayLanguage == 'ar'
+              ? 'تمرين جديد'
+              : 'New exercise'
+          ..['exercise_id'] = null
+          ..['resolution'] = 'unresolved'
+          ..['suggestions'] = <dynamic>[];
+        configured.programImportResult['rows'] =
+            <Map<String, dynamic>>[matched, created];
+      },
+      ready: (String language) =>
+          find.byKey(const Key('coach_roster_list_screen')),
+      pageScrollable: (String language) => find.descendant(
+        of: find.byKey(const Key('coach_roster_list_screen')),
+        matching: find.byType(Scrollable),
+      ).first,
+      providerOverrides: <Override>[
+        programSpreadsheetPickerProvider.overrideWithValue(
+          () async => PlatformFile(
+            name: 'plan.csv',
+            size: 4,
+            bytes: Uint8List.fromList(<int>[100, 97, 121, 10]),
+          ),
+        ),
+      ],
+      assertions: (WidgetTester tester, String language) async {
+        final CoachCopy copy = CoachCopy(language);
+        final bool arabic = language == 'ar';
+        await tester.tap(find.text(arabic ? 'بوب' : 'bob').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(copy.program).first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('program_import_action')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('program_import_pick_file')));
+        await tester.pumpAndSettle();
+        final Finder tabPicker =
+            find.byKey(const Key('program_import_tab_picker'));
+        expect(tabPicker, findsOneWidget);
+        await tester.tap(tabPicker);
+        await tester.pumpAndSettle();
+        await tester.tap(
+            find.text(fake.programImportDetectedTabs.last).last);
+        await tester.pumpAndSettle();
+        final Finder readSheet =
+            find.byKey(const Key('program_import_read_sheet'));
+        await tester.ensureVisible(readSheet);
+        await tester.tap(readSheet);
+        await tester.pumpAndSettle();
+
+        final Finder match = find.byKey(const Key('program_import_match_2'));
+        await tester.ensureVisible(match);
+        await tester.tap(match);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(arabic ? 'ضغط صدر' : 'Bench match').last);
+        await tester.pumpAndSettle();
+        final Finder createExercise =
+            find.byKey(const Key('program_import_create_exercise_3'));
+        await tester.ensureVisible(createExercise);
+        await tester.tap(createExercise);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('program_import_create_exercise_3')),
+            findsNothing);
+        final Finder createDraft =
+            find.byKey(const Key('program_import_create_draft'));
+        await tester.ensureVisible(createDraft);
+        await tester.tap(createDraft);
+        await tester.pumpAndSettle();
+        expect(fake.programImportDraftRequests.single['rows'], hasLength(2));
+        expect(
+          (fake.programImportDraftRequests.single['rows'] as List<dynamic>)[1]
+              ['exercise_id'],
+          startsWith('coach:'),
+        );
+        expect(fake.programImportRequests, 2);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
+  testWidgets('spreadsheet import review remains available at desktop width',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    await _pumpApp(
+      tester,
+      fake,
+      logicalWidth: 1280,
+      logicalHeight: 900,
+    );
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await tester.tap(find.byKey(const Key('program_import_action')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('program_import_pick_file')));
+    await tester.tap(find.byKey(const Key('program_import_pick_file')));
+    await _pumpUntilFound(
+        tester, find.byKey(const Key('program_import_create_draft')));
+
+    expect(find.text('Rows: 1 · valid: 1'), findsOneWidget);
+    expect(find.byKey(const Key('program_import_row_2')), findsOneWidget);
+    expect(find.byKey(const Key('program_import_create_draft')), findsOneWidget);
+    expect(tester.getRect(find.byKey(const Key('program_import_create_draft'))).right,
+        lessThanOrEqualTo(1280));
+    expect(tester.takeException(), isNull);
+  });
 
   for (final bool arabic in <bool>[false, true]) {
     testWidgets(

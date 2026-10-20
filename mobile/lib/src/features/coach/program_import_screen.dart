@@ -10,6 +10,7 @@ import '../../core/models.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/ui/mayos_button.dart';
+import '../../core/ui/is_desktop_layout.dart';
 import '../../providers.dart';
 import 'coach_program_draft_screen.dart';
 import 'program_import_files.dart';
@@ -60,11 +61,19 @@ class _CoachProgramImportScreenState
   @override
   Widget build(BuildContext context) {
     final CoachCopy copy = coachCopyOf(context);
+    final bool desktop = isDesktopLayout(context);
     return Scaffold(
       appBar: AppBar(title: Text(copy.importFromSpreadsheet)),
+      bottomNavigationBar: desktop ? null : _phoneBottomAction(context),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(MayosSpacing.md),
+          padding: EdgeInsetsDirectional.fromSTEB(
+            MayosSpacing.md,
+            MayosSpacing.md,
+            MayosSpacing.md,
+            // Keep the final row clear of the pinned action and shell tabs.
+            isDesktopLayout(context) ? MayosSpacing.md : MayosSpacing.xxl,
+          ),
           children: <Widget>[
             Text(copy.importPrivacyNote),
             const SizedBox(height: MayosSpacing.md),
@@ -162,14 +171,58 @@ class _CoachProgramImportScreenState
         for (final Map<String, dynamic> row in _rows)
           _importRow(context, row),
         const SizedBox(height: MayosSpacing.md),
-        MayosButton(
-          key: const Key('program_import_create_draft'),
-          label: copy.createImportedDraft,
-          icon: Icons.edit_note,
-          loading: _busy,
-          onPressed: _busy || _confirmedRows.isEmpty ? null : _createDraft,
-        ),
+        if (isDesktopLayout(context))
+          MayosButton(
+            key: const Key('program_import_create_draft'),
+            label: copy.createImportedDraft,
+            icon: Icons.edit_note,
+            loading: _busy,
+            onPressed: _busy || _confirmedRows.isEmpty ? null : _createDraft,
+          ),
       ],
+    );
+  }
+
+  Widget? _phoneBottomAction(BuildContext context) {
+    final CoachCopy copy = coachCopyOf(context);
+    final Widget? action;
+    if (_result?['confirm_layout'] == true &&
+        !_layoutConfirmed &&
+        !_layoutRejected) {
+      action = Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          OutlinedButton(
+            key: const Key('program_import_layout_not_right'),
+            onPressed: () => setState(() => _layoutRejected = true),
+            child: Text(copy.layoutNotRight),
+          ),
+          const SizedBox(height: MayosSpacing.xs),
+          FilledButton(
+            key: const Key('program_import_layout_confirm'),
+            onPressed: () => setState(() => _layoutConfirmed = true),
+            child: Text(copy.confirmLayoutAndContinue),
+          ),
+        ],
+      );
+    } else if (_result != null && _layoutCanContinue && !_layoutRejected) {
+      action = MayosButton(
+        key: const Key('program_import_create_draft'),
+        label: copy.createImportedDraft,
+        icon: Icons.edit_note,
+        loading: _busy,
+        onPressed: _busy || _confirmedRows.isEmpty ? null : _createDraft,
+      );
+    } else {
+      return null;
+    }
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.all(MayosSpacing.md),
+        child: action,
+      ),
     );
   }
 
@@ -237,7 +290,7 @@ class _CoachProgramImportScreenState
                       : () => _readSelectedFile(sheet: _selectedTab),
                 ),
               ],
-            ] else if (!_layoutConfirmed) ...<Widget>[
+            ] else if (!_layoutConfirmed && isDesktopLayout(context)) ...<Widget>[
               const SizedBox(height: MayosSpacing.sm),
               Wrap(
                 spacing: MayosSpacing.sm,

@@ -25,6 +25,9 @@ abstract final class MayosLayout {
   /// Logical viewport width at which shell tabs move to a side rail.
   static const double desktopNavigationBreakpoint = 1024;
 
+  /// Height of the phone Coach/Player bottom navigation content.
+  static const double phoneBottomNavigationHeight = 62;
+
   /// Maximum desktop width for Player mode page content.
   static const double playerColumnMaxWidth = 480;
 

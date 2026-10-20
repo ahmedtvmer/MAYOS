@@ -48,7 +48,7 @@ class MayosBottomNavigation extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 62,
+          height: MayosLayout.phoneBottomNavigationHeight,
           child: Row(
             children: <Widget>[
               for (int i = 0; i < items.length; i++)

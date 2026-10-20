@@ -4,16 +4,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
+import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_bottom_navigation.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
 import 'package:mayos_mobile/src/features/coach/coach_player_history_screen.dart';
 import 'package:mayos_mobile/src/features/coach/coach_shell.dart';
+import 'package:mayos_mobile/src/router.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/auth_harness.dart';
 import 'support/fake_mayos_api.dart';
+import 'support/fake_api_adapter.dart';
+import 'support/coach_layout_harness.dart';
 
 /// Coach program requests in the shell (#121): the four client calls, the
 /// Requests tab and its resolve sheet, and the badge/chip refresh.
@@ -49,9 +53,11 @@ Future<void> _settle(WidgetTester tester) async {
 Future<void> _pumpApp(
   WidgetTester tester,
   FakeMayosApi fake,
-  InMemoryAppModeStore modeStore,
-) async {
-  tester.view.physicalSize = const Size(1080, 2400);
+  InMemoryAppModeStore modeStore, {
+  double logicalWidth = 540,
+  double logicalHeight = 1200,
+}) async {
+  tester.view.physicalSize = Size(logicalWidth * 2, logicalHeight * 2);
   tester.view.devicePixelRatio = 2.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -135,13 +141,10 @@ Map<String, dynamic> _request({
       'resolved_by': status == 'pending' ? null : 'account-alice',
     };
 
-MayosButton _declineButton(WidgetTester tester) => tester
-    .widget<MayosButton>(find.byKey(const Key('request_decline_button')));
-
 /// Everything inside the open resolve sheet, so sheet text is never confused
 /// with the same text on the cards behind it.
 Finder _sheet(Finder finder) => find.descendant(
-      of: find.byKey(const Key('resolve_request_sheet')),
+      of: find.byType(BottomSheet).last,
       matching: finder,
     );
 
@@ -165,6 +168,171 @@ Future<ApiClient> _clientFor(FakeMayosApi fake) async {
 }
 
 void main() {
+  testWidgets('requests apply and decline fit a 360 dp phone in both languages',
+      (WidgetTester tester) async {
+    late FakeMayosApi fake;
+    await expectCoachPhoneLayout(
+      tester,
+      configureFake: (FakeMayosApi configured) {
+        fake = configured;
+        fake.assignments.add(<String, dynamic>{
+          'assignment_id': 'assignment-1',
+          'player_username': 'bob',
+          'started_at': '2026-09-24T10:00:00Z',
+          'status': 'active',
+        });
+        fake.programRequests.add(_request(id: 'req-apply', status: 'pending'));
+        fake.programRequests.add(_request(
+          id: 'req-decline',
+          status: 'pending',
+          reason: 'Knee discomfort.',
+        ));
+      },
+      ready: (String language) => find.byKey(const Key('roster_row_assignment-1')),
+      pageScrollable: (String language) => find.descendant(
+        of: find.byKey(const Key('coach_roster_list_screen')),
+        matching: find.byType(Scrollable),
+      ).first,
+      assertions: (WidgetTester tester, String language) async {
+        final CoachCopy copy = CoachCopy(language);
+        await tester.tap(find.text(copy.requests));
+        await tester.pumpAndSettle();
+        expect(find.text(copy.pending), findsWidgets);
+        final Finder applyCard =
+            find.byKey(const Key('request_card_req-apply'));
+        await tester.ensureVisible(applyCard);
+        await tester.tap(applyCard);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('request_apply_button')), findsOneWidget);
+        await tester.tap(find.byKey(const Key('request_apply_button')));
+        await tester.pumpAndSettle();
+        expect(fake.programRequests.first['status'], 'applied');
+
+        final Finder declineCard =
+            find.byKey(const Key('request_card_req-decline'));
+        await tester.ensureVisible(declineCard);
+        await tester.tap(declineCard);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('request_decline_button')), findsOneWidget);
+        expect(find.text(copy.reasonForDeclining), findsOneWidget);
+        expect(find.text(copy.sentOnlyOnDecline), findsOneWidget);
+        final TextField replyField = tester.widget<TextField>(
+          find.byKey(const Key('request_reply_field')),
+        );
+        expect(replyField.maxLength, 500);
+        expect(find.text('0/500'), findsOneWidget);
+        final Finder decline = find.byKey(const Key('request_decline_button'));
+        expect(tester.widget<MayosButton>(decline).onPressed, isNull);
+        await tester.enterText(
+          find.byKey(const Key('request_reply_field')),
+          'Rest first, please',
+        );
+        await tester.pump();
+        expect(find.text('18/500'), findsOneWidget);
+        expect(tester.widget<MayosButton>(decline).onPressed, isNotNull);
+        await tester.ensureVisible(decline);
+        await tester.tap(decline);
+        await tester.pumpAndSettle();
+        expect(fake.programRequests.last['status'], 'declined');
+        expect(fake.programRequests.last['response'], 'Rest first, please');
+        expect(
+          fake.adapter.requests.where((FakeRequest request) =>
+              request.method == 'POST' && request.path.endsWith('/decline')).length,
+          1,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
+  testWidgets('desktop player resolve sheet keeps the 500 character reply field',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake();
+    fake.programRequests.add(_request(id: 'req-desktop', status: 'pending'));
+    await _pumpApp(
+      tester,
+      fake,
+      InMemoryAppModeStore(),
+      logicalWidth: 1440,
+      logicalHeight: 960,
+    );
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.byKey(const Key('roster_row_assignment-1')));
+    await _pumpUntilFound(tester, find.text('History'));
+    await tester.tap(find.text('Requests (1)'));
+    await _pumpUntilFound(tester, find.text('Program requests'));
+    await tester.tap(find.byKey(const Key('request_card_req-desktop')));
+    await _pumpUntilFound(tester, find.byKey(const Key('request_reply_field')));
+
+    expect(find.text('Reason for declining (shown to the player)'), findsOneWidget);
+    expect(find.text('Sent only with Decline · up to 500 characters.'), findsOneWidget);
+    expect(find.text('0/500'), findsOneWidget);
+    final TextField replyField = tester.widget<TextField>(
+      find.byKey(const Key('request_reply_field')),
+    );
+    expect(replyField.maxLength, 500);
+    final MayosButton decline = tester.widget<MayosButton>(
+      find.byKey(const Key('request_decline_button')),
+    );
+    expect(decline.onPressed, isNull);
+    await tester.enterText(
+      find.byKey(const Key('request_reply_field')),
+      'Rest first, please',
+    );
+    await tester.pump();
+    expect(find.text('18/500'), findsOneWidget);
+    expect(
+      tester.widget<MayosButton>(
+        find.byKey(const Key('request_decline_button')),
+      ).onPressed,
+      isNotNull,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('phone request deep link opens the shared resolve sheet in both languages',
+      (WidgetTester tester) async {
+    late FakeMayosApi fake;
+    await expectCoachPhoneLayout(
+      tester,
+      configureFake: (FakeMayosApi configured) {
+        fake = configured;
+        configured.assignments.add(<String, dynamic>{
+          'assignment_id': 'assignment-1',
+          'player_username': configured.displayLanguage == 'ar' ? 'بوب' : 'bob',
+          'started_at': '2026-09-24T10:00:00Z',
+          'status': 'active',
+        });
+        configured.programRequests.add(
+          _request(id: 'req-deep-link', status: 'pending'),
+        );
+      },
+      ready: (String language) =>
+          find.byKey(const Key('roster_row_assignment-1')),
+      pageScrollable: (String language) => find.descendant(
+        of: find.byKey(const Key('coach_roster_list_screen')),
+        matching: find.byType(Scrollable),
+      ).first,
+      assertions: (WidgetTester tester, String language) async {
+        final CoachCopy copy = CoachCopy(language);
+        ProviderScope.containerOf(tester.element(find.byType(MayosApp)))
+            .read(routerProvider)
+            .go('/coach/requests/req-deep-link');
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('request_resolve_button')), findsOneWidget);
+        expect(find.byKey(const Key('request_reply_field')), findsNothing);
+        await tester.tap(find.byKey(const Key('request_resolve_button')));
+        await tester.pumpAndSettle();
+        expect(find.text(copy.reasonForDeclining), findsOneWidget);
+        expect(find.byKey(const Key('request_reply_field')), findsOneWidget);
+        await tester.tap(find.byKey(const Key('request_apply_button')));
+        await tester.pumpAndSettle();
+        expect(fake.programRequests.single['status'], 'applied');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
   group('client', () {
     test('the four coach program-request calls succeed', () async {
       final FakeMayosApi fake = _coachFake();
@@ -373,32 +541,7 @@ void main() {
     expect(_sheet(find.text('“Shoulder discomfort.”')), findsOneWidget);
     expect(_sheet(find.text('Apply swap')), findsOneWidget);
     expect(_sheet(find.text('Decline')), findsOneWidget);
-    // The reason belongs to Decline alone and says so (#121).
-    expect(
-      _sheet(find.text('Reason for declining (shown to the player)')),
-      findsOneWidget,
-    );
-    expect(
-      _sheet(find.text('Sent only with Decline · up to 500 characters.')),
-      findsOneWidget,
-    );
     expect(find.byKey(const Key('request_reply_field')), findsOneWidget);
-    // Capped at 500 characters with a live counter, and Decline stays
-    // disabled until the reason is non-empty.
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('request_reply_field')))
-          .maxLength,
-      500,
-    );
-    expect(find.text('0/500'), findsOneWidget);
-    expect(_declineButton(tester).onPressed, isNull);
-
-    await tester.enterText(
-        find.byKey(const Key('request_reply_field')), 'Try incline press.');
-    await tester.pump();
-    expect(find.text('18/500'), findsOneWidget);
-    expect(_declineButton(tester).onPressed, isNotNull);
 
     // Apply never sends the typed reason: it is answered by the swap alone.
     await tester.tap(find.byKey(const Key('request_apply_button')));
@@ -587,12 +730,9 @@ void main() {
     await _pumpUntilFound(
         tester, find.byKey(const Key('request_decline_button')));
 
-    // Decline is disabled while the player-visible reason is blank (#121).
-    expect(_declineButton(tester).onPressed, isNull);
     await tester.enterText(
         find.byKey(const Key('request_reply_field')), 'Rest first.');
     await tester.pump();
-    expect(_declineButton(tester).onPressed, isNotNull);
     await tester.tap(find.byKey(const Key('request_decline_button')));
     await _pumpUntilGone(
         tester, find.byKey(const Key('request_decline_button')));

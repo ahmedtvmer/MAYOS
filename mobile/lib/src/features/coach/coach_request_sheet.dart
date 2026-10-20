@@ -9,6 +9,8 @@ import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
+import '../../core/ui/is_desktop_layout.dart';
+import '../../core/ui/mayos_bottom_sheet_editor.dart';
 import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_text_field.dart';
 import '../../core/ui/first_strong_direction.dart';
@@ -64,12 +66,14 @@ class CoachRequestDecisionControls extends StatefulWidget {
     required this.replyController,
     required this.busy,
     required this.onDecision,
+    this.replyMaxLines = 3,
   });
 
   final ProgramRequest request;
   final TextEditingController replyController;
   final bool busy;
   final ValueChanged<CoachRequestDecision> onDecision;
+  final int replyMaxLines;
 
   @override
   State<CoachRequestDecisionControls> createState() =>
@@ -101,7 +105,7 @@ class _CoachRequestDecisionControlsState
           label: coachCopyOf(context).reasonForDeclining,
           helperText: coachCopyOf(context).sentOnlyOnDecline,
           minLines: 1,
-          maxLines: 3,
+          maxLines: widget.replyMaxLines,
           maxLength: 500,
           enabled: !widget.busy,
           onChanged: (_) => setState(() {}),
@@ -160,6 +164,13 @@ Future<CoachRequestResolution> showCoachRequestResolveSheet(
   required ProgramRequest request,
   String? playerUsername,
 }) {
+  if (!isDesktopLayout(context)) {
+    return _showPhoneCoachRequestResolveSheet(
+      context,
+      request: request,
+      playerUsername: playerUsername ?? request.playerUsername,
+    );
+  }
   return showModalBottomSheet<CoachRequestResolution>(
     context: context,
     isScrollControlled: true,
@@ -170,6 +181,119 @@ Future<CoachRequestResolution> showCoachRequestResolveSheet(
     ),
   ).then((CoachRequestResolution? result) =>
       result ?? const CoachRequestResolution.dismissed());
+}
+
+Future<CoachRequestResolution> _showPhoneCoachRequestResolveSheet(
+  BuildContext context, {
+  required ProgramRequest request,
+  required String? playerUsername,
+}) async {
+  final CoachRequestResolution? result =
+      await showMayosBottomSheetEditor<CoachRequestResolution>(
+    context: context,
+    content: _PhoneRequestDecisionEditor(
+      request: request,
+      playerUsername: playerUsername,
+    ),
+    actions: const SizedBox.shrink(),
+    useRootNavigator: true,
+  );
+  return result ?? const CoachRequestResolution.dismissed();
+}
+
+class _PhoneRequestDecisionEditor extends ConsumerStatefulWidget {
+  const _PhoneRequestDecisionEditor({
+    required this.request,
+    required this.playerUsername,
+  });
+
+  final ProgramRequest request;
+  final String? playerUsername;
+
+  @override
+  ConsumerState<_PhoneRequestDecisionEditor> createState() =>
+      _PhoneRequestDecisionEditorState();
+}
+
+class _PhoneRequestDecisionEditorState
+    extends ConsumerState<_PhoneRequestDecisionEditor> {
+  final TextEditingController _reply = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _reply.dispose();
+    super.dispose();
+  }
+
+  Future<void> _decide(CoachRequestDecision decision) async {
+    setState(() => _busy = true);
+    final CoachRequestResolution result = await resolveCoachProgramRequest(
+      api: ref.read(apiClientProvider),
+      request: widget.request,
+      decision: decision,
+      reply: decision == CoachRequestDecision.decline ? _reply.text.trim() : '',
+    );
+    if (!mounted) return;
+    Navigator.of(context).pop(result);
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          _phoneRequestSummary(
+            context,
+            widget.request,
+            widget.playerUsername,
+          ),
+          const SizedBox(height: MayosSpacing.md),
+          CoachRequestDecisionControls(
+            request: widget.request,
+            replyController: _reply,
+            busy: _busy,
+            replyMaxLines: 1,
+            onDecision: _decide,
+          ),
+        ],
+      );
+}
+
+Widget _phoneRequestSummary(
+  BuildContext context,
+  ProgramRequest request,
+  String? playerUsername,
+) {
+  final MayosThemeExtension colors = MayosTheme.of(context);
+  final copy = coachCopyOf(context);
+  return Column(
+    key: const Key('resolve_request_sheet'),
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: <Widget>[
+      Text(
+        copy.playerAsks(playerUsername ?? copy.player),
+        style: MayosTypography.of(context).caption
+            .copyWith(color: colors.textSecondary),
+      ),
+      const SizedBox(height: MayosSpacing.xxs),
+      Text(
+        coachRequestTitle(context, request),
+        style: MayosTypography.of(context).sectionHeading
+            .copyWith(color: colors.textPrimary),
+      ),
+      const SizedBox(height: MayosSpacing.xxs),
+      Text(
+        copy.requestScope(request.dayName, request.programVersion),
+        style: MayosTypography.of(context).caption
+            .copyWith(color: colors.textSecondary),
+      ),
+      const SizedBox(height: MayosSpacing.sm),
+      FirstStrongDirection(
+        text: request.reason,
+        child: Text('“${request.reason}”'),
+      ),
+    ],
+  );
 }
 
 class _ResolveRequestSheet extends ConsumerStatefulWidget {

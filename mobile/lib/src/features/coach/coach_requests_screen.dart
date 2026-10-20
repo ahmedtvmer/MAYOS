@@ -13,6 +13,7 @@ import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/is_desktop_layout.dart';
 import '../../core/ui/mayos_card.dart';
+import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_section_header.dart';
 import '../../core/ui/first_strong_direction.dart';
 import '../../providers.dart';
@@ -248,6 +249,8 @@ class _CoachRequestsScreenState extends ConsumerState<CoachRequestsScreen> {
       key: ValueKey<String>(request.requestId),
       request: request,
       error: _error,
+      isPhone: !isDesktopLayout(context),
+      onPhoneResolve: () => _resolve(request),
       onDecision: (CoachRequestDecision decision, String reply) =>
           _resolveInline(request, decision, reply),
     );
@@ -299,11 +302,15 @@ class CoachRequestDetailPane extends StatefulWidget {
     super.key,
     required this.request,
     required this.onDecision,
+    required this.isPhone,
+    this.onPhoneResolve,
     this.error,
   });
 
   final ProgramRequest request;
   final FailureMessage? error;
+  final bool isPhone;
+  final Future<void> Function()? onPhoneResolve;
   final Future<void> Function(CoachRequestDecision decision, String reply)
       onDecision;
 
@@ -376,7 +383,15 @@ class _CoachRequestDetailPaneState extends State<CoachRequestDetailPane> {
             ],
           ),
         ),
-        if (request.isPending) ...<Widget>[
+        if (request.isPending && widget.isPhone) ...<Widget>[
+          const SizedBox(height: MayosSpacing.md),
+          MayosButton(
+            key: const Key('request_resolve_button'),
+            label: copy.reviewRequest,
+            icon: Icons.rate_review_outlined,
+            onPressed: widget.onPhoneResolve,
+          ),
+        ] else if (request.isPending) ...<Widget>[
           const SizedBox(height: MayosSpacing.md),
           CoachRequestDecisionControls(
             request: request,
