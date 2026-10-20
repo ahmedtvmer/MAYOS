@@ -7,6 +7,7 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/display_language/controller.dart';
+import 'package:mayos_mobile/src/core/shared_program_text.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
@@ -52,6 +53,9 @@ Future<void> pumpCoachApp(
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
+        sharedProgramTextSourceProvider.overrideWithValue(
+          NoopSharedProgramTextSource(),
+        ),
         ...providerOverrides,
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider
@@ -81,6 +85,7 @@ Future<void> expectCoachPhoneLayout(
   WidgetTester tester, {
   required CoachFakeSetup configureFake,
   CoachPhonePrepare? prepare,
+  InMemoryAppModeStore? modeStore,
   required Finder Function(String language) ready,
   required Finder Function(String language) pageScrollable,
   Finder Function(String language)? allowedInnerStrips,
@@ -98,6 +103,7 @@ Future<void> expectCoachPhoneLayout(
       fake,
       logicalSize: const Size(360, 800),
       language: language,
+      modeStore: modeStore,
       providerOverrides: providerOverrides,
     );
     await prepare?.call(tester, language);

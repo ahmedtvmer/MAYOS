@@ -12,6 +12,7 @@ import 'core/connectivity.dart';
 import 'core/display_language/controller.dart';
 import 'core/first_touch.dart';
 import 'core/models.dart';
+import 'core/shared_program_text.dart';
 import 'core/theme/mayos_spacing.dart';
 import 'core/theme/mayos_theme.dart';
 import 'core/token_subject.dart';
@@ -34,13 +35,22 @@ class _MayosAppState extends ConsumerState<MayosApp>
   String? _analyticsRole;
   bool _analyticsAllowed = true;
   late final ProviderSubscription<AuthState> _analyticsAuthSubscription;
+  StreamSubscription<SharedProgramText>? _sharedTextSubscription;
 
   @override
   void initState() {
     super.initState();
     _analyticsAuthSubscription = ref.listenManual<AuthState>(
       authControllerProvider,
-      (_, AuthState next) => _syncAnalyticsIdentity(next),
+      (AuthState? previous, AuthState next) {
+        _syncAnalyticsIdentity(next);
+        if (previous?.session == null && next.session != null &&
+            ref.read(sharedProgramTextStoreProvider).pending != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) ref.read(routerProvider).go(sharedProgramPath);
+          });
+        }
+      },
       fireImmediately: true,
     );
     WidgetsBinding.instance.addObserver(this);
@@ -56,6 +66,21 @@ class _MayosAppState extends ConsumerState<MayosApp>
     // Construct the source before auth navigation can replace the initial URL;
     // startup reads it only after authentication confirms this device is signed out.
     final firstTouchCapture = ref.read(firstTouchCaptureProvider);
+    final sharedTextStore = ref.read(sharedProgramTextStoreProvider);
+    _sharedTextSubscription = ref
+        .read(sharedProgramTextSourceProvider)
+        .events
+        .listen((SharedProgramText value) {
+      sharedTextStore.put(value);
+      if (mounted) ref.read(routerProvider).go(sharedProgramPath);
+    }, onError: (Object error, StackTrace stackTrace) {
+      if (error is MissingPluginException || error is PlatformException) return;
+      FlutterError.reportError(FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+      ));
+    });
+    unawaited(_captureInitialSharedText());
     // Eagerly build the draft sync service so its auth listener is attached
     // before any screen reads it, so a stored session starts syncing at app
     // start rather than only once the home screen mounts (ADR 020/033).
@@ -71,6 +96,19 @@ class _MayosAppState extends ConsumerState<MayosApp>
     Future<void>.microtask(
       () => ref.read(themeModeControllerProvider.notifier).initialize(),
     );
+  }
+
+  Future<void> _captureInitialSharedText() async {
+    try {
+      final value = await ref.read(sharedProgramTextSourceProvider).initial();
+      if (value == null || !mounted) return;
+      ref.read(sharedProgramTextStoreProvider).put(value);
+      ref.read(routerProvider).go(sharedProgramPath);
+    } on PlatformException {
+      // Optional Android sharing is unavailable on this platform.
+    } on MissingPluginException {
+      // Sharing is an optional Android entry point; normal startup continues.
+    }
   }
 
   Future<void> _initializeDisplayLanguage() async {
@@ -106,6 +144,7 @@ class _MayosAppState extends ConsumerState<MayosApp>
   @override
   void dispose() {
     _analyticsAuthSubscription.close();
+    _sharedTextSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

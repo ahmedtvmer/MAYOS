@@ -16,6 +16,8 @@ import 'features/coach/coach_invite_screen.dart';
 import 'features/coach/coach_player_history_screen.dart';
 import 'features/coach/coach_profile_screen.dart';
 import 'features/coach/coach_requests_screen.dart';
+import 'features/coach/program_import_screen.dart';
+import 'features/coach/shared_program_chooser_screen.dart';
 import 'features/coach/coach_shell.dart';
 import 'features/player/assignment/player_assignment_screen.dart';
 import 'features/player/auth/auth_controller.dart';
@@ -80,6 +82,10 @@ const String coachRequestsPath = '$coachPath/$coachRequestsRoutePath';
 const String coachAssistantPath = '$coachPath/$coachAssistantRoutePath';
 const String coachProfilePath = '$coachPath/$coachProfileRoutePath';
 const String coachInvitePath = '/coach-invite';
+const String sharedProgramPath = '/shared-program';
+const String sharedProgramImportPath = '/coach/shared-program-import';
+String sharedProgramImportLocation(String assignmentId) =>
+    '$sharedProgramImportPath/$assignmentId';
 const String playerSetupPath = '/player-setup';
 const String assignmentPath = '/assignment';
 const String playerNotificationsPath = '/player-notifications';
@@ -169,6 +175,9 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
       // The check is account-scoped, so it does not depend on whether the
       // router's or the mode controller's listener runs first (#119).
       if (!mode.isResolvedFor(accountSession.account.accountId)) {
+        if (path == sharedProgramPath) {
+          return splashHold(sharedProgramPath);
+        }
         // On a splash hold the query is the only record of the carried deep
         // link, so staying must not rewrite the location to plain splash (#127).
         if (path == splashPath && target != null) {
@@ -201,6 +210,9 @@ String? redirectFor(AuthState auth, String location, AppModeState mode,
         }
         return landing();
       }
+      // A shared import is an explicit Coach entry point. It can switch a
+      // Coach in Player mode before Player onboarding has been completed.
+      if (path == sharedProgramPath) return null;
       // Each mode owns its top-level shell: the coach routes need the coach
       // capability *and* Coach mode, and Coach mode never sits on the player
       // shell.
@@ -530,6 +542,27 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         path: coachInvitePath,
         builder: (BuildContext context, GoRouterState state) =>
             _withRecoveryEmailReminder(state, const CoachInviteScreen()),
+      ),
+      GoRoute(
+        path: sharedProgramPath,
+        builder: (BuildContext context, GoRouterState state) =>
+            const SharedProgramChooserScreen(),
+      ),
+      GoRoute(
+        path: '$sharedProgramImportPath/:assignmentId',
+        builder: (BuildContext context, GoRouterState state) {
+          final Object? routeExtra = state.extra;
+          final Map<Object?, Object?>? extra =
+              routeExtra is Map ? routeExtra : null;
+          return CoachProgramImportScreen(
+            assignmentId: state.pathParameters['assignmentId'] ?? '',
+            playerUsername: extra?['player'] is String
+                ? extra!['player'] as String
+                : '',
+            initialText:
+                extra?['text'] is String ? extra!['text'] as String : null,
+          );
+        },
       ),
       ShellRoute(
         builder: (BuildContext context, GoRouterState state, Widget child) =>

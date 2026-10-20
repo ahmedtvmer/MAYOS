@@ -3,8 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
+import 'package:mayos_mobile/src/core/app_mode.dart';
+import 'package:mayos_mobile/src/core/shared_program_text.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
@@ -64,6 +65,9 @@ Future<void> _pumpApp(
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
+        sharedProgramTextSourceProvider.overrideWithValue(
+          NoopSharedProgramTextSource(),
+        ),
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
         themeModeStoreProvider.overrideWithValue(store),

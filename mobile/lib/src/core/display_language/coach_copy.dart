@@ -4,6 +4,7 @@ import 'message_copy.dart';
 import 'message_resolution.dart';
 import '../personal_records.dart';
 import '../program_prescription.dart';
+import '../shared_program_text.dart';
 
 /// App-owned coach mode labels. Server supplied notices, alert descriptions,
 /// player notes, assistant replies, and checkpoint prose are rendered as sent.
@@ -37,6 +38,44 @@ class CoachCopy {
       isArabic ? 'علاقات التدريب النشطة' : 'Active assignments';
   String get noAssignedPlayers =>
       isArabic ? 'لا يوجد لاعبون معينون بعد.' : 'No assigned players yet.';
+  String get sharedProgramCoachOnly => isArabic
+      ? 'مشاركة برنامج تدريبي متاحة للمدربين فقط.'
+      : 'Sharing a program is available to Coaches only.';
+  String get sharedProgramGoHome => isArabic ? 'الرئيسية' : 'Home';
+  String get sharedProgramBackToRoster => isArabic
+      ? 'العودة إلى قائمة المدرب'
+      : 'Back to Coach roster';
+  String get sharedProgramRetry =>
+      isArabic ? 'إعادة المحاولة' : 'Retry';
+  String get sharedProgramAssignmentsUnavailable => isArabic
+      ? 'تعذّر تحميل قائمة اللاعبين. حاول مرة أخرى.'
+      : 'Players could not be loaded. Please try again.';
+  String get sharedProgramSignInRequired => isArabic
+      ? 'سجّل الدخول إلى MAYOS لمتابعة مشاركة البرنامج.'
+      : 'Sign in to MAYOS to continue sharing this program.';
+  String get choosePlayerForSharedProgram => isArabic
+      ? 'اختر اللاعب الذي سيُستورد له البرنامج.'
+      : 'Choose the Player to import this program for.';
+  String get textImportUnavailable => isArabic
+      ? 'استيراد النص غير متاح حاليًا.'
+      : 'Text import is unavailable right now.';
+  String get sharedProgramUnavailable => isArabic
+      ? 'تعذّر فتح النص المشارك. أعد مشاركته من التطبيق الآخر.'
+      : 'The shared text could not be opened. Share it again from the other app.';
+  String sharedProgramRefusal(SharedProgramTextError error) => switch (error) {
+        SharedProgramTextError.fileTooLarge => isArabic
+            ? 'حجم الملف أكبر من 1 ميجابايت.'
+            : 'The text file is larger than 1 MiB.',
+        SharedProgramTextError.unsupportedFileType => isArabic
+            ? 'شارك ملفًا بامتداد .txt لاستيراد البرنامج.'
+            : 'Share a .txt file to import a program.',
+        SharedProgramTextError.invalidUtf8 => isArabic
+            ? 'ترميز ملف .txt غير صالح.'
+            : 'The .txt file is not valid UTF-8.',
+        SharedProgramTextError.fileReadFailed => isArabic
+            ? 'تعذّرت قراءة الملف المشارك.'
+            : 'The shared file could not be read.',
+      };
   String get revokeAssignmentQuestion =>
       isArabic ? 'إنهاء علاقة التدريب؟' : 'Revoke assignment?';
   String revokeAssignmentLead(String player) => isArabic

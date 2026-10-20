@@ -42,6 +42,16 @@ String? _hold(String requested) =>
     redirectFor(const AuthState.loading(), requested, _mode(AppMode.player));
 
 void main() {
+  test('shared program waits neutrally while authentication loads', () {
+    final String held =
+        redirectFor(const AuthState.loading(), sharedProgramPath,
+            _mode(AppMode.player))!;
+
+    expect(held, startsWith('$splashPath?from='));
+    expect(_carried(held), sharedProgramPath);
+    expect(held, isNot(loginPath));
+  });
+
   test('a cold deep link to an allowed page survives the startup hold', () {
     // The requested location is carried on the splash location, query intact.
     final String held = _hold(lifterPlanPath)!;

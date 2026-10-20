@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show kIsWeb, kReleaseMode;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, kReleaseMode, TargetPlatform;
 import 'package:flutter/material.dart'
     show GlobalKey, ScaffoldMessengerState, SnackBar, Text, ThemeMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -25,6 +26,7 @@ import 'core/rest_alert_permission_access.dart';
 import 'core/rest_alerts.dart';
 import 'core/rest_alert_permission_prompt_store.dart';
 import 'core/rest_length.dart';
+import 'core/shared_program_text.dart';
 import 'core/theme/theme_mode_controller.dart';
 import 'core/theme/theme_mode_store.dart';
 import 'core/training_status_controller.dart';
@@ -43,6 +45,19 @@ import 'features/player/workout/web_workout_committer.dart';
 final Provider<TokenStore> tokenStoreProvider = Provider<TokenStore>(
   (ref) => SecureTokenStore(),
 );
+
+final Provider<SharedProgramTextSource> sharedProgramTextSourceProvider =
+    Provider<SharedProgramTextSource>((ref) => kIsWeb ||
+            defaultTargetPlatform != TargetPlatform.android
+        ? NoopSharedProgramTextSource()
+        : AndroidSharedProgramTextSource());
+
+final Provider<SharedProgramTextStore> sharedProgramTextStoreProvider =
+    Provider<SharedProgramTextStore>((ref) {
+  final SharedProgramTextStore store = SharedProgramTextStore();
+  ref.onDispose(store.dispose);
+  return store;
+});
 
 /// Device-level appearance persistence (System/Light/Dark).
 final Provider<ThemeModeStore> themeModeStoreProvider =

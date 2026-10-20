@@ -23,10 +23,12 @@ class CoachProgramImportScreen extends ConsumerStatefulWidget {
     super.key,
     required this.assignmentId,
     required this.playerUsername,
+    this.initialText,
   });
 
   final String assignmentId;
   final String playerUsername;
+  final String? initialText;
 
   @override
   ConsumerState<CoachProgramImportScreen> createState() =>
@@ -41,6 +43,7 @@ class _CoachProgramImportScreenState
   final TextEditingController _pasteController = TextEditingController();
   String _lastPasteText = '';
   bool _textAvailable = false;
+  bool _textCapabilityLoaded = false;
   _ProgramImportInputMode _inputMode = _ProgramImportInputMode.file;
   Map<String, dynamic>? _result;
   List<Map<String, dynamic>> _allRows = <Map<String, dynamic>>[];
@@ -55,6 +58,11 @@ class _CoachProgramImportScreenState
   void initState() {
     super.initState();
     _pasteController.addListener(_pasteChanged);
+    if (widget.initialText != null) {
+      _inputMode = _ProgramImportInputMode.paste;
+      _pasteController.text = widget.initialText!;
+      _lastPasteText = widget.initialText!;
+    }
     _loadTextCapability();
   }
 
@@ -81,9 +89,17 @@ class _CoachProgramImportScreenState
       final ProgramImportCapabilities capabilities = await ref
           .read(apiClientProvider)
           .coachProgramImportCapabilities();
-      if (mounted) setState(() => _textAvailable = capabilities.textAvailable);
+      if (mounted) {
+        setState(() {
+          _textAvailable = capabilities.textAvailable;
+          _textCapabilityLoaded = true;
+        });
+      }
     } on ApiException {
       // Text input stays hidden if the capability service is unavailable.
+      if (mounted) {
+        setState(() => _textCapabilityLoaded = true);
+      }
     }
   }
 
@@ -149,6 +165,10 @@ class _CoachProgramImportScreenState
           children: <Widget>[
             Text(copy.importPrivacyNote),
             const SizedBox(height: MayosSpacing.md),
+            if (widget.initialText != null &&
+                _textCapabilityLoaded &&
+                !_textAvailable)
+              Text(copy.textImportUnavailable),
             if (_textAvailable) ...<Widget>[
               SegmentedButton<_ProgramImportInputMode>(
                 key: const Key('program_import_input_mode'),
