@@ -8,8 +8,10 @@ each before coach publication, during coach control, and after unassignment.
 """
 
 import copy
+from concurrent.futures import ThreadPoolExecutor
 import json
 import sqlite3
+import threading
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -498,6 +500,7 @@ def test_profile_rebuild_allowed_before_publication(api, monkeypatch):
     assert body["program_message"] is None
     assert calls["n"] == 1
     assert _active(db).program_name == "Player Plan"
+    assert _active(db).design_version == 2
 
 
 def test_profile_rebuild_generates_from_the_edited_profile(api, monkeypatch):
@@ -1539,6 +1542,186 @@ def test_player_can_repeat_a_self_controlled_program_from_week_one(api):
     assert repeated.json()["final_week_completed"] is False
     assert repeated.json()["published_by_coach_account_id"] is None
     assert repeated.json()["player_controls_program"] is True
+
+
+def test_program_design_offer_is_only_for_unstamped_player_controlled_programs(api):
+    client, db, _ = api
+    player = _register(client, "design_offer")
+    headers = _authed(player["access_token"])
+    db.switch_user("design_offer")
+    db.ledger.save_training_program(_program().model_dump())
+    legacy = client.get("/programs/active", headers=headers).json()
+    assert legacy["offer_design_regeneration"] is True
+
+    db.ledger.save_training_program({**_program("Current design").model_dump(), "design_version": 2})
+    current = client.get("/programs/active", headers=headers).json()
+    assert current["offer_design_regeneration"] is False
+
+
+def test_template_derived_program_does_not_receive_design_offer(api):
+    client, db, _ = api
+    player = _register(client, "template_offer")
+    headers = _authed(player["access_token"])
+    db.switch_user("template_offer")
+    db.ledger.save_training_program(
+        {**_program().model_dump(), "source_template_id": "template-1"}
+    )
+    response = client.get("/programs/active", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["offer_design_regeneration"] is False
+
+
+def test_design_offer_routes_conflict_when_no_offer_exists(api):
+    client, db, _ = api
+    player = _register(client, "no_design_offer")
+    headers = _authed(player["access_token"])
+    db.switch_user("no_design_offer")
+    db.ledger.save_training_program(
+        {**_program("Current design").model_dump(), "design_version": 2}
+    )
+    accepted = client.post("/programs/design-offer/accept", headers=headers)
+    dismissed = client.post("/programs/design-offer/dismiss", headers=headers)
+    assert accepted.status_code == dismissed.status_code == 409
+
+
+@pytest.fixture
+def unstamped_program_generation(monkeypatch):
+    def generate(**kwargs):
+        kwargs["ledger"].save_training_program(_program("Generated").model_dump())
+        return kwargs["ledger"].get_active_program(), ""
+
+    monkeypatch.setattr(programs_service, "generate_program_pipeline", generate)
+    return generate
+
+
+def test_program_design_offer_excludes_coach_controlled_and_coach_published(api):
+    client, db, _ = api
+    _, player_headers, _, coach_id, _ = _assigned_player(api)
+    db.switch_user("p1")
+    db.ledger.save_training_program(_program().model_dump())
+    assert client.get("/programs/active", headers=player_headers).json()["offer_design_regeneration"] is True
+
+    db.ledger.save_training_program(
+        _program("Former coach program").model_dump(), published_by_coach_account_id="former-coach"
+    )
+    former = client.get("/programs/active", headers=player_headers).json()
+    assert former["player_controls_program"] is True
+    assert former["offer_design_regeneration"] is False
+
+    db.ledger.save_training_program(
+        _program("Coach program").model_dump(), published_by_coach_account_id=coach_id
+    )
+    response = client.get("/programs/active", headers=player_headers)
+    assert response.json()["player_controls_program"] is False
+    assert response.json()["offer_design_regeneration"] is False
+
+
+def test_accepting_program_design_offer_creates_version_and_hides_offer(api, unstamped_program_generation):
+    client, db, _ = api
+    player = _register(client, "accept_offer")
+    headers = _authed(player["access_token"])
+    db.switch_user("accept_offer")
+    db.ledger.save_training_program(_program("Legacy").model_dump())
+
+    accepted = client.post("/programs/design-offer/accept", headers=headers)
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["version"] == 2
+    assert accepted.json()["offer_design_regeneration"] is False
+    assert db.ledger.get_program_by_version(1).program_name == "Legacy"
+    assert client.get("/programs/active", headers=headers).json()["offer_design_regeneration"] is False
+
+
+def test_dismissing_program_design_offer_is_permanent(api, unstamped_program_generation):
+    client, db, _ = api
+    player = _register(client, "dismiss_offer")
+    headers = _authed(player["access_token"])
+    db.switch_user("dismiss_offer")
+    db.ledger.save_training_program(_program().model_dump())
+    assert client.post("/programs/design-offer/dismiss", headers=headers).status_code == 204
+    assert client.get("/programs/active", headers=headers).json()["offer_design_regeneration"] is False
+
+    regenerated = client.post("/programs/generate", headers=headers, json={})
+    assert regenerated.status_code == 200, regenerated.text
+    assert client.get("/programs/active", headers=headers).json()["offer_design_regeneration"] is False
+
+
+def test_accepting_offer_without_program_authority_matches_generate_refusal(api):
+    client, db, _ = api
+    _, player_headers, _, coach_id, _ = _assigned_player(api)
+    db.switch_user("p1")
+    db.ledger.save_training_program(_program().model_dump(), published_by_coach_account_id=coach_id)
+    offer = client.post("/programs/design-offer/accept", headers=player_headers)
+    generate = client.post("/programs/generate", headers=player_headers, json={})
+    assert offer.status_code == generate.status_code == 403
+    assert offer.json() == generate.json()
+
+
+def test_overlapping_program_design_accepts_generate_only_one_version(api, monkeypatch):
+    client, db, _ = api
+    _register(client, "overlapping_offer")
+    db.switch_user("overlapping_offer")
+    db.ledger.save_training_program(_program("Legacy").model_dump())
+
+    generation_started = threading.Event()
+    finish_first_generation = threading.Event()
+    generation_calls = 0
+    generation_lock = threading.Lock()
+
+    def generate(**kwargs):
+        nonlocal generation_calls
+        with generation_lock:
+            generation_calls += 1
+            call_number = generation_calls
+        if call_number == 1:
+            generation_started.set()
+            assert finish_first_generation.wait(timeout=10)
+        kwargs["ledger"].save_training_program(_program("Regenerated").model_dump())
+        return kwargs["ledger"].get_active_program(), ""
+
+    monkeypatch.setattr(programs_service, "generate_program_pipeline", generate)
+    from svc.llm import reset_inference_gate
+
+    monkeypatch.setenv("LLM_MAX_CONCURRENT", "2")
+    reset_inference_gate()
+    from fastapi import BackgroundTasks
+
+    from service import analytics
+    from service.program_analytics import ProgramAnalyticsActor
+
+    actor = ProgramAnalyticsActor(
+        db.get_active_account_by_username("overlapping_offer")["account_id"], "player"
+    )
+    with db.open_ledger("overlapping_offer") as first_ledger:
+        with db.open_ledger("overlapping_offer") as second_ledger:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                first = executor.submit(
+                    programs_service.accept_design_regeneration_offer,
+                    db,
+                    first_ledger,
+                    actor,
+                    analytics.UNKNOWN_CLIENT,
+                    BackgroundTasks(),
+                )
+                assert generation_started.wait(timeout=10)
+                second = executor.submit(
+                    programs_service.accept_design_regeneration_offer,
+                    db,
+                    second_ledger,
+                    actor,
+                    analytics.UNKNOWN_CLIENT,
+                    BackgroundTasks(),
+                )
+                try:
+                    second_error = second.exception(timeout=10)
+                finally:
+                    finish_first_generation.set()
+                first_result = first.result(timeout=10)
+
+    assert first_result.version == 2
+    assert isinstance(second_error, ValueError)
+    db.switch_user("overlapping_offer")
+    assert db.ledger.get_active_program().version == 2
+    reset_inference_gate()
 
 
 def test_coach_controlled_program_rejects_player_repeat_choice(api):

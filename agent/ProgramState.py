@@ -178,6 +178,7 @@ class PersistedProgramSchema(GeneratedProgramSchema):
         default=None, description="Coach Program template this program was copied from, if any"
     )
     source_template_name: str | None = None
+    design_version: int | None = Field(default=None, description="Automatic program design version")
 
 
 # --- LangGraph Node State ---

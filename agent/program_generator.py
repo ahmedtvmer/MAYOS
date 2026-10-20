@@ -56,6 +56,8 @@ from utils.logger import MyosLogger
 load_dotenv()
 logger = MyosLogger().get_logger("program_generator")
 
+PROGRAM_DESIGN_VERSION = 2
+
 MECHANIC_CUES = {
     "compound_press": "Control the 2-3s eccentric, pause briefly at full stretch, drive without locking out aggressively.",
     "compound_pull": "Initiate with scapular depression, pull elbows toward hips, pause 1s at peak contraction.",
@@ -734,8 +736,11 @@ def generate_program_pipeline(
     if published_by_coach_account_id is None and weekly_frequency != profile.get("weekly_frequency"):
         ledger.update_player_frequency(weekly_frequency)
     program, markdown = _build_program(profile, request, weekly_frequency, ledger)
+    persisted_program = program.model_dump()
+    if published_by_coach_account_id is None:
+        persisted_program["design_version"] = PROGRAM_DESIGN_VERSION
     ledger.save_training_program(
-        program.model_dump(),
+        persisted_program,
         published_by_coach_account_id=published_by_coach_account_id,
         starting_position=None,
     )

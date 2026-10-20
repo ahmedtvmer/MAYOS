@@ -347,7 +347,9 @@ class FakeMayosApi {
   bool activeProgramFails = false;
   int activeProgramRequests = 0;
   int generateProgramRequests = 0;
+  int acceptProgramDesignOfferRequests = 0;
   bool coachControlsProgram = false;
+  bool offerProgramDesignRegeneration = false;
   bool? coachPreparingProgram;
   bool substitutionVersionConflict = false;
   bool programEditVersionConflict = false;
@@ -822,6 +824,10 @@ class FakeMayosApi {
         return _repeatProgramFromWeekOne(request);
       case '/programs/generate':
         return _generateProgram(request);
+      case '/programs/design-offer/accept':
+        return _acceptProgramDesignOffer(request);
+      case '/programs/design-offer/dismiss':
+        return _dismissProgramDesignOffer(request);
       case '/programs/active/edits':
         return _editActiveProgramDay(request);
       case '/programs/active/substitutions':
@@ -4457,6 +4463,7 @@ class FakeMayosApi {
         if (programSourceTemplateName != null)
           'source_template_name': programSourceTemplateName,
         'player_controls_program': !coachControlsProgram,
+        'offer_design_regeneration': offerProgramDesignRegeneration,
       };
 
   FakeResponse _activeProgram(FakeRequest request) {
@@ -4504,6 +4511,30 @@ class FakeMayosApi {
     programFinalWeekCompleted = false;
     _programNameOverride = 'Generated program';
     return FakeResponse(200, _activeProgramBody());
+  }
+
+  FakeResponse _acceptProgramDesignOffer(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    if (coachControlsProgram) {
+      return const FakeResponse(403, <String, dynamic>{
+        'detail': 'Your assigned coach controls your program.',
+      });
+    }
+    acceptProgramDesignOfferRequests++;
+    offerProgramDesignRegeneration = false;
+    return _generateProgram(request);
+  }
+
+  FakeResponse _dismissProgramDesignOffer(FakeRequest request) {
+    if (!_authorized(request)) {
+      return const FakeResponse(
+          401, <String, dynamic>{'detail': 'Token has been revoked.'});
+    }
+    offerProgramDesignRegeneration = false;
+    return const FakeResponse(204);
   }
 
   FakeResponse _editActiveProgramDay(FakeRequest request) {

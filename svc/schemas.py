@@ -1680,6 +1680,7 @@ class ActiveProgramOut(PersistedProgramSchema):
     """An active program plus the server's current Program-authority decision."""
 
     player_controls_program: bool
+    offer_design_regeneration: bool = False
     current_week: int = 1
     week_count: int = 1
     next_day_order: int = 1

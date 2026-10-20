@@ -332,6 +332,7 @@ def active_program_as_draft(program: PersistedProgramSchema) -> dict[str, Any]:
                     "source_template_id",
                     "source_template_name",
                     "created_at",
+                    "design_version",
                 }
             )
         ).model_dump()

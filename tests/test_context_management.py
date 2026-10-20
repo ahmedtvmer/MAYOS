@@ -30,7 +30,7 @@ def graph(monkeypatch):
             "ARABIC_SCRIPT_RE", "EMBED_MODEL", "evaluate_clinical_semantic_guard",
             "has_franco_digit_evidence", "is_franco_clinical", "is_franco_clinical_franco_message",
         ],
-        "agent.program_generator": ["extract_frequency_from_text", "generate_program_pipeline", "get_biomechanical_cue", "has_supported_split_keyword"],
+        "agent.program_generator": ["PROGRAM_DESIGN_VERSION", "extract_frequency_from_text", "generate_program_pipeline", "get_biomechanical_cue", "has_supported_split_keyword"],
         "database.database_manager": ["DatabaseManager"],
         "utils.model_downloader": [
             "first_token_max_attempts",

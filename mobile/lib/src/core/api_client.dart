@@ -2398,6 +2398,21 @@ class ApiClient {
     );
   }
 
+  Future<TrainingProgram> acceptProgramDesignOffer() async {
+    final response = await _send(
+      () => _dio.post<dynamic>('/programs/design-offer/accept'),
+    );
+    return _parseBody(
+      response.data,
+      TrainingProgram.fromJson,
+      'The service returned invalid program data.',
+    );
+  }
+
+  Future<void> dismissProgramDesignOffer() async {
+    await _send(() => _dio.post<dynamic>('/programs/design-offer/dismiss'));
+  }
+
   /// Saves one complete working-set list as a Program edit.
   Future<TrainingProgram> editProgramDay({
     required String dayName,

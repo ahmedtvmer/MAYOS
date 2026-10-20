@@ -3,7 +3,11 @@
 from dataclasses import dataclass
 from typing import Any
 
-from agent.program_generator import ProgramGenerationRequest, generate_program_draft_pipeline
+from agent.program_generator import (
+    PROGRAM_DESIGN_VERSION,
+    ProgramGenerationRequest,
+    generate_program_draft_pipeline,
+)
 from service._base import ledger_scope
 from service import analytics
 from service.profile_change_alerts import normalize_profile_value
@@ -179,7 +183,10 @@ def update_profile(
                         persist_profile()
                         if program is not None:
                             ledger.save_training_program(
-                                program.model_dump(),
+                                {
+                                    **program.model_dump(),
+                                    "design_version": PROGRAM_DESIGN_VERSION,
+                                },
                                 starting_position=None,
                             )
             else:

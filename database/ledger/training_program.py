@@ -48,6 +48,32 @@ def _with_current_name(movement: Any, current_names: dict[str, str]) -> Any:
 
 
 class LedgerTrainingProgramMixin:
+    def program_design_offer_decision(self) -> str | None:
+        row = self.conn.execute(
+            "SELECT decision FROM program_design_offer WHERE id = 1"
+        ).fetchone()
+        return str(row[0]) if row else None
+
+    def record_program_design_offer_decision(self, decision: str) -> None:
+        self.conn.execute(
+            "INSERT OR IGNORE INTO program_design_offer (id, decision) VALUES (1, ?)",
+            (decision,),
+        )
+        self._commit_ledger()
+
+    def try_claim_program_design_offer(self) -> bool:
+        cursor = self.conn.execute(
+            "INSERT OR IGNORE INTO program_design_offer (id, decision) VALUES (1, 'accepted')"
+        )
+        self._commit_ledger()
+        return cursor.rowcount == 1
+
+    def release_program_design_offer_claim(self) -> None:
+        self.conn.execute(
+            "DELETE FROM program_design_offer WHERE id = 1 AND decision = 'accepted'"
+        )
+        self._commit_ledger()
+
     def has_program_published_by_coach_since(self, coach_account_id: str, started_at: str) -> bool:
         """Whether this coach has already published in the active Assignment."""
         row = self.conn.execute(
@@ -136,6 +162,9 @@ class LedgerTrainingProgramMixin:
             if "source_template_id" in existing_cols:
                 cols.append("source_template_id")
                 vals.append(source_template_id)
+            if "design_version" in existing_cols:
+                cols.append("design_version")
+                vals.append(program_data.get("design_version"))
 
             cursor.execute(
                 f"INSERT INTO training_programs ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(vals))})", vals
@@ -285,10 +314,13 @@ class LedgerTrainingProgramMixin:
             if "source_template_id" in program_cols
             else "NULL AS source_template_id"
         )
+        design_version_expr = (
+            "design_version" if "design_version" in program_cols else "NULL AS design_version"
+        )
         created_at_expr = "created_at" if "created_at" in program_cols else "NULL AS created_at"
         cursor.execute(f"""
             SELECT id, COALESCE(program_name, name), weekly_frequency, split_type, {instructions_expr},
-                   {version_expr}, {provenance_expr}, {source_template_expr}, {created_at_expr}
+                   {version_expr}, {provenance_expr}, {source_template_expr}, {created_at_expr}, {design_version_expr}
             FROM training_programs
             WHERE {where_sql}
             ORDER BY created_at DESC
@@ -308,6 +340,7 @@ class LedgerTrainingProgramMixin:
             published_by,
             source_template_id,
             created_at,
+            design_version,
         ) = row
 
         cursor.execute("PRAGMA table_info(program_days)")
@@ -479,6 +512,7 @@ class LedgerTrainingProgramMixin:
                 version=int(version) if version is not None else None,
                 published_by_coach_account_id=published_by,
                 source_template_id=source_template_id,
+                design_version=design_version,
                 created_at=created_at,
             )
         except Exception as exc:

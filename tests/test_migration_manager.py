@@ -66,6 +66,27 @@ def test_v30_upgrade_adds_assistant_preference_storage(temp_db_env):
     assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
 
 
+def test_v32_upgrade_adds_program_design_storage(temp_db_env):
+    db, _, backups_dir = temp_db_env
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        "CREATE TABLE training_programs (version INTEGER PRIMARY KEY, program_json TEXT NOT NULL);"
+        "PRAGMA user_version = 32;"
+    )
+
+    apply_lazy_migrations(conn, "v32-program-design", db.ledgers_dir, backups_dir)
+
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(training_programs)")}
+    tables = {
+        row[0]
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+    }
+    assert "design_version" in columns
+    assert "program_design_offer" in tables
+    assert get_ledger_schema_version(conn) == 33
+
+
 @pytest.mark.parametrize(
     ("legacy_value", "intake_value", "expected"),
     [

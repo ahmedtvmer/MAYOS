@@ -68,6 +68,7 @@ def test_automatic_generator_persists_one_repeating_program_week(fresh_store):
 
     assert len(generated.days) == 3
     assert len(active.weeks) == 1
+    assert active.design_version == program_generator.PROGRAM_DESIGN_VERSION
     assert active.weeks[0].week_order == 1
     assert [day.week_order for day in active.days] == [1, 1, 1]
 

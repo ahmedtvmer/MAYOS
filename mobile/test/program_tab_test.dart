@@ -438,6 +438,43 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('Arabic phone program offer confirms regeneration and refreshes',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..offerProgramDesignRegeneration = true;
+    await _pumpProgram(
+      tester,
+      fake,
+      languageCode: 'ar',
+      size: const Size(360, 800),
+    );
+
+    expect(find.text('برنامج تدريبي بتصميم جديد'), findsOneWidget);
+    expect(find.text('إنشاء برنامج جديد'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('إنشاء برنامج جديد'));
+    await tester.pumpAndSettle();
+    expect(find.text('إنشاء نسخة جديدة من البرنامج؟'), findsOneWidget);
+    await tester.tap(find.text('إنشاء برنامج جديد').last);
+    await tester.pumpAndSettle();
+    expect(fake.acceptProgramDesignOfferRequests, 1);
+    expect(find.text('برنامج تدريبي بتصميم جديد'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('dismissing the program design offer hides its card',
+      (tester) async {
+    final FakeMayosApi fake = _signedInFake()
+      ..offerProgramDesignRegeneration = true;
+    await _pumpProgram(tester, fake);
+    expect(find.text('A program with the new design'), findsOneWidget);
+    await tester.tap(find.text('Dismiss'));
+    await tester.pumpAndSettle();
+    expect(fake.offerProgramDesignRegeneration, isFalse);
+    expect(find.text('A program with the new design'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Arabic program substitution keeps the permanent name distinct',
       (tester) async {
     final FakeMayosApi fake = _signedInFake();

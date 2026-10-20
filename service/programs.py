@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from agent.program_generator import generate_program_pipeline
+from agent.program_generator import PROGRAM_DESIGN_VERSION, generate_program_pipeline
 from agent.program_weeks import (
     final_week_is_complete,
     flatten_program_days,
@@ -92,6 +92,9 @@ def active_program_response(
     completed_days = ledger.completed_program_days(int(version)) if version is not None else set()
     position = ledger.get_program_position(program)
     payload = with_library_equipment(program, db)
+    payload["offer_design_regeneration"] = should_offer_design_regeneration(
+        db, ledger, player_account_id, program
+    )
     return {
         **payload,
         "player_controls_program": player_controls_program(db, ledger, player_account_id),
@@ -100,6 +103,55 @@ def active_program_response(
         "next_day_order": position.next_day_order,
         "final_week_completed": final_week_is_complete(program, completed_days),
     }
+
+
+def should_offer_design_regeneration(
+    db: Any, ledger: Any, player_account_id: str, program: Any
+) -> bool:
+    return (
+        player_controls_program(db, ledger, player_account_id)
+        and program.published_by_coach_account_id is None
+        and program.source_template_id is None
+        and program.design_version != PROGRAM_DESIGN_VERSION
+        and ledger.program_design_offer_decision() is None
+    )
+
+
+def dismiss_design_regeneration_offer(db: Any, ledger: Any, player_account_id: str) -> bool:
+    active = ledger.get_active_program()
+    if active is None or not should_offer_design_regeneration(db, ledger, player_account_id, active):
+        return False
+    ledger.record_program_design_offer_decision("dismissed")
+    return True
+
+
+def accept_design_regeneration_offer(
+    db: Any,
+    ledger: Any,
+    actor: ProgramAnalyticsActor,
+    client: analytics.ClientContext,
+    background_tasks: Any,
+) -> Any:
+    if not player_controls_program(db, ledger, actor.account_id):
+        raise PermissionError(COACH_CONTROLLED_ERROR)
+    active = ledger.get_active_program()
+    if active is None or not should_offer_design_regeneration(db, ledger, actor.account_id, active):
+        raise ValueError("This program no longer has a regeneration offer.")
+    if not ledger.try_claim_program_design_offer():
+        raise ValueError("This program no longer has a regeneration offer.")
+    try:
+        return generate_program_version(
+            db,
+            ledger,
+            actor,
+            "player_request",
+            purpose="program_generate",
+            client=client,
+            background_tasks=background_tasks,
+        )
+    except Exception:
+        ledger.release_program_design_offer_claim()
+        raise
 
 
 def repeat_program_from_week_one(
@@ -183,14 +235,14 @@ def ensure_active_program(
         program, _ = generate_program_pipeline(
             rep_preference_override=profile.get("rep_preference", "balanced"), ledger=ledger
         )
+        persisted = ledger.get_active_program()
+        if persisted is None:
+            raise RuntimeError("Generated program is missing from the player ledger after save.")
         if emit_analytics and player_account_id:
-            persisted = ledger.get_active_program()
-            if persisted is None:
-                raise RuntimeError("Generated program is missing from the player ledger after save.")
             capture_program_generated(
                 ProgramAnalyticsActor(player_account_id, actor_role), trigger, persisted, client=client
             )
-        return program
+        return persisted
 
 
 def generate_program_version(
@@ -229,7 +281,7 @@ def generate_program_version(
         if persisted is None:
             raise RuntimeError("Generated program is missing from the player ledger after save.")
         capture_program_generated(actor, trigger, persisted, client=client)
-        return program
+        return persisted
 
 
 def record_program_change(

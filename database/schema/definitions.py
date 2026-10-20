@@ -9,7 +9,7 @@ from typing import Any
 from agent.prompts import DEFAULT_ASSISTANT_STYLE
 from database.exercise_library.curation import apply_exercise_curation
 from database.migration_manager import CURRENT_LEDGER_SCHEMA_VERSION
-from database.migration_manager import ASSISTANT_PREFERENCES_DDL
+from database.migration_manager import ASSISTANT_PREFERENCES_DDL, PROGRAM_DESIGN_OFFER_DDL
 from database.migration_manager import VOLUME_REVIEWS_DDL
 from database.migration_manager import EQUIPMENT_ACCESS_DDL
 from database.migration_manager import CHECKPOINT_REVIEWS_DDL
@@ -164,7 +164,8 @@ class SchemaMixin:
                 created_at TEXT NOT NULL,
                 version INTEGER NOT NULL DEFAULT 0,
                 published_by_coach_account_id TEXT,
-                source_template_id TEXT
+                source_template_id TEXT,
+                design_version INTEGER
             );
             CREATE TABLE IF NOT EXISTS program_days (
                 id TEXT PRIMARY KEY,
@@ -338,6 +339,7 @@ class SchemaMixin:
                 *EQUIPMENT_ACCESS_DDL,
                 *ASSISTANT_PREFERENCES_DDL,
                 *VOLUME_REVIEWS_DDL,
+                *PROGRAM_DESIGN_OFFER_DDL,
             )
         ))
         if get_ledger_schema_version(conn) < CURRENT_LEDGER_SCHEMA_VERSION:

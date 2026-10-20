@@ -94,6 +94,59 @@ async def dismiss_volume_review(
         return _volume_review_error_response(exc)
 
 
+@router.post("/design-offer/accept", response_model=ActiveProgramOut)
+@limiter.limit(PROGRAM_MUTATE_LIMIT)
+async def accept_design_regeneration_offer(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    register_ai_analytics_background_tasks(request, background_tasks)
+
+    def _run():
+        account_id = account_id_of(player)
+        try:
+            program = programs_service.accept_design_regeneration_offer(
+                db,
+                ledger,
+                ProgramAnalyticsActor(account_id, "player"),
+                analytics.client_context(request),
+                background_tasks,
+            )
+        except PermissionError as exc:
+            raise message_http_exception(
+                status.HTTP_403_FORBIDDEN,
+                programs_service.COACH_CONTROLLED_ERROR,
+                MessageMetadata("program.coach_controls.v1"),
+            ) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        return programs_service.active_program_response(db, ledger, account_id, program)
+
+    return await asyncio.to_thread(_run)
+
+
+@router.post("/design-offer/dismiss", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit(PROGRAM_MUTATE_LIMIT)
+async def dismiss_design_regeneration_offer(
+    request: Request,
+    player: Annotated[Any, Depends(get_verified_player)],
+    ledger: Annotated[Any, Depends(get_ledger)],
+    db: Annotated[Any, Depends(get_db)],
+):
+    dismissed = await asyncio.to_thread(
+        programs_service.dismiss_design_regeneration_offer,
+        db,
+        ledger,
+        account_id_of(player),
+    )
+    if not dismissed:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This program has no regeneration offer.")
+    return None
+
+
 def _program_mutation_error_response(
     result: dict[str, Any], statuses: dict[Any, int]
 ) -> JSONResponse:

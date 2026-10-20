@@ -18,7 +18,7 @@ from utils.equipment_access import (
 logger = MyosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 32
+CURRENT_LEDGER_SCHEMA_VERSION: int = 33
 
 VOLUME_REVIEWS_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS volume_reviews ("
@@ -30,6 +30,13 @@ VOLUME_REVIEWS_DDL: tuple[str, ...] = (
     ")",
     "CREATE INDEX IF NOT EXISTS idx_volume_reviews_pending"
     " ON volume_reviews(status, review_date)",
+)
+
+PROGRAM_DESIGN_OFFER_DDL: tuple[str, ...] = (
+    "CREATE TABLE IF NOT EXISTS program_design_offer ("
+    " id INTEGER PRIMARY KEY CHECK (id = 1),"
+    " decision TEXT NOT NULL CHECK (decision IN ('accepted', 'dismissed'))"
+    ")",
 )
 
 ASSISTANT_PREFERENCES_DDL: tuple[str, ...] = (
@@ -903,6 +910,17 @@ def _migrate_v31_to_v32(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
+def _migrate_v32_to_v33(conn: sqlite3.Connection) -> None:
+    """Stores program design provenance and the player's one-time decision."""
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    if "training_programs" in tables:
+        program_columns = {row[1] for row in conn.execute("PRAGMA table_info(training_programs)")}
+        if "design_version" not in program_columns:
+            conn.execute("ALTER TABLE training_programs ADD COLUMN design_version INTEGER")
+    for statement in PROGRAM_DESIGN_OFFER_DDL:
+        conn.execute(statement)
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -1020,6 +1038,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     29: _migrate_v29_to_v30,
     30: _migrate_v30_to_v31,
     31: _migrate_v31_to_v32,
+    32: _migrate_v32_to_v33,
 }
 
 

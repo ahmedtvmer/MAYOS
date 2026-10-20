@@ -73,6 +73,23 @@ class MayosCopy {
   String get programEditAuthorityChanged => isArabic
       ? 'يتحكم مدربك الآن في هذا البرنامج. لم تُحفظ تغييراتك.'
       : 'Your coach now controls this program. Your changes were not saved.';
+  // #233 one-time offer to regenerate with the current program design.
+  String get regenerateProgramOfferTitle => isArabic
+      ? 'برنامج تدريبي بتصميم جديد'
+      : 'A program with the new design';
+  String get regenerateProgramOfferBody => isArabic
+      ? 'يمكنك إنشاء نسخة جديدة من برنامجك باستخدام تصميم البرامج الحالي. سيبقى برنامجك الحالي محفوظًا.'
+      : 'You can create a new version of your program with the current design. Your existing program will stay in your history.';
+  String get regenerateProgramOfferAccept => isArabic
+      ? 'إنشاء برنامج جديد'
+      : 'Regenerate program';
+  String get regenerateProgramOfferDismiss => isArabic ? 'إخفاء' : 'Dismiss';
+  String get regenerateProgramOfferConfirmTitle => isArabic
+      ? 'إنشاء نسخة جديدة من البرنامج؟'
+      : 'Create a new program version?';
+  String get regenerateProgramOfferConfirmBody => isArabic
+      ? 'سيصبح البرنامج الجديد نشطًا، وسيظل برنامجك الحالي محفوظًا في السجل.'
+      : 'The new program will become active, and your current program will remain in your history.';
   String get back => isArabic ? 'رجوع' : 'Back';
   String get retry => isArabic ? 'إعادة المحاولة' : 'Retry';
   String get cancel => isArabic ? 'إلغاء' : 'Cancel';

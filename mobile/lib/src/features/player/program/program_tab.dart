@@ -92,6 +92,8 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
   String? _decidingVolumeReview;
   AssignmentNotice? _programChangeNotice;
   bool _dismissingProgramChange = false;
+  bool _programDesignOfferDismissed = false;
+  bool _dismissingProgramDesignOffer = false;
   Map<int, DeloadDecision> _deloadByDay = <int, DeloadDecision>{};
 
   /// The player's active assignment, or null when none (used for coach
@@ -401,6 +403,69 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
         _programActionBusy = false;
         _actionError = apiFailureMessage(error);
       });
+    }
+  }
+
+  Future<void> _acceptProgramDesignOffer() async {
+    if (_programActionBusy) return;
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: Text(displayCopyOf(context).regenerateProgramOfferConfirmTitle),
+        content: Text(displayCopyOf(context).regenerateProgramOfferConfirmBody),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(displayCopyOf(context).cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(displayCopyOf(context).regenerateProgramOfferAccept),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _programActionBusy = true;
+      _actionError = null;
+    });
+    try {
+      final TrainingProgram updated = await ref
+          .read(apiClientProvider)
+          .acceptProgramDesignOffer();
+      if (!mounted) return;
+      setState(() => _programActionBusy = false);
+      _updateProgram(updated, _accountId, fromCache: false);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _programActionBusy = false;
+        _actionError = apiFailureMessage(error);
+      });
+    }
+  }
+
+  Future<void> _dismissProgramDesignOffer() async {
+    if (_dismissingProgramDesignOffer || _programActionBusy) return;
+    setState(() {
+      _dismissingProgramDesignOffer = true;
+      _actionError = null;
+    });
+    try {
+      await ref.read(apiClientProvider).dismissProgramDesignOffer();
+      if (!mounted) return;
+      setState(() {
+        _programDesignOfferDismissed = true;
+        _dismissingProgramDesignOffer = false;
+      });
+    } on ApiException catch (error) {
+      if (mounted) {
+        setState(() {
+          _dismissingProgramDesignOffer = false;
+          _actionError = apiFailureMessage(error);
+        });
+      }
     }
   }
 
@@ -1074,6 +1139,60 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
           ],
           if (fromCache) ...<Widget>[
             const _OfflineBanner(),
+            const SizedBox(height: MayosSpacing.md),
+          ],
+          if (program.offerDesignRegeneration &&
+              program.playerControlsProgram &&
+              !_programDesignOfferDismissed &&
+              !fromCache) ...<Widget>[
+            MayosCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    displayCopyOf(context).regenerateProgramOfferTitle,
+                    key: const ValueKey<String>('program.design_offer'),
+                    style: MayosTypography.of(context)
+                        .sectionHeading
+                        .copyWith(color: c.textPrimary),
+                  ),
+                  const SizedBox(height: MayosSpacing.xs),
+                  Text(
+                    displayCopyOf(context).regenerateProgramOfferBody,
+                    style: MayosTypography.of(context)
+                        .bodySecondary
+                        .copyWith(color: c.textSecondary),
+                  ),
+                  const SizedBox(height: MayosSpacing.sm),
+                  Wrap(
+                    spacing: MayosSpacing.sm,
+                    runSpacing: MayosSpacing.xs,
+                    children: <Widget>[
+                      MayosButton(
+                        label: displayCopyOf(context)
+                            .regenerateProgramOfferAccept,
+                        loading: _programActionBusy,
+                        expand: false,
+                        onPressed: _programActionBusy
+                            ? null
+                            : () => unawaited(_acceptProgramDesignOffer()),
+                      ),
+                      MayosButton(
+                        label: displayCopyOf(context)
+                            .regenerateProgramOfferDismiss,
+                        variant: MayosButtonVariant.tertiary,
+                        expand: false,
+                        loading: _dismissingProgramDesignOffer,
+                        onPressed: _programActionBusy ||
+                                _dismissingProgramDesignOffer
+                            ? null
+                            : () => unawaited(_dismissProgramDesignOffer()),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: MayosSpacing.md),
           ],
           if (_programChangeNotice?.programChangeSummary != null) ...<Widget>[
