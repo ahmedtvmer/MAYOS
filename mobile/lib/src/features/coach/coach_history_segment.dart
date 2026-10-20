@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/display_language/coach_copy.dart';
+import '../../core/display_language/copy_context.dart';
 import '../../core/display_language/feature_copy_context.dart';
 import '../../core/effort.dart';
 import '../../core/models.dart';
@@ -9,6 +10,7 @@ import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/is_desktop_layout.dart';
 import '../../core/ui/mayos_card.dart';
+import '../../core/ui/mayos_card_table.dart';
 import '../../core/ui/mayos_section_header.dart';
 import '../../core/ui/mayos_table_frame.dart';
 import '../../core/workout_equipment.dart';
@@ -209,45 +211,90 @@ class CoachHistorySegment extends StatelessWidget {
     if (entries.isEmpty) {
       return _section(context, copy.weeklyVolume, <Widget>[Text(copy.noVolume)]);
     }
-    final MayosThemeExtension c = MayosTheme.of(context);
     final double largestVolume = entries.first.value;
-    return _section(
-      context,
-      copy.weeklyVolume,
-      <Widget>[
-        for (final MapEntry<String, double> entry in entries)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: MayosSpacing.xxs),
-            child: Row(
-              children: <Widget>[
-                Flexible(
-                  child: Text(
-                    entry.key,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textDirection: TextDirection.ltr,
-                  ),
-                ),
-                const SizedBox(width: MayosSpacing.xs),
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: MayosRadii.pillRadius,
-                    child: LinearProgressIndicator(
-                      value: entry.value / largestVolume,
-                      minHeight: MayosSpacing.xs,
-                      color: c.chartPrimary,
-                      backgroundColor: c.surfaceSunken,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: MayosSpacing.xs),
+    return _section(context, copy.weeklyVolume, <Widget>[
+      MayosCardTable(
+        columns: <String>[copy.muscleColumn, copy.workingSets],
+        desktopTable: Column(
+          children: <Widget>[
+            for (final MapEntry<String, double> entry in entries)
+              _volumeRow(context, entry, largestVolume),
+          ],
+        ),
+        rows: <MayosCardTableRow>[
+          for (final MapEntry<String, double> entry in entries)
+            MayosCardTableRow(
+              cells: <Widget?>[
                 Text(
-                  _formatWorkingSets(entry.value),
-                  textDirection: TextDirection.ltr,
+                  displayCopyOf(context).primaryMuscleLabel(entry.key),
                 ),
+                _volumeBar(context, entry, largestVolume),
               ],
             ),
+        ],
+      ),
+    ]);
+  }
+
+  Widget _volumeRow(
+    BuildContext context,
+    MapEntry<String, double> entry,
+    double largestVolume,
+  ) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: MayosSpacing.xxs),
+        child: Row(
+          children: <Widget>[
+            Flexible(
+              child: Text(
+                entry.key,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textDirection: TextDirection.ltr,
+              ),
+            ),
+            const SizedBox(width: MayosSpacing.xs),
+            Expanded(
+              child: ClipRRect(
+                borderRadius: MayosRadii.pillRadius,
+                child: LinearProgressIndicator(
+                  value: entry.value / largestVolume,
+                  minHeight: MayosSpacing.xs,
+                  color: MayosTheme.of(context).chartPrimary,
+                  backgroundColor: MayosTheme.of(context).surfaceSunken,
+                ),
+              ),
+            ),
+            const SizedBox(width: MayosSpacing.xs),
+            Text(
+              _formatWorkingSets(entry.value),
+              textDirection: TextDirection.ltr,
+            ),
+          ],
+        ),
+      );
+
+  Widget _volumeBar(
+    BuildContext context,
+    MapEntry<String, double> entry,
+    double largestVolume,
+  ) {
+    final MayosThemeExtension colors = MayosTheme.of(context);
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: ClipRRect(
+            borderRadius: MayosRadii.pillRadius,
+            child: LinearProgressIndicator(
+              value: entry.value / largestVolume,
+              minHeight: MayosSpacing.xs,
+              color: colors.chartPrimary,
+              backgroundColor: colors.surfaceSunken,
+            ),
           ),
+        ),
+        const SizedBox(width: MayosSpacing.xs),
+        Text(_formatWorkingSets(entry.value), textDirection: TextDirection.ltr),
       ],
     );
   }
@@ -384,7 +431,10 @@ class CoachHistorySegment extends StatelessWidget {
       if (isDesktopLayout(context))
         _sessionExerciseTable(context, latest.exercises)
       else
-        _sessionExerciseCompactRows(context, latest.exercises),
+        MayosCardTable(
+          columns: _sessionExerciseLabels(context),
+          rows: _sessionExerciseRows(context, latest.exercises),
+        ),
     ]);
   }
 
@@ -452,26 +502,29 @@ class CoachHistorySegment extends StatelessWidget {
     );
   }
 
-  Widget _recordsContent(BuildContext context, CoachCopy copy) {
-    return isDesktopLayout(context)
-        ? _recordsDesktopTable(context, copy)
-        : _recordsPhoneRows(context, copy);
-  }
-
-  Widget _recordsPhoneRows(BuildContext context, CoachCopy copy) => Column(
-        children: <Widget>[
+  Widget _recordsContent(BuildContext context, CoachCopy copy) =>
+      MayosCardTable(
+        columns: <String>[copy.programExerciseColumn],
+        desktopTable: _recordsDesktopTable(context, copy),
+        rows: <MayosCardTableRow>[
           for (final PersonalRecord record in data.records)
-            CoachCompactExerciseRow(
-              imagePath: record.imagePath,
-              name: record.name,
-              muscleLine:
-                  coachExerciseMuscleLabel(context, record.primaryMuscle),
-              prescription: copy.recordCompactSummary(
+            MayosCardTableRow(
+              cells: <Widget?>[
+                CoachExerciseCell(
+                  imagePath: record.imagePath,
+                  name: record.name,
+                  muscleLine: coachExerciseMuscleLabel(
+                    context,
+                    record.primaryMuscle,
+                  ),
+                ),
+              ],
+              subtitle: Text(copy.recordCompactSummary(
                 record.recordType,
                 '${record.value}',
                 record.reps,
                 _achievedDate(record.achievedAt),
-              ),
+              )),
             ),
         ],
       );
@@ -696,32 +749,35 @@ class CoachHistorySegment extends StatelessWidget {
     List<_ExerciseHistoryDisplay> points,
   ) {
     if (history.history.isEmpty) return Text(copy.noExerciseSets);
-    if (isDesktopLayout(context)) {
-      return _exerciseHistoryTable(context, copy, points);
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        for (final _ExerciseHistoryDisplay point in points)
-          _exerciseHistoryCompactRow(copy, point),
-      ],
-    );
+    return _exerciseHistoryTable(context, copy, points);
   }
 
-  Widget _exerciseHistoryCompactRow(
-    CoachCopy copy,
-    _ExerciseHistoryDisplay display,
-  ) =>
-      Text(copy.exerciseHistoryCompactPoint(
-        display.point.date,
-        display.weight,
-        display.point.reps,
-        weightUnit: display.weightUnit,
-        rir: display.rir,
-        e1rm: display.e1rm,
-      ));
-
   Widget _exerciseHistoryTable(
+    BuildContext context,
+    CoachCopy copy,
+    List<_ExerciseHistoryDisplay> points,
+  ) =>
+      MayosCardTable(
+        columns: <String>[copy.dateColumn],
+        desktopTable: _exerciseHistoryDesktopTable(context, copy, points),
+        rows: <MayosCardTableRow>[
+          for (final _ExerciseHistoryDisplay point in points)
+            MayosCardTableRow(
+              cells: <Widget?>[
+                Text(copy.exerciseHistoryCompactPoint(
+                  point.point.date,
+                  point.weight,
+                  point.point.reps,
+                  weightUnit: point.weightUnit,
+                  rir: point.rir,
+                  e1rm: point.e1rm,
+                )),
+              ],
+            ),
+        ],
+      );
+
+  Widget _exerciseHistoryDesktopTable(
     BuildContext context,
     CoachCopy copy,
     List<_ExerciseHistoryDisplay> points,
@@ -901,6 +957,38 @@ String _sessionDivergenceLabel(
 const MayosTableColumns _sessionExerciseColumns =
     MayosTableColumns(<double>[290, 230, 95, 70, 120], 0);
 
+List<String> _sessionExerciseLabels(BuildContext context) {
+  final copy = coachCopyOf(context);
+  return <String>[copy.programExerciseColumn];
+}
+
+List<MayosCardTableRow> _sessionExerciseRows(
+  BuildContext context,
+  List<CoachPlayerSessionExercise> exercises,
+) =>
+    <MayosCardTableRow>[
+      for (final CoachPlayerSessionExercise exercise in exercises)
+        MayosCardTableRow(
+          cells: <Widget?>[
+            CoachExerciseCell(
+              imagePath: exercise.imagePath,
+              name: exercise.name,
+              muscleLine:
+                  coachExerciseMuscleLabel(context, exercise.primaryMuscle),
+              secondaryLine: coachExerciseActionDetailLine(
+                context,
+                exercise.primaryAction,
+              ),
+            ),
+          ],
+          subtitle: Text(coachCopyOf(context).sessionExerciseCompact(
+            exercise.sets,
+            exercise.reps,
+            exercise.volumeKg,
+          )),
+        ),
+    ];
+
 Widget _sessionExerciseTable(
   BuildContext context,
   List<CoachPlayerSessionExercise> exercises,
@@ -970,41 +1058,6 @@ List<Widget> _sessionExerciseTableCells(
       textDirection: TextDirection.ltr,
     ),
   ];
-}
-
-Widget _sessionExerciseCompactRows(
-  BuildContext context,
-  List<CoachPlayerSessionExercise> exercises,
-) {
-  return Column(
-    children: <Widget>[
-      for (int index = 0; index < exercises.length; index++) ...<Widget>[
-        if (index > 0) const Divider(height: 1),
-        _sessionExerciseCompactRow(context, exercises[index]),
-      ],
-    ],
-  );
-}
-
-Widget _sessionExerciseCompactRow(
-  BuildContext context,
-  CoachPlayerSessionExercise exercise,
-) {
-  final copy = coachCopyOf(context);
-  return CoachCompactExerciseRow(
-    imagePath: exercise.imagePath,
-    name: exercise.name,
-    muscleLine: coachExerciseMuscleLabel(context, exercise.primaryMuscle),
-    prescription: copy.sessionExerciseCompact(
-      exercise.sets,
-      exercise.reps,
-      exercise.volumeKg,
-    ),
-    secondaryLine: coachExerciseActionDetailLine(
-      context,
-      exercise.primaryAction,
-    ),
-  );
 }
 
 class _RecentSessionRow extends StatefulWidget {
@@ -1080,35 +1133,39 @@ class _RecentSessionRowState extends State<_RecentSessionRow> {
       );
 
   Widget _compactSummary(BuildContext context, List<Widget> flags) {
-    return _rowToggle(
-      context,
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: MayosSpacing.xs),
-        child: Row(
-          children: <Widget>[
-            _expandCollapseIcon(context),
-            const SizedBox(width: MayosSpacing.xs),
-            Expanded(child: _compactContent(context, flags)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _compactContent(BuildContext context, List<Widget> flags) {
     final copy = coachCopyOf(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Text(copy.sessionTitle(session.splitName, session.sessionDate)),
-        Text(
-          copy.latestSessionTotals(session.setsCount, session.totalVolumeKg),
-        ),
-        if (flags.isNotEmpty) ...<Widget>[
-          const SizedBox(height: MayosSpacing.xxs),
-          _wrappedSessionFlagChips(context, flags),
+    return Semantics(
+      button: true,
+      expanded: _expanded,
+      child: MayosCardTable(
+        columns: <String>[
+          copy.sessionDateColumn,
+          copy.programSetsColumn,
+          copy.sessionVolumeColumn,
+          copy.sessionFlagsColumn,
         ],
-      ],
+        rows: <MayosCardTableRow>[
+          MayosCardTableRow(
+            key: Key(
+              'coach_history_recent_session_${session.sessionId}_toggle',
+            ),
+            cells: <Widget?>[
+              Text(
+                copy.sessionTitle(session.splitName, session.sessionDate),
+              ),
+              Text('${session.setsCount}', textDirection: TextDirection.ltr),
+              Text(
+                '${copy.formatVolume(session.totalVolumeKg)} '
+                '${copy.volumeUnit}',
+                textDirection: TextDirection.ltr,
+              ),
+              flags.isEmpty ? null : _wrappedSessionFlagChips(context, flags),
+            ],
+            onTap: _toggle,
+            actions: _expandCollapseIcon(context),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1179,7 +1236,10 @@ class _RecentSessionRowState extends State<_RecentSessionRow> {
           scrollable: false,
           child: _sessionExerciseTableContent(context, session.exercises),
         )
-      : _sessionExerciseCompactRows(context, session.exercises);
+      : MayosCardTable(
+          columns: _sessionExerciseLabels(context),
+          rows: _sessionExerciseRows(context, session.exercises),
+        );
 }
 
 typedef _SessionFlagFields = ({

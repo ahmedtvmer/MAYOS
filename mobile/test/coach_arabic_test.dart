@@ -5,10 +5,10 @@ import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
 import 'package:mayos_mobile/src/core/models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_card.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_table_frame.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_app_header.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_markdown.dart';
-import 'package:mayos_mobile/src/features/coach/coach_exercise_table.dart'
-    show CoachCompactExerciseRow;
 import 'package:mayos_mobile/src/features/coach/coach_history_segment.dart';
 import 'package:mayos_mobile/src/features/coach/coach_player_history_screen.dart';
 
@@ -794,7 +794,7 @@ void main() {
         ],
       },
     };
-    await _pumpApp(tester, fake);
+    await _pumpApp(tester, fake, logicalSize: const Size(360, 800));
     await tester.tap(find.byKey(const Key('roster_row_assignment-ar')));
     await _pumpUntilFound(tester, find.byType(CoachPlayerHistoryScreen));
     await _pumpUntilFound(tester, find.text('السجل'));
@@ -810,14 +810,12 @@ void main() {
     expect(find.textContaining('كابل'), findsOneWidget);
     expect(find.textContaining('\u2066Dumbbell\u2069'), findsOneWidget);
     expect(find.text('الحركة: ثني الكتف'), findsOneWidget);
+    final Finder cableCard = find.ancestor(
+      of: find.text('Cable Row').first,
+      matching: find.byType(MayosCard),
+    ).first;
     expect(
-      find.descendant(
-        of: find.ancestor(
-          of: find.text('Cable Row'),
-          matching: find.byType(CoachCompactExerciseRow),
-        ),
-        matching: find.text('الحركة: —'),
-      ),
+      find.descendant(of: cableCard, matching: find.text('الحركة: —')),
       findsOneWidget,
     );
     expect(
@@ -826,5 +824,28 @@ void main() {
       ),
       TextDirection.rtl,
     );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _pumpApp(tester, fake, logicalSize: const Size(1440, 960));
+    await tester.tap(find.byKey(const Key('roster_row_assignment-ar')));
+    await _pumpUntilFound(tester, find.byType(CoachPlayerHistoryScreen));
+    await tester.tap(find.text('البرنامج التدريبي').first);
+    await _pumpUntilFound(tester, find.text('Press'));
+    final Finder cableRow = find.ancestor(
+      of: find.text('Cable Row').first,
+      matching: find.byType(MayosTableRow),
+    ).first;
+    expect(
+      find.descendant(
+        of: cableRow,
+        matching: find.bySemanticsLabel('الحركة: —'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: cableRow, matching: find.text('—')),
+      findsOneWidget,
+    );
+    expect(find.text('الحركة'), findsWidgets);
   });
 }

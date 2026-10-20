@@ -651,14 +651,22 @@ void main() {
           'records': <dynamic>[],
         },
       };
-    await _pumpApp(tester, fake, logicalHeight: 1500);
+    await _pumpApp(tester, fake, logicalHeight: 1800);
 
     await _openRosterEntry(tester);
     await _pumpUntilFound(tester, find.text('Weekly volume'));
     await _expandHistorySection(tester, 'exercises');
     final Finder tile = find.widgetWithText(ExpansionTile, 'Weighted Pull-Up');
+    await tester.scrollUntilVisible(
+      tile,
+      300,
+      scrollable: find.ancestor(
+        of: tile,
+        matching: find.byType(Scrollable),
+      ).first,
+    );
     await tester.ensureVisible(tile);
-    await tester.tap(tile);
+    await tester.tap(find.text('Weighted Pull-Up'));
     await _pumpUntilFound(
       tester,
       find.text('Latest recorded progress is available.'),

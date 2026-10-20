@@ -10,6 +10,7 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_card.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_table_frame.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
@@ -1148,10 +1149,54 @@ void main() {
       ),
       findsOneWidget,
     );
+    final Finder noMuscleCard = find.ancestor(
+      of: find.text('No muscle'),
+      matching: find.byType(MayosCard),
+    ).first;
+    expect(noMuscleCard, findsOneWidget);
+    expect(
+      find.descendant(of: noMuscleCard, matching: find.text('No muscle')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: noMuscleCard,
+        matching: find.text('Ignored catalog body part'),
+      ),
+      findsNothing,
+    );
+    expect(find.text('Equipment'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('program desktop row hides the catalog body part',
+      (tester) async {
+    final Map<String, dynamic> active =
+        _coachActiveProgram(provenance: 'automatic');
+    ((active['program'] as Map<String, dynamic>)['days'] as List<dynamic>)
+        .first['exercises']
+        .add(
+      _programExerciseRow(
+        'no-muscle',
+        'No muscle',
+        metadata: <String, dynamic>{
+          'body_part': 'Ignored catalog body part',
+          'primary_action': 'Knee Flexion',
+        },
+      ),
+    );
+    final FakeMayosApi fake = _coachFake()..coachActiveProgram = active;
+    await _pumpApp(tester, fake, logicalWidth: 1440);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester);
+    await _pumpUntilFound(tester, find.text('No muscle'));
+
     final Finder noMuscleRow = find.ancestor(
       of: find.text('No muscle'),
-      matching: find.byType(CoachCompactExerciseRow),
+      matching: find.byType(MayosTableRow),
     );
+    expect(noMuscleRow, findsOneWidget);
     expect(
       find.descendant(of: noMuscleRow, matching: find.text('No muscle')),
       findsOneWidget,
@@ -1163,8 +1208,6 @@ void main() {
       ),
       findsNothing,
     );
-    expect(find.text('Equipment'), findsNothing);
-    expect(tester.takeException(), isNull);
   });
 
   testWidgets('failed program picture keeps the catalog thumbnail layout',
@@ -1252,12 +1295,35 @@ void main() {
       TextDirection.rtl,
     );
     expect(
-      tester.getRect(find.text('Full A').first).center.dx,
-      greaterThan(tester.getRect(find.text('Lower B').first).center.dx),
+      tester.getRect(find.textContaining('Full A').first).top,
+      lessThan(tester.getRect(find.textContaining('Lower B').first).top),
     );
     expect(
       tester.getRect(find.byIcon(Icons.fitness_center).first).center.dx,
       greaterThan(tester.getRect(find.text('Squat')).center.dx),
+    );
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    final Map<String, dynamic> desktopActive =
+        _coachActiveProgram(provenance: 'automatic');
+    ((desktopActive['program'] as Map<String, dynamic>)['days']
+        as List<dynamic>).add(<String, dynamic>{
+      'day_name': 'Lower B',
+      'day_order': 2,
+      'exercises': <Map<String, dynamic>>[],
+    });
+    final FakeMayosApi desktopFake = _coachFake()
+      ..displayLanguage = 'ar'
+      ..coachActiveProgram = desktopActive;
+    await _pumpApp(tester, desktopFake, logicalWidth: 1440);
+    await _pumpUntilFound(tester, find.text('علاقات التدريب النشطة'));
+    await tester.ensureVisible(find.text('bob'));
+    await tester.tap(find.text('bob'));
+    await _openProgramSegment(tester, label: 'البرنامج التدريبي');
+    await _pumpUntilFound(tester, find.text('أيام التدريب'));
+    expect(
+      tester.getRect(find.text('Full A').first).center.dx,
+      greaterThan(tester.getRect(find.text('Lower B').first).center.dx),
     );
   });
 

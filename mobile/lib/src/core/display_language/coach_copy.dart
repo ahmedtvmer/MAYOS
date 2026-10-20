@@ -1300,4 +1300,7 @@ class CoachCopy {
   }
 
   String _ltr(String value) => '\u2066$value\u2069';
+
+  // #427: Player history table heading.
+  String get muscleColumn => isArabic ? 'العضلة' : 'Muscle';
 }

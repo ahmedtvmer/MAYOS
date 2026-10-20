@@ -10,6 +10,8 @@ import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
+import '../../core/ui/is_desktop_layout.dart';
+import '../../core/ui/mayos_bottom_sheet_editor.dart';
 import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_phone_tap_target.dart';
 import '../../providers.dart';
@@ -34,17 +36,53 @@ Future<void> showLogCheckInSheet(
   required String assignmentId,
   required String playerUsername,
   required ValueChanged<CheckInCreation> onSaved,
-}) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (BuildContext context) => LogCheckInSheet(
+}) async {
+  final LogCheckInController controller = LogCheckInController();
+  try {
+    final LogCheckInSheet sheet = LogCheckInSheet(
+      controller: controller,
       assignmentId: assignmentId,
       playerUsername: playerUsername,
       onSaved: onSaved,
-    ),
-  );
+      showSaveAction: isDesktopLayout(context),
+    );
+    if (isDesktopLayout(context)) {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        builder: (BuildContext context) => sheet,
+      );
+    } else {
+      await showMayosBottomSheetEditor<void>(
+        context: context,
+        content: sheet,
+        actions: _CheckInSubmitAction(controller: controller),
+      );
+    }
+  } finally {
+    controller.dispose();
+  }
+}
+
+/// Owns the check-in submit action and its in-flight state for the sheet.
+class LogCheckInController extends ChangeNotifier {
+  Future<void> Function()? _saveAction;
+  bool _isSaving = false;
+
+  bool get isSaving => _isSaving;
+
+  Future<void> save() async => _saveAction?.call();
+
+  void _bindSaveAction(Future<void> Function() saveAction) {
+    _saveAction = saveAction;
+  }
+
+  void _setSaving(bool value) {
+    if (_isSaving == value) return;
+    _isSaving = value;
+    notifyListeners();
+  }
 }
 
 /// The sheet body. A channel is required (the service rejects a check-in
@@ -52,14 +90,18 @@ Future<void> showLogCheckInSheet(
 class LogCheckInSheet extends ConsumerStatefulWidget {
   const LogCheckInSheet({
     super.key,
+    required this.controller,
     required this.assignmentId,
     required this.playerUsername,
     required this.onSaved,
+    this.showSaveAction = true,
   });
 
+  final LogCheckInController controller;
   final String assignmentId;
   final String playerUsername;
   final ValueChanged<CheckInCreation> onSaved;
+  final bool showSaveAction;
 
   @override
   ConsumerState<LogCheckInSheet> createState() => _LogCheckInSheetState();
@@ -68,9 +110,22 @@ class LogCheckInSheet extends ConsumerStatefulWidget {
 class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
   final TextEditingController _note = TextEditingController();
   String? _channel;
-  bool _saving = false;
   String? _error;
   FailureMessage? _failure;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller._bindSaveAction(_save);
+  }
+
+  @override
+  void didUpdateWidget(covariant LogCheckInSheet oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      widget.controller._bindSaveAction(_save);
+    }
+  }
 
   @override
   void dispose() {
@@ -87,10 +142,10 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
     // The note is optional: a blank one is sent as null, not an empty string.
     final String note = _note.text.trim();
     setState(() {
-      _saving = true;
       _error = null;
       _failure = null;
     });
+    widget.controller._setSaving(true);
     try {
       final CheckInCreation created =
           await ref.read(apiClientProvider).createCoachCheckIn(
@@ -105,9 +160,9 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
-        _saving = false;
         _failure = apiFailureMessage(error);
       });
+      widget.controller._setSaving(false);
     }
   }
 
@@ -116,12 +171,16 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
     final MayosThemeExtension c = MayosTheme.of(context);
     final copy = coachCopyOf(context);
     final String today = isoDateOf(DateTime.now());
+    final double phoneInset = widget.showSaveAction
+        ? MayosSpacing.lg + MediaQuery.viewInsetsOf(context).bottom
+        : 0;
+    final double horizontalInset = widget.showSaveAction ? MayosSpacing.lg : 0;
     return Padding(
       padding: EdgeInsetsDirectional.fromSTEB(
-        MayosSpacing.lg,
+        horizontalInset,
         0,
-        MayosSpacing.lg,
-        MayosSpacing.lg + MediaQuery.viewInsetsOf(context).bottom,
+        horizontalInset,
+        phoneInset,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -177,15 +236,38 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
               style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
             ),
           ],
-          const SizedBox(height: MayosSpacing.md),
-          MayosButton(
-            key: const Key('check_in_submit_button'),
-            label: copy.saveCheckIn,
-            loading: _saving,
-            onPressed: _saving ? null : _save,
-          ),
+          if (widget.showSaveAction) ...<Widget>[
+            const SizedBox(height: MayosSpacing.md),
+            AnimatedBuilder(
+              animation: widget.controller,
+              builder: (BuildContext context, Widget? child) => MayosButton(
+                key: const Key('check_in_submit_button'),
+                label: copy.saveCheckIn,
+                loading: widget.controller.isSaving,
+                onPressed:
+                    widget.controller.isSaving ? null : widget.controller.save,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
+}
+
+class _CheckInSubmitAction extends StatelessWidget {
+  const _CheckInSubmitAction({required this.controller});
+
+  final LogCheckInController controller;
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: controller,
+        builder: (BuildContext context, Widget? child) => MayosButton(
+          key: const Key('check_in_submit_button'),
+          label: coachCopyOf(context).saveCheckIn,
+          loading: controller.isSaving,
+          onPressed: controller.isSaving ? null : controller.save,
+        ),
+      );
 }

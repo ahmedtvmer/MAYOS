@@ -10,6 +10,7 @@ import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/is_desktop_layout.dart';
 import '../../core/ui/mayos_button.dart';
+import '../../core/ui/mayos_card_table.dart';
 import '../../core/ui/mayos_phone_tap_target.dart';
 import '../../core/ui/mayos_table_frame.dart';
 import 'coach_exercise_table.dart';
@@ -60,12 +61,18 @@ class _CoachProgramViewState extends State<CoachProgramView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         _summaryHeader(context, copy),
-        if (widget.program.days.isNotEmpty) ...<Widget>[
-          const SizedBox(height: MayosSpacing.md),
-          _dayTabs(context, selectedIndex),
-          const SizedBox(height: MayosSpacing.sm),
-          if (selectedDay != null) _selectedDay(context, copy, selectedDay),
-        ],
+        if (widget.program.days.isNotEmpty && isDesktopLayout(context))
+          ...<Widget>[
+            const SizedBox(height: MayosSpacing.md),
+            _dayTabs(context, selectedIndex),
+            const SizedBox(height: MayosSpacing.sm),
+            if (selectedDay != null) _selectedDay(context, copy, selectedDay),
+          ],
+        if (widget.program.days.isNotEmpty && !isDesktopLayout(context))
+          ...<Widget>[
+            const SizedBox(height: MayosSpacing.md),
+            _phoneProgramDays(context, copy),
+          ],
       ],
     );
   }
@@ -298,10 +305,7 @@ class _CoachProgramViewState extends State<CoachProgramView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        if (isDesktopLayout(context))
-          _desktopExerciseTable(context, copy, day, shownCount)
-        else
-          _phoneExerciseRows(context, copy, day, shownCount),
+        _desktopExerciseTable(context, copy, day, shownCount),
         if (!_showAllExercises &&
             day.exercises.length > _collapsedExerciseCount &&
             day.exercises.length - shownCount > 0)
@@ -390,12 +394,28 @@ class _CoachProgramViewState extends State<CoachProgramView> {
             ),
             secondaryLine: _secondaryLine(copy, exercise),
           ),
-          CoachExerciseActionCell(primaryAction: exercise.primaryAction),
+          _desktopActionCell(context, copy, exercise),
           for (final String cellText in
               _programTableValues(context, copy, exercise))
             _tableValue(context, cellText),
         ],
       );
+
+  Widget _desktopActionCell(
+    BuildContext context,
+    CoachCopy copy,
+    ProgramExercise exercise,
+  ) {
+    final String action =
+        coachExerciseActionLabel(context, exercise.primaryAction);
+    return Semantics(
+      container: true,
+      label: copy.programActionDetail(action),
+      child: ExcludeSemantics(
+        child: CoachExerciseActionCell(primaryAction: exercise.primaryAction),
+      ),
+    );
+  }
 
   List<String> _programTableValues(
     BuildContext context,
@@ -422,39 +442,57 @@ class _CoachProgramViewState extends State<CoachProgramView> {
             .copyWith(color: MayosTheme.of(context).textPrimary),
       );
 
-  Widget _phoneExerciseRows(
-    BuildContext context,
-    CoachCopy copy,
-    ProgramDay day,
-    int shownCount,
-  ) =>
-      Column(
-        children: <Widget>[
-          for (int index = 0; index < shownCount; index++) ...<Widget>[
-            if (index > 0) const Divider(height: 1),
-            _phoneExerciseRow(context, copy, day.exercises[index]),
-          ],
+  Widget _phoneProgramDays(BuildContext context, CoachCopy copy) =>
+      MayosCardTable(
+        columns: <String>[
+          copy.programExerciseColumn,
+        ],
+        sections: <MayosCardTableSection>[
+          for (final ProgramDay day in widget.program.days)
+            MayosCardTableSection(
+              heading: '${day.dayName} · '
+                  '${copy.programDaySummary(
+                day.exercises.length,
+                _workingSetCount(day.exercises),
+              )}',
+              rows: <MayosCardTableRow>[
+                for (final ProgramExercise exercise in day.exercises)
+                  _phoneExerciseCardRow(
+                    context,
+                    copy,
+                    exercise,
+                  ),
+              ],
+            ),
         ],
       );
 
-  Widget _phoneExerciseRow(
+  MayosCardTableRow _phoneExerciseCardRow(
     BuildContext context,
     CoachCopy copy,
     ProgramExercise exercise,
   ) =>
-      CoachCompactExerciseRow(
-        imagePath: exercise.imagePath,
-        name: exercise.exerciseName,
-        muscleLine: coachExerciseMuscleLabel(
-          context,
-          exercise.primaryMuscle ??
-              (exercise.isCoachExercise ? exercise.bodyPart : null),
-        ),
-        prescription: _compactPrescription(copy, exercise),
-        secondaryLine: _phoneSecondaryLine(context, copy, exercise),
+      MayosCardTableRow(
+        cells: <Widget?>[
+          CoachExerciseCell(
+            imagePath: exercise.imagePath,
+            name: exercise.exerciseName,
+            muscleLine: coachExerciseMuscleLabel(
+              context,
+              exercise.primaryMuscle ??
+                  (exercise.isCoachExercise ? exercise.bodyPart : null),
+            ),
+            secondaryLine: _phoneSecondaryLine(context, copy, exercise),
+          ),
+        ],
+        subtitle: Text(_compactPrescription(context, copy, exercise)),
       );
 
-  String _compactPrescription(CoachCopy copy, ProgramExercise exercise) =>
+  String _compactPrescription(
+    BuildContext context,
+    CoachCopy copy,
+    ProgramExercise exercise,
+  ) =>
       copy.compactProgramPrescription((
         sets: copy.programSetsCell(exercise.targetSets, exercise.warmupSets),
         reps: copy.programExerciseRepRange(

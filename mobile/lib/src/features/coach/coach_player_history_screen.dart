@@ -1094,6 +1094,7 @@ class _CoachPlayerHistoryScreenState
         }
       },
       child: Scaffold(
+        key: const Key('coach_player_history_screen'),
         appBar: AppBar(
           key: const Key('coach_player_history_app_bar'),
           automaticallyImplyLeading: false,
@@ -1480,6 +1481,7 @@ class _CoachPlayerHistoryScreenState
       );
     }
     return ListView(
+      key: const Key('coach_player_history_scroll'),
       padding: const EdgeInsets.all(MayosSpacing.md),
       children: <Widget>[
         if (_alerts.isNotEmpty) ...<Widget>[
