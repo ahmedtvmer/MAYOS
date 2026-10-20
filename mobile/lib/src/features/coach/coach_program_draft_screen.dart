@@ -1,8 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
 import '../../core/app_failure.dart';
@@ -15,12 +15,14 @@ import '../../core/program_prescription.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
+import '../../core/ui/is_desktop_layout.dart';
+import '../../core/ui/mayos_bottom_sheet_editor.dart';
 import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_card.dart';
 import '../../providers.dart';
 import 'coach_exercise_picker_dialog.dart';
-import 'program_publish_confirmation.dart';
 import 'program_import_files.dart';
+import 'program_publish_confirmation.dart';
 import 'program_template_save_sheet.dart';
 
 part 'program_editor/day_card.dart';
@@ -99,6 +101,7 @@ class _CoachProgramDraftScreenState
   String? _sourceTemplateName;
   final Map<_EditorErrorLocation, String> _serverErrors =
       <_EditorErrorLocation, String>{};
+  final ValueNotifier<int> _editorRevision = ValueNotifier<int>(0);
   late final TextEditingController _templateName;
   late final TextEditingController _templateDescription;
 
@@ -121,7 +124,13 @@ class _CoachProgramDraftScreenState
     }
     _templateName.dispose();
     _templateDescription.dispose();
+    _editorRevision.dispose();
     super.dispose();
+  }
+
+  void _setEditorState(VoidCallback update) {
+    setState(update);
+    _editorRevision.value++;
   }
 
   Future<void> _loadDraft() async {
@@ -149,7 +158,7 @@ class _CoachProgramDraftScreenState
       if (mounted) _applyEnvelope(envelope);
     } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() {
+      _setEditorState(() {
         _loading = false;
         _failure = apiFailureMessage(error);
       });
@@ -226,7 +235,7 @@ class _CoachProgramDraftScreenState
     if (!widget.isTemplateMode) {
       _draftRevision = envelope['updated_at'] as String?;
     }
-    setState(() {
+    _setEditorState(() {
       _draft = draft;
       _loading = false;
       _failure = null;
@@ -296,7 +305,7 @@ class _CoachProgramDraftScreenState
 
   void _addWeek() {
     if (_weeks.length >= ProgramDraftPrescription.maxWeeks) return;
-    setState(() {
+    _setEditorState(() {
       _weeks.add(_newWeek(_weeks.length + 1));
       _selectedWeekIndex = _weeks.length - 1;
       _hasUnsavedChanges = true;
@@ -309,7 +318,7 @@ class _CoachProgramDraftScreenState
     if (_weeks.length >= ProgramDraftPrescription.maxWeeks) return;
     final int duplicateIndex = _selectedWeekIndex + 1;
     final _DraftWeekEditor duplicate = _weeks[_selectedWeekIndex].copy();
-    setState(() {
+    _setEditorState(() {
       _weeks.insert(duplicateIndex, duplicate);
       _selectedWeekIndex = duplicateIndex;
       _hasUnsavedChanges = true;
@@ -322,7 +331,7 @@ class _CoachProgramDraftScreenState
     final int target = _selectedWeekIndex + delta;
     if (target < 0 || target >= _weeks.length) return;
     if (!_moveListItem(_weeks, _selectedWeekIndex, delta)) return;
-    setState(() {
+    _setEditorState(() {
       _selectedWeekIndex = target;
       _hasUnsavedChanges = true;
       _syncWeekOrders();
@@ -332,9 +341,10 @@ class _CoachProgramDraftScreenState
 
   void _removeWeek() {
     if (_weeks.length <= 1) return;
+    FocusManager.instance.primaryFocus?.unfocus();
     final _DraftWeekEditor removed = _weeks.removeAt(_selectedWeekIndex);
     removed.dispose();
-    setState(() {
+    _setEditorState(() {
       _selectedWeekIndex = _selectedWeekIndex.clamp(0, _weeks.length - 1);
       _hasUnsavedChanges = true;
       _syncWeekOrders();
@@ -344,7 +354,7 @@ class _CoachProgramDraftScreenState
 
   void _selectWeek(int index) {
     if (index == _selectedWeekIndex) return;
-    setState(() {
+    _setEditorState(() {
       _selectedWeekIndex = index;
       _clearServerErrors();
     });
@@ -359,7 +369,7 @@ class _CoachProgramDraftScreenState
 
   void _addDay() {
     if (_days.length >= ProgramDraftPrescription.maxDays) return;
-    setState(() {
+    _setEditorState(() {
       _days.add(_newDay(_days.length + 1));
       _hasUnsavedChanges = true;
       _syncDayOrders();
@@ -369,7 +379,7 @@ class _CoachProgramDraftScreenState
 
   void _moveDay(int index, int delta) {
     if (!_moveListItem(_days, index, delta)) return;
-    setState(() {
+    _setEditorState(() {
       _hasUnsavedChanges = true;
       _syncDayOrders();
       _clearServerErrors();
@@ -383,7 +393,7 @@ class _CoachProgramDraftScreenState
     duplicate.dayName.text = coachCopyOf(context).dayDuplicateName(
       original.dayName.text.trim(),
     );
-    setState(() {
+    _setEditorState(() {
       _days.insert(index + 1, duplicate);
       _hasUnsavedChanges = true;
       _syncDayOrders();
@@ -392,9 +402,10 @@ class _CoachProgramDraftScreenState
   }
 
   void _removeDay(int index) {
+    FocusManager.instance.primaryFocus?.unfocus();
     final _DraftDayEditor removed = _days.removeAt(index);
     removed.dispose();
-    setState(() {
+    _setEditorState(() {
       _hasUnsavedChanges = true;
       _syncDayOrders();
       _clearServerErrors();
@@ -406,7 +417,10 @@ class _CoachProgramDraftScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        _weekTabStrip(copy),
+        if (!isDesktopLayout(context))
+          _weekDropdown(copy)
+        else
+          _weekTabStrip(copy),
         const SizedBox(height: MayosSpacing.xs),
         _weekNameField(copy),
         _weekOrderButtons(copy),
@@ -454,6 +468,28 @@ class _CoachProgramDraftScreenState
         ),
       );
 
+  Widget _weekDropdown(CoachCopy copy) => DropdownButtonFormField<int>(
+        key: ValueKey<int>(_selectedWeekIndex),
+        initialValue: _selectedWeekIndex,
+        decoration: InputDecoration(
+          labelText: copy.weekName,
+          border: const OutlineInputBorder(),
+        ),
+        items: <DropdownMenuItem<int>>[
+          for (int index = 0; index < _weeks.length; index++)
+            DropdownMenuItem<int>(
+              value: index,
+              child: Text(copy.weekTabLabel(
+                index + 1,
+                _weeks[index].name.text.trim(),
+              )),
+            ),
+        ],
+        onChanged: (int? index) {
+          if (index != null) _selectWeek(index);
+        },
+      );
+
   Widget _weekNameField(CoachCopy copy) => TextField(
         key: const Key('program_draft_week_name'),
         controller: _weeks[_selectedWeekIndex].name,
@@ -462,7 +498,7 @@ class _CoachProgramDraftScreenState
           labelText: copy.weekName,
           border: const OutlineInputBorder(),
         ),
-        onChanged: (_) => setState(() => _hasUnsavedChanges = true),
+        onChanged: (_) => _setEditorState(() => _hasUnsavedChanges = true),
       );
 
   Widget _weekOrderButtons(CoachCopy copy) => Row(
@@ -522,7 +558,7 @@ class _CoachProgramDraftScreenState
   Future<void> _addExercise(int dayIndex) async {
     final ExerciseCatalogEntry? selected = await _pickExercise();
     if (selected == null || !mounted) return;
-    setState(() {
+    _setEditorState(() {
       _days[dayIndex].exercises.add(_newExercise(selected));
       _hasUnsavedChanges = true;
       _inputError = null;
@@ -537,7 +573,7 @@ class _CoachProgramDraftScreenState
   }) async {
     final ExerciseCatalogEntry? selected = await _pickExercise(title: title);
     if (selected == null || !mounted) return;
-    setState(() {
+    _setEditorState(() {
       _days[dayIndex].exercises.insert(index, _newExercise(selected));
       _hasUnsavedChanges = true;
       _inputError = null;
@@ -552,7 +588,7 @@ class _CoachProgramDraftScreenState
       title: coachCopyOf(context).swapExercise,
     );
     if (selected == null || !mounted) return;
-    setState(() {
+    _setEditorState(() {
       exercise.swapIdentity(selected);
       _hasUnsavedChanges = true;
       _inputError = null;
@@ -564,7 +600,7 @@ class _CoachProgramDraftScreenState
     try {
       return _serializedDraft();
     } on FormatException catch (error) {
-      setState(() => _inputError = error.message);
+      _setEditorState(() => _inputError = error.message);
       return null;
     }
   }
@@ -576,10 +612,10 @@ class _CoachProgramDraftScreenState
     final String templateName =
         widget.isTemplateMode ? _templateName.text.trim() : '';
     if (widget.isTemplateMode && templateName.isEmpty) {
-      setState(() => _inputError = copy.templateNameRequired);
+      _setEditorState(() => _inputError = copy.templateNameRequired);
       return;
     }
-    setState(() {
+    _setEditorState(() {
       _saving = true;
       _failure = null;
       _inputError = null;
@@ -611,7 +647,7 @@ class _CoachProgramDraftScreenState
       final Map<String, dynamic> saved = await api
           .coachReplaceProgramDraft(widget.assignmentId!, draft);
       if (!mounted) return;
-      setState(() {
+      _setEditorState(() {
         _draft = _copyMap(saved['draft'] as Map<String, dynamic>);
         _draftRevision = saved['updated_at'] as String?;
         _hasUnsavedChanges = false;
@@ -621,7 +657,7 @@ class _CoachProgramDraftScreenState
       );
     } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() {
+      _setEditorState(() {
         if (error.serverDetails?['errors'] is List ||
             error.serverDetails?['pydantic_errors'] is List) {
           _applyServerValidation(error.serverDetails!);
@@ -630,7 +666,7 @@ class _CoachProgramDraftScreenState
         }
       });
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) _setEditorState(() => _saving = false);
     }
   }
 
@@ -644,7 +680,7 @@ class _CoachProgramDraftScreenState
     );
     if (!mounted || request == null) return;
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
-    setState(() {
+    _setEditorState(() {
       _savingTemplateCopy = true;
       _failure = null;
       _inputError = null;
@@ -661,7 +697,7 @@ class _CoachProgramDraftScreenState
             .coachReplaceProgramDraft(widget.assignmentId!, draft);
         revision = saved['updated_at'] as String?;
         _draftRevision = revision;
-        if (mounted) setState(() => _hasUnsavedChanges = false);
+        if (mounted) _setEditorState(() => _hasUnsavedChanges = false);
       }
       await api.coachSaveAssignedProgramAsTemplate(
         assignmentId: widget.assignmentId!,
@@ -674,9 +710,9 @@ class _CoachProgramDraftScreenState
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(content: Text(copy.templateSaved)));
     } on ApiException catch (error) {
-      if (mounted) setState(() => _failure = apiFailureMessage(error));
+      if (mounted) _setEditorState(() => _failure = apiFailureMessage(error));
     } finally {
-      if (mounted) setState(() => _savingTemplateCopy = false);
+      if (mounted) _setEditorState(() => _savingTemplateCopy = false);
     }
   }
 
@@ -719,13 +755,13 @@ class _CoachProgramDraftScreenState
         cancelLabel: copy.cancel,
       ),
       onRequestsLoadError: (ApiException error) {
-        if (mounted) setState(() => _failure = apiFailureMessage(error));
+        if (mounted) _setEditorState(() => _failure = apiFailureMessage(error));
       },
     );
     if (!mounted || resolveRequestIds == null) return;
     final Map<String, dynamic>? draft = _draftForSave();
     if (draft == null || !mounted) return;
-    setState(() {
+    _setEditorState(() {
       _publishing = true;
       _failure = null;
       _inputError = null;
@@ -737,7 +773,7 @@ class _CoachProgramDraftScreenState
             draft,
       );
       if (mounted) {
-        setState(() {
+        _setEditorState(() {
           _draftRevision = saved['updated_at'] as String?;
           _hasUnsavedChanges = false;
         });
@@ -752,12 +788,12 @@ class _CoachProgramDraftScreenState
       if (!mounted) return;
       if (error.serverDetails?['errors'] is List ||
           error.serverDetails?['pydantic_errors'] is List) {
-        setState(() => _applyServerValidation(error.serverDetails!));
+        _setEditorState(() => _applyServerValidation(error.serverDetails!));
       } else {
-        setState(() => _failure = apiFailureMessage(error));
+        _setEditorState(() => _failure = apiFailureMessage(error));
       }
     } finally {
-      if (mounted) setState(() => _publishing = false);
+      if (mounted) _setEditorState(() => _publishing = false);
     }
   }
 
@@ -770,7 +806,7 @@ class _CoachProgramDraftScreenState
     )) {
       return;
     }
-    setState(() {
+    _setEditorState(() {
       _discarding = true;
       _failure = null;
     });
@@ -781,9 +817,9 @@ class _CoachProgramDraftScreenState
       if (mounted) _popEditor();
     } on ApiException catch (error) {
       if (!mounted) return;
-      setState(() => _failure = apiFailureMessage(error));
+      _setEditorState(() => _failure = apiFailureMessage(error));
     } finally {
-      if (mounted) setState(() => _discarding = false);
+      if (mounted) _setEditorState(() => _discarding = false);
     }
   }
 
@@ -791,7 +827,7 @@ class _CoachProgramDraftScreenState
     final List<_DraftExerciseEditor> exercises = _days[dayIndex].exercises;
     if (oldIndex == newIndex) return;
     exercises.insert(newIndex, exercises.removeAt(oldIndex));
-    setState(() {
+    _setEditorState(() {
       _hasUnsavedChanges = true;
       _clearServerErrors();
     });
@@ -799,7 +835,7 @@ class _CoachProgramDraftScreenState
 
   void _duplicateExercise(int dayIndex, int index) {
     final List<_DraftExerciseEditor> exercises = _days[dayIndex].exercises;
-    setState(() {
+    _setEditorState(() {
       exercises.insert(index + 1, exercises[index].copy());
       _hasUnsavedChanges = true;
       _clearServerErrors();
@@ -807,9 +843,10 @@ class _CoachProgramDraftScreenState
   }
 
   void _removeExercise(int dayIndex, int index) {
+    FocusManager.instance.primaryFocus?.unfocus();
     final _DraftExerciseEditor removed = _days[dayIndex].exercises.removeAt(index);
     removed.dispose();
-    setState(() {
+    _setEditorState(() {
       _inputError = null;
       _hasUnsavedChanges = true;
       _clearServerErrors();
@@ -827,7 +864,7 @@ class _CoachProgramDraftScreenState
       );
 
   void _addWarmupMovement(int dayIndex) {
-    setState(() {
+    _setEditorState(() {
       _hasUnsavedChanges = true;
       _days[dayIndex].warmups.add(_newWarmupMovement());
       _clearServerErrors();
@@ -835,7 +872,7 @@ class _CoachProgramDraftScreenState
   }
 
   void _insertWarmupMovement(int dayIndex, int index) {
-    setState(() {
+    _setEditorState(() {
       _days[dayIndex].warmups.insert(index, _newWarmupMovement());
       _hasUnsavedChanges = true;
       _clearServerErrors();
@@ -845,16 +882,17 @@ class _CoachProgramDraftScreenState
   void _moveWarmupMovement(int dayIndex, int index, int delta) {
     final List<_DraftWarmupEditor> warmups = _days[dayIndex].warmups;
     if (!_moveListItem(warmups, index, delta)) return;
-    setState(() {
+    _setEditorState(() {
       _hasUnsavedChanges = true;
       _clearServerErrors();
     });
   }
 
   void _removeWarmupMovement(int dayIndex, int index) {
+    FocusManager.instance.primaryFocus?.unfocus();
     final _DraftWarmupEditor removed = _days[dayIndex].warmups.removeAt(index);
     removed.dispose();
-    setState(() {
+    _setEditorState(() {
       _hasUnsavedChanges = true;
       _clearServerErrors();
     });
@@ -1002,6 +1040,7 @@ class _CoachProgramDraftScreenState
       canPop: _allowPop || !_hasUnsavedChanges,
       onPopInvokedWithResult: _onPopInvoked,
       child: Scaffold(
+      key: const Key('coach_program_draft_screen'),
       appBar: AppBar(
         leading: BackButton(onPressed: _requestPop),
         title: Text(widget.isTemplateMode ? copy.writeTemplate : copy.writeProgram),
@@ -1060,7 +1099,7 @@ class _CoachProgramDraftScreenState
                                     labelText: copy.templateName,
                                   ),
                                   onChanged: (_) {
-                                    setState(() {
+                                    _setEditorState(() {
                                       _hasUnsavedChanges = true;
                                       _inputError = null;
                                     });
@@ -1077,7 +1116,7 @@ class _CoachProgramDraftScreenState
                                     labelText: copy.templateDescription,
                                   ),
                                   onChanged: (_) {
-                                    setState(() {
+                                    _setEditorState(() {
                                       _hasUnsavedChanges = true;
                                       _inputError = null;
                                     });
@@ -1176,9 +1215,9 @@ class _CoachProgramDraftScreenState
   Future<void> _downloadTemplate(String extension) => runProgramTemplateDownload(
         ref: ref,
         extension: extension,
-        onBusyChanged: (bool busy) => setState(() => _downloadingTemplate = busy),
+        onBusyChanged: (bool busy) => _setEditorState(() => _downloadingTemplate = busy),
         isMounted: () => mounted,
-        onFailure: (FailureMessage message) => setState(() => _failure = message),
+        onFailure: (FailureMessage message) => _setEditorState(() => _failure = message),
       );
 
   Widget _loadError(BuildContext context) {
@@ -1206,7 +1245,7 @@ class _CoachProgramDraftScreenState
   }
 
   void _retryLoad() {
-    setState(() {
+    _setEditorState(() {
       _failure = null;
       _loading = true;
     });
@@ -1229,7 +1268,7 @@ class _CoachProgramDraftScreenState
           _exerciseCard(index, exerciseIndex),
       onReorderExercises: (int oldIndex, int newIndex) =>
           _reorderExercises(index, oldIndex, newIndex),
-      onChanged: (String field) => setState(() {
+      onChanged: (String field) => _setEditorState(() {
         _hasUnsavedChanges = true;
         _serverErrors.remove((
           weekIndex: _selectedWeekIndex,
@@ -1260,7 +1299,7 @@ class _CoachProgramDraftScreenState
         field,
         warmupMovementIndex: movementIndex,
       ),
-      onChanged: (String field) => setState(() {
+      onChanged: (String field) => _setEditorState(() {
         _hasUnsavedChanges = true;
         _serverErrors.remove((
           weekIndex: _selectedWeekIndex,
@@ -1278,20 +1317,27 @@ class _CoachProgramDraftScreenState
     );
   }
 
-  Widget _exerciseCard(int dayIndex, int exerciseIndex) {
+  Widget _exerciseCard(
+    int dayIndex,
+    int exerciseIndex, {
+    bool isEditorForm = false,
+  }) {
     final _DraftExerciseEditor exercise =
         _days[dayIndex].exercises[exerciseIndex];
     return _ProgramDraftExerciseCard(
       dayIndex: dayIndex,
       exerciseIndex: exerciseIndex,
+      exerciseCount: _days[dayIndex].exercises.length,
       exercise: exercise,
       busy: _busy,
+      isEditorForm: isEditorForm,
+      onEdit: () => _editExercise(dayIndex, exerciseIndex),
       errorFor: (String field) => _serverError(
         dayIndex,
         field,
         exerciseIndex: exerciseIndex,
       ),
-      onChanged: (String field) => setState(() {
+      onChanged: (String field) => _setEditorState(() {
         _hasUnsavedChanges = true;
         _serverErrors.remove((
           weekIndex: _selectedWeekIndex,
@@ -1302,6 +1348,8 @@ class _CoachProgramDraftScreenState
         ));
       }),
       onSwap: () => _swapExercise(dayIndex, exerciseIndex),
+      onMove: (int delta) =>
+          _reorderExercises(dayIndex, exerciseIndex, exerciseIndex + delta),
       onInsertAbove: () => _insertExercise(
         dayIndex,
         exerciseIndex,
@@ -1314,6 +1362,27 @@ class _CoachProgramDraftScreenState
       ),
       onDuplicate: () => _duplicateExercise(dayIndex, exerciseIndex),
       onRemove: () => _removeExercise(dayIndex, exerciseIndex),
+    );
+  }
+
+  Future<void> _editExercise(int dayIndex, int exerciseIndex) async {
+    final CoachCopy copy = coachCopyOf(context);
+    await showMayosBottomSheetEditor<void>(
+      context: context,
+      content: ValueListenableBuilder<int>(
+        valueListenable: _editorRevision,
+        builder: (BuildContext context, int _, Widget? child) =>
+            _exerciseCard(
+          dayIndex,
+          exerciseIndex,
+          isEditorForm: true,
+        ),
+      ),
+      actions: MayosButton(
+        key: const Key('program_draft_exercise_save'),
+        label: copy.exerciseEditorDone,
+        onPressed: () => Navigator.of(context).pop(),
+      ),
     );
   }
 
@@ -1366,7 +1435,7 @@ class _CoachProgramDraftScreenState
   }
 
   void _popEditor([Object? result]) {
-    setState(() => _allowPop = true);
+    _setEditorState(() => _allowPop = true);
     Navigator.of(context).pop(result);
   }
 

@@ -1,5 +1,7 @@
 part of '../coach_program_draft_screen.dart';
 
+enum _ProgramDraftDayAction { moveUp, moveDown, duplicate, remove }
+
 class _ProgramDraftDayCard extends StatelessWidget {
   const _ProgramDraftDayCard({
     required this.index,
@@ -55,34 +57,83 @@ class _ProgramDraftDayCard extends StatelessWidget {
                     style: MayosTypography.of(context).sectionHeading,
                   ),
                 ),
-                IconButton(
-                  key: Key('program_draft_day_up_$index'),
-                  tooltip: copy.moveDayUp,
-                  onPressed: busy || index == 0 ? null : () => onMove(-1),
-                  icon: const Icon(Icons.arrow_upward),
-                ),
-                IconButton(
-                  key: Key('program_draft_day_down_$index'),
-                  tooltip: copy.moveDayDown,
-                  onPressed: busy || index == dayCount - 1
-                      ? null
-                      : () => onMove(1),
-                  icon: const Icon(Icons.arrow_downward),
-                ),
-                IconButton(
-                  key: Key('program_draft_day_duplicate_$index'),
-                  tooltip: copy.duplicateDay,
-                  onPressed: busy || dayCount >= ProgramDraftPrescription.maxDays
-                      ? null
-                      : onDuplicate,
-                  icon: const Icon(Icons.copy_outlined),
-                ),
-                IconButton(
-                  key: Key('program_draft_day_remove_$index'),
-                  tooltip: copy.removeDay,
-                  onPressed: busy ? null : onRemove,
-                  icon: Icon(Icons.delete_outline, color: colors.danger),
-                ),
+                if (isDesktopLayout(context)) ...<Widget>[
+                  IconButton(
+                    key: Key('program_draft_day_up_$index'),
+                    tooltip: copy.moveDayUp,
+                    onPressed: busy || index == 0 ? null : () => onMove(-1),
+                    icon: const Icon(Icons.arrow_upward),
+                  ),
+                  IconButton(
+                    key: Key('program_draft_day_down_$index'),
+                    tooltip: copy.moveDayDown,
+                    onPressed: busy || index == dayCount - 1
+                        ? null
+                        : () => onMove(1),
+                    icon: const Icon(Icons.arrow_downward),
+                  ),
+                  IconButton(
+                    key: Key('program_draft_day_duplicate_$index'),
+                    tooltip: copy.duplicateDay,
+                    onPressed: busy || dayCount >= ProgramDraftPrescription.maxDays
+                        ? null
+                        : onDuplicate,
+                    icon: const Icon(Icons.copy_outlined),
+                  ),
+                  IconButton(
+                    key: Key('program_draft_day_remove_$index'),
+                    tooltip: copy.removeDay,
+                    onPressed: busy ? null : onRemove,
+                    icon: Icon(Icons.delete_outline, color: colors.danger),
+                  ),
+                ] else
+                  PopupMenuButton<_ProgramDraftDayAction>(
+                    key: Key('program_draft_day_menu_$index'),
+                    tooltip: copy.dayActions,
+                    enabled: !busy,
+                    onSelected: (_ProgramDraftDayAction action) {
+                      switch (action) {
+                        case _ProgramDraftDayAction.moveUp:
+                          onMove(-1);
+                        case _ProgramDraftDayAction.moveDown:
+                          onMove(1);
+                        case _ProgramDraftDayAction.duplicate:
+                          onDuplicate();
+                        case _ProgramDraftDayAction.remove:
+                          onRemove();
+                      }
+                    },
+                    itemBuilder: (BuildContext context) =>
+                        <PopupMenuEntry<_ProgramDraftDayAction>>[
+                      PopupMenuItem<_ProgramDraftDayAction>(
+                        key: Key('program_draft_day_move_up_$index'),
+                        value: _ProgramDraftDayAction.moveUp,
+                        enabled: !busy && index > 0,
+                        child: Text(copy.moveDayUp),
+                      ),
+                      PopupMenuItem<_ProgramDraftDayAction>(
+                        key: Key('program_draft_day_move_down_$index'),
+                        value: _ProgramDraftDayAction.moveDown,
+                        enabled: !busy && index < dayCount - 1,
+                        child: Text(copy.moveDayDown),
+                      ),
+                      PopupMenuItem<_ProgramDraftDayAction>(
+                        key: Key('program_draft_day_duplicate_menu_$index'),
+                        value: _ProgramDraftDayAction.duplicate,
+                        enabled: !busy &&
+                            dayCount < ProgramDraftPrescription.maxDays,
+                        child: Text(copy.duplicateDay),
+                      ),
+                      PopupMenuItem<_ProgramDraftDayAction>(
+                        key: Key('program_draft_day_remove_menu_$index'),
+                        value: _ProgramDraftDayAction.remove,
+                        enabled: !busy,
+                        child: Text(copy.removeDay,
+                            style: TextStyle(color: colors.danger)),
+                      ),
+                    ],
+                    icon: const Icon(Icons.more_vert),
+                  ),
               ],
             ),
             TextField(

@@ -1313,4 +1313,41 @@ class CoachCopy {
 
   // #427: Player history table heading.
   String get muscleColumn => isArabic ? 'العضلة' : 'Muscle';
+
+  // #428
+  String get dayActions =>
+      isArabic ? 'إجراءات يوم التدريب' : 'Training day actions';
+  String get exerciseEditorDone => isArabic ? 'تم' : 'Done';
+  String get moveExerciseUp =>
+      isArabic ? 'نقل التمرين لأعلى' : 'Move exercise up';
+  String get moveExerciseDown =>
+      isArabic ? 'نقل التمرين لأسفل' : 'Move exercise down';
+  String exercisePrescriptionSummary({
+    required String sets,
+    required String reps,
+    required String rir,
+    required String warmupSets,
+    required String rest,
+  }) {
+    final List<String> parts = <String>[];
+    if (sets.isNotEmpty || reps.isNotEmpty) {
+      parts.add(isArabic
+          ? '${sets.isEmpty ? '' : '${_ltr(sets)} مجموعات'}${sets.isNotEmpty && reps.isNotEmpty ? ' × ' : ''}${reps.isEmpty ? '' : '${_ltr(reps)} تكرارات'}'
+          : '${sets.isEmpty ? '' : '$sets sets'}${sets.isNotEmpty && reps.isNotEmpty ? ' × ' : ''}${reps.isEmpty ? '' : '$reps reps'}');
+    }
+    if (rir.isNotEmpty) {
+      parts.add(isArabic ? 'RIR ${_ltr(rir)}' : '$rir RIR');
+    }
+    if (warmupSets.isNotEmpty) {
+      parts.add(isArabic
+          ? '${_ltr(warmupSets)} مجموعات إحماء متدرجة'
+          : '$warmupSets ramped warm-up sets');
+    }
+    if (rest.isNotEmpty) {
+      parts.add(isArabic
+          ? 'راحة ${_ltr(rest)} ثانية'
+          : '$rest seconds rest');
+    }
+    return parts.join(' · ');
+  }
 }

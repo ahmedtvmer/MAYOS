@@ -153,8 +153,15 @@ Future<void> _checkPageScroll(
           }
           return true;
         });
+        final List<String> ancestors = <String>[];
+        element.visitAncestorElements((Element ancestor) {
+          ancestors.add(ancestor.widget.runtimeType.toString());
+          return ancestors.length < 8;
+        });
         expect(isAllowed, isTrue,
-            reason: 'Only caller-marked inner strips may scroll horizontally.');
+            reason: 'Only caller-marked inner strips may scroll horizontally. '
+                'Found ${element.widget.runtimeType} (${element.widget.key}), '
+                '${scrollable.axisDirection}, ancestors $ancestors.');
       }
     }
   }
