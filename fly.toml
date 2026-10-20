@@ -43,6 +43,9 @@ swap_size_mb = 512
   # prompt version keeps the feature off.
   COACH_AI_ENABLED = "true"
   COACH_AI_EVAL_REPORT = "/app/reports/coach_ai_eval.json"
+  # Coach roster questions (#311): on, gated by the committed live roster report.
+  COACH_ROSTER_AI_ENABLED = "true"
+  COACH_ROSTER_AI_EVAL_REPORT = "/app/reports/coach_roster_ai_eval.json"
   # Free-form Program import (#349/#350): on, gated by the committed live report
   # for the configured coach model (DeepSeek-V4-Flash, 352/352 rows on 21 owner-reviewed
   # sheets). A report for another model or prompt version keeps it off.
