@@ -12,9 +12,10 @@ import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
+import '../../core/ui/first_strong_direction.dart';
 import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_card.dart';
-import '../../core/ui/first_strong_direction.dart';
+import '../../core/ui/mayos_phone_tap_target.dart';
 import '../../providers.dart';
 import 'coach_shared.dart';
 
@@ -246,12 +247,12 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
         Wrap(
           spacing: MayosSpacing.xs,
           children: <Widget>[
-            FilterChip(
+            mayosPhoneTapTarget(context, FilterChip(
               label: Text(copy.showResolved),
               selected: _showResolved,
               onSelected: (bool selected) =>
                   setState(() => _showResolved = selected),
-            ),
+            )),
           ],
         ),
         const SizedBox(height: MayosSpacing.sm),

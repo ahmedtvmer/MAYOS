@@ -3,9 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_bottom_navigation.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_card.dart';
 import 'package:mayos_mobile/src/features/coach/coach_player_history_screen.dart';
@@ -14,6 +12,7 @@ import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/providers.dart';
 import 'package:mayos_mobile/src/router.dart';
 
+import 'support/coach_layout_harness.dart';
 import 'support/fake_mayos_api.dart';
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
@@ -32,31 +31,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
 Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake,
     {Size size = const Size(1440, 960),
     InMemoryAppModeStore? modeStore}) async {
-  tester.view.physicalSize = size;
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.resetPhysicalSize);
-  addTearDown(tester.view.resetDevicePixelRatio);
-  final InMemoryTokenStore tokens = InMemoryTokenStore();
-  await tokens.save('token-alice');
-  await tester.pumpWidget(
-    ProviderScope(
-      overrides: <Override>[
-        tokenStoreProvider.overrideWithValue(tokens),
-        appModeStoreProvider
-            .overrideWithValue(modeStore ?? InMemoryAppModeStore()),
-        apiClientProvider.overrideWith((ref) {
-          final ApiClient client = ApiClient(
-            tokens: ref.watch(tokenStoreProvider),
-            baseUrl: 'http://test.local',
-            adapter: fake.adapter,
-          );
-          client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
-          return client;
-        }),
-      ],
-      child: const MayosApp(),
-    ),
-  );
+  await pumpCoachApp(tester, fake, logicalSize: size, modeStore: modeStore);
   await _pumpUntilFound(tester, find.text('Active assignments'));
 }
 
@@ -78,15 +53,7 @@ Finder _playerTitle(String username) => find.descendant(
     );
 
 FakeMayosApi _coachFake() {
-  final FakeMayosApi fake = FakeMayosApi();
-  fake.issuedToken = 'token-alice';
-  fake.currentUsername = 'alice';
-  fake.tokenValid = true;
-  fake.coach = true;
-  fake.profileExists = true;
-  fake.recoveryEmail = 'alice@example.com';
-  fake.coachDisplayName = 'Coach Alice';
-  return fake;
+  return createCoachFake();
 }
 
 Map<String, dynamic> _assignment(String id, String username) =>

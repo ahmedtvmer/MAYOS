@@ -91,15 +91,16 @@ class CoachShell extends ConsumerWidget {
                 listKey: const Key('coach_roster_master_pane'),
                 detailKey: const Key('coach_player_detail_pane'),
               )
-            : assignmentSelected
-                ? Stack(
-                    fit: StackFit.expand,
-                    children: <Widget>[
-                      Offstage(offstage: true, child: roster),
-                      child,
-                    ],
-                  )
-                : roster;
+            : Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  Offstage(
+                    offstage: assignmentSelected,
+                    child: roster,
+                  ),
+                  if (assignmentSelected) child,
+                ],
+              );
     final Widget body = _keepBadgeTabsMounted(paneBody, path);
 
     final Widget shell = MayosScaffold(

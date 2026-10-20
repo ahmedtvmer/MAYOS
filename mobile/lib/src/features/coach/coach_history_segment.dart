@@ -10,6 +10,7 @@ import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/is_desktop_layout.dart';
 import '../../core/ui/mayos_card.dart';
 import '../../core/ui/mayos_section_header.dart';
+import '../../core/ui/mayos_table_frame.dart';
 import '../../core/workout_equipment.dart';
 import 'coach_exercise_table.dart';
 
@@ -29,8 +30,8 @@ enum CoachHistorySection {
   exercises,
 }
 
-const CoachTableColumns _recentSessionColumns =
-    CoachTableColumns(<double>[120, 190, 70, 110, 350], 4);
+const MayosTableColumns _recentSessionColumns =
+    MayosTableColumns(<double>[120, 190, 70, 110, 350], 4);
 
 class CoachHistorySegmentData {
   const CoachHistorySegmentData({
@@ -55,11 +56,11 @@ class CoachHistorySegmentData {
 }
 
 class CoachHistorySegment extends StatelessWidget {
-  static const CoachTableColumns _recordColumns = CoachTableColumns(
+  static const MayosTableColumns _recordColumns = MayosTableColumns(
     <double>[250, 110, 110, 65, 115],
     0,
   );
-  static const CoachTableColumns _historyColumns = CoachTableColumns(
+  static const MayosTableColumns _historyColumns = MayosTableColumns(
     <double>[105, 135, 65, 70, 95],
     0,
   );
@@ -501,7 +502,7 @@ class CoachHistorySegment extends StatelessWidget {
     CoachCopy copy,
     PersonalRecord record,
   ) =>
-      CoachExerciseTableRow(
+      MayosTableRow(
         cells: <Widget>[
           CoachExerciseCell(
             imagePath: record.imagePath,
@@ -526,7 +527,7 @@ class CoachHistorySegment extends StatelessWidget {
     BuildContext context,
     List<String> labels,
   ) =>
-      CoachExerciseTableHeader(
+      MayosTableHeader(
         labels: labels,
         alignments: List<TextAlign>.filled(labels.length, TextAlign.start),
       );
@@ -750,7 +751,7 @@ class CoachHistorySegment extends StatelessWidget {
     CoachCopy copy,
     _ExerciseHistoryDisplay point,
   ) =>
-      CoachExerciseTableRow(
+      MayosTableRow(
         cells: _historyTableCells(context, copy, point),
       );
 
@@ -852,7 +853,7 @@ class CoachHistorySegment extends StatelessWidget {
 
 Widget _recentSessionTableHeader(BuildContext context) {
   final copy = coachCopyOf(context);
-  return CoachExerciseTableHeader(
+  return MayosTableHeader(
     labels: <String>[
       copy.sessionDateColumn,
       copy.sessionSplitColumn,
@@ -897,8 +898,8 @@ String _sessionDivergenceLabel(
   return coachCopyOf(context).divergence(kind, divergence.exerciseName);
 }
 
-const CoachTableColumns _sessionExerciseColumns =
-    CoachTableColumns(<double>[290, 230, 95, 70, 120], 0);
+const MayosTableColumns _sessionExerciseColumns =
+    MayosTableColumns(<double>[290, 230, 95, 70, 120], 0);
 
 Widget _sessionExerciseTable(
   BuildContext context,
@@ -923,7 +924,7 @@ Widget _sessionExerciseTableContent(
 
 Widget _sessionExerciseTableHeader(BuildContext context) {
   final copy = coachCopyOf(context);
-  return CoachExerciseTableHeader(
+  return MayosTableHeader(
     labels: <String>[
       copy.programExerciseColumn,
       copy.programActionColumn,
@@ -945,7 +946,7 @@ Widget _sessionExerciseTableRow(
   BuildContext context,
   CoachPlayerSessionExercise exercise,
 ) =>
-    CoachExerciseTableRow(
+    MayosTableRow(
       cells: _sessionExerciseTableCells(context, exercise),
     );
 
@@ -1048,7 +1049,7 @@ class _RecentSessionRowState extends State<_RecentSessionRow> {
   Widget _desktopSummary(BuildContext context, List<Widget> flags) {
     return _rowToggle(
       context,
-      CoachExerciseTableRow(
+      MayosTableRow(
         cells: _desktopCells(context, flags),
       ),
     );

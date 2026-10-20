@@ -278,7 +278,7 @@ void main() {
         final String text = widget.data ?? widget.textSpan?.toPlainText() ?? '';
         final String withoutBidiIsolates =
             text.replaceAll('\u2066', '').replaceAll('\u2069', '');
-        return withoutBidiIsolates.contains('3 أيام');
+        return withoutBidiIsolates.contains('3 أيام فائتة');
       }),
       findsOneWidget,
     );
@@ -340,6 +340,41 @@ void main() {
       tester.getRect(revoke).top,
       greaterThan(tester.getRect(subtitle).bottom),
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Arabic desktop roster retains urgency chips and split',
+      (WidgetTester tester) async {
+    final String today = DateTime.now().toIso8601String().substring(0, 10);
+    final String yesterday = DateTime.now()
+        .subtract(const Duration(days: 1))
+        .toIso8601String()
+        .substring(0, 10);
+    final FakeMayosApi fake = _coachFake()
+      ..assignments[0]['next_follow_up_on'] = yesterday
+      ..assignments.add(<String, dynamic>{
+        'assignment_id': 'assignment-ar-today',
+        'player_username': 'player_ar_today',
+        'started_at': '2026-09-24T10:00:00Z',
+        'status': 'active',
+        'current_missed_streak': 0,
+        'alerts_new': 0,
+        'pending_requests': 0,
+        'next_follow_up_on': today,
+      });
+    await _pumpApp(
+      tester,
+      fake,
+      logicalSize: const Size(1440, 960),
+    );
+
+    expect(find.text('\u20663\u2069 أيام فائتة'), findsOneWidget);
+    expect(find.text('المتابعة متأخرة'), findsOneWidget);
+    expect(find.text('المتابعة اليوم'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('roster_row_assignment-ar')));
+    await _pumpUntilFound(tester, find.byType(CoachPlayerHistoryScreen));
+    expect(find.byKey(const Key('coach_roster_master_pane')), findsOneWidget);
+    expect(find.byKey(const Key('coach_player_detail_pane')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

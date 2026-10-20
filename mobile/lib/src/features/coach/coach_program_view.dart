@@ -10,6 +10,8 @@ import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/is_desktop_layout.dart';
 import '../../core/ui/mayos_button.dart';
+import '../../core/ui/mayos_phone_tap_target.dart';
+import '../../core/ui/mayos_table_frame.dart';
 import 'coach_exercise_table.dart';
 
 class CoachProgramView extends StatefulWidget {
@@ -28,7 +30,7 @@ class CoachProgramView extends StatefulWidget {
 
 class _CoachProgramViewState extends State<CoachProgramView> {
   static const int _collapsedExerciseCount = 8;
-  static const CoachTableColumns _columns = CoachTableColumns(
+  static const MayosTableColumns _columns = MayosTableColumns(
     <double>[40, 105, 230, 125, 115, 95, 80, 80],
     1,
   );
@@ -220,7 +222,7 @@ class _CoachProgramViewState extends State<CoachProgramView> {
             for (int index = 0; index < widget.program.days.length; index++)
               Padding(
                 padding: const EdgeInsetsDirectional.only(end: MayosSpacing.xs),
-                child: ChoiceChip(
+                child: mayosPhoneTapTarget(context, ChoiceChip(
                   key: Key('coach_program_day_tab_$index'),
                   label: Text(widget.program.days[index].dayName),
                   selected: index == selectedIndex,
@@ -228,7 +230,7 @@ class _CoachProgramViewState extends State<CoachProgramView> {
                     _selectedDayIndex = index;
                     _showAllExercises = false;
                   }),
-                ),
+                )),
               ),
           ],
         ),
@@ -327,7 +329,7 @@ class _CoachProgramViewState extends State<CoachProgramView> {
         columns: _columns,
         child: Column(
           children: <Widget>[
-            CoachExerciseTableHeader(
+            MayosTableHeader(
               labels: _tableLabels(copy),
               alignments: <TextAlign>[
                 TextAlign.center,
@@ -375,7 +377,7 @@ class _CoachProgramViewState extends State<CoachProgramView> {
     ProgramExercise exercise,
     int index,
   ) =>
-      CoachExerciseTableRow(
+      MayosTableRow(
         cells: <Widget>[
           Text('${index + 1}', textAlign: TextAlign.center),
           CoachExerciseCell(

@@ -11,6 +11,7 @@ import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/mayos_button.dart';
+import '../../core/ui/mayos_phone_tap_target.dart';
 import '../../providers.dart';
 
 /// The four channels the log-check-in sheet offers (#120): a call, a message,
@@ -142,14 +143,14 @@ class _LogCheckInSheetState extends ConsumerState<LogCheckInSheet> {
             runSpacing: MayosSpacing.xs,
             children: <Widget>[
               for (final String channel in kLogCheckInChannels)
-                ChoiceChip(
+                mayosPhoneTapTarget(context, ChoiceChip(
                   key: Key('check_in_channel_$channel'),
                   label: Text(copy.checkInChannel(channel)),
                   selected: _channel == channel,
                   onSelected: (bool selected) => setState(() {
                     _channel = selected ? channel : null;
                   }),
-                ),
+                )),
             ],
           ),
           const SizedBox(height: MayosSpacing.md),

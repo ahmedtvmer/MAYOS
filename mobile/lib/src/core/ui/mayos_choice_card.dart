@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import '../theme/mayos_spacing.dart';
 import '../theme/mayos_theme.dart';
 
-/// A large, expressive selectable option.
+/// A large, expressive selectable option. Its existing padding keeps its
+/// interactive surface above the shared 48dp phone tap-target minimum.
 ///
 /// Selection is one surface: an accent border, a subtle accent-tinted fill, and
 /// a check indicator (animated 150–350ms). It deliberately paints no inner

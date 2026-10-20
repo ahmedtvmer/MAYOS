@@ -14,6 +14,7 @@ import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
 import '../../core/ui/mayos_markdown.dart';
+import '../../core/ui/mayos_phone_tap_target.dart';
 import '../../core/ui/mayos_text_field.dart';
 import '../../providers.dart';
 import 'coach_assistant_screen.dart';
@@ -390,7 +391,7 @@ class _CoachRosterAssistantPanelState
     CoachRosterEntry entry,
     String playerDisplayName,
   ) =>
-      ActionChip(
+      mayosPhoneTapTarget(context, ActionChip(
         key: Key('coach_roster_player_link_$alias'),
         avatar: const Icon(Icons.open_in_new, size: 16),
         label: Text('${copy.askAboutPlayer}: $playerDisplayName'),
@@ -400,7 +401,7 @@ class _CoachRosterAssistantPanelState
                 CoachAssistantScreen(entry: entry),
           ),
         ),
-      );
+      ));
 
   Widget _thinking(CoachCopy copy, MayosThemeExtension colors) => Padding(
     padding: const EdgeInsets.symmetric(vertical: MayosSpacing.sm),

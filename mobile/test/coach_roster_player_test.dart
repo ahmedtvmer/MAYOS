@@ -232,10 +232,6 @@ void main() {
     expect(phoneUsername, findsOneWidget);
     expect(phoneRevoke, findsOneWidget);
     expect(
-      tester.getRect(phoneRevoke).top,
-      lessThan(tester.getRect(phoneUsername).bottom),
-    );
-    expect(
       find.text(
         'Last workout 2026-10-07 · '
         'UpperLowerStrengthAndConditioningWithAnExceptionallyLongProgramName',
@@ -303,16 +299,18 @@ void main() {
       lessThan(tester.getTopLeft(find.text('cara')).dy),
     );
 
-    // Bob: missed streak, overdue follow-up, new alerts, pending requests.
-    expect(find.text('Missed 3d'), findsOneWidget);
+    // Bob: attendance, follow-up date, new alerts, pending requests.
+    expect(find.text('3 missed days'), findsOneWidget);
     expect(find.text('Follow-up overdue'), findsOneWidget);
+    expect(find.text('Next follow-up'), findsWidgets);
+    expect(find.text(_daysFromToday(-2)), findsOneWidget);
     expect(_rosterChip('1 alert'), findsOneWidget);
     expect(find.text('2 requests'), findsOneWidget);
     expect(find.text('Last workout 2026-09-20 · Upper/Lower'),
         findsOneWidget);
 
-    // Cara: only the follow-up that is due today.
-    expect(find.text('Follow-up today'), findsOneWidget);
+    // Cara: the follow-up date is shown once, without a duplicate badge.
+    expect(find.text(_today()), findsOneWidget);
     expect(find.text('Last workout 2026-09-26'), findsOneWidget);
     expect(find.text('Missed 1d'), findsNothing);
 
@@ -320,7 +318,38 @@ void main() {
     expect(find.text('No workouts yet'), findsOneWidget);
   });
 
-  /// A roster row with nothing to attend to renders no chip at all (#120).
+  testWidgets('desktop roster keeps the original urgency chips beside Player',
+      (WidgetTester tester) async {
+    final FakeMayosApi fake = _coachFake()
+      ..assignments.add(_assignment(
+        'assignment-1',
+        'bob',
+        missedStreak: 3,
+        nextFollowUpOn: _daysFromToday(-1),
+      ))
+      ..assignments.add(_assignment(
+        'assignment-today',
+        'today_player',
+        nextFollowUpOn: _today(),
+      ));
+    await _pumpApp(
+      tester,
+      fake,
+      InMemoryAppModeStore(),
+      logicalSize: const Size(1440, 960),
+    );
+
+    expect(find.text('Missed 3d'), findsOneWidget);
+    expect(find.text('Follow-up overdue'), findsOneWidget);
+    expect(find.text('Follow-up today'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('roster_row_assignment-1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('coach_roster_master_pane')), findsOneWidget);
+    expect(find.byKey(const Key('coach_player_detail_pane')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  /// A calm roster row has no alert badges (#120).
   testWidgets('a calm roster row carries no chip', (WidgetTester tester) async {
     final FakeMayosApi fake = _coachFake();
     fake.assignments.add(_assignment(
@@ -334,9 +363,8 @@ void main() {
 
     expect(find.byKey(const Key('roster_row_assignment-1')), findsOneWidget);
     expect(find.text('Last workout 2026-09-26'), findsOneWidget);
+    expect(find.text(_daysFromToday(3)), findsOneWidget);
     for (final String label in <String>[
-      'Follow-up today',
-      'Follow-up overdue',
       '0 alerts',
       '0 requests',
     ]) {
@@ -345,6 +373,8 @@ void main() {
     expect(find.textContaining(' alert'), findsNothing);
     expect(find.textContaining(' request'), findsNothing);
     expect(find.textContaining('Missed'), findsNothing);
+    expect(find.text('Follow-up today'), findsNothing);
+    expect(find.text('Follow-up overdue'), findsNothing);
   });
 
   testWidgets('roster row displays stall length', (WidgetTester tester) async {
@@ -491,7 +521,8 @@ void main() {
     ));
     await _pumpApp(tester, fake, InMemoryAppModeStore());
     await _pumpUntilFound(tester, find.text('Active assignments'));
-    expect(find.text('Follow-up overdue'), findsOneWidget);
+    expect(find.text('Next follow-up'), findsWidgets);
+    expect(find.text(_daysFromToday(-4)), findsOneWidget);
 
     await tester.tap(find.text('bob'));
     await _pumpUntilFound(tester, find.text('Open alerts'));
@@ -526,11 +557,11 @@ void main() {
     await tester.tap(find.text('Check-ins'));
     await _pumpUntilFound(tester, find.text('${_today()} · Phone'));
 
-    // …and the roster row dropped its overdue follow-up chip.
+    // …and the roster's next follow-up date advances by one week.
     await tester.tap(find.byType(BackButton));
-    await _pumpUntilGone(tester, find.text('Follow-up overdue'));
+    await _pumpUntilFound(tester, find.text(_daysFromToday(7)));
     await _settle(tester);
-    expect(find.text('Follow-up overdue'), findsNothing);
+    expect(find.text(_daysFromToday(7)), findsOneWidget);
   });
 
   /// Saving a check-in refreshes everything the spec names (#120): the

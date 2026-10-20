@@ -10,6 +10,7 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_table_frame.dart';
 import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
@@ -745,7 +746,7 @@ void main() {
       final Finder header = find
           .descendant(
             of: frame,
-            matching: find.byType(CoachExerciseTableHeader),
+            matching: find.byType(MayosTableHeader),
           )
           .first;
       double headerWidth(String label) => tester
@@ -925,7 +926,7 @@ void main() {
     ]) {
       final Finder row = find.ancestor(
         of: find.text(exerciseName),
-        matching: find.byType(CoachExerciseTableRow),
+        matching: find.byType(MayosTableRow),
       );
       final Finder actionCell = find.descendant(
         of: row,
@@ -1206,7 +1207,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       final Finder thumbnails = find.byType(ExerciseCatalogThumbnail);
-      final Finder rows = find.byType(CoachExerciseTableRow);
+      final Finder rows = find.byType(MayosTableRow);
       expect(media.requestCount('images/program_failed.jpg'), 1);
       expect(
         find.byWidgetPredicate(

@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../../core/display_language/catalog.dart';
@@ -9,6 +8,7 @@ import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
+import '../../core/ui/mayos_table_frame.dart';
 import '../player/workout/logger_card_widgets.dart'
     show ExerciseCatalogThumbnail;
 
@@ -80,14 +80,6 @@ String? coachExerciseMuscleLabel(
   return displayCopyOf(context).primaryMuscleLabel(normalizedMuscle);
 }
 
-/// Keeps the Program and History table frames consistent as columns evolve.
-class CoachTableColumns {
-  const CoachTableColumns(this.widths, this.flexibleIndex);
-
-  final List<double> widths;
-  final int flexibleIndex;
-}
-
 class CoachExerciseTableFrame extends StatelessWidget {
   const CoachExerciseTableFrame({
     super.key,
@@ -97,83 +89,18 @@ class CoachExerciseTableFrame extends StatelessWidget {
     this.scrollable = true,
   });
 
-  final CoachTableColumns columns;
+  final MayosTableColumns columns;
   final Widget child;
   final bool decorated;
   final bool scrollable;
 
   @override
-  Widget build(BuildContext context) {
-    assert(columns.flexibleIndex >= 0 &&
-        columns.flexibleIndex < columns.widths.length);
-    final double minimumWidth = columns.widths.fold<double>(
-          0,
-          (double total, double width) => total + width,
-        ) +
-        MayosSpacing.xs * 2 +
-        (decorated ? 2 : 0);
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        final double viewportWidth = constraints.hasBoundedWidth
-            ? constraints.maxWidth
-            : minimumWidth;
-        final double tableWidth =
-            viewportWidth < minimumWidth ? minimumWidth : viewportWidth;
-        final List<double> resolvedWidths = List<double>.of(columns.widths);
-        resolvedWidths[columns.flexibleIndex] += tableWidth - minimumWidth;
-        final Widget table = Container(
-          width: tableWidth,
-          clipBehavior: decorated ? Clip.antiAlias : Clip.none,
-          decoration: decorated
-              ? BoxDecoration(
-                  border: Border.all(color: MayosTheme.of(context).border),
-                  borderRadius: MayosRadii.largeRadius,
-                )
-              : null,
-          child: decorated
-              ? Material(
-                  type: MaterialType.transparency,
-                  child: _CoachExerciseTableLayout(
-                    widths: resolvedWidths,
-                    child: child,
-                  ),
-                )
-              : _CoachExerciseTableLayout(
-                  widths: resolvedWidths,
-                  child: child,
-                ),
-        );
-        if (!scrollable) return table;
-        return SizedBox(
-          width: viewportWidth,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: table,
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _CoachExerciseTableLayout extends InheritedWidget {
-  const _CoachExerciseTableLayout({
-    required this.widths,
-    required super.child,
-  });
-
-  final List<double> widths;
-
-  static List<double> widthsOf(BuildContext context) {
-    final _CoachExerciseTableLayout? layout =
-        context.dependOnInheritedWidgetOfExactType<_CoachExerciseTableLayout>();
-    assert(layout != null, 'Coach table cells must be inside a table frame.');
-    return layout!.widths;
-  }
-
-  @override
-  bool updateShouldNotify(_CoachExerciseTableLayout oldWidget) =>
-      !listEquals(widths, oldWidget.widths);
+  Widget build(BuildContext context) => MayosTableFrame(
+        columns: columns,
+        child: child,
+        decorated: decorated,
+        scrollable: scrollable,
+      );
 }
 
 /// Keeps the catalog image fixed while the exercise name and cue wrap beside it.
@@ -265,82 +192,6 @@ class CoachExerciseActionCell extends StatelessWidget {
             .bodySecondary
             .copyWith(color: MayosTheme.of(context).textPrimary),
       );
-}
-
-/// Matching column widths keep the header labels aligned with each exercise row.
-class CoachExerciseTableHeader extends StatelessWidget {
-  const CoachExerciseTableHeader({
-    super.key,
-    required this.labels,
-    required this.alignments,
-  }) : assert(labels.length == alignments.length);
-
-  final List<String> labels;
-  final List<TextAlign> alignments;
-
-  @override
-  Widget build(BuildContext context) {
-    final MayosThemeExtension colors = MayosTheme.of(context);
-    final List<double> widths = _CoachExerciseTableLayout.widthsOf(context);
-    assert(labels.length == widths.length);
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: MayosSpacing.xs,
-        vertical: MayosSpacing.xs,
-      ),
-      decoration: BoxDecoration(
-        color: colors.tableHeader,
-        border: Border(bottom: BorderSide(color: colors.border)),
-      ),
-      child: Row(
-        children: <Widget>[
-          for (int index = 0; index < labels.length; index++)
-            SizedBox(
-              width: widths[index],
-              child: Text(
-                labels[index],
-                textAlign: alignments[index],
-                style: MayosTypography.of(context)
-                    .captionStrong
-                    .copyWith(color: colors.textMuted),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Shared row padding and separators keep each table easy to scan.
-class CoachExerciseTableRow extends StatelessWidget {
-  const CoachExerciseTableRow({
-    super.key,
-    required this.cells,
-  });
-
-  final List<Widget> cells;
-
-  @override
-  Widget build(BuildContext context) {
-    final MayosThemeExtension colors = MayosTheme.of(context);
-    final List<double> widths = _CoachExerciseTableLayout.widthsOf(context);
-    assert(cells.length == widths.length);
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: MayosSpacing.xs,
-        vertical: MayosSpacing.xxs,
-      ),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: colors.border)),
-      ),
-      child: Row(
-        children: <Widget>[
-          for (int index = 0; index < cells.length; index++)
-            SizedBox(width: widths[index], child: cells[index]),
-        ],
-      ),
-    );
-  }
 }
 
 enum CoachStatusChipTone { neutral, active, pending }

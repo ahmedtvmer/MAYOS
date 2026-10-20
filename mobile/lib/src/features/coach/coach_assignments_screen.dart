@@ -13,8 +13,11 @@ import '../../core/models.dart';
 import '../../core/theme/mayos_spacing.dart';
 import '../../core/theme/mayos_theme.dart';
 import '../../core/theme/mayos_typography.dart';
+import '../../core/ui/is_desktop_layout.dart';
 import '../../core/ui/mayos_button.dart';
 import '../../core/ui/mayos_card.dart';
+import '../../core/ui/mayos_card_table.dart';
+import '../../core/ui/mayos_phone_tap_target.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import 'coach_roster_loader.dart';
@@ -22,7 +25,7 @@ import 'coach_shared.dart';
 
 /// Coach-side roster (#24): the assigned players in the order the service
 /// returns them, with their urgency chips, revocation, and coaching controls.
-/// Tapping a roster row pushes the player page (#120).
+/// Tapping a roster card opens the player page (#120).
 ///
 /// It is the Roster tab of the Coach mode shell (#119); the player invite and
 /// notices live on the Profile tab. The client never re-sorts: the server
@@ -266,45 +269,6 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     );
   }
 
-  /// The chips as they apply (#120): missed days, a follow-up due today or
-  /// overdue, new alerts, and pending program requests. Nothing renders when
-  /// the player needs no attention.
-  List<Widget> _rosterChips(BuildContext context, CoachRosterEntry entry) {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    final copy = coachCopyOf(context);
-    final String today = isoDateOf(DateTime.now());
-    final String? dueOn = entry.nextFollowUpOn;
-    final String? followUp = dueOn == null || dueOn.compareTo(today) > 0
-        ? null
-        : dueOn == today
-            ? copy.followUpToday
-            : copy.followUpOverdue;
-    return <Widget>[
-      if (entry.currentMissedStreak > 0)
-        coachPillChip(
-            context, copy.missedDays(entry.currentMissedStreak), c.danger),
-      if (entry.stallLength > 0)
-        coachPillChip(
-          context,
-          copy.stalledSessions(entry.stallLength),
-          c.warning,
-        ),
-      if (followUp != null) coachPillChip(context, followUp, c.warning),
-      if (entry.alertsNew > 0)
-        coachPillChip(
-          context,
-          copy.alertsCount(entry.alertsNew),
-          c.danger,
-        ),
-      if (entry.pendingRequests > 0)
-        coachPillChip(
-          context,
-          copy.requestsCount(entry.pendingRequests),
-          c.accent,
-        ),
-    ];
-  }
-
   double _rosterActionsWidth(BuildContext context, String label) {
     final ButtonStyle style =
         TextButtonTheme.of(context).style ?? const ButtonStyle();
@@ -329,6 +293,53 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     final double chevronWidth =
         IconTheme.of(context).size ?? MayosIconSizes.navigation;
     return buttonWidth + chevronWidth;
+  }
+
+  /// Desktop roster chips for missed days, follow-ups, new alerts and requests.
+  /// Phone cards show attendance and follow-up as labelled fields.
+  List<Widget> _rosterChips(
+    BuildContext context,
+    CoachRosterEntry entry, {
+    bool includeAttendance = true,
+    bool includeFollowUp = true,
+  }) {
+    final MayosThemeExtension c = MayosTheme.of(context);
+    final copy = coachCopyOf(context);
+    final String? followUp = _followUpStatus(context, entry);
+    return <Widget>[
+      if (includeAttendance && entry.currentMissedStreak > 0)
+        coachPillChip(
+            context, copy.missedDays(entry.currentMissedStreak), c.danger),
+      if (entry.stallLength > 0)
+        coachPillChip(
+          context,
+          copy.stalledSessions(entry.stallLength),
+          c.warning,
+        ),
+      if (includeFollowUp && followUp != null)
+        coachPillChip(context, followUp, c.warning),
+      if (entry.alertsNew > 0)
+        coachPillChip(
+          context,
+          copy.alertsCount(entry.alertsNew),
+          c.danger,
+        ),
+      if (entry.pendingRequests > 0)
+        coachPillChip(
+          context,
+          copy.requestsCount(entry.pendingRequests),
+          c.accent,
+        ),
+    ];
+  }
+
+  String? _followUpStatus(BuildContext context, CoachRosterEntry entry) {
+    final String? dueOn = entry.nextFollowUpOn;
+    if (dueOn == null) return null;
+    final String today = isoDateOf(DateTime.now());
+    if (dueOn.compareTo(today) > 0) return null;
+    final CoachCopy copy = coachCopyOf(context);
+    return dueOn == today ? copy.followUpToday : copy.followUpOverdue;
   }
 
   /// One roster row: avatar, username, "Last workout · program", the urgency
@@ -404,9 +415,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                     onPressed: busy ? null : () => _revoke(entry),
                   ),
                   Icon(
-                    Directionality.of(context) == TextDirection.rtl
-                        ? Icons.chevron_left
-                        : Icons.chevron_right,
+                    Icons.chevron_right,
                     color: c.textMuted,
                   ),
                 ],
@@ -417,10 +426,9 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                   MayosLayout.coachRosterRowMinimumDetailsWidth +
                   MayosSpacing.xs +
                   _rosterActionsWidth(context, actionLabel);
-              final bool compact = constraints.maxWidth < inlineWidth;
-              if (compact) {
-                // Stack only when the action leaves too little room for
-                // player details.
+              final bool narrowDesktopPane =
+                  constraints.maxWidth < inlineWidth;
+              if (narrowDesktopPane) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
@@ -462,7 +470,9 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     final copy = coachCopyOf(context);
     return MayosCard(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: isDesktopLayout(context)
+            ? CrossAxisAlignment.start
+            : CrossAxisAlignment.stretch,
         children: <Widget>[
           Text(copy.activeAssignments,
               style: MayosTypography.of(context).sectionHeading
@@ -488,12 +498,14 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
         spacing: MayosSpacing.xs,
         children: <Widget>[
           _filterChip(
+            context: context,
             key: const Key('roster_filter_all'),
             label: copy.allPlayers,
             selected: !_stalledFilterSelected,
             onSelected: (_) => _selectAllFilter(),
           ),
           _filterChip(
+            context: context,
             key: const Key('roster_filter_stalled'),
             label: copy.stalledFilter,
             selected: _stalledFilterSelected,
@@ -505,16 +517,17 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
       );
 
   Widget _filterChip({
+    required BuildContext context,
     required Key key,
     required String label,
     required bool selected,
     required ValueChanged<bool>? onSelected,
-  }) => ChoiceChip(
+  }) => mayosPhoneTapTarget(context, ChoiceChip(
         key: key,
         label: Text(label),
         selected: selected,
         onSelected: onSelected,
-      );
+      ));
 
   Widget _stalledFilterProgress() {
     if (!_loadingStalledFilter) return const SizedBox.shrink();
@@ -558,14 +571,89 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     BuildContext context,
     MayosThemeExtension colors,
   ) {
-    return Column(
-      children: <Widget>[
-        for (int i = 0; i < _visibleAssignments.length; i++) ...<Widget>[
-          if (i > 0) Divider(height: 1, indent: 52, color: colors.border),
-          _rosterRow(context, _visibleAssignments[i]),
-        ],
+    return MayosCardTable(
+      columns: <String>[
+        coachCopyOf(context).player,
+        coachCopyOf(context).rosterAlertsLabel,
+        coachCopyOf(context).rosterAttendance,
+        coachCopyOf(context).rosterFollowUpStatusLabel,
+        coachCopyOf(context).rosterNextFollowUpLabel,
       ],
+      rows: <MayosCardTableRow>[
+        for (final CoachRosterEntry entry in _visibleAssignments)
+          MayosCardTableRow(
+            key: Key('roster_row_${entry.assignmentId}'),
+            cells: <Widget?>[
+              Text(entry.playerUsername),
+              _rosterAlertCell(context, entry),
+              Text(coachCopyOf(context)
+                  .rosterAttendanceStatus(entry.currentMissedStreak)),
+              _followUpUrgency(context, entry),
+              Text(coachCopyOf(context).rosterNextFollowUp(entry.nextFollowUpOn)),
+            ],
+            subtitle: Text(
+              coachCopyOf(context).rosterSubtitle(
+                lastWorkout: entry.lastWorkoutOn,
+                program: entry.programName,
+              ),
+              style: MayosTypography.of(context).caption
+                  .copyWith(color: colors.textSecondary),
+            ),
+            onTap: () => context.go(
+              coachAssignmentLocation(entry.assignmentId),
+              extra: entry,
+            ),
+            actions: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                MayosButton(
+                  key: Key('roster_revoke_${entry.assignmentId}'),
+                  label: _busyAssignmentId == entry.assignmentId
+                      ? coachCopyOf(context).revoking
+                      : coachCopyOf(context).revoke,
+                  variant: MayosButtonVariant.tertiary,
+                  expand: false,
+                  onPressed: _busyAssignmentId == entry.assignmentId
+                      ? null
+                      : () => _revoke(entry),
+                ),
+                Icon(
+                  Icons.chevron_right,
+                  color: colors.textMuted,
+                ),
+              ],
+            ),
+          ),
+      ],
+      desktopTable: Column(
+        children: <Widget>[
+          for (int i = 0; i < _visibleAssignments.length; i++) ...<Widget>[
+            if (i > 0) Divider(height: 1, indent: 52, color: colors.border),
+            _rosterRow(context, _visibleAssignments[i]),
+          ],
+        ],
+      ),
     );
+  }
+
+  Widget? _rosterAlertCell(BuildContext context, CoachRosterEntry entry) {
+    final List<Widget> chips = _rosterChips(
+      context,
+      entry,
+      includeAttendance: false,
+      includeFollowUp: false,
+    );
+    if (chips.isEmpty) return null;
+    return Wrap(
+      spacing: MayosSpacing.xs,
+      runSpacing: MayosSpacing.xs,
+      children: chips,
+    );
+  }
+
+  Widget? _followUpUrgency(BuildContext context, CoachRosterEntry entry) {
+    final String? status = _followUpStatus(context, entry);
+    return status == null ? null : Text(status);
   }
 
   List<CoachRosterEntry> get _visibleAssignments => _stalledFilterSelected

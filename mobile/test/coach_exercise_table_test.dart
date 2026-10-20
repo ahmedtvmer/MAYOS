@@ -2,14 +2,56 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_colors.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_card_table.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_table_frame.dart';
 import 'package:mayos_mobile/src/features/coach/coach_exercise_table.dart';
 
 const Key _frameKey = Key('table-frame');
 const Key _headerKey = Key('table-header');
-const CoachTableColumns _columns =
-    CoachTableColumns(<double>[40, 300, 150], 1);
+const MayosTableColumns _columns =
+    MayosTableColumns(<double>[40, 300, 150], 1);
 
 void main() {
+  testWidgets('card table desktop uses shared header and configured widths',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1440, 960);
+    addTearDown(tester.view.resetPhysicalSize);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: MayosTheme.light,
+        home: Scaffold(
+          body: MayosCardTable(
+            columns: const <String>['Player', 'Follow-up', 'Actions'],
+            tableColumns: const MayosTableColumns(<double>[120, 220, 100], 1),
+            rows: const <MayosCardTableRow>[
+              MayosCardTableRow(
+                cells: <Widget?>[
+                  Text('Bob'),
+                  Text('Follow-up overdue'),
+                  Text('Revoke'),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Player'), findsOneWidget);
+    expect(find.text('Follow-up'), findsOneWidget);
+    expect(find.text('Actions'), findsOneWidget);
+    expect(find.text('Bob'), findsOneWidget);
+    expect(find.text('Follow-up overdue'), findsOneWidget);
+    expect(find.text('Revoke'), findsOneWidget);
+    final List<double> widths = MayosTableLayout.widthsOf(
+      tester.element(find.text('Player')),
+    );
+    expect(widths, <double>[120, 1202, 100]);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('narrow table keeps horizontal scrolling without overflow',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(360, 800);
@@ -115,7 +157,7 @@ Future<void> _pumpTable(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  CoachExerciseTableHeader(
+                  MayosTableHeader(
                     key: _headerKey,
                     labels: const <String>['#', 'Exercise', 'Sets'],
                     alignments: const <TextAlign>[
@@ -124,7 +166,7 @@ Future<void> _pumpTable(
                       TextAlign.end,
                     ],
                   ),
-                  CoachExerciseTableRow(
+                  MayosTableRow(
                     cells: <Widget>[
                       const Text('1'),
                       const Text('Example exercise'),

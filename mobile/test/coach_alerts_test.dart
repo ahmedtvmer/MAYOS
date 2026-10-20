@@ -24,8 +24,9 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   }
 }
 
-Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
-  tester.view.physicalSize = const Size(1080, 2400);
+Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake,
+    {Size logicalSize = const Size(540, 1200)}) async {
+  tester.view.physicalSize = Size(logicalSize.width * 2, logicalSize.height * 2);
   tester.view.devicePixelRatio = 2.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -402,8 +403,34 @@ void main() {
     expect(find.text('2 alerts'), findsOneWidget);
     expect(find.text('1'), findsNothing);
     expect(find.text('1 alert'), findsNothing);
-    // The missed-day chip for the same row comes from the streak.
+    // The phone card shows the missed-day count in its attendance field.
+    expect(find.text('3 missed days'), findsOneWidget);
+  });
+
+  testWidgets('desktop roster keeps missed and follow-up urgency chips',
+      (tester) async {
+    final String today = DateTime.now().toIso8601String().substring(0, 10);
+    final String yesterday = DateTime.now()
+        .subtract(const Duration(days: 1))
+        .toIso8601String()
+        .substring(0, 10);
+    final FakeMayosApi fake = _coachFake()
+      ..assignments[0]['next_follow_up_on'] = yesterday
+      ..assignments.add(<String, dynamic>{
+        'assignment_id': 'assignment-today',
+        'player_username': 'today_player',
+        'started_at': '2026-09-24T10:00:00Z',
+        'status': 'active',
+        'current_missed_streak': 0,
+        'alerts_new': 0,
+        'pending_requests': 0,
+        'next_follow_up_on': today,
+      });
+    await _pumpApp(tester, fake, logicalSize: const Size(1440, 960));
+    await _openRoster(tester);
     expect(find.text('Missed 3d'), findsOneWidget);
+    expect(find.text('Follow-up overdue'), findsOneWidget);
+    expect(find.text('Follow-up today'), findsOneWidget);
   });
 
   testWidgets('coach acknowledges then resolves an alert', (tester) async {

@@ -8,6 +8,7 @@ import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/connectivity.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_table_frame.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/features/coach/coach_exercise_table.dart';
 import 'package:mayos_mobile/src/providers.dart';
@@ -405,7 +406,7 @@ void main() {
       final Finder historyFrame = find.byType(CoachExerciseTableFrame).last;
       final Finder historyHeader = find.descendant(
         of: historyFrame,
-        matching: find.byType(CoachExerciseTableHeader),
+        matching: find.byType(MayosTableHeader),
       );
       double columnWidth(String label) => tester.getSize(
             find.descendant(of: historyHeader, matching: find.text(label)),

@@ -9,6 +9,7 @@ import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/ui/mayos_card.dart';
+import 'package:mayos_mobile/src/core/ui/mayos_table_frame.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/features/coach/coach_exercise_table.dart';
 import 'package:mayos_mobile/src/features/coach/coach_history_segment.dart';
@@ -283,7 +284,7 @@ void main() {
 
       final Finder header = find.descendant(
         of: frame,
-        matching: find.byType(CoachExerciseTableHeader),
+        matching: find.byType(MayosTableHeader),
       ).first;
       double headerWidth(String label) => tester.getSize(
             find.descendant(of: header, matching: find.text(label)),

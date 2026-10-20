@@ -107,6 +107,23 @@ class CoachCopy {
   String get followUpToday => isArabic ? 'المتابعة اليوم' : 'Follow-up today';
   String get followUpOverdue =>
       isArabic ? 'المتابعة متأخرة' : 'Follow-up overdue';
+  String get rosterAttendance => isArabic ? 'الانتظام' : 'Attendance';
+  String get rosterOnTrack => isArabic ? 'منتظم' : 'On track';
+  String rosterAttendanceStatus(int missedDays) => missedDays == 0
+      ? rosterOnTrack
+      : isArabic
+          ? this.missedDays(missedDays)
+          : '$missedDays missed ${missedDays == 1 ? 'day' : 'days'}';
+  String rosterNextFollowUp(String? date) => date == null
+      ? (isArabic ? 'غير محدد' : 'Not scheduled')
+      : isArabic
+          ? _ltr(date)
+          : date;
+  String get rosterNextFollowUpLabel =>
+      isArabic ? 'المتابعة القادمة' : 'Next follow-up';
+  String get rosterFollowUpStatusLabel =>
+      isArabic ? 'حالة المتابعة' : 'Follow-up status';
+  String get rosterAlertsLabel => isArabic ? 'شارات التنبيه' : 'Alert badges';
   String get noWorkoutsYet =>
       isArabic ? 'لم يسجل حصصًا بعد' : 'No workouts yet';
   String get revoking => isArabic ? 'جارٍ إنهاء العلاقة…' : 'Revoking…';
