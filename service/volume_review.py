@@ -97,42 +97,16 @@ def _exercise_targets(ledger: Any, days: list[dict[str, Any]]) -> dict[str, str 
     exercise_ids.update(str(item) for values in SLOT_STAPLES.values() for item in values)
     if not exercise_ids:
         return {}
-    placeholders = ",".join("?" for _ in exercise_ids)
-    ids = tuple(exercise_ids)
-    curated = {
-        str(row["exercise_id"]): row["primary_muscle"]
-        for row in ledger.conn.execute(
-            f"SELECT exercise_id, primary_muscle FROM catalog.exercise_curated_fields WHERE exercise_id IN ({placeholders})",
-            ids,
-        ).fetchall()
-        if row["primary_muscle"]
-    }
-    fallback = {
-        str(row["id"]): str(row["target_muscle"]).title()
-        for row in ledger.conn.execute(
-            f"SELECT id, target_muscle FROM exercises WHERE id IN ({placeholders})", ids
-        ).fetchall()
-        if row["target_muscle"]
-    }
-    return {exercise_id: curated.get(exercise_id) or fallback.get(exercise_id) for exercise_id in exercise_ids}
+    return ledger.volume_review_exercise_targets(sorted(exercise_ids))
 
 
 def _history_by_muscle(
     ledger: Any, version: int, start: date, end: date, targets: dict[str, str | None]
 ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, dict[str, Any]]]:
-    rows = ledger.conn.execute(
-        "SELECT s.id AS session_id, s.session_date, s.readiness_score, s.started_at, "
-        "ws.exercise_id, ws.weight_kg, ws.reps, ws.rpe, ws.logged_at "
-        "FROM workout_sets ws JOIN workout_sessions s ON s.id = ws.session_id "
-        "WHERE s.program_version = ? AND s.session_date >= ? AND s.session_date <= ? "
-        "AND ws.is_warmup = 0 AND ws.weight_kg >= 0 AND ws.reps > 0 "
-        "ORDER BY s.session_date, s.started_at, ws.rowid",
-        (version, start.isoformat(), end.isoformat()),
-    ).fetchall()
+    rows = ledger.volume_review_workout_rows(version, start.isoformat(), end.isoformat())
     by_muscle: dict[str, list[dict[str, Any]]] = {}
     sessions: dict[str, dict[str, Any]] = {}
-    for raw_row in rows:
-        row = dict(raw_row)
+    for row in rows:
         muscle = targets.get(str(row["exercise_id"]))
         if not muscle:
             continue
@@ -144,10 +118,7 @@ def _history_by_muscle(
 
 def _adherence(ledger: Any, version: int, start: date, end: date, weeks: int, frequency: int) -> float:
     planned = max(1, weeks * int(frequency))
-    done = ledger.conn.execute(
-        "SELECT COUNT(*) FROM workout_sessions WHERE program_version = ? AND session_date >= ? AND session_date <= ?",
-        (version, start.isoformat(), end.isoformat()),
-    ).fetchone()[0]
+    done = ledger.volume_review_workout_count(version, start.isoformat(), end.isoformat())
     return float(done) / planned
 
 
@@ -248,9 +219,7 @@ def _second_staple(
         for staple_id in next_ids:
             if staple_id in present or targets.get(staple_id) != muscle:
                 continue
-            row = ledger.conn.execute(
-                "SELECT name, equipment FROM exercises WHERE id = ?", (staple_id,)
-            ).fetchone()
+            row = ledger.volume_review_staple(staple_id)
             if row is None or not equipment_access_allows(equipment_access, row["equipment"]):
                 continue
             target_day = next(
@@ -286,32 +255,32 @@ def _second_staple(
 
 def evaluate_review(ledger: Any, program: Any, profile: dict[str, Any], as_of: date) -> dict[str, Any] | None:
     """Persist at most one review per active version/date; safe on commit retries."""
-    existing = ledger.conn.execute("SELECT * FROM volume_reviews WHERE program_version = ? AND review_date = ?", (int(program.version), as_of.isoformat())).fetchone()
+    existing = ledger.get_volume_review(int(program.version), as_of.isoformat())
     if existing:
         return None if existing["status"] == "deferred" else _review_dict(existing)
-    prior = ledger.conn.execute(
-        "SELECT status, next_eligible_date FROM volume_reviews WHERE program_version = ? ORDER BY review_date DESC LIMIT 1",
-        (int(program.version),),
-    ).fetchone()
-    if prior and (prior[0] == "pending" or str(prior[1]) > as_of.isoformat()):
+    prior = ledger.latest_volume_review(int(program.version))
+    if prior and (
+        prior["status"] == "pending"
+        or str(prior["next_eligible_date"]) > as_of.isoformat()
+    ):
         return None
     facts = review_facts(ledger, program, profile, as_of)
     if not facts["eligible"]:
         review_id = str(uuid.uuid4())
-        ledger.conn.execute(
-            "INSERT INTO volume_reviews (id, program_version, review_date, next_eligible_date, status, payload_json, created_at) VALUES (?, ?, ?, ?, 'deferred', '[]', ?)",
-            (review_id, int(program.version), as_of.isoformat(), facts["next_eligible_date"], datetime.now().isoformat()),
-        )
-        ledger.commit_ledger()
+        ledger.save_volume_review({
+            "id": review_id, "program_version": int(program.version), "review_date": as_of.isoformat(),
+            "next_eligible_date": facts["next_eligible_date"], "status": "deferred",
+            "payload_json": "[]", "created_at": datetime.now().isoformat(),
+        })
         return None
     has_changes = any(item["set_delta"] and item["edits"] for item in facts["muscles"])
     status = "pending" if has_changes else "informational"
     review_id = str(uuid.uuid4())
-    ledger.conn.execute(
-        "INSERT INTO volume_reviews (id, program_version, review_date, next_eligible_date, status, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (review_id, int(program.version), as_of.isoformat(), facts["next_eligible_date"], status, json.dumps(facts["muscles"], ensure_ascii=False), datetime.now().isoformat()),
-    )
-    ledger.commit_ledger()
+    ledger.save_volume_review({
+        "id": review_id, "program_version": int(program.version), "review_date": as_of.isoformat(),
+        "next_eligible_date": facts["next_eligible_date"], "status": status,
+        "payload_json": json.dumps(facts["muscles"], ensure_ascii=False), "created_at": datetime.now().isoformat(),
+    })
     return {"review_id": review_id, "program_version": int(program.version), "review_date": as_of.isoformat(), "next_eligible_date": facts["next_eligible_date"], "status": status, "muscles": facts["muscles"]}
 
 
@@ -327,13 +296,7 @@ def _review_dict(row: Any) -> dict[str, Any]:
 
 
 def list_pending(ledger: Any, active_version: int) -> list[dict[str, Any]]:
-    rows = ledger.conn.execute(
-        "SELECT * FROM volume_reviews WHERE program_version = ? AND (status = 'pending' "
-        "OR (status = 'informational' AND review_date = ("
-        "SELECT MAX(review_date) FROM volume_reviews WHERE program_version = ?))) "
-        "ORDER BY review_date DESC",
-        (active_version, active_version),
-    ).fetchall()
+    rows = ledger.list_volume_reviews(active_version)
     return [_review_dict(row) for row in rows]
 
 
@@ -350,9 +313,7 @@ def _decide_review(db: Any, ledger: Any, account_id: str, review_id: str, status
     if not player_controls_program(db, ledger, account_id):
         raise ValueError("coach_controlled")
     with ledger.ledger_transaction():
-        row = ledger.conn.execute(
-            "SELECT * FROM volume_reviews WHERE id = ?", (review_id,)
-        ).fetchone()
+        row = ledger.get_volume_review_by_id(review_id)
         allowed_statuses = {"pending"} if status == "accepted" else {"pending", "informational"}
         if row is None or row["status"] not in allowed_statuses:
             raise ValueError("review_not_pending")
@@ -371,7 +332,7 @@ def _decide_review(db: Any, ledger: Any, account_id: str, review_id: str, status
             program_data["days"] = flatten_program_days(program_data["weeks"])
             program_data.pop("created_at", None)
             ledger.save_training_program(program_data, published_by_coach_account_id=None, starting_position=ledger.get_program_position(current))
-        ledger.conn.execute("UPDATE volume_reviews SET status = ?, decided_at = ? WHERE id = ?", (status, datetime.now().isoformat(), review_id))
+        ledger.set_volume_review_status(review_id, status, datetime.now().isoformat())
     return {"review_id": review_id, "status": status}
 
 

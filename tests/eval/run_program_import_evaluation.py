@@ -563,12 +563,11 @@ def aggregate_metrics(results: list[dict[str, Any]], kind: EvaluationKind = SHEE
     expected_approximations = sum(len(row.get("expected_approximation_codes", [])) for _, row in row_results)
     flagged_approximations = sum(
         sum(
-            code
-            in {
-                warning.get("code")
-                for warning in ((row.get("observed") or {}).get("warnings", []))
-                if isinstance(warning, dict)
-            }
+            program_import_ai.approximation_is_preserved(
+                code,
+                ((row.get("observed") or {}).get("warnings", [])),
+                (row.get("observed") or {}),
+            )
             for code in row.get("expected_approximation_codes", [])
         )
         for _, row in row_results

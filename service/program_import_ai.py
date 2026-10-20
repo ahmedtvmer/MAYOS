@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import re
 from collections import Counter
 from collections.abc import Callable
@@ -422,6 +423,28 @@ def _same_number(actual: Any, expected: Any) -> bool:
         return actual is None and expected is None
 
 
+def approximation_is_preserved(code: str, warnings: list[Any], actual: dict[str, Any]) -> bool:
+    """Accept either the legacy note warning or a structured prescription.
+
+    #297 made supported kg and e1RM loads first-class Program prescriptions.
+    Older reviewed evaluation fixtures still describe those values using the
+    former ``load_preserved_as_note`` approximation code.
+    """
+    if any(isinstance(warning, dict) and warning.get("code") == code for warning in warnings):
+        return True
+    if code != "program_import.load_preserved_as_note.v1":
+        return False
+    load = actual.get("load")
+    return (
+        isinstance(load, dict)
+        and load.get("kind") in {"kg", "pct_e1rm"}
+        and not isinstance(load.get("value"), bool)
+        and isinstance(load.get("value"), (int, float))
+        and math.isfinite(load["value"])
+        and load["value"] > 0
+    )
+
+
 def score_import_row(
     expected: dict[str, Any], actual: dict[str, Any] | None,
     row_status: dict[str, Any], position_rows: list[dict[str, Any]],
@@ -440,13 +463,8 @@ def score_import_row(
     )
     row_warnings = observed.get("warnings", [])
     row_warnings = row_warnings if isinstance(row_warnings, list) else []
-    warnings = {
-        warning.get("code")
-        for warning in row_warnings
-        if isinstance(warning, dict)
-    }
     approximation_codes = expected.get("approximation_codes", [])
-    flagged = sum(code in warnings for code in approximation_codes)
+    flagged = sum(approximation_is_preserved(code, row_warnings, observed) for code in approximation_codes)
     unresolved_applied = (
         expected.get("expected_resolution") == "unresolved"
         and any(row.get("exercise_id") is not None for row in position_rows)

@@ -235,6 +235,8 @@ def ensure_active_program(
         program, _ = generate_program_pipeline(
             rep_preference_override=profile.get("rep_preference", "balanced"), ledger=ledger
         )
+        if program is None:
+            return None
         persisted = ledger.get_active_program()
         if persisted is None:
             raise RuntimeError("Generated program is missing from the player ledger after save.")

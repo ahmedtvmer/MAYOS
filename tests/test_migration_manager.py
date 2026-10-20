@@ -84,7 +84,7 @@ def test_v32_upgrade_adds_program_design_storage(temp_db_env):
     }
     assert "design_version" in columns
     assert "program_design_offer" in tables
-    assert get_ledger_schema_version(conn) == 33
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
 
 
 @pytest.mark.parametrize(

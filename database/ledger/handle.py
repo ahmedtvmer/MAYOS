@@ -32,12 +32,14 @@ from database.ledger.onboarding import LedgerOnboardingMixin
 from database.ledger.profile import LedgerProfileMixin
 from database.ledger.schedule import LedgerScheduleMixin
 from database.ledger.training_program import LedgerTrainingProgramMixin
+from database.ledger.volume_reviews import LedgerVolumeReviewsMixin
 from database.ledger.workouts import LedgerWorkoutsMixin
 
 
 class TrainingLedger(
     LedgerAuthMixin,
     LedgerTrainingProgramMixin,
+    LedgerVolumeReviewsMixin,
     LedgerWorkoutsMixin,
     LedgerCheckpointReviewsMixin,
     LedgerScheduleMixin,
