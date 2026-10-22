@@ -9,7 +9,7 @@ import 'core/display_language/catalog.dart';
 import 'core/display_language/controller.dart';
 import 'core/models.dart';
 import 'core/display_language/settings_copy.dart';
-import 'core/ui/mayos_scaffold.dart';
+import 'core/ui/myos_scaffold.dart';
 import 'features/coach/coach_alerts_screen.dart';
 import 'features/coach/coach_assistant_tab_screen.dart';
 import 'features/coach/coach_invite_screen.dart';
@@ -326,7 +326,7 @@ Widget _localizedPlayerPage({
     Consumer(
       builder: (BuildContext context, WidgetRef ref, Widget? child) {
         final String languageCode = ref.watch(displayLanguageProvider);
-        return MayosScaffold(
+        return MyosScaffold(
           title: title(languageCode),
           showBack: true,
           body: body,
@@ -524,7 +524,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
               state,
               _localizedPlayerPage(
                 title: (String languageCode) =>
-                    MayosCopy(languageCode).checkpointReview,
+                    MyosCopy(languageCode).checkpointReview,
                 body: CheckpointReviewScreen(
                   key: ValueKey<String>(
                     '${state.pathParameters['checkpoint']}:${state.uri.queryParameters['assignment_id'] ?? ''}',
@@ -680,7 +680,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         builder: (BuildContext context, GoRouterState state) =>
             _withRecoveryEmailReminder(
               state,
-              MayosScaffold(
+              MyosScaffold(
                 // The logger draws its own compact top bar — Back, live Workout
                 // time and the discard menu (#159) — so the frame supplies no
                 // header of its own.

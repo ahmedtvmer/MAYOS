@@ -191,7 +191,7 @@ below 0.90.
 
 ## Owner review (approved 2026-10-17)
 
-The runtime Arabic anchor strings are MAYOS-authored internal prompts. The owner
+The runtime Arabic anchor strings are MYOS-authored internal prompts. The owner
 approved those anchors, the supplemental cases and the listed deterministic
 lexical coverage on 2026-10-17. Supplemental probes remain separate from the
 owner-reviewed `arabic_reviewed_cases.json` fixture; approval of these items
@@ -252,7 +252,7 @@ owner-reviewed dataset.
   supplemental sample, so broad recall remains uncalibrated.
 * The Arabic anchor descriptions, supplemental cases and listed lexical
   coverage were owner-approved on 2026-10-17 (table above); a larger labelled
-  set remains outstanding. The anchors are MAYOS-authored internal prompts,
+  set remains outstanding. The anchors are MYOS-authored internal prompts,
   not player messages in the labelled evaluation dataset.
 * The measured scoped model-process peak (~908 MB, interpreter +
   `core.embeddings` only) exceeds 512 MB RAM. The owner chose 512 MB RAM plus

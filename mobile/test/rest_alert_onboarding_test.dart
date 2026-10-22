@@ -1,21 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/chat_storage.dart';
-import 'package:mayos_mobile/src/core/display_language/controller.dart';
-import 'package:mayos_mobile/src/core/rest_alert_permission_prompt_store.dart';
-import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/workout_storage.dart';
-import 'package:mayos_mobile/src/features/player/onboarding/rest_alert_permission_screen.dart';
-import 'package:mayos_mobile/src/features/player/shell/player_shell.dart';
-import 'package:mayos_mobile/src/providers.dart';
-import 'package:mayos_mobile/src/router.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/chat_storage.dart';
+import 'package:myos_mobile/src/core/display_language/controller.dart';
+import 'package:myos_mobile/src/core/rest_alert_permission_prompt_store.dart';
+import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/workout_storage.dart';
+import 'package:myos_mobile/src/features/player/onboarding/rest_alert_permission_screen.dart';
+import 'package:myos_mobile/src/features/player/shell/player_shell.dart';
+import 'package:myos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/router.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 import 'support/fake_rest_alert_permission_access.dart';
 
 const Map<String, Object> _answers = <String, Object>{
@@ -33,8 +33,8 @@ const Map<String, Object> _answers = <String, Object>{
   'stress_and_sleep': 'moderate stress, 7 hours sleep',
 };
 
-FakeMayosApi _api({String languageCode = 'en'}) {
-  return FakeMayosApi()
+FakeMyosApi _api({String languageCode = 'en'}) {
+  return FakeMyosApi()
     ..issuedToken = 'token-alice'
     ..currentUsername = 'alice'
     ..tokenValid = true
@@ -45,7 +45,7 @@ FakeMayosApi _api({String languageCode = 'en'}) {
     ..intakeAnswers.addAll(_answers);
 }
 
-Override _apiOverride(FakeMayosApi fake) {
+Override _apiOverride(FakeMyosApi fake) {
   return apiClientProvider.overrideWith((ref) {
     final ApiClient client = ApiClient(
       tokens: ref.watch(tokenStoreProvider),
@@ -89,7 +89,7 @@ Future<ProviderContainer> _completeOnboarding(
   required InMemoryRestAlertPermissionPromptStore promptStore,
   String languageCode = 'en',
 }) async {
-  final FakeMayosApi fake = _api(languageCode: languageCode);
+  final FakeMyosApi fake = _api(languageCode: languageCode);
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
   final ProviderContainer container = ProviderContainer(
@@ -110,7 +110,7 @@ Future<ProviderContainer> _completeOnboarding(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(tester, find.byKey(const Key('onboarding_confirm')));

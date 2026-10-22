@@ -1,7 +1,7 @@
-# MAYOS — Coaching Platform Trial Delivery Plan
+# MYOS — Coaching Platform Trial Delivery Plan
 
 > Status: Shared Flutter surfaces delivered; external trial gates remain · Updated: 2026-10-01
-> Scope: Migrate MAYOS to a cloud-backed **two-capability coaching platform**
+> Scope: Migrate MYOS to a cloud-backed **two-capability coaching platform**
 > (coach + player) with an Android Flutter app and one web app serving both
 > capabilities. The iPhone player uses the web app while online; trial coaches
 > have a desktop-capable web console. Fly.io serves the API only (uvicorn).
@@ -230,7 +230,7 @@ clinical triage and Exercise library search.
   changes apply prospectively; performed dates may be entered or corrected up
   to three days back. Preserve upload/edit timestamps, show corrections to the
   assigned coach, and recalculate affected absence alerts.
-- A dated coach check-in record represents contact inside or outside MAYOS and
+- A dated coach check-in record represents contact inside or outside MYOS and
   resets the weekly follow-up clock. Both coach and player see its date,
   contact channel, and optional short note.
 - Trigger points: session commit (event-driven) + daily sweep for absences and
@@ -314,7 +314,7 @@ clinical triage and Exercise library search.
   [default volume snapshots](https://fly.io/docs/volumes/snapshots/).
 - **Existing-user import (retired)**: #242 removed the import/claim scripts and
   account-claim route under ADR 056. No new imported accounts are created.
-  Existing import audit records still exclude imported history from MAYOS
+  Existing import audit records still exclude imported history from MYOS
   workout counts and are deleted with the account.
 - **Email**: Resend SMTP credentials + SPF/DKIM on the domain (transport
   already exists); add invite-redemption and program-request notice templates.
@@ -374,14 +374,14 @@ clinical triage and Exercise library search.
   history export remains in the API without an app screen. `DELETE /profile`
   has no reset handler; GET/PUT still exist, so 405 is expected rather than the
   literal 404 in the original removal criterion. No dummy DELETE route is needed.
-- **Trial communication**: coach and player communicate outside MAYOS.
+- **Trial communication**: coach and player communicate outside MYOS.
   Shared check-in records and program-change requests capture the relevant
   actions; direct in-app coach-player messaging is outside the trial.
 
 ### Phase W — Shared Trial Web App
 
 - Provide one web app for both account capabilities, with the same trial
-  behavior, data, privacy boundaries, and MAYOS design system as Android;
+  behavior, data, privacy boundaries, and MYOS design system as Android;
   adapt layouts for iPhone players and desktop coaches.
 - The coach web minimum includes roster, assigned-player history, program
   publishing, requests, and alerts, with profile, invites, and assignment
@@ -523,7 +523,7 @@ apply per-account model rate limits and review actual usage before expanding.
 - **Public subscriptions**: the closed trial is free. At public launch, sell
   Lifter and Coach Pro through web checkout with shared server-side
   entitlements; the Play app is consumption-only. See
-  [MAYOS_LAUNCH_PRICING.md](MAYOS_LAUNCH_PRICING.md) and ADR 023. Recheck Play
+  [MYOS_LAUNCH_PRICING.md](MYOS_LAUNCH_PRICING.md) and ADR 023. Recheck Play
   policy before release.
 - **Push notifications (FCM)**: deferred to v2 — v1 ships the in-app alert
   center only.

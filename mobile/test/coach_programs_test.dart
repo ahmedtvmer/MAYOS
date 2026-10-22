@@ -7,27 +7,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
-import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_card.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_table_frame.dart';
-import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/features/coach/program_import_files.dart';
-import 'package:mayos_mobile/src/features/coach/program_import_screen.dart';
-import 'package:mayos_mobile/src/features/coach/coach_exercise_table.dart';
-import 'package:mayos_mobile/src/features/player/workout/logger_card_widgets.dart'
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/display_language/coach_copy.dart';
+import 'package:myos_mobile/src/core/theme/myos_spacing.dart';
+import 'package:myos_mobile/src/core/ui/myos_button.dart';
+import 'package:myos_mobile/src/core/ui/myos_card.dart';
+import 'package:myos_mobile/src/core/ui/myos_table_frame.dart';
+import 'package:myos_mobile/src/features/shared/mode_switch.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/features/coach/program_import_files.dart';
+import 'package:myos_mobile/src/features/coach/program_import_screen.dart';
+import 'package:myos_mobile/src/features/coach/coach_exercise_table.dart';
+import 'package:myos_mobile/src/features/player/workout/logger_card_widgets.dart'
     show ExerciseCatalogThumbnail;
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/providers.dart';
 
 import 'support/coach_layout_harness.dart';
 import 'support/fake_api_adapter.dart';
 import 'support/fake_media_http.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 import 'support/test_fonts.dart';
 
 const List<String> _programActionKeys = <String>[
@@ -78,7 +78,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
 
 Future<void> _pumpApp(
   WidgetTester tester,
-  FakeMayosApi fake, {
+  FakeMyosApi fake, {
   double logicalWidth = 540,
   double logicalHeight = 1200,
   List<Override> providerOverrides = const <Override>[],
@@ -118,7 +118,7 @@ Future<void> _pumpApp(
         }),
         ...providerOverrides,
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(
@@ -189,7 +189,7 @@ Future<void> _openProgramSegment(
 
 Future<void> _openProgramEditor(
   WidgetTester tester,
-  FakeMayosApi fake, {
+  FakeMyosApi fake, {
   double logicalWidth = 1440,
   double logicalHeight = 960,
 }) async {
@@ -245,7 +245,7 @@ Future<void> _openProgramEditorFromHarness(
 
 Future<void> _openProgramImport(
   WidgetTester tester,
-  FakeMayosApi fake, {
+  FakeMyosApi fake, {
   double logicalWidth = 540,
   double logicalHeight = 1200,
   ProgramSpreadsheetPicker? picker,
@@ -283,7 +283,7 @@ Future<void> _selectCatalogExercise(
 
 Future<Map<String, dynamic>> _swapAndInsertDraftExercises(
   WidgetTester tester, {
-  required FakeMayosApi fake,
+  required FakeMyosApi fake,
   required String language,
   required bool phone,
 }) async {
@@ -332,8 +332,8 @@ Future<void> _expectDraftUnsaved(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-FakeMayosApi _coachFake() {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _coachFake() {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -419,8 +419,8 @@ Map<String, dynamic> _pendingSubstitutionRequest(
       'created_at': '2026-10-02T10:00:00Z',
     };
 
-FakeMayosApi _playerFake() {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _playerFake() {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -581,7 +581,7 @@ Map<String, dynamic> _programDraftForTemplatePhoneLayout() =>
 
 Future<Map<String, dynamic>> _editProgramDraftAcrossPhoneActions(
   WidgetTester tester, {
-  required FakeMayosApi fake,
+  required FakeMyosApi fake,
   required String language,
   required bool phone,
 }) async {
@@ -810,15 +810,15 @@ void main() {
   });
 
   testWidgets('empty and over-cap pastes cannot be submitted', (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _openProgramImport(tester, fake);
     final Finder submit = find.byKey(const Key('program_import_submit_paste'));
-    expect(tester.widget<MayosButton>(submit).onPressed, isNull);
+    expect(tester.widget<MyosButton>(submit).onPressed, isNull);
 
     await tester.enterText(
         find.byKey(const Key('program_import_paste_input')), '  \n  ');
     await tester.pump();
-    expect(tester.widget<MayosButton>(submit).onPressed, isNull);
+    expect(tester.widget<MyosButton>(submit).onPressed, isNull);
     expect(fake.programImportRequests, 0);
 
     final Finder input = find.byKey(const Key('program_import_paste_input'));
@@ -828,18 +828,18 @@ void main() {
     );
     await tester.pump();
     expect(find.text('20,000 / 20,000 characters'), findsOneWidget);
-    expect(tester.widget<MayosButton>(submit).onPressed, isNotNull);
+    expect(tester.widget<MyosButton>(submit).onPressed, isNotNull);
 
     await tester.enterText(input, List<String>.filled(10001, 'a\r\n').join());
     await tester.pump();
     expect(find.text('Shorten the text to 20,000 characters or fewer.'), findsOneWidget);
-    expect(tester.widget<MayosButton>(submit).onPressed, isNull);
+    expect(tester.widget<MyosButton>(submit).onPressed, isNull);
     expect(fake.programImportRequests, 0);
   });
 
   testWidgets('desktop Program import keeps the review action within the page',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _openProgramImport(tester, fake,
         logicalWidth: 1440, logicalHeight: 960);
     await tester.enterText(
@@ -857,7 +857,7 @@ void main() {
 
   testWidgets('pasted Program import reviews a week and creates a draft',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     final Map<String, dynamic> first =
         Map<String, dynamic>.from(fake.programImportResult['rows'].single)
           ..['week'] = 'Week 1'
@@ -894,7 +894,7 @@ void main() {
     expect(
         tester.widget<TextField>(find.byKey(const Key('program_import_paste_input'))).controller!.text,
         isNotEmpty);
-    expect(tester.widget<MayosButton>(find.byKey(const Key('program_import_submit_paste'))).onPressed,
+    expect(tester.widget<MyosButton>(find.byKey(const Key('program_import_submit_paste'))).onPressed,
         isNotNull);
     await tester.tap(find.byKey(const Key('program_import_submit_paste')));
     await _pumpUntilFound(tester, find.byKey(const Key('program_import_week_picker')));
@@ -924,7 +924,7 @@ void main() {
 
   testWidgets('cursor movement keeps pasted row and exercise confirmation',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     final Map<String, dynamic> row =
         Map<String, dynamic>.from(fake.programImportResult['rows'].single)
           ..['exercise_id'] = null
@@ -959,7 +959,7 @@ void main() {
       'Day 1\nBench Press 3x8',
     );
     expect(
-      tester.widget<MayosButton>(
+      tester.widget<MyosButton>(
         find.byKey(const Key('program_import_submit_paste')),
       ).onPressed,
       isNotNull,
@@ -994,7 +994,7 @@ void main() {
 
   testWidgets('switching from paste to file clears the selected week',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     final Map<String, dynamic> week1 =
         Map<String, dynamic>.from(fake.programImportResult['rows'].single)
           ..['week'] = 'Week 1';
@@ -1069,7 +1069,7 @@ void main() {
   });
 
   testWidgets('text import capability off hides Paste program', (tester) async {
-    final FakeMayosApi fake = _coachFake()..programImportTextAvailable = false;
+    final FakeMyosApi fake = _coachFake()..programImportTextAvailable = false;
     final List<ProgramImportPickerMode> pickerModes =
         <ProgramImportPickerMode>[];
     await _pumpApp(
@@ -1105,7 +1105,7 @@ void main() {
 
   testWidgets('text-enabled picker uses all supported file extensions',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     final List<ProgramImportPickerMode> pickerModes =
         <ProgramImportPickerMode>[];
     await _openProgramImport(
@@ -1137,7 +1137,7 @@ void main() {
       (tester) async {
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) {
+      configureFake: (FakeMyosApi fake) {
         fake.assignments.add(<String, dynamic>{
           'assignment_id': 'assignment-1',
           'player_username': 'bob',
@@ -1207,10 +1207,10 @@ void main() {
       (tester) async {
     final Map<String, Map<String, dynamic>> phonePayloads =
         <String, Map<String, dynamic>>{};
-    late FakeMayosApi phoneFake;
+    late FakeMyosApi phoneFake;
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) {
+      configureFake: (FakeMyosApi fake) {
         phoneFake = fake
           ..assignments.add(<String, dynamic>{
             'assignment_id': 'assignment-1',
@@ -1229,7 +1229,7 @@ void main() {
       ).first,
       allowedInnerStrips: (String language) => find.byType(TextField),
       assertions: (WidgetTester tester, String language) async {
-        final FakeMayosApi fake = phoneFake;
+        final FakeMyosApi fake = phoneFake;
         expect(
           find.byKey(const Key('coach_program_draft_screen')),
           findsOneWidget,
@@ -1307,7 +1307,7 @@ void main() {
     for (final String language in <String>['en', 'ar']) {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
-      final FakeMayosApi desktopFake = _coachFake()
+      final FakeMyosApi desktopFake = _coachFake()
         ..displayLanguage = language
         ..programDraft = _programDraftForPhoneLayout();
       await _openProgramEditor(
@@ -1348,10 +1348,10 @@ void main() {
       (tester) async {
     final Map<String, Map<String, dynamic>> phonePayloads =
         <String, Map<String, dynamic>>{};
-    late FakeMayosApi phoneFake;
+    late FakeMyosApi phoneFake;
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) {
+      configureFake: (FakeMyosApi fake) {
         phoneFake = fake
           ..assignments.add(<String, dynamic>{
             'assignment_id': 'assignment-1',
@@ -1413,7 +1413,7 @@ void main() {
     for (final String language in <String>['en', 'ar']) {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
-      final FakeMayosApi desktopFake = _coachFake()
+      final FakeMyosApi desktopFake = _coachFake()
         ..displayLanguage = language
         ..programDraft = _programDraftForPhoneLayout();
       await _openProgramEditor(tester, desktopFake, logicalWidth: 1440);
@@ -1431,10 +1431,10 @@ void main() {
 
   testWidgets('phone saves a Program draft as a template in both languages',
       (tester) async {
-    late FakeMayosApi phoneFake;
+    late FakeMyosApi phoneFake;
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) {
+      configureFake: (FakeMyosApi fake) {
         phoneFake = fake
           ..assignments.add(<String, dynamic>{
             'assignment_id': 'assignment-1',
@@ -1494,10 +1494,10 @@ void main() {
 
   testWidgets('phone exercise picker selects a Coach exercise in both languages',
       (tester) async {
-    late FakeMayosApi phoneFake;
+    late FakeMyosApi phoneFake;
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) {
+      configureFake: (FakeMyosApi fake) {
         phoneFake = fake
           ..assignments.add(<String, dynamic>{
             'assignment_id': 'assignment-1',
@@ -1582,10 +1582,10 @@ void main() {
       (tester) async {
     final Map<String, Map<String, dynamic>> phonePayloads =
         <String, Map<String, dynamic>>{};
-    late FakeMayosApi phoneFake;
+    late FakeMyosApi phoneFake;
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) {
+      configureFake: (FakeMyosApi fake) {
         phoneFake = fake
           ..assignments.add(<String, dynamic>{
             'assignment_id': 'assignment-1',
@@ -1639,7 +1639,7 @@ void main() {
     for (final String language in <String>['en', 'ar']) {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
-      final FakeMayosApi desktopFake = createCoachFake(language: language)
+      final FakeMyosApi desktopFake = createCoachFake(language: language)
         ..assignments.add(<String, dynamic>{
           'assignment_id': 'assignment-1',
           'player_username': 'bob',
@@ -1667,7 +1667,7 @@ void main() {
 
   testWidgets('program draft keeps the expanded editor at desktop width',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..programDraft = _programDraftForEditorTest();
     await _openProgramEditor(tester, fake, logicalWidth: 1280);
     expect(find.byKey(const Key('program_draft_exercise_card_0_0')),
@@ -1679,7 +1679,7 @@ void main() {
 
   testWidgets('desktop exercise menu matches the master actions',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..programDraft = _programDraftForEditorTest();
     await _openProgramEditor(tester, fake, logicalWidth: 1440);
     final Finder menu =
@@ -1703,10 +1703,10 @@ void main() {
 
   testWidgets('phone publish confirms and publishes in English and Arabic',
       (tester) async {
-    late FakeMayosApi phoneFake;
+    late FakeMyosApi phoneFake;
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) {
+      configureFake: (FakeMyosApi fake) {
         phoneFake = fake
           ..assignments.add(<String, dynamic>{
             'assignment_id': 'assignment-1',
@@ -1725,7 +1725,7 @@ void main() {
       ).first,
       allowedInnerStrips: (String language) => find.byType(TextField),
       assertions: (WidgetTester tester, String language) async {
-        final FakeMayosApi fake = phoneFake;
+        final FakeMyosApi fake = phoneFake;
         final Finder publish = find.byKey(const Key('program_draft_publish'));
         await tester.ensureVisible(publish);
         await tester.tap(publish);
@@ -1750,7 +1750,7 @@ void main() {
       (tester) async {
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) {
+      configureFake: (FakeMyosApi fake) {
         fake
           ..assignments.add(<String, dynamic>{
             'assignment_id': 'assignment-1',
@@ -1818,7 +1818,7 @@ void main() {
 
   testWidgets('coach editor duplicates a week with its full prescription',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..programDraft = <String, dynamic>{
         'program_name': 'Block',
         'split_type': 'custom',
@@ -1940,7 +1940,7 @@ void main() {
 
   testWidgets('coach editor adds, renames, reorders, and removes weeks',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _openProgramEditor(tester, fake);
 
     expect(find.byKey(const Key('program_draft_week_tab_1')), findsNothing);
@@ -1985,7 +1985,7 @@ void main() {
 
   testWidgets('coach picker sends Equipment category and Load type filters',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _openProgramEditor(tester, fake);
     await tester.tap(find.byKey(const Key('program_draft_add_day')));
     await _pumpUntilFound(
@@ -2022,7 +2022,7 @@ void main() {
 
   testWidgets('coach picker sends the replaced exercise id only for Swap',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..programDraft = <String, dynamic>{
         'program_name': 'Custom program',
         'split_type': 'custom',
@@ -2140,7 +2140,7 @@ void main() {
 
   testWidgets('coach player page shows automatic program and pending draft',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..coachActiveProgram = _coachActiveProgram(
         provenance: 'automatic',
         hasDraft: true,
@@ -2204,7 +2204,7 @@ void main() {
           'load': <String, dynamic>{'kind': 'pct_of_first_group', 'value': 90},
         },
       ];
-    final FakeMayosApi fake = _coachFake()..coachActiveProgram = active;
+    final FakeMyosApi fake = _coachFake()..coachActiveProgram = active;
     await _pumpApp(tester, fake, logicalWidth: 1440);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
@@ -2227,7 +2227,7 @@ void main() {
     final List<Map<String, dynamic>> exercises =
         days.first['exercises'] as List<Map<String, dynamic>>;
     exercises.first['primary_action'] = 'Shoulder Horizontal Adduction';
-    final FakeMayosApi fake = _coachFake()..coachActiveProgram = activeProgram;
+    final FakeMyosApi fake = _coachFake()..coachActiveProgram = activeProgram;
     await _pumpApp(tester, fake, logicalWidth: 1440);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob').first);
@@ -2265,7 +2265,7 @@ void main() {
       final Finder header = find
           .descendant(
             of: frame,
-            matching: find.byType(MayosTableHeader),
+            matching: find.byType(MyosTableHeader),
           )
           .first;
       double headerWidth(String label) => tester
@@ -2281,7 +2281,7 @@ void main() {
           95 -
           80 -
           80 -
-          (MayosSpacing.xs * 2 + 2);
+          (MyosSpacing.xs * 2 + 2);
       // The base widths fit the 1440 detail pane, so the table fills it and
       // Exercise still gets the remaining width.
       expect(expectedExerciseWidth, greaterThan(105));
@@ -2404,7 +2404,7 @@ void main() {
         _programExerciseRow('unknown', 'Unknown Exercise'),
       ],
     });
-    final FakeMayosApi fake = _coachFake()..coachActiveProgram = active;
+    final FakeMyosApi fake = _coachFake()..coachActiveProgram = active;
     await _pumpApp(tester, fake, logicalWidth: 1440);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
@@ -2445,7 +2445,7 @@ void main() {
     ]) {
       final Finder row = find.ancestor(
         of: find.text(exerciseName),
-        matching: find.byType(MayosTableRow),
+        matching: find.byType(MyosTableRow),
       );
       final Finder actionCell = find.descendant(
         of: row,
@@ -2462,7 +2462,7 @@ void main() {
 
   testWidgets('program hides the muscle line when metadata is absent',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
     await _pumpApp(tester, fake, logicalWidth: 1440);
     await _pumpUntilFound(tester, find.text('Active assignments'));
@@ -2476,7 +2476,7 @@ void main() {
 
   testWidgets('coach player page labels current coach program and player edit',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..coachActiveProgram = _coachActiveProgram(
         provenance: 'coach',
         editedByPlayer: true,
@@ -2517,7 +2517,7 @@ void main() {
         },
       ],
     });
-    final FakeMayosApi fake = _coachFake()..coachActiveProgram = active;
+    final FakeMyosApi fake = _coachFake()..coachActiveProgram = active;
     await _pumpApp(tester, fake, logicalWidth: 1440);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.ensureVisible(find.text('bob'));
@@ -2599,7 +2599,7 @@ void main() {
       'day_order': 2,
       'exercises': <Map<String, dynamic>>[],
     });
-    final FakeMayosApi fake = _coachFake()..coachActiveProgram = active;
+    final FakeMyosApi fake = _coachFake()..coachActiveProgram = active;
     await _pumpApp(tester, fake, logicalWidth: 1440);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.ensureVisible(find.text('bob'));
@@ -2650,7 +2650,7 @@ void main() {
       ),
     );
     exercise['primary_action'] = 'Knee Extension';
-    final FakeMayosApi fake = _coachFake()..coachActiveProgram = active;
+    final FakeMyosApi fake = _coachFake()..coachActiveProgram = active;
     await _pumpApp(tester, fake, logicalWidth: 360);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.ensureVisible(find.text('bob'));
@@ -2669,7 +2669,7 @@ void main() {
     );
     final Finder noMuscleCard = find.ancestor(
       of: find.text('No muscle'),
-      matching: find.byType(MayosCard),
+      matching: find.byType(MyosCard),
     ).first;
     expect(noMuscleCard, findsOneWidget);
     expect(
@@ -2703,7 +2703,7 @@ void main() {
         },
       ),
     );
-    final FakeMayosApi fake = _coachFake()..coachActiveProgram = active;
+    final FakeMyosApi fake = _coachFake()..coachActiveProgram = active;
     await _pumpApp(tester, fake, logicalWidth: 1440);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
@@ -2712,7 +2712,7 @@ void main() {
 
     final Finder noMuscleRow = find.ancestor(
       of: find.text('No muscle'),
-      matching: find.byType(MayosTableRow),
+      matching: find.byType(MyosTableRow),
     );
     expect(noMuscleRow, findsOneWidget);
     expect(
@@ -2748,7 +2748,7 @@ void main() {
         'tempo': '3-1-1',
         'notes': 'Brace before each rep.',
       });
-      final FakeMayosApi fake = _coachFake()..coachActiveProgram = active;
+      final FakeMyosApi fake = _coachFake()..coachActiveProgram = active;
       await _pumpApp(
         tester,
         fake,
@@ -2768,7 +2768,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       final Finder thumbnails = find.byType(ExerciseCatalogThumbnail);
-      final Finder rows = find.byType(MayosTableRow);
+      final Finder rows = find.byType(MyosTableRow);
       expect(media.requestCount('images/program_failed.jpg'), 1);
       expect(
         find.byWidgetPredicate(
@@ -2795,7 +2795,7 @@ void main() {
       'day_order': 2,
       'exercises': <Map<String, dynamic>>[],
     });
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..displayLanguage = 'ar'
       ..coachActiveProgram = active;
     await _pumpApp(tester, fake);
@@ -2834,7 +2834,7 @@ void main() {
       'day_order': 2,
       'exercises': <Map<String, dynamic>>[],
     });
-    final FakeMayosApi desktopFake = _coachFake()
+    final FakeMyosApi desktopFake = _coachFake()
       ..displayLanguage = 'ar'
       ..coachActiveProgram = desktopActive;
     await _pumpApp(tester, desktopFake, logicalWidth: 1440);
@@ -2863,7 +2863,7 @@ void main() {
       ..['primary_action'] = 'Knee Extension'
       ..['equipment_category'] = 'Machine'
       ..['load_type'] = 'selectorized';
-    final FakeMayosApi fake = _coachFake()..coachActiveProgram = active;
+    final FakeMyosApi fake = _coachFake()..coachActiveProgram = active;
     await _pumpApp(tester, fake, logicalWidth: 1440);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.ensureVisible(find.text('bob'));
@@ -2883,7 +2883,7 @@ void main() {
   });
 
   testWidgets('coach player page shows an empty program state', (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
@@ -2900,17 +2900,17 @@ void main() {
         findsOneWidget);
     expect(
       tester
-          .widget<MayosButton>(
+          .widget<MyosButton>(
             find.byKey(const Key('generate_draft_action')),
           )
           .variant,
-      MayosButtonVariant.primary,
+      MyosButtonVariant.primary,
     );
   });
 
   testWidgets('Program actions wrap naturally at desktop widths',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
     await _pumpApp(tester, fake, logicalWidth: 1440);
     await _pumpUntilFound(tester, find.text('Active assignments'));
@@ -2928,7 +2928,7 @@ void main() {
 
   testWidgets('Program action labels stay readable on a 360dp phone',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
     await _pumpApp(tester, fake, logicalWidth: 360);
     await _pumpUntilFound(tester, find.text('Active assignments'));
@@ -2953,7 +2953,7 @@ void main() {
 
   testWidgets('Program action labels stay readable in Arabic on a 360dp phone',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..displayLanguage = 'ar'
       ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
     await _pumpApp(tester, fake, logicalWidth: 360);
@@ -2975,7 +2975,7 @@ void main() {
     final Map<String, dynamic> active =
         _coachActiveProgram(provenance: 'automatic');
     (active['program'] as Map<String, dynamic>)['version'] = null;
-    final FakeMayosApi fake = _coachFake()..coachActiveProgram = active;
+    final FakeMyosApi fake = _coachFake()..coachActiveProgram = active;
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.ensureVisible(find.text('bob'));
@@ -2998,7 +2998,7 @@ void main() {
   testWidgets('Edit and Approve are locked while the active program is copied',
       (tester) async {
     final Completer<void> copyResponse = Completer<void>();
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
     fake.adapter.beforeRespond = (FakeRequest request) async {
       if (request.path.endsWith('/program-draft/copy-active')) {
@@ -3041,7 +3041,7 @@ void main() {
   testWidgets('Approve and Edit are locked while approval is in progress',
       (tester) async {
     final Completer<void> approveResponse = Completer<void>();
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
     fake.adapter.beforeRespond = (FakeRequest request) async {
       if (request.path.endsWith('/program/approve')) {
@@ -3085,7 +3085,7 @@ void main() {
 
   testWidgets('Program actions are localized and mirror in Arabic',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..displayLanguage = 'ar'
       ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
     await _pumpApp(tester, fake);
@@ -3114,7 +3114,7 @@ void main() {
   testWidgets('Program actions render with the dark theme', (tester) async {
     tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
     addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
@@ -3132,7 +3132,7 @@ void main() {
 
   testWidgets('spreadsheet import reviews rows and opens the Program editor',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     final Map<String, dynamic> firstRow = Map<String, dynamic>.from(
       (fake.programImportResult['rows'] as List<Map<String, dynamic>>).single,
     )
@@ -3185,7 +3185,7 @@ void main() {
 
   testWidgets('spreadsheet import asks for a workbook tab before review',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..programImportRequiresTabChoice = true;
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
@@ -3213,7 +3213,7 @@ void main() {
     testWidgets(
         'spreadsheet weeks switch locally after layout confirmation in ${arabic ? 'Arabic' : 'English'}',
         (tester) async {
-      final FakeMayosApi fake = _coachFake();
+      final FakeMyosApi fake = _coachFake();
       fake.displayLanguage = arabic ? 'ar' : 'en';
       final Map<String, dynamic> weekOne = Map<String, dynamic>.from(
         (fake.programImportResult['rows'] as List<Map<String, dynamic>>).single,
@@ -3261,8 +3261,8 @@ void main() {
           findsOneWidget);
       expect(
           find.text(arabic
-              ? 'الاستيراد بالتنسيق الحر غير متاح الآن. استخدم قالب MAYOS.'
-              : 'Free-form import is unavailable right now. Use the MAYOS template.'),
+              ? 'الاستيراد بالتنسيق الحر غير متاح الآن. استخدم قالب MYOS.'
+              : 'Free-form import is unavailable right now. Use the MYOS template.'),
           findsNothing);
       await tester.tap(find.byKey(const Key('program_import_layout_confirm')));
       await _pumpUntilFound(
@@ -3300,10 +3300,10 @@ void main() {
 
   testWidgets('free-form import reaches review and creates a chosen week on a phone',
       (WidgetTester tester) async {
-    late FakeMayosApi fake;
+    late FakeMyosApi fake;
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi configured) {
+      configureFake: (FakeMyosApi configured) {
         fake = configured;
         configured.assignments.add(<String, dynamic>{
           'assignment_id': 'assignment-1',
@@ -3407,7 +3407,7 @@ void main() {
       (WidgetTester tester) async {
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) {
+      configureFake: (FakeMyosApi fake) {
         fake.assignments.add(<String, dynamic>{
           'assignment_id': 'assignment-1',
           'player_username': fake.displayLanguage == 'ar' ? 'بوب' : 'bob',
@@ -3469,10 +3469,10 @@ void main() {
 
   testWidgets('phone import chooses a tab and resolves exercises in both languages',
       (WidgetTester tester) async {
-    late FakeMayosApi fake;
+    late FakeMyosApi fake;
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi configured) {
+      configureFake: (FakeMyosApi configured) {
         fake = configured;
         configured.assignments.add(<String, dynamic>{
           'assignment_id': 'assignment-1',
@@ -3583,7 +3583,7 @@ void main() {
 
   testWidgets('spreadsheet import review remains available at desktop width',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(
       tester,
       fake,
@@ -3612,7 +3612,7 @@ void main() {
     testWidgets(
         'uncertain layout can be rejected in ${arabic ? 'Arabic' : 'English'}',
         (tester) async {
-      final FakeMayosApi fake = _coachFake()
+      final FakeMyosApi fake = _coachFake()
         ..displayLanguage = arabic ? 'ar' : 'en';
       fake.programImportResult['confirm_layout'] = true;
       fake.programImportResult['layout_days'] = <Map<String, dynamic>>[
@@ -3645,7 +3645,7 @@ void main() {
   }
 
   testWidgets('spreadsheet row errors use Arabic display copy', (tester) async {
-    final FakeMayosApi fake = _coachFake()..displayLanguage = 'ar';
+    final FakeMyosApi fake = _coachFake()..displayLanguage = 'ar';
     final Map<String, dynamic> original =
         (fake.programImportResult['rows'] as List<Map<String, dynamic>>).single;
     fake.programImportResult['rows'] = <Map<String, dynamic>>[
@@ -3693,7 +3693,7 @@ void main() {
 
   testWidgets('import result can create an unresolved Coach exercise',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     final Map<String, dynamic> row = Map<String, dynamic>.from(
       (fake.programImportResult['rows'] as List<Map<String, dynamic>>).single,
     )
@@ -3735,7 +3735,7 @@ void main() {
 
   testWidgets('import result lets the coach choose an ambiguous suggestion',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     final Map<String, dynamic> row = Map<String, dynamic>.from(
       (fake.programImportResult['rows'] as List<Map<String, dynamic>>).single,
     )
@@ -3780,7 +3780,7 @@ void main() {
 
   testWidgets('import replacement requires confirmation and creates the draft',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()..programImportDraftExists = true;
+    final FakeMyosApi fake = _coachFake()..programImportDraftExists = true;
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
@@ -3804,7 +3804,7 @@ void main() {
 
   testWidgets('import warnings use specific row and column copy',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     final Map<String, dynamic> row = Map<String, dynamic>.from(
       (fake.programImportResult['rows'] as List<Map<String, dynamic>>).single,
     )
@@ -3838,7 +3838,7 @@ void main() {
 
   testWidgets('Program template download uses the shared downloader',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
@@ -3852,12 +3852,12 @@ void main() {
 
     expect(fake.programTemplateDownloadRequests, 1);
     expect(fake.savedProgramTemplateNames,
-        <String>['mayos-program-template.xlsx']);
+        <String>['myos-program-template.xlsx']);
   });
 
   testWidgets('Arabic import result localizes the warning and column label',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()..displayLanguage = 'ar';
+    final FakeMyosApi fake = _coachFake()..displayLanguage = 'ar';
     final Map<String, dynamic> row = Map<String, dynamic>.from(
       (fake.programImportResult['rows'] as List<Map<String, dynamic>>).single,
     )..['warnings'] = <Map<String, dynamic>>[
@@ -3887,7 +3887,7 @@ void main() {
 
   testWidgets('Edit copies the active program into a draft before opening it',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
@@ -3914,7 +3914,7 @@ void main() {
 
   testWidgets('Edit lets the coach continue an existing Program draft',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..coachActiveProgram = _coachActiveProgram(
         provenance: 'automatic',
         hasDraft: true,
@@ -3972,7 +3972,7 @@ void main() {
 
   testWidgets('Edit can replace an existing Program draft from the active one',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..coachActiveProgram = _coachActiveProgram(
         provenance: 'automatic',
         hasDraft: true,
@@ -3998,7 +3998,7 @@ void main() {
 
   testWidgets('Approve as is confirms before publishing a new coach version',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..coachActiveProgram = _coachActiveProgram(
         provenance: 'automatic',
         hasDraft: true,
@@ -4072,7 +4072,7 @@ void main() {
   testWidgets(
       'failed Approve as is leaves selected requests open without a count',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic')
       ..programApproveMismatchVersion = 8
       ..programRequests.add(_pendingSubstitutionRequest('request-1'));
@@ -4100,7 +4100,7 @@ void main() {
 
   testWidgets('Approve as is request confirmation renders Arabic copy',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..displayLanguage = 'ar'
       ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic')
       ..programRequests.addAll(<Map<String, dynamic>>[
@@ -4161,7 +4161,7 @@ void main() {
   testWidgets(
       'publish confirmation uses a localized fallback for a missing name',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic')
       ..programRequests.add(
         _pendingSubstitutionRequest('request-missing', exerciseName: null),
@@ -4191,7 +4191,7 @@ void main() {
 
   testWidgets('stale Approve as is reloads the program before retrying',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic')
       ..programApproveMismatchVersion = 8
       ..programApproveMismatchName = 'Updated Full Body';
@@ -4229,7 +4229,7 @@ void main() {
 
   testWidgets('coach creates and reuses a Coach exercise from the picker',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake, logicalWidth: 1440, logicalHeight: 960);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
@@ -4343,7 +4343,7 @@ void main() {
 
   testWidgets('coach builds one training day and publishes a Program draft',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..programRequests.addAll(<Map<String, dynamic>>[
         _pendingSubstitutionRequest('draft-request-1'),
         _pendingSubstitutionRequest('draft-request-2'),
@@ -4437,7 +4437,7 @@ void main() {
   testWidgets(
       'coach sees localized server validation beside the exercise field',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..programDraftPublishError = <String, dynamic>{
         'errors': <Map<String, dynamic>>[
           <String, dynamic>{
@@ -4486,7 +4486,7 @@ void main() {
 
   testWidgets('coach sees Save validation beside the warm-up movement',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..programDraftReplaceError = <Map<String, dynamic>>[
         <String, dynamic>{
           'type': 'less_than_equal',
@@ -4521,7 +4521,7 @@ void main() {
 
   testWidgets('coach validates ramped warm-up sets before saving',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..programDraft = _programDraftForEditorTest();
     final String savedDraft = jsonEncode(fake.programDraft);
     await _openProgramEditor(tester, fake);
@@ -4539,7 +4539,7 @@ void main() {
     final Finder save = find.byKey(const Key('program_draft_save'));
     await _ensureDraftVisible(tester, save);
     expect(save.hitTestable(), findsOneWidget);
-    expect(tester.widget<MayosButton>(save).onPressed, isNotNull);
+    expect(tester.widget<MyosButton>(save).onPressed, isNotNull);
     await tester.tapAt(tester.getCenter(save));
     await tester.pumpAndSettle();
     expect(
@@ -4555,7 +4555,7 @@ void main() {
   });
 
   testWidgets('unsaved program edits ask before leaving', (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _openProgramEditor(tester, fake);
     await tester.enterText(
       find.byKey(const Key('program_draft_day_name_0')),
@@ -4588,7 +4588,7 @@ void main() {
   });
 
   testWidgets('coach reorders and duplicates training days', (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _openProgramEditor(tester, fake);
 
     final Finder addDay = find.byKey(const Key('program_draft_add_day'));
@@ -4630,7 +4630,7 @@ void main() {
 
   testWidgets('coach saves warm-up movements and the day cardio note',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _openProgramEditor(tester, fake);
 
     final Finder addWarmup =
@@ -4721,7 +4721,7 @@ void main() {
 
   testWidgets('coach reorders and duplicates exercises within a training day',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.programDraft = <String, dynamic>{
       'program_name': 'Custom program',
       'split_type': 'custom',
@@ -4819,7 +4819,7 @@ void main() {
 
   testWidgets('coach swaps an exercise in place and keeps edited prescription',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..programDraft = <String, dynamic>{
         'program_name': 'Custom program',
         'split_type': 'custom',
@@ -4937,7 +4937,7 @@ void main() {
 
   testWidgets('canceling Swap exercise leaves the Program draft unchanged',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..programDraft = <String, dynamic>{
         'program_name': 'Custom program',
         'split_type': 'custom',
@@ -4995,7 +4995,7 @@ void main() {
 
   testWidgets('coach inserts exercises above and below and can cancel',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..programDraft = <String, dynamic>{
         'program_name': 'Custom program',
         'split_type': 'custom',
@@ -5099,7 +5099,7 @@ void main() {
 
   testWidgets('coach exercise menu duplicates and deletes exercises',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..programDraft = <String, dynamic>{
         'program_name': 'Custom program',
         'split_type': 'custom',
@@ -5168,7 +5168,7 @@ void main() {
 
   testWidgets('warm-up menu inserts and removes empty movements in Arabic',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..displayLanguage = 'ar'
       ..programDraft = <String, dynamic>{
         'program_name': 'برنامج تدريبي',
@@ -5277,7 +5277,7 @@ void main() {
       '$languageCode coach editor labels working sets and localizes fields',
       (tester) async {
         final bool isArabic = languageCode == 'ar';
-        final FakeMayosApi fake = _coachFake()..displayLanguage = languageCode;
+        final FakeMyosApi fake = _coachFake()..displayLanguage = languageCode;
         fake.programDraft = <String, dynamic>{
           'program_name': 'Custom program',
           'split_type': 'custom',
@@ -5338,7 +5338,7 @@ void main() {
 
   testWidgets('coach editor lays out at phone and desktop widths',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.programDraft = <String, dynamic>{
       'program_name': 'Custom program',
       'split_type': 'custom',
@@ -5388,7 +5388,7 @@ void main() {
 
   testWidgets('coach sees validation beside the offending training day',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..programDraftPublishError = <String, dynamic>{
         'errors': <Map<String, dynamic>>[
           <String, dynamic>{
@@ -5423,7 +5423,7 @@ void main() {
 
   testWidgets('coach generates a draft, edits it, then publishes it',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
 
     // The coach shell opens on the Roster tab (#119).
@@ -5468,7 +5468,7 @@ void main() {
 
   testWidgets('Split picker updates with days and sends the selected id',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
 
     await _pumpUntilFound(tester, find.text('Active assignments'));
@@ -5545,7 +5545,7 @@ void main() {
 
   testWidgets('generating over a draft asks before replacing it',
       (tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..programDraft = <String, dynamic>{
         'program_name': 'Existing plan',
         'split_type': 'Full Body',
@@ -5659,7 +5659,7 @@ void main() {
         },
       ],
     };
-    final FakeMayosApi fake = _coachFake()..programDraft = existingDraft;
+    final FakeMyosApi fake = _coachFake()..programDraft = existingDraft;
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
     await tester.tap(find.text('bob'));
@@ -5689,7 +5689,7 @@ void main() {
   });
 
   testWidgets('Generate draft labels are localized in Arabic', (tester) async {
-    final FakeMayosApi fake = _coachFake()..displayLanguage = 'ar';
+    final FakeMyosApi fake = _coachFake()..displayLanguage = 'ar';
     await _pumpApp(tester, fake);
     await _pumpUntilFound(tester, find.text('علاقات التدريب النشطة'));
     await tester.tap(find.text('bob'));
@@ -5713,7 +5713,7 @@ void main() {
 
   testWidgets('profile shows and saves the intake rep preference values',
       (tester) async {
-    final FakeMayosApi fake = _playerFake();
+    final FakeMyosApi fake = _playerFake();
     fake.repPreference = 'low';
     await _pumpApp(tester, fake);
 
@@ -5738,7 +5738,7 @@ void main() {
 
   testWidgets('profile confirms changed Equipment access and rebuilds',
       (tester) async {
-    final FakeMayosApi fake = _playerFake();
+    final FakeMyosApi fake = _playerFake();
     fake.equipmentAccess = 'Home gym';
     await _pumpApp(tester, fake);
 
@@ -5775,7 +5775,7 @@ void main() {
 
   testWidgets('player program hides the version and keeps coach provenance',
       (tester) async {
-    final FakeMayosApi fake = _playerFake();
+    final FakeMyosApi fake = _playerFake();
     fake.programVersion = 6;
     fake.programPublishedByCoachAccountId = 'account-coach-1';
     await _pumpApp(tester, fake);
@@ -5789,7 +5789,7 @@ void main() {
 
   testWidgets('coach-controlled programs direct changes to the request flow',
       (tester) async {
-    final FakeMayosApi fake = _playerFake();
+    final FakeMyosApi fake = _playerFake();
     fake.programVersion = 6;
     fake.programPublishedByCoachAccountId = 'account-coach-1';
     fake.coachControlsProgram = true;
@@ -5812,7 +5812,7 @@ void main() {
 
   testWidgets('player sees a program_published notice and can mark it read',
       (tester) async {
-    final FakeMayosApi fake = _playerFake();
+    final FakeMyosApi fake = _playerFake();
     fake.playerNotices.add(<String, dynamic>{
       'notice_id': 'notice-1',
       'assignment_id': 'assignment-1',
@@ -5869,7 +5869,7 @@ void main() {
 
   test('malformed player-notice payloads fail closed with ApiException',
       () async {
-    final FakeMayosApi fake = _playerFake();
+    final FakeMyosApi fake = _playerFake();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     await tokens.save('token-alice');
     final ApiClient client = ApiClient(
@@ -5888,7 +5888,7 @@ void main() {
   group('save as template (#307)', () {
     Future<void> openSaveSheetFromPlayerPage(
       WidgetTester tester,
-      FakeMayosApi fake,
+      FakeMyosApi fake,
     ) async {
       await _pumpApp(tester, fake);
       await _pumpUntilFound(
@@ -5918,7 +5918,7 @@ void main() {
     testWidgets(
       'copies the active program, surfacing every note for review',
       (tester) async {
-        final FakeMayosApi fake = _coachFake()
+        final FakeMyosApi fake = _coachFake()
           ..coachActiveProgram =
               _coachActiveProgram(provenance: 'previous-coach');
         final Map<String, dynamic> program =
@@ -6001,7 +6001,7 @@ void main() {
 
     testWidgets('clearing a note drops it instead of copying it silently',
         (tester) async {
-      final FakeMayosApi fake = _coachFake()
+      final FakeMyosApi fake = _coachFake()
         ..coachActiveProgram =
             _coachActiveProgram(provenance: 'previous-coach');
 
@@ -6022,7 +6022,7 @@ void main() {
     });
 
     testWidgets('requires a template name before saving', (tester) async {
-      final FakeMayosApi fake = _coachFake()
+      final FakeMyosApi fake = _coachFake()
         ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
 
       await openSaveSheetFromPlayerPage(tester, fake);
@@ -6035,7 +6035,7 @@ void main() {
 
     testWidgets('a denied save surfaces the failure and creates no template',
         (tester) async {
-      final FakeMayosApi fake = _coachFake()
+      final FakeMyosApi fake = _coachFake()
         ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic')
         ..programTemplateSaveDenied = true;
 
@@ -6057,7 +6057,7 @@ void main() {
 
     testWidgets('saving the open draft persists pending edits first',
         (tester) async {
-      final FakeMayosApi fake = _coachFake()
+      final FakeMyosApi fake = _coachFake()
         ..programDraft = <String, dynamic>{
           'program_name': 'Draft Block',
           'split_type': 'custom',
@@ -6121,7 +6121,7 @@ void main() {
 
     testWidgets('refuses to copy when the active program changed after review',
         (tester) async {
-      final FakeMayosApi fake = _coachFake()
+      final FakeMyosApi fake = _coachFake()
         ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
 
       await openSaveSheetFromPlayerPage(tester, fake);
@@ -6145,7 +6145,7 @@ void main() {
     testWidgets(
         'refuses to copy when the draft changed after the reviewed save',
         (tester) async {
-      final FakeMayosApi fake = _coachFake()
+      final FakeMyosApi fake = _coachFake()
         ..programDraft = <String, dynamic>{
           'program_name': 'Draft Block',
           'split_type': 'custom',
@@ -6207,7 +6207,7 @@ void main() {
     });
 
     testWidgets('the action is localized in Arabic', (tester) async {
-      final FakeMayosApi fake = _coachFake()
+      final FakeMyosApi fake = _coachFake()
         ..displayLanguage = 'ar'
         ..coachActiveProgram = _coachActiveProgram(provenance: 'automatic');
 

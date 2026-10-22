@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/display_language/controller.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/chat_storage.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/workout_storage.dart';
-import 'package:mayos_mobile/src/providers.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_bottom_navigation.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/display_language/controller.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/chat_storage.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/workout_storage.dart';
+import 'package:myos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/core/ui/myos_bottom_navigation.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     {int attempts = 40}) async {
@@ -30,7 +30,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
 
 Future<void> _pumpHome(
   WidgetTester tester,
-  FakeMayosApi fake, {
+  FakeMyosApi fake, {
   ThemeModeStore? themeStore,
   DraftStore? draftStore,
   String languageCode = 'en',
@@ -67,15 +67,15 @@ Future<void> _pumpHome(
           return client;
         }),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(
       tester, find.text(languageCode == 'ar' ? 'الرئيسية' : 'Home'));
 }
 
-FakeMayosApi _signedInFake() {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _signedInFake() {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -88,7 +88,7 @@ void main() {
   testWidgets(
       'Arabic Home labels use RTL while server program names stay as sent',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     await _pumpHome(tester, fake, languageCode: 'ar');
     await _pumpUntilFound(tester, find.textContaining('محسوبة لكل عضلة'));
 
@@ -109,7 +109,7 @@ void main() {
 
   testWidgets('Arabic Home translates the pending workout draft banner',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     final InMemoryDraftStore drafts = InMemoryDraftStore();
     await drafts.write('account-alice', <WorkoutDraft>[
       const WorkoutDraft(
@@ -144,7 +144,7 @@ void main() {
 
   testWidgets('home maps the active program, volume, and records',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     await _pumpHome(tester, fake);
 
     expect(find.text('Upper/Lower 4x'), findsOneWidget);
@@ -160,7 +160,7 @@ void main() {
   });
 
   testWidgets('home shows honest empty states without data', (tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     fake.noActiveProgram = true;
     fake.scheduleEmpty = true;
     fake.volumeEmpty = true;
@@ -183,7 +183,7 @@ void main() {
   testWidgets('the Personal records shelf localizes most reps and its value',
       (tester) async {
     for (final String language in <String>['en', 'ar']) {
-      final FakeMayosApi fake = _signedInFake()
+      final FakeMyosApi fake = _signedInFake()
         ..personalRecordsBody = <Map<String, dynamic>>[
           <String, dynamic>{
             'exercise_id': 'push_up',
@@ -211,7 +211,7 @@ void main() {
 
   testWidgets('the no-program action reaches the assistant from Program',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     fake.noActiveProgram = true;
     fake.scheduleEmpty = true;
     fake.volumeEmpty = true;
@@ -230,7 +230,7 @@ void main() {
 
   testWidgets('home reads the latest committed session from the ledger',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     fake.latestSessionBody = <String, dynamic>{
       'session_id': 'sess-1',
       'session_date': '2026-09-20',
@@ -250,7 +250,7 @@ void main() {
 
   testWidgets('home opens an unopened Checkpoint review and clears its card',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake()
+    final FakeMyosApi fake = _signedInFake()
       ..checkpointReviewRows = <Map<String, dynamic>>[
         <String, dynamic>{
           'checkpoint': 10,
@@ -271,7 +271,7 @@ void main() {
           <String, dynamic>{'part': 'Consistency', 'label': 'Strong'},
         ],
         'text':
-            'Checkpoint 10: 10 workouts since you started logging in MAYOS.',
+            'Checkpoint 10: 10 workouts since you started logging in MYOS.',
         'text_is_template': true,
       };
     await _pumpHome(tester, fake);
@@ -286,7 +286,7 @@ void main() {
     expect(find.text('Strong'), findsOneWidget);
     expect(
       find.text(
-        'Checkpoint 10: 10 workouts since you started logging in MAYOS.',
+        'Checkpoint 10: 10 workouts since you started logging in MYOS.',
       ),
       findsOneWidget,
     );
@@ -294,7 +294,7 @@ void main() {
     await tester.pageBack();
     await _pumpUntilFound(
       tester,
-      find.byType(MayosBottomNavigation),
+      find.byType(MyosBottomNavigation),
     );
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey<String>('dashboard.checkpoint-review')),
@@ -303,7 +303,7 @@ void main() {
 
   testWidgets('Arabic Checkpoint title keeps its ordinal and date range LTR',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake()
+    final FakeMyosApi fake = _signedInFake()
       ..checkpointReviewRows = <Map<String, dynamic>>[
         <String, dynamic>{
           'checkpoint': 10,
@@ -324,7 +324,7 @@ void main() {
           <String, dynamic>{'part': 'Consistency', 'label': 'Strong'},
         ],
         'text':
-            'Checkpoint 10: 10 workouts since you started logging in MAYOS.',
+            'Checkpoint 10: 10 workouts since you started logging in MYOS.',
         'text_is_template': true,
       };
     await _pumpHome(tester, fake, languageCode: 'ar');
@@ -354,7 +354,7 @@ void main() {
   for (final ThemeMode mode in <ThemeMode>[ThemeMode.light, ThemeMode.dark]) {
     testWidgets('home renders in ${mode.name} theme without overflow',
         (tester) async {
-      final FakeMayosApi fake = _signedInFake();
+      final FakeMyosApi fake = _signedInFake();
       await _pumpHome(
         tester,
         fake,

@@ -2,7 +2,7 @@
 {{flutter_build_config}}
 
 window.addEventListener('flutter-first-frame', () => {
-  const loadingScreen = document.getElementById('mayos-loading');
+  const loadingScreen = document.getElementById('myos-loading');
   if (loadingScreen === null) return;
 
   const removeLoadingScreen = () => {

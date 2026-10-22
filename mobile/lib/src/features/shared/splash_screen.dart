@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../../core/theme/mayos_spacing.dart';
-import '../../core/theme/mayos_theme.dart';
-import '../../core/theme/mayos_typography.dart';
+import '../../core/theme/myos_spacing.dart';
+import '../../core/theme/myos_theme.dart';
+import '../../core/theme/myos_typography.dart';
 import '../../core/display_language/copy_context.dart';
-import '../../core/ui/mayos_logo.dart';
-import '../../core/ui/mayos_progress.dart';
-import '../../core/ui/mayos_wallpaper.dart';
+import '../../core/ui/myos_logo.dart';
+import '../../core/ui/myos_progress.dart';
+import '../../core/ui/myos_wallpaper.dart';
 
 /// Startup surface.
 ///
@@ -23,13 +23,13 @@ class SplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Theme(
-      data: MayosTheme.wallpaperForLanguage(
+      data: MyosTheme.wallpaperForLanguage(
         Localizations.localeOf(context).languageCode,
       ),
       child: Builder(
         builder: (BuildContext context) {
-          final MayosThemeExtension c = MayosTheme.of(context);
-          return MayosWallpaper(
+          final MyosThemeExtension c = MyosTheme.of(context);
+          return MyosWallpaper(
             child: Scaffold(
               backgroundColor: Colors.transparent,
               body: SafeArea(
@@ -43,22 +43,22 @@ class SplashScreen extends StatelessWidget {
                     // The lockup is centred on the padded canvas; the tagline
                     // is anchored just below its bottom edge so the composition
                     // stays connected without shifting the lockup off centre.
-                    const double verticalPadding = MayosSpacing.md;
+                    const double verticalPadding = MyosSpacing.md;
                     final double stackHeight =
                         constraints.maxHeight - verticalPadding * 2;
                     final double taglineTop =
-                        stackHeight / 2 + logoHeight / 2 + MayosSpacing.lg;
+                        stackHeight / 2 + logoHeight / 2 + MyosSpacing.lg;
                     return Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: MayosSpacing.xl,
+                          horizontal: MyosSpacing.xl,
                           vertical: verticalPadding),
                       child: Stack(
                         fit: StackFit.expand,
                         children: <Widget>[
                           Center(
-                            child: MayosBrandLockup(
+                            child: MyosBrandLockup(
                               height: logoHeight,
-                              variant: MayosBrandVariant.white,
+                              variant: MyosBrandVariant.white,
                             ),
                           ),
                           PositionedDirectional(
@@ -71,16 +71,16 @@ class SplashScreen extends StatelessWidget {
                                 Text(
                                   displayCopyOf(context).brandTagline,
                                   textAlign: TextAlign.center,
-                                  style: MayosTypography.of(context).serifMedium.copyWith(
+                                  style: MyosTypography.of(context).serifMedium.copyWith(
                                     fontSize: 20,
                                     height: 1.2,
                                     color: c.textSecondary,
                                   ),
                                 ),
-                                const SizedBox(height: MayosSpacing.xxl),
+                                const SizedBox(height: MyosSpacing.xxl),
                                 const SizedBox(
                                   width: 120,
-                                  child: MayosProgressIndicator(
+                                  child: MyosProgressIndicator(
                                     value: null,
                                     height: 3,
                                   ),

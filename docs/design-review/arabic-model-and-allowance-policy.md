@@ -6,7 +6,7 @@ and launch work. This document records design, not implementation or launch
 approval. Architectural rationale is recorded in ADR 059.
 
 The complete specification and confirmed testing seams are published as
-[#261](https://github.com/ahmedtvmer/MAYOS/issues/261), labeled `ready-for-agent`.
+[#261](https://github.com/ahmedtvmer/MYOS/issues/261), labeled `ready-for-agent`.
 The local spec is [Arabic model and allowance spec](arabic-model-and-allowance-spec.md).
 
 ## Agreed decisions
@@ -83,14 +83,14 @@ conversations. Representative paired complete-turn evidence is still needed.
 
 ## Sources
 
-- [Issue #141](https://github.com/ahmedtvmer/MAYOS/issues/141) and its completed
-  evaluation blocker [#139](https://github.com/ahmedtvmer/MAYOS/issues/139).
+- [Issue #141](https://github.com/ahmedtvmer/MYOS/issues/141) and its completed
+  evaluation blocker [#139](https://github.com/ahmedtvmer/MYOS/issues/139).
 - [ADRs 012, 038, 052, 058 and 059](../../DECISIONS.md).
-- [Launch AI context policy](../../plans/MAYOS_LAUNCH_PRICING.md#6-ai-context-policy).
+- [Launch AI context policy](../../plans/MYOS_LAUNCH_PRICING.md#6-ai-context-policy).
 - [Model defaults](../../utils/model_downloader.py),
   [admission limits](../../service/model_limits.py), and
   [token admission sum](../../database/registry/model_usage.py).
-- [History budget #190](https://github.com/ahmedtvmer/MAYOS/issues/190) and
-  [per-call budgets #194](https://github.com/ahmedtvmer/MAYOS/issues/194).
-- [Lifter entitlements #66](https://github.com/ahmedtvmer/MAYOS/issues/66) and
-  [Coach entitlements #67](https://github.com/ahmedtvmer/MAYOS/issues/67).
+- [History budget #190](https://github.com/ahmedtvmer/MYOS/issues/190) and
+  [per-call budgets #194](https://github.com/ahmedtvmer/MYOS/issues/194).
+- [Lifter entitlements #66](https://github.com/ahmedtvmer/MYOS/issues/66) and
+  [Coach entitlements #67](https://github.com/ahmedtvmer/MYOS/issues/67).

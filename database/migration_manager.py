@@ -1107,7 +1107,7 @@ def apply_lazy_migrations(
     if current_version > target_version:
         raise RuntimeError(
             f"User ledger '{username}' has schema version {current_version}, which is "
-            f"newer than the engine's target version {target_version}. Please update Mayos."
+            f"newer than the engine's target version {target_version}. Please update Myos."
         )
 
     # Migration required: current_version < target_version

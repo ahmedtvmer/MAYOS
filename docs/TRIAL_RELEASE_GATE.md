@@ -1,6 +1,6 @@
 # Closed-trial release gate
 
-This runbook collects the automated and human evidence required before MAYOS
+This runbook collects the automated and human evidence required before MYOS
 expands beyond the four-week closed trial. Keep participant details in the
 owner-controlled trial records; use account ids and usernames in this report.
 
@@ -178,7 +178,7 @@ satisfaction score.
   coaching conversation? What changed in response to a request?
 - What data or behavior made either participant uncomfortable or uncertain?
 - What one change would make the next month more useful, and would each person
-  choose to continue using MAYOS?
+  choose to continue using MYOS?
 
 Do not expand until the owner has reviewed both the operational evidence and
 interview notes and recorded a decision.

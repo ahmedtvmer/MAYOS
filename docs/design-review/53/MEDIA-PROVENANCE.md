@@ -36,7 +36,7 @@ against its configured API base with `mediaUrlFor` as
   operator-provided and "its licensing/provenance is unknown and this runbook
   invents none".
 
-Because the licence is undocumented, MAYOS must **not** display this media in
+Because the licence is undocumented, MYOS must **not** display this media in
 production, and must not claim a licence it does not hold.
 
 ## Risks
@@ -53,7 +53,7 @@ Before the owner decision below, the checklist to enable display was:
 
 1. Confirm the ExerciseDB licence (and any attribution requirements) for the
    exact media set shipped, and record it in this document. This remains
-   pending for MAYOS.
+   pending for MYOS.
 2. Serve the media through an approved host while preserving the catalog's
    relative `image_path`/`gif_path` values. Issue #165 implements that storage
    location with private R2 objects streamed by the API.
@@ -63,13 +63,13 @@ Before the owner decision below, the checklist to enable display was:
 ## Gate
 
 The mobile app reads the flag in `mobile/lib/src/core/config.dart`
-(`mayosExerciseMediaEnabled`), which is ON by default. The exercise-detail hero
+(`myosExerciseMediaEnabled`), which is ON by default. The exercise-detail hero
 builds an `Image` when the catalog detail has a loadable media URL
 (`ExerciseCatalogDetail.hasLoadableMedia`) and the flag is ON. The logger
 thumbnail uses the catalog picture under the same flag. Passing
 `--dart-define=MAYOS_EXERCISE_MEDIA=false` disables both surfaces.
 
-## 2026-09-29 — Owner decision: display the media, pending MAYOS's licence
+## 2026-09-29 — Owner decision: display the media, pending MYOS's licence
 
 This section records the facts known on 2026-09-29 and the owner's decision
 made that day. It supersedes the "must **not** display" conclusion above for
@@ -84,20 +84,20 @@ known before.
   **© Gym visual**, and that it is redistributed in that source repository
   under the author's **separate written permission**.
 - **That source repository grants no media rights.** Its permission to
-  redistribute there does not extend to MAYOS: we hold no licence to the
+  redistribute there does not extend to MYOS: we hold no licence to the
   images or GIFs from it.
 - **Gym visual's terms apply to any use** (site: `https://gymvisual.com/`),
   and require, on every use:
   - the credit **"© Gym visual — https://gymvisual.com/"**, and
   - the media shown **no larger than its native 180 × 180** — the files are
     used as-is, never scaled or stretched past 180 × 180 logical pixels.
-- **MAYOS's own licence from Gym visual is pending.** Nothing here records
+- **MYOS's own licence from Gym visual is pending.** Nothing here records
   that licence as held.
 
 ### Decision
 
 The owner decided on **2026-09-29** to display the ExerciseDB/Gym visual
-images and GIFs in the app **now, pending MAYOS's own licence from Gym
+images and GIFs in the app **now, pending MYOS's own licence from Gym
 visual**, with Gym visual's terms honoured as above.
 
 What that means in the build:
@@ -116,5 +116,5 @@ What that means in the build:
 - The logger thumbnail (#161) shows the still at 48 dp and, being tiny, may
   omit its own caption — the credit lives in the app.
 - **Kill switch:** `--dart-define=MAYOS_EXERCISE_MEDIA=false` turns
-  `mayosExerciseMediaEnabled` off, and then no catalog `Image` widget is built
+  `myosExerciseMediaEnabled` off, and then no catalog `Image` widget is built
   anywhere (the thumbnail shows its icon, the hero is the typographic header).

@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/models.dart';
-import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/theme/mayos_theme.dart';
-import '../../../core/theme/mayos_typography.dart';
-import '../../../core/ui/mayos_card.dart';
+import '../../../core/theme/myos_spacing.dart';
+import '../../../core/theme/myos_theme.dart';
+import '../../../core/theme/myos_typography.dart';
+import '../../../core/ui/myos_card.dart';
 
 class DeloadBanner extends StatelessWidget {
   const DeloadBanner({
@@ -21,10 +21,10 @@ class DeloadBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!decision.isVisible) return const SizedBox.shrink();
-    final MayosThemeExtension colors = MayosTheme.of(context);
-    final MayosCopy copy = displayCopyOf(context);
-    return MayosCard(
-      padding: const EdgeInsets.all(MayosSpacing.md),
+    final MyosThemeExtension colors = MyosTheme.of(context);
+    final MyosCopy copy = displayCopyOf(context);
+    return MyosCard(
+      padding: const EdgeInsets.all(MyosSpacing.md),
       color: colors.accentSubtle,
       borderColor: colors.selectedBorder,
       child: _bannerContents(context, colors, copy),
@@ -33,21 +33,21 @@ class DeloadBanner extends StatelessWidget {
 
   Widget _bannerContents(
     BuildContext context,
-    MayosThemeExtension colors,
-    MayosCopy copy,
+    MyosThemeExtension colors,
+    MyosCopy copy,
   ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         _title(context, colors, copy),
-        const SizedBox(height: MayosSpacing.xs),
+        const SizedBox(height: MyosSpacing.xs),
         Text(
           decision.reason ?? copy.fatigueSignalDetected,
-          style: MayosTypography.of(context).bodySecondary.copyWith(
+          style: MyosTypography.of(context).bodySecondary.copyWith(
             color: colors.textSecondary,
           ),
         ),
-        const SizedBox(height: MayosSpacing.xs),
+        const SizedBox(height: MyosSpacing.xs),
         Text(
           copy.isArabic
               ? copy.deloadChangeSummary(
@@ -58,7 +58,7 @@ class DeloadBanner extends StatelessWidget {
                 )
               : decision.changeSummary,
           textAlign: copy.isArabic ? TextAlign.end : null,
-          style: MayosTypography.of(context).bodySecondary.copyWith(
+          style: MyosTypography.of(context).bodySecondary.copyWith(
             color: colors.textPrimary,
           ),
         ),
@@ -69,12 +69,12 @@ class DeloadBanner extends StatelessWidget {
 
   Widget _title(
     BuildContext context,
-    MayosThemeExtension colors,
-    MayosCopy copy,
+    MyosThemeExtension colors,
+    MyosCopy copy,
   ) => Row(
         children: <Widget>[
           Icon(Icons.battery_alert_outlined, color: colors.accent),
-          const SizedBox(width: MayosSpacing.xs),
+          const SizedBox(width: MyosSpacing.xs),
           Expanded(
             child: Text(
               copy.isArabic
@@ -82,7 +82,7 @@ class DeloadBanner extends StatelessWidget {
                       ? copy.deloadApplied
                       : copy.deloadSuggested
                   : decision.title,
-              style: MayosTypography.of(context).sectionHeading.copyWith(
+              style: MyosTypography.of(context).sectionHeading.copyWith(
                 color: colors.textPrimary,
               ),
             ),
@@ -91,8 +91,8 @@ class DeloadBanner extends StatelessWidget {
       );
 
   Widget _assistantButton(
-    MayosThemeExtension colors,
-    MayosCopy copy,
+    MyosThemeExtension colors,
+    MyosCopy copy,
   ) =>
       Align(
         alignment: AlignmentDirectional.centerStart,

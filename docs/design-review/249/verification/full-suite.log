@@ -67,9 +67,9 @@ Bad state: No element
 
 When the exception was thrown, this was the stack:
 #0      _Array.first (dart:core-patch/array.dart:52:5)
-#1      _ProfileScreenState._load.<anonymous closure> (package:mayos_mobile/src/features/player/profile/profile_screen.dart:154:32)
+#1      _ProfileScreenState._load.<anonymous closure> (package:myos_mobile/src/features/player/profile/profile_screen.dart:154:32)
 #2      State.setState (package:flutter/src/widgets/framework.dart:1201:30)
-#3      _ProfileScreenState._load (package:mayos_mobile/src/features/player/profile/profile_screen.dart:148:7)
+#3      _ProfileScreenState._load (package:myos_mobile/src/features/player/profile/profile_screen.dart:148:7)
 <asynchronous suspension>
 
 The test description was:
@@ -489,7 +489,7 @@ To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to 
 01:21 +210 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Remove exercise asks before discarding logged sets and takes an untouched one out at once (#162)
 01:22 +211 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Remove exercise asks before discarding logged sets and takes an untouched one out at once (#162)
 01:22 +212 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Remove exercise asks before discarding logged sets and takes an untouched one out at once (#162)
-01:22 +213 ~207 -1: <scratch>/p143/mobile/test/mayos_markdown_test.dart: renders inline code, code blocks, quotes and paragraphs
+01:22 +213 ~207 -1: <scratch>/p143/mobile/test/myos_markdown_test.dart: renders inline code, code blocks, quotes and paragraphs
 01:22 +214 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Undo replace brings the planned exercise back, asking first over logged sets (#162)
 01:22 +215 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Undo replace brings the planned exercise back, asking first over logged sets (#162)
 01:22 +216 ~207 -1: <scratch>/p143/mobile/test/workout_logger_card_menu_test.dart: Undo replace brings the planned exercise back, asking first over logged sets (#162)
@@ -1124,27 +1124,27 @@ To make this warning fatal, set WidgetController.hitTestWarningShouldBeFatal to 
 04:02 +706 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Workout time (#159) never reads a negative time
 04:02 +707 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: Workout time (#159) is derived from the start time, so a restart reads the same clock
 04:02 +708 ~207 -2: <scratch>/p143/mobile/test/active_workout_test.dart: store writes are serialized (#123 item 5) writes land in state order and the latest state wins
-04:02 +709 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
-04:03 +710 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
-04:03 +711 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
-04:03 +712 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
-04:03 +713 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
-04:03 +714 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
-04:03 +715 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
-04:03 +716 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
-04:03 +717 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
-04:03 +718 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
-04:03 +719 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
-04:03 +720 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
-04:03 +721 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
-04:03 +722 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
-04:03 +723 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
-04:03 +724 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
-04:03 +725 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme dark theme uses the white lockup
-04:03 +726 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme light theme uses the black lockup
-04:03 +727 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandLockup asset per theme an explicit white variant wins over the theme
-04:04 +728 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandMark asset per theme dark theme uses the white mark
-04:04 +729 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MayosBrandMark asset per theme light theme uses the black mark
+04:02 +709 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +710 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +711 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +712 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +713 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +714 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +715 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +716 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +717 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +718 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +719 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +720 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +721 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +722 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +723 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +724 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +725 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandLockup asset per theme dark theme uses the white lockup
+04:03 +726 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandLockup asset per theme light theme uses the black lockup
+04:03 +727 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandLockup asset per theme an explicit white variant wins over the theme
+04:04 +728 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandMark asset per theme dark theme uses the white mark
+04:04 +729 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: MyosBrandMark asset per theme light theme uses the black mark
 04:04 +730 ~207 -2: <scratch>/p143/mobile/test/brand_logo_test.dart: header brand is centred on the screen and at most 24px tall
 04:04 +731 ~207 -2: <scratch>/p143/mobile/test/connectivity_test.dart: a transport failure marks offline and the next response online
 04:04 +732 ~207 -2: <scratch>/p143/mobile/test/connectivity_test.dart: a transport failure marks offline and the next response online

@@ -4,27 +4,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/active_workout.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/baselines.dart';
-import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/chat_models.dart';
-import 'package:mayos_mobile/src/core/chat_storage.dart';
-import 'package:mayos_mobile/src/core/display_language.dart';
-import 'package:mayos_mobile/src/core/client_session_id.dart';
-import 'package:mayos_mobile/src/core/connectivity_message.dart';
-import 'package:mayos_mobile/src/core/device_timezone.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/workout_storage.dart';
-import 'package:mayos_mobile/src/features/player/auth/auth_controller.dart';
-import 'package:mayos_mobile/src/features/player/workout/draft_sync_service.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/active_workout.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/baselines.dart';
+import 'package:myos_mobile/src/features/shared/mode_switch.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/chat_models.dart';
+import 'package:myos_mobile/src/core/chat_storage.dart';
+import 'package:myos_mobile/src/core/display_language.dart';
+import 'package:myos_mobile/src/core/client_session_id.dart';
+import 'package:myos_mobile/src/core/connectivity_message.dart';
+import 'package:myos_mobile/src/core/device_timezone.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/workout_storage.dart';
+import 'package:myos_mobile/src/features/player/auth/auth_controller.dart';
+import 'package:myos_mobile/src/features/player/workout/draft_sync_service.dart';
+import 'package:myos_mobile/src/providers.dart';
 
 import 'support/fake_api_adapter.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 const String _accountAlice = 'account-alice';
 
@@ -93,7 +93,7 @@ Prescription _prescription() => const Prescription(
       ],
     );
 
-Future<void> _seedSignedIn(FakeMayosApi fake, InMemoryTokenStore tokens) async {
+Future<void> _seedSignedIn(FakeMyosApi fake, InMemoryTokenStore tokens) async {
   await tokens.save('token-alice');
   await tokens.saveAccountId(_accountAlice);
   fake.issuedToken = 'token-alice';
@@ -104,7 +104,7 @@ Future<void> _seedSignedIn(FakeMayosApi fake, InMemoryTokenStore tokens) async {
   fake.passwords['alice'] = 'correct-horse-1';
 }
 
-ApiClient _api(FakeMayosApi fake, TokenStore tokens) {
+ApiClient _api(FakeMyosApi fake, TokenStore tokens) {
   final ApiClient client = ApiClient(
     tokens: tokens,
     baseUrl: 'http://test.local',
@@ -114,7 +114,7 @@ ApiClient _api(FakeMayosApi fake, TokenStore tokens) {
 }
 
 ProviderContainer _container({
-  required FakeMayosApi fake,
+  required FakeMyosApi fake,
   required InMemoryTokenStore tokens,
   required InMemoryDraftStore drafts,
   required InMemoryWorkoutCacheStore cache,
@@ -180,7 +180,7 @@ void main() {
   group('account deletion', () {
     test('delete with the password erases local data and ends the session',
         () async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       final InMemoryDraftStore drafts = InMemoryDraftStore();
       final InMemoryWorkoutCacheStore cache = InMemoryWorkoutCacheStore();
@@ -224,7 +224,7 @@ void main() {
     });
 
     test('wrong password changes nothing and keeps data', () async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       final InMemoryDraftStore drafts = InMemoryDraftStore();
       final InMemoryWorkoutCacheStore cache = InMemoryWorkoutCacheStore();
@@ -252,7 +252,7 @@ void main() {
 
     test('offline deletion shows the shared needs-connection message',
         () async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       fake.failOffline('DELETE', '/auth/account');
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       final InMemoryDraftStore drafts = InMemoryDraftStore();
@@ -282,7 +282,7 @@ void main() {
 
     test('another device erases drafts when a request reports account_deleted',
         () async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       final InMemoryDraftStore drafts = InMemoryDraftStore();
       final InMemoryWorkoutCacheStore cache = InMemoryWorkoutCacheStore();
@@ -310,7 +310,7 @@ void main() {
 
     test('a draft-sync 401 account_deleted erases drafts without a prompt',
         () async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       final InMemoryDraftStore drafts = InMemoryDraftStore();
       final InMemoryWorkoutCacheStore cache = InMemoryWorkoutCacheStore();
@@ -345,7 +345,7 @@ void main() {
     });
 
     test('an ordinary 401 does not erase drafts', () async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       final InMemoryDraftStore drafts = InMemoryDraftStore();
       final InMemoryWorkoutCacheStore cache = InMemoryWorkoutCacheStore();
@@ -372,7 +372,7 @@ void main() {
   group('profile delete flow', () {
     testWidgets('warning, wrong password error, then login with confirmation',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens);
       final InMemoryDraftStore drafts = InMemoryDraftStore();
@@ -409,7 +409,7 @@ void main() {
               return client;
             }),
           ],
-          child: const MayosApp(),
+          child: const MyosApp(),
         ),
       );
       await _pumpUntilFound(tester, find.text('Home'));
@@ -452,7 +452,7 @@ void main() {
   group('pre-upgrade and resume signals', () {
     test('erases via the stored JWT sub when no account id was stored',
         () async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       fake.accountDeleted = true;
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       // A pre-upgrade install: a token exists, but no persisted account id.
@@ -474,7 +474,7 @@ void main() {
     });
 
     test('app-resume refresh erases on account_deleted', () async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       final InMemoryDraftStore drafts = InMemoryDraftStore();
       final InMemoryWorkoutCacheStore cache = InMemoryWorkoutCacheStore();
@@ -547,7 +547,7 @@ class RequestMatch {
   final Map<String, dynamic> body;
 }
 
-RequestMatch _findRequest(FakeMayosApi fake, String method, String path) {
+RequestMatch _findRequest(FakeMyosApi fake, String method, String path) {
   final FakeRequest request = fake.adapter.requests.lastWhere(
     (FakeRequest r) => r.method == method && r.path == path,
   );

@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/providers.dart';
-import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/features/shared/mode_switch.dart';
 
 import 'support/auth_harness.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 import 'support/coach_layout_harness.dart';
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
@@ -28,7 +28,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
 
 Future<void> _pumpApp(
   WidgetTester tester,
-  FakeMayosApi fake,
+  FakeMyosApi fake,
   InMemoryAppModeStore modeStore, {
   Size logicalSize = const Size(540, 1200),
 }) async {
@@ -54,13 +54,13 @@ Future<void> _pumpApp(
           return client;
         }),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
 }
 
-FakeMayosApi _coachFake() {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _coachFake() {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -248,8 +248,8 @@ void main() {
       (WidgetTester tester) async {
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) {},
-      ready: (String language) => find.byKey(const ValueKey<String>('mayos_scaffold_body')),
+      configureFake: (FakeMyosApi fake) {},
+      ready: (String language) => find.byKey(const ValueKey<String>('myos_scaffold_body')),
       pageScrollable: (String language) => find.byType(Scrollable).first,
       assertions: (WidgetTester tester, String language) async {
         await tester.tap(find.byType(ModeAvatarButton));
@@ -266,7 +266,7 @@ void main() {
   testWidgets(
       'a coach in Player mode without onboarding gets the setup screen with '
       'Start intake and Back to Coach mode', (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     // No profile yet: the player intake has never been completed.
     fake.profileExists = false;
     final InMemoryAppModeStore modeStore =
@@ -298,7 +298,7 @@ void main() {
 
   test('the coach alerts badge resets when the account changes',
       () async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.passwords['alice'] = 'pw-alice';
     fake.passwords['bob'] = 'pw-bob';
     final InMemoryTokenStore tokens = InMemoryTokenStore();
@@ -327,7 +327,7 @@ void main() {
   });
 
   testWidgets('a non-coach account sees no mode badge', (WidgetTester tester) async {
-    final FakeMayosApi fake = FakeMayosApi();
+    final FakeMyosApi fake = FakeMyosApi();
     fake.issuedToken = 'token-alice';
     fake.currentUsername = 'alice';
     fake.tokenValid = true;

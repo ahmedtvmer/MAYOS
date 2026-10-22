@@ -3,26 +3,26 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/active_workout.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/baselines.dart';
-import 'package:mayos_mobile/src/core/chat_storage.dart';
-import 'package:mayos_mobile/src/core/client_session_id.dart';
-import 'package:mayos_mobile/src/core/device_timezone.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
-import 'package:mayos_mobile/src/core/workout_storage.dart';
-import 'package:mayos_mobile/src/features/player/auth/google_auth_gateway.dart';
-import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
-import 'package:mayos_mobile/src/features/settings/settings_screen.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/active_workout.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/baselines.dart';
+import 'package:myos_mobile/src/core/chat_storage.dart';
+import 'package:myos_mobile/src/core/client_session_id.dart';
+import 'package:myos_mobile/src/core/device_timezone.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/ui/myos_button.dart';
+import 'package:myos_mobile/src/core/workout_storage.dart';
+import 'package:myos_mobile/src/features/player/auth/google_auth_gateway.dart';
+import 'package:myos_mobile/src/features/shared/mode_switch.dart';
+import 'package:myos_mobile/src/features/settings/settings_screen.dart';
+import 'package:myos_mobile/src/providers.dart';
 
 import 'support/fake_api_adapter.dart';
 import 'support/fake_google_auth.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 /// Sign-in methods in Settings (#116): the section is driven by `GET /auth/me`
 /// and every Google and API call runs against the two fakes.
@@ -43,7 +43,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
 }
 
 Future<void> _seedSignedIn(
-  FakeMayosApi fake,
+  FakeMyosApi fake,
   InMemoryTokenStore tokens, {
   required bool hasPassword,
   required bool googleLinked,
@@ -66,7 +66,7 @@ Future<void> _seedSignedIn(
 /// in-memory stores the account-deletion erase path needs.
 Future<void> _pumpSettings(
   WidgetTester tester,
-  FakeMayosApi fake,
+  FakeMyosApi fake,
   InMemoryTokenStore tokens, {
   FakeGoogleAuthGateway? google,
   InMemoryDraftStore? drafts,
@@ -110,7 +110,7 @@ Future<void> _pumpSettings(
           return client;
         }),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(tester, find.text('Home'));
@@ -151,7 +151,7 @@ void main() {
     testWidgets(
         'confirmed language changes direction and failed save preserves it',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
       await _pumpSettings(tester, fake, tokens,
@@ -197,7 +197,7 @@ void main() {
 
     testWidgets('a password-only account offers change password and connect',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
       await _pumpSettings(tester, fake, tokens, google: FakeGoogleAuthGateway());
@@ -218,7 +218,7 @@ void main() {
     testWidgets(
         'a Google-only account offers set password and a disabled disconnect',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: false, googleLinked: true);
       await _pumpSettings(tester, fake, tokens, google: FakeGoogleAuthGateway());
@@ -233,7 +233,7 @@ void main() {
       expect(find.byKey(const Key('connect_google_button')), findsNothing);
 
       // Disconnecting would leave no way back in, so it is disabled (#114).
-      final MayosButton disconnect = tester.widget<MayosButton>(
+      final MyosButton disconnect = tester.widget<MyosButton>(
           find.byKey(const Key('disconnect_google_button')));
       expect(disconnect.onPressed, isNull);
       expect(fake.linkedSignIns, contains('google'));
@@ -241,7 +241,7 @@ void main() {
 
     testWidgets('an account with both methods can disconnect',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: true);
       await _pumpSettings(tester, fake, tokens, google: FakeGoogleAuthGateway());
@@ -253,7 +253,7 @@ void main() {
       expect(find.text('Set a password first'), findsNothing);
       expect(
         tester
-            .widget<MayosButton>(
+            .widget<MyosButton>(
                 find.byKey(const Key('disconnect_google_button')))
             .onPressed,
         isNotNull,
@@ -262,7 +262,7 @@ void main() {
 
     testWidgets('the connect button stays hidden where Google is unavailable',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
       await _pumpSettings(
@@ -283,7 +283,7 @@ void main() {
   group('connect Google', () {
     testWidgets('a successful connect posts the ID token and re-reads auth/me',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
       final FakeGoogleAuthGateway google = FakeGoogleAuthGateway()
@@ -310,7 +310,7 @@ void main() {
 
     testWidgets('the web rendered button posts its ID token to Google link',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
       final FakeGoogleAuthGateway google = FakeGoogleAuthGateway(
@@ -330,7 +330,7 @@ void main() {
 
     testWidgets('a second web token is ignored while connect is busy',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final Completer<void> gate = Completer<void>();
       fake.adapter.beforeRespond = (FakeRequest request) async {
         if (request.path == '/auth/google/link') {
@@ -366,7 +366,7 @@ void main() {
 
     testWidgets('a subject connected to another account is shown clearly',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi()
+      final FakeMyosApi fake = FakeMyosApi()
         ..googleLinkConflictElsewhere = true;
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
@@ -377,7 +377,7 @@ void main() {
       await _pumpUntilFound(
           tester,
           find.text(
-              'This Google account is already connected to another MAYOS account'));
+              'This Google account is already connected to another MYOS account'));
 
       expect(fake.linkGoogleRequests, 1);
       expect(fake.linkedSignIns, isEmpty);
@@ -386,7 +386,7 @@ void main() {
 
     testWidgets('a different Google account already connected is shown clearly',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi()
+      final FakeMyosApi fake = FakeMyosApi()
         ..googleLinkConflictDifferent = true;
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
@@ -408,7 +408,7 @@ void main() {
   group('disconnect Google', () {
     testWidgets('asks for confirmation and then disconnects',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: true);
       await _pumpSettings(tester, fake, tokens, google: FakeGoogleAuthGateway());
@@ -438,7 +438,7 @@ void main() {
   group('change password', () {
     testWidgets('replacing a password ends the session with an explanation',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
       await _pumpSettings(tester, fake, tokens, google: FakeGoogleAuthGateway());
@@ -475,7 +475,7 @@ void main() {
   group('set password', () {
     testWidgets('refuses a weak password, then sets it and unlocks disconnect',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: false, googleLinked: true);
       await _pumpSettings(tester, fake, tokens, google: FakeGoogleAuthGateway());
@@ -508,7 +508,7 @@ void main() {
       expect(find.text('Change password'), findsOneWidget);
       expect(
         tester
-            .widget<MayosButton>(
+            .widget<MyosButton>(
                 find.byKey(const Key('disconnect_google_button')))
             .onPressed,
         isNotNull,
@@ -519,7 +519,7 @@ void main() {
   group('delete account', () {
     testWidgets('a web rendered button confirms Google-only deletion',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final Completer<void> gate = Completer<void>();
       fake.adapter.beforeRespond = (FakeRequest request) async {
         if (request.path == '/auth/account') {
@@ -571,7 +571,7 @@ void main() {
 
     testWidgets('a Google-only account deletes with a fresh Google ID token',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       final InMemoryDraftStore drafts = InMemoryDraftStore();
       final InMemoryWorkoutCacheStore cache = InMemoryWorkoutCacheStore();
@@ -624,7 +624,7 @@ void main() {
 
     testWidgets('a cancelled Google sheet deletes nothing',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: false, googleLinked: true);
       final FakeGoogleAuthGateway google = FakeGoogleAuthGateway()
@@ -649,7 +649,7 @@ void main() {
 
     testWidgets('an account with a password keeps the password prompt',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final InMemoryTokenStore tokens = InMemoryTokenStore();
       await _seedSignedIn(fake, tokens, hasPassword: true, googleLinked: false);
       await _pumpSettings(tester, fake, tokens, google: FakeGoogleAuthGateway());

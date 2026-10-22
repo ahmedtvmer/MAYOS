@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/display_language/controller.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/display_language/controller.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/features/shared/mode_switch.dart';
+import 'package:myos_mobile/src/providers.dart';
 
 import 'support/fake_api_adapter.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 /// Pumps finite frames until [finder] matches, then a few more so route
 /// transitions settle without depending on `pumpAndSettle`.
@@ -28,7 +28,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   }
 }
 
-Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake,
+Future<void> _pumpApp(WidgetTester tester, FakeMyosApi fake,
     {String languageCode = 'en'}) async {
   fake.displayLanguage = languageCode;
   tester.view.physicalSize = const Size(1080, 2400);
@@ -54,7 +54,7 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake,
           return client;
         }),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(
@@ -62,8 +62,8 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake,
 }
 
 /// A signed-in, onboarded player with a recovery email, optionally a coach.
-FakeMayosApi _signedInFake({required bool coach}) {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _signedInFake({required bool coach}) {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -190,7 +190,7 @@ void main() {
 
   testWidgets('single-capability player sees Lifter Free and honest benefits',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake(coach: false);
+    final FakeMyosApi fake = _signedInFake(coach: false);
     await _pumpApp(tester, fake);
     await _openPlan(tester);
 
@@ -214,7 +214,7 @@ void main() {
 
   testWidgets('Coach mode shows only the Coach plan for a dual-capability account',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake(coach: true);
+    final FakeMyosApi fake = _signedInFake(coach: true);
     await _pumpApp(tester, fake);
     await _openPlan(tester);
 
@@ -227,7 +227,7 @@ void main() {
 
   testWidgets('server-owned plan state is displayed, not inferred',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake(coach: false);
+    final FakeMyosApi fake = _signedInFake(coach: false);
     fake.lifterPlan = 'pro';
     await _pumpApp(tester, fake);
     await _openSettings(tester);
@@ -241,7 +241,7 @@ void main() {
   testWidgets('Lifter plan discloses the same allowance in English and Arabic',
       (WidgetTester tester) async {
     for (final String languageCode in <String>['en', 'ar']) {
-      final FakeMayosApi fake = _signedInFake(coach: false);
+      final FakeMyosApi fake = _signedInFake(coach: false);
       fake.lifterAiAllowance = <String, dynamic>{
         'mode': 'launch',
         'status': 'warning',
@@ -279,7 +279,7 @@ void main() {
         'resource_cutoff',
         'requests_exhausted',
       ]) {
-        final FakeMayosApi fake = _signedInFake(coach: true);
+        final FakeMyosApi fake = _signedInFake(coach: true);
         fake.lifterAiAllowance = <String, dynamic>{
           'mode': 'launch',
           'status': 'warning',

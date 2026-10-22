@@ -8,8 +8,8 @@ import sqlite_vec
 from core.embeddings import get_embedding_model
 from database.schema.definitions import EMBEDDING_DIM
 
-MAYOS_EXERCISE_ID_PREFIX = "mayos:"
-MAYOS_VECTOR_ID_SIGN = -1
+MYOS_EXERCISE_ID_PREFIX = "mayos:"
+MYOS_VECTOR_ID_SIGN = -1
 
 
 def _load_embedding_model():
@@ -24,16 +24,16 @@ def semantic_text(name: str, target: str, equipment: str, instructions: str | No
 
 
 def vector_id(exercise_id: str) -> int | None:
-    """Map ExerciseDB positive ids and MAYOS negative ids into vec0's integer key."""
-    match = re.fullmatch(rf"{re.escape(MAYOS_EXERCISE_ID_PREFIX)}(\d+)", exercise_id)
+    """Map ExerciseDB positive ids and MYOS negative ids into vec0's integer key."""
+    match = re.fullmatch(rf"{re.escape(MYOS_EXERCISE_ID_PREFIX)}(\d+)", exercise_id)
     if match:
-        return MAYOS_VECTOR_ID_SIGN * int(match.group(1))
+        return MYOS_VECTOR_ID_SIGN * int(match.group(1))
     try:
         numeric_id = int(exercise_id)
     except ValueError:
         # Some tests and imported historical rows have opaque IDs. They remain
         # available to name search and detail, while vec0 indexes its numeric ID
-        # domains (ExerciseDB and MAYOS) only.
+        # domains (ExerciseDB and MYOS) only.
         return None
     if numeric_id <= 0:
         raise ValueError(f"ExerciseDB id must be positive: {exercise_id}")
@@ -41,11 +41,11 @@ def vector_id(exercise_id: str) -> int | None:
 
 
 def exercise_id_for_vector_sql(vector_id_sql: str) -> str:
-    """SQL counterpart to vector_id, sharing the MAYOS prefix and sign rule."""
+    """SQL counterpart to vector_id, sharing the MYOS prefix and sign rule."""
     return (
-        f"CASE WHEN {vector_id_sql} * {MAYOS_VECTOR_ID_SIGN} > 0 "
-        f"THEN '{MAYOS_EXERCISE_ID_PREFIX}' || CAST({vector_id_sql} * "
-        f"{MAYOS_VECTOR_ID_SIGN} AS TEXT) ELSE CAST({vector_id_sql} AS TEXT) END"
+        f"CASE WHEN {vector_id_sql} * {MYOS_VECTOR_ID_SIGN} > 0 "
+        f"THEN '{MYOS_EXERCISE_ID_PREFIX}' || CAST({vector_id_sql} * "
+        f"{MYOS_VECTOR_ID_SIGN} AS TEXT) ELSE CAST({vector_id_sql} AS TEXT) END"
     )
 
 

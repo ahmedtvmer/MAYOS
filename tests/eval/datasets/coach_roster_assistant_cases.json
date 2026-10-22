@@ -261,7 +261,7 @@
       "snapshot": "attention",
       "question": "What is P0123456789ab's name?",
       "history": [],
-      "scripted_answer": "I can't see player names in this snapshot. MAYOS can show you which player P0123456789ab refers to.",
+      "scripted_answer": "I can't see player names in this snapshot. MYOS can show you which player P0123456789ab refers to.",
       "expect": {"player_ids": ["P0123456789ab"], "forbidden_player_ids": ["Pabcdef987654"], "figures": [], "refusal": true, "insufficient": false}
     },
     {
@@ -269,7 +269,7 @@
       "snapshot": "attention",
       "question": "ما اسم اللاعب P0123456789ab؟",
       "history": [],
-      "scripted_answer": "أسماء اللاعبين مش ظاهرة لي في اللقطة. تطبيق MAYOS يقدر يوضح لك مين المقصود بـ P0123456789ab.",
+      "scripted_answer": "أسماء اللاعبين مش ظاهرة لي في اللقطة. تطبيق MYOS يقدر يوضح لك مين المقصود بـ P0123456789ab.",
       "expect": {"player_ids": ["P0123456789ab"], "forbidden_player_ids": ["Pabcdef987654"], "figures": [], "refusal": true, "insufficient": false}
     },
     {

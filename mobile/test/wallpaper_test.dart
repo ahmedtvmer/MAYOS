@@ -2,27 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/chat_storage.dart';
-import 'package:mayos_mobile/src/core/device_timezone.dart';
-import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
-import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_logo.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_wallpaper.dart';
-import 'package:mayos_mobile/src/core/workout_storage.dart';
-import 'package:mayos_mobile/src/features/player/auth/forgot_password_screen.dart';
-import 'package:mayos_mobile/src/features/player/auth/login_screen.dart';
-import 'package:mayos_mobile/src/features/player/auth/recovery_email_screen.dart';
-import 'package:mayos_mobile/src/features/player/auth/register_screen.dart';
-import 'package:mayos_mobile/src/features/player/auth/reset_password_screen.dart';
-import 'package:mayos_mobile/src/features/shared/splash_screen.dart';
-import 'package:mayos_mobile/src/providers.dart';
-import 'package:mayos_mobile/src/router.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/chat_storage.dart';
+import 'package:myos_mobile/src/core/device_timezone.dart';
+import 'package:myos_mobile/src/core/theme/myos_theme.dart';
+import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/ui/myos_logo.dart';
+import 'package:myos_mobile/src/core/ui/myos_wallpaper.dart';
+import 'package:myos_mobile/src/core/workout_storage.dart';
+import 'package:myos_mobile/src/features/player/auth/forgot_password_screen.dart';
+import 'package:myos_mobile/src/features/player/auth/login_screen.dart';
+import 'package:myos_mobile/src/features/player/auth/recovery_email_screen.dart';
+import 'package:myos_mobile/src/features/player/auth/register_screen.dart';
+import 'package:myos_mobile/src/features/player/auth/reset_password_screen.dart';
+import 'package:myos_mobile/src/features/shared/splash_screen.dart';
+import 'package:myos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/router.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 /// Issue #110: the gym wallpaper behind the splash and logged-out screens.
 ///
@@ -50,8 +50,8 @@ Future<void> _setSize(WidgetTester tester, Size size) async {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
-FakeMayosApi _fake() {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _fake() {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -60,7 +60,7 @@ FakeMayosApi _fake() {
   return fake;
 }
 
-List<Override> _authOverrides(FakeMayosApi fake, InMemoryTokenStore tokens,
+List<Override> _authOverrides(FakeMyosApi fake, InMemoryTokenStore tokens,
     ThemeMode mode) {
   return <Override>[
     tokenStoreProvider.overrideWithValue(tokens),
@@ -102,7 +102,7 @@ GoRouter _authRouter(String initialLocation) {
       GoRoute(
         path: resetPasswordPath,
         builder: (_, __) =>
-            ResetPasswordScreen(token: 'MAYOS-RESET-CODE'),
+            ResetPasswordScreen(token: 'MYOS-RESET-CODE'),
       ),
     ],
   );
@@ -113,8 +113,8 @@ Future<void> _pumpSplash(WidgetTester tester, ThemeMode mode) async {
   await tester.pumpWidget(
     MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: MayosTheme.light,
-      darkTheme: MayosTheme.dark,
+      theme: MyosTheme.light,
+      darkTheme: MyosTheme.dark,
       themeMode: mode,
       home: const SplashScreen(),
     ),
@@ -125,15 +125,15 @@ Future<void> _pumpSplash(WidgetTester tester, ThemeMode mode) async {
 Future<void> _pumpAuthScreen(
     WidgetTester tester, String location, ThemeMode mode, String heading) async {
   await _setSize(tester, const Size(400, 900));
-  final FakeMayosApi fake = _fake();
+  final FakeMyosApi fake = _fake();
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tester.pumpWidget(
     ProviderScope(
       overrides: _authOverrides(fake, tokens, mode),
       child: MaterialApp.router(
         debugShowCheckedModeBanner: false,
-        theme: MayosTheme.light,
-        darkTheme: MayosTheme.dark,
+        theme: MyosTheme.light,
+        darkTheme: MyosTheme.dark,
         themeMode: mode,
         routerConfig: _authRouter(location),
       ),
@@ -145,7 +145,7 @@ Future<void> _pumpAuthScreen(
 /// Pumps the signed-in app and waits for the Home shell.
 Future<void> _pumpSignedIn(WidgetTester tester, ThemeMode mode) async {
   await _setSize(tester, const Size(400, 900));
-  final FakeMayosApi fake = _fake();
+  final FakeMyosApi fake = _fake();
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
   await tester.pumpWidget(
@@ -159,7 +159,7 @@ Future<void> _pumpSignedIn(WidgetTester tester, ThemeMode mode) async {
         deviceTimezoneOrNullProvider
             .overrideWithValue(Future<String?>.value('UTC')),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(tester, find.text('This week'));
@@ -181,8 +181,8 @@ const Map<String, String> _authHeadings = <String, String>{
 void main() {
   group('wallpaper design constants', () {
     test('overlay opacity and blur are fixed within the approved bands', () {
-      expect(MayosWallpaper.overlayOpacity, inInclusiveRange(0.55, 0.65));
-      expect(MayosWallpaper.blurSigma, inInclusiveRange(4, 8));
+      expect(MyosWallpaper.overlayOpacity, inInclusiveRange(0.55, 0.65));
+      expect(MyosWallpaper.blurSigma, inInclusiveRange(4, 8));
     });
   });
 
@@ -195,22 +195,22 @@ void main() {
     testWidgets('splash shows the wallpaper photo ($theme app theme)',
         (WidgetTester tester) async {
       await _pumpSplash(tester, mode);
-      expect(find.byKey(MayosWallpaper.photoKey), findsOneWidget);
+      expect(find.byKey(MyosWallpaper.photoKey), findsOneWidget);
     });
 
     testWidgets('splash lockup is white ($theme app theme)',
         (WidgetTester tester) async {
       await _pumpSplash(tester, mode);
-      final MayosBrandLockup lockup =
-          tester.widget<MayosBrandLockup>(find.byType(MayosBrandLockup));
-      expect(lockup.variant, MayosBrandVariant.white);
+      final MyosBrandLockup lockup =
+          tester.widget<MyosBrandLockup>(find.byType(MyosBrandLockup));
+      expect(lockup.variant, MyosBrandVariant.white);
     });
 
     for (final MapEntry<String, String> entry in _authHeadings.entries) {
       testWidgets('${entry.key} shows the wallpaper photo ($theme app theme)',
           (WidgetTester tester) async {
         await _pumpAuthScreen(tester, entry.key, mode, entry.value);
-        expect(find.byKey(MayosWallpaper.photoKey), findsOneWidget);
+        expect(find.byKey(MyosWallpaper.photoKey), findsOneWidget);
       });
     }
 
@@ -218,31 +218,31 @@ void main() {
         (WidgetTester tester) async {
       await _pumpAuthScreen(
           tester, loginPath, ThemeMode.light, _authHeadings[loginPath]!);
-      final MayosBrandLockup lockup =
-          tester.widget<MayosBrandLockup>(find.byType(MayosBrandLockup));
-      expect(lockup.variant, MayosBrandVariant.white);
+      final MyosBrandLockup lockup =
+          tester.widget<MyosBrandLockup>(find.byType(MyosBrandLockup));
+      expect(lockup.variant, MyosBrandVariant.white);
     });
 
     testWidgets('recovery email has no wallpaper ($theme app theme)',
         (WidgetTester tester) async {
       await _pumpAuthScreen(tester, recoveryEmailPath, mode, 'Recovery email');
-      expect(find.byKey(MayosWallpaper.photoKey), findsNothing);
+      expect(find.byKey(MyosWallpaper.photoKey), findsNothing);
     });
 
     testWidgets('signed-in Home has no wallpaper ($theme app theme)',
         (WidgetTester tester) async {
       await _pumpSignedIn(tester, mode);
       expect(find.text('Home'), findsWidgets);
-      expect(find.byKey(MayosWallpaper.photoKey), findsNothing);
+      expect(find.byKey(MyosWallpaper.photoKey), findsNothing);
     });
   }
 
   testWidgets('the photo is cover-fit and bundled', (WidgetTester tester) async {
     await _pumpSplash(tester, ThemeMode.dark);
     final Image photo =
-        tester.widget<Image>(find.byKey(MayosWallpaper.photoKey));
+        tester.widget<Image>(find.byKey(MyosWallpaper.photoKey));
     expect(photo.image, isA<AssetImage>());
-    expect((photo.image as AssetImage).assetName, MayosWallpaper.imageAsset);
+    expect((photo.image as AssetImage).assetName, MyosWallpaper.imageAsset);
     expect(photo.fit, BoxFit.cover);
   });
 
@@ -250,8 +250,8 @@ void main() {
       (WidgetTester tester) async {
     await _pumpAuthScreen(
         tester, recoveryEmailPath, ThemeMode.light, 'Recovery email');
-    final MayosBrandLockup lockup =
-        tester.widget<MayosBrandLockup>(find.byType(MayosBrandLockup));
-    expect(lockup.variant, MayosBrandVariant.auto);
+    final MyosBrandLockup lockup =
+        tester.widget<MyosBrandLockup>(find.byType(MyosBrandLockup));
+    expect(lockup.variant, MyosBrandVariant.auto);
   });
 }

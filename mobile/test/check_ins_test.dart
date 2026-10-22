@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/features/shared/mode_switch.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/providers.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     {int attempts = 40}) async {
@@ -24,7 +24,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   }
 }
 
-Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
+Future<void> _pumpApp(WidgetTester tester, FakeMyosApi fake) async {
   tester.view.physicalSize = const Size(1080, 4200);
   tester.view.devicePixelRatio = 2.0;
   addTearDown(tester.view.resetPhysicalSize);
@@ -47,15 +47,15 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
           return client;
         }),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(
       tester, find.text(fake.coach ? 'Roster' : 'Home'));
 }
 
-FakeMayosApi _signedInFake({required bool coach}) {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _signedInFake({required bool coach}) {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -66,8 +66,8 @@ FakeMayosApi _signedInFake({required bool coach}) {
   return fake;
 }
 
-FakeMayosApi _coachFake() {
-  final FakeMayosApi fake = _signedInFake(coach: true);
+FakeMyosApi _coachFake() {
+  final FakeMyosApi fake = _signedInFake(coach: true);
   fake.assignments.add(<String, dynamic>{
     'assignment_id': 'assignment-1',
     'player_username': 'bob',
@@ -130,7 +130,7 @@ void main() {
 
   testWidgets('coach records a check-in and it appears in the list',
       (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
     await _openDrillDown(tester);
     await _pumpUntilFound(tester, find.text('Check-ins'));
@@ -163,7 +163,7 @@ void main() {
 
   testWidgets('player sees former coaches\' check-ins after unassignment',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake(coach: false);
+    final FakeMyosApi fake = _signedInFake(coach: false);
     // No active assignment: the check-in history must still be reachable.
     fake.activeAssignmentId = null;
     fake.checkIns.add(<String, dynamic>{
@@ -186,7 +186,7 @@ void main() {
   });
 
   testWidgets('alert center renders a follow-up-due alert', (tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.coachAlerts.add(<String, dynamic>{
       'alert_id': 'alert-follow-up',
       'assignment_id': 'assignment-1',

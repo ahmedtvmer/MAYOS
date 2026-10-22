@@ -2,18 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_bottom_navigation.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_card.dart';
-import 'package:mayos_mobile/src/features/coach/coach_player_history_screen.dart';
-import 'package:mayos_mobile/src/features/coach/coach_shell.dart';
-import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
-import 'package:mayos_mobile/src/providers.dart';
-import 'package:mayos_mobile/src/router.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/ui/myos_bottom_navigation.dart';
+import 'package:myos_mobile/src/core/ui/myos_card.dart';
+import 'package:myos_mobile/src/features/coach/coach_player_history_screen.dart';
+import 'package:myos_mobile/src/features/coach/coach_shell.dart';
+import 'package:myos_mobile/src/features/shared/mode_switch.dart';
+import 'package:myos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/router.dart';
 
 import 'support/coach_layout_harness.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     {int attempts = 60}) async {
@@ -28,7 +28,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   }
 }
 
-Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake,
+Future<void> _pumpApp(WidgetTester tester, FakeMyosApi fake,
     {Size size = const Size(1440, 960),
     InMemoryAppModeStore? modeStore}) async {
   await pumpCoachApp(tester, fake, logicalSize: size, modeStore: modeStore);
@@ -36,7 +36,7 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake,
 }
 
 GoRouter _router(WidgetTester tester) =>
-    ProviderScope.containerOf(tester.element(find.byType(MayosApp)))
+    ProviderScope.containerOf(tester.element(find.byType(MyosApp)))
         .read(routerProvider);
 
 String _path(WidgetTester tester) =>
@@ -52,7 +52,7 @@ Finder _playerTitle(String username) => find.descendant(
       matching: find.text(username),
     );
 
-FakeMayosApi _coachFake() {
+FakeMyosApi _coachFake() {
   return createCoachFake();
 }
 
@@ -89,14 +89,14 @@ Map<String, dynamic> _request({
       'resolved_by': null,
     };
 
-int _calls(FakeMayosApi fake, String path) => fake.adapter.requests
+int _calls(FakeMyosApi fake, String path) => fake.adapter.requests
     .where((request) => request.method == 'GET' && request.path == path)
     .length;
 
 void main() {
   testWidgets('coach tabs have clean URLs and mode switching persists the URL',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     final InMemoryAppModeStore modeStore = InMemoryAppModeStore();
     await _pumpApp(tester, fake, modeStore: modeStore);
 
@@ -146,7 +146,7 @@ void main() {
 
   testWidgets('desktop roster selection updates and restores the right pane',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.assignments.add(_assignment('assignment-1', 'bob'));
     fake.assignments.add(_assignment('assignment-2', 'carol'));
     await _pumpApp(tester, fake);
@@ -183,7 +183,7 @@ void main() {
 
   testWidgets('phone roster selection stays over the shell and system back restores it',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.assignments.add(_assignment('assignment-1', 'bob'));
     await _pumpApp(tester, fake, size: const Size(390, 844));
 
@@ -195,7 +195,7 @@ void main() {
     final int alertsOnPlayerPage = _calls(fake, '/coach/alerts');
     final int requestsOnPlayerPage = _calls(fake, '/coach/program-requests');
     final container =
-        ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+        ProviderScope.containerOf(tester.element(find.byType(MyosApp)));
     final int rosterRevisionBeforeBack =
         container.read(coachRosterRevisionProvider);
 
@@ -203,7 +203,7 @@ void main() {
     await tester.pumpAndSettle();
     await _pumpUntilFound(tester, find.text('Active assignments'));
     expect(_path(tester), coachRosterPath);
-    expect(find.byType(MayosBottomNavigation), findsOneWidget);
+    expect(find.byType(MyosBottomNavigation), findsOneWidget);
     expect(
       container.read(coachRosterRevisionProvider),
       rosterRevisionBeforeBack + 1,
@@ -220,7 +220,7 @@ void main() {
 
   testWidgets('ended and foreign assignment URLs share the generic denial',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
 
     _router(tester).go('$coachRosterPath/ended-assignment');
@@ -238,7 +238,7 @@ void main() {
 
   testWidgets('desktop requests expose URL-addressable detail and actions',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.assignments.add(_assignment('assignment-1', 'bob'));
     fake.programRequests.add(_request());
     fake.programRequests.add(_request(id: 'request-2'));
@@ -256,7 +256,7 @@ void main() {
     expect(find.byKey(const Key('request_decline_button')), findsOneWidget);
     expect(find.byKey(const Key('request_card_request-1')), findsOneWidget);
     expect(
-      tester.widget<MayosCard>(find.byKey(const Key('request_card_request-1')))
+      tester.widget<MyosCard>(find.byKey(const Key('request_card_request-1')))
           .selected,
       isTrue,
     );
@@ -270,7 +270,7 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(_calls(fake, '/coach/program-requests'), requestReads);
     expect(
-      tester.widget<MayosCard>(find.byKey(const Key('request_card_request-2')))
+      tester.widget<MyosCard>(find.byKey(const Key('request_card_request-2')))
           .selected,
       isTrue,
     );
@@ -278,7 +278,7 @@ void main() {
 
   testWidgets('desktop back and forward URLs restore both roster selections',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.assignments.add(_assignment('assignment-1', 'bob'));
     fake.assignments.add(_assignment('assignment-2', 'carol'));
     await _pumpApp(tester, fake);
@@ -299,7 +299,7 @@ void main() {
 
   testWidgets('unknown request URL shows the generic denial on desktop',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.assignments.add(_assignment('assignment-1', 'bob'));
     fake.programRequests.add(_request(id: 'foreign-request', assignmentId: 'other-assignment'));
     await _pumpApp(tester, fake);
@@ -314,7 +314,7 @@ void main() {
 
   testWidgets('unknown request URL shows the generic denial on phone',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.assignments.add(_assignment('assignment-1', 'bob'));
     await _pumpApp(tester, fake, size: const Size(390, 844));
 
@@ -322,7 +322,7 @@ void main() {
     await _pumpUntilFound(
         tester, find.text('This request is no longer available.'));
     expect(find.textContaining('unknown-request'), findsNothing);
-    expect(find.byType(MayosBottomNavigation), findsOneWidget);
+    expect(find.byType(MyosBottomNavigation), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

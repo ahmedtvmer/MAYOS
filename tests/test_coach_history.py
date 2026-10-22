@@ -493,7 +493,7 @@ def test_coach_checkpoint_review_reads_do_not_open_player_review(api):
     detail = client.get(f"{base}/10", headers=coach_headers)
     assert listed.status_code == detail.status_code == 200
     assert listed.json()[0]["checkpoint"] == 10
-    assert detail.json()["text"] == "Checkpoint 10: 10 workouts since you started logging in MAYOS."
+    assert detail.json()["text"] == "Checkpoint 10: 10 workouts since you started logging in MYOS."
     assert detail.json()["text_is_template"] is True
     assert detail.json()["rating"] == [
         {

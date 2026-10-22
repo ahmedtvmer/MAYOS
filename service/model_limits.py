@@ -111,7 +111,7 @@ _limit_hit_pruned_day: str | None = None
 #: that calls the entry point more than once still counts as one request. Keyed
 #: by account id (not a bare flag) so a different account in the same context is
 #: still admitted.
-_admitted: ContextVar[str | None] = ContextVar("mayos_model_admitted", default=None)
+_admitted: ContextVar[str | None] = ContextVar("myos_model_admitted", default=None)
 
 
 def reset_model_limits() -> None:

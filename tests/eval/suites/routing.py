@@ -591,7 +591,7 @@ def _observe_case(
 
 def _run_cases(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
     observations = []
-    with tempfile.TemporaryDirectory(prefix="mayos-routing-") as directory:
+    with tempfile.TemporaryDirectory(prefix="myos-routing-") as directory:
         root = Path(directory)
         for case in cases:
             try:
@@ -688,7 +688,7 @@ class RoutingSuite:
     def run_hermetic(self, _context: Any) -> dict[str, Any]:
         cases = _load_routing_cases()
         observations = []
-        with tempfile.TemporaryDirectory(prefix="mayos-routing-hermetic-") as directory:
+        with tempfile.TemporaryDirectory(prefix="myos-routing-hermetic-") as directory:
             root = Path(directory)
             for case in cases:
                 expected_action = case.get("expected_action") or {}

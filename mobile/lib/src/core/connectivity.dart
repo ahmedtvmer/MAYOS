@@ -10,9 +10,9 @@ import 'api_client.dart';
 import 'display_language/copy_context.dart';
 import 'connectivity_events.dart';
 import 'connectivity_message.dart';
-import 'theme/mayos_spacing.dart';
-import 'theme/mayos_theme.dart';
-import 'theme/mayos_typography.dart';
+import 'theme/myos_spacing.dart';
+import 'theme/myos_theme.dart';
+import 'theme/myos_typography.dart';
 
 /// Whether this client may show the offline banner (#127): web only, so the
 /// Android surface stays exactly as it was. Injectable so tests can force it.
@@ -105,23 +105,23 @@ class OfflineBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Material(
       color: c.surfaceElevated,
       child: Padding(
         padding: const EdgeInsets.symmetric(
-          horizontal: MayosSpacing.md,
-          vertical: MayosSpacing.xs,
+          horizontal: MyosSpacing.md,
+          vertical: MyosSpacing.xs,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Icon(Icons.cloud_off,
-                size: MayosIconSizes.small, color: c.textSecondary),
-            const SizedBox(width: MayosSpacing.xs),
+                size: MyosIconSizes.small, color: c.textSecondary),
+            const SizedBox(width: MyosSpacing.xs),
             Text(
               displayCopyOf(context).offlineBanner,
-              style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
+              style: MyosTypography.of(context).body.copyWith(color: c.textPrimary),
             ),
           ],
         ),

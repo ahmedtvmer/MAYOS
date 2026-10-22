@@ -2,11 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/chat_models.dart';
-import 'package:mayos_mobile/src/core/chat_stream_fetch_types.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/chat_models.dart';
+import 'package:myos_mobile/src/core/chat_stream_fetch_types.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
 
 import 'support/fake_api_adapter.dart';
 

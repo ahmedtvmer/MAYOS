@@ -128,13 +128,13 @@ def test_partial_edge_week_counts_only_when_target_is_met(
 
 def test_template_text_has_fixed_english_and_arabic_sentences():
     assert template_text(10, 10, "en", True) == (
-        "Checkpoint 10: 10 workouts since you started logging in MAYOS."
+        "Checkpoint 10: 10 workouts since you started logging in MYOS."
     )
     assert template_text(25, 15, "en", False) == (
         "Checkpoint 25: 15 workouts since your last checkpoint."
     )
     assert template_text(10, 10, "ar", True) == (
-        "محطة تقدم 10: أكملت 10 حصص تدريبية منذ بدء تسجيلك في MAYOS."
+        "محطة تقدم 10: أكملت 10 حصص تدريبية منذ بدء تسجيلك في MYOS."
     )
     assert template_text(25, 15, "ar", False) == (
         "محطة تقدم 25: أكملت 15 حصة تدريبية منذ محطة التقدم السابقة."

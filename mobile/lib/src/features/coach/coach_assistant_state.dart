@@ -35,7 +35,7 @@ class CoachAssistantTranscript {
 /// Holds the transcript for **one** selected player and enforces the clearing
 /// rules of issue #45: a different player replaces it, a revoked assignment or
 /// an ended roster entry drops it, and logout (through the auth listener on the
-/// provider) and app close (through the lifecycle observer in `MayosApp`) clear
+/// provider) and app close (through the lifecycle observer in `MyosApp`) clear
 /// it. The service keeps no copy either.
 class CoachAssistantController
     extends StateNotifier<CoachAssistantTranscript?> {

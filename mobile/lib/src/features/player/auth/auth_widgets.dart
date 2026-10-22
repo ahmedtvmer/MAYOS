@@ -6,18 +6,18 @@ import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/selector.dart';
 import '../../../core/password_policy.dart';
-import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/theme/mayos_theme.dart';
-import '../../../core/theme/mayos_typography.dart';
-import '../../../core/ui/mayos_button.dart';
-import '../../../core/ui/mayos_logo.dart';
-import '../../../core/ui/mayos_player_column.dart';
-import '../../../core/ui/mayos_text_field.dart';
-import '../../../core/ui/mayos_wallpaper.dart';
+import '../../../core/theme/myos_spacing.dart';
+import '../../../core/theme/myos_theme.dart';
+import '../../../core/theme/myos_typography.dart';
+import '../../../core/ui/myos_button.dart';
+import '../../../core/ui/myos_logo.dart';
+import '../../../core/ui/myos_player_column.dart';
+import '../../../core/ui/myos_text_field.dart';
+import '../../../core/ui/myos_wallpaper.dart';
 import '../../../providers.dart';
 import 'home_screen_install_hint.dart';
 
-/// The shared MAYOS composition for the authentication and recovery screens.
+/// The shared MYOS composition for the authentication and recovery screens.
 ///
 /// It mirrors the onboarding shell: a brand-lockup hero, an editorial serif
 /// heading with a short sans line, scrolling content, and a deliberate bottom
@@ -65,7 +65,7 @@ class AuthScaffold extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final bool authenticated =
         ref.watch(authControllerProvider).session != null;
     final bool keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
@@ -79,7 +79,7 @@ class AuthScaffold extends ConsumerWidget {
       body: SafeArea(
         // A phone-width column on desktop (#133); a no-op on phones. Applied at
         // every width so the fields' widget tree never changes shape.
-        child: MayosPlayerColumn(
+        child: MyosPlayerColumn(
           child: Stack(children: <Widget>[
             AutofillGroup(
               child: Column(
@@ -98,10 +98,10 @@ class AuthScaffold extends ConsumerWidget {
                           keyboardDismissBehavior:
                               ScrollViewKeyboardDismissBehavior.onDrag,
                           padding: EdgeInsets.fromLTRB(
-                            MayosSpacing.lg,
-                            keyboardOpen ? MayosSpacing.sm : MayosSpacing.md,
-                            MayosSpacing.lg,
-                            MayosSpacing.lg,
+                            MyosSpacing.lg,
+                            keyboardOpen ? MyosSpacing.sm : MyosSpacing.md,
+                            MyosSpacing.lg,
+                            MyosSpacing.lg,
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -114,13 +114,13 @@ class AuthScaffold extends ConsumerWidget {
                                 visible: showHero,
                                 child: Padding(
                                   padding: const EdgeInsets.only(
-                                      bottom: MayosSpacing.xl),
+                                      bottom: MyosSpacing.xl),
                                   child: Center(
-                                    child: MayosBrandLockup(
+                                    child: MyosBrandLockup(
                                       height: logoHeight,
                                       variant: wallpaper
-                                          ? MayosBrandVariant.white
-                                          : MayosBrandVariant.auto,
+                                          ? MyosBrandVariant.white
+                                          : MyosBrandVariant.auto,
                                     ),
                                   ),
                                 ),
@@ -130,14 +130,14 @@ class AuthScaffold extends ConsumerWidget {
                                     showHomeScreenInstallHint && !keyboardOpen,
                               ),
                               AuthHeading(title: title, lead: lead),
-                              const SizedBox(height: MayosSpacing.xl),
+                              const SizedBox(height: MyosSpacing.xl),
                               ...children,
                               if (keyboardOpen && links.isNotEmpty) ...<Widget>[
-                                const SizedBox(height: MayosSpacing.md),
+                                const SizedBox(height: MyosSpacing.md),
                                 Wrap(
                                   alignment: WrapAlignment.center,
-                                  spacing: MayosSpacing.xs,
-                                  runSpacing: MayosSpacing.xxs,
+                                  spacing: MyosSpacing.xs,
+                                  runSpacing: MyosSpacing.xxs,
                                   children: links,
                                 ),
                               ],
@@ -160,7 +160,7 @@ class AuthScaffold extends ConsumerWidget {
             if (!authenticated)
               const PositionedDirectional(
                 top: 0,
-                end: MayosSpacing.md,
+                end: MyosSpacing.md,
                 child: DisplayLanguageSelector(compact: true),
               ),
           ]),
@@ -171,10 +171,10 @@ class AuthScaffold extends ConsumerWidget {
       return scaffold;
     }
     return Theme(
-      data: MayosTheme.wallpaperForLanguage(
+      data: MyosTheme.wallpaperForLanguage(
         Localizations.localeOf(context).languageCode,
       ),
-      child: MayosWallpaper(child: scaffold),
+      child: MyosWallpaper(child: scaffold),
     );
   }
 }
@@ -188,24 +188,24 @@ class AuthHeading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final double width = MediaQuery.sizeOf(context).width;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
           title,
-          style: MayosTypography.of(context).pageHeading.copyWith(
+          style: MyosTypography.of(context).pageHeading.copyWith(
             color: c.textPrimary,
             fontSize: width < 400 ? 28 : 32,
             height: 1.12,
           ),
         ),
         if (lead != null) ...<Widget>[
-          const SizedBox(height: MayosSpacing.sm),
+          const SizedBox(height: MyosSpacing.sm),
           Text(
             lead!,
-            style: MayosTypography.of(context).bodySecondary.copyWith(
+            style: MyosTypography.of(context).bodySecondary.copyWith(
               color: c.textSecondary,
               height: 1.5,
             ),
@@ -231,7 +231,7 @@ class AuthInlineNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final (Color color, IconData icon) = switch (kind) {
       AuthNoticeKind.error => (c.danger, Icons.error_outline),
       AuthNoticeKind.success => (c.success, Icons.check_circle_outline),
@@ -243,11 +243,11 @@ class AuthInlineNotice extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Icon(icon, size: 16, color: color),
-          const SizedBox(width: MayosSpacing.xs),
+          const SizedBox(width: MyosSpacing.xs),
           Expanded(
             child: Text(
               message,
-              style: MayosTypography.of(context).bodySecondary.copyWith(color: color),
+              style: MyosTypography.of(context).bodySecondary.copyWith(color: color),
             ),
           ),
         ],
@@ -280,7 +280,7 @@ class AuthActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
         color: wallpaper ? Colors.transparent : c.canvas,
@@ -290,24 +290,24 @@ class AuthActionBar extends StatelessWidget {
         top: false,
         child: Padding(
           padding: EdgeInsets.fromLTRB(
-            MayosSpacing.lg,
-            compact ? MayosSpacing.xs : MayosSpacing.sm,
-            MayosSpacing.lg,
-            compact ? MayosSpacing.xs : MayosSpacing.md,
+            MyosSpacing.lg,
+            compact ? MyosSpacing.xs : MyosSpacing.sm,
+            MyosSpacing.lg,
+            compact ? MyosSpacing.xs : MyosSpacing.md,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               if (message != null) ...<Widget>[
                 message!,
-                SizedBox(height: compact ? MayosSpacing.xs : MayosSpacing.sm),
+                SizedBox(height: compact ? MyosSpacing.xs : MyosSpacing.sm),
               ],
               primary,
               if (links.isNotEmpty) ...<Widget>[
-                const SizedBox(height: MayosSpacing.xxs),
+                const SizedBox(height: MyosSpacing.xxs),
                 Wrap(
                   alignment: WrapAlignment.center,
-                  spacing: MayosSpacing.xs,
+                  spacing: MyosSpacing.xs,
                   children: links,
                 ),
               ],
@@ -339,7 +339,7 @@ class AuthConsentRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final bool interactive = enabled && onChanged != null;
     final Color labelColor = interactive ? c.textPrimary : c.textDisabled;
     final VoidCallback? toggle = interactive ? () => onChanged!(!value) : null;
@@ -352,17 +352,17 @@ class AuthConsentRow extends ConsumerWidget {
       child: ExcludeSemantics(
         child: InkWell(
           onTap: toggle,
-          borderRadius: MayosRadii.smallRadius,
+          borderRadius: MyosRadii.smallRadius,
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 48),
             child: Row(
               children: <Widget>[
                 _ConsentCheckbox(value: value, enabled: interactive),
-                const SizedBox(width: MayosSpacing.sm),
+                const SizedBox(width: MyosSpacing.sm),
                 Expanded(
                   child: Text(
                     label,
-                    style: MayosTypography.of(context).body.copyWith(color: labelColor),
+                    style: MyosTypography.of(context).body.copyWith(color: labelColor),
                   ),
                 ),
               ],
@@ -382,12 +382,12 @@ class _ConsentCheckbox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final Color borderColor =
         value ? c.accent : (enabled ? c.borderStrong : c.textDisabled);
     return AnimatedContainer(
-      duration: MayosMotion.fast,
-      curve: MayosMotion.standard,
+      duration: MyosMotion.fast,
+      curve: MyosMotion.standard,
       width: 20,
       height: 20,
       decoration: BoxDecoration(
@@ -408,7 +408,7 @@ enum NewPasswordValidation { tooShort, mismatch }
 
 String newPasswordValidationMessage(
   NewPasswordValidation validation,
-  MayosCopy copy,
+  MyosCopy copy,
 ) =>
     switch (validation) {
       NewPasswordValidation.tooShort => copy.passwordLength,
@@ -418,14 +418,14 @@ String newPasswordValidationMessage(
 /// The min-length check for a chosen password, or null when it is long enough.
 String? passwordLengthError(String password) =>
     _newPasswordLengthValidation(password) == NewPasswordValidation.tooShort
-        ? const MayosCopy('en').passwordLength
+        ? const MyosCopy('en').passwordLength
         : null;
 
 /// The confirmation check, or null when the two entries match.
 String? passwordConfirmationError(String password, String confirm) =>
     _newPasswordConfirmationValidation(password, confirm) ==
             NewPasswordValidation.mismatch
-        ? const MayosCopy('en').passwordMismatch
+        ? const MyosCopy('en').passwordMismatch
         : null;
 
 NewPasswordValidation? _newPasswordLengthValidation(String password) =>
@@ -480,8 +480,8 @@ class _AuthPasswordFieldState extends ConsumerState<AuthPasswordField> {
 
   @override
   Widget build(BuildContext context) {
-    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
-    return MayosTextField(
+    final MyosCopy copy = MyosCopy(ref.watch(displayLanguageProvider));
+    return MyosTextField(
       fieldKey: widget.fieldKey,
       controller: widget.controller,
       label: widget.label ?? copy.password,
@@ -517,9 +517,9 @@ class AuthLink extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MayosButton(
+    return MyosButton(
       label: label,
-      variant: MayosButtonVariant.tertiary,
+      variant: MyosButtonVariant.tertiary,
       expand: false,
       onPressed: onPressed,
     );

@@ -58,7 +58,7 @@ _TRUTH_LABEL_PATTERNS = {
         re.I,
     ),
 }
-ROSTER_SYSTEM_PROMPT = """You are answering a Coach's question about a synthetic MAYOS roster.
+ROSTER_SYSTEM_PROMPT = """You are answering a Coach's question about a synthetic MYOS roster.
 Use only the harness-built briefing below. Give a concise answer in simple
 standard Arabic, use Western digits 0-9, and include exact player IDs when
 asked. Do not infer missing facts. This is an evaluation harness, not a

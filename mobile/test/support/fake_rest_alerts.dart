@@ -1,4 +1,4 @@
-import 'package:mayos_mobile/src/core/rest_alerts.dart';
+import 'package:myos_mobile/src/core/rest_alerts.dart';
 
 /// Records every call the app makes on the platform alert seam (#125), for
 /// both the unit tests and the logger's widget tests. Nothing here touches a

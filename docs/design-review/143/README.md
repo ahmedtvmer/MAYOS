@@ -1,4 +1,4 @@
-# MAYOS #143 Arabic typography review
+# MYOS #143 Arabic typography review
 
 **Owner selection: IBM Plex Sans Arabic throughout the Arabic version of the
 app**, including headings, body text and controls. The English version keeps
@@ -7,7 +7,7 @@ This selection supersedes both original pairings and the agent's recommendation
 of B. The selected Arabic font has not yet been implemented or captured.
 
 The historical disposable comparison below renders the actual current Flutter Home, Workout logger and Assistant
-chat through `MayosApp`, using the existing `test/visual/capture_test.dart`
+chat through `MyosApp`, using the existing `test/visual/capture_test.dart`
 FontLoader / synthetic API / RepaintBoundary capture pattern. Screens were not
 recreated, redrawn or edited as raster images. Contact sheets only resize and
 arrange the unchanged PNG captures.
@@ -24,7 +24,7 @@ arrange the unchanged PNG captures.
 | B | Reem Kufi | Cairo |
 
 In these historical captures, English glyphs retain Playfair Display / Inter; Western numeric glyphs use Inter,
-and the Latin MAYOS brand retains its existing mark and wordmark. Arabic roles
+and the Latin MYOS brand retains its existing mark and wordmark. Arabic roles
 use explicit candidate fallback families, line-height 1.5 and zero tracking.
 Amiri is static Regular/Bold; IBM Plex is static Regular/Medium/SemiBold/Bold.
 Reem Kufi and Cairo are variable fonts. FontLoader loads every candidate face,
@@ -102,8 +102,8 @@ set persistence, chat routes, action execution or workout commits were changed.
 ## Gates and evidence
 
 All Flutter commands used the unsnapped SDK at
-`/mnt/work/MAYOS/.pytest_cwd/flutter_sdk/bin/flutter`, working in
-`/tmp/mayos-arabic-143-prototype/mobile`.
+`/mnt/work/MYOS/.pytest_cwd/flutter_sdk/bin/flutter`, working in
+`/tmp/myos-arabic-143-prototype/mobile`.
 
 | Command / gate | Outcome | Evidence |
 | --- | --- | --- |
@@ -170,21 +170,21 @@ need the Python packages; they are for contact sheets and asset verification.
 From the current disposable source:
 
 ```bash
-cd /tmp/mayos-arabic-143-prototype/mobile
-FLUTTER143=/mnt/work/MAYOS/.pytest_cwd/flutter_sdk/bin/flutter
+cd /tmp/myos-arabic-143-prototype/mobile
+FLUTTER143=/mnt/work/MYOS/.pytest_cwd/flutter_sdk/bin/flutter
 "$FLUTTER143" pub get
 "$FLUTTER143" analyze
-CAPTURE=1 CAPTURE_OUT=/mnt/work/MAYOS/docs/design-review/143/screens \
+CAPTURE=1 CAPTURE_OUT=/mnt/work/MYOS/docs/design-review/143/screens \
   "$FLUTTER143" test --no-pub --dart-define=ARABIC_PAIR=A --tags capture \
   test/visual/arabic_143_capture_test.dart --reporter expanded
-CAPTURE=1 CAPTURE_OUT=/mnt/work/MAYOS/docs/design-review/143/screens \
+CAPTURE=1 CAPTURE_OUT=/mnt/work/MYOS/docs/design-review/143/screens \
   "$FLUTTER143" test --no-pub --dart-define=ARABIC_PAIR=B --tags capture \
   test/visual/arabic_143_capture_test.dart --reporter expanded
 "$FLUTTER143" test --no-pub --reporter expanded \
   test/home_screen_test.dart test/workout_logger_screen_test.dart \
   test/workout_logger_back_test.dart test/workout_logger_card_menu_test.dart \
   test/workout_logger_pictures_test.dart test/player_chat_test.dart \
-  test/theme_and_shell_test.dart test/mayos_markdown_test.dart
+  test/theme_and_shell_test.dart test/myos_markdown_test.dart
 python3 tool/prototype143/verify_assets.py
 python3 tool/prototype143/contact_sheets.py
 ```
@@ -230,12 +230,12 @@ original trial.
 
 The real repository's production/test files, pubspec and lock were untouched.
 `AGENTS.md`, `mobile/test/program_authority_test.dart`,
-`mobile/test/support/fake_mayos_api.dart`, `docs/design-review/arabic-language-review.md`
+`mobile/test/support/fake_myos_api.dart`, `docs/design-review/arabic-language-review.md`
 and `docs/design-review/138/arabic-eval-set.json` retain their original bytes.
 Only final review artifacts were written under the real
-`/mnt/work/MAYOS/docs/design-review/143/`. No commits, staging, GitHub messages,
+`/mnt/work/MYOS/docs/design-review/143/`. No commits, staging, GitHub messages,
 issue mutations, account-language rollout or hosted inference occurred.
-The source work remains under `/tmp/mayos-arabic-143-prototype/mobile`;
+The source work remains under `/tmp/myos-arabic-143-prototype/mobile`;
 `.baseline-verification` and `.patch-verification` there are temporary diagnostic
 copies and are excluded from the bundle.
 

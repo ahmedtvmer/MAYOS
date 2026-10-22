@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/features/coach/coach_player_history_screen.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/features/coach/coach_player_history_screen.dart';
+import 'package:myos_mobile/src/providers.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 /// Widget tests for the roster rows and the player page (#120).
 
@@ -27,7 +27,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
 
 Future<void> _pumpApp(
   WidgetTester tester,
-  FakeMayosApi fake,
+  FakeMyosApi fake,
   InMemoryAppModeStore modeStore, {
   Size logicalSize = const Size(540, 1200),
   double devicePixelRatio = 2.0,
@@ -57,7 +57,7 @@ Future<void> _pumpApp(
           return client;
         }),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(tester, find.text('Roster'));
@@ -93,8 +93,8 @@ Finder _rosterChip(String label) => find.descendant(
       matching: find.text(label),
     );
 
-FakeMayosApi _coachFake() {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _coachFake() {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -183,7 +183,7 @@ Map<String, dynamic> _checkInRow(
 void main() {
   testWidgets('Stalled filter uses the threshold signal snapshot',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.assignments
       ..add(_assignment('assignment-stalled', 'stalled_player'))
       ..add(_assignment('assignment-progressing', 'progressing_player'));
@@ -199,7 +199,7 @@ void main() {
 
   testWidgets('English roster fits long details at phone and desktop widths',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.assignments.add(_assignment(
       'assignment-long',
       'player_with_an_exceptionally_long_username',
@@ -267,7 +267,7 @@ void main() {
 
   testWidgets('roster rows keep the server order and show each urgency chip',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     // Server order as returned: the calm, never-trained player first.
     fake.assignments.add(_assignment('assignment-dev', 'dev'));
     fake.assignments.add(_assignment(
@@ -320,7 +320,7 @@ void main() {
 
   testWidgets('desktop roster keeps the original urgency chips beside Player',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..assignments.add(_assignment(
         'assignment-1',
         'bob',
@@ -351,7 +351,7 @@ void main() {
 
   /// A calm roster row has no alert badges (#120).
   testWidgets('a calm roster row carries no chip', (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.assignments.add(_assignment(
       'assignment-1',
       'bob',
@@ -378,7 +378,7 @@ void main() {
   });
 
   testWidgets('roster row displays stall length', (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.assignments.add(_assignment(
       'assignment-1',
       'bob',
@@ -403,7 +403,7 @@ void main() {
   /// and the shell's badge plus the roster row follow without a restart (#120).
   testWidgets('the player page acts on open alerts and refreshes badge and row',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.assignments.add(_assignment(
       'assignment-1',
       'bob',
@@ -483,7 +483,7 @@ void main() {
 
   testWidgets('the player page renders profile changes as before and after',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.assignments.add(_assignment('assignment-1', 'bob'));
     fake.coachAlerts.add(_alert(
       'alert-profile-change',
@@ -512,7 +512,7 @@ void main() {
   /// create-check-in call — then the page and the roster row follow.
   testWidgets('the log check-in sheet requires a channel and saves today',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.assignments.add(_assignment(
       'assignment-1',
       'bob',
@@ -569,7 +569,7 @@ void main() {
   /// follow-up), the Alerts tab badge, and the roster row.
   testWidgets('saving a check-in refreshes the page alerts and the badge',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.assignments.add(_assignment(
       'assignment-1',
       'bob',
@@ -627,7 +627,7 @@ void main() {
   /// assignment's check-ins newest first (#120).
   testWidgets('the player page segments History and Check-ins',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.assignments.add(_assignment('assignment-1', 'bob',
         lastWorkoutOn: '2026-09-20'));
     fake.checkIns.add(_checkInRow('check-in-1', '2026-09-01', 'phone'));

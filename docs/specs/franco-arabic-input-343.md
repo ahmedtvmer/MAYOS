@@ -7,7 +7,7 @@
 > force until the owner reviews and approves a follow-up plan. Nothing here may
 > be treated as an approved clinical judgment or a launch decision.
 
-- **Issue:** [#343](https://github.com/ahmedtvmer/MAYOS/issues/343) (post-launch placeholder)
+- **Issue:** [#343](https://github.com/ahmedtvmer/MYOS/issues/343) (post-launch placeholder)
 - **Base commit:** `8ff4bd94634ca3b07bd67a5d8b932e31148dfdc4`
 - **Scope answer this responds to:** prepare a spec and safety-case proposal for
   owner review; **retain** the current Franco-Arabic refusal until reviewed.
@@ -24,7 +24,7 @@
 ## 1. Purpose and scope
 
 Many Egyptian lifters type Franco-Arabic (Arabic in Latin letters and digits,
-e.g. `3ayez a8ayar el bench`). MAYOS currently refuses it with one fixed reply
+e.g. `3ayez a8ayar el bench`). MYOS currently refuses it with one fixed reply
 asking for Arabic or English. The refusal is a safety net: the clinical guard
 cannot read Franco-Arabic, so a message such as `rokbety bt-wga3ny` (my knee
 hurts) would otherwise reach the model without injury/pain/diagnosis detection.

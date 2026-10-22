@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/active_workout.dart';
-import 'package:mayos_mobile/src/core/baselines.dart';
-import 'package:mayos_mobile/src/core/personal_records.dart';
+import 'package:myos_mobile/src/core/active_workout.dart';
+import 'package:myos_mobile/src/core/baselines.dart';
+import 'package:myos_mobile/src/core/personal_records.dart';
 
 /// The frozen baseline the record calculator is tested against: a real history
 /// (three sessions) whose aggregates a first tick can beat.

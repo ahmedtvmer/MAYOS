@@ -2,27 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/active_workout.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/baselines.dart';
-import 'package:mayos_mobile/src/core/chat_storage.dart';
-import 'package:mayos_mobile/src/core/connectivity.dart';
-import 'package:mayos_mobile/src/core/device_timezone.dart';
-import 'package:mayos_mobile/src/core/display_language/controller.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/core/rest_length.dart';
-import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/workout_storage.dart';
-import 'package:mayos_mobile/src/features/player/workout/active_workout_controller.dart';
-import 'package:mayos_mobile/src/features/player/workout/logger_program_substitution.dart';
-import 'package:mayos_mobile/src/features/player/workout/logger_keypad.dart';
-import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/active_workout.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/baselines.dart';
+import 'package:myos_mobile/src/core/chat_storage.dart';
+import 'package:myos_mobile/src/core/connectivity.dart';
+import 'package:myos_mobile/src/core/device_timezone.dart';
+import 'package:myos_mobile/src/core/display_language/controller.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/rest_length.dart';
+import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/workout_storage.dart';
+import 'package:myos_mobile/src/features/player/workout/active_workout_controller.dart';
+import 'package:myos_mobile/src/features/player/workout/logger_program_substitution.dart';
+import 'package:myos_mobile/src/features/player/workout/logger_keypad.dart';
+import 'package:myos_mobile/src/features/player/workout/workout_logger_screen.dart';
+import 'package:myos_mobile/src/providers.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 // The card's ⋮ menu (#162): Replace exercise for every player, Rest time…
 // behind the same #125 picker, Remove exercise only for an unplanned one —
@@ -105,8 +105,8 @@ List<Map<String, dynamic>> _baselinesBody() => <Map<String, dynamic>>[
       },
     ];
 
-FakeMayosApi _signedInFake() {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _signedInFake() {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -144,7 +144,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
 /// Seeds the stored Active workout through the real controller, so the cards
 /// render exactly what a player would start with (#123 item 2).
 Future<InMemoryActiveWorkoutStore> _seedThroughController(
-    {required FakeMayosApi fake, String? startedAt}) async {
+    {required FakeMyosApi fake, String? startedAt}) async {
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
   final InMemoryActiveWorkoutStore store = InMemoryActiveWorkoutStore();
@@ -194,7 +194,7 @@ Future<InMemoryActiveWorkoutStore> _seedThroughController(
 /// The signed-in app over [store], opened through the app-open Resume prompt.
 Future<
     ({
-      FakeMayosApi fake,
+      FakeMyosApi fake,
       InMemoryActiveWorkoutStore store,
       InMemoryRestLengthStore restLengths,
     })> _openLogger(
@@ -207,7 +207,7 @@ Future<
   Size size = const Size(1080, 2400),
   String? startedAt,
   DateTime Function()? clock,
-  FakeMayosApi? fakeApi,
+  FakeMyosApi? fakeApi,
   InMemoryActiveWorkoutStore? existingStore,
   InMemoryDraftStore? drafts,
   String languageCode = 'en',
@@ -217,7 +217,7 @@ Future<
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
-  final FakeMayosApi fake = fakeApi ?? _signedInFake();
+  final FakeMyosApi fake = fakeApi ?? _signedInFake();
   fake.displayLanguage = languageCode;
   fake.coachControlsProgram = coachControlled;
   fake.programVersion = liveProgramVersion;
@@ -266,7 +266,7 @@ Future<
             ),
           ),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   final bool arabic = languageCode == 'ar';
@@ -283,7 +283,7 @@ Future<
   return (fake: fake, store: store, restLengths: restLengths);
 }
 
-void _includeProgramExercise(FakeMayosApi fake, ProgramExercise exercise) {
+void _includeProgramExercise(FakeMyosApi fake, ProgramExercise exercise) {
   (fake.programDaysOverride!.single['exercises'] as List<dynamic>)
       .add(exercise.toJson());
 }
@@ -656,7 +656,7 @@ void main() {
   testWidgets('reordering keeps replacement and skipped exercise facts in draft',
       (WidgetTester tester) async {
     final SemanticsHandle semantics = tester.ensureSemantics();
-    final FakeMayosApi fake = _signedInFake()..commitFails = true;
+    final FakeMyosApi fake = _signedInFake()..commitFails = true;
     final InMemoryDraftStore drafts = InMemoryDraftStore();
     await _openLogger(tester, fakeApi: fake, drafts: drafts);
 
@@ -707,7 +707,7 @@ void main() {
       'replacing with ticked sets asks first, then clears the rows and swaps '
       'the card (#162)', (WidgetTester tester) async {
     final ({
-      FakeMayosApi fake,
+      FakeMyosApi fake,
       InMemoryActiveWorkoutStore store,
       InMemoryRestLengthStore restLengths
     }) harness = await _openLogger(tester);
@@ -992,7 +992,7 @@ void main() {
   testWidgets(
       'Finish replaces a substitution failure after all working sets are unticked',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake()
+    final FakeMyosApi fake = _signedInFake()
       ..baselinesBody.add(<String, dynamic>{
         'exercise_id': 'incline_press',
         'sessions_logged': 1,
@@ -1403,7 +1403,7 @@ void main() {
       'Rest time… in the menu opens the #125 picker and writes the '
       'device override (#162)', (WidgetTester tester) async {
     final ({
-      FakeMayosApi fake,
+      FakeMyosApi fake,
       InMemoryActiveWorkoutStore store,
       InMemoryRestLengthStore restLengths
     }) harness = await _openLogger(tester);
@@ -1429,7 +1429,7 @@ void main() {
       'Remove exercise takes an unplanned exercise out of the '
       'workout (#162)', (WidgetTester tester) async {
     final ({
-      FakeMayosApi fake,
+      FakeMyosApi fake,
       InMemoryActiveWorkoutStore store,
       InMemoryRestLengthStore restLengths
     }) harness = await _openLogger(tester);

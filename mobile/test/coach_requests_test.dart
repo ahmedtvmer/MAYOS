@@ -1,21 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_bottom_navigation.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
-import 'package:mayos_mobile/src/features/coach/coach_player_history_screen.dart';
-import 'package:mayos_mobile/src/features/coach/coach_shell.dart';
-import 'package:mayos_mobile/src/router.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/display_language/coach_copy.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/ui/myos_bottom_navigation.dart';
+import 'package:myos_mobile/src/core/ui/myos_button.dart';
+import 'package:myos_mobile/src/features/coach/coach_player_history_screen.dart';
+import 'package:myos_mobile/src/features/coach/coach_shell.dart';
+import 'package:myos_mobile/src/router.dart';
+import 'package:myos_mobile/src/providers.dart';
 
 import 'support/auth_harness.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 import 'support/fake_api_adapter.dart';
 import 'support/coach_layout_harness.dart';
 
@@ -52,7 +52,7 @@ Future<void> _settle(WidgetTester tester) async {
 
 Future<void> _pumpApp(
   WidgetTester tester,
-  FakeMayosApi fake,
+  FakeMyosApi fake,
   InMemoryAppModeStore modeStore, {
   double logicalWidth = 540,
   double logicalHeight = 1200,
@@ -79,14 +79,14 @@ Future<void> _pumpApp(
           return client;
         }),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(tester, find.text('Roster'));
 }
 
-FakeMayosApi _coachFake() {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _coachFake() {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -154,10 +154,10 @@ Finder _playerPageText(String label) => find.descendant(
     );
 
 int _requestsBadge(WidgetTester tester) => tester
-    .widget<MayosBottomNavigation>(find.byType(MayosBottomNavigation))
+    .widget<MyosBottomNavigation>(find.byType(MyosBottomNavigation))
     .items[CoachShellTab.requests].badge;
 
-Future<ApiClient> _clientFor(FakeMayosApi fake) async {
+Future<ApiClient> _clientFor(FakeMyosApi fake) async {
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
   return ApiClient(
@@ -170,10 +170,10 @@ Future<ApiClient> _clientFor(FakeMayosApi fake) async {
 void main() {
   testWidgets('requests apply and decline fit a 360 dp phone in both languages',
       (WidgetTester tester) async {
-    late FakeMayosApi fake;
+    late FakeMyosApi fake;
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi configured) {
+      configureFake: (FakeMyosApi configured) {
         fake = configured;
         fake.assignments.add(<String, dynamic>{
           'assignment_id': 'assignment-1',
@@ -222,14 +222,14 @@ void main() {
         expect(replyField.maxLength, 500);
         expect(find.text('0/500'), findsOneWidget);
         final Finder decline = find.byKey(const Key('request_decline_button'));
-        expect(tester.widget<MayosButton>(decline).onPressed, isNull);
+        expect(tester.widget<MyosButton>(decline).onPressed, isNull);
         await tester.enterText(
           find.byKey(const Key('request_reply_field')),
           'Rest first, please',
         );
         await tester.pump();
         expect(find.text('18/500'), findsOneWidget);
-        expect(tester.widget<MayosButton>(decline).onPressed, isNotNull);
+        expect(tester.widget<MyosButton>(decline).onPressed, isNotNull);
         await tester.ensureVisible(decline);
         await tester.tap(decline);
         await tester.pumpAndSettle();
@@ -247,7 +247,7 @@ void main() {
 
   testWidgets('desktop player resolve sheet keeps the 500 character reply field',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.programRequests.add(_request(id: 'req-desktop', status: 'pending'));
     await _pumpApp(
       tester,
@@ -271,7 +271,7 @@ void main() {
       find.byKey(const Key('request_reply_field')),
     );
     expect(replyField.maxLength, 500);
-    final MayosButton decline = tester.widget<MayosButton>(
+    final MyosButton decline = tester.widget<MyosButton>(
       find.byKey(const Key('request_decline_button')),
     );
     expect(decline.onPressed, isNull);
@@ -282,7 +282,7 @@ void main() {
     await tester.pump();
     expect(find.text('18/500'), findsOneWidget);
     expect(
-      tester.widget<MayosButton>(
+      tester.widget<MyosButton>(
         find.byKey(const Key('request_decline_button')),
       ).onPressed,
       isNotNull,
@@ -292,10 +292,10 @@ void main() {
 
   testWidgets('phone request deep link opens the shared resolve sheet in both languages',
       (WidgetTester tester) async {
-    late FakeMayosApi fake;
+    late FakeMyosApi fake;
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi configured) {
+      configureFake: (FakeMyosApi configured) {
         fake = configured;
         configured.assignments.add(<String, dynamic>{
           'assignment_id': 'assignment-1',
@@ -315,7 +315,7 @@ void main() {
       ).first,
       assertions: (WidgetTester tester, String language) async {
         final CoachCopy copy = CoachCopy(language);
-        ProviderScope.containerOf(tester.element(find.byType(MayosApp)))
+        ProviderScope.containerOf(tester.element(find.byType(MyosApp)))
             .read(routerProvider)
             .go('/coach/requests/req-deep-link');
         await tester.pumpAndSettle();
@@ -335,7 +335,7 @@ void main() {
 
   group('client', () {
     test('the four coach program-request calls succeed', () async {
-      final FakeMayosApi fake = _coachFake();
+      final FakeMyosApi fake = _coachFake();
       fake.programRequests.add(_request(
         id: 'req-pending',
         status: 'pending',
@@ -391,7 +391,7 @@ void main() {
     });
 
     test('malformed coach program-request payloads fail closed', () async {
-      final FakeMayosApi fake = _coachFake();
+      final FakeMyosApi fake = _coachFake();
       fake.programRequests.add(_request(id: 'req-1', status: 'pending'));
       fake.malformedProgramRequests = true;
       final ApiClient client = await _clientFor(fake);
@@ -417,7 +417,7 @@ void main() {
 
   test('the pending-requests badge resets per account',
       () async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.passwords['alice'] = 'pw-alice';
     fake.passwords['bob'] = 'pw-bob';
     final InMemoryTokenStore tokens = InMemoryTokenStore();
@@ -437,16 +437,16 @@ void main() {
   testWidgets(
       'the shell is Roster · Alerts · Requests · Assistant · Profile '
       'with a pending requests badge', (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.programRequests.add(_request(id: 'req-1', status: 'pending'));
     fake.programRequests
         .add(_request(id: 'req-2', status: 'pending', reason: 'Knee pain.'));
     await _pumpApp(tester, fake, InMemoryAppModeStore());
     await _pumpUntilFound(tester, find.text('Active assignments'));
 
-    final MayosBottomNavigation nav = tester
-        .widget<MayosBottomNavigation>(find.byType(MayosBottomNavigation));
-    expect(nav.items.map((MayosNavItem item) => item.label).toList(),
+    final MyosBottomNavigation nav = tester
+        .widget<MyosBottomNavigation>(find.byType(MyosBottomNavigation));
+    expect(nav.items.map((MyosNavItem item) => item.label).toList(),
         <String>['Roster', 'Alerts', 'Requests', 'Assistant', 'Profile']);
     expect(nav.items[CoachShellTab.requests].badge, 2);
 
@@ -460,7 +460,7 @@ void main() {
   testWidgets(
       'pending requests are listed before answered ones, oldest pending '
       'first', (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.programRequests.add(_request(
       id: 'req-old',
       status: 'pending',
@@ -506,7 +506,7 @@ void main() {
       'the resolve sheet shows the player, swap, reason, and reply counter, '
       'and apply refreshes the badge and the roster chip',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.programRequests.add(_request(id: 'req-1', status: 'pending'));
     fake.programRequests
         .add(_request(id: 'req-2', status: 'pending', reason: 'Knee pain.'));
@@ -584,7 +584,7 @@ void main() {
 
   testWidgets('coach request row and resolve sheet show Arabic names and day',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake()..displayLanguage = 'ar';
+    final FakeMyosApi fake = _coachFake()..displayLanguage = 'ar';
     fake.programRequests.add(_request(id: 'req-ar', status: 'pending'));
     await _pumpApp(tester, fake, InMemoryAppModeStore());
     await _pumpUntilFound(tester, find.text('Active assignments'));
@@ -619,7 +619,7 @@ void main() {
 
   testWidgets('coach request rows and sheet use a localized fallback for null names',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.programRequests.add(_request(
       id: 'req-missing',
       status: 'pending',
@@ -650,7 +650,7 @@ void main() {
 
   testWidgets('a split-change request offers Apply (rebuilds program)',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.programRequests.add(_request(
       id: 'req-split',
       status: 'pending',
@@ -687,7 +687,7 @@ void main() {
 
   testWidgets('coach sees localized split refusal when applying a request',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..unrecognizedSplitOverrideOnRequestApply = true;
     fake.programRequests.add(_request(
       id: 'req-split',
@@ -718,7 +718,7 @@ void main() {
   testWidgets(
       'declining with a reply moves the request to Answered and clears the '
       'badge', (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.programRequests.add(_request(id: 'req-1', status: 'pending'));
     await _pumpApp(tester, fake, InMemoryAppModeStore());
     await _pumpUntilFound(tester, find.text('Active assignments'));
@@ -753,7 +753,7 @@ void main() {
   testWidgets(
       'a refused resolve shows a readable message and refreshes the list',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.programRequests.add(_request(id: 'req-1', status: 'pending'));
     await _pumpApp(tester, fake, InMemoryAppModeStore());
     await _pumpUntilFound(tester, find.text('Active assignments'));
@@ -784,7 +784,7 @@ void main() {
       'the player page has a Requests (count) segment that resolves through '
       'the same sheet and refreshes the badge and roster chip',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.programRequests.add(_request(id: 'req-1', status: 'pending'));
     await _pumpApp(tester, fake, InMemoryAppModeStore());
     await _pumpUntilFound(tester, find.text('Active assignments'));
@@ -824,7 +824,7 @@ void main() {
   testWidgets(
       'a refusal on the player page refreshes the Requests badge and the '
       'roster chip', (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.programRequests.add(_request(id: 'req-1', status: 'pending'));
     await _pumpApp(tester, fake, InMemoryAppModeStore());
     await _pumpUntilFound(tester, find.text('Active assignments'));

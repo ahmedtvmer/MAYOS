@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/app_failure.dart';
-import 'package:mayos_mobile/src/core/chat_models.dart';
-import 'package:mayos_mobile/src/core/connectivity_message.dart';
-import 'package:mayos_mobile/src/core/display_language/catalog.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/app_failure.dart';
+import 'package:myos_mobile/src/core/chat_models.dart';
+import 'package:myos_mobile/src/core/connectivity_message.dart';
+import 'package:myos_mobile/src/core/display_language/catalog.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
 
 import 'support/fake_api_adapter.dart';
 
@@ -48,7 +48,7 @@ void main() {
     expect(error.messageParams, <String, int>{'limit': 400});
     expect(error.serverDetails?['pydantic_errors'], isA<List<dynamic>>());
     expect(
-      MayosCopy('ar').failureMessage(apiFailureMessage(error)),
+      MyosCopy('ar').failureMessage(apiFailureMessage(error)),
       'يجب ألا يتجاوز هذا الحقل \u2066400\u2069 حرف',
     );
   });
@@ -73,7 +73,7 @@ void main() {
     expect(error.message, 'Invalid credentials.');
     expect(error.messageCode, 'auth.invalid_credentials.v1');
     expect(
-      MayosCopy('ar').failureMessage(apiFailureMessage(error)),
+      MyosCopy('ar').failureMessage(apiFailureMessage(error)),
       'بيانات تسجيل الدخول غير صحيحة.',
     );
   });
@@ -92,7 +92,7 @@ void main() {
         await _expectApiException(_client(adapter, language: 'ar').clearChatHistory);
 
     expect(
-      MayosCopy('ar').failureMessage(apiFailureMessage(error)),
+      MyosCopy('ar').failureMessage(apiFailureMessage(error)),
       'Safe English fallback.',
     );
   });
@@ -106,7 +106,7 @@ void main() {
     const String messageCode = 'assignment.split_override_unrecognized.v1';
 
     expect(
-      MayosCopy('en').failureMessage(ServerFailureMessage(
+      MyosCopy('en').failureMessage(ServerFailureMessage(
         fallback,
         messageCode: messageCode,
         messageParams: messageParams,
@@ -115,7 +115,7 @@ void main() {
       'Unrecognized split override. Accepted split values: Upper, Lower, PPL.',
     );
     expect(
-      MayosCopy('ar').failureMessage(ServerFailureMessage(
+      MyosCopy('ar').failureMessage(ServerFailureMessage(
         fallback,
         messageCode: messageCode,
         messageParams: messageParams,
@@ -133,7 +133,7 @@ void main() {
           .clearChatHistory,
     );
     expect(
-      MayosCopy('ar').failureMessage(apiFailureMessage(network)),
+      MyosCopy('ar').failureMessage(apiFailureMessage(network)),
       'تعذر الاتصال بالخدمة. تحقق من اتصالك بالإنترنت.',
     );
 
@@ -142,7 +142,7 @@ void main() {
           .clearChatHistory,
     );
     expect(
-      MayosCopy('ar').failureMessage(apiFailureMessage(noBody)),
+      MyosCopy('ar').failureMessage(apiFailureMessage(noBody)),
       'الخدمة غير متاحة. حاول مجددًا.',
     );
   });
@@ -151,23 +151,23 @@ void main() {
       () async {
     final FakeApiAdapter adapter = FakeApiAdapter(
       (_) => const FakeResponse(409, <String, dynamic>{
-        'detail': 'This Google account is already linked to a MAYOS account.',
+        'detail': 'This Google account is already linked to a MYOS account.',
         'code': 'google_account_already_linked',
         'message_code': 'google.account_already_linked.v1',
         'message_params': <String, Object>{},
         'message_fallback':
-            'This Google account is already linked to a MAYOS account.',
+            'This Google account is already linked to a MYOS account.',
       }),
     );
     final ApiException error =
         await _expectApiException(_client(adapter).clearChatHistory);
 
     expect(error.message,
-        'This Google account is already linked to a MAYOS account.');
+        'This Google account is already linked to a MYOS account.');
     expect(error.errorCode, 'google_account_already_linked');
     expect(
-      MayosCopy('ar').failureMessage(apiFailureMessage(error)),
-      'حساب Google هذا مرتبط بالفعل بحساب MAYOS.',
+      MyosCopy('ar').failureMessage(apiFailureMessage(error)),
+      'حساب Google هذا مرتبط بالفعل بحساب MYOS.',
     );
   });
 
@@ -186,7 +186,7 @@ void main() {
     });
     expect(preStream.statusCode, 429);
     expect(
-      MayosCopy('ar').failureMessage(apiFailureMessage(preStream)),
+      MyosCopy('ar').failureMessage(apiFailureMessage(preStream)),
       'وصلت إلى حد استخدام المساعد اليوم. أعد المحاولة غدًا.',
     );
 
@@ -206,7 +206,7 @@ void main() {
     final ChatError failure = events.last as ChatError;
     expect(failure.messageCode, 'chat.failed.v1');
     expect(
-      MayosCopy('ar').failureMessage(ServerFailureMessage(
+      MyosCopy('ar').failureMessage(ServerFailureMessage(
         failure.detail,
         messageCode: failure.messageCode,
         messageParams: failure.messageParams,

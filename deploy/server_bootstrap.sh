@@ -90,7 +90,7 @@ install_deploy_key() {
   chmod 0600 /home/deploy/.ssh/authorized_keys
 }
 
-prepare_mayos_paths() {
+prepare_myos_paths() {
   # Dockerfile.fly has no USER directive, so both containers run as root.
   install -d -o root -g root -m 0755 /mnt/mayos-data/data
   install -d -o root -g root -m 0755 /opt/mayos
@@ -126,6 +126,6 @@ install_docker
 enable_security_updates
 create_deploy_user
 install_deploy_key
-prepare_mayos_paths
+prepare_myos_paths
 configure_deploy_sudo
 install -o root -g root -m 0644 /dev/null /opt/mayos/state/.bootstrap-complete

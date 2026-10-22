@@ -3,17 +3,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/display_language/catalog.dart';
-import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
-import 'package:mayos_mobile/src/core/display_language/controller.dart';
-import 'package:mayos_mobile/src/core/display_language/store.dart';
-import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/features/player/progress/checkpoint_review_screen.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/display_language/catalog.dart';
+import 'package:myos_mobile/src/core/display_language/coach_copy.dart';
+import 'package:myos_mobile/src/core/display_language/controller.dart';
+import 'package:myos_mobile/src/core/display_language/store.dart';
+import 'package:myos_mobile/src/core/theme/myos_theme.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/features/player/progress/checkpoint_review_screen.dart';
+import 'package:myos_mobile/src/providers.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 import 'support/fake_api_adapter.dart';
 
 const Map<String, dynamic> _reviewRating = <String, dynamic>{
@@ -39,7 +39,7 @@ const Map<String, dynamic> _reviewRating = <String, dynamic>{
 
 Future<ApiClient> _pumpReview(
   WidgetTester tester, {
-  required FakeMayosApi api,
+  required FakeMyosApi api,
   required DisplayLanguageController language,
   required InMemoryTokenStore tokens,
   String? assignmentId,
@@ -58,7 +58,7 @@ Future<ApiClient> _pumpReview(
         apiClientProvider.overrideWithValue(apiClient),
       ],
       child: MaterialApp(
-        theme: MayosTheme.light,
+        theme: MyosTheme.light,
         home: CheckpointReviewScreen(
           checkpoint: 10,
           assignmentId: assignmentId,
@@ -81,7 +81,7 @@ Future<ApiClient> _pumpReview(
 void main() {
   testWidgets('temporary template and labels follow a changed player language',
       (WidgetTester tester) async {
-    final FakeMayosApi api = FakeMayosApi()
+    final FakeMyosApi api = FakeMyosApi()
       ..issuedToken = 'player-token'
       ..currentUsername = 'player';
     api.checkpointReviewDetails[10] = <String, dynamic>{
@@ -90,10 +90,10 @@ void main() {
       'period_end': '2026-09-30',
       'facts': <String, dynamic>{'workouts_in_period': 10},
       'rating': _reviewRating.values.toList(growable: false),
-      'text': 'Checkpoint 10: 10 workouts since you started logging in MAYOS.',
+      'text': 'Checkpoint 10: 10 workouts since you started logging in MYOS.',
       'text_by_language': <String, String>{
-        'en': 'Checkpoint 10: 10 workouts since you started logging in MAYOS.',
-        'ar': 'محطة تقدم 10: أكملت 10 حصص تدريبية منذ بدء تسجيلك في MAYOS.',
+        'en': 'Checkpoint 10: 10 workouts since you started logging in MYOS.',
+        'ar': 'محطة تقدم 10: أكملت 10 حصص تدريبية منذ بدء تسجيلك في MYOS.',
       },
       'text_is_template': true,
       'text_language': null,
@@ -118,7 +118,7 @@ void main() {
     expect(find.text('Steady'), findsOneWidget);
     expect(
       find.text(
-          'Checkpoint 10: 10 workouts since you started logging in MAYOS.'),
+          'Checkpoint 10: 10 workouts since you started logging in MYOS.'),
       findsOneWidget,
     );
     expect(
@@ -161,13 +161,13 @@ void main() {
           .widget<Text>(
               find.byKey(const ValueKey<String>('checkpoint.review.text')))
           .data,
-      'محطة تقدم 10: أكملت 10 حصص تدريبية منذ بدء تسجيلك في MAYOS.',
+      'محطة تقدم 10: أكملت 10 حصص تدريبية منذ بدء تسجيلك في MYOS.',
     );
   });
 
   testWidgets('review refetch waits for the Display-language PUT',
       (WidgetTester tester) async {
-    final FakeMayosApi api = FakeMayosApi()
+    final FakeMyosApi api = FakeMyosApi()
       ..issuedToken = 'player-token'
       ..currentUsername = 'player';
     api.checkpointReviewDetails[10] = <String, dynamic>{
@@ -176,10 +176,10 @@ void main() {
       'period_end': '2026-09-30',
       'facts': <String, dynamic>{'workouts_in_period': 10},
       'rating': _reviewRating.values.toList(growable: false),
-      'text': 'Checkpoint 10: 10 workouts since you started logging in MAYOS.',
+      'text': 'Checkpoint 10: 10 workouts since you started logging in MYOS.',
       'text_by_language': <String, String>{
-        'en': 'Checkpoint 10: 10 workouts since you started logging in MAYOS.',
-        'ar': 'محطة تقدم 10: أكملت 10 حصص تدريبية منذ بدء تسجيلك في MAYOS.',
+        'en': 'Checkpoint 10: 10 workouts since you started logging in MYOS.',
+        'ar': 'محطة تقدم 10: أكملت 10 حصص تدريبية منذ بدء تسجيلك في MYOS.',
       },
       'text_is_template': true,
       'text_language': null,
@@ -254,7 +254,7 @@ void main() {
   testWidgets('coach sees original player prose and localized rating labels',
       (WidgetTester tester) async {
     const String arabicReview = 'كان تقدمك في التدريب مستقرًا.';
-    final FakeMayosApi api = FakeMayosApi()
+    final FakeMyosApi api = FakeMyosApi()
       ..issuedToken = 'coach-token'
       ..currentUsername = 'coach'
       ..coach = true;
@@ -305,6 +305,6 @@ void main() {
     expect(api.adapter.requests, hasLength(2));
     expect(api.adapter.requests.last.headers['Accept-Language'], 'ar');
     expect(CoachCopy('ar').checkpointNumber(10),
-        MayosCopy('ar').checkpointAt(10));
+        MyosCopy('ar').checkpointAt(10));
   });
 }

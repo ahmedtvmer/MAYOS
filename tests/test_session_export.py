@@ -82,7 +82,7 @@ def test_export_sessions_to_json_schema_and_unicode():
 
 def test_export_session_log_builds_nested_payload_with_computed_metrics():
     filename, payload = export_session_log(None, "alice", "json", ledger=_stub_ledger([_raw_row()]))
-    assert filename == "mayos_session_log.json"
+    assert filename == "myos_session_log.json"
     decoded = json.loads(payload.decode("utf-8"))
     session = decoded["sessions"][0]
     assert session["session_id"] == "s1"
@@ -97,7 +97,7 @@ def test_export_session_log_builds_nested_payload_with_computed_metrics():
 
 def test_export_session_log_csv_filename_and_metrics():
     filename, payload = export_session_log(None, "alice", "csv", ledger=_stub_ledger([_raw_row()]))
-    assert filename == "mayos_session_log.csv"
+    assert filename == "myos_session_log.csv"
     text = payload.decode("utf-8")
     assert "131.67" in text and "800.0" in text
     assert "reverse grip machine lat pulldown" in text

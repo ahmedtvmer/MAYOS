@@ -53,9 +53,9 @@ MIN_USERNAME_LENGTH = 3
 MAX_USERNAME_LENGTH = 30
 INVALID_USERNAME = "Username must be 3–30 characters of a–z, 0–9, _ or - (lowercase)."
 USERNAME_TAKEN = "This username is already taken."
-ALREADY_LINKED = "This Google account is already linked to a MAYOS account."
+ALREADY_LINKED = "This Google account is already linked to a MYOS account."
 #: Connect conflict: the subject belongs to someone else. Never says who (#114).
-LINKED_ELSEWHERE = "This Google account is already connected to another MAYOS account"
+LINKED_ELSEWHERE = "This Google account is already connected to another MYOS account"
 #: Connect conflict: the caller already has a different Google identity.
 DIFFERENT_GOOGLE = "This account already has a different Google account connected. Disconnect it first."
 #: Disconnect refusal: an account always keeps at least one way to sign in.
@@ -71,13 +71,13 @@ class SignUpConflictError(Exception):
 
 
 class GoogleAccountAlreadyLinkedError(SignUpConflictError):
-    """The Google identity is already linked to a live MAYOS account."""
+    """The Google identity is already linked to a live MYOS account."""
 
     message_code = "google.account_already_linked.v1"
 
 
 class UsernameTakenError(SignUpConflictError):
-    """The selected username belongs to a live MAYOS account."""
+    """The selected username belongs to a live MYOS account."""
 
     message_code = "auth.username_taken.v1"
 

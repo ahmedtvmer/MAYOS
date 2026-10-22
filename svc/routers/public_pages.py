@@ -31,7 +31,7 @@ from svc.rate_limit import PASSWORD_LIMIT, limiter
 
 router = APIRouter(tags=["public"])
 
-DELETE_PAGE_TITLE = "Delete your MAYOS account"
+DELETE_PAGE_TITLE = "Delete your MYOS account"
 SUCCESS_MESSAGE = (
     "Your account and its active data have been deleted, and every session has been ended. "
     "This cannot be undone."
@@ -41,7 +41,7 @@ UNCONFIRMED_MESSAGE = (
 )
 GENERIC_FAILURE_MESSAGE = (
     "We could not complete that request. Check your username and password and try again. "
-    "If you have forgotten your password, use the MAYOS browser recovery page "
+    "If you have forgotten your password, use the MYOS browser recovery page "
     "(\"Request a reset link\"), or contact the address shown in the privacy policy."
 )
 
@@ -70,7 +70,7 @@ _PRIVACY_PAGE = """<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MAYOS Privacy Policy</title>
+<title>MYOS Privacy Policy</title>
 <style>__STYLE__</style>
 </head>
 <body>
@@ -163,7 +163,7 @@ _DELETE_COPY = {
     "en": {
         "title": DELETE_PAGE_TITLE,
         "intro": (
-            "MAYOS deletes accounts on request, from the app or from this page. Deletion is "
+            "MYOS deletes accounts on request, from the app or from this page. Deletion is "
             "immediate and permanent: it removes your training ledger (profile, program, "
             "workouts, schedule, assistant chat), your recovery email and reset tokens, your "
             "invites, and ends any active coaching assignment. Every signed-in session is ended."
@@ -198,9 +198,9 @@ _DELETE_COPY = {
         "failure": GENERIC_FAILURE_MESSAGE,
     },
     "ar": {
-        "title": "حذف حسابك في MAYOS",
+        "title": "حذف حسابك في MYOS",
         "intro": (
-            "تحذف MAYOS الحسابات عند الطلب من التطبيق أو من هذه الصفحة. الحذف فوري ونهائي: "
+            "تحذف MYOS الحسابات عند الطلب من التطبيق أو من هذه الصفحة. الحذف فوري ونهائي: "
             "تُحذف بيانات التدريب الخاصة بك (الملف التدريبي، البرنامج التدريبي، الحصص التدريبية، "
             "جدول التدريب، ومحادثات المساعد)، وبريد الاسترداد ورموز إعادة تعيين كلمة المرور "
             "والدعوات، وتنتهي علاقات التدريب النشطة. كما تُنهى جلسات تسجيل الدخول."
@@ -234,7 +234,7 @@ _DELETE_COPY = {
         "unconfirmed": "يرجى تحديد مربع التأكيد لتأكيد رغبتك في حذف هذا الحساب نهائيًا.",
         "failure": (
             "تعذر إكمال الطلب. تحقق من اسم المستخدم وكلمة المرور ثم حاول مجددًا. إذا نسيت "
-            "كلمة المرور، فأعد تعيينها أولًا من صفحة استرداد الحساب في MAYOS، أو تواصل مع "
+            "كلمة المرور، فأعد تعيينها أولًا من صفحة استرداد الحساب في MYOS، أو تواصل مع "
             "العنوان المذكور في سياسة الخصوصية."
         ),
     },

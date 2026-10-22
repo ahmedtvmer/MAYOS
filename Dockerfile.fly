@@ -1,4 +1,4 @@
-# Fly.io production image for the MAYOS API (hosted LLM backend).
+# Fly.io production image for the MYOS API (hosted LLM backend).
 #
 # FastAPI service with hosted OpenAI-compatible chat inference.
 # The catalog, ledgers, and backup work area live on the mounted /data volume via

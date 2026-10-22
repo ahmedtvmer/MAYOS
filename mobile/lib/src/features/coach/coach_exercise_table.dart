@@ -5,10 +5,10 @@ import '../../core/display_language/coach_copy.dart';
 import '../../core/display_language/copy_context.dart';
 import '../../core/display_language/feature_copy_context.dart';
 import '../../core/models.dart';
-import '../../core/theme/mayos_spacing.dart';
-import '../../core/theme/mayos_theme.dart';
-import '../../core/theme/mayos_typography.dart';
-import '../../core/ui/mayos_table_frame.dart';
+import '../../core/theme/myos_spacing.dart';
+import '../../core/theme/myos_theme.dart';
+import '../../core/theme/myos_typography.dart';
+import '../../core/ui/myos_table_frame.dart';
 import '../player/workout/logger_card_widgets.dart'
     show ExerciseCatalogThumbnail;
 
@@ -17,7 +17,7 @@ String coachExerciseEquipmentLabel(
   ProgramExercise exercise,
 ) {
   final CoachCopy coachCopy = coachCopyOf(context);
-  final MayosCopy catalogCopy = displayCopyOf(context);
+  final MyosCopy catalogCopy = displayCopyOf(context);
   final String? coachEquipment = exercise.coachEquipment;
   if (coachEquipment != null && coachEquipment.isNotEmpty) {
     return coachCopy.programEquipmentValue(coachEquipment);
@@ -33,7 +33,7 @@ String coachExerciseEquipmentLabel(
   };
 }
 
-String _machineEquipmentLabel(MayosCopy copy, String? loadType) {
+String _machineEquipmentLabel(MyosCopy copy, String? loadType) {
   if (loadType == 'selectorized' || loadType == 'plate_loaded') {
     return copy.loadTypeLabel(loadType!);
   }
@@ -89,13 +89,13 @@ class CoachExerciseTableFrame extends StatelessWidget {
     this.scrollable = true,
   });
 
-  final MayosTableColumns columns;
+  final MyosTableColumns columns;
   final Widget child;
   final bool decorated;
   final bool scrollable;
 
   @override
-  Widget build(BuildContext context) => MayosTableFrame(
+  Widget build(BuildContext context) => MyosTableFrame(
         columns: columns,
         child: child,
         decorated: decorated,
@@ -120,11 +120,11 @@ class CoachExerciseCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     return Row(
       children: <Widget>[
         ExerciseCatalogThumbnail(imagePath: imagePath),
-        const SizedBox(width: MayosSpacing.xs),
+        const SizedBox(width: MyosSpacing.xs),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -134,7 +134,7 @@ class CoachExerciseCell extends StatelessWidget {
                 name,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: MayosTypography.of(context)
+                style: MyosTypography.of(context)
                     .body
                     .copyWith(color: colors.textPrimary),
               ),
@@ -144,7 +144,7 @@ class CoachExerciseCell extends StatelessWidget {
                   secondaryLine!,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: MayosTypography.of(context)
+                  style: MyosTypography.of(context)
                       .caption
                       .copyWith(color: colors.textSecondary),
                 ),
@@ -168,9 +168,9 @@ class _CoachExerciseMuscleLine extends StatelessWidget {
       label!,
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
-      style: MayosTypography.of(context)
+      style: MyosTypography.of(context)
           .caption
-          .copyWith(color: MayosTheme.of(context).textSecondary),
+          .copyWith(color: MyosTheme.of(context).textSecondary),
     );
   }
 }
@@ -188,15 +188,15 @@ class CoachExerciseActionCell extends StatelessWidget {
         coachExerciseActionLabel(context, primaryAction),
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: MayosTypography.of(context)
+        style: MyosTypography.of(context)
             .bodySecondary
-            .copyWith(color: MayosTheme.of(context).textPrimary),
+            .copyWith(color: MyosTheme.of(context).textPrimary),
       );
 }
 
 enum CoachStatusChipTone { neutral, active, pending }
 
-/// Semantic colors keep each status chip legible in both MAYOS themes.
+/// Semantic colors keep each status chip legible in both MYOS themes.
 class CoachStatusChip extends StatelessWidget {
   const CoachStatusChip({
     super.key,
@@ -209,7 +209,7 @@ class CoachStatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     final ({Color foreground, Color background, Color border}) toneColors =
         switch (tone) {
       CoachStatusChipTone.neutral => (
@@ -230,17 +230,17 @@ class CoachStatusChip extends StatelessWidget {
     };
     return Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: MayosSpacing.sm,
-        vertical: MayosSpacing.xxs,
+        horizontal: MyosSpacing.sm,
+        vertical: MyosSpacing.xxs,
       ),
       decoration: BoxDecoration(
         color: toneColors.background,
-        borderRadius: MayosRadii.pillRadius,
+        borderRadius: MyosRadii.pillRadius,
         border: Border.all(color: toneColors.border),
       ),
       child: Text(
         label,
-        style: MayosTypography.of(context)
+        style: MyosTypography.of(context)
             .captionStrong
             .copyWith(color: toneColors.foreground),
       ),
@@ -267,36 +267,36 @@ class CoachCompactExerciseRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: MayosSpacing.xs),
+      padding: const EdgeInsets.symmetric(vertical: MyosSpacing.xs),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           ExerciseCatalogThumbnail(imagePath: imagePath),
-          const SizedBox(width: MayosSpacing.sm),
+          const SizedBox(width: MyosSpacing.sm),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
                   name,
-                  style: MayosTypography.of(context)
+                  style: MyosTypography.of(context)
                       .body
                       .copyWith(color: colors.textPrimary),
                 ),
                 _CoachExerciseMuscleLine(label: muscleLine),
-                const SizedBox(height: MayosSpacing.xxs),
+                const SizedBox(height: MyosSpacing.xxs),
                 Text(
                   prescription,
-                  style: MayosTypography.of(context)
+                  style: MyosTypography.of(context)
                       .caption
                       .copyWith(color: colors.textSecondary),
                 ),
                 if (secondaryLine != null && secondaryLine!.isNotEmpty)
                   Text(
                     secondaryLine!,
-                    style: MayosTypography.of(context)
+                    style: MyosTypography.of(context)
                         .caption
                         .copyWith(color: colors.textMuted),
                   ),

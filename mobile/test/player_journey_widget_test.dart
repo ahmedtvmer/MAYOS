@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/rest_alert_permission_prompt_store.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/rest_alert_permission_prompt_store.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/providers.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 import 'support/fake_rest_alert_permission_access.dart';
 
 /// Pumps finite frames until [finder] matches. Avoids `pumpAndSettle`, which
@@ -28,13 +28,13 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   }
 }
 
-bool _sawOnboardingCall(FakeMayosApi fake) =>
+bool _sawOnboardingCall(FakeMyosApi fake) =>
     fake.adapter.requests.any((r) => r.path.startsWith('/onboarding'));
 
 void main() {
   testWidgets('player journey renders through the real app and router',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = FakeMayosApi();
+    final FakeMyosApi fake = FakeMyosApi();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     final FakeRestAlertPermissionAccess permissionAccess =
         FakeRestAlertPermissionAccess();
@@ -60,7 +60,7 @@ void main() {
             return client;
           }),
         ],
-        child: const MayosApp(),
+        child: const MyosApp(),
       ),
     );
 

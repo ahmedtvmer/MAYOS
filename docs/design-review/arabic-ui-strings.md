@@ -139,7 +139,7 @@ Volume review is a separate assessment and uses the term «مراجعة مجمو
 | Falling | متناقص |
 | Original text language: English | لغة النص الأصلي: الإنجليزية |
 | Original text language: Arabic | لغة النص الأصلي: العربية |
-| Checkpoint 10: 10 workouts since you started logging in MAYOS. | محطة تقدم 10: أكملت 10 حصص تدريبية منذ بدء تسجيلك في MAYOS. |
+| Checkpoint 10: 10 workouts since you started logging in MYOS. | محطة تقدم 10: أكملت 10 حصص تدريبية منذ بدء تسجيلك في MYOS. |
 | Checkpoint 25: 15 workouts since your last checkpoint. | محطة تقدم 25: أكملت 15 حصة تدريبية منذ محطة التقدم السابقة. |
 | Checkpoint template count agreement | 3–10: حصص تدريبية; 11–99: حصة تدريبية; 100+: حصة تدريبية |
 | #257 fake saved Arabic review prose fixture | كان تقدمك في التدريب مستقرًا. |
@@ -280,9 +280,9 @@ Volume review is a separate assessment and uses the term «مراجعة مجمو
 | English | Arabic |
 | --- | --- |
 | Enable coaching | تفعيل التدريب |
-| MAYOS coach code | رمز المدرب من MAYOS |
+| MYOS coach code | رمز المدرب من MYOS |
 | I'm a coach — enter coach code | أنا مدرب — أدخل رمز المدرب |
-| Enter your MAYOS coach code. | أدخل رمز المدرب من MAYOS. |
+| Enter your MYOS coach code. | أدخل رمز المدرب من MYOS. |
 | Skip for now | تخطي الآن |
 | Create my program | إنشاء برنامجي التدريبي |
 | About you | عنك |
@@ -291,10 +291,10 @@ Volume review is a separate assessment and uses the term «مراجعة مجمو
 | Progress: {answered} of {total} answered | التقدم: أُجيب عن {answered} من {total} |
 | Before we begin | قبل أن نبدأ |
 | Review your setup | راجع إعدادك |
-| Check your answers. You can edit anything before MAYOS builds your first program. | راجع إجاباتك. يمكنك تعديلها قبل أن ينشئ MAYOS برنامجك التدريبي الأول. |
+| Check your answers. You can edit anything before MYOS builds your first program. | راجع إجاباتك. يمكنك تعديلها قبل أن ينشئ MYOS برنامجك التدريبي الأول. |
 | Some required answers are still missing. | ما زالت بعض الإجابات المطلوبة ناقصة. |
 | Your answers and privacy | إجاباتك وخصوصيتك |
-| MAYOS uses your answers to create your first Training program with fixed rules. Onboarding and program creation do not call a hosted AI model. Your answers are saved in your private Training ledger. | يستخدم MAYOS إجاباتك لإنشاء برنامجك التدريبي الأول بقواعد محددة. لا يستخدم إعداد التدريب وإنشاء البرنامج أي نموذج ذكاء اصطناعي مستضاف. تُحفظ إجاباتك في سجل التدريب الخاص بحسابك. |
+| MYOS uses your answers to create your first Training program with fixed rules. Onboarding and program creation do not call a hosted AI model. Your answers are saved in your private Training ledger. | يستخدم MYOS إجاباتك لإنشاء برنامجك التدريبي الأول بقواعد محددة. لا يستخدم إعداد التدريب وإنشاء البرنامج أي نموذج ذكاء اصطناعي مستضاف. تُحفظ إجاباتك في سجل التدريب الخاص بحسابك. |
 | You can change any answer before your first program is created. | يمكنك تعديل أي إجابة قبل إنشاء برنامجك التدريبي الأول. |
 | Could not load your setup | تعذر تحميل إعدادك |
 | Building your program | جارٍ إنشاء برنامجك التدريبي |
@@ -444,8 +444,8 @@ days” and “rest for two seconds”).
 | Refresh your program before saving this workout. | حدّث برنامجك التدريبي قبل حفظ هذه الحصة. |
 | Reopen this workout and try saving again. | افتح هذه الحصة من جديد وحاول حفظها. |
 | The workout could not be saved. Nothing was lost — try again. | تعذر حفظ الحصة. لم يُفقد شيء؛ حاول مجددًا. |
-| Couldn't reach MAYOS. Your workout is kept in this browser. | تعذر الاتصال بـ MAYOS. حُفظت حصتك في هذا المتصفح. |
-| MAYOS is busy. Your workout is kept in this browser. | MAYOS مشغول الآن. حُفظت حصتك في هذا المتصفح. |
+| Couldn't reach MYOS. Your workout is kept in this browser. | تعذر الاتصال بـ MYOS. حُفظت حصتك في هذا المتصفح. |
+| MYOS is busy. Your workout is kept in this browser. | MYOS مشغول الآن. حُفظت حصتك في هذا المتصفح. |
 | Your program changed since this workout started; substitute it from the Program tab | تغير البرنامج التدريبي منذ بدء هذه الحصة. بدّل التمرين من تبويب البرنامج. |
 | The swap was saved to your program. | حُفظ الاستبدال في برنامجك التدريبي. |
 | Add a reason before asking your coach. | أضف سببًا قبل طلب التبديل من مدربك. |
@@ -556,7 +556,7 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 | A pause can last at most {days} days. | يمكن أن يستمر التوقف {days} يومًا كحد أقصى. |
 | Delete account? | حذف الحساب؟ |
 | This permanently deletes your account and its active data: training history, program, coaching assignment, recovery email, and any unsynced drafts on this device. This cannot be undone. | سيؤدي ذلك إلى حذف حسابك وبياناته النشطة نهائيًا: سجل التدريب، والبرنامج التدريبي، وعلاقة التدريب، والبريد الإلكتروني للاسترداد، وأي مسودات غير متزامنة على هذا الجهاز. لا يمكن التراجع عن ذلك. |
-| There is no password on this account, so confirm by signing in with Google: you will be asked to prove the Google account connected to this MAYOS account. | لا توجد كلمة مرور لهذا الحساب، لذا أكّد الحذف بتسجيل الدخول إلى Google. سيُطلب منك إثبات ملكية حساب Google المرتبط بحساب MAYOS هذا. |
+| There is no password on this account, so confirm by signing in with Google: you will be asked to prove the Google account connected to this MYOS account. | لا توجد كلمة مرور لهذا الحساب، لذا أكّد الحذف بتسجيل الدخول إلى Google. سيُطلب منك إثبات ملكية حساب Google المرتبط بحساب MYOS هذا. |
 | Password | كلمة المرور |
 | Cancel | إلغاء |
 | Current password | كلمة المرور الحالية |
@@ -685,7 +685,7 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 | English | Arabic |
 | --- | --- |
 | Appearance | المظهر |
-| Choose how MAYOS looks. System follows your device. | اختر مظهر MAYOS. يتبع خيار النظام إعداد جهازك. |
+| Choose how MYOS looks. System follows your device. | اختر مظهر MYOS. يتبع خيار النظام إعداد جهازك. |
 | System | النظام |
 | Light | فاتح |
 | Dark | داكن |
@@ -709,7 +709,7 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 | Saved on this device, syncing when online | محفوظة على هذا الجهاز وتتم مزامنتها عند الاتصال |
 | About | حول التطبيق |
 | Privacy policy | سياسة الخصوصية |
-| What MAYOS collects, who can see it, and deletion | ما يجمعه MAYOS، ومن يمكنه الاطلاع عليه، وكيفية الحذف |
+| What MYOS collects, who can see it, and deletion | ما يجمعه MYOS، ومن يمكنه الاطلاع عليه، وكيفية الحذف |
 | Credits | الاعتمادات |
 | Log out | تسجيل الخروج |
 | Choose how your assistant words its chat replies. Facts, training decisions, safety, and reply language stay the same. | اختر طريقة صياغة ردود المساعد في المحادثة. تبقى الحقائق وقرارات التدريب والسلامة ولغة الرد كما هي. |
@@ -749,7 +749,7 @@ numeric ranges, weights, RIR, and rest times in LRI/PDI isolates.
 | Logging out will discard this workout from this browser. | سيؤدي تسجيل الخروج إلى حذف هذه الحصة من هذا المتصفح. |
 | Discard and log out | حذف وتسجيل الخروج |
 | Cancel | إلغاء |
-| Exercise media (the catalog pictures and GIFs) is credited as required by its terms:<br><br>{required credit}<br><br>The media is shown at its native size, never larger than 180 × 180, with this credit, while MAYOS's own licence from Gym visual is pending. | تُنسب صور التمارين ومقاطع GIF في المكتبة وفق شروط استخدامها:<br><br>{required credit}<br><br>تُعرض الوسائط بحجمها الأصلي وبحد أقصى 180 × 180 مع هذا الاعتماد، بينما لا يزال ترخيص MAYOS الخاص من Gym visual قيد الانتظار. |
+| Exercise media (the catalog pictures and GIFs) is credited as required by its terms:<br><br>{required credit}<br><br>The media is shown at its native size, never larger than 180 × 180, with this credit, while MYOS's own licence from Gym visual is pending. | تُنسب صور التمارين ومقاطع GIF في المكتبة وفق شروط استخدامها:<br><br>{required credit}<br><br>تُعرض الوسائط بحجمها الأصلي وبحد أقصى 180 × 180 مع هذا الاعتماد، بينما لا يزال ترخيص MYOS الخاص من Gym visual قيد الانتظار. |
 | You have {count} unsynced workout draft(s). They stay on this device until they sync; logging out will not delete them. | لديك {Arabic count phrase for workout drafts} غير متزامنة. ستبقى على هذا الجهاز حتى تتم مزامنتها؛ تسجيل الخروج لن يحذفها. |
 
 ### Shared app-authored failure messages
@@ -849,8 +849,8 @@ strings remain **pending owner review**.
 | No check-ins recorded yet. | لم يُسجل أي تواصل بعد. |
 | In app / In person / Phone / Video / Message / Email / Other | داخل التطبيق / لقاء شخصي / مكالمة هاتفية / مكالمة فيديو / رسالة / بريد إلكتروني / أخرى |
 | Become a coach | كن مدربًا |
-| Enter your MAYOS coach code | أدخل رمز مدرب MAYOS |
-| This code comes from MAYOS and enables Coach mode on your own account. It is single-use and expires. Entering it does not assign you to a coach. | هذا الرمز من MAYOS ويفعّل وضع المدرب في حسابك. يُستخدم مرة واحدة وتنتهي صلاحيته. إدخاله لا ينشئ علاقة تدريب مع مدرب. |
+| Enter your MYOS coach code | أدخل رمز مدرب MYOS |
+| This code comes from MYOS and enables Coach mode on your own account. It is single-use and expires. Entering it does not assign you to a coach. | هذا الرمز من MYOS ويفعّل وضع المدرب في حسابك. يُستخدم مرة واحدة وتنتهي صلاحيته. إدخاله لا ينشئ علاقة تدريب مع مدرب. |
 | Coach capability enabled. | تم تفعيل دور المدرب. |
 
 ## Coach profile, invitations, and program tools (Chunk C)
@@ -995,7 +995,7 @@ strings remain **pending owner review**.
 
 | English | Arabic |
 | --- | --- |
-| MAYOS · Rest {time} | MAYOS · راحة {time} |
+| MYOS · Rest {time} | MYOS · راحة {time} |
 | Next: {exercise} · set {set} · last {last} | التالي: {exercise} · المجموعة {set} · السابق {last} |
 | Rest complete | انتهت الراحة |
 | Rest timer | مؤقت الراحة |
@@ -1044,7 +1044,7 @@ The count helper keeps Western digits and selects a short form by count.
 | The service is unavailable. Please retry. | تعذر إكمال الطلب. حاول مجددًا. |
 | The request failed. Please try again. | تعذر تنفيذ الطلب. حاول مجددًا. |
 | The assistant is temporarily unavailable. | تعذر على المساعد إكمال الرد. يُرجى إعادة المحاولة. |
-| This Google account is already linked to a MAYOS account. | حساب Google هذا مرتبط بالفعل بحساب MAYOS. |
+| This Google account is already linked to a MYOS account. | حساب Google هذا مرتبط بالفعل بحساب MYOS. |
 | This workout was logged against an older program version. | سُجلت هذه الحصة على إصدار أقدم من البرنامج. |
 
 ## Google sign-in button
@@ -1058,7 +1058,7 @@ The count helper keeps Western digits and selects a short form by count.
 | Message code | English fallback | Arabic |
 | --- | --- | --- |
 | google.invalid_token.v1 | Invalid Google credentials. | تعذر التحقق من بيانات Google. |
-| google.linked_elsewhere.v1 | This Google account is already connected to another MAYOS account | حساب Google هذا مرتبط بالفعل بحساب MAYOS آخر. |
+| google.linked_elsewhere.v1 | This Google account is already connected to another MYOS account | حساب Google هذا مرتبط بالفعل بحساب MYOS آخر. |
 | google.different_account.v1 | This account already has a different Google account connected. Disconnect it first. | يوجد حساب Google مختلف مرتبط بهذا الحساب. افصله أولًا. |
 | google.unlink_password_required.v1 | Set a password before disconnecting Google, so you can still sign in. | عيّن كلمة مرور قبل فصل Google لتتمكن من تسجيل الدخول. |
 | recovery.invalid_or_expired_code.v1 | Invalid or expired verification code. | رمز التحقق غير صالح أو انتهت صلاحيته. |
@@ -1427,7 +1427,7 @@ Candidate fixed standard-Arabic wording for the diagnosis safeguard in
 
 | English intent | Arabic candidate |
 | --- | --- |
-| Decline diagnosis, stop the painful exercise, and defer evaluation to a licensed clinician | لا أستطيع تشخيص إصابات الجهاز العضلي الهيكلي أو آلام المفاصل أو الحالات المرضية الكامنة. MAYOS سجل تدريب آلي ومحرك لميكانيكا الحركة، وليس طبيبًا. أوقف فورًا أي تمرين يسبب ألمًا موضعيًا في المفصل أو وجعًا، واستشر أخصائي علاج طبيعي مرخّصًا لتقييم الحالة. |
+| Decline diagnosis, stop the painful exercise, and defer evaluation to a licensed clinician | لا أستطيع تشخيص إصابات الجهاز العضلي الهيكلي أو آلام المفاصل أو الحالات المرضية الكامنة. MYOS سجل تدريب آلي ومحرك لميكانيكا الحركة، وليس طبيبًا. أوقف فورًا أي تمرين يسبب ألمًا موضعيًا في المفصل أو وجعًا، واستشر أخصائي علاج طبيعي مرخّصًا لتقييم الحالة. |
 
 Status: owner reviewed by Thomas on 2026-10-14.
 

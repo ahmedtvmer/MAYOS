@@ -1,0 +1,108 @@
+import 'package:flutter/widgets.dart';
+
+/// MYOS spacing scale. One coherent 4-based scale, used everywhere so screens
+/// do not invent their own padding.
+abstract final class MyosSpacing {
+  static const double xxs = 4;
+  static const double xs = 8;
+  static const double sm = 12;
+  static const double md = 16;
+  static const double lg = 20;
+  static const double xl = 24;
+  static const double xxl = 32;
+  static const double xxxl = 40;
+
+  /// Standard horizontal inset for full-width screen content.
+  static const EdgeInsets screenHorizontal =
+      EdgeInsets.symmetric(horizontal: lg);
+
+  /// Standard page padding for scrollable content.
+  static const EdgeInsets screen = EdgeInsets.fromLTRB(lg, md, lg, xxl);
+}
+
+/// Responsive layout sizes for wide (desktop browser) windows (#133).
+abstract final class MyosLayout {
+  /// Logical viewport width at which shell tabs move to a side rail.
+  static const double desktopNavigationBreakpoint = 1024;
+
+  /// Height of the phone Coach/Player bottom navigation content.
+  static const double phoneBottomNavigationHeight = 62;
+
+  /// Maximum desktop width for Player mode page content.
+  static const double playerColumnMaxWidth = 480;
+
+  /// Maximum width Google Identity Services allows for its rendered button.
+  static const double googleButtonMaxWidth = 400;
+
+  /// Width reserved for the desktop side navigation rail.
+  static const double navigationRailWidth = 88;
+
+  /// Width for the list pane in desktop coach master/detail layouts.
+  static const double coachListPaneWidth = 360;
+
+  /// Minimum width kept for player details in an inline coach roster row.
+  static const double coachRosterRowMinimumDetailsWidth = 80;
+
+  /// Maximum desktop width for Coach mode modal sheets and SnackBars.
+  static const double coachOverlayMaxWidth = 640;
+}
+
+/// A deliberately small radius set. Screens pick one of these rather than
+/// arbitrary corner values.
+abstract final class MyosRadii {
+  static const double small = 8;
+  static const double medium = 12;
+  static const double large = 16;
+  static const double xlarge = 24;
+  static const double pill = 999;
+
+  static const BorderRadius smallRadius =
+      BorderRadius.all(Radius.circular(small));
+  static const BorderRadius mediumRadius =
+      BorderRadius.all(Radius.circular(medium));
+  static const BorderRadius largeRadius =
+      BorderRadius.all(Radius.circular(large));
+  static const BorderRadius xlargeRadius =
+      BorderRadius.all(Radius.circular(xlarge));
+  static const BorderRadius pillRadius =
+      BorderRadius.all(Radius.circular(pill));
+}
+
+/// Named widths for hairline separators and emphasized strokes.
+abstract final class MyosBorderWidths {
+  static const double hairline = 1;
+  static const double emphasis = 3;
+}
+
+/// Shared interaction motion. Subtle and quick; no cinematic delays.
+abstract final class MyosMotion {
+  static const Duration fast = Duration(milliseconds: 150);
+  static const Duration base = Duration(milliseconds: 220);
+  static const Duration slow = Duration(milliseconds: 320);
+
+  static const Curve standard = Curves.easeOutCubic;
+  static const Curve emphasized = Curves.easeOutQuint;
+}
+
+/// Minimum interactive size. Material guidance: 48dp touch targets.
+const double kMyosMinTapTarget = 48;
+
+/// Icon-chip box: the square frame around a settings row's leading glyph
+/// (`MyosIconChip`), sized to hold an icon at [MyosIconSizes.medium].
+const double kMyosIconChipSize = 38;
+
+/// Named icon sizes, so screens pick one of these instead of a magic pixel
+/// value (DESIGN.md: sizes are named like every other visual token).
+abstract final class MyosIconSizes {
+  /// Small inline icon that sits inside caption-height chrome (a chip/pill).
+  static const double small = 14;
+
+  /// Standard inline icon: trailing chevrons, row actions, sheet checks.
+  static const double medium = 20;
+
+  /// Standard icon size in shell navigation.
+  static const double navigation = 24;
+
+  /// Empty-state glyph inside a large surface (a 180dp media box, #53).
+  static const double large = 32;
+}

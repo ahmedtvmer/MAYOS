@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/providers.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     {int attempts = 60}) async {
@@ -32,7 +32,7 @@ Future<void> _pumpUntilGone(WidgetTester tester, Finder finder,
   }
 }
 
-Future<void> _pumpCoachApp(WidgetTester tester, FakeMayosApi fake) async {
+Future<void> _pumpCoachApp(WidgetTester tester, FakeMyosApi fake) async {
   tester.view.physicalSize = const Size(1080, 2400);
   tester.view.devicePixelRatio = 2.0;
   addTearDown(tester.view.resetPhysicalSize);
@@ -55,14 +55,14 @@ Future<void> _pumpCoachApp(WidgetTester tester, FakeMayosApi fake) async {
           return client;
         }),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(tester, find.text('Roster'));
 }
 
-FakeMayosApi _coachFake() {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _coachFake() {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -127,7 +127,7 @@ FakeMayosApi _coachFake() {
 void main() {
   testWidgets('coach reviews a player, resolves a request, and closes an alert',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpCoachApp(tester, fake);
     await _pumpUntilFound(tester, find.text('Active assignments'));
 

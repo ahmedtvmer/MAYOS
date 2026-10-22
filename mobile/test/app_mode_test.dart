@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
 
 void main() {
   test('a coach defaults to Coach mode, everyone else to Player mode', () {

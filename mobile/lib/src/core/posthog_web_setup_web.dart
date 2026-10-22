@@ -1,23 +1,23 @@
 import 'dart:convert';
 import 'dart:js_interop';
 
-@JS('mayosInitializePosthog')
+@JS('myosInitializePosthog')
 external JSPromise<JSAny?> _initializePosthog(
   JSString clientKey,
   JSString commonDimensionsJson,
 );
 
-@JS('mayosIdentifyPosthog')
+@JS('myosIdentifyPosthog')
 external JSAny? _identifyPosthog(
   JSString accountId,
   JSString role,
   JSString commonDimensionsJson,
 );
 
-@JS('mayosCapturePosthog')
+@JS('myosCapturePosthog')
 external JSAny? _capturePosthog(JSString eventName, JSString propertiesJson);
 
-@JS('mayosResetPosthog')
+@JS('myosResetPosthog')
 external JSAny? _resetPosthog();
 
 Future<void> initializePostHogWeb(

@@ -378,7 +378,7 @@ async def link_google(
     The token is verified the same way sign-in verifies it (503 while
     ``GOOGLE_WEB_CLIENT_ID`` is unset; a rejected token is the ordinary 401).
     Linking the same subject again is an idempotent success. A subject already
-    connected to another MAYOS account is a 409 that never says which one, and
+    connected to another MYOS account is a 409 that never says which one, and
     a caller who already connected a different Google identity gets a 409
     telling them to disconnect it first. Connecting never bumps the session
     epoch: no credential changed.
@@ -650,7 +650,7 @@ async def delete_account(
     clients read as session expiry). On success every session is invalidated in
     the durable registry, the live ledger and its backups are removed, and the
     ``linked_sign_ins`` rows go in the same catalog transaction, so the Google
-    account is free to create a new MAYOS account later. The username becomes
+    account is free to create a new MYOS account later. The username becomes
     reusable only as a new immutable account.
 
     The route holds no ledger handle: the password check opens a short-lived

@@ -1,17 +1,17 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/training_status_controller.dart';
-import 'package:mayos_mobile/src/core/workout_storage.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/training_status_controller.dart';
+import 'package:myos_mobile/src/core/workout_storage.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 void main() {
   test(
     'loads, replaces from a commit, and restores status after restart',
     () async {
-      final FakeMayosApi fake = FakeMayosApi()
+      final FakeMyosApi fake = FakeMyosApi()
         ..issuedToken = 'token-alice'
         ..currentUsername = 'alice'
         ..profileExists = true
@@ -38,7 +38,7 @@ void main() {
       );
 
       await first.refresh('account-alice');
-      expect(first.state?.mayosWorkouts, 9);
+      expect(first.state?.myosWorkouts, 9);
       expect(fake.trainingStatusRequests, 1);
 
       await first.acceptCommit('account-alice', <String, dynamic>{
@@ -62,7 +62,7 @@ void main() {
         'account-alice',
       );
       expect(restored?.weeklyStreak, 3);
-      expect(restored?.mayosWorkouts, 10);
+      expect(restored?.myosWorkouts, 10);
       expect(restored?.nextCheckpoint, 25);
       afterRestart.dispose();
     },

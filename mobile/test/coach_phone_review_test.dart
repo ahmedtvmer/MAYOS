@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/providers.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'support/coach_layout_harness.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 Future<void> _waitFor(WidgetTester tester, Finder finder) async {
   for (int attempt = 0; attempt < 60 && finder.evaluate().isEmpty; attempt++) {
@@ -16,10 +16,10 @@ Future<void> _waitFor(WidgetTester tester, Finder finder) async {
 void main() {
   testWidgets('roster assistant panel fits and sends on a phone in both languages',
       (WidgetTester tester) async {
-    FakeMayosApi? fakeUsed;
+    FakeMyosApi? fakeUsed;
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) {
+      configureFake: (FakeMyosApi fake) {
         fakeUsed = fake;
         fake.coachRosterAiEnabled = true;
         fake.coachRosterAiAvailable = true;
@@ -33,7 +33,7 @@ void main() {
           'status': 'active',
         });
       },
-      ready: (String language) => find.byKey(const ValueKey<String>('mayos_scaffold_body')),
+      ready: (String language) => find.byKey(const ValueKey<String>('myos_scaffold_body')),
       pageScrollable: (String language) => find.byType(Scrollable).first,
       allowedInnerStrips: (String language) => find.byKey(
         const Key('coach_roster_assistant_answer'),
@@ -56,7 +56,7 @@ void main() {
 
   testWidgets('Coach assistant desktop input and table reply remain selectable',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = createCoachFake()
+    final FakeMyosApi fake = createCoachFake()
       ..coachAiEnabled = true
       ..coachAssistantAnswer =
           '| Exercise | Sets | Notes |\n| --- | ---: | --- |\n| Lat Pulldown | 3 | Full range |'
@@ -89,7 +89,7 @@ void main() {
 
   testWidgets('roster assistant panel keeps its desktop input and reply',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = createCoachFake()
+    final FakeMyosApi fake = createCoachFake()
       ..coachRosterAiEnabled = true
       ..coachRosterAiAvailable = true
       ..coachPlan = 'pro'

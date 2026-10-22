@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Generate trimmed MAYOS brand assets from the supplied originals.
+"""Generate trimmed MYOS brand assets from the supplied originals.
 
-The monochrome originals in ``assets/mayos-logo-{white,black}.png`` are never
+The monochrome originals in ``assets/myos-logo-{white,black}.png`` are never
 modified. This script derives, deterministically:
 
-  * ``mobile/assets/brand/mayos-lockup-<variant>.png`` — the mark + wordmark
+  * ``mobile/assets/brand/myos-lockup-<variant>.png`` — the mark + wordmark
     lockup cropped to its content bounding box (plus a small transparent pad).
     Sparse, low-alpha regions separated from the lockup (e.g. the faint
     artifacts near the black wordmark) are excluded.
-  * ``mobile/assets/brand/mayos-mark-<variant>.png`` — the mark only, split
+  * ``mobile/assets/brand/myos-mark-<variant>.png`` — the mark only, split
     from the wordmark at the largest gap inside the lockup.
 
 Run from anywhere:
@@ -90,7 +90,7 @@ def _clamp_box(
 
 
 def process(variant: str) -> None:
-    source = SRC / f"mayos-logo-{variant}.png"
+    source = SRC / f"myos-logo-{variant}.png"
     image = Image.open(source).convert("RGBA")
     width, height = image.size
     mask = np.array(image)[:, :, 3] >= ALPHA_THRESHOLD
@@ -129,8 +129,8 @@ def process(variant: str) -> None:
         width, height,
     )
 
-    lockup_path = OUT / f"mayos-lockup-{variant}.png"
-    mark_path = OUT / f"mayos-mark-{variant}.png"
+    lockup_path = OUT / f"myos-lockup-{variant}.png"
+    mark_path = OUT / f"myos-mark-{variant}.png"
     image.crop(lock_box).save(lockup_path)
     image.crop(mark_box).save(mark_path)
 

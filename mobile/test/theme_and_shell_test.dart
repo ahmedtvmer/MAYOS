@@ -2,18 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/shared_program_text.dart';
-import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
-import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_bottom_navigation.dart';
-import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/shared_program_text.dart';
+import 'package:myos_mobile/src/core/theme/myos_theme.dart';
+import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/ui/myos_bottom_navigation.dart';
+import 'package:myos_mobile/src/features/shared/mode_switch.dart';
+import 'package:myos_mobile/src/providers.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     {int attempts = 40}) async {
@@ -37,8 +37,8 @@ Future<void> _loadFonts() async {
   await Future.wait<void>(<Future<void>>[serif.load(), sans.load()]);
 }
 
-FakeMayosApi _signedInFake({bool coach = false}) {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _signedInFake({bool coach = false}) {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -51,7 +51,7 @@ FakeMayosApi _signedInFake({bool coach = false}) {
 
 Future<void> _pumpApp(
   WidgetTester tester,
-  FakeMayosApi fake, {
+  FakeMyosApi fake, {
   required ThemeModeStore store,
   Size size = const Size(412, 2400),
 }) async {
@@ -81,7 +81,7 @@ Future<void> _pumpApp(
           return client;
         }),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(
@@ -120,7 +120,7 @@ void main() {
   testWidgets(
       'appearance defaults to System and switches Light/Dark immediately',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     final InMemoryThemeModeStore store = InMemoryThemeModeStore();
     await _pumpApp(tester, fake, store: store);
 
@@ -145,7 +145,7 @@ void main() {
 
   testWidgets('an explicit choice is persisted across a restart',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     final InMemoryThemeModeStore store = InMemoryThemeModeStore();
 
     await _pumpApp(tester, fake, store: store);
@@ -163,7 +163,7 @@ void main() {
 
   testWidgets('system bar style follows the effective theme',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     final InMemoryThemeModeStore store = InMemoryThemeModeStore();
     await _pumpApp(tester, fake, store: store);
     await _openSettings(tester);
@@ -179,24 +179,24 @@ void main() {
     await _settleTheme(tester);
     final SystemUiOverlayStyle light = await overlay();
     expect(light.statusBarIconBrightness, Brightness.dark);
-    expect(light.systemNavigationBarColor, MayosThemeExtension.light.canvas);
+    expect(light.systemNavigationBarColor, MyosThemeExtension.light.canvas);
 
     await tester.tap(find.text('Dark'));
     await _settleTheme(tester);
     final SystemUiOverlayStyle dark = await overlay();
     expect(dark.statusBarIconBrightness, Brightness.light);
-    expect(dark.systemNavigationBarColor, MayosThemeExtension.dark.canvas);
+    expect(dark.systemNavigationBarColor, MyosThemeExtension.dark.canvas);
   });
 
   testWidgets('bottom navigation exposes Home, Program, and Progress',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     await _pumpApp(tester, fake, store: InMemoryThemeModeStore());
 
-    final MayosBottomNavigation nav = tester
-        .widget<MayosBottomNavigation>(find.byType(MayosBottomNavigation));
+    final MyosBottomNavigation nav = tester
+        .widget<MyosBottomNavigation>(find.byType(MyosBottomNavigation));
     // Progress ships now that its flow is backed by real ledger data (#48).
-    expect(nav.items.map((MayosNavItem i) => i.label),
+    expect(nav.items.map((MyosNavItem i) => i.label),
         <String>['Home', 'Program', 'Progress']);
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Program'), findsOneWidget);
@@ -204,7 +204,7 @@ void main() {
     // appear more than once; the nav items list above is the authoritative check.
     expect(find.text('Progress'), findsWidgets);
     // Header brand and clear affordances.
-    expect(find.text('MAYOS'), findsOneWidget);
+    expect(find.text('MYOS'), findsOneWidget);
     expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
     expect(find.byIcon(Icons.chat_bubble_outline), findsOneWidget);
     // No placeholder destinations.
@@ -214,7 +214,7 @@ void main() {
 
   testWidgets('Settings opens from the header and keeps entry points reachable',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake(coach: true);
+    final FakeMyosApi fake = _signedInFake(coach: true);
     await _pumpApp(tester, fake, store: InMemoryThemeModeStore());
 
     // Coach mode opens Settings from the mode sheet (#119) ...
@@ -264,7 +264,7 @@ void main() {
 
   testWidgets('a non-coach sees the invite entry, not coach destinations',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     await _pumpApp(tester, fake, store: InMemoryThemeModeStore());
     await _openSettings(tester);
 
@@ -282,7 +282,7 @@ void main() {
     testWidgets(
         'shell and settings have no overflow at ${size.width}x${size.height} '
         'and 1.5x text', (WidgetTester tester) async {
-      final FakeMayosApi fake = _signedInFake(coach: true);
+      final FakeMyosApi fake = _signedInFake(coach: true);
       await _pumpApp(tester, fake, store: InMemoryThemeModeStore(), size: size);
 
       tester.platformDispatcher.textScaleFactorTestValue = 1.5;
@@ -298,7 +298,7 @@ void main() {
     testWidgets(
         'shell has no overflow at ${size.width}x${size.height} and 2.0x text',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = _signedInFake();
+      final FakeMyosApi fake = _signedInFake();
       await _pumpApp(tester, fake, store: InMemoryThemeModeStore(), size: size);
 
       tester.platformDispatcher.textScaleFactorTestValue = 2.0;

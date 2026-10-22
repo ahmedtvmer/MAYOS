@@ -2283,7 +2283,7 @@ class TrainingStatus {
     required this.weekStart,
     required this.weekDone,
     required this.weekTarget,
-    required this.mayosWorkouts,
+    required this.myosWorkouts,
     required this.nextCheckpoint,
     required this.workoutsToNext,
   });
@@ -2298,7 +2298,7 @@ class TrainingStatus {
       weekStart: weekStart,
       weekDone: _requiredInt(json, 'week_done'),
       weekTarget: _requiredInt(json, 'week_target'),
-      mayosWorkouts: _requiredInt(json, 'mayos_workouts'),
+      myosWorkouts: _requiredInt(json, 'mayos_workouts'),
       nextCheckpoint: _requiredInt(json, 'next_checkpoint'),
       workoutsToNext: _requiredInt(json, 'workouts_to_next'),
     );
@@ -2308,7 +2308,7 @@ class TrainingStatus {
   final String weekStart;
   final int weekDone;
   final int weekTarget;
-  final int mayosWorkouts;
+  final int myosWorkouts;
   final int nextCheckpoint;
   final int workoutsToNext;
 
@@ -2317,7 +2317,7 @@ class TrainingStatus {
         'week_start': weekStart,
         'week_done': weekDone,
         'week_target': weekTarget,
-        'mayos_workouts': mayosWorkouts,
+        'mayos_workouts': myosWorkouts,
         'next_checkpoint': nextCheckpoint,
         'workouts_to_next': workoutsToNext,
       };

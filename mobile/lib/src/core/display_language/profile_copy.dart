@@ -142,8 +142,8 @@ class ProfileCopy {
       ? 'سيؤدي ذلك إلى حذف حسابك وبياناته النشطة نهائيًا: سجل التدريب، والبرنامج التدريبي، وعلاقة التدريب، والبريد الإلكتروني للاسترداد، وأي مسودات غير متزامنة على هذا الجهاز. لا يمكن التراجع عن ذلك.'
       : 'This permanently deletes your account and its active data: training history, program, coaching assignment, recovery email, and any unsynced drafts on this device. This cannot be undone.';
   String get googleOnlyDeleteProof => isArabic
-      ? 'لا توجد كلمة مرور لهذا الحساب، لذا أكّد الحذف بتسجيل الدخول إلى Google. سيُطلب منك إثبات ملكية حساب Google المرتبط بحساب MAYOS هذا.'
-      : 'There is no password on this account, so confirm by signing in with Google: you will be asked to prove the Google account connected to this MAYOS account.';
+      ? 'لا توجد كلمة مرور لهذا الحساب، لذا أكّد الحذف بتسجيل الدخول إلى Google. سيُطلب منك إثبات ملكية حساب Google المرتبط بحساب MYOS هذا.'
+      : 'There is no password on this account, so confirm by signing in with Google: you will be asked to prove the Google account connected to this MYOS account.';
   String get password => isArabic ? 'كلمة المرور' : 'Password';
   String get cancel => isArabic ? 'إلغاء' : 'Cancel';
   String get currentPassword =>

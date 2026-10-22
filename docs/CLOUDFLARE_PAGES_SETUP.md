@@ -85,15 +85,15 @@ curl -si -X OPTIONS https://mayos-api.fly.dev/healthz \
 # access-control-allow-origin: https://mayos.pages.dev
 ```
 
-## 5. Google Cloud (#112): swap `mayos.app` for the Pages origin
+## 5. Google Cloud (#112): swap `myos.app` for the Pages origin
 
 In the project that owns the web OAuth client:
 
 1. **Google Auth Platform → Clients** (or **APIs & Services → Credentials**) →
    the *Web application* client → **Authorized JavaScript origins**: remove
-   `https://mayos.app`, add the Pages origin, **Save**.
+   `https://myos.app`, add the Pages origin, **Save**.
 2. **Google Auth Platform → Branding** → **Authorized domains**: remove
-   `mayos.app`, add the Pages host without scheme (e.g. `mayos.pages.dev`;
+   `myos.app`, add the Pages host without scheme (e.g. `mayos.pages.dev`;
    `pages.dev` is a public suffix, so the project host is the registrable
    domain), **Save**.
 

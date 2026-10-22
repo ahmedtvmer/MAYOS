@@ -11,7 +11,7 @@ import '../../core/privacy_policy.dart';
 /// Gym visual's terms require the credit "© Gym visual —
 /// https://gymvisual.com/" on every use of its images and GIFs, and the
 /// 180×180 size limit that the exercise-detail hero honours. The owner's
-/// 2026-09-29 decision shows the media pending MAYOS's own licence; the
+/// 2026-09-29 decision shows the media pending MYOS's own licence; the
 /// notice lives here so the credit ships wherever the media does
 /// (`docs/design-review/53/MEDIA-PROVENANCE.md`).
 Future<void> showMediaCredits(BuildContext context, WidgetRef ref) {

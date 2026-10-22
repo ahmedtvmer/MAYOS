@@ -158,7 +158,7 @@ def _deliver(
     try:
         message = EmailMessage()
         message["Subject"] = subject
-        message["From"] = os.getenv("SMTP_FROM", "no-reply@mayos.local")
+        message["From"] = os.getenv("SMTP_FROM", "no-reply@myos.local")
         message["To"] = to_email
         message.set_content(body)
         port = int(os.getenv("SMTP_PORT", "587"))
@@ -218,17 +218,17 @@ def _assignment_redemption_copy(
 ) -> tuple[str, str]:
     if display_language == "ar":
         return (
-            "قبل لاعب دعوتك للتدريب مع مدرب في MAYOS",
+            "قبل لاعب دعوتك للتدريب مع مدرب في MYOS",
             f"مرحبًا {coach_display_name}،\n\n"
             f"قبل {player_username} دعوتك، وأُنشئت بينكما علاقة تدريب.\n\n"
-            "افتح MAYOS لمراجعة علاقة التدريب. إذا لم تكن تتوقع ذلك، يمكنك إنهاء العلاقة فورًا.\n\n"
+            "افتح MYOS لمراجعة علاقة التدريب. إذا لم تكن تتوقع ذلك، يمكنك إنهاء العلاقة فورًا.\n\n"
             "لا تتضمن هذه الرسالة أي بيانات تدريبية.",
         )
     return (
-        "A player accepted your MAYOS coaching invite",
+        "A player accepted your MYOS coaching invite",
         f"Hi {coach_display_name},\n\n"
         f"{player_username} accepted your coaching invite and is now assigned to you.\n\n"
-        "Open MAYOS to review the assignment. If you did not expect this, you can revoke "
+        "Open MYOS to review the assignment. If you did not expect this, you can revoke "
         "the assignment immediately.\n\n"
         "This notice does not include any training data.",
     )
@@ -304,7 +304,7 @@ def send_model_spend_alert_email(
     player/coach content. The owner reviews per-account usage with
     ``scripts/model_usage_report.py``.
     """
-    subject = "MAYOS model spend alert"
+    subject = "MYOS model spend alert"
     body = (
         "Hosted model spend for the closed trial has crossed the alert threshold.\n\n"
         f"Threshold:        ${threshold_usd:,.2f}\n"
@@ -324,9 +324,9 @@ def send_model_spend_alert_email(
 
 def send_owner_login_alert_email(to_email: str, login_time: str, source_ip: str, user_agent: str) -> bool:
     """Alerts the owner to an admin login without including credentials or account data."""
-    subject = "MAYOS owner dashboard login"
+    subject = "MYOS owner dashboard login"
     body = (
-        "The MAYOS owner dashboard was accessed successfully.\n\n"
+        "The MYOS owner dashboard was accessed successfully.\n\n"
         f"Time (UTC): {login_time}\n"
         f"IP address: {_single_line(source_ip)}\n"
         f"User agent: {_single_line(user_agent)}\n"
@@ -370,17 +370,17 @@ def _password_reset_copy(
     if display_language == "ar":
         minute_unit = _arabic_minute_unit(minutes)
         return (
-            "إعادة تعيين كلمة مرور MAYOS",
-            "تم طلب إعادة تعيين كلمة المرور لحسابك في MAYOS.\n\n"
-            "افتح هذا الرابط لتعيين كلمة مرور جديدة. إذا كان تطبيق MAYOS مثبتًا، فسيفتح التطبيق؛ "
+            "إعادة تعيين كلمة مرور MYOS",
+            "تم طلب إعادة تعيين كلمة المرور لحسابك في MYOS.\n\n"
+            "افتح هذا الرابط لتعيين كلمة مرور جديدة. إذا كان تطبيق MYOS مثبتًا، فسيفتح التطبيق؛ "
             "وإلا فستفتح صفحة ويب آمنة.\n\n"
             f"{reset_link}\n\nيمكن استخدام هذا الرابط مرة واحدة، وينتهي خلال {minutes} {minute_unit}.\n\n"
             "إذا لم تطلب ذلك، فتجاهل هذه الرسالة — لن تتغير كلمة مرورك.",
         )
     return (
-        "Mayos Engine password reset",
-        "A password reset was requested for your Mayos training ledger.\n\n"
-        "Open this link to set a new password. If the MAYOS app is installed it "
+        "Myos Engine password reset",
+        "A password reset was requested for your Myos training ledger.\n\n"
+        "Open this link to set a new password. If the MYOS app is installed it "
         "opens the app; otherwise it opens a secure web page.\n\n"
         f"{reset_link}\n\nThis link is single-use and expires in {minutes} minutes.\n\n"
         "If you did not request this, ignore this message — your password is unchanged.",
@@ -415,18 +415,18 @@ def send_coach_invite_email(
 def _coach_invite_copy(code: str, display_language: str) -> tuple[str, str]:
     if display_language == "ar":
         return (
-            "دعوة تفعيل دور المدرب في MAYOS",
-            "تمت دعوتك لتفعيل دور المدرب في حسابك على MAYOS.\n\n"
+            "دعوة تفعيل دور المدرب في MYOS",
+            "تمت دعوتك لتفعيل دور المدرب في حسابك على MYOS.\n\n"
             f"رمز دعوة تفعيل دور المدرب:\n{code}\n\n"
-            "سجّل الدخول إلى تطبيق MAYOS، ثم افتح الإعدادات واختر «كن مدربًا» وأدخل هذا الرمز. "
+            "سجّل الدخول إلى تطبيق MYOS، ثم افتح الإعدادات واختر «كن مدربًا» وأدخل هذا الرمز. "
             "يفعّل الرمز وضع المدرب في حسابك، ولا ينشئ علاقة تدريب. يمكن استخدامه مرة واحدة.\n\n"
             "إذا لم تكن تتوقع هذه الدعوة، فتجاهل هذه الرسالة."
         )
     return (
-        "Your MAYOS Coach invite",
-        "You have been invited to enable Coach capability on your MAYOS account.\n\n"
+        "Your MYOS Coach invite",
+        "You have been invited to enable Coach capability on your MYOS account.\n\n"
         f"Coach invite code:\n{code}\n\n"
-        "Sign in to the MAYOS app, open Settings, choose “Become a coach”, and enter this code. "
+        "Sign in to the MYOS app, open Settings, choose “Become a coach”, and enter this code. "
         "It enables Coach mode on your account and does not create an Assignment. "
         "This code can be used once.\n\n"
         "If you were not expecting this invite, ignore this email."
@@ -476,16 +476,16 @@ def _recovery_email_changed_notice_copy(
     masked_new_email: str, display_language: str
 ) -> tuple[str, str]:
     if display_language == "ar":
-        subject = "تم تغيير البريد الإلكتروني للاسترداد في MAYOS"
+        subject = "تم تغيير البريد الإلكتروني للاسترداد في MYOS"
         body = (
-            "تم تغيير البريد الإلكتروني للاسترداد لحساب MAYOS الخاص بك.\n\n"
+            "تم تغيير البريد الإلكتروني للاسترداد لحساب MYOS الخاص بك.\n\n"
             f"العنوان الجديد: \u2066{masked_new_email}\u2069\n\n"
             "إذا لم تطلب هذا التغيير، فأمّن حسابك بتغيير كلمة المرور."
         )
     else:
-        subject = "Your MAYOS recovery email was changed"
+        subject = "Your MYOS recovery email was changed"
         body = (
-            "The recovery email for your MAYOS account was changed.\n\n"
+            "The recovery email for your MYOS account was changed.\n\n"
             f"New address: {masked_new_email}\n\n"
             "If you did not make this change, secure your account by changing your password."
         )
@@ -496,16 +496,16 @@ def _recovery_email_verification_copy(
     code: str, display_language: str, minutes: int
 ) -> tuple[str, str]:
     if display_language == "ar":
-        subject = "رمز تأكيد البريد الإلكتروني للاسترداد في MAYOS"
+        subject = "رمز تأكيد البريد الإلكتروني للاسترداد في MYOS"
         body = (
-            "استخدم الرمز التالي لتأكيد بريدك الإلكتروني للاسترداد في MAYOS:\n\n"
+            "استخدم الرمز التالي لتأكيد بريدك الإلكتروني للاسترداد في MYOS:\n\n"
             f"{code}\n\n"
             f"هذا الرمز صالح لمدة {minutes} دقائق ويُستخدم مرة واحدة. إذا لم تطلبه، فتجاهل هذه الرسالة."
         )
     else:
-        subject = "Verify your MAYOS recovery email"
+        subject = "Verify your MYOS recovery email"
         body = (
-            "Enter this code in MAYOS to verify your recovery email:\n\n"
+            "Enter this code in MYOS to verify your recovery email:\n\n"
             f"{code}\n\n"
             f"This single-use code expires in {minutes} minutes. If you did not request it, ignore this email."
         )
@@ -530,15 +530,15 @@ def _no_account_notice_copy(
 ) -> tuple[str, str]:
     if display_language == "ar":
         return (
-            "لا يوجد حساب في MAYOS يستخدم هذا البريد الإلكتروني",
-            "لا يوجد حساب في MAYOS يستخدم هذا البريد الإلكتروني.\n\n"
-            f"يمكنك إنشاء حساب في MAYOS من هنا: {signup_link}.\n\n"
+            "لا يوجد حساب في MYOS يستخدم هذا البريد الإلكتروني",
+            "لا يوجد حساب في MYOS يستخدم هذا البريد الإلكتروني.\n\n"
+            f"يمكنك إنشاء حساب في MYOS من هنا: {signup_link}.\n\n"
             "إذا كان لديك حساب بالفعل، فجرّب عنوان البريد الإلكتروني الذي استخدمته عند التسجيل، "
             "أو سجّل الدخول وأضف بريدًا إلكترونيًا للاسترداد من الإعدادات.",
         )
     return (
-        "No MAYOS account uses this email",
-        "No MAYOS account uses this email.\n\n"
+        "No MYOS account uses this email",
+        "No MYOS account uses this email.\n\n"
         f"You can sign up at {signup_link}.\n\n"
         "If you already have an account, try the email address you registered "
         "with, or log in and add a recovery email in Settings.",
@@ -565,12 +565,12 @@ def send_account_deleted_email(
 def _account_deleted_copy(username: str, display_language: str) -> tuple[str, str]:
     if display_language == "ar":
         return (
-            "تم حذف حساب MAYOS الخاص بك بناءً على طلبك",
+            "تم حذف حساب MYOS الخاص بك بناءً على طلبك",
             f"مرحبًا {username}،\n\n"
-            "تم حذف حساب MAYOS الخاص بك بناءً على طلبك. هذا الحذف نهائي.\n",
+            "تم حذف حساب MYOS الخاص بك بناءً على طلبك. هذا الحذف نهائي.\n",
         )
     return (
-        "Your MAYOS account was deleted at your request",
+        "Your MYOS account was deleted at your request",
         f"Hi {username},\n\n"
-        "Your MAYOS account was deleted at your request. This deletion is final.\n",
+        "Your MYOS account was deleted at your request. This deletion is final.\n",
     )

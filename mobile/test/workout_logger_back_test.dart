@@ -1,24 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/active_workout.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/baselines.dart';
-import 'package:mayos_mobile/src/core/chat_storage.dart';
-import 'package:mayos_mobile/src/core/device_timezone.dart';
-import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/workout_storage.dart';
-import 'package:mayos_mobile/src/features/player/dashboard/dashboard_tab.dart';
-import 'package:mayos_mobile/src/features/player/program/program_tab.dart';
-import 'package:mayos_mobile/src/features/player/shell/player_shell.dart';
-import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.dart';
-import 'package:mayos_mobile/src/providers.dart';
-import 'package:mayos_mobile/src/router.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/active_workout.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/baselines.dart';
+import 'package:myos_mobile/src/core/chat_storage.dart';
+import 'package:myos_mobile/src/core/device_timezone.dart';
+import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/workout_storage.dart';
+import 'package:myos_mobile/src/features/player/dashboard/dashboard_tab.dart';
+import 'package:myos_mobile/src/features/player/program/program_tab.dart';
+import 'package:myos_mobile/src/features/player/shell/player_shell.dart';
+import 'package:myos_mobile/src/features/player/workout/workout_logger_screen.dart';
+import 'package:myos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/router.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 const String _account = 'account-alice';
 
@@ -35,8 +35,8 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   }
 }
 
-FakeMayosApi _signedInFake() {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _signedInFake() {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -76,7 +76,7 @@ ActiveWorkout _storedWorkout() => ActiveWorkout(
 /// logger can be entered from Home, Program, or the Resume prompt (#156).
 Future<ProviderContainer> _pumpApp(
   WidgetTester tester,
-  FakeMayosApi fake, {
+  FakeMyosApi fake, {
   InMemoryActiveWorkoutStore? store,
 }) async {
   tester.view.physicalSize = const Size(1080, 2400);
@@ -116,12 +116,12 @@ Future<ProviderContainer> _pumpApp(
           return client;
         }),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(tester, find.text('Home'));
   await tester.pumpAndSettle();
-  return ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+  return ProviderScope.containerOf(tester.element(find.byType(MyosApp)));
 }
 
 /// The logger entry point inside the shell tab [tabIndex] — scoped to the tab

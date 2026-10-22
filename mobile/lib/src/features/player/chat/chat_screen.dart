@@ -14,14 +14,14 @@ import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/chat_storage.dart';
 import '../../../core/models.dart';
-import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/theme/mayos_theme.dart';
-import '../../../core/theme/mayos_typography.dart';
-import '../../../core/ui/mayos_button.dart';
-import '../../../core/ui/mayos_card.dart';
-import '../../../core/ui/mayos_markdown.dart';
-import '../../../core/ui/mayos_scaffold.dart';
-import '../../../core/ui/mayos_text_field.dart';
+import '../../../core/theme/myos_spacing.dart';
+import '../../../core/theme/myos_theme.dart';
+import '../../../core/theme/myos_typography.dart';
+import '../../../core/ui/myos_button.dart';
+import '../../../core/ui/myos_card.dart';
+import '../../../core/ui/myos_markdown.dart';
+import '../../../core/ui/myos_scaffold.dart';
+import '../../../core/ui/myos_text_field.dart';
 import '../../../core/ui/first_strong_direction.dart';
 import '../../../core/workout_storage.dart';
 import '../../../providers.dart';
@@ -33,7 +33,7 @@ import '../assignment/program_request_dialog.dart';
 /// connectivity: the composer disables with an explanatory message once a load
 /// or send fails with a network error, and sends are never queued. The
 /// last-loaded history is cached per account so it stays readable offline.
-MayosCopy _chatCopy(BuildContext context) => MayosCopy(
+MyosCopy _chatCopy(BuildContext context) => MyosCopy(
       ProviderScope.containerOf(context).read(displayLanguageProvider),
     );
 
@@ -245,7 +245,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               finished = true;
               _refreshAllowanceAfterIncompleteTurn();
               final String message =
-                  MayosCopy(ref.read(displayLanguageProvider)).aiAnswerTruncated;
+                  MyosCopy(ref.read(displayLanguageProvider)).aiAnswerTruncated;
               await _failTurn(content, message);
               return;
             }
@@ -297,7 +297,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             );
             await _failTurn(
               content,
-              MayosCopy(ref.read(displayLanguageProvider))
+              MyosCopy(ref.read(displayLanguageProvider))
                   .failureMessage(failure),
               failure: failure,
             );
@@ -315,7 +315,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           : apiFailureMessage(error);
       await _failTurn(
         content,
-        MayosCopy(ref.read(displayLanguageProvider)).failureMessage(failure),
+        MyosCopy(ref.read(displayLanguageProvider)).failureMessage(failure),
         offline: offline,
         failure: failure,
       );
@@ -328,7 +328,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
       await _failTurn(
         content,
-        MayosCopy(ref.read(displayLanguageProvider)).failureMessage(failure),
+        MyosCopy(ref.read(displayLanguageProvider)).failureMessage(failure),
         failure: failure,
       );
       return;
@@ -340,7 +340,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
       await _failTurn(
         content,
-        MayosCopy(ref.read(displayLanguageProvider)).failureMessage(failure),
+        MyosCopy(ref.read(displayLanguageProvider)).failureMessage(failure),
         failure: failure,
       );
     }
@@ -404,7 +404,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _confirmClear() async {
-    final MayosCopy copy = MayosCopy(ref.read(displayLanguageProvider));
+    final MyosCopy copy = MyosCopy(ref.read(displayLanguageProvider));
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
@@ -456,8 +456,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     ref.watch(authControllerProvider);
-    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
-    return MayosScaffold(
+    final MyosCopy copy = MyosCopy(ref.watch(displayLanguageProvider));
+    return MyosScaffold(
       title: copy.assistant,
       showBack: true,
       actions: <Widget>[
@@ -490,11 +490,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _disclosureCard() {
-    final MayosCopy copy = MayosCopy(ref.read(displayLanguageProvider));
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosCopy copy = MyosCopy(ref.read(displayLanguageProvider));
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Padding(
-      padding: const EdgeInsets.all(MayosSpacing.md),
-      child: MayosCard(
+      padding: const EdgeInsets.all(MyosSpacing.md),
+      child: MyosCard(
         key: const Key('chat_disclosure'),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -502,19 +502,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             Row(
               children: <Widget>[
                 Icon(Icons.privacy_tip_outlined, size: 18, color: c.accent),
-                const SizedBox(width: MayosSpacing.xs),
+                const SizedBox(width: MyosSpacing.xs),
                 Expanded(
                   child: Text(copy.beforeYouStart,
                       style: Theme.of(context).textTheme.titleMedium),
                 ),
               ],
             ),
-            const SizedBox(height: MayosSpacing.xs),
+            const SizedBox(height: MyosSpacing.xs),
             Text(displayCopyOf(context).hostedChatDisclosure),
-            const SizedBox(height: MayosSpacing.sm),
+            const SizedBox(height: MyosSpacing.sm),
             Align(
               alignment: AlignmentDirectional.centerEnd,
-              child: MayosButton(
+              child: MyosButton(
                 key: const Key('chat_disclosure_accept'),
                 label: copy.understood,
                 expand: false,
@@ -582,7 +582,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           )
         else
           SliverPadding(
-            padding: const EdgeInsets.all(MayosSpacing.md),
+            padding: const EdgeInsets.all(MyosSpacing.md),
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
                 _buildMessageItem,
@@ -597,7 +597,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget _emptyState() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(MayosSpacing.xl),
+        padding: const EdgeInsets.all(MyosSpacing.xl),
         child: Text(
           _disclosureAccepted
               ? displayCopyOf(context).askAssistantAboutTraining
@@ -611,7 +611,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget _buildMessageItem(BuildContext context, int index) {
     if (index >= _messages.length) {
       final String text = _streamingText ?? '';
-      final MayosThemeExtension colors = MayosTheme.of(context);
+      final MyosThemeExtension colors = MyosTheme.of(context);
       return _bubble(
         context,
         role: 'assistant',
@@ -621,16 +621,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             if (text.isEmpty)
               const _TypingIndicator()
             else
-              MayosMarkdown(
+              MyosMarkdown(
                 key: ValueKey<String>(_streamingMessageId!),
                 source: text,
               ),
             if (_toolStatus != null) ...<Widget>[
-              const SizedBox(height: MayosSpacing.xxs),
+              const SizedBox(height: MyosSpacing.xxs),
               Text(
                 _toolStatus!,
                 key: const Key('chat_tool_status'),
-                style: MayosTypography.of(context)
+                style: MyosTypography.of(context)
                     .caption
                     .copyWith(color: colors.textSecondary),
               ),
@@ -660,17 +660,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        MayosMarkdown(
+        MyosMarkdown(
           key: ValueKey<String>(message.id),
           source: message.content,
         ),
         if (suggestion != null) ...<Widget>[
-          const SizedBox(height: MayosSpacing.xs),
-          MayosButton(
+          const SizedBox(height: MyosSpacing.xs),
+          MyosButton(
             key: const Key('chat_request_from_coach'),
             label: _chatCopy(context).requestFromCoach,
             icon: Icons.edit_note,
-            variant: MayosButtonVariant.tertiary,
+            variant: MyosButtonVariant.tertiary,
             expand: false,
             onPressed: () => _openRequestSuggestion(suggestion),
           ),
@@ -703,15 +703,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget _bubble(BuildContext context,
       {required String role, required Widget child}) {
     final bool user = role == 'user';
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Align(
       alignment: user
           ? AlignmentDirectional.centerEnd
           : AlignmentDirectional.centerStart,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: MayosSpacing.xxs),
+        margin: const EdgeInsets.symmetric(vertical: MyosSpacing.xxs),
         padding: const EdgeInsets.symmetric(
-            horizontal: MayosSpacing.sm, vertical: MayosSpacing.xs),
+            horizontal: MyosSpacing.sm, vertical: MyosSpacing.xs),
         constraints:
             BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
         decoration: BoxDecoration(
@@ -728,7 +728,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Widget _composer() {
-    final MayosCopy copy = MayosCopy(ref.read(displayLanguageProvider));
+    final MyosCopy copy = MyosCopy(ref.read(displayLanguageProvider));
     final int typedCharacters = _controller.text.runes.length;
     final String? helper = _offline && !_disclosureAccepted
         ? null
@@ -744,18 +744,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     ];
     final String? helperText =
         helperLines.isEmpty ? null : helperLines.join('\n');
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return SafeArea(
       key: const Key('chat_composer_bar'),
       top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(MayosSpacing.sm, MayosSpacing.xxs,
-            MayosSpacing.sm, MayosSpacing.xs),
+        padding: const EdgeInsets.fromLTRB(MyosSpacing.sm, MyosSpacing.xxs,
+            MyosSpacing.sm, MyosSpacing.xs),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: <Widget>[
             Expanded(
-              child: MayosTextField(
+              child: MyosTextField(
                 fieldKey: const Key('chat_composer'),
                 controller: _controller,
                 enabled: _composerEnabled,
@@ -774,7 +774,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 onSubmitted: (_) => _send(),
               ),
             ),
-            const SizedBox(width: MayosSpacing.xs),
+            const SizedBox(width: MyosSpacing.xs),
             Semantics(
               label: copy.send,
               button: true,
@@ -787,7 +787,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   disabledBackgroundColor: c.surfaceSunken,
                   disabledForegroundColor: c.textDisabled,
                   minimumSize:
-                      const Size(kMayosMinTapTarget, kMayosMinTapTarget),
+                      const Size(kMyosMinTapTarget, kMyosMinTapTarget),
                 ),
                 onPressed: _composerEnabled ? _send : null,
                 icon: _sending
@@ -816,19 +816,19 @@ class _AllowanceBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     return Padding(
-      padding: const EdgeInsets.all(MayosSpacing.md),
-      child: MayosCard(
+      padding: const EdgeInsets.all(MyosSpacing.md),
+      child: MyosCard(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Icon(Icons.info_outline, size: 20, color: colors.accent),
-            const SizedBox(width: MayosSpacing.xs),
+            const SizedBox(width: MyosSpacing.xs),
             Expanded(
               child: Text(
                 message,
-                style: MayosTypography.of(context).body.copyWith(
+                style: MyosTypography.of(context).body.copyWith(
                       color: colors.textPrimary,
                     ),
               ),
@@ -847,25 +847,25 @@ class _DebriefCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: MayosSpacing.xs),
-      child: MayosCard(
+      padding: const EdgeInsets.symmetric(vertical: MyosSpacing.xs),
+      child: MyosCard(
         key: const Key('chat_debrief'),
         color: c.accentSubtle,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Icon(Icons.assignment_turned_in_outlined, color: c.accent),
-            const SizedBox(width: MayosSpacing.sm),
+            const SizedBox(width: MyosSpacing.sm),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(_chatCopy(context).sessionDebrief,
                       style: Theme.of(context).textTheme.titleSmall),
-                  const SizedBox(height: MayosSpacing.xxs),
-                  MayosMarkdown(source: message.content),
+                  const SizedBox(height: MyosSpacing.xxs),
+                  MyosMarkdown(source: message.content),
                 ],
               ),
             ),
@@ -891,23 +891,23 @@ class _OfflineChatBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Container(
       key: const Key('chat_offline_banner'),
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(
-          MayosSpacing.md, MayosSpacing.sm, MayosSpacing.md, 0),
+          MyosSpacing.md, MyosSpacing.sm, MyosSpacing.md, 0),
       padding: const EdgeInsets.symmetric(
-          horizontal: MayosSpacing.md, vertical: MayosSpacing.xs),
+          horizontal: MyosSpacing.md, vertical: MyosSpacing.xs),
       decoration: BoxDecoration(
         color: c.secondarySurface,
-        borderRadius: MayosRadii.mediumRadius,
+        borderRadius: MyosRadii.mediumRadius,
         border: Border.all(color: c.border),
       ),
       child: Row(
         children: <Widget>[
           Icon(Icons.cloud_off, size: 18, color: c.textSecondary),
-          const SizedBox(width: MayosSpacing.xs),
+          const SizedBox(width: MyosSpacing.xs),
           Expanded(
             child: Text(
               _chatCopy(context).offlineChatSaved,
@@ -917,10 +917,10 @@ class _OfflineChatBanner extends StatelessWidget {
                   ?.copyWith(color: c.textSecondary),
             ),
           ),
-          MayosButton(
+          MyosButton(
             key: const Key('chat_offline_retry'),
             label: _chatCopy(context).retry,
-            variant: MayosButtonVariant.tertiary,
+            variant: MyosButtonVariant.tertiary,
             expand: false,
             onPressed: onRetry,
           ),
@@ -938,16 +938,16 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(
-          MayosSpacing.md, MayosSpacing.sm, MayosSpacing.md, 0),
+          MyosSpacing.md, MyosSpacing.sm, MyosSpacing.md, 0),
       padding: const EdgeInsets.symmetric(
-          horizontal: MayosSpacing.md, vertical: MayosSpacing.xs),
+          horizontal: MyosSpacing.md, vertical: MyosSpacing.xs),
       decoration: BoxDecoration(
         color: c.secondarySurface,
-        borderRadius: MayosRadii.mediumRadius,
+        borderRadius: MyosRadii.mediumRadius,
         border: Border.all(color: c.danger),
       ),
       child: Row(
@@ -965,10 +965,10 @@ class _ErrorBanner extends StatelessWidget {
             ),
           ),
           if (onRetry != null)
-            MayosButton(
+            MyosButton(
               key: const Key('chat_retry'),
               label: _chatCopy(context).retry,
-              variant: MayosButtonVariant.tertiary,
+              variant: MyosButtonVariant.tertiary,
               expand: false,
               onPressed: onRetry,
             ),

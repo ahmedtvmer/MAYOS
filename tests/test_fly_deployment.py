@@ -233,7 +233,7 @@ def test_build_context_keeps_the_owner_exclusions():
 
     assert not _in_build_context("docs/DEPLOYMENT.md", rules)
     assert _in_build_context("docs/PRIVACY_POLICY.md", rules)
-    assert not _in_build_context("plans/MAYOS_LOGGER_Redesign.md", rules)
+    assert not _in_build_context("plans/MYOS_LOGGER_Redesign.md", rules)
     assert not _in_build_context(".claude/worktrees/issue-161/app.py", rules)
     assert not _in_build_context(".wrangler/state.json", rules)
     assert not _in_build_context("mobile/lib/main.dart", rules)

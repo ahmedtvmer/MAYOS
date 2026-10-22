@@ -8,9 +8,9 @@ import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
-import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/ui/mayos_button.dart';
-import '../../../core/ui/mayos_text_field.dart';
+import '../../../core/theme/myos_spacing.dart';
+import '../../../core/ui/myos_button.dart';
+import '../../../core/ui/myos_text_field.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import 'auth_widgets.dart';
@@ -83,7 +83,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
     final NewPasswordValidation? passwordError =
         validateNewPassword(password, _confirm.text);
     if (passwordError != null) {
-      final MayosCopy copy = MayosCopy(ref.read(displayLanguageProvider));
+      final MyosCopy copy = MyosCopy(ref.read(displayLanguageProvider));
       setState(
           () => _error = newPasswordValidationMessage(passwordError, copy));
       return;
@@ -110,7 +110,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
+    final MyosCopy copy = MyosCopy(ref.watch(displayLanguageProvider));
     return AuthScaffold(
       title: copy.resetPassword,
       lead: copy.resetPasswordLead,
@@ -118,7 +118,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
       message: _apiFailure != null
           ? AuthInlineNotice(message: copy.failureMessage(_apiFailure!))
           : (_error == null ? null : AuthInlineNotice(message: _error!)),
-      primary: MayosButton(
+      primary: MyosButton(
         key: const Key('reset_submit'),
         label: copy.setNewPassword,
         loading: _busy,
@@ -131,13 +131,13 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
         ),
       ],
       children: <Widget>[
-        MayosTextField(
+        MyosTextField(
           fieldKey: const Key('reset_token'),
           controller: _token,
           label: copy.resetCode,
           readOnly: true,
         ),
-        const SizedBox(height: MayosSpacing.md),
+        const SizedBox(height: MyosSpacing.md),
         AuthPasswordField(
           fieldKey: const Key('reset_password'),
           toggleKey: const Key('reset_password_toggle'),
@@ -147,7 +147,7 @@ class _ResetPasswordScreenState extends ConsumerState<ResetPasswordScreen> {
           textInputAction: TextInputAction.next,
           autofillHints: const <String>[AutofillHints.newPassword],
         ),
-        const SizedBox(height: MayosSpacing.md),
+        const SizedBox(height: MyosSpacing.md),
         AuthPasswordField(
           fieldKey: const Key('reset_confirm'),
           toggleKey: const Key('reset_confirm_toggle'),

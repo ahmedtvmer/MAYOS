@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/features/player/auth/auth_controller.dart';
-import 'package:mayos_mobile/src/router.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/features/player/auth/auth_controller.dart';
+import 'package:myos_mobile/src/router.dart';
 
 Account _account({required bool coach}) => Account(
       accountId: 'account-alice',

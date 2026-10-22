@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_card.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_table_frame.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_app_header.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_markdown.dart';
-import 'package:mayos_mobile/src/features/coach/coach_history_segment.dart';
-import 'package:mayos_mobile/src/features/coach/coach_player_history_screen.dart';
+import 'package:myos_mobile/src/core/display_language/coach_copy.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/theme/myos_theme.dart';
+import 'package:myos_mobile/src/core/ui/myos_card.dart';
+import 'package:myos_mobile/src/core/ui/myos_table_frame.dart';
+import 'package:myos_mobile/src/core/ui/myos_app_header.dart';
+import 'package:myos_mobile/src/core/ui/myos_markdown.dart';
+import 'package:myos_mobile/src/features/coach/coach_history_segment.dart';
+import 'package:myos_mobile/src/features/coach/coach_player_history_screen.dart';
 
 import 'support/auth_harness.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 Future<void> _pumpUntilFound(
   WidgetTester tester,
@@ -31,8 +31,8 @@ Future<void> _pumpUntilFound(
   }
 }
 
-FakeMayosApi _coachFake({bool assistant = false}) {
-  final FakeMayosApi fake = FakeMayosApi()
+FakeMyosApi _coachFake({bool assistant = false}) {
+  final FakeMyosApi fake = FakeMyosApi()
     ..issuedToken = 'token-arabic-coach'
     ..currentUsername = 'coach_ar'
     ..tokenValid = true
@@ -79,7 +79,7 @@ FakeMayosApi _coachFake({bool assistant = false}) {
 
 Future<void> _pumpApp(
   WidgetTester tester,
-  FakeMayosApi fake, {
+  FakeMyosApi fake, {
   Size logicalSize = const Size(540, 1200),
   double devicePixelRatio = 2,
 }) async {
@@ -187,7 +187,7 @@ Future<void> _pumpArabicHistorySegment(WidgetTester tester) async {
       locale: const Locale('ar'),
       supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
-      theme: MayosTheme.lightForLanguage('ar'),
+      theme: MyosTheme.lightForLanguage('ar'),
       home: MediaQuery(
         data: const MediaQueryData(size: Size(1440, 2400)),
         child: SingleChildScrollView(child: segment),
@@ -305,7 +305,7 @@ void main() {
   testWidgets(
       'issue #390: Arabic roster fits at 360dp with long player details',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.assignments[0]
       ..['player_username'] = 'player_ar_with_a_very_long_username'
       ..['last_workout_on'] = '2026-10-07'
@@ -350,7 +350,7 @@ void main() {
         .subtract(const Duration(days: 1))
         .toIso8601String()
         .substring(0, 10);
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..assignments[0]['next_follow_up_on'] = yesterday
       ..assignments.add(<String, dynamic>{
         'assignment_id': 'assignment-ar-today',
@@ -382,7 +382,7 @@ void main() {
       'issue #390: Arabic desktop Player page renders with roster '
       'and no overflow',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.assignments[0]
       ..['player_username'] = 'player_ar_with_a_very_long_username'
       ..['last_workout_on'] = '2026-10-07'
@@ -543,7 +543,7 @@ void main() {
 
   testWidgets('Arabic History has no overflow at 360dp through Exercises',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..coachPlayerRecords = <Map<String, dynamic>>[
         <String, dynamic>{
           'exercise_id': 'front_squat',
@@ -630,7 +630,7 @@ void main() {
         '- English list item مع 5 مجموعات\n\n'
         '[المصدر][ref]\n\n'
         '[ref]: https://example.com/source';
-    final FakeMayosApi fake = _coachFake(assistant: true)
+    final FakeMyosApi fake = _coachFake(assistant: true)
       ..coachAssistantAnswer = reply;
     await _pumpApp(tester, fake);
 
@@ -646,7 +646,7 @@ void main() {
     final Finder assistantTitle = find.descendant(
       of: find.byWidgetPredicate(
         (Widget widget) =>
-            widget is MayosAppHeader && widget.title == 'المساعد',
+            widget is MyosAppHeader && widget.title == 'المساعد',
       ),
       matching: find.text('المساعد'),
     );
@@ -667,7 +667,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const Key('coach_assistant_send')));
     final Finder replyMarkdown = find.byWidgetPredicate(
-      (Widget widget) => widget is MayosMarkdown && widget.source == reply,
+      (Widget widget) => widget is MyosMarkdown && widget.source == reply,
     );
     final Finder referenceLink = find.descendant(
       of: replyMarkdown,
@@ -740,7 +740,7 @@ void main() {
 
   testWidgets('Arabic Coach program localizes exercise metadata and action',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.coachActiveProgram = <String, dynamic>{
       'has_draft': false,
       'program': <String, dynamic>{
@@ -812,7 +812,7 @@ void main() {
     expect(find.text('الحركة: ثني الكتف'), findsOneWidget);
     final Finder cableCard = find.ancestor(
       of: find.text('Cable Row').first,
-      matching: find.byType(MayosCard),
+      matching: find.byType(MyosCard),
     ).first;
     expect(
       find.descendant(of: cableCard, matching: find.text('الحركة: —')),
@@ -833,7 +833,7 @@ void main() {
     await _pumpUntilFound(tester, find.text('Press'));
     final Finder cableRow = find.ancestor(
       of: find.text('Cable Row').first,
-      matching: find.byType(MayosTableRow),
+      matching: find.byType(MyosTableRow),
     ).first;
     expect(
       find.descendant(

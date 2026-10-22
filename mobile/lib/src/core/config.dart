@@ -86,7 +86,7 @@ String? mediaUrlFor(String? imagePath) {
 /// Build-time gate for ExerciseDB/Gym visual exercise media (#53).
 ///
 /// ON by default: the owner decided on 2026-09-29 to show the catalog's
-/// images and GIFs (served by the API's public `/media` route) while MAYOS's
+/// images and GIFs (served by the API's public `/media` route) while MYOS's
 /// own licence from Gym visual is pending, subject to Gym visual's terms —
 /// every use carries the credit below and media is never shown larger than
 /// its native 180×180. `docs/design-review/53/MEDIA-PROVENANCE.md` records the
@@ -96,7 +96,7 @@ String? mediaUrlFor(String? imagePath) {
 /// no `Image` widget is built for catalog media anywhere — the logger
 /// thumbnail falls back to its icon and the exercise-detail hero is the
 /// typographic/muscle-group header.
-const bool mayosExerciseMediaEnabled =
+const bool myosExerciseMediaEnabled =
     String.fromEnvironment('MAYOS_EXERCISE_MEDIA') != 'false';
 
 /// The credit Gym visual's terms require on every use of its media.

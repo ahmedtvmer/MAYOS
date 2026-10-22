@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/models.dart';
 
 import 'support/coach_layout_harness.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 void main() {
   testWidgets('roster card opens Player and restores scroll after back',
@@ -28,7 +28,7 @@ void main() {
     ];
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) => fake.assignments.addAll(assignments),
+      configureFake: (FakeMyosApi fake) => fake.assignments.addAll(assignments),
       ready: (_) => find.byKey(const Key('coach_roster_list_screen')),
       pageScrollable: (_) => find.descendant(
         of: find.byKey(const Key('coach_roster_list_screen')),
@@ -147,7 +147,7 @@ void main() {
     ));
     await pumpCoachDesktopLayout(
       tester,
-      configureFake: (FakeMayosApi fake) => fake.assignments.addAll(
+      configureFake: (FakeMyosApi fake) => fake.assignments.addAll(
         <Map<String, dynamic>>[
           <String, dynamic>{
           'assignment_id': 'assignment-desktop',
@@ -191,7 +191,7 @@ void main() {
 
   testWidgets('resume on phone Player route refreshes mounted roster once',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = createCoachFake()
+    final FakeMyosApi fake = createCoachFake()
       ..assignments.add(<String, dynamic>{
         'assignment_id': 'assignment-resume',
         'player_username': 'resume_player',

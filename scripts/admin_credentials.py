@@ -20,8 +20,8 @@ def generate_credentials(username: str, password: str) -> tuple[str, str, str]:
         raise ValueError("Owner password must be 8 to 72 UTF-8 bytes.")
     password_hash = bcrypt.hashpw(password_bytes, bcrypt.gensalt()).decode("ascii")
     secret = base64.b32encode(secrets.token_bytes(20)).decode("ascii").rstrip("=")
-    label = quote(f"MAYOS:{username}", safe="")
-    query = urlencode({"secret": secret, "issuer": "MAYOS", "algorithm": "SHA1", "digits": 6, "period": 30})
+    label = quote(f"MYOS:{username}", safe="")
+    query = urlencode({"secret": secret, "issuer": "MYOS", "algorithm": "SHA1", "digits": 6, "period": 30})
     return password_hash, secret, f"otpauth://totp/{label}?{query}"
 
 

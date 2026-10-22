@@ -5,10 +5,10 @@ import '../../../core/api_client.dart';
 import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/copy_context.dart';
-import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/theme/mayos_theme.dart';
-import '../../../core/ui/mayos_button.dart';
-import '../../../core/ui/mayos_text_field.dart';
+import '../../../core/theme/myos_spacing.dart';
+import '../../../core/theme/myos_theme.dart';
+import '../../../core/ui/myos_button.dart';
+import '../../../core/ui/myos_text_field.dart';
 import '../../../providers.dart';
 
 /// Shared account-bound Coach invite redemption form for onboarding and Settings.
@@ -70,7 +70,7 @@ class _CoachCodeFormState extends ConsumerState<CoachCodeForm> {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -81,8 +81,8 @@ class _CoachCodeFormState extends ConsumerState<CoachCodeForm> {
               .bodyMedium
               ?.copyWith(color: c.textSecondary),
         ),
-        const SizedBox(height: MayosSpacing.md),
-        MayosTextField(
+        const SizedBox(height: MyosSpacing.md),
+        MyosTextField(
           fieldKey: widget.fieldKey,
           controller: _code,
           autocorrect: false,
@@ -93,8 +93,8 @@ class _CoachCodeFormState extends ConsumerState<CoachCodeForm> {
               ? _error
               : displayCopyOf(context).failureMessage(_failure!),
         ),
-        const SizedBox(height: MayosSpacing.lg),
-        MayosButton(
+        const SizedBox(height: MyosSpacing.lg),
+        MyosButton(
           key: widget.submitButtonKey,
           label: displayCopyOf(context).enableCoaching,
           loading: _submitting,

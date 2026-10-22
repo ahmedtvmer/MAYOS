@@ -168,7 +168,7 @@ def run_tests(csv_path: Path) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Initialize/seed the MAYOS catalog on the configured data root.")
+    parser = argparse.ArgumentParser(description="Initialize/seed the MYOS catalog on the configured data root.")
     parser.add_argument(
         "--seed-only",
         action="store_true",

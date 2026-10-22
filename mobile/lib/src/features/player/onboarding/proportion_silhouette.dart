@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/mayos_theme.dart';
+import '../../../core/theme/myos_theme.dart';
 
 /// The three relative leg/torso proportions the intake supports. Only the hip
 /// line differs; the standing height is constant across the three.
 enum ProportionShape { longLegs, balanced, longTorso }
 
-/// An original, theme-aware MAYOS proportion silhouette.
+/// An original, theme-aware MYOS proportion silhouette.
 ///
 /// A neutral anatomical-leaning figure: head, neck, shoulders tapering to the
 /// waist, hips, arms hanging to mid-thigh, and legs with a slight taper. The
@@ -25,7 +25,7 @@ class ProportionSilhouette extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final Color body = selected
         ? c.accent.withValues(alpha: c.isDark ? 0.95 : 0.92)
         : c.textMuted.withValues(alpha: c.isDark ? 0.6 : 0.5);

@@ -10,13 +10,13 @@ import '../../core/connectivity_message.dart';
 import '../../core/display_language/copy_context.dart';
 import '../../core/display_language/feature_copy_context.dart';
 import '../../core/models.dart';
-import '../../core/theme/mayos_spacing.dart';
-import '../../core/theme/mayos_theme.dart';
-import '../../core/theme/mayos_typography.dart';
-import '../../core/ui/mayos_markdown.dart';
-import '../../core/ui/mayos_card.dart';
-import '../../core/ui/mayos_scaffold.dart';
-import '../../core/ui/mayos_text_field.dart';
+import '../../core/theme/myos_spacing.dart';
+import '../../core/theme/myos_theme.dart';
+import '../../core/theme/myos_typography.dart';
+import '../../core/ui/myos_markdown.dart';
+import '../../core/ui/myos_card.dart';
+import '../../core/ui/myos_scaffold.dart';
+import '../../core/ui/myos_text_field.dart';
 import '../../core/ui/first_strong_direction.dart';
 import '../../providers.dart';
 import 'coach_assistant_state.dart';
@@ -232,14 +232,14 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
         transcript != null && transcript.assignmentId == _assignmentId
             ? transcript.turns
             : const <CoachAssistantTurn>[];
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final copy = coachCopyOf(context);
     final AiAllowance? allowance = ref
         .watch(authControllerProvider)
         .session
         ?.account
         .coachAiAllowance;
-    return MayosScaffold(
+    return MyosScaffold(
       title: copy.assistant,
       showBack: true,
       body: Column(
@@ -269,23 +269,23 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
     );
   }
 
-  Widget _emptyState(MayosThemeExtension c) {
+  Widget _emptyState(MyosThemeExtension c) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(MayosSpacing.xl),
+        padding: const EdgeInsets.all(MyosSpacing.xl),
         child: Text(
           coachCopyOf(context).assistantNoHistory(widget.entry.playerUsername),
           textAlign: TextAlign.center,
-          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
+          style: MyosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
         ),
       ),
     );
   }
 
-  Widget _transcript(List<CoachAssistantTurn> turns, MayosThemeExtension c) {
+  Widget _transcript(List<CoachAssistantTurn> turns, MyosThemeExtension c) {
     return ListView.builder(
       key: const Key('coach_assistant_transcript'),
-      padding: const EdgeInsets.all(MayosSpacing.md),
+      padding: const EdgeInsets.all(MyosSpacing.md),
       itemCount: turns.length + (_sending ? 1 : 0),
       itemBuilder: (BuildContext context, int index) {
         if (index >= turns.length) {
@@ -296,9 +296,9 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
           role: turn.role,
           child: turn.role == 'assistant'
               ? SelectionArea(
-                  child: MayosMarkdown(
+                  child: MyosMarkdown(
                     source: turn.content,
-                    bodyStyle: MayosTypography.of(context).bodySecondary,
+                    bodyStyle: MyosTypography.of(context).bodySecondary,
                     selectable: false,
                   ),
                 )
@@ -306,7 +306,7 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
                   text: turn.content,
                   child: Text(
                     turn.content,
-                    style: MayosTypography.of(context).bodySecondary.copyWith(
+                    style: MyosTypography.of(context).bodySecondary.copyWith(
                       color: c.onAccent,
                     ),
                   ),
@@ -316,7 +316,7 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
     );
   }
 
-  Widget _liveDraft(MayosThemeExtension c) {
+  Widget _liveDraft(MyosThemeExtension c) {
     if (_draftAnswer.isEmpty) {
       return Row(
         mainAxisSize: MainAxisSize.min,
@@ -326,9 +326,9 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
             width: 14,
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
-          const SizedBox(width: MayosSpacing.sm),
+          const SizedBox(width: MyosSpacing.sm),
           Text(coachCopyOf(context).assistantThinking,
-              style: MayosTypography.of(context).bodySecondary
+              style: MyosTypography.of(context).bodySecondary
                   .copyWith(color: c.textSecondary)),
         ],
       );
@@ -338,14 +338,14 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         SelectionArea(
-          child: MayosMarkdown(
+          child: MyosMarkdown(
             key: const Key('coach_assistant_live_draft'),
             source: _draftAnswer,
-            bodyStyle: MayosTypography.of(context).bodySecondary,
+            bodyStyle: MyosTypography.of(context).bodySecondary,
             selectable: false,
           ),
         ),
-        const SizedBox(height: MayosSpacing.xs),
+        const SizedBox(height: MyosSpacing.xs),
         const SizedBox(
           height: 14,
           width: 14,
@@ -357,20 +357,20 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
 
   Widget _bubble({required String role, required Widget child}) {
     final bool coach = role == 'coach';
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Align(
       alignment: coach
           ? AlignmentDirectional.centerEnd
           : AlignmentDirectional.centerStart,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: MayosSpacing.xxs),
+        margin: const EdgeInsets.symmetric(vertical: MyosSpacing.xxs),
         padding: const EdgeInsets.symmetric(
-            horizontal: MayosSpacing.sm, vertical: MayosSpacing.xs),
+            horizontal: MyosSpacing.sm, vertical: MyosSpacing.xs),
         constraints:
             BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
         decoration: BoxDecoration(
           color: coach ? c.accent : c.secondarySurface,
-          borderRadius: MayosRadii.mediumRadius,
+          borderRadius: MyosRadii.mediumRadius,
           border: Border.all(color: coach ? c.accent : c.border),
         ),
         child: KeyedSubtree(
@@ -383,25 +383,25 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
     );
   }
 
-  Widget _errorBanner(MayosThemeExtension c) {
+  Widget _errorBanner(MyosThemeExtension c) {
     final String message = displayCopyOf(context).failureMessage(_error!);
     return Container(
       key: const Key('coach_assistant_error'),
       width: double.infinity,
       margin: const EdgeInsetsDirectional.fromSTEB(
-          MayosSpacing.md, MayosSpacing.xs, MayosSpacing.md, 0),
+          MyosSpacing.md, MyosSpacing.xs, MyosSpacing.md, 0),
       padding: const EdgeInsets.symmetric(
-          horizontal: MayosSpacing.md, vertical: MayosSpacing.xs),
+          horizontal: MyosSpacing.md, vertical: MyosSpacing.xs),
       decoration: BoxDecoration(
         color: c.secondarySurface,
-        borderRadius: MayosRadii.mediumRadius,
+        borderRadius: MyosRadii.mediumRadius,
         border: Border.all(color: c.danger),
       ),
       child: FirstStrongDirection(
         text: message,
         child: Text(
           message,
-          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
+          style: MyosTypography.of(context).bodySecondary.copyWith(color: c.danger),
         ),
       ),
     );
@@ -412,30 +412,30 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
   /// The note spans many lines at narrow widths and grows as more data is
   /// disclosed (#315). The caller bounds it with a flexible scroll area so the
   /// transcript and composer stay usable on a short, keyboard-shrunk screen.
-  Widget _note(MayosThemeExtension c) {
+  Widget _note(MyosThemeExtension c) {
     return Padding(
       padding: const EdgeInsetsDirectional.fromSTEB(
-          MayosSpacing.md, MayosSpacing.xs, MayosSpacing.md, 0),
+          MyosSpacing.md, MyosSpacing.xs, MyosSpacing.md, 0),
       child: Text(
         coachCopyOf(context).assistantNote(widget.entry.playerUsername),
         textAlign: TextAlign.center,
-        style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
+        style: MyosTypography.of(context).caption.copyWith(color: c.textMuted),
       ),
     );
   }
 
-  Widget _composer(MayosThemeExtension c) {
+  Widget _composer(MyosThemeExtension c) {
     return SafeArea(
       key: const Key('coach_assistant_composer'),
       top: false,
       child: Padding(
         padding: const EdgeInsetsDirectional.fromSTEB(
-            MayosSpacing.sm, MayosSpacing.xs, MayosSpacing.sm, MayosSpacing.xs),
+            MyosSpacing.sm, MyosSpacing.xs, MyosSpacing.sm, MyosSpacing.xs),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: <Widget>[
             Expanded(
-              child: MayosTextField(
+              child: MyosTextField(
                 fieldKey: const Key('coach_assistant_question'),
                 controller: _question,
                 enabled: !_sending,
@@ -447,7 +447,7 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
                 onChanged: (_) => setState(() {}),
               ),
             ),
-            const SizedBox(width: MayosSpacing.xs),
+            const SizedBox(width: MyosSpacing.xs),
             Semantics(
               label: coachCopyOf(context).send,
               button: true,
@@ -460,7 +460,7 @@ class _CoachAssistantScreenState extends ConsumerState<CoachAssistantScreen> {
                   disabledBackgroundColor: c.surfaceSunken,
                   disabledForegroundColor: c.textDisabled,
                   minimumSize:
-                      const Size(kMayosMinTapTarget, kMayosMinTapTarget),
+                      const Size(kMyosMinTapTarget, kMyosMinTapTarget),
                 ),
                 onPressed:
                     _sending || _question.text.trim().isEmpty ? null : _send,
@@ -511,21 +511,21 @@ class CoachAllowanceNotice extends StatelessWidget {
       return const SizedBox.shrink();
     }
     final String message = _allowanceMessage(context);
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     return Padding(
       padding: const EdgeInsetsDirectional.fromSTEB(
-        MayosSpacing.md,
-        MayosSpacing.xs,
-        MayosSpacing.md,
+        MyosSpacing.md,
+        MyosSpacing.xs,
+        MyosSpacing.md,
         0,
       ),
-      child: MayosCard(
+      child: MyosCard(
         child: FirstStrongDirection(
           text: message,
           child: Text(
             message,
             key: const Key('coach_allowance_notice'),
-            style: MayosTypography.of(context)
+            style: MyosTypography.of(context)
                 .bodySecondary
                 .copyWith(color: colors.textPrimary),
           ),

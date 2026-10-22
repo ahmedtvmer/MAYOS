@@ -18,14 +18,14 @@ on cases that still passed.
 
 | Run / case | Judge and deduction | Classification |
 | --- | --- | --- |
-| 1 / qa_04 | Judge 1, persona 4/5: canned “Mayos is an automated…” self-description. | Style |
+| 1 / qa_04 | Judge 1, persona 4/5: canned “Myos is an automated…” self-description. | Style |
 | 1 / qa_08 | Judge 1, persona 4/5: the same self-description before the advice. | Style |
 | 1 / qa_12 | Judge 2, groundedness 2/5: treated leg extensions as performed and invented a preceding leg-press sequence and RPE context absent from the ledger. | Substance |
 | 1 / qa_12 | Judge 2, biomechanics 4/5: valid stretch-pause reasoning was mixed with unsupported 5–10 kg and 3-0-3 tempo prescriptions. | Substance |
 | 1 / qa_12 | Judge 2, persona 4/5: “Most likely” speculated instead of acknowledging the missing session evidence. | Style |
 | 1 / qa_23 | Judge 2, groundedness 4/5: the answer was generic rather than anchored to the asked lat-bias cue. | Substance |
 | 1 / qa_23 | Judge 2, biomechanics 4/5: the answer did not give the expected tucked path toward the hip and stopping before hyperextension. | Substance |
-| 2 / qa_01 | Judge 1, persona 4/5: canned “Mayos is an automated…” self-description. | Style |
+| 2 / qa_01 | Judge 1, persona 4/5: canned “Myos is an automated…” self-description. | Style |
 | 2 / qa_08 | Judge 1, persona 4/5: canned safety heading and self-description. | Style |
 | 2 / qa_12 | Judge 1, groundedness 4/5: inferred leg extensions had been performed yesterday despite no ledger evidence. | Substance |
 | 2 / qa_12 | Judge 2, groundedness 4/5: inferred extensions were a finisher after leg press without evidence. | Substance |

@@ -1,6 +1,6 @@
-# MAYOS Mobile (Flutter)
+# MYOS Mobile (Flutter)
 
-Shared Android and web client for the MAYOS closed trial, backed by the FastAPI
+Shared Android and web client for the MYOS closed trial, backed by the FastAPI
 service in the repository root. The basic player journey — register, log in,
 onboard, view the automatic program, and open the dashboard — is exercised by
 tests.

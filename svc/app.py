@@ -385,7 +385,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Mayos Training Engine", version="2.0.0", lifespan=lifespan)
+    app = FastAPI(title="Myos Training Engine", version="2.0.0", lifespan=lifespan)
     app.state.limiter = limiter
     app.state.db = None
     app.state.admin_security = AdminSecurity()

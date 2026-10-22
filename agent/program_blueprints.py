@@ -546,7 +546,7 @@ SLOT_SPECS: dict[str, SlotSpec] = {
 validate_slot_signatures(SLOT_SPECS)
 
 # Ordered Staple exercises by movement slot. IDs are the Exercise library's
-# stable ExerciseDB IDs or MAYOS-authored IDs. Names are documented beside
+# stable ExerciseDB IDs or MYOS-authored IDs. Names are documented beside
 # them for readability; generation resolves IDs only.
 SLOT_STAPLES: dict[str, tuple[str, ...]] = {
     "incline_press": ("314", "757", "47", "1299"),  # incline DB press; Smith Incline Press; BB incline press; machine incline press
@@ -559,9 +559,9 @@ SLOT_STAPLES: dict[str, tuple[str, ...]] = {
     "shrug": ("305", "220", "406", "95", "604"),  # dumbbell Kelso shrug; cable; DB; BB; machine shrug
     "shoulder_press": ("869", "587", "405", "766", "91"),  # iso-lateral machine press; plate-loaded machine press; seated DB press; Smith press; BB overhead press
     "side_delts": ("178", "584", "395", "977"),  # cable lateral raise; machine lateral raise; seated DB raise; band raise
-    "rear_delts": ("mayos:3", "602", "225", "359", "993"),  # MAYOS cable Y-raise; Reverse Pec Deck; cable fly; DB fly; band fly
+    "rear_delts": ("mayos:3", "602", "225", "359", "993"),  # MYOS cable Y-raise; Reverse Pec Deck; cable fly; DB fly; band fly
     "biceps_preacher": ("592", "372", "70", "1633"),  # machine preacher curl; DB preacher curl; BB preacher curl; cable preacher curl
-    "biceps_alt": ("318", "mayos:2", "1630", "31", "1769"),  # Incline DB Curl; MAYOS Bayesian curl; cable/BB curl; bodyweight curl
+    "biceps_alt": ("318", "mayos:2", "1630", "31", "1769"),  # Incline DB Curl; MYOS Bayesian curl; cable/BB curl; bodyweight curl
     "triceps_pushdown": ("1723", "201", "200", "241"),  # one-arm pushdown; cable pushdown; rope pushdown; V-bar pushdown
     "triceps_overhead": ("194", "92", "2188", "453", "1771"),  # overhead cable extension; BB/DB/EZ extensions; bodyweight extension
     "forearm_wrist": ("1412", "401", "247", "125"),  # palms-up BB curl; seated DB curl; cable curl; BB curl
@@ -571,7 +571,7 @@ SLOT_STAPLES: dict[str, tuple[str, ...]] = {
     "quad_iso": ("585", "3007"),  # machine leg extension; resistance-band leg extension
     "ham_curl": ("599", "586", "1766", "496", "795"),  # seated curl; lying curl; inverse curl; bench curl; standing curl
     "ham_hinge": ("85", "1459", "44"),  # BB RDL; DB RDL; BB good morning
-    "glute_thrust": ("mayos:4", "3562", "3236", "3013"),  # MAYOS machine hip thrust; Barbell Hip Thrust; band; glute bridge
+    "glute_thrust": ("mayos:4", "3562", "3236", "3013"),  # MYOS machine hip thrust; Barbell Hip Thrust; band; glute bridge
     "glute_iso": ("2286", "597", "3006", "130", "1423", "710", "1774"),  # machine extension/abduction; band abduction; bench extension/reverse hyper; bodyweight abduction
     "adductors": ("598", "168", "1775", "3667"),  # Hip Adduction; cable adduction; side-plank adduction; side-lying adduction
     "calf": ("1375", "1372", "1373", "1371"),  # cable standing calf raise; BB standing; bodyweight standing; BB seated

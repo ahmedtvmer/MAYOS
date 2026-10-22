@@ -513,7 +513,7 @@ def _measure_pairs(
 ) -> tuple[list[dict[str, Any]], dict[str, dict[str, dict[str, Any]]]]:
     by_language: dict[str, dict[str, dict[str, Any]]] = {"english": {}, "arabic": {}}
     turns: list[dict[str, Any]] = []
-    with tempfile.TemporaryDirectory(prefix="mayos-trial-usage-262-") as directory:
+    with tempfile.TemporaryDirectory(prefix="myos-trial-usage-262-") as directory:
         store = _synthetic_store(Path(directory))
         try:
             for pair in fixture["pairs"]:

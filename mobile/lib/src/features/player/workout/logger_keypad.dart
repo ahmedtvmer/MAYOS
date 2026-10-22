@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../../core/active_workout.dart';
 import '../../../core/display_language/feature_copy_context.dart';
-import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/theme/mayos_theme.dart';
-import '../../../core/theme/mayos_typography.dart';
+import '../../../core/theme/myos_spacing.dart';
+import '../../../core/theme/myos_theme.dart';
+import '../../../core/theme/myos_typography.dart';
 
 /// Which table cell the in-app keypad is editing (#123).
 enum LoggerField { kg, reps, rir }
@@ -120,8 +120,8 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
   /// Key geometry in spacing tokens: a 4-based gap around a 56dp key
   /// (`xxl + xl`), so the keypad has no literal sizes of its own (#123 item
   /// 11).
-  static const double _keyPadding = MayosSpacing.xxs;
-  static const double _keyHeight = MayosSpacing.xxl + MayosSpacing.xl;
+  static const double _keyPadding = MyosSpacing.xxs;
+  static const double _keyHeight = MyosSpacing.xxl + MyosSpacing.xl;
 
   late String _text = widget.initialText;
   late String _loadedFor = _focusKeyOf(widget);
@@ -161,7 +161,7 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final WorkoutCopy copy = workoutCopyOf(context);
     final double rowHeight = _keyHeight + 2 * _keyPadding;
 
@@ -180,7 +180,7 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
           child: content ??
               Text(
                 label,
-                style: MayosTypography.of(context).numericMedium.copyWith(
+                style: MyosTypography.of(context).numericMedium.copyWith(
                       color: fg ?? c.textPrimary,
                     ),
               ),
@@ -198,10 +198,10 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
           padding: const EdgeInsets.all(_keyPadding),
           child: Material(
             color: bg ?? c.surfaceElevated,
-            borderRadius: MayosRadii.mediumRadius,
+            borderRadius: MyosRadii.mediumRadius,
             child: InkWell(
               key: key,
-              borderRadius: MayosRadii.mediumRadius,
+              borderRadius: MyosRadii.mediumRadius,
               onTap: onTap,
               child: Opacity(
                 opacity: enabled ? 1 : 0.35,
@@ -315,14 +315,14 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
                           padding: const EdgeInsets.all(_keyPadding),
                           child: Material(
                             color: c.accent,
-                            borderRadius: MayosRadii.mediumRadius,
+                            borderRadius: MyosRadii.mediumRadius,
                             child: InkWell(
                               key: const ValueKey<String>('logger.key.next'),
-                              borderRadius: MayosRadii.mediumRadius,
+                              borderRadius: MyosRadii.mediumRadius,
                               onTap: widget.onNext,
                               child: Center(
                                 child: Text(copy.next,
-                                    style: MayosTypography.of(context).label
+                                    style: MyosTypography.of(context).label
                                         .copyWith(color: c.onAccent)),
                               ),
                             ),
@@ -352,19 +352,19 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
         // The route Scaffold may clear padding while retaining viewPadding.
         maintainBottomViewPadding: true,
         child: Padding(
-          padding: const EdgeInsetsDirectional.fromSTEB(MayosSpacing.xs,
-              MayosSpacing.xs, MayosSpacing.xs, MayosSpacing.xs),
+          padding: const EdgeInsetsDirectional.fromSTEB(MyosSpacing.xs,
+              MyosSpacing.xs, MyosSpacing.xs, MyosSpacing.xs),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               Padding(
                 padding: const EdgeInsetsDirectional.fromSTEB(
-                    MayosSpacing.xs, 0, MayosSpacing.xs, MayosSpacing.xs),
+                    MyosSpacing.xs, 0, MyosSpacing.xs, MyosSpacing.xs),
                 child: Text(
                   copy.keypadCaption(widget.exerciseName, widget.setNumber,
                       loggerFieldLabel(widget.field, copy: copy)),
-                  style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
+                  style: MyosTypography.of(context).caption.copyWith(color: c.textMuted),
                 ),
               ),
               Directionality(

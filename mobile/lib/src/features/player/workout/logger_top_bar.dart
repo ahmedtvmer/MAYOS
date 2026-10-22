@@ -7,9 +7,9 @@ import 'package:go_router/go_router.dart';
 import '../../../core/active_workout.dart';
 import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/personal_records.dart';
-import '../../../core/theme/mayos_theme.dart';
-import '../../../core/theme/mayos_typography.dart';
-import '../../../core/ui/mayos_app_header.dart';
+import '../../../core/theme/myos_theme.dart';
+import '../../../core/theme/myos_typography.dart';
+import '../../../core/ui/myos_app_header.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import 'active_workout_prompt.dart';
@@ -85,7 +85,7 @@ class _LoggerTopBarState extends ConsumerState<LoggerTopBar> {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final WorkoutCopy copy = workoutCopyOf(context);
     final ActiveWorkout? workout =
         ref.watch(activeWorkoutControllerProvider).workout;
@@ -98,7 +98,7 @@ class _LoggerTopBarState extends ConsumerState<LoggerTopBar> {
         ? null
         : formatWorkoutTime(
             summary?.duration ?? workoutElapsed(workout, now: now));
-    return MayosAppHeader(
+    return MyosAppHeader(
       showBack: true,
       // Sans, one line: the serif display role belongs to the day heading
       // alone (#157 typography).
@@ -106,7 +106,7 @@ class _LoggerTopBarState extends ConsumerState<LoggerTopBar> {
         time == null ? copy.logWorkout : copy.logWorkoutTime(time),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: MayosTypography.of(context)
+        style: MyosTypography.of(context)
             .sectionHeading
             .copyWith(color: c.textPrimary),
       ),
@@ -125,7 +125,7 @@ class _LoggerTopBarState extends ConsumerState<LoggerTopBar> {
                 value: 'discard',
                 child: Text(
                   copy.discardWorkout,
-                  style: MayosTypography.of(context).body,
+                  style: MyosTypography.of(context).body,
                 ),
               ),
             ],

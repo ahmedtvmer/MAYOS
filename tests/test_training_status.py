@@ -7,7 +7,7 @@ import pytest
 from service.attendance import is_expected_day
 from service.training_status import (
     compute_training_status,
-    mayos_workout_count,
+    myos_workout_count,
     next_checkpoint_for,
     TrainingStatusFacts,
 )
@@ -23,7 +23,7 @@ def _version(weekdays, effective_from="2026-09-26", timezone="UTC", created_at="
     }
 
 
-def _status(*, today, performed=(), versions=(), pauses=(), frequency=3, mayos=0):
+def _status(*, today, performed=(), versions=(), pauses=(), frequency=3, myos=0):
     return compute_training_status(
         TrainingStatusFacts(
             versions=list(versions),
@@ -31,7 +31,7 @@ def _status(*, today, performed=(), versions=(), pauses=(), frequency=3, mayos=0
             performed_dates=list(performed),
             weekly_frequency=frequency,
             local_today=today,
-            mayos_workouts=mayos,
+            mayos_workouts=myos,
         )
     )
 
@@ -142,9 +142,9 @@ def test_extra_workouts_count_toward_done():
 
 
 def test_imported_workouts_are_subtracted_and_clamped_at_zero():
-    assert mayos_workout_count(12, 9) == 3
-    assert mayos_workout_count(4, 9) == 0
-    assert mayos_workout_count(4, 0) == 4
+    assert myos_workout_count(12, 9) == 3
+    assert myos_workout_count(4, 9) == 0
+    assert myos_workout_count(4, 0) == 4
 
 
 @pytest.mark.parametrize(

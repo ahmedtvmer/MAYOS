@@ -40,9 +40,9 @@ Bad state: No element
 
 When the exception was thrown, this was the stack:
 #0      _Array.first (dart:core-patch/array.dart:52:5)
-#1      _ProfileScreenState._load.<anonymous closure> (package:mayos_mobile/src/features/player/profile/profile_screen.dart:154:32)
+#1      _ProfileScreenState._load.<anonymous closure> (package:myos_mobile/src/features/player/profile/profile_screen.dart:154:32)
 #2      State.setState (package:flutter/src/widgets/framework.dart:1201:30)
-#3      _ProfileScreenState._load (package:mayos_mobile/src/features/player/profile/profile_screen.dart:148:7)
+#3      _ProfileScreenState._load (package:myos_mobile/src/features/player/profile/profile_screen.dart:148:7)
 <asynchronous suspension>
 
 The test description was:

@@ -118,7 +118,7 @@ def test_register_fallback_serves_app_sign_up_hint_without_web_app(api, monkeypa
     assert response.headers["cache-control"] == "no-store"
     assert "default-src 'none'" in response.headers["content-security-policy"]
     assert "nonce-" in response.headers["content-security-policy"]
-    assert "Open the MAYOS app to create your account." in response.text
+    assert "Open the MYOS app to create your account." in response.text
 
 
 def test_access_log_filter_redacts_token_query():
@@ -226,7 +226,7 @@ def test_hosted_recovery_page_localizes_forms_and_keeps_selected_language_out_of
     assert "أدخل البريد الإلكتروني للاسترداد" in request_page.text
     assert 'id="request-form"' in request_page.text
     assert 'id="language" name="display_language"' in request_page.text
-    assert "إذا كان هذا البريد الإلكتروني مرتبطًا بحساب في MAYOS" in request_page.text
+    assert "إذا كان هذا البريد الإلكتروني مرتبطًا بحساب في MYOS" in request_page.text
     assert "/auth/forgot-password" in request_page.text
     assert _recovery_page_config(request_page)["copy"]["en"]["requestConfirmation"] == reset_service.GENERIC_REQUEST_MESSAGE
 
@@ -291,8 +291,8 @@ def test_forgot_password_endpoint_receives_selected_browser_language(api, monkey
     assert response.json() == {"message": reset_service.GENERIC_REQUEST_MESSAGE}
     assert len(captured_emails) == 1
     assert captured_emails[0][0] == "person@example.com"
-    assert captured_emails[0][1] == "لا يوجد حساب في MAYOS يستخدم هذا البريد الإلكتروني"
-    assert "لا يوجد حساب في MAYOS يستخدم هذا البريد الإلكتروني" in captured_emails[0][2]
+    assert captured_emails[0][1] == "لا يوجد حساب في MYOS يستخدم هذا البريد الإلكتروني"
+    assert "لا يوجد حساب في MYOS يستخدم هذا البريد الإلكتروني" in captured_emails[0][2]
 
 
 def test_forgot_reset_round_trip_email_body_and_session_revocation(
@@ -435,7 +435,7 @@ def test_forgot_password_only_emails_verified_recovery_addresses(api, monkeypatc
     assert deliveries[0][0] == "verified@example.com"
     assert "password reset" in deliveries[0][1].lower()
     assert deliveries[-1][0] == "unknown@example.com"
-    assert "no mayos account" in deliveries[-1][1].lower()
+    assert "no myos account" in deliveries[-1][1].lower()
     assert all(email != "unverified@example.com" for email, _, _ in deliveries)
 
     verified_account_id = db.get_account_by_email("verified@example.com")
@@ -448,7 +448,7 @@ def test_forgot_password_only_emails_verified_recovery_addresses(api, monkeypatc
 
 def test_no_account_notice_limit_is_one_per_address_per_24_hours(api, monkeypatch):
     _, db = api
-    monkeypatch.setenv("RESET_LINK_BASE_URL", "https://mayos.example")
+    monkeypatch.setenv("RESET_LINK_BASE_URL", "https://myos.example")
     deliveries = []
 
     def fake_notice_mailer(to_email, signup_link, display_language):

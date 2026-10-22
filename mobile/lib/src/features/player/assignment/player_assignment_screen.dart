@@ -9,14 +9,14 @@ import '../../../core/display_language/assignment_copy.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/models.dart';
-import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/theme/mayos_theme.dart';
-import '../../../core/theme/mayos_typography.dart';
+import '../../../core/theme/myos_spacing.dart';
+import '../../../core/theme/myos_theme.dart';
+import '../../../core/theme/myos_typography.dart';
 import '../../../core/ui/first_strong_direction.dart';
-import '../../../core/ui/mayos_button.dart';
-import '../../../core/ui/mayos_card.dart';
-import '../../../core/ui/mayos_section_header.dart';
-import '../../../core/ui/mayos_text_field.dart';
+import '../../../core/ui/myos_button.dart';
+import '../../../core/ui/myos_card.dart';
+import '../../../core/ui/myos_section_header.dart';
+import '../../../core/ui/myos_text_field.dart';
 import 'player_assignment_activity.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
@@ -219,13 +219,13 @@ class _PlayerAssignmentScreenState
         title: Text(_copy.leaveCoachQuestion),
         content: Text(_copy.leaveCoachLead),
         actions: <Widget>[
-          MayosButton(
+          MyosButton(
             label: _copy.cancel,
-            variant: MayosButtonVariant.tertiary,
+            variant: MyosButtonVariant.tertiary,
             expand: false,
             onPressed: () => Navigator.of(context).pop(false),
           ),
-          MayosButton(
+          MyosButton(
             label: _copy.leaveCoach,
             expand: false,
             onPressed: () => Navigator.of(context).pop(true),
@@ -323,21 +323,21 @@ class _PlayerAssignmentScreenState
   }
 
   Widget _programRequestsCard(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final AssignmentCopy copy = _copy;
     return Padding(
-      padding: const EdgeInsets.only(top: MayosSpacing.lg),
-      child: MayosCard(
+      padding: const EdgeInsets.only(top: MyosSpacing.lg),
+      child: MyosCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            MayosSectionHeader(
+            MyosSectionHeader(
               title: copy.programRequests,
               padding: EdgeInsets.zero,
-              trailing: MayosButton(
+              trailing: MyosButton(
                 label: copy.requestChange,
                 icon: Icons.add,
-                variant: MayosButtonVariant.tertiary,
+                variant: MyosButtonVariant.tertiary,
                 expand: false,
                 loading: _requestingChange,
                 onPressed: _requestingChange ? null : _requestChange,
@@ -346,27 +346,27 @@ class _PlayerAssignmentScreenState
             if (_requestError != null) ...<Widget>[
               Text(
                 displayCopyOf(context).failureMessage(_requestError!),
-                style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
+                style: MyosTypography.of(context).bodySecondary.copyWith(color: c.danger),
               ),
-              const SizedBox(height: MayosSpacing.sm),
+              const SizedBox(height: MyosSpacing.sm),
             ],
             if (_programRequests.isEmpty)
               Text(
                 copy.noProgramRequests,
-                style: MayosTypography.of(context).bodySecondary
+                style: MyosTypography.of(context).bodySecondary
                     .copyWith(color: c.textSecondary),
               )
             else
               for (final ProgramRequest request in _programRequests)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
+                  padding: const EdgeInsets.only(bottom: MyosSpacing.sm),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       Row(
                         children: <Widget>[
                           Chip(label: Text(copy.requestStatus(request.status))),
-                          const SizedBox(width: MayosSpacing.xs),
+                          const SizedBox(width: MyosSpacing.xs),
                           Expanded(
                             child: Text(
                               copy.programRequestDescription(
@@ -377,7 +377,7 @@ class _PlayerAssignmentScreenState
                                 frequency: request.desiredWeeklyFrequency,
                                 preference: request.desiredSplitPreference,
                               ),
-                              style: MayosTypography.of(context).body
+                              style: MyosTypography.of(context).body
                                   .copyWith(color: c.textPrimary),
                               textAlign: copy.isArabic ? TextAlign.end : null,
                             ),
@@ -388,7 +388,7 @@ class _PlayerAssignmentScreenState
                         text: request.reason,
                         child: Text(
                           '${copy.reasonPrefix}${request.reason}',
-                          style: MayosTypography.of(context).caption
+                          style: MyosTypography.of(context).caption
                               .copyWith(color: c.textMuted),
                         ),
                       ),
@@ -397,14 +397,14 @@ class _PlayerAssignmentScreenState
                           text: request.response!,
                           child: Text(
                             '${copy.coachPrefix}${request.response}',
-                            style: MayosTypography.of(context).caption
+                            style: MyosTypography.of(context).caption
                                 .copyWith(color: c.textSecondary),
                           ),
                         ),
                       if (request.isPending)
-                        MayosButton(
+                        MyosButton(
                           label: copy.cancelRequest,
-                          variant: MayosButtonVariant.tertiary,
+                          variant: MyosButtonVariant.tertiary,
                           expand: false,
                           onPressed: _cancellingRequestId == request.requestId
                               ? null
@@ -424,7 +424,7 @@ class _PlayerAssignmentScreenState
       return const SizedBox.shrink();
     }
     return Padding(
-      padding: const EdgeInsets.only(bottom: MayosSpacing.md),
+      padding: const EdgeInsets.only(bottom: MyosSpacing.md),
       child: PlayerAssignmentNoticesCard(
         notices: _notices,
         copy: _copy,
@@ -442,7 +442,7 @@ class _PlayerAssignmentScreenState
       return const SizedBox.shrink();
     }
     return Padding(
-      padding: const EdgeInsets.only(top: MayosSpacing.lg),
+      padding: const EdgeInsets.only(top: MyosSpacing.lg),
       child: PlayerAssignmentCheckInsCard(
         checkIns: _checkIns,
         copy: _copy,
@@ -455,7 +455,7 @@ class _PlayerAssignmentScreenState
       return const SizedBox.shrink();
     }
     return Padding(
-      padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
+      padding: const EdgeInsets.only(bottom: MyosSpacing.sm),
       child: FirstStrongDirection(
         text: _error == null
             ? _localError!
@@ -464,23 +464,23 @@ class _PlayerAssignmentScreenState
           _error == null
               ? _localError!
               : displayCopyOf(context).failureMessage(_error!),
-          style: MayosTypography.of(context).bodySecondary
-              .copyWith(color: MayosTheme.of(context).danger),
+          style: MyosTypography.of(context).bodySecondary
+              .copyWith(color: MyosTheme.of(context).danger),
         ),
       ),
     );
   }
 
   Widget _activeAssignment(BuildContext context, Assignment assignment) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final String specialization = assignment.coach.specialization.isEmpty
         ? _copy.yourCoach
         : assignment.coach.specialization;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        MayosSectionHeader(title: _copy.yourCoach),
-        MayosCard(
+        MyosSectionHeader(title: _copy.yourCoach),
+        MyosCard(
           child: ListTile(
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.person_outline, color: c.textSecondary),
@@ -491,16 +491,16 @@ class _PlayerAssignmentScreenState
             ),
           ),
         ),
-        const SizedBox(height: MayosSpacing.sm),
+        const SizedBox(height: MyosSpacing.sm),
         Text(
           _copy.activeAssignmentAccess,
-          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
+          style: MyosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
         ),
-        const SizedBox(height: MayosSpacing.lg),
-        MayosButton(
+        const SizedBox(height: MyosSpacing.lg),
+        MyosButton(
           label: _copy.leaveCoach,
           icon: Icons.link_off,
-          variant: MayosButtonVariant.secondary,
+          variant: MyosButtonVariant.secondary,
           expand: false,
           loading: _ending,
           onPressed: _ending ? null : _end,
@@ -511,18 +511,18 @@ class _PlayerAssignmentScreenState
   }
 
   Widget _inviteSection(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final AssignmentInvitePreview? preview = _preview;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        MayosSectionHeader(title: _copy.myCoach),
+        MyosSectionHeader(title: _copy.myCoach),
         Text(
           _copy.inviteExplanation,
-          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
+          style: MyosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
         ),
-        const SizedBox(height: MayosSpacing.md),
-        MayosTextField(
+        const SizedBox(height: MyosSpacing.md),
+        MyosTextField(
           fieldKey: const Key('assignment_code_field'),
           controller: _code,
           autocorrect: false,
@@ -530,40 +530,40 @@ class _PlayerAssignmentScreenState
           onChanged: _onCodeChanged,
           label: _copy.inviteCodeFromCoach,
         ),
-        const SizedBox(height: MayosSpacing.sm),
-        MayosButton(
+        const SizedBox(height: MyosSpacing.sm),
+        MyosButton(
           label: _copy.previewAccess,
           loading: _previewing,
           onPressed: _previewing || _redeeming ? null : _previewCode,
         ),
         if (preview != null) ...<Widget>[
-          const Divider(height: MayosSpacing.xxl),
+          const Divider(height: MyosSpacing.xxl),
           Text(
             _copy.coachWillBe(preview.coach.displayName),
             style:
-                MayosTypography.of(context).sectionHeading.copyWith(color: c.textPrimary),
+                MyosTypography.of(context).sectionHeading.copyWith(color: c.textPrimary),
           ),
           if (preview.coach.bio.isNotEmpty) ...<Widget>[
-            const SizedBox(height: MayosSpacing.xxs),
+            const SizedBox(height: MyosSpacing.xxs),
             Text(preview.coach.bio,
-                style: MayosTypography.of(context).bodySecondary
+                style: MyosTypography.of(context).bodySecondary
                     .copyWith(color: c.textSecondary)),
           ],
           if (preview.coach.specialization.isNotEmpty) ...<Widget>[
-            const SizedBox(height: MayosSpacing.xxs),
+            const SizedBox(height: MyosSpacing.xxs),
             Text(preview.coach.specialization,
-                style: MayosTypography.of(context).caption.copyWith(color: c.textMuted)),
+                style: MyosTypography.of(context).caption.copyWith(color: c.textMuted)),
           ],
-          const SizedBox(height: MayosSpacing.sm),
+          const SizedBox(height: MyosSpacing.sm),
           Text(preview.access.description,
-              style: MayosTypography.of(context).body.copyWith(color: c.textPrimary)),
-          const SizedBox(height: MayosSpacing.sm),
+              style: MyosTypography.of(context).body.copyWith(color: c.textPrimary)),
+          const SizedBox(height: MyosSpacing.sm),
           Text(
             _copy.rosterAiDisclosure,
-            style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
+            style: MyosTypography.of(context).body.copyWith(color: c.textPrimary),
           ),
-          const SizedBox(height: MayosSpacing.md),
-          MayosButton(
+          const SizedBox(height: MyosSpacing.md),
+          MyosButton(
             label: _copy.acceptAssignment,
             icon: Icons.check,
             loading: _redeeming,
@@ -581,7 +581,7 @@ class _PlayerAssignmentScreenState
       return const Center(child: CircularProgressIndicator());
     }
     return ListView(
-      padding: MayosSpacing.screen,
+      padding: MyosSpacing.screen,
       children: <Widget>[
         _errorBanner(context),
         _noticesCard(context),

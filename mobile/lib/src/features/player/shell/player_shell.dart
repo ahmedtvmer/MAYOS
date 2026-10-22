@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/ui/mayos_app_header.dart';
+import '../../../core/ui/myos_app_header.dart';
 import '../../../core/api_client.dart';
 import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
@@ -13,9 +13,9 @@ import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/models.dart';
-import '../../../core/ui/mayos_bottom_navigation.dart';
-import '../../../core/ui/mayos_button.dart';
-import '../../../core/ui/mayos_scaffold.dart';
+import '../../../core/ui/myos_bottom_navigation.dart';
+import '../../../core/ui/myos_button.dart';
+import '../../../core/ui/myos_scaffold.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import '../../shared/mode_switch.dart';
@@ -41,18 +41,18 @@ class PlayerShell extends ConsumerStatefulWidget {
 }
 
 class _PlayerShellState extends ConsumerState<PlayerShell> {
-  List<MayosNavItem> _items(MayosCopy copy) => <MayosNavItem>[
-        MayosNavItem(
+  List<MyosNavItem> _items(MyosCopy copy) => <MyosNavItem>[
+        MyosNavItem(
           label: copy.home,
           icon: Icons.home_outlined,
           selectedIcon: Icons.home,
         ),
-        MayosNavItem(
+        MyosNavItem(
           label: copy.program,
           icon: Icons.article_outlined,
           selectedIcon: Icons.article,
         ),
-        MayosNavItem(
+        MyosNavItem(
           label: copy.progress,
           icon: Icons.insights_outlined,
           selectedIcon: Icons.insights,
@@ -151,10 +151,10 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
     final int index = ref.watch(playerShellTabProvider);
     final bool isCoach =
         ref.watch(authControllerProvider).session?.account.isCoach ?? false;
-    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
+    final MyosCopy copy = MyosCopy(ref.watch(displayLanguageProvider));
     final String settingsLabel = copy.settings;
-    return MayosScaffold(
-      header: MayosAppHeader(
+    return MyosScaffold(
+      header: MyosAppHeader(
         actions: <Widget>[
           IconButton(
             tooltip: copy.assistant,
@@ -179,7 +179,7 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
           ProgressTab(),
         ],
       ),
-      bottomBar: MayosBottomNavigation(
+      bottomBar: MyosBottomNavigation(
         items: _items(copy),
         index: index,
         onSelected: (int selected) =>
@@ -242,7 +242,7 @@ class _RosterAiDisclosureDialogState
           ],
         ),
         actions: <Widget>[
-          MayosButton(
+          MyosButton(
             label: widget.copy.rosterAiDisclosureOk,
             expand: false,
             loading: _saving,

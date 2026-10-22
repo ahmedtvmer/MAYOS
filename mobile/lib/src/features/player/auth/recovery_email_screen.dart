@@ -7,8 +7,8 @@ import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
-import '../../../core/ui/mayos_button.dart';
-import '../../../core/ui/mayos_text_field.dart';
+import '../../../core/ui/myos_button.dart';
+import '../../../core/ui/myos_text_field.dart';
 import '../../../providers.dart';
 import 'auth_widgets.dart';
 
@@ -90,7 +90,7 @@ class _RecoveryEmailScreenState extends ConsumerState<RecoveryEmailScreen> {
       if (mounted) {
         setState(() {
           _notice =
-              MayosCopy(ref.read(displayLanguageProvider)).recoveryCodeSent;
+              MyosCopy(ref.read(displayLanguageProvider)).recoveryCodeSent;
           _busy = false;
           _codeSent = true;
         });
@@ -99,7 +99,7 @@ class _RecoveryEmailScreenState extends ConsumerState<RecoveryEmailScreen> {
       if (mounted) {
         setState(() {
           _error = ServerFailureMessage(
-            MayosCopy(ref.read(displayLanguageProvider)).recoveryCodeSendError,
+            MyosCopy(ref.read(displayLanguageProvider)).recoveryCodeSendError,
           );
           _busy = false;
         });
@@ -122,7 +122,7 @@ class _RecoveryEmailScreenState extends ConsumerState<RecoveryEmailScreen> {
       if (mounted) {
         setState(() {
           _error = ServerFailureMessage(
-            MayosCopy(ref.read(displayLanguageProvider)).recoveryCodeError,
+            MyosCopy(ref.read(displayLanguageProvider)).recoveryCodeError,
           );
           _busy = false;
         });
@@ -143,7 +143,7 @@ class _RecoveryEmailScreenState extends ConsumerState<RecoveryEmailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
+    final MyosCopy copy = MyosCopy(ref.watch(displayLanguageProvider));
     final session = ref.watch(authControllerProvider).session;
     final bool hasRecoveryEmail = session?.hasRecoveryEmail ?? false;
     final bool editingAddress = _isEditing(hasRecoveryEmail);
@@ -157,7 +157,7 @@ class _RecoveryEmailScreenState extends ConsumerState<RecoveryEmailScreen> {
           : _notice == null
               ? null
               : AuthInlineNotice(message: _notice!),
-      primary: MayosButton(
+      primary: MyosButton(
         key: const Key('recovery_submit'),
         label: editingAddress ? copy.saveEmail : copy.verifyRecoveryEmail,
         loading: _busy,
@@ -187,7 +187,7 @@ class _RecoveryEmailScreenState extends ConsumerState<RecoveryEmailScreen> {
       ],
       children: <Widget>[
         if (editingAddress)
-          MayosTextField(
+          MyosTextField(
             fieldKey: const Key('recovery_email'),
             controller: _email,
             label: copy.email,
@@ -200,7 +200,7 @@ class _RecoveryEmailScreenState extends ConsumerState<RecoveryEmailScreen> {
             onSubmitted: (_) => _busy ? null : _save(),
           )
         else
-          MayosTextField(
+          MyosTextField(
             fieldKey: const Key('recovery_verification_code'),
             controller: _code,
             label: copy.verificationCode,

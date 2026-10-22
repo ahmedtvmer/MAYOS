@@ -3,14 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
-import 'package:mayos_mobile/src/core/shared_program_text.dart';
-import 'package:mayos_mobile/src/providers.dart';
-import 'package:mayos_mobile/src/router.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/display_language/coach_copy.dart';
+import 'package:myos_mobile/src/core/shared_program_text.dart';
+import 'package:myos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/router.dart';
 
 import 'support/coach_layout_harness.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 class FakeSharedProgramTextSource implements SharedProgramTextSource {
   FakeSharedProgramTextSource({this.initialText});
@@ -36,7 +36,7 @@ void main() {
     );
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) => _addPlayer(fake),
+      configureFake: (FakeMyosApi fake) => _addPlayer(fake),
       providerOverrides: <Override>[
         sharedProgramTextSourceProvider.overrideWithValue(source),
       ],
@@ -67,7 +67,7 @@ void main() {
     final FakeSharedProgramTextSource source = FakeSharedProgramTextSource();
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) => _addPlayer(fake),
+      configureFake: (FakeMyosApi fake) => _addPlayer(fake),
       providerOverrides: <Override>[
         sharedProgramTextSourceProvider.overrideWithValue(source),
       ],
@@ -139,10 +139,10 @@ void main() {
     final FakeSharedProgramTextSource source = FakeSharedProgramTextSource(
       initialText: const SharedProgramText('Private chat text'),
     );
-    late FakeMayosApi fake;
+    late FakeMyosApi fake;
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi configured) {
+      configureFake: (FakeMyosApi configured) {
         fake = configured
           ..tokenValid = false
           ..passwords['alice'] = 'password';
@@ -198,10 +198,10 @@ void main() {
     final FakeSharedProgramTextSource source = FakeSharedProgramTextSource(
       initialText: const SharedProgramText('Bench Press 3x8'),
     );
-    late FakeMayosApi fake;
+    late FakeMyosApi fake;
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi configured) {
+      configureFake: (FakeMyosApi configured) {
         fake = configured..coach = false;
       },
       providerOverrides: <Override>[
@@ -241,10 +241,10 @@ void main() {
     final FakeSharedProgramTextSource source = FakeSharedProgramTextSource(
       initialText: const SharedProgramText('Bench Press 3x8'),
     );
-    late FakeMayosApi fake;
+    late FakeMyosApi fake;
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi configured) {
+      configureFake: (FakeMyosApi configured) {
         fake = configured
           ..coach = false
           ..tokenValid = false
@@ -291,7 +291,7 @@ void main() {
     );
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) {
+      configureFake: (FakeMyosApi fake) {
         fake.profileExists = false;
         _addPlayer(fake);
       },
@@ -317,7 +317,7 @@ void main() {
     );
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) => _addPlayer(fake),
+      configureFake: (FakeMyosApi fake) => _addPlayer(fake),
       providerOverrides: <Override>[
         sharedProgramTextSourceProvider.overrideWithValue(source),
       ],
@@ -343,7 +343,7 @@ void main() {
       );
       await expectCoachPhoneLayout(
         tester,
-        configureFake: (FakeMayosApi fake) => _addPlayer(fake),
+        configureFake: (FakeMyosApi fake) => _addPlayer(fake),
         providerOverrides: <Override>[
           sharedProgramTextSourceProvider.overrideWithValue(source),
         ],
@@ -365,7 +365,7 @@ void main() {
     final FakeSharedProgramTextSource source = FakeSharedProgramTextSource();
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) => _addPlayer(fake),
+      configureFake: (FakeMyosApi fake) => _addPlayer(fake),
       providerOverrides: <Override>[
         sharedProgramTextSourceProvider.overrideWithValue(source),
       ],
@@ -402,7 +402,7 @@ void main() {
     );
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) {},
+      configureFake: (FakeMyosApi fake) {},
       providerOverrides: <Override>[
         sharedProgramTextSourceProvider.overrideWithValue(source),
       ],
@@ -423,10 +423,10 @@ void main() {
     final FakeSharedProgramTextSource source = FakeSharedProgramTextSource(
       initialText: const SharedProgramText('Squat 3x8'),
     );
-    late FakeMayosApi fake;
+    late FakeMyosApi fake;
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi configured) {
+      configureFake: (FakeMyosApi configured) {
         fake = configured..coachAssignmentsNetworkFails = true;
         _addPlayer(fake);
       },
@@ -465,7 +465,7 @@ void main() {
     );
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) {
+      configureFake: (FakeMyosApi fake) {
         fake.coachAssignmentsNetworkFails = true;
       },
       providerOverrides: <Override>[
@@ -488,10 +488,10 @@ void main() {
     final FakeSharedProgramTextSource source = FakeSharedProgramTextSource(
       initialText: const SharedProgramText('Bench Press 3x8'),
     );
-    late FakeMayosApi fake;
+    late FakeMyosApi fake;
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi configured) {
+      configureFake: (FakeMyosApi configured) {
         fake = configured
           ..programImportTextAvailable = false;
         _addPlayer(fake);
@@ -520,7 +520,7 @@ void main() {
     final FakeSharedProgramTextSource source = FakeSharedProgramTextSource(
       initialText: SharedProgramText(overCapText),
     );
-    final FakeMayosApi fake = createCoachFake()
+    final FakeMyosApi fake = createCoachFake()
       ..programImportResult['import_mode'] = 'text';
     _addPlayer(fake);
     await pumpCoachApp(
@@ -567,10 +567,10 @@ void main() {
     final FakeSharedProgramTextSource source = FakeSharedProgramTextSource(
       initialText: const SharedProgramText('Day 1\nBench Press 3x8'),
     );
-    late FakeMayosApi fake;
+    late FakeMyosApi fake;
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi configured) {
+      configureFake: (FakeMyosApi configured) {
         fake = configured;
         _addPlayer(fake);
         fake.programImportResult['import_mode'] = 'text';
@@ -600,7 +600,7 @@ void main() {
   });
 }
 
-void _addPlayer(FakeMayosApi fake) {
+void _addPlayer(FakeMyosApi fake) {
   fake.assignments.add(<String, dynamic>{
     'assignment_id': 'assignment-1',
     'player_username': 'bob',

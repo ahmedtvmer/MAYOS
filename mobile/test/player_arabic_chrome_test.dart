@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/display_language/arabic_count.dart';
-import 'package:mayos_mobile/src/core/display_language/catalog.dart';
-import 'package:mayos_mobile/src/core/display_language/controller.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/core/display_language/onboarding_copy.dart';
-import 'package:mayos_mobile/src/core/display_language/store.dart';
-import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_app_header.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_bottom_navigation.dart';
-import 'package:mayos_mobile/src/features/player/onboarding/onboarding_widgets.dart';
+import 'package:myos_mobile/src/core/display_language/arabic_count.dart';
+import 'package:myos_mobile/src/core/display_language/catalog.dart';
+import 'package:myos_mobile/src/core/display_language/controller.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/display_language/onboarding_copy.dart';
+import 'package:myos_mobile/src/core/display_language/store.dart';
+import 'package:myos_mobile/src/core/theme/myos_theme.dart';
+import 'package:myos_mobile/src/core/ui/myos_app_header.dart';
+import 'package:myos_mobile/src/core/ui/myos_bottom_navigation.dart';
+import 'package:myos_mobile/src/features/player/onboarding/onboarding_widgets.dart';
 
 class _ArabicLanguage extends DisplayLanguageController {
   _ArabicLanguage()
@@ -70,16 +70,16 @@ void main() {
     expect(const OnboardingCopy('ar').yearsValue('11'), '11 سنة');
     expect(const OnboardingCopy('ar').yearsValue('2.5'), '2.5 سنة');
     expect(
-      const MayosCopy('en').shortDate(DateTime(2026, 6, 3)),
+      const MyosCopy('en').shortDate(DateTime(2026, 6, 3)),
       'Jun 3',
     );
     expect(
-      const MayosCopy('ar').shortDate(DateTime(2026, 6, 3)),
+      const MyosCopy('ar').shortDate(DateTime(2026, 6, 3)),
       '3 يونيو',
     );
-    expect(const MayosCopy('ar').nextSessionLabel(null), 'الحصة التالية');
+    expect(const MyosCopy('ar').nextSessionLabel(null), 'الحصة التالية');
     expect(
-      const MayosCopy('ar').nextSessionLabel(3),
+      const MyosCopy('ar').nextSessionLabel(3),
       'الحصة التالية · الأربعاء',
     );
   });
@@ -104,7 +104,7 @@ void main() {
     expect(arabicCountPhrase(101, ArabicCountNoun.repetition), '101 تكرار');
     expect(arabicCountPhrase(103, ArabicCountNoun.repetition), '103 تكرارات');
     expect(arabicCountPhrase(111, ArabicCountNoun.repetition), '111 تكرارًا');
-    const MayosCopy arabic = MayosCopy('ar');
+    const MyosCopy arabic = MyosCopy('ar');
     expect(arabic.programFrequency(1), 'يوم واحد في الأسبوع');
     expect(arabic.programFrequency(2), 'يومان في الأسبوع');
     expect(arabic.programFrequency(3), '3 أيام في الأسبوع');
@@ -144,13 +144,13 @@ void main() {
       arabic.countedSetsMetric(0.5),
       '\u20660.5\u2069 مجموعة محسوبة لكل عضلة',
     );
-    expect(const MayosCopy('en').countedSetsMetric(2), '2 weighted sets');
+    expect(const MyosCopy('en').countedSetsMetric(2), '2 weighted sets');
     expect(
-      const MayosCopy('en').countedSetsMetric(1.04),
+      const MyosCopy('en').countedSetsMetric(1.04),
       '1.0 weighted sets',
     );
     expect(
-      const MayosCopy('en').countedSetsMetric(1.04, roundNearInteger: true),
+      const MyosCopy('en').countedSetsMetric(1.04, roundNearInteger: true),
       '1 weighted sets',
     );
     expect(
@@ -170,10 +170,10 @@ void main() {
       '11 مسودة تدريبية بانتظار المزامنة',
     );
     expect(
-        const MayosCopy('ar').checkpointWorkout(10), 'حصتك التدريبية رقم 10');
-    expect(const MayosCopy('en').checkpointWorkout(10), 'Your 10th workout');
+        const MyosCopy('ar').checkpointWorkout(10), 'حصتك التدريبية رقم 10');
+    expect(const MyosCopy('en').checkpointWorkout(10), 'Your 10th workout');
     expect(
-      const MayosCopy('ar').connectionFailure,
+      const MyosCopy('ar').connectionFailure,
       'يتطلب هذا اتصالًا بالإنترنت. لم يتغير شيء.',
     );
     expect(
@@ -203,23 +203,23 @@ void main() {
         displayLanguageProvider.overrideWith((ref) => _ArabicLanguage()),
       ],
       child: MaterialApp(
-        theme: MayosTheme.light,
+        theme: MyosTheme.light,
         home: const Directionality(
           textDirection: TextDirection.rtl,
           child: Scaffold(
             appBar: PreferredSize(
               preferredSize: Size.fromHeight(72),
-              child: MayosAppHeader(showBack: true, title: 'اختبار'),
+              child: MyosAppHeader(showBack: true, title: 'اختبار'),
             ),
             body: SizedBox.shrink(),
-            bottomNavigationBar: MayosBottomNavigation(
-              items: <MayosNavItem>[
-                MayosNavItem(
+            bottomNavigationBar: MyosBottomNavigation(
+              items: <MyosNavItem>[
+                MyosNavItem(
                     label: 'الرئيسية',
                     icon: Icons.home,
                     selectedIcon: Icons.home,
                     badge: 3),
-                MayosNavItem(
+                MyosNavItem(
                     label: 'البرنامج التدريبي',
                     icon: Icons.list,
                     selectedIcon: Icons.list),

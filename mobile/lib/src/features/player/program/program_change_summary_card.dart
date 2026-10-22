@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/display_language/program_change_copy.dart';
-import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/theme/mayos_theme.dart';
-import '../../../core/theme/mayos_typography.dart';
+import '../../../core/theme/myos_spacing.dart';
+import '../../../core/theme/myos_theme.dart';
+import '../../../core/theme/myos_typography.dart';
 import '../../../core/ui/first_strong_direction.dart';
-import '../../../core/ui/mayos_button.dart';
-import '../../../core/ui/mayos_card.dart';
+import '../../../core/ui/myos_button.dart';
+import '../../../core/ui/myos_card.dart';
 
 class ProgramChangeSummaryCard extends StatelessWidget {
   const ProgramChangeSummaryCard({
@@ -26,9 +26,9 @@ class ProgramChangeSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ProgramChangeCopy copy = programChangeCopyOf(context);
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     final bool unchanged = summary['unchanged'] == true;
-    return MayosCard(
+    return MyosCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -44,29 +44,29 @@ class ProgramChangeSummaryCard extends StatelessWidget {
   Widget _heading(
     BuildContext context,
     ProgramChangeCopy copy,
-    MayosThemeExtension colors,
+    MyosThemeExtension colors,
     bool unchanged,
   ) =>
       unchanged
           ? _text(context, copy.approvedAsIs, colors.textPrimary)
-          : Text(copy.heading, style: MayosTypography.of(context).sectionHeading);
+          : Text(copy.heading, style: MyosTypography.of(context).sectionHeading);
 
-  Widget _noticeMessage(BuildContext context, MayosThemeExtension colors) =>
+  Widget _noticeMessage(BuildContext context, MyosThemeExtension colors) =>
       Padding(
-        padding: const EdgeInsets.only(top: MayosSpacing.xs),
+        padding: const EdgeInsets.only(top: MyosSpacing.xs),
         child: _text(context, message!, colors.textSecondary),
       );
 
   List<Widget> _changeLines(
     BuildContext context,
     ProgramChangeCopy copy,
-    MayosThemeExtension colors,
+    MyosThemeExtension colors,
     bool unchanged,
   ) {
     if (unchanged) return const <Widget>[];
     final List<Map<String, dynamic>> changes = _changes();
     return <Widget>[
-      const SizedBox(height: MayosSpacing.sm),
+      const SizedBox(height: MyosSpacing.sm),
       for (final Map<String, dynamic> change in changes.take(10))
         _changeLine(context, copy, colors, change),
       if (changes.length > 10)
@@ -77,31 +77,31 @@ class ProgramChangeSummaryCard extends StatelessWidget {
   Widget _changeLine(
     BuildContext context,
     ProgramChangeCopy copy,
-    MayosThemeExtension colors,
+    MyosThemeExtension colors,
     Map<String, dynamic> change,
   ) =>
       Padding(
-        padding: const EdgeInsets.only(bottom: MayosSpacing.xs),
+        padding: const EdgeInsets.only(bottom: MyosSpacing.xs),
         child: _text(context, '• ${copy.line(change)}', colors.textPrimary),
       );
 
   Widget _actions(ProgramChangeCopy copy) =>
       Padding(
-        padding: const EdgeInsets.only(top: MayosSpacing.sm),
+        padding: const EdgeInsets.only(top: MyosSpacing.sm),
         child: Wrap(
-          spacing: MayosSpacing.xs,
+          spacing: MyosSpacing.xs,
           children: <Widget>[
             if (onViewProgram != null)
-              MayosButton(
+              MyosButton(
                 label: copy.viewProgram,
-                variant: MayosButtonVariant.secondary,
+                variant: MyosButtonVariant.secondary,
                 expand: false,
                 onPressed: onViewProgram,
               ),
             if (onDismiss != null)
-              MayosButton(
+              MyosButton(
                 label: copy.dismiss,
-                variant: MayosButtonVariant.tertiary,
+                variant: MyosButtonVariant.tertiary,
                 expand: false,
                 onPressed: onDismiss,
               ),
@@ -121,7 +121,7 @@ class ProgramChangeSummaryCard extends StatelessWidget {
         child: Text(
           text,
           textAlign: TextAlign.start,
-          style: MayosTypography.of(context).bodySecondary.copyWith(color: color),
+          style: MyosTypography.of(context).bodySecondary.copyWith(color: color),
         ),
       );
 }

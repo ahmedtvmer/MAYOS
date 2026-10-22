@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/models.dart';
-import '../../../core/theme/mayos_typography.dart';
+import '../../../core/theme/myos_typography.dart';
 
 class ProgramDayEditDialog extends StatefulWidget {
   const ProgramDayEditDialog({super.key, required this.day});
@@ -41,7 +41,7 @@ class _ProgramDayEditDialogState extends State<ProgramDayEditDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final MayosCopy copy = displayCopyOf(context);
+    final MyosCopy copy = displayCopyOf(context);
     return AlertDialog(
       title: Text(copy.editDay),
       content: _exerciseList(context),
@@ -98,7 +98,7 @@ class _ProgramDayEditDialogState extends State<ProgramDayEditDialog> {
                 displayCopyOf(context).programBackoffSetsKept(
                   exercise.backoffSetCount,
                 ),
-                style: MayosTypography.of(context).caption,
+                style: MyosTypography.of(context).caption,
               ),
             ),
           ),
@@ -132,7 +132,7 @@ class _ProgramDayEditDialogState extends State<ProgramDayEditDialog> {
     ProgramEditExerciseEntry entry,
   ) {
     final ProgramExercise exercise = entry.exercise;
-    final MayosCopy copy = displayCopyOf(context);
+    final MyosCopy copy = displayCopyOf(context);
     return IconButton(
       key: Key('program_edit_decrease_${entry.sourceIndex}'),
       tooltip: copy.decreaseProgramExerciseSets(exercise.exerciseName),
@@ -144,7 +144,7 @@ class _ProgramDayEditDialogState extends State<ProgramDayEditDialog> {
   }
 
   Widget _setCount(BuildContext context, ProgramExercise exercise) {
-    final MayosCopy copy = displayCopyOf(context);
+    final MyosCopy copy = displayCopyOf(context);
     return Semantics(
       container: true,
       label: copy.programExerciseSetCount(
@@ -167,7 +167,7 @@ class _ProgramDayEditDialogState extends State<ProgramDayEditDialog> {
     BuildContext context,
     ProgramEditExerciseEntry entry,
   ) {
-    final MayosCopy copy = displayCopyOf(context);
+    final MyosCopy copy = displayCopyOf(context);
     final ProgramExercise exercise = entry.exercise;
     return IconButton(
       key: Key('program_edit_increase_${entry.sourceIndex}'),
@@ -180,7 +180,7 @@ class _ProgramDayEditDialogState extends State<ProgramDayEditDialog> {
   }
 
   Widget _removeButton(BuildContext context, ProgramEditExerciseEntry entry) {
-    final MayosCopy copy = displayCopyOf(context);
+    final MyosCopy copy = displayCopyOf(context);
     final ProgramExercise exercise = entry.exercise;
     return IconButton(
       tooltip: copy.removeExerciseNamed(exercise.exerciseName),
@@ -211,7 +211,7 @@ class _ProgramDayEditDialogState extends State<ProgramDayEditDialog> {
     });
   }
 
-  List<Widget> _actions(MayosCopy copy) => <Widget>[
+  List<Widget> _actions(MyosCopy copy) => <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: Text(copy.cancel),

@@ -5,10 +5,10 @@ import 'package:go_router/go_router.dart';
 import '../../../core/active_workout.dart';
 import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/models.dart';
-import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/theme/mayos_theme.dart';
-import '../../../core/theme/mayos_typography.dart';
-import '../../../core/ui/mayos_button.dart';
+import '../../../core/theme/myos_spacing.dart';
+import '../../../core/theme/myos_theme.dart';
+import '../../../core/theme/myos_typography.dart';
+import '../../../core/ui/myos_button.dart';
 import '../../../core/workout_start_notice_store.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
@@ -30,7 +30,7 @@ Future<ActiveWorkoutPromptChoice?> showActiveWorkoutPrompt(
   required ActiveWorkout activeWorkout,
   required bool forNewStart,
 }) {
-  final MayosThemeExtension c = MayosTheme.of(context);
+  final MyosThemeExtension c = MyosTheme.of(context);
   final WorkoutCopy copy = workoutCopyOf(context);
   return showDialog<ActiveWorkoutPromptChoice>(
     context: context,
@@ -45,24 +45,24 @@ Future<ActiveWorkoutPromptChoice?> showActiveWorkoutPrompt(
             copy.startedWorkoutLabel(
                 activeWorkout.dayName, _startedLabel(activeWorkout)),
             style:
-                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
+                MyosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           ),
-          const SizedBox(height: MayosSpacing.sm),
+          const SizedBox(height: MyosSpacing.sm),
           Text(
             forNewStart ? copy.resumeOrDiscardNewStart : copy.resumeOrDiscard,
-            style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textPrimary),
+            style: MyosTypography.of(context).bodySecondary.copyWith(color: c.textPrimary),
           ),
         ],
       ),
       actions: <Widget>[
-        MayosButton(
+        MyosButton(
           label: copy.discard,
-          variant: MayosButtonVariant.tertiary,
+          variant: MyosButtonVariant.tertiary,
           expand: false,
           onPressed: () =>
               Navigator.of(context).pop(ActiveWorkoutPromptChoice.discard),
         ),
-        MayosButton(
+        MyosButton(
           label: copy.resume,
           expand: false,
           onPressed: () =>
@@ -88,7 +88,7 @@ String _startedLabel(ActiveWorkout activeWorkout) {
 /// logged in it is lost (#123). Resolves true only for Discard; "Keep
 /// logging" and any dismissal keep the workout.
 Future<bool> confirmDiscardWorkout(BuildContext context) async {
-  final MayosThemeExtension c = MayosTheme.of(context);
+  final MyosThemeExtension c = MyosTheme.of(context);
   final WorkoutCopy copy = workoutCopyOf(context);
   final bool? discard = await showDialog<bool>(
     context: context,
@@ -96,16 +96,16 @@ Future<bool> confirmDiscardWorkout(BuildContext context) async {
       title: Text(copy.confirmDiscardTitle),
       content: Text(
         copy.discardSetsLost,
-        style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textPrimary),
+        style: MyosTypography.of(context).bodySecondary.copyWith(color: c.textPrimary),
       ),
       actions: <Widget>[
-        MayosButton(
+        MyosButton(
           label: copy.keepLogging,
-          variant: MayosButtonVariant.secondary,
+          variant: MyosButtonVariant.secondary,
           expand: false,
           onPressed: () => Navigator.of(context).pop(false),
         ),
-        MayosButton(
+        MyosButton(
           label: copy.discard,
           destructive: true,
           expand: false,

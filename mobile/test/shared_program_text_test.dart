@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/shared_program_text.dart';
+import 'package:myos_mobile/src/core/shared_program_text.dart';
 
 void main() {
   test('parses shared text and text-file payloads', () {

@@ -1861,7 +1861,7 @@ def test_issue_400_repeated_blank_week_rows_over_implicit_count_are_refused(
 
     assert response.status_code == 422
     assert response.json()["message_code"] == "program_import.interpretation_failed.v1"
-    assert response.json()["detail"] == "The sheet could not be interpreted. Try the MAYOS template."
+    assert response.json()["detail"] == "The sheet could not be interpreted. Try the MYOS template."
 
 
 @pytest.mark.parametrize("second_reply_repeats", [True, False], ids=["refused", "retry-recovers"])
@@ -1905,7 +1905,7 @@ def test_issue_400_duplicate_blank_weeks_without_implicit_blocks_get_one_repair(
     if second_reply_repeats:
         assert response.status_code == 422
         assert response.json()["message_code"] == "program_import.interpretation_failed.v1"
-        assert response.json()["detail"] == "The sheet could not be interpreted. Try the MAYOS template."
+        assert response.json()["detail"] == "The sheet could not be interpreted. Try the MYOS template."
     else:
         assert response.status_code == 200, response.text
         assert [row["source_row"] for row in response.json()["rows"]] == [2]
@@ -1931,7 +1931,7 @@ def test_issue_400_explicit_same_week_duplicates_remain_rejected(
 
     assert response.status_code == 422
     assert response.json()["message_code"] == "program_import.interpretation_failed.v1"
-    assert response.json()["detail"] == "The sheet could not be interpreted. Try the MAYOS template."
+    assert response.json()["detail"] == "The sheet could not be interpreted. Try the MYOS template."
 
 
 def test_implicit_week_expansion_preserves_model_values_and_normalizes_missing_source_values():

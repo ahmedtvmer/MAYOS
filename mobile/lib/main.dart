@@ -9,5 +9,5 @@ void main() {
   // A no-op on Android, where the platform supplies the location.
   usePathUrlStrategy();
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ProviderScope(child: MayosApp()));
+  runApp(const ProviderScope(child: MyosApp()));
 }

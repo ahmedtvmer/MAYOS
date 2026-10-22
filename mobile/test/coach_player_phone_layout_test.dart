@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
+import 'package:myos_mobile/src/core/theme/myos_spacing.dart';
 
 import 'support/coach_layout_harness.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 void main() {
   testWidgets('Player history, program, and check-ins fit both phone languages',
       (WidgetTester tester) async {
-    late FakeMayosApi fake;
+    late FakeMyosApi fake;
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi configuredFake) {
+      configureFake: (FakeMyosApi configuredFake) {
         fake = configuredFake
           ..assignments.add(<String, dynamic>{
             'assignment_id': 'assignment-1',
@@ -200,7 +200,7 @@ void main() {
     for (final String language in <String>['en', 'ar']) {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
-      final FakeMayosApi fake = createCoachFake(language: language)
+      final FakeMyosApi fake = createCoachFake(language: language)
         ..assignments.add(<String, dynamic>{
           'assignment_id': 'assignment-1',
           'player_username': 'bob',
@@ -291,7 +291,7 @@ void main() {
       (WidgetTester tester) async {
     await pumpCoachDesktopLayout(
       tester,
-      configureFake: (FakeMayosApi fake) {
+      configureFake: (FakeMyosApi fake) {
         fake.assignments.add(<String, dynamic>{
           'assignment_id': 'assignment-1',
           'player_username': 'bob',
@@ -349,7 +349,7 @@ void main() {
       barRect.width / rowRect.width,
       closeTo(0.458, 0.03),
     );
-    expect(setsRect.left - barRect.right, closeTo(MayosSpacing.xs, 1));
+    expect(setsRect.left - barRect.right, closeTo(MyosSpacing.xs, 1));
     expect(
       (setsRect.left - rowRect.left) / rowRect.width,
       closeTo(0.558, 0.03),

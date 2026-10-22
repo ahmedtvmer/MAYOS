@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/features/coach/coach_pro_gate.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/features/coach/coach_pro_gate.dart';
+import 'package:myos_mobile/src/providers.dart';
 
 import 'support/auth_harness.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 Future<ProviderContainer> _pumpGate(WidgetTester tester, String plan) async {
-  final FakeMayosApi fake = FakeMayosApi()
+  final FakeMyosApi fake = FakeMyosApi()
     ..coach = true
     ..coachPlan = plan
     ..profileExists = true

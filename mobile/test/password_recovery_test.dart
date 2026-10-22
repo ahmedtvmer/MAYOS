@@ -2,16 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/chat_storage.dart';
-import 'package:mayos_mobile/src/core/connectivity_message.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/providers.dart';
-import 'package:mayos_mobile/src/router.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/chat_storage.dart';
+import 'package:myos_mobile/src/core/connectivity_message.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/router.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 /// Pumps finite frames until [finder] matches (never `pumpAndSettle`, which
 /// never settles while a progress indicator is on screen).
@@ -28,7 +28,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   }
 }
 
-Widget _app(FakeMayosApi fake, InMemoryTokenStore tokens) {
+Widget _app(FakeMyosApi fake, InMemoryTokenStore tokens) {
   return ProviderScope(
     overrides: <Override>[
       tokenStoreProvider.overrideWithValue(tokens),
@@ -44,13 +44,13 @@ Widget _app(FakeMayosApi fake, InMemoryTokenStore tokens) {
         return client;
       }),
     ],
-    child: const MayosApp(),
+    child: const MyosApp(),
   );
 }
 
 GoRouter _routerOf(WidgetTester tester) {
   final ProviderContainer container =
-      ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+      ProviderScope.containerOf(tester.element(find.byType(MyosApp)));
   return container.read(routerProvider);
 }
 
@@ -62,7 +62,7 @@ Future<void> _openResetLink(WidgetTester tester, String url) async {
 void main() {
   testWidgets('App Link deep link opens the reset screen with the token',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = FakeMayosApi();
+    final FakeMyosApi fake = FakeMyosApi();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     await tester.pumpWidget(_app(fake, tokens));
     await _pumpUntilFound(tester, find.text('Log in'));
@@ -80,7 +80,7 @@ void main() {
 
   testWidgets('a successful reset routes to login with a success message',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = FakeMayosApi();
+    final FakeMyosApi fake = FakeMyosApi();
     fake.validResetToken = 'deep-link-token-1';
     // Seed a live session, so the reset must also clear the stored token.
     final InMemoryTokenStore tokens = InMemoryTokenStore();
@@ -111,7 +111,7 @@ void main() {
 
   testWidgets('a failed reset shows the service generic message',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = FakeMayosApi();
+    final FakeMyosApi fake = FakeMyosApi();
     fake.validResetToken = 'the-real-token';
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     await tester.pumpWidget(_app(fake, tokens));
@@ -133,7 +133,7 @@ void main() {
 
   testWidgets('forgot-password flow shows the constant confirmation',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = FakeMayosApi();
+    final FakeMyosApi fake = FakeMyosApi();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     await tester.pumpWidget(_app(fake, tokens));
     await _pumpUntilFound(tester, find.text('Log in'));
@@ -150,7 +150,7 @@ void main() {
 
   testWidgets('forgot-password offline shows the needs-connection message',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = FakeMayosApi();
+    final FakeMyosApi fake = FakeMyosApi();
     fake.failOffline('POST', '/auth/forgot-password');
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     await tester.pumpWidget(_app(fake, tokens));

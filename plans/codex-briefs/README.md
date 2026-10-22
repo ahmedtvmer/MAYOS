@@ -12,7 +12,7 @@ sync with the base branch, run `/code-review`, re-run the gates, then commit.
 | Wave | Issue | Area | Status |
 |------|-------|------|--------|
 | 1 | #229 band/bodyweight working sets | program generation, substitutes | landed |
-| 1 | #227 MAYOS-authored staples | exercise library seed | landed |
+| 1 | #227 MYOS-authored staples | exercise library seed | landed |
 | 1 | #238 Training profile editing | profile API + Flutter Settings | landed |
 | 1 | #243 shared evaluation-report gate | Coach AI / Checkpoint gate | landed |
 | 1 | #154 coach sign-up with invite code | registration, invites, auth screens | landed |

@@ -1,4 +1,4 @@
-import 'package:mayos_mobile/src/core/rest_alert_permission_access.dart';
+import 'package:myos_mobile/src/core/rest_alert_permission_access.dart';
 
 /// Platform-free permission seam for the post-onboarding widget tests.
 class FakeRestAlertPermissionAccess implements RestAlertPermissionAccess {

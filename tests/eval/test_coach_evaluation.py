@@ -228,7 +228,7 @@ def test_prompt_sent_to_the_model_is_the_production_prompt(cases, mock_results):
     case = cases[0]
     messages = coach_ai.build_messages(result["context"], case["question"], case["history"])
     assert str(messages[0].content).startswith(
-        'You are "CoachIdentifyName"\'s coaching assistant in MAYOS.\n'
+        'You are "CoachIdentifyName"\'s coaching assistant in MYOS.\n'
         'You are talking to "CoachIdentifyName" about their player "Ahmed", whose data follows.'
     )
     assert str(messages[0].content).endswith(result["context"])

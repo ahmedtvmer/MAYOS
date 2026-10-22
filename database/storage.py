@@ -19,7 +19,7 @@ from pathlib import Path
 
 DATA_ROOT_ENV = "MAYOS_DATA_DIR"
 REQUIRE_PERSISTENT_ENV = "MAYOS_REQUIRE_PERSISTENT_DATA"
-_WRITE_PROBE_PREFIX = ".mayos-write-probe-"
+_WRITE_PROBE_PREFIX = ".myos-write-probe-"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_DATA_ROOT = BASE_DIR / "db"

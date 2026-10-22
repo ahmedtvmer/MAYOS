@@ -52,14 +52,14 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final CoachCopy copy = coachCopyOf(context);
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     if (!isEditorForm && !isDesktopLayout(context)) {
       return _phoneCard(context, copy);
     }
     return Padding(
-      padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
-      child: MayosCard(
-        padding: const EdgeInsets.all(MayosSpacing.sm),
+      padding: const EdgeInsets.only(bottom: MyosSpacing.sm),
+      child: MyosCard(
+        padding: const EdgeInsets.all(MyosSpacing.sm),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -67,7 +67,7 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
               children: <Widget>[
                 Expanded(
                   child: Text(exercise.exerciseName,
-                      style: MayosTypography.of(context).sectionHeading),
+                      style: MyosTypography.of(context).sectionHeading),
                 ),
                 _exerciseActionControls(context, copy, colors),
               ],
@@ -86,7 +86,7 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
                     onChanged: (_) => onChanged('target_sets'),
                   ),
                 ),
-                const SizedBox(width: MayosSpacing.xs),
+                const SizedBox(width: MyosSpacing.xs),
                 Expanded(
                   child: _editorNumberField(
                     key: _fieldKey('reps'),
@@ -104,7 +104,7 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: MayosSpacing.sm),
+            const SizedBox(height: MyosSpacing.sm),
             SizedBox(
               width: 180,
               child: _editorNumberField(
@@ -120,7 +120,7 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
                 },
               ),
             ),
-            const SizedBox(height: MayosSpacing.sm),
+            const SizedBox(height: MyosSpacing.sm),
             DropdownButtonFormField<String>(
               key: _fieldKey('load_kind'),
               isExpanded: true,
@@ -143,7 +143,7 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
                     },
             ),
             if (exercise.loadKind.isNotEmpty) ...<Widget>[
-              const SizedBox(height: MayosSpacing.xs),
+              const SizedBox(height: MyosSpacing.xs),
               _editorNumberField(
                 key: _fieldKey('load_value'),
                 controller: exercise.loadValue,
@@ -189,7 +189,7 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
                 ),
               ),
             ],
-            const SizedBox(height: MayosSpacing.sm),
+            const SizedBox(height: MyosSpacing.sm),
             Row(
               children: <Widget>[
                 Expanded(
@@ -202,7 +202,7 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
                     onChanged: (_) => onChanged('warmup_sets'),
                   ),
                 ),
-                const SizedBox(width: MayosSpacing.xs),
+                const SizedBox(width: MyosSpacing.xs),
                 Expanded(
                   child: _editorNumberField(
                     key: _fieldKey('rest'),
@@ -215,7 +215,7 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: MayosSpacing.xs),
+            const SizedBox(height: MyosSpacing.xs),
             TextField(
               key: _fieldKey('tempo'),
               controller: exercise.tempo,
@@ -235,7 +235,7 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
               ),
               onChanged: (_) => onChanged('tempo'),
             ),
-            const SizedBox(height: MayosSpacing.xs),
+            const SizedBox(height: MyosSpacing.xs),
             TextField(
               key: _fieldKey('notes'),
               controller: exercise.notes,
@@ -281,7 +281,7 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
     );
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(MayosSpacing.xs),
+        padding: const EdgeInsets.all(MyosSpacing.xs),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
           Row(children: <Widget>[
             Expanded(child: Text(copy.backoffGroupTitle(index))),
@@ -292,7 +292,7 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
               icon: const Icon(Icons.remove_circle_outline),
             ),
           ]),
-          Wrap(spacing: MayosSpacing.xs, runSpacing: MayosSpacing.xs, children: <Widget>[
+          Wrap(spacing: MyosSpacing.xs, runSpacing: MyosSpacing.xs, children: <Widget>[
             field('sets', copy.workingSets, 'sets'),
             field('reps', copy.repsOrRange, 'reps_min'),
             field('reps_max', copy.repsOrRange, 'reps_max'),
@@ -377,7 +377,7 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
       };
 
   Widget _phoneCard(BuildContext context, CoachCopy copy) {
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     final String prescription = exercise.setGroups.length > 1 ||
             exercise.setGroups.first['amrap_last_set'] == true
         ? formatSetGroups(
@@ -392,15 +392,15 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
       rest: exercise.rest.text,
     );
     return Padding(
-      padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
-      child: MayosCard(
+      padding: const EdgeInsets.only(bottom: MyosSpacing.sm),
+      child: MyosCard(
         key: Key('program_draft_exercise_card_${dayIndex}_$exerciseIndex'),
         onTap: busy ? null : onEdit,
         padding: const EdgeInsetsDirectional.only(
-          start: MayosSpacing.md,
-          end: MayosSpacing.xs,
-          top: MayosSpacing.sm,
-          bottom: MayosSpacing.sm,
+          start: MyosSpacing.md,
+          end: MyosSpacing.xs,
+          top: MyosSpacing.sm,
+          bottom: MyosSpacing.sm,
         ),
         child: Row(
           children: <Widget>[
@@ -409,10 +409,10 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(exercise.exerciseName,
-                      style: MayosTypography.of(context).sectionHeading),
-                  const SizedBox(height: MayosSpacing.xxs),
+                      style: MyosTypography.of(context).sectionHeading),
+                  const SizedBox(height: MyosSpacing.xxs),
                   Text(prescription,
-                      style: MayosTypography.of(context).bodySecondary),
+                      style: MyosTypography.of(context).bodySecondary),
                   if (_firstExerciseError != null)
                     _phoneExerciseError(context, colors),
                   if (exercise.tempo.text.isNotEmpty ||
@@ -425,14 +425,14 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
                       ].join(' · '),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: MayosTypography.of(context).bodySecondary,
+                      style: MyosTypography.of(context).bodySecondary,
                     ),
                 ],
               ),
             ),
             _exerciseActionControls(context, copy, colors),
             const Icon(Icons.edit_outlined),
-            const SizedBox(width: MayosSpacing.sm),
+            const SizedBox(width: MyosSpacing.sm),
           ],
         ),
       ),
@@ -442,7 +442,7 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
   Widget _exerciseActionControls(
     BuildContext context,
     CoachCopy copy,
-    MayosThemeExtension colors,
+    MyosThemeExtension colors,
   ) {
     if (isEditorForm) return const SizedBox.shrink();
     return Row(
@@ -455,7 +455,7 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
             key: Key('program_draft_exercise_reorder_${dayIndex}_$exerciseIndex'),
             message: copy.reorderExercise,
             child: const Padding(
-              padding: EdgeInsets.all(MayosSpacing.sm),
+              padding: EdgeInsets.all(MyosSpacing.sm),
               child: Icon(Icons.drag_handle),
             ),
           ),
@@ -558,19 +558,19 @@ class _ProgramDraftExerciseCard extends StatelessWidget {
     return null;
   }
 
-  Widget _phoneExerciseError(BuildContext context, MayosThemeExtension colors) {
+  Widget _phoneExerciseError(BuildContext context, MyosThemeExtension colors) {
     final String? error = _firstExerciseError;
     if (error == null) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.only(top: MayosSpacing.xs),
+      padding: const EdgeInsets.only(top: MyosSpacing.xs),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Icon(Icons.error_outline, color: colors.danger, size: 18),
-          const SizedBox(width: MayosSpacing.xs),
+          const SizedBox(width: MyosSpacing.xs),
           Expanded(
             child: Text(error,
-                style: MayosTypography.of(context)
+                style: MyosTypography.of(context)
                     .body
                     .copyWith(color: colors.danger)),
           ),

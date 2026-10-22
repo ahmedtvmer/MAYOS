@@ -1,6 +1,6 @@
 # Myos: Production Deployment, Containerization & Operational Runbook
 
-This document details production deployment procedures, container orchestration, database provisioning, and disaster recovery for the MAYOS service.
+This document details production deployment procedures, container orchestration, database provisioning, and disaster recovery for the MYOS service.
 
 > **Android closed trial (Fly.io, FastAPI only):** use the [§10 Fly.io
 > runbook](#10-flyio-closed-trial-api-deployment-fastapi-only) for its
@@ -15,7 +15,7 @@ This document details production deployment procedures, container orchestration,
 
 ## 1. Host Runtime Prerequisites
 
-MAYOS runs its chat, judge, and coach roles through a hosted OpenAI-compatible API. The service loads BGE embeddings through ONNX Runtime for clinical triage and Exercise library search. The image includes the model graph, tokenizer and pooling configuration; chat model weights are not stored or downloaded by the service.
+MYOS runs its chat, judge, and coach roles through a hosted OpenAI-compatible API. The service loads BGE embeddings through ONNX Runtime for clinical triage and Exercise library search. The image includes the model graph, tokenizer and pooling configuration; chat model weights are not stored or downloaded by the service.
 
 **Host system dependencies (non-Docker native runs):**
 
@@ -63,8 +63,8 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `GOOGLE_WEB_CLIENT_ID` | unset (⇒ `/auth/google*` returns 503) | **Secret-ish config**: the OAuth web client ID Google ID tokens are verified against (issue #113). Use the *Web* client ID from the Google Cloud console; Android requests its ID token with this value as `serverClientId`, so it is the only audience the API needs. Unset disables Google sign-in only — password auth is unaffected |
 | `POSTHOG_API_KEY` | unset | PostHog project key for server events; unset or `TESTING=1` disables analytics |
 | `POSTHOG_HOST` | `https://eu.i.posthog.com` | PostHog event-ingestion host |
-| `POSTHOG_PERSONAL_API_KEY` | unset | Private API key restricted to the MAYOS project with only the `person:write` scope; set only in server secrets |
-| `POSTHOG_PROJECT_ID` | unset | MAYOS PostHog project id used by the private persons API |
+| `POSTHOG_PERSONAL_API_KEY` | unset | Private API key restricted to the MYOS project with only the `person:write` scope; set only in server secrets |
+| `POSTHOG_PROJECT_ID` | unset | MYOS PostHog project id used by the private persons API |
 | `POSTHOG_API_HOST` | `https://eu.posthog.com` | Private PostHog API host; change only for a different PostHog deployment |
 | `UI_BASE_URL` | `http://localhost:7357` | CORS origins: one, or several comma-separated (web app host + local Flutter web dev). Not used for reset links |
 | `RESET_LINK_BASE_URL` | `http://localhost:8000` | Reset-link / App Link base; must match the App Link host |
@@ -585,7 +585,7 @@ Cloudflare R2 bucket through its S3-compatible API. In the Cloudflare dashboard,
 create the bucket and leave public access disabled, then create an R2 API token
 with **Object Read & Write** permission scoped to that bucket only. Use the S3
 endpoint shown by Cloudflare for the account (or the jurisdiction-specific
-endpoint for a jurisdictional bucket). MAYOS configures the S3 client with
+endpoint for a jurisdictional bucket). MYOS configures the S3 client with
 region `auto`.
 
 Set these four Fly secrets; the API key and secret are the R2 token's Access Key
@@ -1093,7 +1093,7 @@ returns 404 instead of silently falling back to a local copy.
   carries "© Gym visual — https://gymvisual.com/" and the media is never shown
   larger than its native 180×180 (the exercise-detail hero caps its box at
   180 dp; Settings → About → Credits holds the full notice). The provenance
-  record and the 2026-09-29 decision to display it pending MAYOS's own licence
+  record and the 2026-09-29 decision to display it pending MYOS's own licence
   are in `docs/design-review/53/MEDIA-PROVENANCE.md`. The app's kill switch is
   `--dart-define=MAYOS_EXERCISE_MEDIA=false`.
 - **Only `data/processed_exercises.csv` remains in the build context.** The
@@ -1152,7 +1152,7 @@ from `fly.toml`; the first two are configuration and may live in `[env]`):
 | `SMTP_PORT` | `587` | |
 | `SMTP_USE_TLS` | `true` | `false` uses implicit TLS |
 | `SMTP_USER` / `SMTP_PASSWORD` | relay credentials | Optional for an unauthenticated relay |
-| `SMTP_FROM` | from address | Defaults to `no-reply@mayos.local` |
+| `SMTP_FROM` | from address | Defaults to `no-reply@myos.local` |
 
 ```bash
 # Reset-link base (must equal the -PappLinkHost used for the Android build).
@@ -1218,7 +1218,7 @@ both player and coach capabilities; the same app/login serves both):
 
 1. From the app, choose **Forgot password?**, enter the account's recovery email,
    and submit. The same confirmation appears for any address (anti-enumeration).
-2. Confirm the email arrives. The body must say the link opens the MAYOS app if
+2. Confirm the email arrives. The body must say the link opens the MYOS app if
    installed, otherwise a secure web page, is single-use, and expires in the
    configured `RESET_TOKEN_TTL_MINUTES`; the link is
    `https://${APP}.fly.dev/reset-password?token=…`.
@@ -1300,7 +1300,7 @@ The script runs `flutter build web --release --no-web-resources-cdn
 | `GOOGLE_WEB_CLIENT_ID` dart-define | build | Google sign-in web client (#112, #115) |
 | `POSTHOG_CLIENT_KEY` dart-define | release build | Public PostHog EU project key; omitted or blank disables the Flutter client. Debug and profile builds never initialize it. |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | operator env | wrangler auth |
-| `PAGES_PROJECT` | operator env | default `mayos` |
+| `PAGES_PROJECT` | operator env | default `myos` |
 | `UI_BASE_URL` | Fly `[env]` | must list the Pages origin (CORS) |
 
 **Routing and headers** live in `mobile/web/_redirects` and `mobile/web/_headers`
@@ -1336,7 +1336,7 @@ everywhere until these keys are set, so this can be done at any time.
 ANALYTICS.md whenever what is sent changes. The served page updates with the
 next `fly deploy`.
 
-**1. PostHog project settings** (EU Cloud, project MAYOS):
+**1. PostHog project settings** (EU Cloud, project MYOS):
 - Project settings → **Discard client IP data: ON**.
 - Session replay, autocapture, heatmaps and surveys: off (the app also turns
   them off in code).
@@ -1344,8 +1344,8 @@ next `fly deploy`.
   **Project ID**.
 
 **2. Personal API key** for person deletion (#95): avatar → Settings →
-Personal API keys → Create — label `MAYOS server – person deletion`,
-organization/project access **MAYOS only**, scopes **Person: Write** only
+Personal API keys → Create — label `MYOS server – person deletion`,
+organization/project access **MYOS only**, scopes **Person: Write** only
 (`person:write`). It is a secret (`phx_…`): Fly only, never a client build,
 never `.env`.
 
@@ -1370,13 +1370,13 @@ dart-define, never read from Fly:
 Debug and profile builds never initialize PostHog.
 
 **5. Local development** — leave `POSTHOG_API_KEY` blank in `.env` (or use a
-separate "MAYOS dev" project's key) so local runs never send into trial data;
+separate "MYOS dev" project's key) so local runs never send into trial data;
 `MAYOS_ENV=development`.
 
 | Variable | Where | Value |
 | :--- | :--- | :--- |
 | `POSTHOG_API_KEY` | Fly secret | Project API key `phc_…` |
-| `POSTHOG_PERSONAL_API_KEY` | Fly secret | Personal key `phx_…`, `person:write`, MAYOS only |
+| `POSTHOG_PERSONAL_API_KEY` | Fly secret | Personal key `phx_…`, `person:write`, MYOS only |
 | `POSTHOG_PROJECT_ID` | Fly secret | Numeric project id |
 | `MAYOS_ENV` | `fly.toml` `[env]` | `production` |
 | `MAYOS_RELEASE_PHASE` | env | `closed_trial` now, `public` at launch |

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Schema safety check for a MAYOS image rollback."""
+"""Schema safety check for a MYOS image rollback."""
 
 import re
 import sys

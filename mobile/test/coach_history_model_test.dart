@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/models.dart';
 
 void main() {
   test('coach session exercise parses optional library labels', () {

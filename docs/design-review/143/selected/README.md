@@ -57,7 +57,7 @@ the production Flutter entry point and build assets.
 
 No new tests or production rollout were added. Only three disposable source
 files differ from the archived trial: `arabic_prototype.dart` enables C,
-`mayos_typography.dart` selects IBM Plex primary families with static face
+`myos_typography.dart` selects IBM Plex primary families with static face
 weights, and `logger_keypad.dart` uses an icon for C's backspace. Variable-font
 axis overrides are disabled for C because the bundled IBM faces are static.
 

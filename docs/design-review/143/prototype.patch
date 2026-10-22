@@ -26630,12 +26630,12 @@ index 757f8f8..0af4d04 100755
  import 'core/app_mode.dart';
 +import 'core/arabic_prototype.dart';
  import 'core/connectivity.dart';
- import 'core/theme/mayos_spacing.dart';
- import 'core/theme/mayos_theme.dart';
-@@ -103,7 +104,11 @@ class _MayosAppState extends ConsumerState<MayosApp>
-               key: mayosMessengerKey,
+ import 'core/theme/myos_spacing.dart';
+ import 'core/theme/myos_theme.dart';
+@@ -103,7 +104,11 @@ class _MyosAppState extends ConsumerState<MyosApp>
+               key: myosMessengerKey,
                child: AnnotatedRegion<SystemUiOverlayStyle>(
-                 value: MayosTheme.overlayStyle(c),
+                 value: MyosTheme.overlayStyle(c),
 -                child: child ?? const SizedBox.shrink(),
 +                child: Directionality(
 +                  textDirection:
@@ -26693,19 +26693,19 @@ index 0000000..df0cbe0
 +    return prototypeLtr(clause);
 +  }).join(' · ');
 +}
-diff --git a/mobile/lib/src/core/theme/mayos_typography.dart b/mobile/lib/src/core/theme/mayos_typography.dart
+diff --git a/mobile/lib/src/core/theme/myos_typography.dart b/mobile/lib/src/core/theme/myos_typography.dart
 index e4488e5..7970599 100755
---- a/mobile/lib/src/core/theme/mayos_typography.dart
-+++ b/mobile/lib/src/core/theme/mayos_typography.dart
+--- a/mobile/lib/src/core/theme/myos_typography.dart
++++ b/mobile/lib/src/core/theme/myos_typography.dart
 @@ -1,5 +1,6 @@
  import 'package:flutter/material.dart';
  
 +import '../arabic_prototype.dart';
- import 'mayos_theme_extension.dart';
+ import 'myos_theme_extension.dart';
  
- /// MAYOS typography roles.
-@@ -13,6 +14,14 @@ import 'mayos_theme_extension.dart';
- abstract final class MayosTypography {
+ /// MYOS typography roles.
+@@ -13,6 +14,14 @@ import 'myos_theme_extension.dart';
+ abstract final class MyosTypography {
    static const String displayFamily = 'PlayfairDisplay';
    static const String uiFamily = 'Inter';
 +  static const List<String> _displayFallback = <String>[
@@ -26719,7 +26719,7 @@ index e4488e5..7970599 100755
  
    static const List<FontVariation> _serifSemiBold = <FontVariation>[
      FontVariation('wght', 600),
-@@ -43,38 +52,42 @@ abstract final class MayosTypography {
+@@ -43,38 +52,42 @@ abstract final class MyosTypography {
    /// Hero / display heading.
    static const TextStyle display = TextStyle(
      fontFamily: displayFamily,
@@ -26769,7 +26769,7 @@ index e4488e5..7970599 100755
      fontWeight: FontWeight.w600,
      fontVariations: _semibold,
    );
-@@ -82,6 +95,7 @@ abstract final class MayosTypography {
+@@ -82,6 +95,7 @@ abstract final class MyosTypography {
    /// Primary body copy.
    static const TextStyle body = TextStyle(
      fontFamily: uiFamily,
@@ -26777,7 +26777,7 @@ index e4488e5..7970599 100755
      fontSize: 15,
      height: 1.5,
      fontWeight: FontWeight.w400,
-@@ -91,6 +105,7 @@ abstract final class MayosTypography {
+@@ -91,6 +105,7 @@ abstract final class MyosTypography {
    /// Secondary / supporting body copy.
    static const TextStyle bodySecondary = TextStyle(
      fontFamily: uiFamily,
@@ -26785,7 +26785,7 @@ index e4488e5..7970599 100755
      fontSize: 14,
      height: 1.5,
      fontWeight: FontWeight.w400,
-@@ -102,36 +117,39 @@ abstract final class MayosTypography {
+@@ -102,36 +117,39 @@ abstract final class MyosTypography {
      fontFamily: 'monospace',
      fontFamilyFallback: <String>['Roboto Mono', 'Menlo', 'Courier New'],
      fontSize: 14,
@@ -26831,7 +26831,7 @@ index e4488e5..7970599 100755
      fontWeight: FontWeight.w600,
      fontVariations: _semibold,
      fontFeatures: _tabular,
-@@ -140,8 +158,9 @@ abstract final class MayosTypography {
+@@ -140,8 +158,9 @@ abstract final class MyosTypography {
    /// Numeric for the in-app keypad keys: between [numericSmall] and [numeric].
    static const TextStyle numericMedium = TextStyle(
      fontFamily: uiFamily,
@@ -26842,7 +26842,7 @@ index e4488e5..7970599 100755
      fontWeight: FontWeight.w700,
      fontVariations: _bold,
      fontFeatures: _tabular,
-@@ -150,46 +169,51 @@ abstract final class MayosTypography {
+@@ -150,46 +169,51 @@ abstract final class MyosTypography {
    /// Header-avatar initials, set on the accent-subtle disc.
    static const TextStyle avatarInitials = TextStyle(
      fontFamily: uiFamily,
@@ -26902,41 +26902,41 @@ index e4488e5..7970599 100755
      fontWeight: FontWeight.w500,
      fontVariations: _serifMedium,
    );
-diff --git a/mobile/lib/src/core/ui/mayos_app_header.dart b/mobile/lib/src/core/ui/mayos_app_header.dart
+diff --git a/mobile/lib/src/core/ui/myos_app_header.dart b/mobile/lib/src/core/ui/myos_app_header.dart
 index 9769d9c..767eb9e 100755
---- a/mobile/lib/src/core/ui/mayos_app_header.dart
-+++ b/mobile/lib/src/core/ui/mayos_app_header.dart
-@@ -65,7 +65,7 @@ class MayosAppHeader extends StatelessWidget {
+--- a/mobile/lib/src/core/ui/myos_app_header.dart
++++ b/mobile/lib/src/core/ui/myos_app_header.dart
+@@ -65,7 +65,7 @@ class MyosAppHeader extends StatelessWidget {
      }
  
      return Padding(
 -      padding: const EdgeInsets.fromLTRB(
 +      padding: const EdgeInsetsDirectional.fromSTEB(
-           MayosSpacing.lg, MayosSpacing.sm, MayosSpacing.xs, MayosSpacing.xs),
+           MyosSpacing.lg, MyosSpacing.sm, MyosSpacing.xs, MyosSpacing.xs),
        child: Row(
          children: <Widget>[
-@@ -89,7 +89,7 @@ class MayosAppHeader extends StatelessWidget {
+@@ -89,7 +89,7 @@ class MyosAppHeader extends StatelessWidget {
              )
            else if (showLogo)
              const Padding(
 -              padding: EdgeInsets.only(left: 4),
 +              padding: EdgeInsetsDirectional.only(start: 4),
-               child: _MayosWordmark(),
+               child: _MyosWordmark(),
              )
            else
-@@ -137,6 +137,7 @@ class _MayosWordmark extends StatelessWidget {
+@@ -137,6 +137,7 @@ class _MyosWordmark extends StatelessWidget {
          excludeSemantics: true,
          child: Row(
            mainAxisSize: MainAxisSize.min,
 +          textDirection: TextDirection.ltr,
            children: <Widget>[
-             const MayosBrandMark(size: 24),
-             const SizedBox(width: MayosSpacing.xxs),
-diff --git a/mobile/lib/src/core/ui/mayos_bottom_navigation.dart b/mobile/lib/src/core/ui/mayos_bottom_navigation.dart
+             const MyosBrandMark(size: 24),
+             const SizedBox(width: MyosSpacing.xxs),
+diff --git a/mobile/lib/src/core/ui/myos_bottom_navigation.dart b/mobile/lib/src/core/ui/myos_bottom_navigation.dart
 index 218bdc1..2d6e395 100755
---- a/mobile/lib/src/core/ui/mayos_bottom_navigation.dart
-+++ b/mobile/lib/src/core/ui/mayos_bottom_navigation.dart
-@@ -88,7 +88,7 @@ class MayosNavigationRail extends StatelessWidget {
+--- a/mobile/lib/src/core/ui/myos_bottom_navigation.dart
++++ b/mobile/lib/src/core/ui/myos_bottom_navigation.dart
+@@ -88,7 +88,7 @@ class MyosNavigationRail extends StatelessWidget {
      return DecoratedBox(
        decoration: BoxDecoration(
          color: c.surface,
@@ -26944,12 +26944,12 @@ index 218bdc1..2d6e395 100755
 +        border: BorderDirectional(end: BorderSide(color: c.border)),
        ),
        child: SizedBox(
-         width: MayosLayout.navigationRailWidth,
-diff --git a/mobile/lib/src/core/ui/mayos_markdown.dart b/mobile/lib/src/core/ui/mayos_markdown.dart
+         width: MyosLayout.navigationRailWidth,
+diff --git a/mobile/lib/src/core/ui/myos_markdown.dart b/mobile/lib/src/core/ui/myos_markdown.dart
 index 28ca073..30e4726 100755
---- a/mobile/lib/src/core/ui/mayos_markdown.dart
-+++ b/mobile/lib/src/core/ui/mayos_markdown.dart
-@@ -104,8 +104,8 @@ class MayosMarkdown extends ConsumerWidget {
+--- a/mobile/lib/src/core/ui/myos_markdown.dart
++++ b/mobile/lib/src/core/ui/myos_markdown.dart
+@@ -104,8 +104,8 @@ class MyosMarkdown extends ConsumerWidget {
        ),
        blockquoteDecoration: BoxDecoration(
          color: colors.surfaceSunken,
@@ -26958,7 +26958,7 @@ index 28ca073..30e4726 100755
 +        border: BorderDirectional(
 +          start: BorderSide(
              color: colors.borderStrong,
-             width: MayosBorderWidths.emphasis,
+             width: MyosBorderWidths.emphasis,
            ),
 diff --git a/mobile/lib/src/features/player/chat/chat_screen.dart b/mobile/lib/src/features/player/chat/chat_screen.dart
 index f3e335c..c65d912 100755
@@ -26976,7 +26976,7 @@ index f3e335c..c65d912 100755
 @@ -334,12 +336,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
    @override
    Widget build(BuildContext context) {
-     return MayosScaffold(
+     return MyosScaffold(
 -      title: 'Assistant',
 +      title: (arabicPrototype ? 'المساعد' : 'Assistant'),
        showBack: true,
@@ -26990,25 +26990,25 @@ index f3e335c..c65d912 100755
          ),
 @@ -386,7 +388,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
              const Text(hostedChatDisclosure),
-             const SizedBox(height: MayosSpacing.sm),
+             const SizedBox(height: MyosSpacing.sm),
              Align(
 -              alignment: Alignment.centerRight,
 +              alignment: AlignmentDirectional.centerEnd,
-               child: MayosButton(
+               child: MyosButton(
                  key: const Key('chat_disclosure_accept'),
                  label: 'I understand',
 @@ -458,9 +460,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
          role: 'assistant',
          child: text.isEmpty
              ? const _TypingIndicator()
--            : MayosMarkdown(
+-            : MyosMarkdown(
 -                key: ValueKey<String>(_streamingMessageId!),
 -                source: text,
 +            : Directionality(
 +                textDirection: arabicPrototype
 +                    ? prototypeMessageDirection(text)
 +                    : Directionality.of(context),
-+                child: MayosMarkdown(
++                child: MyosMarkdown(
 +                  key: ValueKey<String>(_streamingMessageId!),
 +                  source: text,
 +                ),
@@ -27020,7 +27020,7 @@ index f3e335c..c65d912 100755
        context,
        role: message.role,
 -      child: message.role == 'assistant'
--          ? MayosMarkdown(
+-          ? MyosMarkdown(
 -              key: ValueKey<String>(message.id),
 -              source: message.content,
 -            )
@@ -27030,7 +27030,7 @@ index f3e335c..c65d912 100755
 +            ? prototypeMessageDirection(message.content)
 +            : Directionality.of(context),
 +        child: message.role == 'assistant'
-+            ? MayosMarkdown(
++            ? MyosMarkdown(
 +                key: ValueKey<String>(message.id),
 +                source: message.content,
 +              )
@@ -27041,14 +27041,14 @@ index f3e335c..c65d912 100755
  
 @@ -485,7 +497,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
      final bool user = role == 'user';
-     final MayosThemeExtension c = MayosTheme.of(context);
+     final MyosThemeExtension c = MyosTheme.of(context);
      return Align(
 -      alignment: user ? Alignment.centerRight : Alignment.centerLeft,
 +      alignment: user
 +          ? AlignmentDirectional.centerEnd
 +          : AlignmentDirectional.centerStart,
        child: Container(
-         margin: const EdgeInsets.symmetric(vertical: MayosSpacing.xxs),
+         margin: const EdgeInsets.symmetric(vertical: MyosSpacing.xxs),
          padding: const EdgeInsets.symmetric(
 @@ -531,18 +545,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                  minLines: 1,
@@ -27064,7 +27064,7 @@ index f3e335c..c65d912 100755
                  onSubmitted: (_) => _send(),
                ),
              ),
-             const SizedBox(width: MayosSpacing.xs),
+             const SizedBox(width: MyosSpacing.xs),
              Semantics(
 -              label: 'Send',
 +              label: (arabicPrototype ? 'إرسال' : 'Send'),
@@ -27100,16 +27100,16 @@ index 7824ccb..e3b8c32 100755
  
    @override
 @@ -255,7 +256,7 @@ class _HomeBody extends StatelessWidget {
-             MayosSpacing.lg, MayosSpacing.xxl),
+             MyosSpacing.lg, MyosSpacing.xxl),
          children: <Widget>[
            Text(
 -            greetingFor(now),
 +            arabicPrototype ? 'صباح الخير' : greetingFor(now),
-             style: MayosTypography.display.copyWith(
+             style: MyosTypography.display.copyWith(
                fontSize: 34,
                color: c.textPrimary,
 @@ -288,10 +289,11 @@ class _HomeBody extends StatelessWidget {
-             const SizedBox(height: MayosSpacing.xl),
+             const SizedBox(height: MyosSpacing.xl),
              _NextSessionSection(
                day: nextDay,
 -              label: nextSessionLabel(data.schedule, now),
@@ -27129,17 +27129,17 @@ index 7824ccb..e3b8c32 100755
          children: <Widget>[
 -          Text('No active program',
 +          Text((arabicPrototype ? 'لا يوجد برنامج حالي' : 'No active program'),
-               style: MayosTypography.sectionHeading
+               style: MyosTypography.sectionHeading
                    .copyWith(color: c.textPrimary)),
-           const SizedBox(height: MayosSpacing.xs),
+           const SizedBox(height: MyosSpacing.xs),
 @@ -353,7 +355,7 @@ class _ProgramSection extends StatelessWidget {
            ),
-           const SizedBox(height: MayosSpacing.md),
-           MayosButton(
+           const SizedBox(height: MyosSpacing.md),
+           MyosButton(
 -            label: 'Go to Program',
 +            label: (arabicPrototype ? 'افتح البرنامج' : 'Go to Program'),
              icon: Icons.auto_awesome,
-             variant: MayosButtonVariant.secondary,
+             variant: MyosButtonVariant.secondary,
              expand: false,
 @@ -366,13 +368,15 @@ class _ProgramSection extends StatelessWidget {
        crossAxisAlignment: CrossAxisAlignment.start,
@@ -27147,9 +27147,9 @@ index 7824ccb..e3b8c32 100755
          Text(
 -          active.programName,
 +          arabicPrototype ? 'برنامج القوة وبناء العضلات' : active.programName,
-           style: MayosTypography.pageHeading.copyWith(color: c.textPrimary),
+           style: MyosTypography.pageHeading.copyWith(color: c.textPrimary),
          ),
-         const SizedBox(height: MayosSpacing.xs),
+         const SizedBox(height: MyosSpacing.xs),
          Text(
 -          '${active.splitType} · ${active.weeklyFrequency} '
 -          '${active.weeklyFrequency == 1 ? 'day' : 'days'}/week',
@@ -27157,13 +27157,13 @@ index 7824ccb..e3b8c32 100755
 +              ? 'علوي / سفلي · ${active.weeklyFrequency} أيام في الأسبوع'
 +              : '${active.splitType} · ${active.weeklyFrequency} '
 +                  '${active.weeklyFrequency == 1 ? 'day' : 'days'}/week',
-           style: MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+           style: MyosTypography.bodySecondary.copyWith(color: c.textSecondary),
          ),
        ],
 @@ -445,7 +449,7 @@ class _NextSessionSection extends StatelessWidget {
            if (logEnabled) ...<Widget>[
-             const SizedBox(height: MayosSpacing.md),
-             MayosButton(
+             const SizedBox(height: MyosSpacing.md),
+             MyosButton(
 -              label: 'Log workout',
 +              label: (arabicPrototype ? 'ابدأ التمرين' : 'Log workout'),
                icon: Icons.edit_note,
@@ -27175,7 +27175,7 @@ index 7824ccb..e3b8c32 100755
              Text(
 -              exercise.prescription,
 +              prototypeLtr(exercise.prescription),
-               style: MayosTypography.bodySecondary
+               style: MyosTypography.bodySecondary
                    .copyWith(color: c.textSecondary),
              ),
              Text(
@@ -27183,15 +27183,15 @@ index 7824ccb..e3b8c32 100755
 +              arabicPrototype
 +                  ? 'راحة ${exercise.restSecondsOrDefault}s'
 +                  : exercise.restLabel,
-               style: MayosTypography.caption.copyWith(color: c.textMuted),
+               style: MyosTypography.caption.copyWith(color: c.textMuted),
              ),
            ],
 @@ -516,7 +522,8 @@ class _VolumeSection extends StatelessWidget {
      return Column(
        crossAxisAlignment: CrossAxisAlignment.start,
        children: <Widget>[
--        MayosSectionHeader(title: 'This week'),
-+        MayosSectionHeader(
+-        MyosSectionHeader(title: 'This week'),
++        MyosSectionHeader(
 +            title: (arabicPrototype ? 'هذا الأسبوع' : 'This week')),
          if (muscles.isEmpty)
            Text(
@@ -27204,9 +27204,9 @@ index 7824ccb..e3b8c32 100755
 +            arabicPrototype
 +                ? '${_formatValue(total)} مجموعة موزونة'
 +                : '${_formatValue(total)} weighted sets',
-             style: MayosTypography.numericSmall.copyWith(color: c.textPrimary),
+             style: MyosTypography.numericSmall.copyWith(color: c.textPrimary),
            ),
-           const SizedBox(height: MayosSpacing.md),
+           const SizedBox(height: MyosSpacing.md),
 @@ -582,7 +591,7 @@ class _VolumeRow extends StatelessWidget {
              child: SizedBox(
                height: 6,
@@ -27220,8 +27220,8 @@ index 7824ccb..e3b8c32 100755
      return Column(
        crossAxisAlignment: CrossAxisAlignment.start,
        children: <Widget>[
--        MayosSectionHeader(title: 'Personal records'),
-+        MayosSectionHeader(
+-        MyosSectionHeader(title: 'Personal records'),
++        MyosSectionHeader(
 +            title: (arabicPrototype ? 'الأرقام الشخصية' : 'Personal records')),
          if (records.isEmpty)
            Text(
@@ -27230,7 +27230,7 @@ index 7824ccb..e3b8c32 100755
 +                ? 'لا توجد أرقام شخصية بعد.'
 +                : 'No personal records yet.'),
              style:
-                 MayosTypography.bodySecondary.copyWith(color: c.textSecondary),
+                 MyosTypography.bodySecondary.copyWith(color: c.textSecondary),
            )
 @@ -638,7 +650,8 @@ class _RecordsSection extends StatelessWidget {
                      ),
@@ -27239,12 +27239,12 @@ index 7824ccb..e3b8c32 100755
 -                    '${_formatValue(record.value)} kg × ${record.reps}',
 +                    prototypeLtr(
 +                        '${_formatValue(record.value)} kg × ${record.reps}'),
-                     style: MayosTypography.numericSmall
+                     style: MyosTypography.numericSmall
                          .copyWith(color: c.textPrimary),
                    ),
 @@ -753,7 +766,7 @@ class _SkeletonBlock extends StatelessWidget {
    Widget build(BuildContext context) {
-     final MayosThemeExtension c = MayosTheme.of(context);
+     final MyosThemeExtension c = MyosTheme.of(context);
      return Align(
 -      alignment: Alignment.centerLeft,
 +      alignment: AlignmentDirectional.centerStart,
@@ -27266,27 +27266,27 @@ index 2aeecc2..8081c7d 100755
  
 @@ -34,17 +36,17 @@ class PlayerShell extends ConsumerStatefulWidget {
  class _PlayerShellState extends ConsumerState<PlayerShell> {
-   static const List<MayosNavItem> _items = <MayosNavItem>[
-     MayosNavItem(
+   static const List<MyosNavItem> _items = <MyosNavItem>[
+     MyosNavItem(
 -      label: 'Home',
 +      label: (arabicPrototype ? 'الرئيسية' : 'Home'),
        icon: Icons.home_outlined,
        selectedIcon: Icons.home,
      ),
-     MayosNavItem(
+     MyosNavItem(
 -      label: 'Program',
 +      label: (arabicPrototype ? 'البرنامج' : 'Program'),
        icon: Icons.article_outlined,
        selectedIcon: Icons.article,
      ),
-     MayosNavItem(
+     MyosNavItem(
 -      label: 'Progress',
 +      label: (arabicPrototype ? 'التقدم' : 'Progress'),
        icon: Icons.insights_outlined,
        selectedIcon: Icons.insights,
      ),
 @@ -99,12 +101,12 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
-       header: MayosAppHeader(
+       header: MyosAppHeader(
          actions: <Widget>[
            IconButton(
 -            tooltip: 'Assistant',
@@ -27309,9 +27309,9 @@ index bf38408..04599a6 100755
  
 +import '../../../core/arabic_prototype.dart';
 +
- import '../../../core/theme/mayos_spacing.dart';
- import '../../../core/theme/mayos_theme.dart';
- import '../../../core/theme/mayos_typography.dart';
+ import '../../../core/theme/myos_spacing.dart';
+ import '../../../core/theme/myos_theme.dart';
+ import '../../../core/theme/myos_typography.dart';
 @@ -80,7 +82,9 @@ class LoggerBottomBar extends StatelessWidget {
                    // text scale ellipsizes instead of overflowing the row.
                    Flexible(
@@ -27324,9 +27324,9 @@ index bf38408..04599a6 100755
                        maxLines: 1,
                        overflow: TextOverflow.ellipsis,
 @@ -100,7 +104,7 @@ class LoggerBottomBar extends StatelessWidget {
-               padding: const EdgeInsets.fromLTRB(MayosSpacing.lg,
-                   MayosSpacing.xxs, MayosSpacing.lg, MayosSpacing.sm),
-               child: MayosButton(
+               padding: const EdgeInsets.fromLTRB(MyosSpacing.lg,
+                   MyosSpacing.xxs, MyosSpacing.lg, MyosSpacing.sm),
+               child: MyosButton(
 -                label: 'Finish workout',
 +                label: (arabicPrototype ? 'إنهاء التمرين' : 'Finish workout'),
                  icon: Icons.check,
@@ -27345,11 +27345,11 @@ index 64ad91b..c434c85 100755
  import '../../../core/active_workout.dart';
 @@ -102,7 +104,7 @@ class PreviousPerformanceSummary extends StatelessWidget {
    Widget build(BuildContext context) {
-     final MayosThemeExtension c = MayosTheme.of(context);
+     final MyosThemeExtension c = MyosTheme.of(context);
      return Text(
 -      lastSessionLabel(sets),
 +      prototypeGymCaption(lastSessionLabel(sets)),
-       style: MayosTypography.caption.copyWith(color: c.textSecondary),
+       style: MyosTypography.caption.copyWith(color: c.textSecondary),
      );
    }
 @@ -113,9 +115,9 @@ class LoggerTableHeader extends StatelessWidget {
@@ -27380,9 +27380,9 @@ index 64ad91b..c434c85 100755
    /// The missing- and failed-picture states: an exercise glyph on a surface
    /// tint, in the same fixed box (#161). Both look alike on purpose — only
    /// the semantic label tells a screen reader which one it is.
--  Widget _fallback(MayosThemeExtension c, {required bool failed}) =>
+-  Widget _fallback(MyosThemeExtension c, {required bool failed}) =>
 -      ColoredBox(
-+  Widget _fallback(MayosThemeExtension c, {required bool failed}) => ColoredBox(
++  Widget _fallback(MyosThemeExtension c, {required bool failed}) => ColoredBox(
          color: c.secondarySurface,
          child: Center(
            child: Icon(
@@ -27400,8 +27400,8 @@ index 64ad91b..c434c85 100755
            // hit area doesn't change the card's height.
            child: ConstrainedBox(
 -            constraints:
--                const BoxConstraints(minHeight: kMayosMinTapTarget),
-+            constraints: const BoxConstraints(minHeight: kMayosMinTapTarget),
+-                const BoxConstraints(minHeight: kMyosMinTapTarget),
++            constraints: const BoxConstraints(minHeight: kMyosMinTapTarget),
              child: Align(
 -                alignment: Alignment.centerLeft,
 +                alignment: AlignmentDirectional.centerStart,
@@ -27416,16 +27416,16 @@ index 64ad91b..c434c85 100755
 +                        (arabicPrototype
 +                            ? 'استبدال التمرين'
 +                            : 'Replace exercise'),
-                         style: MayosTypography.body,
+                         style: MyosTypography.body,
                        ),
                      ),
                      PopupMenuItem<String>(
                        key: restKey,
                        value: 'rest',
--                      child: Text('Rest time…', style: MayosTypography.body),
+-                      child: Text('Rest time…', style: MyosTypography.body),
 +                      child: Text(
 +                          (arabicPrototype ? 'مدة الراحة…' : 'Rest time…'),
-+                          style: MayosTypography.body),
++                          style: MyosTypography.body),
                      ),
                      // Exactly one of the two: a replacement is undone (which
                      // brings its planned exercise back), any other unplanned
@@ -27437,7 +27437,7 @@ index 64ad91b..c434c85 100755
 +                          (arabicPrototype
 +                              ? 'تراجع عن الاستبدال'
 +                              : 'Undo replace'),
-                           style: MayosTypography.body,
+                           style: MyosTypography.body,
                          ),
                        )
 @@ -455,7 +462,7 @@ class ExerciseLoggingCard extends StatelessWidget {
@@ -27446,7 +27446,7 @@ index 64ad91b..c434c85 100755
                          child: Text(
 -                          'Remove exercise',
 +                          (arabicPrototype ? 'حذف التمرين' : 'Remove exercise'),
-                           style: MayosTypography.body,
+                           style: MyosTypography.body,
                          ),
                        ),
 @@ -481,8 +488,8 @@ class ExerciseLoggingCard extends StatelessWidget {
@@ -27457,16 +27457,16 @@ index 64ad91b..c434c85 100755
 -                              restSeconds: restSeconds),
 +                          prototypeGymCaption(exercisePrescriptionLine(exercise,
 +                              restSeconds: restSeconds)),
-                           style: MayosTypography.caption
+                           style: MyosTypography.caption
                                .copyWith(color: c.textMuted),
                          ),
 @@ -503,7 +510,7 @@ class ExerciseLoggingCard extends StatelessWidget {
              ...rows,
-             MayosButton(
+             MyosButton(
                key: addSetKey,
 -              label: '+ Add set',
 +              label: (arabicPrototype ? '+ مجموعة' : '+ Add set'),
-               variant: MayosButtonVariant.secondary,
+               variant: MyosButtonVariant.secondary,
                onPressed: onAddSet,
              ),
 @@ -587,17 +594,19 @@ class WarmupMovementLoggingCard extends StatelessWidget {
@@ -27516,40 +27516,40 @@ index 64ad91b..c434c85 100755
          ),
        );
  
--  Widget _tickButton(int setIndex, ActiveWarmupSet set, MayosThemeExtension c) =>
+-  Widget _tickButton(int setIndex, ActiveWarmupSet set, MyosThemeExtension c) =>
 +  Widget _tickButton(
-+          int setIndex, ActiveWarmupSet set, MayosThemeExtension c) =>
++          int setIndex, ActiveWarmupSet set, MyosThemeExtension c) =>
        SizedBox(
          width: kLoggerFixedColumnWidth,
          child: IconButton(
 @@ -757,7 +770,8 @@ class _WarmupTag extends StatelessWidget {
          color: c.secondarySurface,
-         borderRadius: MayosRadii.pillRadius,
+         borderRadius: MyosRadii.pillRadius,
        ),
--      child: Text('Warm-up', style: MayosTypography.caption),
+-      child: Text('Warm-up', style: MyosTypography.caption),
 +      child: Text((arabicPrototype ? 'الإحماء' : 'Warm-up'),
-+          style: MayosTypography.caption),
++          style: MyosTypography.caption),
      );
    }
  }
 @@ -776,7 +790,8 @@ class _UnplannedTag extends StatelessWidget {
          color: c.secondarySurface,
-         borderRadius: MayosRadii.pillRadius,
+         borderRadius: MyosRadii.pillRadius,
        ),
--      child: Text('Unplanned', style: MayosTypography.caption),
+-      child: Text('Unplanned', style: MyosTypography.caption),
 +      child: Text((arabicPrototype ? 'إضافي' : 'Unplanned'),
-+          style: MayosTypography.caption),
++          style: MyosTypography.caption),
      );
    }
  }
 @@ -905,8 +920,7 @@ class SetLoggingRow extends StatelessWidget {
                  width: kLoggerFixedColumnWidth,
-                 height: kMayosMinTapTarget,
+                 height: kMyosMinTapTarget,
                  child: InkWell(
 -                  key: ValueKey<String>(
 -                      'logger.tick.$exerciseIndex.$setIndex'),
 +                  key: ValueKey<String>('logger.tick.$exerciseIndex.$setIndex'),
-                   borderRadius: MayosRadii.smallRadius,
+                   borderRadius: MyosRadii.smallRadius,
                    onTap: onToggleTick,
                    child: Center(
 @@ -948,8 +962,8 @@ class SetLoggingRow extends StatelessWidget {
@@ -27557,9 +27557,9 @@ index 64ad91b..c434c85 100755
          background: Container(
            color: c.danger,
 -          alignment: Alignment.centerRight,
--          padding: const EdgeInsets.only(right: MayosSpacing.md),
+-          padding: const EdgeInsets.only(right: MyosSpacing.md),
 +          alignment: AlignmentDirectional.centerEnd,
-+          padding: const EdgeInsetsDirectional.only(end: MayosSpacing.md),
++          padding: const EdgeInsetsDirectional.only(end: MyosSpacing.md),
            child: Icon(Icons.delete, color: c.onDanger),
          ),
          child: row,
@@ -27568,13 +27568,13 @@ index 64ad91b..c434c85 100755
                  child: Text(
                    texts.value ?? texts.hint ?? '–',
 +                  textDirection: TextDirection.ltr,
-                   style: MayosTypography.numericSmall.copyWith(color: color),
+                   style: MyosTypography.numericSmall.copyWith(color: color),
                  ),
                ),
 @@ -1064,7 +1079,8 @@ class RirSelector extends StatelessWidget {
          color: surface,
          shape: RoundedRectangleBorder(
-           borderRadius: MayosRadii.smallRadius,
+           borderRadius: MyosRadii.smallRadius,
 -          side: BorderSide(color: focused ? c.selectedBorder : Colors.transparent),
 +          side: BorderSide(
 +              color: focused ? c.selectedBorder : Colors.transparent),
@@ -27590,8 +27590,8 @@ index 64ad91b..c434c85 100755
                      overflow: TextOverflow.ellipsis,
                      textAlign: TextAlign.center,
 -                    style:
--                        MayosTypography.numericSmall.copyWith(color: color),
-+                    style: MayosTypography.numericSmall.copyWith(color: color),
+-                        MyosTypography.numericSmall.copyWith(color: color),
++                    style: MyosTypography.numericSmall.copyWith(color: color),
                    ),
                  ),
                  Icon(
@@ -27605,8 +27605,8 @@ index 0ebeacf..99d30ef 100755
 +import '../../../core/arabic_prototype.dart';
 +
  import '../../../core/active_workout.dart';
- import '../../../core/theme/mayos_spacing.dart';
- import '../../../core/theme/mayos_theme.dart';
+ import '../../../core/theme/myos_spacing.dart';
+ import '../../../core/theme/myos_theme.dart';
 @@ -10,9 +12,10 @@ enum LoggerField { kg, reps, rir }
  
  /// The keypad's caption for one field: `Bench Press · set 1 · Weight (kg)`.
@@ -27649,34 +27649,34 @@ index 0ebeacf..99d30ef 100755
                        onTap: widget.onHide,
                        bg: c.secondarySurface),
 @@ -291,7 +294,8 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
-                               borderRadius: MayosRadii.mediumRadius,
+                               borderRadius: MyosRadii.mediumRadius,
                                onTap: widget.onNext,
                                child: Center(
 -                                child: Text('Next',
 +                                child: Text(
 +                                    (arabicPrototype ? 'التالي' : 'Next'),
-                                     style: MayosTypography.label
+                                     style: MyosTypography.label
                                          .copyWith(color: c.onAccent)),
                                ),
 @@ -322,8 +326,8 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
          // The route Scaffold may clear padding while retaining viewPadding.
          maintainBottomViewPadding: true,
          child: Padding(
--          padding: const EdgeInsets.fromLTRB(MayosSpacing.xs,
--              MayosSpacing.xs, MayosSpacing.xs, MayosSpacing.xs),
-+          padding: const EdgeInsets.fromLTRB(MayosSpacing.xs, MayosSpacing.xs,
-+              MayosSpacing.xs, MayosSpacing.xs),
+-          padding: const EdgeInsets.fromLTRB(MyosSpacing.xs,
+-              MyosSpacing.xs, MyosSpacing.xs, MyosSpacing.xs),
++          padding: const EdgeInsets.fromLTRB(MyosSpacing.xs, MyosSpacing.xs,
++              MyosSpacing.xs, MyosSpacing.xs),
            child: Column(
              mainAxisSize: MainAxisSize.min,
              crossAxisAlignment: CrossAxisAlignment.stretch,
 @@ -332,12 +336,12 @@ class _LoggerKeypadState extends State<LoggerKeypad> {
                  padding: const EdgeInsets.fromLTRB(
-                     MayosSpacing.xs, 0, MayosSpacing.xs, MayosSpacing.xs),
+                     MyosSpacing.xs, 0, MyosSpacing.xs, MyosSpacing.xs),
                  child: Text(
 -                  '${widget.exerciseName} · set ${widget.setNumber} · '
 +                  '${prototypeLtr(widget.exerciseName)} · ${arabicPrototype ? 'المجموعة' : 'set'} ${widget.setNumber} · '
                    '${loggerFieldLabel(widget.field)}',
-                   style: MayosTypography.caption.copyWith(color: c.textMuted),
+                   style: MyosTypography.caption.copyWith(color: c.textMuted),
                  ),
                ),
 -              body,
@@ -27707,7 +27707,7 @@ index f9f8760..30fb5ba 100755
 +        ? (arabicPrototype ? 'سجّل التمرين' : 'Log workout')
 +        : '${arabicPrototype ? 'سجّل التمرين' : 'Log workout'} · '
 +            '${prototypeLtr(formatWorkoutTime(summary?.duration ?? workoutElapsed(workout, now: now)))}';
-     return MayosAppHeader(
+     return MyosAppHeader(
        showBack: true,
        // Sans, one line: the serif display role belongs to the day heading
 @@ -117,7 +119,7 @@ class _LoggerTopBarState extends ConsumerState<LoggerTopBar> {
@@ -27716,7 +27716,7 @@ index f9f8760..30fb5ba 100755
                  child: Text(
 -                  'Discard workout',
 +                  (arabicPrototype ? 'إلغاء التمرين' : 'Discard workout'),
-                   style: MayosTypography.body,
+                   style: MyosTypography.body,
                  ),
                ),
 diff --git a/mobile/lib/src/features/player/workout/workout_logger_screen.dart b/mobile/lib/src/features/player/workout/workout_logger_screen.dart
@@ -27775,13 +27775,13 @@ index 7ff9281..2d49e86 100755
        _summary = WorkoutSummary.of(
 @@ -1405,7 +1410,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
            if (workout.warmupMovements.isNotEmpty) ...<Widget>[
-             const MayosSectionHeader(
+             const MyosSectionHeader(
                key: ValueKey<String>('logger.warmup.section'),
 -              title: 'Warm-up',
 +              title: (arabicPrototype ? 'الإحماء' : 'Warm-up'),
                padding: EdgeInsets.zero,
              ),
-             const SizedBox(height: MayosSpacing.xs),
+             const SizedBox(height: MyosSpacing.xs),
 @@ -1424,8 +1429,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
                      ? null
                      : () => openLoggerExerciseDetail(
@@ -27794,12 +27794,12 @@ index 7ff9281..2d49e86 100755
            ],
 @@ -1446,7 +1450,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
            // fixed bottom bar (#160), so it never needs scrolling to.
-           MayosButton(
+           MyosButton(
              key: const ValueKey<String>('logger.addExercise'),
 -            label: 'Add exercise',
 +            label: (arabicPrototype ? 'إضافة تمرين' : 'Add exercise'),
              icon: Icons.add,
-             variant: MayosButtonVariant.secondary,
+             variant: MyosButtonVariant.secondary,
              onPressed: _addUnplanned,
 diff --git a/mobile/pubspec.yaml b/mobile/pubspec.yaml
 index 16c965f..d124f38 100755
@@ -27847,20 +27847,20 @@ index 0000000..1c4b8bc
 +import 'package:flutter/services.dart';
 +import 'package:flutter_riverpod/flutter_riverpod.dart';
 +import 'package:flutter_test/flutter_test.dart';
-+import 'package:mayos_mobile/src/app.dart';
-+import 'package:mayos_mobile/src/core/arabic_prototype.dart';
-+import 'package:mayos_mobile/src/core/api_client.dart';
-+import 'package:mayos_mobile/src/core/app_mode.dart';
-+import 'package:mayos_mobile/src/core/active_workout.dart';
-+import 'package:mayos_mobile/src/core/baselines.dart';
-+import 'package:mayos_mobile/src/core/chat_storage.dart';
-+import 'package:mayos_mobile/src/core/device_timezone.dart';
-+import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
-+import 'package:mayos_mobile/src/core/token_store.dart';
-+import 'package:mayos_mobile/src/core/workout_storage.dart';
-+import 'package:mayos_mobile/src/providers.dart';
++import 'package:myos_mobile/src/app.dart';
++import 'package:myos_mobile/src/core/arabic_prototype.dart';
++import 'package:myos_mobile/src/core/api_client.dart';
++import 'package:myos_mobile/src/core/app_mode.dart';
++import 'package:myos_mobile/src/core/active_workout.dart';
++import 'package:myos_mobile/src/core/baselines.dart';
++import 'package:myos_mobile/src/core/chat_storage.dart';
++import 'package:myos_mobile/src/core/device_timezone.dart';
++import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
++import 'package:myos_mobile/src/core/token_store.dart';
++import 'package:myos_mobile/src/core/workout_storage.dart';
++import 'package:myos_mobile/src/providers.dart';
 +
-+import '../support/fake_mayos_api.dart';
++import '../support/fake_myos_api.dart';
 +
 +const _boundary = Key('arabic143.capture');
 +final _enabled = Platform.environment['CAPTURE'] == '1';
@@ -27875,8 +27875,8 @@ index 0000000..1c4b8bc
 +const _answer =
 +    'نعم، سجّل كل مجموعة على حدة. اكتب \u206627.5\u00a0kg\u2069 و\u206610\u2069 تكرارات، ثم اختر قيمة \u2066RIR\u2069.';
 +
-+FakeMayosApi _fixture() {
-+  final fake = FakeMayosApi()
++FakeMyosApi _fixture() {
++  final fake = FakeMyosApi()
 +    ..issuedToken = 'token-alice'
 +    ..currentUsername = 'alice'
 +    ..tokenValid = true
@@ -27994,14 +27994,14 @@ index 0000000..1c4b8bc
 +        client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
 +        return client;
 +      }),
-+    ], child: const MayosApp()),
++    ], child: const MyosApp()),
 +  ));
 +  await _ready(tester, find.text('ابدأ التمرين'));
 +  final context = tester.element(find.byType(MaterialApp));
 +  await tester.runAsync(() async {
 +    for (final variant in ['white', 'black']) {
 +      await precacheImage(
-+          AssetImage('assets/brand/mayos-mark-$variant.png'), context);
++          AssetImage('assets/brand/myos-mark-$variant.png'), context);
 +    }
 +  });
 +  await tester.pump();
@@ -28016,7 +28016,7 @@ index 0000000..1c4b8bc
 +      tester.renderObject<RenderRepaintBoundary>(find.byKey(_boundary));
 +  await tester.runAsync(() async {
 +    final out = Directory(Platform.environment['CAPTURE_OUT'] ??
-+        '/mnt/work/MAYOS/docs/design-review/143/screens');
++        '/mnt/work/MYOS/docs/design-review/143/screens');
 +    await out.create(recursive: true);
 +    final image = await boundary.toImage(pixelRatio: 2);
 +    final data = (await image.toByteData(format: ui.ImageByteFormat.png))!;
@@ -28167,7 +28167,7 @@ index 0000000..9aae574
 +import os
 +from PIL import Image, ImageDraw, ImageFont
 +
-+out = Path(os.environ.get('CAPTURE_OUT', '/mnt/work/MAYOS/docs/design-review/143/screens'))
++out = Path(os.environ.get('CAPTURE_OUT', '/mnt/work/MYOS/docs/design-review/143/screens'))
 +review = out.parent
 +font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 17)
 +small = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 14)
@@ -28177,7 +28177,7 @@ index 0000000..9aae574
 +    widths=[360,360,412,412]
 +    canvas=Image.new('RGB',(sum(widths)+5*20, len(states)*965+100),'#e4e7ec')
 +    draw=ImageDraw.Draw(canvas)
-+    draw.text((20,12), f'MAYOS #143 | {name} | font choice OPEN',font=font,fill='#101d2e')
++    draw.text((20,12), f'MYOS #143 | {name} | font choice OPEN',font=font,fill='#101d2e')
 +    x=20
 +    for (pair,size),width in zip(cols,widths):
 +        family='Amiri / IBM Plex Sans Arabic' if pair=='A' else 'Reem Kufi / Cairo'
@@ -28251,8 +28251,8 @@ index 0000000..4191581
 +import tarfile
 +
 +root=Path(__file__).resolve().parents[2]
-+baseline=Path(os.environ.get('BASELINE_MOBILE','/tmp/mayos-arabic-143-baseline/mobile'))
-+review=Path(os.environ.get('REVIEW_OUT','/mnt/work/MAYOS/docs/design-review/143'))
++baseline=Path(os.environ.get('BASELINE_MOBILE','/tmp/myos-arabic-143-baseline/mobile'))
++review=Path(os.environ.get('REVIEW_OUT','/mnt/work/MYOS/docs/design-review/143'))
 +review.mkdir(parents=True,exist_ok=True)
 +# Only the supplied snapshot and new source/font/tool files enter this bundle.
 +files={p.relative_to(baseline) for p in baseline.rglob('*') if p.is_file()}

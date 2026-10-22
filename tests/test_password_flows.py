@@ -213,30 +213,30 @@ def test_forgot_password_is_generic_and_reset_roundtrip(api, monkeypatch, verify
         (
             "en",
             "ar",
-            "Mayos Engine password reset",
+            "Myos Engine password reset",
             "A password reset was requested",
-            "لا يوجد حساب في MAYOS يستخدم هذا البريد الإلكتروني",
+            "لا يوجد حساب في MYOS يستخدم هذا البريد الإلكتروني",
         ),
         (
             "ar",
             "en",
-            "إعادة تعيين كلمة مرور MAYOS",
+            "إعادة تعيين كلمة مرور MYOS",
             "تم طلب إعادة تعيين كلمة المرور",
-            "No MAYOS account uses this email",
+            "No MYOS account uses this email",
         ),
         (
             "ar",
             "fr",
-            "إعادة تعيين كلمة مرور MAYOS",
+            "إعادة تعيين كلمة مرور MYOS",
             "تم طلب إعادة تعيين كلمة المرور",
-            "No MAYOS account uses this email",
+            "No MYOS account uses this email",
         ),
         (
             "en",
             None,
-            "Mayos Engine password reset",
+            "Myos Engine password reset",
             "A password reset was requested",
-            "No MAYOS account uses this email",
+            "No MYOS account uses this email",
         ),
     ],
 )
@@ -415,7 +415,7 @@ def test_recovery_code_email_uses_display_language(api, monkeypatch):
     sent = client.post("/auth/email/verification-code", headers=_authed(token))
 
     assert sent.status_code == 200, sent.text
-    assert deliveries[0][1] == "رمز تأكيد البريد الإلكتروني للاسترداد في MAYOS"
+    assert deliveries[0][1] == "رمز تأكيد البريد الإلكتروني للاسترداد في MYOS"
     assert "استخدم الرمز التالي" in deliveries[0][2]
 
 
@@ -450,7 +450,7 @@ def _set_and_verify_recovery_email(client, token, deliveries, email="old@example
 @pytest.mark.parametrize(
     ("display_language", "notice_copy"),
     [
-        ("en", "The recovery email for your MAYOS account was changed."),
+        ("en", "The recovery email for your MYOS account was changed."),
         ("ar", "تم تغيير البريد الإلكتروني للاسترداد"),
     ],
 )

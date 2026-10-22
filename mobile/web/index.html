@@ -18,19 +18,19 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="MAYOS training and coaching.">
+  <meta name="description" content="MYOS training and coaching.">
   <meta name="theme-color" content="#0A1422">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="MAYOS">
+  <meta name="apple-mobile-web-app-title" content="MYOS">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
 
   <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <link rel="manifest" href="manifest.json">
 
-  <title>MAYOS</title>
+  <title>MYOS</title>
   <style>
-    /* Pre-Flutter fallback mirrors MayosPalette.darkCanvas. */
+    /* Pre-Flutter fallback mirrors MyosPalette.darkCanvas. */
     html,
     body {
       width: 100%;
@@ -40,38 +40,38 @@
       background: #0A1422;
     }
 
-    #mayos-loading {
+    #myos-loading {
       position: fixed;
       z-index: 1;
       inset: 0;
       display: grid;
       place-items: center;
       overflow: hidden;
-      /* Mirrors MayosPalette.darkCanvas. */
+      /* Mirrors MyosPalette.darkCanvas. */
       background: #0A1422;
       opacity: 1;
       transition: opacity 320ms ease-out;
     }
 
-    #mayos-loading::before {
+    #myos-loading::before {
       position: absolute;
       inset: -12px;
       content: "";
-      background: url("mayos-loading-wallpaper.jpg") center / cover no-repeat;
-      /* Mirrors MayosWallpaper.blurSigma. */
+      background: url("myos-loading-wallpaper.jpg") center / cover no-repeat;
+      /* Mirrors MyosWallpaper.blurSigma. */
       filter: blur(6px);
       transform: scale(1.02);
     }
 
-    #mayos-loading::after {
+    #myos-loading::after {
       position: absolute;
       inset: 0;
       content: "";
-      /* Mirrors MayosWallpaper.overlayOpacity. */
+      /* Mirrors MyosWallpaper.overlayOpacity. */
       background: rgb(0 0 0 / 60%);
     }
 
-    #mayos-loading img {
+    #myos-loading img {
       position: relative;
       z-index: 1;
       display: block;
@@ -80,7 +80,7 @@
       height: clamp(72px, min(42vw, 22vh), 120px);
     }
 
-    #mayos-loading.is-hidden {
+    #myos-loading.is-hidden {
       opacity: 0;
       pointer-events: none;
     }
@@ -95,8 +95,8 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
-  <div id="mayos-loading" aria-hidden="true">
-    <img src="mayos-lockup-white.png" alt="">
+  <div id="myos-loading" aria-hidden="true">
+    <img src="myos-lockup-white.png" alt="">
   </div>
   <script src="posthog_init.js"></script>
   <script src="flutter_bootstrap.js" async></script>

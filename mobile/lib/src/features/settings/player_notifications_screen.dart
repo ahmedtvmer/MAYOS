@@ -10,11 +10,11 @@ import '../../core/display_language/controller.dart';
 import '../../core/display_language/copy_context.dart';
 import '../../core/display_language/settings_copy.dart';
 import '../../core/models.dart';
-import '../../core/theme/mayos_spacing.dart';
-import '../../core/theme/mayos_theme.dart';
-import '../../core/theme/mayos_typography.dart';
+import '../../core/theme/myos_spacing.dart';
+import '../../core/theme/myos_theme.dart';
+import '../../core/theme/myos_typography.dart';
 import '../../core/ui/first_strong_direction.dart';
-import '../../core/ui/mayos_button.dart';
+import '../../core/ui/myos_button.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import '../player/assignment/player_assignment_activity.dart';
@@ -114,7 +114,7 @@ class _PlayerNotificationsScreenState
     if (_error == null) return const SizedBox.shrink();
     final String message = displayCopyOf(context).failureMessage(_error!);
     return Padding(
-      padding: const EdgeInsets.only(bottom: MayosSpacing.md),
+      padding: const EdgeInsets.only(bottom: MyosSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -130,15 +130,15 @@ class _PlayerNotificationsScreenState
         text: message,
         child: Text(
           message,
-          style: MayosTypography.of(context)
+          style: MyosTypography.of(context)
               .bodySecondary
-              .copyWith(color: MayosTheme.of(context).danger),
+              .copyWith(color: MyosTheme.of(context).danger),
         ),
       );
 
-  Widget _retryButton() => MayosButton(
+  Widget _retryButton() => MyosButton(
         label: SettingsCopy(_language).retry,
-        variant: MayosButtonVariant.tertiary,
+        variant: MyosButtonVariant.tertiary,
         expand: false,
         onPressed: _load,
       );
@@ -151,7 +151,7 @@ class _PlayerNotificationsScreenState
     }
     return ListView(
       key: const Key('player_notifications_surface'),
-      padding: MayosSpacing.screen,
+      padding: MyosSpacing.screen,
       children: <Widget>[
         _errorBanner(context),
         if (_hasLoaded) ...<Widget>[
@@ -165,7 +165,7 @@ class _PlayerNotificationsScreenState
               markingRead: _markingNoticesRead,
             ),
           ),
-          const SizedBox(height: MayosSpacing.lg),
+          const SizedBox(height: MyosSpacing.lg),
           PlayerAssignmentCheckInsCard(checkIns: _checkIns, copy: _copy),
         ],
       ],
@@ -173,12 +173,12 @@ class _PlayerNotificationsScreenState
   }
 
   Widget _notificationsLead(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: MayosSpacing.md),
+        padding: const EdgeInsets.only(bottom: MyosSpacing.md),
         child: Text(
           _copy.playerNotificationsLead,
-          style: MayosTypography.of(context)
+          style: MyosTypography.of(context)
               .bodySecondary
-              .copyWith(color: MayosTheme.of(context).textSecondary),
+              .copyWith(color: MyosTheme.of(context).textSecondary),
         ),
       );
 }

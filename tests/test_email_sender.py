@@ -49,7 +49,7 @@ def test_arabic_password_reset_uses_minute_unit_for_supported_ttl(
     )
 
     assert email_sender.send_password_reset_email(
-        "player@example.com", "https://mayos.example/reset", "ar"
+        "player@example.com", "https://myos.example/reset", "ar"
     )
     assert f"خلال {minutes} {minute_unit}." in captured[0]
 
@@ -81,7 +81,7 @@ def test_issue_176_smtp_failure_omits_recipient_and_keeps_diagnostics(monkeypatc
     with caplog.at_level(logging.ERROR, logger="service.email_sender"):
         delivered = email_sender.send_password_reset_email(
             recipient,
-            "https://mayos.example/reset-password?token=secret-token",
+            "https://myos.example/reset-password?token=secret-token",
             "en",
             account_id="account-123",
         )
@@ -104,13 +104,13 @@ def test_issue_176_console_log_uses_keyed_recipient_reference(monkeypatch, caplo
     with caplog.at_level(logging.INFO, logger="service.email_sender"):
         email_sender.send_password_reset_email(
             recipient,
-            f"https://mayos.example/reset-password?token=secret-token&address={recipient}",
+            f"https://myos.example/reset-password?token=secret-token&address={recipient}",
             "en",
         )
 
     assert recipient not in caplog.text
     assert f"recipient_ref=email:{digest}" in caplog.text
-    assert "https://mayos.example/reset-password?token=secret-token&address=[redacted email]" in caplog.text
+    assert "https://myos.example/reset-password?token=secret-token&address=[redacted email]" in caplog.text
 
 
 def test_no_account_notice_uses_console_sender_without_personal_details(monkeypatch, caplog):
@@ -119,12 +119,12 @@ def test_no_account_notice_uses_console_sender_without_personal_details(monkeypa
 
     with caplog.at_level(logging.INFO, logger="service.email_sender"):
         delivered = email_sender.send_no_account_notice_email(
-            recipient, "https://mayos.example/register", "en"
+            recipient, "https://myos.example/register", "en"
         )
 
     assert delivered is True
-    assert "No MAYOS account uses this email" in caplog.text
-    assert "https://mayos.example/register" in caplog.text
+    assert "No MYOS account uses this email" in caplog.text
+    assert "https://myos.example/register" in caplog.text
     assert "try the email address you registered with" in caplog.text
     assert "log in and add a recovery email in Settings" in caplog.text
     assert recipient not in caplog.text

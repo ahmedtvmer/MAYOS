@@ -9,11 +9,11 @@ import '../../core/display_language/copy_context.dart';
 import '../../core/display_language/controller.dart';
 import '../../core/display_language/feature_copy_context.dart';
 import '../../core/models.dart';
-import '../../core/theme/mayos_spacing.dart';
-import '../../core/theme/mayos_theme.dart';
-import '../../core/theme/mayos_typography.dart';
-import '../../core/ui/mayos_button.dart';
-import '../../core/ui/mayos_card.dart';
+import '../../core/theme/myos_spacing.dart';
+import '../../core/theme/myos_theme.dart';
+import '../../core/theme/myos_typography.dart';
+import '../../core/ui/myos_button.dart';
+import '../../core/ui/myos_card.dart';
 import '../../providers.dart';
 import 'coach_assistant_screen.dart';
 import 'coach_roster_assistant_panel.dart';
@@ -131,7 +131,7 @@ class _CoachAssistantTabScreenState
     return _assistantTab(
       copy,
       error,
-      MayosTheme.of(context),
+      MyosTheme.of(context),
       assignments,
       rosterReady,
       account?.coachRosterAiEnabled ?? false,
@@ -144,7 +144,7 @@ class _CoachAssistantTabScreenState
   Widget _assistantTab(
     CoachCopy copy,
     String? error,
-    MayosThemeExtension colors,
+    MyosThemeExtension colors,
     List<CoachRosterEntry> assignments,
     bool rosterReady,
     bool rosterAiEnabled,
@@ -153,7 +153,7 @@ class _CoachAssistantTabScreenState
     AiAllowance? coachAllowance,
   ) =>
       SingleChildScrollView(
-        padding: const EdgeInsets.all(MayosSpacing.lg),
+        padding: const EdgeInsets.all(MyosSpacing.lg),
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 760),
@@ -183,7 +183,7 @@ class _CoachAssistantTabScreenState
 
   Widget _playerAssistantSection(
     CoachCopy copy,
-    MayosThemeExtension colors,
+    MyosThemeExtension colors,
     String? error,
     List<CoachRosterEntry> assignments,
     bool rosterReady,
@@ -193,15 +193,15 @@ class _CoachAssistantTabScreenState
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           Text(copy.askAboutOnePlayer,
-              style: MayosTypography.of(context).sectionHeading),
-          const SizedBox(height: MayosSpacing.xs),
+              style: MyosTypography.of(context).sectionHeading),
+          const SizedBox(height: MyosSpacing.xs),
           Text(
             copy.assistantPickerLead,
-            style: MayosTypography.of(context)
+            style: MyosTypography.of(context)
                 .bodySecondary
                 .copyWith(color: colors.textSecondary),
           ),
-          const SizedBox(height: MayosSpacing.md),
+          const SizedBox(height: MyosSpacing.md),
           if (!playerAiEnabled)
             _disabledState(copy.coachAiDisabled)
           else
@@ -224,7 +224,7 @@ class _CoachAssistantTabScreenState
   Widget _loadingIndicator(CoachCopy copy) => Column(
         children: <Widget>[
           const CircularProgressIndicator(),
-          const SizedBox(height: MayosSpacing.sm),
+          const SizedBox(height: MyosSpacing.sm),
           Text(copy.loadingPlayers),
         ],
       );
@@ -237,7 +237,7 @@ class _CoachAssistantTabScreenState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           _assignmentDropdown(copy, assignments),
-          const SizedBox(height: MayosSpacing.md),
+          const SizedBox(height: MyosSpacing.md),
           _openPlayerButton(copy),
         ],
       );
@@ -276,7 +276,7 @@ class _CoachAssistantTabScreenState
     );
   }
 
-  Widget _openPlayerButton(CoachCopy copy) => MayosButton(
+  Widget _openPlayerButton(CoachCopy copy) => MyosButton(
         key: const Key('coach_assistant_open_player'),
         label: copy.openPlayerAssistant,
         icon: Icons.auto_awesome_outlined,
@@ -285,16 +285,16 @@ class _CoachAssistantTabScreenState
 
   Widget _disabledState(String message) => Center(
         child: Padding(
-          padding: const EdgeInsets.all(MayosSpacing.lg),
+          padding: const EdgeInsets.all(MyosSpacing.lg),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 560),
-            child: MayosCard(
+            child: MyosCard(
               key: const Key('coach_ai_disabled'),
               child: ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(
                   Icons.info_outline,
-                  color: MayosTheme.of(context).textSecondary,
+                  color: MyosTheme.of(context).textSecondary,
                 ),
                 title: Text(message),
               ),
@@ -307,10 +307,10 @@ class _CoachAssistantTabScreenState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(message),
-          const SizedBox(height: MayosSpacing.sm),
-          MayosButton(
+          const SizedBox(height: MyosSpacing.sm),
+          MyosButton(
             label: copy.retry,
-            variant: MayosButtonVariant.secondary,
+            variant: MyosButtonVariant.secondary,
             onPressed: _refreshAssignments,
           ),
         ],

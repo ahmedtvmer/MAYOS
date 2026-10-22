@@ -22,11 +22,11 @@ String normalizeDisplayLanguage(Object? value) =>
 String exerciseNameOrFallback(String? name, String languageCode) {
   final String? normalizedName = name?.trim();
   if (normalizedName != null && normalizedName.isNotEmpty) return normalizedName;
-  return MayosCopy(languageCode).exerciseFallbackName;
+  return MyosCopy(languageCode).exerciseFallbackName;
 }
 
-class MayosCopy {
-  const MayosCopy(this.languageCode);
+class MyosCopy {
+  const MyosCopy(this.languageCode);
   final String languageCode;
   bool get isArabic => languageCode == 'ar';
   AiAllowanceCopy get _allowanceCopy => AiAllowanceCopy(languageCode);
@@ -157,10 +157,10 @@ class MayosCopy {
   String get offlineBanner =>
       isArabic ? 'أنت غير متصل بالإنترنت' : "You're offline";
   String get updateRequiredTitle =>
-      isArabic ? 'حدّث MAYOS' : 'Update MAYOS';
+      isArabic ? 'حدّث MYOS' : 'Update MYOS';
   String get updateRequiredMessage => isArabic
-      ? 'يلزم تحديث MAYOS للمتابعة. ستبقى حصصك التدريبية المحفوظة على هذا الهاتف، وستتم مزامنتها تلقائيًا بعد التحديث.'
-      : 'Update MAYOS to continue. Your saved workouts will stay on this phone and sync automatically after the update.';
+      ? 'يلزم تحديث MYOS للمتابعة. ستبقى حصصك التدريبية المحفوظة على هذا الهاتف، وستتم مزامنتها تلقائيًا بعد التحديث.'
+      : 'Update MYOS to continue. Your saved workouts will stay on this phone and sync automatically after the update.';
   String get updateRequiredButton =>
       isArabic ? 'التحديث من Google Play' : 'Update on Google Play';
   String get updateStoreUnavailable =>
@@ -193,7 +193,7 @@ class MayosCopy {
       ? 'وافق على الإفصاح أعلاه لتفعيل المحادثة.'
       : 'Accept the disclosure above to enable chat.';
   String get enableCoaching => isArabic ? 'تفعيل التدريب' : 'Enable coaching';
-  String get coachCode => isArabic ? 'رمز المدرب من MAYOS' : 'MAYOS coach code';
+  String get coachCode => isArabic ? 'رمز المدرب من MYOS' : 'MYOS coach code';
   String get enterCoachCode => isArabic
       ? 'أنا مدرب — أدخل رمز المدرب'
       : "I'm a coach — enter coach code";
@@ -828,7 +828,7 @@ class MayosCopy {
   String get exerciseMediaUnavailable =>
       isArabic ? 'وسائط التمرين غير متاحة' : 'Exercise media unavailable';
   String get enterCoachCodeLead =>
-      isArabic ? 'أدخل رمز المدرب من MAYOS.' : 'Enter your MAYOS coach code.';
+      isArabic ? 'أدخل رمز المدرب من MYOS.' : 'Enter your MYOS coach code.';
   String get loadCheckpointFailed => isArabic
       ? 'تعذر تحميل مراجعة محطة التقدم.'
       : 'Could not load this Checkpoint review.';
@@ -858,8 +858,8 @@ class MayosCopy {
   String get beforeWeBegin => isArabic ? 'قبل أن نبدأ' : 'Before we begin';
   String get reviewSetup => isArabic ? 'راجع إعدادك' : 'Review your setup';
   String get reviewSetupLead => isArabic
-      ? 'راجع إجاباتك. يمكنك تعديلها قبل أن ينشئ MAYOS برنامجك التدريبي الأول.'
-      : 'Check your answers. You can edit anything before MAYOS builds your first program.';
+      ? 'راجع إجاباتك. يمكنك تعديلها قبل أن ينشئ MYOS برنامجك التدريبي الأول.'
+      : 'Check your answers. You can edit anything before MYOS builds your first program.';
   String get restAlertPermissionTitle =>
       isArabic ? 'تنبيهات مؤقت الراحة' : 'Rest timer alerts';
   String get restAlertPermissionMessage => isArabic
@@ -874,8 +874,8 @@ class MayosCopy {
       ? 'إجاباتك وخصوصيتك'
       : 'Your answers and privacy';
   String get onboardingPrivacyNotice => isArabic
-      ? 'يستخدم MAYOS إجاباتك لإنشاء برنامجك التدريبي الأول بقواعد محددة. لا يستخدم إعداد التدريب وإنشاء البرنامج أي نموذج ذكاء اصطناعي مستضاف. تُحفظ إجاباتك في سجل التدريب الخاص بحسابك.'
-      : 'MAYOS uses your answers to create your first Training program with fixed rules. Onboarding and program creation do not call a hosted AI model. Your answers are saved in your private Training ledger.';
+      ? 'يستخدم MYOS إجاباتك لإنشاء برنامجك التدريبي الأول بقواعد محددة. لا يستخدم إعداد التدريب وإنشاء البرنامج أي نموذج ذكاء اصطناعي مستضاف. تُحفظ إجاباتك في سجل التدريب الخاص بحسابك.'
+      : 'MYOS uses your answers to create your first Training program with fixed rules. Onboarding and program creation do not call a hosted AI model. Your answers are saved in your private Training ledger.';
   String get onboardingPrivacyNote => isArabic
       ? 'يمكنك تعديل أي إجابة قبل إنشاء برنامجك التدريبي الأول.'
       : 'You can change any answer before your first program is created.';
@@ -943,8 +943,8 @@ class MayosCopy {
   String get createAccount => isArabic ? 'إنشاء حساب' : 'Create account';
   String get createAccountLink => isArabic ? 'إنشاء حساب' : 'Create an account';
   String get registerLead => isArabic
-      ? 'أنشئ حساب MAYOS لبدء التدريب.'
-      : 'Set up your MAYOS account to start training.';
+      ? 'أنشئ حساب MYOS لبدء التدريب.'
+      : 'Set up your MYOS account to start training.';
   String get forgotPassword =>
       isArabic ? 'نسيت كلمة المرور' : 'Forgot password';
   String get forgotPasswordQuestion =>
@@ -1029,14 +1029,14 @@ class MayosCopy {
       ? 'إنشاء حساب منفصل على أي حال'
       : 'Create a separate account anyway';
   String get existingAccountTitle => isArabic
-      ? 'لديك حساب MAYOS لهذا البريد الإلكتروني بالفعل.'
-      : 'You already have a MAYOS account for this email.';
+      ? 'لديك حساب MYOS لهذا البريد الإلكتروني بالفعل.'
+      : 'You already have a MYOS account for this email.';
   String get existingAccountLead => isArabic
       ? 'سجّل الدخول بكلمة المرور، ثم اربط Google من الإعدادات.'
       : 'Log in with your password, then connect Google in Settings.';
   String get existingAccountNudge => isArabic
-      ? 'لديك حساب MAYOS بالفعل؟ سجّل الدخول بكلمة المرور، ثم اربط Google من الإعدادات.'
-      : 'Already have a MAYOS account? Log in with your password, then connect Google in Settings';
+      ? 'لديك حساب MYOS بالفعل؟ سجّل الدخول بكلمة المرور، ثم اربط Google من الإعدادات.'
+      : 'Already have a MYOS account? Log in with your password, then connect Google in Settings';
   String get recoveryEmailLead => isArabic
       ? 'أضف بريدًا إلكترونيًا للاسترداد لتتمكن من إعادة تعيين كلمة المرور إذا فقدتها. سنرسل رمزًا لتأكيد ملكيتك لهذا العنوان.'
       : 'Add a recovery email so you can reset your password if you lose it. We will send a code to verify that you own this address.';
@@ -1075,8 +1075,8 @@ class MayosCopy {
       : 'or log in and add a recovery email in Settings.';
   String get signInOr => isArabic ? 'أو' : 'or';
   String get homeScreenHint => isArabic
-      ? 'أضف MAYOS: مشاركة ← إضافة إلى الشاشة الرئيسية.'
-      : 'Add MAYOS: Share → Add to Home Screen.';
+      ? 'أضف MYOS: مشاركة ← إضافة إلى الشاشة الرئيسية.'
+      : 'Add MYOS: Share → Add to Home Screen.';
   String get dismissHomeScreenHint =>
       isArabic ? 'إخفاء تلميح الشاشة الرئيسية' : 'Dismiss Home Screen hint';
   String get googleName =>

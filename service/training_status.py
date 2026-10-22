@@ -48,8 +48,8 @@ def saturday_week_start(day: date) -> date:
     return day - timedelta(days=(day.weekday() - 5) % 7)
 
 
-def mayos_workout_count(committed_workouts: int, imported_workouts: int = 0) -> int:
-    """Committed workouts completed in MAYOS, excluding imported history."""
+def myos_workout_count(committed_workouts: int, imported_workouts: int = 0) -> int:
+    """Committed workouts completed in MYOS, excluding imported history."""
     return max(0, int(committed_workouts) - max(0, int(imported_workouts)))
 
 
@@ -197,7 +197,7 @@ def _status_for_ledger(
         performed_dates=performed_dates,
         weekly_frequency=int(program.weekly_frequency) if program is not None else 0,
         local_today=local_date_in(datetime.now(UTC), timezone),
-        mayos_workouts=mayos_workout_count(
+        mayos_workouts=myos_workout_count(
             len(performed_dates), imported_workouts
         ),
     )

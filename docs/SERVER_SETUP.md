@@ -1,6 +1,6 @@
 # Production server setup
 
-This checklist prepares MAYOS on an OVHcloud VPS behind a Cloudflare Tunnel.
+This checklist prepares MYOS on an OVHcloud VPS behind a Cloudflare Tunnel.
 It requires the owned domain and Cloudflare zone from #132. All hostnames are
 configuration; this guide does not choose a domain.
 
@@ -219,7 +219,7 @@ keeps that file out of the image build context as well.
 
 ### 5. Deploy and verify
 
-From the main checkout at `/mnt/work/MAYOS`, run
+From the main checkout at `/mnt/work/MYOS`, run
 `./deploy/deploy_server.sh`. The script refuses linked worktrees and warns if
 the checkout has uncommitted changes. See the [deployment runbook](DEPLOYMENT.md)
 for deploy, status, and rollback commands. Compose builds

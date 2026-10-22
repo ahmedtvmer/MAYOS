@@ -149,7 +149,7 @@ const String kGoogleDeleteCancelledMessage =
 /// `POST /auth/google/complete`. Older servers omit the machine code, so the
 /// exact detail remains a compatibility fallback.
 const String kGoogleAlreadyLinkedMessage =
-    'This Google account is already linked to a MAYOS account.';
+    'This Google account is already linked to a MYOS account.';
 
 @immutable
 class AuthState {
@@ -275,7 +275,7 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> logout() async {
     final String? accountId = state.session?.account.accountId;
     await _repository.logout(accountId: accountId);
-    // The MAYOS session is over, so the Google SDK's own is too (#115).
+    // The MYOS session is over, so the Google SDK's own is too (#115).
     await _google.clearSdkState();
     state = const AuthState.unauthenticated();
   }
@@ -621,7 +621,7 @@ class AuthController extends StateNotifier<AuthState> {
     state = const AuthState.unauthenticated();
   }
 
-  /// Redeems a Coach invite from MAYOS and applies the returned account.
+  /// Redeems a Coach invite from MYOS and applies the returned account.
   ///
   /// The grant response is authoritative: onboarding and recovery-email flags
   /// are carried over from the current session, and no follow-up read is issued,

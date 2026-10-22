@@ -449,10 +449,10 @@ def _generate_missing_review_text(context: _ReviewReadContext, fallback: dict[st
 
 def template_text(checkpoint: int, workouts: int, language: str, first: bool) -> str:
     if language == "ar":
-        period = "منذ بدء تسجيلك في MAYOS" if first else "منذ محطة التقدم السابقة"
+        period = "منذ بدء تسجيلك في MYOS" if first else "منذ محطة التقدم السابقة"
         workout_count = _arabic_workout_count(workouts)
         return f"محطة تقدم {checkpoint}: أكملت {workout_count} {period}."
-    period = "since you started logging in MAYOS" if first else "since your last checkpoint"
+    period = "since you started logging in MYOS" if first else "since your last checkpoint"
     return f"Checkpoint {checkpoint}: {workouts} workouts {period}."
 
 

@@ -4,29 +4,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/active_workout.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/baselines.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/chat_storage.dart';
-import 'package:mayos_mobile/src/core/device_timezone.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
-import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
-import 'package:mayos_mobile/src/core/workout_storage.dart';
-import 'package:mayos_mobile/src/features/player/auth/login_screen.dart';
-import 'package:mayos_mobile/src/features/player/auth/recovery_email_screen.dart';
-import 'package:mayos_mobile/src/features/player/auth/register_screen.dart';
-import 'package:mayos_mobile/src/features/player/onboarding/onboarding_screen.dart';
-import 'package:mayos_mobile/src/features/player/progress/progress_chart.dart';
-import 'package:mayos_mobile/src/features/shared/splash_screen.dart';
-import 'package:mayos_mobile/src/providers.dart';
-import 'package:mayos_mobile/src/router.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/active_workout.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/baselines.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/chat_storage.dart';
+import 'package:myos_mobile/src/core/device_timezone.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/theme/myos_theme.dart';
+import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/features/shared/mode_switch.dart';
+import 'package:myos_mobile/src/core/workout_storage.dart';
+import 'package:myos_mobile/src/features/player/auth/login_screen.dart';
+import 'package:myos_mobile/src/features/player/auth/recovery_email_screen.dart';
+import 'package:myos_mobile/src/features/player/auth/register_screen.dart';
+import 'package:myos_mobile/src/features/player/onboarding/onboarding_screen.dart';
+import 'package:myos_mobile/src/features/player/progress/progress_chart.dart';
+import 'package:myos_mobile/src/features/shared/splash_screen.dart';
+import 'package:myos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/router.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 /// Visual-verification tests for #54: the offline-Home fallback, the chart's
 /// rounded ticks and edge padding, and a text-scale 2.0 / both-theme sweep of
@@ -45,8 +45,8 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   }
 }
 
-FakeMayosApi _fake({bool coach = false}) {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _fake({bool coach = false}) {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -58,7 +58,7 @@ FakeMayosApi _fake({bool coach = false}) {
 }
 
 List<Override> _appOverrides({
-  required FakeMayosApi fake,
+  required FakeMyosApi fake,
   required InMemoryTokenStore tokens,
   required ThemeMode mode,
   DraftStore? draftStore,
@@ -96,7 +96,7 @@ List<Override> _appOverrides({
 
 Future<void> _pumpApp(
   WidgetTester tester,
-  FakeMayosApi fake, {
+  FakeMyosApi fake, {
   ThemeMode mode = ThemeMode.light,
   DraftStore? draftStore,
   WorkoutCacheStore? cacheStore,
@@ -118,7 +118,7 @@ Future<void> _pumpApp(
         cacheStore: cacheStore,
         chatCache: chatCache,
       ),
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(
@@ -160,7 +160,7 @@ void main() {
   group('offline Home', () {
     testWidgets('serves the cached program and renders the next session',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = _fake()
+      final FakeMyosApi fake = _fake()
         ..activeProgramFails = true
         ..latestSessionFails = true;
       final InMemoryWorkoutCacheStore cacheStore = InMemoryWorkoutCacheStore();
@@ -252,7 +252,7 @@ void main() {
     int? selected;
     await tester.pumpWidget(
       MaterialApp(
-        theme: MayosTheme.light,
+        theme: MyosTheme.light,
         home: Scaffold(
           body: SizedBox(
             width: 328,
@@ -290,7 +290,7 @@ void main() {
       addTearDown(() => tester.view.padding = const FakeViewPadding());
       addTearDown(() => tester.view.viewInsets = const FakeViewPadding());
 
-      final FakeMayosApi fake = _fake();
+      final FakeMyosApi fake = _fake();
       fake.chatHistory.addAll(<Map<String, dynamic>>[
         <String, dynamic>{
           'id': 'chat-1',
@@ -317,7 +317,7 @@ void main() {
             mode: ThemeMode.light,
             chatCache: chatCache,
           ),
-          child: const MayosApp(),
+          child: const MyosApp(),
         ),
       );
       await _pumpUntilFound(tester, find.text('Home'));
@@ -395,8 +395,8 @@ void main() {
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       await tester.pumpWidget(
         MaterialApp(
-          theme: MayosTheme.light,
-          darkTheme: MayosTheme.dark,
+          theme: MyosTheme.light,
+          darkTheme: MyosTheme.dark,
           themeMode: mode,
           home: const SplashScreen(),
         ),
@@ -427,8 +427,8 @@ void main() {
               mode: mode,
             ),
             child: MaterialApp.router(
-              theme: MayosTheme.light,
-              darkTheme: MayosTheme.dark,
+              theme: MyosTheme.light,
+              darkTheme: MyosTheme.dark,
               themeMode: mode,
               routerConfig: GoRouter(
                 initialLocation: path,
@@ -456,7 +456,7 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       tester.platformDispatcher.textScaleFactorTestValue = 2.0;
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       fake.issuedToken = 'token-alice';
       fake.currentUsername = 'alice';
       fake.tokenValid = true;
@@ -472,8 +472,8 @@ void main() {
         ProviderScope(
           overrides: _appOverrides(fake: fake, tokens: tokens, mode: mode),
           child: MaterialApp(
-            theme: MayosTheme.light,
-            darkTheme: MayosTheme.dark,
+            theme: MyosTheme.light,
+            darkTheme: MyosTheme.dark,
             themeMode: mode,
             home: const OnboardingScreen(),
           ),

@@ -5,14 +5,14 @@ import 'catalog.dart';
 import 'controller.dart';
 
 /// Reads the selected app copy in widget code that is not itself a Consumer.
-MayosCopy displayCopyOf(BuildContext context) {
+MyosCopy displayCopyOf(BuildContext context) {
   try {
-    return MayosCopy(
+    return MyosCopy(
       ProviderScope.containerOf(context).read(displayLanguageProvider),
     );
   } on StateError {
     // Small standalone widgets (including the brand header) also render in
     // plain MaterialApp tests and previews without a ProviderScope.
-    return MayosCopy(Localizations.localeOf(context).languageCode);
+    return MyosCopy(Localizations.localeOf(context).languageCode);
   }
 }

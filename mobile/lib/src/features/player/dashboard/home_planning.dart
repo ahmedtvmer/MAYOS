@@ -12,7 +12,7 @@ import '../../../core/display_language/catalog.dart';
 
 /// The editorial greeting for the hour, without inventing a name. No account
 /// field exposes a display/preferred name, so Home greets neutrally.
-String greetingFor(DateTime now) => MayosCopy('en').greetingFor(now);
+String greetingFor(DateTime now) => MyosCopy('en').greetingFor(now);
 
 /// The identity and performed date of one logged workout, used to derive the
 /// next program day from data the app already has: the latest committed session
@@ -84,10 +84,10 @@ String nextSessionLabel(TrainingSchedule? schedule, DateTime now,
     {bool isArabic = false}) {
   final List<int> sorted = _sortedWeekdays(schedule);
   if (sorted.isEmpty) {
-    return MayosCopy(isArabic ? 'ar' : 'en').nextSessionLabel(null);
+    return MyosCopy(isArabic ? 'ar' : 'en').nextSessionLabel(null);
   }
   final int next = nextScheduledWeekday(sorted, now);
-  return MayosCopy(isArabic ? 'ar' : 'en').nextSessionLabel(next);
+  return MyosCopy(isArabic ? 'ar' : 'en').nextSessionLabel(next);
 }
 
 /// The ordered program day after the one most recently trained, wrapping to

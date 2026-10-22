@@ -12,8 +12,8 @@ From the repository root, activate the main checkout's `.venv`. Run from a tempo
 
 ```sh
 MAYOS_REPO_ROOT="$(git rev-parse --show-toplevel)"
-mkdir -p /tmp/mayos-arabic-coach-eval/run
-cd /tmp/mayos-arabic-coach-eval/run
+mkdir -p /tmp/myos-arabic-coach-eval/run
+cd /tmp/myos-arabic-coach-eval/run
 python "$MAYOS_REPO_ROOT/tests/eval/run_arabic_coach_evaluation.py" --mock --write-report "$MAYOS_REPO_ROOT/reports/arabic_coach_eval_mock.json"
 ```
 
@@ -21,7 +21,7 @@ From a new shell at the repository root, the configured hosted coach model run t
 
 ```sh
 MAYOS_REPO_ROOT="$(git rev-parse --show-toplevel)"
-cd /tmp/mayos-arabic-coach-eval/run
+cd /tmp/myos-arabic-coach-eval/run
 LLM_MAX_RETRIES=8 LLM_REQUEST_TIMEOUT=120 python "$MAYOS_REPO_ROOT/tests/eval/run_arabic_coach_evaluation.py" --live --write-report "$MAYOS_REPO_ROOT/reports/arabic_coach_eval.json"
 ```
 

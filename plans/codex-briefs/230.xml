@@ -9,7 +9,7 @@ ambiguous, make the most conservative choice consistent with the issue and flag 
 </role>
 
 <task>
-Implement GitHub issue #230 in the MAYOS repository (this working tree). The issue is the source of truth; it is quoted in full below. Every acceptance criterion must be met.
+Implement GitHub issue #230 in the MYOS repository (this working tree). The issue is the source of truth; it is quoted in full below. Every acceptance criterion must be met.
 
 Before coding, read AGENTS.md, the relevant CONTEXT.md glossary entries and the ADRs in DECISIONS.md that the issue or notes mention. Use the glossary's terms in code, tests and docs. If the issue conflicts with an ADR or with the code as it stands, stop and report the conflict instead of guessing.
 
@@ -19,7 +19,7 @@ Other implementers are working on other issues at the same time in separate work
 
 <orchestrator_notes>
 Read ADR 054 and ADR 011 in DECISIONS.md and the Staple exercise / Equipment access glossary entries first.
-Already landed on this branch: Equipment access filtering (utils/equipment_access.py, EquipmentAccessFilter; Commercial gym excludes band, body weight and weighted working sets; Home gym allows free weights, bands, bodyweight and weighted; Bodyweight only uses SLOT_FALLBACKS in agent/program_blueprints.py); display names (150 "Lat Pulldown", 2330 "Wide-Grip Lat Pulldown", 596 pec deck, 602 reverse pec deck, 3562 Barbell Hip Thrust, 757 Smith Incline Press, 175 Cable Crunch, 3541 incline DB Y-raise, 318 incline DB curl, 598 hip adduction); MAYOS-authored staples mayos:1..4 (Kelso shrug, Bayesian curl, cable Y-raise, machine hip thrust).
+Already landed on this branch: Equipment access filtering (utils/equipment_access.py, EquipmentAccessFilter; Commercial gym excludes band, body weight and weighted working sets; Home gym allows free weights, bands, bodyweight and weighted; Bodyweight only uses SLOT_FALLBACKS in agent/program_blueprints.py); display names (150 "Lat Pulldown", 2330 "Wide-Grip Lat Pulldown", 596 pec deck, 602 reverse pec deck, 3562 Barbell Hip Thrust, 757 Smith Incline Press, 175 Cable Crunch, 3541 incline DB Y-raise, 318 incline DB curl, 598 hip adduction); MYOS-authored staples mayos:1..4 (Kelso shrug, Bayesian curl, cable Y-raise, machine hip thrust).
 Rejected mappings that must never be used as staples for those movements: 744 is not a pendulum squat; 329 is not a Kelso shrug; 190 is not a Bayesian curl.
 Out of scope (later tickets): day templates/exercise ordering within a day and the coach rubric (#232), prescriptions/sets/RIR, weekly volume, the regenerate offer. Existing programs are untouched.
 Keep the full suite green: generation tests, blueprint tests and substitution tests must pass; if an existing test pinned the random pick, update it to the deterministic expectation and say so.

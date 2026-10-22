@@ -3,20 +3,20 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
-import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_card.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_table_frame.dart';
-import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
-import 'package:mayos_mobile/src/features/coach/coach_exercise_table.dart';
-import 'package:mayos_mobile/src/features/coach/coach_history_segment.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/core/display_language/coach_copy.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/theme/myos_spacing.dart';
+import 'package:myos_mobile/src/core/theme/myos_theme.dart';
+import 'package:myos_mobile/src/core/ui/myos_card.dart';
+import 'package:myos_mobile/src/core/ui/myos_table_frame.dart';
+import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
+import 'package:myos_mobile/src/features/coach/coach_exercise_table.dart';
+import 'package:myos_mobile/src/features/coach/coach_history_segment.dart';
+import 'package:myos_mobile/src/providers.dart';
 
 import 'support/auth_harness.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 import 'support/test_fonts.dart';
 
 Future<void> _pumpUntilFound(
@@ -35,8 +35,8 @@ Future<void> _pumpUntilFound(
   }
 }
 
-FakeMayosApi _coachFake({String language = 'en'}) {
-  final FakeMayosApi fake = FakeMayosApi()
+FakeMyosApi _coachFake({String language = 'en'}) {
+  final FakeMyosApi fake = FakeMyosApi()
     ..issuedToken = 'token-history-coach'
     ..currentUsername = 'coach'
     ..tokenValid = true
@@ -54,11 +54,11 @@ FakeMayosApi _coachFake({String language = 'en'}) {
   return fake;
 }
 
-Map<String, dynamic> _latestSession(FakeMayosApi fake) =>
+Map<String, dynamic> _latestSession(FakeMyosApi fake) =>
     fake.coachPlayerSummary['latest_session'] as Map<String, dynamic>;
 
 void _setExercise(
-  FakeMayosApi fake, {
+  FakeMyosApi fake, {
   String? imagePath = 'images/bench-press.jpg',
   String? primaryMuscle = 'Chest',
   String? primaryAction = 'Shoulder Horizontal Adduction',
@@ -77,7 +77,7 @@ void _setExercise(
   ];
 }
 
-void _setSessionFlags(FakeMayosApi fake) {
+void _setSessionFlags(FakeMyosApi fake) {
   final Map<String, dynamic> latest = _latestSession(fake)
     ..['warmup_movements'] = <Map<String, dynamic>>[
       <String, dynamic>{
@@ -112,7 +112,7 @@ void _setSessionFlags(FakeMayosApi fake) {
   ];
 }
 
-Map<String, dynamic> _recentSession(FakeMayosApi fake) =>
+Map<String, dynamic> _recentSession(FakeMyosApi fake) =>
     (fake.coachPlayerSummary['recent_sessions'] as List<dynamic>)
         .first as Map<String, dynamic>;
 
@@ -147,7 +147,7 @@ Future<void> _expandFirstRecentSession(WidgetTester tester) async {
 
 Future<void> _pumpApp(
   WidgetTester tester,
-  FakeMayosApi fake, {
+  FakeMyosApi fake, {
   Size logicalSize = const Size(1440, 1600),
   ThemeMode? themeMode,
 }) async {
@@ -199,7 +199,7 @@ void main() {
   testWidgets(
     'desktop Latest session shows enriched table and all flags in dark theme',
     (WidgetTester tester) async {
-      final FakeMayosApi fake = _coachFake();
+      final FakeMyosApi fake = _coachFake();
       _setExercise(fake);
       _setSessionFlags(fake);
       await _pumpApp(tester, fake, themeMode: ThemeMode.dark);
@@ -241,7 +241,7 @@ void main() {
       'Latest session table fills desktop cards and widens Action and Sets',
       (WidgetTester tester) async {
     await loadInterTestFont();
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     _setExercise(fake);
     await _pumpApp(
       tester,
@@ -256,7 +256,7 @@ void main() {
       final Finder frame = find.byType(CoachExerciseTableFrame).first;
       final Finder card = find.ancestor(
         of: frame,
-        matching: find.byType(MayosCard),
+        matching: find.byType(MyosCard),
       ).first;
       final Rect frameRect = tester.getRect(frame);
       final Rect cardRect = tester.getRect(card);
@@ -264,8 +264,8 @@ void main() {
         frameRect.right,
         closeTo(
           cardRect.right -
-              MayosSpacing.md -
-              MayosBorderWidths.hairline,
+              MyosSpacing.md -
+              MyosBorderWidths.hairline,
           1,
         ),
       );
@@ -284,7 +284,7 @@ void main() {
 
       final Finder header = find.descendant(
         of: frame,
-        matching: find.byType(MayosTableHeader),
+        matching: find.byType(MyosTableHeader),
       ).first;
       double headerWidth(String label) => tester.getSize(
             find.descendant(of: header, matching: find.text(label)),
@@ -301,7 +301,7 @@ void main() {
   testWidgets(
     'phone Latest session wraps flags and shows compact exercise values',
     (WidgetTester tester) async {
-      final FakeMayosApi fake = _coachFake();
+      final FakeMyosApi fake = _coachFake();
       _setExercise(fake);
       _setSessionFlags(fake);
       await _pumpApp(tester, fake, logicalSize: const Size(360, 1200));
@@ -320,7 +320,7 @@ void main() {
   testWidgets(
     'desktop Recent sessions show a table and expand to session details',
     (WidgetTester tester) async {
-      final FakeMayosApi fake = _coachFake();
+      final FakeMyosApi fake = _coachFake();
       final Map<String, dynamic> session = _recentSession(fake)
         ..['readiness_score'] = 2
         ..['warmup_movements'] = <Map<String, dynamic>>[
@@ -440,7 +440,7 @@ void main() {
   testWidgets(
     'phone Recent sessions expand to compact exercise rows at 360dp',
     (WidgetTester tester) async {
-      final FakeMayosApi fake = _coachFake();
+      final FakeMyosApi fake = _coachFake();
       _recentSession(fake)
         ..['sets_count'] = 3
         ..['total_volume_kg'] = 2000.0
@@ -480,7 +480,7 @@ void main() {
   testWidgets(
     'Arabic phone Recent sessions expand and collapse at 360dp in RTL',
     (WidgetTester tester) async {
-      final FakeMayosApi fake = _coachFake(language: 'ar');
+      final FakeMyosApi fake = _coachFake(language: 'ar');
       _recentSession(fake)
         ..['sets_count'] = 3
         ..['total_volume_kg'] = 2000.0
@@ -547,7 +547,7 @@ void main() {
   testWidgets('Arabic Latest session localizes compact rows and uses RTL', (
     WidgetTester tester,
   ) async {
-    final FakeMayosApi fake = _coachFake(language: 'ar');
+    final FakeMyosApi fake = _coachFake(language: 'ar');
     _setExercise(fake);
     _setSessionFlags(fake);
     await _pumpApp(tester, fake, logicalSize: const Size(540, 1200));
@@ -565,7 +565,7 @@ void main() {
   testWidgets(
     'missing exercise labels hide muscle and show an em dash action',
     (WidgetTester tester) async {
-      final FakeMayosApi fake = _coachFake();
+      final FakeMyosApi fake = _coachFake();
       _setExercise(
         fake,
         imagePath: null,
@@ -716,7 +716,7 @@ void main() {
         locale: const Locale('ar'),
         supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        theme: MayosTheme.lightForLanguage('ar'),
+        theme: MyosTheme.lightForLanguage('ar'),
         home: MediaQuery(
           data: const MediaQueryData(size: Size(1440, 1600)),
           child: SingleChildScrollView(child: segment),
@@ -784,7 +784,7 @@ void main() {
         locale: const Locale('en'),
         supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        theme: MayosTheme.lightForLanguage('en'),
+        theme: MyosTheme.lightForLanguage('en'),
         home: MediaQuery(
           data: const MediaQueryData(size: Size(1440, 960)),
           child: SingleChildScrollView(child: segment),
@@ -799,7 +799,7 @@ void main() {
         locale: const Locale('ar'),
         supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
-        theme: MayosTheme.lightForLanguage('ar'),
+        theme: MyosTheme.lightForLanguage('ar'),
         home: MediaQuery(
           data: const MediaQueryData(size: Size(360, 800)),
           child: SingleChildScrollView(child: segment),

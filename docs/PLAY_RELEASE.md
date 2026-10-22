@@ -38,7 +38,7 @@ fly secrets set PRIVACY_CONTACT_EMAIL="you@example.com"
       deployment, especially the hosted-model provider name (DeepInfra by
       default, `LLM_API_BASE`) and the retention windows.
 - [ ] Replace the operator wording if you publish under a legal name/entity
-      ("the MAYOS project" is a placeholder).
+      ("the MYOS project" is a placeholder).
 - [ ] Confirm the children statement: the policy says the service is **not
       directed at children under 16**; the repository itself states no age
       floor, so adjust the number to your intended audience and keep the Play
@@ -50,9 +50,9 @@ fly secrets set PRIVACY_CONTACT_EMAIL="you@example.com"
 
 ```bash
 keytool -genkeypair -v \
-  -keystore ~/keystores/mayos-upload.jks \
+  -keystore ~/keystores/myos-upload.jks \
   -keyalg RSA -keysize 2048 -validity 10000 \
-  -alias mayos-upload
+  -alias myos-upload
 ```
 
 - [ ] Choose a strong password and store it (and the `.jks`) in a password
@@ -69,9 +69,9 @@ Create `mobile/android/key.properties` (gitignored):
 ```properties
 storePassword=<keystore password>
 keyPassword=<key password>
-keyAlias=mayos-upload
+keyAlias=myos-upload
 # Relative paths resolve against mobile/android/; absolute paths work too.
-storeFile=../keystores/mayos-upload.jks
+storeFile=../keystores/myos-upload.jks
 ```
 
 - [ ] A **release** build fails with a clear message when this file is missing
@@ -83,7 +83,7 @@ storeFile=../keystores/mayos-upload.jks
 
 ```bash
 # Your upload key (the one in key.properties):
-keytool -list -v -keystore ~/keystores/mayos-upload -alias mayos-upload | grep -A1 'SHA256'
+keytool -list -v -keystore ~/keystores/myos-upload -alias myos-upload | grep -A1 'SHA256'
 ```
 
 - [ ] Take the Play Console → **Setup → App integrity → App signing key
@@ -130,7 +130,7 @@ flutter build appbundle --release \
 
 ### Launcher icon (regenerate whenever the logo changes)
 
-The Android launcher icon comes from `assets/mayos-android-logo.png`, copied
+The Android launcher icon comes from `assets/myos-android-logo.png`, copied
 into `mobile/assets/` (the root original is never modified) and rendered by
 the `flutter_launcher_icons` dev dependency configured in `mobile/pubspec.yaml`:
 
@@ -146,7 +146,7 @@ dart run flutter_launcher_icons
       `drawable-*/ic_launcher_foreground.png`, `values/colors.xml`).
 - [ ] `ic_launcher_background` (`#01183D`) is sampled from the logo's navy
       tile; update it in `mobile/pubspec.yaml` if the logo's navy changes.
-- [ ] The foreground PNG (`mobile/assets/mayos-android-logo-foreground.png`)
+- [ ] The foreground PNG (`mobile/assets/myos-android-logo-foreground.png`)
       is the M mark alone on transparent, scaled so every glyph pixel sits in
       the 66dp safe zone of the 108dp canvas — hence
       `adaptive_icon_foreground_inset: 0`. It is a committed input; re-derive

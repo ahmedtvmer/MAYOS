@@ -26,7 +26,7 @@ PLAYER_ALIAS_PATTERN = re.compile(
     rf"(?<![A-Za-z0-9_]){PLAYER_ALIAS_PREFIX}[0-9a-f]{{{PLAYER_ALIAS_HEX_LENGTH}}}(?![A-Za-z0-9_])"
 )
 
-SYSTEM_PROMPT = """You are MAYOS's roster assistant, speaking to a Coach.
+SYSTEM_PROMPT = """You are MYOS's roster assistant, speaking to a Coach.
 You answer questions only from the supplied Roster signal snapshot.
 
 Rules:
@@ -62,7 +62,7 @@ Rules:
   Describe the figures in plain coaching language, such as “missed 3 of the
   expected training days in the last 7 days” or “no data on missed days”.
 - If asked for a name or identity, say that player names are not visible to
-  you, and that the MAYOS app can show which player each label refers to. The
+  you, and that the MYOS app can show which player each label refers to. The
   reply must include the relevant player's exact label verbatim, copied from
   the current roster signals or the question, even when refusing. Never omit
   the label or replace it with a generic reference in any language.

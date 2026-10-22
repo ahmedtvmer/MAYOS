@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/display_language/message_copy.dart';
-import 'package:mayos_mobile/src/core/display_language/message_resolver.dart';
-import 'package:mayos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/display_language/message_copy.dart';
+import 'package:myos_mobile/src/core/display_language/message_resolver.dart';
+import 'package:myos_mobile/src/core/models.dart';
 
 String _resolve(String code, Map<String, dynamic> params) =>
     resolveStructuredMessage(
@@ -296,7 +296,7 @@ void main() {
     );
     expect(
       _resolve('google.account_already_linked.v1', const <String, dynamic>{}),
-      'حساب Google هذا مرتبط بالفعل بحساب MAYOS.',
+      'حساب Google هذا مرتبط بالفعل بحساب MYOS.',
     );
     expect(
       _resolve('chat.failed.v1', const <String, dynamic>{}),

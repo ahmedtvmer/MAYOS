@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 import '../../../core/display_language/assignment_copy.dart';
 import '../../../core/display_language/message_resolver.dart';
 import '../../../core/models.dart';
-import '../../../core/theme/mayos_theme.dart';
-import '../../../core/theme/mayos_typography.dart';
+import '../../../core/theme/myos_theme.dart';
+import '../../../core/theme/myos_typography.dart';
 import '../../../core/ui/first_strong_direction.dart';
-import '../../../core/ui/mayos_button.dart';
-import '../../../core/ui/mayos_card.dart';
-import '../../../core/ui/mayos_section_header.dart';
+import '../../../core/ui/myos_button.dart';
+import '../../../core/ui/myos_card.dart';
+import '../../../core/ui/myos_section_header.dart';
 import '../program/program_change_summary_card.dart';
 
 class PlayerNoticeActions {
@@ -37,21 +37,21 @@ class PlayerAssignmentNoticesCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     final int unread =
         notices.where((AssignmentNotice notice) => notice.isUnread).length;
-    return MayosCard(
+    return MyosCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          MayosSectionHeader(
+          MyosSectionHeader(
             title: copy.notices,
             padding: EdgeInsets.zero,
             trailing: unread == 0
                 ? null
-                : MayosButton(
+                : MyosButton(
                     label: copy.markAllRead,
-                    variant: MayosButtonVariant.tertiary,
+                    variant: MyosButtonVariant.tertiary,
                     expand: false,
                     loading: actions.markingRead,
                     onPressed:
@@ -61,7 +61,7 @@ class PlayerAssignmentNoticesCard extends StatelessWidget {
           if (notices.isEmpty)
             Text(
               copy.noNotices,
-              style: MayosTypography.of(context)
+              style: MyosTypography.of(context)
                   .bodySecondary
                   .copyWith(color: colors.textSecondary),
             )
@@ -110,7 +110,7 @@ class _PlayerNoticeRow extends StatelessWidget {
       );
     }
 
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     return ListTile(
       dense: true,
       contentPadding: EdgeInsets.zero,
@@ -147,9 +147,9 @@ class _PlayerNoticeCaption extends StatelessWidget {
         ],
       ),
       key: Key('notice_caption_${notice.noticeId}'),
-      style: MayosTypography.of(context)
+      style: MyosTypography.of(context)
           .caption
-          .copyWith(color: MayosTheme.of(context).textMuted),
+          .copyWith(color: MyosTheme.of(context).textMuted),
     );
   }
 }
@@ -166,16 +166,16 @@ class PlayerAssignmentCheckInsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension colors = MayosTheme.of(context);
-    return MayosCard(
+    final MyosThemeExtension colors = MyosTheme.of(context);
+    return MyosCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          MayosSectionHeader(title: copy.checkIns, padding: EdgeInsets.zero),
+          MyosSectionHeader(title: copy.checkIns, padding: EdgeInsets.zero),
           if (checkIns.isEmpty)
             Text(
               copy.noCheckIns,
-              style: MayosTypography.of(context)
+              style: MyosTypography.of(context)
                   .bodySecondary
                   .copyWith(color: colors.textSecondary),
             )
@@ -196,7 +196,7 @@ class _PlayerCheckInRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     final String date = copy.isArabic
         ? '\u2066${checkIn.checkedInOn}\u2069'
         : checkIn.checkedInOn;

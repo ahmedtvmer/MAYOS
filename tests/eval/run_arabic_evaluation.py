@@ -785,8 +785,8 @@ def _run_evaluation() -> int:
         return 0
 
     report_path = args.report.resolve() if args.report else None
-    os.makedirs("/tmp/mayos-arabic-eval", exist_ok=True)
-    os.chdir("/tmp/mayos-arabic-eval")
+    os.makedirs("/tmp/myos-arabic-eval", exist_ok=True)
+    os.chdir("/tmp/myos-arabic-eval")
     data = json.loads(DATASET.read_text(encoding="utf-8"))
     cases = cases_from(data)
     scenario_data = load_scenarios()
@@ -801,7 +801,7 @@ def _run_evaluation() -> int:
         runner_exception = False
         try:
             os.makedirs("/tmp/logs", exist_ok=True)
-            with tempfile.TemporaryDirectory(prefix="mayos-arabic-eval-") as temp:
+            with tempfile.TemporaryDirectory(prefix="myos-arabic-eval-") as temp:
                 store = _synthetic_store(Path(temp))
                 try:
                     for case in cases:

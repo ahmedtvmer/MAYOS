@@ -12,20 +12,20 @@ import '../../../core/display_language/copy_context.dart';
 import '../../../core/display_language/localized_text.dart';
 import '../../../core/display_language/onboarding_copy.dart';
 import '../../../core/models.dart';
-import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/theme/mayos_theme.dart';
-import '../../../core/theme/mayos_typography.dart';
-import '../../../core/ui/mayos_button.dart';
-import '../../../core/ui/mayos_card.dart';
-import '../../../core/ui/mayos_logo.dart';
-import '../../../core/ui/mayos_player_column.dart';
-import '../../../core/ui/mayos_progress.dart';
+import '../../../core/theme/myos_spacing.dart';
+import '../../../core/theme/myos_theme.dart';
+import '../../../core/theme/myos_typography.dart';
+import '../../../core/ui/myos_button.dart';
+import '../../../core/ui/myos_card.dart';
+import '../../../core/ui/myos_logo.dart';
+import '../../../core/ui/myos_player_column.dart';
+import '../../../core/ui/myos_progress.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import 'coach_code_form.dart';
 import 'onboarding_widgets.dart';
 
-/// The focused, full-screen MAYOS onboarding flow (#51).
+/// The focused, full-screen MYOS onboarding flow (#51).
 ///
 /// Replaces the former chat-like intake with one composition per named decision
 /// from the structured intake API (#50): the privacy notice gates every answer,
@@ -442,7 +442,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     if (!showRestAlertPrompt &&
         programMessage != null &&
         programMessage.isNotEmpty) {
-      mayosMessengerKey.currentState?.showSnackBar(
+      myosMessengerKey.currentState?.showSnackBar(
         SnackBar(content: Text(programMessage)),
       );
     }
@@ -459,14 +459,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     if (field.type == 'int' || field.type == 'float') {
       final String min = field.minimum?.toString() ?? '';
       final String max = field.maximum?.toString() ?? '';
-      return MayosCopy(ref.read(displayLanguageProvider))
+      return MyosCopy(ref.read(displayLanguageProvider))
           .enterNumberBetween(min, max);
     }
     if (field.type == 'enum') {
-      return MayosCopy(ref.read(displayLanguageProvider))
+      return MyosCopy(ref.read(displayLanguageProvider))
           .chooseOptionToContinue;
     }
-    return MayosCopy(ref.read(displayLanguageProvider))
+    return MyosCopy(ref.read(displayLanguageProvider))
         .writeAtLeastTwoCharacters;
   }
 
@@ -502,7 +502,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   Widget _buildDisclosure() {
     return OnboardingScaffold(
       bottomBar: OnboardingActions(
-        primary: MayosButton(
+        primary: MyosButton(
           key: const Key('onboarding_disclosure_continue'),
           label: displayCopyOf(context).understood,
           loading: _disclosureSaving,
@@ -512,15 +512,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       child: OnboardingStepBody(
         children: <Widget>[
           OnboardingQuestion(question: displayCopyOf(context).beforeWeBegin),
-          const SizedBox(height: MayosSpacing.lg),
+          const SizedBox(height: MyosSpacing.lg),
           const _OnboardingPrivacyNotice(),
           if (_disclosureError != null) ...<Widget>[
-            const SizedBox(height: MayosSpacing.md),
+            const SizedBox(height: MyosSpacing.md),
             OnboardingInlineError(
                 message:
                     displayCopyOf(context).failureMessage(_disclosureError!)),
           ],
-          const SizedBox(height: MayosSpacing.md),
+          const SizedBox(height: MyosSpacing.md),
           _coachInviteEntry(),
         ],
       ),
@@ -541,9 +541,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       total: progress.totalFields,
       bottomBar: field == null ? _reviewBottomBar() : _stepBottomBar(field),
       child: AnimatedSwitcher(
-        duration: MayosMotion.base,
-        switchInCurve: MayosMotion.standard,
-        switchOutCurve: MayosMotion.standard,
+        duration: MyosMotion.base,
+        switchInCurve: MyosMotion.standard,
+        switchOutCurve: MyosMotion.standard,
         transitionBuilder: _slideFade,
         layoutBuilder: (Widget? current, List<Widget> previous) => Stack(
           fit: StackFit.expand,
@@ -600,7 +600,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       begin: const Offset(0.06, 0),
       end: Offset.zero,
     ).animate(
-      CurvedAnimation(parent: animation, curve: MayosMotion.standard),
+      CurvedAnimation(parent: animation, curve: MyosMotion.standard),
     );
     return FadeTransition(
       opacity: animation,
@@ -613,7 +613,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final bool canContinue = _canContinue(field, value);
     final bool isLast = _fields.isNotEmpty && _fields.last.name == field.name;
     return OnboardingActions(
-      primary: MayosButton(
+      primary: MyosButton(
         key: const Key('onboarding_continue'),
         label: (isLast && !_editingFromReview)
             ? displayCopyOf(context).review
@@ -624,10 +624,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       ),
       secondary: field.isRequired
           ? null
-          : MayosButton(
+          : MyosButton(
               key: const Key('onboarding_skip'),
               label: displayCopyOf(context).skipForNow,
-              variant: MayosButtonVariant.tertiary,
+              variant: MyosButtonVariant.tertiary,
               onPressed:
                   _saving ? null : () => _continueStep(field, skip: true),
             ),
@@ -646,10 +646,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               ? displayCopyOf(context).savedFromEarlierSetup
               : null,
         ),
-        const SizedBox(height: MayosSpacing.xl),
+        const SizedBox(height: MyosSpacing.xl),
         _buildInteraction(field, value, displayLanguage),
         if (_stepError != null || _stepFailure != null) ...<Widget>[
-          const SizedBox(height: MayosSpacing.md),
+          const SizedBox(height: MyosSpacing.md),
           OnboardingInlineError(
               message: _stepFailure == null
                   ? _stepError!
@@ -768,7 +768,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         const IntakeProgress(
             answeredRequired: 0, requiredTotal: 0, answered: 0, totalFields: 0);
     return OnboardingActions(
-      primary: MayosButton(
+      primary: MyosButton(
         key: const Key('onboarding_confirm'),
         label: displayCopyOf(context).createMyProgram,
         loading: _submitting,
@@ -785,7 +785,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           question: displayCopyOf(context).reviewSetup,
           explanation: displayCopyOf(context).reviewSetupLead,
         ),
-        const SizedBox(height: MayosSpacing.xl),
+        const SizedBox(height: MyosSpacing.xl),
         ReviewSection(
           title: displayCopyOf(context).aboutYou,
           fields: _reviewFields(const <String>[
@@ -818,14 +818,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           onEdit: (IntakeField field) => _editField(field.name),
         ),
         if (!ready) ...<Widget>[
-          const SizedBox(height: MayosSpacing.xs),
+          const SizedBox(height: MyosSpacing.xs),
           OnboardingInlineError(
               message: displayCopyOf(context).requiredAnswersMissing),
         ],
         if (_confirmError != null ||
             _confirmFailure != null ||
             _confirmProgramBeingGenerated) ...<Widget>[
-          const SizedBox(height: MayosSpacing.xs),
+          const SizedBox(height: MyosSpacing.xs),
           OnboardingInlineError(
               message: _confirmProgramBeingGenerated
                   ? displayCopyOf(context).programBeingGenerated
@@ -853,8 +853,8 @@ class _OnboardingPrivacyNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    return MayosCard(
+    final MyosThemeExtension c = MyosTheme.of(context);
+    return MyosCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -869,32 +869,32 @@ class _OnboardingPrivacyNotice extends StatelessWidget {
                 ),
                 child: Icon(Icons.shield_outlined, size: 22, color: c.accent),
               ),
-              const SizedBox(width: MayosSpacing.sm),
+              const SizedBox(width: MyosSpacing.sm),
               Expanded(
                 child: Text(
                   displayCopyOf(context).onboardingPrivacyNoticeTitle,
-                  style: MayosTypography.of(context).sectionHeading
+                  style: MyosTypography.of(context).sectionHeading
                       .copyWith(color: c.textPrimary),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: MayosSpacing.md),
+          const SizedBox(height: MyosSpacing.md),
           Text(
             displayCopyOf(context).onboardingPrivacyNotice,
             style:
-                MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
+                MyosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
           ),
-          const SizedBox(height: MayosSpacing.md),
+          const SizedBox(height: MyosSpacing.md),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Icon(Icons.lock_outline, size: 16, color: c.textMuted),
-              const SizedBox(width: MayosSpacing.xs),
+              const SizedBox(width: MyosSpacing.xs),
               Expanded(
                 child: Text(
                   displayCopyOf(context).onboardingPrivacyNote,
-                  style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
+                  style: MyosTypography.of(context).caption.copyWith(color: c.textMuted),
                 ),
               ),
             ],
@@ -918,10 +918,10 @@ class _OnboardingStatusLayout extends StatelessWidget {
             children: <Widget>[
               const OfflineBannerSlot(),
               Expanded(
-                child: MayosPlayerColumn(
+                child: MyosPlayerColumn(
                   child: Center(
                     child: Padding(
-                      padding: const EdgeInsets.all(MayosSpacing.xl),
+                      padding: const EdgeInsets.all(MyosSpacing.xl),
                       child: child,
                     ),
                   ),
@@ -941,26 +941,26 @@ class _LoadErrorContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         Icon(Icons.cloud_off, size: 40, color: c.textMuted),
-        const SizedBox(height: MayosSpacing.md),
+        const SizedBox(height: MyosSpacing.md),
         Text(
           displayCopyOf(context).setupLoadFailed,
           textAlign: TextAlign.center,
-          style: MayosTypography.of(context).pageHeading
+          style: MyosTypography.of(context).pageHeading
               .copyWith(color: c.textPrimary, fontSize: 24),
         ),
-        const SizedBox(height: MayosSpacing.xs),
+        const SizedBox(height: MyosSpacing.xs),
         Text(
           message,
           textAlign: TextAlign.center,
-          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
+          style: MyosTypography.of(context).bodySecondary.copyWith(color: c.textSecondary),
         ),
-        const SizedBox(height: MayosSpacing.xl),
-        MayosButton(
+        const SizedBox(height: MyosSpacing.xl),
+        MyosButton(
           label: displayCopyOf(context).retry,
           expand: false,
           onPressed: onRetry,
@@ -975,29 +975,29 @@ class _BuildingProgramContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        const MayosBrandMark(size: 52),
-        const SizedBox(height: MayosSpacing.xl),
+        const MyosBrandMark(size: 52),
+        const SizedBox(height: MyosSpacing.xl),
         Text(
           displayCopyOf(context).buildingYourProgram,
           textAlign: TextAlign.center,
-          style: MayosTypography.of(context).pageHeading.copyWith(color: c.textPrimary),
+          style: MyosTypography.of(context).pageHeading.copyWith(color: c.textPrimary),
         ),
-        const SizedBox(height: MayosSpacing.sm),
+        const SizedBox(height: MyosSpacing.sm),
         Text(
           displayCopyOf(context).answersSavedBuilding,
           textAlign: TextAlign.center,
-          style: MayosTypography.of(context).bodySecondary.copyWith(
+          style: MyosTypography.of(context).bodySecondary.copyWith(
             color: c.textSecondary,
           ),
         ),
-        const SizedBox(height: MayosSpacing.xl),
+        const SizedBox(height: MyosSpacing.xl),
         const SizedBox(
           width: 180,
-          child: MayosProgressIndicator(value: null),
+          child: MyosProgressIndicator(value: null),
         ),
       ],
     );

@@ -9,9 +9,9 @@ import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/privacy_policy.dart';
-import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/ui/mayos_button.dart';
-import '../../../core/ui/mayos_text_field.dart';
+import '../../../core/theme/myos_spacing.dart';
+import '../../../core/ui/myos_button.dart';
+import '../../../core/ui/myos_text_field.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import 'auth_widgets.dart';
@@ -65,7 +65,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
-    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
+    final MyosCopy copy = MyosCopy(ref.watch(displayLanguageProvider));
     final Uri uri = GoRouterState.of(context).uri;
     final bool resetJustCompleted = uri.queryParameters['reset'] == '1';
     final authState = ref.watch(authControllerProvider);
@@ -80,7 +80,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           : (_error == null
               ? null
               : AuthInlineNotice(message: copy.failureMessage(_error!))),
-      primary: MayosButton(
+      primary: MyosButton(
         key: const Key('login_submit'),
         label: copy.logIn,
         loading: _busy,
@@ -117,14 +117,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                 : copy.failureMessage(authState.noticeFailure!),
           ),
         if (resetJustCompleted || notice != null)
-          const SizedBox(height: MayosSpacing.md),
+          const SizedBox(height: MyosSpacing.md),
         GoogleSignInSection(
           key: const Key('login_google'),
           loading: googleBusy,
           onPressed: googleBusy ? null : continueWithGoogle,
           onWebOutcome: continueWithGoogleOutcome,
         ),
-        MayosTextField(
+        MyosTextField(
           fieldKey: const Key('login_username'),
           controller: _username,
           label: copy.username,
@@ -133,7 +133,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           keyboardType: TextInputType.text,
           autofillHints: const <String>[AutofillHints.username],
         ),
-        const SizedBox(height: MayosSpacing.md),
+        const SizedBox(height: MyosSpacing.md),
         AuthPasswordField(
           fieldKey: const Key('login_password'),
           toggleKey: const Key('login_password_toggle'),

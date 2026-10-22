@@ -52,10 +52,10 @@ class UsageContext:
 
 
 _usage_context: contextvars.ContextVar[UsageContext | None] = contextvars.ContextVar(
-    "mayos_usage_context", default=None
+    "myos_usage_context", default=None
 )
 _scoped_recorder: contextvars.ContextVar[Callable[..., Any] | None] = contextvars.ContextVar(
-    "mayos_scoped_usage_recorder", default=None
+    "myos_scoped_usage_recorder", default=None
 )
 
 

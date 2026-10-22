@@ -235,7 +235,7 @@ class _AsyncStreamLoop:
                 threading.Thread(
                     target=self._run,
                     args=(self._loop,),
-                    name="mayos-async-model-stream",
+                    name="myos-async-model-stream",
                     daemon=True,
                 ).start()
             context = contextvars.copy_context()

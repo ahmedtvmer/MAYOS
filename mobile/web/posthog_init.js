@@ -23,7 +23,7 @@
       script.async = true;
       script.src = options.api_host.replace('.i.posthog.com', '-assets.i.posthog.com') + '/static/array.js';
       script.onerror = function () {
-        window.mayosPosthogFailed();
+        window.myosPosthogFailed();
       };
       var firstScript = document.getElementsByTagName('script')[0];
       firstScript.parentNode.insertBefore(script, firstScript);
@@ -44,11 +44,11 @@
     posthog.__SV = 1;
   }
 
-  window.mayosInitializePosthog = function (clientKey, commonDimensionsJson) {
+  window.myosInitializePosthog = function (clientKey, commonDimensionsJson) {
     if (initPromise) return initPromise;
     initPromise = new Promise(function (resolve, reject) {
-      window.mayosPosthogLoaded = resolve;
-      window.mayosPosthogFailed = function () {
+      window.myosPosthogLoaded = resolve;
+      window.myosPosthogFailed = function () {
         reject(new Error('PostHog web SDK failed to load.'));
       };
       posthog.init(clientKey, {
@@ -69,22 +69,22 @@
         loaded: function (instance) {
           instance.register(JSON.parse(commonDimensionsJson));
           instance.register('$geoip_disable', true);
-          window.mayosPosthogLoaded();
+          window.myosPosthogLoaded();
         },
       });
     });
     return initPromise;
   };
 
-  window.mayosIdentifyPosthog = function (accountId, role, commonDimensionsJson) {
+  window.myosIdentifyPosthog = function (accountId, role, commonDimensionsJson) {
     window.posthog.register(JSON.parse(commonDimensionsJson));
     window.posthog.register('role', role);
     window.posthog.identify(accountId);
   };
-  window.mayosCapturePosthog = function (eventName, propertiesJson) {
+  window.myosCapturePosthog = function (eventName, propertiesJson) {
     window.posthog.capture(eventName, JSON.parse(propertiesJson));
   };
-  window.mayosResetPosthog = function () {
+  window.myosResetPosthog = function () {
     window.posthog.reset();
   };
 })(window, document);

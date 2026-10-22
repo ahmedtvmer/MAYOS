@@ -30,43 +30,43 @@ DEFAULT_PLAY_URL = "https://play.google.com/store/apps/details?id=com.mayos.mayo
 TEMPLATES = {
     "update-required": {
         "en": {
-            "subject": "Please update MAYOS before the move",
+            "subject": "Please update MYOS before the move",
             "body": (
                 "Hello,\n\n"
-                "MAYOS is moving to a faster server on {move_date}. Please update the app before then "
-                "to keep using MAYOS. You can download the latest version here:\n{play_url}\n\n"
-                "Thank you,\nThe MAYOS team"
+                "MYOS is moving to a faster server on {move_date}. Please update the app before then "
+                "to keep using MYOS. You can download the latest version here:\n{play_url}\n\n"
+                "Thank you,\nThe MYOS team"
             ),
         },
         "ar": {
-            "subject": "حدّث MAYOS قبل النقل",
+            "subject": "حدّث MYOS قبل النقل",
             "body": (
                 "أهلاً،\n\n"
-                "MAYOS هيتنقل على سيرفر أسرع يوم {move_date}. من فضلك حدّث التطبيق قبل اليوم ده "
-                "عشان تفضل تستخدم MAYOS من غير مشاكل. تقدر تنزّل آخر إصدار من هنا:\n{play_url}\n\n"
-                "شكرًا،\nفريق MAYOS"
+                "MYOS هيتنقل على سيرفر أسرع يوم {move_date}. من فضلك حدّث التطبيق قبل اليوم ده "
+                "عشان تفضل تستخدم MYOS من غير مشاكل. تقدر تنزّل آخر إصدار من هنا:\n{play_url}\n\n"
+                "شكرًا،\nفريق MYOS"
             ),
         },
     },
     "move-day": {
         "en": {
-            "subject": "MAYOS move-day service notice",
+            "subject": "MYOS move-day service notice",
             "body": (
                 "Hello,\n\n"
-                "MAYOS is moving to a faster server{date_phrase}. The service will be unavailable "
+                "MYOS is moving to a faster server{date_phrase}. The service will be unavailable "
                 "during this window: {window}. Workouts you log in the Android app during this time stay saved "
-                "on your phone and sync automatically once MAYOS is back.\n\n"
-                "Thank you,\nThe MAYOS team"
+                "on your phone and sync automatically once MYOS is back.\n\n"
+                "Thank you,\nThe MYOS team"
             ),
         },
         "ar": {
-            "subject": "MAYOS هيقف مؤقتًا يوم النقل",
+            "subject": "MYOS هيقف مؤقتًا يوم النقل",
             "body": (
                 "أهلاً،\n\n"
-                "MAYOS بيتنقل على سيرفر أسرع{date_phrase}. الخدمة هتكون واقفة في الفترة دي: {window}. "
+                "MYOS بيتنقل على سيرفر أسرع{date_phrase}. الخدمة هتكون واقفة في الفترة دي: {window}. "
                 "الحصص التدريبية اللي هتسجّلها على تطبيق Android في الوقت ده هتفضل محفوظة على موبايلك، "
-                "وهتتزامن لوحدها أول ما MAYOS يرجع.\n\n"
-                "شكرًا،\nفريق MAYOS"
+                "وهتتزامن لوحدها أول ما MYOS يرجع.\n\n"
+                "شكرًا،\nفريق MYOS"
             ),
         },
     },
@@ -183,7 +183,7 @@ def _request_from_args(parser: argparse.ArgumentParser, args: argparse.Namespace
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Send or preview MAYOS move announcements.")
+    parser = argparse.ArgumentParser(description="Send or preview MYOS move announcements.")
     parser.add_argument("--template", choices=tuple(TEMPLATES), required=True)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="Print recipient counts and rendered previews without sending.")

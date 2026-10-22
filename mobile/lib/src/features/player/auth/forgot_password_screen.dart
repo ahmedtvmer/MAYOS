@@ -8,9 +8,9 @@ import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
-import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/ui/mayos_button.dart';
-import '../../../core/ui/mayos_text_field.dart';
+import '../../../core/theme/myos_spacing.dart';
+import '../../../core/ui/myos_button.dart';
+import '../../../core/ui/myos_text_field.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import 'auth_widgets.dart';
@@ -67,7 +67,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
+    final MyosCopy copy = MyosCopy(ref.watch(displayLanguageProvider));
     return AuthScaffold(
       title: copy.forgotPassword,
       lead: copy.forgotEmailHint,
@@ -75,7 +75,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       message: _error == null
           ? null
           : AuthInlineNotice(message: copy.failureMessage(_error!)),
-      primary: MayosButton(
+      primary: MyosButton(
         key: const Key('forgot_submit'),
         label: copy.sendResetLink,
         loading: _busy,
@@ -88,7 +88,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         ),
       ],
       children: <Widget>[
-        MayosTextField(
+        MyosTextField(
           fieldKey: const Key('forgot_email'),
           controller: _email,
           label: copy.email,
@@ -100,12 +100,12 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
           onSubmitted: (_) => _busy ? null : _submit(),
         ),
         if (_confirmation) ...<Widget>[
-          const SizedBox(height: MayosSpacing.md),
+          const SizedBox(height: MyosSpacing.md),
           AuthInlineNotice(
             kind: AuthNoticeKind.success,
             message: copy.resetRequestConfirmation,
           ),
-          const SizedBox(height: MayosSpacing.sm),
+          const SizedBox(height: MyosSpacing.sm),
           Text(copy.noEmailHint),
           AuthLink(
             key: const Key('forgot_signup'),

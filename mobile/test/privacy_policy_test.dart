@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/privacy_policy.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/privacy_policy.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/providers.dart';
 
 import 'support/auth_harness.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 /// The privacy policy is served by the API at `/privacy` (ADR 046); the app
 /// only ever hands that URL to the system browser, from the signed-out auth
@@ -51,7 +51,7 @@ Future<void> _setSize(WidgetTester tester) async {
 Future<void> _pumpAuth(WidgetTester tester, _RecordingLauncher launcher) async {
   await _setSize(tester);
   await tester.pumpWidget(authApp(
-    FakeMayosApi(),
+    FakeMyosApi(),
     InMemoryTokenStore(),
     extraOverrides: <Override>[_launcherOverride(launcher)],
   ));
@@ -59,7 +59,7 @@ Future<void> _pumpAuth(WidgetTester tester, _RecordingLauncher launcher) async {
 }
 
 Future<void> _pumpSignedIn(WidgetTester tester, _RecordingLauncher launcher) async {
-  final FakeMayosApi fake = FakeMayosApi();
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -85,7 +85,7 @@ Future<void> _pumpSignedIn(WidgetTester tester, _RecordingLauncher launcher) asy
           return client;
         }),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(tester, find.text('Home'));

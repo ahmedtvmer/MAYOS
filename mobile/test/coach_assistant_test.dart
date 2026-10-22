@@ -4,23 +4,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/chat_storage.dart';
-import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
-import 'package:mayos_mobile/src/core/display_language/controller.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_markdown.dart';
-import 'package:mayos_mobile/src/core/workout_storage.dart';
-import 'package:mayos_mobile/src/features/coach/coach_assistant_state.dart';
-import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/chat_storage.dart';
+import 'package:myos_mobile/src/core/display_language/coach_copy.dart';
+import 'package:myos_mobile/src/core/display_language/controller.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/ui/myos_markdown.dart';
+import 'package:myos_mobile/src/core/workout_storage.dart';
+import 'package:myos_mobile/src/features/coach/coach_assistant_state.dart';
+import 'package:myos_mobile/src/features/shared/mode_switch.dart';
+import 'package:myos_mobile/src/providers.dart';
 
 import 'support/auth_harness.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 import 'support/coach_layout_harness.dart';
 
 /// Pumps finite frames until [finder] matches, then a few more so transitions
@@ -44,7 +44,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
 
 Future<void> _pumpApp(
   WidgetTester tester,
-  FakeMayosApi fake, {
+  FakeMyosApi fake, {
   ThemeMode? themeMode,
   Size? size,
   String language = 'en',
@@ -77,19 +77,19 @@ Future<void> _pumpApp(
           return client;
         }),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(
       tester, find.text(fake.coach ? 'Roster' : 'Home'));
 }
 
-FakeMayosApi _coachFake({
+FakeMyosApi _coachFake({
   bool coachAiEnabled = true,
   bool secondPlayer = false,
   String language = 'en',
 }) {
-  final FakeMayosApi fake = FakeMayosApi();
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -117,10 +117,10 @@ FakeMayosApi _coachFake({
 }
 
 ProviderContainer _container(WidgetTester tester) =>
-    ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+    ProviderScope.containerOf(tester.element(find.byType(MyosApp)));
 
 Finder _assistantMarkdown(String source) => find.byWidgetPredicate(
-      (Widget widget) => widget is MayosMarkdown && widget.source == source,
+      (Widget widget) => widget is MyosMarkdown && widget.source == source,
     );
 
 /// The coach shell opens on the Roster tab (#119).
@@ -218,7 +218,7 @@ void main() {
 
   testWidgets('the Ask assistant entry is hidden while the feature is off',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake(coachAiEnabled: false);
+    final FakeMyosApi fake = _coachFake(coachAiEnabled: false);
     await _pumpApp(tester, fake);
 
     await _openRoster(tester);
@@ -235,7 +235,7 @@ void main() {
 
   testWidgets('the enabled entry opens the assistant and one exchange works',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
 
     await _openRoster(tester);
@@ -277,7 +277,7 @@ void main() {
 
   testWidgets('phone assistant reply stays in its bubble and remains selectable',
       (WidgetTester tester) async {
-    FakeMayosApi? usedFake;
+    FakeMyosApi? usedFake;
     String? copiedText;
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
@@ -292,7 +292,7 @@ void main() {
         .setMockMethodCallHandler(SystemChannels.platform, null));
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) {
+      configureFake: (FakeMyosApi fake) {
         usedFake = fake;
         fake.coachAiEnabled = true;
         fake.assignments.add(<String, dynamic>{
@@ -305,7 +305,7 @@ void main() {
             '| Exercise | Sets | Notes |\n| --- | ---: | --- |\n'
             '| Lat Pulldown | 3 | Keep the full range of motion |';
       },
-      ready: (String language) => find.byKey(const ValueKey<String>('mayos_scaffold_body')),
+      ready: (String language) => find.byKey(const ValueKey<String>('myos_scaffold_body')),
       pageScrollable: (String language) => find.byType(Scrollable).first,
       allowedInnerStrips: (String language) => find.byKey(
         const Key('coach_assistant_reply_bubble'),
@@ -357,7 +357,7 @@ void main() {
 
   testWidgets('assistant shows its draft before the done frame',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
@@ -371,7 +371,7 @@ void main() {
     await tester.pump();
 
     expect(find.byKey(const Key('coach_assistant_live_draft')), findsOneWidget);
-    final MayosMarkdown draft = tester.widget<MayosMarkdown>(
+    final MyosMarkdown draft = tester.widget<MyosMarkdown>(
         find.byKey(const Key('coach_assistant_live_draft')));
     expect(draft.source, isNotEmpty);
     expect(draft.source, isNot(fake.coachAssistantAnswer));
@@ -384,7 +384,7 @@ void main() {
 
   testWidgets('a truncated Coach answer is not added to the transcript',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..coachAssistantOutcome = 'truncated';
     fake.coachAiAllowance = <String, dynamic>{
       'mode': 'launch',
@@ -437,7 +437,7 @@ void main() {
 
   testWidgets('stream failure shows retry state and a retry can finish',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..coachAssistantStreamFailuresRemaining = 1;
     fake.coachAiAllowance = <String, dynamic>{
       'mode': 'launch',
@@ -502,7 +502,7 @@ void main() {
   testWidgets('assistant Markdown fits at 360 dp in light and dark themes',
       (WidgetTester tester) async {
     for (final ThemeMode mode in <ThemeMode>[ThemeMode.light, ThemeMode.dark]) {
-      final FakeMayosApi fake = _coachFake()
+      final FakeMyosApi fake = _coachFake()
         ..coachAssistantAnswer =
             '# Coaching notes\n\nKeep **one** lift moving.\n\n- Stay patient\n- Add weight slowly';
       await _pumpApp(
@@ -544,7 +544,7 @@ void main() {
 
   testWidgets('the assistant survives a keyboard inset at 360 dp',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake()
+    final FakeMyosApi fake = _coachFake()
       ..coachAssistantAnswer =
           '# Coaching notes\n\nKeep **one** lift moving.\n\n- Stay patient\n- Add weight slowly';
     await _pumpApp(tester, fake, size: const Size(360, 640));
@@ -578,7 +578,7 @@ void main() {
 
   testWidgets('the next question carries the previous exchange as history',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
@@ -600,7 +600,7 @@ void main() {
 
   testWidgets('only the last 12 transcript turns are sent as history',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
@@ -646,7 +646,7 @@ void main() {
 
   test('the stored transcript stays bounded while only the last 12 are sent',
       () async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     await tokens.save('token-alice');
     final ProviderContainer container = authContainerFor(fake, tokens);
@@ -689,7 +689,7 @@ void main() {
 
   testWidgets('opening the assistant for another player clears the transcript',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake(secondPlayer: true);
+    final FakeMyosApi fake = _coachFake(secondPlayer: true);
     fake.coachAiAllowance = <String, dynamic>{
       'mode': 'launch',
       'status': 'warning',
@@ -731,7 +731,7 @@ void main() {
   testWidgets(
       'a 403 clears the transcript, tells the coach, and closes the assistant',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.coachAssistantDenied = true;
     await _pumpApp(tester, fake);
     await _openRoster(tester);
@@ -747,7 +747,7 @@ void main() {
 
   testWidgets('a roster refresh that lost the assignment clears the transcript',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
@@ -768,7 +768,7 @@ void main() {
 
   testWidgets('a denied player-history load clears the transcript',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
@@ -791,7 +791,7 @@ void main() {
 
   testWidgets('resuming the app reloads the roster and ends a lost assignment',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
@@ -816,7 +816,7 @@ void main() {
 
   testWidgets('returning to the roster after the drill-down reloads it',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
@@ -839,7 +839,7 @@ void main() {
   testWidgets(
       'reopening the assistant for a player revoked meanwhile shows no transcript',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
@@ -861,7 +861,7 @@ void main() {
   testWidgets(
       'losing coach_ai_enabled or the coach capability clears the transcript',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
@@ -899,7 +899,7 @@ void main() {
 
   testWidgets('revoking the assignment clears the transcript',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
@@ -923,7 +923,7 @@ void main() {
 
   testWidgets('disabling coaching clears the transcript',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
@@ -946,7 +946,7 @@ void main() {
   });
 
   testWidgets('logout clears the transcript', (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
@@ -967,7 +967,7 @@ void main() {
 
   testWidgets('app close clears the transcript (AppLifecycleState.detached)',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
@@ -983,7 +983,7 @@ void main() {
   });
 
   test('the transcript store is memory-only: nothing is persisted', () async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     await tokens.save('token-alice');
 
@@ -1036,7 +1036,7 @@ void main() {
 
   testWidgets('a 404 from the service reports that the feature is off',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     await _pumpApp(tester, fake);
     await _openRoster(tester);
     await _openAssistant(tester, 'bob');
@@ -1065,7 +1065,7 @@ void main() {
 
   testWidgets('a 429 surfaces the model-limit message like player chat',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake();
+    final FakeMyosApi fake = _coachFake();
     fake.coachAssistantRateLimited = true;
     await _pumpApp(tester, fake);
     await _openRoster(tester);

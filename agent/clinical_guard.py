@@ -339,7 +339,7 @@ CLINICAL_ANCHOR_VECTORS: list[list[float]] = [
 ]
 
 #: Arabic clinical anchor descriptions for the separate multilingual-e5-small
-#: model (ADR 081). These are MAYOS-authored renderings of the English anchors
+#: model (ADR 081). These are MYOS-authored renderings of the English anchors
 #: above; they are internal model prompts, not player-facing text, and remain
 #: owner-unreviewed until the owner approves the Arabic wording.
 ARABIC_CLINICAL_ANCHOR_DESCRIPTIONS: list[str] = [

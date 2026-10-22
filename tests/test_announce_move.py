@@ -80,10 +80,10 @@ def test_dry_run_lists_verified_live_recipients_and_previews_both_languages(
     assert "Recipients: 2" in output
     assert "English: 1" in output
     assert "Arabic: 1" in output
-    assert "MAYOS is moving to a faster server on 2026-11-03." in output
+    assert "MYOS is moving to a faster server on 2026-11-03." in output
     assert "2026-11-03" in output
     assert "https://play.google.com/store/apps/details?id=com.mayos.mayos_mobile" in output
-    assert "MAYOS هيتنقل على سيرفر أسرع" in output
+    assert "MYOS هيتنقل على سيرفر أسرع" in output
     assert "من فضلك حدّث التطبيق" in output
     assert "CONSOLE email backend" not in caplog.text
 
@@ -103,8 +103,8 @@ def test_send_delivers_each_verified_account_in_its_language_and_audits_run(
     output = capsys.readouterr().out
     assert exit_code == 0
     assert caplog.text.count("CONSOLE email backend:") == 2
-    assert "MAYOS move-day service notice" in caplog.text
-    assert "MAYOS هيقف مؤقتًا يوم النقل" in caplog.text
+    assert "MYOS move-day service notice" in caplog.text
+    assert "MYOS هيقف مؤقتًا يوم النقل" in caplog.text
     assert "2026-11-03 08:00–10:00 Cairo time" in caplog.text
     assert "Recipients: 2" in output
     assert "english@example.com" not in caplog.text

@@ -106,7 +106,7 @@ class WebWorkoutCommitter {
     } on Object {
       return const WebWorkoutCommitResult(
         WebWorkoutCommitStatus.retryable,
-        message: "Couldn't reach MAYOS. Your workout is kept in this browser.",
+        message: "Couldn't reach MYOS. Your workout is kept in this browser.",
         messageType: WebWorkoutCommitMessage.connection,
       );
     }
@@ -127,8 +127,8 @@ class WebWorkoutCommitter {
       return WebWorkoutCommitResult(
         WebWorkoutCommitStatus.retryable,
         message: status == null || status == 408
-            ? "Couldn't reach MAYOS. Your workout is kept in this browser."
-            : 'MAYOS is busy. Your workout is kept in this browser.',
+            ? "Couldn't reach MYOS. Your workout is kept in this browser."
+            : 'MYOS is busy. Your workout is kept in this browser.',
         messageType: status == null || status == 408
             ? WebWorkoutCommitMessage.connection
             : WebWorkoutCommitMessage.busy,

@@ -4,26 +4,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/chat_storage.dart';
-import 'package:mayos_mobile/src/core/connectivity_message.dart';
-import 'package:mayos_mobile/src/core/display_language/controller.dart';
-import 'package:mayos_mobile/src/core/rest_alert_permission_prompt_store.dart';
-import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
-import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_button.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_choice_card.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_player_column.dart';
-import 'package:mayos_mobile/src/core/workout_storage.dart';
-import 'package:mayos_mobile/src/features/player/onboarding/onboarding_screen.dart';
-import 'package:mayos_mobile/src/features/player/onboarding/onboarding_widgets.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/chat_storage.dart';
+import 'package:myos_mobile/src/core/connectivity_message.dart';
+import 'package:myos_mobile/src/core/display_language/controller.dart';
+import 'package:myos_mobile/src/core/rest_alert_permission_prompt_store.dart';
+import 'package:myos_mobile/src/core/theme/myos_theme.dart';
+import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/ui/myos_button.dart';
+import 'package:myos_mobile/src/core/ui/myos_choice_card.dart';
+import 'package:myos_mobile/src/core/ui/myos_player_column.dart';
+import 'package:myos_mobile/src/core/workout_storage.dart';
+import 'package:myos_mobile/src/features/player/onboarding/onboarding_screen.dart';
+import 'package:myos_mobile/src/features/player/onboarding/onboarding_widgets.dart';
+import 'package:myos_mobile/src/providers.dart';
 
 import 'support/fake_analytics_client.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 import 'support/fake_rest_alert_permission_access.dart';
 
 const Map<String, Object> _requiredAnswers = <String, Object>{
@@ -41,8 +41,8 @@ const Map<String, Object> _requiredAnswers = <String, Object>{
   'stress_and_sleep': 'moderate stress, 7 hours sleep',
 };
 
-FakeMayosApi _fake({bool acknowledged = false}) {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _fake({bool acknowledged = false}) {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -70,7 +70,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   }
 }
 
-Override _apiOverride(FakeMayosApi fake) {
+Override _apiOverride(FakeMyosApi fake) {
   return apiClientProvider.overrideWith((ref) {
     final ApiClient client = ApiClient(
       tokens: ref.watch(tokenStoreProvider),
@@ -91,7 +91,7 @@ Future<InMemoryTokenStore> _signedInTokens() async {
 
 Future<void> _pumpOnboarding(
   WidgetTester tester,
-  FakeMayosApi fake, {
+  FakeMyosApi fake, {
   FakeAnalyticsClient? analytics,
   Size size = const Size(393, 852),
   ThemeMode mode = ThemeMode.light,
@@ -110,7 +110,7 @@ Future<void> _pumpOnboarding(
 
 Future<void> _mountOnboarding(
   WidgetTester tester,
-  FakeMayosApi fake, {
+  FakeMyosApi fake, {
   FakeAnalyticsClient? analytics,
   _OnboardingViewport? viewport,
   String languageCode = 'en',
@@ -144,8 +144,8 @@ Future<void> _mountOnboarding(
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
-        theme: MayosTheme.light,
-        darkTheme: MayosTheme.dark,
+        theme: MyosTheme.light,
+        darkTheme: MyosTheme.dark,
         themeMode: view.mode,
         locale: Locale(languageCode),
         supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
@@ -158,7 +158,7 @@ Future<void> _mountOnboarding(
 
 void _expectDesktopPlayerColumn(WidgetTester tester) {
   final Rect column = tester.getRect(
-    find.byKey(MayosPlayerColumn.contentKey),
+    find.byKey(MyosPlayerColumn.contentKey),
   );
   expect(column.width, 480);
   expect(column.center.dx, 640);
@@ -174,7 +174,7 @@ Future<void> _tapAndFind(WidgetTester tester, Finder tap, Finder next) async {
 }
 
 bool _continueEnabled(WidgetTester tester) {
-  final MayosButton button = tester.widget<MayosButton>(
+  final MyosButton button = tester.widget<MyosButton>(
     find.byKey(const Key('onboarding_continue')),
   );
   return button.onPressed != null;
@@ -249,7 +249,7 @@ Future<void> _answerAll(WidgetTester tester,
 void main() {
   testWidgets('disclosure and review each emit once when shown',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake()
+    final FakeMyosApi fake = _fake()
       ..intakeAnswers.addAll(_requiredAnswers);
     final FakeAnalyticsClient analytics = FakeAnalyticsClient();
     await _pumpOnboarding(tester, fake, analytics: analytics);
@@ -279,7 +279,7 @@ void main() {
 
   testWidgets('onboarding views capture only the step identifier per display',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake(acknowledged: true);
+    final FakeMyosApi fake = _fake(acknowledged: true);
     final FakeAnalyticsClient analytics = FakeAnalyticsClient();
     await _pumpOnboarding(tester, fake, analytics: analytics);
 
@@ -328,7 +328,7 @@ void main() {
   testWidgets(
       'Arabic onboarding translates app copy and server explanations',
       (tester) async {
-    final FakeMayosApi fake = _fake();
+    final FakeMyosApi fake = _fake();
     await _pumpOnboarding(tester, fake, languageCode: 'ar');
     expect(find.text('قبل أن نبدأ'), findsOneWidget);
     expect(find.text('إجاباتك وخصوصيتك'), findsOneWidget);
@@ -357,7 +357,7 @@ void main() {
   });
 
   testWidgets('the disclosure gates every answer', (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake();
+    final FakeMyosApi fake = _fake();
     await _pumpOnboarding(tester, fake);
 
     expect(find.byKey(const Key('onboarding_disclosure_continue')),
@@ -380,7 +380,7 @@ void main() {
   testWidgets('target weight is an optional onboarding answer', (tester) async {
     final Map<String, Object> earlierAnswers =
         Map<String, Object>.from(_requiredAnswers)..remove('weight_kg');
-    final FakeMayosApi fake = _fake(acknowledged: true)
+    final FakeMyosApi fake = _fake(acknowledged: true)
       ..intakeAnswers.addAll(earlierAnswers);
     await _pumpOnboarding(tester, fake);
 
@@ -410,7 +410,7 @@ void main() {
 
   testWidgets('raw onboarding loading state uses the desktop player column',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake();
+    final FakeMyosApi fake = _fake();
     final Completer<void> pending = Completer<void>();
     fake.adapter.beforeRespond = (request) async {
       if (request.method == 'GET' && request.path == '/onboarding/intake') {
@@ -436,7 +436,7 @@ void main() {
 
   testWidgets('raw onboarding error state uses the desktop player column',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake()..failOffline('GET', '/onboarding/intake');
+    final FakeMyosApi fake = _fake()..failOffline('GET', '/onboarding/intake');
     await _mountOnboarding(
       tester,
       fake,
@@ -454,7 +454,7 @@ void main() {
 
   testWidgets('program-building state uses the desktop player column',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake(acknowledged: true)
+    final FakeMyosApi fake = _fake(acknowledged: true)
       ..intakeAnswers.addAll(_requiredAnswers);
     await _pumpOnboarding(
       tester,
@@ -482,7 +482,7 @@ void main() {
 
   testWidgets('each field type selects and saves its answer',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake(acknowledged: true);
+    final FakeMyosApi fake = _fake(acknowledged: true);
     await _pumpOnboarding(tester, fake);
 
     await _answerAll(tester);
@@ -499,7 +499,7 @@ void main() {
 
   testWidgets('enum option descriptions come from the API, not widgets',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake(acknowledged: true);
+    final FakeMyosApi fake = _fake(acknowledged: true);
     await _pumpOnboarding(tester, fake);
 
     // Gender cards carry the per-value training effect from the schema.
@@ -519,7 +519,7 @@ void main() {
 
   testWidgets('switching language keeps the draft and saved answers intact',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake(acknowledged: true)
+    final FakeMyosApi fake = _fake(acknowledged: true)
       ..intakeAnswers.addAll(<String, Object>{
         'gender': 'female',
         'proportions': 'balanced',
@@ -557,7 +557,7 @@ void main() {
 
   testWidgets('unknown intake copy metadata keeps its English fallback',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake(acknowledged: true)
+    final FakeMyosApi fake = _fake(acknowledged: true)
       ..intakeFieldOverrides['gender'] = <String, dynamic>{
         'explanation_message': <String, dynamic>{
           'message_code': 'intake.gender.future_copy.v1',
@@ -576,7 +576,7 @@ void main() {
 
   testWidgets('Arabic invalid intake answers use the shared localized error',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake(acknowledged: true)
+    final FakeMyosApi fake = _fake(acknowledged: true)
       ..intakeAnswers.addAll(
           <String, Object>{'gender': 'female', 'proportions': 'balanced'});
     await _pumpOnboarding(tester, fake, languageCode: 'ar');
@@ -597,7 +597,7 @@ void main() {
   });
 
   testWidgets('an optional field can be skipped', (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake(acknowledged: true);
+    final FakeMyosApi fake = _fake(acknowledged: true);
     await _pumpOnboarding(tester, fake);
     await _answerAll(tester, skipRepPreference: true);
     expect(fake.intakeAnswers.containsKey('rep_preference'), isFalse);
@@ -607,7 +607,7 @@ void main() {
   testWidgets(
       'numeric validation blocks Continue and server errors show inline',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake(acknowledged: true)
+    final FakeMyosApi fake = _fake(acknowledged: true)
       ..intakeAnswers.addAll(
           <String, Object>{'gender': 'female', 'proportions': 'balanced'});
     await _pumpOnboarding(tester, fake);
@@ -634,7 +634,7 @@ void main() {
   });
 
   testWidgets('Back keeps saved answers', (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake(acknowledged: true);
+    final FakeMyosApi fake = _fake(acknowledged: true);
     await _pumpOnboarding(tester, fake);
 
     await _tapAndFind(tester, find.byKey(const Key('gender_option_female')),
@@ -645,8 +645,8 @@ void main() {
 
     await _tapAndFind(tester, find.byKey(const Key('onboarding_back')),
         find.byKey(const Key('gender_option_female')));
-    final MayosChoiceCard card = tester
-        .widget<MayosChoiceCard>(find.byKey(const Key('gender_option_female')));
+    final MyosChoiceCard card = tester
+        .widget<MyosChoiceCard>(find.byKey(const Key('gender_option_female')));
     expect(card.selected, isTrue);
     expect(_continueEnabled(tester), isTrue);
   });
@@ -654,7 +654,7 @@ void main() {
   for (final String languageCode in const <String>['en', 'ar']) {
     testWidgets('resume opens at the first unanswered field ($languageCode)',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = _fake(acknowledged: true)
+      final FakeMyosApi fake = _fake(acknowledged: true)
         ..intakeAnswers.addAll(<String, Object>{
           'gender': 'female',
           'proportions': 'balanced',
@@ -677,7 +677,7 @@ void main() {
 
   testWidgets('an answer can be edited from review and returns to review',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake(acknowledged: true)
+    final FakeMyosApi fake = _fake(acknowledged: true)
       ..intakeAnswers.addAll(_requiredAnswers);
     await _pumpOnboarding(tester, fake);
 
@@ -696,7 +696,7 @@ void main() {
 
   testWidgets('an offline failure keeps the answer on the step',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake(acknowledged: true)
+    final FakeMyosApi fake = _fake(acknowledged: true)
       ..intakeAnswers.addAll(<String, Object>{
         'gender': 'female',
         'proportions': 'balanced',
@@ -721,7 +721,7 @@ void main() {
 
   testWidgets('Arabic onboarding translates the shared connection failure',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake(acknowledged: true)
+    final FakeMyosApi fake = _fake(acknowledged: true)
       ..intakeAnswers.addAll(<String, Object>{
         'gender': 'female',
         'proportions': 'balanced',
@@ -763,7 +763,7 @@ void main() {
     testWidgets('confirm works from review and lands on Home '
         '($languageCode, program unavailable: $noProgram)',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = _fake(acknowledged: true)
+      final FakeMyosApi fake = _fake(acknowledged: true)
         ..displayLanguage = languageCode
         ..nullOnboardingProgram = noProgram
         ..recoveryEmail = 'alice@example.com'
@@ -792,7 +792,7 @@ void main() {
             ),
             _apiOverride(fake),
           ],
-          child: const MayosApp(),
+          child: const MyosApp(),
         ),
       );
 
@@ -841,7 +841,7 @@ void main() {
         'proportions and a numeric step do not overflow at '
         '${size.width.toInt()}x${size.height.toInt()} with 2.0x text',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = _fake(acknowledged: true)
+      final FakeMyosApi fake = _fake(acknowledged: true)
         ..intakeAnswers['gender'] = 'female';
       await _pumpOnboarding(tester, fake, size: size, textScale: 2.0);
 

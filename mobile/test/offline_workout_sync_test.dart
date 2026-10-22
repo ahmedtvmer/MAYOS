@@ -3,26 +3,26 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/active_workout.dart';
-import 'package:mayos_mobile/src/core/analytics_client.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/baselines.dart';
-import 'package:mayos_mobile/src/core/client_session_id.dart';
-import 'package:mayos_mobile/src/core/device_timezone.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/core/performed_date_window.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/training_status_projection.dart';
-import 'package:mayos_mobile/src/core/workout_storage.dart';
-import 'package:mayos_mobile/src/features/player/workout/draft_sync_service.dart';
-import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/active_workout.dart';
+import 'package:myos_mobile/src/core/analytics_client.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/baselines.dart';
+import 'package:myos_mobile/src/core/client_session_id.dart';
+import 'package:myos_mobile/src/core/device_timezone.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/performed_date_window.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/training_status_projection.dart';
+import 'package:myos_mobile/src/core/workout_storage.dart';
+import 'package:myos_mobile/src/features/player/workout/draft_sync_service.dart';
+import 'package:myos_mobile/src/features/player/workout/workout_logger_screen.dart';
+import 'package:myos_mobile/src/providers.dart';
 
 import 'support/fake_api_adapter.dart';
 import 'support/fake_analytics_client.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 const String _accountA = 'account-alice';
 const String _accountB = 'account-bob';
@@ -89,7 +89,7 @@ TrainingProgram _cachedProgram() => const TrainingProgram(
       ],
     );
 
-ApiClient _client(FakeMayosApi fake, TokenStore tokens) => ApiClient(
+ApiClient _client(FakeMyosApi fake, TokenStore tokens) => ApiClient(
       tokens: tokens,
       baseUrl: 'http://test.local',
       adapter: fake.adapter,
@@ -98,7 +98,7 @@ ApiClient _client(FakeMayosApi fake, TokenStore tokens) => ApiClient(
 final DateTime _fixedNow = DateTime.parse('2026-09-26T12:00:00.000Z');
 
 DraftSyncService _service({
-  required FakeMayosApi fake,
+  required FakeMyosApi fake,
   required TokenStore tokens,
   required DraftStore store,
   Future<void> Function(String accountId, Map<String, dynamic> response)?
@@ -115,7 +115,7 @@ DraftSyncService _service({
       now: now ?? (() => _fixedNow),
     );
 
-Future<TokenStore> _authedTokens(FakeMayosApi fake) async {
+Future<TokenStore> _authedTokens(FakeMyosApi fake) async {
   fake.issuedToken = 'token-a';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -180,7 +180,7 @@ void main() {
 
     test('persists across a simulated restart (new service, same storage)',
         () async {
-      final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
+      final FakeMyosApi fake = FakeMyosApi()..commitFails = true;
       final TokenStore tokens = await _authedTokens(fake);
       final InMemoryDraftStore store = InMemoryDraftStore();
 
@@ -214,7 +214,7 @@ void main() {
     });
 
     test('survives logout and is never visible to another account', () async {
-      final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
+      final FakeMyosApi fake = FakeMyosApi()..commitFails = true;
       final TokenStore tokens = await _authedTokens(fake);
       final InMemoryDraftStore store = InMemoryDraftStore();
       final DraftSyncService service =
@@ -228,7 +228,7 @@ void main() {
     });
 
     test('explicit draft discard removes it and reports the client event', () async {
-      final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
+      final FakeMyosApi fake = FakeMyosApi()..commitFails = true;
       final TokenStore tokens = await _authedTokens(fake);
       final InMemoryDraftStore store = InMemoryDraftStore();
       final FakeAnalyticsClient analytics = FakeAnalyticsClient();
@@ -253,7 +253,7 @@ void main() {
   group('sync engine', () {
     test('reports one bounded sync failure without blocking the draft retry',
         () async {
-      final FakeMayosApi fake = FakeMayosApi()
+      final FakeMyosApi fake = FakeMyosApi()
         ..commitFails = true
         ..programVersion = 1
         ..failOffline('POST', '/workouts/sync-failures');
@@ -290,7 +290,7 @@ void main() {
 
     test('network failure marks offline capture and reports once per reason',
         () async {
-      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final FakeMyosApi fake = FakeMyosApi()..programVersion = 1;
       final TokenStore tokens = await _authedTokens(fake);
       final WorkoutDraft draft = _draft(accountId: _accountA);
       final String lookupPath =
@@ -353,7 +353,7 @@ void main() {
     test(
         'network failure stays pending; retry sends the same client session id',
         () async {
-      final FakeMayosApi fake = FakeMayosApi()
+      final FakeMyosApi fake = FakeMyosApi()
         ..commitFails = true
         ..programVersion = 1;
       final TokenStore tokens = await _authedTokens(fake);
@@ -408,7 +408,7 @@ void main() {
 
     test('426 update refusal stays pending and syncs immediately after restart',
         () async {
-      final FakeMayosApi fake = FakeMayosApi()
+      final FakeMyosApi fake = FakeMyosApi()
         ..commitRequiresAppUpdate = true
         ..programVersion = 1;
       final TokenStore tokens = await _authedTokens(fake);
@@ -444,7 +444,7 @@ void main() {
     });
 
     test('marks a committed draft synced before applying its status', () async {
-      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final FakeMyosApi fake = FakeMyosApi()..programVersion = 1;
       fake.trainingStatusBody = <String, dynamic>{
         'weekly_streak': 0,
         'week_start': '2026-09-26',
@@ -495,7 +495,7 @@ void main() {
     test(
         'lost response is reconciled via the status endpoint without a second POST',
         () async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final TokenStore tokens = await _authedTokens(fake);
       final InMemoryDraftStore store = InMemoryDraftStore();
       final DraftSyncService service =
@@ -522,7 +522,7 @@ void main() {
 
     test('an older program version syncs as history with a version difference',
         () async {
-      final FakeMayosApi fake = FakeMayosApi()..programVersion = 2;
+      final FakeMyosApi fake = FakeMyosApi()..programVersion = 2;
       final TokenStore tokens = await _authedTokens(fake);
       final InMemoryDraftStore store = InMemoryDraftStore();
       final DraftSyncService service =
@@ -541,7 +541,7 @@ void main() {
     });
 
     test('a newer program version stays needs-attention', () async {
-      final FakeMayosApi fake = FakeMayosApi()..programVersion = 2;
+      final FakeMyosApi fake = FakeMyosApi()..programVersion = 2;
       final TokenStore tokens = await _authedTokens(fake);
       final InMemoryDraftStore store = InMemoryDraftStore();
       final DraftSyncService service =
@@ -559,7 +559,7 @@ void main() {
 
     test('successful commit shows the synced state and keeps the response',
         () async {
-      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final FakeMyosApi fake = FakeMyosApi()..programVersion = 1;
       final TokenStore tokens = await _authedTokens(fake);
       final InMemoryDraftStore store = InMemoryDraftStore();
       final DraftSyncService service =
@@ -577,7 +577,7 @@ void main() {
 
     testWidgets('a synced historical entry shows the version difference',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi()..programVersion = 2;
+      final FakeMyosApi fake = FakeMyosApi()..programVersion = 2;
       final InMemoryDraftStore store = InMemoryDraftStore();
       await store.write(_accountA, <WorkoutDraft>[
         _draft(accountId: _accountA, programVersion: 1).copyWith(
@@ -605,7 +605,7 @@ void main() {
 
   group('concurrency and account safety', () {
     test('a draft saved during an in-flight sync is never lost', () async {
-      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final FakeMyosApi fake = FakeMyosApi()..programVersion = 1;
       final Completer<void> gate = Completer<void>();
       fake.adapter.beforeRespond = (FakeRequest request) async {
         if (request.path.startsWith('/workouts/sessions/by-client-id/')) {
@@ -639,7 +639,7 @@ void main() {
     test(
         'a draft discarded during an in-flight sync stays discarded and is never posted',
         () async {
-      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final FakeMyosApi fake = FakeMyosApi()..programVersion = 1;
       final Completer<void> gate = Completer<void>();
       fake.adapter.beforeRespond = (FakeRequest request) async {
         if (request.path.startsWith('/workouts/sessions/by-client-id/')) {
@@ -669,7 +669,7 @@ void main() {
     test(
         'logout abandons an in-flight pass: no post lands under the next account',
         () async {
-      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final FakeMyosApi fake = FakeMyosApi()..programVersion = 1;
       final Completer<void> gate = Completer<void>();
       fake.adapter.beforeRespond = (FakeRequest request) async {
         if (request.path.startsWith('/workouts/sessions/by-client-id/')) {
@@ -701,7 +701,7 @@ void main() {
 
     test('a login during an in-flight pass still syncs the new account',
         () async {
-      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final FakeMyosApi fake = FakeMyosApi()..programVersion = 1;
       final Completer<void> gate = Completer<void>();
       fake.adapter.beforeRespond = (FakeRequest request) async {
         if (request.path.startsWith('/workouts/sessions/by-client-id/')) {
@@ -739,7 +739,7 @@ void main() {
     });
 
     test('unreadable storage is quarantined, not silently wiped', () async {
-      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final FakeMyosApi fake = FakeMyosApi()..programVersion = 1;
       final TokenStore tokens = await _authedTokens(fake);
       final InMemoryDraftStore store = InMemoryDraftStore()
         ..simulateCorruptStorage(_accountA, raw: '{not valid json');
@@ -759,7 +759,7 @@ void main() {
 
     test('network failures back off exponentially and reset on manual retry',
         () async {
-      final FakeMayosApi fake = FakeMayosApi()
+      final FakeMyosApi fake = FakeMyosApi()
         ..commitFails = true
         ..programVersion = 1;
       DateTime now = DateTime.parse('2026-09-26T12:00:00.000Z');
@@ -804,7 +804,7 @@ void main() {
     test(
         'pauseForeground stops the timer; resumeForeground runs an immediate pass',
         () async {
-      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final FakeMyosApi fake = FakeMyosApi()..programVersion = 1;
       final TokenStore tokens = await _authedTokens(fake);
       final InMemoryDraftStore store = InMemoryDraftStore();
       final DraftSyncService service = DraftSyncService(
@@ -831,7 +831,7 @@ void main() {
     testWidgets(
         'falls back to the cached program when offline, with a banner shown only then',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi()..activeProgramFails = true;
+      final FakeMyosApi fake = FakeMyosApi()..activeProgramFails = true;
       final InMemoryDraftStore draftStore = InMemoryDraftStore();
       final InMemoryWorkoutCacheStore cacheStore = InMemoryWorkoutCacheStore();
       const TrainingProgram cached = TrainingProgram(
@@ -868,7 +868,7 @@ void main() {
 
     testWidgets('shows no offline banner once the online fetch succeeds',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final FakeMyosApi fake = FakeMyosApi()..programVersion = 1;
       final InMemoryDraftStore draftStore = InMemoryDraftStore();
       await _pumpApp(tester, fake, draftStore: draftStore);
 
@@ -882,7 +882,7 @@ void main() {
   group('workout logger offline banner', () {
     testWidgets('no offline banner when the cached program is refreshed online',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final FakeMyosApi fake = FakeMyosApi()..programVersion = 1;
       final InMemoryDraftStore draftStore = InMemoryDraftStore();
       final InMemoryWorkoutCacheStore cacheStore = InMemoryWorkoutCacheStore();
       await cacheStore.writeProgram(_accountA, _cachedProgram());
@@ -899,7 +899,7 @@ void main() {
 
     testWidgets('offline banner when the program can only be served from cache',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi()
+      final FakeMyosApi fake = FakeMyosApi()
         ..programVersion = 1
         ..activeProgramFails = true;
       final InMemoryDraftStore draftStore = InMemoryDraftStore();
@@ -923,7 +923,7 @@ void main() {
     testWidgets(
         'blocks Finish rather than record a date against an unknown zone',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final FakeMyosApi fake = FakeMyosApi()..programVersion = 1;
       final InMemoryDraftStore draftStore = InMemoryDraftStore();
       final InMemoryWorkoutCacheStore cacheStore = InMemoryWorkoutCacheStore();
       await cacheStore.writeProgram(_accountA, _cachedProgram());
@@ -948,7 +948,7 @@ void main() {
   group('web online-only boundary', () {
     testWidgets('keeps logging available while hiding drafts when disabled',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final FakeMyosApi fake = FakeMyosApi()..programVersion = 1;
       await _pumpApp(tester, fake,
           draftStore: InMemoryDraftStore(), offlineDraftsEnabled: false);
 
@@ -982,7 +982,7 @@ void main() {
   group('logout warning', () {
     testWidgets('keep drafts and log out preserves the draft',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
+      final FakeMyosApi fake = FakeMyosApi()..commitFails = true;
       final InMemoryDraftStore store = InMemoryDraftStore();
       await store
           .write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
@@ -1005,7 +1005,7 @@ void main() {
 
     testWidgets('discard drafts and log out reports each discarded draft',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
+      final FakeMyosApi fake = FakeMyosApi()..commitFails = true;
       final InMemoryDraftStore store = InMemoryDraftStore();
       final WorkoutDraft firstDraft = _draft(accountId: _accountA);
       final WorkoutDraft secondDraft = _draft(accountId: _accountA);
@@ -1032,7 +1032,7 @@ void main() {
 
   testWidgets('logging a workout saves a draft and shows the workouts screen',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+    final FakeMyosApi fake = FakeMyosApi()..programVersion = 1;
     fake.baselinesBody = <Map<String, dynamic>>[_benchBaseline()];
     final InMemoryDraftStore store = InMemoryDraftStore();
     await _pumpApp(tester, fake, draftStore: store);
@@ -1073,7 +1073,7 @@ void main() {
 
   testWidgets('Arabic workout drafts keep server details and Western dates',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = FakeMayosApi()
+    final FakeMyosApi fake = FakeMyosApi()
       ..displayLanguage = 'ar'
       ..commitRefusalStatusCode = 422
       ..commitRefusalMessage = 'The service is unavailable. Please retry.';
@@ -1118,7 +1118,7 @@ void main() {
 
   testWidgets('an unplanned exercise is picked from the catalog with a real id',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+    final FakeMyosApi fake = FakeMyosApi()..programVersion = 1;
     fake.baselinesBody = <Map<String, dynamic>>[_benchBaseline()];
     final InMemoryDraftStore store = InMemoryDraftStore();
     await _pumpApp(tester, fake, draftStore: store);
@@ -1226,7 +1226,7 @@ void main() {
     });
 
     test('an unsynced draft edited locally keeps the new date', () async {
-      final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
+      final FakeMyosApi fake = FakeMyosApi()..commitFails = true;
       final TokenStore tokens = await _authedTokens(fake);
       final InMemoryDraftStore store = InMemoryDraftStore();
       final DraftSyncService service =
@@ -1243,7 +1243,7 @@ void main() {
     });
 
     test('a synced draft is never edited locally', () async {
-      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final FakeMyosApi fake = FakeMyosApi()..programVersion = 1;
       final TokenStore tokens = await _authedTokens(fake);
       final InMemoryDraftStore store = InMemoryDraftStore();
       final DraftSyncService service =
@@ -1264,7 +1264,7 @@ void main() {
 
     test('correcting a synced draft updates the local date from the response',
         () async {
-      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final FakeMyosApi fake = FakeMyosApi()..programVersion = 1;
       fake.committedSessions.add(<String, dynamic>{
         'session_id': 'session-1',
         'session_date': '2026-09-26',
@@ -1298,7 +1298,7 @@ void main() {
 
     test('reconciling a committed draft adopts the corrected server date',
         () async {
-      final FakeMayosApi fake = FakeMayosApi();
+      final FakeMyosApi fake = FakeMyosApi();
       final TokenStore tokens = await _authedTokens(fake);
       final InMemoryDraftStore store = InMemoryDraftStore();
       final DraftSyncService service =
@@ -1322,7 +1322,7 @@ void main() {
     });
 
     test('a refused correction surfaces the service error unchanged', () async {
-      final FakeMayosApi fake = FakeMayosApi()..correctionRefused = true;
+      final FakeMyosApi fake = FakeMyosApi()..correctionRefused = true;
       fake.committedSessions.add(<String, dynamic>{
         'session_id': 'session-1',
         'session_date': '2026-09-26',
@@ -1347,7 +1347,7 @@ void main() {
     });
 
     test('an offline correction surfaces the network error', () async {
-      final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
+      final FakeMyosApi fake = FakeMyosApi()..commitFails = true;
       fake.committedSessions.add(<String, dynamic>{
         'session_id': 'session-1',
         'session_date': '2026-09-26',
@@ -1372,7 +1372,7 @@ void main() {
 
     testWidgets('an unsynced draft offers a bounded local date edit',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi()..commitFails = true;
+      final FakeMyosApi fake = FakeMyosApi()..commitFails = true;
       final InMemoryDraftStore store = InMemoryDraftStore();
       await store
           .write(_accountA, <WorkoutDraft>[_draft(accountId: _accountA)]);
@@ -1390,7 +1390,7 @@ void main() {
 
     testWidgets('a synced draft offers "Correct date"',
         (WidgetTester tester) async {
-      final FakeMayosApi fake = FakeMayosApi()..programVersion = 1;
+      final FakeMyosApi fake = FakeMyosApi()..programVersion = 1;
       final InMemoryDraftStore store = InMemoryDraftStore();
       // The sync service prunes synced drafts whose updatedAt is older than 24h
       // relative to its real clock, so a fixed stamp turns this into a
@@ -1433,7 +1433,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
 
 Future<void> _pumpApp(
   WidgetTester tester,
-  FakeMayosApi fake, {
+  FakeMyosApi fake, {
   required InMemoryDraftStore draftStore,
   InMemoryWorkoutCacheStore? cacheStore,
   String? deviceTimezone = 'UTC',
@@ -1485,7 +1485,7 @@ Future<void> _pumpApp(
         offlineWorkoutDraftsEnabledProvider
             .overrideWithValue(offlineDraftsEnabled),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(

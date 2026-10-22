@@ -133,7 +133,7 @@ def _login(
             "password": password,
             "totp_code": code if code is not None else _totp(TOTP_SECRET, timestamp),
         },
-        headers={"Fly-Client-IP": client_ip, "User-Agent": "MAYOS admin test/1.0"},
+        headers={"Fly-Client-IP": client_ip, "User-Agent": "MYOS admin test/1.0"},
         follow_redirects=False,
     )
 
@@ -210,8 +210,8 @@ def test_malformed_admin_secret_disables_every_route(monkeypatch, key, value):
         ("admin.css", "text/css"),
         ("Inter-Variable.ttf", "font/ttf"),
         ("PlayfairDisplay-Variable.ttf", "font/ttf"),
-        ("mayos-logo-blue.png", "image/png"),
-        ("mayos-logo-white.png", "image/png"),
+        ("myos-logo-blue.png", "image/png"),
+        ("myos-logo-white.png", "image/png"),
         ("favicon.png", "image/png"),
         ("apple-touch-icon.png", "image/png"),
         ("OFL-Inter.txt", "text/plain"),
@@ -236,8 +236,8 @@ def test_admin_pages_reference_brand_assets_with_strict_self_only_csp(admin_api)
     assert 'href="/admin/assets/admin.css?v=' in login_page.text
     assert 'href="/admin/assets/favicon.png?v=' in login_page.text
     assert 'href="/admin/assets/apple-touch-icon.png?v=' in login_page.text
-    assert "/admin/assets/mayos-logo-blue.png?v=" in login_page.text
-    assert "/admin/assets/mayos-logo-white.png?v=" in login_page.text
+    assert "/admin/assets/myos-logo-blue.png?v=" in login_page.text
+    assert "/admin/assets/myos-logo-white.png?v=" in login_page.text
     assert "<style" not in login_page.text and "style=\"" not in login_page.text
     expected_csp = (
         "default-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; "
@@ -285,10 +285,10 @@ def test_admin_pages_reference_brand_assets_with_strict_self_only_csp(admin_api)
     assert 'href="/admin/assets/admin.css?v=' in home.text
     assert 'href="/admin/assets/favicon.png?v=' in home.text
     assert 'href="/admin/assets/apple-touch-icon.png?v=' in home.text
-    assert "/admin/assets/mayos-logo-blue.png?v=" in home.text
-    assert "/admin/assets/mayos-logo-white.png?v=" in home.text
+    assert "/admin/assets/myos-logo-blue.png?v=" in home.text
+    assert "/admin/assets/myos-logo-white.png?v=" in home.text
     assert home.headers["content-security-policy"] == expected_csp
-    assert 'class="brand-link" href="/admin" aria-label="MAYOS owner dashboard" aria-current="page"' in home.text
+    assert 'class="brand-link" href="/admin" aria-label="MYOS owner dashboard" aria-current="page"' in home.text
     assert "The owner dashboard is ready" not in home.text
     assert home.text.count('class="dashboard-card"') == 4
     assert "Review accounts, plans, and activity." in home.text
@@ -634,9 +634,9 @@ def test_login_alert_email_and_failed_delivery_banner_clear_on_later_success(adm
     assert first.status_code == 303
     assert len(sent) == 1
     assert sent[0][0] == "owner@example.com"
-    assert sent[0][1] == "MAYOS owner dashboard login"
+    assert sent[0][1] == "MYOS owner dashboard login"
     assert "2023-11-14T22:13:20+00:00" in sent[0][2]
-    assert "203.0.113.8" in sent[0][2] and "MAYOS admin test/1.0" in sent[0][2]
+    assert "203.0.113.8" in sent[0][2] and "MYOS admin test/1.0" in sent[0][2]
     home = client.get("/admin")
     assert "Login alert email could not be delivered" in home.text
     failed = client.get("/admin/audit").text
@@ -1011,12 +1011,12 @@ def test_account_page_shows_metadata_usage_limits_and_never_training_content(adm
     [
         (
             "en",
-            "Mayos Engine password reset",
+            "Myos Engine password reset",
             "A password reset was requested",
         ),
         (
             "ar",
-            "إعادة تعيين كلمة مرور MAYOS",
+            "إعادة تعيين كلمة مرور MYOS",
             "تم طلب إعادة تعيين كلمة المرور",
         ),
     ],
@@ -1108,7 +1108,7 @@ def test_owner_reset_email_skips_unverified_recovery_email_and_offers_link(
     assert "recovery email is unverified" in notice.text.lower()
     assert "Create reset link" in notice.text
     assert 'action="/admin/accounts/' + account["account_id"] + '/reset-link"' in notice.text
-    assert all(email[1] != "Mayos Engine password reset" for email in sent_emails)
+    assert all(email[1] != "Myos Engine password reset" for email in sent_emails)
     with db.catalog_locked() as conn:
         assert conn.execute(
             "SELECT COUNT(*) FROM password_reset_tokens WHERE trainee_id = ?",
@@ -1127,7 +1127,7 @@ def test_owner_reset_email_skips_unverified_recovery_email_and_offers_link(
         data={"csrf_token": _csrf(notice.text)},
     )
     assert issued.status_code == 200
-    assert "Your MAYOS password reset link" in issued.text
+    assert "Your MYOS password reset link" in issued.text
     assert "works once" in issued.text
 
 
@@ -1144,7 +1144,7 @@ def test_owner_reset_email_failure_is_audited_and_shown_without_email(
         email_sender,
         "_deliver",
         lambda _to, subject, _body, delivery: False
-        if subject == "Mayos Engine password reset"
+        if subject == "Myos Engine password reset"
         else True,
     )
     assert _login(client, now[0]).status_code == 303
@@ -1221,7 +1221,7 @@ def test_owner_reset_link_is_single_use_reissued_with_own_ttl_and_revokes_sessio
     assert first.status_code == 200
     assert first.headers["cache-control"] == "no-store"
     assert 'id="issued_reset_link"' in first.text and 'readonly' in first.text
-    assert 'id="reset_message"' in first.text and "Your MAYOS password reset link:" in first.text
+    assert 'id="reset_message"' in first.text and "Your MYOS password reset link:" in first.text
     assert "It works once and expires " in first.text
     assert 'href="https://wa.me/?text=' in first.text
     assert 'target="_blank" rel="noopener noreferrer"' in first.text
@@ -1367,7 +1367,7 @@ def test_owner_delete_reuses_durable_path_notifies_before_erasure_and_releases_u
     assert len(deliveries) == 1
     delivered_to, subject, body, record_written, captured_email, account_live = deliveries[0]
     assert delivered_to == recovery_email
-    assert subject == "Your MAYOS account was deleted at your request"
+    assert subject == "Your MYOS account was deleted at your request"
     assert "ownerdeleteflow" in body and "deleted at your request" in body
     assert recovery_email not in body
     assert record_written and captured_email == recovery_email and account_live
@@ -1651,7 +1651,7 @@ def test_owner_delete_failed_notice_does_not_block_deletion_and_is_audited(
         email_sender,
         "_deliver",
         lambda _to, subject, _body, *, delivery: False
-        if subject == "Your MAYOS account was deleted at your request"
+        if subject == "Your MYOS account was deleted at your request"
         else True,
     )
     assert _login(client, now[0]).status_code == 303
@@ -1691,13 +1691,13 @@ def test_owner_delete_failed_notice_does_not_block_deletion_and_is_audited(
     [
         (
             "en",
-            "Your MAYOS account was deleted at your request",
-            "Your MAYOS account was deleted at your request",
+            "Your MYOS account was deleted at your request",
+            "Your MYOS account was deleted at your request",
         ),
         (
             "ar",
-            "تم حذف حساب MAYOS الخاص بك بناءً على طلبك",
-            "تم حذف حساب MAYOS الخاص بك بناءً على طلبك",
+            "تم حذف حساب MYOS الخاص بك بناءً على طلبك",
+            "تم حذف حساب MYOS الخاص بك بناءً على طلبك",
         ),
     ],
 )
@@ -2403,7 +2403,7 @@ def test_admin_coach_invite_is_shown_once_and_redeems(admin_api, caplog):
     assert "<title>Coach invite issued</title>" in issued.text
     assert 'class="nav-link" href="/admin/invites" aria-current="page">Invites</a>' in issued.text
     token = html.unescape(re.search(r'id="issued_coach_code"[^>]+value="([^"]+)"', issued.text).group(1))
-    assert f"Your MAYOS coach code: {token}." in html.unescape(issued.text)
+    assert f"Your MYOS coach code: {token}." in html.unescape(issued.text)
     assert "Redeem it in the app: Settings → Become a coach." in html.unescape(issued.text)
     assert 'href="https://wa.me/?text=' in issued.text
     assert 'target="_blank" rel="noopener noreferrer"' in issued.text
@@ -2442,7 +2442,7 @@ def test_admin_coach_invite_can_be_emailed_in_display_language(admin_api, caplog
     assert 'id="issued_coach_code" type="text" readonly' in issued.text
     assert "Share on WhatsApp" in issued.text
     token = html.unescape(re.search(r'id="issued_coach_code"[^>]+value="([^"]+)"', issued.text).group(1))
-    assert f"Your MAYOS coach code: {token}." in html.unescape(issued.text)
+    assert f"Your MYOS coach code: {token}." in html.unescape(issued.text)
     assert f'action="/admin/accounts/{account["account_id"]}/coach-invites/email"' in issued.text
 
     failed_csrf = client.post(
@@ -2463,7 +2463,7 @@ def test_admin_coach_invite_can_be_emailed_in_display_language(admin_api, caplog
     assert "Coach invite email sent to a***@gmail.com." in confirmation.text
     assert token not in confirmation.text
     assert "alice@gmail.com" not in confirmation.text
-    email = next(message for message in sent_emails if message[1] == "دعوة تفعيل دور المدرب في MAYOS")
+    email = next(message for message in sent_emails if message[1] == "دعوة تفعيل دور المدرب في MYOS")
     assert email[0] == "alice@gmail.com"
     assert token in email[2]
     assert "الإعدادات" in email[2]
@@ -2617,7 +2617,7 @@ def test_admin_coach_invite_email_rejects_codes_outside_live_account_binding(adm
     assert coach_service.redeem_coach_invite(db, target["account_id"], used_code)["ok"]
     post_email(target, used_code, used_csrf)
 
-    coach_subjects = {"Your MAYOS Coach invite", "دعوة تفعيل دور المدرب في MAYOS"}
+    coach_subjects = {"Your MYOS Coach invite", "دعوة تفعيل دور المدرب في MYOS"}
     assert not any(message[1] in coach_subjects for message in sent_emails)
     for account in (target, foreign):
         audit = client.get(f"/admin/audit?account_id={account['account_id']}")
@@ -2653,7 +2653,7 @@ def test_admin_invites_issues_coach_invite_and_redeems(admin_api, caplog):
     assert "<title>Coach invite issued</title>" in issued.text
     assert 'class="nav-link" href="/admin/invites" aria-current="page">Invites</a>' in issued.text
     token = html.unescape(re.search(r'id="issued_coach_code"[^>]+value="([^"]+)"', issued.text).group(1))
-    assert f"Your MAYOS coach code: {token}." in html.unescape(issued.text)
+    assert f"Your MYOS coach code: {token}." in html.unescape(issued.text)
     assert "Redeem it in the app: Settings → Become a coach." in html.unescape(issued.text)
     assert 'href="https://wa.me/?text=' in issued.text
     assert f'href="/admin/accounts/{account["account_id"]}">Back to account: invitefrompage</a>' in issued.text

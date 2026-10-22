@@ -44,12 +44,12 @@ const Map<String, ({String english, String arabic})> _programImportMessages =
     arabic: 'تحتوي الورقة على أعمدة كثيرة. احذف الأعمدة الزائدة ثم أعد المحاولة.',
   ),
   'program_import.template_columns.v1': (
-    english: 'Required columns are missing. Download the MAYOS template and add your data.',
-    arabic: 'الأعمدة المطلوبة غير موجودة. نزّل قالب MAYOS وأضف بياناتك إليه.',
+    english: 'Required columns are missing. Download the MYOS template and add your data.',
+    arabic: 'الأعمدة المطلوبة غير موجودة. نزّل قالب MYOS وأضف بياناتك إليه.',
   ),
   'program_import.freeform_disabled.v1': (
-    english: 'Free-form import is unavailable right now. Use the MAYOS template.',
-    arabic: 'الاستيراد بالتنسيق الحر غير متاح الآن. استخدم قالب MAYOS.',
+    english: 'Free-form import is unavailable right now. Use the MYOS template.',
+    arabic: 'الاستيراد بالتنسيق الحر غير متاح الآن. استخدم قالب MYOS.',
   ),
   'program_import.input_required.v1': (
     english: 'Provide either a file or pasted program text.',
@@ -72,8 +72,8 @@ const Map<String, ({String english, String arabic})> _programImportMessages =
     arabic: 'اجعل نص البرنامج 20,000 حرف أو أقل.',
   ),
   'program_import.interpretation_failed.v1': (
-    english: 'The sheet could not be interpreted. Try the MAYOS template or simplify the layout.',
-    arabic: 'تعذر فهم الورقة. جرّب قالب MAYOS أو بسّط تنسيق الورقة.',
+    english: 'The sheet could not be interpreted. Try the MYOS template or simplify the layout.',
+    arabic: 'تعذر فهم الورقة. جرّب قالب MYOS أو بسّط تنسيق الورقة.',
   ),
   'program_import.model_busy.v1': (
     english: 'The import assistant is busy with another request. Try again in a minute.',
@@ -228,8 +228,8 @@ class MessageCopy {
       : 'You do not have permission to do that.';
 
   String get appUpdateRequired => isArabic
-      ? 'يلزم تحديث MAYOS للمتابعة.'
-      : 'Update MAYOS to continue.';
+      ? 'يلزم تحديث MYOS للمتابعة.'
+      : 'Update MYOS to continue.';
 
   String get notFound => isArabic ? 'لم يُعثر على المطلوب.' : 'Not found.';
 
@@ -285,8 +285,8 @@ class MessageCopy {
       : 'The assistant is temporarily unavailable.';
 
   String get googleAlreadyLinked => isArabic
-      ? 'حساب Google هذا مرتبط بالفعل بحساب MAYOS.'
-      : 'This Google account is already linked to a MAYOS account.';
+      ? 'حساب Google هذا مرتبط بالفعل بحساب MYOS.'
+      : 'This Google account is already linked to a MYOS account.';
 
   String get programVersionMismatch => isArabic
       ? 'سُجلت هذه الحصة على إصدار أقدم من البرنامج.'
@@ -708,7 +708,7 @@ const Map<String, String> _specificArabicErrors = <String, String>{
   'media.unavailable.v1': 'تعذر تحميل الوسائط حاليًا. حاول مجددًا.',
   'media.not_found.v1': 'لم يُعثر على الوسائط المطلوبة.',
   'google.invalid_token.v1': 'تعذر التحقق من بيانات Google.',
-  'google.linked_elsewhere.v1': 'حساب Google هذا مرتبط بالفعل بحساب MAYOS آخر.',
+  'google.linked_elsewhere.v1': 'حساب Google هذا مرتبط بالفعل بحساب MYOS آخر.',
   'google.different_account.v1': 'يوجد حساب Google مختلف مرتبط بهذا الحساب. افصله أولًا.',
   'google.unlink_password_required.v1':
       'عيّن كلمة مرور قبل فصل Google لتتمكن من تسجيل الدخول.',

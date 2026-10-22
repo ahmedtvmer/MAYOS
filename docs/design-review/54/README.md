@@ -1,4 +1,4 @@
-# #54 — Visual verification: MAYOS Android redesign
+# #54 — Visual verification: MYOS Android redesign
 
 Final cross-screen verification for the Android player redesign (parent #47).
 This pass captured every shipped player surface across the two target phone
@@ -47,7 +47,7 @@ Each cell links to the PNG. Light/Dark columns are the 360×640 capture; the
 | Progress (Strength) | [progress-strength-light-360x640](progress-strength-light-360x640.png) | [progress-strength-dark-360x640](progress-strength-dark-360x640.png) | rounded ticks, edge marker |
 | Settings | [settings-light-360x640](settings-light-360x640.png) | [settings-dark-360x640](settings-dark-360x640.png) | + [text-scale 2.0](settings-light-360x640-textscale2.png) |
 | Settings — System | — | [settings-system-dark-360x640](settings-system-dark-360x640.png) | [settings-system-light-360x640](settings-system-light-360x640.png) |
-| Assistant chat | [chat-light-360x640](chat-light-360x640.png) | [chat-dark-360x640](chat-dark-360x640.png) | MAYOS bubbles, no generic AI look |
+| Assistant chat | [chat-light-360x640](chat-light-360x640.png) | [chat-dark-360x640](chat-dark-360x640.png) | MYOS bubbles, no generic AI look |
 | Workout logger | [workout-logger-light-360x640](workout-logger-light-360x640.png) | [workout-logger-dark-360x640](workout-logger-dark-360x640.png) | dense, legible numeric cells |
 | Workout drafts | [workout-drafts-light-360x640](workout-drafts-light-360x640.png) | [workout-drafts-dark-360x640](workout-drafts-dark-360x640.png) | one pending draft |
 
@@ -61,48 +61,48 @@ corrected in this ticket) · **limitation** (documented, not a regression).
 
 | # | Item | Result | Evidence / notes |
 | --- | --- | --- | --- |
-| 1 | Supplied logo legibility | pass | Mark-only crop + letterspaced `MAYOS` wordmark in the header; coloured lockup on splash. Blue-on-light excluded per `mobile/DESIGN.md`. |
-| 2 | Typography | pass | One serif/sans pair via `MayosTypography`; no screen sets a font family or literal `TextStyle`. |
-| 3 | Spacing & visual hierarchy | fixed | Literal `EdgeInsets.all(16/24)` and ad-hoc `SizedBox` values replaced with `MayosSpacing` across profile, plan, assignment, drafts, logger, chat and coach screens. |
-| 4 | Touch targets (≥48dp) | fixed | Router sub-pages now use `MayosScaffold` (48dp back), set-row icon actions and all `MayosButton` variants keep the 48dp minimum; drafts actions are `IconButton`s. |
-| 5 | Focus order | pass | Auth/onboarding forms keep declaration order; `MayosTextField` passes focus through unchanged. |
+| 1 | Supplied logo legibility | pass | Mark-only crop + letterspaced `MYOS` wordmark in the header; coloured lockup on splash. Blue-on-light excluded per `mobile/DESIGN.md`. |
+| 2 | Typography | pass | One serif/sans pair via `MyosTypography`; no screen sets a font family or literal `TextStyle`. |
+| 3 | Spacing & visual hierarchy | fixed | Literal `EdgeInsets.all(16/24)` and ad-hoc `SizedBox` values replaced with `MyosSpacing` across profile, plan, assignment, drafts, logger, chat and coach screens. |
+| 4 | Touch targets (≥48dp) | fixed | Router sub-pages now use `MyosScaffold` (48dp back), set-row icon actions and all `MyosButton` variants keep the 48dp minimum; drafts actions are `IconButton`s. |
+| 5 | Focus order | pass | Auth/onboarding forms keep declaration order; `MyosTextField` passes focus through unchanged. |
 | 6 | Text scaling | fixed | Sweep at 2.0× found real overflows: profile dropdown (right, 94px), drafts summary Row (bottom, 127px), chat disclosure card (bottom, 1216px) and a chat header Row. All fixed; `design_review_54_test.dart` now asserts no overflow for every captured screen in both themes. |
 | 7 | Keyboard behaviour | pass | Auth screens keep the pinned action bar + `resizeToAvoidBottomInset`; login keyboard inset capture unchanged since #52. |
 | 8 | Loading / error / empty states | pass | Home skeleton/error, Program offline banner, Progress empty state, chat disclosure/offline/error, drafts empty/pending/attention, plan/coach empties — all use shared styling. |
-| 9 | System-bar contrast | pass | `MayosApp` wraps every route in `AnnotatedRegion<SystemUiOverlayStyle>` from the effective theme; `theme_and_shell_test` asserts icon brightness per theme. Splash/onboarding/auth render inside the same app wrapper. |
+| 9 | System-bar contrast | pass | `MyosApp` wraps every route in `AnnotatedRegion<SystemUiOverlayStyle>` from the effective theme; `theme_and_shell_test` asserts icon brightness per theme. Splash/onboarding/auth render inside the same app wrapper. |
 
 ## One-off styling fixed in this ticket
 
 Shared system:
 
-- `MayosButton`: added a `destructive` variant (danger fill) used by account
+- `MyosButton`: added a `destructive` variant (danger fill) used by account
   deletion, so destructive actions stop hand-rolling `FilledButton.styleFrom`.
-- `MayosTextField`: added `dense` (narrow workout-set cells), `minLines` and
+- `MyosTextField`: added `dense` (narrow workout-set cells), `minLines` and
   `autofocus` passthroughs so screens stop dropping to raw `TextField`.
 - `router.dart`: replaced eight `Scaffold(appBar: AppBar(...))` wrappers
   (Plan, Profile, Coach, Assignments, Alerts, Coaching, Workouts, Log workout)
-  with `MayosScaffold` + `MayosAppHeader`.
+  with `MyosScaffold` + `MyosAppHeader`.
 
 Per screen:
 
-- **Chat** — `MayosScaffold`; MAYOS token bubbles (accent user / secondary
-  assistant, not `ColorScheme` containers); `MayosCard` disclosure; token
-  offline/error banners; `MayosTextField` composer; gate made scrollable.
-- **Workout logger** — tokens + `MayosTypography`; `MayosCard` per exercise;
-  `MayosSettingsTile` date row; `MayosSectionHeader` readiness; `MayosButton`;
-  dense `MayosTextField` set cells (kg/reps/RPE labels and values now legible at
+- **Chat** — `MyosScaffold`; MYOS token bubbles (accent user / secondary
+  assistant, not `ColorScheme` containers); `MyosCard` disclosure; token
+  offline/error banners; `MyosTextField` composer; gate made scrollable.
+- **Workout logger** — tokens + `MyosTypography`; `MyosCard` per exercise;
+  `MyosSettingsTile` date row; `MyosSectionHeader` readiness; `MyosButton`;
+  dense `MyosTextField` set cells (kg/reps/RPE labels and values now legible at
   360dp); shared offline notice; token danger text. Behaviour unchanged.
-- **Workout drafts** — `MayosCard`/`MayosButton`/tokens; summary uses a `Wrap`
+- **Workout drafts** — `MyosCard`/`MyosButton`/tokens; summary uses a `Wrap`
   so it reflows at large text instead of overflowing.
-- **Profile** — tokens + `MayosSectionHeader`/`MayosTextField`/`MayosButton`;
-  destructive delete button; deletion dialog uses `MayosButton`/`MayosTextField`;
+- **Profile** — tokens + `MyosSectionHeader`/`MyosTextField`/`MyosButton`;
+  destructive delete button; deletion dialog uses `MyosButton`/`MyosTextField`;
   dropdowns `isExpanded` to survive large text.
-- **Plan** — `MayosCard`/`MayosSectionHeader`/tokens.
-- **Coaching assignment** — `MayosCard`/`MayosButton`/`MayosTextField`/tokens;
+- **Plan** — `MyosCard`/`MyosSectionHeader`/tokens.
+- **Coaching assignment** — `MyosCard`/`MyosButton`/`MyosTextField`/tokens;
   request and end dialogs use shared buttons.
-- **Coach profile / invite / alerts / roster** — tokens, `MayosCard`,
-  `MayosButton`, `MayosSettingsTile`; invite moved to `MayosScaffold`.
-- **Coach player history** — token danger colours and `MayosSpacing`; retains
+- **Coach profile / invite / alerts / roster** — tokens, `MyosCard`,
+  `MyosButton`, `MyosSettingsTile`; invite moved to `MyosScaffold`.
+- **Coach player history** — token danger colours and `MyosSpacing`; retains
   themed Material `Card`/`ListTile` (owned by the coach drill-down ticket #25).
 
 ## Known limitations
@@ -125,7 +125,7 @@ Per screen:
 
 ## #49 non-negotiable checklist (status)
 
-- [x] MAYOS remains a Flutter mobile app.
+- [x] MYOS remains a Flutter mobile app.
 - [x] The attached UI reference has been inspected.
 - [x] Supplied logo variants used where legible, without changing proportions.
 - [x] Licensed serif/sans typography centralized and documented as an approximation.

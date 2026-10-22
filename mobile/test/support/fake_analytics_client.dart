@@ -1,4 +1,4 @@
-import 'package:mayos_mobile/src/core/analytics_client.dart';
+import 'package:myos_mobile/src/core/analytics_client.dart';
 
 class FakeAnalyticsClient implements AnalyticsClient {
   final List<String> identifiedAccountIds = <String>[];

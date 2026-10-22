@@ -1,4 +1,4 @@
-"""MAYOS-owned Exercise library curation loaded from the curation CSV."""
+"""MYOS-owned Exercise library curation loaded from the curation CSV."""
 
 import csv
 import re

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/ios_safari_detection.dart';
+import 'package:myos_mobile/src/core/ios_safari_detection.dart';
 
 void main() {
   final List<

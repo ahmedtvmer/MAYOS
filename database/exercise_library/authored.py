@@ -1,4 +1,4 @@
-"""MAYOS-authored rows for the shared Exercise library (ADR 053)."""
+"""MYOS-authored rows for the shared Exercise library (ADR 053)."""
 
 from typing import NotRequired, TypedDict
 
@@ -18,7 +18,7 @@ class AuthoredExercise(TypedDict):
 
 # Keep authored definitions here; display names and aliases live in the
 # Exercise curation file so reviewed names have a single source.
-MAYOS_AUTHORED_EXERCISES: tuple[AuthoredExercise, ...] = (
+MYOS_AUTHORED_EXERCISES: tuple[AuthoredExercise, ...] = (
     {
         "id": "mayos:1",
         "name": "Kelso shrug",

@@ -5,7 +5,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-# Resolve the absolute path to the project root (/mnt/work/MAYOS)
+# Resolve the absolute path to the project root (/mnt/work/MYOS)
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CSV_PATH = BASE_DIR / "data" / "exercises.csv"
 DEFAULT_JSON_PATH = BASE_DIR / "data" / "exercises.json"

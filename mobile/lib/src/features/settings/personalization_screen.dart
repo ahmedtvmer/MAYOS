@@ -8,13 +8,13 @@ import '../../core/display_language/catalog.dart';
 import '../../core/display_language/controller.dart';
 import '../../core/display_language/settings_copy.dart';
 import '../../core/models.dart';
-import '../../core/theme/mayos_spacing.dart';
-import '../../core/theme/mayos_theme.dart';
-import '../../core/ui/mayos_button.dart';
-import '../../core/ui/mayos_card.dart';
-import '../../core/ui/mayos_choice_card.dart';
-import '../../core/ui/mayos_section_header.dart';
-import '../../core/ui/mayos_text_field.dart';
+import '../../core/theme/myos_spacing.dart';
+import '../../core/theme/myos_theme.dart';
+import '../../core/ui/myos_button.dart';
+import '../../core/ui/myos_card.dart';
+import '../../core/ui/myos_choice_card.dart';
+import '../../core/ui/myos_section_header.dart';
+import '../../core/ui/myos_text_field.dart';
 import '../../providers.dart';
 
 enum _PersonalizationStatus {
@@ -235,12 +235,12 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
     }
     if (_status == _PersonalizationStatus.loadFailed) {
       return ListView(
-        padding: MayosSpacing.screen,
+        padding: MyosSpacing.screen,
         children: <Widget>[_buildLoadFailure()],
       );
     }
     return ListView(
-      padding: MayosSpacing.screen,
+      padding: MyosSpacing.screen,
       children: <Widget>[_buildEditor()],
     );
   }
@@ -249,9 +249,9 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           _buildIntroduction(),
-          const SizedBox(height: MayosSpacing.sm),
+          const SizedBox(height: MyosSpacing.sm),
           _buildPreferredNameCard(),
-          const SizedBox(height: MayosSpacing.xl),
+          const SizedBox(height: MyosSpacing.xl),
           ..._buildPresetCards(),
           _buildInstructionsCard(),
         ],
@@ -263,31 +263,31 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
         children: <Widget>[
           Text(_failure == null
               ? _message ?? _copy.styleLoadFailed
-              : MayosCopy(ref.read(displayLanguageProvider))
+              : MyosCopy(ref.read(displayLanguageProvider))
                   .failureMessage(_failure!)),
-          const SizedBox(height: MayosSpacing.md),
-          MayosButton(
+          const SizedBox(height: MyosSpacing.md),
+          MyosButton(
             label: _copy.retry,
-            variant: MayosButtonVariant.secondary,
+            variant: MyosButtonVariant.secondary,
             onPressed: _load,
           ),
         ],
       );
 
-  Widget _buildIntroduction() => MayosSectionHeader(
+  Widget _buildIntroduction() => MyosSectionHeader(
         title: _copy.assistantStyle,
         subtitle: _copy.styleLead,
       );
 
-  Widget _buildPreferredNameCard() => MayosCard(
-        padding: const EdgeInsets.all(MayosSpacing.md),
+  Widget _buildPreferredNameCard() => MyosCard(
+        padding: const EdgeInsets.all(MyosSpacing.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             _buildPreferredNameHeading(),
-            const SizedBox(height: MayosSpacing.md),
+            const SizedBox(height: MyosSpacing.md),
             _buildPreferredNameField(),
-            const SizedBox(height: MayosSpacing.md),
+            const SizedBox(height: MyosSpacing.md),
             _buildPreferredNameNotice(),
             _buildPreferredNameActions(),
           ],
@@ -301,7 +301,7 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
             _copy.preferredName,
             style: Theme.of(context).textTheme.titleMedium,
           ),
-          const SizedBox(height: MayosSpacing.xs),
+          const SizedBox(height: MyosSpacing.xs),
           Text(
             _copy.preferredNameLead,
             style: Theme.of(context).textTheme.bodySmall,
@@ -309,7 +309,7 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
         ],
       );
 
-  Widget _buildPreferredNameField() => MayosTextField(
+  Widget _buildPreferredNameField() => MyosTextField(
         fieldKey: const Key('preferred_name_field'),
         controller: _preferredName,
         label: _copy.preferredName,
@@ -328,7 +328,7 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
 
   Widget _buildPreferredNameActions() => Column(
         children: <Widget>[
-          MayosButton(
+          MyosButton(
             key: const Key('preferred_name_save'),
             label: _copy.savePreferredName,
             loading: _preferredNameSaving,
@@ -336,10 +336,10 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
                 ? null
                 : () => _savePreferredName(_preferredName.text),
           ),
-          MayosButton(
+          MyosButton(
             key: const Key('preferred_name_clear'),
             label: _copy.clearPreferredName,
-            variant: MayosButtonVariant.tertiary,
+            variant: MyosButtonVariant.tertiary,
             onPressed: _savingSettings || _preferredName.text.isEmpty
                 ? null
                 : () => _savePreferredName(null),
@@ -351,12 +351,12 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
     final String? message = _preferredNameMessage ??
         (_preferredNameFailure == null
             ? null
-            : MayosCopy(ref.read(displayLanguageProvider))
+            : MyosCopy(ref.read(displayLanguageProvider))
                 .failureMessage(_preferredNameFailure!));
     if (message == null) return const SizedBox.shrink();
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
+      padding: const EdgeInsets.only(bottom: MyosSpacing.sm),
       child: Text(
         message,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -369,7 +369,7 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
   List<Widget> _buildPresetCards() => <Widget>[
         for (final _AssistantStylePreset preset
             in _assistantStylePresets) ...<Widget>[
-          MayosChoiceCard(
+          MyosChoiceCard(
             key: Key('assistant_style_${preset.key}'),
             title: _copy.stylePresetLabel(preset.key),
             subtitle: _copy.stylePresetDescription(preset.key),
@@ -378,19 +378,19 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
                 ? null
                 : () => setState(() => _style = preset.key),
           ),
-          const SizedBox(height: MayosSpacing.sm),
+          const SizedBox(height: MyosSpacing.sm),
         ],
       ];
 
-  Widget _buildInstructionsCard() => MayosCard(
-        padding: const EdgeInsets.all(MayosSpacing.md),
+  Widget _buildInstructionsCard() => MyosCard(
+        padding: const EdgeInsets.all(MyosSpacing.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             _buildInstructionsField(),
-            const SizedBox(height: MayosSpacing.md),
+            const SizedBox(height: MyosSpacing.md),
             _buildNotice(),
-            MayosButton(
+            MyosButton(
               key: const Key('assistant_style_save'),
               label: _copy.saveStyle,
               loading: _status == _PersonalizationStatus.saving,
@@ -400,7 +400,7 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
         ),
       );
 
-  Widget _buildInstructionsField() => MayosTextField(
+  Widget _buildInstructionsField() => MyosTextField(
         fieldKey: const Key('assistant_style_instructions'),
         controller: _instructions,
         label: _copy.optionalInstructions,
@@ -418,13 +418,13 @@ class _PersonalizationScreenState extends ConsumerState<PersonalizationScreen> {
     final String? message = _message ??
         (_failure == null
             ? null
-            : MayosCopy(ref.read(displayLanguageProvider))
+            : MyosCopy(ref.read(displayLanguageProvider))
                 .failureMessage(_failure!));
     if (message == null) return const SizedBox.shrink();
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     final bool isError = _status == _PersonalizationStatus.saveFailed;
     return Padding(
-      padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
+      padding: const EdgeInsets.only(bottom: MyosSpacing.sm),
       child: Text(
         message,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(

@@ -6,9 +6,9 @@ import '../../core/app_mode.dart';
 import '../../core/display_language/catalog.dart';
 import '../../core/display_language/controller.dart';
 import '../../core/models.dart';
-import '../../core/theme/mayos_spacing.dart';
-import '../../core/theme/mayos_theme.dart';
-import '../../core/theme/mayos_typography.dart';
+import '../../core/theme/myos_spacing.dart';
+import '../../core/theme/myos_theme.dart';
+import '../../core/theme/myos_typography.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import '../settings/logout_confirmation.dart';
@@ -20,7 +20,7 @@ import '../settings/logout_confirmation.dart';
 class ModeAvatarButton extends ConsumerWidget {
   const ModeAvatarButton({super.key});
 
-  static const Key badgeKey = Key('mayos.mode.badge');
+  static const Key badgeKey = Key('myos.mode.badge');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -28,7 +28,7 @@ class ModeAvatarButton extends ConsumerWidget {
     if (session == null || !session.account.isCoach) {
       return const SizedBox.shrink();
     }
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final bool coachMode =
         ref.watch(appModeControllerProvider).mode == AppMode.coach;
     final String username = session.account.traineeId;
@@ -36,10 +36,10 @@ class ModeAvatarButton extends ConsumerWidget {
         .substring(0, username.length < 2 ? username.length : 2)
         .toUpperCase();
     return Padding(
-      padding: const EdgeInsetsDirectional.only(end: MayosSpacing.xs),
+      padding: const EdgeInsetsDirectional.only(end: MyosSpacing.xs),
       child: Semantics(
         button: true,
-        label: MayosCopy(ref.watch(displayLanguageProvider))
+        label: MyosCopy(ref.watch(displayLanguageProvider))
             .accountMode(coachMode),
         excludeSemantics: true,
         child: InkWell(
@@ -56,7 +56,7 @@ class ModeAvatarButton extends ConsumerWidget {
                   backgroundColor: c.accentSubtle,
                   child: Text(
                     initials,
-                    style: MayosTypography.of(context).avatarInitials
+                    style: MyosTypography.of(context).avatarInitials
                         .copyWith(color: c.accent),
                   ),
                 ),
@@ -69,12 +69,12 @@ class ModeAvatarButton extends ConsumerWidget {
                         const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                     decoration: BoxDecoration(
                       color: coachMode ? c.accent : c.success,
-                      borderRadius: MayosRadii.pillRadius,
+                      borderRadius: MyosRadii.pillRadius,
                       border: Border.all(color: c.canvas, width: 1.5),
                     ),
                     child: Text(
                       coachMode ? 'C' : 'P',
-                      style: MayosTypography.of(context).modeBadge.copyWith(
+                      style: MyosTypography.of(context).modeBadge.copyWith(
                           color: coachMode ? c.onAccent : c.onSuccess),
                     ),
                   ),
@@ -124,7 +124,7 @@ void switchToMode(BuildContext context, WidgetRef ref, AppMode mode) {
 /// The account sheet: switch between Player mode and Coach mode, then
 /// Settings and Log out. Only coach accounts reach it (#119).
 Future<void> showModeSheet(BuildContext context, WidgetRef ref) {
-  final MayosCopy copy = MayosCopy(ref.read(displayLanguageProvider));
+  final MyosCopy copy = MyosCopy(ref.read(displayLanguageProvider));
   final AccountSession? session = ref.read(authControllerProvider).session;
   if (session == null) {
     return Future<void>.value();
@@ -138,7 +138,7 @@ Future<void> showModeSheet(BuildContext context, WidgetRef ref) {
     showDragHandle: true,
     isScrollControlled: true,
     builder: (BuildContext sheetContext) {
-      final MayosThemeExtension c = MayosTheme.of(sheetContext);
+      final MyosThemeExtension c = MyosTheme.of(sheetContext);
       Widget modeRow(
         AppMode mode,
         IconData icon,
@@ -149,8 +149,8 @@ Future<void> showModeSheet(BuildContext context, WidgetRef ref) {
         return ListTile(
           minTileHeight: 64,
           leading: Icon(icon, color: selected ? c.accent : c.textSecondary),
-          title: Text(title, style: MayosTypography.of(context).body),
-          subtitle: Text(subtitle, style: MayosTypography.of(context).caption),
+          title: Text(title, style: MyosTypography.of(context).body),
+          subtitle: Text(subtitle, style: MyosTypography.of(context).caption),
           trailing: selected ? Icon(Icons.check_circle, color: c.accent) : null,
           onTap: () {
             Navigator.of(sheetContext).pop();
@@ -168,13 +168,13 @@ Future<void> showModeSheet(BuildContext context, WidgetRef ref) {
         children: <Widget>[
           Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(
-                MayosSpacing.lg, 0, MayosSpacing.lg, MayosSpacing.sm),
+                MyosSpacing.lg, 0, MyosSpacing.lg, MyosSpacing.sm),
             child: Row(
               children: <Widget>[
                 Expanded(
-                  child: Text(username, style: MayosTypography.of(context).sectionHeading),
+                  child: Text(username, style: MyosTypography.of(context).sectionHeading),
                 ),
-                Text(copy.switchMode, style: MayosTypography.of(context).caption),
+                Text(copy.switchMode, style: MyosTypography.of(context).caption),
               ],
             ),
           ),

@@ -1,18 +1,18 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/features/player/auth/auth_controller.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/features/player/auth/auth_controller.dart';
+import 'package:myos_mobile/src/providers.dart';
 
 import 'support/auth_harness.dart';
 import 'support/fake_api_adapter.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 /// Seeds a persisted, onboarded player session with a recovery email.
 Future<void> _seedSignedIn(
-    FakeMayosApi fake, InMemoryTokenStore tokens) async {
+    FakeMyosApi fake, InMemoryTokenStore tokens) async {
   await tokens.save('token-alice');
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
@@ -48,7 +48,7 @@ Future<IntakeConfirmation> _confirmIntake(ApiClient api) async {
 void main() {
   test('player journey against the service contract, with 401 re-login',
       () async {
-    final FakeMayosApi fake = FakeMayosApi();
+    final FakeMyosApi fake = FakeMyosApi();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     final ProviderContainer container = authContainerFor(fake, tokens);
     addTearDown(container.dispose);
@@ -137,7 +137,7 @@ void main() {
   test(
       'restart after intake confirmation resolves onboarded via /profile',
       () async {
-    final FakeMayosApi fake = FakeMayosApi();
+    final FakeMyosApi fake = FakeMyosApi();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     final ProviderContainer container = authContainerFor(fake, tokens);
     addTearDown(container.dispose);
@@ -163,7 +163,7 @@ void main() {
 
   test('resume refresh adopts live capabilities and keeps session flags',
       () async {
-    final FakeMayosApi fake = FakeMayosApi();
+    final FakeMyosApi fake = FakeMyosApi();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     final ProviderContainer container = authContainerFor(fake, tokens);
     addTearDown(container.dispose);
@@ -187,7 +187,7 @@ void main() {
   });
 
   test('resume refresh keeps the session on a transient failure', () async {
-    final FakeMayosApi fake = FakeMayosApi();
+    final FakeMyosApi fake = FakeMyosApi();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     final ProviderContainer container = authContainerFor(fake, tokens);
     addTearDown(container.dispose);
@@ -206,7 +206,7 @@ void main() {
 
   test('resume refresh with a revoked token defers to the auth interceptor',
       () async {
-    final FakeMayosApi fake = FakeMayosApi();
+    final FakeMyosApi fake = FakeMyosApi();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     final ProviderContainer container = authContainerFor(fake, tokens);
     addTearDown(container.dispose);
@@ -224,7 +224,7 @@ void main() {
   });
 
   test('restore clears a stale token and keeps a valid session', () async {
-    final FakeMayosApi fake = FakeMayosApi();
+    final FakeMyosApi fake = FakeMyosApi();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     final ProviderContainer container = authContainerFor(fake, tokens);
     addTearDown(container.dispose);

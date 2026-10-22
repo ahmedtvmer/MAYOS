@@ -9,9 +9,9 @@ import '../../../core/display_language/controller.dart';
 import '../../../core/home_screen_install_hint_store_stub.dart'
     if (dart.library.js_interop) '../../../core/home_screen_install_hint_store_web.dart'
     as platform;
-import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/theme/mayos_theme.dart';
-import '../../../core/theme/mayos_typography.dart';
+import '../../../core/theme/myos_spacing.dart';
+import '../../../core/theme/myos_theme.dart';
+import '../../../core/theme/myos_typography.dart';
 import '../../../providers.dart';
 
 export '../../../core/home_screen_install_hint_store.dart';
@@ -60,7 +60,7 @@ class HomeScreenInstallHintSlot extends ConsumerWidget {
 
   final bool enabled;
 
-  static const String message = 'Add MAYOS: Share → Add to Home Screen.';
+  static const String message = 'Add MYOS: Share → Add to Home Screen.';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -69,11 +69,11 @@ class HomeScreenInstallHintSlot extends ConsumerWidget {
     return AnimatedSize(
       key: const Key('home-screen-install-hint-slot'),
       alignment: Alignment.topCenter,
-      duration: MayosMotion.fast,
+      duration: MyosMotion.fast,
       curve: Curves.easeOut,
       child: hintVisible
           ? SizedBox(
-              height: kMayosMinTapTarget + MayosSpacing.xs,
+              height: kMyosMinTapTarget + MyosSpacing.xs,
               child: _HomeScreenInstallHintBanner(
                 onDismiss: () => unawaited(
                   ref.read(homeScreenInstallHintProvider.notifier).dismiss(),
@@ -92,15 +92,15 @@ class _HomeScreenInstallHintBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
         color: colors.surfaceElevated,
-        borderRadius: MayosRadii.smallRadius,
+        borderRadius: MyosRadii.smallRadius,
         border: Border.all(color: colors.border),
       ),
       child: Padding(
-        padding: const EdgeInsetsDirectional.only(start: MayosSpacing.xs),
+        padding: const EdgeInsetsDirectional.only(start: MyosSpacing.xs),
         child: Row(
           children: <Widget>[
             const Expanded(child: _HomeScreenInstallHintText()),
@@ -117,13 +117,13 @@ class _HomeScreenInstallHintText extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     return Text(
-      MayosCopy(ref.watch(displayLanguageProvider)).homeScreenHint,
+      MyosCopy(ref.watch(displayLanguageProvider)).homeScreenHint,
       maxLines: 1,
       softWrap: false,
       overflow: TextOverflow.ellipsis,
-      style: MayosTypography.of(context).captionStrong.copyWith(color: colors.textPrimary),
+      style: MyosTypography.of(context).captionStrong.copyWith(color: colors.textPrimary),
     );
   }
 }
@@ -135,19 +135,19 @@ class _HomeScreenInstallHintDismissButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     return IconButton(
       tooltip:
-          MayosCopy(ref.watch(displayLanguageProvider)).dismissHomeScreenHint,
+          MyosCopy(ref.watch(displayLanguageProvider)).dismissHomeScreenHint,
       onPressed: onDismiss,
       constraints: const BoxConstraints(
-        minWidth: kMayosMinTapTarget,
-        minHeight: kMayosMinTapTarget,
+        minWidth: kMyosMinTapTarget,
+        minHeight: kMyosMinTapTarget,
       ),
       padding: EdgeInsets.zero,
       icon: Icon(
         Icons.close,
-        size: MayosIconSizes.medium,
+        size: MyosIconSizes.medium,
         color: colors.textSecondary,
       ),
     );

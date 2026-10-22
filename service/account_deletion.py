@@ -4,7 +4,7 @@ The account holder proves possession — with their password, or with a fresh
 Google ID token whose linked subject is their own (#114) — then the account is
 durably deleted: every session invalidated in the registry, the live ledger and
 its backups removed, the ``linked_sign_ins`` rows dropped in the same catalog
-transaction (so that Google account can later create a new MAYOS account), and a
+transaction (so that Google account can later create a new MYOS account), and a
 record kept outside the catalog snapshot so a restored backup cannot resurrect
 the identity. The caller is JWT-authenticated, so a wrong password or a
 stale/wrong-sub/unverifiable token is reported plainly (400-class) and changes
@@ -78,7 +78,7 @@ def _spend_one_bcrypt(password: Any) -> None:
     """
     global _UNKNOWN_ACCOUNT_HASH
     if _UNKNOWN_ACCOUNT_HASH is None:
-        _UNKNOWN_ACCOUNT_HASH = hash_password("mayos-unknown-account-equalizer")
+        _UNKNOWN_ACCOUNT_HASH = hash_password("myos-unknown-account-equalizer")
     verify_password(password if isinstance(password, str) else "", _UNKNOWN_ACCOUNT_HASH)
 
 

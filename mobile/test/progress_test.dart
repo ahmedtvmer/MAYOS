@@ -2,23 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/display_language/controller.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/chat_storage.dart';
-import 'package:mayos_mobile/src/core/connectivity_message.dart';
-import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
-import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_bottom_navigation.dart';
-import 'package:mayos_mobile/src/core/workout_storage.dart';
-import 'package:mayos_mobile/src/features/player/exercise/exercise_detail_screen.dart';
-import 'package:mayos_mobile/src/features/player/progress/progress_tab.dart';
-import 'package:mayos_mobile/src/features/player/progress/progress_chart.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/display_language/controller.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/chat_storage.dart';
+import 'package:myos_mobile/src/core/connectivity_message.dart';
+import 'package:myos_mobile/src/core/theme/myos_theme.dart';
+import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/ui/myos_bottom_navigation.dart';
+import 'package:myos_mobile/src/core/workout_storage.dart';
+import 'package:myos_mobile/src/features/player/exercise/exercise_detail_screen.dart';
+import 'package:myos_mobile/src/features/player/progress/progress_tab.dart';
+import 'package:myos_mobile/src/features/player/progress/progress_chart.dart';
+import 'package:myos_mobile/src/providers.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 String _todayIso() {
   final DateTime now = DateTime.now();
@@ -79,8 +79,8 @@ List<Map<String, dynamic>> _benchPoints() => <Map<String, dynamic>>[
       },
     ];
 
-FakeMayosApi _signedInFake({int points = 5}) {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _signedInFake({int points = 5}) {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -109,7 +109,7 @@ FakeMayosApi _signedInFake({int points = 5}) {
   return fake;
 }
 
-Override _apiOverride(FakeMayosApi fake, InMemoryTokenStore tokens) {
+Override _apiOverride(FakeMyosApi fake, InMemoryTokenStore tokens) {
   return apiClientProvider.overrideWith((ref) {
     final ApiClient client = ApiClient(
       tokens: tokens,
@@ -123,7 +123,7 @@ Override _apiOverride(FakeMayosApi fake, InMemoryTokenStore tokens) {
 
 Future<void> _pumpProgress(
   WidgetTester tester,
-  FakeMayosApi fake, {
+  FakeMyosApi fake, {
   ThemeMode mode = ThemeMode.light,
   Size size = const Size(1080, 2400),
   double textScale = 1.0,
@@ -146,8 +146,8 @@ Future<void> _pumpProgress(
         systemDisplayLanguageProvider.overrideWithValue(languageCode),
       ],
       child: MaterialApp(
-        theme: MayosTheme.light,
-        darkTheme: MayosTheme.dark,
+        theme: MyosTheme.light,
+        darkTheme: MyosTheme.dark,
         themeMode: mode,
         locale: Locale(languageCode),
         supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
@@ -164,7 +164,7 @@ Future<void> _pumpProgress(
               : 'Estimated 1RM'));
 }
 
-Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
+Future<void> _pumpApp(WidgetTester tester, FakeMyosApi fake) async {
   tester.view.physicalSize = const Size(412, 2400);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
@@ -192,7 +192,7 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
           return client;
         }),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(tester, find.text('Home'));
@@ -200,7 +200,7 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
 
 Future<void> _openProgressTab(WidgetTester tester) async {
   await tester.tap(find.descendant(
-    of: find.byType(MayosBottomNavigation),
+    of: find.byType(MyosBottomNavigation),
     matching: find.text('Progress'),
   ));
   await _pumpUntilFound(tester, find.text('Estimated 1RM'));
@@ -209,7 +209,7 @@ Future<void> _openProgressTab(WidgetTester tester) async {
 void main() {
   testWidgets('weight Progress chart shows dated points and target reference',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake()
+    final FakeMyosApi fake = _signedInFake()
       ..weightHistoryPoints = <Map<String, dynamic>>[
         <String, dynamic>{'date': '2026-09-01', 'weight_kg': 81.0},
         <String, dynamic>{'date': '2026-09-15', 'weight_kg': 82.5},
@@ -232,7 +232,7 @@ void main() {
   });
 
   testWidgets('empty weight history explains how to start', (tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     await _pumpProgress(tester, fake);
     await tester.tap(find.text('Body weight'));
     await _pumpUntilFound(tester, find.byKey(const Key('progress.add_weight')));
@@ -247,7 +247,7 @@ void main() {
 
   testWidgets('Arabic weight target isolates its Western value and unit',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake()
+    final FakeMyosApi fake = _signedInFake()
       ..weightHistoryPoints = <Map<String, dynamic>>[
         <String, dynamic>{'date': '2026-09-01', 'weight_kg': 81.0},
         <String, dynamic>{'date': '2026-09-15', 'weight_kg': 82.5},
@@ -273,7 +273,7 @@ void main() {
 
   testWidgets('Progress weight entry uses the shared weight endpoint',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     await _pumpProgress(tester, fake);
     await tester.tap(find.text('Body weight'));
     await _pumpUntilFound(tester, find.byKey(const Key('progress.add_weight')));
@@ -293,7 +293,7 @@ void main() {
 
   testWidgets('Arabic Progress shows localized labels and Western chart digits',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     await _pumpProgress(tester, fake, languageCode: 'ar');
     expect(find.text('محطات التقدم'), findsOneWidget);
     expect(find.text('القوة'), findsOneWidget);
@@ -315,7 +315,7 @@ void main() {
 
   testWidgets('strength maps real history into the chart, rows, and units',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     await _pumpProgress(tester, fake);
 
     expect(find.text('Estimated 1RM'), findsOneWidget);
@@ -330,7 +330,7 @@ void main() {
 
   testWidgets('Progress lists Checkpoints newest first',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake()
+    final FakeMyosApi fake = _signedInFake()
       ..checkpointReviewRows = <Map<String, dynamic>>[
         for (final int checkpoint in <int>[25, 10])
           <String, dynamic>{
@@ -356,7 +356,7 @@ void main() {
 
   testWidgets('tapping a chart point shows that session\'s real values',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     await _pumpProgress(tester, fake);
 
     // Tapping the chart centre selects the middle (third of five) session.
@@ -382,7 +382,7 @@ void main() {
 
   testWidgets('zero-load body-weight history uses BW without e1RM',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake()
+    final FakeMyosApi fake = _signedInFake()
       ..loggedExercises = <Map<String, dynamic>>[
         <String, dynamic>{
           'id': 'push_up',
@@ -429,7 +429,7 @@ void main() {
 
   testWidgets('selecting another logged exercise reloads its history',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     await _pumpProgress(tester, fake);
 
     await tester.tap(find.byType(DropdownButton<String>));
@@ -447,7 +447,7 @@ void main() {
 
   testWidgets('volume period switching requests days=7, 28, and 90',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     await _pumpProgress(tester, fake);
 
     await tester.tap(find.text('Volume'));
@@ -468,7 +468,7 @@ void main() {
 
   testWidgets('volume shows weighted sets per muscle with numbers',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     await _pumpProgress(tester, fake);
     await tester.tap(find.text('Volume'));
     await tester.pump(const Duration(milliseconds: 200));
@@ -481,7 +481,7 @@ void main() {
 
   testWidgets('a single session shows one marker and a trend explanation',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake(points: 1);
+    final FakeMyosApi fake = _signedInFake(points: 1);
     await _pumpProgress(tester, fake);
 
     expect(find.byKey(const Key('progress.chart')), findsOneWidget);
@@ -491,7 +491,7 @@ void main() {
 
   testWidgets('no history shows an honest empty state with a Program action',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     fake.loggedExercises = <Map<String, dynamic>>[];
     await _pumpProgress(tester, fake);
 
@@ -502,7 +502,7 @@ void main() {
 
   testWidgets('no volume in the period shows a period-specific message',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     fake.volumeEmpty = true;
     await _pumpProgress(tester, fake);
     await tester.tap(find.text('Volume'));
@@ -514,7 +514,7 @@ void main() {
 
   testWidgets('offline first load shows the shared connectivity message',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     fake.loggedExercisesFails = true;
     await _pumpProgress(tester, fake, ready: find.text(needsConnectionMessage));
 
@@ -524,7 +524,7 @@ void main() {
 
   testWidgets('View exercise opens the exercise detail History tab',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     await _pumpApp(tester, fake);
     await _openProgressTab(tester);
 
@@ -539,18 +539,18 @@ void main() {
 
   testWidgets('bottom navigation now exposes Home, Program, and Progress',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     await _pumpApp(tester, fake);
 
-    final MayosBottomNavigation nav = tester
-        .widget<MayosBottomNavigation>(find.byType(MayosBottomNavigation));
-    expect(nav.items.map((MayosNavItem item) => item.label),
+    final MyosBottomNavigation nav = tester
+        .widget<MyosBottomNavigation>(find.byType(MyosBottomNavigation));
+    expect(nav.items.map((MyosNavItem item) => item.label),
         <String>['Home', 'Program', 'Progress']);
   });
 
   testWidgets('progress has no overflow at 360x640 and text scale 2.0',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     await _pumpProgress(
       tester,
       fake,
@@ -572,7 +572,7 @@ void main() {
       ThemeMode.light,
       ThemeMode.dark,
     ]) {
-      final FakeMayosApi fake = _signedInFake();
+      final FakeMyosApi fake = _signedInFake();
       await _pumpProgress(tester, fake, mode: mode);
       await tester.pump(const Duration(milliseconds: 400));
 

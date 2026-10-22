@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_choice_card.dart';
-import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/ui/myos_choice_card.dart';
+import 'package:myos_mobile/src/features/shared/mode_switch.dart';
+import 'package:myos_mobile/src/providers.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder) async {
   for (int i = 0; i < 40; i++) {
@@ -25,7 +25,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder) async {
 
 Future<void> _openSettings(
   WidgetTester tester,
-  FakeMayosApi fake, {
+  FakeMyosApi fake, {
   String language = 'en',
 }) async {
   fake.displayLanguage = language;
@@ -52,7 +52,7 @@ Future<void> _openSettings(
           return client;
         }),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   final String landingTitle = language == 'ar'
@@ -76,7 +76,7 @@ Future<void> _openSettings(
 
 Future<void> _openPersonalization(
   WidgetTester tester,
-  FakeMayosApi fake, {
+  FakeMyosApi fake, {
   String language = 'en',
 }) async {
   await _openSettings(tester, fake, language: language);
@@ -107,8 +107,8 @@ Future<void> _openPersonalization(
   );
 }
 
-FakeMayosApi _signedInFake() {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _signedInFake() {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -121,7 +121,7 @@ void main() {
   testWidgets('Personalization uses English copy and saves edited style', (
     WidgetTester tester,
   ) async {
-    final FakeMayosApi fake = _signedInFake()
+    final FakeMyosApi fake = _signedInFake()
       ..assistantStyle = 'scientific'
       ..assistantInstructions = 'Use short examples.';
     await _openPersonalization(tester, fake);
@@ -144,7 +144,7 @@ void main() {
     }
     expect(
       tester
-          .widget<MayosChoiceCard>(
+          .widget<MyosChoiceCard>(
             find.byKey(const Key('assistant_style_scientific')),
           )
           .selected,
@@ -204,7 +204,7 @@ void main() {
   testWidgets('offline load retries and offline save persists nothing', (
     WidgetTester tester,
   ) async {
-    final FakeMayosApi fake = _signedInFake()
+    final FakeMyosApi fake = _signedInFake()
       ..failOffline('PUT', '/profile/persona');
     await _openSettings(tester, fake);
     fake.failOffline('GET', '/profile');
@@ -243,7 +243,7 @@ void main() {
   testWidgets('preferred name can be edited and cleared from Settings', (
     WidgetTester tester,
   ) async {
-    final FakeMayosApi fake = _signedInFake()..preferredName = 'Current Name';
+    final FakeMyosApi fake = _signedInFake()..preferredName = 'Current Name';
     await _openPersonalization(tester, fake);
 
     final Finder nameField = find.byKey(const Key('preferred_name_field'));
@@ -267,7 +267,7 @@ void main() {
   testWidgets('preferred name can be set from empty in Settings', (
     WidgetTester tester,
   ) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     await _openPersonalization(tester, fake);
 
     final Finder nameField = find.byKey(const Key('preferred_name_field'));
@@ -286,7 +286,7 @@ void main() {
   testWidgets('preferred name validation and Settings copy use Arabic', (
     WidgetTester tester,
   ) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     await _openPersonalization(tester, fake, language: 'ar');
 
     expect(find.text('الاسم المفضّل'), findsWidgets);
@@ -303,7 +303,7 @@ void main() {
   testWidgets('coach-only account does not show Personalization', (
     WidgetTester tester,
   ) async {
-    final FakeMayosApi fake = _signedInFake()
+    final FakeMyosApi fake = _signedInFake()
       ..coach = true
       ..playerCapability = false;
     await _openSettings(tester, fake);

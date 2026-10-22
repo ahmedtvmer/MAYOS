@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import '../../../core/models.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/display_language/onboarding_copy.dart';
-import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/theme/mayos_theme.dart';
-import '../../../core/theme/mayos_typography.dart';
-import '../../../core/ui/mayos_card.dart';
-import '../../../core/ui/mayos_choice_card.dart';
-import '../../../core/ui/mayos_scaffold.dart';
-import '../../../core/ui/mayos_text_field.dart';
+import '../../../core/theme/myos_spacing.dart';
+import '../../../core/theme/myos_theme.dart';
+import '../../../core/theme/myos_typography.dart';
+import '../../../core/ui/myos_card.dart';
+import '../../../core/ui/myos_choice_card.dart';
+import '../../../core/ui/myos_scaffold.dart';
+import '../../../core/ui/myos_text_field.dart';
 import 'proportion_silhouette.dart';
 
 // ---------------------------------------------------------------------------
@@ -148,7 +148,7 @@ class OnboardingScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MayosScaffold(
+    return MyosScaffold(
       header: _OnboardingHeader(
         onBack: onBack,
         answered: answered,
@@ -173,10 +173,10 @@ class _OnboardingHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-          MayosSpacing.lg, MayosSpacing.sm, MayosSpacing.lg, MayosSpacing.xs),
+          MyosSpacing.lg, MyosSpacing.sm, MyosSpacing.lg, MyosSpacing.xs),
       child: Row(
         children: <Widget>[
           SizedBox(
@@ -196,10 +196,10 @@ class _OnboardingHeader extends StatelessWidget {
                 : const SizedBox.shrink(),
           ),
           if (total > 0) ...<Widget>[
-            const SizedBox(width: MayosSpacing.sm),
+            const SizedBox(width: MyosSpacing.sm),
             Text(
               '$answered/$total',
-              style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
+              style: MyosTypography.of(context).caption.copyWith(color: c.textMuted),
             ),
           ] else
             const SizedBox(width: 48),
@@ -223,7 +223,7 @@ class OnboardingProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Semantics(
       label: displayCopyOf(context).onboardingProgress(answered, total),
       child: Row(
@@ -231,8 +231,8 @@ class OnboardingProgressBar extends StatelessWidget {
           for (int i = 0; i < total; i++)
             Expanded(
               child: AnimatedContainer(
-                duration: MayosMotion.fast,
-                curve: MayosMotion.standard,
+                duration: MyosMotion.fast,
+                curve: MyosMotion.standard,
                 height: 3,
                 margin: const EdgeInsets.symmetric(horizontal: 1.5),
                 decoration: BoxDecoration(
@@ -264,38 +264,38 @@ class OnboardingQuestion extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
           question,
-          style: MayosTypography.of(context).pageHeading.copyWith(
+          style: MyosTypography.of(context).pageHeading.copyWith(
             color: c.textPrimary,
             fontSize: 30,
             height: 1.12,
           ),
         ),
         if (explanation != null) ...<Widget>[
-          const SizedBox(height: MayosSpacing.sm),
+          const SizedBox(height: MyosSpacing.sm),
           Text(
             explanation!,
-            style: MayosTypography.of(context).bodySecondary.copyWith(
+            style: MyosTypography.of(context).bodySecondary.copyWith(
               color: c.textSecondary,
               height: 1.5,
             ),
           ),
         ],
         if (note != null) ...<Widget>[
-          const SizedBox(height: MayosSpacing.xs),
+          const SizedBox(height: MyosSpacing.xs),
           Row(
             children: <Widget>[
               Icon(Icons.history, size: 14, color: c.textMuted),
-              const SizedBox(width: MayosSpacing.xxs),
+              const SizedBox(width: MyosSpacing.xxs),
               Flexible(
                 child: Text(
                   note!,
-                  style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
+                  style: MyosTypography.of(context).caption.copyWith(color: c.textMuted),
                 ),
               ),
             ],
@@ -314,18 +314,18 @@ class OnboardingInlineError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Semantics(
       liveRegion: true,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Icon(Icons.error_outline, size: 16, color: c.danger),
-          const SizedBox(width: MayosSpacing.xs),
+          const SizedBox(width: MyosSpacing.xs),
           Expanded(
             child: Text(
               message,
-              style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
+              style: MyosTypography.of(context).bodySecondary.copyWith(color: c.danger),
             ),
           ),
         ],
@@ -348,7 +348,7 @@ class OnboardingActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return DecoratedBox(
       decoration: BoxDecoration(
         color: c.canvas,
@@ -357,14 +357,14 @@ class OnboardingActions extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(MayosSpacing.lg, MayosSpacing.sm,
-              MayosSpacing.lg, MayosSpacing.md),
+          padding: const EdgeInsets.fromLTRB(MyosSpacing.lg, MyosSpacing.sm,
+              MyosSpacing.lg, MyosSpacing.md),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               primary,
               if (secondary != null) ...<Widget>[
-                const SizedBox(height: MayosSpacing.xs),
+                const SizedBox(height: MyosSpacing.xs),
                 secondary!,
               ],
             ],
@@ -385,7 +385,7 @@ class OnboardingStepBody extends StatelessWidget {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
-          MayosSpacing.lg, MayosSpacing.xl, MayosSpacing.lg, MayosSpacing.xxl),
+          MyosSpacing.lg, MyosSpacing.xl, MyosSpacing.lg, MyosSpacing.xxl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: children,
@@ -430,13 +430,13 @@ class OnboardingChoiceList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Column(
       children: <Widget>[
         for (final OnboardingChoiceOption option in options)
           Padding(
-            padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
-            child: MayosChoiceCard(
+            padding: const EdgeInsets.only(bottom: MyosSpacing.sm),
+            child: MyosChoiceCard(
               key: Key('${fieldName}_option_${option.value}'),
               title: option.label,
               subtitle: option.subtitle,
@@ -516,7 +516,7 @@ class ProportionSelector extends StatelessWidget {
             children: <Widget>[
               for (final Widget card in cards)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: MayosSpacing.xs),
+                  padding: const EdgeInsets.only(bottom: MyosSpacing.xs),
                   child: card,
                 ),
             ],
@@ -528,7 +528,7 @@ class ProportionSelector extends StatelessWidget {
             children: <Widget>[
               for (int i = 0; i < cards.length; i++) ...<Widget>[
                 if (i > 0)
-                  SizedBox(width: wide ? MayosSpacing.md : MayosSpacing.xs),
+                  SizedBox(width: wide ? MyosSpacing.md : MyosSpacing.xs),
                 Expanded(child: cards[i]),
               ],
             ],
@@ -567,7 +567,7 @@ class _ProportionCardState extends State<_ProportionCard> {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final bool selected = widget.selected;
     final Widget art = SizedBox(
       width: widget.stacked ? 58 : null,
@@ -577,7 +577,7 @@ class _ProportionCardState extends State<_ProportionCard> {
     final Widget label = Text(
       widget.title,
       textAlign: widget.stacked ? TextAlign.start : TextAlign.center,
-      style: MayosTypography.of(context).exerciseTitle.copyWith(
+      style: MyosTypography.of(context).exerciseTitle.copyWith(
         color: selected ? c.accent : c.textPrimary,
       ),
     );
@@ -586,7 +586,7 @@ class _ProportionCardState extends State<_ProportionCard> {
         : Text(
             widget.caption!,
             textAlign: widget.stacked ? TextAlign.start : TextAlign.center,
-            style: MayosTypography.of(context).caption.copyWith(color: c.textSecondary),
+            style: MyosTypography.of(context).caption.copyWith(color: c.textSecondary),
           );
 
     return Semantics(
@@ -597,14 +597,14 @@ class _ProportionCardState extends State<_ProportionCard> {
       excludeSemantics: true,
       child: AnimatedScale(
         scale: _pressed ? 0.98 : 1,
-        duration: MayosMotion.fast,
-        curve: MayosMotion.standard,
+        duration: MyosMotion.fast,
+        curve: MyosMotion.standard,
         child: AnimatedContainer(
           key: Key('proportions_option_${widget.value}'),
-          duration: MayosMotion.base,
-          curve: MayosMotion.standard,
+          duration: MyosMotion.base,
+          curve: MyosMotion.standard,
           padding: EdgeInsets.all(
-              widget.stacked ? MayosSpacing.sm : MayosSpacing.sm + 2),
+              widget.stacked ? MyosSpacing.sm : MyosSpacing.sm + 2),
           decoration: BoxDecoration(
             color: selected ? c.selectedSurface : c.surface,
             borderRadius: BorderRadius.circular(18),
@@ -628,7 +628,7 @@ class _ProportionCardState extends State<_ProportionCard> {
                   ? Row(
                       children: <Widget>[
                         art,
-                        const SizedBox(width: MayosSpacing.sm),
+                        const SizedBox(width: MyosSpacing.sm),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -642,7 +642,7 @@ class _ProportionCardState extends State<_ProportionCard> {
                             ],
                           ),
                         ),
-                        const SizedBox(width: MayosSpacing.xs),
+                        const SizedBox(width: MyosSpacing.xs),
                         _SelectionMark(selected: selected),
                       ],
                     )
@@ -654,13 +654,13 @@ class _ProportionCardState extends State<_ProportionCard> {
                           children: <Widget>[
                             Padding(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: MayosSpacing.xs),
+                                  horizontal: MyosSpacing.xs),
                               child: art,
                             ),
                             _SelectionMark(selected: selected),
                           ],
                         ),
-                        const SizedBox(height: MayosSpacing.xs),
+                        const SizedBox(height: MyosSpacing.xs),
                         label,
                         if (caption != null) ...<Widget>[
                           const SizedBox(height: 2),
@@ -683,10 +683,10 @@ class _SelectionMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return AnimatedContainer(
-      duration: MayosMotion.base,
-      curve: MayosMotion.standard,
+      duration: MyosMotion.base,
+      curve: MyosMotion.standard,
       width: 22,
       height: 22,
       decoration: BoxDecoration(
@@ -798,7 +798,7 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final OnboardingCopy copy =
         OnboardingCopy(displayCopyOf(context).languageCode);
     final String display = widget.value == null ? '—' : _format(widget.value);
@@ -811,7 +811,7 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
       children: <Widget>[
         Container(
           padding: const EdgeInsets.symmetric(
-              horizontal: MayosSpacing.md, vertical: MayosSpacing.lg),
+              horizontal: MyosSpacing.md, vertical: MyosSpacing.lg),
           decoration: BoxDecoration(
             color: c.surface,
             borderRadius: BorderRadius.circular(20),
@@ -836,19 +836,19 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
                         textDirection: TextDirection.ltr,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: MayosTypography.of(context).numeric.copyWith(
+                        style: MyosTypography.of(context).numeric.copyWith(
                           fontSize: 56,
                           color: c.textPrimary,
                         ),
                       ),
                     ),
                     if (widget.unit != null) ...<Widget>[
-                      const SizedBox(width: MayosSpacing.xs),
+                      const SizedBox(width: MyosSpacing.xs),
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
                         child: Text(
                           copy.measurementUnit(widget.unit!),
-                          style: MayosTypography.of(context).label
+                          style: MyosTypography.of(context).label
                               .copyWith(color: c.textSecondary),
                         ),
                       ),
@@ -856,7 +856,7 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
                   ],
                 ),
               ),
-              const SizedBox(height: MayosSpacing.md),
+              const SizedBox(height: MyosSpacing.md),
               Row(
                 children: <Widget>[
                   Expanded(
@@ -867,7 +867,7 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
                       onPressed: _canDecrement ? () => _step(-1) : null,
                     ),
                   ),
-                  const SizedBox(width: MayosSpacing.xs),
+                  const SizedBox(width: MyosSpacing.xs),
                   Expanded(
                     child: _StepButton(
                       buttonKey: Key('${widget.fieldName}_increment'),
@@ -881,14 +881,14 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
             ],
           ),
         ),
-        const SizedBox(height: MayosSpacing.xs),
+        const SizedBox(height: MyosSpacing.xs),
         Row(
           children: <Widget>[
             Expanded(
               child: Text(
                 copy.measurementRange(range, widget.unit),
                 textAlign: TextAlign.end,
-                style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
+                style: MyosTypography.of(context).caption.copyWith(color: c.textMuted),
               ),
             ),
             Flexible(
@@ -907,8 +907,8 @@ class _NumericFieldEditorState extends State<NumericFieldEditor> {
           ],
         ),
         if (_direct) ...<Widget>[
-          const SizedBox(height: MayosSpacing.xs),
-          MayosTextField(
+          const SizedBox(height: MyosSpacing.xs),
+          MyosTextField(
             fieldKey: Key('${widget.fieldName}_input'),
             controller: _controller,
             textDirection: TextDirection.ltr,
@@ -954,7 +954,7 @@ class _StepButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final bool enabled = onPressed != null;
     return Semantics(
       button: true,
@@ -999,14 +999,14 @@ class FrequencySelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final int? value = selected?.round();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Wrap(
-          spacing: MayosSpacing.xs,
-          runSpacing: MayosSpacing.xs,
+          spacing: MyosSpacing.xs,
+          runSpacing: MyosSpacing.xs,
           children: <Widget>[
             for (int day = minimum; day <= maximum; day++)
               _FrequencyPill(
@@ -1017,12 +1017,12 @@ class FrequencySelector extends StatelessWidget {
               ),
           ],
         ),
-        const SizedBox(height: MayosSpacing.sm),
+        const SizedBox(height: MyosSpacing.sm),
         Text(
           value == null
               ? displayCopyOf(context).chooseWeeklyTrainingDays
               : displayCopyOf(context).daysInWeek(value),
-          style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
+          style: MyosTypography.of(context).caption.copyWith(color: c.textMuted),
         ),
       ],
     );
@@ -1044,15 +1044,15 @@ class _FrequencyPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Semantics(
       button: true,
       selected: selected,
       label: displayCopyOf(context).daysInWeek(value),
       excludeSemantics: true,
       child: AnimatedContainer(
-        duration: MayosMotion.fast,
-        curve: MayosMotion.standard,
+        duration: MyosMotion.fast,
+        curve: MyosMotion.standard,
         width: 56,
         decoration: BoxDecoration(
           color: selected ? c.selectedSurface : c.surface,
@@ -1076,7 +1076,7 @@ class _FrequencyPill extends StatelessWidget {
                   Text(
                     '$value',
                     textDirection: TextDirection.ltr,
-                    style: MayosTypography.of(context).numericSmall.copyWith(
+                    style: MyosTypography.of(context).numericSmall.copyWith(
                       fontSize: 20,
                       color: selected ? c.accent : c.textPrimary,
                     ),
@@ -1085,7 +1085,7 @@ class _FrequencyPill extends StatelessWidget {
                     value == 1
                         ? displayCopyOf(context).day
                         : displayCopyOf(context).days,
-                    style: MayosTypography.of(context).caption.copyWith(
+                    style: MyosTypography.of(context).caption.copyWith(
                       color: selected ? c.accent : c.textMuted,
                     ),
                   ),
@@ -1139,7 +1139,7 @@ class _TextFieldEditorState extends State<TextFieldEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final List<String> chips = <String>[];
     for (final String chip in <String>[
       ...widget.quickOptions,
@@ -1152,7 +1152,7 @@ class _TextFieldEditorState extends State<TextFieldEditor> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        MayosTextField(
+        MyosTextField(
           fieldKey: Key('${widget.fieldName}_input'),
           controller: widget.controller,
           hint: widget.hint,
@@ -1161,15 +1161,15 @@ class _TextFieldEditorState extends State<TextFieldEditor> {
           onChanged: widget.onChanged,
         ),
         if (chips.isNotEmpty) ...<Widget>[
-          const SizedBox(height: MayosSpacing.md),
+          const SizedBox(height: MyosSpacing.md),
           Text(
             displayCopyOf(context).tapExampleToStart,
-            style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
+            style: MyosTypography.of(context).caption.copyWith(color: c.textMuted),
           ),
-          const SizedBox(height: MayosSpacing.xs),
+          const SizedBox(height: MyosSpacing.xs),
           Wrap(
-            spacing: MayosSpacing.xs,
-            runSpacing: MayosSpacing.xs,
+            spacing: MyosSpacing.xs,
+            runSpacing: MyosSpacing.xs,
             children: <Widget>[
               for (int i = 0; i < chips.length; i++)
                 _ExampleChip(
@@ -1198,7 +1198,7 @@ class _ExampleChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Material(
       color: c.secondarySurface,
       borderRadius: BorderRadius.circular(12),
@@ -1209,14 +1209,14 @@ class _ExampleChip extends StatelessWidget {
         child: Container(
           constraints: const BoxConstraints(minHeight: 48),
           padding: const EdgeInsets.symmetric(
-              horizontal: MayosSpacing.sm, vertical: MayosSpacing.xs),
+              horizontal: MyosSpacing.sm, vertical: MyosSpacing.xs),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: c.border),
           ),
           child: Text(
             label,
-            style: MayosTypography.of(context).bodySecondary
+            style: MyosTypography.of(context).bodySecondary
                 .copyWith(fontSize: 13, color: c.textSecondary),
           ),
         ),
@@ -1245,27 +1245,27 @@ class ReviewSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     if (fields.isEmpty) {
       return const SizedBox.shrink();
     }
     return Padding(
-      padding: const EdgeInsets.only(bottom: MayosSpacing.md),
+      padding: const EdgeInsets.only(bottom: MyosSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           Padding(
             padding: const EdgeInsetsDirectional.only(
-                start: MayosSpacing.xxs, bottom: MayosSpacing.xs),
+                start: MyosSpacing.xxs, bottom: MyosSpacing.xs),
             child: Text(
               title.toUpperCase(),
-              style: MayosTypography.of(context).caption.copyWith(
+              style: MyosTypography.of(context).caption.copyWith(
                 color: c.textMuted,
                 letterSpacing: 1.2,
               ),
             ),
           ),
-          MayosCard(
+          MyosCard(
             padding: EdgeInsets.zero,
             child: Column(
               children: <Widget>[
@@ -1291,7 +1291,7 @@ class _ReviewRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final OnboardingCopy copy =
         OnboardingCopy(displayCopyOf(context).languageCode);
     final String value = displayAnswer(field, copy: copy);
@@ -1301,7 +1301,7 @@ class _ReviewRow extends StatelessWidget {
       onTap: onEdit,
       child: Padding(
         padding: const EdgeInsets.symmetric(
-            horizontal: MayosSpacing.md, vertical: MayosSpacing.sm + 2),
+            horizontal: MyosSpacing.md, vertical: MyosSpacing.sm + 2),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -1311,21 +1311,21 @@ class _ReviewRow extends StatelessWidget {
                 children: <Widget>[
                   Text(
                     copy.reviewLabel(field.name, serverLabel: field.label),
-                    style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
+                    style: MyosTypography.of(context).caption.copyWith(color: c.textMuted),
                   ),
-                  const SizedBox(height: MayosSpacing.xxs),
+                  const SizedBox(height: MyosSpacing.xxs),
                   Text(
                     value,
-                    style: MayosTypography.of(context).body.copyWith(
+                    style: MyosTypography.of(context).body.copyWith(
                       color: answered ? c.textPrimary : c.textMuted,
                     ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: MayosSpacing.sm),
+            const SizedBox(width: MyosSpacing.sm),
             Padding(
-              padding: const EdgeInsets.only(top: MayosSpacing.xxs),
+              padding: const EdgeInsets.only(top: MyosSpacing.xxs),
               child:
                   Icon(Icons.edit_outlined, size: 20, color: c.textSecondary),
             ),

@@ -1,8 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
-import 'package:mayos_mobile/src/features/player/auth/google_auth_gateway.dart';
+import 'package:myos_mobile/src/core/theme/myos_spacing.dart';
+import 'package:myos_mobile/src/features/player/auth/google_auth_gateway.dart';
 
 /// A scripted stand-in for the Google SDK, so the sign-in flows run without a
 /// platform channel (#115).
@@ -43,7 +43,7 @@ class FakeGoogleAuthGateway implements GoogleAuthGateway {
     renderedButtonDarkTheme = darkTheme;
     return SizedBox(
         key: const Key('fake_google_web_button'),
-        height: kMayosMinTapTarget,
+        height: kMyosMinTapTarget,
         width: width,
         child: const ColoredBox(color: Colors.transparent),
       );

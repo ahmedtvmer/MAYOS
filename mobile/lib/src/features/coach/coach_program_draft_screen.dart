@@ -12,13 +12,13 @@ import '../../core/display_language/copy_context.dart';
 import '../../core/display_language/feature_copy_context.dart';
 import '../../core/models.dart';
 import '../../core/program_prescription.dart';
-import '../../core/theme/mayos_spacing.dart';
-import '../../core/theme/mayos_theme.dart';
-import '../../core/theme/mayos_typography.dart';
+import '../../core/theme/myos_spacing.dart';
+import '../../core/theme/myos_theme.dart';
+import '../../core/theme/myos_typography.dart';
 import '../../core/ui/is_desktop_layout.dart';
-import '../../core/ui/mayos_bottom_sheet_editor.dart';
-import '../../core/ui/mayos_button.dart';
-import '../../core/ui/mayos_card.dart';
+import '../../core/ui/myos_bottom_sheet_editor.dart';
+import '../../core/ui/myos_button.dart';
+import '../../core/ui/myos_card.dart';
 import '../../providers.dart';
 import 'coach_exercise_picker_dialog.dart';
 import 'program_import_files.dart';
@@ -421,28 +421,28 @@ class _CoachProgramDraftScreenState
           _weekDropdown(copy)
         else
           _weekTabStrip(copy),
-        const SizedBox(height: MayosSpacing.xs),
+        const SizedBox(height: MyosSpacing.xs),
         _weekNameField(copy),
         _weekOrderButtons(copy),
       ],
     );
   }
 
-  Widget _addWeekButton(CoachCopy copy) => MayosButton(
+  Widget _addWeekButton(CoachCopy copy) => MyosButton(
         key: const Key('program_draft_add_week'),
         label: copy.addWeek,
         icon: Icons.add,
-        variant: MayosButtonVariant.secondary,
+        variant: MyosButtonVariant.secondary,
         onPressed: _busy || _weeks.length >= ProgramDraftPrescription.maxWeeks
             ? null
             : _addWeek,
       );
 
-  Widget _duplicateWeekButton(CoachCopy copy) => MayosButton(
+  Widget _duplicateWeekButton(CoachCopy copy) => MyosButton(
         key: const Key('program_draft_duplicate_week'),
         label: copy.duplicateWeek,
         icon: Icons.copy_outlined,
-        variant: MayosButtonVariant.secondary,
+        variant: MyosButtonVariant.secondary,
         onPressed: _busy || _weeks.length >= ProgramDraftPrescription.maxWeeks
             ? null
             : _duplicateWeek,
@@ -454,7 +454,7 @@ class _CoachProgramDraftScreenState
           children: <Widget>[
             for (int index = 0; index < _weeks.length; index++)
               Padding(
-                padding: const EdgeInsetsDirectional.only(end: MayosSpacing.xs),
+                padding: const EdgeInsetsDirectional.only(end: MyosSpacing.xs),
                 child: TextButton(
                   key: Key('program_draft_week_tab_${index + 1}'),
                   onPressed: () => _selectWeek(index),
@@ -1046,7 +1046,7 @@ class _CoachProgramDraftScreenState
   @override
   Widget build(BuildContext context) {
     final copy = coachCopyOf(context);
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     return PopScope<Object?>(
       canPop: _allowPop || !_hasUnsavedChanges,
       onPopInvokedWithResult: _onPopInvoked,
@@ -1089,17 +1089,17 @@ class _CoachProgramDraftScreenState
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 960),
                           child: ListView(
-                            padding: MayosSpacing.screen,
+                            padding: MyosSpacing.screen,
                             children: <Widget>[
                               if (!widget.isTemplateMode &&
                                   _sourceTemplateName != null) ...<Widget>[
                                 Text(
                                   copy.fromTemplate(_sourceTemplateName!),
                                   key: const Key('program_draft_source_template'),
-                                  style: MayosTypography.of(context)
+                                  style: MyosTypography.of(context)
                                       .bodySecondary,
                                 ),
-                                const SizedBox(height: MayosSpacing.sm),
+                                const SizedBox(height: MyosSpacing.sm),
                               ],
                               if (widget.isTemplateMode) ...<Widget>[
                                 TextField(
@@ -1116,7 +1116,7 @@ class _CoachProgramDraftScreenState
                                     });
                                   },
                                 ),
-                                const SizedBox(height: MayosSpacing.sm),
+                                const SizedBox(height: MyosSpacing.sm),
                                 TextField(
                                   key: const Key('program_template_description'),
                                   controller: _templateDescription,
@@ -1135,43 +1135,43 @@ class _CoachProgramDraftScreenState
                                 ),
                               ] else
                                 Text(widget.playerUsername ?? '',
-                                    style: MayosTypography.of(context).sectionHeading),
-                              const SizedBox(height: MayosSpacing.md),
+                                    style: MyosTypography.of(context).sectionHeading),
+                              const SizedBox(height: MyosSpacing.md),
                               if (_weeks.length > 1) ...<Widget>[
                                 _weekControls(copy),
-                                const SizedBox(height: MayosSpacing.md),
+                                const SizedBox(height: MyosSpacing.md),
                               ],
                               for (int index = 0; index < _days.length; index++)
                                 _dayCard(context, index),
-                              MayosButton(
+                              MyosButton(
                                 key: const Key('program_draft_add_day'),
                                 label: copy.addDay,
                                 icon: Icons.add,
-                                variant: MayosButtonVariant.secondary,
+                                variant: MyosButtonVariant.secondary,
                                 onPressed: _days.length >=
                                             ProgramDraftPrescription.maxDays ||
                                         _busy
                                     ? null
                                     : _addDay,
                               ),
-                              const SizedBox(height: MayosSpacing.xs),
+                              const SizedBox(height: MyosSpacing.xs),
                               _addWeekButton(copy),
-                              const SizedBox(height: MayosSpacing.xs),
+                              const SizedBox(height: MyosSpacing.xs),
                               _duplicateWeekButton(copy),
                               if (_days.isEmpty) ...<Widget>[
-                                const SizedBox(height: MayosSpacing.sm),
+                                const SizedBox(height: MyosSpacing.sm),
                                 Text(copy.noTrainingDays),
                               ],
                               if (_inputError != null ||
                                   _serverSummary != null ||
                                   _failure != null) ...<Widget>[
-                                const SizedBox(height: MayosSpacing.md),
+                                const SizedBox(height: MyosSpacing.md),
                                 Text(
                                   _inputError ??
                                       _serverSummary ??
                                       displayCopyOf(context)
                                           .failureMessage(_failure!),
-                                  style: MayosTypography.of(context).body
+                                  style: MyosTypography.of(context).body
                                       .copyWith(color: colors.danger),
                                 ),
                               ],
@@ -1183,32 +1183,32 @@ class _CoachProgramDraftScreenState
                     SafeArea(
                       top: false,
                       child: Padding(
-                        padding: MayosSpacing.screen,
+                        padding: MyosSpacing.screen,
                         child: Column(
                           children: <Widget>[
-                            MayosButton(
+                            MyosButton(
                               key: const Key('program_draft_save'),
                               label: widget.isTemplateMode
                                   ? copy.saveTemplate
                                   : copy.saveDraft,
                               variant: widget.isTemplateMode
-                                  ? MayosButtonVariant.primary
-                                  : MayosButtonVariant.secondary,
+                                  ? MyosButtonVariant.primary
+                                  : MyosButtonVariant.secondary,
                               loading: _saving,
                               onPressed: _busy ? null : _saveDraft,
                             ),
                             if (!widget.isTemplateMode) ...<Widget>[
-                              const SizedBox(height: MayosSpacing.xs),
-                              MayosButton(
+                              const SizedBox(height: MyosSpacing.xs),
+                              MyosButton(
                                 key: const Key('program_draft_publish'),
                                 label: copy.publishDraft,
                                 loading: _publishing,
                                 onPressed: _busy ? null : _publishDraft,
                               ),
-                              MayosButton(
+                              MyosButton(
                                 key: const Key('program_draft_discard'),
                                 label: copy.discardDraft,
-                                variant: MayosButtonVariant.tertiary,
+                                variant: MyosButtonVariant.tertiary,
                                 loading: _discarding,
                                 onPressed: _busy ? null : _discardDraft,
                               ),
@@ -1238,13 +1238,13 @@ class _CoachProgramDraftScreenState
         : displayCopyOf(context).failureMessage(_failure!);
     return Center(
       child: Padding(
-        padding: MayosSpacing.screen,
+        padding: MyosSpacing.screen,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: MayosSpacing.md),
-            MayosButton(
+            const SizedBox(height: MyosSpacing.md),
+            MyosButton(
               label: coachCopyOf(context).retry,
               expand: false,
               onPressed: _retryLoad,
@@ -1378,7 +1378,7 @@ class _CoachProgramDraftScreenState
 
   Future<void> _editExercise(int dayIndex, int exerciseIndex) async {
     final CoachCopy copy = coachCopyOf(context);
-    await showMayosBottomSheetEditor<void>(
+    await showMyosBottomSheetEditor<void>(
       context: context,
       content: ValueListenableBuilder<int>(
         valueListenable: _editorRevision,
@@ -1389,7 +1389,7 @@ class _CoachProgramDraftScreenState
           isEditorForm: true,
         ),
       ),
-      actions: MayosButton(
+      actions: MyosButton(
         key: const Key('program_draft_exercise_save'),
         label: copy.exerciseEditorDone,
         onPressed: () => Navigator.of(context).pop(),
@@ -1470,14 +1470,14 @@ String? _trimToNull(String value) {
 Widget _editorErrorText(
   BuildContext context,
   String? message,
-  MayosThemeExtension colors,
+  MyosThemeExtension colors,
 ) {
   if (message == null) return const SizedBox.shrink();
   return Padding(
-    padding: const EdgeInsets.only(top: MayosSpacing.xs),
+    padding: const EdgeInsets.only(top: MyosSpacing.xs),
     child: Text(
       message,
-      style: MayosTypography.of(context).body.copyWith(color: colors.danger),
+      style: MyosTypography.of(context).body.copyWith(color: colors.danger),
     ),
   );
 }

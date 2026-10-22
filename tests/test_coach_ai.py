@@ -1489,7 +1489,7 @@ def test_issue_148_messages_have_one_leading_system_message():
     ]
     assert system_message_indexes == [0]
     assert messages[0].content.startswith(
-        'You are "CoachIdentifyName"\'s coaching assistant in MAYOS.\n'
+        'You are "CoachIdentifyName"\'s coaching assistant in MYOS.\n'
         'You are talking to "CoachIdentifyName" about their player "Ahmed", whose data follows.'
     )
     assert messages[0].content.endswith(context_text)

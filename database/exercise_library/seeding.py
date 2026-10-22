@@ -1,4 +1,4 @@
-"""Exercise library upserts with curation from MAYOS-owned data (ADR 070)."""
+"""Exercise library upserts with curation from MYOS-owned data (ADR 070)."""
 
 import re
 
@@ -45,7 +45,7 @@ class ExerciseSeedingMixin:
             _upsert_exercise_rows(cursor, authored_rows)
             _replace_secondary_muscles(cursor, authored_rows, authored_muscles)
             _upsert_provenance(cursor, exercise_rows, "ExerciseDB")
-            _upsert_provenance(cursor, authored_rows, "MAYOS")
+            _upsert_provenance(cursor, authored_rows, "MYOS")
             apply_exercise_curation(cursor, curation_path)
             sync_exercise_embeddings(cursor, all_rows)
 
@@ -120,7 +120,7 @@ def _secondary_muscle_rows(df, muscle_cols):
 def _authored_seed_rows():
     rows = []
     muscles = []
-    for exercise in authored.MAYOS_AUTHORED_EXERCISES:
+    for exercise in authored.MYOS_AUTHORED_EXERCISES:
         rows.append((
             exercise["id"], exercise["name"], exercise["body_part"],
             exercise["target_muscle"], exercise["equipment"],

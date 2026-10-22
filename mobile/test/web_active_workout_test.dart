@@ -1,24 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/active_workout.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/baselines.dart';
-import 'package:mayos_mobile/src/core/browser_key_value_store.dart';
-import 'package:mayos_mobile/src/core/chat_storage.dart';
-import 'package:mayos_mobile/src/core/device_timezone.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/web_active_workout_store.dart';
-import 'package:mayos_mobile/src/core/workout_storage.dart';
-import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/active_workout.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/baselines.dart';
+import 'package:myos_mobile/src/core/browser_key_value_store.dart';
+import 'package:myos_mobile/src/core/chat_storage.dart';
+import 'package:myos_mobile/src/core/device_timezone.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/web_active_workout_store.dart';
+import 'package:myos_mobile/src/core/workout_storage.dart';
+import 'package:myos_mobile/src/features/player/workout/workout_logger_screen.dart';
+import 'package:myos_mobile/src/providers.dart';
 
 import 'support/fake_api_adapter.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 import 'support/in_memory_browser_key_value_store.dart';
 
 const String _account = 'account-alice';
@@ -94,7 +94,7 @@ ActiveWorkout _reorderWorkout() {
   );
 }
 
-FakeMayosApi _fake() => FakeMayosApi()
+FakeMyosApi _fake() => FakeMyosApi()
   ..issuedToken = 'token-alice'
   ..currentUsername = 'alice'
   ..tokenValid = true
@@ -115,7 +115,7 @@ Future<void> _pumpUntil(
 
 Future<_WebHarness> _pumpWebApp(
   WidgetTester tester, {
-  required FakeMayosApi fake,
+  required FakeMyosApi fake,
   required InMemoryBrowserKeyValueStore browser,
   required WebActiveWorkoutStore store,
   ActiveWorkout? initialWorkout,
@@ -169,13 +169,13 @@ Future<_WebHarness> _pumpWebApp(
           return client;
         }),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntil(tester, find.text('Home'));
   await tester.pumpAndSettle();
   final ProviderContainer container =
-      ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+      ProviderScope.containerOf(tester.element(find.byType(MyosApp)));
   await container
       .read(activeWorkoutControllerProvider.notifier)
       .syncAccount(_account);
@@ -200,7 +200,7 @@ Future<void> _finishToSummary(WidgetTester tester) async {
 class _WebHarness {
   const _WebHarness(this.fake, this.browser, this.store, this.tokens);
 
-  final FakeMayosApi fake;
+  final FakeMyosApi fake;
   final InMemoryBrowserKeyValueStore browser;
   final WebActiveWorkoutStore store;
   final InMemoryTokenStore tokens;
@@ -237,7 +237,7 @@ class _DeniedBrowserStorage implements BrowserKeyValueStore {
 void main() {
   testWidgets('Arabic phone logger explains grouped AMRAP as a rep minimum',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake()..displayLanguage = 'ar';
+    final FakeMyosApi fake = _fake()..displayLanguage = 'ar';
     final ActiveWorkout base = _workout();
     final ActiveWorkoutExercise exercise = ActiveWorkoutExercise(
       targetLabel: '1 × 5 @ RIR 2 · 2 × 10 @ RIR 1 · AMRAP',
@@ -329,7 +329,7 @@ void main() {
 
   testWidgets('web commit sends ticked Warm-up movement rows and Cardio',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake();
+    final FakeMyosApi fake = _fake();
     final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
     final WebActiveWorkoutStore store = WebActiveWorkoutStore(storage: browser);
     final ActiveWorkout workout = _workout().copyWith(
@@ -399,7 +399,7 @@ void main() {
 
   testWidgets('restored browser workout is offered after rebuilding the app',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake();
+    final FakeMyosApi fake = _fake();
     final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
     final WebActiveWorkoutStore first = WebActiveWorkoutStore(storage: browser);
     final _WebHarness harness = await _pumpWebApp(
@@ -431,7 +431,7 @@ void main() {
   testWidgets('exercise order and Current set survive a browser reload',
       (WidgetTester tester) async {
     final SemanticsHandle semantics = tester.ensureSemantics();
-    final FakeMayosApi fake = _fake();
+    final FakeMyosApi fake = _fake();
     final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
     final WebActiveWorkoutStore store = WebActiveWorkoutStore(storage: browser);
     await _pumpWebApp(
@@ -526,7 +526,7 @@ void main() {
 
   testWidgets('retry keeps the original id and commits after a 5xx',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake()..commitFails = true;
+    final FakeMyosApi fake = _fake()..commitFails = true;
     final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
     final WebActiveWorkoutStore store = WebActiveWorkoutStore(storage: browser);
     await _pumpWebApp(
@@ -541,7 +541,7 @@ void main() {
     await tester.tap(find.text('Save workout'));
     await tester.pumpAndSettle();
 
-    expect(find.text('MAYOS is busy. Your workout is kept in this browser.'),
+    expect(find.text('MYOS is busy. Your workout is kept in this browser.'),
         findsOneWidget);
     expect(find.text('Retry'), findsOneWidget);
     expect((await store.read(_account))?.clientSessionId, _sessionId);
@@ -575,7 +575,7 @@ void main() {
 
   testWidgets('Back after a successful web commit leaves the logger',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake();
+    final FakeMyosApi fake = _fake();
     final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
     final WebActiveWorkoutStore store = WebActiveWorkoutStore(storage: browser);
     await _pumpWebApp(
@@ -600,7 +600,7 @@ void main() {
 
   testWidgets('retry reconciles a lost response without posting twice',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake()..commitResponseLost = true;
+    final FakeMyosApi fake = _fake()..commitResponseLost = true;
     final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
     final WebActiveWorkoutStore store = WebActiveWorkoutStore(storage: browser);
     await _pumpWebApp(
@@ -632,7 +632,7 @@ void main() {
 
   testWidgets('reload after a failed commit reconciles before another POST',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake()..commitResponseLost = true;
+    final FakeMyosApi fake = _fake()..commitResponseLost = true;
     final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
     final WebActiveWorkoutStore store = WebActiveWorkoutStore(storage: browser);
     final _WebHarness harness = await _pumpWebApp(
@@ -677,7 +677,7 @@ void main() {
 
   testWidgets('network failure keeps the workout and exposes Retry',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake()
+    final FakeMyosApi fake = _fake()
       ..offlineRequests.add('POST /workouts/sessions');
     final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
     final WebActiveWorkoutStore store = WebActiveWorkoutStore(storage: browser);
@@ -693,7 +693,7 @@ void main() {
     await tester.tap(find.text('Save workout'));
     await _pumpUntil(tester, find.text('Retry'));
 
-    expect(find.textContaining("Couldn't reach MAYOS"), findsOneWidget);
+    expect(find.textContaining("Couldn't reach MYOS"), findsOneWidget);
     expect((await store.read(_account))?.clientSessionId, _sessionId);
     fake.offlineRequests.clear();
     await tester.tap(find.text('Retry'));
@@ -708,7 +708,7 @@ void main() {
 
   testWidgets('401 keeps the workout and never offers Discard',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake()
+    final FakeMyosApi fake = _fake()
       ..commitRefusalStatusCode = 401
       ..commitRefusalMessage = 'Please sign in again.';
     final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
@@ -731,7 +731,7 @@ void main() {
 
   testWidgets('429 keeps the workout and offers Retry',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake()
+    final FakeMyosApi fake = _fake()
       ..commitRefusalStatusCode = 429
       ..commitRefusalMessage = 'Please slow down.';
     final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
@@ -759,7 +759,7 @@ void main() {
 
   testWidgets('unexpected Save error keeps the workout and offers Retry',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake();
+    final FakeMyosApi fake = _fake();
     final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
     final WebActiveWorkoutStore store = WebActiveWorkoutStore(storage: browser);
     await _pumpWebApp(
@@ -777,7 +777,7 @@ void main() {
 
     expect(
         find.text(
-            "Couldn't reach MAYOS. Your workout is kept in this browser."),
+            "Couldn't reach MYOS. Your workout is kept in this browser."),
         findsOneWidget);
     expect(find.text('Discard workout'), findsNothing);
     expect((await store.read(_account))?.commitAttempted, isTrue);
@@ -785,7 +785,7 @@ void main() {
 
   testWidgets('4xx shows the server detail and allows discarding',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake()
+    final FakeMyosApi fake = _fake()
       ..commitRefusalStatusCode = 422
       ..commitRefusalMessage = 'The workout cannot be recorded.';
     final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
@@ -814,7 +814,7 @@ void main() {
 
   testWidgets('first web start notice is remembered for the account',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake();
+    final FakeMyosApi fake = _fake();
     final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
     final WebActiveWorkoutStore store = WebActiveWorkoutStore(storage: browser);
     await _pumpWebApp(
@@ -842,7 +842,7 @@ void main() {
     );
 
     final ProviderContainer container =
-        ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+        ProviderScope.containerOf(tester.element(find.byType(MyosApp)));
     await container
         .read(activeWorkoutControllerProvider.notifier)
         .discard(accountId: _account);
@@ -858,7 +858,7 @@ void main() {
 
   testWidgets('web logout warns and discards the unfinished workout',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake();
+    final FakeMyosApi fake = _fake();
     final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
     final WebActiveWorkoutStore store = WebActiveWorkoutStore(storage: browser);
     await _pumpWebApp(
@@ -886,7 +886,7 @@ void main() {
 
   testWidgets('account_deleted response erases the browser workout',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _fake()
+    final FakeMyosApi fake = _fake()
       ..commitRefusalStatusCode = 401
       ..commitRefusalErrorCode = 'account_deleted';
     final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
@@ -914,7 +914,7 @@ void main() {
 
   test('account deletion erases browser Active workout and notice flag',
       () async {
-    final FakeMayosApi fake = _fake()..passwords['alice'] = 'correct-horse';
+    final FakeMyosApi fake = _fake()..passwords['alice'] = 'correct-horse';
     final InMemoryBrowserKeyValueStore browser = InMemoryBrowserKeyValueStore();
     final WebActiveWorkoutStore store = WebActiveWorkoutStore(storage: browser);
     await store.write(_account, _workout());

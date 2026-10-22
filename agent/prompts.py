@@ -60,7 +60,7 @@ def render_assistant_style(style_key: str, instructions: str) -> str:
 CLINICAL_SAFEGUARD_RESPONSE = (
     "⚠️ **Movement Discontinued & Clinical Safeguard Triggered**\n\n"
     "Acute, sharp, popping, or radiating neural sensations indicate potential soft-tissue "
-    "or joint injury. **Mayos is an automated training ledger and biomechanics engine, not a physician.**\n\n"
+    "or joint injury. **Myos is an automated training ledger and biomechanics engine, not a physician.**\n\n"
     "- **Cease training the affected movement immediately.**\n"
     "- Do not attempt to work through sharp or radiating pain.\n"
     "- Seek diagnostic evaluation from a licensed sports medicine physician or physical therapist."
@@ -68,7 +68,7 @@ CLINICAL_SAFEGUARD_RESPONSE = (
 
 DIAGNOSIS_SAFEGUARD_RESPONSE = (
     "I cannot diagnose musculoskeletal injuries, joint aches, or underlying pathology. "
-    "Mayos is an automated training ledger and biomechanics engine, not a clinical physician. "
+    "Myos is an automated training ledger and biomechanics engine, not a clinical physician. "
     "Immediately discontinue any exercise causing localized joint pain or aching, and consult "
     "a licensed physical therapist for an evaluation."
 )
@@ -76,7 +76,7 @@ DIAGNOSIS_SAFEGUARD_RESPONSE = (
 ARABIC_CLINICAL_SAFEGUARD_RESPONSE = (
     "⚠️ **تم إيقاف الحركة وتفعيل إجراء السلامة السريرية**\n\n"
     "قد تشير الأحاسيس الحادة أو المفاجئة، مثل الفرقعة أو الألم الممتد مع تنميل، إلى إصابة محتملة "
-    "في الأنسجة الرخوة أو المفصل. **MAYOS سجل تدريب آلي ومحرك لميكانيكا الحركة، وليس طبيبًا.**\n\n"
+    "في الأنسجة الرخوة أو المفصل. **MYOS سجل تدريب آلي ومحرك لميكانيكا الحركة، وليس طبيبًا.**\n\n"
     "- **أوقف فورًا تدريب الحركة المتأثرة.**\n"
     "- لا تحاول مواصلة التدريب مع الألم الحاد أو الممتد.\n"
     "- اطلب تقييمًا تشخيصيًا من طبيب مختص في الطب الرياضي أو أخصائي علاج طبيعي مرخّص."
@@ -84,7 +84,7 @@ ARABIC_CLINICAL_SAFEGUARD_RESPONSE = (
 
 ARABIC_DIAGNOSIS_SAFEGUARD_RESPONSE = (
     "لا أستطيع تشخيص إصابات الجهاز العضلي الهيكلي أو آلام المفاصل أو الحالات المرضية الكامنة. "
-    "MAYOS سجل تدريب آلي ومحرك لميكانيكا الحركة، وليس طبيبًا. أوقف فورًا أي تمرين يسبب ألمًا موضعيًا "
+    "MYOS سجل تدريب آلي ومحرك لميكانيكا الحركة، وليس طبيبًا. أوقف فورًا أي تمرين يسبب ألمًا موضعيًا "
     "في المفصل أو وجعًا، واستشر أخصائي علاج طبيعي مرخّصًا لتقييم الحالة."
 )
 

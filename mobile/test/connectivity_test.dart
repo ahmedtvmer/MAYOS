@@ -3,19 +3,19 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/connectivity.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_app_header.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_scaffold.dart';
-import 'package:mayos_mobile/src/features/player/auth/auth_widgets.dart';
-import 'package:mayos_mobile/src/providers.dart';
-import 'package:mayos_mobile/src/router.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/connectivity.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/ui/myos_app_header.dart';
+import 'package:myos_mobile/src/core/ui/myos_scaffold.dart';
+import 'package:myos_mobile/src/features/player/auth/auth_widgets.dart';
+import 'package:myos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/router.dart';
 
 import 'support/auth_harness.dart';
 import 'support/fake_api_adapter.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 /// Pumps frames until [finder] matches, avoiding `pumpAndSettle`.
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
@@ -31,8 +31,8 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   }
 }
 
-FakeMayosApi _signedInFake() {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _signedInFake() {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -109,7 +109,7 @@ void main() {
 
   testWidgets('the offline banner shows while offline and clears when online',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     await tokens.save('token-alice');
 
@@ -122,7 +122,7 @@ void main() {
     ));
     await _pumpUntilFound(tester, find.text('Home'));
     final ProviderContainer container = ProviderScope.containerOf(
-      tester.element(find.byType(MayosApp)),
+      tester.element(find.byType(MyosApp)),
       listen: false,
     );
     container.read(routerProvider).go('/no-such-page');
@@ -140,7 +140,7 @@ void main() {
 
   testWidgets('browser events drive the banner below the app header',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     await tokens.save('token-alice');
     final StreamController<bool> browserEvents =
@@ -165,9 +165,9 @@ void main() {
     await tester.pump();
     expect(find.text(OfflineBanner.message), findsOneWidget);
 
-    final Rect header = tester.getRect(find.byType(MayosAppHeader));
+    final Rect header = tester.getRect(find.byType(MyosAppHeader));
     final Rect banner = tester.getRect(find.byType(OfflineBanner));
-    final Rect body = tester.getRect(find.byKey(MayosScaffold.bodyContentKey));
+    final Rect body = tester.getRect(find.byKey(MyosScaffold.bodyContentKey));
     expect(banner.top, greaterThanOrEqualTo(header.bottom));
     expect(banner.bottom, lessThanOrEqualTo(body.top));
 
@@ -179,7 +179,7 @@ void main() {
 
   testWidgets('the auth banner is at the top of content and keeps its slot',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = FakeMayosApi();
+    final FakeMyosApi fake = FakeMyosApi();
     final StreamController<bool> browserEvents =
         StreamController<bool>.broadcast();
     addTearDown(browserEvents.close);
@@ -218,7 +218,7 @@ void main() {
 
   testWidgets('no banner without the web flag, even when offline',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
+    final FakeMyosApi fake = _signedInFake();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     await tokens.save('token-alice');
 
@@ -228,7 +228,7 @@ void main() {
     await _pumpUntilFound(tester, find.text('Home'));
 
     final ProviderContainer container = ProviderScope.containerOf(
-      tester.element(find.byType(MayosApp)),
+      tester.element(find.byType(MyosApp)),
       listen: false,
     );
     container.read(connectivityControllerProvider.notifier).markOffline();

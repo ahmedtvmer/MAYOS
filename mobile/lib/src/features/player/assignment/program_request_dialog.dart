@@ -7,11 +7,11 @@ import '../../../core/display_language/assignment_copy.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/models.dart';
-import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/theme/mayos_theme.dart';
-import '../../../core/theme/mayos_typography.dart';
-import '../../../core/ui/mayos_button.dart';
-import '../../../core/ui/mayos_text_field.dart';
+import '../../../core/theme/myos_spacing.dart';
+import '../../../core/theme/myos_theme.dart';
+import '../../../core/theme/myos_typography.dart';
+import '../../../core/ui/myos_button.dart';
+import '../../../core/ui/myos_text_field.dart';
 import '../../../providers.dart';
 
 /// The read-only substitution slot shown before the player enters a reason.
@@ -269,8 +269,8 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
           alignment: AlignmentDirectional.centerStart,
           child: Text(
             value,
-            style: MayosTypography.of(context).body.copyWith(
-              color: MayosTheme.of(context).textPrimary,
+            style: MyosTypography.of(context).body.copyWith(
+              color: MyosTheme.of(context).textPrimary,
             ),
             textDirection: TextDirection.ltr,
           ),
@@ -283,31 +283,31 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
     if (prefill != null) {
       return <Widget>[
         _buildReadOnlyValue(context, copy.day, prefill.dayName),
-        const SizedBox(height: MayosSpacing.md),
+        const SizedBox(height: MyosSpacing.md),
         _buildReadOnlyValue(context, copy.exercise, prefill.exerciseName),
-        const SizedBox(height: MayosSpacing.md),
+        const SizedBox(height: MyosSpacing.md),
         _buildReadOnlyValue(context, copy.replacement, prefill.replacementName),
       ];
     }
     return <Widget>[
-      MayosTextField(
+      MyosTextField(
         fieldKey: const Key('program_request_day_field'),
         controller: _day,
         label: copy.dayName,
       ),
-      const SizedBox(height: MayosSpacing.md),
+      const SizedBox(height: MyosSpacing.md),
       Directionality(
         textDirection: TextDirection.ltr,
-        child: MayosTextField(
+        child: MyosTextField(
           fieldKey: const Key('program_request_exercise_field'),
           controller: _exercise,
           label: copy.currentExerciseId,
         ),
       ),
-      const SizedBox(height: MayosSpacing.md),
+      const SizedBox(height: MyosSpacing.md),
       Directionality(
         textDirection: TextDirection.ltr,
-        child: MayosTextField(
+        child: MyosTextField(
           fieldKey: const Key('program_request_replacement_field'),
           controller: _replacement,
           label: copy.replacementExerciseId,
@@ -337,8 +337,8 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
           _localError = null;
         }),
       ),
-      const SizedBox(height: MayosSpacing.md),
-      MayosTextField(
+      const SizedBox(height: MyosSpacing.md),
+      MyosTextField(
         fieldKey: const Key('program_request_split_field'),
         controller: _preference,
         label: copy.splitPreferenceOptional,
@@ -348,24 +348,24 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
   }
 
   List<Widget> _buildReasonFields(
-      BuildContext context, MayosThemeExtension colors) {
+      BuildContext context, MyosThemeExtension colors) {
     final AssignmentCopy copy = assignmentCopyOf(context);
     final int reasonLength = _reason.text.trim().runes.length;
     return <Widget>[
-      MayosTextField(
+      MyosTextField(
         fieldKey: const Key('program_request_reason_field'),
         controller: _reason,
         maxLines: 2,
         label: copy.reason,
         onChanged: (_) => setState(() => _localError = null),
       ),
-      const SizedBox(height: MayosSpacing.xxs),
+      const SizedBox(height: MyosSpacing.xxs),
       Align(
         alignment: AlignmentDirectional.centerEnd,
         child: Text(
           copy.reasonCharacterCount(reasonLength, maxProgramRequestReasonChars),
           key: const Key('program_request_reason_counter'),
-          style: MayosTypography.of(context).bodySecondary.copyWith(
+          style: MyosTypography.of(context).bodySecondary.copyWith(
             color: reasonLength > maxProgramRequestReasonChars
                 ? colors.danger
                 : null,
@@ -373,10 +373,10 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
         ),
       ),
       if (_localError != null) ...<Widget>[
-        const SizedBox(height: MayosSpacing.sm),
+        const SizedBox(height: MyosSpacing.sm),
         Text(
           _localError!,
-          style: MayosTypography.of(context).bodySecondary.copyWith(color: colors.danger),
+          style: MyosTypography.of(context).bodySecondary.copyWith(color: colors.danger),
         ),
       ],
     ];
@@ -385,13 +385,13 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
   List<Widget> _buildActions() {
     final AssignmentCopy copy = assignmentCopyOf(context);
     return <Widget>[
-      MayosButton(
+      MyosButton(
         label: copy.cancel,
-        variant: MayosButtonVariant.tertiary,
+        variant: MyosButtonVariant.tertiary,
         expand: false,
         onPressed: _submitting ? null : () => Navigator.of(context).pop(),
       ),
-      MayosButton(
+      MyosButton(
         key: const Key('program_request_submit_button'),
         label: copy.submitRequest,
         expand: false,
@@ -403,7 +403,7 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     final AssignmentCopy copy = assignmentCopyOf(context);
     return PopScope<Object?>(
       canPop: !_submitting,
@@ -415,13 +415,13 @@ class _ProgramRequestDialogState extends State<ProgramRequestDialog> {
             children: <Widget>[
               if (widget.substitution == null) ...<Widget>[
                 _buildRequestTypeField(context),
-                const SizedBox(height: MayosSpacing.md),
+                const SizedBox(height: MyosSpacing.md),
               ],
               if (_kind == 'exercise_substitution')
                 ..._buildSubstitutionFields()
               else
                 ..._buildSplitChangeFields(),
-              const SizedBox(height: MayosSpacing.md),
+              const SizedBox(height: MyosSpacing.md),
               ..._buildReasonFields(context, colors),
             ],
           ),

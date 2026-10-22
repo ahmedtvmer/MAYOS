@@ -117,9 +117,9 @@ def test_normalize_arabic_text_removes_marks_and_unifies_letter_variants():
     assert clinical_guard.normalize_arabic_text("أَإِآـىة") == "ااايه"
 
 
-def test_arabic_safeguards_use_latin_mayos_brand():
-    assert "MAYOS" in ARABIC_CLINICAL_SAFEGUARD_RESPONSE
-    assert "MAYOS" in ARABIC_DIAGNOSIS_SAFEGUARD_RESPONSE
+def test_arabic_safeguards_use_latin_myos_brand():
+    assert "MYOS" in ARABIC_CLINICAL_SAFEGUARD_RESPONSE
+    assert "MYOS" in ARABIC_DIAGNOSIS_SAFEGUARD_RESPONSE
     assert "مايوس" not in ARABIC_CLINICAL_SAFEGUARD_RESPONSE
     assert "مايوس" not in ARABIC_DIAGNOSIS_SAFEGUARD_RESPONSE
 

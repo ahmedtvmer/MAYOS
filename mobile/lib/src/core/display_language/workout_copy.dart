@@ -61,7 +61,7 @@ class WorkoutCopy {
   String tempoCue(String value) =>
       isArabic ? 'الإيقاع: ${_ltr(value)}' : 'Tempo: $value';
   String restNotificationTitle(String time) =>
-      isArabic ? 'MAYOS · راحة ${_ltr(time)}' : 'MAYOS · Rest $time';
+      isArabic ? 'MYOS · راحة ${_ltr(time)}' : 'MYOS · Rest $time';
   String restNotificationLine({
     required String exerciseName,
     required int setNumber,
@@ -305,12 +305,12 @@ class WorkoutCopy {
   String get saveFailedNoLoss => isArabic
       ? 'تعذر حفظ الحصة. لم يُفقد شيء؛ حاول مجددًا.'
       : 'The workout could not be saved. Nothing was lost — try again.';
-  String get couldNotReachMayos => isArabic
-      ? 'تعذر الاتصال بـ MAYOS. حُفظت حصتك في هذا المتصفح.'
-      : "Couldn't reach MAYOS. Your workout is kept in this browser.";
-  String get mayosBusy => isArabic
-      ? 'MAYOS مشغول الآن. حُفظت حصتك في هذا المتصفح.'
-      : 'MAYOS is busy. Your workout is kept in this browser.';
+  String get couldNotReachMyos => isArabic
+      ? 'تعذر الاتصال بـ MYOS. حُفظت حصتك في هذا المتصفح.'
+      : "Couldn't reach MYOS. Your workout is kept in this browser.";
+  String get myosBusy => isArabic
+      ? 'MYOS مشغول الآن. حُفظت حصتك في هذا المتصفح.'
+      : 'MYOS is busy. Your workout is kept in this browser.';
   String get versionChanged => isArabic
       ? 'تغير البرنامج التدريبي منذ بدء هذه الحصة. بدّل التمرين من تبويب البرنامج.'
       : 'Your program changed since this workout started; substitute it from the Program tab';

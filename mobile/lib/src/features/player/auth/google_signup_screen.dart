@@ -9,11 +9,11 @@ import '../../../core/api_client.dart';
 import '../../../core/app_failure.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/controller.dart';
-import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/theme/mayos_theme.dart';
-import '../../../core/theme/mayos_typography.dart';
-import '../../../core/ui/mayos_button.dart';
-import '../../../core/ui/mayos_text_field.dart';
+import '../../../core/theme/myos_spacing.dart';
+import '../../../core/theme/myos_theme.dart';
+import '../../../core/theme/myos_typography.dart';
+import '../../../core/ui/myos_button.dart';
+import '../../../core/ui/myos_text_field.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import 'auth_controller.dart';
@@ -128,7 +128,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
       // sign-in with the short explanation (#115).
       if (error.statusCode == 401) {
         await _auth.abandonGoogleSignup(
-            notice: MayosCopy(ref.read(displayLanguageProvider))
+            notice: MyosCopy(ref.read(displayLanguageProvider))
                 .googleSignupExpired);
         if (mounted) {
           context.go(_loginLocation());
@@ -151,7 +151,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
       _check != _UsernameCheck.taken;
 
   String? get _fieldError {
-    final MayosCopy copy = MayosCopy(ref.read(displayLanguageProvider));
+    final MyosCopy copy = MyosCopy(ref.read(displayLanguageProvider));
     if (_touched) {
       final String? formatError =
           googleUsernameFormatError(_username.text.trim());
@@ -163,7 +163,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
   }
 
   String? get _fieldHelper {
-    final MayosCopy copy = MayosCopy(ref.read(displayLanguageProvider));
+    final MyosCopy copy = MyosCopy(ref.read(displayLanguageProvider));
     switch (_check) {
       case _UsernameCheck.checking:
         return copy.checkingAvailability;
@@ -239,7 +239,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
   }
 
   Widget _signupContent() {
-    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
+    final MyosCopy copy = MyosCopy(ref.watch(displayLanguageProvider));
     final PendingGoogleSignup? pending = _auth.pendingSignup;
     if (pending == null) {
       return _expiredView();
@@ -254,7 +254,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
       message: _failure != null
           ? AuthInlineNotice(message: copy.failureMessage(_failure!))
           : (_error == null ? null : AuthInlineNotice(message: _error!)),
-      primary: MayosButton(
+      primary: MyosButton(
         key: const Key('google_signup_submit'),
         label: copy.createAccount,
         loading: _busy,
@@ -268,7 +268,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
         ),
       ],
       children: <Widget>[
-        MayosTextField(
+        MyosTextField(
           fieldKey: const Key('google_signup_username'),
           controller: _username,
           label: copy.username,
@@ -283,7 +283,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
           onChanged: _onChanged,
           onSubmitted: (_) => _submit(),
         ),
-        const SizedBox(height: MayosSpacing.md),
+        const SizedBox(height: MyosSpacing.md),
         AuthLink(
           key: const Key('google_signup_login_link'),
           label: copy.existingAccountNudge,
@@ -306,21 +306,21 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
   }
 
   Widget _existingAccountHintView() {
-    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
+    final MyosCopy copy = MyosCopy(ref.watch(displayLanguageProvider));
     return AuthScaffold(
       title: copy.existingAccountTitle,
       lead: copy.existingAccountLead,
       wallpaper: true,
-      primary: MayosButton(
+      primary: MyosButton(
         key: const Key('google_existing_account_login'),
         label: copy.logIn,
         onPressed: _leaveToLogin,
       ),
       children: <Widget>[
-        MayosButton(
+        MyosButton(
           key: const Key('google_existing_account_create_separate'),
           label: copy.createSeparateAccount,
-          variant: MayosButtonVariant.secondary,
+          variant: MyosButtonVariant.secondary,
           onPressed: _createSeparateAccount,
         ),
       ],
@@ -330,13 +330,13 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
   /// The pending ticket is only ever missing when the flow was interrupted:
   /// say so instead of showing an empty form.
   Widget _expiredView() {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
+    final MyosThemeExtension c = MyosTheme.of(context);
+    final MyosCopy copy = MyosCopy(ref.watch(displayLanguageProvider));
     return AuthScaffold(
       title: copy.chooseUsername,
       wallpaper: true,
       message: AuthInlineNotice(message: copy.googleSignupExpired),
-      primary: MayosButton(
+      primary: MyosButton(
         key: const Key('google_signup_submit'),
         label: copy.backToSignIn,
         onPressed: () => context.go(_loginLocation()),
@@ -344,7 +344,7 @@ class _GoogleSignupScreenState extends ConsumerState<GoogleSignupScreen> {
       children: <Widget>[
         Text(
           copy.googleSignupIncomplete,
-          style: MayosTypography.of(context).bodySecondary
+          style: MyosTypography.of(context).bodySecondary
               .copyWith(color: c.textSecondary, height: 1.5),
         ),
       ],

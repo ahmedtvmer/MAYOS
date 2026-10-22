@@ -2,7 +2,7 @@
 
 These are separately labeled, unedited PNG captures of the current Flutter app
 rendered in the widget test harness at phone-sized logical viewports. They use
-real `MayosApp` screens, registered bundled fonts and Material icons, fake API
+real `MyosApp` screens, registered bundled fonts and Material icons, fake API
 and store overrides, synthetic training/chat fixtures, and a fixed clock. No
 private training data or hosted-model calls are involved.
 
@@ -52,14 +52,14 @@ Hashes for each bundled face and its license are recorded in
 [`docs/design-review/143/font-provenance.json`](../../143/font-provenance.json).
 
 English display roles remain Playfair Display 1.203 and interface roles remain
-Inter 4.001 (git `66647c0bb`). The logo artwork is unchanged; the small MAYOS
+Inter 4.001 (git `66647c0bb`). The logo artwork is unchanged; the small MYOS
 wordmark remains Inter. The visual English Home capture shows the serif display
 heading, and widget checks assert the English role families.
 
 ## Reproduction
 
 The source is in Git commit
-[`1e28f040eb41378d374000dc1ca7ace35f7b9e14`](https://github.com/ahmedtvmer/MAYOS/commit/1e28f040eb41378d374000dc1ca7ace35f7b9e14),
+[`1e28f040eb41378d374000dc1ca7ace35f7b9e14`](https://github.com/ahmedtvmer/MYOS/commit/1e28f040eb41378d374000dc1ca7ace35f7b9e14),
 the commit that adds this production evidence folder. Its parent is recorded in
 [`BASE_COMMIT.txt`](BASE_COMMIT.txt). Check out that commit, then from the
 repository root use Flutter 3.47.5 / Dart 3.13.4 as recorded in

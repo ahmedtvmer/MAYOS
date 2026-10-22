@@ -3,14 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/features/shared/mode_switch.dart';
+import 'package:myos_mobile/src/providers.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder) async {
   for (int i = 0; i < 40; i++) {
@@ -69,14 +69,14 @@ Future<void> _pumpApp(
   bool coachCapability = true,
   bool playerCapability = true,
   String displayLanguage = 'en',
-  FakeMayosApi? fakeApi,
+  FakeMyosApi? fakeApi,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
-  final FakeMayosApi fake = fakeApi ?? FakeMayosApi();
+  final FakeMyosApi fake = fakeApi ?? FakeMyosApi();
   fake
     ..issuedToken = 'token-alice'
     ..currentUsername = 'alice'
@@ -105,7 +105,7 @@ Future<void> _pumpApp(
           return client;
         }),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(
@@ -120,7 +120,7 @@ Future<void> _pumpApp(
 void main() {
   testWidgets('Assistant preference Settings edit and delete saved items',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = FakeMayosApi()
+    final FakeMyosApi fake = FakeMyosApi()
       ..issuedToken = 'token-alice'
       ..currentUsername = 'alice'
       ..assistantPreferenceWriteFailuresRemaining = 1
@@ -168,7 +168,7 @@ void main() {
 
   testWidgets('Assistant preference write completion after disposal is safe',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = FakeMayosApi()
+    final FakeMyosApi fake = FakeMyosApi()
       ..issuedToken = 'token-alice'
       ..currentUsername = 'alice'
       ..assistantPreferences.add(<String, dynamic>{
@@ -218,7 +218,7 @@ void main() {
 
   testWidgets('Arabic Assistant preference Settings displays saved items',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = FakeMayosApi()
+    final FakeMyosApi fake = FakeMyosApi()
       ..assistantPreferences.add(<String, dynamic>{
         'id': 'pref-ar',
         'text': 'بتمرن الصبح',
@@ -356,7 +356,7 @@ void main() {
 
   testWidgets('Player Settings opens the Player notifications surface',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = FakeMayosApi()
+    final FakeMyosApi fake = FakeMyosApi()
       ..playerNotices.add(<String, dynamic>{
         'notice_id': 'notice-1',
         'assignment_id': 'assignment-1',
@@ -431,7 +431,7 @@ void main() {
 
   testWidgets('Player notifications use Arabic glossary copy',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = FakeMayosApi()
+    final FakeMyosApi fake = FakeMyosApi()
       ..playerNotices.add(<String, dynamic>{
         'notice_id': 'arabic-notice',
         'assignment_id': 'assignment-1',

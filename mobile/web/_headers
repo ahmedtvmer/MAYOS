@@ -1,4 +1,4 @@
-# Cloudflare Pages response headers for the MAYOS web app (issues #129, #130; ADR 047/048).
+# Cloudflare Pages response headers for the MYOS web app (issues #129, #130; ADR 047/048).
 # The API origin below must match MAYOS_API_BASE_URL in the deploy build.
 # The CSP is only correct for a build made with --no-web-resources-cdn
 # (self-hosted CanvasKit, no gstatic.com) and --pwa-strategy=none (see scripts/deploy_web.sh).

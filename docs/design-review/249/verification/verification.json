@@ -48,7 +48,7 @@
     }
   },
   "focusedWidgetTests": {
-    "command": "flutter test --no-pub --reporter expanded test/home_screen_test.dart test/workout_logger_screen_test.dart test/workout_logger_back_test.dart test/workout_logger_card_menu_test.dart test/workout_logger_pictures_test.dart test/player_chat_test.dart test/theme_and_shell_test.dart test/mayos_markdown_test.dart",
+    "command": "flutter test --no-pub --reporter expanded test/home_screen_test.dart test/workout_logger_screen_test.dart test/workout_logger_back_test.dart test/workout_logger_card_menu_test.dart test/workout_logger_pictures_test.dart test/player_chat_test.dart test/theme_and_shell_test.dart test/myos_markdown_test.dart",
     "passed": true,
     "testsPassed": 125,
     "testsFailed": 0,
@@ -57,8 +57,8 @@
     "englishTypography": {
       "verified": true,
       "logger": "workout_logger_screen_test.dart checks day heading displayFamily and Log workout \u00b7 mm:ss uiFamily",
-      "markdown": "mayos_markdown_test.dart checks heading and code span families against MayosTypography roles",
-      "roleResolution": "lib/src/core/theme/mayos_typography.dart in selected source bundle maps default build roles to Playfair Display and Inter; only ARABIC_PAIR == C switches families",
+      "markdown": "myos_markdown_test.dart checks heading and code span families against MyosTypography roles",
+      "roleResolution": "lib/src/core/theme/myos_typography.dart in selected source bundle maps default build roles to Playfair Display and Inter; only ARABIC_PAIR == C switches families",
       "screenImageCaptured": false,
       "themeAndShellHasFontFamilyAssertions": false
     }

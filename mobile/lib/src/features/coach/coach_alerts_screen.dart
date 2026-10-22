@@ -9,13 +9,13 @@ import '../../core/display_language/controller.dart';
 import '../../core/display_language/feature_copy_context.dart';
 import '../../core/display_language/message_resolver.dart';
 import '../../core/models.dart';
-import '../../core/theme/mayos_spacing.dart';
-import '../../core/theme/mayos_theme.dart';
-import '../../core/theme/mayos_typography.dart';
+import '../../core/theme/myos_spacing.dart';
+import '../../core/theme/myos_theme.dart';
+import '../../core/theme/myos_typography.dart';
 import '../../core/ui/first_strong_direction.dart';
-import '../../core/ui/mayos_button.dart';
-import '../../core/ui/mayos_card.dart';
-import '../../core/ui/mayos_phone_tap_target.dart';
+import '../../core/ui/myos_button.dart';
+import '../../core/ui/myos_card.dart';
+import '../../core/ui/myos_phone_tap_target.dart';
 import '../../providers.dart';
 import 'coach_shared.dart';
 
@@ -148,7 +148,7 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
       coachAlertStateChip(context, alert);
 
   Widget _alertCard(BuildContext context, CoachAlert alert) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final copy = coachCopyOf(context);
     final String description = resolveCoachAlertDescription(
       alert,
@@ -156,8 +156,8 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
     );
     final bool busy = _busyAlertId == alert.alertId;
     return Padding(
-      padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
-      child: MayosCard(
+      padding: const EdgeInsets.only(bottom: MyosSpacing.sm),
+      child: MyosCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -166,41 +166,41 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
                 Expanded(
                   child: Text(
                     alert.playerUsername,
-                    style: MayosTypography.of(context).exerciseTitle
+                    style: MyosTypography.of(context).exerciseTitle
                         .copyWith(color: c.textPrimary),
                   ),
                 ),
                 _stateChip(context, alert),
               ],
             ),
-            const SizedBox(height: MayosSpacing.xxs),
+            const SizedBox(height: MyosSpacing.xxs),
             FirstStrongDirection(
               text: description,
               child: Text(
                 description,
-                style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
+                style: MyosTypography.of(context).body.copyWith(color: c.textPrimary),
               ),
             ),
             if (alert.resolvedBy != null)
               Text(
                 copy.resolvedBy(alert.resolvedBy!),
-                style: MayosTypography.of(context).caption.copyWith(color: c.textMuted),
+                style: MyosTypography.of(context).caption.copyWith(color: c.textMuted),
               ),
-            const SizedBox(height: MayosSpacing.xs),
+            const SizedBox(height: MyosSpacing.xs),
             // Wraps so both actions fit on a narrow phone (390 dp).
             Wrap(
-              spacing: MayosSpacing.xs,
-              runSpacing: MayosSpacing.xs,
+              spacing: MyosSpacing.xs,
+              runSpacing: MyosSpacing.xs,
               children: <Widget>[
                 if (alert.isNew)
-                  MayosButton(
+                  MyosButton(
                     label: copy.acknowledge,
-                    variant: MayosButtonVariant.tertiary,
+                    variant: MyosButtonVariant.tertiary,
                     expand: false,
                     onPressed: busy ? null : () => _acknowledge(alert),
                   ),
                 if (!alert.isResolved)
-                  MayosButton(
+                  MyosButton(
                     label: copy.resolve,
                     expand: false,
                     loading: busy,
@@ -228,26 +228,26 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final copy = coachCopyOf(context);
     final List<CoachAlert> visible = _alerts
         .where((CoachAlert alert) => _showResolved || !alert.isResolved)
         .toList(growable: false);
     return ListView(
-      padding: MayosSpacing.screen,
+      padding: MyosSpacing.screen,
       children: <Widget>[
         if (_error != null)
           Padding(
-            padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
+            padding: const EdgeInsets.only(bottom: MyosSpacing.sm),
             child: Text(
               displayCopyOf(context).failureMessage(_error!),
-              style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
+              style: MyosTypography.of(context).bodySecondary.copyWith(color: c.danger),
             ),
           ),
         Wrap(
-          spacing: MayosSpacing.xs,
+          spacing: MyosSpacing.xs,
           children: <Widget>[
-            mayosPhoneTapTarget(context, FilterChip(
+            myosPhoneTapTarget(context, FilterChip(
               label: Text(copy.showResolved),
               selected: _showResolved,
               onSelected: (bool selected) =>
@@ -255,10 +255,10 @@ class _CoachAlertsScreenState extends ConsumerState<CoachAlertsScreen> {
             )),
           ],
         ),
-        const SizedBox(height: MayosSpacing.sm),
+        const SizedBox(height: MyosSpacing.sm),
         if (visible.isEmpty)
           Text(copy.noAlerts,
-              style: MayosTypography.of(context).bodySecondary
+              style: MyosTypography.of(context).bodySecondary
                   .copyWith(color: c.textSecondary))
         else
           for (final CoachAlert alert in visible) _alertCard(context, alert),

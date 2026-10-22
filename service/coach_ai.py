@@ -93,7 +93,7 @@ REPORT_VERSION = 2
 #: evidence (ADR 049). Kept in production so the gate never imports test code.
 EVAL_RUBRIC_VERSION = "4"
 
-SYSTEM_PROMPT = """You are {coach_name}'s coaching assistant in MAYOS.
+SYSTEM_PROMPT = """You are {coach_name}'s coaching assistant in MYOS.
 You are talking to {coach_name} about their player {player_name}, whose data follows.
 
 Rules:
@@ -140,7 +140,7 @@ Rules:
   Do not recommend which exercises to do or avoid, or whether to continue, stop,
   or modify training around pain or injury. When a question needs a clinician,
   say so plainly and defer to them.
-- Never discuss the player's private chat with the MAYOS assistant; it is not
+- Never discuss the player's private chat with the MYOS assistant; it is not
   supplied and must not be inferred.
 - Reply in the language shown for this turn below. A clearly English latest
   question gets an English answer, even when names or data are in Arabic. Arabic

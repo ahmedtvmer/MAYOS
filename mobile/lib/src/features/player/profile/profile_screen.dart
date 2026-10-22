@@ -11,12 +11,12 @@ import '../../../core/display_language/copy_context.dart';
 import '../../../core/display_language/profile_copy.dart';
 import '../../../core/device_timezone.dart';
 import '../../../core/models.dart';
-import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/theme/mayos_theme.dart';
-import '../../../core/theme/mayos_typography.dart';
-import '../../../core/ui/mayos_button.dart';
-import '../../../core/ui/mayos_section_header.dart';
-import '../../../core/ui/mayos_text_field.dart';
+import '../../../core/theme/myos_spacing.dart';
+import '../../../core/theme/myos_theme.dart';
+import '../../../core/theme/myos_typography.dart';
+import '../../../core/ui/myos_button.dart';
+import '../../../core/ui/myos_section_header.dart';
+import '../../../core/ui/myos_text_field.dart';
 import '../../../core/ui/first_strong_direction.dart';
 import '../../../providers.dart';
 import '../onboarding/onboarding_widgets.dart'
@@ -496,20 +496,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Widget _injuriesSection(ProfileCopy copy) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        MayosSectionHeader(title: copy.injuries, subtitle: copy.injuriesLead),
+        MyosSectionHeader(title: copy.injuries, subtitle: copy.injuriesLead),
         if (_injuries.isEmpty)
           Padding(
-            padding: const EdgeInsets.only(top: MayosSpacing.xs),
+            padding: const EdgeInsets.only(top: MyosSpacing.xs),
             child: Text(copy.noInjuries),
           ),
         for (final InjuryRecord injury in _injuries) ...<Widget>[
           Card(
             key: Key('injury_record_${injury.id}'),
-            margin: const EdgeInsets.only(top: MayosSpacing.xs),
+            margin: const EdgeInsets.only(top: MyosSpacing.xs),
             child: ListTile(
               title: Text(
                 '${injury.bodyArea == null ? copy.unknownArea : copy.bodyArea(injury.bodyArea!)} · ${copy.injuryStatusLabel(injury.status)}',
@@ -527,8 +527,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           Card(
             key: Key('exercise_clearance_${clearance.id}'),
             margin: const EdgeInsetsDirectional.only(
-              start: MayosSpacing.md,
-              top: MayosSpacing.xxs,
+              start: MyosSpacing.md,
+              top: MyosSpacing.xxs,
             ),
             child: ListTile(
               title: Text(
@@ -541,7 +541,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ].join('\n'),
               ),
               trailing: Wrap(
-                spacing: MayosSpacing.xxs,
+                spacing: MyosSpacing.xxs,
                 children: <Widget>[
                   IconButton(
                     key: Key('edit_clearance_${clearance.id}'),
@@ -566,13 +566,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ],
         if (_injuryFailure != null)
           Padding(
-            padding: const EdgeInsets.only(top: MayosSpacing.xs),
+            padding: const EdgeInsets.only(top: MyosSpacing.xs),
             child: Text(
               displayCopyOf(context).failureMessage(_injuryFailure!),
-              style: MayosTypography.of(context).bodySecondary.copyWith(color: c.danger),
+              style: MyosTypography.of(context).bodySecondary.copyWith(color: c.danger),
             ),
           ),
-        const SizedBox(height: MayosSpacing.xs),
+        const SizedBox(height: MyosSpacing.xs),
         OutlinedButton.icon(
           key: const Key('add_injury_button'),
           onPressed: _savingInjury ? null : () => _editInjury(),
@@ -800,20 +800,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     if (_loadError != null) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(MayosSpacing.xl),
+          padding: const EdgeInsets.all(MyosSpacing.xl),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Text(displayCopyOf(context).failureMessage(_loadError!),
                   textAlign: TextAlign.center),
-              const SizedBox(height: MayosSpacing.md),
-              MayosButton(
+              const SizedBox(height: MyosSpacing.md),
+              MyosButton(
                 label: copy.retry,
-                variant: MayosButtonVariant.secondary,
+                variant: MyosButtonVariant.secondary,
                 expand: false,
                 onPressed: _load,
               ),
@@ -823,24 +823,24 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       );
     }
     return ListView(
-      padding: MayosSpacing.screen,
+      padding: MyosSpacing.screen,
       children: <Widget>[
-        MayosSectionHeader(
+        MyosSectionHeader(
           title: copy.trainingProfile,
           subtitle: copy.profileLead,
         ),
-        const SizedBox(height: MayosSpacing.md),
-        MayosTextField(
+        const SizedBox(height: MyosSpacing.md),
+        MyosTextField(
           fieldKey: const Key('current_goal_field'),
           controller: _currentGoalController,
           label: copy.currentGoal,
           enabled: !_saving,
           textCapitalization: TextCapitalization.sentences,
         ),
-        const SizedBox(height: MayosSpacing.sm),
+        const SizedBox(height: MyosSpacing.sm),
         _injuriesSection(copy),
-        const SizedBox(height: MayosSpacing.md),
-        MayosTextField(
+        const SizedBox(height: MyosSpacing.md),
+        MyosTextField(
           fieldKey: const Key('weight_kg_field'),
           controller: _weightController,
           label: copy.weightKg,
@@ -848,8 +848,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           textDirection: TextDirection.ltr,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
         ),
-        const SizedBox(height: MayosSpacing.sm),
-        MayosTextField(
+        const SizedBox(height: MyosSpacing.sm),
+        MyosTextField(
           fieldKey: const Key('target_weight_kg_field'),
           controller: _targetWeightController,
           label: copy.targetWeightKg,
@@ -857,7 +857,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           textDirection: TextDirection.ltr,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
         ),
-        const SizedBox(height: MayosSpacing.xs),
+        const SizedBox(height: MyosSpacing.xs),
         Align(
           alignment: AlignmentDirectional.centerStart,
           child: OutlinedButton.icon(
@@ -867,7 +867,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             label: Text(copy.logWeight),
           ),
         ),
-        const SizedBox(height: MayosSpacing.sm),
+        const SizedBox(height: MyosSpacing.sm),
         DropdownButtonFormField<int>(
           initialValue: _weeklyFrequency,
           isExpanded: true,
@@ -890,7 +890,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               : (int? value) =>
                   setState(() => _weeklyFrequency = value ?? _weeklyFrequency),
         ),
-        const SizedBox(height: MayosSpacing.sm),
+        const SizedBox(height: MyosSpacing.sm),
         DropdownButtonFormField<String>(
           initialValue: _repPreference,
           isExpanded: true,
@@ -911,7 +911,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               : (String? value) =>
                   setState(() => _repPreference = value ?? _repPreference),
         ),
-        const SizedBox(height: MayosSpacing.sm),
+        const SizedBox(height: MyosSpacing.sm),
         DropdownButtonFormField<String>(
           key: const Key('equipment_access_dropdown'),
           initialValue: _equipmentAccess,
@@ -933,7 +933,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   }),
         ),
         if (_notice != null || _noticeFailure != null) ...<Widget>[
-          const SizedBox(height: MayosSpacing.sm),
+          const SizedBox(height: MyosSpacing.sm),
           FirstStrongDirection(
             text: _noticeFailure == null
                 ? _notice!
@@ -943,28 +943,28 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ? _notice!
                   : displayCopyOf(context).failureMessage(_noticeFailure!),
               style: _noticeIsError
-                  ? MayosTypography.of(context).bodySecondary.copyWith(color: c.danger)
-                  : MayosTypography.of(context).body,
+                  ? MyosTypography.of(context).bodySecondary.copyWith(color: c.danger)
+                  : MyosTypography.of(context).body,
             ),
           ),
         ],
-        const SizedBox(height: MayosSpacing.lg),
-        MayosButton(
+        const SizedBox(height: MyosSpacing.lg),
+        MyosButton(
           label: copy.saveProfile,
           loading: _saving,
           onPressed: _saving ? null : _save,
         ),
-        const SizedBox(height: MayosSpacing.xxl),
+        const SizedBox(height: MyosSpacing.xxl),
         const Divider(),
-        const SizedBox(height: MayosSpacing.sm),
-        MayosSectionHeader(
+        const SizedBox(height: MyosSpacing.sm),
+        MyosSectionHeader(
           title: copy.trainingSchedule,
           subtitle: copy.scheduleLead,
         ),
-        const SizedBox(height: MayosSpacing.md),
+        const SizedBox(height: MyosSpacing.md),
         Wrap(
-          spacing: MayosSpacing.xs,
-          runSpacing: MayosSpacing.xs,
+          spacing: MyosSpacing.xs,
+          runSpacing: MyosSpacing.xs,
           children: <Widget>[
             for (int day = 1; day <= 7; day++)
               FilterChip(
@@ -983,10 +983,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               ),
           ],
         ),
-        const SizedBox(height: MayosSpacing.sm),
+        const SizedBox(height: MyosSpacing.sm),
         Directionality(
           textDirection: TextDirection.ltr,
-          child: MayosTextField(
+          child: MyosTextField(
             fieldKey: const Key('timezone_field'),
             controller: _timezone,
             enabled: !_savingSchedule,
@@ -994,7 +994,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
         ),
         if (_scheduleNotice != null || _scheduleFailure != null) ...<Widget>[
-          const SizedBox(height: MayosSpacing.sm),
+          const SizedBox(height: MyosSpacing.sm),
           FirstStrongDirection(
             text: _scheduleFailure == null
                 ? _scheduleNotice!
@@ -1004,37 +1004,37 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ? _scheduleNotice!
                   : displayCopyOf(context).failureMessage(_scheduleFailure!),
               style: _scheduleNoticeIsError
-                  ? MayosTypography.of(context).bodySecondary.copyWith(color: c.danger)
-                  : MayosTypography.of(context).body,
+                  ? MyosTypography.of(context).bodySecondary.copyWith(color: c.danger)
+                  : MyosTypography.of(context).body,
             ),
           ),
         ],
-        const SizedBox(height: MayosSpacing.sm),
-        MayosButton(
+        const SizedBox(height: MyosSpacing.sm),
+        MyosButton(
           key: const Key('save_schedule_button'),
           label: copy.saveSchedule,
           loading: _savingSchedule,
           onPressed: _savingSchedule ? null : _saveSchedule,
         ),
-        const SizedBox(height: MayosSpacing.xl),
-        MayosSectionHeader(title: copy.trainingPause),
+        const SizedBox(height: MyosSpacing.xl),
+        MyosSectionHeader(title: copy.trainingPause),
         Row(
           children: <Widget>[
             Expanded(
-              child: MayosButton(
+              child: MyosButton(
                 key: const Key('pause_start_button'),
                 label: copy.pauseStart(_formatDate(_pauseStart)),
-                variant: MayosButtonVariant.secondary,
+                variant: MyosButtonVariant.secondary,
                 onPressed:
                     _schedulingPause ? null : () => _pickPauseDate(start: true),
               ),
             ),
-            const SizedBox(width: MayosSpacing.xs),
+            const SizedBox(width: MyosSpacing.xs),
             Expanded(
-              child: MayosButton(
+              child: MyosButton(
                 key: const Key('pause_end_button'),
                 label: copy.pauseEnd(_formatDate(_pauseEnd)),
-                variant: MayosButtonVariant.secondary,
+                variant: MyosButtonVariant.secondary,
                 onPressed: _schedulingPause
                     ? null
                     : () => _pickPauseDate(start: false),
@@ -1043,7 +1043,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ],
         ),
         if (_pauseNotice != null || _pauseFailure != null) ...<Widget>[
-          const SizedBox(height: MayosSpacing.sm),
+          const SizedBox(height: MyosSpacing.sm),
           FirstStrongDirection(
             text: _pauseFailure == null
                 ? _pauseNotice!
@@ -1053,30 +1053,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ? _pauseNotice!
                   : displayCopyOf(context).failureMessage(_pauseFailure!),
               style: _pauseNoticeIsError
-                  ? MayosTypography.of(context).bodySecondary.copyWith(color: c.danger)
-                  : MayosTypography.of(context).body,
+                  ? MyosTypography.of(context).bodySecondary.copyWith(color: c.danger)
+                  : MyosTypography.of(context).body,
             ),
           ),
         ],
-        const SizedBox(height: MayosSpacing.sm),
-        MayosButton(
+        const SizedBox(height: MyosSpacing.sm),
+        MyosButton(
           key: const Key('schedule_pause_button'),
           label: copy.schedulePause,
           loading: _schedulingPause,
           onPressed: _schedulingPause ? null : _schedulePause,
         ),
-        const SizedBox(height: MayosSpacing.sm),
+        const SizedBox(height: MyosSpacing.sm),
         if (_pauses.isEmpty)
           Text(copy.noScheduledPauses,
-              style: MayosTypography.of(context).bodySecondary
+              style: MyosTypography.of(context).bodySecondary
                   .copyWith(color: c.textSecondary))
         else
           for (final ScheduledPause pause in _pauses)
             Text(
               copy.pauseRange(pause.startsOn, pause.endsOn),
-              style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
+              style: MyosTypography.of(context).body.copyWith(color: c.textPrimary),
             ),
-        const SizedBox(height: MayosSpacing.xxl),
+        const SizedBox(height: MyosSpacing.xxl),
       ],
     );
   }
@@ -1166,7 +1166,7 @@ class _InjuryEditorDialogState extends State<_InjuryEditorDialog> {
               ],
               onChanged: (String? value) => setState(() => _bodyArea = value ?? ''),
             ),
-            const SizedBox(height: MayosSpacing.sm),
+            const SizedBox(height: MyosSpacing.sm),
             TextField(
               key: const Key('injury_description_field'),
               controller: _description,
@@ -1181,7 +1181,7 @@ class _InjuryEditorDialogState extends State<_InjuryEditorDialog> {
                 if (_descriptionInvalid) setState(() => _descriptionInvalid = false);
               },
             ),
-            const SizedBox(height: MayosSpacing.sm),
+            const SizedBox(height: MyosSpacing.sm),
             DropdownButtonFormField<String>(
               key: const Key('injury_status_dropdown'),
               initialValue: _status,
@@ -1295,7 +1295,7 @@ class _ClearanceEditorDialogState extends State<_ClearanceEditorDialog> {
               readOnly: widget.clearance.exerciseId != null,
               decoration: InputDecoration(labelText: copy.exerciseName),
             ),
-            const SizedBox(height: MayosSpacing.sm),
+            const SizedBox(height: MyosSpacing.sm),
             TextField(
               key: const Key('clearance_original_wording_field'),
               controller: _wording,
@@ -1322,7 +1322,7 @@ class _ClearanceEditorDialogState extends State<_ClearanceEditorDialog> {
               ],
               onChanged: (String? value) => setState(() => _verdict = value ?? 'cleared'),
             ),
-            const SizedBox(height: MayosSpacing.sm),
+            const SizedBox(height: MyosSpacing.sm),
             TextField(
               key: const Key('clearance_note_field'),
               controller: _note,

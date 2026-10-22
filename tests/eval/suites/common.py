@@ -78,7 +78,7 @@ def empty_suite_summary(
 def isolated_catalog_store():
     from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
 
-    with tempfile.TemporaryDirectory(prefix="mayos-player-eval-") as temp_root:
+    with tempfile.TemporaryDirectory(prefix="myos-player-eval-") as temp_root:
         root = Path(temp_root)
         catalog_path = root / "catalog.db"
         shutil.copyfile(DEFAULT_CATALOG_PATH, catalog_path)

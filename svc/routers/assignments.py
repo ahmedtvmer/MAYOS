@@ -303,7 +303,7 @@ async def download_program_import_template(
     return Response(
         content=content,
         media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="mayos-program-template.{file_format}"'},
+        headers={"Content-Disposition": f'attachment; filename="myos-program-template.{file_format}"'},
     )
 
 

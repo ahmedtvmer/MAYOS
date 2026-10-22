@@ -14,7 +14,7 @@
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
-  <h1 align="center">⚡ MAYOS</h1>
+  <h1 align="center">⚡ MYOS</h1>
   <p align="center">
     <b>Training Ledger & Biomechanics Engine with Hosted Assistant Inference</b>
     <br />
@@ -35,11 +35,11 @@
 
 ## Overview
 
-**Mayos** is a privacy-conscious workout ledger and biomechanics engine. Chat uses a hosted OpenAI-compatible model; embeddings for clinical checks and catalog search run locally.
+**Myos** is a privacy-conscious workout ledger and biomechanics engine. Chat uses a hosted OpenAI-compatible model; embeddings for clinical checks and catalog search run locally.
 
 Commercial fitness trackers rely on rigid linear progressions and binary volume attribution that inflate synergistic muscle tracking. Conversely, naive AI agents route every prompt through an LLM, incurring multi-second inference bottlenecks just to classify basic user intents.
 
-Mayos bridges this gap:
+Myos bridges this gap:
 
 * **Hosted Chat, Local Embeddings**: Player, judge, and coach chat use hosted OpenAI-compatible models. The clinical guard and Exercise library search keep their embedding model local.
 * **Deterministic Fast-Path Router**: Clinical trauma halts, movement swaps, and split mutations are resolved by compiled regex and ledger logic in **0.014–0.075 ms** — up to **375,000× faster** than an LLM classification call — while a Tier-1 semantic guard keeps colloquial injury reports safe.
@@ -154,7 +154,7 @@ The FastAPI service is available at **`http://localhost:8000`** and its OpenAPI 
 
 ## Accounts & Security
 
-Mayos ships a complete self-hosted identity layer — no cloud IdP, no external auth service:
+Myos ships a complete self-hosted identity layer — no cloud IdP, no external auth service:
 
 * **JWT sessions (HS256)**: `sub` + `jti` + `tv` (session epoch) claims, 2-hour default expiry, per-token revocation on logout.
 * **Optional remember-me sessions**: with explicit consent, the browser stores a sign-in cookie; remembered tokens last 30 days (`JWT_REMEMBER_ME_HOURS`) so refreshes keep you logged in. Password changes and logout still revoke them instantly (ADR 010).
@@ -172,7 +172,7 @@ Full specification, sequence diagrams, and environment reference: [`docs/AUTHENT
 
 ## Biomechanical Engine Overview
 
-Unlike generic trackers, Mayos embeds exercise physiology rules into its transaction layer:
+Unlike generic trackers, Myos embeds exercise physiology rules into its transaction layer:
 
 * **Dynamic RPE Scaling**: Computes effective 1RM using $w \cdot (1 + \text{effective\_reps}/30)$ to determine true velocity reserve without requiring failure sets.
 * **RPE 10 Overshoot Protection**: Drops subsequent session loads by 2.5 kg if an athlete overshoots target intensity.

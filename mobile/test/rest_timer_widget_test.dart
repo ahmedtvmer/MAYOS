@@ -1,24 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/active_workout.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/baselines.dart';
-import 'package:mayos_mobile/src/core/chat_storage.dart';
-import 'package:mayos_mobile/src/core/device_timezone.dart';
-import 'package:mayos_mobile/src/core/rest_length.dart';
-import 'package:mayos_mobile/src/core/theme/mayos_spacing.dart';
-import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/workout_storage.dart';
-import 'package:mayos_mobile/src/features/player/workout/active_workout_controller.dart';
-import 'package:mayos_mobile/src/features/player/workout/logger_keypad.dart';
-import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/active_workout.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/baselines.dart';
+import 'package:myos_mobile/src/core/chat_storage.dart';
+import 'package:myos_mobile/src/core/device_timezone.dart';
+import 'package:myos_mobile/src/core/rest_length.dart';
+import 'package:myos_mobile/src/core/theme/myos_spacing.dart';
+import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/workout_storage.dart';
+import 'package:myos_mobile/src/features/player/workout/active_workout_controller.dart';
+import 'package:myos_mobile/src/features/player/workout/logger_keypad.dart';
+import 'package:myos_mobile/src/features/player/workout/workout_logger_screen.dart';
+import 'package:myos_mobile/src/providers.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 import 'support/fake_clock.dart';
 import 'support/fake_rest_alerts.dart';
 
@@ -96,8 +96,8 @@ ActiveWorkout _workout() => ActiveWorkout(
       },
     );
 
-FakeMayosApi _signedInFake() {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _signedInFake() {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -137,7 +137,7 @@ Future<
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
-  final FakeMayosApi fake = _signedInFake();
+  final FakeMyosApi fake = _signedInFake();
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
   final InMemoryActiveWorkoutStore store = InMemoryActiveWorkoutStore();
@@ -180,7 +180,7 @@ Future<
           return client;
         }),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(tester, find.text('Home'));
@@ -389,7 +389,7 @@ void main() {
         find.byKey(const ValueKey<String>('rest.plus')),
         find.byKey(const ValueKey<String>('rest.skip')),
       ]) {
-        expect(tester.getSize(action).height, kMayosMinTapTarget);
+        expect(tester.getSize(action).height, kMyosMinTapTarget);
         expect(tester.getSize(action).width, greaterThanOrEqualTo(48));
       }
       expect(harness.alerts.ensureReadyCalls, greaterThanOrEqualTo(1));

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/display_language/catalog.dart';
 import '../core/display_language/copy_context.dart';
 import '../core/exercise_filters.dart';
-import '../core/theme/mayos_spacing.dart';
+import '../core/theme/myos_spacing.dart';
 
 class ExerciseFilterBar extends StatelessWidget {
   const ExerciseFilterBar({
@@ -17,21 +17,21 @@ class ExerciseFilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosCopy copy = displayCopyOf(context);
+    final MyosCopy copy = displayCopyOf(context);
     return Padding(
-      padding: const EdgeInsets.only(top: MayosSpacing.xs),
+      padding: const EdgeInsets.only(top: MyosSpacing.xs),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Row(
             children: <Widget>[
               Expanded(child: _primaryMuscleButton(copy)),
-              const SizedBox(width: MayosSpacing.xxs),
+              const SizedBox(width: MyosSpacing.xxs),
               Expanded(child: _primaryActionButton(copy)),
-              const SizedBox(width: MayosSpacing.xxs),
+              const SizedBox(width: MyosSpacing.xxs),
               Expanded(child: _equipmentCategoryButton(copy)),
               if (filterState.showsLoadTypeFilter) ...<Widget>[
-                const SizedBox(width: MayosSpacing.xxs),
+                const SizedBox(width: MyosSpacing.xxs),
                 Expanded(child: _loadTypeButton(copy)),
               ],
             ],
@@ -46,7 +46,7 @@ class ExerciseFilterBar extends StatelessWidget {
     );
   }
 
-  Widget _primaryMuscleButton(MayosCopy copy) => _FilterSectionButton(
+  Widget _primaryMuscleButton(MyosCopy copy) => _FilterSectionButton(
         title: copy.primaryMuscle,
         buttonLabel: copy.primaryMuscleFilterLabel(
           filterState.primaryMuscles.length,
@@ -67,7 +67,7 @@ class ExerciseFilterBar extends StatelessWidget {
         ),
       );
 
-  Widget _primaryActionButton(MayosCopy copy) => _FilterSectionButton(
+  Widget _primaryActionButton(MyosCopy copy) => _FilterSectionButton(
         title: copy.primaryAction,
         buttonLabel: copy.primaryActionFilterLabel(
           filterState.primaryActions.length,
@@ -88,7 +88,7 @@ class ExerciseFilterBar extends StatelessWidget {
         ),
       );
 
-  Widget _equipmentCategoryButton(MayosCopy copy) => _FilterSectionButton(
+  Widget _equipmentCategoryButton(MyosCopy copy) => _FilterSectionButton(
         title: copy.equipmentCategory,
         buttonLabel: _countedLabel(
           copy.equipmentCategoryFilterShort,
@@ -110,7 +110,7 @@ class ExerciseFilterBar extends StatelessWidget {
         ),
       );
 
-  Widget _loadTypeButton(MayosCopy copy) => _FilterSectionButton(
+  Widget _loadTypeButton(MyosCopy copy) => _FilterSectionButton(
         title: copy.loadType,
         buttonLabel: _countedLabel(
           copy.loadTypeFilterShort,
@@ -132,7 +132,7 @@ class ExerciseFilterBar extends StatelessWidget {
         ),
       );
 
-  Widget _selectedChips(MayosCopy copy) => SizedBox(
+  Widget _selectedChips(MyosCopy copy) => SizedBox(
         height: 48,
         child: ListView(
           scrollDirection: Axis.horizontal,
@@ -260,7 +260,7 @@ class _FilterSectionButton extends StatelessWidget {
           key: buttonKey,
           onPressed: () => _choose(context),
           style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: MayosSpacing.xxs),
+            padding: const EdgeInsets.symmetric(horizontal: MyosSpacing.xxs),
             minimumSize: const Size(0, 40),
           ),
           child: Text(buttonLabel, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -292,23 +292,23 @@ class _MultiSelectFilterSheetState extends State<_MultiSelectFilterSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final MayosCopy copy = displayCopyOf(context);
+    final MyosCopy copy = displayCopyOf(context);
     final double sheetHeight = MediaQuery.of(context).size.height * .72;
     return SafeArea(
       child: SizedBox(
         height: sheetHeight,
         child: Padding(
-          padding: const EdgeInsets.all(MayosSpacing.md),
+          padding: const EdgeInsets.all(MyosSpacing.md),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Text(widget.title, style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: MayosSpacing.sm),
+              const SizedBox(height: MyosSpacing.sm),
               Expanded(
                 child: SingleChildScrollView(
                   child: Wrap(
-                    spacing: MayosSpacing.xs,
-                    runSpacing: MayosSpacing.xs,
+                    spacing: MyosSpacing.xs,
+                    runSpacing: MyosSpacing.xs,
                     children: <Widget>[
                       for (final _FilterOption option in widget.options)
                         FilterChip(
@@ -336,7 +336,7 @@ class _MultiSelectFilterSheetState extends State<_MultiSelectFilterSheet> {
                     onPressed: () => setState(_selected.clear),
                     child: Text(copy.clear),
                   ),
-                  const SizedBox(width: MayosSpacing.xs),
+                  const SizedBox(width: MyosSpacing.xs),
                   FilledButton(
                     key: Key(widget.doneKey),
                     onPressed: () => Navigator.of(context).pop(

@@ -148,7 +148,7 @@ class PostHogAnalyticsClient implements AnalyticsClient {
       if (!_accountEnabled) return;
       await action();
     } on Object {
-      // Analytics failures must not interrupt MAYOS account or onboarding work.
+      // Analytics failures must not interrupt MYOS account or onboarding work.
     }
   }
 

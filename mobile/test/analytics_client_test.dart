@@ -1,17 +1,17 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/features/player/auth/auth_controller.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/analytics_client.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/providers.dart';
-import 'package:mayos_mobile/src/router.dart';
+import 'package:myos_mobile/src/features/player/auth/auth_controller.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/analytics_client.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/router.dart';
 
 import 'support/auth_harness.dart';
 import 'support/fake_analytics_client.dart';
 import 'support/fake_google_auth.dart';
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 void main() {
   test('fake analytics records calls while disabled', () {
@@ -62,7 +62,7 @@ void main() {
   testWidgets(
       'account-info identifies the account id through the injected client',
       (WidgetTester tester) async {
-    final FakeMayosApi api = FakeMayosApi()
+    final FakeMyosApi api = FakeMyosApi()
       ..currentUsername = 'alice'
       ..issuedToken = 'token-alice'
       ..profileExists = true
@@ -85,7 +85,7 @@ void main() {
 
   testWidgets('sign-out resets the analytics identity',
       (WidgetTester tester) async {
-    final FakeMayosApi api = FakeMayosApi()
+    final FakeMyosApi api = FakeMyosApi()
       ..currentUsername = 'alice'
       ..issuedToken = 'token-alice';
     final InMemoryTokenStore tokens = InMemoryTokenStore();
@@ -102,7 +102,7 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: const MayosApp(),
+        child: const MyosApp(),
       ),
     );
 
@@ -124,7 +124,7 @@ void main() {
 
   testWidgets('Settings preference gates analytics and survives sign-in',
       (WidgetTester tester) async {
-    final FakeMayosApi api = FakeMayosApi()
+    final FakeMyosApi api = FakeMyosApi()
       ..currentUsername = 'alice'
       ..issuedToken = 'token-alice'
       ..analyticsAllowed = false
@@ -143,7 +143,7 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: const MayosApp(),
+        child: const MyosApp(),
       ),
     );
 
@@ -227,7 +227,7 @@ void main() {
 
   testWidgets('opted-out onboarding does not identify or capture',
       (WidgetTester tester) async {
-    final FakeMayosApi api = FakeMayosApi()
+    final FakeMyosApi api = FakeMyosApi()
       ..currentUsername = 'alice'
       ..issuedToken = 'token-alice'
       ..analyticsAllowed = false
@@ -244,7 +244,7 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: const MayosApp(),
+        child: const MyosApp(),
       ),
     );
 

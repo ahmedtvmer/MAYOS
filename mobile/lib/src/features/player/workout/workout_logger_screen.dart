@@ -23,15 +23,15 @@ import '../../../core/performed_date_window.dart';
 import '../../../core/personal_records.dart';
 import '../../../core/rest_alerts.dart';
 import '../../../core/training_status_projection.dart';
-import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/theme/mayos_theme.dart';
-import '../../../core/theme/mayos_typography.dart';
-import '../../../core/ui/mayos_button.dart';
-import '../../../core/ui/mayos_card.dart';
-import '../../../core/ui/mayos_section_header.dart';
-import '../../../core/ui/mayos_settings_tile.dart';
-import '../../../core/ui/mayos_stat.dart';
-import '../../../core/ui/mayos_text_field.dart';
+import '../../../core/theme/myos_spacing.dart';
+import '../../../core/theme/myos_theme.dart';
+import '../../../core/theme/myos_typography.dart';
+import '../../../core/ui/myos_button.dart';
+import '../../../core/ui/myos_card.dart';
+import '../../../core/ui/myos_section_header.dart';
+import '../../../core/ui/myos_settings_tile.dart';
+import '../../../core/ui/myos_stat.dart';
+import '../../../core/ui/myos_text_field.dart';
 import '../../../core/workout_equipment.dart';
 import '../../../core/workout_storage.dart';
 import '../../../providers.dart';
@@ -82,10 +82,10 @@ enum _WorkoutLoggerCopyError {
   workoutProgressBlocked,
   connectToRefresh,
   saveFailedNoLoss,
-  couldNotReachMayos,
+  couldNotReachMyos,
   reopenWorkoutToSave,
   programRefreshBeforeSave,
-  mayosBusy,
+  myosBusy,
 }
 
 sealed class _WorkoutLoggerError {
@@ -222,13 +222,13 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
             _copy.workoutProgressBlocked,
           _WorkoutLoggerCopyError.connectToRefresh => _copy.connectToRefresh,
           _WorkoutLoggerCopyError.saveFailedNoLoss => _copy.saveFailedNoLoss,
-          _WorkoutLoggerCopyError.couldNotReachMayos =>
-            _copy.couldNotReachMayos,
+          _WorkoutLoggerCopyError.couldNotReachMyos =>
+            _copy.couldNotReachMyos,
           _WorkoutLoggerCopyError.reopenWorkoutToSave =>
             _copy.reopenWorkoutToSave,
           _WorkoutLoggerCopyError.programRefreshBeforeSave =>
             _copy.programRefreshBeforeSave,
-          _WorkoutLoggerCopyError.mayosBusy => _copy.mayosBusy,
+          _WorkoutLoggerCopyError.myosBusy => _copy.myosBusy,
         },
       _WorkoutLoggerFailureErrorState(:final failure) =>
         displayCopyOf(context).failureMessage(failure),
@@ -634,7 +634,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       Scrollable.ensureVisible(
         rowContext,
         alignmentPolicy: policy,
-        duration: MayosMotion.fast,
+        duration: MyosMotion.fast,
       ),
     );
   }
@@ -1097,7 +1097,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       context: context,
       builder: (BuildContext context) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(MayosSpacing.md),
+          padding: const EdgeInsets.all(MyosSpacing.md),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1105,19 +1105,19 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
               Text(
                 _copy.untickedSetQuestion(unticked),
                 textAlign: _copy.isArabic ? TextAlign.end : null,
-                style: MayosTypography.of(context).sectionHeading,
+                style: MyosTypography.of(context).sectionHeading,
               ),
-              const SizedBox(height: MayosSpacing.xs),
+              const SizedBox(height: MyosSpacing.xs),
               Text(_copy.onlyTickedSetsSaved),
-              const SizedBox(height: MayosSpacing.md),
-              MayosButton(
+              const SizedBox(height: MyosSpacing.md),
+              MyosButton(
                 label: _copy.discardUntickedAndFinish,
                 onPressed: () => Navigator.of(context).pop(true),
               ),
-              const SizedBox(height: MayosSpacing.sm),
-              MayosButton(
+              const SizedBox(height: MyosSpacing.sm),
+              MyosButton(
                 label: _copy.keepLogging,
-                variant: MayosButtonVariant.secondary,
+                variant: MyosButtonVariant.secondary,
                 onPressed: () => Navigator.of(context).pop(false),
               ),
             ],
@@ -1277,7 +1277,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         setState(() {
           _summaryAction = _SummaryAction.retry;
           _error = const _WorkoutLoggerCopyErrorState(
-            _WorkoutLoggerCopyError.couldNotReachMayos,
+            _WorkoutLoggerCopyError.couldNotReachMyos,
           );
         });
       }
@@ -1306,10 +1306,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
           _WorkoutLoggerCopyError.programRefreshBeforeSave,
         ),
       WebWorkoutCommitMessage.connection => const _WorkoutLoggerCopyErrorState(
-          _WorkoutLoggerCopyError.couldNotReachMayos,
+          _WorkoutLoggerCopyError.couldNotReachMyos,
         ),
       WebWorkoutCommitMessage.busy => const _WorkoutLoggerCopyErrorState(
-          _WorkoutLoggerCopyError.mayosBusy,
+          _WorkoutLoggerCopyError.myosBusy,
         ),
       null => result.message == null
           ? null
@@ -1404,7 +1404,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     if (_loadError != null || _loadFailure != null) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(MayosSpacing.xl),
+          padding: const EdgeInsets.all(MyosSpacing.xl),
           child: Text(
             _loadFailure == null
                 ? _loadError!
@@ -1499,9 +1499,9 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         ),
         child: SingleChildScrollView(
           padding: const EdgeInsetsDirectional.only(
-            start: MayosSpacing.lg,
-            end: MayosSpacing.lg,
-            top: MayosSpacing.xs,
+            start: MyosSpacing.lg,
+            end: MyosSpacing.lg,
+            top: MyosSpacing.xs,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1588,7 +1588,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     _rowKeys.removeWhere(
       (String setId, GlobalKey key) => !currentSetIds.contains(setId),
     );
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     // Derived, never stored: the first unticked working set in workout
     // order, warm-ups skipped, moving across exercises (#158).
     final ({int exerciseIndex, int setIndex})? current = currentSetOf(workout);
@@ -1597,57 +1597,57 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     // workout scrolls fully clear of the bar (#160).
     return SingleChildScrollView(
       key: const ValueKey<String>('logger.list'),
-      padding: MayosSpacing.screen,
+      padding: MyosSpacing.screen,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           Text(
             workout.dayName,
-            style: MayosTypography.of(context).pageHeading.copyWith(color: c.textPrimary),
+            style: MyosTypography.of(context).pageHeading.copyWith(color: c.textPrimary),
           ),
           if (workout.programWeekCount > 1) ...<Widget>[
-            const SizedBox(height: MayosSpacing.xxs),
+            const SizedBox(height: MyosSpacing.xxs),
             Text(
               displayCopyOf(context).programWeekLabel(
                 workout.weekOrder,
                 workout.programWeekCount,
               ),
               key: const ValueKey<String>('logger.program_week'),
-              style: MayosTypography.of(context).bodySecondary
+              style: MyosTypography.of(context).bodySecondary
                   .copyWith(color: c.textSecondary),
             ),
           ],
-          const SizedBox(height: MayosSpacing.xxs),
+          const SizedBox(height: MyosSpacing.xxs),
           // The progress line (#159): the same pure counts the bottom bar
           // will show (#160), under the screen's one serif heading.
           Text(
             _progressLine(workout),
             key: const ValueKey<String>('logger.progress'),
             textAlign: copy.isArabic ? TextAlign.end : null,
-            style: MayosTypography.of(context).bodySecondary.copyWith(
+            style: MyosTypography.of(context).bodySecondary.copyWith(
               color: c.textSecondary,
             ),
           ),
           if (_fromCache) ...<Widget>[
-            const SizedBox(height: MayosSpacing.sm),
+            const SizedBox(height: MyosSpacing.sm),
             const _OfflineLoggerNotice(),
           ],
           if (workout.deload != null) ...<Widget>[
-            const SizedBox(height: MayosSpacing.md),
+            const SizedBox(height: MyosSpacing.md),
             DeloadBanner(
               key: const ValueKey<String>('logger.deload'),
               decision: workout.deload!,
               onOpenAssistant: () => context.push(chatPath),
             ),
           ],
-          const SizedBox(height: MayosSpacing.md),
+          const SizedBox(height: MyosSpacing.md),
           if (workout.warmupMovements.isNotEmpty) ...<Widget>[
-            MayosSectionHeader(
+            MyosSectionHeader(
               key: ValueKey<String>('logger.warmup.section'),
               title: _copy.warmup,
               padding: EdgeInsets.zero,
             ),
-            const SizedBox(height: MayosSpacing.xs),
+            const SizedBox(height: MyosSpacing.xs),
             for (int i = 0; i < workout.warmupMovements.length; i++)
               WarmupMovementLoggingCard(
                 movement: workout.warmupMovements[i],
@@ -1666,12 +1666,12 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
                           exerciseId: workout.warmupMovements[i].exerciseId!,
                         ),
               ),
-            MayosSectionHeader(
+            MyosSectionHeader(
               key: const ValueKey<String>('logger.exercises.section'),
               title: _copy.workingSetsHeading,
               padding: EdgeInsets.zero,
             ),
-            const SizedBox(height: MayosSpacing.xs),
+            const SizedBox(height: MyosSpacing.xs),
           ],
           for (int i = 0; i < workout.exercises.length; i++)
             // A replaced planned exercise (#162) keeps its place in the
@@ -1688,14 +1688,14 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
           ],
           // Add exercise stays the list's last action; Finish lives in the
           // fixed bottom bar (#160), so it never needs scrolling to.
-          MayosButton(
+          MyosButton(
             key: const ValueKey<String>('logger.addExercise'),
             label: _copy.addExercise,
             icon: Icons.add,
-            variant: MayosButtonVariant.secondary,
+            variant: MyosButtonVariant.secondary,
             onPressed: _addUnplanned,
           ),
-          const SizedBox(height: MayosSpacing.sm),
+          const SizedBox(height: MyosSpacing.sm),
         ],
       ),
     );
@@ -2111,7 +2111,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
 
   String _substitutionMessage(LoggerProgramSubstitutionResult result) =>
       result.failureMessage != null
-          ? MayosCopy(ref.read(displayLanguageProvider))
+          ? MyosCopy(ref.read(displayLanguageProvider))
               .failureMessage(result.failureMessage!)
           : result.messageType == null
               ? result.message
@@ -2201,7 +2201,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     int ticked, {
     required String confirm,
   }) async {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final bool? discard = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
@@ -2210,16 +2210,16 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         ),
         content: Text(
           _copy.loggedSetsDiscarded,
-          style: MayosTypography.of(context).bodySecondary.copyWith(color: c.textPrimary),
+          style: MyosTypography.of(context).bodySecondary.copyWith(color: c.textPrimary),
         ),
         actions: <Widget>[
-          MayosButton(
+          MyosButton(
             label: _copy.keepLogging,
-            variant: MayosButtonVariant.secondary,
+            variant: MyosButtonVariant.secondary,
             expand: false,
             onPressed: () => Navigator.of(context).pop(false),
           ),
-          MayosButton(
+          MyosButton(
             label: confirm == 'Remove' ? _copy.removeAction : _copy.undoReplace,
             destructive: true,
             expand: false,
@@ -2334,7 +2334,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   /// computation here, because a summary must never be derived from rows
   /// that changed after Finish (#124).
   Widget _buildSummary() {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final WorkoutSummary summary = _summary!;
     final String date = formatPerformedDate(_performedDate);
     final ActiveWorkout? workout = _workout;
@@ -2354,7 +2354,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       _SummaryAction.done => () => context.go(homePath),
     };
     return SingleChildScrollView(
-      padding: MayosSpacing.screen,
+      padding: MyosSpacing.screen,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -2369,30 +2369,30 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
                 ),
               Text(
                 _copy.workoutSummary,
-                style: MayosTypography.of(context).sectionHeading.copyWith(
+                style: MyosTypography.of(context).sectionHeading.copyWith(
                   color: c.textPrimary,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: MayosSpacing.sm),
+          const SizedBox(height: MyosSpacing.sm),
           if (summary.records.isNotEmpty) ...<Widget>[
             _buildCelebration(summary.records),
-            const SizedBox(height: MayosSpacing.md),
+            const SizedBox(height: MyosSpacing.md),
           ],
           if (_checkpointNumber != null) ...<Widget>[
             _checkpointCelebration(),
-            const SizedBox(height: MayosSpacing.md),
+            const SizedBox(height: MyosSpacing.md),
           ],
           _buildStats(summary),
           if (summary.trainingLines.isNotEmpty) ...<Widget>[
-            const SizedBox(height: MayosSpacing.md),
+            const SizedBox(height: MyosSpacing.md),
             _buildTrainingStatus(summary.trainingLines),
           ],
-          const SizedBox(height: MayosSpacing.lg),
-          MayosCard(
+          const SizedBox(height: MyosSpacing.lg),
+          MyosCard(
             padding: EdgeInsets.zero,
-            child: MayosSettingsTile(
+            child: MyosSettingsTile(
               icon: Icons.event_outlined,
               title: _copy.performedDate,
               subtitle: date,
@@ -2401,7 +2401,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
               onTap: _pickDate,
             ),
           ),
-          const SizedBox(height: MayosSpacing.lg),
+          const SizedBox(height: MyosSpacing.lg),
           _readinessHeader(),
           Slider(
             value: _readiness.toDouble(),
@@ -2412,8 +2412,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
             onChanged: (double value) =>
                 setState(() => _readiness = value.round()),
           ),
-          const SizedBox(height: MayosSpacing.sm),
-          MayosTextField(
+          const SizedBox(height: MyosSpacing.sm),
+          MyosTextField(
             controller: _notes,
             maxLines: 3,
             label: _copy.notesHint,
@@ -2422,8 +2422,8 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
           if (_visibleError(context) case final String error)
             _MessageLine(error),
           if (_notice != null) _MessageLine(_notice!, danger: false),
-          const SizedBox(height: MayosSpacing.lg),
-          MayosButton(
+          const SizedBox(height: MyosSpacing.lg),
+          MyosButton(
             key: const ValueKey<String>('logger.save'),
             label: actionLabel,
             icon: action == _SummaryAction.discardWorkout
@@ -2441,27 +2441,27 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   /// (`Bench Press · PR e1RM 112.5 kg`), omitted when the workout earned none
   /// (#124).
   Widget _buildCelebration(List<WorkoutRecord> records) {
-    final MayosThemeExtension c = MayosTheme.of(context);
-    return MayosCard(
-      padding: const EdgeInsets.all(MayosSpacing.md),
+    final MyosThemeExtension c = MyosTheme.of(context);
+    return MyosCard(
+      padding: const EdgeInsets.all(MyosSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           Text(
             _copy.personalRecords,
-            style: MayosTypography.of(context).exerciseTitle.copyWith(color: c.accent),
+            style: MyosTypography.of(context).exerciseTitle.copyWith(color: c.accent),
           ),
-          const SizedBox(height: MayosSpacing.xs),
+          const SizedBox(height: MyosSpacing.xs),
           for (final WorkoutRecord record in records)
             Padding(
-              padding: const EdgeInsets.only(bottom: MayosSpacing.xxs),
+              padding: const EdgeInsets.only(bottom: MyosSpacing.xxs),
               child: Text(
                 workoutCopyOf(context).recordCelebration(
                   record.exerciseName,
                   record.kind,
                   formatRecordKg(record.value),
                 ),
-                style: MayosTypography.of(context).bodySecondary.copyWith(
+                style: MyosTypography.of(context).bodySecondary.copyWith(
                   color: c.textPrimary,
                 ),
               ),
@@ -2473,11 +2473,11 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
 
   Widget _readinessHeader() {
     if (!_copy.isArabic) {
-      return MayosSectionHeader(title: _copy.readinessOutOfFive(_readiness));
+      return MyosSectionHeader(title: _copy.readinessOutOfFive(_readiness));
     }
     final TextStyle? style = Theme.of(context).textTheme.headlineSmall;
     return Padding(
-      padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
+      padding: const EdgeInsets.only(bottom: MyosSpacing.sm),
       child: Row(
         children: <Widget>[
           Expanded(
@@ -2504,26 +2504,26 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   }
 
   Widget _checkpointCelebration() {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final int checkpoint = _checkpointNumber!;
     final CheckpointReview? review = _checkpointReview;
-    return MayosCard(
+    return MyosCard(
       key: const ValueKey<String>('logger.summary.checkpoint'),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
             workoutCopyOf(context).checkpointWorkout(checkpoint),
-            style: MayosTypography.of(context).exerciseTitle.copyWith(color: c.accent),
+            style: MyosTypography.of(context).exerciseTitle.copyWith(color: c.accent),
           ),
-          const SizedBox(height: MayosSpacing.xs),
+          const SizedBox(height: MyosSpacing.xs),
           if (review == null) ...<Widget>[
             Text(workoutCopyOf(context).reviewWillAppear),
           ] else ...<Widget>[
             Text(review.text),
             for (final CheckpointRatingPart part in review.rating)
               Padding(
-                padding: const EdgeInsets.only(top: MayosSpacing.xs),
+                padding: const EdgeInsets.only(top: MyosSpacing.xs),
                 child: Text('${part.part}: ${part.label}'),
               ),
           ],
@@ -2545,7 +2545,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       required String label,
       String? unit,
     }) {
-      final MayosStat child = MayosStat(
+      final MyosStat child = MyosStat(
         key: key,
         value: value,
         label: label,
@@ -2574,7 +2574,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
             ),
           ],
         ),
-        const SizedBox(height: MayosSpacing.md),
+        const SizedBox(height: MyosSpacing.md),
         Row(
           children: <Widget>[
             Expanded(
@@ -2594,7 +2594,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
           ],
         ),
         if (stats.cardioMinutes != null) ...<Widget>[
-          const SizedBox(height: MayosSpacing.md),
+          const SizedBox(height: MyosSpacing.md),
           Row(
             children: <Widget>[
               Expanded(
@@ -2614,22 +2614,22 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   }
 
   Widget _buildTrainingStatus(List<TrainingStatusSummaryLine> lines) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final WorkoutCopy copy = _copy;
-    return MayosCard(
+    return MyosCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           for (int index = 0; index < lines.length; index++)
             Padding(
               padding: EdgeInsets.only(
-                bottom: index == lines.length - 1 ? 0 : MayosSpacing.xs,
+                bottom: index == lines.length - 1 ? 0 : MyosSpacing.xs,
               ),
               child: Text(
                 copy.trainingStatusLine(lines[index]),
                 key: ValueKey<String>('logger.summary.training.$index'),
                 textAlign: copy.isArabic ? TextAlign.end : null,
-                style: MayosTypography.of(context).bodySecondary.copyWith(
+                style: MyosTypography.of(context).bodySecondary.copyWith(
                   color: c.textPrimary,
                 ),
               ),
@@ -2651,12 +2651,12 @@ class _MessageLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(top: MayosSpacing.sm),
+      padding: const EdgeInsets.only(top: MyosSpacing.sm),
       child: Text(
         text,
-        style: MayosTypography.of(context).bodySecondary.copyWith(
+        style: MyosTypography.of(context).bodySecondary.copyWith(
           color: danger ? c.danger : c.textSecondary,
         ),
       ),
@@ -2670,25 +2670,25 @@ class _OfflineLoggerNotice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: MayosSpacing.md,
-        vertical: MayosSpacing.sm,
+        horizontal: MyosSpacing.md,
+        vertical: MyosSpacing.sm,
       ),
       decoration: BoxDecoration(
         color: c.secondarySurface,
-        borderRadius: MayosRadii.mediumRadius,
+        borderRadius: MyosRadii.mediumRadius,
         border: Border.all(color: c.border),
       ),
       child: Row(
         children: <Widget>[
           Icon(Icons.cloud_off, size: 18, color: c.textSecondary),
-          const SizedBox(width: MayosSpacing.xs),
+          const SizedBox(width: MyosSpacing.xs),
           Expanded(
             child: Text(
               workoutCopyOf(context).offlineCachedProgram,
-              style: MayosTypography.of(context).bodySecondary.copyWith(
+              style: MyosTypography.of(context).bodySecondary.copyWith(
                 color: c.textSecondary,
               ),
             ),
@@ -2726,21 +2726,21 @@ class _ExerciseReorderSheetState extends State<_ExerciseReorderSheet> {
         top: false,
         child: Padding(
           padding: const EdgeInsetsDirectional.fromSTEB(
-            MayosSpacing.md,
-            MayosSpacing.md,
-            MayosSpacing.md,
-            MayosSpacing.sm,
+            MyosSpacing.md,
+            MyosSpacing.md,
+            MyosSpacing.md,
+            MyosSpacing.sm,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               Text(
                 widget.copy.reorderExercises,
-                style: MayosTypography.of(context).sectionHeading,
+                style: MyosTypography.of(context).sectionHeading,
               ),
-              const SizedBox(height: MayosSpacing.sm),
+              const SizedBox(height: MyosSpacing.sm),
               Expanded(child: _buildExerciseList()),
-              const SizedBox(height: MayosSpacing.sm),
+              const SizedBox(height: MyosSpacing.sm),
               _buildActions(context),
             ],
           ),
@@ -2770,7 +2770,7 @@ class _ExerciseReorderSheetState extends State<_ExerciseReorderSheet> {
           label: widget.copy.reorderExerciseHandle(exercise.exerciseName),
           container: true,
           child: const Padding(
-            padding: EdgeInsets.all(MayosSpacing.sm),
+            padding: EdgeInsets.all(MyosSpacing.sm),
             child: Icon(Icons.drag_handle),
           ),
         ),
@@ -2781,15 +2781,15 @@ class _ExerciseReorderSheetState extends State<_ExerciseReorderSheet> {
   Widget _buildActions(BuildContext context) => Row(
         children: <Widget>[
           Expanded(
-            child: MayosButton(
+            child: MyosButton(
               label: widget.copy.cancel,
-              variant: MayosButtonVariant.tertiary,
+              variant: MyosButtonVariant.tertiary,
               onPressed: () => Navigator.of(context).pop(),
             ),
           ),
-          const SizedBox(width: MayosSpacing.sm),
+          const SizedBox(width: MyosSpacing.sm),
           Expanded(
-            child: MayosButton(
+            child: MyosButton(
               label: widget.copy.applyExerciseOrder,
               onPressed: () => Navigator.of(context).pop(
                 List<int>.of(_visibleOrder),

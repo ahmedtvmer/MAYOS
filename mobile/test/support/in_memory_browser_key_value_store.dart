@@ -1,4 +1,4 @@
-import 'package:mayos_mobile/src/core/browser_key_value_store.dart';
+import 'package:myos_mobile/src/core/browser_key_value_store.dart';
 
 /// Test fake shared across app rebuilds to model browser localStorage.
 class InMemoryBrowserKeyValueStore implements BrowserKeyValueStore {

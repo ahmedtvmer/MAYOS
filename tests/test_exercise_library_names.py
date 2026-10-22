@@ -115,7 +115,7 @@ AUTHORED_MEDIA = {
 }
 
 
-def test_mayos_authored_staples_are_searchable_and_have_reviewable_details(seed_store, tmp_path):
+def test_myos_authored_staples_are_searchable_and_have_reviewable_details(seed_store, tmp_path):
     from database.schema.definitions import EMBEDDING_DIM
 
     fresh_store = seed_store
@@ -124,7 +124,7 @@ def test_mayos_authored_staples_are_searchable_and_have_reviewable_details(seed_
     # The cable Kelso shrug is hidden as a duplicate of the dumbbell Kelso shrug (305):
     # still readable by id for existing programs, never offered in search.
     kelso = fresh_store.get_exercise_library_detail("mayos:1")
-    assert kelso["provenance"] == "MAYOS"
+    assert kelso["provenance"] == "MYOS"
     assert fresh_store.is_exercise_library_exercise_visible("mayos:1") is False
     assert all(result["id"] != "mayos:1" for result in fresh_store.find_exercises_by_name("kelso shrug"))
 
@@ -145,7 +145,7 @@ def test_mayos_authored_staples_are_searchable_and_have_reviewable_details(seed_
         assert len(detail["instructions"].splitlines()) in (3, 4)
         expected_media = AUTHORED_MEDIA.get(exercise_id, (None, None))
         assert (detail["image_path"], detail["gif_path"]) == expected_media
-        assert detail["provenance"] == "MAYOS"
+        assert detail["provenance"] == "MYOS"
         assert any(result["id"] == exercise_id for result in fresh_store.find_exercises_by_name(alias))
 
         assert any(
@@ -718,13 +718,13 @@ def test_seed_normalizes_source_names_and_preserves_ids_and_media(fresh_store, t
 
 
 def test_every_curation_file_id_exists_in_the_exercise_library():
-    from database.exercise_library.authored import MAYOS_AUTHORED_EXERCISES
+    from database.exercise_library.authored import MYOS_AUTHORED_EXERCISES
     from database.exercise_library.curation import load_exercise_curation
     from database.shared import DEFAULT_CSV_PATH
 
     with open(DEFAULT_CSV_PATH, newline="", encoding="utf-8") as seed_file:
         library_ids = {row["id"] for row in csv.DictReader(seed_file)}
-    library_ids |= {exercise["id"] for exercise in MAYOS_AUTHORED_EXERCISES}
+    library_ids |= {exercise["id"] for exercise in MYOS_AUTHORED_EXERCISES}
 
     assert set(load_exercise_curation()) - library_ids == set()
 

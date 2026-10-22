@@ -65,7 +65,7 @@ abstract class GoogleAuthGateway {
   /// One interactive sign-in attempt: an ID token, a dismissal, or a failure.
   Future<GoogleAuthOutcome> authenticate();
 
-  /// Drops the SDK's own sign-in state. Called whenever the MAYOS session
+  /// Drops the SDK's own sign-in state. Called whenever the MYOS session
   /// ends — logout, a rejected token, account deletion — and whenever a
   /// half-finished sign-up is abandoned, so nothing lingers on the device.
   Future<void> clearSdkState();
@@ -74,7 +74,7 @@ abstract class GoogleAuthGateway {
 /// The real `google_sign_in` v7 adapter.
 ///
 /// One v7 initialization, the platform's supported sign-in surface, and no
-/// scopes: MAYOS only ever needs to know who the person is (#113).
+/// scopes: MYOS only ever needs to know who the person is (#113).
 class GoogleSdkAuthGateway implements GoogleAuthGateway {
   GoogleSdkAuthGateway({
     Stream<GoogleSignInAuthenticationEvent>? authenticationEventSource,

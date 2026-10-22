@@ -1,5 +1,5 @@
-name: mayos_mobile
-description: MAYOS player client (Android closed trial).
+name: myos_mobile
+description: MYOS player client (Android closed trial).
 publish_to: "none"
 version: 0.1.0+1
 
@@ -52,13 +52,13 @@ dev_dependencies:
 flutter_launcher_icons:
   android: true
   ios: false
-  image_path: "assets/mayos-android-logo.png"
+  image_path: "assets/myos-android-logo.png"
   # Sampled from the tile in the source PNG (median of the opaque pixels in
   # its bottom third): the navy the adaptive layer sits on.
   adaptive_icon_background: "#01183D"
   # Safe-zone padding (66dp of the 108dp canvas) is baked into the foreground
   # PNG, so the XML layer must not be inset on top of it.
-  adaptive_icon_foreground: "assets/mayos-android-logo-foreground.png"
+  adaptive_icon_foreground: "assets/myos-android-logo-foreground.png"
   adaptive_icon_foreground_inset: 0
 
 flutter:
@@ -69,9 +69,9 @@ flutter:
     - assets/images/
 
   fonts:
-    # MAYOS typography pair (OFL). See mobile/DESIGN.md for provenance and how
+    # MYOS typography pair (OFL). See mobile/DESIGN.md for provenance and how
     # to swap the approximation. Variable fonts: weights are selected through
-    # MayosTypography, which sets explicit `fontVariations`.
+    # MyosTypography, which sets explicit `fontVariations`.
     - family: PlayfairDisplay
       fonts:
         - asset: assets/fonts/PlayfairDisplay-Variable.ttf

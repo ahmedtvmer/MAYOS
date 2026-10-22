@@ -9,8 +9,8 @@ import '../../core/app_mode.dart';
 import '../../core/display_language/feature_copy_context.dart';
 import '../../core/models.dart';
 import '../../core/shared_program_text.dart';
-import '../../core/theme/mayos_spacing.dart';
-import '../../core/ui/mayos_button.dart';
+import '../../core/theme/myos_spacing.dart';
+import '../../core/ui/myos_button.dart';
 import '../../features/player/auth/auth_controller.dart';
 import '../../providers.dart';
 import '../../router.dart';
@@ -148,12 +148,12 @@ class _SharedProgramChooserScreenState
       appBar: AppBar(title: Text(copy.programImportTitle)),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsetsDirectional.all(MayosSpacing.md),
+          padding: const EdgeInsetsDirectional.all(MyosSpacing.md),
           children: <Widget>[
             if (message != null) ...<Widget>[
               Text(message),
               if (account != null && !account.isCoach)
-                MayosButton(
+                MyosButton(
                   label: copy.sharedProgramGoHome,
                   onPressed: () {
                     ref.read(sharedProgramTextStoreProvider).clear();
@@ -161,7 +161,7 @@ class _SharedProgramChooserScreenState
                   },
                 )
               else
-                MayosButton(
+                MyosButton(
                   label: copy.sharedProgramBackToRoster,
                   onPressed: _backToRoster,
                 ),
@@ -169,19 +169,19 @@ class _SharedProgramChooserScreenState
               Text(copy.choosePlayerForSharedProgram),
               if (_error == _ChooserError.assignmentsUnavailable) ...<Widget>[
                 Text(copy.sharedProgramAssignmentsUnavailable),
-                MayosButton(
+                MyosButton(
                   label: copy.sharedProgramRetry,
                   onPressed: _retryAssignments,
                 ),
-                MayosButton(
+                MyosButton(
                   label: copy.sharedProgramBackToRoster,
                   onPressed: _backToRoster,
                 ),
               ],
               for (final CoachRosterEntry entry in _assignments)
-                MayosButton(
+                MyosButton(
                   label: entry.playerUsername,
-                  variant: MayosButtonVariant.secondary,
+                  variant: MyosButtonVariant.secondary,
                   onPressed: () {
                     final SharedProgramText? currentText =
                         ref.read(sharedProgramTextStoreProvider).pending;
@@ -199,7 +199,7 @@ class _SharedProgramChooserScreenState
                 ),
               if (_assignments.isEmpty && _error == null) ...<Widget>[
                 Text(copy.noAssignedPlayers),
-                MayosButton(
+                MyosButton(
                   label: copy.sharedProgramBackToRoster,
                   onPressed: _backToRoster,
                 ),

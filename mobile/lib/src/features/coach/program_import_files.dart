@@ -51,7 +51,7 @@ final programTemplateDownloaderProvider = Provider<ProgramTemplateDownloader>(
         .coachProgramImportTemplate(extension);
     await ref.read(programTemplateSaverProvider)(
       bytes,
-      'mayos-program-template.$extension',
+      'myos-program-template.$extension',
     );
   },
 );

@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 
 import '../../core/display_language/coach_copy.dart';
-import '../../core/display_language/catalog.dart' show MayosCopy;
+import '../../core/display_language/catalog.dart' show MyosCopy;
 import '../../core/display_language/copy_context.dart';
 import '../../core/display_language/feature_copy_context.dart';
 import '../../core/effort.dart';
 import '../../core/models.dart';
-import '../../core/theme/mayos_spacing.dart';
-import '../../core/theme/mayos_theme.dart';
-import '../../core/theme/mayos_typography.dart';
+import '../../core/theme/myos_spacing.dart';
+import '../../core/theme/myos_theme.dart';
+import '../../core/theme/myos_typography.dart';
 import '../../core/ui/is_desktop_layout.dart';
-import '../../core/ui/mayos_card.dart';
-import '../../core/ui/mayos_card_table.dart';
-import '../../core/ui/mayos_section_header.dart';
-import '../../core/ui/mayos_table_frame.dart';
+import '../../core/ui/myos_card.dart';
+import '../../core/ui/myos_card_table.dart';
+import '../../core/ui/myos_section_header.dart';
+import '../../core/ui/myos_table_frame.dart';
 import '../../core/workout_equipment.dart';
 import 'coach_exercise_table.dart';
 
@@ -33,8 +33,8 @@ enum CoachHistorySection {
   exercises,
 }
 
-const MayosTableColumns _recentSessionColumns =
-    MayosTableColumns(<double>[120, 190, 70, 110, 350], 4);
+const MyosTableColumns _recentSessionColumns =
+    MyosTableColumns(<double>[120, 190, 70, 110, 350], 4);
 
 class CoachHistorySegmentData {
   const CoachHistorySegmentData({
@@ -61,11 +61,11 @@ class CoachHistorySegmentData {
 }
 
 class CoachHistorySegment extends StatelessWidget {
-  static const MayosTableColumns _recordColumns = MayosTableColumns(
+  static const MyosTableColumns _recordColumns = MyosTableColumns(
     <double>[250, 110, 110, 65, 115],
     0,
   );
-  static const MayosTableColumns _historyColumns = MayosTableColumns(
+  static const MyosTableColumns _historyColumns = MyosTableColumns(
     <double>[105, 135, 65, 70, 95],
     0,
   );
@@ -94,27 +94,27 @@ class CoachHistorySegment extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         _summaryCard(context, weeklySets),
-        const SizedBox(height: MayosSpacing.sm),
+        const SizedBox(height: MyosSpacing.sm),
         _latestSessionCard(context),
-        const SizedBox(height: MayosSpacing.sm),
+        const SizedBox(height: MyosSpacing.sm),
         _volumeCard(context, entries),
-        const SizedBox(height: MayosSpacing.sm),
+        const SizedBox(height: MyosSpacing.sm),
         if (data.summary.schedule != null || data.summary.pauses.isNotEmpty)
           ...<Widget>[
             _scheduleCard(context),
-            const SizedBox(height: MayosSpacing.sm),
+            const SizedBox(height: MyosSpacing.sm),
           ],
         _injuriesCard(context),
-        const SizedBox(height: MayosSpacing.sm),
+        const SizedBox(height: MyosSpacing.sm),
         _recentSessionsCard(context),
-        const SizedBox(height: MayosSpacing.sm),
+        const SizedBox(height: MyosSpacing.sm),
         _recordsCard(context),
-        const SizedBox(height: MayosSpacing.sm),
+        const SizedBox(height: MyosSpacing.sm),
         _checkpointReviewsCard(context),
-        const SizedBox(height: MayosSpacing.sm),
+        const SizedBox(height: MyosSpacing.sm),
         if (data.volumeReview != null) ...<Widget>[
           _volumeReviewCard(context),
-          const SizedBox(height: MayosSpacing.sm),
+          const SizedBox(height: MyosSpacing.sm),
         ],
         _exercisesCard(context),
       ],
@@ -123,19 +123,19 @@ class CoachHistorySegment extends StatelessWidget {
 
   Widget _volumeReviewCard(BuildContext context) {
     final VolumeReview review = data.volumeReview!;
-    final MayosCopy copy = displayCopyOf(context);
-    return MayosCard(
-      padding: const EdgeInsets.all(MayosSpacing.md),
+    final MyosCopy copy = displayCopyOf(context);
+    return MyosCard(
+      padding: const EdgeInsets.all(MyosSpacing.md),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-        MayosSectionHeader(title: copy.volumeReview),
+        MyosSectionHeader(title: copy.volumeReview),
         for (final VolumeReviewMuscle muscle in review.muscles) ...<Widget>[
-          const SizedBox(height: MayosSpacing.sm),
+          const SizedBox(height: MyosSpacing.sm),
           Text(
             '${copy.primaryMuscleLabel(muscle.muscle)} · ${copy.volumeReviewChange(muscle.setDelta)}',
             key: Key('coach_volume_review_muscle_${muscle.muscle}'),
-            style: MayosTypography.of(context).exerciseTitle,
+            style: MyosTypography.of(context).exerciseTitle,
           ),
-          const SizedBox(height: MayosSpacing.xs),
+          const SizedBox(height: MyosSpacing.xs),
           Text(
             copy.volumeReviewReason(
               muscle.verdict,
@@ -160,17 +160,17 @@ class CoachHistorySegment extends StatelessWidget {
   }
 
   Widget _summaryCard(BuildContext context, double weeklySets) {
-    return MayosCard(
-      padding: const EdgeInsets.all(MayosSpacing.md),
+    return MyosCard(
+      padding: const EdgeInsets.all(MyosSpacing.md),
       child: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints constraints) {
           final int columns = isDesktopLayout(context) ? 4 : 2;
           final double tileWidth = (constraints.maxWidth -
-                  (MayosSpacing.xs * (columns - 1))) /
+                  (MyosSpacing.xs * (columns - 1))) /
               columns;
           return Wrap(
-            spacing: MayosSpacing.xs,
-            runSpacing: MayosSpacing.xs,
+            spacing: MyosSpacing.xs,
+            runSpacing: MyosSpacing.xs,
             children: <Widget>[
               for (final Widget stat in _summaryStats(context, weeklySets))
                 SizedBox(width: tileWidth, child: stat),
@@ -203,14 +203,14 @@ class CoachHistorySegment extends StatelessWidget {
   }
 
   Widget _section(BuildContext context, String title, List<Widget> children) {
-    return MayosCard(
-      padding: const EdgeInsets.all(MayosSpacing.md),
+    return MyosCard(
+      padding: const EdgeInsets.all(MyosSpacing.md),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          MayosSectionHeader(
+          MyosSectionHeader(
             title: title,
-            padding: const EdgeInsets.only(bottom: MayosSpacing.xs),
+            padding: const EdgeInsets.only(bottom: MyosSpacing.xs),
           ),
           ...children,
         ],
@@ -246,7 +246,7 @@ class CoachHistorySegment extends StatelessWidget {
     }
     final double largestVolume = entries.first.value;
     return _section(context, copy.weeklyVolume, <Widget>[
-      MayosCardTable(
+      MyosCardTable(
         columns: <String>[copy.muscleColumn, copy.workingSets],
         desktopTable: Column(
           children: <Widget>[
@@ -254,9 +254,9 @@ class CoachHistorySegment extends StatelessWidget {
               _volumeRow(context, entry, largestVolume),
           ],
         ),
-        rows: <MayosCardTableRow>[
+        rows: <MyosCardTableRow>[
           for (final MapEntry<String, double> entry in entries)
-            MayosCardTableRow(
+            MyosCardTableRow(
               cells: <Widget?>[
                 Text(
                   displayCopyOf(context).primaryMuscleLabel(entry.key),
@@ -275,7 +275,7 @@ class CoachHistorySegment extends StatelessWidget {
     double largestVolume,
   ) =>
       Padding(
-        padding: const EdgeInsets.symmetric(vertical: MayosSpacing.xxs),
+        padding: const EdgeInsets.symmetric(vertical: MyosSpacing.xxs),
         child: Row(
           children: <Widget>[
             Flexible(
@@ -286,19 +286,19 @@ class CoachHistorySegment extends StatelessWidget {
                 textDirection: TextDirection.ltr,
               ),
             ),
-            const SizedBox(width: MayosSpacing.xs),
+            const SizedBox(width: MyosSpacing.xs),
             Expanded(
               child: ClipRRect(
-                borderRadius: MayosRadii.pillRadius,
+                borderRadius: MyosRadii.pillRadius,
                 child: LinearProgressIndicator(
                   value: entry.value / largestVolume,
-                  minHeight: MayosSpacing.xs,
-                  color: MayosTheme.of(context).chartPrimary,
-                  backgroundColor: MayosTheme.of(context).surfaceSunken,
+                  minHeight: MyosSpacing.xs,
+                  color: MyosTheme.of(context).chartPrimary,
+                  backgroundColor: MyosTheme.of(context).surfaceSunken,
                 ),
               ),
             ),
-            const SizedBox(width: MayosSpacing.xs),
+            const SizedBox(width: MyosSpacing.xs),
             Text(
               _formatWorkingSets(entry.value),
               textDirection: TextDirection.ltr,
@@ -312,21 +312,21 @@ class CoachHistorySegment extends StatelessWidget {
     MapEntry<String, double> entry,
     double largestVolume,
   ) {
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     return Row(
       children: <Widget>[
         Expanded(
           child: ClipRRect(
-            borderRadius: MayosRadii.pillRadius,
+            borderRadius: MyosRadii.pillRadius,
             child: LinearProgressIndicator(
               value: entry.value / largestVolume,
-              minHeight: MayosSpacing.xs,
+              minHeight: MyosSpacing.xs,
               color: colors.chartPrimary,
               backgroundColor: colors.surfaceSunken,
             ),
           ),
         ),
-        const SizedBox(width: MayosSpacing.xs),
+        const SizedBox(width: MyosSpacing.xs),
         Text(_formatWorkingSets(entry.value), textDirection: TextDirection.ltr),
       ],
     );
@@ -360,20 +360,20 @@ class CoachHistorySegment extends StatelessWidget {
   }
 
   Widget _scheduleRow(BuildContext context, String text, IconData icon) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: MayosSpacing.xs),
+      padding: const EdgeInsets.only(bottom: MyosSpacing.xs),
       child: Container(
-        padding: const EdgeInsets.all(MayosSpacing.sm),
+        padding: const EdgeInsets.all(MyosSpacing.sm),
         decoration: BoxDecoration(
           color: c.surfaceElevated,
-          borderRadius: MayosRadii.mediumRadius,
+          borderRadius: MyosRadii.mediumRadius,
           border: Border.all(color: c.border),
         ),
         child: Row(
           children: <Widget>[
-            Icon(icon, size: MayosIconSizes.medium, color: c.textSecondary),
-            const SizedBox(width: MayosSpacing.xs),
+            Icon(icon, size: MyosIconSizes.medium, color: c.textSecondary),
+            const SizedBox(width: MyosSpacing.xs),
             Expanded(child: Text(text)),
           ],
         ),
@@ -386,12 +386,12 @@ class CoachHistorySegment extends StatelessWidget {
     if (data.summary.injuries.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(
-          horizontal: MayosSpacing.sm,
-          vertical: MayosSpacing.xxs,
+          horizontal: MyosSpacing.sm,
+          vertical: MyosSpacing.xxs,
         ),
         child: Text(
           '${copy.injuries}: ${copy.noInjuries}',
-          style: MayosTypography.of(context).bodySecondary,
+          style: MyosTypography.of(context).bodySecondary,
         ),
       );
     }
@@ -401,22 +401,22 @@ class CoachHistorySegment extends StatelessWidget {
       <Widget>[
         for (final InjuryRecord injury in data.summary.injuries)
           Padding(
-            padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
+            padding: const EdgeInsets.only(bottom: MyosSpacing.sm),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
                   '${copy.injuryArea(injury.bodyArea)} · ${copy.injuryStatus(injury.status)}',
-                  style: MayosTypography.of(context).body.copyWith(
-                        color: MayosTheme.of(context).textPrimary,
+                  style: MyosTypography.of(context).body.copyWith(
+                        color: MyosTheme.of(context).textPrimary,
                       ),
                 ),
                 Text(injury.description),
                 for (final ExerciseClearance clearance in injury.clearances)
                   Padding(
                     padding: const EdgeInsetsDirectional.only(
-                      start: MayosSpacing.sm,
-                      top: MayosSpacing.xxs,
+                      start: MyosSpacing.sm,
+                      top: MyosSpacing.xxs,
                     ),
                     child: Text(
                       '${clearance.exerciseName}: ${copy.clearanceVerdict(clearance.verdict)}'
@@ -450,21 +450,21 @@ class CoachHistorySegment extends StatelessWidget {
     return _section(context, copy.latestSession, <Widget>[
       Text(
         copy.sessionTitle(latest.splitName, latest.sessionDate),
-        style: MayosTypography.of(context)
+        style: MyosTypography.of(context)
             .body
-            .copyWith(color: MayosTheme.of(context).textPrimary),
+            .copyWith(color: MyosTheme.of(context).textPrimary),
       ),
       Text(copy.latestSessionTotals(latest.setsCount, latest.totalVolumeKg)),
       if (flags.isNotEmpty)
         ...<Widget>[
-          const SizedBox(height: MayosSpacing.xs),
+          const SizedBox(height: MyosSpacing.xs),
           _wrappedSessionFlagChips(context, flags),
         ],
-      const SizedBox(height: MayosSpacing.sm),
+      const SizedBox(height: MyosSpacing.sm),
       if (isDesktopLayout(context))
         _sessionExerciseTable(context, latest.exercises)
       else
-        MayosCardTable(
+        MyosCardTable(
           columns: _sessionExerciseLabels(context),
           rows: _sessionExerciseRows(context, latest.exercises),
         ),
@@ -536,12 +536,12 @@ class CoachHistorySegment extends StatelessWidget {
   }
 
   Widget _recordsContent(BuildContext context, CoachCopy copy) =>
-      MayosCardTable(
+      MyosCardTable(
         columns: <String>[copy.programExerciseColumn],
         desktopTable: _recordsDesktopTable(context, copy),
-        rows: <MayosCardTableRow>[
+        rows: <MyosCardTableRow>[
           for (final PersonalRecord record in data.records)
-            MayosCardTableRow(
+            MyosCardTableRow(
               cells: <Widget?>[
                 CoachExerciseCell(
                   imagePath: record.imagePath,
@@ -588,7 +588,7 @@ class CoachHistorySegment extends StatelessWidget {
     CoachCopy copy,
     PersonalRecord record,
   ) =>
-      MayosTableRow(
+      MyosTableRow(
         cells: <Widget>[
           CoachExerciseCell(
             imagePath: record.imagePath,
@@ -613,7 +613,7 @@ class CoachHistorySegment extends StatelessWidget {
     BuildContext context,
     List<String> labels,
   ) =>
-      MayosTableHeader(
+      MyosTableHeader(
         labels: labels,
         alignments: List<TextAlign>.filled(labels.length, TextAlign.start),
       );
@@ -630,9 +630,9 @@ class CoachHistorySegment extends StatelessWidget {
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
         textDirection: textDirection,
-        style: MayosTypography.of(context)
+        style: MyosTypography.of(context)
             .bodySecondary
-            .copyWith(color: MayosTheme.of(context).textPrimary),
+            .copyWith(color: MyosTheme.of(context).textPrimary),
       );
 
   Widget _checkpointReviewsCard(BuildContext context) {
@@ -659,16 +659,16 @@ class CoachHistorySegment extends StatelessWidget {
     CheckpointReviewListItem review,
   ) {
     final copy = coachCopyOf(context);
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final bool rtl = Directionality.of(context) == TextDirection.rtl;
     return Padding(
-      padding: const EdgeInsets.only(bottom: MayosSpacing.xs),
-      child: MayosCard(
+      padding: const EdgeInsets.only(bottom: MyosSpacing.xs),
+      child: MyosCard(
         key: ValueKey<String>('coach.checkpoint.${review.checkpoint}'),
         onTap: () => onCheckpointTap(review),
         color: c.surfaceElevated,
-        radius: MayosRadii.medium,
-        padding: const EdgeInsets.all(MayosSpacing.sm),
+        radius: MyosRadii.medium,
+        padding: const EdgeInsets.all(MyosSpacing.sm),
         child: Row(
           children: <Widget>[
             Expanded(
@@ -677,14 +677,14 @@ class CoachHistorySegment extends StatelessWidget {
                 children: <Widget>[
                   Text(
                     copy.checkpointNumber(review.checkpoint),
-                    style: MayosTypography.of(context).label,
+                    style: MyosTypography.of(context).label,
                   ),
                   Text(copy.checkpointPeriod(
                       review.periodStart, review.periodEnd)),
                 ],
               ),
             ),
-            const SizedBox(width: MayosSpacing.xs),
+            const SizedBox(width: MyosSpacing.xs),
             Icon(
               rtl ? Icons.chevron_left : Icons.chevron_right,
               color: c.textSecondary,
@@ -721,7 +721,7 @@ class CoachHistorySegment extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         if (caption != null) Text(caption),
-        const SizedBox(height: MayosSpacing.xxs),
+        const SizedBox(height: MyosSpacing.xxs),
         _exerciseHistoryPoints(context, copy, history, points),
         if (history.records.isNotEmpty)
           ..._historyRecordRows(context, copy, history),
@@ -790,12 +790,12 @@ class CoachHistorySegment extends StatelessWidget {
     CoachCopy copy,
     List<_ExerciseHistoryDisplay> points,
   ) =>
-      MayosCardTable(
+      MyosCardTable(
         columns: <String>[copy.dateColumn],
         desktopTable: _exerciseHistoryDesktopTable(context, copy, points),
-        rows: <MayosCardTableRow>[
+        rows: <MyosCardTableRow>[
           for (final _ExerciseHistoryDisplay point in points)
-            MayosCardTableRow(
+            MyosCardTableRow(
               cells: <Widget?>[
                 Text(copy.exerciseHistoryCompactPoint(
                   point.point.date,
@@ -840,7 +840,7 @@ class CoachHistorySegment extends StatelessWidget {
     CoachCopy copy,
     _ExerciseHistoryDisplay point,
   ) =>
-      MayosTableRow(
+      MyosTableRow(
         cells: _historyTableCells(context, copy, point),
       );
 
@@ -895,7 +895,7 @@ class CoachHistorySegment extends StatelessWidget {
     CoachExerciseHistory history,
   ) =>
       <Widget>[
-        const SizedBox(height: MayosSpacing.xs),
+        const SizedBox(height: MyosSpacing.xs),
         Text(copy.records),
         for (final CoachExerciseRecord record in history.records)
           Text(copy.recordHistory(
@@ -942,7 +942,7 @@ class CoachHistorySegment extends StatelessWidget {
 
 Widget _recentSessionTableHeader(BuildContext context) {
   final copy = coachCopyOf(context);
-  return MayosTableHeader(
+  return MyosTableHeader(
     labels: <String>[
       copy.sessionDateColumn,
       copy.sessionSplitColumn,
@@ -963,8 +963,8 @@ Widget _recentSessionTableHeader(BuildContext context) {
 Widget _wrappedSessionFlagChips(BuildContext context, List<Widget> flags) =>
     LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) => Wrap(
-        spacing: MayosSpacing.xs,
-        runSpacing: MayosSpacing.xs,
+        spacing: MyosSpacing.xs,
+        runSpacing: MyosSpacing.xs,
         children: <Widget>[
           for (final Widget flag in flags)
             ConstrainedBox(
@@ -987,21 +987,21 @@ String _sessionDivergenceLabel(
   return coachCopyOf(context).divergence(kind, divergence.exerciseName);
 }
 
-const MayosTableColumns _sessionExerciseColumns =
-    MayosTableColumns(<double>[290, 230, 95, 70, 120], 0);
+const MyosTableColumns _sessionExerciseColumns =
+    MyosTableColumns(<double>[290, 230, 95, 70, 120], 0);
 
 List<String> _sessionExerciseLabels(BuildContext context) {
   final copy = coachCopyOf(context);
   return <String>[copy.programExerciseColumn];
 }
 
-List<MayosCardTableRow> _sessionExerciseRows(
+List<MyosCardTableRow> _sessionExerciseRows(
   BuildContext context,
   List<CoachPlayerSessionExercise> exercises,
 ) =>
-    <MayosCardTableRow>[
+    <MyosCardTableRow>[
       for (final CoachPlayerSessionExercise exercise in exercises)
-        MayosCardTableRow(
+        MyosCardTableRow(
           cells: <Widget?>[
             CoachExerciseCell(
               imagePath: exercise.imagePath,
@@ -1045,7 +1045,7 @@ Widget _sessionExerciseTableContent(
 
 Widget _sessionExerciseTableHeader(BuildContext context) {
   final copy = coachCopyOf(context);
-  return MayosTableHeader(
+  return MyosTableHeader(
     labels: <String>[
       copy.programExerciseColumn,
       copy.programActionColumn,
@@ -1067,7 +1067,7 @@ Widget _sessionExerciseTableRow(
   BuildContext context,
   CoachPlayerSessionExercise exercise,
 ) =>
-    MayosTableRow(
+    MyosTableRow(
       cells: _sessionExerciseTableCells(context, exercise),
     );
 
@@ -1135,7 +1135,7 @@ class _RecentSessionRowState extends State<_RecentSessionRow> {
   Widget _desktopSummary(BuildContext context, List<Widget> flags) {
     return _rowToggle(
       context,
-      MayosTableRow(
+      MyosTableRow(
         cells: _desktopCells(context, flags),
       ),
     );
@@ -1170,15 +1170,15 @@ class _RecentSessionRowState extends State<_RecentSessionRow> {
     return Semantics(
       button: true,
       expanded: _expanded,
-      child: MayosCardTable(
+      child: MyosCardTable(
         columns: <String>[
           copy.sessionDateColumn,
           copy.programSetsColumn,
           copy.sessionVolumeColumn,
           copy.sessionFlagsColumn,
         ],
-        rows: <MayosCardTableRow>[
-          MayosCardTableRow(
+        rows: <MyosCardTableRow>[
+          MyosCardTableRow(
             key: Key(
               'coach_history_recent_session_${session.sessionId}_toggle',
             ),
@@ -1214,28 +1214,28 @@ class _RecentSessionRowState extends State<_RecentSessionRow> {
 
   Widget _expandCollapseIcon(BuildContext context) => Icon(
         _expanded ? Icons.expand_less : Icons.expand_more,
-        color: MayosTheme.of(context).textSecondary,
-        size: MayosIconSizes.small,
+        color: MyosTheme.of(context).textSecondary,
+        size: MyosIconSizes.small,
       );
 
   Widget _expandedDetails(BuildContext context) {
     final bool desktop = isDesktopLayout(context);
     return Padding(
-      padding: const EdgeInsetsDirectional.only(bottom: MayosSpacing.sm),
+      padding: const EdgeInsetsDirectional.only(bottom: MyosSpacing.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Padding(
             padding: const EdgeInsetsDirectional.only(
-              start: MayosSpacing.sm,
-              end: MayosSpacing.sm,
+              start: MyosSpacing.sm,
+              end: MyosSpacing.sm,
             ),
             child: _expandedSummary(context),
           ),
           Padding(
             padding: EdgeInsetsDirectional.only(
-              start: MayosSpacing.sm,
-              end: desktop ? 0 : MayosSpacing.sm,
+              start: MyosSpacing.sm,
+              end: desktop ? 0 : MyosSpacing.sm,
             ),
             child: _exerciseBreakdown(context),
           ),
@@ -1258,7 +1258,7 @@ class _RecentSessionRowState extends State<_RecentSessionRow> {
               session.totalVolumeKg,
             ),
           ),
-          const SizedBox(height: MayosSpacing.xs),
+          const SizedBox(height: MyosSpacing.xs),
         ],
       );
 
@@ -1269,7 +1269,7 @@ class _RecentSessionRowState extends State<_RecentSessionRow> {
           scrollable: false,
           child: _sessionExerciseTableContent(context, session.exercises),
         )
-      : MayosCardTable(
+      : MyosCardTable(
           columns: _sessionExerciseLabels(context),
           rows: _sessionExerciseRows(context, session.exercises),
         );
@@ -1327,13 +1327,13 @@ class _HistoryStatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final bool rtl = Directionality.of(context) == TextDirection.rtl;
     return Container(
-      padding: const EdgeInsets.all(MayosSpacing.sm),
+      padding: const EdgeInsets.all(MyosSpacing.sm),
       decoration: BoxDecoration(
         color: c.surfaceElevated,
-        borderRadius: MayosRadii.mediumRadius,
+        borderRadius: MyosRadii.mediumRadius,
         border: Border.all(color: c.border),
       ),
       child: Column(
@@ -1341,14 +1341,14 @@ class _HistoryStatTile extends StatelessWidget {
         children: <Widget>[
           Text(
             label,
-            style: MayosTypography.of(context)
+            style: MyosTypography.of(context)
                 .bodySecondary
                 .copyWith(color: c.textSecondary),
           ),
-          const SizedBox(height: MayosSpacing.xxs),
+          const SizedBox(height: MyosSpacing.xxs),
           Text(
             value,
-            style: MayosTypography.of(context).numericSmall
+            style: MyosTypography.of(context).numericSmall
                 .copyWith(color: c.textPrimary),
             textAlign: rtl ? TextAlign.end : TextAlign.start,
             textDirection: TextDirection.ltr,
@@ -1378,18 +1378,18 @@ class _CollapsibleHistorySection extends StatelessWidget {
         button: true,
         expanded: expanded,
         label: heading.label,
-        child: MayosCard(
+        child: MyosCard(
           onTap: onToggle,
-          padding: const EdgeInsets.all(MayosSpacing.md),
+          padding: const EdgeInsets.all(MyosSpacing.md),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Semantics(
                 excludeSemantics: true,
-                child: MayosSectionHeader(
+                child: MyosSectionHeader(
                   title: heading.label,
                   padding: EdgeInsets.only(
-                    bottom: expanded ? MayosSpacing.xs : 0,
+                    bottom: expanded ? MyosSpacing.xs : 0,
                   ),
                   trailing: Icon(
                     expanded ? Icons.expand_less : Icons.expand_more,

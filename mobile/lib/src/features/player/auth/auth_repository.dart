@@ -318,7 +318,7 @@ class AuthRepository {
     await clearSession(accountId: accountId);
   }
 
-  /// Redeems a Coach invite from MAYOS and returns the updated account.
+  /// Redeems a Coach invite from MYOS and returns the updated account.
   ///
   /// The redeem response already carries the new capabilities, so no follow-up
   /// reads are issued: a transient failure after a committed grant must never

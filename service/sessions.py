@@ -7,7 +7,7 @@ from agent.progression_engine import set_e1rm
 from service._base import ledger_scope
 from utils.exporter import export_sessions_to_csv, export_sessions_to_json
 
-EXPORT_FILENAMES = {"csv": "mayos_session_log.csv", "json": "mayos_session_log.json"}
+EXPORT_FILENAMES = {"csv": "myos_session_log.csv", "json": "myos_session_log.json"}
 
 
 def export_session_log(

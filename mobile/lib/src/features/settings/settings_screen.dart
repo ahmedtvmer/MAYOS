@@ -12,13 +12,13 @@ import '../../core/display_language/settings_copy.dart';
 import '../../core/display_language/choices.dart';
 import '../../core/models.dart';
 import '../../core/privacy_policy.dart';
-import '../../core/theme/mayos_spacing.dart';
-import '../../core/theme/mayos_theme.dart';
-import '../../core/ui/mayos_card.dart';
-import '../../core/ui/mayos_scaffold.dart';
-import '../../core/ui/mayos_section_header.dart';
-import '../../core/ui/mayos_segmented_control.dart';
-import '../../core/ui/mayos_settings_tile.dart';
+import '../../core/theme/myos_spacing.dart';
+import '../../core/theme/myos_theme.dart';
+import '../../core/ui/myos_card.dart';
+import '../../core/ui/myos_scaffold.dart';
+import '../../core/ui/myos_section_header.dart';
+import '../../core/ui/myos_segmented_control.dart';
+import '../../core/ui/myos_settings_tile.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import 'account_security_section.dart';
@@ -49,7 +49,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final ThemeMode mode = ref.watch(themeModeControllerProvider);
     final AccountSession? session = ref.watch(authControllerProvider).session;
     final bool isCoach = session?.account.isCoach ?? false;
@@ -63,102 +63,102 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final bool recoveryEmailVerified =
         session?.account.recoveryEmailVerified == true ||
             recoveryEmail.valueOrNull?.verified == true;
-    final MayosCopy copy = MayosCopy(language);
+    final MyosCopy copy = MyosCopy(language);
     final SettingsCopy ui = SettingsCopy(language);
     final AssignmentCopy assignmentCopy = AssignmentCopy(language);
 
-    return MayosScaffold(
+    return MyosScaffold(
       title: copy.settings,
       showBack: true,
       body: ListView(
         key: const Key('settings_section_list'),
-        padding: MayosSpacing.screen,
+        padding: MyosSpacing.screen,
         children: <Widget>[
-          MayosSectionHeader(
+          MyosSectionHeader(
             title: ui.appearance,
             subtitle: ui.appearanceLead,
           ),
-          MayosSegmentedControl<ThemeMode>(
+          MyosSegmentedControl<ThemeMode>(
             selected: mode,
             onChanged: (ThemeMode value) =>
                 ref.read(themeModeControllerProvider.notifier).setMode(value),
-            segments: <MayosSegment<ThemeMode>>[
-              MayosSegment<ThemeMode>(
+            segments: <MyosSegment<ThemeMode>>[
+              MyosSegment<ThemeMode>(
                 value: ThemeMode.system,
                 label: ui.system,
                 icon: Icons.brightness_auto_outlined,
               ),
-              MayosSegment<ThemeMode>(
+              MyosSegment<ThemeMode>(
                 value: ThemeMode.light,
                 label: ui.light,
                 icon: Icons.light_mode_outlined,
               ),
-              MayosSegment<ThemeMode>(
+              MyosSegment<ThemeMode>(
                 value: ThemeMode.dark,
                 label: ui.dark,
                 icon: Icons.dark_mode_outlined,
               ),
             ],
           ),
-          const SizedBox(height: MayosSpacing.xl),
+          const SizedBox(height: MyosSpacing.xl),
           if (coachMode) ...<Widget>[
-            MayosCard(
+            MyosCard(
               padding: const EdgeInsets.symmetric(
-                  horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
-              child: MayosSettingsTile(
+                  horizontal: MyosSpacing.xs, vertical: MyosSpacing.xxs),
+              child: MyosSettingsTile(
                 icon: Icons.badge_outlined,
                 title: ui.coachProfile,
                 subtitle: ui.editCoachProfile,
                 onTap: () => context.go(coachProfilePath),
               ),
             ),
-            const SizedBox(height: MayosSpacing.xl),
-            MayosCard(
+            const SizedBox(height: MyosSpacing.xl),
+            MyosCard(
               padding: const EdgeInsets.symmetric(
-                  horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
-              child: MayosSettingsTile(
+                  horizontal: MyosSpacing.xs, vertical: MyosSpacing.xxs),
+              child: MyosSettingsTile(
                 icon: Icons.card_membership_outlined,
                 title: ui.coachPlan,
                 onTap: () => context.push(coachPlanPath),
               ),
             ),
-            const SizedBox(height: MayosSpacing.xl),
+            const SizedBox(height: MyosSpacing.xl),
           ] else ...<Widget>[
             if (hasPlayerProfile) ...<Widget>[
-              MayosCard(
+              MyosCard(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
-                child: MayosSettingsTile(
+                    horizontal: MyosSpacing.xs, vertical: MyosSpacing.xxs),
+                child: MyosSettingsTile(
                   icon: Icons.person_outline,
                   title: ui.trainingProfile,
                   onTap: () => context.push(profilePath),
                 ),
               ),
-              const SizedBox(height: MayosSpacing.xl),
-              MayosCard(
+              const SizedBox(height: MyosSpacing.xl),
+              MyosCard(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
-                child: MayosSettingsTile(
+                    horizontal: MyosSpacing.xs, vertical: MyosSpacing.xxs),
+                child: MyosSettingsTile(
                   icon: Icons.card_membership_outlined,
                   title: ui.lifterPlan,
                   onTap: () => context.push(lifterPlanPath),
                 ),
               ),
-              const SizedBox(height: MayosSpacing.xl),
+              const SizedBox(height: MyosSpacing.xl),
             ],
-            MayosCard(
+            MyosCard(
               padding: const EdgeInsets.symmetric(
-                  horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
+                  horizontal: MyosSpacing.xs, vertical: MyosSpacing.xxs),
               child: Column(
                 children: <Widget>[
-                  MayosSettingsTile(
+                  MyosSettingsTile(
                     icon: Icons.badge_outlined,
                     title: assignmentCopy.myCoach,
                     onTap: () => context.push(assignmentPath),
                   ),
                   if (!isCoach) ...<Widget>[
                     Divider(height: 1, color: c.border),
-                    MayosSettingsTile(
+                    MyosSettingsTile(
                       icon: Icons.workspace_premium_outlined,
                       title: ui.enableCoaching,
                       subtitle: ui.enableCoachingSubtitle,
@@ -168,22 +168,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: MayosSpacing.xl),
+            const SizedBox(height: MyosSpacing.xl),
             if (hasPlayerProfile) ...<Widget>[
-              MayosSectionHeader(title: ui.personalization),
-              MayosCard(
+              MyosSectionHeader(title: ui.personalization),
+              MyosCard(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
+                    horizontal: MyosSpacing.xs, vertical: MyosSpacing.xxs),
                 child: Column(
                   children: <Widget>[
-                    MayosSettingsTile(
+                    MyosSettingsTile(
                       key: const Key('personalization_entry'),
                       icon: Icons.forum_outlined,
                       title: ui.assistantStyle,
                       onTap: () => context.push(personalizationPath),
                     ),
                     Divider(height: 1, color: c.border),
-                    MayosSettingsTile(
+                    MyosSettingsTile(
                       key: const Key('assistant_preferences_entry'),
                       icon: Icons.bookmark_outline,
                       title: ui.assistantPreferences,
@@ -193,14 +193,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: MayosSpacing.xl),
-              MayosSectionHeader(title: ui.training),
-              MayosCard(
+              const SizedBox(height: MyosSpacing.xl),
+              MyosSectionHeader(title: ui.training),
+              MyosCard(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
+                    horizontal: MyosSpacing.xs, vertical: MyosSpacing.xxs),
                 child: Column(
                   children: <Widget>[
-                    MayosSettingsTile(
+                    MyosSettingsTile(
                       icon: Icons.forum_outlined,
                       title: ui.assistant,
                       subtitle: ui.assistantSubtitle,
@@ -208,7 +208,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                     if (offlineDrafts) ...<Widget>[
                       Divider(height: 1, color: c.border),
-                      MayosSettingsTile(
+                      MyosSettingsTile(
                         icon: Icons.cloud_upload_outlined,
                         title: ui.workoutDrafts,
                         subtitle: ui.workoutDraftsSubtitle,
@@ -218,14 +218,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: MayosSpacing.xl),
+              const SizedBox(height: MyosSpacing.xl),
             ],
             if (hasPlayerProfile) ...<Widget>[
-              MayosSectionHeader(title: ui.notifications),
-              MayosCard(
+              MyosSectionHeader(title: ui.notifications),
+              MyosCard(
                 padding: const EdgeInsets.symmetric(
-                    horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
-                child: MayosSettingsTile(
+                    horizontal: MyosSpacing.xs, vertical: MyosSpacing.xxs),
+                child: MyosSettingsTile(
                   key: const Key('player_notifications_entry'),
                   icon: Icons.notifications_outlined,
                   title: ui.notifications,
@@ -233,15 +233,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   onTap: () => context.push(playerNotificationsPath),
                 ),
               ),
-              const SizedBox(height: MayosSpacing.xl),
+              const SizedBox(height: MyosSpacing.xl),
             ],
           ],
           if (coachMode) ...<Widget>[
-            MayosSectionHeader(title: ui.notifications),
-            MayosCard(
+            MyosSectionHeader(title: ui.notifications),
+            MyosCard(
               padding: const EdgeInsets.symmetric(
-                  horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
-              child: MayosSettingsTile(
+                  horizontal: MyosSpacing.xs, vertical: MyosSpacing.xxs),
+              child: MyosSettingsTile(
                 key: const Key('coach_notifications_entry'),
                 icon: Icons.notifications_outlined,
                 title: ui.notificationSettings,
@@ -249,23 +249,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 onTap: () => context.go(coachAlertsPath),
               ),
             ),
-            const SizedBox(height: MayosSpacing.xl),
+            const SizedBox(height: MyosSpacing.xl),
           ],
-          MayosSectionHeader(title: ui.account),
-          MayosCard(
+          MyosSectionHeader(title: ui.account),
+          MyosCard(
             padding: const EdgeInsets.symmetric(
-                horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
+                horizontal: MyosSpacing.xs, vertical: MyosSpacing.xxs),
             child: Column(
               children: <Widget>[
-                MayosSettingsTile(
+                MyosSettingsTile(
                   icon: Icons.person_outline,
                   title: ui.username,
                   subtitle: session?.account.traineeId,
-                  trailing: const SizedBox(width: MayosIconSizes.medium),
+                  trailing: const SizedBox(width: MyosIconSizes.medium),
                   onTap: null,
                 ),
                 Divider(height: 1, color: c.border),
-                MayosSettingsTile(
+                MyosSettingsTile(
                   key: const Key('recovery_email_settings_entry'),
                   icon: Icons.email_outlined,
                   title: ui.recoveryEmail,
@@ -289,13 +289,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 if (!recoveryEmailVerified) ...<Widget>[
                   Divider(height: 1, color: c.border),
                   Padding(
-                    padding: const EdgeInsets.all(MayosSpacing.sm),
+                    padding: const EdgeInsets.all(MyosSpacing.sm),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
                         Icon(Icons.warning_amber_rounded,
                             color: c.danger, size: 20),
-                        const SizedBox(width: MayosSpacing.xs),
+                        const SizedBox(width: MyosSpacing.xs),
                         Expanded(
                           child: Padding(
                             padding: const EdgeInsets.only(top: 2),
@@ -322,15 +322,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ],
             ),
           ),
-          const SizedBox(height: MayosSpacing.lg),
+          const SizedBox(height: MyosSpacing.lg),
           if (session != null)
             AccountSecuritySection(
               account: session.account,
               title: ui.linkedSignIn,
               subtitle: ui.linkedSignInSubtitle,
             ),
-          const SizedBox(height: MayosSpacing.lg),
-          MayosSectionHeader(title: copy.displayLanguage),
+          const SizedBox(height: MyosSpacing.lg),
+          MyosSectionHeader(title: copy.displayLanguage),
           InputDecorator(
             decoration: InputDecoration(
               border: const OutlineInputBorder(),
@@ -361,31 +361,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 if (_savingLanguage)
                   const Padding(
-                    padding: EdgeInsetsDirectional.only(start: MayosSpacing.sm),
+                    padding: EdgeInsetsDirectional.only(start: MyosSpacing.sm),
                     child: SizedBox(
-                      width: MayosIconSizes.medium,
-                      height: MayosIconSizes.medium,
+                      width: MyosIconSizes.medium,
+                      height: MyosIconSizes.medium,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                   ),
               ],
             ),
           ),
-          const SizedBox(height: MayosSpacing.xl),
-          MayosSectionHeader(title: ui.about),
-          MayosCard(
+          const SizedBox(height: MyosSpacing.xl),
+          MyosSectionHeader(title: ui.about),
+          MyosCard(
             padding: const EdgeInsets.symmetric(
-                horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
+                horizontal: MyosSpacing.xs, vertical: MyosSpacing.xxs),
             child: Column(
               children: <Widget>[
-                MayosSettingsTile(
+                MyosSettingsTile(
                   icon: Icons.privacy_tip_outlined,
                   title: ui.privacyPolicy,
                   subtitle: ui.privacySubtitle,
                   onTap: () => openPrivacyPolicy(context, ref),
                 ),
                 Divider(height: 1, color: c.border),
-                MayosSettingsTile(
+                MyosSettingsTile(
                   icon: Icons.image_outlined,
                   title: ui.credits,
                   subtitle: gymVisualCreditShort,
@@ -394,10 +394,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ],
             ),
           ),
-          const SizedBox(height: MayosSpacing.lg),
-          MayosSectionHeader(title: ui.productAnalytics),
-          MayosCard(
-            padding: const EdgeInsets.symmetric(horizontal: MayosSpacing.xs),
+          const SizedBox(height: MyosSpacing.lg),
+          MyosSectionHeader(title: ui.productAnalytics),
+          MyosCard(
+            padding: const EdgeInsets.symmetric(horizontal: MyosSpacing.xs),
             child: SwitchListTile(
               key: const Key('analytics_preference_switch'),
               contentPadding: EdgeInsets.zero,
@@ -412,19 +412,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               subtitle: Text(ui.analyticsDescription),
             ),
           ),
-          const SizedBox(height: MayosSpacing.xl),
-          MayosCard(
+          const SizedBox(height: MyosSpacing.xl),
+          MyosCard(
             padding: const EdgeInsets.symmetric(
-                horizontal: MayosSpacing.xs, vertical: MayosSpacing.xxs),
-            child: MayosSettingsTile(
+                horizontal: MyosSpacing.xs, vertical: MyosSpacing.xxs),
+            child: MyosSettingsTile(
               icon: Icons.logout,
               title: ui.logOut,
               destructive: true,
               onTap: () => confirmLogout(context, ref),
             ),
           ),
-          const SizedBox(height: MayosSpacing.xl),
-          const SizedBox(height: MayosSpacing.xxl),
+          const SizedBox(height: MyosSpacing.xl),
+          const SizedBox(height: MyosSpacing.xxl),
         ],
       ),
     );
@@ -478,7 +478,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (stillCurrent) {
         messenger.hideCurrentSnackBar();
         messenger.showSnackBar(
-          SnackBar(content: Text(MayosCopy(value).languageSaved)),
+          SnackBar(content: Text(MyosCopy(value).languageSaved)),
         );
       }
     } on ApiException {
@@ -489,7 +489,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         messenger.hideCurrentSnackBar();
         messenger.showSnackBar(
           SnackBar(
-            content: Text(MayosCopy(confirmedLanguage).languageSaveFailed),
+            content: Text(MyosCopy(confirmedLanguage).languageSaveFailed),
           ),
         );
       }

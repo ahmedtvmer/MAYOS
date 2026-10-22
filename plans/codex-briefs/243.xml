@@ -9,7 +9,7 @@ ambiguous, make the most conservative choice consistent with the issue and flag 
 </role>
 
 <task>
-Implement GitHub issue #243 in the MAYOS repository (this working tree). The issue is the source of truth; it is quoted in full below. Every acceptance criterion must be met.
+Implement GitHub issue #243 in the MYOS repository (this working tree). The issue is the source of truth; it is quoted in full below. Every acceptance criterion must be met.
 
 Before coding, read AGENTS.md, the relevant CONTEXT.md glossary entries and the ADRs in DECISIONS.md that the issue or notes mention. Use the glossary's terms in code, tests and docs. If the issue conflicts with an ADR or with the code as it stands, stop and report the conflict instead of guessing.
 
@@ -51,7 +51,7 @@ Run these and make them green before finishing; fix what they surface, don't jus
   ruff check --select E,F,W --ignore E402,E501,EXE002,W291,W292,W293 .
   SKIP_LLM_LOAD=true HF_HUB_OFFLINE=1 python3 -m pytest <the test files you added or changed> -q   (run often while working)
   SKIP_LLM_LOAD=true HF_HUB_OFFLINE=1 python3 -m pytest tests/ -q                                   (once, at the end)
-Known environment gap: this checkout has no data/processed_exercises.csv (the real exercise dataset is git-ignored and not available here), so the tests listed in plans/codex-briefs/known-failures.txt (in the orchestrator checkout at /home/user/MAYOS) already fail before your change. Do not try to fix or work around them; do not create a fake dataset. Your change must not add any failure outside that list.
+Known environment gap: this checkout has no data/processed_exercises.csv (the real exercise dataset is git-ignored and not available here), so the tests listed in plans/codex-briefs/known-failures.txt (in the orchestrator checkout at /home/user/MYOS) already fail before your change. Do not try to fix or work around them; do not create a fake dataset. Your change must not add any failure outside that list.
 If a gate cannot run in this environment (missing SDK, blocked network, missing model files), say exactly which one and why in the report. Never skip, disable or weaken a test to get green.
 Confirm `git status` shows only the changes this issue needs.
 </verification_loop>

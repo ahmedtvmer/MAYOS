@@ -9,12 +9,12 @@ import 'package:go_router/go_router.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/models.dart';
-import '../../../core/theme/mayos_spacing.dart';
-import '../../../core/theme/mayos_theme.dart';
-import '../../../core/theme/mayos_typography.dart';
-import '../../../core/ui/mayos_button.dart';
-import '../../../core/ui/mayos_card.dart';
-import '../../../core/ui/mayos_scaffold.dart';
+import '../../../core/theme/myos_spacing.dart';
+import '../../../core/theme/myos_theme.dart';
+import '../../../core/theme/myos_typography.dart';
+import '../../../core/ui/myos_button.dart';
+import '../../../core/ui/myos_card.dart';
+import '../../../core/ui/myos_scaffold.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 
@@ -99,7 +99,7 @@ class _RestAlertPermissionScreenState
     final String? message = widget.programMessage;
     if (message != null && message.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        mayosMessengerKey.currentState?.showSnackBar(
+        myosMessengerKey.currentState?.showSnackBar(
           SnackBar(content: Text(message)),
         );
       });
@@ -108,16 +108,16 @@ class _RestAlertPermissionScreenState
 
   @override
   Widget build(BuildContext context) {
-    final MayosCopy copy = displayCopyOf(context);
-    final MayosThemeExtension colors = MayosTheme.of(context);
-    return MayosScaffold(
+    final MyosCopy copy = displayCopyOf(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
+    return MyosScaffold(
       key: const Key('rest_alert_permission_screen'),
       title: copy.restAlertPermissionTitle,
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
-              padding: const EdgeInsets.all(MayosSpacing.lg),
-              child: MayosCard(
+              padding: const EdgeInsets.all(MyosSpacing.lg),
+              child: MyosCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
@@ -126,10 +126,10 @@ class _RestAlertPermissionScreenState
                       size: 28,
                       color: colors.accent,
                     ),
-                    const SizedBox(height: MayosSpacing.md),
+                    const SizedBox(height: MyosSpacing.md),
                     Text(
                       copy.restAlertPermissionMessage,
-                      style: MayosTypography.of(context)
+                      style: MyosTypography.of(context)
                           .body
                           .copyWith(color: colors.textPrimary),
                     ),
@@ -141,26 +141,26 @@ class _RestAlertPermissionScreenState
           ? null
           : Padding(
               padding: const EdgeInsets.fromLTRB(
-                MayosSpacing.lg,
-                MayosSpacing.sm,
-                MayosSpacing.lg,
-                MayosSpacing.md,
+                MyosSpacing.lg,
+                MyosSpacing.sm,
+                MyosSpacing.lg,
+                MyosSpacing.md,
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  MayosButton(
+                  MyosButton(
                     key: const Key('rest_alert_permission_allow'),
                     label: copy.allow,
                     onPressed: _working ? null : _allow,
                     loading: _working,
                     icon: Icons.notifications_active_outlined,
                   ),
-                  const SizedBox(height: MayosSpacing.xs),
-                  MayosButton(
+                  const SizedBox(height: MyosSpacing.xs),
+                  MyosButton(
                     key: const Key('rest_alert_permission_not_now'),
                     label: copy.notNow,
-                    variant: MayosButtonVariant.secondary,
+                    variant: MyosButtonVariant.secondary,
                     onPressed: _working ? null : _skip,
                   ),
                 ],

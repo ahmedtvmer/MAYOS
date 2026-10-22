@@ -21,12 +21,12 @@ from svc.html import self_contained_html
 
 router = APIRouter(tags=["recovery"])
 
-SUCCESS_MESSAGE = "Password changed. Sign in to MAYOS with your new password."
+SUCCESS_MESSAGE = "Password changed. Sign in to MYOS with your new password."
 ASSET_LINKS_NOT_FOUND_DETAIL = "Not found."
 
 _PAGE_COPY = {
     "en": {
-        "pageTitle": "MAYOS account recovery",
+        "pageTitle": "MYOS account recovery",
         "languageLabel": "Language",
         "requestTitle": "Forgot your password?",
         "requestHelp": "Enter the recovery email for your account to request a reset link.",
@@ -52,13 +52,13 @@ _PAGE_COPY = {
         "networkFailure": "Could not reach the service. Check your connection and try again.",
     },
     "ar": {
-        "pageTitle": "استرداد حساب MAYOS",
+        "pageTitle": "استرداد حساب MYOS",
         "languageLabel": "اللغة",
         "requestTitle": "هل نسيت كلمة المرور؟",
         "requestHelp": "أدخل البريد الإلكتروني للاسترداد المرتبط بحسابك لطلب رابط إعادة التعيين.",
         "emailLabel": "البريد الإلكتروني للاسترداد",
         "requestButton": "إرسال رابط الاسترداد",
-        "requestConfirmation": "إذا كان هذا البريد الإلكتروني مرتبطًا بحساب في MAYOS، فسيصلك رابط لإعادة تعيين كلمة المرور.",
+        "requestConfirmation": "إذا كان هذا البريد الإلكتروني مرتبطًا بحساب في MYOS، فسيصلك رابط لإعادة تعيين كلمة المرور.",
         "resetTitle": "إعادة تعيين كلمة المرور",
         "newPasswordLabel": "كلمة المرور الجديدة",
         "passwordHelp": "استخدم من 8 إلى 128 حرفًا.",
@@ -69,7 +69,7 @@ _PAGE_COPY = {
         "passwordTooShort": "استخدم 8 أحرف على الأقل.",
         "passwordTooLong": "استخدم 128 حرفًا على الأكثر.",
         "passwordMismatch": "كلمتا المرور غير متطابقتين.",
-        "resetSuccess": "تم تغيير كلمة المرور. سجّل الدخول إلى MAYOS باستخدام كلمة المرور الجديدة.",
+        "resetSuccess": "تم تغيير كلمة المرور. سجّل الدخول إلى MYOS باستخدام كلمة المرور الجديدة.",
         "invalidResetLink": "رابط إعادة تعيين كلمة المرور غير صالح أو انتهت صلاحيته.",
         "rateLimited": "وصل الطلب إلى الحد المسموح. حاول مرة أخرى لاحقًا.",
         "validationFailed": "راجع البيانات المدخلة وحاول مرة أخرى.",
@@ -290,7 +290,7 @@ _REGISTER_PAGE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Sign up for MAYOS</title>
+<title>Sign up for MYOS</title>
 <style nonce="__NONCE__">
 body { font-family: system-ui, sans-serif; margin: 0; padding: 2rem 1rem; background: #faf7f5; color: #201a17; }
 main { max-width: 30rem; margin: 0 auto; }
@@ -299,8 +299,8 @@ h1 { font-size: 1.3rem; }
 </head>
 <body>
 <main>
-<h1>Sign up for MAYOS</h1>
-<p>Open the MAYOS app to create your account.</p>
+<h1>Sign up for MYOS</h1>
+<p>Open the MYOS app to create your account.</p>
 </main>
 </body>
 </html>

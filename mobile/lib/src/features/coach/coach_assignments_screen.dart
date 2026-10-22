@@ -10,14 +10,14 @@ import '../../core/display_language/copy_context.dart';
 import '../../core/display_language/controller.dart';
 import '../../core/display_language/feature_copy_context.dart';
 import '../../core/models.dart';
-import '../../core/theme/mayos_spacing.dart';
-import '../../core/theme/mayos_theme.dart';
-import '../../core/theme/mayos_typography.dart';
+import '../../core/theme/myos_spacing.dart';
+import '../../core/theme/myos_theme.dart';
+import '../../core/theme/myos_typography.dart';
 import '../../core/ui/is_desktop_layout.dart';
-import '../../core/ui/mayos_button.dart';
-import '../../core/ui/mayos_card.dart';
-import '../../core/ui/mayos_card_table.dart';
-import '../../core/ui/mayos_phone_tap_target.dart';
+import '../../core/ui/myos_button.dart';
+import '../../core/ui/myos_card.dart';
+import '../../core/ui/myos_card_table.dart';
+import '../../core/ui/myos_phone_tap_target.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import 'coach_roster_loader.dart';
@@ -164,13 +164,13 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
         title: Text(copy.revokeAssignmentQuestion),
         content: Text(copy.revokeAssignmentLead(entry.playerUsername)),
         actions: <Widget>[
-          MayosButton(
+          MyosButton(
             label: copy.cancel,
-            variant: MayosButtonVariant.tertiary,
+            variant: MyosButtonVariant.tertiary,
             expand: false,
             onPressed: () => Navigator.of(context).pop(false),
           ),
-          MayosButton(
+          MyosButton(
             label: copy.revoke,
             expand: false,
             onPressed: () => Navigator.of(context).pop(true),
@@ -215,13 +215,13 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
         title: Text(copy.disableCoachingQuestion),
         content: Text(copy.disableCoachingLead),
         actions: <Widget>[
-          MayosButton(
+          MyosButton(
             label: copy.cancel,
-            variant: MayosButtonVariant.tertiary,
+            variant: MyosButtonVariant.tertiary,
             expand: false,
             onPressed: () => Navigator.of(context).pop(false),
           ),
-          MayosButton(
+          MyosButton(
             label: copy.disableCoaching,
             expand: false,
             onPressed: () => Navigator.of(context).pop(true),
@@ -260,11 +260,11 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
       return const SizedBox.shrink();
     }
     return Padding(
-      padding: const EdgeInsets.only(bottom: MayosSpacing.sm),
+      padding: const EdgeInsets.only(bottom: MyosSpacing.sm),
       child: Text(
         displayCopyOf(context).failureMessage(_error!),
-        style: MayosTypography.of(context).bodySecondary
-            .copyWith(color: MayosTheme.of(context).danger),
+        style: MyosTypography.of(context).bodySecondary
+            .copyWith(color: MyosTheme.of(context).danger),
       ),
     );
   }
@@ -276,9 +276,9 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     final TextStyle textStyle = style.textStyle?.resolve(states) ??
         Theme.of(context).textTheme.labelLarge!;
     final EdgeInsetsGeometry padding = style.padding?.resolve(states) ??
-        const EdgeInsets.symmetric(horizontal: MayosSpacing.xs);
+        const EdgeInsets.symmetric(horizontal: MyosSpacing.xs);
     final double minimumWidth =
-        style.minimumSize?.resolve(states)?.width ?? kMayosMinTapTarget;
+        style.minimumSize?.resolve(states)?.width ?? kMyosMinTapTarget;
     final TextPainter labelPainter = TextPainter(
       text: TextSpan(text: label, style: textStyle),
       textDirection: Directionality.of(context),
@@ -291,7 +291,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
         ? labelAndPaddingWidth
         : minimumWidth;
     final double chevronWidth =
-        IconTheme.of(context).size ?? MayosIconSizes.navigation;
+        IconTheme.of(context).size ?? MyosIconSizes.navigation;
     return buttonWidth + chevronWidth;
   }
 
@@ -303,7 +303,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     bool includeAttendance = true,
     bool includeFollowUp = true,
   }) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final copy = coachCopyOf(context);
     final String? followUp = _followUpStatus(context, entry);
     return <Widget>[
@@ -345,7 +345,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
   /// One roster row: avatar, username, "Last workout · program", the urgency
   /// chips, and the revoke action. The whole row opens the player page.
   Widget _rosterRow(BuildContext context, CoachRosterEntry entry) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final copy = coachCopyOf(context);
     final List<Widget> chips = _rosterChips(context, entry);
     final bool selected = widget.selectedAssignmentId == entry.assignmentId;
@@ -361,7 +361,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                 context.go(location, extra: entry);
               },
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: MayosSpacing.sm),
+          padding: const EdgeInsets.symmetric(vertical: MyosSpacing.sm),
           child: LayoutBuilder(
             builder: (BuildContext context, BoxConstraints constraints) {
               const double avatarRadius = 20;
@@ -374,7 +374,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                   entry.playerUsername.isEmpty
                       ? '?'
                       : entry.playerUsername.substring(0, 1).toUpperCase(),
-                  style: MayosTypography.of(context).label
+                  style: MyosTypography.of(context).label
                       .copyWith(color: c.textPrimary),
                 ),
               );
@@ -383,23 +383,23 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                 children: <Widget>[
                   Text(
                     entry.playerUsername,
-                    style: MayosTypography.of(context).exerciseTitle
+                    style: MyosTypography.of(context).exerciseTitle
                         .copyWith(color: c.textPrimary),
                   ),
-                  const SizedBox(height: MayosSpacing.xxs),
+                  const SizedBox(height: MyosSpacing.xxs),
                   Text(
                     copy.rosterSubtitle(
                       lastWorkout: entry.lastWorkoutOn,
                       program: entry.programName,
                     ),
-                    style: MayosTypography.of(context).caption
+                    style: MyosTypography.of(context).caption
                         .copyWith(color: c.textSecondary),
                   ),
                   if (chips.isNotEmpty) ...<Widget>[
-                    const SizedBox(height: MayosSpacing.xs),
+                    const SizedBox(height: MyosSpacing.xs),
                     Wrap(
-                      spacing: MayosSpacing.xs,
-                      runSpacing: MayosSpacing.xs,
+                      spacing: MyosSpacing.xs,
+                      runSpacing: MyosSpacing.xs,
                       children: chips,
                     ),
                   ],
@@ -408,9 +408,9 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
               final Widget actions = Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  MayosButton(
+                  MyosButton(
                     label: actionLabel,
-                    variant: MayosButtonVariant.tertiary,
+                    variant: MyosButtonVariant.tertiary,
                     expand: false,
                     onPressed: busy ? null : () => _revoke(entry),
                   ),
@@ -422,9 +422,9 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
               );
               final double inlineWidth =
                   avatarRadius * 2 +
-                  MayosSpacing.md +
-                  MayosLayout.coachRosterRowMinimumDetailsWidth +
-                  MayosSpacing.xs +
+                  MyosSpacing.md +
+                  MyosLayout.coachRosterRowMinimumDetailsWidth +
+                  MyosSpacing.xs +
                   _rosterActionsWidth(context, actionLabel);
               final bool narrowDesktopPane =
                   constraints.maxWidth < inlineWidth;
@@ -436,11 +436,11 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
                         avatar,
-                        const SizedBox(width: MayosSpacing.md),
+                        const SizedBox(width: MyosSpacing.md),
                         Expanded(child: details),
                       ],
                     ),
-                    const SizedBox(height: MayosSpacing.xs),
+                    const SizedBox(height: MyosSpacing.xs),
                     Align(
                       alignment: AlignmentDirectional.centerEnd,
                       child: actions,
@@ -452,9 +452,9 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   avatar,
-                  const SizedBox(width: MayosSpacing.md),
+                  const SizedBox(width: MyosSpacing.md),
                   Expanded(child: details),
-                  const SizedBox(width: MayosSpacing.xs),
+                  const SizedBox(width: MyosSpacing.xs),
                   actions,
                 ],
               );
@@ -466,20 +466,20 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
   }
 
   Widget _assignmentsCard(BuildContext context) {
-    final MayosThemeExtension c = MayosTheme.of(context);
+    final MyosThemeExtension c = MyosTheme.of(context);
     final copy = coachCopyOf(context);
-    return MayosCard(
+    return MyosCard(
       child: Column(
         crossAxisAlignment: isDesktopLayout(context)
             ? CrossAxisAlignment.start
             : CrossAxisAlignment.stretch,
         children: <Widget>[
           Text(copy.activeAssignments,
-              style: MayosTypography.of(context).sectionHeading
+              style: MyosTypography.of(context).sectionHeading
                   .copyWith(color: c.textPrimary)),
-          const SizedBox(height: MayosSpacing.xs),
+          const SizedBox(height: MyosSpacing.xs),
           _rosterFilters(context, copy),
-          const SizedBox(height: MayosSpacing.xs),
+          const SizedBox(height: MyosSpacing.xs),
           _assignmentRows(context, c, copy),
         ],
       ),
@@ -495,7 +495,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
       );
 
   Widget _filterOptions(CoachCopy copy) => Wrap(
-        spacing: MayosSpacing.xs,
+        spacing: MyosSpacing.xs,
         children: <Widget>[
           _filterChip(
             context: context,
@@ -522,7 +522,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     required String label,
     required bool selected,
     required ValueChanged<bool>? onSelected,
-  }) => mayosPhoneTapTarget(context, ChoiceChip(
+  }) => myosPhoneTapTarget(context, ChoiceChip(
         key: key,
         label: Text(label),
         selected: selected,
@@ -532,14 +532,14 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
   Widget _stalledFilterProgress() {
     if (!_loadingStalledFilter) return const SizedBox.shrink();
     return const Padding(
-      padding: EdgeInsets.only(top: MayosSpacing.xs),
+      padding: EdgeInsets.only(top: MyosSpacing.xs),
       child: LinearProgressIndicator(),
     );
   }
 
   Widget _assignmentRows(
     BuildContext context,
-    MayosThemeExtension colors,
+    MyosThemeExtension colors,
     CoachCopy copy,
   ) {
     if (_assignments.isEmpty) {
@@ -553,15 +553,15 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
 
   Widget _emptyAssignments(
     BuildContext context,
-    MayosThemeExtension colors,
+    MyosThemeExtension colors,
     String message,
   ) => Padding(
         padding: EdgeInsets.only(
-          top: _assignments.isEmpty ? 0 : MayosSpacing.sm,
+          top: _assignments.isEmpty ? 0 : MyosSpacing.sm,
         ),
         child: Text(
           message,
-          style: MayosTypography.of(context)
+          style: MyosTypography.of(context)
               .bodySecondary
               .copyWith(color: colors.textSecondary),
         ),
@@ -569,9 +569,9 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
 
   Widget _assignmentRowList(
     BuildContext context,
-    MayosThemeExtension colors,
+    MyosThemeExtension colors,
   ) {
-    return MayosCardTable(
+    return MyosCardTable(
       columns: <String>[
         coachCopyOf(context).player,
         coachCopyOf(context).rosterAlertsLabel,
@@ -579,9 +579,9 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
         coachCopyOf(context).rosterFollowUpStatusLabel,
         coachCopyOf(context).rosterNextFollowUpLabel,
       ],
-      rows: <MayosCardTableRow>[
+      rows: <MyosCardTableRow>[
         for (final CoachRosterEntry entry in _visibleAssignments)
-          MayosCardTableRow(
+          MyosCardTableRow(
             key: Key('roster_row_${entry.assignmentId}'),
             cells: <Widget?>[
               Text(entry.playerUsername),
@@ -596,7 +596,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
                 lastWorkout: entry.lastWorkoutOn,
                 program: entry.programName,
               ),
-              style: MayosTypography.of(context).caption
+              style: MyosTypography.of(context).caption
                   .copyWith(color: colors.textSecondary),
             ),
             onTap: () => context.go(
@@ -606,12 +606,12 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
             actions: Row(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                MayosButton(
+                MyosButton(
                   key: Key('roster_revoke_${entry.assignmentId}'),
                   label: _busyAssignmentId == entry.assignmentId
                       ? coachCopyOf(context).revoking
                       : coachCopyOf(context).revoke,
-                  variant: MayosButtonVariant.tertiary,
+                  variant: MyosButtonVariant.tertiary,
                   expand: false,
                   onPressed: _busyAssignmentId == entry.assignmentId
                       ? null
@@ -645,8 +645,8 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     );
     if (chips.isEmpty) return null;
     return Wrap(
-      spacing: MayosSpacing.xs,
-      runSpacing: MayosSpacing.xs,
+      spacing: MyosSpacing.xs,
+      runSpacing: MyosSpacing.xs,
       children: chips,
     );
   }
@@ -677,15 +677,15 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
       return const Center(child: CircularProgressIndicator());
     }
     return ListView(
-      padding: MayosSpacing.screen,
+      padding: MyosSpacing.screen,
       children: <Widget>[
         _errorBanner(context),
         _assignmentsCard(context),
-        const SizedBox(height: MayosSpacing.xl),
-        MayosButton(
+        const SizedBox(height: MyosSpacing.xl),
+        MyosButton(
           label: coachCopyOf(context).disableCoaching,
           icon: Icons.logout,
-          variant: MayosButtonVariant.secondary,
+          variant: MyosButtonVariant.secondary,
           loading: _disabling,
           onPressed: _disabling ? null : _disable,
         ),

@@ -252,7 +252,7 @@ class ProgramImportReader(Protocol):
 
 
 class TemplateProgramImportReader:
-    """Translate the MAYOS XLSX/CSV columns to the reader-neutral row shape."""
+    """Translate the MYOS XLSX/CSV columns to the reader-neutral row shape."""
 
     def read(self, payload: bytes, filename: str, selected_tab: str | None) -> ReaderOutput:
         extension = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
@@ -405,7 +405,7 @@ def _read_freeform_program(
     if not gate.enabled:
         raise ProgramImportError(
             "program_import.freeform_disabled.v1",
-            "Free-form import is unavailable. Use the MAYOS template.",
+            "Free-form import is unavailable. Use the MYOS template.",
             503,
         )
     source, rows = _run_freeform_import(db, request)
@@ -2208,7 +2208,7 @@ def _has_duplicate_model_positions(model_rows: list[Any]) -> bool:
 def _duplicate_model_rows_error() -> ProgramImportError:
     return ProgramImportError(
         "program_import.interpretation_failed.v1",
-        "The sheet could not be interpreted. Try the MAYOS template.",
+        "The sheet could not be interpreted. Try the MYOS template.",
         422,
     )
 

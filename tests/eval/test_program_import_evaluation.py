@@ -29,7 +29,7 @@ def evaluation_session():
 def _review(entries):
     return {
         "reviewed": True,
-        "reviewed_by": "MAYOS sample owner",
+        "reviewed_by": "MYOS sample owner",
         "reviewed_on": "2026-10-08",
         "reviewed_dataset_hash": fixture_entries_hash(entries),
     }

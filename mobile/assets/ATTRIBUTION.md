@@ -29,8 +29,8 @@ its source is the page above.
 
 ## Contrast on the wallpaper
 
-The photo is shown with the fixed design constants in `MayosWallpaper`
-(`mobile/lib/src/core/ui/mayos_wallpaper.dart`): a black overlay at
+The photo is shown with the fixed design constants in `MyosWallpaper`
+(`mobile/lib/src/core/ui/myos_wallpaper.dart`): a black overlay at
 **60% opacity** and a Gaussian blur at **sigma 6**. Both were chosen inside the
 issue's bands (55–65% and 4–8) and are not user settings.
 
@@ -59,6 +59,6 @@ needs 4.5:1; non-text UI needs 3:1):
 Field text sits on the opaque dark field fill `#101D2E`, not the photo:
 `textSecondary` on that fill is 10.9:1 and `textPrimary` 15.7:1.
 
-The wallpaper tokens live in `MayosPalette` (lightened from the dark theme) and
-are applied only on the wallpapered screens via `MayosTheme.wallpaper`; the
+The wallpaper tokens live in `MyosPalette` (lightened from the dark theme) and
+are applied only on the wallpapered screens via `MyosTheme.wallpaper`; the
 signed-in app keeps the standard dark/light tokens.

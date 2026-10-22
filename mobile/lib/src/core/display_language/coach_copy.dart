@@ -1,5 +1,5 @@
 import 'arabic_count.dart';
-import 'catalog.dart' show MayosCopy, exerciseNameOrFallback;
+import 'catalog.dart' show MyosCopy, exerciseNameOrFallback;
 import 'message_copy.dart';
 import 'message_resolution.dart';
 import '../personal_records.dart';
@@ -52,8 +52,8 @@ class CoachCopy {
       ? 'تعذّر تحميل قائمة اللاعبين. حاول مرة أخرى.'
       : 'Players could not be loaded. Please try again.';
   String get sharedProgramSignInRequired => isArabic
-      ? 'سجّل الدخول إلى MAYOS لمتابعة مشاركة البرنامج.'
-      : 'Sign in to MAYOS to continue sharing this program.';
+      ? 'سجّل الدخول إلى MYOS لمتابعة مشاركة البرنامج.'
+      : 'Sign in to MYOS to continue sharing this program.';
   String get choosePlayerForSharedProgram => isArabic
       ? 'اختر اللاعب الذي سيُستورد له البرنامج.'
       : 'Choose the Player to import this program for.';
@@ -301,10 +301,10 @@ class CoachCopy {
 
   String get becomeCoach => isArabic ? 'كن مدربًا' : 'Become a coach';
   String get enterCoachCode =>
-      isArabic ? 'أدخل رمز مدرب MAYOS' : 'Enter your MAYOS coach code';
+      isArabic ? 'أدخل رمز مدرب MYOS' : 'Enter your MYOS coach code';
   String get coachCodeLead => isArabic
-      ? 'هذا الرمز من MAYOS ويفعّل وضع المدرب في حسابك. يُستخدم مرة واحدة وتنتهي صلاحيته. إدخاله لا ينشئ علاقة تدريب مع مدرب.'
-      : 'This code comes from MAYOS and enables Coach mode on your own account. It is single-use and expires. Entering it does not assign you to a coach.';
+      ? 'هذا الرمز من MYOS ويفعّل وضع المدرب في حسابك. يُستخدم مرة واحدة وتنتهي صلاحيته. إدخاله لا ينشئ علاقة تدريب مع مدرب.'
+      : 'This code comes from MYOS and enables Coach mode on your own account. It is single-use and expires. Entering it does not assign you to a coach.';
   String get coachEnabled =>
       isArabic ? 'تم تفعيل دور المدرب.' : 'Coach capability enabled.';
 
@@ -1037,7 +1037,7 @@ class CoachCopy {
   String get noCheckpoints =>
       isArabic ? 'لا توجد محطات تقدم بعد.' : 'No Checkpoints yet.';
   String checkpointNumber(int number) =>
-      MayosCopy(languageCode).checkpointAt(number);
+      MyosCopy(languageCode).checkpointAt(number);
   String checkpointPeriod(String start, String end) =>
       isArabic ? '${_ltr(start)} – ${_ltr(end)}' : '$start – $end';
   String recordHistory(String type, String value, int reps, String date) {

@@ -10,29 +10,29 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/chat_storage.dart';
-import 'package:mayos_mobile/src/core/device_timezone.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
-import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_bottom_navigation.dart';
-import 'package:mayos_mobile/src/core/workout_storage.dart';
-import 'package:mayos_mobile/src/features/player/auth/forgot_password_screen.dart';
-import 'package:mayos_mobile/src/features/player/auth/login_screen.dart';
-import 'package:mayos_mobile/src/features/player/auth/recovery_email_screen.dart';
-import 'package:mayos_mobile/src/features/player/auth/register_screen.dart';
-import 'package:mayos_mobile/src/features/player/auth/reset_password_screen.dart';
-import 'package:mayos_mobile/src/features/player/onboarding/onboarding_screen.dart';
-import 'package:mayos_mobile/src/features/player/onboarding/onboarding_widgets.dart';
-import 'package:mayos_mobile/src/features/shared/splash_screen.dart';
-import 'package:mayos_mobile/src/providers.dart';
-import 'package:mayos_mobile/src/router.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/chat_storage.dart';
+import 'package:myos_mobile/src/core/device_timezone.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/theme/myos_theme.dart';
+import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/ui/myos_bottom_navigation.dart';
+import 'package:myos_mobile/src/core/workout_storage.dart';
+import 'package:myos_mobile/src/features/player/auth/forgot_password_screen.dart';
+import 'package:myos_mobile/src/features/player/auth/login_screen.dart';
+import 'package:myos_mobile/src/features/player/auth/recovery_email_screen.dart';
+import 'package:myos_mobile/src/features/player/auth/register_screen.dart';
+import 'package:myos_mobile/src/features/player/auth/reset_password_screen.dart';
+import 'package:myos_mobile/src/features/player/onboarding/onboarding_screen.dart';
+import 'package:myos_mobile/src/features/player/onboarding/onboarding_widgets.dart';
+import 'package:myos_mobile/src/features/shared/splash_screen.dart';
+import 'package:myos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/router.dart';
 
-import '../support/fake_mayos_api.dart';
+import '../support/fake_myos_api.dart';
 
 /// Visual review harness for issue #49.
 ///
@@ -43,7 +43,7 @@ import '../support/fake_mayos_api.dart';
 ///
 /// PNGs are written to `docs/design-review/49/` at the repo root.
 final bool _enabled = Platform.environment['CAPTURE'] == '1';
-const Key _boundaryKey = Key('mayos.capture');
+const Key _boundaryKey = Key('myos.capture');
 
 class _Surface {
   const _Surface(this.name, this.tab);
@@ -65,8 +65,8 @@ Future<void> _loadFonts() async {
       <Future<void>>[serif.load(), sans.load(), icons.load()]);
 }
 
-FakeMayosApi _fake() {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _fake() {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -79,8 +79,8 @@ FakeMayosApi _fake() {
 
 /// A brand-new player with no program, schedule, volume, or records, so the
 /// Home empty states can be captured.
-FakeMayosApi _emptyPlayerFake() {
-  final FakeMayosApi fake = _fake();
+FakeMyosApi _emptyPlayerFake() {
+  final FakeMyosApi fake = _fake();
   fake.noActiveProgram = true;
   fake.scheduleEmpty = true;
   fake.volumeEmpty = true;
@@ -111,10 +111,10 @@ void _setSize(WidgetTester tester, Size size) {
 Future<void> _precacheBrandImages(WidgetTester tester) async {
   final BuildContext context = tester.element(find.byType(MaterialApp));
   const List<String> assets = <String>[
-    'assets/brand/mayos-lockup-white.png',
-    'assets/brand/mayos-lockup-black.png',
-    'assets/brand/mayos-mark-white.png',
-    'assets/brand/mayos-mark-black.png',
+    'assets/brand/myos-lockup-white.png',
+    'assets/brand/myos-lockup-black.png',
+    'assets/brand/myos-mark-white.png',
+    'assets/brand/myos-mark-black.png',
     'assets/images/gym-wallpaper.jpg',
   ];
   await tester.runAsync(() async {
@@ -285,7 +285,7 @@ Future<void> _write110Capture(WidgetTester tester, String name) async {
 
 /// Overrides shared by every #54 full-app capture.
 List<Override> _appOverrides({
-  required FakeMayosApi fake,
+  required FakeMyosApi fake,
   required InMemoryTokenStore tokens,
   required ThemeMode mode,
   DraftStore? draftStore,
@@ -323,7 +323,7 @@ Future<void> _pumpViaSettings(
   ThemeMode mode,
   String tile,
   Finder ready,
-  FakeMayosApi fake, {
+  FakeMyosApi fake, {
   DraftStore? draftStore,
 }) async {
   _setSize(tester, const Size(1080, 2400));
@@ -339,7 +339,7 @@ Future<void> _pumpViaSettings(
           mode: mode,
           draftStore: draftStore,
         ),
-        child: const MayosApp(),
+        child: const MyosApp(),
       ),
     ),
   );
@@ -357,7 +357,7 @@ Future<void> _pumpViaSettings(
 /// A chat conversation capture: an accepted disclosure and two real messages.
 Future<void> _pumpChat54(WidgetTester tester, Size size, ThemeMode mode) async {
   _setSize(tester, const Size(1080, 2400));
-  final FakeMayosApi fake = _fake();
+  final FakeMyosApi fake = _fake();
   fake.chatHistory.addAll(<Map<String, dynamic>>[
     <String, dynamic>{
       'id': 'chat-1',
@@ -387,7 +387,7 @@ Future<void> _pumpChat54(WidgetTester tester, Size size, ThemeMode mode) async {
           mode: mode,
           chatCache: chatCache,
         ),
-        child: const MayosApp(),
+        child: const MyosApp(),
       ),
     ),
   );
@@ -405,7 +405,7 @@ Future<void> _pumpChat54(WidgetTester tester, Size size, ThemeMode mode) async {
 Future<void> _pumpLogger54(
     WidgetTester tester, Size size, ThemeMode mode) async {
   _setSize(tester, const Size(1080, 2400));
-  final FakeMayosApi fake = _fake();
+  final FakeMyosApi fake = _fake();
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
   await tester.pumpWidget(
@@ -413,7 +413,7 @@ Future<void> _pumpLogger54(
       key: _boundaryKey,
       child: ProviderScope(
         overrides: _appOverrides(fake: fake, tokens: tokens, mode: mode),
-        child: const MayosApp(),
+        child: const MyosApp(),
       ),
     ),
   );
@@ -495,7 +495,7 @@ final List<_AuthSurface> _authSurfaces = <_AuthSurface>[
   const _AuthSurface('forgot-password', forgotPasswordPath, 'Forgot password',
       fieldKey: 'forgot_email'),
   const _AuthSurface('reset-password',
-      '$resetPasswordPath?token=MAYOS-RESET-CODE', 'Set new password',
+      '$resetPasswordPath?token=MYOS-RESET-CODE', 'Set new password',
       fieldKey: 'reset_password'),
 ];
 
@@ -534,7 +534,7 @@ GoRouter _authRouter(String initialLocation) {
   );
 }
 
-Override _authApiOverride(FakeMayosApi fake) {
+Override _authApiOverride(FakeMyosApi fake) {
   return apiClientProvider.overrideWith((ref) {
     final ApiClient client = ApiClient(
       tokens: ref.watch(tokenStoreProvider),
@@ -554,7 +554,7 @@ Future<void> _pumpAuthSurface(
   bool keyboardInset = false,
 }) async {
   _setSize(tester, size);
-  final FakeMayosApi fake = FakeMayosApi();
+  final FakeMyosApi fake = FakeMyosApi();
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tester.pumpWidget(
     RepaintBoundary(
@@ -570,8 +570,8 @@ Future<void> _pumpAuthSurface(
         ],
         child: MaterialApp.router(
           debugShowCheckedModeBanner: false,
-          theme: MayosTheme.light,
-          darkTheme: MayosTheme.dark,
+          theme: MyosTheme.light,
+          darkTheme: MyosTheme.dark,
           themeMode: mode,
           routerConfig: _authRouter(surface.initialLocation),
         ),
@@ -668,8 +668,8 @@ const List<_OnboardingSurface> _onboardingSurfaces = <_OnboardingSurface>[
   _OnboardingSurface(name: 'review', acknowledged: true, answers: _allRequired),
 ];
 
-FakeMayosApi _onboardingFake(_OnboardingSurface surface) {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _onboardingFake(_OnboardingSurface surface) {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -686,7 +686,7 @@ Future<void> _pumpOnboardingSurface(
   ThemeMode mode,
 ) async {
   _setSize(tester, size);
-  final FakeMayosApi fake = _onboardingFake(surface);
+  final FakeMyosApi fake = _onboardingFake(surface);
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
   await tester.pumpWidget(
@@ -715,8 +715,8 @@ Future<void> _pumpOnboardingSurface(
         ],
         child: MaterialApp(
           debugShowCheckedModeBanner: false,
-          theme: MayosTheme.light,
-          darkTheme: MayosTheme.dark,
+          theme: MyosTheme.light,
+          darkTheme: MyosTheme.dark,
           themeMode: mode,
           home: const OnboardingScreen(),
         ),
@@ -742,8 +742,8 @@ Future<void> _pumpSplash(WidgetTester tester, Size size, ThemeMode mode) async {
       key: _boundaryKey,
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
-        theme: MayosTheme.light,
-        darkTheme: MayosTheme.dark,
+        theme: MyosTheme.light,
+        darkTheme: MyosTheme.dark,
         themeMode: mode,
         home: const SplashScreen(),
       ),
@@ -755,11 +755,11 @@ Future<void> _pumpSplash(WidgetTester tester, Size size, ThemeMode mode) async {
 
 Future<void> _pumpShell(
     WidgetTester tester, _Surface surface, Size size, ThemeMode mode,
-    {FakeMayosApi? fake}) async {
+    {FakeMyosApi? fake}) async {
   // Navigate at a large viewport (bottom-bar hit-testing is reliable there),
   // then resize to the capture size so the layout is exercised at the target.
   _setSize(tester, const Size(1080, 2400));
-  final FakeMayosApi activeFake = fake ?? _fake();
+  final FakeMyosApi activeFake = fake ?? _fake();
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
   await tester.pumpWidget(
@@ -786,7 +786,7 @@ Future<void> _pumpShell(
             return client;
           }),
         ],
-        child: const MayosApp(),
+        child: const MyosApp(),
       ),
     ),
   );
@@ -815,7 +815,7 @@ Future<void> _pumpShell(
 Future<void> _pumpExerciseDetail(
     WidgetTester tester, Size size, ThemeMode mode) async {
   _setSize(tester, const Size(1080, 2400));
-  final FakeMayosApi fake = _fake();
+  final FakeMyosApi fake = _fake();
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
   await tester.pumpWidget(
@@ -842,7 +842,7 @@ Future<void> _pumpExerciseDetail(
             return client;
           }),
         ],
-        child: const MayosApp(),
+        child: const MyosApp(),
       ),
     ),
   );
@@ -900,8 +900,8 @@ List<Map<String, dynamic>> _capturePoints(int count) => <Map<String, dynamic>>[
       },
     ].take(count).toList(growable: false);
 
-FakeMayosApi _progressFake({int points = 5}) {
-  final FakeMayosApi fake = _fake();
+FakeMyosApi _progressFake({int points = 5}) {
+  final FakeMyosApi fake = _fake();
   fake.loggedExercises = <Map<String, dynamic>>[
     <String, dynamic>{'id': 'bench_press', 'name': 'Bench Press'},
     <String, dynamic>{'id': 'overhead_press', 'name': 'Overhead Press'},
@@ -935,8 +935,8 @@ FakeMayosApi _progressFake({int points = 5}) {
   return fake;
 }
 
-FakeMayosApi _progressEmptyFake() {
-  final FakeMayosApi fake = _fake();
+FakeMyosApi _progressEmptyFake() {
+  final FakeMyosApi fake = _fake();
   fake.loggedExercises = <Map<String, dynamic>>[];
   return fake;
 }
@@ -950,7 +950,7 @@ class _ProgressSurface {
   });
 
   final String name;
-  final FakeMayosApi Function() fakeBuilder;
+  final FakeMyosApi Function() fakeBuilder;
   final bool volume;
   final bool empty;
 }
@@ -973,7 +973,7 @@ Future<void> _pumpProgressSurface(
   ThemeMode mode,
 ) async {
   _setSize(tester, const Size(1080, 2400));
-  final FakeMayosApi fake = surface.fakeBuilder();
+  final FakeMyosApi fake = surface.fakeBuilder();
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save('token-alice');
   await tester.pumpWidget(
@@ -1000,13 +1000,13 @@ Future<void> _pumpProgressSurface(
             return client;
           }),
         ],
-        child: const MayosApp(),
+        child: const MyosApp(),
       ),
     ),
   );
   await _pumpUntilFound(tester, find.text('Home'));
   await tester.tap(find.descendant(
-    of: find.byType(MayosBottomNavigation),
+    of: find.byType(MyosBottomNavigation),
     matching: find.text('Progress'),
   ));
   await _pumpUntilFound(

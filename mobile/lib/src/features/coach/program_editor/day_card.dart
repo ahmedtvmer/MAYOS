@@ -42,10 +42,10 @@ class _ProgramDraftDayCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final CoachCopy copy = coachCopyOf(context);
-    final MayosThemeExtension colors = MayosTheme.of(context);
+    final MyosThemeExtension colors = MyosTheme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: MayosSpacing.md),
-      child: MayosCard(
+      padding: const EdgeInsets.only(bottom: MyosSpacing.md),
+      child: MyosCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -54,7 +54,7 @@ class _ProgramDraftDayCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     copy.trainingDayNumber(index + 1),
-                    style: MayosTypography.of(context).sectionHeading,
+                    style: MyosTypography.of(context).sectionHeading,
                   ),
                 ),
                 if (isDesktopLayout(context)) ...<Widget>[
@@ -148,27 +148,27 @@ class _ProgramDraftDayCard extends StatelessWidget {
               onChanged: (_) => onChanged('day_name'),
             ),
             if (dayError != null) _editorErrorText(context, dayError!, colors),
-            const SizedBox(height: MayosSpacing.md),
+            const SizedBox(height: MyosSpacing.md),
             Text(workoutCopyOf(context).warmup,
-                style: MayosTypography.of(context).sectionHeading),
-            const SizedBox(height: MayosSpacing.xs),
+                style: MyosTypography.of(context).sectionHeading),
+            const SizedBox(height: MyosSpacing.xs),
             for (int movementIndex = 0;
                 movementIndex < day.warmups.length;
                 movementIndex++)
               buildWarmupCard(movementIndex),
-            MayosButton(
+            MyosButton(
               key: Key('program_draft_warmup_add_$index'),
               label: copy.addWarmupMovement,
               icon: Icons.add,
-              variant: MayosButtonVariant.tertiary,
+              variant: MyosButtonVariant.tertiary,
               onPressed: busy ? null : onAddWarmup,
             ),
-            const SizedBox(height: MayosSpacing.md),
+            const SizedBox(height: MyosSpacing.md),
             Text(
               copy.workingSets,
-              style: MayosTypography.of(context).sectionHeading,
+              style: MyosTypography.of(context).sectionHeading,
             ),
-            const SizedBox(height: MayosSpacing.xs),
+            const SizedBox(height: MyosSpacing.xs),
             ReorderableListView.builder(
               buildDefaultDragHandles: false,
               shrinkWrap: true,
@@ -181,14 +181,14 @@ class _ProgramDraftDayCard extends StatelessWidget {
                 child: buildExerciseCard(exerciseIndex),
               ),
             ),
-            MayosButton(
+            MyosButton(
               key: Key('program_draft_add_exercise_$index'),
               label: copy.addExercise,
               icon: Icons.add,
-              variant: MayosButtonVariant.secondary,
+              variant: MyosButtonVariant.secondary,
               onPressed: busy ? null : onAddExercise,
             ),
-            const SizedBox(height: MayosSpacing.md),
+            const SizedBox(height: MyosSpacing.md),
             TextField(
               key: Key('program_draft_cardio_$index'),
               controller: day.cardio,

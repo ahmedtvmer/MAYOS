@@ -72,7 +72,7 @@ Keys, PostHog project settings and the release-build defines are set up in
   best-effort and cannot mark the row delivered. After that grace period, a
   successful 2xx response, including `persons_found == 0`, marks it delivered
   and it is not repeated. Requests use `POSTHOG_PERSONAL_API_KEY` (scoped only
-  to `person:write` for the MAYOS project), `POSTHOG_PROJECT_ID`, and
+  to `person:write` for the MYOS project), `POSTHOG_PROJECT_ID`, and
   `POSTHOG_API_HOST` (defaults to `https://eu.posthog.com`), with a two-second
   timeout. Missing deletion credentials or a no-op sink leave the record
   pending without incrementing attempts; the hourly sweep skips deletion work
@@ -341,7 +341,7 @@ those definitions.
 | `unplanned_exercise_count` | Integer from 0 to 100 | Unplanned exercises among the committed divergences, capped at 100. |
 | `captured_offline` | Boolean | The client sets this when the workout is finished without connectivity or a sync status lookup/commit fails because connectivity is unavailable. It persists on the Workout draft and is sent on the eventual commit; platform and client-session presence do not imply offline capture. |
 | `sync_delay_seconds` | Integer from 0 to 31,557,600 | Whole seconds from the Workout draft capture instant to its successful commit when `captured_offline` is true; otherwise zero, capped at the catalogue bound. |
-| `is_first_workout` | Boolean | True when this is the Player's first completed workout recorded in MAYOS. Imported history is excluded. |
+| `is_first_workout` | Boolean | True when this is the Player's first completed workout recorded in MYOS. Imported history is excluded. |
 | `program_provenance` | `generated`, `coach_published`, or `none` | Whether the program used for the workout was generated, published by a Coach, or absent. Program and Coach ids are never sent. |
 | `days_per_week` | Integer from 0 to 7 | Number of weekdays in the newly committed Training schedule. Weekday identities are not sent. |
 | `length_days` | Integer from 1 to 14 | Inclusive length of a committed prospective Training schedule pause. Dates and reason text are never sent. |
@@ -359,7 +359,7 @@ those definitions.
 | `latency_ms` | Integer from 0 to 31,557,600 | Time spent in the inference scope, excluding any caller-owned write that follows it. |
 | `finish_reason` | `stop`, `length`, `tool_calls`, `content_filter`, `other`, or `unknown` | Provider finish reason mapped to a small vocabulary; `unknown` means none was available. |
 | `turns_today` | Integer from 0 to 1,000,000 | Distinct non-null `turn_id` values on this account's metering rows since UTC midnight, excluding `checkpoint_review` under ADR 052 just like `tokens_today`. A turn with no model call emits its event but does not count here. |
-| `requests_per_minute_limit` | Integer from 0 to 1,000,000 | Current `MODEL_RATE_LIMIT_REQUESTS` setting; zero disables the per-minute request limit. MAYOS has no daily turn ceiling. |
+| `requests_per_minute_limit` | Integer from 0 to 1,000,000 | Current `MODEL_RATE_LIMIT_REQUESTS` setting; zero disables the per-minute request limit. MYOS has no daily turn ceiling. |
 | `tokens_today` | Integer from 0 to 100,000,000 | Account token usage since UTC midnight, using the same exclusion rule as the daily token admission check; `checkpoint_review` is excluded under ADR 052. |
 | `tokens_daily_limit` | Integer from 0 to 100,000,000 | Current `MODEL_DAILY_TOKEN_LIMIT` setting; zero disables this limit. |
 | `limit` | `requests_per_minute` or `daily_tokens` | The coded model limit that refused admission. |
@@ -375,7 +375,7 @@ cohort reporting. Event delivery is fire-and-forget, so authoritative writes can
 outlive a lost analytics event if the process exits between commit and capture.
 
 The server uses the PostHog SDK background queue, sends nothing without a
-project key, and is a no-op in tests. Person deletion uses the MAYOS analytics
+project key, and is a no-op in tests. Person deletion uses the MYOS analytics
 interface and the PostHog persons API. Keep production, development and test
 projects separated. Before a key is enabled, configure project-level client IP
 discard as described above.
@@ -469,14 +469,14 @@ records.
 Published as the "Product analytics" section of PRIVACY_POLICY.md (policy
 version 1.2). The approved summary:
 
-MAYOS uses PostHog (EU) as a product-analytics processor. MAYOS sends
+MYOS uses PostHog (EU) as a product-analytics processor. MYOS sends
 pseudonymous events associated with an immutable Account id to measure feature
 use, such as onboarding, workouts, coaching, programs, and AI. Events use
 allowlisted properties such as event names, capabilities, counts, and timing
 metadata; they do not contain free text, chat messages, onboarding answers,
 prompts, or workout contents. Account
 holders can turn product analytics off in Settings. When analytics is off,
-MAYOS stops sending that Account's own server and Flutter client analytics
+MYOS stops sending that Account's own server and Flutter client analytics
 events. Events attributed to a counterpart remain subject to that counterpart's
 choice and do not identify the opted-out Account. The choice is stored with the
 Account and applies again after signing in on another session.

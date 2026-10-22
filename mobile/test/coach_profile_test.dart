@@ -2,15 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/display_language/controller.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/features/shared/mode_switch.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/display_language/controller.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/features/shared/mode_switch.dart';
+import 'package:myos_mobile/src/providers.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 import 'support/coach_layout_harness.dart';
 
 /// Pumps finite frames until [finder] matches, then a few more so route
@@ -32,7 +32,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
 
 Future<void> _pumpApp(
   WidgetTester tester,
-  FakeMayosApi fake, {
+  FakeMyosApi fake, {
   Size logicalSize = const Size(540, 1200),
   String language = 'en',
 }) async {
@@ -61,7 +61,7 @@ Future<void> _pumpApp(
           return client;
         }),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   final String startupLanguage = fake.displayLanguage;
@@ -74,8 +74,8 @@ Future<void> _pumpApp(
 }
 
 /// A signed-in, onboarded player with a recovery email, optionally already a coach.
-FakeMayosApi _signedInFake({required bool coach}) {
-  final FakeMayosApi fake = FakeMayosApi();
+FakeMyosApi _signedInFake({required bool coach}) {
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -105,7 +105,7 @@ Future<void> _openSettings(WidgetTester tester) async {
 void main() {
   testWidgets('Arabic coach notice reader resolves cached request notices',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake(coach: true)
+    final FakeMyosApi fake = _signedInFake(coach: true)
       ..displayLanguage = 'ar';
     fake.assignmentNotices.add(<String, dynamic>{
       'notice_id': 'request-received',
@@ -136,7 +136,7 @@ void main() {
   testWidgets(
       'coach notice reader switches cached structured copy and retains fallbacks',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake(coach: true);
+    final FakeMyosApi fake = _signedInFake(coach: true);
     fake.assignmentNotices.addAll(<Map<String, dynamic>>[
       <String, dynamic>{
         'notice_id': 'request-received',
@@ -204,7 +204,7 @@ void main() {
   });
 
   testWidgets('coach profile loads, validates, and saves', (tester) async {
-    final FakeMayosApi fake = _signedInFake(coach: true);
+    final FakeMyosApi fake = _signedInFake(coach: true);
     await _pumpApp(tester, fake);
 
     // The coach shell hosts the profile editor as its Profile tab (#119).
@@ -244,10 +244,10 @@ void main() {
 
   testWidgets('Coach code redemption fits a phone in both languages',
       (tester) async {
-    FakeMayosApi? usedFake;
+    FakeMyosApi? usedFake;
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) {
+      configureFake: (FakeMyosApi fake) {
         usedFake = fake;
         fake.coach = false;
         fake.validCoachInviteToken = 'coach-invite-token-123456';
@@ -307,10 +307,10 @@ void main() {
 
     await expectCoachPhoneLayout(
       tester,
-      configureFake: (FakeMayosApi fake) {
+      configureFake: (FakeMyosApi fake) {
         fake.coachBio = 'Strength coach.';
       },
-      ready: (String language) => find.byKey(const ValueKey<String>('mayos_scaffold_body')),
+      ready: (String language) => find.byKey(const ValueKey<String>('myos_scaffold_body')),
       pageScrollable: (String language) => find.byType(Scrollable).first,
       assertions: (WidgetTester tester, String language) async {
         final String profileLabel = language == 'ar' ? 'الملف الشخصي' : 'Profile';
@@ -347,7 +347,7 @@ void main() {
 
   testWidgets('desktop profile keeps invite controls in its existing layout',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake(coach: true);
+    final FakeMyosApi fake = _signedInFake(coach: true);
     await _pumpApp(tester, fake, logicalSize: const Size(1280, 900));
     await tester.tap(find.text('Profile'));
     await _pumpUntilFound(tester, find.text('Coach profile'));
@@ -367,7 +367,7 @@ void main() {
 
   testWidgets('coach stall threshold is editable from Coach settings',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake(coach: true);
+    final FakeMyosApi fake = _signedInFake(coach: true);
     await _pumpApp(tester, fake);
     await tester.tap(find.text('Profile'));
     await _pumpUntilFound(tester, find.text('Coach profile'));
@@ -392,7 +392,7 @@ void main() {
 
   testWidgets('coach profile surfaces a load error and retries',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake(coach: true);
+    final FakeMyosApi fake = _signedInFake(coach: true);
     fake.coachProfileLoadFails = true;
     await _pumpApp(tester, fake);
 
@@ -406,9 +406,9 @@ void main() {
     expect(find.text('Coach Alice'), findsOneWidget);
   });
 
-  testWidgets('player uses a MAYOS code to unlock coaching',
+  testWidgets('player uses a MYOS code to unlock coaching',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake(coach: false);
+    final FakeMyosApi fake = _signedInFake(coach: false);
     fake.validCoachInviteToken = 'coach-invite-token-123456';
     await _pumpApp(tester, fake);
 
@@ -421,18 +421,18 @@ void main() {
     expect(find.text('Redeem an owner-issued coach code'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.workspace_premium_outlined));
-    await _pumpUntilFound(tester, find.text('Enter your MAYOS coach code'));
+    await _pumpUntilFound(tester, find.text('Enter your MYOS coach code'));
     expect(find.text('Become a coach'), findsOneWidget);
-    expect(find.text('MAYOS coach code'), findsOneWidget);
+    expect(find.text('MYOS coach code'), findsOneWidget);
     expect(
-      find.textContaining('This code comes from MAYOS'),
+      find.textContaining('This code comes from MYOS'),
       findsOneWidget,
     );
     expect(find.textContaining('owner-issued'), findsNothing);
     expect(find.text('Enable coaching'), findsOneWidget);
 
     await tester.tap(find.text('Enable coaching'));
-    await _pumpUntilFound(tester, find.text('Enter your MAYOS coach code.'));
+    await _pumpUntilFound(tester, find.text('Enter your MYOS coach code.'));
 
     // A wrong code shows the generic error and grants nothing.
     await tester.enterText(find.byType(TextField), 'wrong-invite-code-123456');
@@ -452,7 +452,7 @@ void main() {
 
   testWidgets('an un-onboarded player can become a coach from onboarding',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake(coach: false)
+    final FakeMyosApi fake = _signedInFake(coach: false)
       ..profileExists = false
       ..validCoachInviteToken = 'coach-invite-token-123456';
     await _pumpApp(tester, fake);
@@ -481,14 +481,14 @@ void main() {
   testWidgets(
       'a committed grant is not reported as failed when a follow-up read would fail',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake(coach: false);
+    final FakeMyosApi fake = _signedInFake(coach: false);
     fake.validCoachInviteToken = 'coach-invite-token-123456';
     await _pumpApp(tester, fake);
 
     await _openSettings(tester);
 
     await tester.tap(find.byIcon(Icons.workspace_premium_outlined));
-    await _pumpUntilFound(tester, find.text('Enter your MAYOS coach code'));
+    await _pumpUntilFound(tester, find.text('Enter your MYOS coach code'));
 
     final int meCallsBefore =
         fake.adapter.requests.where((r) => r.path == '/auth/me').length;
@@ -512,7 +512,7 @@ void main() {
 
   testWidgets('coach account does not see the Enable coaching setting',
       (tester) async {
-    final FakeMayosApi fake = _signedInFake(coach: true);
+    final FakeMyosApi fake = _signedInFake(coach: true);
     await _pumpApp(tester, fake);
 
     await _openSettings(tester);
@@ -521,7 +521,7 @@ void main() {
   });
 
   testWidgets('app resume refreshes live capabilities', (tester) async {
-    final FakeMayosApi fake = _signedInFake(coach: false);
+    final FakeMyosApi fake = _signedInFake(coach: false);
     await _pumpApp(tester, fake);
     await _openSettings(tester);
     // A player has no coach destinations and may still redeem an invite.

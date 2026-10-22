@@ -75,22 +75,22 @@
     "sha256": "b9b1b7ceb66ebca5c803dbede736dcc8f4455c1afdc0d1a1dceda0ea41ad46c3"
   },
   {
-    "path": "mobile/lib/src/core/theme/mayos_typography.dart",
+    "path": "mobile/lib/src/core/theme/myos_typography.dart",
     "kind": "modified",
     "sha256": "7d643bad92e5c1fa195b3caf2316fdbf45a2041b7da48e41fc319763049f3ac3"
   },
   {
-    "path": "mobile/lib/src/core/ui/mayos_app_header.dart",
+    "path": "mobile/lib/src/core/ui/myos_app_header.dart",
     "kind": "modified",
     "sha256": "9dded00931a0a04c5f9bd0b7306d1eaa6b2abcbc6d29103232f17d0580b41283"
   },
   {
-    "path": "mobile/lib/src/core/ui/mayos_bottom_navigation.dart",
+    "path": "mobile/lib/src/core/ui/myos_bottom_navigation.dart",
     "kind": "modified",
     "sha256": "504399423698a172281586f17504c683e1afbea731e7e9c6d4d6d05e3fc41912"
   },
   {
-    "path": "mobile/lib/src/core/ui/mayos_markdown.dart",
+    "path": "mobile/lib/src/core/ui/myos_markdown.dart",
     "kind": "modified",
     "sha256": "e03b62dc7fc8c66215284d4cc157eb35807f78d810b3160092e74a05877c5909"
   },

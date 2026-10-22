@@ -9,31 +9,31 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/active_workout.dart';
-import 'package:mayos_mobile/src/core/analytics_client.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/baselines.dart';
-import 'package:mayos_mobile/src/core/chat_models.dart';
-import 'package:mayos_mobile/src/core/chat_storage.dart';
-import 'package:mayos_mobile/src/core/device_timezone.dart';
-import 'package:mayos_mobile/src/core/display_language/controller.dart';
-import 'package:mayos_mobile/src/core/display_language/store.dart';
-import 'package:mayos_mobile/src/core/theme/mayos_typography.dart';
-import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/workout_start_notice_store.dart';
-import 'package:mayos_mobile/src/core/workout_storage.dart';
-import 'package:mayos_mobile/src/features/player/exercise/exercise_detail_screen.dart';
-import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.dart';
-import 'package:mayos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/active_workout.dart';
+import 'package:myos_mobile/src/core/analytics_client.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/baselines.dart';
+import 'package:myos_mobile/src/core/chat_models.dart';
+import 'package:myos_mobile/src/core/chat_storage.dart';
+import 'package:myos_mobile/src/core/device_timezone.dart';
+import 'package:myos_mobile/src/core/display_language/controller.dart';
+import 'package:myos_mobile/src/core/display_language/store.dart';
+import 'package:myos_mobile/src/core/theme/myos_typography.dart';
+import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/workout_start_notice_store.dart';
+import 'package:myos_mobile/src/core/workout_storage.dart';
+import 'package:myos_mobile/src/features/player/exercise/exercise_detail_screen.dart';
+import 'package:myos_mobile/src/features/player/workout/workout_logger_screen.dart';
+import 'package:myos_mobile/src/providers.dart';
 
-import '../support/fake_mayos_api.dart';
+import '../support/fake_myos_api.dart';
 
 final bool _captureEnabled = Platform.environment['CAPTURE_249'] == '1';
 bool _brandImagesPrecached = false;
-const Key _captureBoundaryKey = Key('mayos.249.capture');
+const Key _captureBoundaryKey = Key('myos.249.capture');
 const String _accountId = 'account-alice';
 const String _dayName = 'الجزء العلوي: الظهر والكتف والذراع';
 const String _input =
@@ -105,7 +105,7 @@ class _CaptureFixture {
   }
 
   final _CaptureConfiguration configuration;
-  final FakeMayosApi api = FakeMayosApi();
+  final FakeMyosApi api = FakeMyosApi();
   final InMemoryActiveWorkoutStore activeWorkouts =
       InMemoryActiveWorkoutStore();
   final InMemoryChatCacheStore chatCache = InMemoryChatCacheStore();
@@ -202,7 +202,7 @@ Future<void> _loadCaptureFonts() async {
     ..addFont(rootBundle.load('assets/fonts/PlayfairDisplay-Variable.ttf'));
   final FontLoader inter = FontLoader('Inter')
     ..addFont(rootBundle.load('assets/fonts/Inter-Variable.ttf'));
-  final FontLoader arabic = FontLoader(MayosTypography.arabicFamily)
+  final FontLoader arabic = FontLoader(MyosTypography.arabicFamily)
     ..addFont(rootBundle.load(
         'assets/fonts/arabic/IBMPlexSansArabic-Regular.ttf'))
     ..addFont(rootBundle.load(
@@ -266,7 +266,7 @@ Future<void> _startApp(
       ],
       child: RepaintBoundary(
         key: _captureBoundaryKey,
-        child: const MayosApp(),
+        child: const MyosApp(),
       ),
     ),
   );
@@ -484,10 +484,10 @@ Future<void> _captureEnglishScreens(WidgetTester tester) async {
 Future<void> _precacheBrandImages(WidgetTester tester) async {
   final BuildContext context = tester.element(find.byType(MaterialApp));
   const List<String> assets = <String>[
-    'assets/brand/mayos-lockup-white.png',
-    'assets/brand/mayos-lockup-black.png',
-    'assets/brand/mayos-mark-white.png',
-    'assets/brand/mayos-mark-black.png',
+    'assets/brand/myos-lockup-white.png',
+    'assets/brand/myos-lockup-black.png',
+    'assets/brand/myos-mark-white.png',
+    'assets/brand/myos-mark-black.png',
     'assets/images/gym-wallpaper.jpg',
   ];
   await tester.runAsync(() async {

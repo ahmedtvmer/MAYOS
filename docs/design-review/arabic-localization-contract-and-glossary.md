@@ -1,7 +1,7 @@
 # Arabic server messages and gym glossary
 
-Design interview for [Server text localization contract (#142)](https://github.com/ahmedtvmer/MAYOS/issues/142)
-and [Arabic gym glossary (#144)](https://github.com/ahmedtvmer/MAYOS/issues/144),
+Design interview for [Server text localization contract (#142)](https://github.com/ahmedtvmer/MYOS/issues/142)
+and [Arabic gym glossary (#144)](https://github.com/ahmedtvmer/MYOS/issues/144),
 2026-10-01. These are accepted design directions, not descriptions of
 implemented behavior. GitHub issues remain the implementation source of truth.
 
@@ -182,7 +182,7 @@ Keep **kg** beside numeric weights.
 | One-workout replacement | استبدال تمرين لهذه الحصة |
 | Substitution request to coach | طلب تبديل تمرين من المدرب |
 
-Retain **MAYOS**, **Free**, **Pro**, and established split names such as
+Retain **MYOS**, **Free**, **Pro**, and established split names such as
 **Upper/Lower**; translate their surrounding explanations. Retain established
 abbreviations, including **RIR** and **e1RM**. The existing restriction against
 using PR as the prose name for a Personal record still applies.
@@ -295,7 +295,7 @@ not implemented behavior. The owner confirmed the existing public API/HTML and
 Flutter widget test boundaries, with captured emails and fake models.
 
 Published spec: [Arabic localization: account language, server messages and
-shared gym glossary (#246)](https://github.com/ahmedtvmer/MAYOS/issues/246),
+shared gym glossary (#246)](https://github.com/ahmedtvmer/MYOS/issues/246),
 labelled `ready-for-agent`. Decision issues #142 and #144 are closed with
 resolution comments, and the parent map #135 links the spec and decisions.
 The map stays open for its remaining decisions and implementation-ticket

@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_app_header.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_logo.dart';
-import 'package:mayos_mobile/src/features/shared/splash_screen.dart';
+import 'package:myos_mobile/src/core/theme/myos_theme.dart';
+import 'package:myos_mobile/src/core/ui/myos_app_header.dart';
+import 'package:myos_mobile/src/core/ui/myos_logo.dart';
+import 'package:myos_mobile/src/features/shared/splash_screen.dart';
 
 /// Issue #109: the monochrome brand lockup. These tests pin the asset chosen
 /// per theme and the header/splash geometry so the blue asset cannot creep
 /// back and the small centred lockup cannot regress.
 
-const String _whiteLockup = 'assets/brand/mayos-lockup-white.png';
-const String _blackLockup = 'assets/brand/mayos-lockup-black.png';
-const String _whiteMark = 'assets/brand/mayos-mark-white.png';
-const String _blackMark = 'assets/brand/mayos-mark-black.png';
+const String _whiteLockup = 'assets/brand/myos-lockup-white.png';
+const String _blackLockup = 'assets/brand/myos-lockup-black.png';
+const String _whiteMark = 'assets/brand/myos-mark-white.png';
+const String _blackMark = 'assets/brand/myos-mark-black.png';
 
 String _assetName(WidgetTester tester) {
   final Image image = tester.widget<Image>(find.byType(Image));
@@ -37,7 +37,7 @@ Future<void> _pumpThemed(
   await tester.pumpWidget(
     MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: brightness == Brightness.dark ? MayosTheme.dark : MayosTheme.light,
+      theme: brightness == Brightness.dark ? MyosTheme.dark : MyosTheme.light,
       home: Scaffold(body: Center(child: child)),
     ),
   );
@@ -45,17 +45,17 @@ Future<void> _pumpThemed(
 }
 
 void main() {
-  group('MayosBrandLockup asset per theme', () {
+  group('MyosBrandLockup asset per theme', () {
     testWidgets('dark theme uses the white lockup',
         (WidgetTester tester) async {
-      await _pumpThemed(tester, const MayosBrandLockup(),
+      await _pumpThemed(tester, const MyosBrandLockup(),
           brightness: Brightness.dark);
       expect(_assetName(tester), _whiteLockup);
     });
 
     testWidgets('light theme uses the black lockup',
         (WidgetTester tester) async {
-      await _pumpThemed(tester, const MayosBrandLockup(),
+      await _pumpThemed(tester, const MyosBrandLockup(),
           brightness: Brightness.light);
       expect(_assetName(tester), _blackLockup);
     });
@@ -64,22 +64,22 @@ void main() {
         (WidgetTester tester) async {
       await _pumpThemed(
         tester,
-        const MayosBrandLockup(variant: MayosBrandVariant.white),
+        const MyosBrandLockup(variant: MyosBrandVariant.white),
         brightness: Brightness.light,
       );
       expect(_assetName(tester), _whiteLockup);
     });
   });
 
-  group('MayosBrandMark asset per theme', () {
+  group('MyosBrandMark asset per theme', () {
     testWidgets('dark theme uses the white mark', (WidgetTester tester) async {
-      await _pumpThemed(tester, const MayosBrandMark(),
+      await _pumpThemed(tester, const MyosBrandMark(),
           brightness: Brightness.dark);
       expect(_assetName(tester), _whiteMark);
     });
 
     testWidgets('light theme uses the black mark', (WidgetTester tester) async {
-      await _pumpThemed(tester, const MayosBrandMark(),
+      await _pumpThemed(tester, const MyosBrandMark(),
           brightness: Brightness.light);
       expect(_assetName(tester), _blackMark);
     });
@@ -97,11 +97,11 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           debugShowCheckedModeBanner: false,
-          theme: MayosTheme.light,
+          theme: MyosTheme.light,
           home: Scaffold(
             body: Column(
               children: <Widget>[
-                MayosAppHeader(
+                MyosAppHeader(
                   actions: <Widget>[
                     IconButton(
                       onPressed: () {},
@@ -123,7 +123,7 @@ void main() {
       // rather than the zero-width placeholder frames.
       await tester.runAsync(() => precacheImage(
             const AssetImage(_whiteMark),
-            tester.element(find.byType(MayosAppHeader)),
+            tester.element(find.byType(MyosAppHeader)),
           ));
       await tester.pump();
     }
@@ -133,10 +133,10 @@ void main() {
       const Size size = Size(360, 640);
       await pumpHeader(tester, size);
 
-      final Rect brand = tester.getRect(find.byKey(MayosAppHeader.brandKey));
+      final Rect brand = tester.getRect(find.byKey(MyosAppHeader.brandKey));
       expect(brand.center.dx, closeTo(size.width / 2, 0.5));
       expect(brand.height, lessThanOrEqualTo(24));
-      expect(tester.getSize(find.byType(MayosBrandMark)).height,
+      expect(tester.getSize(find.byType(MyosBrandMark)).height,
           lessThanOrEqualTo(24));
     });
 
@@ -144,7 +144,7 @@ void main() {
         (WidgetTester tester) async {
       await pumpHeader(tester, const Size(320, 640));
 
-      final Rect brand = tester.getRect(find.byKey(MayosAppHeader.brandKey));
+      final Rect brand = tester.getRect(find.byKey(MyosAppHeader.brandKey));
       final Rect chat = tester.getRect(find.byIcon(Icons.chat_bubble_outline));
       final Rect settings =
           tester.getRect(find.byIcon(Icons.settings_outlined));
@@ -157,7 +157,7 @@ void main() {
         (WidgetTester tester) async {
       await pumpHeader(tester, const Size(320, 640), textScale: 2.0);
 
-      final Rect brand = tester.getRect(find.byKey(MayosAppHeader.brandKey));
+      final Rect brand = tester.getRect(find.byKey(MyosAppHeader.brandKey));
       final Rect chat = tester.getRect(find.byIcon(Icons.chat_bubble_outline));
       expect(brand.right, lessThanOrEqualTo(chat.left));
     });
@@ -170,15 +170,15 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       await tester.pumpWidget(
         MaterialApp(
-          theme: MayosTheme.light,
+          theme: MyosTheme.light,
           home: const Scaffold(
-            body: MayosAppHeader(title: 'Settings', showBack: true),
+            body: MyosAppHeader(title: 'Settings', showBack: true),
           ),
         ),
       );
       await tester.pump();
 
-      expect(find.byKey(MayosAppHeader.brandKey), findsNothing);
+      expect(find.byKey(MyosAppHeader.brandKey), findsNothing);
       expect(find.byIcon(Icons.arrow_back), findsOneWidget);
       expect(find.text('Settings'), findsOneWidget);
     });
@@ -201,14 +201,14 @@ void main() {
           MaterialApp(
             debugShowCheckedModeBanner: false,
             theme: brightness == Brightness.dark
-                ? MayosTheme.dark
-                : MayosTheme.light,
+                ? MyosTheme.dark
+                : MyosTheme.light,
             home: const SplashScreen(),
           ),
         );
         await tester.pump();
 
-        final Finder lockup = find.byType(MayosBrandLockup);
+        final Finder lockup = find.byType(MyosBrandLockup);
         final Rect rect = tester.getRect(lockup);
         expect(rect.height, lessThanOrEqualTo(120));
         expect(rect.height, greaterThanOrEqualTo(72));

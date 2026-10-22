@@ -37,7 +37,7 @@ case "$command_name" in
   *) usage >&2; exit 2 ;;
 esac
 
-repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "run this script inside the MAYOS checkout"
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "run this script inside the MYOS checkout"
 git_dir="$(git -C "$repo_root" rev-parse --path-format=absolute --git-dir)"
 common_dir="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir)"
 if [[ -f "$repo_root/.git" || "$git_dir" != "$common_dir" ]]; then

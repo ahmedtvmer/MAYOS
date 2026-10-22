@@ -113,7 +113,7 @@ class _RecoveryEmailReminderDialog extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final MayosCopy copy = MayosCopy(ref.watch(displayLanguageProvider));
+    final MyosCopy copy = MyosCopy(ref.watch(displayLanguageProvider));
     return AlertDialog(
       title: Text(copy.recoveryEmailReminderTitle),
       content: Text(copy.recoveryEmailReminderBody),

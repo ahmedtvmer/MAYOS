@@ -4,17 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:mayos_mobile/src/app.dart';
-import 'package:mayos_mobile/src/core/api_client.dart';
-import 'package:mayos_mobile/src/core/app_mode.dart';
-import 'package:mayos_mobile/src/core/models.dart';
-import 'package:mayos_mobile/src/core/token_store.dart';
-import 'package:mayos_mobile/src/core/ui/mayos_markdown.dart';
-import 'package:mayos_mobile/src/features/coach/coach_assistant_state.dart';
-import 'package:mayos_mobile/src/providers.dart';
-import 'package:mayos_mobile/src/router.dart';
+import 'package:myos_mobile/src/app.dart';
+import 'package:myos_mobile/src/core/api_client.dart';
+import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/models.dart';
+import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/ui/myos_markdown.dart';
+import 'package:myos_mobile/src/features/coach/coach_assistant_state.dart';
+import 'package:myos_mobile/src/providers.dart';
+import 'package:myos_mobile/src/router.dart';
 
-import 'support/fake_mayos_api.dart';
+import 'support/fake_myos_api.dart';
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     {int attempts = 50}) async {
@@ -30,7 +30,7 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
   expect(finder, findsWidgets, reason: 'Timed out waiting for $finder');
 }
 
-Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
+Future<void> _pumpApp(WidgetTester tester, FakeMyosApi fake) async {
   tester.view.physicalSize = const Size(390, 844);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -53,19 +53,19 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
           return client;
         }),
       ],
-      child: const MayosApp(),
+      child: const MyosApp(),
     ),
   );
   await _pumpUntilFound(tester, find.text('Roster'));
 }
 
-FakeMayosApi _coachFake({
+FakeMyosApi _coachFake({
   required bool coachAiEnabled,
   bool coachRosterAiEnabled = false,
   bool coachPro = false,
   bool? coachRosterAiAvailable,
 }) {
-  final FakeMayosApi fake = FakeMayosApi();
+  final FakeMyosApi fake = FakeMyosApi();
   fake.issuedToken = 'token-alice';
   fake.currentUsername = 'alice';
   fake.tokenValid = true;
@@ -101,7 +101,7 @@ FakeMayosApi _coachFake({
 }
 
 ProviderContainer _container(WidgetTester tester) =>
-    ProviderScope.containerOf(tester.element(find.byType(MayosApp)));
+    ProviderScope.containerOf(tester.element(find.byType(MyosApp)));
 
 Future<void> _choosePlayer(WidgetTester tester, String username) async {
   final Finder picker = find.byType(DropdownButtonFormField<String>);
@@ -113,7 +113,7 @@ Future<void> _choosePlayer(WidgetTester tester, String username) async {
 }
 
 Finder _rosterMarkdown(String source) => find.byWidgetPredicate(
-      (Widget widget) => widget is MayosMarkdown && widget.source == source,
+      (Widget widget) => widget is MyosMarkdown && widget.source == source,
     );
 
 void main() {
@@ -121,7 +121,7 @@ void main() {
       'the Assistant tab picker opens the one-player assistant and '
       'switching players clears the in-memory transcript',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake(coachAiEnabled: true);
+    final FakeMyosApi fake = _coachFake(coachAiEnabled: true);
     await _pumpApp(tester, fake);
 
     await tester.tap(find.text('Assistant'));
@@ -205,7 +205,7 @@ void main() {
 
   testWidgets('the picker resets when a roster refresh removes its selection',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake(coachAiEnabled: true);
+    final FakeMyosApi fake = _coachFake(coachAiEnabled: true);
     await _pumpApp(tester, fake);
 
     await tester.tap(find.text('Assistant'));
@@ -235,7 +235,7 @@ void main() {
   testWidgets(
       'the Assistant tab explains when Coach AI is disabled and '
       'does not show the picker or chat', (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake(coachAiEnabled: false);
+    final FakeMyosApi fake = _coachFake(coachAiEnabled: false);
     await _pumpApp(tester, fake);
 
     await tester.tap(find.text('Assistant'));
@@ -251,7 +251,7 @@ void main() {
   testWidgets(
       'roster replies keep aliases and coverage separate, show names, and link players',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake(
+    final FakeMyosApi fake = _coachFake(
       coachAiEnabled: true,
       coachRosterAiEnabled: true,
       coachPro: true,
@@ -326,7 +326,7 @@ void main() {
 
   testWidgets('a Free Coach sees the roster urgency order and upgrade note',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake(
+    final FakeMyosApi fake = _coachFake(
       coachAiEnabled: true,
       coachRosterAiEnabled: true,
       coachPro: false,
@@ -351,7 +351,7 @@ void main() {
 
   testWidgets('a trial Coach without a Coach plan row sees roster chat',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _coachFake(
+    final FakeMyosApi fake = _coachFake(
       coachAiEnabled: true,
       coachRosterAiEnabled: true,
       coachPro: false,
@@ -376,5 +376,5 @@ void main() {
 }
 
 GoRouter _router(WidgetTester tester) =>
-    ProviderScope.containerOf(tester.element(find.byType(MayosApp)))
+    ProviderScope.containerOf(tester.element(find.byType(MyosApp)))
         .read(routerProvider);

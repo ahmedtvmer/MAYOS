@@ -33,7 +33,7 @@ POLICY_PATH = Path(__file__).resolve().parent.parent / "docs" / "PRIVACY_POLICY.
 
 _CONTACT_TOKEN = "{{PRIVACY_CONTACT}}"
 _CONTACT_FALLBACK = (
-    "the operator of MAYOS (this deployment has no contact email configured: "
+    "the operator of MYOS (this deployment has no contact email configured: "
     "PRIVACY_CONTACT_EMAIL is unset)"
 )
 

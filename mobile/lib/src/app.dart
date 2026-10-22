@@ -13,23 +13,23 @@ import 'core/display_language/controller.dart';
 import 'core/first_touch.dart';
 import 'core/models.dart';
 import 'core/shared_program_text.dart';
-import 'core/theme/mayos_spacing.dart';
-import 'core/theme/mayos_theme.dart';
+import 'core/theme/myos_spacing.dart';
+import 'core/theme/myos_theme.dart';
 import 'core/token_subject.dart';
 import 'core/ui/is_desktop_layout.dart';
-import 'core/ui/mayos_app_mode_scope.dart';
+import 'core/ui/myos_app_mode_scope.dart';
 import 'features/player/auth/auth_controller.dart';
 import 'providers.dart';
 import 'router.dart';
 
-class MayosApp extends ConsumerStatefulWidget {
-  const MayosApp({super.key});
+class MyosApp extends ConsumerStatefulWidget {
+  const MyosApp({super.key});
 
   @override
-  ConsumerState<MayosApp> createState() => _MayosAppState();
+  ConsumerState<MyosApp> createState() => _MyosAppState();
 }
 
-class _MayosAppState extends ConsumerState<MayosApp>
+class _MyosAppState extends ConsumerState<MyosApp>
     with WidgetsBindingObserver {
   String? _analyticsAccountId;
   String? _analyticsRole;
@@ -199,18 +199,18 @@ class _MayosAppState extends ConsumerState<MayosApp>
     final ThemeMode themeMode = ref.watch(themeModeControllerProvider);
     final String selectedLanguage = ref.watch(displayLanguageProvider);
     return MaterialApp.router(
-      title: 'MAYOS',
+      title: 'MYOS',
       debugShowCheckedModeBanner: false,
-      theme: MayosTheme.lightForLanguage(selectedLanguage),
-      darkTheme: MayosTheme.darkForLanguage(selectedLanguage),
+      theme: MyosTheme.lightForLanguage(selectedLanguage),
+      darkTheme: MyosTheme.darkForLanguage(selectedLanguage),
       themeMode: themeMode,
       locale: Locale(selectedLanguage),
       supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       routerConfig: router,
       builder: (BuildContext context, Widget? child) {
-        final MayosThemeExtension c = _effective(context, themeMode);
-        return MayosAppModeScope(
+        final MyosThemeExtension c = _effective(context, themeMode);
+        return MyosAppModeScope(
           mode: appMode,
           child: Theme(
             data: _responsiveOverlayTheme(
@@ -223,9 +223,9 @@ class _MayosAppState extends ConsumerState<MayosApp>
               // Own the app's screen snackbars under the responsive theme.
               // The same messenger also receives permission prompts via its
               // global key.
-              key: mayosMessengerKey,
+              key: myosMessengerKey,
               child: AnnotatedRegion<SystemUiOverlayStyle>(
-                value: MayosTheme.overlayStyle(c),
+                value: MyosTheme.overlayStyle(c),
                 child: child ?? const SizedBox.shrink(),
               ),
             ),
@@ -274,17 +274,17 @@ class _MayosAppState extends ConsumerState<MayosApp>
     if (!desktop) {
       overlayMaxWidth = MediaQuery.sizeOf(context).width;
     } else if (mode == AppMode.player) {
-      overlayMaxWidth = MayosLayout.playerColumnMaxWidth;
+      overlayMaxWidth = MyosLayout.playerColumnMaxWidth;
     } else {
-      overlayMaxWidth = MayosLayout.coachOverlayMaxWidth;
+      overlayMaxWidth = MyosLayout.coachOverlayMaxWidth;
     }
     final ThemeData theme = switch (themeMode) {
-      ThemeMode.light => MayosTheme.lightForLanguage(language),
-      ThemeMode.dark => MayosTheme.darkForLanguage(language),
+      ThemeMode.light => MyosTheme.lightForLanguage(language),
+      ThemeMode.dark => MyosTheme.darkForLanguage(language),
       ThemeMode.system =>
         MediaQuery.platformBrightnessOf(context) == Brightness.dark
-            ? MayosTheme.darkForLanguage(language)
-            : MayosTheme.lightForLanguage(language),
+            ? MyosTheme.darkForLanguage(language)
+            : MyosTheme.lightForLanguage(language),
     };
     return theme.copyWith(
       bottomSheetTheme: theme.bottomSheetTheme.copyWith(
@@ -296,17 +296,17 @@ class _MayosAppState extends ConsumerState<MayosApp>
     );
   }
 
-  MayosThemeExtension _effective(BuildContext context, ThemeMode mode) {
+  MyosThemeExtension _effective(BuildContext context, ThemeMode mode) {
     switch (mode) {
       case ThemeMode.light:
-        return MayosThemeExtension.light;
+        return MyosThemeExtension.light;
       case ThemeMode.dark:
-        return MayosThemeExtension.dark;
+        return MyosThemeExtension.dark;
       case ThemeMode.system:
         final Brightness brightness = MediaQuery.platformBrightnessOf(context);
         return brightness == Brightness.dark
-            ? MayosThemeExtension.dark
-            : MayosThemeExtension.light;
+            ? MyosThemeExtension.dark
+            : MyosThemeExtension.light;
     }
   }
 }

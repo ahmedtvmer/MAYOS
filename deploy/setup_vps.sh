@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prepare a MAYOS VPS over SSH after it has been created in the provider console.
+# Prepare a MYOS VPS over SSH after it has been created in the provider console.
 # Usage: deploy/setup_vps.sh [server-ip].
 set -euo pipefail
 
