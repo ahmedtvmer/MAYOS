@@ -386,6 +386,7 @@ class _CoachProgramViewState extends State<CoachProgramView> {
           CoachExerciseCell(
             imagePath: exercise.imagePath,
             name: exercise.exerciseName,
+            exerciseId: exercise.isCoachExercise ? null : exercise.exerciseId,
             muscleLine: coachExerciseMuscleLabel(
               context,
               exercise.primaryMuscle ??
@@ -486,6 +487,7 @@ class _CoachProgramViewState extends State<CoachProgramView> {
           CoachExerciseCell(
             imagePath: exercise.imagePath,
             name: exercise.exerciseName,
+            exerciseId: exercise.isCoachExercise ? null : exercise.exerciseId,
             muscleLine: coachExerciseMuscleLabel(
               context,
               exercise.primaryMuscle ??

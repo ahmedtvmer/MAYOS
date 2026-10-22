@@ -546,6 +546,7 @@ class CoachHistorySegment extends StatelessWidget {
                 CoachExerciseCell(
                   imagePath: record.imagePath,
                   name: record.name,
+                  exerciseId: coachCatalogExerciseId(record.exerciseId),
                   muscleLine: coachExerciseMuscleLabel(
                     context,
                     record.primaryMuscle,
@@ -593,6 +594,7 @@ class CoachHistorySegment extends StatelessWidget {
           CoachExerciseCell(
             imagePath: record.imagePath,
             name: record.name,
+            exerciseId: coachCatalogExerciseId(record.exerciseId),
             muscleLine:
                 coachExerciseMuscleLabel(context, record.primaryMuscle),
           ),
@@ -931,6 +933,15 @@ class CoachHistorySegment extends StatelessWidget {
                       ),
                     ),
                     children: <Widget>[
+                      if (coachCatalogExerciseId(exercise.id) case
+                          final String exerciseId)
+                        TextButton.icon(
+                          onPressed: () =>
+                              openCoachExerciseDetail(context, exerciseId),
+                          icon: const Icon(Icons.info_outline),
+                          label: Text(
+                              workoutCopyOf(context).viewExerciseDetails),
+                        ),
                       _exerciseDetail(context, exercise.id),
                     ],
                   ),
@@ -1006,6 +1017,7 @@ List<MyosCardTableRow> _sessionExerciseRows(
             CoachExerciseCell(
               imagePath: exercise.imagePath,
               name: exercise.name,
+              exerciseId: coachCatalogExerciseId(exercise.exerciseId),
               muscleLine:
                   coachExerciseMuscleLabel(context, exercise.primaryMuscle),
               secondaryLine: coachExerciseActionDetailLine(
@@ -1080,6 +1092,7 @@ List<Widget> _sessionExerciseTableCells(
     CoachExerciseCell(
       imagePath: exercise.imagePath,
       name: exercise.name,
+      exerciseId: coachCatalogExerciseId(exercise.exerciseId),
       muscleLine: coachExerciseMuscleLabel(context, exercise.primaryMuscle),
     ),
     CoachExerciseActionCell(primaryAction: exercise.primaryAction),

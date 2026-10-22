@@ -705,6 +705,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
                 exerciseId: state.pathParameters['id'] ?? '',
                 dayOrder: int.tryParse(state.uri.queryParameters['day'] ?? ''),
                 showProgram: state.uri.queryParameters['library'] != '1',
+                showHistory: state.uri.queryParameters['coach'] != '1',
                 initialTab: state.uri.queryParameters['tab'] ?? 'overview',
               ),
             ),

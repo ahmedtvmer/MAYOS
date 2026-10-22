@@ -797,6 +797,44 @@ Future<void> _tapDayAction(
 }
 
 void main() {
+  testWidgets('catalog exercise opens details while Coach exercise stays put',
+      (tester) async {
+    final Map<String, dynamic> active =
+        _coachActiveProgram(provenance: 'automatic');
+    final Map<String, dynamic> program = active['program'] as Map<String, dynamic>;
+    final List<Map<String, dynamic>> exercises =
+        ((program['days'] as List<Map<String, dynamic>>).first['exercises']
+            as List<Map<String, dynamic>>);
+    exercises
+      ..first['exercise_id'] = 'bench_press'
+      ..first['exercise_name'] = 'Bench Press'
+      ..add(_programExerciseRow(
+        'coach:owned-1',
+        'Coach Exercise',
+        metadata: <String, dynamic>{'is_coach_exercise': true},
+      ));
+    final FakeMyosApi fake = _coachFake()..coachActiveProgram = active;
+    await _pumpApp(tester, fake, logicalWidth: 1440);
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    await tester.tap(find.text('bob').first);
+    await _openProgramSegment(tester);
+
+    await tester.tap(find.text('Bench Press').first);
+    await tester.pumpAndSettle();
+    await _pumpUntilFound(tester, find.text('Overview'));
+    expect(find.text('Overview'), findsOneWidget);
+    expect(find.text('Technique'), findsOneWidget);
+    expect(find.text('History'), findsNothing);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('Coach Exercise'), findsOneWidget);
+    await tester.tap(find.text('Coach Exercise'));
+    await tester.pumpAndSettle();
+    expect(find.text('Overview'), findsNothing);
+    expect(find.text('Coach Exercise'), findsOneWidget);
+  });
+
   test('Program import picker allows XLSX, CSV and TXT', () {
     expect(programImportExtensions, <String>['xlsx', 'csv', 'txt']);
     expect(

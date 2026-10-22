@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/display_language/catalog.dart';
 import '../../core/display_language/coach_copy.dart';
@@ -9,8 +10,24 @@ import '../../core/theme/myos_spacing.dart';
 import '../../core/theme/myos_theme.dart';
 import '../../core/theme/myos_typography.dart';
 import '../../core/ui/myos_table_frame.dart';
+import '../../router.dart';
 import '../player/workout/logger_card_widgets.dart'
     show ExerciseCatalogThumbnail;
+
+void openCoachExerciseDetail(BuildContext context, String exerciseId) {
+  context.push(
+    '$exerciseDetailPath/${Uri.encodeComponent(exerciseId)}?coach=1&library=1',
+  );
+}
+
+String? coachCatalogExerciseId(String? exerciseId) {
+  if (exerciseId == null ||
+      exerciseId.isEmpty ||
+      exerciseId.startsWith('coach:')) {
+    return null;
+  }
+  return exerciseId;
+}
 
 String coachExerciseEquipmentLabel(
   BuildContext context,
@@ -111,17 +128,30 @@ class CoachExerciseCell extends StatelessWidget {
     required this.name,
     this.muscleLine,
     this.secondaryLine,
+    this.exerciseId,
   });
 
   final String? imagePath;
   final String name;
   final String? muscleLine;
   final String? secondaryLine;
+  final String? exerciseId;
 
   @override
   Widget build(BuildContext context) {
     final MyosThemeExtension colors = MyosTheme.of(context);
-    return Row(
+    final VoidCallback? onTap = exerciseId == null
+        ? null
+        : () => openCoachExerciseDetail(context, exerciseId!);
+    final Widget title = Text(
+      name,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: MyosTypography.of(context)
+          .body
+          .copyWith(color: colors.textPrimary),
+    );
+    final Widget content = Row(
       children: <Widget>[
         ExerciseCatalogThumbnail(imagePath: imagePath),
         const SizedBox(width: MyosSpacing.xs),
@@ -130,14 +160,15 @@ class CoachExerciseCell extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              Text(
-                name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: MyosTypography.of(context)
-                    .body
-                    .copyWith(color: colors.textPrimary),
-              ),
+              if (onTap == null)
+                title
+              else
+                Semantics(
+                  button: true,
+                  label: workoutCopyOf(context).exerciseDetails(name),
+                  onTap: onTap,
+                  child: title,
+                ),
               _CoachExerciseMuscleLine(label: muscleLine),
               if (secondaryLine != null && secondaryLine!.isNotEmpty)
                 Text(
@@ -153,6 +184,14 @@ class CoachExerciseCell extends StatelessWidget {
         ),
       ],
     );
+    return onTap == null
+        ? content
+        : GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            excludeFromSemantics: true,
+            onTap: onTap,
+            child: content,
+          );
   }
 }
 

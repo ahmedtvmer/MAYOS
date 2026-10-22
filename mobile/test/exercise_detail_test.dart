@@ -45,7 +45,9 @@ Future<void> _pumpDetail(
   String exerciseId, {
   ThemeMode mode = ThemeMode.light,
   int? dayOrder = 1,
+  bool showProgram = true,
   String initialTab = 'overview',
+  bool showHistory = true,
   Size size = const Size(1080, 2400),
   String languageCode = 'en',
 }) async {
@@ -87,7 +89,9 @@ Future<void> _pumpDetail(
         home: ExerciseDetailScreen(
           exerciseId: exerciseId,
           dayOrder: dayOrder,
+          showProgram: showProgram,
           initialTab: initialTab,
+          showHistory: showHistory,
         ),
       ),
     ),
@@ -131,6 +135,25 @@ Future<void> _pumpApp(WidgetTester tester, FakeMyosApi fake) async {
 }
 
 void main() {
+  testWidgets('coach detail omits account prescription and history',
+      (tester) async {
+    final FakeMyosApi fake = _signedInFake();
+    await _pumpDetail(
+      tester,
+      fake,
+      'bench_press',
+      initialTab: 'history',
+      showProgram: false,
+      showHistory: false,
+    );
+    expect(find.text('Overview'), findsOneWidget);
+    expect(find.text('Technique'), findsOneWidget);
+    expect(find.text('History'), findsNothing);
+    expect(find.text('Sets'), findsNothing);
+    expect(find.text('Reps'), findsNothing);
+    expect(find.text('RIR'), findsNothing);
+  });
+
   testWidgets(
       'Arabic exercise tabs and prescription labels preserve exercise names',
       (tester) async {

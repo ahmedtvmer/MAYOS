@@ -108,7 +108,134 @@ Future<void> _expandHistorySection(WidgetTester tester, String section) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> _expectCoachExerciseDetail(WidgetTester tester) async {
+  await _pumpUntilFound(tester, find.text('Overview'));
+  expect(find.text('Overview'), findsOneWidget);
+  expect(find.text('Technique'), findsOneWidget);
+  expect(find.text('History'), findsNothing);
+}
+
 void main() {
+  testWidgets('Personal record exercise opens Coach-safe exercise details',
+      (tester) async {
+    final FakeMyosApi fake = _coachFake();
+    await _pumpApp(tester, fake);
+    tester.view.physicalSize = const Size(720, 4800);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
+    await _expandHistorySection(tester, 'records');
+
+    await tester.tap(find.text('Bench Press').last);
+    await tester.pumpAndSettle();
+    await _expectCoachExerciseDetail(tester);
+  });
+
+  testWidgets('recent session exercise opens Coach-safe exercise details',
+      (tester) async {
+    final FakeMyosApi fake = _coachFake();
+    final Map<String, dynamic> latest =
+        fake.coachPlayerSummary['latest_session'] as Map<String, dynamic>;
+    (latest['exercises'] as List<Map<String, dynamic>>).first['exercise_id'] =
+        'bench_press';
+    await _pumpApp(tester, fake);
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
+
+    await tester.tap(find.text('Bench Press').last);
+    await tester.pumpAndSettle();
+    await _expectCoachExerciseDetail(tester);
+  });
+
+  testWidgets('expanded Exercise section action opens Coach-safe details',
+      (tester) async {
+    final FakeMyosApi fake = _coachFake();
+    await _pumpApp(tester, fake);
+    tester.view.physicalSize = const Size(720, 4800);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
+    await _expandHistorySection(tester, 'exercises');
+    final Finder tile = find.widgetWithText(ExpansionTile, 'Bench Press');
+    await tester.scrollUntilVisible(
+      tile,
+      250,
+      scrollable: find.ancestor(
+        of: tile,
+        matching: find.byType(Scrollable),
+      ).first,
+    );
+    await Scrollable.ensureVisible(
+      tester.element(tile),
+      alignment: 0.1,
+    );
+    await tester.tap(find.text('Bench Press').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('View exercise details'));
+    await tester.pumpAndSettle();
+    await _expectCoachExerciseDetail(tester);
+  });
+
+  testWidgets('Coach exercise Personal record does not open details',
+      (tester) async {
+    final FakeMyosApi fake = _coachFake()
+      ..coachPlayerRecords.first['exercise_id'] =
+          'coach:00000000-0000-0000-0000-000000000001';
+    await _pumpApp(tester, fake);
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
+    await _expandHistorySection(tester, 'records');
+
+    await tester.tap(find.text('Bench Press').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Overview'), findsNothing);
+    expect(find.text('Coaching since'), findsOneWidget);
+  });
+
+  testWidgets('Coach exercise recent-session row does not open details',
+      (tester) async {
+    final FakeMyosApi fake = _coachFake();
+    final Map<String, dynamic> latest =
+        fake.coachPlayerSummary['latest_session'] as Map<String, dynamic>;
+    (latest['exercises'] as List<Map<String, dynamic>>).first['exercise_id'] =
+        'coach:00000000-0000-0000-0000-000000000001';
+    await _pumpApp(tester, fake);
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
+
+    await tester.tap(find.text('Bench Press').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Overview'), findsNothing);
+    expect(find.text('Coaching since'), findsOneWidget);
+  });
+
+  testWidgets('Coach exercise entry has no View exercise details action',
+      (tester) async {
+    final FakeMyosApi fake = _coachFake()
+      ..coachPlayerExercises.first['id'] =
+          'coach:00000000-0000-0000-0000-000000000001';
+    await _pumpApp(tester, fake);
+    tester.view.physicalSize = const Size(720, 4800);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await _openRosterEntry(tester);
+    await _pumpUntilFound(tester, find.text('Weekly volume'));
+    await _expandHistorySection(tester, 'exercises');
+    final Finder tile = find.widgetWithText(ExpansionTile, 'Bench Press');
+    await tester.ensureVisible(tile);
+    await tester.tap(find.text('Bench Press').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('View exercise details'), findsNothing);
+    expect(find.text('Overview'), findsNothing);
+  });
+
   testWidgets('the active assigned player\'s session shows Cardio minutes',
       (WidgetTester tester) async {
     final FakeMyosApi fake = _coachFake();

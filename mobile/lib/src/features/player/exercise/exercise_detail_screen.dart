@@ -32,6 +32,7 @@ class ExerciseDetailScreen extends ConsumerStatefulWidget {
     required this.exerciseId,
     this.dayOrder,
     this.showProgram = true,
+    this.showHistory = true,
     this.initialTab = 'overview',
   });
 
@@ -42,6 +43,9 @@ class ExerciseDetailScreen extends ConsumerStatefulWidget {
 
   /// Whether this detail should load a matching program prescription.
   final bool showProgram;
+
+  /// Whether this detail may read and show the signed-in account's history.
+  final bool showHistory;
 
   /// Which tab to open on. Progress (#48) opens this screen on `history`.
   final String initialTab;
@@ -72,7 +76,9 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _tab = widget.initialTab;
+    _tab = !widget.showHistory && widget.initialTab == 'history'
+        ? 'overview'
+        : widget.initialTab;
     _future = _load();
   }
 
@@ -98,10 +104,12 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen> {
     } on ApiException catch (error) {
       partialError ??= apiFailureMessage(error);
     }
-    try {
-      history = await api.exerciseHistory(widget.exerciseId);
-    } on ApiException catch (error) {
-      partialError ??= apiFailureMessage(error);
+    if (widget.showHistory) {
+      try {
+        history = await api.exerciseHistory(widget.exerciseId);
+      } on ApiException catch (error) {
+        partialError ??= apiFailureMessage(error);
+      }
     }
 
     return _DetailData(
@@ -158,6 +166,7 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen> {
           return _DetailBody(
               data: data,
               tab: _tab,
+              showHistory: widget.showHistory,
               onTab: (String tab) => setState(() => _tab = tab));
         },
       ),
@@ -169,11 +178,13 @@ class _DetailBody extends StatelessWidget {
   const _DetailBody({
     required this.data,
     required this.tab,
+    required this.showHistory,
     required this.onTab,
   });
 
   final _DetailData data;
   final String tab;
+  final bool showHistory;
   final ValueChanged<String> onTab;
 
   @override
@@ -206,8 +217,9 @@ class _DetailBody extends StatelessWidget {
                 value: 'overview', label: displayCopyOf(context).overview),
             MyosSegment<String>(
                 value: 'technique', label: displayCopyOf(context).technique),
-            MyosSegment<String>(
-                value: 'history', label: displayCopyOf(context).history),
+            if (showHistory)
+              MyosSegment<String>(
+                  value: 'history', label: displayCopyOf(context).history),
           ],
           selected: tab,
           onChanged: onTab,
