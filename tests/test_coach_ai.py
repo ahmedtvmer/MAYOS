@@ -139,7 +139,7 @@ def _account_id(db, username):
 
 def test_prompt_version_hash_is_bound_to_name_aware_context():
     assert coach_ai.prompt_version_hash() == (
-        "96ae33920efeba2f461e00ce574ff66ab9c299f7cae1e70d7db8bf6d21590648"
+        "64793e4ea8cc8933b05cca6fea69359dfc502d3e8a2b420a2e0f69e2db17ae27"
     )
 
 

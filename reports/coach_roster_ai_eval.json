@@ -2,9 +2,9 @@
   "report_version": 1,
   "suite": "coach_roster_assistant",
   "mode": "live",
-  "generated_at": "2026-10-15T21:25:03.979923+00:00",
+  "generated_at": "2026-10-22T16:38:16.323591+00:00",
   "dataset": "coach_roster_assistant_cases.json",
-  "prompt_hash": "179f8717bcc0d38f048928e9c641e2c39a1e9773c580f6680d4029db5f3b0322",
+  "prompt_hash": "d2435e2f13a2f79182bab0c523c8eaa518c1d40c4eec7eefec54abf52ffebeeb",
   "context_version": "coach-roster-context-v2",
   "model": "deepseek-ai/DeepSeek-V4-Flash",
   "backend": "openai",
@@ -31,7 +31,7 @@
     {
       "case_id": "attention_en",
       "question": "Who needs my attention today?",
-      "answer": "Based on the current roster signals, two players need your attention today:\n\n- **P0123456789ab** (urgency rank 1): has missed 3 of the expected training days in the last 7 days, a 72% adherence over the last 28 days, a 3-day missed day streak, and hasn't checked in for 9 days.\n\n- **Pabcdef987654** (urgency rank 2): has met the stall threshold, meaning 4 weeks without a Personal record, and has 7 sessions without progress on the main lift, though adherence is 100% and effort is rising.",
+      "answer": "Based on the current roster signals, two players need your attention today:\n\n1. **P0123456789ab** (urgency rank 1) – This player has missed 3 of the expected training days in the last 7 days, has a 72% adherence over the last 28 days, and has a 3-day streak of missed days. They also have 1 new lapsing alert and haven't checked in for 9 days.\n\n2. **Pabcdef987654** (urgency rank 2) – This player has met the stall threshold, meaning they have gone 4 weeks without a Personal Record. Although their adherence is 100% and they worked out yesterday, the lack of progress is a concern.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -76,7 +76,7 @@
     {
       "case_id": "attention_ar",
       "question": "مين محتاج متابعة النهارده؟",
-      "answer": "بناءً على إشارات القائمة الحالية، اللاعبون التاليون يحتاجون إلى متابعة:\n\n- **P0123456789ab** (الترتيب 1): لديه 3 أيام تدريب متوقعة فائتة في آخر 7 أيام، و72% التزام في آخر 28 يومًا، ولم يتواصل منذ 9 أيام، بالإضافة إلى إنذار جديد من المدرب.\n\n- **Pabcdef987654** (الترتيب 2): استوفى حد التوقف (4 أسابيع بدون رقم شخصي)، رغم أن التزامه 100% في آخر 28 يومًا.",
+      "answer": "بناءً على إشارات القائمة الحالية، هناك لاعبان يحتاجان إلى متابعة:\n\n- **P0123456789ab** (الترتيب حسب الأولوية: 1) – لديه 3 أيام تدريب متوقعة فائتة في آخر 7 أيام، و72% التزام في آخر 28 يومًا، ولم يسجل وزنه منذ 9 أيام، ولم يتدرب منذ 5 أيام.\n\n- **Pabcdef987654** (الترتيب حسب الأولوية: 2) – استوفى حد التوقف (4 أسابيع بدون رقم شخصي جديد)، رغم أن التزامه 100% في آخر 28 يومًا وآخر تمرين كان أمس.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -121,7 +121,7 @@
     {
       "case_id": "stalled_en",
       "question": "Who has stalled?",
-      "answer": "Based on the current roster signals, the player with the label **Pabcdef987654** has stalled. This player has gone 4 weeks without a Personal record, which meets the stall threshold of 3 weeks.",
+      "answer": "Based on the current roster signals, the player with label **Pabcdef987654** has stalled. They have gone 4 weeks without a Personal record, which meets the stall threshold of 3 weeks.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -164,7 +164,7 @@
     {
       "case_id": "stalled_ar",
       "question": "مين متوقف عن تحقيق رقم قياسي شخصي؟",
-      "answer": "اللاعب ذو التصنيف Pabcdef987654 متوقف عن تحقيق رقم قياسي شخصي منذ 4 أسابيع.",
+      "answer": "اللاعب ذو التصنيف Pabcdef987654 متوقف عن تحقيق رقم قياسي شخصي منذ 4 أسابيع، وقد تجاوز حد التوقف المحدد بـ 3 أسابيع.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -250,7 +250,7 @@
     {
       "case_id": "adherence_ar",
       "question": "إيه نسبة الالتزام بالتدريب خلال 28 يوم؟",
-      "answer": "بناءً على البيانات المتاحة، نسبة الالتزام بالتدريب خلال 28 يوم للاعب P0123456789ab هي 84.6%.",
+      "answer": "بناءً على البيانات المتاحة، نسبة الالتزام بالتدريب خلال 28 يومًا للاعب P0123456789ab هي 84.6%.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -293,7 +293,7 @@
     {
       "case_id": "insufficient_en",
       "question": "How many expected days did P0123456789ab miss?",
-      "answer": "The roster signals show no data on missed expected days for P0123456789ab.",
+      "answer": "No data is available on missed expected training days for P0123456789ab.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -379,7 +379,7 @@
     {
       "case_id": "name_request_en",
       "question": "What is P0123456789ab's name?",
-      "answer": "Player names are not visible to me. The MAYOS app can show you which player the label **P0123456789ab** refers to.",
+      "answer": "Player names are not visible to me. The MYOS app can show you which player the label P0123456789ab refers to.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -424,7 +424,7 @@
     {
       "case_id": "name_request_ar",
       "question": "ما اسم اللاعب P0123456789ab؟",
-      "answer": "أسماء اللاعبين غير مرئية بالنسبة لي. تطبيق MAYOS يمكنه إظهار أي لاعب يشير إليه هذا التصنيف. التصنيف الدقيق للاعب هو: P0123456789ab.",
+      "answer": "أسماء اللاعبين غير مرئية بالنسبة لي. يمكن لتطبيق MYOS أن يظهر لك أي لاعب يشير إليه الملصق P0123456789ab.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -469,7 +469,7 @@
     {
       "case_id": "weight_en",
       "question": "How is P0123456789ab's weight trending?",
-      "answer": "P0123456789ab's weight has gone from 82.0 kg on 13 Sep to 81.0 kg on 27 Sep and then to 80.5 kg on 11 Oct, for an overall drop of 1.5 kg. The target weight is 78.0 kg, and the latest reading is 2.5 kg above that target.",
+      "answer": "Based on the supplied data, P0123456789ab's weight has gone from 82.0 kg on September 13 to 81.0 kg on September 27, and then to 80.5 kg on October 11. The overall change is a loss of 1.5 kg. The target weight is 78.0 kg, and the latest weight is 2.5 kg above that target.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -512,7 +512,7 @@
     {
       "case_id": "weight_ar",
       "question": "إيه اتجاه وزن P0123456789ab؟",
-      "answer": "من 13 سبتمبر 2026 لـ 11 أكتوبر 2026، وزن P0123456789ab نزل من 82.0 كجم لـ 80.5 كجم، يعني نزل 1.5 كجم. الوزن المستهدف مسجل 78.0 كجم، والفرق بين آخر وزن والوزن المستهدف 2.5 كجم.",
+      "answer": "وزن P0123456789ab نزل من 82.0 كجم في 13 سبتمبر إلى 80.5 كجم في 11 أكتوبر، بفرق ناقص 1.5 كجم. الوزن المستهدف هو 78.0 كجم، والوزن الحالي أعلى من الهدف بـ 2.5 كجم.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -598,7 +598,7 @@
     {
       "case_id": "weight_target_ar",
       "question": "قد إيه P0123456789ab بعيد عن الوزن المستهدف؟",
-      "answer": "اللاعب P0123456789ab عنده وزن مستهدف 78.0 كجم، وآخر وزن مسجل هو 80.5 كجم، يعني الفرق 2.5 كجم فوق الوزن المستهدف. التغيير الكلي من أول نقطة (82.0 كجم في 13 سبتمبر) إلى آخر نقطة (80.5 كجم في 11 أكتوبر) هو نزول بمقدار 1.5 كجم.",
+      "answer": "P0123456789ab عنده أحدث وزن 80.5 كجم، والوزن المستهدف 78.0 كجم، يعني الفرق 2.5 كجم فوق المستهدف. التغيير الإجمالي من أول نقطة هو نقصان 1.5 كجم.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -641,7 +641,7 @@
     {
       "case_id": "weight_no_target_en",
       "question": "How far is P0123456789ab from the Target weight?",
-      "answer": "No Target weight is recorded for P0123456789ab, so I cannot state how far they are from a Target.",
+      "answer": "No Target weight is recorded for P0123456789ab, so I cannot compare their weight against a Target.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -684,7 +684,7 @@
     {
       "case_id": "weight_no_history_en",
       "question": "How is P0123456789ab's weight trending?",
-      "answer": "There is no body weight data recorded for P0123456789ab, so I cannot describe any trend.",
+      "answer": "No body weight data is recorded for P0123456789ab, so there is no trend to report.",
       "checks": {
         "correct_player_ids": {
           "passed": true,

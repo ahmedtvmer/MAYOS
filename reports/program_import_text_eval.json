@@ -3,7 +3,7 @@
   "suite": "program_import_text",
   "mode": "live",
   "model_run": "hosted_coach",
-  "generated_at": "2026-10-20T07:12:54.550612+00:00",
+  "generated_at": "2026-10-22T17:44:38.928757+00:00",
   "dataset": "program_import_text",
   "dataset_hash": "56695c0d791862d28fe8b7a6dd906375acc99276d352c9fa4ef21ab9c6ca648d",
   "dataset_review": {
@@ -4964,7 +4964,7 @@
       }
     }
   ],
-  "prompt_hash": "fdd73d190b388369fabe9f0270d985bc038725e2aacf342209ee2603136a2120",
+  "prompt_hash": "5818fa6c815960187fa6bd65f542e1a8d28bdeae831bb1b53c1f3fccfedbb30a",
   "model": "deepseek-ai/DeepSeek-V4-Flash",
   "backend": "openai",
   "gates": {
@@ -5076,6 +5076,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": "Set your shoulder blades before you unrack; touch the same spot each rep.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "bench press",
@@ -5125,6 +5126,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "incline DB press",
@@ -5178,6 +5180,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "RPE: RPE 8\neffort: RPE 8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -5251,6 +5254,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "Lead with your elbows and keep the stack quiet.\nRPE: RPE 7.5\neffort: RPE 7.5",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -5325,6 +5329,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "tricep pushdown",
@@ -5374,6 +5379,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": "Keep the bar brushing your legs on the way down.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "RDL",
@@ -5438,6 +5444,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -5494,6 +5501,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "DB row",
@@ -5547,6 +5555,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -5618,6 +5627,7 @@
                 "rest_seconds": 60,
                 "tempo": null,
                 "notes": "RPE: RPE 8\neffort: RPE 8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -5691,6 +5701,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": "Brace before you descend and let the knees follow your toes.",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -5758,6 +5769,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -5819,6 +5831,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": "حتى قرب الفشل",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -5896,6 +5909,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -5952,6 +5966,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "Keep your lower back against the pad.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "leg press",
@@ -5988,6 +6003,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": "Set your shoulder blades before you unrack; touch the same spot each rep.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "bench press",
@@ -6014,6 +6030,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "incline DB press",
@@ -6044,6 +6061,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "RPE: RPE 8\neffort: RPE 8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -6094,6 +6112,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "Lead with your elbows and keep the stack quiet.\nRPE: RPE 7.5\neffort: RPE 7.5",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -6145,6 +6164,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "tricep pushdown",
@@ -6171,6 +6191,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": "Keep the bar brushing your legs on the way down.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "RDL",
@@ -6212,6 +6233,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -6245,6 +6267,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "DB row",
@@ -6275,6 +6298,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -6323,6 +6347,7 @@
               "rest_seconds": 60,
               "tempo": null,
               "notes": "RPE: RPE 8\neffort: RPE 8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -6373,6 +6398,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": "Brace before you descend and let the knees follow your toes.",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -6417,6 +6443,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -6453,6 +6480,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": "حتى قرب الفشل",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -6507,6 +6535,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -6540,6 +6569,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "Keep your lower back against the pad.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "leg press",
@@ -6632,6 +6662,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": "ثبّت لوحي كتفيك واضغط بقدميك على الأرض.",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -6695,6 +6726,7 @@
                 "rest_seconds": 60,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -6766,6 +6798,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -6839,6 +6872,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": "خلي ركبتك ماشية مع صوابع رجلك.\nRPE: RPE 8\neffort: RPE 8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -6914,6 +6948,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -6970,6 +7005,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "high bar squat",
@@ -7019,6 +7055,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "leg extension",
@@ -7068,6 +7105,10 @@
                   {
                     "exercise_id": "150",
                     "name": "Lat Pulldown (Cable)"
+                  },
+                  {
+                    "exercise_id": "652",
+                    "name": "Pull-Up"
                   }
                 ],
                 "sets": 4,
@@ -7077,6 +7118,7 @@
                 "rest_seconds": 75,
                 "tempo": null,
                 "notes": "اسحب كوعك لتحت وخلي صدرك مرفوع.\nRPE: RPE 8\neffort: RPE 8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -7152,6 +7194,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -7208,6 +7251,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "RDL",
@@ -7272,6 +7316,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -7328,6 +7373,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "DB row",
@@ -7377,6 +7423,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "machine crunch",
@@ -7428,6 +7475,7 @@
                 "rest_seconds": 75,
                 "tempo": null,
                 "notes": "وقف قبل ما ضهرك يقوس.",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -7478,6 +7526,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": "ثبّت لوحي كتفيك واضغط بقدميك على الأرض.",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -7518,6 +7567,7 @@
               "rest_seconds": 60,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -7566,6 +7616,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -7616,6 +7667,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": "خلي ركبتك ماشية مع صوابع رجلك.\nRPE: RPE 8\neffort: RPE 8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -7668,6 +7720,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -7701,6 +7754,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "high bar squat",
@@ -7727,6 +7781,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "leg extension",
@@ -7753,6 +7808,10 @@
                 {
                   "exercise_id": "150",
                   "name": "Lat Pulldown (Cable)"
+                },
+                {
+                  "exercise_id": "652",
+                  "name": "Pull-Up"
                 }
               ],
               "sets": 4,
@@ -7762,6 +7821,7 @@
               "rest_seconds": 75,
               "tempo": null,
               "notes": "اسحب كوعك لتحت وخلي صدرك مرفوع.\nRPE: RPE 8\neffort: RPE 8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -7814,6 +7874,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -7847,6 +7908,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "RDL",
@@ -7888,6 +7950,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -7921,6 +7984,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "DB row",
@@ -7947,6 +8011,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "machine crunch",
@@ -7975,6 +8040,7 @@
               "rest_seconds": 75,
               "tempo": null,
               "notes": "وقف قبل ما ضهرك يقوس.",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -8056,6 +8122,7 @@
                 "approximation_markers": [
                   "program_import.reps_approximated.v1",
                   "program_import.reps_approximated.v1",
+                  "program_import.reps_approximated.v1",
                   "program_import.exercise_ambiguous.v1"
                 ],
                 "day": 1,
@@ -8085,12 +8152,19 @@
                 "target_rir": 2.0,
                 "rest_seconds": 75,
                 "tempo": null,
-                "notes": "60-90 sec\nreps: 12/10/8\nreps_original: 12/10/8",
+                "notes": "60-90 sec\nreps: 12/10/8\nreps_min: 12/10/8\nreps_max: 12/10/8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
                     "source_row": 2,
-                    "column": "reps_original",
+                    "column": "reps_min",
+                    "code": "program_import.reps_approximated.v1",
+                    "message": ""
+                  },
+                  {
+                    "source_row": 2,
+                    "column": "reps_max",
                     "code": "program_import.reps_approximated.v1",
                     "message": ""
                   },
@@ -8154,6 +8228,7 @@
                 "rest_seconds": 60,
                 "tempo": null,
                 "notes": "راحة دقيقة — سيب كتفك ثابت وانزل بالدمبل لحد مدى مريح.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "incline DB press",
@@ -8203,6 +8278,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "cable lateral raise",
@@ -8252,6 +8328,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": "R: 2'",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "tricep pushdown",
@@ -8286,7 +8363,6 @@
                 "week_order": null,
                 "original_text": "bench dip 3 مجموعات × ١٠-١٢ عدة RIR 1-2 — rest 90s",
                 "approximation_markers": [
-                  "program_import.effort_approximated.v1",
                   "program_import.effort_approximated.v1"
                 ],
                 "day": 1,
@@ -8300,18 +8376,13 @@
                 "sets": 3,
                 "reps_min": 10,
                 "reps_max": 12,
-                "target_rir": 1.5,
+                "target_rir": 1.0,
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": "RIR 1-2 — rest 90s",
+                "load": null,
                 "errors": [],
                 "warnings": [
-                  {
-                    "source_row": 8,
-                    "column": "rir",
-                    "code": "program_import.effort_approximated.v1",
-                    "message": ""
-                  },
                   {
                     "source_row": 8,
                     "column": "rir",
@@ -8368,6 +8439,10 @@
                   {
                     "exercise_id": "3643",
                     "name": "Cossack Squat (Plate)"
+                  },
+                  {
+                    "exercise_id": "1004",
+                    "name": "Squat (Band)"
                   }
                 ],
                 "sets": 4,
@@ -8377,6 +8452,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "Keep the whole foot planted as you stand.",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -8433,6 +8509,7 @@
                 "rest_seconds": 75,
                 "tempo": null,
                 "notes": "60-90 sec",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "hip thrust",
@@ -8493,6 +8570,7 @@
                 "rest_seconds": 60,
                 "tempo": null,
                 "notes": "2 in reserve — راحة دقيقة",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -8568,6 +8646,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "حتى قرب الفشل — انزل ببطء ومتسيبش الوزن يخبط.",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -8636,6 +8715,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": "R: 2'",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "Bulgarian split squat",
@@ -8685,6 +8765,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": "rest 90s — خليك متحكم في النزول وما تسيبش الوزن يقع.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "RDL",
@@ -8749,6 +8830,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -8808,6 +8890,7 @@
                 "rest_seconds": 75,
                 "tempo": null,
                 "notes": "60-90 sec\nRPE: RPE 8\neffort: RPE 8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -8868,14 +8951,24 @@
                 "exercise_name": "face pulls",
                 "exercise_id": null,
                 "resolution": "unresolved",
-                "suggestions": [],
+                "suggestions": [
+                  {
+                    "exercise_id": "3697",
+                    "name": "Kneeling Face Pull (Cable)"
+                  },
+                  {
+                    "exercise_id": "1022",
+                    "name": "Standing Rear Delt Row (Band)"
+                  }
+                ],
                 "sets": 3,
                 "reps_min": 12,
                 "reps_max": 15,
-                "target_rir": 2.5,
+                "target_rir": 3.0,
                 "rest_seconds": 180,
                 "tempo": null,
-                "notes": "RPE 7-8 — افتح إيدك عند وشك وسيب كتفك بعيد عن ودنك.\nRPE: RPE 7.5\neffort: RPE 7.5",
+                "notes": "RPE 7-8 — افتح إيدك عند وشك وسيب كتفك بعيد عن ودنك.\nRPE: RPE 7\neffort: RPE 7",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -8956,6 +9049,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "2 in reserve",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "incline dumbbell row",
@@ -8977,6 +9071,7 @@
               "week_order": null,
               "original_text": "bench 3 مجموعات × 12/10/8 عدة — 60-90 sec",
               "approximation_markers": [
+                "program_import.reps_approximated.v1",
                 "program_import.reps_approximated.v1",
                 "program_import.reps_approximated.v1",
                 "program_import.exercise_ambiguous.v1"
@@ -9008,12 +9103,19 @@
               "target_rir": 2.0,
               "rest_seconds": 75,
               "tempo": null,
-              "notes": "60-90 sec\nreps: 12/10/8\nreps_original: 12/10/8",
+              "notes": "60-90 sec\nreps: 12/10/8\nreps_min: 12/10/8\nreps_max: 12/10/8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
                   "source_row": 2,
-                  "column": "reps_original",
+                  "column": "reps_min",
+                  "code": "program_import.reps_approximated.v1",
+                  "message": ""
+                },
+                {
+                  "source_row": 2,
+                  "column": "reps_max",
                   "code": "program_import.reps_approximated.v1",
                   "message": ""
                 },
@@ -9054,6 +9156,7 @@
               "rest_seconds": 60,
               "tempo": null,
               "notes": "راحة دقيقة — سيب كتفك ثابت وانزل بالدمبل لحد مدى مريح.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "incline DB press",
@@ -9080,6 +9183,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "cable lateral raise",
@@ -9106,6 +9210,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": "R: 2'",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "tricep pushdown",
@@ -9117,7 +9222,6 @@
               "week_order": null,
               "original_text": "bench dip 3 مجموعات × ١٠-١٢ عدة RIR 1-2 — rest 90s",
               "approximation_markers": [
-                "program_import.effort_approximated.v1",
                 "program_import.effort_approximated.v1"
               ],
               "day": 1,
@@ -9131,18 +9235,13 @@
               "sets": 3,
               "reps_min": 10,
               "reps_max": 12,
-              "target_rir": 1.5,
+              "target_rir": 1.0,
               "rest_seconds": 90,
               "tempo": null,
               "notes": "RIR 1-2 — rest 90s",
+              "load": null,
               "errors": [],
               "warnings": [
-                {
-                  "source_row": 8,
-                  "column": "rir",
-                  "code": "program_import.effort_approximated.v1",
-                  "message": ""
-                },
                 {
                   "source_row": 8,
                   "column": "rir",
@@ -9176,6 +9275,10 @@
                 {
                   "exercise_id": "3643",
                   "name": "Cossack Squat (Plate)"
+                },
+                {
+                  "exercise_id": "1004",
+                  "name": "Squat (Band)"
                 }
               ],
               "sets": 4,
@@ -9185,6 +9288,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "Keep the whole foot planted as you stand.",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -9218,6 +9322,7 @@
               "rest_seconds": 75,
               "tempo": null,
               "notes": "60-90 sec",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "hip thrust",
@@ -9255,6 +9360,7 @@
               "rest_seconds": 60,
               "tempo": null,
               "notes": "2 in reserve — راحة دقيقة",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -9305,6 +9411,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "حتى قرب الفشل — انزل ببطء ومتسيبش الوزن يخبط.",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -9350,6 +9457,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": "R: 2'",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "Bulgarian split squat",
@@ -9376,6 +9484,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": "rest 90s — خليك متحكم في النزول وما تسيبش الوزن يقع.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "RDL",
@@ -9417,6 +9526,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -9453,6 +9563,7 @@
               "rest_seconds": 75,
               "tempo": null,
               "notes": "60-90 sec\nRPE: RPE 8\neffort: RPE 8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -9490,14 +9601,24 @@
               "exercise_name": "face pulls",
               "exercise_id": null,
               "resolution": "unresolved",
-              "suggestions": [],
+              "suggestions": [
+                {
+                  "exercise_id": "3697",
+                  "name": "Kneeling Face Pull (Cable)"
+                },
+                {
+                  "exercise_id": "1022",
+                  "name": "Standing Rear Delt Row (Band)"
+                }
+              ],
               "sets": 3,
               "reps_min": 12,
               "reps_max": 15,
-              "target_rir": 2.5,
+              "target_rir": 3.0,
               "rest_seconds": 180,
               "tempo": null,
-              "notes": "RPE 7-8 — افتح إيدك عند وشك وسيب كتفك بعيد عن ودنك.\nRPE: RPE 7.5\neffort: RPE 7.5",
+              "notes": "RPE 7-8 — افتح إيدك عند وشك وسيب كتفك بعيد عن ودنك.\nRPE: RPE 7\neffort: RPE 7",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -9555,6 +9676,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "2 in reserve",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "incline dumbbell row",
@@ -9640,6 +9762,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": "Keep the bar close and push your hips back.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "RDL",
@@ -9704,6 +9827,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": "راحة ٩٠ ث",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -9763,6 +9887,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "Pull toward your hip without twisting.",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -9828,6 +9953,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": "راحة ٩٠ ث\nRPE: RPE 8\neffort: RPE 8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -9896,6 +10022,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": "RPE: RPE 7\neffort: RPE 7",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -9976,6 +10103,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "Brace, take the slack out, then push the floor away.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "deadlift",
@@ -10025,6 +10153,7 @@
                 "rest_seconds": 60,
                 "tempo": null,
                 "notes": "راحة دقيقة",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "DB bench",
@@ -10074,6 +10203,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": "راحة ٩٠ ث",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "leg curl machine",
@@ -10123,6 +10253,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "ab roller",
@@ -10161,6 +10292,7 @@
                 "approximation_markers": [
                   "program_import.unsupported_preserved_as_note.v1",
                   "program_import.reps_approximated.v1",
+                  "program_import.reps_approximated.v1",
                   "program_import.unsupported_preserved_as_note.v1"
                 ],
                 "day": 2,
@@ -10177,13 +10309,20 @@
                 "target_rir": 1.0,
                 "rest_seconds": 90,
                 "tempo": null,
-                "notes": "AMRAP\nreps: AMRAP",
+                "notes": "AMRAP\nreps: AMRAP\nreps_original: 10-15",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
                     "source_row": 13,
                     "column": "notes",
                     "code": "program_import.unsupported_preserved_as_note.v1",
+                    "message": ""
+                  },
+                  {
+                    "source_row": 13,
+                    "column": "reps_original",
+                    "code": "program_import.reps_approximated.v1",
                     "message": ""
                   },
                   {
@@ -10233,6 +10372,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": "Keep the bar close and push your hips back.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "RDL",
@@ -10274,6 +10414,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": "راحة ٩٠ ث",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -10310,6 +10451,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "Pull toward your hip without twisting.",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -10352,6 +10494,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": "راحة ٩٠ ث\nRPE: RPE 8\neffort: RPE 8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -10397,6 +10540,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": "RPE: RPE 7\neffort: RPE 7",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -10454,6 +10598,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "Brace, take the slack out, then push the floor away.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "deadlift",
@@ -10480,6 +10625,7 @@
               "rest_seconds": 60,
               "tempo": null,
               "notes": "راحة دقيقة",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "DB bench",
@@ -10506,6 +10652,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": "راحة ٩٠ ث",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "leg curl machine",
@@ -10532,6 +10679,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "ab roller",
@@ -10544,6 +10692,7 @@
               "original_text": "machine crunch 3x10-15 RIR 1-2 AMRAP — rest 90s",
               "approximation_markers": [
                 "program_import.unsupported_preserved_as_note.v1",
+                "program_import.reps_approximated.v1",
                 "program_import.reps_approximated.v1",
                 "program_import.unsupported_preserved_as_note.v1"
               ],
@@ -10561,13 +10710,20 @@
               "target_rir": 1.0,
               "rest_seconds": 90,
               "tempo": null,
-              "notes": "AMRAP\nreps: AMRAP",
+              "notes": "AMRAP\nreps: AMRAP\nreps_original: 10-15",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
                   "source_row": 13,
                   "column": "notes",
                   "code": "program_import.unsupported_preserved_as_note.v1",
+                  "message": ""
+                },
+                {
+                  "source_row": 13,
+                  "column": "reps_original",
+                  "code": "program_import.reps_approximated.v1",
                   "message": ""
                 },
                 {
@@ -10671,6 +10827,7 @@
                 "rest_seconds": 60,
                 "tempo": null,
                 "notes": "نزّل لحد ما الحوض يفضل ثابت على الكرسي.\nreps: 12/10/8\nreps: 3x12/10/8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -10744,6 +10901,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -10805,6 +10963,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "RPE: RPE 7.5\neffort: RPE 7.5",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -10894,6 +11053,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -10952,6 +11112,14 @@
                   {
                     "exercise_id": "763",
                     "name": "Calf Raise on Step (Smith Machine)"
+                  },
+                  {
+                    "exercise_id": "1383",
+                    "name": "Hack Squat Calf Raise (Plate-Loaded)"
+                  },
+                  {
+                    "exercise_id": "284",
+                    "name": "Donkey Calf Raise"
                   }
                 ],
                 "sets": 4,
@@ -10961,6 +11129,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "حتى قرب الفشل — اطلع على صوابعك وانزل لآخر مدى مريح.",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -11029,6 +11198,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "خلي رجلك ثابتة ولوح كتفك راجع.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "bench press",
@@ -11078,6 +11248,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "incline DB press",
@@ -11123,7 +11294,16 @@
                 "exercise_name": "face pulls",
                 "exercise_id": null,
                 "resolution": "unresolved",
-                "suggestions": [],
+                "suggestions": [
+                  {
+                    "exercise_id": "1022",
+                    "name": "Standing Rear Delt Row (Band)"
+                  },
+                  {
+                    "exercise_id": "3697",
+                    "name": "Kneeling Face Pull (Cable)"
+                  }
+                ],
                 "sets": 3,
                 "reps_min": 12,
                 "reps_max": 15,
@@ -11131,6 +11311,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -11202,6 +11383,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "RPE: RPE 8\neffort: RPE 8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -11269,6 +11451,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "RPE: RPE 7.5\neffort: RPE 7.5",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -11345,6 +11528,7 @@
                 "rest_seconds": 75,
                 "tempo": null,
                 "notes": "reps: ١٢-١٥",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -11391,6 +11575,7 @@
               "rest_seconds": 60,
               "tempo": null,
               "notes": "نزّل لحد ما الحوض يفضل ثابت على الكرسي.\nreps: 12/10/8\nreps: 3x12/10/8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -11441,6 +11626,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -11479,6 +11665,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "RPE: RPE 7.5\neffort: RPE 7.5",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -11545,6 +11732,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -11578,6 +11766,14 @@
                 {
                   "exercise_id": "763",
                   "name": "Calf Raise on Step (Smith Machine)"
+                },
+                {
+                  "exercise_id": "1383",
+                  "name": "Hack Squat Calf Raise (Plate-Loaded)"
+                },
+                {
+                  "exercise_id": "284",
+                  "name": "Donkey Calf Raise"
                 }
               ],
               "sets": 4,
@@ -11587,6 +11783,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "حتى قرب الفشل — اطلع على صوابعك وانزل لآخر مدى مريح.",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -11632,6 +11829,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "خلي رجلك ثابتة ولوح كتفك راجع.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "bench press",
@@ -11658,6 +11856,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "incline DB press",
@@ -11680,7 +11879,16 @@
               "exercise_name": "face pulls",
               "exercise_id": null,
               "resolution": "unresolved",
-              "suggestions": [],
+              "suggestions": [
+                {
+                  "exercise_id": "1022",
+                  "name": "Standing Rear Delt Row (Band)"
+                },
+                {
+                  "exercise_id": "3697",
+                  "name": "Kneeling Face Pull (Cable)"
+                }
+              ],
               "sets": 3,
               "reps_min": 12,
               "reps_max": 15,
@@ -11688,6 +11896,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -11736,6 +11945,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "RPE: RPE 8\neffort: RPE 8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -11780,6 +11990,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "RPE: RPE 7.5\neffort: RPE 7.5",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -11833,6 +12044,7 @@
               "rest_seconds": 75,
               "tempo": null,
               "notes": "reps: ١٢-١٥",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -11925,6 +12137,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": "Feet planted; press back toward the rack.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "bench press",
@@ -11989,6 +12202,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": "راحة ٩٠ ث",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -12050,6 +12264,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "حتى قرب الفشل؛ خليك مشدود من أول النزول.",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -12112,6 +12327,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "60-90 sec",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "hip thrust",
@@ -12161,6 +12377,7 @@
                 "rest_seconds": 60,
                 "tempo": null,
                 "notes": "راحة دقيقة",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "machine crunch",
@@ -12210,6 +12427,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "DB row",
@@ -12259,6 +12477,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": "Pause briefly on the chest; drive evenly.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "bench press",
@@ -12323,6 +12542,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": "rest 90s",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -12379,6 +12599,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "Leave two clean reps in reserve.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "high bar squat",
@@ -12428,6 +12649,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "60-90 sec",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "hip thrust",
@@ -12477,6 +12699,7 @@
                 "rest_seconds": 60,
                 "tempo": null,
                 "notes": "راحة دقيقة",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "machine crunch",
@@ -12526,6 +12749,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "DB row",
@@ -12575,6 +12799,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "bench press",
@@ -12639,6 +12864,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": "rest 90s",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -12695,6 +12921,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "high bar squat",
@@ -12744,6 +12971,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "60-90 sec",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "hip thrust",
@@ -12793,6 +13021,7 @@
                 "rest_seconds": 60,
                 "tempo": null,
                 "notes": "راحة دقيقة",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "machine crunch",
@@ -12842,6 +13071,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "DB row",
@@ -12878,6 +13108,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": "Feet planted; press back toward the rack.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "bench press",
@@ -12919,6 +13150,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": "راحة ٩٠ ث",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -12955,6 +13187,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "حتى قرب الفشل؛ خليك مشدود من أول النزول.",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -12994,6 +13227,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "60-90 sec",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "hip thrust",
@@ -13020,6 +13254,7 @@
               "rest_seconds": 60,
               "tempo": null,
               "notes": "راحة دقيقة",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "machine crunch",
@@ -13046,6 +13281,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "DB row",
@@ -13072,6 +13308,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": "Pause briefly on the chest; drive evenly.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "bench press",
@@ -13113,6 +13350,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": "rest 90s",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -13146,6 +13384,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "Leave two clean reps in reserve.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "high bar squat",
@@ -13172,6 +13411,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "60-90 sec",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "hip thrust",
@@ -13198,6 +13438,7 @@
               "rest_seconds": 60,
               "tempo": null,
               "notes": "راحة دقيقة",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "machine crunch",
@@ -13224,6 +13465,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "DB row",
@@ -13250,6 +13492,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "bench press",
@@ -13291,6 +13534,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": "rest 90s",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -13324,6 +13568,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "high bar squat",
@@ -13350,6 +13595,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "60-90 sec",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "hip thrust",
@@ -13376,6 +13622,7 @@
               "rest_seconds": 60,
               "tempo": null,
               "notes": "راحة دقيقة",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "machine crunch",
@@ -13402,6 +13649,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "DB row",
@@ -13494,6 +13742,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": "Set your upper back before you lift off.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "bench press",
@@ -13543,6 +13792,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": "راحة ١٢٠ ث",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "incline DB press",
@@ -13592,6 +13842,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "Pull the elbows down and keep your chest tall.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "lat pulldown",
@@ -13643,6 +13894,7 @@
                 "rest_seconds": 60,
                 "tempo": null,
                 "notes": "راحة دقيقة",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -13712,6 +13964,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": "Brace before you sit between your hips.\nRPE: RPE 8\neffort: RPE 8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -13780,6 +14033,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "leg curl machine",
@@ -13829,6 +14083,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": "Pause at the top without arching your back.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "hip thrust",
@@ -13885,6 +14140,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "حتى قرب الفشل\nreps_original: 30 sec hold",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -13959,6 +14215,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "bench press",
@@ -14008,6 +14265,7 @@
                 "rest_seconds": 60,
                 "tempo": null,
                 "notes": "راحة دقيقة",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "incline DB press",
@@ -14072,6 +14330,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -14128,6 +14387,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "DB row",
@@ -14177,6 +14437,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "high bar squat",
@@ -14226,6 +14487,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "leg curl machine",
@@ -14275,6 +14537,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "hip thrust",
@@ -14327,6 +14590,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "reps_original: 30 sec hold",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -14376,6 +14640,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": "Set your upper back before you lift off.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "bench press",
@@ -14402,6 +14667,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": "راحة ١٢٠ ث",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "incline DB press",
@@ -14428,6 +14694,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "Pull the elbows down and keep your chest tall.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "lat pulldown",
@@ -14456,6 +14723,7 @@
               "rest_seconds": 60,
               "tempo": null,
               "notes": "راحة دقيقة",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -14502,6 +14770,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": "Brace before you sit between your hips.\nRPE: RPE 8\neffort: RPE 8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -14547,6 +14816,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "leg curl machine",
@@ -14573,6 +14843,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": "Pause at the top without arching your back.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "hip thrust",
@@ -14604,6 +14875,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "حتى قرب الفشل\nreps_original: 30 sec hold",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -14655,6 +14927,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "bench press",
@@ -14681,6 +14954,7 @@
               "rest_seconds": 60,
               "tempo": null,
               "notes": "راحة دقيقة",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "incline DB press",
@@ -14722,6 +14996,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -14755,6 +15030,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "DB row",
@@ -14781,6 +15057,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "high bar squat",
@@ -14807,6 +15084,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "leg curl machine",
@@ -14833,6 +15111,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "hip thrust",
@@ -14862,6 +15141,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "reps_original: 30 sec hold",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -14969,12 +15249,13 @@
                 "target_rir": 2.0,
                 "rest_seconds": 120,
                 "tempo": null,
-                "notes": "اثبت على صدرك لحظة من غير ما تنط بالبار.\nreps: 12/10/8\nreps_original: 12/10/8 عدة",
+                "notes": "اثبت على صدرك لحظة من غير ما تنط بالبار.\nreps: 12/10/8 عدة\nreps: 12/10/8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
                     "source_row": 2,
-                    "column": "reps_original",
+                    "column": "reps",
                     "code": "program_import.reps_approximated.v1",
                     "message": ""
                   },
@@ -15032,6 +15313,7 @@
                 "rest_seconds": 75,
                 "tempo": null,
                 "notes": "خلي الرسغ فوق الكوع طول المجموعة.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "incline DB press",
@@ -15084,6 +15366,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "سيب جسمك ثابت ومترفعش كتفك.\nRPE: RPE 8\neffort: RPE 8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -15144,12 +15427,7 @@
                 "exercise_name": "face pulls",
                 "exercise_id": null,
                 "resolution": "unresolved",
-                "suggestions": [
-                  {
-                    "exercise_id": "3697",
-                    "name": "Kneeling Face Pull (Cable)"
-                  }
-                ],
+                "suggestions": [],
                 "sets": 3,
                 "reps_min": 10,
                 "reps_max": 12,
@@ -15157,6 +15435,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": "اسحب الحبل لحد مستوى عينك وافتح إيدك براحة.\nRPE: RPE 7.5\neffort: RPE 7.5",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -15237,6 +15516,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": "خلي كوعك ثابت جنب جسمك ومتزقش بكتفك.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "tricep pushdown",
@@ -15286,6 +15566,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "انزل لعمق تقدر تثبته وركبتك مع صوابعك.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "high bar squat",
@@ -15335,6 +15616,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": "ادفع الحوض لورا وخلي البار قريب من رجلك.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "RDL",
@@ -15384,6 +15666,7 @@
                 "rest_seconds": 75,
                 "tempo": null,
                 "notes": "اقبض بالمؤخرة فوق من غير ما تعلي ضهرك.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "hip thrust",
@@ -15436,6 +15719,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "افرد ركبتك بهدوء ومتخبطش آخر الحركة.",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -15501,6 +15785,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": "خلي الحوض ثابت على الجهاز.\nRPE: RPE 8\neffort: RPE 8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -15552,12 +15837,13 @@
               "target_rir": 2.0,
               "rest_seconds": 120,
               "tempo": null,
-              "notes": "اثبت على صدرك لحظة من غير ما تنط بالبار.\nreps: 12/10/8\nreps_original: 12/10/8 عدة",
+              "notes": "اثبت على صدرك لحظة من غير ما تنط بالبار.\nreps: 12/10/8 عدة\nreps: 12/10/8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
                   "source_row": 2,
-                  "column": "reps_original",
+                  "column": "reps",
                   "code": "program_import.reps_approximated.v1",
                   "message": ""
                 },
@@ -15592,6 +15878,7 @@
               "rest_seconds": 75,
               "tempo": null,
               "notes": "خلي الرسغ فوق الكوع طول المجموعة.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "incline DB press",
@@ -15621,6 +15908,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "سيب جسمك ثابت ومترفعش كتفك.\nRPE: RPE 8\neffort: RPE 8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -15658,12 +15946,7 @@
               "exercise_name": "face pulls",
               "exercise_id": null,
               "resolution": "unresolved",
-              "suggestions": [
-                {
-                  "exercise_id": "3697",
-                  "name": "Kneeling Face Pull (Cable)"
-                }
-              ],
+              "suggestions": [],
               "sets": 3,
               "reps_min": 10,
               "reps_max": 12,
@@ -15671,6 +15954,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": "اسحب الحبل لحد مستوى عينك وافتح إيدك براحة.\nRPE: RPE 7.5\neffort: RPE 7.5",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -15728,6 +16012,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": "خلي كوعك ثابت جنب جسمك ومتزقش بكتفك.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "tricep pushdown",
@@ -15754,6 +16039,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "انزل لعمق تقدر تثبته وركبتك مع صوابعك.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "high bar squat",
@@ -15780,6 +16066,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": "ادفع الحوض لورا وخلي البار قريب من رجلك.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "RDL",
@@ -15806,6 +16093,7 @@
               "rest_seconds": 75,
               "tempo": null,
               "notes": "اقبض بالمؤخرة فوق من غير ما تعلي ضهرك.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "hip thrust",
@@ -15835,6 +16123,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "افرد ركبتك بهدوء ومتخبطش آخر الحركة.",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -15877,6 +16166,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": "خلي الحوض ثابت على الجهاز.\nRPE: RPE 8\neffort: RPE 8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -15982,6 +16272,7 @@
                 "rest_seconds": 75,
                 "tempo": null,
                 "notes": "70% 1RM",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -16056,6 +16347,7 @@
                 "rest_seconds": 60,
                 "tempo": null,
                 "notes": "راحة دقيقة",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "assisted pull up machine",
@@ -16112,6 +16404,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "bodyweight + 10kg",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -16185,6 +16478,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": "حتى قرب الفشل — Lower the bar close to your legs.",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -16262,6 +16556,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -16318,6 +16613,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "Keep your brace through the sticking point.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "high bar squat",
@@ -16367,6 +16663,7 @@
                 "rest_seconds": 75,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "leg extension",
@@ -16419,6 +16716,7 @@
                 "rest_seconds": 60,
                 "tempo": null,
                 "notes": "راحة دقيقة\nRPE: RPE 8\neffort: RPE 8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -16486,6 +16784,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "RPE: RPE 7.5\neffort: RPE 7.5",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -16545,7 +16844,7 @@
                 "week_order": null,
                 "original_text": "side plank 3 x 30 sec hold",
                 "approximation_markers": [
-                  "program_import.effort_approximated.v1",
+                  "program_import.unsupported_preserved_as_note.v1",
                   "program_import.effort_approximated.v1"
                 ],
                 "day": 2,
@@ -16563,12 +16862,13 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "30 sec hold",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
                     "source_row": 12,
                     "column": "notes",
-                    "code": "program_import.effort_approximated.v1",
+                    "code": "program_import.unsupported_preserved_as_note.v1",
                     "message": ""
                   },
                   {
@@ -16625,6 +16925,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "low cable fly",
@@ -16674,6 +16975,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "high cable fly",
@@ -16723,6 +17025,7 @@
                 "rest_seconds": 75,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "incline dumbbell row",
@@ -16775,6 +17078,7 @@
                 "rest_seconds": 60,
                 "tempo": null,
                 "notes": "راحة دقيقة",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -16829,6 +17133,7 @@
               "rest_seconds": 75,
               "tempo": null,
               "notes": "70% 1RM",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -16880,6 +17185,7 @@
               "rest_seconds": 60,
               "tempo": null,
               "notes": "راحة دقيقة",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "assisted pull up machine",
@@ -16910,6 +17216,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "bodyweight + 10kg",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -16958,6 +17265,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": "حتى قرب الفشل — Lower the bar close to your legs.",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -17012,6 +17320,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -17045,6 +17354,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "Keep your brace through the sticking point.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "high bar squat",
@@ -17071,6 +17381,7 @@
               "rest_seconds": 75,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "leg extension",
@@ -17100,6 +17411,7 @@
               "rest_seconds": 60,
               "tempo": null,
               "notes": "راحة دقيقة\nRPE: RPE 8\neffort: RPE 8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -17144,6 +17456,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "RPE: RPE 7.5\neffort: RPE 7.5",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -17180,7 +17493,7 @@
               "week_order": null,
               "original_text": "side plank 3 x 30 sec hold",
               "approximation_markers": [
-                "program_import.effort_approximated.v1",
+                "program_import.unsupported_preserved_as_note.v1",
                 "program_import.effort_approximated.v1"
               ],
               "day": 2,
@@ -17198,12 +17511,13 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "30 sec hold",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
                   "source_row": 12,
                   "column": "notes",
-                  "code": "program_import.effort_approximated.v1",
+                  "code": "program_import.unsupported_preserved_as_note.v1",
                   "message": ""
                 },
                 {
@@ -17237,6 +17551,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "low cable fly",
@@ -17263,6 +17578,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "high cable fly",
@@ -17289,6 +17605,7 @@
               "rest_seconds": 75,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "incline dumbbell row",
@@ -17318,6 +17635,7 @@
               "rest_seconds": 60,
               "tempo": null,
               "notes": "راحة دقيقة",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -17420,6 +17738,7 @@
                 "rest_seconds": 60,
                 "tempo": null,
                 "notes": "Keep your shoulder blades tucked and feet planted.\nreps: 3x6/5/4\nreps: 6/5/4\nreps_original: 6/5/4",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -17503,6 +17822,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -17559,6 +17879,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "high bar squat",
@@ -17608,6 +17929,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "hip thrust",
@@ -17656,15 +17978,16 @@
                 "sets": 3,
                 "reps_min": 10,
                 "reps_max": 15,
-                "target_rir": 1.0,
+                "target_rir": 2.0,
                 "rest_seconds": 120,
                 "tempo": null,
-                "notes": null,
+                "notes": "RIR 1-2",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
                     "source_row": 6,
-                    "column": "rir",
+                    "column": "notes",
                     "code": "program_import.effort_approximated.v1",
                     "message": ""
                   },
@@ -17722,6 +18045,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "Pull the elbow toward your back pocket.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "DB row",
@@ -17771,6 +18095,7 @@
                 "rest_seconds": 60,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "leg extension",
@@ -17819,7 +18144,8 @@
                 "target_rir": 2.0,
                 "rest_seconds": 90,
                 "tempo": null,
-                "notes": null,
+                "notes": "2 in reserve",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "cable lateral raise",
@@ -17873,7 +18199,8 @@
                 "target_rir": 2.0,
                 "rest_seconds": 180,
                 "tempo": null,
-                "notes": "Reset your brace on every rep.\nnotes: حتى قرب الفشل",
+                "notes": "حتى قرب الفشل — Reset your brace on every rep.",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -17936,6 +18263,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "low cable fly",
@@ -17985,6 +18313,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "assisted pull up machine",
@@ -18019,7 +18348,7 @@
                 "week_order": null,
                 "original_text": "side plank 3 x 30 sec hold",
                 "approximation_markers": [
-                  "program_import.effort_approximated.v1",
+                  "program_import.reps_approximated.v1",
                   "program_import.effort_approximated.v1"
                 ],
                 "day": 1,
@@ -18037,12 +18366,13 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "reps_original: 30 sec hold",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
                     "source_row": 15,
                     "column": "reps_original",
-                    "code": "program_import.effort_approximated.v1",
+                    "code": "program_import.reps_approximated.v1",
                     "message": ""
                   },
                   {
@@ -18102,6 +18432,7 @@
                 "rest_seconds": 60,
                 "tempo": null,
                 "notes": "RPE: RPE 8\neffort: RPE 8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -18150,8 +18481,6 @@
                 "original_text": "Bulgarian split squat 3×8-10 RPE 7-8 — راحة ٩٠ ث — Keep your front heel down.",
                 "approximation_markers": [
                   "program_import.effort_approximated.v1",
-                  "program_import.effort_approximated.v1",
-                  "program_import.rpe_converted.v1",
                   "program_import.effort_approximated.v1"
                 ],
                 "day": 1,
@@ -18165,15 +18494,16 @@
                 "sets": 3,
                 "reps_min": 8,
                 "reps_max": 10,
-                "target_rir": 3.0,
+                "target_rir": 2.0,
                 "rest_seconds": 90,
                 "tempo": null,
-                "notes": "Keep your front heel down.\nRPE: RPE 7\neffort: RPE 7",
+                "notes": "RPE 7-8 — Keep your front heel down.",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
                     "source_row": 17,
-                    "column": "rpe",
+                    "column": "notes",
                     "code": "program_import.effort_approximated.v1",
                     "message": ""
                   },
@@ -18182,18 +18512,6 @@
                     "column": "rir",
                     "code": "program_import.effort_approximated.v1",
                     "message": ""
-                  },
-                  {
-                    "source_row": 17,
-                    "column": "rpe",
-                    "code": "program_import.rpe_converted.v1",
-                    "message": "RPE was converted to RIR."
-                  },
-                  {
-                    "source_row": 17,
-                    "column": "rpe",
-                    "code": "program_import.effort_approximated.v1",
-                    "message": "Effort was approximated using the midpoint, clamped to the supported range."
                   }
                 ],
                 "input_exercise_name": "Bulgarian split squat",
@@ -18249,7 +18567,8 @@
                 "target_rir": 2.0,
                 "rest_seconds": 180,
                 "tempo": null,
-                "notes": null,
+                "notes": "2 in reserve",
+                "load": null,
                 "errors": [
                   {
                     "source_row": 18,
@@ -18297,6 +18616,7 @@
               "rest_seconds": 60,
               "tempo": null,
               "notes": "Keep your shoulder blades tucked and feet planted.\nreps: 3x6/5/4\nreps: 6/5/4\nreps_original: 6/5/4",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -18357,6 +18677,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -18390,6 +18711,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "high bar squat",
@@ -18416,6 +18738,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "hip thrust",
@@ -18441,15 +18764,16 @@
               "sets": 3,
               "reps_min": 10,
               "reps_max": 15,
-              "target_rir": 1.0,
+              "target_rir": 2.0,
               "rest_seconds": 120,
               "tempo": null,
-              "notes": null,
+              "notes": "RIR 1-2",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
                   "source_row": 6,
-                  "column": "rir",
+                  "column": "notes",
                   "code": "program_import.effort_approximated.v1",
                   "message": ""
                 },
@@ -18484,6 +18808,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "Pull the elbow toward your back pocket.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "DB row",
@@ -18510,6 +18835,7 @@
               "rest_seconds": 60,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "leg extension",
@@ -18535,7 +18861,8 @@
               "target_rir": 2.0,
               "rest_seconds": 90,
               "tempo": null,
-              "notes": null,
+              "notes": "2 in reserve",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "cable lateral raise",
@@ -18564,7 +18891,8 @@
               "target_rir": 2.0,
               "rest_seconds": 180,
               "tempo": null,
-              "notes": "Reset your brace on every rep.\nnotes: حتى قرب الفشل",
+              "notes": "حتى قرب الفشل — Reset your brace on every rep.",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -18604,6 +18932,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "low cable fly",
@@ -18630,6 +18959,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "assisted pull up machine",
@@ -18641,7 +18971,7 @@
               "week_order": null,
               "original_text": "side plank 3 x 30 sec hold",
               "approximation_markers": [
-                "program_import.effort_approximated.v1",
+                "program_import.reps_approximated.v1",
                 "program_import.effort_approximated.v1"
               ],
               "day": 1,
@@ -18659,12 +18989,13 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "reps_original: 30 sec hold",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
                   "source_row": 15,
                   "column": "reps_original",
-                  "code": "program_import.effort_approximated.v1",
+                  "code": "program_import.reps_approximated.v1",
                   "message": ""
                 },
                 {
@@ -18701,6 +19032,7 @@
               "rest_seconds": 60,
               "tempo": null,
               "notes": "RPE: RPE 8\neffort: RPE 8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -18726,8 +19058,6 @@
               "original_text": "Bulgarian split squat 3×8-10 RPE 7-8 — راحة ٩٠ ث — Keep your front heel down.",
               "approximation_markers": [
                 "program_import.effort_approximated.v1",
-                "program_import.effort_approximated.v1",
-                "program_import.rpe_converted.v1",
                 "program_import.effort_approximated.v1"
               ],
               "day": 1,
@@ -18741,15 +19071,16 @@
               "sets": 3,
               "reps_min": 8,
               "reps_max": 10,
-              "target_rir": 3.0,
+              "target_rir": 2.0,
               "rest_seconds": 90,
               "tempo": null,
-              "notes": "Keep your front heel down.\nRPE: RPE 7\neffort: RPE 7",
+              "notes": "RPE 7-8 — Keep your front heel down.",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
                   "source_row": 17,
-                  "column": "rpe",
+                  "column": "notes",
                   "code": "program_import.effort_approximated.v1",
                   "message": ""
                 },
@@ -18758,18 +19089,6 @@
                   "column": "rir",
                   "code": "program_import.effort_approximated.v1",
                   "message": ""
-                },
-                {
-                  "source_row": 17,
-                  "column": "rpe",
-                  "code": "program_import.rpe_converted.v1",
-                  "message": "RPE was converted to RIR."
-                },
-                {
-                  "source_row": 17,
-                  "column": "rpe",
-                  "code": "program_import.effort_approximated.v1",
-                  "message": "Effort was approximated using the midpoint, clamped to the supported range."
                 }
               ],
               "input_exercise_name": "Bulgarian split squat",
@@ -18795,7 +19114,8 @@
               "target_rir": 2.0,
               "rest_seconds": 180,
               "tempo": null,
-              "notes": null,
+              "notes": "2 in reserve",
+              "load": null,
               "errors": [
                 {
                   "source_row": 18,
@@ -18883,8 +19203,6 @@
                 "original_text": "squats 3 مجموعات × 8/6/5 عدة — راحة ٩٠ ث — انزل لعمق تقدر تثبته وركبتك مع صوابعك.",
                 "approximation_markers": [
                   "program_import.reps_approximated.v1",
-                  "program_import.reps_approximated.v1",
-                  "program_import.reps_approximated.v1",
                   "program_import.exercise_ambiguous.v1"
                 ],
                 "day": 1,
@@ -18914,21 +19232,10 @@
                 "target_rir": 2.0,
                 "rest_seconds": 90,
                 "tempo": null,
-                "notes": "انزل لعمق تقدر تثبته وركبتك مع صوابعك.\nreps: 8/6/5\nreps_min: 8/6/5\nreps_max: 8/6/5",
+                "notes": "انزل لعمق تقدر تثبته وركبتك مع صوابعك.\nreps: 8/6/5",
+                "load": null,
                 "errors": [],
                 "warnings": [
-                  {
-                    "source_row": 2,
-                    "column": "reps_min",
-                    "code": "program_import.reps_approximated.v1",
-                    "message": ""
-                  },
-                  {
-                    "source_row": 2,
-                    "column": "reps_max",
-                    "code": "program_import.reps_approximated.v1",
-                    "message": ""
-                  },
                   {
                     "source_row": 2,
                     "column": "reps",
@@ -18989,6 +19296,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": "Pull toward your waist and keep your chest still.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "cable row",
@@ -19024,6 +19332,7 @@
                 "original_text": "shoulder press machine 3 مجموعات × ٨-١٠ عدة RIR 1-2",
                 "approximation_markers": [
                   "program_import.effort_approximated.v1",
+                  "program_import.effort_approximated.v1",
                   "program_import.exercise_ambiguous.v1"
                 ],
                 "day": 1,
@@ -19050,12 +19359,19 @@
                 "sets": 3,
                 "reps_min": 8,
                 "reps_max": 10,
-                "target_rir": 2.0,
+                "target_rir": 1.0,
                 "rest_seconds": 180,
                 "tempo": null,
-                "notes": "RIR 1-2",
+                "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
+                  {
+                    "source_row": 4,
+                    "column": "rir",
+                    "code": "program_import.effort_approximated.v1",
+                    "message": ""
+                  },
                   {
                     "source_row": 4,
                     "column": "rir",
@@ -19125,6 +19441,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": "Keep your upper arms by your sides.\nRPE: RPE 8\neffort: RPE 8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -19195,10 +19512,11 @@
                 "sets": 3,
                 "reps_min": 10,
                 "reps_max": 12,
-                "target_rir": 2.5,
+                "target_rir": 3.0,
                 "rest_seconds": 75,
                 "tempo": null,
-                "notes": "RPE: RPE 7.5\neffort: RPE 7.5",
+                "notes": "RPE: RPE 7\neffort: RPE 7",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -19279,6 +19597,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "pec deck",
@@ -19344,12 +19663,13 @@
                 "target_rir": 2.0,
                 "rest_seconds": 180,
                 "tempo": null,
-                "notes": "30 sec hold",
+                "notes": "reps: 30 sec hold",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
                     "source_row": 9,
-                    "column": "notes",
+                    "column": "reps",
                     "code": "program_import.effort_approximated.v1",
                     "message": ""
                   },
@@ -19420,6 +19740,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": "misspelled name; ask me before changing it.",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -19483,6 +19804,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -19525,6 +19847,7 @@
                 "original_text": "رفرفة جانبي 3 مجموعات × ١٢-١٥ عدة RIR 1-2 — 2 min rest",
                 "approximation_markers": [
                   "program_import.effort_approximated.v1",
+                  "program_import.effort_approximated.v1",
                   "program_import.exercise_unresolved.v1"
                 ],
                 "day": 2,
@@ -19551,12 +19874,19 @@
                 "sets": 3,
                 "reps_min": 12,
                 "reps_max": 15,
-                "target_rir": 1.5,
+                "target_rir": 1.0,
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
+                  {
+                    "source_row": 12,
+                    "column": "rir",
+                    "code": "program_import.effort_approximated.v1",
+                    "message": ""
+                  },
                   {
                     "source_row": 12,
                     "column": "rir",
@@ -19590,8 +19920,6 @@
               "original_text": "squats 3 مجموعات × 8/6/5 عدة — راحة ٩٠ ث — انزل لعمق تقدر تثبته وركبتك مع صوابعك.",
               "approximation_markers": [
                 "program_import.reps_approximated.v1",
-                "program_import.reps_approximated.v1",
-                "program_import.reps_approximated.v1",
                 "program_import.exercise_ambiguous.v1"
               ],
               "day": 1,
@@ -19621,21 +19949,10 @@
               "target_rir": 2.0,
               "rest_seconds": 90,
               "tempo": null,
-              "notes": "انزل لعمق تقدر تثبته وركبتك مع صوابعك.\nreps: 8/6/5\nreps_min: 8/6/5\nreps_max: 8/6/5",
+              "notes": "انزل لعمق تقدر تثبته وركبتك مع صوابعك.\nreps: 8/6/5",
+              "load": null,
               "errors": [],
               "warnings": [
-                {
-                  "source_row": 2,
-                  "column": "reps_min",
-                  "code": "program_import.reps_approximated.v1",
-                  "message": ""
-                },
-                {
-                  "source_row": 2,
-                  "column": "reps_max",
-                  "code": "program_import.reps_approximated.v1",
-                  "message": ""
-                },
                 {
                   "source_row": 2,
                   "column": "reps",
@@ -19673,6 +19990,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": "Pull toward your waist and keep your chest still.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "cable row",
@@ -19684,6 +20002,7 @@
               "week_order": null,
               "original_text": "shoulder press machine 3 مجموعات × ٨-١٠ عدة RIR 1-2",
               "approximation_markers": [
+                "program_import.effort_approximated.v1",
                 "program_import.effort_approximated.v1",
                 "program_import.exercise_ambiguous.v1"
               ],
@@ -19711,12 +20030,19 @@
               "sets": 3,
               "reps_min": 8,
               "reps_max": 10,
-              "target_rir": 2.0,
+              "target_rir": 1.0,
               "rest_seconds": 180,
               "tempo": null,
-              "notes": "RIR 1-2",
+              "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
+                {
+                  "source_row": 4,
+                  "column": "rir",
+                  "code": "program_import.effort_approximated.v1",
+                  "message": ""
+                },
                 {
                   "source_row": 4,
                   "column": "rir",
@@ -19763,6 +20089,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": "Keep your upper arms by your sides.\nRPE: RPE 8\neffort: RPE 8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -19810,10 +20137,11 @@
               "sets": 3,
               "reps_min": 10,
               "reps_max": 12,
-              "target_rir": 2.5,
+              "target_rir": 3.0,
               "rest_seconds": 75,
               "tempo": null,
-              "notes": "RPE: RPE 7.5\neffort: RPE 7.5",
+              "notes": "RPE: RPE 7\neffort: RPE 7",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -19871,6 +20199,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "pec deck",
@@ -19913,12 +20242,13 @@
               "target_rir": 2.0,
               "rest_seconds": 180,
               "tempo": null,
-              "notes": "30 sec hold",
+              "notes": "reps: 30 sec hold",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
                   "source_row": 9,
-                  "column": "notes",
+                  "column": "reps",
                   "code": "program_import.effort_approximated.v1",
                   "message": ""
                 },
@@ -19966,6 +20296,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": "misspelled name; ask me before changing it.",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -20006,6 +20337,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -20024,6 +20356,7 @@
               "week_order": null,
               "original_text": "رفرفة جانبي 3 مجموعات × ١٢-١٥ عدة RIR 1-2 — 2 min rest",
               "approximation_markers": [
+                "program_import.effort_approximated.v1",
                 "program_import.effort_approximated.v1",
                 "program_import.exercise_unresolved.v1"
               ],
@@ -20051,12 +20384,19 @@
               "sets": 3,
               "reps_min": 12,
               "reps_max": 15,
-              "target_rir": 1.5,
+              "target_rir": 1.0,
               "rest_seconds": 120,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
+                {
+                  "source_row": 12,
+                  "column": "rir",
+                  "code": "program_import.effort_approximated.v1",
+                  "message": ""
+                },
                 {
                   "source_row": 12,
                   "column": "rir",
@@ -20141,8 +20481,7 @@
                 "original_text": "bench press 3x12/10/8 — Keep your shoulder blades set and touch the lower chest.",
                 "approximation_markers": [
                   "program_import.reps_approximated.v1",
-                  "program_import.unsupported_preserved_as_note.v1",
-                  "program_import.reps_approximated.v1"
+                  "program_import.unsupported_preserved_as_note.v1"
                 ],
                 "day": 1,
                 "day_valid": true,
@@ -20158,12 +20497,13 @@
                 "target_rir": 2.0,
                 "rest_seconds": 180,
                 "tempo": null,
-                "notes": "Keep your shoulder blades set and touch the lower chest.\nreps: 3x12/10/8\nreps: 12/10/8\nreps_original: 12/10/8",
+                "notes": "Keep your shoulder blades set and touch the lower chest.\nreps: 12/10/8\nreps: 3x12/10/8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
                     "source_row": 10,
-                    "column": "reps_original",
+                    "column": "reps",
                     "code": "program_import.reps_approximated.v1",
                     "message": ""
                   },
@@ -20171,12 +20511,6 @@
                     "source_row": 10,
                     "column": "reps",
                     "code": "program_import.unsupported_preserved_as_note.v1",
-                    "message": ""
-                  },
-                  {
-                    "source_row": 10,
-                    "column": "reps",
-                    "code": "program_import.reps_approximated.v1",
                     "message": ""
                   }
                 ],
@@ -20227,6 +20561,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "خلي البار قريب من رجلك وادفع الحوض لورا.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "RDL",
@@ -20295,6 +20630,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "Pull your elbows toward your ribs.\nRPE: RPE 7.5\neffort: RPE 7.5",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -20386,6 +20722,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "انزل بثبات وخلي ركبتك مع اتجاه صوابعك.",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -20429,7 +20766,6 @@
                 "week_order": null,
                 "original_text": "hip thrust 3×8-10 حتى قرب الفشل",
                 "approximation_markers": [
-                  "program_import.effort_approximated.v1",
                   "program_import.effort_approximated.v1"
                 ],
                 "day": 1,
@@ -20447,14 +20783,9 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "حتى قرب الفشل",
+                "load": null,
                 "errors": [],
                 "warnings": [
-                  {
-                    "source_row": 26,
-                    "column": "notes",
-                    "code": "program_import.effort_approximated.v1",
-                    "message": ""
-                  },
                   {
                     "source_row": 26,
                     "column": "rir",
@@ -20509,6 +20840,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "incline DB press",
@@ -20541,7 +20873,7 @@
                 "source_row": 34,
                 "week": "Week 1",
                 "week_order": null,
-                "original_text": "DB row 3x8-10",
+                "original_text": "DB row 3x8-10\nGive your grip a minute to recover before rows; keep the torso quiet.",
                 "approximation_markers": [],
                 "day": 2,
                 "day_valid": true,
@@ -20558,6 +20890,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "Give your grip a minute to recover before rows; keep the torso quiet.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "DB row",
@@ -20620,6 +20953,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -20671,7 +21005,7 @@
                 "source_row": 42,
                 "week": "Week 1",
                 "week_order": null,
-                "original_text": "face pulls 3 x 12-15 RPE 8",
+                "original_text": "face pulls 3 x 12-15 RPE 8\n The cable should stay taut at the start; step closer if the stack lifts early.",
                 "approximation_markers": [
                   "program_import.rpe_converted.v1",
                   "program_import.effort_approximated.v1",
@@ -20692,6 +21026,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "The cable should stay taut at the start; step closer if the stack lifts early.\nRPE: RPE 8\neffort: RPE 8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -20743,7 +21078,7 @@
                 "source_row": 47,
                 "week": "Week 1",
                 "week_order": null,
-                "original_text": "leg press 4x8-10 RPE 7-8",
+                "original_text": "leg press 4x8-10 RPE 7-8\n Keep the sled range the same across sets; shorten it only if the pelvis starts to roll.",
                 "approximation_markers": [
                   "program_import.effort_approximated.v1",
                   "program_import.effort_approximated.v1",
@@ -20765,6 +21100,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "Keep the sled range the same across sets; shorten it only if the pelvis starts to roll.\nRPE: RPE 7.5\neffort: RPE 7.5",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -20839,6 +21175,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "DB lateral raise",
@@ -20871,7 +21208,7 @@
                 "source_row": 56,
                 "week": "Week 1",
                 "week_order": null,
-                "original_text": "deadlift 4 x 4-6",
+                "original_text": "deadlift 4 x 4-6\n Rest until you can brace properly again; the deadlift is not a conditioning set.",
                 "approximation_markers": [],
                 "day": 3,
                 "day_valid": true,
@@ -20888,6 +21225,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "Rest until you can brace properly again; the deadlift is not a conditioning set.",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "deadlift",
@@ -20952,6 +21290,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -21008,6 +21347,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "ab roller",
@@ -21060,6 +21400,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -21122,6 +21463,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "bench press",
@@ -21171,6 +21513,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": "راحة ٢ د",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "RDL",
@@ -21237,6 +21580,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "RPE: RPE 8\neffort: RPE 8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -21316,6 +21660,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -21372,6 +21717,7 @@
                 "rest_seconds": 75,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "hip thrust",
@@ -21421,6 +21767,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "incline DB press",
@@ -21470,6 +21817,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "اسحب ناحية الحوض",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "DB row",
@@ -21530,6 +21878,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -21590,6 +21939,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "RPE: RPE 8\neffort: RPE 8",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -21658,6 +22008,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": "راحة ٩٠ ث",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "leg press",
@@ -21707,6 +22058,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "DB lateral raise",
@@ -21756,6 +22108,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "deadlift",
@@ -21820,6 +22173,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -21876,6 +22230,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "ab roller",
@@ -21928,6 +22283,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -21990,6 +22346,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "bench press",
@@ -22039,6 +22396,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": "راحة ٢ د",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "RDL",
@@ -22103,6 +22461,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -22170,6 +22529,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": "ركبتك مع اتجاه صوابعك",
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -22226,6 +22586,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "hip thrust",
@@ -22275,6 +22636,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "incline DB press",
@@ -22324,6 +22686,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "DB row",
@@ -22384,6 +22747,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -22442,6 +22806,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -22498,6 +22863,7 @@
                 "rest_seconds": 90,
                 "tempo": null,
                 "notes": "راحة ٩٠ ث",
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "leg press",
@@ -22547,6 +22913,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "DB lateral raise",
@@ -22596,6 +22963,7 @@
                 "rest_seconds": 120,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "deadlift",
@@ -22660,6 +23028,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [
                   {
@@ -22716,6 +23085,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "ab roller",
@@ -22765,6 +23135,7 @@
                 "rest_seconds": 180,
                 "tempo": null,
                 "notes": null,
+                "load": null,
                 "errors": [],
                 "warnings": [],
                 "input_exercise_name": "tricep pushdown",
@@ -22787,8 +23158,7 @@
               "original_text": "bench press 3x12/10/8 — Keep your shoulder blades set and touch the lower chest.",
               "approximation_markers": [
                 "program_import.reps_approximated.v1",
-                "program_import.unsupported_preserved_as_note.v1",
-                "program_import.reps_approximated.v1"
+                "program_import.unsupported_preserved_as_note.v1"
               ],
               "day": 1,
               "day_valid": true,
@@ -22804,12 +23174,13 @@
               "target_rir": 2.0,
               "rest_seconds": 180,
               "tempo": null,
-              "notes": "Keep your shoulder blades set and touch the lower chest.\nreps: 3x12/10/8\nreps: 12/10/8\nreps_original: 12/10/8",
+              "notes": "Keep your shoulder blades set and touch the lower chest.\nreps: 12/10/8\nreps: 3x12/10/8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
                   "source_row": 10,
-                  "column": "reps_original",
+                  "column": "reps",
                   "code": "program_import.reps_approximated.v1",
                   "message": ""
                 },
@@ -22817,12 +23188,6 @@
                   "source_row": 10,
                   "column": "reps",
                   "code": "program_import.unsupported_preserved_as_note.v1",
-                  "message": ""
-                },
-                {
-                  "source_row": 10,
-                  "column": "reps",
-                  "code": "program_import.reps_approximated.v1",
                   "message": ""
                 }
               ],
@@ -22850,6 +23215,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "خلي البار قريب من رجلك وادفع الحوض لورا.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "RDL",
@@ -22895,6 +23261,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "Pull your elbows toward your ribs.\nRPE: RPE 7.5\neffort: RPE 7.5",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -22963,6 +23330,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "انزل بثبات وخلي ركبتك مع اتجاه صوابعك.",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -22981,7 +23349,6 @@
               "week_order": null,
               "original_text": "hip thrust 3×8-10 حتى قرب الفشل",
               "approximation_markers": [
-                "program_import.effort_approximated.v1",
                 "program_import.effort_approximated.v1"
               ],
               "day": 1,
@@ -22999,14 +23366,9 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "حتى قرب الفشل",
+              "load": null,
               "errors": [],
               "warnings": [
-                {
-                  "source_row": 26,
-                  "column": "notes",
-                  "code": "program_import.effort_approximated.v1",
-                  "message": ""
-                },
                 {
                   "source_row": 26,
                   "column": "rir",
@@ -23038,6 +23400,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "incline DB press",
@@ -23047,7 +23410,7 @@
               "source_row": 34,
               "week": "Week 1",
               "week_order": null,
-              "original_text": "DB row 3x8-10",
+              "original_text": "DB row 3x8-10\nGive your grip a minute to recover before rows; keep the torso quiet.",
               "approximation_markers": [],
               "day": 2,
               "day_valid": true,
@@ -23064,6 +23427,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "Give your grip a minute to recover before rows; keep the torso quiet.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "DB row",
@@ -23103,6 +23467,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -23131,7 +23496,7 @@
               "source_row": 42,
               "week": "Week 1",
               "week_order": null,
-              "original_text": "face pulls 3 x 12-15 RPE 8",
+              "original_text": "face pulls 3 x 12-15 RPE 8\n The cable should stay taut at the start; step closer if the stack lifts early.",
               "approximation_markers": [
                 "program_import.rpe_converted.v1",
                 "program_import.effort_approximated.v1",
@@ -23152,6 +23517,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "The cable should stay taut at the start; step closer if the stack lifts early.\nRPE: RPE 8\neffort: RPE 8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -23180,7 +23546,7 @@
               "source_row": 47,
               "week": "Week 1",
               "week_order": null,
-              "original_text": "leg press 4x8-10 RPE 7-8",
+              "original_text": "leg press 4x8-10 RPE 7-8\n Keep the sled range the same across sets; shorten it only if the pelvis starts to roll.",
               "approximation_markers": [
                 "program_import.effort_approximated.v1",
                 "program_import.effort_approximated.v1",
@@ -23202,6 +23568,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "Keep the sled range the same across sets; shorten it only if the pelvis starts to roll.\nRPE: RPE 7.5\neffort: RPE 7.5",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -23253,6 +23620,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "DB lateral raise",
@@ -23262,7 +23630,7 @@
               "source_row": 56,
               "week": "Week 1",
               "week_order": null,
-              "original_text": "deadlift 4 x 4-6",
+              "original_text": "deadlift 4 x 4-6\n Rest until you can brace properly again; the deadlift is not a conditioning set.",
               "approximation_markers": [],
               "day": 3,
               "day_valid": true,
@@ -23279,6 +23647,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "Rest until you can brace properly again; the deadlift is not a conditioning set.",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "deadlift",
@@ -23320,6 +23689,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -23353,6 +23723,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "ab roller",
@@ -23382,6 +23753,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -23421,6 +23793,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "bench press",
@@ -23447,6 +23820,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": "راحة ٢ د",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "RDL",
@@ -23490,6 +23864,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "RPE: RPE 8\neffort: RPE 8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -23546,6 +23921,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -23579,6 +23955,7 @@
               "rest_seconds": 75,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "hip thrust",
@@ -23605,6 +23982,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "incline DB press",
@@ -23631,6 +24009,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "اسحب ناحية الحوض",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "DB row",
@@ -23668,6 +24047,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -23705,6 +24085,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "RPE: RPE 8\neffort: RPE 8",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -23750,6 +24131,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": "راحة ٩٠ ث",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "leg press",
@@ -23776,6 +24158,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "DB lateral raise",
@@ -23802,6 +24185,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "deadlift",
@@ -23843,6 +24227,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -23876,6 +24261,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "ab roller",
@@ -23905,6 +24291,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -23944,6 +24331,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "bench press",
@@ -23970,6 +24358,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": "راحة ٢ د",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "RDL",
@@ -24011,6 +24400,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -24055,6 +24445,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": "ركبتك مع اتجاه صوابعك",
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -24088,6 +24479,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "hip thrust",
@@ -24114,6 +24506,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "incline DB press",
@@ -24140,6 +24533,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "DB row",
@@ -24177,6 +24571,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -24212,6 +24607,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -24245,6 +24641,7 @@
               "rest_seconds": 90,
               "tempo": null,
               "notes": "راحة ٩٠ ث",
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "leg press",
@@ -24271,6 +24668,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "DB lateral raise",
@@ -24297,6 +24695,7 @@
               "rest_seconds": 120,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "deadlift",
@@ -24338,6 +24737,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [
                 {
@@ -24371,6 +24771,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "ab roller",
@@ -24397,6 +24798,7 @@
               "rest_seconds": 180,
               "tempo": null,
               "notes": null,
+              "load": null,
               "errors": [],
               "warnings": [],
               "input_exercise_name": "tricep pushdown",
