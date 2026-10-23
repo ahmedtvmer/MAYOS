@@ -46,3 +46,5 @@ key.properties
 
 # Wrangler (Cloudflare Pages deploy, scripts/deploy_web.sh) local cache
 .wrangler/
+.claude/
+.codex/

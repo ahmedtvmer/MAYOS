@@ -999,7 +999,7 @@ String _sessionDivergenceLabel(
 }
 
 const MyosTableColumns _sessionExerciseColumns =
-    MyosTableColumns(<double>[290, 230, 95, 70, 120], 0);
+    MyosTableColumns(<double>[290, 260, 95, 70, 120], 0);
 
 List<String> _sessionExerciseLabels(BuildContext context) {
   final copy = coachCopyOf(context);
