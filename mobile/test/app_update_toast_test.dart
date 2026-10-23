@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:myos_mobile/src/core/app_update_store.dart';
 import 'package:myos_mobile/src/core/display_language/controller.dart';
 import 'package:myos_mobile/src/core/display_language/store.dart';
+import 'package:myos_mobile/src/core/theme/myos_theme.dart';
 import 'package:myos_mobile/src/core/ui/app_update_toast.dart';
 import 'package:myos_mobile/src/router.dart' show logWorkoutPath;
 
@@ -56,6 +58,7 @@ void main() {
       ],
       child: MaterialApp.router(
         routerConfig: router,
+        theme: MyosTheme.lightForLanguage(language),
         locale: Locale(language),
         supportedLocales: const <Locale>[Locale('en'), Locale('ar')],
         localizationsDelegates: GlobalMaterialLocalizations.delegates,
@@ -93,6 +96,35 @@ void main() {
     store.events.add(true);
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump();
+    expect(find.text('New version available'), findsNothing);
+    router.go('/home');
+    await tester.pumpAndSettle();
+    expect(find.text('New version available'), findsOneWidget);
+  });
+
+  testWidgets('tracks imperative push and pop to the logger', (tester) async {
+    await pump(tester);
+    store.events.add(true);
+    await tester.pumpAndSettle();
+    expect(find.text('New version available'), findsOneWidget);
+    unawaited(router.push<void>('$logWorkoutPath/today'));
+    await tester.pumpAndSettle();
+    expect(find.text('Logger'), findsOneWidget);
+    expect(find.text('New version available'), findsNothing);
+    router.pop();
+    await tester.pumpAndSettle();
+    expect(find.text('Home screen'), findsOneWidget);
+    expect(find.text('New version available'), findsOneWidget);
+  });
+
+  testWidgets('update arriving on the settled logger waits until leaving',
+      (tester) async {
+    await pump(tester);
+    router.go('$logWorkoutPath/today');
+    await tester.pumpAndSettle();
+    store.events.add(true);
+    await tester.pumpAndSettle();
+    expect(find.text('Logger'), findsOneWidget);
     expect(find.text('New version available'), findsNothing);
     router.go('/home');
     await tester.pumpAndSettle();
@@ -147,11 +179,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('يتوفر إصدار جديد'), findsOneWidget);
     expect(Directionality.of(tester.element(find.text('يتوفر إصدار جديد'))), TextDirection.rtl);
+    final SemanticsData dismissSemantics = tester
+        .getSemantics(find.ancestor(
+          of: find.byIcon(Icons.close),
+          matching: find.byType(Semantics),
+        ).first)
+        .getSemanticsData();
+    expect(dismissSemantics.label, contains('إغلاق إشعار التحديث'));
+    expect(dismissSemantics.hasAction(SemanticsAction.tap), isTrue);
     expect(
-      find.byWidgetPredicate((Widget widget) =>
-          widget is Semantics &&
-          widget.properties.label == 'إغلاق إشعار التحديث'),
-      findsOneWidget,
+      tester
+          .getSemantics(find.text('يتوفر إصدار جديد'))
+          .getSemanticsData()
+          .flagsCollection
+          .isLiveRegion,
+      isTrue,
     );
     await tester.tap(find.byIcon(Icons.close));
     await tester.pumpAndSettle();
@@ -169,6 +211,33 @@ void main() {
     await tester.tap(find.text('Show app snackbar'));
     await tester.pumpAndSettle();
     expect(find.text('Regular app message'), findsOneWidget);
+    expect(find.text('New version available'), findsOneWidget);
+  });
+
+  testWidgets('light theme close action contrasts with toast background',
+      (tester) async {
+    await pump(tester);
+    store.events.add(true);
+    await tester.pumpAndSettle();
+    final Color closeColor =
+        IconTheme.of(tester.element(find.byIcon(Icons.close))).color!;
+    final Material toast = tester.widget<Material>(find.ancestor(
+      of: find.text('New version available'),
+      matching: find.byType(Material),
+    ).first);
+    expect(closeColor, isNot(toast.color));
+  });
+
+  testWidgets('hides the toast while the keyboard is open', (tester) async {
+    await pump(tester);
+    store.events.add(true);
+    await tester.pumpAndSettle();
+    expect(find.text('New version available'), findsOneWidget);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 320);
+    await tester.pump();
+    expect(find.text('New version available'), findsNothing);
+    tester.view.resetViewInsets();
+    await tester.pump();
     expect(find.text('New version available'), findsOneWidget);
   });
 }

@@ -29,14 +29,17 @@ class _AppUpdateToastState extends ConsumerState<AppUpdateToast> {
   bool _dismissedThisSession = false;
 
   bool get _onLogger {
-    final String path = widget.router.routeInformationProvider.value.uri.path;
+    final configuration =
+        widget.router.routerDelegate.currentConfiguration;
+    if (configuration.isEmpty) return false;
+    final String path = widget.router.state.uri.path;
     return path == logWorkoutPath || path.startsWith('$logWorkoutPath/');
   }
 
   @override
   void initState() {
     super.initState();
-    widget.router.routeInformationProvider.addListener(_routeChanged);
+    widget.router.routerDelegate.addListener(_routeChanged);
     _subscription = ref
         .read(appUpdateStoreProvider)
         .updateWaiting
@@ -46,7 +49,12 @@ class _AppUpdateToastState extends ConsumerState<AppUpdateToast> {
     });
   }
 
-  void _routeChanged() => setState(() {});
+  void _routeChanged() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
 
   void _dismiss() => setState(() => _dismissedThisSession = true);
 
@@ -57,7 +65,7 @@ class _AppUpdateToastState extends ConsumerState<AppUpdateToast> {
 
   @override
   void dispose() {
-    widget.router.routeInformationProvider.removeListener(_routeChanged);
+    widget.router.routerDelegate.removeListener(_routeChanged);
     _subscription?.cancel();
     super.dispose();
   }
@@ -70,7 +78,8 @@ class _AppUpdateToastState extends ConsumerState<AppUpdateToast> {
       fit: StackFit.expand,
       children: <Widget>[
         widget.child,
-        if (showToast) _toast(context),
+        if (showToast && MediaQuery.of(context).viewInsets.bottom == 0)
+          _toast(context),
       ],
     );
   }
@@ -81,51 +90,60 @@ class _AppUpdateToastState extends ConsumerState<AppUpdateToast> {
     final MediaQueryData mediaQuery = MediaQuery.of(context);
     final EdgeInsets inset =
         snackBarTheme.insetPadding ?? const EdgeInsets.all(16);
+    final Color toastTextColor = snackBarTheme.contentTextStyle?.color ??
+        Theme.of(context).colorScheme.onInverseSurface;
+    final Color actionColor = snackBarTheme.actionTextColor ?? toastTextColor;
     return Positioned(
-          left: inset.left,
-          right: inset.right,
-          bottom: mediaQuery.padding.bottom + 88,
-          child: Material(
-            color: snackBarTheme.backgroundColor ??
-                Theme.of(context).colorScheme.inverseSurface,
-            elevation: snackBarTheme.elevation ?? 0,
-            shape: snackBarTheme.shape ??
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-            clipBehavior: Clip.antiAlias,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Text(
-                      copy.newVersionAvailable,
-                      style: snackBarTheme.contentTextStyle,
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: _applyUpdate,
-                    style: TextButton.styleFrom(
-                      foregroundColor: snackBarTheme.actionTextColor,
-                    ),
-                    child: Text(copy.refresh),
-                  ),
-                  Semantics(
-                    button: true,
-                    label: copy.dismissUpdate,
-                    onTap: _dismiss,
-                    child: ExcludeSemantics(
-                      child: IconButton(
-                        onPressed: _dismiss,
-                        icon: const Icon(Icons.close),
-                      ),
-                    ),
-                  ),
-                ],
+      left: mediaQuery.padding.left + inset.left,
+      right: mediaQuery.padding.right + inset.right,
+      bottom: mediaQuery.padding.bottom + 88,
+      child: Semantics(
+        liveRegion: true,
+        child: Material(
+          color: snackBarTheme.backgroundColor ??
+              Theme.of(context).colorScheme.inverseSurface,
+          elevation: snackBarTheme.elevation ?? 0,
+          shape: snackBarTheme.shape ??
+              RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    copy.newVersionAvailable,
+                    style: snackBarTheme.contentTextStyle,
+                  ),
+                ),
+                TextButton(
+                  onPressed: _applyUpdate,
+                  style: TextButton.styleFrom(
+                    foregroundColor: actionColor,
+                  ),
+                  child: Text(copy.refresh),
+                ),
+                Semantics(
+                  button: true,
+                  label: copy.dismissUpdate,
+                  onTap: _dismiss,
+                  child: ExcludeSemantics(
+                    child: IconButton(
+                      onPressed: _dismiss,
+                      style: IconButton.styleFrom(
+                        foregroundColor: actionColor,
+                      ),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-        );
+        ),
+      ),
+    );
   }
 }
