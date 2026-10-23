@@ -18,6 +18,7 @@ import 'core/shared_program_text.dart';
 import 'core/theme/myos_spacing.dart';
 import 'core/theme/myos_theme.dart';
 import 'core/token_subject.dart';
+import 'core/ui/app_update_toast.dart';
 import 'core/ui/is_desktop_layout.dart';
 import 'core/ui/myos_app_mode_scope.dart';
 import 'features/player/auth/auth_controller.dart';
@@ -233,7 +234,10 @@ class _MyosAppState extends ConsumerState<MyosApp>
                 key: myosMessengerKey,
                 child: AnnotatedRegion<SystemUiOverlayStyle>(
                   value: MyosTheme.overlayStyle(c),
-                  child: child ?? const SizedBox.shrink(),
+                  child: AppUpdateToast(
+                    router: router,
+                    child: child ?? const SizedBox.shrink(),
+                  ),
                 ),
               ),
             ),
