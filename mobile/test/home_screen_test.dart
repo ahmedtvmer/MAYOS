@@ -101,6 +101,7 @@ Future<void> _pumpHome(
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
+        installPromptDelayProvider.overrideWithValue(Duration.zero),
         ...extraOverrides,
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
@@ -140,6 +141,70 @@ FakeMyosApi _signedInFake() {
 }
 
 void main() {
+  testWidgets('eligible install dialog waits for its injected delay', (tester) async {
+    final _FakeInstallPromptStore store = _FakeInstallPromptStore(
+      const InstallPromptEnvironment(
+        isIosShareBrowser: false,
+        hasInstallButton: true,
+        isStandalone: false,
+        wasDismissed: false,
+      ),
+    );
+    await _pumpHome(
+      tester,
+      _signedInFake(),
+      size: const Size(360, 640),
+      extraOverrides: <Override>[
+        installPromptStoreProvider.overrideWithValue(store),
+        installPromptDelayProvider.overrideWithValue(
+          const Duration(milliseconds: 1500),
+        ),
+      ],
+    );
+    expect(find.text('Install'), findsNothing);
+    await tester.pump(const Duration(milliseconds: 1500));
+    expect(find.text('Install'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('dialog close affordances dismiss and record the prompt', (tester) async {
+    for (final String path in <String>['not now', 'close', 'barrier', 'back']) {
+      final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+      final _FakeInstallPromptStore store = _FakeInstallPromptStore(
+        const InstallPromptEnvironment(
+          isIosShareBrowser: false,
+          hasInstallButton: true,
+          isStandalone: false,
+          wasDismissed: false,
+        ),
+      );
+      await _pumpHome(tester, _signedInFake(), extraOverrides: <Override>[
+        installPromptStoreProvider.overrideWithValue(store),
+        analyticsClientProvider.overrideWithValue(analytics),
+      ]);
+      await tester.pump(const Duration(milliseconds: 1500));
+      switch (path) {
+        case 'not now':
+          await tester.tap(find.text('Not now'));
+        case 'close':
+          await tester.tap(find.byTooltip('Dismiss'));
+        case 'barrier':
+          await tester.tapAt(const Offset(2, 2));
+        case 'back':
+          await tester.binding.handlePopRoute();
+      }
+      await tester.pumpAndSettle();
+      expect(store.dismissed, isTrue, reason: path);
+      expect(find.text('Install'), findsNothing, reason: path);
+      expect(
+        analytics.events.any((event) => event['event'] == 'install_prompt_dismissed'),
+        isTrue,
+        reason: path,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+  });
+
   testWidgets('Home shows install variants and reports shown analytics', (tester) async {
     final FakeMyosApi fake = _signedInFake();
     final FakeAnalyticsClient analytics = FakeAnalyticsClient();
@@ -156,7 +221,8 @@ void main() {
       analyticsClientProvider.overrideWithValue(analytics),
     ]);
     await tester.pump();
-    expect(find.text('Install MYOS'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 1500));
+    expect(find.text('Install'), findsOneWidget);
     expect(analytics.events.any((event) => event['event'] == 'install_prompt_shown'), isTrue);
   });
 
@@ -172,8 +238,8 @@ void main() {
     await _pumpHome(tester, _signedInFake(), extraOverrides: <Override>[
       installPromptStoreProvider.overrideWithValue(store),
     ]);
-    await tester.pump();
-    await tester.tap(find.byTooltip('Dismiss'));
+    await tester.pump(const Duration(milliseconds: 1500));
+    await tester.tap(find.text('Got it'));
     await tester.pumpAndSettle();
     expect(find.textContaining('tap Share'), findsNothing);
     store.fireInstallStateChanged();
@@ -195,12 +261,13 @@ void main() {
       installPromptStoreProvider.overrideWithValue(store),
       analyticsClientProvider.overrideWithValue(analytics),
     ]);
-    await tester.pump();
-    expect(find.text('Install MYOS: tap Share, then Add to Home Screen.'), findsOneWidget);
-    await tester.tap(find.byTooltip('Dismiss'));
+    await tester.pump(const Duration(milliseconds: 1500));
+    expect(find.text('1  Tap Share'), findsOneWidget);
+    expect(find.text('2  Add to Home Screen'), findsOneWidget);
+    await tester.tap(find.text('Got it'));
     await tester.pumpAndSettle();
     expect(store.dismissed, isTrue);
-    expect(find.textContaining('tap Share'), findsNothing);
+    expect(find.text('1  Tap Share'), findsNothing);
     expect(analytics.events.any((event) => event['event'] == 'install_prompt_dismissed'), isTrue);
   });
 
@@ -219,8 +286,8 @@ void main() {
       installPromptStoreProvider.overrideWithValue(store),
       analyticsClientProvider.overrideWithValue(analytics),
     ]);
-    await tester.pump();
-    await tester.tap(find.text('Install MYOS'));
+    await tester.pump(const Duration(milliseconds: 1500));
+    await tester.tap(find.text('Install'));
     await tester.pumpAndSettle();
     expect(store.prompts, 1);
     expect(store.dismissed, isTrue);
@@ -242,12 +309,12 @@ void main() {
       installPromptStoreProvider.overrideWithValue(store),
       analyticsClientProvider.overrideWithValue(analytics),
     ]);
-    await tester.pump();
-    await tester.tap(find.text('Install MYOS'));
+    await tester.pump(const Duration(milliseconds: 1500));
+    await tester.tap(find.text('Install'));
     await tester.pumpAndSettle();
     expect(store.prompts, 1);
     expect(store.dismissed, isFalse);
-    expect(find.text('Install MYOS'), findsNothing);
+    expect(find.text('Install'), findsNothing);
     expect(analytics.events.any((event) => event['event'] == 'install_prompt_accepted'), isTrue);
   });
 
@@ -266,7 +333,7 @@ void main() {
       installPromptStoreProvider.overrideWithValue(store),
       analyticsClientProvider.overrideWithValue(analytics),
     ]);
-    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1500));
     expect(analytics.events, isEmpty);
   });
 
@@ -284,12 +351,14 @@ void main() {
       installPromptStoreProvider.overrideWithValue(store),
       analyticsClientProvider.overrideWithValue(analytics),
     ]);
-    await tester.pump();
-    expect(find.text('تثبيت MYOS: اضغط على مشاركة، ثم إضافة إلى الشاشة الرئيسية.'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 1500));
+    expect(find.text('١  اضغط على مشاركة'), findsOneWidget);
+    expect(find.text('٢  اختر إضافة إلى الشاشة الرئيسية'), findsOneWidget);
     expect(Directionality.of(tester.element(find.text('الرئيسية'))), TextDirection.rtl);
     store.fireInstalled();
+    await tester.pump();
     expect(analytics.events.any((event) => event['event'] == 'app_installed'), isTrue);
-    expect(find.textContaining('tap Share'), findsNothing);
+    expect(find.text('١  اضغط على مشاركة'), findsNothing);
   });
 
   testWidgets('installation before Dart startup is consumed with no variant', (tester) async {

@@ -110,12 +110,10 @@ class CoachShell extends ConsumerWidget {
       ),
       // A constant structure keeps the roster's scroll state when the banner
       // hides (opening a player, switching tabs).
-      body: Column(children: <Widget>[
-        InstallPromptBanner(
-          enabled: index == CoachShellTab.roster && !assignmentSelected,
-        ),
-        Expanded(child: body),
-      ]),
+      body: InstallPromptHost(
+        enabled: index == CoachShellTab.roster && !assignmentSelected,
+        child: body,
+      ),
       showOfflineBanner: !assignmentSelected,
       bottomBar: MyosBottomNavigation(
         items: <MyosNavItem>[
