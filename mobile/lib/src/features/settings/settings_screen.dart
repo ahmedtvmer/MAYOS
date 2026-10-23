@@ -379,6 +379,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             child: Column(
               children: <Widget>[
                 MyosSettingsTile(
+                  icon: Icons.fitness_center_outlined,
+                  title: copy.brandName,
+                  subtitle: ui.myosAboutSubtitle,
+                  trailing: const SizedBox.shrink(),
+                ),
+                Divider(height: 1, color: c.border),
+                MyosSettingsTile(
                   icon: Icons.privacy_tip_outlined,
                   title: ui.privacyPolicy,
                   subtitle: ui.privacySubtitle,

@@ -873,6 +873,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byIcon(Icons.settings_outlined));
     await _pumpUntil(tester, find.text('Appearance'));
+    await tester.scrollUntilVisible(find.text('Log out'), 300,
+        scrollable: find
+            .descendant(
+                of: find.byType(ListView), matching: find.byType(Scrollable))
+            .last);
     await tester.tap(find.text('Log out'));
     await tester.pumpAndSettle();
 

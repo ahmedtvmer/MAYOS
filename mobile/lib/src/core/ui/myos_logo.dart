@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../display_language/copy_context.dart';
 import '../theme/myos_theme.dart';
 
 /// Supplied MYOS logo variants. Marks are never redrawn, recoloured or
@@ -35,13 +36,15 @@ class MyosBrandLockup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final String brandName = displayCopyOf(context).brandName;
     final MyosThemeExtension c = MyosTheme.of(context);
     final MyosBrandVariant resolved = variant == MyosBrandVariant.auto
         ? (c.isDark ? MyosBrandVariant.white : MyosBrandVariant.black)
         : variant;
     return Semantics(
-      label: 'MYOS',
+      label: brandName,
       image: true,
+      excludeSemantics: true,
       child: Image.asset(
         _file(resolved, 'lockup'),
         height: height,

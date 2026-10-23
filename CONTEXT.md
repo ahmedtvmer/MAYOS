@@ -18,6 +18,11 @@ person wrote. They use the glossary term when naming something in the app
 (Training program, Exercise library, Checkpoint) and everyday Egyptian gym
 words otherwise, such as **سيتات** for sets and **عدّات** for reps.
 
+**MYOS**:
+From Greek μυός, meaning “muscle”; pronounced /ˈmeɪ.os/. The Latin wordmark stays “MYOS” in both languages.
+_Arabic_: ميوس
+_Avoid_: مايوس (reads as مأيوس, “hopeless”)
+
 **Account**:
 The identity a person uses to access MYOS. An account can have player and coach capabilities at the same time.
 

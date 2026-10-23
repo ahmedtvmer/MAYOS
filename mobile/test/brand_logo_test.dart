@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:myos_mobile/src/core/display_language/controller.dart';
+import 'package:myos_mobile/src/core/display_language/store.dart';
 import 'package:myos_mobile/src/core/theme/myos_theme.dart';
 import 'package:myos_mobile/src/core/ui/myos_app_header.dart';
 import 'package:myos_mobile/src/core/ui/myos_logo.dart';
@@ -182,6 +186,70 @@ void main() {
       expect(find.byIcon(Icons.arrow_back), findsOneWidget);
       expect(find.text('Settings'), findsOneWidget);
     });
+
+    testWidgets('brand announces the localized name while showing MYOS',
+        (WidgetTester tester) async {
+      for (final Locale locale in <Locale>[
+        const Locale('en'),
+        const Locale('ar'),
+      ]) {
+        await tester.pumpWidget(ProviderScope(
+          key: ValueKey<String>(locale.languageCode),
+          overrides: <Override>[
+            displayLanguageProvider.overrideWith((ref) =>
+                DisplayLanguageController(PlatformDisplayLanguageStore(),
+                    systemLanguage: locale.languageCode)),
+          ],
+          child: MaterialApp(
+            theme: MyosTheme.light,
+            home: const Scaffold(body: Column(children: <Widget>[
+              MyosBrandLockup(height: 80),
+              MyosAppHeader(),
+            ])),
+          ),
+        ));
+        await tester.pump();
+        final String expected = locale.languageCode == 'ar'
+            ? 'ميوس'
+            : 'MYOS';
+        final SemanticsHandle semantics = tester.ensureSemantics();
+        expect(tester.getSemantics(find.byType(MyosBrandLockup)).label, expected);
+        expect(tester.getSemantics(find.byKey(MyosAppHeader.brandKey)).label, expected);
+        expect(find.text('MYOS'), findsWidgets);
+        if (locale.languageCode == 'ar') {
+          expect(find.bySemanticsLabel('MYOS'), findsNothing);
+        }
+        semantics.dispose();
+      }
+    });
+
+    testWidgets('Arabic lockup does not announce fallback text twice',
+        (WidgetTester tester) async {
+      await tester.pumpWidget(ProviderScope(
+        overrides: <Override>[
+          displayLanguageProvider.overrideWith((ref) =>
+              DisplayLanguageController(PlatformDisplayLanguageStore(),
+                  systemLanguage: 'ar')),
+        ],
+        child: MaterialApp(
+          theme: MyosTheme.light,
+          home: Scaffold(
+            body: DefaultAssetBundle(
+              bundle: _FailingAssetBundle(),
+              child: MyosBrandLockup(height: 80),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      final SemanticsHandle semantics = tester.ensureSemantics();
+
+      expect(tester.getSemantics(find.byType(MyosBrandLockup)).label,
+          'ميوس');
+      expect(find.bySemanticsLabel('MYOS'), findsNothing);
+
+      semantics.dispose();
+    });
   });
 
   group('splash lockup', () {
@@ -217,4 +285,11 @@ void main() {
       });
     }
   });
+}
+
+class _FailingAssetBundle extends CachingAssetBundle {
+  @override
+  Future<ByteData> load(String key) async {
+    throw FlutterError('Asset unavailable: $key');
+  }
 }

@@ -134,10 +134,11 @@ class _MyosWordmark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MyosThemeExtension c = MyosTheme.of(context);
+    final String brandName = displayCopyOf(context).brandName;
     return MediaQuery.withClampedTextScaling(
       maxScaleFactor: 1.2,
       child: Semantics(
-        label: 'MYOS',
+        label: brandName,
         excludeSemantics: true,
         child: Row(
           mainAxisSize: MainAxisSize.min,

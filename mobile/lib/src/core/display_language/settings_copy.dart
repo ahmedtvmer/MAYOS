@@ -134,6 +134,8 @@ class SettingsCopy {
       ? 'محفوظة على هذا الجهاز وتتم مزامنتها عند الاتصال'
       : 'Saved on this device, syncing when online';
   String get about => isArabic ? 'حول التطبيق' : 'About';
+  String get myosAboutSubtitle =>
+      isArabic ? 'يعني العضلة باليوناني' : 'Greek for muscle · said “meyos”';
   String get privacyPolicy => isArabic ? 'سياسة الخصوصية' : 'Privacy policy';
   String get privacySubtitle => isArabic
       ? 'ما يجمعه MYOS، ومن يمكنه الاطلاع عليه، وكيفية الحذف'

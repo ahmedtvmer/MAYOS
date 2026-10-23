@@ -1,18 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:myos_mobile/src/app.dart';
 import 'package:myos_mobile/src/core/api_client.dart';
 import 'package:myos_mobile/src/core/app_mode.dart';
 import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/ui/myos_settings_tile.dart';
 import 'package:myos_mobile/src/features/shared/mode_switch.dart';
 import 'package:myos_mobile/src/providers.dart';
 
 import 'support/fake_myos_api.dart';
 
-Future<void> _pumpSettings(WidgetTester tester, FakeMyosApi fake) async {
-  tester.view.physicalSize = const Size(360, 2200);
+Future<void> _pumpSettings(
+  WidgetTester tester,
+  FakeMyosApi fake, {
+  Size size = const Size(360, 2200),
+}) async {
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -81,6 +87,42 @@ FakeMyosApi _signedInFake({String language = 'en'}) {
 }
 
 void main() {
+  for (final String language in <String>['en', 'ar']) {
+    testWidgets('About explains MYOS in $language without an action', (
+      WidgetTester tester,
+    ) async {
+      final FakeMyosApi fake = _signedInFake(language: language);
+      await _pumpSettings(tester, fake, size: const Size(360, 5000));
+      final Finder brandTitle =
+          find.text(language == 'ar' ? 'ميوس' : 'MYOS').last;
+      final Finder brandSubtitle = find.text(language == 'ar'
+          ? 'يعني العضلة باليوناني'
+          : 'Greek for muscle · said “meyos”');
+      expect(brandTitle, findsOneWidget);
+      expect(brandSubtitle, findsOneWidget);
+      final Finder aboutTile = find
+          .ancestor(
+              of: brandTitle, matching: find.byType(MyosSettingsTile))
+          .first;
+      final SemanticsData aboutSemantics =
+          tester.getSemantics(aboutTile).getSemanticsData();
+      expect(aboutSemantics.flagsCollection.isButton, isFalse);
+      expect(aboutSemantics.hasAction(SemanticsAction.tap), isFalse);
+      expect(
+          find.descendant(
+              of: aboutTile,
+              matching: find.byIcon(language == 'ar'
+                  ? Icons.chevron_left
+                  : Icons.chevron_right)),
+          findsNothing);
+      final Finder privacy =
+          find.text(language == 'ar' ? 'سياسة الخصوصية' : 'Privacy policy');
+      expect(privacy, findsOneWidget);
+      expect(tester.getTopLeft(brandTitle).dy,
+          lessThan(tester.getTopLeft(privacy).dy));
+    });
+  }
+
   testWidgets('Settings shows the verified address and completes its change', (
     WidgetTester tester,
   ) async {

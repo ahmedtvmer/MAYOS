@@ -30,6 +30,7 @@ class MyosCopy {
   final String languageCode;
   bool get isArabic => languageCode == 'ar';
   AiAllowanceCopy get _allowanceCopy => AiAllowanceCopy(languageCode);
+  String get brandName => isArabic ? 'ميوس' : 'MYOS';
   String get home => isArabic ? 'الرئيسية' : 'Home';
   String get program => isArabic ? 'البرنامج التدريبي' : 'Program';
   String get progress => isArabic ? 'التقدم' : 'Progress';
