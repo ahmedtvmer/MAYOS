@@ -16,6 +16,23 @@ import 'support/fake_api_adapter.dart';
 import 'support/fake_myos_api.dart';
 
 void main() {
+  test('same-host landing referrers are not acquisition sources', () {
+    expect(
+      externalReferrerHost(
+        'https://myos.example/app/',
+        'https://myos.example/login',
+      ),
+      isNull,
+    );
+    expect(
+      externalReferrerHost(
+        'https://campaign.example/path',
+        'https://myos.example/app/login',
+      ),
+      'campaign.example',
+    );
+  });
+
   test('install referrer parsing keeps only UTM labels', () {
     final FirstTouch? touch = FirstTouch.fromInstallReferrer(
       'utm_source=Google-Play&utm_medium=organic&utm_campaign=trial&gclid=private',

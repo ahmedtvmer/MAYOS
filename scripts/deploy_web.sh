@@ -58,7 +58,10 @@ defines=(--dart-define="MAYOS_API_BASE_URL=$api_url")
 [[ -n "${POSTHOG_CLIENT_KEY:-}" ]] && defines+=(--dart-define="POSTHOG_CLIENT_KEY=$POSTHOG_CLIENT_KEY")
 
 # Self-hosted CanvasKit and no service worker keep the CSP strict and reloads predictable.
-flutter build web --release --no-web-resources-cdn --pwa-strategy=none "${defines[@]}"
+flutter build web --release --base-href /app/ --no-web-resources-cdn --pwa-strategy=none "${defines[@]}"
 
-npx --yes wrangler@latest pages deploy build/web \
+pages_output="build/pages"
+python3 ../scripts/assemble_web.py build/web ../web_landing "$pages_output"
+
+npx --yes wrangler@latest pages deploy "$pages_output" \
   --project-name "$project" --branch "$branch" --commit-dirty=true

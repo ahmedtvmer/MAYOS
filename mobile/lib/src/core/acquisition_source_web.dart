@@ -27,12 +27,14 @@ AcquisitionSource createAcquisitionSource({
 FirstTouch? _currentWebSnapshot() {
   final Uri location = Uri.parse(web.window.location.href);
   final Map<String, String> parameters = location.queryParameters;
-  final String? host = Uri.tryParse(web.window.document.referrer)?.host;
   final FirstTouch touch = FirstTouch(
     utmSource: parameters['utm_source'],
     utmMedium: parameters['utm_medium'],
     utmCampaign: parameters['utm_campaign'],
-    referrerHost: host == null || host.isEmpty ? null : host.toLowerCase(),
+    referrerHost: externalReferrerHost(
+      web.window.document.referrer,
+      location.toString(),
+    ),
   );
   return touch.toJson().isEmpty ? null : touch;
 }

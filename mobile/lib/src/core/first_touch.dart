@@ -1,6 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
 
+String? externalReferrerHost(String referrer, String currentLocation) {
+  final String? referrerHost = Uri.tryParse(referrer)?.host.toLowerCase();
+  final String? currentHost = Uri.tryParse(currentLocation)?.host.toLowerCase();
+  if (referrerHost == null ||
+      referrerHost.isEmpty ||
+      referrerHost == currentHost) {
+    return null;
+  }
+  return referrerHost;
+}
+
 const Duration firstTouchCaptureTimeout = Duration(milliseconds: 300);
 
 /// The allowlisted first-touch labels sent only when a new Account is created.
