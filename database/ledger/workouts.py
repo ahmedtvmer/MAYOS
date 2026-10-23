@@ -30,6 +30,14 @@ LAST_SESSION_ORDER = "s.started_at DESC, s.rowid DESC"
 
 
 class LedgerWorkoutsMixin:
+    def has_exercise_in_workout_history(self, exercise_id: str) -> bool:
+        """Whether a workout in this ledger contains the exercise."""
+        row = self.conn.execute(
+            "SELECT 1 FROM workout_sets WHERE exercise_id = ? LIMIT 1",
+            (str(exercise_id),),
+        ).fetchone()
+        return row is not None
+
     def backup_ledger(self) -> Path:
         """Creates an on-demand rolling snapshot of the active player ledger."""
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
