@@ -41,7 +41,12 @@ def list_account_rows(
         return accounts[offset : offset + ACCOUNT_PAGE_SIZE], total
     search = filters.q.strip().casefold()
     if search:
-        accounts = [account for account in accounts if search in account["username"].casefold()]
+        accounts = [
+            account
+            for account in accounts
+            if search in account["username"].casefold()
+            or account["account_id"].casefold().startswith(search)
+        ]
     accounts = _filter_live_accounts(db, accounts, filters, now)
     total = len(accounts)
     offset = (filters.page - 1) * ACCOUNT_PAGE_SIZE

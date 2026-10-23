@@ -809,6 +809,93 @@ def test_account_search_matches_live_usernames_case_insensitively(admin_api):
     assert other["account_id"] not in response.text
 
 
+def test_account_search_matches_full_and_prefix_account_ids(admin_api):
+    client, db, now, _ = admin_api
+    matching, _ = _register_account(client, db, "idsearchtarget")
+    other, _ = _register_account(client, db, "idsearchother")
+
+    assert _login(client, now[0]).status_code == 303
+    full_id = client.get("/admin/accounts", params={"q": matching["account_id"]})
+    prefix = client.get("/admin/accounts", params={"q": matching["account_id"][:8]})
+
+    assert matching["account_id"] in full_id.text
+    assert other["account_id"] not in full_id.text
+    assert matching["account_id"] in prefix.text
+    assert other["account_id"] not in prefix.text
+
+
+def test_account_pages_link_to_posthog_person_using_configured_host_and_escape_link(admin_api, monkeypatch):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "posthogperson")
+    monkeypatch.setenv("POSTHOG_PROJECT_ID", 'project&"<1')
+    monkeypatch.setenv("POSTHOG_API_HOST", "https://analytics.example.test/")
+
+    assert _login(client, now[0]).status_code == 303
+    accounts = client.get("/admin/accounts")
+    detail = client.get(f"/admin/accounts/{account['account_id']}")
+
+    escaped_url = (
+        f"https://analytics.example.test/project/project&amp;&quot;&lt;1/person/{account['account_id']}"
+    )
+    assert f'<a href="{escaped_url}"' in accounts.text
+    assert account["account_id"] in accounts.text
+    assert f'<a href="{escaped_url}"' in detail.text
+    assert f"Immutable id</dt><dd>{account['account_id']}" in detail.text
+    assert detail.headers["content-security-policy"].startswith("default-src 'none';")
+
+
+def test_account_pages_use_eu_posthog_host_by_default(admin_api, monkeypatch):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "posthogdefault")
+    monkeypatch.setenv("POSTHOG_PROJECT_ID", "123")
+    monkeypatch.delenv("POSTHOG_API_HOST", raising=False)
+
+    assert _login(client, now[0]).status_code == 303
+    accounts = client.get("/admin/accounts")
+    detail = client.get(f"/admin/accounts/{account['account_id']}")
+
+    person_url = f"https://eu.posthog.com/project/123/person/{account['account_id']}"
+    assert f'<a href="{person_url}"' in accounts.text
+    assert f'<a href="{person_url}"' in detail.text
+
+
+def test_account_pages_show_id_without_posthog_link_and_deleted_has_no_link(admin_api, monkeypatch):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "posthogdisabled")
+    deleted, _ = _register_account(client, db, "posthogdeleted")
+    with db.catalog_locked() as conn:
+        conn.execute(
+            "UPDATE accounts SET status = 'deleted', deleted_at = ? WHERE account_id = ?",
+            ("2026-10-01T12:00:00+00:00", deleted["account_id"]),
+        )
+        conn.commit()
+    accounts = _accounts_page(client, now[0])
+    detail = client.get(f"/admin/accounts/{account['account_id']}")
+
+    monkeypatch.setenv("POSTHOG_PROJECT_ID", "123")
+    deleted_list = client.get("/admin/accounts?show_deleted=1")
+    deleted_detail = client.get(f"/admin/accounts/{deleted['account_id']}")
+
+    assert account["account_id"] in accounts.text
+    assert account["account_id"] in detail.text
+    assert "https://eu.posthog.com/project/" not in accounts.text + detail.text
+    assert deleted["account_id"] in deleted_list.text
+    assert deleted["account_id"] in deleted_detail.text
+    assert "posthog.com/project/" not in deleted_list.text
+    assert "posthog.com/project/" not in deleted_detail.text
+
+
+def test_account_analytics_links_remain_behind_login_gate(admin_api, monkeypatch):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "posthogsecure")
+    monkeypatch.setenv("POSTHOG_PROJECT_ID", "123")
+
+    response = client.get("/admin/accounts")
+    detail = client.get(f"/admin/accounts/{account['account_id']}")
+    assert response.status_code == detail.status_code == 404
+    assert "posthog.com/project/123/person/" not in response.text + detail.text
+
+
 def test_recovery_email_lookup_is_exact_masked_and_audited_without_email(admin_api):
     client, db, now, _ = admin_api
     account, _ = _register_account(client, db, "emailowner")

@@ -1392,14 +1392,26 @@ def _live_account_row(account: dict[str, Any]) -> str:
     created = html.escape(account["created_at"])
     last_seen = html.escape(account["last_seen_at"] or "Never")
     last_build = html.escape(_last_app_build(account))
+    analytics_link = _analytics_person_link(account["account_id"])
     return (
         "<li>"
         f'<p><a href="/admin/accounts/{account_id}">{username}</a></p>'
-        f"<p>Account id: {account_id}</p><p>Created: {created}</p>"
+        f"<p>Account id: {account_id}{analytics_link}</p><p>Created: {created}</p>"
         f"<p>Last active day: {last_seen}</p><p>Last app build: {last_build}</p>"
         f"<p>Capabilities: {html.escape(', '.join(_capability_labels(account)))}</p>"
         "</li>"
     )
+
+
+def _analytics_person_link(account_id: str) -> str:
+    project_id = os.getenv("POSTHOG_PROJECT_ID", "").strip()
+    if not project_id:
+        return ""
+    api_host = os.getenv("POSTHOG_API_HOST", "").strip().rstrip("/")
+    if not api_host:
+        api_host = analytics_service.POSTHOG_EU_API_HOST
+    url = f"{api_host}/project/{project_id}/person/{account_id}"
+    return f' · <a href="{html.escape(url, quote=True)}">Analytics</a>'
 
 
 def _deleted_account_row(account: dict[str, Any]) -> str:
@@ -1677,9 +1689,10 @@ def _issued_reset_link(reset_result: dict[str, str]) -> str:
 
 
 def _account_metadata_fields(account: dict[str, Any], metadata: dict[str, Any]) -> str:
+    account_id = html.escape(account["account_id"])
     return (
         _metadata_field("Username", account["username"])
-        + _metadata_field("Immutable id", account["account_id"])
+        + f"<dt>Immutable id</dt><dd>{account_id}{_analytics_person_link(account['account_id'])}</dd>"
         + _metadata_field("Created", account["created_at"])
         + _metadata_field("Last active day", account["last_seen_at"] or "Never")
         + _metadata_field("Last app build", _last_app_build(account))
