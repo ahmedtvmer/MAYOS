@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:myos_mobile/src/app.dart';
 import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/display_language/controller.dart';
+import 'package:myos_mobile/src/core/display_language/store.dart';
 import 'package:myos_mobile/src/core/api_client.dart';
 import 'package:myos_mobile/src/core/chat_storage.dart';
 import 'package:myos_mobile/src/core/theme/myos_spacing.dart';
@@ -19,6 +21,7 @@ import 'package:myos_mobile/src/features/shared/mode_switch.dart';
 import 'package:myos_mobile/src/features/player/auth/google_auth_gateway.dart';
 import 'package:myos_mobile/src/features/player/auth/google_sign_in_button.dart';
 import 'package:myos_mobile/src/features/player/auth/home_screen_install_hint.dart';
+import 'package:myos_mobile/src/features/player/auth/in_app_browser_hint.dart';
 import 'package:myos_mobile/src/providers.dart';
 import 'package:myos_mobile/src/router.dart';
 
@@ -105,7 +108,121 @@ const HomeScreenInstallHintEnvironment _eligibleIPhoneSafari =
   wasDismissed: false,
 );
 
+const Map<String, String> _inAppBrowserUserAgents = <String, String>{
+  'TikTok Android': 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) '
+      'AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 '
+      'Chrome/124.0.6367.82 Mobile Safari/537.36 musical_ly_2023503040 '
+      'com.zhiliaoapp.musically',
+  'TikTok iOS': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) '
+      'AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 '
+      'trill_2023503040',
+  'TikTok Bytedance WebView': 'Mozilla/5.0 (Linux; Android 14; Pixel 8) '
+      'AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 '
+      'Chrome/124.0.6367.82 Mobile Safari/537.36 BytedanceWebview/1.0',
+  'Instagram Android': 'Mozilla/5.0 (Linux; Android 14; Pixel 8) '
+      'AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 '
+      'Chrome/125.0.6422.165 Mobile Safari/537.36 Instagram 330.0.0.0.90',
+  'Instagram iOS': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) '
+      'AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 '
+      'Instagram 330.0.0.0.90 (iPhone14,5; iOS 17_5; en_US; en; scale=3.00)',
+  'Facebook Android': 'Mozilla/5.0 (Linux; Android 14; Pixel 8) '
+      'AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 '
+      'Chrome/125.0.6422.165 Mobile Safari/537.36 '
+      '[FB_IAB/FB4A;FBAV/466.0.0.47.85;]',
+  'Facebook iOS': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) '
+      'AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 '
+      '[FBAN/FBIOS;FBAV/466.0.0.47.85;FBBV/601234567;]',
+};
+
+const String _chromeAndroidUserAgent = 'Mozilla/5.0 (Linux; Android 14; '
+    'Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 '
+    'Mobile Safari/537.36';
+const String _safariIosUserAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 '
+    'like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) '
+    'Version/17.5 Mobile/15E148 Safari/604.1';
+
 void main() {
+  for (final MapEntry<String, String> browser in
+      _inAppBrowserUserAgents.entries) {
+    test('shows hint on web for ${browser.key}', () {
+      expect(
+        shouldShowInAppBrowserGoogleHint(
+            isWeb: true, userAgent: browser.value),
+        isTrue,
+      );
+    });
+    test('does not show hint off web for ${browser.key}', () {
+      expect(
+        shouldShowInAppBrowserGoogleHint(
+            isWeb: false, userAgent: browser.value),
+        isFalse,
+      );
+    });
+  }
+  test('does not show hint in Chrome on Android', () {
+    expect(
+      shouldShowInAppBrowserGoogleHint(
+          isWeb: true, userAgent: _chromeAndroidUserAgent),
+      isFalse,
+    );
+  });
+  test('does not show hint in Safari on iOS', () {
+    expect(
+      shouldShowInAppBrowserGoogleHint(
+          isWeb: true, userAgent: _safariIosUserAgent),
+      isFalse,
+    );
+  });
+
+  for (final String language in <String>['en', 'ar']) {
+    for (final MapEntry<String, String> browser in
+        _inAppBrowserUserAgents.entries) {
+      testWidgets(
+          'login shows localized Google hint for ${browser.key} ($language)',
+          (WidgetTester tester) async {
+        await _pumpAuth(
+          tester,
+          _loginFake(),
+          extraOverrides: <Override>[
+            googleAuthGatewayProvider.overrideWithValue(
+                FakeGoogleAuthGateway()),
+            showInAppBrowserGoogleHintProvider.overrideWith((ref) =>
+                shouldShowInAppBrowserGoogleHint(
+                    isWeb: true, userAgent: browser.value)),
+            displayLanguageProvider.overrideWith((ref) =>
+                DisplayLanguageController(InMemoryDisplayLanguageStore(),
+                    systemLanguage: language)),
+          ],
+        );
+        final String hint = language == 'ar'
+            ? 'لتسجيل الدخول بحساب Google، افتح هذه الصفحة في متصفحك.'
+            : 'To sign in with Google, open this page in your browser.';
+        expect(find.text(hint), findsOneWidget);
+        expect(find.byKey(const Key('login_username')), findsOneWidget);
+      });
+    }
+
+    testWidgets('login omits Google hint for Chrome Android ($language)',
+        (WidgetTester tester) async {
+      await _pumpAuth(
+        tester,
+        _loginFake(),
+        extraOverrides: <Override>[
+          googleAuthGatewayProvider
+              .overrideWithValue(FakeGoogleAuthGateway()),
+          showInAppBrowserGoogleHintProvider.overrideWith((ref) =>
+              shouldShowInAppBrowserGoogleHint(
+                  isWeb: true, userAgent: _chromeAndroidUserAgent)),
+          displayLanguageProvider.overrideWith((ref) =>
+              DisplayLanguageController(InMemoryDisplayLanguageStore(),
+                  systemLanguage: language)),
+        ],
+      );
+      expect(find.byKey(const Key('login_google_in_app_browser_hint')),
+          findsNothing);
+    });
+  }
+
   testWidgets('iPhone Safari sees the hint outside standalone',
       (WidgetTester tester) async {
     final _MemoryHomeScreenInstallHintStore store =

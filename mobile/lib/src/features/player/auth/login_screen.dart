@@ -15,8 +15,10 @@ import '../../../core/ui/myos_text_field.dart';
 import '../../../providers.dart';
 import '../../../router.dart';
 import 'auth_widgets.dart';
+import 'google_auth_gateway.dart';
 import 'google_sign_in_action.dart';
 import 'google_sign_in_button.dart';
+import 'in_app_browser_hint.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -65,7 +67,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
-    final MyosCopy copy = MyosCopy(ref.watch(displayLanguageProvider));
+    final String languageCode = ref.watch(displayLanguageProvider);
+    final MyosCopy copy = MyosCopy(languageCode);
+    final bool showGoogleButton =
+        ref.watch(googleAuthGatewayProvider).buttonStyle !=
+            GoogleSignInButtonStyle.hidden;
     final Uri uri = GoRouterState.of(context).uri;
     final bool resetJustCompleted = uri.queryParameters['reset'] == '1';
     final authState = ref.watch(authControllerProvider);
@@ -124,6 +130,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           onPressed: googleBusy ? null : continueWithGoogle,
           onWebOutcome: continueWithGoogleOutcome,
         ),
+        if (showGoogleButton && ref.watch(showInAppBrowserGoogleHintProvider))
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 12),
+            child: Text(
+              copy.inAppBrowserGoogleHint,
+              key: const Key('login_google_in_app_browser_hint'),
+              textAlign: TextAlign.center,
+            ),
+          ),
         MyosTextField(
           fieldKey: const Key('login_username'),
           controller: _username,
