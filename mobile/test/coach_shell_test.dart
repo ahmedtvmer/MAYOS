@@ -4,13 +4,32 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:myos_mobile/src/app.dart';
 import 'package:myos_mobile/src/core/api_client.dart';
 import 'package:myos_mobile/src/core/app_mode.dart';
+import 'package:myos_mobile/src/core/install_prompt_store.dart';
 import 'package:myos_mobile/src/core/token_store.dart';
 import 'package:myos_mobile/src/providers.dart';
 import 'package:myos_mobile/src/features/shared/mode_switch.dart';
+import 'package:myos_mobile/src/features/shared/install_prompt.dart';
 
 import 'support/auth_harness.dart';
 import 'support/fake_myos_api.dart';
 import 'support/coach_layout_harness.dart';
+
+class _CoachInstallPromptStore implements InstallPromptStore {
+  _CoachInstallPromptStore(this.environment);
+  final InstallPromptEnvironment environment;
+  @override
+  Future<InstallPromptEnvironment> readEnvironment() async => environment;
+  @override
+  Future<void> rememberDismissal() async {}
+  @override
+  Future<String> promptInstall() async => 'unavailable';
+  @override
+  void listenForInstalled(void Function() onInstalled) {}
+  @override
+  void listenForInstallState(void Function() onInstallStateChanged) {}
+  @override
+  bool consumeInstalled() => false;
+}
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     {int attempts = 40}) async {
@@ -31,6 +50,7 @@ Future<void> _pumpApp(
   FakeMyosApi fake,
   InMemoryAppModeStore modeStore, {
   Size logicalSize = const Size(540, 1200),
+  List<Override> extraOverrides = const <Override>[],
 }) async {
   tester.view.physicalSize = Size(logicalSize.width * 2, logicalSize.height * 2);
   tester.view.devicePixelRatio = 2.0;
@@ -42,6 +62,7 @@ Future<void> _pumpApp(
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
+        ...extraOverrides,
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(modeStore),
         apiClientProvider.overrideWith((ref) {
@@ -109,6 +130,51 @@ FakeMyosApi _coachFake() {
 }
 
 void main() {
+  testWidgets('coach roster hides ineligible and standalone install prompts', (tester) async {
+    const List<InstallPromptEnvironment> ineligibleCases = <InstallPromptEnvironment>[
+      InstallPromptEnvironment(
+        isIosShareBrowser: false,
+        hasInstallButton: false,
+        isStandalone: false,
+        wasDismissed: false,
+      ),
+      InstallPromptEnvironment(
+        isIosShareBrowser: true,
+        hasInstallButton: true,
+        isStandalone: true,
+        wasDismissed: false,
+      ),
+      InstallPromptEnvironment(
+        isIosShareBrowser: true,
+        hasInstallButton: false,
+        isStandalone: false,
+        wasDismissed: false,
+        isInAppBrowser: true,
+      ),
+    ];
+    for (final InstallPromptEnvironment environment in ineligibleCases) {
+      await _pumpApp(
+        tester,
+        _coachFake(),
+        InMemoryAppModeStore(),
+        extraOverrides: <Override>[
+          installPromptStoreProvider.overrideWithValue(
+            _CoachInstallPromptStore(environment),
+          ),
+        ],
+      );
+      await _pumpUntilFound(tester, find.text('Active assignments'));
+      expect(find.text('Install MYOS'), findsNothing);
+      expect(find.textContaining('Add to Home Screen'), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    }
+
+    await _pumpApp(tester, _coachFake(), InMemoryAppModeStore());
+    await _pumpUntilFound(tester, find.text('Active assignments'));
+    expect(find.text('Install MYOS'), findsNothing);
+    expect(find.textContaining('Add to Home Screen'), findsNothing);
+  });
+
   testWidgets(
       'the coach shell opens on Roster with Roster · Alerts · Requests · '
       'Assistant · Profile tabs and an alerts count badge',

@@ -15,7 +15,6 @@ import '../../../core/ui/myos_player_column.dart';
 import '../../../core/ui/myos_text_field.dart';
 import '../../../core/ui/myos_wallpaper.dart';
 import '../../../providers.dart';
-import 'home_screen_install_hint.dart';
 
 /// The shared MYOS composition for the authentication and recovery screens.
 ///
@@ -43,7 +42,6 @@ class AuthScaffold extends ConsumerWidget {
     this.links = const <Widget>[],
     this.message,
     this.wallpaper = false,
-    this.showHomeScreenInstallHint = false,
   });
 
   final String title;
@@ -60,8 +58,6 @@ class AuthScaffold extends ConsumerWidget {
   /// recovery-email screen stays plain and theme-following.
   final bool wallpaper;
 
-  /// Enables the fixed Home Screen hint slot for login and registration.
-  final bool showHomeScreenInstallHint;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -124,10 +120,6 @@ class AuthScaffold extends ConsumerWidget {
                                     ),
                                   ),
                                 ),
-                              ),
-                              HomeScreenInstallHintSlot(
-                                enabled:
-                                    showHomeScreenInstallHint && !keyboardOpen,
                               ),
                               AuthHeading(title: title, lead: lead),
                               const SizedBox(height: MyosSpacing.xl),

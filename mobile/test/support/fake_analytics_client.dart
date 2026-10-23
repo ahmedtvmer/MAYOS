@@ -1,4 +1,5 @@
 import 'package:myos_mobile/src/core/analytics_client.dart';
+import 'package:myos_mobile/src/core/install_prompt_store.dart';
 
 class FakeAnalyticsClient implements AnalyticsClient {
   final List<String> identifiedAccountIds = <String>[];
@@ -40,6 +41,43 @@ class FakeAnalyticsClient implements AnalyticsClient {
   void workoutDraftDiscarded({required String workoutId}) {
     if (!_discardedWorkoutIds.add(workoutId)) return;
     _recordWorkoutEvent('workout_draft_discarded');
+  }
+
+  @override
+  void installPromptShown(InstallPromptVariant variant) {
+    _recordInstallEvent('install_prompt_shown', variant);
+  }
+
+  @override
+  void installPromptAccepted(InstallPromptVariant variant) {
+    _recordInstallEvent('install_prompt_accepted', variant);
+  }
+
+  @override
+  void installPromptDismissed(InstallPromptVariant variant) {
+    _recordInstallEvent('install_prompt_dismissed', variant);
+  }
+
+  @override
+  void appInstalled(InstallPromptVariant variant) {
+    _recordInstallEvent('app_installed', variant);
+  }
+
+  void _recordInstallEvent(String event, InstallPromptVariant variant) {
+    if (!enabled) return;
+    events.add(<String, Object>{
+      'event': event,
+      'properties': <String, Object>{'variant': variant.wireValue},
+    });
+  }
+
+  @override
+  void appLaunched({required String displayMode}) {
+    if (!enabled) return;
+    events.add(<String, Object>{
+      'event': 'app_launched',
+      'properties': <String, Object>{'display_mode': displayMode},
+    });
   }
 
   void _recordWorkoutEvent(String event) {

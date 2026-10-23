@@ -24,6 +24,7 @@ import '../../../router.dart';
 import '../program/preparing_program_banner.dart';
 import '../workout/active_workout_prompt.dart';
 import 'home_planning.dart';
+import '../../shared/install_prompt.dart';
 
 /// The player Home tab: current program, the next ordered session, real
 /// seven-day volume and recent personal records, with honest empty states.
@@ -352,6 +353,7 @@ class _HomeBody extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(MyosSpacing.lg, MyosSpacing.md,
             MyosSpacing.lg, MyosSpacing.xxl),
         children: <Widget>[
+          const InstallPromptBanner(),
           Text(
             displayCopyOf(context).greetingFor(now),
             style: MyosTypography.of(context).display.copyWith(

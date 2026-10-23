@@ -14,13 +14,14 @@ import 'package:myos_mobile/src/core/theme/myos_spacing.dart';
 import 'package:myos_mobile/src/core/theme/myos_theme.dart';
 import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:myos_mobile/src/core/token_store.dart';
+import 'package:myos_mobile/src/core/install_prompt_store.dart';
+import 'package:myos_mobile/src/features/shared/install_prompt.dart';
 import 'package:myos_mobile/src/core/ui/myos_logo.dart';
 import 'package:myos_mobile/src/features/player/auth/auth_controller.dart';
 import 'package:myos_mobile/src/features/player/auth/auth_widgets.dart';
 import 'package:myos_mobile/src/features/shared/mode_switch.dart';
 import 'package:myos_mobile/src/features/player/auth/google_auth_gateway.dart';
 import 'package:myos_mobile/src/features/player/auth/google_sign_in_button.dart';
-import 'package:myos_mobile/src/features/player/auth/home_screen_install_hint.dart';
 import 'package:myos_mobile/src/features/player/auth/in_app_browser_hint.dart';
 import 'package:myos_mobile/src/providers.dart';
 import 'package:myos_mobile/src/router.dart';
@@ -30,6 +31,26 @@ import 'support/fake_api_adapter.dart';
 import 'support/fake_google_auth.dart';
 import 'support/fake_myos_api.dart';
 
+class _EligibleInstallPromptStore implements InstallPromptStore {
+  @override
+  Future<InstallPromptEnvironment> readEnvironment() async =>
+      const InstallPromptEnvironment(
+        isIosShareBrowser: true,
+        hasInstallButton: false,
+        isStandalone: false,
+        wasDismissed: false,
+      );
+  @override
+  Future<void> rememberDismissal() async {}
+  @override
+  Future<String> promptInstall() async => 'unavailable';
+  @override
+  void listenForInstalled(void Function() onInstalled) {}
+  @override
+  void listenForInstallState(void Function() onInstallStateChanged) {}
+  @override
+  bool consumeInstalled() => false;
+}
 /// Focused coverage for the restyled authentication and recovery-email screens
 /// (#52): login, registration, recovery email, forgot/reset, keyboard insets,
 /// focus traversal, password visibility, and overflow at small sizes/scale.
@@ -80,34 +101,6 @@ FakeMyosApi _loginFake() {
   return fake;
 }
 
-class _MemoryHomeScreenInstallHintStore implements HomeScreenInstallHintStore {
-  _MemoryHomeScreenInstallHintStore(this.environment);
-
-  final HomeScreenInstallHintEnvironment environment;
-  bool dismissed = false;
-  bool canPersistDismissal = true;
-
-  @override
-  Future<HomeScreenInstallHintEnvironment> readEnvironment() async =>
-      HomeScreenInstallHintEnvironment(
-        isIosSafari: environment.isIosSafari,
-        isStandalone: environment.isStandalone,
-        wasDismissed: environment.wasDismissed || dismissed,
-      );
-
-  @override
-  Future<void> rememberDismissal() async {
-    if (canPersistDismissal) dismissed = true;
-  }
-}
-
-const HomeScreenInstallHintEnvironment _eligibleIPhoneSafari =
-    HomeScreenInstallHintEnvironment(
-  isIosSafari: true,
-  isStandalone: false,
-  wasDismissed: false,
-);
-
 const Map<String, String> _inAppBrowserUserAgents = <String, String>{
   'TikTok Android': 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) '
       'AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 '
@@ -132,6 +125,8 @@ const Map<String, String> _inAppBrowserUserAgents = <String, String>{
   'Facebook iOS': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) '
       'AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 '
       '[FBAN/FBIOS;FBAV/466.0.0.47.85;FBBV/601234567;]',
+  'WhatsApp iOS': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) '
+      'AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 WhatsApp/24.20.81',
 };
 
 const String _chromeAndroidUserAgent = 'Mozilla/5.0 (Linux; Android 14; '
@@ -219,170 +214,17 @@ void main() {
     });
   }
 
-  testWidgets('iPhone Safari sees the hint outside standalone',
-      (WidgetTester tester) async {
-    final _MemoryHomeScreenInstallHintStore store =
-        _MemoryHomeScreenInstallHintStore(
-      _eligibleIPhoneSafari,
-    );
+  testWidgets('login screen has no install prompt', (tester) async {
     await _pumpAuth(tester, _loginFake(), extraOverrides: <Override>[
-      homeScreenInstallHintStoreProvider.overrideWithValue(store),
+      installPromptStoreProvider.overrideWithValue(_EligibleInstallPromptStore()),
     ]);
-
-    expect(find.text(HomeScreenInstallHintSlot.message), findsOneWidget);
-    expect(tester.getSize(find.byTooltip('Dismiss Home Screen hint')).width,
-        greaterThanOrEqualTo(kMyosMinTapTarget));
-  });
-
-  testWidgets('standalone and non-Safari browsers do not see the hint',
-      (WidgetTester tester) async {
-    final List<(String, HomeScreenInstallHintEnvironment)> cases =
-        <(String, HomeScreenInstallHintEnvironment)>[
-      (
-        'standalone Safari',
-        const HomeScreenInstallHintEnvironment(
-          isIosSafari: true,
-          isStandalone: true,
-          wasDismissed: false,
-        ),
-      ),
-      for (final String browser in <String>[
-        'iOS Chrome',
-        'desktop browser',
-        'Android browser',
-      ])
-        (
-          browser,
-          const HomeScreenInstallHintEnvironment(
-            isIosSafari: false,
-            isStandalone: false,
-            wasDismissed: false,
-          ),
-        ),
-    ];
-
-    for (final (String browser, HomeScreenInstallHintEnvironment environment)
-        in cases) {
-      final _MemoryHomeScreenInstallHintStore store =
-          _MemoryHomeScreenInstallHintStore(environment);
-      await _pumpAuth(tester, _loginFake(), extraOverrides: <Override>[
-        homeScreenInstallHintStoreProvider.overrideWithValue(store),
-      ]);
-      expect(find.text(HomeScreenInstallHintSlot.message), findsNothing,
-          reason: '$browser must not see the hint');
-      await tester.pumpWidget(const SizedBox.shrink());
-    }
-  });
-
-  testWidgets('non-eligible login collapses the fixed hint slot',
-      (WidgetTester tester) async {
-    await _pumpAuth(
-      tester,
-      _loginFake(),
-      extraOverrides: <Override>[
-        homeScreenInstallHintStoreProvider.overrideWithValue(
-          _MemoryHomeScreenInstallHintStore(
-            const HomeScreenInstallHintEnvironment(
-              isIosSafari: false,
-              isStandalone: false,
-              wasDismissed: false,
-            ),
-          ),
-        ),
-      ],
-    );
+    expect(find.text('Install MYOS'), findsNothing);
+    expect(find.textContaining('Add to Home Screen'), findsNothing);
+    await tester.tap(find.text('Create an account'));
     await tester.pumpAndSettle();
-
-    final Finder slot = find.byKey(const Key('home-screen-install-hint-slot'));
-    expect(slot, findsOneWidget);
-    expect(tester.getSize(slot).height, 0);
-    expect(find.text(HomeScreenInstallHintSlot.message), findsNothing);
-  });
-
-  testWidgets('dismissal persists when the login screen is rebuilt',
-      (WidgetTester tester) async {
-    final _MemoryHomeScreenInstallHintStore store =
-        _MemoryHomeScreenInstallHintStore(
-      _eligibleIPhoneSafari,
-    );
-    final List<Override> overrides = <Override>[
-      homeScreenInstallHintStoreProvider.overrideWithValue(store),
-    ];
-    await _pumpAuth(tester, _loginFake(), extraOverrides: overrides);
-    expect(find.text(HomeScreenInstallHintSlot.message), findsOneWidget);
-
-    await tester.tap(find.byTooltip('Dismiss Home Screen hint'));
-    await tester.pumpAndSettle();
-    expect(store.dismissed, isTrue);
-    expect(find.text(HomeScreenInstallHintSlot.message), findsNothing);
-
-    await tester.pumpWidget(const SizedBox.shrink());
-    await _pumpAuth(tester, _loginFake(), extraOverrides: overrides);
-    expect(find.text(HomeScreenInstallHintSlot.message), findsNothing);
-  });
-
-  testWidgets(
-      'without storage the close button still hides the hint, which returns '
-      'on the next visit', (WidgetTester tester) async {
-    final _MemoryHomeScreenInstallHintStore store =
-        _MemoryHomeScreenInstallHintStore(
-      _eligibleIPhoneSafari,
-    )..canPersistDismissal = false;
-    final List<Override> overrides = <Override>[
-      homeScreenInstallHintStoreProvider.overrideWithValue(store),
-    ];
-    await _pumpAuth(tester, _loginFake(), extraOverrides: overrides);
-
-    await tester.tap(find.byTooltip('Dismiss Home Screen hint'));
-    await tester.pumpAndSettle();
-    expect(find.text(HomeScreenInstallHintSlot.message), findsNothing);
-
-    // Nothing was remembered, so a fresh visit shows it again.
-    await tester.pumpWidget(const SizedBox.shrink());
-    await _pumpAuth(tester, _loginFake(), extraOverrides: overrides);
-    expect(find.text(HomeScreenInstallHintSlot.message), findsOneWidget);
-  });
-
-  testWidgets('hint slot preserves the focused field when keyboard opens',
-      (WidgetTester tester) async {
-    final _MemoryHomeScreenInstallHintStore store =
-        _MemoryHomeScreenInstallHintStore(
-      _eligibleIPhoneSafari,
-    );
-    await _pumpAuth(tester, _loginFake(),
-        size: const Size(360, 640),
-        extraOverrides: <Override>[
-          homeScreenInstallHintStoreProvider.overrideWithValue(store),
-        ]);
-    expect(find.text(HomeScreenInstallHintSlot.message), findsOneWidget);
-
-    final Finder editable = find.descendant(
-        of: find.byKey(const Key('login_username')),
-        matching: find.byType(EditableText));
-    await tester.tap(find.byKey(const Key('login_username')));
-    await tester.pump();
-    final State<EditableText> before = tester.state(editable);
-    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
-    addTearDown(tester.view.resetViewInsets);
-    await tester.pump(const Duration(milliseconds: 200));
-    expect(
-      tester
-          .widget<HomeScreenInstallHintSlot>(
-            find.byType(HomeScreenInstallHintSlot),
-          )
-          .enabled,
-      isFalse,
-    );
-    await tester.pumpAndSettle();
-
-    expect(
-      tester
-          .getSize(find.byKey(const Key('home-screen-install-hint-slot')))
-          .height,
-      0,
-    );
-    expect(tester.state<State<EditableText>>(editable), same(before));
-    expect(tester.widget<EditableText>(editable).focusNode.hasFocus, isTrue);
+    expect(find.text('Create account'), findsWidgets);
+    expect(find.text('Install MYOS'), findsNothing);
+    expect(find.textContaining('Add to Home Screen'), findsNothing);
   });
 
   testWidgets('login success authenticates and leaves the form',

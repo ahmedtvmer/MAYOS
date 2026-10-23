@@ -313,6 +313,55 @@ def test_bridge_reports_update_already_installing_when_registration_resolves():
     assert result.returncode == 0, result.stderr
 
 
+def test_bridge_captures_and_prompts_for_install_before_flutter_boot():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("Node.js is required to exercise the install bridge")
+    bridge = Path(__file__).parents[1] / "mobile/web/pwa_bridge.js"
+    harness = textwrap.dedent("""
+      const fs = require('node:fs');
+      const vm = require('node:vm');
+      class Target {
+        constructor() { this.listeners = new Map(); }
+        addEventListener(name, callback) {
+          this.listeners.set(name, [...(this.listeners.get(name) || []), callback]);
+        }
+        dispatchEvent(event) {
+          for (const callback of this.listeners.get(event.type) || []) callback(event);
+        }
+      }
+      class MockEvent { constructor(type) { this.type = type; } }
+      const window = new Target();
+      const navigator = {};
+      const events = [];
+      window.addEventListener('myos-install-state', () => events.push('state'));
+      window.addEventListener('myos-app-installed', () => events.push('installed'));
+      vm.runInNewContext(fs.readFileSync(process.env.BRIDGE_JS, 'utf8'),
+        {window, navigator, location: {}, Event: MockEvent});
+      (async () => {
+        let prevented = false;
+        let prompted = false;
+        const installEvent = new MockEvent('beforeinstallprompt');
+        installEvent.preventDefault = () => { prevented = true; };
+        installEvent.prompt = async () => { prompted = true; };
+        installEvent.userChoice = Promise.resolve({outcome: 'accepted'});
+        window.dispatchEvent(installEvent);
+        if (!prevented || !window.MYOS_INSTALL_PROMPT_AVAILABLE) throw new Error('prompt was not captured');
+        if (await window.MYOS_PROMPT_INSTALL() !== 'accepted' || !prompted) throw new Error('accepted outcome missing');
+        if (window.MYOS_INSTALL_PROMPT_AVAILABLE) throw new Error('prompt remained available');
+        window.dispatchEvent(new MockEvent('appinstalled'));
+        if (!events.includes('installed')) throw new Error('installed event missing');
+        if (!window.MYOS_APP_INSTALLED) throw new Error('installed state was not retained');
+        if (!window.MYOS_CONSUME_APP_INSTALLED()) throw new Error('installed state was not consumable');
+        if (window.MYOS_CONSUME_APP_INSTALLED()) throw new Error('installed state was not consumed once');
+      })().catch(error => { console.error(error); process.exitCode = 1; });
+    """)
+    env = os.environ.copy()
+    env["BRIDGE_JS"] = str(bridge)
+    result = subprocess.run([node, "-e", harness], env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+
+
 def test_assembly_serves_worker_and_offline_fallback_under_app_with_no_cache(tmp_path):
     flutter = tmp_path / "flutter"
     flutter.mkdir()
