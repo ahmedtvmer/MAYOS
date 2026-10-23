@@ -12,6 +12,8 @@ import 'core/connectivity.dart';
 import 'core/display_language/controller.dart';
 import 'core/first_touch.dart';
 import 'core/models.dart';
+import 'core/safe_area_insets.dart';
+import 'core/safe_area_media_query.dart';
 import 'core/shared_program_text.dart';
 import 'core/theme/myos_spacing.dart';
 import 'core/theme/myos_theme.dart';
@@ -31,6 +33,8 @@ class MyosApp extends ConsumerStatefulWidget {
 
 class _MyosAppState extends ConsumerState<MyosApp>
     with WidgetsBindingObserver {
+  late final SafeAreaInsetsSource _safeAreaInsetsSource =
+      createSafeAreaInsetsSource();
   String? _analyticsAccountId;
   String? _analyticsRole;
   bool _analyticsAllowed = true;
@@ -143,6 +147,7 @@ class _MyosAppState extends ConsumerState<MyosApp>
 
   @override
   void dispose() {
+    _safeAreaInsetsSource.dispose();
     _analyticsAuthSubscription.close();
     _sharedTextSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -210,23 +215,26 @@ class _MyosAppState extends ConsumerState<MyosApp>
       routerConfig: router,
       builder: (BuildContext context, Widget? child) {
         final MyosThemeExtension c = _effective(context, themeMode);
-        return MyosAppModeScope(
-          mode: appMode,
-          child: Theme(
-            data: _responsiveOverlayTheme(
-              context,
-              appMode,
-              themeMode,
-              selectedLanguage,
-            ),
-            child: ScaffoldMessenger(
-              // Own the app's screen snackbars under the responsive theme.
-              // The same messenger also receives permission prompts via its
-              // global key.
-              key: myosMessengerKey,
-              child: AnnotatedRegion<SystemUiOverlayStyle>(
-                value: MyosTheme.overlayStyle(c),
-                child: child ?? const SizedBox.shrink(),
+        return SafeAreaMediaQuery(
+          source: _safeAreaInsetsSource,
+          child: MyosAppModeScope(
+            mode: appMode,
+            child: Theme(
+              data: _responsiveOverlayTheme(
+                context,
+                appMode,
+                themeMode,
+                selectedLanguage,
+              ),
+              child: ScaffoldMessenger(
+                // Own the app's screen snackbars under the responsive theme.
+                // The same messenger also receives permission prompts via its
+                // global key.
+                key: myosMessengerKey,
+                child: AnnotatedRegion<SystemUiOverlayStyle>(
+                  value: MyosTheme.overlayStyle(c),
+                  child: child ?? const SizedBox.shrink(),
+                ),
               ),
             ),
           ),
