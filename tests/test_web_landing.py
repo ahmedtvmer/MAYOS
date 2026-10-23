@@ -3,9 +3,13 @@
 import json
 import re
 import shutil
+import subprocess
+import textwrap
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
+
+import pytest
 
 from scripts.assemble_web import assemble
 
@@ -65,9 +69,9 @@ def _parse(output):
     return html, parser
 
 
-def test_assembled_page_exposes_working_destinations_and_localized_copy(tmp_path):
+def test_assembled_page_has_working_destinations(tmp_path):
     output = _assembled(tmp_path)
-    html, parser = _parse(output)
+    _html, parser = _parse(output)
     by_id = {link.get("id"): link for link in parser.links if link.get("id")}
     by_contact = {link.get("data-contact"): link for link in parser.links if link.get("data-contact")}
 
@@ -83,6 +87,10 @@ def test_assembled_page_exposes_working_destinations_and_localized_copy(tmp_path
     assert by_contact["email"]["href"] == "mailto:ahmedtamerhejazi@gmail.com"
     assert by_id["privacy-link"]["href"] == "https://mayos-api.fly.dev/privacy"
 
+
+def test_assembled_page_has_expected_copy_in_both_languages(tmp_path):
+    _output = _assembled(tmp_path)
+    _html, parser = _parse(_output)
     english = {slot["data-copy"]: slot.get("data-en", "") for slot in parser.copy}
     arabic = {slot["data-copy"]: slot.get("data-ar", "") for slot in parser.copy}
     expected_english = {
@@ -119,7 +127,11 @@ def test_assembled_page_exposes_working_destinations_and_localized_copy(tmp_path
     }
     assert english == expected_english
     assert arabic == expected_arabic
-    assert "Progress, Engineered." in html and "تقدّمٌ مدروس." in html
+
+
+def test_assembled_page_tracks_events_and_badges_do_not_navigate(tmp_path):
+    output = _assembled(tmp_path)
+    _html, parser = _parse(output)
 
     assert set(parser.tracks) >= {
         "landing_start_free", "landing_login", "landing_coach_contact", "landing_store_badge"
@@ -133,13 +145,17 @@ def test_assembled_page_exposes_working_destinations_and_localized_copy(tmp_path
     }
     assert {"/google-play-ar.png", "/app-store-en.svg"} <= badge_sources
     assert not any("app-store-ar" in resource for resource in parser.resources)
+
+
+def test_assembled_page_has_feature_icons_and_isolates_greek_word(tmp_path):
+    output = _assembled(tmp_path)
+    html, parser = _parse(output)
     assert len(parser.features) == 8
     assert parser.feature_icons == 8
     assert all(icon.get("aria-hidden") == "true" for icon in parser.feature_icon_attributes)
     story_word = re.search(r'class="story-word"[^>]*>(.*?)</div>', html, re.S).group(1)
     assert '<bdi dir="ltr">μῦς</bdi>' in story_word
     footer = re.search(r'<footer\b.*?</footer>', html, re.S).group(0)
-    assert "min-height:44px" in (output / "index.html").read_text(encoding="utf-8")
     assert "id=\"privacy-link\"" in footer
 
 
@@ -152,15 +168,85 @@ def test_first_paint_follows_system_theme_and_footer_links_meet_tap_target(tmp_p
     assert re.search(r'\.contact-links a\{[^}]*min-height:44px', html)
 
 
-def test_attribution_is_first_touch_only_and_uses_app_storage_shape(tmp_path):
+def _run_landing_js(output, scenario):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required to execute the landing page behavior harness")
+    harness = textwrap.dedent("""
+        const fs = require('node:fs');
+        const [landingPath, configPath] = process.argv.slice(1);
+        const scenario = JSON.parse(fs.readFileSync(0, 'utf8'));
+        const storage = Object.assign({}, scenario.storage || {});
+        storage.getItem = key => Object.prototype.hasOwnProperty.call(storage, key) ? storage[key] : null;
+        storage.setItem = (key, value) => { storage[key] = value; };
+        const attributes = {};
+        const metadata = {content: '', media: ''};
+        const nav = {setAttribute: (key, value) => { attributes[key] = value; }};
+        const toggle = {setAttribute: () => {}, addEventListener: () => {}};
+        global.localStorage = storage;
+        global.location = new URL('https://www.mayos.example/' + (scenario.search || ''));
+        global.location.replace = value => { scenario.replaced = value; };
+        global.document = {
+          referrer: scenario.referrer || '', title: '',
+          documentElement: {dataset: {}, removeAttribute: () => {}},
+          querySelector: selector => selector === 'nav' ? nav : metadata,
+          querySelectorAll: () => [],
+          getElementById: () => toggle,
+          addEventListener: () => {},
+          createElement: () => ({})
+        };
+        Object.defineProperty(globalThis, 'navigator', {
+          value: {languages: ['en'], language: 'en'}, configurable: true
+        });
+        global.matchMedia = () => ({matches: false});
+        global.requestAnimationFrame = () => {};
+        global.window = {MYOS_LANDING: {}};
+        (0, eval)(fs.readFileSync(configPath, 'utf8'));
+        (0, eval)(fs.readFileSync(landingPath, 'utf8'));
+        process.stdout.write(JSON.stringify({storage, replaced: scenario.replaced || null}));
+    """)
+    result = subprocess.run(
+        [node, "-e", harness, str(output / "landing.js"), str(output / "landing-config.js")],
+        input=json.dumps(scenario), text=True, capture_output=True,
+    )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+def test_external_referrer_and_utm_are_saved_as_first_touch(tmp_path):
     output = _assembled(tmp_path)
-    javascript = (output / "landing.js").read_text(encoding="utf-8")
-    assert "mayos.first_touch" in javascript
-    assert "utm_source" in javascript and "utm_medium" in javascript and "utm_campaign" in javascript
-    assert "referrer_host" in javascript
-    assert "referrer.hostname.toLowerCase() !== location.hostname.toLowerCase()" in javascript
-    assert "localStorage.getItem(firstTouchKey) !== null" in javascript
-    assert "JSON.stringify(touch)" in javascript
+    result = _run_landing_js(output, {
+        "search": "?utm_source=Newsletter&utm_medium=Email&utm_campaign=Autumn",
+        "referrer": "https://BLOG.Example.org/story",
+    })
+    assert json.loads(result["storage"]["mayos.first_touch"]) == {
+        "utm_source": "Newsletter", "utm_medium": "Email", "utm_campaign": "Autumn",
+        "referrer_host": "blog.example.org",
+    }
+
+
+def test_same_host_referrer_without_utm_does_not_save_first_touch(tmp_path):
+    output = _assembled(tmp_path)
+    result = _run_landing_js(output, {"referrer": "https://WWW.MAYOS.EXAMPLE/page"})
+    assert "mayos.first_touch" not in result["storage"]
+
+
+def test_existing_first_touch_is_not_overwritten(tmp_path):
+    output = _assembled(tmp_path)
+    existing = '{"utm_source":"original"}'
+    result = _run_landing_js(output, {
+        "search": "?utm_source=new", "referrer": "https://outside.example/",
+        "storage": {"mayos.first_touch": existing},
+    })
+    assert result["storage"]["mayos.first_touch"] == existing
+
+
+def test_signed_in_landing_redirects_to_app(tmp_path):
+    output = _assembled(tmp_path)
+    result = _run_landing_js(output, {
+        "storage": {"FlutterSecureStorage.mayos.access_token": "token"},
+    })
+    assert result["replaced"] == "/app/"
 
 
 def test_first_paint_resources_stay_under_300_kib(tmp_path):

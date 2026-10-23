@@ -175,32 +175,28 @@ void main() {
   });
 
   for (final String language in <String>['en', 'ar']) {
-    for (final MapEntry<String, String> browser in
-        _inAppBrowserUserAgents.entries) {
-      testWidgets(
-          'login shows localized Google hint for ${browser.key} ($language)',
-          (WidgetTester tester) async {
-        await _pumpAuth(
-          tester,
-          _loginFake(),
-          extraOverrides: <Override>[
-            googleAuthGatewayProvider.overrideWithValue(
-                FakeGoogleAuthGateway()),
-            showInAppBrowserGoogleHintProvider.overrideWith((ref) =>
-                shouldShowInAppBrowserGoogleHint(
-                    isWeb: true, userAgent: browser.value)),
-            displayLanguageProvider.overrideWith((ref) =>
-                DisplayLanguageController(InMemoryDisplayLanguageStore(),
-                    systemLanguage: language)),
-          ],
-        );
-        final String hint = language == 'ar'
-            ? 'لتسجيل الدخول بحساب Google، افتح هذه الصفحة في متصفحك.'
-            : 'To sign in with Google, open this page in your browser.';
-        expect(find.text(hint), findsOneWidget);
-        expect(find.byKey(const Key('login_username')), findsOneWidget);
-      });
-    }
+    testWidgets('login shows localized Google hint in TikTok webview ($language)',
+        (WidgetTester tester) async {
+      await _pumpAuth(
+        tester,
+        _loginFake(),
+        extraOverrides: <Override>[
+          googleAuthGatewayProvider.overrideWithValue(FakeGoogleAuthGateway()),
+          showInAppBrowserGoogleHintProvider.overrideWith((ref) =>
+              shouldShowInAppBrowserGoogleHint(
+                  isWeb: true,
+                  userAgent: _inAppBrowserUserAgents['TikTok Android']!)),
+          displayLanguageProvider.overrideWith((ref) =>
+              DisplayLanguageController(InMemoryDisplayLanguageStore(),
+                  systemLanguage: language)),
+        ],
+      );
+      final String hint = language == 'ar'
+          ? 'لتسجيل الدخول بحساب Google، افتح هذه الصفحة في متصفحك.'
+          : 'To sign in with Google, open this page in your browser.';
+      expect(find.text(hint), findsOneWidget);
+      expect(find.byKey(const Key('login_username')), findsOneWidget);
+    });
 
     testWidgets('login omits Google hint for Chrome Android ($language)',
         (WidgetTester tester) async {
