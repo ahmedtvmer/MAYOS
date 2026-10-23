@@ -93,12 +93,16 @@ class InstallPromptController extends StateNotifier<InstallPromptVariant?> {
 }
 
 class InstallPromptBanner extends ConsumerWidget {
-  const InstallPromptBanner({super.key});
+  const InstallPromptBanner({super.key, this.enabled = true});
+
+  /// Lets a screen keep the banner's slot (and its own widget tree) stable
+  /// while hiding it, so toggling never resets state below it.
+  final bool enabled;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final InstallPromptVariant? variant = ref.watch(installPromptProvider);
-    if (variant == null) return const SizedBox.shrink();
+    if (!enabled || variant == null) return const SizedBox.shrink();
     final InstallPromptCopy copy = InstallPromptCopy(ref.watch(displayLanguageProvider));
     final MyosThemeExtension colors = MyosTheme.of(context);
     return Card(
