@@ -1291,8 +1291,15 @@ analytics) and warns when a production build lacks `GOOGLE_WEB_CLIENT_ID` or
 
 The script runs `flutter build web --release --no-web-resources-cdn
 --pwa-strategy=none` with `--dart-define=MAYOS_API_BASE_URL=https://mayos-api.fly.dev`
-(and `GOOGLE_WEB_CLIENT_ID` and `POSTHOG_CLIENT_KEY` when set), then
-`wrangler pages deploy build/web`.
+(and `GOOGLE_WEB_CLIENT_ID` and `POSTHOG_CLIENT_KEY` when set), then runs
+pinned Workbox `generateSW` to produce the `/app/` worker and offline fallback
+before assembling the landing page and Flutter app and deploying with Wrangler.
+Flutter's built-in worker remains disabled. Workbox precaches the app bootstrap,
+compiled code, manifests, icons, fonts, images, offline resources and the four
+CanvasKit files used by this JavaScript build. It excludes `index.html`, debug
+symbols, notices, Skwasm, Wimp and WebParagraph assets. Navigations use
+NetworkOnly with a 10-second timeout and fall back to the cached offline page;
+no worker route matches a cross-origin request, so API traffic is never cached.
 
 | Input | Where | Purpose |
 | :--- | :--- | :--- |
