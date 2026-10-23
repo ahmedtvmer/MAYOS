@@ -1,8 +1,8 @@
 {
   "name": "MYOS",
   "short_name": "MYOS",
-  "start_url": ".",
-  "scope": ".",
+  "start_url": "/app/",
+  "scope": "/app/",
   "display": "standalone",
   "theme_color": "#0A1422",
   "background_color": "#0A1422",
