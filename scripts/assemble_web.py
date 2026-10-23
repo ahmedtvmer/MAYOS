@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Assemble Cloudflare Pages output from the landing site and Flutter build."""
 
+import html
+import json
+import os
 import re
 import shutil
 import sys
@@ -174,6 +177,34 @@ def assemble(flutter_build: Path, landing: Path, output: Path) -> None:
     if output.exists():
         shutil.rmtree(output)
     shutil.copytree(landing, output)
+    config = {
+        "apiBaseUrl": os.environ.get("MAYOS_API_BASE_URL", "https://mayos-api.fly.dev"),
+        "posthogKey": os.environ.get("POSTHOG_CLIENT_KEY", ""),
+        "businessEmail": "ahmedtamerhejazi@gmail.com",
+        "instagramHandle": "ahmedtvmer",
+        "tiktokHandle": "ahmedforges",
+        "googlePlayUrl": os.environ.get("GOOGLE_PLAY_URL", ""),
+        "appStoreUrl": os.environ.get("APP_STORE_URL", ""),
+    }
+    landing_html = output / "index.html"
+    landing_source = landing_html.read_text(encoding="utf-8")
+    for template_marker, configured_value in {
+        "@@BUSINESS_EMAIL@@": config["businessEmail"],
+        "@@INSTAGRAM_HANDLE@@": config["instagramHandle"],
+        "@@TIKTOK_HANDLE@@": config["tiktokHandle"],
+        "@@API_BASE_URL@@": config["apiBaseUrl"].rstrip("/"),
+    }.items():
+        landing_source = landing_source.replace(
+            template_marker, html.escape(configured_value, quote=True)
+        )
+    landing_html.write_text(landing_source, encoding="utf-8")
+    runtime_config = {
+        key: config[key] for key in ("posthogKey", "googlePlayUrl", "appStoreUrl")
+    }
+    (output / "landing-config.js").write_text(
+        "window.MYOS_LANDING = " + json.dumps(runtime_config, ensure_ascii=True) + ";\n",
+        encoding="utf-8",
+    )
     shutil.copytree(
         flutter_build,
         output / "app",

@@ -15,7 +15,8 @@
 #   POSTHOG_CLIENT_KEY                            (public PostHog project key)
 # Optional env: PAGES_PROJECT (default mayos), MAYOS_API_BASE_URL
 # (default https://mayos-api.fly.dev; must match the CSP connect-src in
-# mobile/web/_headers), PAGES_BRANCH (default main).
+# mobile/web/_headers), PAGES_BRANCH (default main), GOOGLE_PLAY_URL and
+# APP_STORE_URL (empty until the native apps are published).
 set -euo pipefail
 
 env_file="${MAYOS_WEB_ENV:-$HOME/.config/mayos/web.env}"
@@ -61,7 +62,11 @@ defines=(--dart-define="MAYOS_API_BASE_URL=$api_url")
 flutter build web --release --base-href /app/ --no-web-resources-cdn --pwa-strategy=none "${defines[@]}"
 
 pages_output="build/pages"
-python3 ../scripts/assemble_web.py build/web ../web_landing "$pages_output"
+MAYOS_API_BASE_URL="$api_url" \
+POSTHOG_CLIENT_KEY="${POSTHOG_CLIENT_KEY:-}" \
+GOOGLE_PLAY_URL="${GOOGLE_PLAY_URL:-}" \
+APP_STORE_URL="${APP_STORE_URL:-}" \
+  python3 ../scripts/assemble_web.py build/web ../web_landing "$pages_output"
 
 npx --yes wrangler@latest pages deploy "$pages_output" \
   --project-name "$project" --branch "$branch" --commit-dirty=true
