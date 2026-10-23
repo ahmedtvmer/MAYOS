@@ -16,6 +16,7 @@ import 'coach_alerts_screen.dart';
 import 'coach_assignments_screen.dart';
 import 'coach_requests_screen.dart';
 import 'coach_shared.dart';
+import '../shared/install_prompt.dart';
 
 /// The coach shell's navigation indices (#119/#121). Named so a new tab never
 /// silently shifts an existing destination or a test's index.
@@ -107,7 +108,12 @@ class CoachShell extends ConsumerWidget {
       header: const MyosAppHeader(
         actions: <Widget>[ModeAvatarButton()],
       ),
-      body: body,
+      body: index == CoachShellTab.roster && !assignmentSelected
+          ? Column(children: <Widget>[
+              const InstallPromptBanner(),
+              Expanded(child: body),
+            ])
+          : body,
       showOfflineBanner: !assignmentSelected,
       bottomBar: MyosBottomNavigation(
         items: <MyosNavItem>[

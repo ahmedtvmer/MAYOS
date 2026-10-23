@@ -10,10 +10,63 @@ import 'package:myos_mobile/src/core/models.dart';
 import 'package:myos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:myos_mobile/src/core/token_store.dart';
 import 'package:myos_mobile/src/core/workout_storage.dart';
+import 'package:myos_mobile/src/core/install_prompt_store.dart';
+import 'package:myos_mobile/src/features/shared/install_prompt.dart';
 import 'package:myos_mobile/src/providers.dart';
 import 'package:myos_mobile/src/core/ui/myos_bottom_navigation.dart';
 
 import 'support/fake_myos_api.dart';
+import 'support/fake_analytics_client.dart';
+
+class _FakeInstallPromptStore implements InstallPromptStore {
+  _FakeInstallPromptStore(this.environment, {this.outcome = 'unavailable'});
+  final InstallPromptEnvironment environment;
+  final String outcome;
+  bool dismissed = false;
+  int prompts = 0;
+  void Function()? installed;
+  void Function()? installStateChanged;
+  bool installedBeforeListener = false;
+  bool canPersist = true;
+
+  @override
+  Future<InstallPromptEnvironment> readEnvironment() async => environment;
+  @override
+  Future<void> rememberDismissal() async {
+    if (canPersist) {
+      dismissed = true;
+    }
+  }
+  @override
+  Future<String> promptInstall() async {
+    prompts++;
+    return outcome;
+  }
+  @override
+  void listenForInstalled(void Function() onInstalled) {
+    installed = onInstalled;
+    if (installedBeforeListener) onInstalled();
+  }
+  @override
+  void listenForInstallState(void Function() onInstallStateChanged) =>
+      installStateChanged = onInstallStateChanged;
+  @override
+  bool consumeInstalled() {
+    final bool wasInstalled = installedBeforeListener;
+    installedBeforeListener = false;
+    return wasInstalled;
+  }
+
+  void fireInstallStateChanged() => installStateChanged?.call();
+
+  void fireInstalled() {
+    if (installed == null) {
+      installedBeforeListener = true;
+    } else {
+      installed!();
+    }
+  }
+}
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     {int attempts = 40}) async {
@@ -35,6 +88,7 @@ Future<void> _pumpHome(
   DraftStore? draftStore,
   String languageCode = 'en',
   Size size = const Size(1080, 2400),
+  List<Override> extraOverrides = const <Override>[],
 }) async {
   fake.displayLanguage = languageCode;
   tester.view.physicalSize = size;
@@ -47,6 +101,7 @@ Future<void> _pumpHome(
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
+        ...extraOverrides,
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
         themeModeStoreProvider
@@ -85,6 +140,182 @@ FakeMyosApi _signedInFake() {
 }
 
 void main() {
+  testWidgets('Home shows install variants and reports shown analytics', (tester) async {
+    final FakeMyosApi fake = _signedInFake();
+    final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    final _FakeInstallPromptStore store = _FakeInstallPromptStore(
+      const InstallPromptEnvironment(
+        isIosShareBrowser: false,
+        hasInstallButton: true,
+        isStandalone: false,
+        wasDismissed: false,
+      ),
+    );
+    await _pumpHome(tester, fake, extraOverrides: <Override>[
+      installPromptStoreProvider.overrideWithValue(store),
+      analyticsClientProvider.overrideWithValue(analytics),
+    ]);
+    await tester.pump();
+    expect(find.text('Install MYOS'), findsOneWidget);
+    expect(analytics.events.any((event) => event['event'] == 'install_prompt_shown'), isTrue);
+  });
+
+  testWidgets('storage failure still hides a dismissed prompt this visit', (tester) async {
+    const InstallPromptEnvironment eligible = InstallPromptEnvironment(
+      isIosShareBrowser: true,
+      hasInstallButton: false,
+      isStandalone: false,
+      wasDismissed: false,
+    );
+    final _FakeInstallPromptStore store = _FakeInstallPromptStore(eligible)
+      ..canPersist = false;
+    await _pumpHome(tester, _signedInFake(), extraOverrides: <Override>[
+      installPromptStoreProvider.overrideWithValue(store),
+    ]);
+    await tester.pump();
+    await tester.tap(find.byTooltip('Dismiss'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('tap Share'), findsNothing);
+    store.fireInstallStateChanged();
+    await tester.pump();
+    expect(find.textContaining('tap Share'), findsNothing);
+  });
+
+  testWidgets('iOS hint dismisses for this visit and records dismissal', (tester) async {
+    final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    final _FakeInstallPromptStore store = _FakeInstallPromptStore(
+      const InstallPromptEnvironment(
+        isIosShareBrowser: true,
+        hasInstallButton: false,
+        isStandalone: false,
+        wasDismissed: false,
+      ),
+    );
+    await _pumpHome(tester, _signedInFake(), extraOverrides: <Override>[
+      installPromptStoreProvider.overrideWithValue(store),
+      analyticsClientProvider.overrideWithValue(analytics),
+    ]);
+    await tester.pump();
+    expect(find.text('Install MYOS: tap Share, then Add to Home Screen.'), findsOneWidget);
+    await tester.tap(find.byTooltip('Dismiss'));
+    await tester.pumpAndSettle();
+    expect(store.dismissed, isTrue);
+    expect(find.textContaining('tap Share'), findsNothing);
+    expect(analytics.events.any((event) => event['event'] == 'install_prompt_dismissed'), isTrue);
+  });
+
+  testWidgets('cancelling the browser dialog counts as dismissal', (tester) async {
+    final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    final _FakeInstallPromptStore store = _FakeInstallPromptStore(
+      const InstallPromptEnvironment(
+        isIosShareBrowser: false,
+        hasInstallButton: true,
+        isStandalone: false,
+        wasDismissed: false,
+      ),
+      outcome: 'dismissed',
+    );
+    await _pumpHome(tester, _signedInFake(), extraOverrides: <Override>[
+      installPromptStoreProvider.overrideWithValue(store),
+      analyticsClientProvider.overrideWithValue(analytics),
+    ]);
+    await tester.pump();
+    await tester.tap(find.text('Install MYOS'));
+    await tester.pumpAndSettle();
+    expect(store.prompts, 1);
+    expect(store.dismissed, isTrue);
+    expect(analytics.events.any((event) => event['event'] == 'install_prompt_dismissed'), isTrue);
+  });
+
+  testWidgets('accepting the browser dialog hides the prompt and is tracked', (tester) async {
+    final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    final _FakeInstallPromptStore store = _FakeInstallPromptStore(
+      const InstallPromptEnvironment(
+        isIosShareBrowser: false,
+        hasInstallButton: true,
+        isStandalone: false,
+        wasDismissed: false,
+      ),
+      outcome: 'accepted',
+    );
+    await _pumpHome(tester, _signedInFake(), extraOverrides: <Override>[
+      installPromptStoreProvider.overrideWithValue(store),
+      analyticsClientProvider.overrideWithValue(analytics),
+    ]);
+    await tester.pump();
+    await tester.tap(find.text('Install MYOS'));
+    await tester.pumpAndSettle();
+    expect(store.prompts, 1);
+    expect(store.dismissed, isFalse);
+    expect(find.text('Install MYOS'), findsNothing);
+    expect(analytics.events.any((event) => event['event'] == 'install_prompt_accepted'), isTrue);
+  });
+
+  testWidgets('install events respect the analytics opt-out gate', (tester) async {
+    final FakeMyosApi fake = _signedInFake()..analyticsAllowed = false;
+    final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    final _FakeInstallPromptStore store = _FakeInstallPromptStore(
+      const InstallPromptEnvironment(
+        isIosShareBrowser: true,
+        hasInstallButton: false,
+        isStandalone: false,
+        wasDismissed: false,
+      ),
+    );
+    await _pumpHome(tester, fake, extraOverrides: <Override>[
+      installPromptStoreProvider.overrideWithValue(store),
+      analyticsClientProvider.overrideWithValue(analytics),
+    ]);
+    await tester.pump();
+    expect(analytics.events, isEmpty);
+  });
+
+  testWidgets('Arabic install hint is localized and app installation is tracked', (tester) async {
+    final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    final _FakeInstallPromptStore store = _FakeInstallPromptStore(
+      const InstallPromptEnvironment(
+        isIosShareBrowser: true,
+        hasInstallButton: false,
+        isStandalone: false,
+        wasDismissed: false,
+      ),
+    );
+    await _pumpHome(tester, _signedInFake(), languageCode: 'ar', extraOverrides: <Override>[
+      installPromptStoreProvider.overrideWithValue(store),
+      analyticsClientProvider.overrideWithValue(analytics),
+    ]);
+    await tester.pump();
+    expect(find.text('تثبيت MYOS: اضغط على مشاركة، ثم إضافة إلى الشاشة الرئيسية.'), findsOneWidget);
+    expect(Directionality.of(tester.element(find.text('الرئيسية'))), TextDirection.rtl);
+    store.fireInstalled();
+    expect(analytics.events.any((event) => event['event'] == 'app_installed'), isTrue);
+    expect(find.textContaining('tap Share'), findsNothing);
+  });
+
+  testWidgets('installation before Dart startup is consumed with no variant', (tester) async {
+    final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    final _FakeInstallPromptStore store = _FakeInstallPromptStore(
+      const InstallPromptEnvironment(
+        isIosShareBrowser: false,
+        hasInstallButton: false,
+        isStandalone: false,
+        wasDismissed: false,
+      ),
+    )..installedBeforeListener = true;
+    await _pumpHome(tester, _signedInFake(), extraOverrides: <Override>[
+      installPromptStoreProvider.overrideWithValue(store),
+      analyticsClientProvider.overrideWithValue(analytics),
+    ]);
+    await tester.pump();
+    expect(analytics.events.where((event) => event['event'] == 'app_installed'), hasLength(1));
+    expect(
+      (analytics.events.singleWhere((event) => event['event'] == 'app_installed')['properties']
+          as Map<String, Object>)['variant'],
+      'none',
+    );
+    expect(find.text('Install MYOS'), findsNothing);
+  });
+
   testWidgets(
       'Arabic Home labels use RTL while server program names stay as sent',
       (tester) async {

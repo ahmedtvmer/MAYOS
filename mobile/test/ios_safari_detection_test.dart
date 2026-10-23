@@ -43,7 +43,7 @@ void main() {
           'AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/125.0.6422.80 '
           'Mobile/15E148 Safari/604.1',
       iPadDesktop: false,
-      expected: false,
+      expected: true,
     ),
     (
       name: 'iOS Firefox',
@@ -51,7 +51,7 @@ void main() {
           'AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/116.0 '
           'Mobile/15E148 Safari/605.1.15',
       iPadDesktop: false,
-      expected: false,
+      expected: true,
     ),
     (
       name: 'iOS Edge',
@@ -59,7 +59,7 @@ void main() {
           'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 '
           'Mobile/15E148 Safari/604.1 EdgiOS/117.2045.65',
       iPadDesktop: false,
-      expected: false,
+      expected: true,
     ),
     (
       name: 'Google app',
@@ -185,7 +185,7 @@ void main() {
     test('${testCase.name} ${testCase.expected ? 'matches' : 'is excluded'}',
         () {
       expect(
-        isIosSafariUserAgent(
+        isIosShareBrowserUserAgent(
           testCase.userAgent,
           iPadDesktop: testCase.iPadDesktop,
         ),

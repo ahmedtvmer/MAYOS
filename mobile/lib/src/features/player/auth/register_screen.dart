@@ -91,7 +91,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen>
       title: copy.createAccount,
       lead: copy.registerLead,
       wallpaper: true,
-      showHomeScreenInstallHint: true,
       message: googleFailure != null
           ? AuthInlineNotice(message: copy.failureMessage(googleFailure!))
           : (_apiFailure != null

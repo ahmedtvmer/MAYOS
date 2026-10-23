@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:posthog_flutter/posthog_flutter.dart';
 
 import 'client_dimensions.dart';
+import 'install_prompt_store.dart';
 import 'posthog_web_setup_stub.dart'
     if (dart.library.js_interop) 'posthog_web_setup_web.dart';
 
@@ -39,6 +40,16 @@ abstract interface class AnalyticsClient {
 
   void workoutDraftDiscarded({required String workoutId});
 
+  void installPromptShown(InstallPromptVariant variant);
+
+  void installPromptAccepted(InstallPromptVariant variant);
+
+  void installPromptDismissed(InstallPromptVariant variant);
+
+  void appInstalled(InstallPromptVariant variant);
+
+  void appLaunched({required String displayMode});
+
   void reset();
 }
 
@@ -59,6 +70,21 @@ class NoOpAnalyticsClient implements AnalyticsClient {
 
   @override
   void workoutDraftDiscarded({required String workoutId}) {}
+
+  @override
+  void installPromptShown(InstallPromptVariant variant) {}
+
+  @override
+  void installPromptAccepted(InstallPromptVariant variant) {}
+
+  @override
+  void installPromptDismissed(InstallPromptVariant variant) {}
+
+  @override
+  void appInstalled(InstallPromptVariant variant) {}
+
+  @override
+  void appLaunched({required String displayMode}) {}
 
   @override
   void reset() {}
@@ -235,6 +261,43 @@ class PostHogAnalyticsClient implements AnalyticsClient {
             : Posthog().capture(eventName: event, properties: properties),
       ),
     );
+  }
+
+  @override
+  void installPromptShown(InstallPromptVariant variant) =>
+      _captureInstallEvent('install_prompt_shown', variant);
+
+  @override
+  void installPromptAccepted(InstallPromptVariant variant) =>
+      _captureInstallEvent('install_prompt_accepted', variant);
+
+  @override
+  void installPromptDismissed(InstallPromptVariant variant) =>
+      _captureInstallEvent('install_prompt_dismissed', variant);
+
+  @override
+  void appInstalled(InstallPromptVariant variant) =>
+      _captureInstallEvent('app_installed', variant);
+
+  void _captureInstallEvent(String event, InstallPromptVariant variant) {
+    _captureEvent(event, <String, Object>{'variant': variant.wireValue});
+  }
+
+  @override
+  void appLaunched({required String displayMode}) {
+    if (displayMode != 'browser' && displayMode != 'standalone') return;
+    _captureEvent('app_launched', <String, Object>{'display_mode': displayMode});
+  }
+
+  void _captureEvent(String event, Map<String, Object> properties) {
+    final Map<String, Object> allProperties = <String, Object>{
+      ..._commonDimensions,
+      ...properties,
+      if (_currentRole != null) 'role': _currentRole!,
+    };
+    unawaited(_run(() => _isWeb
+        ? capturePostHogWeb(event, allProperties)
+        : Posthog().capture(eventName: event, properties: allProperties)));
   }
 
   @override

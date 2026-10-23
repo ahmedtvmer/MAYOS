@@ -14,6 +14,68 @@ import 'support/fake_google_auth.dart';
 import 'support/fake_myos_api.dart';
 
 void main() {
+  testWidgets('web startup records one launch with its display mode', (tester) async {
+    final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    await tester.pumpWidget(authApp(
+      FakeMyosApi(),
+      InMemoryTokenStore(),
+      analytics: analytics,
+      extraOverrides: <Override>[
+        appDisplayModeProvider.overrideWithValue('standalone'),
+      ],
+    ));
+    for (int attempt = 0; attempt < 30 && analytics.events.isEmpty; attempt++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    await tester.pump(const Duration(seconds: 60));
+    final List<Map<String, Object>> launches = analytics.events
+        .where((Map<String, Object> event) => event['event'] == 'app_launched')
+        .toList();
+    expect(launches, hasLength(1));
+    expect(launches.single['properties'], <String, Object>{'display_mode': 'standalone'});
+  });
+
+  testWidgets('native startup does not record an app launch', (tester) async {
+    final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    await tester.pumpWidget(authApp(
+      FakeMyosApi(),
+      InMemoryTokenStore(),
+      analytics: analytics,
+      extraOverrides: <Override>[
+        appDisplayModeProvider.overrideWithValue(null),
+      ],
+    ));
+    for (int attempt = 0; attempt < 30; attempt++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    await tester.pump(const Duration(seconds: 60));
+    expect(analytics.events.where((event) => event['event'] == 'app_launched'), isEmpty);
+  });
+
+  testWidgets('opted-out web startup does not record an app launch', (tester) async {
+    final FakeMyosApi api = FakeMyosApi()
+      ..currentUsername = 'alice'
+      ..issuedToken = 'token-alice'
+      ..analyticsAllowed = false
+      ..profileExists = true;
+    final InMemoryTokenStore tokens = InMemoryTokenStore();
+    await tokens.save('token-alice');
+    final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+    await tester.pumpWidget(authApp(
+      api,
+      tokens,
+      analytics: analytics,
+      extraOverrides: <Override>[
+        appDisplayModeProvider.overrideWithValue('browser'),
+      ],
+    ));
+    for (int attempt = 0; attempt < 30; attempt++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    await tester.pump(const Duration(seconds: 60));
+    expect(analytics.events.where((event) => event['event'] == 'app_launched'), isEmpty);
+  });
+
   test('fake analytics records calls while disabled', () {
     final FakeAnalyticsClient analytics = FakeAnalyticsClient()
       ..setEnabled(false);

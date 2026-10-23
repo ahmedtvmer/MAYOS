@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/analytics_client.dart';
+import 'core/app_display_mode.dart';
 import 'core/app_mode.dart';
 import 'core/connectivity.dart';
 import 'core/display_language/controller.dart';
@@ -24,6 +25,9 @@ import 'features/player/auth/auth_controller.dart';
 import 'providers.dart';
 import 'router.dart';
 
+final Provider<String?> appDisplayModeProvider =
+    Provider<String?>((ref) => currentAppDisplayMode());
+
 class MyosApp extends ConsumerStatefulWidget {
   const MyosApp({super.key});
 
@@ -38,6 +42,7 @@ class _MyosAppState extends ConsumerState<MyosApp>
   String? _analyticsAccountId;
   String? _analyticsRole;
   bool _analyticsAllowed = true;
+  bool _analyticsLaunchTracked = false;
   late final ProviderSubscription<AuthState> _analyticsAuthSubscription;
   StreamSubscription<SharedProgramText>? _sharedTextSubscription;
 
@@ -254,13 +259,14 @@ class _MyosAppState extends ConsumerState<MyosApp>
                 ? 'coach'
                 : 'unknown';
     final bool allowed = account?.analyticsAllowed ?? true;
+    final AnalyticsClient analytics = ref.read(analyticsClientProvider);
     if (accountId == _analyticsAccountId &&
         role == _analyticsRole &&
         allowed == _analyticsAllowed) {
+      _recordAppLaunch(state, analytics);
       return;
     }
 
-    final AnalyticsClient analytics = ref.read(analyticsClientProvider);
     if (_analyticsAccountId != null && _analyticsAccountId != accountId) {
       analytics.reset();
     }
@@ -269,6 +275,18 @@ class _MyosAppState extends ConsumerState<MyosApp>
     _analyticsAccountId = accountId;
     _analyticsRole = role;
     _analyticsAllowed = allowed;
+    _recordAppLaunch(state, analytics);
+  }
+
+  void _recordAppLaunch(AuthState authState, AnalyticsClient analytics) {
+    if (_analyticsLaunchTracked || authState.status == AuthStatus.loading) {
+      return;
+    }
+    _analyticsLaunchTracked = true;
+    final String? displayMode = ref.read(appDisplayModeProvider);
+    if (displayMode != null) {
+      analytics.appLaunched(displayMode: displayMode);
+    }
   }
 
   ThemeData _responsiveOverlayTheme(

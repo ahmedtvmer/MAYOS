@@ -61,3 +61,39 @@
   }
 })();
 // --- Install bridge reserved for #456 ---
+(() => {
+  let installPrompt = null;
+  let installed = false;
+  const notify = () => window.dispatchEvent(new Event('myos-install-state'));
+  Object.defineProperty(window, 'MYOS_INSTALL_PROMPT_AVAILABLE', {
+    get: () => installPrompt !== null,
+  });
+  Object.defineProperty(window, 'MYOS_APP_INSTALLED', {
+    get: () => installed,
+  });
+  window.MYOS_CONSUME_APP_INSTALLED = () => {
+    const wasInstalled = installed;
+    installed = false;
+    return wasInstalled;
+  };
+  window.MYOS_PROMPT_INSTALL = async () => {
+    if (!installPrompt) return 'unavailable';
+    const prompt = installPrompt;
+    installPrompt = null;
+    notify();
+    await prompt.prompt();
+    const result = await prompt.userChoice;
+    return result?.outcome === 'accepted' ? 'accepted' : 'dismissed';
+  };
+  window.addEventListener('beforeinstallprompt', event => {
+    event.preventDefault();
+    installPrompt = event;
+    notify();
+  });
+  window.addEventListener('appinstalled', () => {
+    installed = true;
+    installPrompt = null;
+    notify();
+    window.dispatchEvent(new Event('myos-app-installed'));
+  });
+})();

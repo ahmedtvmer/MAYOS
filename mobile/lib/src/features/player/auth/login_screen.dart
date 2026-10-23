@@ -80,7 +80,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       title: copy.logIn,
       lead: copy.signInLead,
       wallpaper: true,
-      showHomeScreenInstallHint: true,
       message: googleFailure != null
           ? AuthInlineNotice(message: copy.failureMessage(googleFailure!))
           : (_error == null
