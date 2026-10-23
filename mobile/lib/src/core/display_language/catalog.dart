@@ -941,6 +941,9 @@ class MyosCopy {
   String get signInLead => isArabic
       ? 'سجّل الدخول لمواصلة التدريب من حيث توقفت.'
       : 'Sign in to keep training and pick up where you left off.';
+  String get inAppBrowserGoogleHint => isArabic
+      ? 'لتسجيل الدخول بحساب Google، افتح هذه الصفحة في متصفحك.'
+      : 'To sign in with Google, open this page in your browser.';
   String get createAccount => isArabic ? 'إنشاء حساب' : 'Create account';
   String get createAccountLink => isArabic ? 'إنشاء حساب' : 'Create an account';
   String get registerLead => isArabic
