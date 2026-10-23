@@ -23,6 +23,10 @@ From Greek μυός, meaning “muscle”; pronounced /ˈmeɪ.os/. The Latin wor
 _Arabic_: ميوس
 _Avoid_: مايوس (reads as مأيوس, “hopeless”)
 
+**Installed web app**:
+The web app after a person adds it to their phone's or computer's home screen, so it opens in its own window without browser controls. It is the same web app with the same account and data, not a third client beside Android and the browser; anything true of the web app is true of it, and it still needs a connection to work.
+_Avoid_: PWA (in product copy), native app
+
 **Account**:
 The identity a person uses to access MYOS. An account can have player and coach capabilities at the same time.
 
