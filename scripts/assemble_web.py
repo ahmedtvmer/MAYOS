@@ -8,6 +8,7 @@ import re
 import shutil
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -164,14 +165,40 @@ def render_redirects(routes: list[str]) -> list[str]:
 
 def _scoped_headers(headers: Path) -> str:
     content = headers.read_text(encoding="utf-8")
-    return re.sub(
+    content = re.sub(
         r"(?m)^(\s*)/(assets|canvaskit)/(\*)(\s*)$",
         r"\1/app/\2/\3\4",
         content,
     )
+    return re.sub(r"(?m)^(\s*)/(service-worker\.js|offline\.html)(\s*)$",
+                  r"\1/app/\2\3", content)
+
+
+def assert_service_worker_safe(worker_source: str, api_origin: str) -> None:
+    """Reject a generated worker that precaches account/API or HTML documents."""
+    parsed_api = urlsplit(api_origin)
+    origin = f"{parsed_api.scheme}://{parsed_api.netloc}" if parsed_api.netloc else api_origin.rstrip("/")
+    if origin and origin in worker_source:
+        raise ValueError("generated service worker references the API origin")
+    entries = re.findall(r"[\"']?url[\"']?\s*:\s*[\"']([^\"']+)", worker_source)
+    if any(Path(url.split("?", 1)[0]).name.lower() == "index.html" for url in entries):
+        raise ValueError("generated service worker precaches index.html")
+    if any(
+        url.lower().startswith(("canvaskit/skwasm", "canvaskit/wimp", "canvaskit/webparagraph/"))
+        or url.lower().endswith(".symbols")
+        or Path(url.split("?", 1)[0]).name.lower() == "notices"
+        for url in entries
+    ):
+        raise ValueError("generated service worker precaches excluded CanvasKit or debug assets")
 
 
 def assemble(flutter_build: Path, landing: Path, output: Path) -> None:
+    worker = flutter_build / "service-worker.js"
+    if worker.exists():
+        assert_service_worker_safe(
+            worker.read_text(encoding="utf-8"),
+            os.environ.get("MAYOS_API_BASE_URL", "https://mayos-api.fly.dev"),
+        )
     routes = parse_router_routes(ROUTER.read_text(encoding="utf-8"))
     redirects = render_redirects(routes)
     if output.exists():

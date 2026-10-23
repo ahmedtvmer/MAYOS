@@ -1,7 +1,7 @@
 # Cloudflare Pages response headers for the MYOS web app (issues #129, #130; ADR 047/048).
 # The API origin below must match MAYOS_API_BASE_URL in the deploy build.
 # The CSP is only correct for a build made with --no-web-resources-cdn
-# (self-hosted CanvasKit, no gstatic.com) and --pwa-strategy=none (see scripts/deploy_web.sh).
+# (self-hosted CanvasKit, no gstatic.com); Workbox supplies the worker while Flutter's worker stays disabled.
 # Never set Cross-Origin-Opener-Policy: same-origin: it breaks Google sign-in popups.
 
 /*
@@ -21,3 +21,8 @@
   Cache-Control: public, max-age=86400
 /canvaskit/*
   Cache-Control: public, max-age=86400
+
+/service-worker.js
+  Cache-Control: no-cache
+/offline.html
+  Cache-Control: no-cache

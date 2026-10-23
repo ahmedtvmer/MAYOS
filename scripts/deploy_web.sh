@@ -58,8 +58,13 @@ defines=(--dart-define="MAYOS_API_BASE_URL=$api_url")
 [[ -n "${GOOGLE_WEB_CLIENT_ID:-}" ]] && defines+=(--dart-define="GOOGLE_WEB_CLIENT_ID=$GOOGLE_WEB_CLIENT_ID")
 [[ -n "${POSTHOG_CLIENT_KEY:-}" ]] && defines+=(--dart-define="POSTHOG_CLIENT_KEY=$POSTHOG_CLIENT_KEY")
 
-# Self-hosted CanvasKit and no service worker keep the CSP strict and reloads predictable.
+# Self-hosted CanvasKit and Workbox's scoped worker keep the CSP strict and reloads predictable.
 flutter build web --release --base-href /app/ --no-web-resources-cdn --pwa-strategy=none "${defines[@]}"
+
+# Workbox owns the app worker; Flutter's deprecated worker remains disabled.
+cp web/offline.html build/web/offline.html
+cp web/offline.js build/web/offline.js
+npx --yes workbox-cli@7.3.0 generateSW web/workbox-config.cjs
 
 pages_output="build/pages"
 MAYOS_API_BASE_URL="$api_url" \
