@@ -127,8 +127,11 @@ def api(tmp_path: Path, monkeypatch):
     cat_conn.execute(
         "INSERT INTO exercises (id, name, body_part, target_muscle) VALUES"
         " ('sq', 'Squat', 'Upper Legs', 'Quads'), ('bp', 'Bench Press', 'Chest', 'Chest'),"
-        " ('row', 'Row', 'Back', 'Back');"
+        " ('row', 'Row', 'Back', 'Back'),"
+        " ('band_pull_apart', 'Band Pull Apart', 'Shoulders', 'Shoulders'),"
+        " ('incline_bp', 'Incline Bench Press', 'Chest', 'Chest');"
     )
+    cat_conn.execute("UPDATE exercises SET equipment = 'Band' WHERE id = 'band_pull_apart'")
     cat_conn.commit()
     cat_conn.close()
     db = DatabaseManager(
@@ -2018,6 +2021,104 @@ def test_program_draft_preserves_fractional_rir_as_target_rpe(api):
 
     assert published.status_code == 200, published.text
     assert published.json()["days"][0]["exercises"][0]["target_rpe"] == 8.5
+
+
+def test_program_publish_rejects_foreign_private_warmup_without_disclosing_name(api):
+    client, db, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+    other_headers = _make_coach(client, db, "private-owner")
+    other_account_id = _subject(other_headers["Authorization"].removeprefix("Bearer "))
+    private = db.create_coach_exercise(
+        other_account_id,
+        CoachExerciseCreate(name="Never disclose this private warmup"),
+    )
+    draft = _one_day_draft()
+    draft["days"][0]["warmup_exercises"] = [
+        {
+            "exercise_id": private["id"],
+            "exercise_name": "Client supplied label",
+            "sets": 2,
+            "reps": 10,
+            "rest_seconds": 30,
+        }
+    ]
+    path = _program_draft_path(assignment_id)
+    created = client.post(path, headers=coach_headers, json=draft)
+    assert created.status_code == 200, created.text
+
+    published = client.post(f"{path}/publish", headers=coach_headers)
+
+    assert published.status_code == 400, published.text
+    assert "unknown_exercise" in {issue["code"] for issue in published.json()["detail"]["errors"]}
+    assert "Never disclose this private warmup" not in published.text
+
+
+def test_program_publish_rejects_foreign_private_substitute_without_disclosing_name(api):
+    client, db, _ = api
+    coach_headers, _, assignment_id, _, _ = _assigned_player(api)
+    other_headers = _make_coach(client, db, "substitute-owner")
+    other_account_id = _subject(other_headers["Authorization"].removeprefix("Bearer "))
+    private = db.create_coach_exercise(
+        other_account_id,
+        CoachExerciseCreate(name="Never disclose this private substitute"),
+    )
+    draft = _one_day_draft()
+    draft["days"][0]["exercises"][0]["suggested_substitutes"] = [
+        {"exercise_id": private["id"], "exercise_name": "Client supplied label"}
+    ]
+    path = _program_draft_path(assignment_id)
+    created = client.post(path, headers=coach_headers, json=draft)
+    assert created.status_code == 200, created.text
+
+    published = client.post(f"{path}/publish", headers=coach_headers)
+
+    assert published.status_code == 400, published.text
+    assert "unknown_exercise" in {issue["code"] for issue in published.json()["detail"]["errors"]}
+    assert "Never disclose this private substitute" not in published.text
+
+
+@pytest.mark.parametrize("reference_type", ["warmup", "substitute"])
+def test_program_publish_keeps_own_private_auxiliary_exercise_name(api, reference_type):
+    client, db, _ = api
+    coach_headers, player_headers, assignment_id, coach_account_id, _ = _assigned_player(api)
+    private = db.create_coach_exercise(
+        coach_account_id, CoachExerciseCreate(name="Coach's own auxiliary movement")
+    )
+    draft = _one_day_draft()
+    if reference_type == "warmup":
+        draft["days"][0]["warmup_exercises"] = [
+            {
+                "exercise_id": private["id"],
+                "exercise_name": "Stale label",
+                "sets": 2,
+                "reps": 10,
+                "rest_seconds": 30,
+            }
+        ]
+    else:
+        draft["days"][0]["exercises"][0]["suggested_substitutes"] = [
+            {"exercise_id": private["id"], "exercise_name": "Stale label"}
+        ]
+    path = _program_draft_path(assignment_id)
+    created = client.post(path, headers=coach_headers, json=draft)
+    assert created.status_code == 200, created.text
+
+    published = client.post(f"{path}/publish", headers=coach_headers)
+
+    assert published.status_code == 200, published.text
+    day = published.json()["days"][0]
+    if reference_type == "warmup":
+        assert day["warmup_exercises"][0]["exercise_name"] == private["name"]
+    else:
+        assert day["exercises"][0]["suggested_substitutes"][0]["exercise_name"] == private["name"]
+    active_day = client.get("/programs/active", headers=player_headers).json()["days"][0]
+    if reference_type == "warmup":
+        assert active_day["warmup_exercises"][0]["exercise_name"] == private["name"]
+    else:
+        assert (
+            active_day["exercises"][0]["suggested_substitutes"][0]["exercise_name"]
+            == private["name"]
+        )
 
 
 def test_program_draft_keeps_exercise_order_through_save_and_publish(api):
