@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import sqlite3
+import zlib
 import zipfile
 from pathlib import Path
 
@@ -2445,6 +2446,147 @@ def test_xlsx_file_and_row_limits_and_corrupt_workbooks_are_clean_errors(api):
     )
     assert too_many_tabs.status_code == 413
     assert too_many_tabs.json()["message_code"] == "program_import.too_many_tabs.v1"
+
+
+def test_xlsx_decompressed_budget_rejects_before_openpyxl(api, monkeypatch):
+    from service import program_import
+
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db)
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("xl/sharedStrings.xml", "x" * (21 * 1024 * 1024))
+    assert len(payload.getvalue()) <= 1024 * 1024
+    reached_openpyxl = False
+
+    def unexpected_load(*args, **kwargs):
+        nonlocal reached_openpyxl
+        reached_openpyxl = True
+        raise AssertionError("openpyxl must not parse an over-budget workbook")
+
+    monkeypatch.setattr(program_import, "load_workbook", unexpected_load)
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("bomb.xlsx", payload.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    assert response.status_code == 400
+    assert response.json()["message_code"] == "program_import.file_invalid.v1"
+    assert reached_openpyxl is False
+
+
+def test_xlsx_decompressed_budget_does_not_trust_zipinfo_size(api, monkeypatch):
+    from service import program_import
+
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db)
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("xl/sharedStrings.xml", "x" * (21 * 1024 * 1024))
+    # Match the central directory's CRC to its declared one-byte prefix.
+    raw = bytearray(payload.getvalue())
+    central = raw.find(b"PK\x01\x02")
+    assert central >= 0
+    raw[central + 16:central + 20] = zlib.crc32(b"x").to_bytes(4, "little")
+    raw[central + 24:central + 28] = (1).to_bytes(4, "little")
+    reached_openpyxl = False
+
+    def unexpected_load(*args, **kwargs):
+        nonlocal reached_openpyxl
+        reached_openpyxl = True
+        raise AssertionError("openpyxl must not parse an over-budget workbook")
+
+    monkeypatch.setattr(program_import, "load_workbook", unexpected_load)
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("forged.xlsx", bytes(raw), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    assert response.status_code == 400
+    assert response.json()["message_code"] == "program_import.file_invalid.v1"
+    assert reached_openpyxl is False
+
+
+def test_xlsx_total_decompressed_budget_spans_members(api, monkeypatch):
+    from service import program_import
+
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db)
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for index in range(21):
+            archive.writestr(f"xl/member-{index}.xml", "x" * (1024 * 1024))
+    reached_openpyxl = False
+
+    def unexpected_load(*args, **kwargs):
+        nonlocal reached_openpyxl
+        reached_openpyxl = True
+        raise AssertionError("openpyxl must not parse an over-budget workbook")
+
+    monkeypatch.setattr(program_import, "load_workbook", unexpected_load)
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("many-members.xlsx", payload.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    assert response.status_code == 400
+    assert response.json()["message_code"] == "program_import.file_invalid.v1"
+    assert reached_openpyxl is False
+
+
+def test_xlsx_member_count_cap_rejects_before_openpyxl(api, monkeypatch):
+    from service import program_import
+    from service.program_import_constants import MAX_PROGRAM_IMPORT_XLSX_MEMBERS
+
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db)
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w", compression=zipfile.ZIP_STORED) as archive:
+        for index in range(MAX_PROGRAM_IMPORT_XLSX_MEMBERS + 1):
+            archive.writestr(f"xl/member-{index}.xml", b"")
+    reached_openpyxl = False
+
+    def unexpected_load(*args, **kwargs):
+        nonlocal reached_openpyxl
+        reached_openpyxl = True
+        raise AssertionError("openpyxl must not parse an over-member workbook")
+
+    monkeypatch.setattr(program_import, "load_workbook", unexpected_load)
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("too-many-members.xlsx", payload.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    assert response.status_code == 400
+    assert response.json()["message_code"] == "program_import.file_invalid.v1"
+    assert reached_openpyxl is False
+
+
+def test_xlsx_duplicate_member_names_reject_before_openpyxl(api, monkeypatch):
+    from service import program_import
+
+    client, db = api
+    coach_headers, _, assignment_id = _assignment(client, db)
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("xl/sharedStrings.xml", b"first")
+        archive.writestr("xl/sharedStrings.xml", b"second")
+    reached_openpyxl = False
+
+    def unexpected_load(*args, **kwargs):
+        nonlocal reached_openpyxl
+        reached_openpyxl = True
+        raise AssertionError("openpyxl must not parse duplicate ZIP members")
+
+    monkeypatch.setattr(program_import, "load_workbook", unexpected_load)
+    response = client.post(
+        f"/coach/assignments/{assignment_id}/program-import",
+        headers=coach_headers,
+        files={"file": ("duplicate-members.xlsx", payload.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+    )
+    assert response.status_code == 400
+    assert response.json()["message_code"] == "program_import.file_invalid.v1"
+    assert reached_openpyxl is False
 
 
 def test_invalid_day_does_not_conflict_or_rename_other_rows(api):
