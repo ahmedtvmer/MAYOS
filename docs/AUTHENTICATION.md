@@ -146,6 +146,8 @@ flowchart LR
 
 Tokens are generated with `secrets.token_urlsafe(32)`; **only the SHA-256 hash is stored**. TTL is `RESET_TOKEN_TTL_MINUTES` (default **30**, clamped 5–120). Consumption is atomic (a conditional `UPDATE … WHERE used_at IS NULL` under the catalog lock), so a token can never be redeemed twice, even concurrently.
 
+Password changes, reset redemption, owner CLI password replacement, and verified recovery-address changes invalidate outstanding reset links in the catalog. Token and session revocation commits before the separate ledger password write; a per-account lock orders password changes and reset redemptions so a link already in progress cannot overwrite a newly chosen password.
+
 ```mermaid
 sequenceDiagram
     autonumber

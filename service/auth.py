@@ -13,6 +13,7 @@ import bcrypt
 
 from service import acquisition
 from service._base import ledger_scope
+from service.credential_locks import account_credential_lock
 from service.coach import (
     DEFAULT_CAPACITY,
     GENERIC_NEW_ACCOUNT_INVITE_ERROR,
@@ -225,20 +226,29 @@ def change_password(
     account = db.get_account(account_id)
     if not db.is_live_account(account) or not account["is_player"] or not db.ledger_exists(account["ledger_id"]):
         return {"ok": False, "error": "Trainee ledger not found."}
-    with ledger_scope(db, ledger, account["ledger_id"]) as handle:
-        stored = handle.get_password_hash()
-        if stored is None:
-            return {"ok": False, "error": "No password is set on this account.", "code": "password_missing"}
-        if not isinstance(current_password, str) or not verify_password(current_password, stored):
-            return {"ok": False, "error": "Current password is incorrect.", "code": "bad_current"}
-        try:
-            validate_password(new_password)
-        except ValueError as exc:
-            return {"ok": False, "error": str(exc), "code": "weak_new"}
-        if verify_password(new_password, stored):
-            return {"ok": False, "error": "New password must differ from the current one.", "code": "same_as_current"}
-        handle.set_password_hash(hash_password(new_password))
-    new_version = db.bump_account_session_epoch(account["account_id"])
+    with account_credential_lock(account["account_id"]):
+        with ledger_scope(db, ledger, account["ledger_id"]) as handle:
+            stored = handle.get_password_hash()
+            if stored is None:
+                return {"ok": False, "error": "No password is set on this account.", "code": "password_missing"}
+            if not isinstance(current_password, str) or not verify_password(current_password, stored):
+                return {"ok": False, "error": "Current password is incorrect.", "code": "bad_current"}
+            try:
+                clean_new_password = validate_password(new_password)
+            except ValueError as exc:
+                return {"ok": False, "error": str(exc), "code": "weak_new"}
+            if verify_password(clean_new_password, stored):
+                return {"ok": False, "error": "New password must differ from the current one.", "code": "same_as_current"}
+            new_password_hash = hash_password(clean_new_password)
+            with db.catalog_transaction(immediate=True):
+                if handle.get_password_hash() != stored:
+                    return {"ok": False, "error": "Current password is incorrect.", "code": "bad_current"}
+                now_iso = datetime.now(UTC).isoformat()
+                db.invalidate_unused_reset_tokens(account["account_id"], now_iso)
+                new_version = db.bump_account_session_epoch(account["account_id"])
+            if new_version is None:
+                return {"ok": False, "error": "Trainee ledger not found."}
+            handle.set_password_hash(new_password_hash)
     return {
         "ok": True,
         "trainee_id": account["ledger_id"],

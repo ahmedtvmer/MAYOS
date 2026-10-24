@@ -203,7 +203,7 @@ class RegistryRecoveryMixin:
             )
             if cursor.rowcount != 1:
                 return None
-            self.catalog_conn.commit()
+            self._commit_catalog()
             return account_id
 
     def prune_reset_tokens(self, now_iso: str) -> int:
@@ -214,7 +214,7 @@ class RegistryRecoveryMixin:
                 "DELETE FROM password_reset_tokens WHERE expires_at < ? OR used_at IS NOT NULL",
                 (now_iso,),
             )
-            self.catalog_conn.commit()
+            self._commit_catalog()
             return cursor.rowcount
 
     def _store_email_verification_code(self, issue: EmailVerificationIssue) -> bool:
@@ -330,7 +330,12 @@ class RegistryRecoveryMixin:
                 return False, None
             if not self._claim_email_verification_code(code_id, check.checked_at):
                 return False, None
-            return self._finish_email_verification(check, code_id)
+            result = self._finish_email_verification(check, code_id)
+            if result[0] and check.identity.purpose == RECOVERY_EMAIL_CHANGE_PURPOSE:
+                self.invalidate_unused_reset_tokens(
+                    check.identity.account_id, check.checked_at
+                )
+            return result
 
     def _finish_email_verification(
         self, check: EmailVerificationCheck, code_id: str

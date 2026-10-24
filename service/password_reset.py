@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 
 from service import audit_log, auth as auth_service
+from service.credential_locks import account_credential_lock
 from service._tokens import hash_token
 from service.email_hash_keys import derive_email_hash_key
 from service.email_sender import (
@@ -146,9 +147,8 @@ def owner_send_reset_email(db: Any, account_id: str, actor: str, source_ip: str 
         )
         return {"outcome": ineligible_outcome}
 
-    try:
-        raw_token, _ = _new_reset_token(db, account_id, reset_ttl())
-    except Exception:
+    raw_token = _store_requested_reset_token(db, account_id, email, None)
+    if raw_token is None:
         logger.error("Owner password-reset token storage failed")
         write_owner_audit(
             db,
@@ -176,7 +176,7 @@ def owner_issue_reset_link(db: Any, account_id: str, actor: str, source_ip: str 
     now = datetime.now(UTC)
     expires_at = now + admin_reset_link_ttl()
     raw_token = secrets.token_urlsafe(32)
-    with db.catalog_transaction():
+    with db.catalog_transaction(immediate=True):
         db.invalidate_unused_reset_tokens(account_id, now.isoformat())
         db.store_reset_token(hash_token(raw_token), account_id, expires_at.isoformat())
     db.prune_reset_tokens(now.isoformat())
@@ -211,16 +211,24 @@ def owner_set_password(
 
 
 def _write_and_revoke_owner_password(db: Any, ledger_id: str, new_password: str, account: dict[str, Any] | None) -> int:
-    with db.open_ledger(ledger_id) as ledger:
-        ledger.set_password_hash(auth_service.hash_password(new_password))
-        ledger_epoch = ledger.bump_token_version()
-        if account is None:
-            epoch = ledger_epoch
-        else:
-            epoch = db.bump_account_session_epoch(account["account_id"])
-            if epoch is None:
-                raise OwnerPasswordError("error: could not advance the account registry epoch; sessions were NOT revoked.")
-        ledger.prune_revoked_tokens(datetime.now(UTC).isoformat())
+    lock_key = account["account_id"] if account is not None else ledger_id
+    with account_credential_lock(lock_key):
+        password_hash = auth_service.hash_password(new_password)
+        with db.open_ledger(ledger_id) as ledger:
+            if account is None:
+                ledger.set_password_hash(password_hash)
+                epoch = ledger.bump_token_version()
+            else:
+                with db.catalog_transaction(immediate=True):
+                    epoch = db.bump_account_session_epoch(account["account_id"])
+                    if epoch is None:
+                        raise OwnerPasswordError("error: could not advance the account registry epoch; sessions were NOT revoked.")
+                    db.invalidate_unused_reset_tokens(
+                        account["account_id"], datetime.now(UTC).isoformat()
+                    )
+                ledger.set_password_hash(password_hash)
+                ledger.bump_token_version()
+            ledger.prune_revoked_tokens(datetime.now(UTC).isoformat())
     return epoch
 
 
@@ -445,15 +453,21 @@ def _claim_no_account_notice(db: Any, email_hash: str, now: datetime) -> bool:
 def _store_requested_reset_token(
     db: Any,
     account_id: str,
+    expected_email: str,
     token_factory: Callable[[], str] | None,
 ) -> str | None:
     try:
-        if token_factory is None:
-            raw_token, _ = _new_reset_token(db, account_id, reset_ttl())
-        else:
-            raw_token = token_factory()
-            expires_at = (datetime.now(UTC) + reset_ttl()).isoformat()
-            db.store_reset_token(hash_token(raw_token), account_id, expires_at)
+        with db.catalog_transaction(immediate=True):
+            account = _live_reset_account(db, account_id)
+            current_email, ineligible_outcome = verified_recovery_email(db, account_id)
+            if account is None or ineligible_outcome or current_email != expected_email:
+                return None
+            if token_factory is None:
+                raw_token, _ = _new_reset_token(db, account_id, reset_ttl())
+            else:
+                raw_token = token_factory()
+                expires_at = (datetime.now(UTC) + reset_ttl()).isoformat()
+                db.store_reset_token(hash_token(raw_token), account_id, expires_at)
     except Exception:
         logger.exception("Failed to store password-reset token for %s", account_id)
         return None
@@ -525,7 +539,7 @@ def request_password_reset(
         return generic_response
     if not db.is_recovery_email_verified(account["account_id"]):
         return generic_response
-    raw_token = _store_requested_reset_token(db, account["account_id"], token_factory)
+    raw_token = _store_requested_reset_token(db, account["account_id"], normalized, token_factory)
     if raw_token is None:
         return generic_response
     _send_requested_reset_email(normalized, account, raw_token, mailer)
@@ -541,15 +555,34 @@ def reset_password_with_token(db: Any, token: str, new_password: str) -> dict[st
         auth_service.validate_password(new_password)
     except ValueError as exc:
         return {"ok": False, "error": str(exc), "code": "weak_new"}
-    now_iso = datetime.now(UTC).isoformat()
-    recovery_key = db.consume_reset_token(hash_token(token), now_iso)
-    if recovery_key is None:
+    candidate_checked_at = datetime.now(UTC).isoformat()
+    token_digest = hash_token(token)
+    with db.catalog_locked() as conn:
+        row = conn.execute(
+            "SELECT trainee_id FROM password_reset_tokens"
+            " WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?",
+            (token_digest, candidate_checked_at),
+        ).fetchone()
+    if row is None:
         return {"ok": False, "error": GENERIC_TOKEN_ERROR}
-    account = _live_player_account(db, recovery_key)
-    if account is None or not db.ledger_exists(account["ledger_id"]):
+    candidate_account_id = str(row[0])
+    candidate_account = _live_player_account(db, candidate_account_id)
+    if candidate_account is None or not db.ledger_exists(candidate_account["ledger_id"]):
         return {"ok": False, "error": GENERIC_TOKEN_ERROR}
-    with db.open_ledger(account["ledger_id"]) as ledger:
-        ledger.set_password_hash(auth_service.hash_password(new_password))
-    db.bump_account_session_epoch(account["account_id"])
-    db.prune_reset_tokens(now_iso)
+    with account_credential_lock(candidate_account_id):
+        new_password_hash = auth_service.hash_password(new_password)
+        with db.open_ledger(candidate_account["ledger_id"]) as ledger:
+            with db.catalog_transaction(immediate=True):
+                now_iso = datetime.now(UTC).isoformat()
+                recovery_key = db.consume_reset_token(token_digest, now_iso)
+                if recovery_key != candidate_account_id:
+                    return {"ok": False, "error": GENERIC_TOKEN_ERROR}
+                account = _live_player_account(db, recovery_key)
+                if account is None or account["ledger_id"] != candidate_account["ledger_id"]:
+                    return {"ok": False, "error": GENERIC_TOKEN_ERROR}
+                if db.bump_account_session_epoch(account["account_id"]) is None:
+                    return {"ok": False, "error": GENERIC_TOKEN_ERROR}
+                db.invalidate_unused_reset_tokens(account["account_id"], now_iso)
+                db.prune_reset_tokens(now_iso)
+            ledger.set_password_hash(new_password_hash)
     return {"ok": True, "trainee_id": account["ledger_id"]}
