@@ -5,6 +5,9 @@ import datetime as dt
 import io
 import math
 import re
+import struct
+import zipfile
+import zlib
 from collections.abc import Callable
 from bisect import bisect_right
 from dataclasses import dataclass, field, replace
@@ -42,6 +45,9 @@ from service.program_import_constants import (
     MAX_PROGRAM_IMPORT_DAY_NAME_LENGTH,
     MAX_PROGRAM_IMPORT_EXERCISE_NAME_LENGTH,
     MAX_PROGRAM_IMPORT_FILE_BYTES,
+    MAX_PROGRAM_IMPORT_XLSX_MEMBER_BYTES,
+    MAX_PROGRAM_IMPORT_XLSX_MEMBERS,
+    MAX_PROGRAM_IMPORT_XLSX_TOTAL_BYTES,
     MAX_PROGRAM_IMPORT_TEXT_CHARS,
     MAX_PROGRAM_IMPORT_CELLS,
     MAX_PROGRAM_IMPORT_REST_SECONDS,
@@ -455,6 +461,7 @@ def _detect_program_reader(
         raise ProgramImportError("program_import.file_type.v1", "Upload an XLSX, CSV, or TXT file.")
     workbook = None
     try:
+        _validate_xlsx_decompressed_size(payload)
         workbook = load_workbook(io.BytesIO(payload), read_only=True, data_only=True)
         return _detect_xlsx_reader(workbook, selected_tab)
     except ProgramImportError:
@@ -466,6 +473,107 @@ def _detect_program_reader(
     finally:
         if workbook is not None:
             workbook.close()
+
+
+def _validate_xlsx_decompressed_size(payload: bytes) -> None:
+    """Bound actual ZIP output before openpyxl can read workbook XML."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+            _validate_xlsx_members(payload, archive.infolist())
+    except Exception as error:
+        raise ProgramImportError(
+            "program_import.file_invalid.v1", "The XLSX file could not be read."
+        ) from error
+
+
+def _validate_xlsx_members(payload: bytes, members: list[zipfile.ZipInfo]) -> None:
+    if len(members) > MAX_PROGRAM_IMPORT_XLSX_MEMBERS:
+        raise ValueError("too many ZIP members")
+    names = [member.filename for member in members]
+    if len(names) != len(set(names)):
+        raise ValueError("duplicate ZIP member names")
+    total = 0
+    for member in members:
+        total += _validate_xlsx_member(payload, member, total)
+
+
+def _validate_xlsx_member(
+    payload: bytes, member: zipfile.ZipInfo, prior_total: int
+) -> int:
+    if member.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED):
+        raise ValueError("unsupported ZIP compression method")
+    budget = min(
+        MAX_PROGRAM_IMPORT_XLSX_MEMBER_BYTES,
+        MAX_PROGRAM_IMPORT_XLSX_TOTAL_BYTES - prior_total,
+    )
+    if member.file_size > budget:
+        raise ValueError("ZIP member exceeds decompressed size budget")
+    start, end = _xlsx_member_data_range(payload, member)
+    actual_size, actual_crc = _measure_xlsx_member(
+        payload[start:end], member.compress_type, budget
+    )
+    if actual_size != member.file_size or actual_crc != member.CRC:
+        raise ValueError("ZIP member metadata does not match its data")
+    return actual_size
+
+
+def _xlsx_member_data_range(payload: bytes, member: zipfile.ZipInfo) -> tuple[int, int]:
+    header_offset = member.header_offset
+    if header_offset + 30 > len(payload):
+        raise ValueError("truncated ZIP local header")
+    fields = struct.unpack_from("<IHHHHHIIIHH", payload, header_offset)
+    signature, flags, method = fields[0], fields[2], fields[3]
+    filename_length, extra_length = fields[-2:]
+    if (
+        signature != 0x04034B50
+        or method != member.compress_type
+        or flags & 1
+        or member.flag_bits & 1
+    ):
+        raise ValueError("invalid or encrypted ZIP local header")
+    data_start = header_offset + 30 + filename_length + extra_length
+    data_end = data_start + member.compress_size
+    if data_start > len(payload) or data_end > len(payload):
+        raise ValueError("truncated ZIP member data")
+    return data_start, data_end
+
+
+def _measure_xlsx_member(
+    compressed: bytes, compression_type: int, output_budget: int
+) -> tuple[int, int]:
+    if compression_type == zipfile.ZIP_STORED:
+        actual_size = len(compressed)
+        if actual_size > output_budget:
+            raise ValueError("ZIP member exceeds decompressed size budget")
+        return actual_size, zlib.crc32(compressed)
+
+    return _measure_deflated_xlsx_member(compressed, output_budget)
+
+
+def _measure_deflated_xlsx_member(
+    compressed: bytes, output_budget: int
+) -> tuple[int, int]:
+    decompressor = zlib.decompressobj(-15)
+    actual_size = 0
+    checksum = 0
+    for offset in range(0, len(compressed), 64 * 1024):
+        pending = compressed[offset:offset + 64 * 1024]
+        while pending:
+            chunk = decompressor.decompress(
+                pending, min(64 * 1024, output_budget - actual_size + 1)
+            )
+            actual_size += len(chunk)
+            if actual_size > output_budget:
+                raise ValueError("ZIP member exceeds decompressed size budget")
+            checksum = zlib.crc32(chunk, checksum)
+            if decompressor.unused_data:
+                raise ValueError("trailing data after ZIP member stream")
+            pending = decompressor.unconsumed_tail
+        if decompressor.eof and offset + 64 * 1024 < len(compressed):
+            raise ValueError("trailing data after ZIP member stream")
+    if not decompressor.eof:
+        raise ValueError("incomplete ZIP member stream")
+    return actual_size, checksum
 
 
 def _csv_header(payload: bytes) -> list[str]:
@@ -2631,6 +2739,7 @@ def _freeform_cell_grid(
         raise ProgramImportError("program_import.file_type.v1", "Upload an XLSX or CSV file.")
     workbook = None
     try:
+        _validate_xlsx_decompressed_size(payload)
         workbook = load_workbook(io.BytesIO(payload), read_only=True, data_only=True)
         return _xlsx_cell_grid(workbook, selected_tab)
     except ProgramImportError:
@@ -2717,6 +2826,7 @@ def _cell_limit_error() -> ProgramImportError:
 def _read_xlsx(payload: bytes, selected_tab: str | None) -> ReaderOutput:
     workbook = None
     try:
+        _validate_xlsx_decompressed_size(payload)
         workbook = load_workbook(io.BytesIO(payload), read_only=True, data_only=True)
         return _read_selected_xlsx(workbook, selected_tab)
     except ProgramImportError:
