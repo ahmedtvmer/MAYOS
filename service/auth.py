@@ -179,9 +179,15 @@ def _record_password_login_outcome(db: Any, account_id: str, password_matches: b
         if password_matches:
             db.catalog_conn.execute("DELETE FROM account_login_failures WHERE account_id = ?", (account_id,))
             return True
-        inside_window = bool(row and (now - datetime.fromisoformat(row[0])).total_seconds() < window)
+        # An expired cooldown starts a fresh window, so a cooldown shorter than
+        # the window cannot leave the count past the threshold.
+        inside_window = bool(
+            row
+            and not row[2]
+            and (now - datetime.fromisoformat(row[0])).total_seconds() < window
+        )
         failure_count = int(row[1]) + 1 if inside_window else 1
-        locked_until = (now + timedelta(seconds=cooldown)).isoformat() if failure_count == threshold else None
+        locked_until = (now + timedelta(seconds=cooldown)).isoformat() if failure_count >= threshold else None
         db.catalog_conn.execute(
             "INSERT INTO account_login_failures(account_id, failed_at, failure_count, locked_until) "
             "VALUES(?, ?, ?, ?) ON CONFLICT(account_id) DO UPDATE SET "
@@ -209,8 +215,13 @@ def login_player(db: Any, username: str, password: str) -> dict[str, Any]:
         return {"ok": False, "error": INVALID_CREDENTIALS}
     # The first lookup supplies the immutable lock key; refresh the account and
     # read the epoch again only after entering that account's credential lock.
-    with account_credential_lock(account["account_id"], db.catalog_path):
+    locked_account_id = account["account_id"]
+    with account_credential_lock(locked_account_id, db.catalog_path):
         account = db.get_active_account_by_username(clean_id)
+        # A released and re-registered username is a different account; never
+        # verify it under the previous account's lock.
+        if account is not None and account["account_id"] != locked_account_id:
+            account = None
         if account is None or not _verify_account_password_locked(db, account, password):
             return {"ok": False, "error": INVALID_CREDENTIALS}
         account = db.get_account(account["account_id"])

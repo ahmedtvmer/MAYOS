@@ -469,6 +469,51 @@ def test_failures_spaced_across_lockout_window_do_not_accumulate(api, monkeypatc
     assert client.post("/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}).status_code == 200
 
 
+def test_lockout_rearms_after_a_cooldown_shorter_than_the_window(api, monkeypatch):
+    # #447 round-3 review: an expired cooldown must restart the count, or the
+    # threshold never matches again until the window ends.
+    client, db = api
+    _register(client, "alice")
+    monkeypatch.setenv("LOGIN_LOCKOUT_THRESHOLD", "2")
+    monkeypatch.setenv("LOGIN_LOCKOUT_WINDOW_SECONDS", "900")
+    monkeypatch.setenv("LOGIN_LOCKOUT_COOLDOWN_SECONDS", "60")
+    from service import auth as auth_service
+    now = [datetime.now(UTC)]
+    clock_type = type("Clock", (), {
+        "now": staticmethod(lambda tz=None: now[0]),
+        "fromisoformat": staticmethod(datetime.fromisoformat),
+    })
+    monkeypatch.setattr(auth_service, "datetime", clock_type)
+    wrong = {"trainee_id": "alice", "password": "wrong-password"}
+    right = {"trainee_id": "alice", "password": "correct-horse-1"}
+    for _ in range(2):
+        assert client.post("/auth/login", json=wrong).status_code == 401
+    now[0] += timedelta(seconds=61)
+    for _ in range(2):
+        assert client.post("/auth/login", json=wrong).status_code == 401
+    assert client.post("/auth/login", json=right).status_code == 401
+
+
+def test_login_never_verifies_a_reused_username_under_the_old_accounts_lock(api, monkeypatch):
+    # #448 round-3 review: the username can be released and re-registered
+    # between the unlocked lookup and the locked one.
+    client, db = api
+    _register(client, "alice")
+    _register(client, "bob")
+    from service import auth as auth_service
+    original = db.get_active_account_by_username
+    bob = original("bob")
+    calls = []
+
+    def swapped(username):
+        calls.append(username)
+        return bob if len(calls) == 2 else original(username)
+
+    monkeypatch.setattr(db, "get_active_account_by_username", swapped)
+    result = auth_service.login_player(db, "alice", "correct-horse-1")
+    assert result["ok"] is False
+
+
 def test_reset_token_single_use_expiry_and_generic_errors(api, monkeypatch, verify_recovery_email):
     from service import password_reset as reset_service
 
