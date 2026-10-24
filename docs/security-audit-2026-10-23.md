@@ -10,12 +10,23 @@ No critical or high findings.
 
 | # | Severity | Finding | Fix ticket | Status |
 |---|---|---|---|---|
-| 1 | medium | A fabricated `Authorization` header bypasses anonymous auth rate limits | #447 | open |
-| 2 | medium | Outstanding reset tokens survive credential and recovery-email rotation | #448 | open |
-| 3 | low | The exercise-history equipment lookup ignores coach-exercise ownership | #450 | open |
-| 4 | needs validation | No decompressed-size budget on XLSX program imports | #449 | open |
+| 1 | medium | A fabricated `Authorization` header bypasses anonymous auth rate limits | #447 | fixed 2026-10-24 |
+| 2 | medium | Outstanding reset tokens survive credential and recovery-email rotation | #448 | fixed 2026-10-24 |
+| 3 | low | The exercise-history equipment lookup ignores coach-exercise ownership | #450 | fixed 2026-10-24 |
+| 4 | medium (validated) | No decompressed-size budget on XLSX program imports | #449 | fixed 2026-10-24 |
+| 5 | low | Program-draft warm-ups and substitutes disclose another coach's private exercise name | #458 | fixed 2026-10-24 |
 
 Update the Status column as each ticket lands.
+
+### Post-fix verification (2026-10-24)
+
+Each fix was verified after implementation by Opus and `gpt-6.1-sol` (read-only), in up to four rounds, until both agreed the original boundary violation was closed and no regression remained. Every check ran as repository tests with dummy accounts; nothing was run against a deployed host. Verification changed or extended the fixes:
+
+- **#447:** the per-account lockout initially let anyone extend a lock indefinitely, was not cleared by a password reset, was bypassed by the public account-deletion form, measured its window from the previous failure, and ran bcrypt inside the catalog-wide lock. All corrected: attempts during a cooldown neither count nor extend it, every successful credential rotation or sign-in clears it, the deletion form shares it, the window starts at the first failure and restarts after a cooldown, and bcrypt runs outside the catalog transaction. Every anonymous limiter route keys by client IP.
+- **#448:** revocation (reset-link invalidation and session-epoch bump) now commits before the new password is written, so a failure leaves old links and sessions dead rather than alive. Password change, reset redemption, owner/CLI reset, password login and the deletion form serialize on a per-account credential lock kept beside the catalog database (shared by the CLI and every process using that catalog), and login re-checks the account id under that lock. Reset-link issuance re-checks the current verified recovery address inside the same serialization, so a link can no longer be mailed to an address replaced mid-request.
+- **#449:** validation measured the risk (a 70 KB workbook reached 292 MB peak RSS; a 135 KB forged-size workbook reached 382 MB). The first fix counted bytes returned by `zipfile`, which an understated size with a prefix-matching CRC could defeat; the final fix decompresses each member's raw data with bounded output and requires stream EOF, the declared size and CRC, a supported method, unique names and at most 1,000 members (20 MiB per member and in total) before every `load_workbook` call. The forged workbook now peaks at 120 MB and is rejected.
+- **#450:** equipment is shown only for library exercises, the requesting coach's own exercises, or exercises in the target ledger's program or workout history. Verification traced the other resolvers (workout logging, program requests, draft working exercises) and found them already guarded, and found finding 5.
+- **#458 (finding 5, new):** a coach could reference another coach's private exercise id as a draft warm-up or suggested substitute and read its name back on publish and reload. Auxiliary ids now follow the same library / owner / prior-history rule, which a publication cannot satisfy for itself.
 
 ## 1. A fabricated `Authorization` header bypasses anonymous auth rate limits — medium
 
