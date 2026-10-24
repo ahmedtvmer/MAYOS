@@ -4,6 +4,22 @@ Status: research note, 2026-10-24. Nutrition is still outside public-launch
 scope (`plans/MYOS_LAUNCH_PRICING.md`); this note picks the source data so a
 food-logging epic can start without re-doing the search.
 
+## Dataset in the repo
+
+`data/food_library.csv` (13,576 foods) and `data/food_portions.csv` (36,673
+portions) are built from the USDA FoodData Central CSV release of 2025-04-24
+by `scripts/build_food_library.py`: Foundation Foods (352), SR Legacy (7,793)
+and FNDDS survey foods (5,431); branded and sample rows are dropped, and 60
+rows without energy, protein, carbohydrate and fat are skipped. Nutrients are
+per 100 g; `id` is the FoodData Central `fdc_id`; portions give a household
+label and its gram weight. Energy falls back from nutrient 1008 to the
+Atwater specific (2048) then general (2047) factors, carbohydrate from "by
+difference" (1005) to "by summation" (1050). The release was taken from the
+Hugging Face mirror `yvfu/FoodData_Central_csv_2025-04-24` because the build
+environment could not reach fdc.nal.usda.gov; spot checks (egg, banana,
+chicken breast, salmon) match USDA's published SR Legacy values. Re-run the
+script against an official download to refresh it.
+
 ## What we need
 
 A shared reference set of foods, the nutrition counterpart of the Exercise
