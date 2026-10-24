@@ -132,6 +132,67 @@ def test_rate_limit_error_has_structured_metadata(client):
     assert limited.json()["message_fallback"] == "Rate limit exceeded: 5 per 1 minute"
 
 
+def test_login_rate_limit_ignores_fabricated_bearer_headers(client):
+    responses = [
+        client.post(
+            "/auth/login",
+            json={"trainee_id": "alice", "password": "wrong-password"},
+            headers={"Authorization": f"Bearer invalid-token-{attempt:04d}"},
+        )
+        for attempt in range(1, 7)
+    ]
+    assert [response.status_code for response in responses] == [401] * 5 + [429]
+
+
+def test_login_failures_during_cooldown_do_not_extend_lock(client, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+    from service import auth as auth_service
+
+    client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
+    monkeypatch.setenv("LOGIN_LOCKOUT_THRESHOLD", "1")
+    monkeypatch.setenv("LOGIN_LOCKOUT_COOLDOWN_SECONDS", "60")
+    initial = datetime(2026, 1, 1, tzinfo=UTC)
+
+    class FrozenDateTime(datetime):
+        current = initial
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current
+
+    monkeypatch.setattr(auth_service, "datetime", FrozenDateTime)
+    wrong = {"trainee_id": "alice", "password": "wrong-password"}
+    assert client.post("/auth/login", json=wrong).status_code == 401
+    account = client.app.state.test_db.get_active_account_by_username("alice")
+    lockout_state = client.app.state.test_db.catalog_conn.execute(
+        "SELECT failed_at, failure_count, locked_until FROM account_login_failures WHERE account_id = ?",
+        (account["account_id"],),
+    ).fetchone()
+    FrozenDateTime.current += timedelta(seconds=30)
+    assert client.post("/auth/login", json=wrong).status_code == 401
+    assert client.app.state.test_db.catalog_conn.execute(
+        "SELECT failed_at, failure_count, locked_until FROM account_login_failures WHERE account_id = ?",
+        (account["account_id"],),
+    ).fetchone() == lockout_state
+    FrozenDateTime.current += timedelta(seconds=31)
+    assert client.post(
+        "/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}
+    ).status_code == 200
+
+
+def test_login_lockout_refuses_correct_password_and_matches_unknown_shape(client, monkeypatch):
+    client.post("/auth/register", json={"trainee_id": "alice", "password": "correct-horse-1"})
+    monkeypatch.setenv("LOGIN_LOCKOUT_THRESHOLD", "2")
+    monkeypatch.setenv("LOGIN_LOCKOUT_WINDOW_SECONDS", "900")
+    monkeypatch.setenv("LOGIN_LOCKOUT_COOLDOWN_SECONDS", "900")
+    for _ in range(2):
+        assert client.post("/auth/login", json={"trainee_id": "alice", "password": "wrong-password"}).status_code == 401
+    locked = client.post("/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"})
+    unknown = client.post("/auth/login", json={"trainee_id": "nobody", "password": "wrong-password"})
+    assert locked.status_code == unknown.status_code == 401
+    assert locked.json() == unknown.json()
+
+
 @pytest.mark.parametrize(
     ("header_name", "environment", "setting"),
     [

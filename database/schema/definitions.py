@@ -408,6 +408,13 @@ class SchemaMixin:
                     claimed_at TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS account_login_failures (
+                    account_id TEXT PRIMARY KEY,
+                    failed_at TEXT NOT NULL,
+                    failure_count INTEGER NOT NULL DEFAULT 0,
+                    locked_until TEXT,
+                    FOREIGN KEY(account_id) REFERENCES accounts(account_id) ON DELETE CASCADE
+                );
                 CREATE TABLE IF NOT EXISTS accounts (
                     account_id TEXT PRIMARY KEY,
                     username TEXT NOT NULL,

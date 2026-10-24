@@ -36,6 +36,8 @@ Password changes update the ledger credential and advance the account's session 
 
 `POST /auth/register` creates an immutable account id in the catalog registry, creates the account's ledger, stores the bcrypt hash, and immediately issues a JWT. `POST /auth/login` proves possession of the password and issues a JWT whose subject is that immutable account id.
 
+Login attempts use the trusted client IP bucket on anonymous routes; an unverified `Authorization` header never changes that bucket. Authenticated per-user limits use the immutable account id from a signature-verified, live session token whose session epoch is current. Password login (and the public account-deletion form) also tracks failures per immutable account id in the catalog, so the limit survives restarts. The window starts at the first failure; attempts during a cooldown neither count nor extend it, and a new window starts once the cooldown ends. The defaults are 10 failures within 15 minutes followed by a 15-minute cooldown. Configure these with `LOGIN_LOCKOUT_THRESHOLD`, `LOGIN_LOCKOUT_WINDOW_SECONDS`, and `LOGIN_LOCKOUT_COOLDOWN_SECONDS`. Unknown usernames and locked accounts receive the same generic 401 response as other invalid credentials.
+
 An owner may issue a **Coach invite** for an existing Account (the default CLI mode and the owner dashboard) or use `scripts/issue_coach_invite.py <username> --new-account` to hold a username for a future Account. The latter stores only the code's SHA-256 hash, defaults to 24 hours, and clamps its lifetime to 5 minutes–7 days. A live Account, existing local ledger, or another live hold makes the username unavailable. Registration without that code returns the same 409 body as an already-taken username. On the sign-up screen, **I have a coach invite code** reveals the optional code field. Registration with the code creates an ordinary Player Account, grants Coach capability, and claims the invite in one catalog transaction; the matching is case-insensitive and uses registration's existing username normalization. Wrong, expired, used, username-mismatched, and account-bound codes share `400 This coach invite code isn't valid for this username` and create no Account. Recovery email is configured in the Flutter app; after registration, a new coach opens in Coach mode on Roster without player intake. A Coach invite grants no Assignment.
 
 
@@ -145,6 +147,10 @@ flowchart LR
 ## 7. Forgot / Reset Password
 
 Tokens are generated with `secrets.token_urlsafe(32)`; **only the SHA-256 hash is stored**. TTL is `RESET_TOKEN_TTL_MINUTES` (default **30**, clamped 5–120). Consumption is atomic (a conditional `UPDATE … WHERE used_at IS NULL` under the catalog lock), so a token can never be redeemed twice, even concurrently.
+
+Password changes, reset redemption, owner CLI password replacement, and verified recovery-address changes invalidate outstanding reset links in the catalog. Token and session revocation commits before the separate ledger password write; a per-account lock orders login checks with password changes and reset redemption so login cannot observe a new session epoch beside the old password hash, and a link already in progress cannot overwrite a newly chosen password.
+
+Anonymous authentication and recovery routes share rate-limit budgets keyed by the trusted client IP (IPv6 addresses are grouped by /64). Authenticated per-account routes use the verified account id; invalid bearer text never creates a new bucket. Password login also records consecutive failures in the catalog and applies a generic 401 cooldown after `LOGIN_LOCKOUT_THRESHOLD` failures (default 10) within `LOGIN_LOCKOUT_WINDOW_SECONDS` (default 900 seconds). Successful login and credential rotation clear the counter. Unknown usernames spend one dummy bcrypt verification and receive the same generic response.
 
 ```mermaid
 sequenceDiagram

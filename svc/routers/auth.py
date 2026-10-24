@@ -42,7 +42,7 @@ from svc.dependencies import (
     google_sign_in_enabled,
 )
 from svc.errors import message_http_exception
-from svc.rate_limit import PASSWORD_LIMIT, REGISTER_LIMIT, LOGIN_LIMIT, RESET_LIMIT, USERNAME_CHECK_LIMIT, limiter
+from svc.rate_limit import _ip_key, PASSWORD_LIMIT, REGISTER_LIMIT, LOGIN_LIMIT, RESET_LIMIT, USERNAME_CHECK_LIMIT, limiter
 from svc.schemas import (
     AccountCapabilitiesOut,
     AccountDeleteIn,
@@ -123,7 +123,7 @@ def _record_account_created(
 
 
 @router.post("/register", response_model=TokenOut, status_code=status.HTTP_201_CREATED)
-@limiter.limit(REGISTER_LIMIT)
+@limiter.limit(REGISTER_LIMIT, key_func=_ip_key)
 async def register(request: Request, body: TraineeIn, db: Annotated[Any, Depends(get_db)]):
     def _run():
         result = auth_service.register_player(
@@ -182,7 +182,7 @@ async def register(request: Request, body: TraineeIn, db: Annotated[Any, Depends
 
 
 @router.post("/login", response_model=TokenOut)
-@limiter.limit(LOGIN_LIMIT)
+@limiter.limit(LOGIN_LIMIT, key_func=_ip_key)
 async def login(request: Request, body: TraineeIn, db: Annotated[Any, Depends(get_db)]):
     def _run():
         result = auth_service.login_player(db, body.trainee_id, body.password)
@@ -207,7 +207,7 @@ async def login(request: Request, body: TraineeIn, db: Annotated[Any, Depends(ge
 
 
 @router.post("/google")
-@limiter.limit(LOGIN_LIMIT)
+@limiter.limit(LOGIN_LIMIT, key_func=_ip_key)
 async def google_sign_in(
     request: Request,
     body: GoogleSignInIn,
@@ -255,7 +255,7 @@ async def google_sign_in(
 
 
 @router.get("/username-available", response_model=UsernameAvailableOut, response_model_exclude_none=True)
-@limiter.limit(USERNAME_CHECK_LIMIT)
+@limiter.limit(USERNAME_CHECK_LIMIT, key_func=_ip_key)
 async def username_available(
     request: Request,
     db: Annotated[Any, Depends(get_db)],
@@ -280,7 +280,7 @@ async def username_available(
 
 
 @router.post("/google/complete", response_model=TokenOut)
-@limiter.limit(REGISTER_LIMIT)
+@limiter.limit(REGISTER_LIMIT, key_func=_ip_key)
 async def google_complete(
     request: Request,
     body: GoogleCompleteIn,
@@ -810,7 +810,7 @@ async def verify_recovery_email_change(
 
 
 @router.post("/forgot-password", response_model=MessageOut, status_code=status.HTTP_202_ACCEPTED)
-@limiter.limit(RESET_LIMIT)
+@limiter.limit(RESET_LIMIT, key_func=_ip_key)
 async def forgot_password(
     request: Request,
     body: ForgotPasswordIn,
@@ -828,7 +828,7 @@ async def forgot_password(
 
 
 @router.post("/reset-password", response_model=MessageOut)
-@limiter.limit(RESET_LIMIT)
+@limiter.limit(RESET_LIMIT, key_func=_ip_key)
 async def reset_password(request: Request, body: ResetPasswordIn, db: Annotated[Any, Depends(get_db)]):
     """Redeems a single-use reset token. Unknown/expired/used tokens share one generic error."""
 

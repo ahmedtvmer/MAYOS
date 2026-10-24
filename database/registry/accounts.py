@@ -355,5 +355,5 @@ class RegistryAccountsMixin:
                 return None
             new_epoch = max(1, int(row[0] or 1)) + 1
             cursor.execute("UPDATE accounts SET session_epoch = ? WHERE account_id = ?", (new_epoch, str(account_id)))
-            self.catalog_conn.commit()
+            self._commit_catalog()
             return new_epoch

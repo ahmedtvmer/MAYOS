@@ -27,7 +27,7 @@ from service.display_language import DisplayLanguage, render_localized, request_
 from service.privacy_policy import policy_body_html
 from svc.dependencies import get_db
 from svc.html import self_contained_html
-from svc.rate_limit import PASSWORD_LIMIT, limiter
+from svc.rate_limit import _ip_key, PASSWORD_LIMIT, limiter
 
 router = APIRouter(tags=["public"])
 
@@ -278,7 +278,7 @@ async def delete_request_page(request: Request):
 
 
 @router.post("/account/delete-request", response_class=HTMLResponse, name="delete_request_submit")
-@limiter.limit(PASSWORD_LIMIT)
+@limiter.limit(PASSWORD_LIMIT, key_func=_ip_key)
 async def delete_request_submit(request: Request, db: Annotated[Any, Depends(get_db)]):
     """Runs the same password-confirmed deletion as the in-app path.
 

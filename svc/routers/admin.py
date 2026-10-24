@@ -25,7 +25,7 @@ from service import model_metering as model_metering_service
 from service import admin_auth, audit_log, email_sender, password_reset as password_reset_service, periodic_status
 from svc.dependencies import get_db
 from svc.html import self_contained_html
-from svc.rate_limit import LOGIN_LIMIT, client_ip, client_ip_bucket, limiter
+from svc.rate_limit import _ip_key, LOGIN_LIMIT, client_ip, client_ip_bucket, limiter
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 AccountListQuery = admin_accounts_service.AccountListQuery
@@ -109,7 +109,7 @@ async def admin_login_page(request: Request):
 
 
 @router.post("/login", response_class=HTMLResponse, include_in_schema=False)
-@limiter.limit(LOGIN_LIMIT)
+@limiter.limit(LOGIN_LIMIT, key_func=_ip_key)
 async def admin_login_submit(request: Request, db: Annotated[Any, Depends(get_db)]):
     security = request.app.state.admin_security
     if not security.config.enabled:

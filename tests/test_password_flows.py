@@ -3,6 +3,9 @@
 import os
 import re
 import sqlite3
+import threading
+from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -36,6 +39,7 @@ def api(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("JWT_SECRET", TEST_JWT_SECRET)
     monkeypatch.setenv("RESET_TOKEN_TTL_MINUTES", "30")
     monkeypatch.setenv("EMAIL_VERIFICATION_CODE_TTL_MINUTES", "10")
+    monkeypatch.setenv("MYOS_CREDENTIAL_LOCK_DIR", str(tmp_path / "credential-locks"))
     from svc.rate_limit import limiter
 
     limiter._storage.reset()
@@ -118,6 +122,42 @@ def test_change_password_revokes_all_sessions(api):
     fresh = client.post("/auth/login", json={"trainee_id": "alice", "password": "brand-new-horse-2"})
     assert fresh.status_code == 200
     assert client.get("/dashboard/exercises", headers=_authed(fresh.json()["access_token"])).status_code == 200
+
+
+def test_change_password_invalidates_outstanding_reset_link(api, monkeypatch, verify_recovery_email):
+    from service import password_reset as reset_service
+
+    client, db = api
+    token = _register(client, "alice")
+    _set_recovery_email(client, token)
+    verify_recovery_email(client, token, monkeypatch)
+    reset_links = []
+    reset_service.request_password_reset(
+        db,
+        "alice@example.com",
+        mailer=lambda to, link, display_language, *, account_id=None: reset_links.append(link) or True,
+        token_factory=lambda: "old-reset-token-abcdef1234",
+    )
+    assert len(reset_links) == 1
+    match = re.search(r"[?&]token=([^&]+)", reset_links[0])
+    assert match is not None
+    reset_token = match.group(1)
+
+    changed = client.post(
+        "/auth/change-password",
+        json={"current_password": "correct-horse-1", "new_password": "brand-new-horse-2"},
+        headers=_authed(token),
+    )
+    assert changed.status_code == 200, changed.text
+    rejected = client.post(
+        "/auth/reset-password",
+        json={"token": reset_token, "new_password": "attacker-horse-99"},
+    )
+    assert rejected.status_code == 400
+    assert rejected.json()["detail"] == reset_service.GENERIC_TOKEN_ERROR
+    assert client.post(
+        "/auth/login", json={"trainee_id": "alice", "password": "brand-new-horse-2"}
+    ).status_code == 200
 
 
 def test_change_password_failures_are_400_and_keep_session(api):
@@ -318,6 +358,162 @@ def test_injected_reset_mailer_receives_account_display_language(
     assert calls[0][2:] == ("ar", account_id)
 
 
+def test_password_reset_clears_login_lockout(api, monkeypatch, verify_recovery_email):
+    from service import password_reset as reset_service
+
+    client, db = api
+    token = _register(client, "alice")
+    client.post("/auth/email", json={"email": "alice@example.com"}, headers=_authed(token))
+    verify_recovery_email(client, token, monkeypatch)
+    reset_service.request_password_reset(
+        db,
+        "alice@example.com",
+        mailer=lambda *args, **kwargs: True,
+        token_factory=lambda: "lockout-reset-token-123456",
+    )
+    monkeypatch.setenv("LOGIN_LOCKOUT_THRESHOLD", "1")
+    assert client.post(
+        "/auth/login", json={"trainee_id": "alice", "password": "wrong-password"}
+    ).status_code == 401
+    account = db.get_active_account_by_username("alice")
+    assert db.catalog_conn.execute(
+        "SELECT 1 FROM account_login_failures WHERE account_id = ?", (account["account_id"],)
+    ).fetchone()
+    reset = client.post(
+        "/auth/reset-password",
+        json={"token": "lockout-reset-token-123456", "new_password": "reset-horse-33"},
+    )
+    assert reset.status_code == 200, reset.text
+    assert client.post(
+        "/auth/login", json={"trainee_id": "alice", "password": "reset-horse-33"}
+    ).status_code == 200
+
+
+def test_login_waits_for_reset_password_write(api, monkeypatch, verify_recovery_email):
+    from service import password_reset as reset_service
+
+    client, db = api
+    token = _register(client, "alice")
+    _set_recovery_email(client, token)
+    verify_recovery_email(client, token, monkeypatch)
+    reset_service.request_password_reset(
+        db, "alice@example.com", mailer=lambda *args, **kwargs: True,
+        token_factory=lambda: "paused-reset-token-123456",
+    )
+    entered_write = threading.Event()
+    finish_write = threading.Event()
+    ledger_type = type(db.open_ledger("alice"))
+    original_set = ledger_type.set_password_hash
+
+    def paused_write(ledger, value):
+        entered_write.set()
+        assert finish_write.wait(10)
+        return original_set(ledger, value)
+
+    monkeypatch.setattr(ledger_type, "set_password_hash", paused_write)
+    reset_result = {}
+    worker = threading.Thread(target=lambda: reset_result.update(
+        reset_service.reset_password_with_token(db, "paused-reset-token-123456", "new-password-333")
+    ))
+    worker.start()
+    assert entered_write.wait(5)
+    login_results = []
+    login_lock_requested = threading.Event()
+    from service import auth as auth_service
+    original_lock = auth_service.account_credential_lock
+
+    @contextmanager
+    def signal_login_lock(account_id, catalog_path=None):
+        if threading.current_thread().name == "login-attempt":
+            login_lock_requested.set()
+        with original_lock(account_id, catalog_path):
+            yield
+
+    monkeypatch.setattr(auth_service, "account_credential_lock", signal_login_lock)
+    login = threading.Thread(
+        name="login-attempt",
+        target=lambda: login_results.append(
+            auth_service.login_player(db, "alice", "correct-horse-1")
+        ),
+    )
+    login.start()
+    try:
+        assert login_lock_requested.wait(5)
+        assert login.is_alive()
+    finally:
+        finish_write.set()
+        worker.join(10)
+        login.join(10)
+    assert reset_result["ok"]
+    assert login_results == [{"ok": False, "error": auth_service.INVALID_CREDENTIALS}]
+    assert client.post(
+        "/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}
+    ).status_code == 401
+
+
+def test_failures_spaced_across_lockout_window_do_not_accumulate(api, monkeypatch):
+    client, db = api
+    _register(client, "alice")
+    monkeypatch.setenv("LOGIN_LOCKOUT_THRESHOLD", "3")
+    monkeypatch.setenv("LOGIN_LOCKOUT_WINDOW_SECONDS", "10")
+    from service import auth as auth_service
+    now = [datetime.now(UTC)]
+    clock_type = type("Clock", (), {
+        "now": staticmethod(lambda tz=None: now[0]),
+        "fromisoformat": staticmethod(datetime.fromisoformat),
+    })
+    monkeypatch.setattr(auth_service, "datetime", clock_type)
+    for _ in range(3):
+        assert client.post("/auth/login", json={"trainee_id": "alice", "password": "wrong-password"}).status_code == 401
+        now[0] += timedelta(seconds=5.1)
+    assert client.post("/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}).status_code == 200
+
+
+def test_lockout_rearms_after_a_cooldown_shorter_than_the_window(api, monkeypatch):
+    # #447 round-3 review: an expired cooldown must restart the count, or the
+    # threshold never matches again until the window ends.
+    client, db = api
+    _register(client, "alice")
+    monkeypatch.setenv("LOGIN_LOCKOUT_THRESHOLD", "2")
+    monkeypatch.setenv("LOGIN_LOCKOUT_WINDOW_SECONDS", "900")
+    monkeypatch.setenv("LOGIN_LOCKOUT_COOLDOWN_SECONDS", "60")
+    from service import auth as auth_service
+    now = [datetime.now(UTC)]
+    clock_type = type("Clock", (), {
+        "now": staticmethod(lambda tz=None: now[0]),
+        "fromisoformat": staticmethod(datetime.fromisoformat),
+    })
+    monkeypatch.setattr(auth_service, "datetime", clock_type)
+    wrong = {"trainee_id": "alice", "password": "wrong-password"}
+    right = {"trainee_id": "alice", "password": "correct-horse-1"}
+    for _ in range(2):
+        assert client.post("/auth/login", json=wrong).status_code == 401
+    now[0] += timedelta(seconds=61)
+    for _ in range(2):
+        assert client.post("/auth/login", json=wrong).status_code == 401
+    assert client.post("/auth/login", json=right).status_code == 401
+
+
+def test_login_never_verifies_a_reused_username_under_the_old_accounts_lock(api, monkeypatch):
+    # #448 round-3 review: the username can be released and re-registered
+    # between the unlocked lookup and the locked one.
+    client, db = api
+    _register(client, "alice")
+    _register(client, "bob")
+    from service import auth as auth_service
+    original = db.get_active_account_by_username
+    bob = original("bob")
+    calls = []
+
+    def swapped(username):
+        calls.append(username)
+        return bob if len(calls) == 2 else original(username)
+
+    monkeypatch.setattr(db, "get_active_account_by_username", swapped)
+    result = auth_service.login_player(db, "alice", "correct-horse-1")
+    assert result["ok"] is False
+
+
 def test_reset_token_single_use_expiry_and_generic_errors(api, monkeypatch, verify_recovery_email):
     from service import password_reset as reset_service
 
@@ -357,6 +553,367 @@ def test_reset_token_single_use_expiry_and_generic_errors(api, monkeypatch, veri
     stale = client.post("/auth/reset-password", json={"token": "stale-token-abcdef1234", "new_password": "whatever-horse-2"})
     assert stale.status_code == 400
     assert stale.json() == reuse.json()
+
+
+def test_redeeming_one_reset_invalidates_other_outstanding_link(api, monkeypatch, verify_recovery_email):
+    from service import password_reset as reset_service
+
+    client, db = api
+    token = _register(client, "alice")
+    _set_recovery_email(client, token)
+    verify_recovery_email(client, token, monkeypatch)
+    for reset_token in ("first-reset-token-abcdef", "second-reset-token-abcdef"):
+        reset_service.request_password_reset(
+            db,
+            "alice@example.com",
+            mailer=lambda to, link, display_language, *, account_id=None: True,
+            token_factory=lambda reset_token=reset_token: reset_token,
+        )
+
+    first = client.post(
+        "/auth/reset-password", json={"token": "first-reset-token-abcdef", "new_password": "first-reset-horse-1"}
+    )
+    second = client.post(
+        "/auth/reset-password", json={"token": "second-reset-token-abcdef", "new_password": "second-reset-horse-2"}
+    )
+    assert first.status_code == 200
+    assert second.status_code == 400
+    assert second.json()["detail"] == reset_service.GENERIC_TOKEN_ERROR
+
+
+def test_verified_recovery_email_change_invalidates_reset_link(api, monkeypatch, verify_recovery_email):
+    from service import password_reset as reset_service
+
+    client, db = api
+    token = _register(client, "alice")
+    _set_recovery_email(client, token)
+    verify_recovery_email(client, token, monkeypatch)
+    reset_service.request_password_reset(
+        db,
+        "alice@example.com",
+        mailer=lambda to, link, display_language, *, account_id=None: True,
+        token_factory=lambda: "old-email-reset-token-123456",
+    )
+    deliveries = _capture_verification_deliveries(monkeypatch)
+    requested = client.post(
+        "/auth/email/change", json={"email": "new@example.com"}, headers=_authed(token)
+    )
+    assert requested.status_code == 200, requested.text
+    verified = client.post(
+        "/auth/email/change/verify",
+        json={"code": _verification_code(deliveries[-1])},
+        headers=_authed(token),
+    )
+    assert verified.status_code == 200, verified.text
+    rejected = client.post(
+        "/auth/reset-password",
+        json={"token": "old-email-reset-token-123456", "new_password": "attacker-horse-99"},
+    )
+    assert rejected.status_code == 400
+    assert rejected.json()["detail"] == reset_service.GENERIC_TOKEN_ERROR
+
+
+def test_change_password_catalog_failure_leaves_old_password_usable(api, monkeypatch):
+    from service import auth as auth_service
+
+    client, db = api
+    _register(client, "alice")
+    account_id = db.get_active_account_by_username("alice")["account_id"]
+
+    def fail_epoch_update(_account_id):
+        raise RuntimeError("catalog update failed")
+
+    monkeypatch.setattr(db, "bump_account_session_epoch", fail_epoch_update)
+    with pytest.raises(RuntimeError, match="catalog update failed"):
+        auth_service.change_password(db, account_id, "correct-horse-1", "new-horse-password-2")
+
+    old_password_login = client.post(
+        "/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}
+    )
+    assert old_password_login.status_code == 200
+
+
+def test_change_password_ledger_failure_revokes_reset_links_but_keeps_old_password(
+    api, monkeypatch, verify_recovery_email
+):
+    from database.ledger.handle import TrainingLedger
+    from service import auth as auth_service
+    from service import password_reset as reset_service
+
+    client, db = api
+    token = _register(client, "alice")
+    _set_recovery_email(client, token)
+    verify_recovery_email(client, token, monkeypatch)
+    reset_service.request_password_reset(
+        db,
+        "alice@example.com",
+        mailer=lambda to, link, display_language, *, account_id=None: True,
+        token_factory=lambda: "reset-before-ledger-error-1234",
+    )
+    account_id = db.get_active_account_by_username("alice")["account_id"]
+
+    def fail_ledger_write(_ledger, _password_hash):
+        raise RuntimeError("ledger write failed")
+
+    with monkeypatch.context() as scoped_patch:
+        scoped_patch.setattr(TrainingLedger, "set_password_hash", fail_ledger_write)
+        with pytest.raises(RuntimeError, match="ledger write failed"):
+            auth_service.change_password(db, account_id, "correct-horse-1", "new-horse-password-2")
+
+    assert client.post(
+        "/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}
+    ).status_code == 200
+    stale_link = client.post(
+        "/auth/reset-password",
+        json={"token": "reset-before-ledger-error-1234", "new_password": "attacker-horse-99"},
+    )
+    assert stale_link.status_code == 400
+
+
+def test_reset_catalog_failure_keeps_old_password_and_reset_token(api, monkeypatch, verify_recovery_email):
+    from service import password_reset as reset_service
+
+    client, db = api
+    token = _register(client, "alice")
+    _set_recovery_email(client, token)
+    verify_recovery_email(client, token, monkeypatch)
+    reset_service.request_password_reset(
+        db,
+        "alice@example.com",
+        mailer=lambda to, link, display_language, *, account_id=None: True,
+        token_factory=lambda: "reset-catalog-failure-token-1234",
+    )
+
+    def fail_epoch_update(_account_id):
+        raise RuntimeError("catalog update failed")
+
+    monkeypatch.setattr(db, "bump_account_session_epoch", fail_epoch_update)
+    with pytest.raises(RuntimeError, match="catalog update failed"):
+        reset_service.reset_password_with_token(
+            db, "reset-catalog-failure-token-1234", "new-reset-password-22"
+        )
+
+    assert client.post(
+        "/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}
+    ).status_code == 200
+
+
+def test_reset_ledger_failure_consumes_links_but_keeps_old_password(api, monkeypatch, verify_recovery_email):
+    from database.ledger.handle import TrainingLedger
+    from service import password_reset as reset_service
+
+    client, db = api
+    token = _register(client, "alice")
+    _set_recovery_email(client, token)
+    verify_recovery_email(client, token, monkeypatch)
+    reset_service.request_password_reset(
+        db,
+        "alice@example.com",
+        mailer=lambda to, link, display_language, *, account_id=None: True,
+        token_factory=lambda: "reset-ledger-failure-token-1234",
+    )
+
+    def fail_ledger_write(_ledger, _password_hash):
+        raise RuntimeError("ledger write failed")
+
+    with monkeypatch.context() as scoped_patch:
+        scoped_patch.setattr(TrainingLedger, "set_password_hash", fail_ledger_write)
+        with pytest.raises(RuntimeError, match="ledger write failed"):
+            reset_service.reset_password_with_token(
+                db, "reset-ledger-failure-token-1234", "new-reset-password-22"
+            )
+
+    assert client.post(
+        "/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}
+    ).status_code == 200
+    stale_link = client.post(
+        "/auth/reset-password",
+        json={"token": "reset-ledger-failure-token-1234", "new_password": "attacker-horse-99"},
+    )
+    assert stale_link.status_code == 400
+
+
+def test_forgot_password_does_not_issue_link_after_recovery_email_changes(api, monkeypatch, verify_recovery_email):
+    from service import password_reset as reset_service
+
+    client, db = api
+    token = _register(client, "alice")
+    _set_recovery_email(client, token)
+    verify_recovery_email(client, token, monkeypatch)
+    account_id = db.get_active_account_by_username("alice")["account_id"]
+    deliveries = _capture_verification_deliveries(monkeypatch)
+    change_request = client.post(
+        "/auth/email/change", json={"email": "new@example.com"}, headers=_authed(token)
+    )
+    assert change_request.status_code == 200
+    change_code = _verification_code(deliveries[-1])
+    original_store = reset_service._store_requested_reset_token
+
+    def rotate_email_before_token_store(*args, **kwargs):
+        assert reset_service.verify_recovery_email_change_code(db, account_id, change_code)
+        return original_store(*args, **kwargs)
+
+    monkeypatch.setattr(reset_service, "_store_requested_reset_token", rotate_email_before_token_store)
+    monkeypatch.setattr(
+        reset_service.secrets, "token_urlsafe", lambda _byte_count: "stale-address-reset-token-1234"
+    )
+    response = client.post("/auth/forgot-password", json={"email": "alice@example.com"})
+
+    assert response.status_code == 202
+    assert not any(delivery[3].purpose == email_sender.PURPOSE_PASSWORD_RESET for delivery in deliveries)
+    stale_link = client.post(
+        "/auth/reset-password",
+        json={"token": "stale-address-reset-token-1234", "new_password": "attacker-horse-99"},
+    )
+    assert stale_link.status_code == 400
+
+
+def test_owner_reset_email_does_not_issue_link_after_recovery_email_changes(
+    api, monkeypatch, verify_recovery_email
+):
+    from service import password_reset as reset_service
+
+    client, db = api
+    token = _register(client, "alice")
+    _set_recovery_email(client, token)
+    verify_recovery_email(client, token, monkeypatch)
+    account_id = db.get_active_account_by_username("alice")["account_id"]
+    deliveries = _capture_verification_deliveries(monkeypatch)
+    change_request = client.post(
+        "/auth/email/change", json={"email": "new@example.com"}, headers=_authed(token)
+    )
+    assert change_request.status_code == 200
+    change_code = _verification_code(deliveries[-1])
+    original_store = reset_service._store_requested_reset_token
+
+    def rotate_email_before_token_store(*args, **kwargs):
+        assert reset_service.verify_recovery_email_change_code(db, account_id, change_code)
+        return original_store(*args, **kwargs)
+
+    monkeypatch.setattr(reset_service, "_store_requested_reset_token", rotate_email_before_token_store)
+    result = reset_service.owner_send_reset_email(db, account_id, "owner", None)
+
+    assert result["outcome"] == "send_failed"
+    assert db.get_account_email(account_id) == "new@example.com"
+    assert db.catalog_conn.execute(
+        "SELECT COUNT(*) FROM password_reset_tokens WHERE trainee_id = ?", (account_id,)
+    ).fetchone()[0] == 0
+
+
+def test_owner_password_catalog_failure_keeps_old_password(api, monkeypatch):
+    from service import password_reset as reset_service
+
+    client, db = api
+    _register(client, "alice")
+
+    def fail_epoch_update(_account_id):
+        raise RuntimeError("catalog update failed")
+
+    monkeypatch.setattr(db, "bump_account_session_epoch", fail_epoch_update)
+    with pytest.raises(RuntimeError, match="catalog update failed"):
+        reset_service.owner_set_password(db, "alice", "new-owner-password-22", actor="cli")
+
+    assert client.post(
+        "/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}
+    ).status_code == 200
+
+
+def test_owner_password_ledger_failure_revokes_links_but_keeps_old_password(api, monkeypatch):
+    from database.ledger.handle import TrainingLedger
+    from service import password_reset as reset_service
+    from service._tokens import hash_token
+
+    client, db = api
+    _register(client, "alice")
+    account_id = db.get_active_account_by_username("alice")["account_id"]
+    reset_token = "owner-reset-before-ledger-error-1234"
+    db.store_reset_token(hash_token(reset_token), account_id, "2099-01-01T00:00:00+00:00")
+
+    def fail_ledger_write(_ledger, _password_hash):
+        raise RuntimeError("ledger write failed")
+
+    with monkeypatch.context() as scoped_patch:
+        scoped_patch.setattr(TrainingLedger, "set_password_hash", fail_ledger_write)
+        with pytest.raises(RuntimeError, match="ledger write failed"):
+            reset_service.owner_set_password(
+                db, "alice", "new-owner-password-22", actor="cli"
+            )
+
+    assert client.post(
+        "/auth/login", json={"trainee_id": "alice", "password": "correct-horse-1"}
+    ).status_code == 200
+    stale_link = client.post(
+        "/auth/reset-password",
+        json={"token": reset_token, "new_password": "attacker-horse-99"},
+    )
+    assert stale_link.status_code == 400
+
+
+def test_password_hashing_for_one_account_does_not_lock_other_accounts(api, monkeypatch):
+    import threading
+
+    import bcrypt
+
+    from service import auth as auth_service
+
+    client, db = api
+    _register(client, "alice")
+    _register(client, "bob")
+    alice_id = db.get_active_account_by_username("alice")["account_id"]
+    bob_id = db.get_active_account_by_username("bob")["account_id"]
+    hash_started = threading.Event()
+    release_hash = threading.Event()
+    bob_finished = threading.Event()
+    results = {}
+    real_hashpw = bcrypt.hashpw
+
+    def pause_alice_hash(password, salt):
+        if password == b"alice-new-password-22":
+            hash_started.set()
+            if not release_hash.wait(10):
+                raise TimeoutError("test did not release the paused bcrypt call")
+        return real_hashpw(password, salt)
+
+    monkeypatch.setattr(bcrypt, "hashpw", pause_alice_hash)
+
+    def change_alice_password():
+        try:
+            results["alice"] = auth_service.change_password(
+                db, alice_id, "correct-horse-1", "alice-new-password-22"
+            )
+        except Exception as exc:
+            results["alice_error"] = exc
+
+    def change_bob_password():
+        try:
+            results["bob"] = auth_service.change_password(
+                db, bob_id, "correct-horse-1", "bob-new-password-22"
+            )
+        except Exception as exc:
+            results["bob_error"] = exc
+        finally:
+            bob_finished.set()
+
+    alice_thread = threading.Thread(target=change_alice_password)
+    alice_thread.start()
+    if not hash_started.wait(5):
+        release_hash.set()
+        alice_thread.join(10)
+        pytest.fail("Alice's password hash did not reach bcrypt")
+    bob_thread = threading.Thread(target=change_bob_password)
+    bob_thread.start()
+    try:
+        bob_completed_before_release = bob_finished.wait(3)
+    finally:
+        release_hash.set()
+        alice_thread.join(10)
+        bob_thread.join(10)
+
+    assert bob_completed_before_release
+    assert "bob_error" not in results
+    assert "alice_error" not in results
+    assert results["alice"]["ok"] is True
+    assert results["bob"]["ok"] is True
 
 
 def test_reset_weak_password_does_not_consume_token(api, monkeypatch, verify_recovery_email):
@@ -1230,6 +1787,14 @@ def test_admin_cli_revokes_enrolled_account_sessions(api):
     token = _register(client, "alice")
     account_id = pyjwt.decode(token, TEST_JWT_SECRET, algorithms=["HS256"])["sub"]
     assert client.get("/dashboard/exercises", headers=_authed(token)).status_code == 200
+    from service._tokens import hash_token
+
+    cli_reset_token = "cli-reset-removal-token-123456"
+    db.store_reset_token(
+        hash_token(cli_reset_token),
+        account_id,
+        "2099-01-01T00:00:00+00:00",
+    )
 
     # Seed an already-expired revocation row: the CLI must prune it for an
     # enrolled account too, not only for a bare local ledger.
@@ -1272,6 +1837,11 @@ def test_admin_cli_revokes_enrolled_account_sessions(api):
 
     # The enrolled account's registry epoch advanced, so the old token is dead.
     assert db.get_account(account_id)["session_epoch"] == 2
+    stale_reset = client.post(
+        "/auth/reset-password",
+        json={"token": cli_reset_token, "new_password": "attacker-horse-99"},
+    )
+    assert stale_reset.status_code == 400
     assert client.get("/dashboard/exercises", headers=_authed(token)).status_code == 401
 
     # The new password works and reissues a token for the same immutable account.
