@@ -210,8 +210,6 @@ def assemble(flutter_build: Path, landing: Path, output: Path) -> None:
         "businessEmail": "ahmedtamerhejazi@gmail.com",
         "instagramHandle": "ahmedtvmer",
         "tiktokHandle": "ahmedforges",
-        "googlePlayUrl": os.environ.get("GOOGLE_PLAY_URL", ""),
-        "appStoreUrl": os.environ.get("APP_STORE_URL", ""),
     }
     landing_html = output / "index.html"
     landing_source = landing_html.read_text(encoding="utf-8")
@@ -225,9 +223,7 @@ def assemble(flutter_build: Path, landing: Path, output: Path) -> None:
             template_marker, html.escape(configured_value, quote=True)
         )
     landing_html.write_text(landing_source, encoding="utf-8")
-    runtime_config = {
-        key: config[key] for key in ("posthogKey", "googlePlayUrl", "appStoreUrl")
-    }
+    runtime_config = {"posthogKey": config["posthogKey"]}
     (output / "landing-config.js").write_text(
         "window.MYOS_LANDING = " + json.dumps(runtime_config, ensure_ascii=True) + ";\n",
         encoding="utf-8",

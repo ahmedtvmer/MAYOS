@@ -15,8 +15,7 @@
 #   POSTHOG_CLIENT_KEY                            (public PostHog project key)
 # Optional env: PAGES_PROJECT (default mayos), MAYOS_API_BASE_URL
 # (default https://mayos-api.fly.dev; must match the CSP connect-src in
-# mobile/web/_headers), PAGES_BRANCH (default main), GOOGLE_PLAY_URL and
-# APP_STORE_URL (empty until the native apps are published).
+# mobile/web/_headers), PAGES_BRANCH (default main).
 set -euo pipefail
 
 env_file="${MAYOS_WEB_ENV:-$HOME/.config/mayos/web.env}"
@@ -69,8 +68,6 @@ npx --yes workbox-cli@7.3.0 generateSW web/workbox-config.cjs
 pages_output="build/pages"
 MAYOS_API_BASE_URL="$api_url" \
 POSTHOG_CLIENT_KEY="${POSTHOG_CLIENT_KEY:-}" \
-GOOGLE_PLAY_URL="${GOOGLE_PLAY_URL:-}" \
-APP_STORE_URL="${APP_STORE_URL:-}" \
   python3 ../scripts/assemble_web.py build/web ../web_landing "$pages_output"
 
 npx --yes wrangler@latest pages deploy "$pages_output" \

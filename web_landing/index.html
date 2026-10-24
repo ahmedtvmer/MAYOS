@@ -3,78 +3,273 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MYOS — تقدّمٌ مدروس.</title>
-  <meta name="description" content="برامج تمرين، وتسجيل لكل مجموعة، وتدريب، في تطبيق واحد. ابدأ مجانًا على الويب.">
-  <meta property="og:title" content="MYOS — Progress, Engineered.">
-  <meta property="og:description" content="Training programs, set-by-set logging and coaching, in one app.">
+  <title>MYOS — تمرينك. مدروس.</title>
+  <meta name="description" content="يبني ميوس برنامج تمرينك بالذكاء الاصطناعي حسب هدفك ووقتك والأدوات المتاحة لك. سجّل كل مجموعة وتابع قوتك وهي تزيد.">
+  <meta property="og:title" content="MYOS — Progress. Engineered.">
+  <meta property="og:description" content="MYOS uses AI to build your training program around your goal, schedule and equipment.">
   <meta property="og:type" content="website">
   <meta property="og:image" content="/hero.webp">
-  <meta name="theme-color" content="#F6F5F2">
-  <meta name="theme-color" content="#0A1422" media="(prefers-color-scheme: dark)">
-  <link rel="preload" as="image" href="/hero.webp" fetchpriority="high">
+  <meta name="theme-color" content="#070E19">
+  <link rel="preload" as="image" href="/screen-logger.webp" fetchpriority="high">
   <link rel="preload" as="font" href="/IBMPlexSansArabic-Regular.woff2" type="font/woff2" crossorigin>
   <style>
-    @font-face{font-family:Inter;src:url('/Inter-Variable.woff2') format('woff2');font-weight:400 700;font-display:swap}
-    @font-face{font-family:Playfair;src:url('/PlayfairDisplay-Variable.woff2') format('woff2');font-weight:500 600;font-display:swap}
+    @font-face{font-family:Inter;src:url('/Inter-Variable.woff2') format('woff2');font-weight:400 800;font-display:swap}
     @font-face{font-family:Arabic;src:url('/IBMPlexSansArabic-Regular.woff2') format('woff2');font-weight:400;font-display:swap}
-    @font-face{font-family:Arabic;src:url('/IBMPlexSansArabic-SemiBold.woff2') format('woff2');font-weight:600;font-display:swap}
-    html[dir="rtl"] .hero:before{background:linear-gradient(270deg,rgba(4,10,17,.86),rgba(4,10,17,.42) 70%),linear-gradient(0deg,rgba(4,10,17,.48),transparent 60%)}
-    :root{color-scheme:light;--canvas:#F6F5F2;--surface:#fff;--sunken:#EFEDE8;--border:#E2E4E9;--text:#0E1B2E;--secondary:#4B5A70;--muted:#8593A6;--accent:#2563EB;--pressed:#1D4ED8;--focus:#2563EB;--gutter:16px}
-    @media(prefers-color-scheme:dark){:root:not([data-theme="light"]){color-scheme:dark;--canvas:#0A1422;--surface:#101D2E;--sunken:#070F1A;--border:#22344C;--text:#F3F6FB;--secondary:#A7B6CB;--muted:#6F8199;--accent:#2F6BFF;--pressed:#2257DE;--focus:#6EA0FF;--logo-filter:invert(1)}}
-    :root[data-theme="dark"]{color-scheme:dark;--canvas:#0A1422;--surface:#101D2E;--sunken:#070F1A;--border:#22344C;--text:#F3F6FB;--secondary:#A7B6CB;--muted:#6F8199;--accent:#2F6BFF;--pressed:#2257DE;--focus:#6EA0FF;--logo-filter:invert(1)}
-    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--canvas);color:var(--text);font:400 16px/1.65 Inter,Arabic,sans-serif;text-align:start}a,button{font:inherit}a{color:var(--accent);text-underline-offset:3px}a:focus-visible,button:focus-visible,[role="button"]:focus-visible{outline:3px solid var(--focus);outline-offset:3px}button{min-height:44px;cursor:pointer}.shell{width:min(100% - 2*var(--gutter),1120px);margin-inline:auto}.topbar{height:76px;display:flex;align-items:center;justify-content:space-between;gap:12px}.brand{display:inline-flex;align-items:center;min-height:44px}.brand img{width:30px;height:30px;object-fit:contain;filter:var(--logo-filter,none)}.brand-word{font-weight:700;letter-spacing:.08em;color:var(--text);margin-inline-start:8px}.nav-actions{display:flex;align-items:center;gap:12px}.nav-actions a{min-height:44px;display:inline-flex;align-items:center;font-weight:600;text-decoration:none}.language{border:1px solid var(--border);background:var(--surface);color:var(--text);padding:8px 13px;border-radius:6px}.hero{isolation:isolate;position:relative;min-height:590px;display:grid;align-items:center;color:#fff;overflow:hidden;background:#07101c url('/hero.webp') center 48%/cover no-repeat}.hero:before{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(4,10,17,.86),rgba(4,10,17,.42) 70%),linear-gradient(0deg,rgba(4,10,17,.48),transparent 60%)}.hero-inner{padding-block:70px;max-width:730px}.hero-lockup{width:min(290px,72vw);height:auto}.tagline{font:600 clamp(30px,6vw,56px)/1.15 Playfair,Arabic,serif;margin:22px 0 12px}.hero-line{font-size:18px;color:#E0E8F4;max-width:580px;margin:0 0 26px}.hero-actions{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.primary{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:10px 23px;background:#2F6BFF;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;transition:transform .16s,background .16s}.primary:hover{background:#2257DE;transform:translateY(-1px)}.badges{display:flex;align-items:center;gap:10px}.badge-wrap{display:inline-flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:1px;min-height:70px}.badge-wrap img{display:block;width:135px;height:52px;object-fit:contain}.badge-mark{padding:1px 7px;background:#fff;color:#172437;border:1px solid #cbd4e1;border-radius:99px;font:600 10px/1.5 Inter,Arabic,sans-serif;white-space:nowrap}.badge-disabled{cursor:default}.section{padding-block:84px}.section h2{font:600 clamp(27px,4vw,38px)/1.2 Playfair,Arabic,serif;margin:0 0 32px}.features{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:clamp(36px,8vw,100px)}.feature ul{padding:0;margin:0;list-style:none}.feature li{position:relative;padding-block:12px;padding-inline-start:30px;border-block-end:1px solid var(--border);color:var(--secondary)}.feature li svg{position:absolute;inset-inline-start:2px;inset-block-start:17px;width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;color:var(--accent)}.coach-actions{display:flex;gap:20px;flex-wrap:wrap;margin-block-start:23px}.coach-actions a{min-height:44px;display:inline-flex;align-items:center;font-weight:600}#coach-contact-en{display:none}html[lang="en"] #coach-contact-en{display:inline-flex}html[lang="en"] #coach-contact-ar{display:none}.story{padding-block:92px;background:var(--sunken)}.story-inner{max-width:760px}.story-word{font:500 clamp(90px,20vw,170px)/.95 Playfair,serif;letter-spacing:-.06em;color:var(--accent);margin:14px 0 22px;text-align:start}.story-word bdi{unicode-bidi:isolate}.story p{color:var(--secondary);font-size:17px;margin:0}.footer{padding-block:44px 28px}.footer-top{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap}.footer-top>a{min-height:44px;display:inline-flex;align-items:center}.footer h2{font:600 18px Inter,Arabic,sans-serif;margin:0 0 12px}.contact-links{display:flex;gap:20px;flex-wrap:wrap}.contact-links a{min-height:44px;display:inline-flex;align-items:center}.copyright{border-block-start:1px solid var(--border);margin-block-start:28px;padding-block-start:18px;color:var(--muted);font-size:13px}.reveal{animation:open-page .75s both}.hero-actions{animation:rise-in .6s .18s both}@keyframes open-page{from{opacity:.55;transform:translateY(8px)}to{opacity:1;transform:none}}@keyframes rise-in{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:none}}
-    @media(max-width:720px){.topbar{height:68px}.hero{min-height:590px;background-position:58% center}.hero-inner{padding-block:58px}.features{grid-template-columns:1fr;gap:42px}.section{padding-block:64px}.story{padding-block:68px}.hero-actions{align-items:flex-start;flex-direction:column;gap:17px}.badges{gap:7px}.badge-wrap img{width:127px}.footer-top{display:block}.footer-top>div+div{margin-block-start:28px}}
+    @font-face{font-family:Arabic;src:url('/IBMPlexSansArabic-SemiBold.woff2') format('woff2');font-weight:600 800;font-display:swap}
+    :root{color-scheme:dark;--ink:#070E19;--canvas:#0A1422;--surface:#101D2E;--raised:#14243A;--line:#1E3150;--line-hot:rgba(47,107,255,.5);--text:#F3F6FB;--secondary:#A7B6CB;--muted:#6F8199;--accent:#2F6BFF;--accent-hi:#6B95FF;--pressed:#2257DE;--focus:#8FB3FF;--gutter:20px;--wide:1180px}
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth;background:var(--ink)}
+    body{margin:0;background:var(--ink);color:var(--text);font:400 16px/1.6 Inter,Arabic,system-ui,sans-serif;text-align:start;-webkit-font-smoothing:antialiased}
+    html[lang="ar"] body{font-family:Arabic,Inter,system-ui,sans-serif}
+    img{display:block;max-width:100%;height:auto}
+    a,button{font:inherit;color:inherit}
+    a:focus-visible,button:focus-visible{outline:3px solid var(--focus);outline-offset:3px;border-radius:8px}
+    .shell{width:min(100% - 2*var(--gutter),var(--wide));margin-inline:auto}
+    .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+    .display{font-family:Inter,Arabic,sans-serif;font-weight:800;letter-spacing:-.03em}
+    html[lang="ar"] .display{font-family:Arabic,Inter,sans-serif;letter-spacing:0}
+
+    /* Navbar */
+    .topbar{position:absolute;inset-inline:0;top:0;z-index:5}
+    .topbar .shell{height:76px;display:flex;align-items:center;gap:20px}
+    .brand{display:inline-flex;align-items:center;gap:10px;min-height:44px;text-decoration:none}
+    .brand img{width:32px;height:32px;object-fit:contain;filter:invert(1)}
+    .brand-word{font:700 16px/1 Inter,sans-serif;letter-spacing:.22em}
+    .nav-links{display:flex;gap:4px;margin-inline-start:auto}
+    .nav-links a{min-height:44px;display:inline-flex;align-items:center;padding-inline:12px;color:var(--secondary);text-decoration:none;font-size:15px;transition:color .15s}
+    .nav-links a:hover{color:var(--text)}
+    .nav-actions{display:flex;align-items:center;gap:10px}
+    .language{min-height:44px;padding:0 14px;border:1px solid var(--line);background:rgba(16,29,46,.6);color:var(--text);border-radius:10px;cursor:pointer;transition:border-color .15s}
+    .language:hover{border-color:var(--line-hot)}
+    .btn{display:inline-flex;align-items:center;justify-content:center;min-height:50px;padding:0 26px;border-radius:12px;font-weight:600;text-decoration:none;transition:background .15s,transform .15s}
+    .btn-primary{background:var(--accent);color:#fff;box-shadow:0 10px 30px -12px rgba(47,107,255,.9)}
+    .btn-primary:hover{background:var(--pressed);transform:translateY(-1px)}
+    .btn-small{min-height:44px;padding:0 18px;border-radius:10px}
+
+    /* Hero */
+    .hero{position:relative;isolation:isolate;overflow:hidden;padding-block:120px 72px}
+    /* The splash screen's gym wallpaper: blurred 6px under a 60% black overlay, then the brand glow. */
+    .hero:before{content:"";position:absolute;inset:-12px;z-index:-2;background:#0A1422 url('/hero.webp') center 40%/cover no-repeat;filter:blur(10px) brightness(.8);transform:scale(1.04)}
+    .hero:after{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,transparent 60%,var(--ink) 99%),linear-gradient(90deg,rgba(7,14,25,.75),rgba(7,14,25,.2) 55%,transparent),radial-gradient(50% 60% at 68% 38%,rgba(47,107,255,.26),transparent 70%),linear-gradient(180deg,rgba(0,0,0,.62),rgba(0,0,0,.62))}
+    html[dir="rtl"] .hero:after{background:linear-gradient(180deg,transparent 60%,var(--ink) 99%),linear-gradient(270deg,rgba(7,14,25,.75),rgba(7,14,25,.2) 55%,transparent),radial-gradient(50% 60% at 32% 38%,rgba(47,107,255,.26),transparent 70%),linear-gradient(180deg,rgba(0,0,0,.62),rgba(0,0,0,.62))}
+    .hero-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);align-items:center;gap:48px}
+    .eyebrow{display:inline-flex;align-items:center;gap:8px;margin:0 0 18px;padding:6px 12px;border:1px solid var(--line);border-radius:99px;background:rgba(47,107,255,.08);color:var(--accent-hi);font-weight:600;font-size:14px}
+    .eyebrow svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    h1{margin:0;font-size:clamp(44px,5.6vw,72px);line-height:1.02}
+    html[lang="ar"] h1{line-height:1.2}
+    h1 span{display:block;white-space:nowrap}
+    h1 .accent{color:var(--accent)}
+    .lead{margin:22px 0 32px;max-width:31em;color:var(--secondary);font-size:clamp(17px,1.5vw,19px);line-height:1.65}
+    .lead strong{color:var(--text);font-weight:600}
+    .benefits{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;margin:40px 0 0;padding:24px 0 0;list-style:none;border-block-start:1px solid var(--line)}
+    .benefits h2{margin:10px 0 4px;font-size:15px;font-weight:700}
+    .benefits p{margin:0;color:var(--secondary);font-size:14px;line-height:1.5}
+    .icon{display:grid;place-items:center;width:40px;height:40px;border-radius:11px;background:rgba(47,107,255,.14);color:var(--accent-hi)}
+    .icon svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+    .phones{position:relative;height:620px}
+    .phone{position:absolute;margin:0;width:285px;padding:8px;border-radius:42px;background:linear-gradient(160deg,#2C3E5A,#0C1626 55%);box-shadow:0 40px 80px -28px rgba(0,0,0,.9),0 0 0 1px rgba(255,255,255,.07) inset}
+    .phone img{width:100%;aspect-ratio:1236/2600;object-fit:cover;object-position:top;border-radius:34px;background:var(--canvas)}
+    .phone-front{inset-inline-start:4%;top:0;z-index:2}
+    .phone-back{inset-inline-end:2%;top:64px;transform:rotate(3deg);opacity:.96}
+    html[dir="rtl"] .phone-back{transform:rotate(-3deg)}
+
+    /* Audience */
+    .audience{padding-block:40px 64px}
+    .section-head{max-width:920px;margin:0 auto 36px;text-align:center}
+    .section-head h2{margin:0;font-size:clamp(30px,3.6vw,42px);line-height:1.12}
+    .section-head p{margin:12px 0 0;color:var(--secondary);font-size:17px}
+    .card{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);align-items:center;gap:40px;padding:34px 44px;border:1px solid var(--line);border-radius:26px;background:radial-gradient(80% 120% at 100% 0%,rgba(47,107,255,.16),transparent 60%),linear-gradient(180deg,var(--surface),var(--canvas));overflow:hidden;transition:border-color .2s}
+    html[dir="rtl"] .card{background:radial-gradient(80% 120% at 0% 0%,rgba(47,107,255,.16),transparent 60%),linear-gradient(180deg,var(--surface),var(--canvas))}
+    .card:hover{border-color:var(--line-hot)}
+    .card+.card{margin-block-start:20px}
+    .card-label{margin:0 0 10px;color:var(--accent-hi);font-weight:600;font-size:14px}
+    .card h3{margin:0 0 16px;font-size:clamp(26px,2.8vw,34px);line-height:1.15}
+    .checks{margin:0 0 22px;padding:0;list-style:none}
+    .checks li{display:flex;gap:12px;align-items:flex-start;padding-block:5px;color:var(--secondary);font-size:16px}
+    .checks svg{flex:none;width:20px;height:20px;margin-block-start:2px;fill:none;stroke:var(--accent-hi);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+    .card-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px}
+    .text-link{display:inline-flex;align-items:center;min-height:44px;color:var(--secondary);font-size:15px}
+    .duo{display:flex;justify-content:center;align-items:flex-start;gap:20px}
+    .duo .phone{position:relative;width:min(47%,270px);border-radius:34px;padding:7px}
+    .duo .phone img{aspect-ratio:600/888;border-radius:27px}
+    .duo .phone+.phone{margin-block-start:32px}
+    .desk{margin:0;padding:8px;border:1px solid var(--line);border-radius:18px;background:#0C1626;box-shadow:0 40px 80px -30px rgba(0,0,0,.9)}
+    .desk img{border-radius:11px;width:100%;aspect-ratio:1300/731}
+    .card-coach{grid-template-columns:minmax(0,1.25fr) minmax(0,.75fr)}
+    .card-coach .card-media{order:-1}
+
+    /* Bottom CTA */
+    .cta{padding-block:0 64px}
+    .cta-box{display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;padding:36px 48px;border:1px solid var(--line);border-radius:26px;background:linear-gradient(100deg,rgba(47,107,255,.24),rgba(16,29,46,.6) 60%)}
+    html[dir="rtl"] .cta-box{background:linear-gradient(260deg,rgba(47,107,255,.24),rgba(16,29,46,.6) 60%)}
+    .cta-box h2{margin:0;font-size:clamp(26px,3vw,36px);line-height:1.15}
+    .cta-box p{margin:8px 0 0;color:var(--secondary)}
+
+    /* Footer */
+    .footer{border-block-start:1px solid var(--line);padding-block:20px 28px;color:var(--muted);font-size:14px}
+    .footer .shell{display:flex;align-items:center;gap:8px 18px;flex-wrap:wrap}
+    .footer .brand img{width:24px;height:24px}
+    .footer .brand-word{font-size:13px;color:var(--text)}
+    .footer-links{display:flex;align-items:center;gap:4px 20px;flex-wrap:wrap;margin-inline-start:auto}
+    .socials{display:flex;gap:10px}
+    .social{display:grid;place-items:center;width:44px;height:44px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--secondary);transition:color .15s,border-color .15s,background .15s,transform .15s}
+    .social:hover{color:#fff;border-color:var(--line-hot);background:var(--raised);transform:translateY(-1px)}
+    .social svg{width:20px;height:20px}
+    .social .stroke{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    .social .stroke .dot{fill:currentColor;stroke:none}
+    .social .fill{fill:currentColor}
+    #privacy-link{min-height:44px;display:inline-flex;align-items:center;color:var(--secondary);text-decoration:none}
+    #privacy-link:hover{color:var(--text)}
+    .copyright{width:100%;margin:4px 0 0}
+
+    #coach-contact-en{display:none}
+    html[lang="en"] #coach-contact-en{display:inline-flex}
+    html[lang="en"] #coach-contact-ar{display:none}
+
+    /* One load moment: the phones settle into place. */
+    .hero .phone-front{animation:settle .9s cubic-bezier(.2,.8,.2,1) both}
+    .hero .phone-back{animation:settle-back .9s .12s cubic-bezier(.2,.8,.2,1) both}
+    @keyframes settle{from{opacity:0;transform:translateY(28px)}}
+    @keyframes settle-back{from{opacity:0;transform:translateY(44px) rotate(0)}}
+
+    @media(max-width:1060px){
+      .hero-grid{grid-template-columns:1fr;gap:40px}
+      .hero-copy{max-width:640px}
+      .phones{height:560px;max-width:560px;width:100%;margin-inline:auto}
+      .card,.card-coach{grid-template-columns:1fr;gap:28px;padding:28px}
+      .card-coach .card-media{order:0}
+    }
+    @media(max-width:760px){
+      .nav-links{display:none}
+      .nav-actions{margin-inline-start:auto}
+      .hero{padding-block:100px 48px}
+      .benefits{grid-template-columns:1fr;gap:16px}
+      .benefits li{display:grid;grid-template-columns:40px 1fr;gap:0 14px;align-items:start}
+      .benefits h2{margin-block-start:0}
+      .phones{height:460px}
+      .phone{width:215px;border-radius:36px}
+      .phone img{border-radius:29px}
+      .card{padding:24px;border-radius:22px}
+      .cta-box{padding:28px 24px}
+    }
+    @media(max-width:420px){
+      :root{--gutter:16px}
+      .topbar .shell{height:68px;gap:10px}
+      .brand-word{display:none}
+      .phones{height:400px}
+      .phone{width:185px}
+      .duo{gap:12px}
+    }
     @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
   </style>
   <script src="/landing-config.js" defer></script>
   <script src="/landing.js" defer></script>
 </head>
 <body>
-  <div class="shell">
-    <nav class="topbar" aria-label="Main navigation">
-      <a class="brand" href="/" aria-label="MYOS home"><img src="/myos-mark.webp" alt=""><span class="brand-word">MYOS</span></a>
-      <div class="nav-actions"><button class="language" id="language-toggle" type="button" aria-label="Change language" data-copy="language_toggle" data-en="العربية" data-ar="English">English</button><a id="login" href="/app/login" data-track="landing_login" data-copy="login" data-en="Log in" data-ar="تسجيل الدخول">تسجيل الدخول</a></div>
+  <header class="topbar">
+    <nav class="shell" aria-label="التنقل الرئيسي">
+      <a class="brand" href="/" aria-label="MYOS"><img src="/myos-mark.webp" alt=""><span class="brand-word">MYOS</span></a>
+      <div class="nav-links">
+        <a href="#lifters" data-copy="nav_lifters" data-en="For lifters" data-ar="للاعبين">للاعبين</a>
+        <a href="#coaches" data-copy="nav_coaches" data-en="For coaches" data-ar="للمدربين">للمدربين</a>
+      </div>
+      <div class="nav-actions">
+        <button class="language" id="language-toggle" type="button" aria-label="Change language to English" data-copy="language_toggle" data-en="العربية" data-ar="English">English</button>
+        <a id="login" class="btn btn-primary btn-small" href="/app/login" data-track="landing_login" data-copy="login" data-en="Log in" data-ar="تسجيل الدخول">تسجيل الدخول</a>
+      </div>
     </nav>
-  </div>
+  </header>
+
   <main>
     <section class="hero" aria-labelledby="hero-title">
-      <div class="shell hero-inner reveal">
-        <img class="hero-lockup" src="/myos-lockup-white.webp" alt="MYOS ميوس">
-        <h1 class="tagline" id="hero-title" data-copy="tagline" data-en="Progress, Engineered." data-ar="تقدّمٌ مدروس.">تقدّمٌ مدروس.</h1>
-        <p class="hero-line" data-copy="hero_line" data-en="Training programs, set-by-set logging and coaching, in one app. Free to start on the web." data-ar="برامج تمرين، وتسجيل لكل مجموعة، وتدريب، في تطبيق واحد. ابدأ مجانًا على الويب.">برامج تمرين، وتسجيل لكل مجموعة، وتدريب، في تطبيق واحد. ابدأ مجانًا على الويب.</p>
-        <div class="hero-actions">
-          <a id="start-free" class="primary" href="/app/register" data-track="landing_start_free" data-copy="start_free" data-en="Start free" data-ar="ابدأ مجانًا">ابدأ مجانًا</a>
-          <div class="badges" aria-label="Mobile apps">
-            <span class="badge-wrap badge-disabled" data-store-badge="google_play" data-track="landing_store_badge" role="button" tabindex="0" aria-disabled="true" aria-label="Google Play, قريبًا">
-              <img data-badge="google_play" src="/google-play-ar.png" alt="Google Play">
-              <span class="badge-mark" data-copy="coming_soon" data-en="Coming soon" data-ar="قريبًا">قريبًا</span>
-            </span>
-            <span class="badge-wrap badge-disabled" data-store-badge="app_store" data-track="landing_store_badge" role="button" tabindex="0" aria-disabled="true" aria-label="App Store, قريبًا">
-              <img data-badge="app_store" src="/app-store-en.svg" alt="App Store">
-              <span class="badge-mark" data-copy="coming_soon" data-en="Coming soon" data-ar="قريبًا">قريبًا</span>
-            </span>
-          </div>
+      <div class="shell hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7z"/></svg><span data-copy="eyebrow" data-en="AI-built training programs" data-ar="برامج تمرين بالذكاء الاصطناعي">برامج تمرين بالذكاء الاصطناعي</span></p>
+          <h1 id="hero-title" class="display"><span data-copy="hero_title_1" data-en="Your training." data-ar="تمرينك.">تمرينك.</span><span class="accent" data-copy="hero_title_2" data-en="Engineered." data-ar="مدروس.">مدروس.</span></h1>
+          <p class="lead" data-copy="hero_line" data-en="MYOS uses AI to build your training program around your goal, schedule and equipment. Log every set and watch your strength grow. Free to start on the web." data-ar="يبني ميوس برنامج تمرينك بالذكاء الاصطناعي حسب هدفك ووقتك والأدوات المتاحة لك. سجّل كل مجموعة وتابع قوتك وهي تزيد. ابدأ مجانًا على الويب.">يبني ميوس برنامج تمرينك بالذكاء الاصطناعي حسب هدفك ووقتك والأدوات المتاحة لك. سجّل كل مجموعة وتابع قوتك وهي تزيد. ابدأ مجانًا على الويب.</p>
+          <a id="start-free" class="btn btn-primary" href="/app/register" data-track="landing_start_free" data-copy="start_free" data-en="Start free" data-ar="ابدأ مجانًا">ابدأ مجانًا</a>
+          <ul class="benefits">
+            <li><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7z"/></svg></span><div><h2 data-copy="benefit_1_title" data-en="AI-built plans" data-ar="خطط بالذكاء الاصطناعي">خطط بالذكاء الاصطناعي</h2><p data-copy="benefit_1" data-en="Sets, reps and rest planned for your goal." data-ar="المجموعات والتكرارات والراحة حسب هدفك.">المجموعات والتكرارات والراحة حسب هدفك.</p></div></li>
+            <li><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19V13m5 6V9m5 10V5m5 14v-8"/></svg></span><div><h2 data-copy="benefit_2_title" data-en="Log every set" data-ar="سجّل كل مجموعة">سجّل كل مجموعة</h2><p data-copy="benefit_2" data-en="Weight, reps and reps in reserve, as you train." data-ar="الوزن والتكرارات والتكرارات المتبقية أثناء التمرين.">الوزن والتكرارات والتكرارات المتبقية أثناء التمرين.</p></div></li>
+            <li><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8m-5 0h5v5"/></svg></span><div><h2 data-copy="benefit_3_title" data-en="See your progress" data-ar="تابع تقدّمك">تابع تقدّمك</h2><p data-copy="benefit_3" data-en="Estimated 1RM, weekly volume and records." data-ar="الحد الأقصى التقديري والحجم الأسبوعي والأرقام القياسية.">الحد الأقصى التقديري والحجم الأسبوعي والأرقام القياسية.</p></div></li>
+          </ul>
+        </div>
+
+        <div class="phones">
+          <figure class="phone phone-front"><img src="/screen-logger.webp" width="720" height="1515" data-alt-en="MYOS workout logger with bench press sets of 80 kg logged" data-alt-ar="شاشة تسجيل التمرين في ميوس مع مجموعات بنش برس بوزن 80 كجم" alt="شاشة تسجيل التمرين في ميوس مع مجموعات بنش برس بوزن 80 كجم"></figure>
+          <figure class="phone phone-back"><img src="/screen-home.webp" width="720" height="1515" data-alt-en="MYOS home screen with the next session and this week's volume" data-alt-ar="الشاشة الرئيسية في ميوس مع الجلسة القادمة وحجم هذا الأسبوع" alt="الشاشة الرئيسية في ميوس مع الجلسة القادمة وحجم هذا الأسبوع"></figure>
         </div>
       </div>
     </section>
-    <section class="section shell" aria-label="Who MYOS is for">
-      <div class="features">
-        <article class="feature"><h2 data-copy="lifters_heading" data-en="For lifters" data-ar="للاعبين">للاعبين</h2><ul>
-          <li data-copy="lifter_1" data-en="Get a program built around your goal, your schedule and the equipment you have." data-ar="احصل على برنامج مبني على هدفك ووقتك والأدوات المتاحة لك."><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8v8M4 10v4m14-6v8m2-6v4M6 12h12"/></svg>احصل على برنامج مبني على هدفك ووقتك والأدوات المتاحة لك.</li>
-          <li data-copy="lifter_2" data-en="Log every set as you train." data-ar="سجّل كل مجموعة أثناء تمرينك."><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5zM8 9h8M8 12h8M8 15h5"/></svg>سجّل كل مجموعة أثناء تمرينك.</li>
-          <li data-copy="lifter_3" data-en="See your history and progress over time." data-ar="تابع سجلّ تمارينك وتقدّمك مع الوقت."><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18V6m0 12h16M7 15l4-4 3 2 5-6"/></svg>تابع سجلّ تمارينك وتقدّمك مع الوقت.</li>
-          <li data-copy="lifter_4" data-en="Ask the MYOS assistant about your training." data-ar="اسأل مساعد ميوس عن تمرينك."><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7L12 3zM19 16l.7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7L19 16z"/></svg>اسأل مساعد ميوس عن تمرينك.</li>
-        </ul></article>
-        <article class="feature"><h2 data-copy="coaches_heading" data-en="For coaches" data-ar="للمدربين">للمدربين</h2><ul>
-          <li data-copy="coach_1" data-en="Keep all your players in one roster." data-ar="كل لاعبيك في قائمة واحدة."><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16M7 5v4m5 1v4m5 1v4"/></svg>كل لاعبيك في قائمة واحدة.</li>
-          <li data-copy="coach_2" data-en="Write programs and assign them, or let MYOS draft them for you." data-ar="اكتب البرامج وخصّصها للاعبيك، أو دع ميوس يكتب لك مسودتها."><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11l3 3v13H5zM16 4v4h3M8 12h8m-8 4h8"/></svg>اكتب البرامج وخصّصها للاعبيك، أو دع ميوس يكتب لك مسودتها.</li>
-          <li data-copy="coach_3" data-en="Follow each player's workouts and history." data-ar="تابع تمارين كل لاعب وسجلّه."><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg>تابع تمارين كل لاعب وسجلّه.</li>
-          <li data-copy="coach_4" data-en="Swap exercises from a library with video demos." data-ar="بدّل التمارين من مكتبة فيها فيديوهات توضيحية."><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v12H4zM10 9l5 3-5 3z"/></svg>بدّل التمارين من مكتبة فيها فيديوهات توضيحية.</li>
-        </ul><div class="coach-actions"><a id="coach-contact-en" href="mailto:@@BUSINESS_EMAIL@@?subject=MYOS%20coach%20request" data-track="landing_coach_contact" data-copy="coach_action" data-en="Become a MYOS coach" data-ar="انضم مدربًا في ميوس">انضم مدربًا في ميوس</a><a id="coach-contact-ar" href="mailto:@@BUSINESS_EMAIL@@?subject=%D8%B7%D9%84%D8%A8%20%D8%A7%D9%86%D8%B6%D9%85%D8%A7%D9%85%20%D9%85%D8%AF%D8%B1%D8%A8%20%D8%A5%D9%84%D9%89%20%D9%85%D9%8A%D9%88%D8%B3" data-track="landing_coach_contact" data-copy="coach_action" data-en="Become a MYOS coach" data-ar="انضم مدربًا في ميوس">انضم مدربًا في ميوس</a><a data-contact="instagram" href="https://instagram.com/@@INSTAGRAM_HANDLE@@" data-copy="coach_instagram" data-en="Message us on Instagram" data-ar="راسلنا على إنستغرام">راسلنا على إنستغرام</a></div></article>
+
+    <section class="audience" aria-labelledby="audience-title">
+      <div class="shell">
+        <div class="section-head">
+          <h2 id="audience-title" class="display" data-copy="audience_title" data-en="Built for lifters and the coaches who train them." data-ar="مصمّم للاعبين وللمدربين الذين يدرّبونهم.">مصمّم للاعبين وللمدربين الذين يدرّبونهم.</h2>
+          <p data-copy="audience_line" data-en="Train on your own, or coach your players, with the same tools." data-ar="تمرّن بنفسك، أو درّب لاعبيك، بالأدوات نفسها.">تمرّن بنفسك، أو درّب لاعبيك، بالأدوات نفسها.</p>
+        </div>
+
+        <article class="card card-lifter" id="lifters" aria-labelledby="lifters-title">
+          <div>
+            <p class="card-label" data-copy="lifters_label" data-en="For lifters" data-ar="للاعبين">للاعبين</p>
+            <h3 id="lifters-title" class="display" data-copy="lifters_title" data-en="A plan built around you." data-ar="برنامج مبني عليك.">برنامج مبني عليك.</h3>
+            <ul class="checks">
+              <li data-copy="lifter_1" data-en="An AI-built program for your goal and equipment" data-ar="برنامج بالذكاء الاصطناعي لهدفك وأدواتك"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>برنامج بالذكاء الاصطناعي لهدفك وأدواتك</li>
+              <li data-copy="lifter_2" data-en="Log every set, rep and RIR" data-ar="سجّل كل مجموعة وتكرار والتكرارات المتبقية"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>سجّل كل مجموعة وتكرار والتكرارات المتبقية</li>
+              <li data-copy="lifter_3" data-en="Track your estimated 1RM over time" data-ar="تابع الحد الأقصى التقديري مع الوقت"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>تابع الحد الأقصى التقديري مع الوقت</li>
+              <li data-copy="lifter_4" data-en="Offline logging in the Android app" data-ar="تسجيل بدون إنترنت في تطبيق أندرويد"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>تسجيل بدون إنترنت في تطبيق أندرويد</li>
+            </ul>
+            <a class="btn btn-primary btn-small" href="/app/register" data-track="landing_start_free" data-copy="lifters_cta" data-en="Build your free program" data-ar="ابنِ برنامجك المجاني">ابنِ برنامجك المجاني</a>
+          </div>
+          <div class="card-media duo">
+            <figure class="phone"><img src="/screen-program.webp" width="600" height="888" loading="lazy" decoding="async" data-alt-en="MYOS program screen showing Day 1 exercises" data-alt-ar="شاشة البرنامج في ميوس مع تمارين اليوم الأول" alt="شاشة البرنامج في ميوس مع تمارين اليوم الأول"></figure>
+            <figure class="phone"><img src="/screen-progress.webp" width="600" height="888" loading="lazy" decoding="async" data-alt-en="MYOS progress screen with an estimated 1RM chart for bench press" data-alt-ar="شاشة التقدّم في ميوس مع رسم الحد الأقصى التقديري للبنش برس" alt="شاشة التقدّم في ميوس مع رسم الحد الأقصى التقديري للبنش برس"></figure>
+          </div>
+        </article>
+
+        <article class="card card-coach" id="coaches" aria-labelledby="coaches-title">
+          <div>
+            <p class="card-label" data-copy="coaches_label" data-en="For coaches" data-ar="للمدربين">للمدربين</p>
+            <h3 id="coaches-title" class="display" data-copy="coaches_title" data-en="Your players, in one place." data-ar="لاعبوك في مكان واحد.">لاعبوك في مكان واحد.</h3>
+            <ul class="checks">
+              <li data-copy="coach_1" data-en="Manage your players in one roster" data-ar="أدِر لاعبيك في قائمة واحدة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>أدِر لاعبيك في قائمة واحدة</li>
+              <li data-copy="coach_2" data-en="Write and assign programs" data-ar="اكتب البرامج وخصّصها للاعبيك"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>اكتب البرامج وخصّصها للاعبيك</li>
+              <li data-copy="coach_3" data-en="Alerts when a player misses sessions" data-ar="تنبيهات عندما يفوّت اللاعب جلساته"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>تنبيهات عندما يفوّت اللاعب جلساته</li>
+              <li data-copy="coach_4" data-en="An AI assistant that drafts programs with you" data-ar="مساعد ذكي يكتب مسودات البرامج معك"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>مساعد ذكي يكتب مسودات البرامج معك</li>
+            </ul>
+            <div class="card-actions"><a id="coach-contact-en" class="btn btn-primary btn-small" href="mailto:@@BUSINESS_EMAIL@@?subject=MYOS%20coach%20request" data-track="landing_coach_contact" data-copy="coach_action" data-en="Request coach access" data-ar="اطلب حساب مدرب">اطلب حساب مدرب</a><a id="coach-contact-ar" class="btn btn-primary btn-small" href="mailto:@@BUSINESS_EMAIL@@?subject=%D8%B7%D9%84%D8%A8%20%D8%A7%D9%86%D8%B6%D9%85%D8%A7%D9%85%20%D9%85%D8%AF%D8%B1%D8%A8%20%D8%A5%D9%84%D9%89%20%D9%85%D9%8A%D9%88%D8%B3" data-track="landing_coach_contact" data-copy="coach_action" data-en="Request coach access" data-ar="اطلب حساب مدرب">اطلب حساب مدرب</a><a class="text-link" data-contact="instagram" href="https://instagram.com/@@INSTAGRAM_HANDLE@@" data-copy="coach_instagram" data-en="or message us on Instagram" data-ar="أو راسلنا على إنستغرام">أو راسلنا على إنستغرام</a></div>
+          </div>
+          <figure class="card-media desk"><img src="/screen-coach.webp" width="1300" height="731" loading="lazy" decoding="async" data-alt-en="MYOS coach roster with missed-session flags and a player's overview" data-alt-ar="قائمة لاعبي المدرب في ميوس مع تنبيهات الجلسات الفائتة وملخّص أحد اللاعبين" alt="قائمة لاعبي المدرب في ميوس مع تنبيهات الجلسات الفائتة وملخّص أحد اللاعبين"></figure>
+        </article>
       </div>
     </section>
-    <section class="story"><div class="shell story-inner"><h2 data-copy="name_heading" data-en="Why MYOS" data-ar="لماذا ميوس">لماذا ميوس</h2><div class="story-word" lang="el" aria-label="mys"><bdi dir="ltr">μῦς</bdi></div><p data-copy="name_story" data-rich="true" data-en="MYOS comes from the Greek &lt;em&gt;mys&lt;/em&gt;, a word that meant both &quot;mouse&quot; and &quot;muscle&quot;. The Romans saw it too: in Latin, &lt;em&gt;musculus&lt;/em&gt; means &quot;little mouse&quot;, because a flexed muscle moving under the skin looks like a small mouse running beneath it. That's where the English word &lt;em&gt;muscle&lt;/em&gt; comes from." data-ar="اسم ميوس مأخوذ من الكلمة اليونانية &lt;em&gt;μῦς&lt;/em&gt;، وكانت تعني «الفأر» و«العضلة» معًا. ورأى الرومان الشيء نفسه، فكلمة &lt;em&gt;musculus&lt;/em&gt; اللاتينية تعني «الفأر الصغير»، لأن العضلة حين تنقبض وتتحرك تحت الجلد تشبه فأرًا صغيرًا يجري تحته. ومنها جاءت كلمة &lt;em&gt;muscle&lt;/em&gt; في الإنجليزية.">اسم ميوس مأخوذ من الكلمة اليونانية μῦς، وكانت تعني «الفأر» و«العضلة» معًا. ورأى الرومان الشيء نفسه، فكلمة musculus اللاتينية تعني «الفأر الصغير»، لأن العضلة حين تنقبض وتتحرك تحت الجلد تشبه فأرًا صغيرًا يجري تحته. ومنها جاءت كلمة muscle في الإنجليزية.</p></div></section>
+
+    <section class="cta" aria-labelledby="cta-title">
+      <div class="shell cta-box">
+        <div>
+          <h2 id="cta-title" class="display" data-copy="cta_title" data-en="Start your progress today." data-ar="ابدأ تقدّمك اليوم.">ابدأ تقدّمك اليوم.</h2>
+          <p data-copy="cta_line" data-en="Free to start on the web. Built for lifters and coaches." data-ar="مجاني للبدء على الويب. مصمّم للاعبين والمدربين.">مجاني للبدء على الويب. مصمّم للاعبين والمدربين.</p>
+        </div>
+        <a class="btn btn-primary" href="/app/register" data-track="landing_start_free" data-copy="start_free" data-en="Start free" data-ar="ابدأ مجانًا">ابدأ مجانًا</a>
+      </div>
+    </section>
   </main>
-  <footer class="footer shell"><div class="footer-top"><div><h2 data-copy="contact_heading" data-en="Contact" data-ar="تواصل معنا">تواصل معنا</h2><div class="contact-links"><a data-contact="email" href="mailto:@@BUSINESS_EMAIL@@">@@BUSINESS_EMAIL@@</a><a data-contact="instagram" href="https://instagram.com/@@INSTAGRAM_HANDLE@@">Instagram @@@INSTAGRAM_HANDLE@@</a><a data-contact="tiktok" href="https://tiktok.com/@@@TIKTOK_HANDLE@@">TikTok @@@TIKTOK_HANDLE@@</a></div></div><a id="privacy-link" href="@@API_BASE_URL@@/privacy" data-copy="privacy" data-en="Privacy policy" data-ar="سياسة الخصوصية">سياسة الخصوصية</a></div><div class="copyright">© <span id="year">2026</span> MYOS · ميوس</div></footer>
+
+  <footer class="footer">
+    <div class="shell">
+      <a class="brand" href="/" aria-label="MYOS"><img src="/myos-mark.webp" alt=""><span class="brand-word">MYOS</span></a>
+      <h2 class="sr-only" data-copy="contact_heading" data-en="Contact" data-ar="تواصل معنا">تواصل معنا</h2>
+      <div class="footer-links">
+        <div class="socials">
+          <a class="social" data-contact="email" href="mailto:@@BUSINESS_EMAIL@@" aria-label="Email @@BUSINESS_EMAIL@@" title="@@BUSINESS_EMAIL@@"><svg viewBox="0 0 24 24" aria-hidden="true" class="stroke"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3.5 7l8.5 6 8.5-6"/></svg></a>
+          <a class="social" data-contact="instagram" href="https://instagram.com/@@INSTAGRAM_HANDLE@@" aria-label="Instagram @@@INSTAGRAM_HANDLE@@" title="Instagram @@@INSTAGRAM_HANDLE@@"><svg viewBox="0 0 24 24" aria-hidden="true" class="stroke"><rect x="3" y="3" width="18" height="18" rx="5.5"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.4" cy="6.6" r="1.1" class="dot"/></svg></a>
+          <a class="social" data-contact="tiktok" href="https://tiktok.com/@@@TIKTOK_HANDLE@@" aria-label="TikTok @@@TIKTOK_HANDLE@@" title="TikTok @@@TIKTOK_HANDLE@@"><svg viewBox="0 0 24 24" aria-hidden="true" class="fill"><path d="M12.53.02C13.84 0 15.14.01 16.44 0c.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg></a>
+        </div>
+        <a id="privacy-link" href="@@API_BASE_URL@@/privacy" data-copy="privacy" data-en="Privacy policy" data-ar="سياسة الخصوصية">سياسة الخصوصية</a>
+      </div>
+      <p class="copyright">© <span id="year">2026</span> MYOS · ميوس</p>
+    </div>
+  </footer>
 </body>
 </html>

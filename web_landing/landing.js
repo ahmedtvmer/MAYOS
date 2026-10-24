@@ -8,13 +8,6 @@
   var analyticsQueue = [];
   var analyticsReady = false;
 
-  function bytesFromBase64(base64Text) {
-    var binary = atob(base64Text);
-    var bytes = new Uint8Array(binary.length);
-    for (var i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-    return bytes;
-  }
-
   function captureFirstTouch() {
     try {
       if (localStorage.getItem(firstTouchKey) !== null) return;
@@ -41,42 +34,6 @@
     return false;
   }
 
-  function readTheme() {
-    try {
-      var encryptedMode = localStorage.getItem(securePrefix + 'settings.theme_mode');
-      var base64Key = localStorage.getItem('FlutterSecureStorage');
-      if (!encryptedMode || !base64Key) return Promise.resolve(null);
-      var encodedParts = encryptedMode.split('.');
-      if (encodedParts.length !== 2) return Promise.resolve(null);
-      var iv = bytesFromBase64(encodedParts[0]);
-      var cipher = bytesFromBase64(encodedParts[1]);
-      return crypto.subtle.importKey('raw', bytesFromBase64(base64Key), {name: 'AES-GCM'}, false, ['decrypt'])
-        .then(function (cryptoKey) {
-          return crypto.subtle.decrypt({name: 'AES-GCM', iv: iv}, cryptoKey, cipher);
-        }).then(function (decryptedBytes) {
-          var themeMode = new TextDecoder().decode(decryptedBytes);
-          return ['light', 'dark', 'system'].indexOf(themeMode) >= 0 ? themeMode : null;
-        }).catch(function () {
-          return null; // The app falls back to ThemeMode.system for unreadable choices.
-        });
-    } catch (_error) {
-      return Promise.resolve(null); // A blocked secure store uses the same system fallback.
-    }
-  }
-
-  function applyTheme() {
-    readTheme().then(function (mode) {
-      if (mode === 'light' || mode === 'dark') document.documentElement.dataset.theme = mode;
-      else document.documentElement.removeAttribute('data-theme');
-      var dark = mode === 'dark' || (mode !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
-      var themeColor = document.querySelector('meta[name="theme-color"]:not([media])');
-      var systemThemeColor = document.querySelector('meta[name="theme-color"][media]');
-      if (themeColor) themeColor.content = dark ? '#0A1422' : '#F6F5F2';
-      if (systemThemeColor) systemThemeColor.media = mode === 'system' || mode === null
-        ? '(prefers-color-scheme: dark)' : 'not all';
-    });
-  }
-
   function selectedLanguage() {
     try {
       var storedLanguage = localStorage.getItem(languageKey);
@@ -89,13 +46,10 @@
   }
 
   function updatePageMetadata(language) {
-    document.title = language === 'ar' ? 'MYOS — تقدّمٌ مدروس.' : 'MYOS — Progress, Engineered.';
+    document.title = language === 'ar' ? 'MYOS — تمرينك. مدروس.' : 'MYOS — Your training. Engineered.';
     document.querySelector('meta[name="description"]').content = language === 'ar'
-      ? 'برامج تمرين، وتسجيل لكل مجموعة، وتدريب، في تطبيق واحد. ابدأ مجانًا على الويب.'
-      : 'Training programs, set-by-set logging and coaching, in one app. Free to start on the web.';
-    document.querySelector('meta[property="og:description"]').content = language === 'ar'
-      ? 'برامج تمرين، وتسجيل لكل مجموعة، وتدريب، في تطبيق واحد.'
-      : 'Training programs, set-by-set logging and coaching, in one app.';
+      ? 'يبني ميوس برنامج تمرينك بالذكاء الاصطناعي حسب هدفك ووقتك والأدوات المتاحة لك. سجّل كل مجموعة وتابع قوتك وهي تزيد.'
+      : 'MYOS uses AI to build your training program around your goal, schedule and equipment. Log every set and watch your strength grow.';
   }
 
   function updateCopy(language) {
@@ -111,28 +65,15 @@
         } else element.textContent = copyText;
       }
     });
+    document.querySelectorAll('[data-alt-' + language + ']').forEach(function (image) {
+      image.alt = image.getAttribute('data-alt-' + language);
+    });
   }
 
-  function updateLanguageBadges(language) {
-    document.querySelectorAll('[data-badge]').forEach(function (image) {
-      image.src = '/' + (image.dataset.badge === 'google_play' ? 'google-play-' + language + '.png' : 'app-store-en.svg');
-    });
+  function updateLanguageToggle(language) {
     var toggle = document.getElementById('language-toggle');
     toggle.textContent = language === 'ar' ? 'English' : 'العربية';
     toggle.setAttribute('aria-label', language === 'ar' ? 'Change language to English' : 'تغيير اللغة إلى العربية');
-    document.querySelectorAll('[data-store-badge]').forEach(function (badge) {
-      var platform = badge.dataset.storeBadge;
-      badge.setAttribute('aria-label', (platform === 'google_play' ? 'Google Play' : 'App Store') + ', ' +
-        (language === 'ar' ? 'قريبًا' : 'Coming soon'));
-    });
-  }
-
-  function updateContactLinks(language) {
-    document.querySelectorAll('[data-contact="instagram"]').forEach(function (link) {
-      if (link.closest('.coach-actions')) {
-        link.textContent = language === 'ar' ? 'راسلنا على إنستغرام' : 'Message us on Instagram';
-      }
-    });
   }
 
   function setLanguage(language) {
@@ -141,27 +82,8 @@
     document.querySelector('nav').setAttribute('aria-label', language === 'ar' ? 'التنقل الرئيسي' : 'Main navigation');
     updatePageMetadata(language);
     updateCopy(language);
-    updateLanguageBadges(language);
-    updateContactLinks(language);
+    updateLanguageToggle(language);
     try { localStorage.setItem(languageKey, language); } catch (_error) { /* Choice remains active until navigation. */ }
-  }
-
-  function configureBadges() {
-    document.querySelectorAll('[data-store-badge]').forEach(function (badge) {
-      var storeName = badge.dataset.storeBadge;
-      var destination = storeName === 'google_play' ? config.googlePlayUrl : config.appStoreUrl;
-      if (!destination) return;
-      var link = document.createElement('a');
-      link.className = 'badge-wrap';
-      link.href = destination;
-      link.dataset.track = 'landing_store_badge';
-      link.dataset.store = storeName;
-      link.setAttribute('aria-label', storeName === 'google_play' ? 'Google Play' : 'App Store');
-      while (badge.firstChild) link.appendChild(badge.firstChild);
-      var mark = link.querySelector('.badge-mark');
-      if (mark) mark.remove();
-      badge.replaceWith(link);
-    });
   }
 
   function loadAnalytics() {
@@ -202,8 +124,6 @@
 
   if (skipSignedIn()) return;
   captureFirstTouch();
-  applyTheme();
-  configureBadges();
   var language = selectedLanguage();
   setLanguage(language);
   document.getElementById('language-toggle').addEventListener('click', function () {
@@ -212,17 +132,7 @@
   });
   document.addEventListener('click', function (event) {
     var target = event.target.closest('[data-track]');
-    if (target) {
-      var store = target.dataset.store || target.dataset.storeBadge;
-      track(target.dataset.track, store ? {store: store} : {});
-    }
-  });
-  document.addEventListener('keydown', function (event) {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    var badge = event.target.closest('[data-store-badge]');
-    if (!badge) return;
-    event.preventDefault();
-    track(badge.dataset.track, {store: badge.dataset.storeBadge});
+    if (target) track(target.dataset.track, {});
   });
   requestAnimationFrame(function () {
     requestAnimationFrame(loadAnalytics);
