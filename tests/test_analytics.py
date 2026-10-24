@@ -261,6 +261,9 @@ def analytics_api(tmp_path, monkeypatch, recording_analytics):
     analytics.override_analytics_preference_reader(db.analytics_preference_allows)
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
+    # The rate limiter resolves verified sessions to per-account buckets from
+    # app.state.db, as production publishes it (#447).
+    app.state.db = db
     sink = recording_analytics
     sink.capture_attempts = []
     original_capture = sink.capture
