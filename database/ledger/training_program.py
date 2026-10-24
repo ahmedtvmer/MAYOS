@@ -290,16 +290,38 @@ class LedgerTrainingProgramMixin:
             return 1, 1
         return int(row[0]), int(row[1])
 
-    def _current_exercise_names(self, exercise_ids: list[str]) -> dict[str, str]:
+    def _current_exercise_names(
+        self, exercise_ids: list[str], published_by_coach_account_id: str | None
+    ) -> dict[str, str]:
         """Current display names for library or Coach exercise ids; unknown ids are omitted."""
         ids = sorted({str(exercise_id) for exercise_id in exercise_ids if exercise_id})
         if not ids:
+            return {}
+        visible_ids = []
+        for exercise_id in ids:
+            library_row = self.conn.execute(
+                "SELECT 1 FROM catalog.exercises WHERE id = ?", (exercise_id,)
+            ).fetchone()
+            if library_row:
+                visible_ids.append(exercise_id)
+                continue
+            if self.has_exercise_in_program_history(exercise_id):
+                visible_ids.append(exercise_id)
+                continue
+            if published_by_coach_account_id:
+                owner = self.conn.execute(
+                    "SELECT coach_account_id FROM catalog.coach_exercises WHERE id = ?",
+                    (exercise_id,),
+                ).fetchone()
+                if owner and str(owner[0]) == str(published_by_coach_account_id):
+                    visible_ids.append(exercise_id)
+        if not visible_ids:
             return {}
         rows = self.conn.execute(
             f"SELECT ids.id, COALESCE(e.name, ce.name) FROM "
             f"(SELECT value AS id FROM json_each(?)) ids {exercise_display_join('ids.id')} "
             "WHERE COALESCE(e.name, ce.name) IS NOT NULL",
-            (json.dumps(ids),),
+            (json.dumps(visible_ids),),
         ).fetchall()
         return {str(row[0]): row[1] for row in rows}
 
@@ -494,7 +516,8 @@ class LedgerTrainingProgramMixin:
                 # library or Coach exercise name, like the exercises themselves.
                 current_names = self._current_exercise_names(
                     [sub.exercise_id for ex in exercises for sub in ex.suggested_substitutes]
-                    + [warmup.exercise_id for warmup in warmup_exercises if warmup.exercise_id]
+                    + [warmup.exercise_id for warmup in warmup_exercises if warmup.exercise_id],
+                    published_by,
                 )
                 exercises = [
                     ex.model_copy(update={"suggested_substitutes": [

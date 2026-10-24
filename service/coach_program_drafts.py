@@ -526,16 +526,38 @@ def _published_day(
         published, issue = _published_exercise(
             exercise, position, exercise_index, context
         )
-        if issue is not None:
-            issues.append(issue)
+        issues.extend(issue)
         if published is not None:
             exercises.append(published)
+    warmup_exercises = []
+    for warmup_index, warmup in enumerate(day.get("warmup_exercises", [])):
+        exercise_id = warmup.get("exercise_id")
+        entry = None
+        is_coach_exercise = False
+        if exercise_id:
+            entry, is_coach_exercise = _program_exercise_entry(
+                {"exercise_id": exercise_id}, context
+            )
+        if exercise_id and entry is None:
+            issues.append(_auxiliary_exercise_issue(
+                position, "warmup_exercises", warmup_index
+            ))
+            warmup_exercises.append(warmup)
+        elif entry is not None and is_coach_exercise:
+            warmup_exercises.append({
+                **warmup,
+                "exercise_name": entry["name"],
+                "equipment": entry.get("equipment"),
+            })
+        else:
+            warmup_exercises.append(warmup)
     return {
         **day,
         "day_order": day.get("day_order", position.day_index + 1)
         if position.week_count == 1
         else position.day_index + 1,
         "week_order": position.week_order,
+        "warmup_exercises": warmup_exercises,
         "exercises": exercises,
     }, issues
 
@@ -545,14 +567,17 @@ def _published_exercise(
     position: _ProgramDayPosition,
     exercise_index: int,
     context: _ProgramPublishContext,
-) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     entry, is_coach_exercise = _program_exercise_entry(exercise, context)
     if entry is None:
-        return None, _unknown_exercise_issue(position, exercise_index)
+        return None, [_unknown_exercise_issue(position, exercise_index)]
     target_rir = _valid_target_rir(exercise.get("target_rir", DEFAULT_TARGET_RIR))
     if target_rir is None:
-        return None, _invalid_target_rir_issue(position, exercise_index)
-    return _program_exercise_payload(exercise, entry, is_coach_exercise, target_rir), None
+        return None, [_invalid_target_rir_issue(position, exercise_index)]
+    published, issues = _program_exercise_payload(
+        exercise, entry, is_coach_exercise, target_rir, position, exercise_index, context
+    )
+    return published, issues
 
 
 def _program_exercise_entry(
@@ -621,15 +646,59 @@ def _program_exercise_issue(
     return {"code": code, "message": message, "location": location}
 
 
+def _auxiliary_exercise_issue(
+    position: _ProgramDayPosition,
+    section: str,
+    item_index: int,
+    *,
+    exercise_index: int | None = None,
+) -> dict[str, Any]:
+    location: dict[str, Any] = {
+        "day_index": position.day_index,
+        "field": "exercise_id",
+    }
+    if position.week_count > 1:
+        location["week_index"] = position.week_index
+    if section == "warmup_exercises":
+        location["warmup_movement_index"] = item_index
+    else:
+        location["exercise_index"] = exercise_index
+        location["field"] = "suggested_substitutes"
+        location["substitute_index"] = item_index
+    return _program_exercise_issue(
+        "unknown_exercise",
+        "Exercise is not in the Exercise library.",
+        location,
+    )
+
+
 def _program_exercise_payload(
     exercise: dict[str, Any],
     entry: dict[str, Any],
     is_coach_exercise: bool,
     target_rir: float,
-) -> dict[str, Any]:
+    position: _ProgramDayPosition,
+    exercise_index: int,
+    context: _ProgramPublishContext,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     published = dict(exercise)
+    issues = []
     published.pop("target_rir", None)
     published["target_rpe"] = 10 - target_rir
+    substitutes = []
+    if not is_coach_exercise:
+        for substitute_index, substitute in enumerate(exercise.get("suggested_substitutes", [])):
+            substitute_entry, _ = _program_exercise_entry(substitute, context)
+            if substitute_entry is None:
+                issues.append(_auxiliary_exercise_issue(
+                    position,
+                    "suggested_substitutes",
+                    substitute_index,
+                    exercise_index=exercise_index,
+                ))
+                substitutes.append(substitute)
+            else:
+                substitutes.append({**substitute, "exercise_name": substitute_entry["name"]})
     published.update(
         exercise_name=entry["name"],
         body_part=entry.get("body_part") if is_coach_exercise else None,
@@ -639,9 +708,9 @@ def _program_exercise_payload(
         note=entry.get("note") if is_coach_exercise else None,
         video_url=entry.get("video_url") if is_coach_exercise else None,
         is_coach_exercise=is_coach_exercise,
-        suggested_substitutes=[] if is_coach_exercise else exercise.get("suggested_substitutes", []),
+        suggested_substitutes=substitutes,
     )
-    return published
+    return published, issues
 
 
 def _validate_published_program(program: dict[str, Any]) -> dict[str, Any]:
