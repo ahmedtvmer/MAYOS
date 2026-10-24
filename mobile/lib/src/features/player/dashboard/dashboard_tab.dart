@@ -278,28 +278,33 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
         final bool hasSharedProgram =
             sharedProgram != null && sharedProgram.accountId == accountId;
         final LatestSession? latest = snapshot.data!.latestSession;
-        return _HomeBody(
-          copy: MyosCopy(ref.watch(displayLanguageProvider)),
-          data: loadedData,
-          program: hasSharedProgram ? sharedProgram.program : loadedData.program,
-          programFromCache: hasSharedProgram
-              ? sharedProgram.fromCache
-              : loadedData.programFromCache,
-          assignment: _assignmentOverrideKnown
-              ? _assignmentOverride
-              : loadedData.assignment,
-          onRefresh: _refresh,
-          onOpenExercise: _openExercise,
-          onOpenDrafts: _openDrafts,
-          onOpenCheckpointReview: _openCheckpointReview,
-          onOpenProgram: _openProgram,
-          onLogWorkout: _logWorkout,
-          trainedDays: <TrainedDay>[
-            if (latest != null) TrainedDay.fromLatestSession(latest),
-            for (final WorkoutDraft draft in drafts)
-              TrainedDay.fromDraft(draft),
-          ],
-          pendingDrafts: drafts.where((WorkoutDraft d) => d.isUnsynced).length,
+        return InstallPromptHost(
+          enabled: ref.watch(playerShellTabProvider) == 0,
+          child: _HomeBody(
+            copy: MyosCopy(ref.watch(displayLanguageProvider)),
+            data: loadedData,
+            program:
+                hasSharedProgram ? sharedProgram.program : loadedData.program,
+            programFromCache: hasSharedProgram
+                ? sharedProgram.fromCache
+                : loadedData.programFromCache,
+            assignment: _assignmentOverrideKnown
+                ? _assignmentOverride
+                : loadedData.assignment,
+            onRefresh: _refresh,
+            onOpenExercise: _openExercise,
+            onOpenDrafts: _openDrafts,
+            onOpenCheckpointReview: _openCheckpointReview,
+            onOpenProgram: _openProgram,
+            onLogWorkout: _logWorkout,
+            trainedDays: <TrainedDay>[
+              if (latest != null) TrainedDay.fromLatestSession(latest),
+              for (final WorkoutDraft draft in drafts)
+                TrainedDay.fromDraft(draft),
+            ],
+            pendingDrafts:
+                drafts.where((WorkoutDraft d) => d.isUnsynced).length,
+          ),
         );
       },
     );
@@ -353,7 +358,6 @@ class _HomeBody extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(MyosSpacing.lg, MyosSpacing.md,
             MyosSpacing.lg, MyosSpacing.xxl),
         children: <Widget>[
-          const InstallPromptBanner(),
           Text(
             displayCopyOf(context).greetingFor(now),
             style: MyosTypography.of(context).display.copyWith(
