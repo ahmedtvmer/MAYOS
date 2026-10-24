@@ -148,6 +148,10 @@ flowchart LR
 
 Tokens are generated with `secrets.token_urlsafe(32)`; **only the SHA-256 hash is stored**. TTL is `RESET_TOKEN_TTL_MINUTES` (default **30**, clamped 5–120). Consumption is atomic (a conditional `UPDATE … WHERE used_at IS NULL` under the catalog lock), so a token can never be redeemed twice, even concurrently.
 
+Password changes, reset redemption, owner CLI password replacement, and verified recovery-address changes invalidate outstanding reset links in the catalog. Token and session revocation commits before the separate ledger password write; a per-account lock orders login checks with password changes and reset redemption so login cannot observe a new session epoch beside the old password hash, and a link already in progress cannot overwrite a newly chosen password.
+
+Anonymous authentication and recovery routes share rate-limit budgets keyed by the trusted client IP (IPv6 addresses are grouped by /64). Authenticated per-account routes use the verified account id; invalid bearer text never creates a new bucket. Password login also records consecutive failures in the catalog and applies a generic 401 cooldown after `LOGIN_LOCKOUT_THRESHOLD` failures (default 10) within `LOGIN_LOCKOUT_WINDOW_SECONDS` (default 900 seconds). Successful login and credential rotation clear the counter. Unknown usernames spend one dummy bcrypt verification and receive the same generic response.
+
 ```mermaid
 sequenceDiagram
     autonumber

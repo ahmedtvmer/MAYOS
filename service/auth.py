@@ -14,6 +14,7 @@ import bcrypt
 
 from service import acquisition
 from service._base import ledger_scope
+from service.credential_locks import account_credential_lock
 from service.coach import (
     DEFAULT_CAPACITY,
     GENERIC_NEW_ACCOUNT_INVITE_ERROR,
@@ -148,18 +149,22 @@ def clear_account_login_failures(db: Any, account_id: str) -> None:
         )
 
 
-def verify_account_password(db: Any, account: dict[str, Any] | None, password: Any) -> bool:
-    """Checks a password and atomically records failures or clears lockout state."""
-    if account is None or not db.ledger_exists(account["ledger_id"]):
+def _verify_account_password_locked(db: Any, account: dict[str, Any], password: Any) -> bool:
+    """Checks the stored hash and records a login outcome while account-locked."""
+    account = db.get_account(account["account_id"])
+    if not db.is_live_account(account) or not db.ledger_exists(account["ledger_id"]):
         verify_password(password if isinstance(password, str) else "", _DUMMY_PASSWORD_HASH)
         return False
     with db.open_ledger(account["ledger_id"]) as ledger:
-        stored = ledger.get_password_hash()
-    if not stored:
+        stored_hash = ledger.get_password_hash()
+    if not stored_hash:
         verify_password(password if isinstance(password, str) else "", _DUMMY_PASSWORD_HASH)
         return False
+    password_matches = verify_password(password if isinstance(password, str) else "", stored_hash)
+    return _record_password_login_outcome(db, account["account_id"], password_matches)
 
-    candidate = password if isinstance(password, str) else ""
+
+def _record_password_login_outcome(db: Any, account_id: str, password_matches: bool) -> bool:
     threshold = _login_lockout_setting("LOGIN_LOCKOUT_THRESHOLD", 10)
     window = _login_lockout_setting("LOGIN_LOCKOUT_WINDOW_SECONDS", 900)
     cooldown = _login_lockout_setting("LOGIN_LOCKOUT_COOLDOWN_SECONDS", 900)
@@ -167,41 +172,50 @@ def verify_account_password(db: Any, account: dict[str, Any] | None, password: A
         now = datetime.now(UTC)
         row = db.catalog_conn.execute(
             "SELECT failed_at, failure_count, locked_until FROM account_login_failures WHERE account_id = ?",
-            (account["account_id"],),
+            (account_id,),
         ).fetchone()
-        locked = bool(row and row[2] and row[2] > now.isoformat())
-        password_matches = verify_password(candidate, stored)
-        if locked:
+        if row and row[2] and row[2] > now.isoformat():
             return False
         if password_matches:
-            db.catalog_conn.execute(
-                "DELETE FROM account_login_failures WHERE account_id = ?", (account["account_id"],)
-            )
+            db.catalog_conn.execute("DELETE FROM account_login_failures WHERE account_id = ?", (account_id,))
             return True
-        last_failure_in_window = bool(
-            row and (now - datetime.fromisoformat(row[0])).total_seconds() <= window
-            and not (row[2] and row[2] <= now.isoformat())
-        )
-        failure_count = int(row[1]) + 1 if last_failure_in_window else 1
-        locked_until = (
-            (now + timedelta(seconds=cooldown)).isoformat()
-            if failure_count == threshold
-            else None
-        )
+        inside_window = bool(row and (now - datetime.fromisoformat(row[0])).total_seconds() < window)
+        failure_count = int(row[1]) + 1 if inside_window else 1
+        locked_until = (now + timedelta(seconds=cooldown)).isoformat() if failure_count == threshold else None
         db.catalog_conn.execute(
             "INSERT INTO account_login_failures(account_id, failed_at, failure_count, locked_until) "
             "VALUES(?, ?, ?, ?) ON CONFLICT(account_id) DO UPDATE SET "
-            "failed_at=excluded.failed_at, failure_count=excluded.failure_count, locked_until=excluded.locked_until",
-            (account["account_id"], now.isoformat(), failure_count, locked_until),
+            "failed_at=CASE WHEN ? THEN account_login_failures.failed_at ELSE excluded.failed_at END, "
+            "failure_count=excluded.failure_count, locked_until=excluded.locked_until",
+            (account_id, now.isoformat(), failure_count, locked_until, int(inside_window)),
         )
     return False
+
+
+def verify_account_password(db: Any, account: dict[str, Any] | None, password: Any) -> bool:
+    """Checks a password under its cross-process account lock."""
+    if account is None or not db.ledger_exists(account["ledger_id"]):
+        verify_password(password if isinstance(password, str) else "", _DUMMY_PASSWORD_HASH)
+        return False
+    with account_credential_lock(account["account_id"], db.catalog_path):
+        return _verify_account_password_locked(db, account, password)
 
 
 def login_player(db: Any, username: str, password: str) -> dict[str, Any]:
     clean_id = db._sanitize_username(username)
     account = db.get_active_account_by_username(clean_id) if clean_id else None
-    if not verify_account_password(db, account, password):
+    if account is None:
+        verify_account_password(db, None, password)
         return {"ok": False, "error": INVALID_CREDENTIALS}
+    # The first lookup supplies the immutable lock key; refresh the account and
+    # read the epoch again only after entering that account's credential lock.
+    with account_credential_lock(account["account_id"], db.catalog_path):
+        account = db.get_active_account_by_username(clean_id)
+        if account is None or not _verify_account_password_locked(db, account, password):
+            return {"ok": False, "error": INVALID_CREDENTIALS}
+        account = db.get_account(account["account_id"])
+        if account is None:
+            return {"ok": False, "error": INVALID_CREDENTIALS}
     with db.open_ledger(account["ledger_id"]) as ledger:
         profile = ledger.get_player_profile()
         return {
@@ -286,21 +300,28 @@ def change_password(
     account = db.get_account(account_id)
     if not db.is_live_account(account) or not account["is_player"] or not db.ledger_exists(account["ledger_id"]):
         return {"ok": False, "error": "Trainee ledger not found."}
-    with ledger_scope(db, ledger, account["ledger_id"]) as handle:
-        stored = handle.get_password_hash()
-        if stored is None:
-            return {"ok": False, "error": "No password is set on this account.", "code": "password_missing"}
-        if not isinstance(current_password, str) or not verify_password(current_password, stored):
-            return {"ok": False, "error": "Current password is incorrect.", "code": "bad_current"}
-        try:
-            validate_password(new_password)
-        except ValueError as exc:
-            return {"ok": False, "error": str(exc), "code": "weak_new"}
-        if verify_password(new_password, stored):
-            return {"ok": False, "error": "New password must differ from the current one.", "code": "same_as_current"}
-        handle.set_password_hash(hash_password(new_password))
-    new_version = db.bump_account_session_epoch(account["account_id"])
-    clear_account_login_failures(db, account["account_id"])
+    with account_credential_lock(account["account_id"], db.catalog_path):
+        with ledger_scope(db, ledger, account["ledger_id"]) as handle:
+            stored = handle.get_password_hash()
+            if stored is None:
+                return {"ok": False, "error": "No password is set on this account.", "code": "password_missing"}
+            if not isinstance(current_password, str) or not verify_password(current_password, stored):
+                return {"ok": False, "error": "Current password is incorrect.", "code": "bad_current"}
+            try:
+                clean_new_password = validate_password(new_password)
+            except ValueError as exc:
+                return {"ok": False, "error": str(exc), "code": "weak_new"}
+            if verify_password(clean_new_password, stored):
+                return {"ok": False, "error": "New password must differ from the current one.", "code": "same_as_current"}
+            new_password_hash = hash_password(clean_new_password)
+            with db.catalog_transaction(immediate=True):
+                now_iso = datetime.now(UTC).isoformat()
+                db.invalidate_unused_reset_tokens(account["account_id"], now_iso)
+                new_version = db.bump_account_session_epoch(account["account_id"])
+            if new_version is None:
+                return {"ok": False, "error": "Trainee ledger not found."}
+            handle.set_password_hash(new_password_hash)
+        clear_account_login_failures(db, account["account_id"])
     return {
         "ok": True,
         "trainee_id": account["ledger_id"],
