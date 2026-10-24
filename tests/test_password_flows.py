@@ -318,6 +318,37 @@ def test_injected_reset_mailer_receives_account_display_language(
     assert calls[0][2:] == ("ar", account_id)
 
 
+def test_password_reset_clears_login_lockout(api, monkeypatch, verify_recovery_email):
+    from service import password_reset as reset_service
+
+    client, db = api
+    token = _register(client, "alice")
+    client.post("/auth/email", json={"email": "alice@example.com"}, headers=_authed(token))
+    verify_recovery_email(client, token, monkeypatch)
+    reset_service.request_password_reset(
+        db,
+        "alice@example.com",
+        mailer=lambda *args, **kwargs: True,
+        token_factory=lambda: "lockout-reset-token-123456",
+    )
+    monkeypatch.setenv("LOGIN_LOCKOUT_THRESHOLD", "1")
+    assert client.post(
+        "/auth/login", json={"trainee_id": "alice", "password": "wrong-password"}
+    ).status_code == 401
+    account = db.get_active_account_by_username("alice")
+    assert db.catalog_conn.execute(
+        "SELECT 1 FROM account_login_failures WHERE account_id = ?", (account["account_id"],)
+    ).fetchone()
+    reset = client.post(
+        "/auth/reset-password",
+        json={"token": "lockout-reset-token-123456", "new_password": "reset-horse-33"},
+    )
+    assert reset.status_code == 200, reset.text
+    assert client.post(
+        "/auth/login", json={"trainee_id": "alice", "password": "reset-horse-33"}
+    ).status_code == 200
+
+
 def test_reset_token_single_use_expiry_and_generic_errors(api, monkeypatch, verify_recovery_email):
     from service import password_reset as reset_service
 

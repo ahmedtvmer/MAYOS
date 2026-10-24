@@ -221,6 +221,8 @@ def _write_and_revoke_owner_password(db: Any, ledger_id: str, new_password: str,
             if epoch is None:
                 raise OwnerPasswordError("error: could not advance the account registry epoch; sessions were NOT revoked.")
         ledger.prune_revoked_tokens(datetime.now(UTC).isoformat())
+    if account is not None:
+        auth_service.clear_account_login_failures(db, account["account_id"])
     return epoch
 
 
@@ -551,5 +553,6 @@ def reset_password_with_token(db: Any, token: str, new_password: str) -> dict[st
     with db.open_ledger(account["ledger_id"]) as ledger:
         ledger.set_password_hash(auth_service.hash_password(new_password))
     db.bump_account_session_epoch(account["account_id"])
+    auth_service.clear_account_login_failures(db, account["account_id"])
     db.prune_reset_tokens(now_iso)
     return {"ok": True, "trainee_id": account["ledger_id"]}

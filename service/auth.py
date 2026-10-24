@@ -6,7 +6,8 @@ ID-taken, which is inherent to signup.
 """
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+import os
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import bcrypt
@@ -24,6 +25,15 @@ MAX_PASSWORD_LENGTH = 128
 INVALID_CREDENTIALS = "Invalid credentials."
 MIN_COACH_INVITE_CODE_LENGTH = 10
 MAX_COACH_INVITE_CODE_LENGTH = 128
+_DUMMY_PASSWORD_HASH = bcrypt.hashpw(b"constant-time-login-check", bcrypt.gensalt()).decode("utf-8")
+
+
+def _login_lockout_setting(name: str, default: int) -> int:
+    try:
+        return max(1, int(os.getenv(name, str(default))))
+    except ValueError:
+        return default
+
 USERNAME_TAKEN = "This Trainee ID already exists. Please log in."
 
 
@@ -131,17 +141,68 @@ def register_player(
     }
 
 
+def clear_account_login_failures(db: Any, account_id: str) -> None:
+    with db.catalog_transaction(immediate=True):
+        db.catalog_conn.execute(
+            "DELETE FROM account_login_failures WHERE account_id = ?", (account_id,)
+        )
+
+
+def verify_account_password(db: Any, account: dict[str, Any] | None, password: Any) -> bool:
+    """Checks a password and atomically records failures or clears lockout state."""
+    if account is None or not db.ledger_exists(account["ledger_id"]):
+        verify_password(password if isinstance(password, str) else "", _DUMMY_PASSWORD_HASH)
+        return False
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        stored = ledger.get_password_hash()
+    if not stored:
+        verify_password(password if isinstance(password, str) else "", _DUMMY_PASSWORD_HASH)
+        return False
+
+    candidate = password if isinstance(password, str) else ""
+    threshold = _login_lockout_setting("LOGIN_LOCKOUT_THRESHOLD", 10)
+    window = _login_lockout_setting("LOGIN_LOCKOUT_WINDOW_SECONDS", 900)
+    cooldown = _login_lockout_setting("LOGIN_LOCKOUT_COOLDOWN_SECONDS", 900)
+    with db.catalog_transaction(immediate=True):
+        now = datetime.now(UTC)
+        row = db.catalog_conn.execute(
+            "SELECT failed_at, failure_count, locked_until FROM account_login_failures WHERE account_id = ?",
+            (account["account_id"],),
+        ).fetchone()
+        locked = bool(row and row[2] and row[2] > now.isoformat())
+        password_matches = verify_password(candidate, stored)
+        if locked:
+            return False
+        if password_matches:
+            db.catalog_conn.execute(
+                "DELETE FROM account_login_failures WHERE account_id = ?", (account["account_id"],)
+            )
+            return True
+        last_failure_in_window = bool(
+            row and (now - datetime.fromisoformat(row[0])).total_seconds() <= window
+            and not (row[2] and row[2] <= now.isoformat())
+        )
+        failure_count = int(row[1]) + 1 if last_failure_in_window else 1
+        locked_until = (
+            (now + timedelta(seconds=cooldown)).isoformat()
+            if failure_count == threshold
+            else None
+        )
+        db.catalog_conn.execute(
+            "INSERT INTO account_login_failures(account_id, failed_at, failure_count, locked_until) "
+            "VALUES(?, ?, ?, ?) ON CONFLICT(account_id) DO UPDATE SET "
+            "failed_at=excluded.failed_at, failure_count=excluded.failure_count, locked_until=excluded.locked_until",
+            (account["account_id"], now.isoformat(), failure_count, locked_until),
+        )
+    return False
+
+
 def login_player(db: Any, username: str, password: str) -> dict[str, Any]:
     clean_id = db._sanitize_username(username)
     account = db.get_active_account_by_username(clean_id) if clean_id else None
-    if account is None or not db.ledger_exists(account["ledger_id"]):
+    if not verify_account_password(db, account, password):
         return {"ok": False, "error": INVALID_CREDENTIALS}
     with db.open_ledger(account["ledger_id"]) as ledger:
-        stored = ledger.get_password_hash()
-        if stored is None:
-            return {"ok": False, "error": INVALID_CREDENTIALS}
-        if not isinstance(password, str) or not verify_password(password, stored):
-            return {"ok": False, "error": INVALID_CREDENTIALS}
         profile = ledger.get_player_profile()
         return {
             "ok": True,
@@ -239,6 +300,7 @@ def change_password(
             return {"ok": False, "error": "New password must differ from the current one.", "code": "same_as_current"}
         handle.set_password_hash(hash_password(new_password))
     new_version = db.bump_account_session_epoch(account["account_id"])
+    clear_account_login_failures(db, account["account_id"])
     return {
         "ok": True,
         "trainee_id": account["ledger_id"],

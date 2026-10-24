@@ -145,6 +145,7 @@ def sign_in(db: Any, identity: GoogleIdentity) -> dict[str, Any]:
     account_id = db.get_linked_sign_in_account_id(PROVIDER, identity.sub)
     account = db.get_account(account_id) if account_id else None
     if db.is_live_account(account):
+        auth_service.clear_account_login_failures(db, account["account_id"])
         _verify_matching_recovery_email(db, account["account_id"], identity)
         return {
             "kind": "session",

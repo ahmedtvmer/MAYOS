@@ -442,6 +442,42 @@ def test_delete_request_form_is_nonce_scoped_and_states_what_is_kept(api):
 # --------------------------------------------------------------------------
 
 
+def test_public_password_routes_ignore_fabricated_bearer_headers(api):
+    client, _db = api
+    delete_responses = [
+        client.post(
+            "/account/delete-request",
+            data={"username": "nobody", "password": "wrong", "confirm": "yes"},
+            headers={"Authorization": f"Bearer invalid-token-{attempt:04d}"},
+        )
+        for attempt in range(1, 12)
+    ]
+    assert [response.status_code for response in delete_responses] == [200] * 10 + [429]
+
+    limiter._storage.reset()
+    reset_responses = [
+        client.post(
+            "/auth/forgot-password",
+            json={"email": "nobody@example.com"},
+            headers={"Authorization": f"Bearer invalid-token-{attempt:04d}"},
+        )
+        for attempt in range(1, 5)
+    ]
+    assert [response.status_code for response in reset_responses] == [202] * 3 + [429]
+
+
+def test_delete_request_password_proof_obeys_login_lockout(api, monkeypatch):
+    client, db = api
+    _register(client, "alice")
+    monkeypatch.setenv("LOGIN_LOCKOUT_THRESHOLD", "2")
+    for _ in range(2):
+        response = _delete_form(client, "alice", "wrong-password")
+        assert html.escape(GENERIC_FAILURE_MESSAGE) in response.text
+    locked = _delete_form(client, "alice", "correct-horse-1")
+    assert html.escape(GENERIC_FAILURE_MESSAGE) in locked.text
+    assert db.get_active_account_by_username("alice") is not None
+
+
 def test_delete_request_success_deletes_the_account(api):
     client, db = api
     _register(client, "alice")
@@ -548,12 +584,15 @@ def test_delete_account_by_username_never_reveals_existence(api):
 def _spy_verify(monkeypatch) -> list:
     """Counts bcrypt verifications; a refusal that skips one is an oracle."""
     calls: list = []
-    real = deletion_service.verify_password
+    from service import auth as auth_service
+
+    real = auth_service.verify_password
 
     def spy(password, password_hash):
         calls.append(password)
         return real(password, password_hash)
 
+    monkeypatch.setattr(auth_service, "verify_password", spy)
     monkeypatch.setattr(deletion_service, "verify_password", spy)
     return calls
 
@@ -644,11 +683,11 @@ def test_rate_limit_key_uses_fly_client_ip_on_fly(monkeypatch):
     assert _key(_rate_request()) == "203.0.113.9"
 
 
-def test_rate_limit_key_keeps_the_bearer_suffix_on_fly(monkeypatch):
+def test_rate_limit_key_uses_ip_when_bearer_cannot_be_verified(monkeypatch):
     monkeypatch.setenv("FLY_APP_NAME", "mayos-api")
     token = "Bearer " + "a" * 40
     key = _key(_rate_request(headers={"fly-client-ip": "198.51.100.7", "authorization": token}))
-    assert key == f"198.51.100.7:{token[-12:]}"
+    assert key == "198.51.100.7"
 
 
 # --------------------------------------------------------------------------

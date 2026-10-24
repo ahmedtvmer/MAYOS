@@ -3,6 +3,8 @@
 import os
 import ipaddress
 
+import jwt
+
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.requests import Request
@@ -67,9 +69,28 @@ _client_ip = client_ip
 def _key(request: Request) -> str:
     ip = client_ip_bucket(client_ip(request))
     auth = request.headers.get("authorization", "")
-    if auth.lower().startswith("bearer ") and len(auth) > 20:
-        return f"{ip}:{auth[-12:]}"
+    if auth.lower().startswith("bearer "):
+        try:
+            from svc.auth import token_claims, token_version_of
+
+            claims = token_claims(auth[7:].strip())
+            account = request.app.state.db.get_account(claims["sub"])
+            if (
+                account
+                and request.app.state.db.is_live_account(account)
+                and int(account["session_epoch"]) == token_version_of(claims)
+            ):
+                return f"account:{account['account_id']}"
+        except (jwt.PyJWTError, AttributeError, KeyError, RuntimeError):
+            # Invalid tokens fall back to the caller bucket. Route dependencies
+            # still perform full auth.
+            pass
     return ip
+
+
+def _ip_key(request: Request) -> str:
+    """Bucket a public route only by its trusted client address."""
+    return client_ip_bucket(client_ip(request))
 
 
 limiter = Limiter(key_func=_key)

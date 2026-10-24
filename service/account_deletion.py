@@ -31,7 +31,7 @@ from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any
 
-from service import audit_log, email_sender
+from service import audit_log, email_sender, auth as auth_service
 from service import analytics as analytics_service
 from service import assignments as assignment_service
 from service._base import ledger_scope
@@ -88,6 +88,7 @@ def delete_account(
     password: Any = None,
     *,
     google_identity: Any | None = None,
+    password_verified: bool = False,
     ledger: Any | None = None,
     now: datetime | None = None,
     client: analytics_service.ClientContext = analytics_service.UNKNOWN_CLIENT,
@@ -113,13 +114,14 @@ def delete_account(
         return {"ok": False, "error": INVALID_CREDENTIALS}
 
     if google_identity is None:
-        with ledger_scope(db, ledger, account["ledger_id"]) as ledger:
-            stored = ledger.get_password_hash()
-            if stored is None:
-                _spend_one_bcrypt(password)
-                return {"ok": False, "error": INVALID_CREDENTIALS}
-            if not verify_password(password if isinstance(password, str) else "", stored):
-                return {"ok": False, "error": INVALID_CREDENTIALS}
+        if not password_verified:
+            with ledger_scope(db, ledger, account["ledger_id"]) as ledger:
+                stored = ledger.get_password_hash()
+                if stored is None:
+                    _spend_one_bcrypt(password)
+                    return {"ok": False, "error": INVALID_CREDENTIALS}
+                if not verify_password(password if isinstance(password, str) else "", stored):
+                    return {"ok": False, "error": INVALID_CREDENTIALS}
     elif not _google_identity_deletes(db, account_id, google_identity, now):
         return {"ok": False, "error": INVALID_CREDENTIALS}
 
@@ -395,10 +397,14 @@ def delete_account_by_username(
     """
     clean_id = db._sanitize_username(username if isinstance(username, str) else "")
     account = db.get_active_account_by_username(clean_id) if clean_id else None
-    if account is None or not account["is_player"] or not db.ledger_exists(account["ledger_id"]):
-        _spend_one_bcrypt(password)
+    if account is None or not account["is_player"]:
+        auth_service.verify_account_password(db, None, password)
         return {"ok": False, "error": INVALID_CREDENTIALS}
-    return delete_account(db, account["account_id"], password, client=client)
+    if not auth_service.verify_account_password(db, account, password):
+        return {"ok": False, "error": INVALID_CREDENTIALS}
+    return delete_account(
+        db, account["account_id"], password, password_verified=True, client=client
+    )
 
 
 def replay_deletions(
