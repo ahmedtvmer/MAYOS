@@ -6,7 +6,6 @@ from typing import Any
 from agent.progression_engine import get_exercise_progression_history, get_weekly_muscle_volume
 from core.effort import rir_label
 from database.exercise_resolution import exercise_display_join, exercise_display_name_sql
-from database.exercise_resolution import resolve_exercise_display_row
 from service._base import ledger_scope
 
 
@@ -71,10 +70,31 @@ def exercise_history(
         return get_exercise_progression_history(ledger, exercise_id)
 
 
-def exercise_equipment(db: Any, exercise_id: str) -> str | None:
-    """The resolved exercise equipment for a history payload, when available."""
-    exercise = resolve_exercise_display_row(db, exercise_id)
-    return exercise.get("equipment") if exercise is not None else None
+def exercise_equipment(
+    db: Any,
+    exercise_id: str,
+    *,
+    ledger: Any | None = None,
+    coach_account_id: str | None = None,
+) -> str | None:
+    """Return library equipment or coach equipment visible in this history."""
+    exercise = db.get_exercise_library_entry(str(exercise_id))
+    if exercise is not None:
+        return exercise.get("equipment")
+
+    owned = db.get_coach_exercise_for_template_copy(str(exercise_id))
+    if owned is None:
+        return None
+    owner_account_id, exercise = owned
+    if coach_account_id is not None and str(coach_account_id) == owner_account_id:
+        return exercise.get("equipment")
+    if ledger is None:
+        return None
+    if ledger.has_exercise_in_program_history(exercise_id) or ledger.has_exercise_in_workout_history(
+        exercise_id
+    ):
+        return exercise.get("equipment")
+    return None
 
 
 def latest_record_caption(history: list[dict[str, Any]]) -> str | None:

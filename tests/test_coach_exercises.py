@@ -82,20 +82,91 @@ def _assign(client, coach_headers, player_headers):
     return redeemed.json()["assignment"]["assignment_id"]
 
 
-def _create_exercise(client, headers, name="Pin Squat"):
+def _create_exercise(client, headers, name="Pin Squat", equipment="Barbell"):
     response = client.post(
         "/coach/exercises",
         headers=headers,
         json={
             "name": name,
             "body_part": "Quads",
-            "equipment": "Barbell",
+            "equipment": equipment,
             "note": "Pause on the pins.",
             "video_url": "https://example.com/pin-squat",
         },
     )
     assert response.status_code == 201, response.text
     return response.json()
+
+
+def test_private_coach_exercise_equipment_is_hidden_from_unrelated_player(api):
+    client, db = api
+    owner = _make_coach(client, db, "equipment-owner")
+    player = _register(client, "unrelated-equipment-player")
+    exercise = _create_exercise(
+        client, owner, "Private Cable Curl", equipment="cable"
+    )
+
+    response = client.get(
+        f"/dashboard/exercises/{exercise['id']}/history", headers=player
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "history": [],
+        "caption": None,
+        "records": [],
+        "equipment": None,
+    }
+
+
+def test_player_sees_equipment_for_coach_exercise_in_program_history(api):
+    client, db = api
+    owner = _make_coach(client, db, "prescribing-equipment-owner")
+    player = _register(client, "prescribed-equipment-player")
+    assignment_id = _assign(client, owner, player)
+    exercise = _create_exercise(
+        client, owner, "Prescribed Cable Curl", equipment="cable"
+    )
+    draft = f"/coach/assignments/{assignment_id}/program-draft"
+    assert client.post(
+        draft, headers=owner, json=_one_exercise_draft(exercise["id"])
+    ).status_code == 200
+    assert client.post(f"{draft}/publish", headers=owner).status_code == 200
+
+    response = client.get(
+        f"/dashboard/exercises/{exercise['id']}/history", headers=player
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["equipment"] == "cable"
+
+
+def test_coach_drilldown_scopes_coach_exercise_equipment_to_owner_or_player_history(api):
+    client, db = api
+    owner = _make_coach(client, db, "drilldown-exercise-owner")
+    other_coach = _make_coach(client, db, "drilldown-other-coach")
+    player = _register(client, "drilldown-equipment-player")
+    assignment_id = _assign(client, owner, player)
+    own_exercise = _create_exercise(
+        client, owner, "Owner Cable Curl", equipment="cable"
+    )
+    foreign_exercise = _create_exercise(
+        client, other_coach, "Foreign Cable Curl", equipment="cable"
+    )
+
+    own = client.get(
+        f"/coach/assignments/{assignment_id}/player/exercises/{own_exercise['id']}/history",
+        headers=owner,
+    )
+    foreign = client.get(
+        f"/coach/assignments/{assignment_id}/player/exercises/{foreign_exercise['id']}/history",
+        headers=owner,
+    )
+
+    assert own.status_code == 200, own.text
+    assert own.json()["equipment"] == "cable"
+    assert foreign.status_code == 200, foreign.text
+    assert foreign.json()["equipment"] is None
 
 
 def _one_exercise_draft(exercise_id):
