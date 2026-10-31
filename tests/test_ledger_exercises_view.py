@@ -31,6 +31,7 @@ def test_ledger_exercises_view_uses_display_name_then_catalog_name(fresh_store):
     catalog.execute(
         "UPDATE exercises SET name = ? WHERE id = ?", ("Catalog fallback", fallback_id)
     )
+    catalog.execute("DELETE FROM exercise_display_names WHERE exercise_id = ?", (fallback_id,))
     catalog.execute(
         "INSERT OR REPLACE INTO exercise_display_names (exercise_id, display_name) "
         "VALUES (?, ?)",
