@@ -42,7 +42,10 @@ from database.registry.model_usage import RegistryModelUsageMixin
 from database.registry.coach_exercises import RegistryCoachExercisesMixin
 from database.registry.program_templates import RegistryProgramTemplatesMixin
 from database.exercise_library.lookup import ExerciseLookupMixin
-from database.exercise_library.schema import EXERCISE_COLUMNS, effective_exercise_name_sql
+from database.exercise_library.schema import (
+    EXERCISE_COLUMNS,
+    effective_exercise_name_subquery_sql,
+)
 from database.exercise_library.similarity import ExerciseSimilarityMixin
 from database.exercise_library.seeding import ExerciseSeedingMixin
 from database.ledger.handle import TrainingLedger
@@ -160,14 +163,17 @@ class DatabaseManager(
 
     @staticmethod
     def _create_ledger_exercise_view(conn: sqlite3.Connection) -> None:
-        name_expression, display_name_join = effective_exercise_name_sql("catalog")
+        name_expression = effective_exercise_name_subquery_sql("catalog")
         selected_columns = [
             f"{name_expression} AS name" if column == "name" else f"e.{column}"
             for column in EXERCISE_COLUMNS
         ]
+        # TEMP views are connection-local; replace any definition left by a
+        # previously opened connection rather than retaining stale SQL.
+        conn.execute("DROP VIEW IF EXISTS temp.exercises")
         conn.execute(
-            "CREATE TEMP VIEW IF NOT EXISTS exercises AS "
-            f"SELECT {', '.join(selected_columns)} FROM catalog.exercises e {display_name_join}"
+            "CREATE TEMP VIEW exercises AS "
+            f"SELECT {', '.join(selected_columns)} FROM catalog.exercises e"
         )
 
     def open_ledger(self, ledger_id: str) -> "TrainingLedger":

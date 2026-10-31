@@ -23,6 +23,15 @@ def effective_exercise_name_sql(schema: str | None = None) -> tuple[str, str]:
     )
 
 
+def effective_exercise_name_subquery_sql(schema: str | None = None) -> str:
+    """Return an effective-name expression without adding a row-multiplying join."""
+    display_names = f"{schema}.exercise_display_names" if schema else "exercise_display_names"
+    return (
+        "COALESCE((SELECT d.display_name FROM "
+        f"{display_names} d WHERE d.exercise_id = e.id), e.name)"
+    )
+
+
 def exercise_library_visible_sql(
     exercise_id_expression: str = "e.id", schema: str | None = None
 ) -> str:
