@@ -270,7 +270,7 @@ async def read_active_program(
         # path metered without putting it in the Lifter chat request allowance.
         saved = ledger.get_active_program()
         needs_generation = saved is None and bool(ledger.get_player_profile()) and programs_service.player_controls_program(
-            db, ledger, account_id
+            db, ledger, account_id, saved
         )
         scope = InferenceScope(
             account_id=account_id,
@@ -290,6 +290,7 @@ async def read_active_program(
                     str(player),
                     player_account_id=account_id,
                     ledger=ledger,
+                    initial_program=saved,
                     client=analytics.client_context(request),
                     scope=scope,
                 )
@@ -300,6 +301,7 @@ async def read_active_program(
                 str(player),
                 player_account_id=account_id,
                 ledger=ledger,
+                initial_program=saved,
                 client=analytics.client_context(request),
                 scope=scope,
             )
