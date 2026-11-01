@@ -407,7 +407,7 @@ def test_program_week_advances_by_committed_days_not_calendar_or_replays(api, mo
 
 def test_session_commit_loads_active_program_once(api, monkeypatch):
     client, db = api
-    headers = _register(client, "single-program-load")
+    headers = _authed(_register(client, "single-program-load")["access_token"])
     db.switch_user("single-program-load")
     db.ledger.upsert_player_profile({"current_goal": "Strength"})
     db.ledger.save_training_program(_two_week_program_payload())
