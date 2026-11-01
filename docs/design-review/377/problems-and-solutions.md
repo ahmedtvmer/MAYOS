@@ -20,10 +20,10 @@ throughout; `api.mayos.online` answered 200 at every check.
 | 8 | Load tests above 20 Players measured nothing | Every Player's setup started at once | #579 `07a602f8` | ✅ 200/200 ready |
 | 9 | Staging ran on an empty database | The local data archive was deleted, and the restore didn't check it | Hash-guarded restores | ✅ |
 | 10 | 0.8 CPU-seconds per request | The `exercises` view materialized the whole catalog on every join | #578 `b873835f` | ✅ about 100× per query, 2.6× throughput |
-| 11 | Ceiling of 11–12 req/s with half the CPU idle | Full program rebuild on every request, single GIL | #582 (verifying), then #583 / ADR 096 | 🔄 |
+| 11 | Ceiling of 11–12 req/s with half the CPU idle | Full program rebuild on every request, single GIL | #582 ✅ (+17% req/s, 3× faster save at 20 Players), then #583 / ADR 096 | 🔄 step 2 next |
 | 12 | Litestream CPU grows with the number of ledgers | A directory watch over every ledger | Tuning item in #377 | ⏳ open |
 | 13 | The test suite can't run from a fresh clone | Git-ignored `db/catalog.db`, file-handle leak, no `git` in the image | #580 | ⏳ open |
-| 14 | Two tests already failing on master | A clock-dependent test; `.conn` use in `service/injuries.py` | #581 `32a58119` | ✅ verified, merging |
+| 14 | Two tests already failing on master | A clock-dependent test; `.conn` use in `service/injuries.py` | #581, merged in `3ea1a0b7` | ✅ |
 | 15 | Long jobs ran without time limits or start checks | Orchestration mistakes | Process change | ✅ |
 | 16 | The server hard-rebooted 6 times on 2026-11-01 | Contabo host patching (security advisory); restarts without notice | No host action; stack restarts by itself; monitoring and backups before move day | ⏳ watching |
 
@@ -130,8 +130,20 @@ throughout; `api.mayos.online` answered 200 at every check.
 
 - **How found.** A wall-clock and a GIL-only `py-spy` profile at 50 Players. The API runs one Uvicorn worker (ADR 072, single SQLite writer), and its active threads sat in `get_active_program`. The GIL holder was spread over JSON decoding (~10%), `_current_exercise_names` (~18%, including one query per exercise id), `_load_program` (~14%) and Pydantic build and copy (~9%).
 - **Cause.** Every request, saves included, rebuilt the full active program in Python, sometimes more than once. One process means one GIL, so those rebuilds ran one at a time.
-- **Fix, step 1 (#582).** The per-id name lookups became one set-based query, and the active program is loaded once per request and passed down. The integration suite is running; load results will be added here.
-- **Fix, step 2 (#583, ADR 096).** Cache the active program per Player. SQLite triggers maintain a per-ledger and per-catalog revision (a random generation plus a counter), so any write from any code path invalidates the cache. The tables are additive, so there is no schema version bump and rollback stays available. Scheduled after #582's numbers.
+- **Fix, step 1 (#582, merged in `99212646`).** The per-id name lookups became one set-based query, and the active program is loaded once per request and passed down.
+  - Review found two gaps in the first version: a workout save still loaded the program twice (the second load was in training status), and the first fix for that broke the older direct-commit path (`None` meant "not loaded" in one module and "no program" in the other). Both were corrected, with tests.
+  - Verification on the server: 16 affected test files pass on master + #581 + #582. Master fails one of them (the roster snapshot test fixed by #581).
+  - Same stepped test, same verified data copy, image `99212646c54c`:
+
+| Players | Req/s (before → after) | Save median / p95 after | Save median before | Read median after | Errors | CPU idle |
+| ---: | :--- | :--- | ---: | ---: | ---: | ---: |
+| 20 | 12.0 → **14.1** | **0.23** / 1.48 s | 0.68 s | 0.18 s | 0 | 59% |
+| 50 | 11.2 → **13.7** | **2.51** / 3.92 s | 3.42 s | 1.88 s | 0 | 48% |
+| 100 | 10.8 → **12.6** | **6.35** / 8.73 s | 7.86 s | 5.76 s | 0 | 45% |
+| 200 | 10.6 → 9.8 | 17.1 / 22.0 s | 15.7 s | 15.9 s | 0 | 42% |
+
+  - **Result.** About 17% more throughput up to 100 Players, and a workout save at 20 Players is three times faster (0.23 s median). The ceiling is still about 13–14 req/s with 40–60% of the CPU idle, so the single-GIL rebuild still dominates. At 200 Players throughput fell: by then 215 ledgers exist, and Litestream used 56–77% CPU (problem 12). Step 2 is needed for more capacity.
+- **Fix, step 2 (#583, ADR 096).** Cache the active program per Player. SQLite triggers maintain a per-ledger and per-catalog revision (a random generation plus a counter), so any write from any code path invalidates the cache. The tables are additive, so there is no schema version bump and rollback stays available. #582's numbers are in, so this is next.
 
 ### 12. Litestream CPU grows with the number of ledgers
 
