@@ -97,7 +97,6 @@ def test_unique_exact_exercise_id_lookup_uses_names_and_rejects_ambiguity(seed_s
             ("9002", "Another Row", "back", "lats", "cable"),
         )
         conn.commit()
-
     assert fresh_store.find_unique_exercise_id_by_exact_name("Cable Row Display") == "9001"
     assert fresh_store.find_unique_exercise_id_by_exact_name("Cable Row Alias") == "9001"
     with fresh_store.catalog_locked() as conn:
@@ -107,6 +106,84 @@ def test_unique_exact_exercise_id_lookup_uses_names_and_rejects_ambiguity(seed_s
         )
         conn.commit()
     assert fresh_store.find_unique_exercise_id_by_exact_name("Cable Row Alias") is None
+
+
+def test_current_exercise_names_batches_visibility_and_matches_per_id_behavior(fresh_store):
+    import json
+    from database.exercise_resolution import exercise_display_join
+
+    ledger = fresh_store.ledger
+    with fresh_store.catalog_locked() as conn:
+        library_id = str(conn.execute("SELECT id FROM exercises LIMIT 1").fetchone()[0])
+        conn.execute(
+            "INSERT INTO coach_exercises "
+            "(id, coach_account_id, name, created_at) VALUES (?, ?, ?, datetime('now'))",
+            ("coach-own", "coach-a", "Coach A movement"),
+        )
+        conn.execute(
+            "INSERT INTO coach_exercises "
+            "(id, coach_account_id, name, created_at) VALUES (?, ?, ?, datetime('now'))",
+            ("coach-history", "coach-b", "Historical Coach movement"),
+        )
+        conn.commit()
+    ledger.save_training_program(
+        {
+            "program_name": "History fixture",
+            "weekly_frequency": 1,
+            "split_type": "custom",
+            "days": [{"day_name": "Day 1", "day_order": 1, "exercises": [
+                {"exercise_id": "coach-history", "target_sets": 3,
+                 "target_reps_min": 5, "target_reps_max": 8}
+            ]}],
+        }
+    )
+
+    input_ids = [
+        library_id,
+        "coach-own",
+        "coach-history",
+        "unknown",
+        library_id,
+        None,
+        "",
+    ]
+
+    def old_per_id_resolution(coach_id):
+        visible_ids = []
+        for raw_id in sorted({str(value) for value in input_ids if value}):
+            if fresh_store.catalog_conn.execute(
+                "SELECT 1 FROM exercises WHERE id = ?", (raw_id,)
+            ).fetchone():
+                visible_ids.append(raw_id)
+            elif ledger.has_exercise_in_program_history(raw_id):
+                visible_ids.append(raw_id)
+            elif coach_id:
+                owner = fresh_store.catalog_conn.execute(
+                    "SELECT coach_account_id FROM coach_exercises WHERE id = ?", (raw_id,)
+                ).fetchone()
+                if owner and str(owner[0]) == coach_id:
+                    visible_ids.append(raw_id)
+        return {
+            str(row[0]): row[1]
+            for row in ledger.conn.execute(
+                "SELECT ids.id, COALESCE(e.name, ce.name) FROM "
+                "(SELECT value AS id FROM json_each(?)) ids "
+                f"{exercise_display_join('ids.id')} "
+                "WHERE COALESCE(e.name, ce.name) IS NOT NULL",
+                (json.dumps(visible_ids),),
+            ).fetchall()
+        }
+
+    for coach_id in ("coach-a", "coach-b", "coach-c"):
+        actual = ledger._current_exercise_names(input_ids, coach_id)
+        assert actual == old_per_id_resolution(coach_id)
+        assert library_id in actual
+        assert "unknown" not in actual
+    assert "coach-own" in ledger._current_exercise_names(input_ids, "coach-a")
+    assert "coach-own" not in ledger._current_exercise_names(input_ids, "coach-b")
+    assert "coach-history" in ledger._current_exercise_names(input_ids, "coach-c")
+    assert ledger._current_exercise_names(None, "coach-a") == {}
+    assert ledger._current_exercise_names([], "coach-a") == {}
 
 
 #: Owner-supplied demo media for authored exercises (uploaded to the media store).

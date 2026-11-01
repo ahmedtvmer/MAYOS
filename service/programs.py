@@ -19,6 +19,7 @@ COACH_CONTROLLED_REQUEST_ERROR = (
     "Your assigned coach controls your program. "
     "You can review and send a request to your coach."
 )
+_PROGRAM_NOT_LOADED = object()
 
 
 class ProgramRepeatError(Exception):
@@ -29,7 +30,9 @@ class ProgramRepeatError(Exception):
         super().__init__(message)
 
 
-def player_controls_program(db: Any, ledger: Any, player_account_id: str | None) -> bool:
+def player_controls_program(
+    db: Any, ledger: Any, player_account_id: str | None, active_program: Any = _PROGRAM_NOT_LOADED
+) -> bool:
     """True unless the active assignment's coach published the active program.
 
     Matches the CONTEXT.md glossary: program authority stays with the player
@@ -42,7 +45,9 @@ def player_controls_program(db: Any, ledger: Any, player_account_id: str | None)
     assignment = db.get_active_assignment_for_player(player_account_id)
     if assignment is None:
         return True
-    return not coach_controls_program(assignment, ledger.get_active_program())
+    if active_program is _PROGRAM_NOT_LOADED:
+        active_program = ledger.get_active_program()
+    return not coach_controls_program(assignment, active_program)
 
 
 def coach_controls_program(assignment: dict[str, Any] | None, program: Any) -> bool:
@@ -103,7 +108,9 @@ def active_program_response(
     )
     return {
         **payload,
-        "player_controls_program": player_controls_program(db, ledger, player_account_id),
+        "player_controls_program": player_controls_program(
+            db, ledger, player_account_id, program
+        ),
         "current_week": position.current_week,
         "week_count": position.week_count,
         "next_day_order": position.next_day_order,
@@ -115,7 +122,7 @@ def should_offer_design_regeneration(
     db: Any, ledger: Any, player_account_id: str, program: Any
 ) -> bool:
     return (
-        player_controls_program(db, ledger, player_account_id)
+        player_controls_program(db, ledger, player_account_id, program)
         and program.published_by_coach_account_id is None
         and program.source_template_id is None
         and (
@@ -242,6 +249,7 @@ def ensure_active_program(
     trigger: str = "synthesized",
     emit_analytics: bool = True,
     client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
+    initial_program: Any = _PROGRAM_NOT_LOADED,
 ) -> Any:
     """Returns the saved routine, synthesizing one when the profile exists but none is saved.
 
@@ -250,10 +258,14 @@ def ensure_active_program(
     ``None`` is returned with the saved program left untouched.
     """
     with ledger_scope(db, ledger, ledger_id) as ledger:
-        saved = ledger.get_active_program()
+        saved = (
+            ledger.get_active_program()
+            if initial_program is _PROGRAM_NOT_LOADED
+            else initial_program
+        )
         if saved is not None:
             return saved
-        if not player_controls_program(db, ledger, player_account_id):
+        if not player_controls_program(db, ledger, player_account_id, saved):
             return None
         profile = ledger.get_player_profile()
         if not profile:

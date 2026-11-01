@@ -333,37 +333,27 @@ class LedgerTrainingProgramMixin:
         return int(row[0]), int(row[1])
 
     def _current_exercise_names(
-        self, exercise_ids: list[str], published_by_coach_account_id: str | None
+        self, exercise_ids: list[str | None] | None, published_by_coach_account_id: str | None
     ) -> dict[str, str]:
         """Current display names for library or Coach exercise ids; unknown ids are omitted."""
-        ids = sorted({str(exercise_id) for exercise_id in exercise_ids if exercise_id})
+        ids = sorted({str(exercise_id) for exercise_id in (exercise_ids or []) if exercise_id})
         if not ids:
             return {}
-        visible_ids = []
-        for exercise_id in ids:
-            library_row = self.conn.execute(
-                "SELECT 1 FROM catalog.exercises WHERE id = ?", (exercise_id,)
-            ).fetchone()
-            if library_row:
-                visible_ids.append(exercise_id)
-                continue
-            if self.has_exercise_in_program_history(exercise_id):
-                visible_ids.append(exercise_id)
-                continue
-            if published_by_coach_account_id:
-                owner = self.conn.execute(
-                    "SELECT coach_account_id FROM catalog.coach_exercises WHERE id = ?",
-                    (exercise_id,),
-                ).fetchone()
-                if owner and str(owner[0]) == str(published_by_coach_account_id):
-                    visible_ids.append(exercise_id)
-        if not visible_ids:
-            return {}
+        coach_visibility = " OR EXISTS (SELECT 1 FROM catalog.coach_exercises ce_owner " \
+            "WHERE ce_owner.id = ids.id AND ce_owner.coach_account_id = ?)" \
+            if published_by_coach_account_id else ""
+        params = [json.dumps(ids)]
+        if published_by_coach_account_id:
+            params.append(str(published_by_coach_account_id))
         rows = self.conn.execute(
-            f"SELECT ids.id, COALESCE(e.name, ce.name) FROM "
-            f"(SELECT value AS id FROM json_each(?)) ids {exercise_display_join('ids.id')} "
-            "WHERE COALESCE(e.name, ce.name) IS NOT NULL",
-            (json.dumps(visible_ids),),
+            f"SELECT ids.id, COALESCE(e.name, ce.name) FROM (SELECT value AS id FROM json_each(?)) ids "
+            f"{exercise_display_join('ids.id')} "
+            "WHERE (EXISTS (SELECT 1 FROM catalog.exercises library WHERE library.id = ids.id) "
+            "OR EXISTS (SELECT 1 FROM program_exercises pe "
+            "JOIN program_days pd ON pd.id = pe.day_id "
+            "JOIN training_programs tp ON tp.id = pd.program_id WHERE pe.exercise_id = ids.id) "
+            f"{coach_visibility}) AND COALESCE(e.name, ce.name) IS NOT NULL",
+            tuple(params),
         ).fetchall()
         return {str(row[0]): row[1] for row in rows}
 
@@ -658,6 +648,19 @@ class LedgerTrainingProgramMixin:
         version resolves to the exact prescription it trained against.
         """
         return self._load_program("version = ?", (int(version),))
+
+    def get_program_exercise_ids_by_version(self, version: int) -> set[str] | None:
+        """Returns prescribed exercise ids without decoding a full program."""
+        rows = self.conn.execute(
+            "SELECT pe.exercise_id, tp.id FROM training_programs tp "
+            "LEFT JOIN program_days pd ON pd.program_id = tp.id "
+            "LEFT JOIN program_exercises pe ON pe.day_id = pd.id "
+            "WHERE tp.version = ?",
+            (int(version),),
+        ).fetchall()
+        if not rows:
+            return None
+        return {str(row[0]) for row in rows if row[0] is not None}
 
     def get_program_draft(self, assignment_id: str) -> dict | None:
         cursor = self.conn.execute(

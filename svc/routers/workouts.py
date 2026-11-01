@@ -35,8 +35,8 @@ router = APIRouter(prefix="/workouts", tags=["workouts"])
 EXPORT_MEDIA_TYPES = {"csv": "text/csv", "json": "application/json"}
 
 
-def _day_plan(ledger: Any, day_order: int, week_order: int = 1) -> Any:
-    program = ledger.get_active_program()
+def _day_plan(ledger: Any, day_order: int, week_order: int = 1, program: Any = None) -> Any:
+    program = program if program is not None else ledger.get_active_program()
     if program is None:
         raise message_http_exception(
             status.HTTP_404_NOT_FOUND,
@@ -49,29 +49,26 @@ def _day_plan(ledger: Any, day_order: int, week_order: int = 1) -> Any:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
-def _prescribed_exercise_ids(ledger: Any, program_version: int | None) -> set[str]:
-    program = (
-        ledger.get_program_by_version(program_version)
-        if program_version is not None
-        else ledger.get_active_program()
-    )
-    if program is None:
-        if program_version is not None:
-            active_program = ledger.get_active_program()
-            raise workouts_service.ProgramVersionMismatchError(
-                active_program.version if active_program is not None else None
-            )
-        return set()
-    return {
-        str(exercise.exercise_id)
-        for day in program.days
-        for exercise in day.exercises
-    }
+def _prescribed_exercise_ids(
+    ledger: Any, program_version: int | None, active_program: Any = None
+) -> set[str]:
+    if program_version is not None:
+        prescribed_ids = ledger.get_program_exercise_ids_by_version(program_version)
+        if prescribed_ids is not None:
+            return prescribed_ids
+        current_program = active_program if active_program is not None else ledger.get_active_program()
+        raise workouts_service.ProgramVersionMismatchError(
+            current_program.version if current_program is not None else None
+        )
+    program = active_program if active_program is not None else ledger.get_active_program()
+    return {str(exercise.exercise_id) for day in program.days for exercise in day.exercises} if program else set()
 
 
-def _sets_payload(db: Any, ledger: Any, body: SessionCommitIn) -> list[dict[str, Any]]:
+def _sets_payload(
+    db: Any, ledger: Any, body: SessionCommitIn, active_program: Any = None
+) -> list[dict[str, Any]]:
     payload = []
-    prescribed_ids = _prescribed_exercise_ids(ledger, body.program_version)
+    prescribed_ids = _prescribed_exercise_ids(ledger, body.program_version, active_program)
     for item in body.sets:
         exercise_id = item.exercise.exercise_id
         exercise = resolve_exercise_display_row(db, exercise_id)
@@ -251,10 +248,10 @@ async def commit_session(
         if body.client_session_id is None:
             # Legacy online-only contract, unchanged.
             program = ledger.get_active_program()
-            day_plan = _day_plan(ledger, body.day_order, body.week_order)
+            day_plan = _day_plan(ledger, body.day_order, body.week_order, program)
             return workouts_service.commit_session(
                 db, str(player), day_plan, body.readiness, body.session_notes,
-                _sets_payload(db, ledger, body),
+                _sets_payload(db, ledger, body, program),
                 sync=workouts_service.SyncMetadata(
                     program_version=program.version if program is not None else None,
                     duration_seconds=body.duration_seconds,
@@ -262,6 +259,7 @@ async def commit_session(
                 warmup_movements=_warmup_movements_payload(db, body),
                 cardio=[entry.model_dump() for entry in body.cardio] if body.cardio is not None else None,
                 account_id=account_id_of(player), ledger=ledger,
+                active_program=program,
                 client=analytics.client_context(request),
             )
 

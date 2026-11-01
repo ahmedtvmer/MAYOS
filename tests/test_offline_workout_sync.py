@@ -355,6 +355,7 @@ def test_program_week_advances_by_committed_days_not_calendar_or_replays(api, mo
     assert early_week_two.status_code == 201, early_week_two.text
     assert client.get("/programs/active", headers=headers).json()["current_week"] == 1
 
+
     first_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
     first = client.post(
         "/workouts/sessions",
@@ -402,6 +403,35 @@ def test_program_week_advances_by_committed_days_not_calendar_or_replays(api, mo
     current = client.get("/programs/active", headers=headers).json()
     # The latest performed date is Day 1, even though Day 2 synced later.
     assert (current["current_week"], current["next_day_order"]) == (2, 2)
+
+
+def test_session_commit_loads_active_program_once(api, monkeypatch):
+    client, db = api
+    headers = _authed(_register(client, "single-program-load")["access_token"])
+    db.switch_user("single-program-load")
+    db.ledger.upsert_player_profile({"current_goal": "Strength"})
+    db.ledger.save_training_program(_two_week_program_payload())
+    version = db.ledger.get_active_program().version
+
+    ledger_type = type(db.ledger)
+    original = ledger_type._load_program
+    calls = []
+
+    def counted(ledger, where_sql, params=()):
+        calls.append((where_sql, params))
+        return original(ledger, where_sql, params)
+
+    monkeypatch.setattr(ledger_type, "_load_program", counted)
+    response = client.post(
+        "/workouts/sessions",
+        headers=headers,
+        json=_sync_body(
+            client_session_id="99999999-9999-4999-8999-999999999999",
+            version=version,
+        ),
+    )
+    assert response.status_code == 201, response.text
+    assert calls == [("is_active = 1", ())]
 
 
 def test_new_program_without_a_start_position_starts_at_week_one_day_one(api):
@@ -1065,6 +1095,31 @@ def test_commit_status_is_stored_and_replayed_at_commit_time(api, monkeypatch):
     assert current_status["weekly_streak"] == 1
     assert current_status["week_done"] == 1
     assert current_status["week_target"] == 1
+
+
+def test_direct_commit_without_active_program_reports_saved_weekly_frequency(api):
+    client, db = api
+    _register(client, "direct-commit-status")
+    db.switch_user("direct-commit-status")
+    db.ledger.upsert_player_profile({"current_goal": "Strength"})
+    db.ledger.save_training_program(_program_payload())
+    program = db.ledger.get_active_program()
+    day_plan = workouts_service.day_plan_from(program, 1, 1)
+
+    result = workouts_service.commit_session(
+        db,
+        "direct-commit-status",
+        day_plan,
+        readiness=4,
+        session_notes="",
+        sets_by_exercise=[],
+        account_id=db.get_active_account_by_username("direct-commit-status")["account_id"],
+        ledger=db.ledger,
+        today_date="2026-09-26",
+        now_iso="2026-09-26T12:00:00+00:00",
+    )
+
+    assert result.body["training_status"]["week_target"] == program.weekly_frequency
 
 
 @pytest.mark.parametrize(

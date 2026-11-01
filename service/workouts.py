@@ -917,6 +917,7 @@ def commit_session(
     warmup_movements: list[dict[str, Any]] | None = None,
     cardio: list[dict[str, Any]] | None = None,
     *,
+    active_program: Any = None,
     client: analytics.ClientContext = analytics.UNKNOWN_CLIENT,
 ) -> CommitOutcome:
     """Persists a logged session and returns totals, per-movement analytics, debrief, and pointer.
@@ -964,6 +965,7 @@ def commit_session(
                     account_id=account_id,
                     ledger=ledger,
                     imported_workouts=imported_workouts,
+                    active_program=active_program,
                 ).as_dict()
             )
             _record_checkpoint_review_for_commit(
@@ -985,7 +987,7 @@ def commit_session(
                     client=client,
                 ),
             )
-        _evaluate_volume_review(db, ledger, today_date, account_id)
+        _evaluate_volume_review(db, ledger, today_date, account_id, active_program)
 
     _run_post_commit_hooks(
         db,
@@ -1083,6 +1085,7 @@ def commit_logged_session(
                         account_id=account_id,
                         ledger=ledger,
                         imported_workouts=imported_workouts,
+                        active_program=program,
                     ).as_dict()
                 )
                 _record_checkpoint_review_for_commit(
@@ -1114,7 +1117,7 @@ def commit_logged_session(
                 ),
             )
         if outcome.created:
-            _evaluate_volume_review(db, ledger, sync.performed_date, account_id)
+            _evaluate_volume_review(db, ledger, sync.performed_date, account_id, program)
 
     _run_post_commit_hooks(
         db,
@@ -1128,13 +1131,13 @@ def commit_logged_session(
 
 
 def _evaluate_volume_review(
-    db: Any, ledger: Any, performed_date: str, account_id: str | None
+    db: Any, ledger: Any, performed_date: str, account_id: str | None, program: Any = None
 ) -> None:
     """Best-effort, idempotent post-commit volume review trigger (#234)."""
     try:
         from service.volume_review import evaluate_review
 
-        program = ledger.get_active_program()
+        program = program if program is not None else ledger.get_active_program()
         profile = ledger.get_player_profile() or {}
         if program is not None:
             review_date = date.fromisoformat(performed_date[:10])
