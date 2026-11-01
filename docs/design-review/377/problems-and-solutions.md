@@ -25,6 +25,7 @@ throughout; `api.mayos.online` answered 200 at every check.
 | 13 | The test suite can't run from a fresh clone | Git-ignored `db/catalog.db`, file-handle leak, no `git` in the image | #580 | ⏳ open |
 | 14 | Two tests already failing on master | A clock-dependent test; `.conn` use in `service/injuries.py` | #581 `32a58119` | ✅ verified, merging |
 | 15 | Long jobs ran without time limits or start checks | Orchestration mistakes | Process change | ✅ |
+| 16 | The server hard-rebooted 6 times on 2026-11-01 | Contabo host patching (security advisory); restarts without notice | No host action; stack restarts by itself; monitoring and backups before move day | ⏳ watching |
 
 ## Server setup
 
@@ -179,3 +180,31 @@ throughout; `api.mayos.online` answered 200 at every check.
   - Cleanups only touch their own run's folder.
   - Restores are hash-guarded.
   - Long tests run on the server, not on the owner's PC.
+  - A comparison run tested one file instead of 16: `ssh host bash -s -- "$FILES"` re-splits
+    the argument, so the remote script got only the first name. The list now travels as an
+    environment variable, and the script prints the file count before it runs anything.
+
+## Hosting
+
+### 16. The server rebooted itself six times in one day
+
+- **Symptom.** A test run stopped mid-way with `server not responding`. `uptime` showed a
+  fresh boot, and `last -x` listed six boots on 2026-11-01 (03:50, 07:20, 08:49, 09:22,
+  11:52, 13:46 CET), none with a clean shutdown.
+- **How it was found.** The previous boot's journal ends abruptly, with no shutdown, kernel
+  panic or out-of-memory messages. At least four reboots happened while nothing of ours was
+  running on the server.
+- **Cause.** Contabo support: host patching for an active VPS/VDS security advisory can
+  restart VPSs without individual notice. They could not confirm that our reboots were
+  caused by it. Progress is posted on Contabo's status page.
+- **What already holds.** After every reboot, Docker brought `api`, `cloudflared` and
+  `litestream` back by themselves (`restart: unless-stopped`), and staging answered
+  `/readyz` 200 afterwards. Litestream keeps replicating to R2.
+- **What remains before move day (#378).**
+  - UptimeRobot on `/readyz`, so an unexpected restart alerts the owner.
+  - The daily backup is switched back on (it is off only for the rehearsal).
+  - The restore drill from the R2 replicas proves the backups restore.
+  - Test runs record `uptime -s` before and after, so a reboot can't pass for a test
+    failure.
+  - If reboots continue after the advisory closes, ask Contabo to move the VPS to another
+    host node.
