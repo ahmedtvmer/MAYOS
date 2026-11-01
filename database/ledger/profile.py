@@ -41,6 +41,20 @@ INJURY_RECORD_COLUMNS = (
 
 
 class LedgerProfileMixin:
+    def get_deleted_injury_source_event(self, source_event_key: str) -> str | None:
+        row = self.conn.execute(
+            "SELECT description FROM deleted_injury_source_events WHERE source_event_key = ?",
+            (source_event_key,),
+        ).fetchone()
+        return str(row[0]) if row else None
+
+    def clear_deleted_injury_source_event(self, source_event_key: str) -> None:
+        with self.ledger_transaction():
+            self.conn.execute(
+                "DELETE FROM deleted_injury_source_events WHERE source_event_key = ?",
+                (source_event_key,),
+            )
+
     def list_injury_records(self) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             f"SELECT {INJURY_RECORD_COLUMNS} FROM injury_records "

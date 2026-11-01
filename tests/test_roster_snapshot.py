@@ -219,8 +219,16 @@ def _snapshot(db, coach_id, now):
     return roster_snapshot_service.roster_signal_snapshot(db, coach_id, now=now)
 
 
-def test_roster_snapshot_includes_persisted_adherence_and_excludes_screening(api):
+def test_roster_snapshot_includes_persisted_adherence_and_excludes_screening(api, monkeypatch):
     client, db = api
+    instant = datetime(2026, 10, 26, 12, tzinfo=UTC)
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return instant.astimezone(tz) if tz is not None else instant.replace(tzinfo=None)
+
+    monkeypatch.setattr(roster_snapshot_service, "datetime", FrozenDateTime)
     coach_headers, coach_id = _make_coach(client, db)
     player = _assign(client, db, coach_headers, "nutritionroster")
     with db.open_ledger(player["ledger_id"]) as ledger:
@@ -261,7 +269,7 @@ def test_roster_snapshot_includes_persisted_adherence_and_excludes_screening(api
         )
         ledger.conn.commit()
 
-    snapshot = _snapshot(db, coach_id, datetime(2026, 10, 26, 12, tzinfo=UTC))
+    snapshot = _snapshot(db, coach_id, instant)
     filtered_payload = coach_roster_ai.prepare_roster_question(
         snapshot, "Who did the most Cardio?", []
     ).messages[0].content
