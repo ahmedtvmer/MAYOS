@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     container_name: mayos_api
     restart: unless-stopped
     # SQLite has a single writer, and the API uses a bounded hosted model client.
@@ -24,6 +26,9 @@ services:
       - ARABIC_EMBEDDING_MODEL=intfloat/multilingual-e5-small
       - MODEL_DEVICE=cpu
       - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in environment}
+      - ANONYMOUS_ID_SECRET=${ANONYMOUS_ID_SECRET:-${JWT_SECRET}}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-${MAYOS_ENV:-production}}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
       interval: 30s

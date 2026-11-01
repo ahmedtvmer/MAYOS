@@ -17,6 +17,7 @@ from service.app_version import ANDROID_BUILD_HEADER, parse_android_build
 from service.messages import MessageMetadata
 from svc.auth import signup_ticket_subject, token_claims, token_version_of
 from svc.errors import message_http_exception
+from svc.error_tracking import set_account_user
 
 _bearer = HTTPBearer(auto_error=False)
 logger = logging.getLogger(__name__)
@@ -158,6 +159,7 @@ def _verified_marker(
 ) -> _VerifiedIdentity:
     """Builds a verified identity marker without mounting a ledger."""
     claims, account = identity
+    set_account_user(account["account_id"])
     marker = marker_type(
         account["ledger_id"], account["account_id"], token_version_of(claims)
     )

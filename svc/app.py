@@ -40,6 +40,7 @@ from service.periodic_status import (
     record_run,
 )
 from svc.dependencies import AccountDeletedError
+from svc.error_tracking import ServerErrorCaptureMiddleware, initialize_sentry
 from svc.rate_limit import limiter
 from svc.routers import (
     admin,
@@ -389,7 +390,8 @@ async def lifespan(app: FastAPI):
     logger.info("Lifespan shutdown complete.")
 
 
-def create_app() -> FastAPI:
+def create_app(*, sentry_transport=None) -> FastAPI:
+    initialize_sentry(transport=sentry_transport)
     app = FastAPI(title="Mayos Training Engine", version="2.0.0", lifespan=lifespan)
     app.state.limiter = limiter
     app.state.db = None
@@ -524,6 +526,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(ServerErrorCaptureMiddleware)
 
     @app.exception_handler(Exception)
     async def unhandled_handler(request: Request, exc: Exception):

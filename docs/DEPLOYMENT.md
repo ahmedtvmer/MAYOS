@@ -56,6 +56,10 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | Variable | Default | Purpose |
 | :--- | :--- | :--- |
 | `JWT_SECRET` | **required** | HS256 token signing/verification; the service refuses to operate without it |
+| `SENTRY_DSN` | unset | Sentry API project DSN; unset disables all Sentry reporting |
+| `SENTRY_ENVIRONMENT` | `production` in server Compose | Sentry environment label (`production` or `staging`) |
+| `ANONYMOUS_ID_SECRET` | falls back to `JWT_SECRET` | Secret for stable, non-reversible Sentry account ids; set a distinct random secret to decouple identifiers |
+| `GIT_COMMIT` | image build argument | Release commit baked into the API image and attached to Sentry events |
 | `ADMIN_USERNAME` | unset | Separate owner identity for `/admin`; all three `ADMIN_*` secrets must be valid or every `/admin` route returns 404 |
 | `ADMIN_PASSWORD_HASH` | unset | Owner password's bcrypt hash; generate it with `.venv/bin/python scripts/admin_credentials.py` (the script never prints the password) |
 | `ADMIN_TOTP_SECRET` | unset | Owner authenticator secret in Base32; generate it with `.venv/bin/python scripts/admin_credentials.py` and add its URI to an authenticator app |

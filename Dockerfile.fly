@@ -13,6 +13,9 @@ ENV PYTHONUNBUFFERED=1 \
     ARABIC_EMBEDDING_MODEL=intfloat/multilingual-e5-small \
     MODEL_DEVICE=cpu
 
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=${GIT_COMMIT}
+
 WORKDIR /app
 
 # curl: container healthcheck. sqlite3: operator inspection/verification.

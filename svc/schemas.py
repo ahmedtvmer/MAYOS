@@ -354,6 +354,7 @@ class AccountOut(BaseModel):
     """
 
     account_id: str
+    anonymous_account_id: str | None = None
     trainee_id: str
     capabilities: AccountCapabilitiesOut
     plans: AccountPlansOut

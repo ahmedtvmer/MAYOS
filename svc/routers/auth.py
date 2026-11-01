@@ -42,6 +42,7 @@ from svc.dependencies import (
     google_sign_in_enabled,
 )
 from svc.errors import message_http_exception
+from svc.error_tracking import anonymous_account_id
 from svc.rate_limit import _ip_key, PASSWORD_LIMIT, REGISTER_LIMIT, LOGIN_LIMIT, RESET_LIMIT, USERNAME_CHECK_LIMIT, limiter
 from svc.schemas import (
     AccountCapabilitiesOut,
@@ -496,6 +497,7 @@ async def read_current_account(
     account, plans, lifter_allowance, coach_allowance, has_password, linked_sign_ins, recovery_email_verified, google_email, product_emails_opted_in = await asyncio.to_thread(_run)
     return AccountOut(
         account_id=account["account_id"],
+        anonymous_account_id=anonymous_account_id(account["account_id"]),
         trainee_id=account["username"],
         capabilities=AccountCapabilitiesOut(player=account["is_player"], coach=account["is_coach"]),
         plans=AccountPlansOut(**plans),

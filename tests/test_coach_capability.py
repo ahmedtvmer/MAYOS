@@ -158,6 +158,7 @@ def test_owner_issued_invite_grants_capability_without_reissuing_token(api, monk
     assert redeemed.status_code == 200, redeemed.text
     assert redeemed.json() == {
         "account_id": account_id,
+        "anonymous_account_id": None,
         "trainee_id": "alice",
         "display_language": "en",
         "capabilities": {"player": True, "coach": True},

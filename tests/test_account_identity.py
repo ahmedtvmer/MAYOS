@@ -20,6 +20,7 @@ from service import password_reset as reset_service
 from svc.app import create_app
 from svc.auth import create_access_token, revoke_token
 from svc.dependencies import get_current_player, get_db
+from svc.error_tracking import anonymous_account_id
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
 
@@ -364,6 +365,7 @@ def test_current_account_reports_capabilities_from_durable_registry(api):
     assert response.pop("coach_ai_allowance", None) is None
     assert response == {
         "account_id": account_id,
+        "anonymous_account_id": anonymous_account_id(account_id),
         "trainee_id": "alice",
         "display_language": "en",
         "analytics_allowed": True,
