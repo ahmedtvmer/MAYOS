@@ -4,10 +4,15 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile.fly
+      args:
+        GIT_COMMIT: "${MAYOS_IMAGE_TAG:?set MAYOS_IMAGE_TAG in deploy/.image.env}"
     env_file:
       - /opt/mayos/.env
     environment:
       JWT_SECRET: "${JWT_SECRET:?set JWT_SECRET in /opt/mayos/.env}"
+      ANONYMOUS_ID_SECRET: "${ANONYMOUS_ID_SECRET:-${JWT_SECRET}}"
+      SENTRY_DSN: "${SENTRY_DSN:-}"
+      SENTRY_ENVIRONMENT: "${SENTRY_ENVIRONMENT:-production}"
       LLM_API_KEY: "${LLM_API_KEY:?set LLM_API_KEY in /opt/mayos/.env}"
       MAYOS_DATA_DIR: /data
       MAYOS_REQUIRE_PERSISTENT_DATA: "true"

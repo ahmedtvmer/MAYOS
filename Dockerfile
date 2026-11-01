@@ -12,6 +12,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     ARABIC_EMBEDDING_MODEL=intfloat/multilingual-e5-small \
     MODEL_DEVICE=cpu
 
+ARG GIT_COMMIT=unknown
+ENV GIT_COMMIT=${GIT_COMMIT}
+
 # curl: container healthcheck. sqlite3: operator inspection.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl sqlite3 \
