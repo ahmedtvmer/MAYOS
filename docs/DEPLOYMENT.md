@@ -1443,6 +1443,52 @@ removes any restored prefix whose Account was deleted.
 
 ### Litestream disaster restore
 
+### Read-only restore drill (#586)
+
+Run the drill on any Ubuntu host with Python 3.11+, the repository checkout,
+its Python dependencies installed, and (for the R2 mode) the Litestream
+v0.5.4+ binary. The target must be a new or empty scratch path outside the
+live data directory and must not contain MAYOS databases. The drill does not
+reapply deletions or start the API; it only restores files and checks them.
+
+1. Stop before any live restore operation: this drill is for a scratch path.
+   Pick a path such as `/var/tmp/mayos-restore-drill-$(date +%s)`.
+2. In the checkout, create and activate a virtual environment and install the
+   project requirements using the repository's normal setup instructions.
+3. For an R2 replica drill, export the same four R2 settings used by
+   Litestream, plus the production replica prefix:
+
+   ```bash
+   export R2_ENDPOINT='https://<account-id>.r2.cloudflarestorage.com'
+   export R2_BUCKET='<bucket>'
+   export R2_ACCESS_KEY_ID='<access-key>'
+   export R2_SECRET_ACCESS_KEY='<secret-key>'
+   export LITESTREAM_R2_PREFIX=litestream
+   export MAYOS_DATA_DIR=/data
+   python scripts/restore_drill.py "/var/tmp/mayos-restore-drill-$(date +%s)" --source r2
+   ```
+
+4. For the latest daily snapshot instead, point `--backups-dir` at the
+   directory containing `daily/` and run:
+
+   ```bash
+   python scripts/restore_drill.py "/var/tmp/mayos-daily-drill-$(date +%s)" \
+     --source daily --backups-dir /mnt/mayos-data/backups
+   ```
+
+5. Confirm every line reports `integrity_check=ok`, and record the printed
+   database count, byte sizes and total duration. Keep the scratch copy only as
+   long as needed, then remove that specifically named scratch directory.
+
+R2 mode restores `catalog.db`, `deletions.db`, and every ledger replica.
+Daily snapshots intentionally contain only the catalog and live ledgers:
+`deletions.db` is kept outside snapshots so an older snapshot cannot reverse
+account deletions (ADR 039/044). The daily drill reports that exclusion.
+
+The command refuses the configured live data directory, any path inside it,
+any destination that already contains MAYOS databases, and any non-empty
+destination. It never invokes the production restore/replay path.
+
 Run this while the API and Litestream writer are stopped. Use a maintenance
 environment that has the project Python dependencies, the `litestream` v0.5.4+
 binary, and the four R2 environment variables above. The destination may be a
