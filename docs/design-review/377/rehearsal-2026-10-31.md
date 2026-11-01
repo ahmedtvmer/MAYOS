@@ -1,5 +1,8 @@
 # #377 rehearsal, part 1: Contabo server, data copy and load test (2026-10-31)
 
+> Follow-up: every problem found in this rehearsal, its cause, fix and verification,
+> and the load results after #578 are in [problems-and-solutions.md](problems-and-solutions.md).
+
 The first part of the dress rehearsal for moving the production API from Fly.io to a
 Contabo Cloud VPS (spec #571, ADR 072 amendment). Production stayed on Fly the whole
 time: `api.mayos.online` answered 200 from Fly before, during and after.
