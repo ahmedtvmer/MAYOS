@@ -25,7 +25,7 @@ throughout; `api.mayos.online` answered 200 at every check.
 | 13 | The test suite can't run from a fresh clone | Git-ignored `db/catalog.db`, file-handle leak, no `git` in the image | #580 | ⏳ open |
 | 14 | Two tests already failing on master | A clock-dependent test; `.conn` use in `service/injuries.py` | #581, merged in `3ea1a0b7` | ✅ |
 | 15 | Long jobs ran without time limits or start checks | Orchestration mistakes | Process change | ✅ |
-| 16 | The server hard-rebooted 6 times on 2026-11-01 | Contabo host patching (security advisory); restarts without notice | No host action; stack restarts by itself; monitoring and backups before move day | ⏳ watching |
+| 16 | The server hard-rebooted 6 times and then froze for about 80 minutes on 2026-11-01 | Contabo host (patching per support; the freeze left no trace in the guest) | Stack restarts by itself; UptimeRobot and Sentry in place; go/no-go rule in #602 | ⏳ watching |
 
 ## Server setup
 
@@ -220,3 +220,20 @@ throughout; `api.mayos.online` answered 200 at every check.
     failure.
   - If reboots continue after the advisory closes, ask Contabo to move the VPS to another
     host node.
+- **Second incident: a silent freeze (same day, evening).**
+  - UptimeRobot (set up that evening: email and Discord) alerted that staging was down;
+    Cloudflare returned error 1033 (tunnel not connected) and SSH timed out for more than
+    5 minutes.
+  - The journal of that boot stops at 21:51:02 CET with nothing after it: no shutdown,
+    out-of-memory, hung-task or soft-lockup messages. The VPS stayed frozen for about 80
+    minutes until the owner rebooted it from the Contabo panel at 23:14 CET.
+  - The server was nearly idle: the #583 test run had finished and cleaned up just
+    before. The next test run failed at its first SSH step, so no test load was running
+    during the freeze.
+  - After the reboot, `api`, `cloudflared` and `litestream` came back by themselves and
+    staging answered 200. Production on Fly was unaffected throughout.
+  - **Decision needed before move day:** #602 records a go/no-go rule (7 consecutive days
+    without an unplanned restart or freeze), the evidence to collect per incident, and
+    the escalation order (another Contabo node, then a provider change).
+- **What now holds.** The monitoring works: UptimeRobot caught the freeze within minutes,
+  and Sentry is set up in the EU region (#592).
