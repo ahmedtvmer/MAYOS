@@ -428,21 +428,16 @@ def import_legacy_injury_text(
         _sync_legacy_limitations(ledger)
         return None
 
-    deleted_source = ledger.conn.execute(
-        "SELECT description FROM deleted_injury_source_events WHERE source_event_key = ?",
-        (LEGACY_INJURY_SOURCE_EVENT_KEY,),
-    ).fetchone()
+    deleted_source = ledger.get_deleted_injury_source_event(
+        LEGACY_INJURY_SOURCE_EVENT_KEY
+    )
     if deleted_source:
-        if deleted_source[0] == description:
+        if deleted_source == description:
             _sync_legacy_limitations(ledger)
             return None
         # The legacy key represents the profile's current free-text value. A changed
         # value is a new report, so it may consume the key again.
-        with ledger.ledger_transaction():
-            ledger.conn.execute(
-                "DELETE FROM deleted_injury_source_events WHERE source_event_key = ?",
-                (LEGACY_INJURY_SOURCE_EVENT_KEY,),
-            )
+        ledger.clear_deleted_injury_source_event(LEGACY_INJURY_SOURCE_EVENT_KEY)
 
     area = body_area_in_text(description)
     record, created = ledger.create_injury_record(
