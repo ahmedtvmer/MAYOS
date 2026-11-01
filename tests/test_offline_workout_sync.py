@@ -1097,6 +1097,31 @@ def test_commit_status_is_stored_and_replayed_at_commit_time(api, monkeypatch):
     assert current_status["week_target"] == 1
 
 
+def test_direct_commit_without_active_program_reports_saved_weekly_frequency(api):
+    client, db = api
+    _register(client, "direct-commit-status")
+    db.switch_user("direct-commit-status")
+    db.ledger.upsert_player_profile({"current_goal": "Strength"})
+    db.ledger.save_training_program(_program_payload())
+    program = db.ledger.get_active_program()
+    day_plan = workouts_service.day_plan_from(program, 1, 1)
+
+    result = workouts_service.commit_session(
+        db,
+        "direct-commit-status",
+        day_plan,
+        readiness=4,
+        session_notes="",
+        sets_by_exercise=[],
+        account_id=db.get_active_account_by_username("direct-commit-status")["account_id"],
+        ledger=db.ledger,
+        today_date="2026-09-26",
+        now_iso="2026-09-26T12:00:00+00:00",
+    )
+
+    assert result.body["training_status"]["week_target"] == program.weekly_frequency
+
+
 @pytest.mark.parametrize(
     "legacy", [False, True], ids=["offline-sync", "online"]
 )

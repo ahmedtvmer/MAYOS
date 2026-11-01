@@ -110,6 +110,7 @@ def test_unique_exact_exercise_id_lookup_uses_names_and_rejects_ambiguity(seed_s
 
 def test_current_exercise_names_batches_visibility_and_matches_per_id_behavior(fresh_store):
     import json
+    from database.exercise_resolution import exercise_display_join
 
     ledger = fresh_store.ledger
     with fresh_store.catalog_locked() as conn:
@@ -167,8 +168,7 @@ def test_current_exercise_names_batches_visibility_and_matches_per_id_behavior(f
             for row in ledger.conn.execute(
                 "SELECT ids.id, COALESCE(e.name, ce.name) FROM "
                 "(SELECT value AS id FROM json_each(?)) ids "
-                "LEFT JOIN catalog.exercises e ON e.id = ids.id "
-                "LEFT JOIN catalog.coach_exercises ce ON ce.id = ids.id "
+                f"{exercise_display_join('ids.id')} "
                 "WHERE COALESCE(e.name, ce.name) IS NOT NULL",
                 (json.dumps(visible_ids),),
             ).fetchall()

@@ -174,22 +174,24 @@ def get_training_status(
     account_id: str | None = None,
     ledger: Any | None = None,
     imported_workouts: int | None = None,
+    active_program: Any | None = None,
 ) -> TrainingStatus:
     """Loads ledger and import facts, then computes status without writing."""
     if imported_workouts is None:
         imported_workouts = imported_workout_count(db, account_id)
     with ledger_scope(db, ledger, ledger_id) as open_ledger:
-        return _status_for_ledger(open_ledger, ledger_id, imported_workouts)
+        return _status_for_ledger(open_ledger, ledger_id, imported_workouts, active_program)
 
 
 def _status_for_ledger(
     ledger: Any,
     ledger_id: str,
     imported_workouts: int,
+    active_program: Any | None = None,
 ) -> TrainingStatus:
     versions = ledger.list_training_schedules(ledger_id)
     performed_dates = ledger.list_performed_dates()
-    program = ledger.get_active_program()
+    program = active_program if active_program is not None else ledger.get_active_program()
     timezone = timezone_for_versions(versions, "UTC")
     facts = TrainingStatusFacts(
         versions=versions,

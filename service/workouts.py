@@ -965,6 +965,7 @@ def commit_session(
                     account_id=account_id,
                     ledger=ledger,
                     imported_workouts=imported_workouts,
+                    active_program=active_program,
                 ).as_dict()
             )
             _record_checkpoint_review_for_commit(
@@ -1084,6 +1085,7 @@ def commit_logged_session(
                         account_id=account_id,
                         ledger=ledger,
                         imported_workouts=imported_workouts,
+                        active_program=program,
                     ).as_dict()
                 )
                 _record_checkpoint_review_for_commit(
