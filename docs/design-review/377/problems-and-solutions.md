@@ -240,11 +240,13 @@ throughout; `api.mayos.online` answered 200 at every check.
     lines are an SSH session logging out normally, with no system shutdown, out-of-memory,
     hung-task or soft-lockup messages after them.
   - The next boot was at 08:26 CET (`uptime -s`), so the VPS was down or frozen for about
-    6.5 hours. Who restarted it (the owner, or Contabo) is still to be confirmed.
+    6.5 hours. Contabo restarted it, not the owner.
   - The server was idle: the #583 test containers had exited by about 00:46 CET, and no
     job was running.
   - The stack came back by itself again, and the finished test results survived on disk.
   - This restarts #602's 7-day window: the earliest date it can close is 2026-11-09, if
     nothing else happens.
+  - The owner decided not to ask Contabo for another host node: Contabo is a temporary host
+    until Hetzner or OVH have stock, so the incidents are logged and watched, not escalated.
 - **What now holds.** The monitoring works: UptimeRobot caught the freeze within minutes,
   and Sentry is set up in the EU region (#592).
