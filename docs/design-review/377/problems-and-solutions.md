@@ -21,7 +21,7 @@ throughout; `api.mayos.online` answered 200 at every check.
 | 9 | Staging ran on an empty database | The local data archive was deleted, and the restore didn't check it | Hash-guarded restores | ✅ |
 | 10 | 0.8 CPU-seconds per request | The `exercises` view materialized the whole catalog on every join | #578 `b873835f` | ✅ about 100× per query, 2.6× throughput |
 | 11 | Ceiling of 11–12 req/s with half the CPU idle | Full program rebuild on every request, single GIL | #582 ✅ (+17% req/s); #583 ✅ program cache (about 30 req/s, more than twice #582; save 0.05 s at 20 Players) | ✅ fixed |
-| 12 | Litestream CPU grows with the number of ledgers | A directory watch over every ledger | Tuning item in #377 | ⏳ open |
+| 12 | Litestream CPU grows with the number of ledgers | A directory watch over every ledger | #600: Player ledgers use 10-second monitor and sync intervals; CPU growth addressed. Memory remains open in #616. | ✅ CPU addressed; memory open |
 | 13 | The test suite can't run from a fresh clone | Git-ignored `db/catalog.db`, file-handle leak, no `git` in the image | #580 | ⏳ open |
 | 14 | Two tests already failing on master | A clock-dependent test; `.conn` use in `service/injuries.py` | #581, merged in `3ea1a0b7` | ✅ |
 | 15 | Long jobs ran without time limits or start checks | Orchestration mistakes | Process change | ✅ |
@@ -175,14 +175,27 @@ throughout; `api.mayos.online` answered 200 at every check.
 
 ### 12. Litestream CPU grows with the number of ledgers
 
-| Ledgers | Litestream CPU |
-| ---: | :--- |
-| 15 | 2.5% idle |
-| 140–215 | 46–100% after load |
-| about 750 | 65% idle, 110% under load |
+Litestream 0.5 watches the ledger directory and monitors each database
+separately. The staging rehearsal measured the following at 1, 10, and 30
+second intervals (same Litestream 0.5.17 image for all variants):
 
-- **Cause.** Litestream 0.5 watches the ledger directory and monitors every database separately.
-- **Status.** Open in #377 ("sync interval adjusted if needed"). It needs tuning before Player numbers grow.
+| Users-dir interval | Idle CPU at 750 ledgers (avg / max) | Litestream CPU under 200-Player load (215 ledgers) | API req/s under load | Litestream memory at 750 ledgers |
+| :--- | :--- | :--- | ---: | ---: |
+| 1s (before) | 58.0% / 118.6% | 28.2% | 23.3 | 593 MiB |
+| 10s | 23.1% / 59.2% | 20.1% | 24.8 | 563 MiB |
+| 30s | 17.0% / 32.3% | 19.4% | 22.9 | 557 MiB |
+
+Earlier 1-second idle readings were 1.7% CPU (27 MiB) at 15 ledgers and
+13.8% (184 MiB) at 215 ledgers.
+
+- **Decision (#600).** Set both the Player-ledger `monitor-interval` and
+  replica `sync-interval` to 10 seconds, retaining `watch: true`. Catalog and
+  deletion records keep their 1-second defaults. The Player-ledger recovery
+  point is now about 10–20 seconds of newest writes (previously about 1–2
+  seconds). An unsynced workout remains on the phone as an offline draft and
+  retries when the app reconnects.
+- **Status.** CPU growth addressed by #600. Memory is unaffected by interval
+  tuning and remains open in #616.
 
 ## Test environment
 

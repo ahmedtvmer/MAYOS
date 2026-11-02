@@ -320,8 +320,9 @@ traffic is outbound from `cloudflared`.
 
 The server's `/mnt/mayos-data/data` directory is on its local disk, with no
 separate volume. Durability rests on that disk plus Litestream's continuous R2
-replication (about one second of loss if the server is lost) and the daily R2
-snapshots.
+replication and the daily R2 snapshots. Player ledgers use 10-second monitor
+and sync intervals, so about 10–20 seconds of a Player's newest writes can be
+lost if the server dies; catalog and deletion records retain 1-second defaults.
 
 ### Pre-cutover load test
 
