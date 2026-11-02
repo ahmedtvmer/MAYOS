@@ -20,7 +20,7 @@ throughout; `api.mayos.online` answered 200 at every check.
 | 8 | Load tests above 20 Players measured nothing | Every Player's setup started at once | #579 `07a602f8` | ✅ 200/200 ready |
 | 9 | Staging ran on an empty database | The local data archive was deleted, and the restore didn't check it | Hash-guarded restores | ✅ |
 | 10 | 0.8 CPU-seconds per request | The `exercises` view materialized the whole catalog on every join | #578 `b873835f` | ✅ about 100× per query, 2.6× throughput |
-| 11 | Ceiling of 11–12 req/s with half the CPU idle | Full program rebuild on every request, single GIL | #582 ✅ (+17% req/s, 3× faster save at 20 Players), then #583 / ADR 096 | 🔄 step 2 next |
+| 11 | Ceiling of 11–12 req/s with half the CPU idle | Full program rebuild on every request, single GIL | #582 ✅ (+17% req/s); #583 ✅ program cache (about 30 req/s, more than twice #582; save 0.05 s at 20 Players) | ✅ fixed |
 | 12 | Litestream CPU grows with the number of ledgers | A directory watch over every ledger | Tuning item in #377 | ⏳ open |
 | 13 | The test suite can't run from a fresh clone | Git-ignored `db/catalog.db`, file-handle leak, no `git` in the image | #580 | ⏳ open |
 | 14 | Two tests already failing on master | A clock-dependent test; `.conn` use in `service/injuries.py` | #581, merged in `3ea1a0b7` | ✅ |
@@ -143,7 +143,20 @@ throughout; `api.mayos.online` answered 200 at every check.
 | 200 | 10.6 → 9.8 | 17.1 / 22.0 s | 15.7 s | 15.9 s | 0 | 42% |
 
   - **Result.** About 17% more throughput up to 100 Players, and a workout save at 20 Players is three times faster (0.23 s median). The ceiling is still about 13–14 req/s with 40–60% of the CPU idle, so the single-GIL rebuild still dominates. At 200 Players throughput fell: by then 215 ledgers exist, and Litestream used 56–77% CPU (problem 12). Step 2 is needed for more capacity.
-- **Fix, step 2 (#583, ADR 096).** Cache the active program per Player. SQLite triggers maintain a per-ledger and per-catalog revision (a random generation plus a counter), so any write from any code path invalidates the cache. The tables are additive, so there is no schema version bump and rollback stays available. #582's numbers are in, so this is next.
+- **Fix, step 2 (#583, ADR 096, merged in `fc1e2315`).** Cache the active program per Player. SQLite triggers maintain a per-ledger and per-catalog revision (a random generation plus a counter), so any write from any code path invalidates the cache. The tables are additive, so there is no schema version bump and rollback stays available.
+  - Reads get a read-only view; edits still get a fresh mutable copy. Nothing is stored inside a write transaction, so a rollback can't leave stale data, and every restore rotates the generation.
+  - The two-model review (Opus 5.5 main, Sol 6.1 debate) agreed on six findings, all fixed with tests. The two that mattered: a workout save read the program before its write transaction, so a coach publish in between was recorded against the old version; and loads ran under a lock shared by all Players, so one slow miss stalled everyone. Sol added one: a restore could bring back an old counter that matched a cached, different program.
+  - Verification on the server: full suite 142/146 (the 2 known no-git failures, and 2 in the new tests, fixed and rerun: 148 passed).
+  - Same stepped test, same verified data copy, image `ee744d4ff6e6` (master `38452c6e` + #583; the merged tree is identical):
+
+| Players | Req/s (#582 → #583) | Save median / p95 after | Save median #582 | Read median after | Errors | CPU idle |
+| ---: | :--- | :--- | ---: | ---: | ---: | ---: |
+| 20 | 14.1 → **18.4** | **0.05** / 0.20 s | 0.23 s | 0.06 s | 0 | 69% |
+| 50 | 13.7 → **32.2** | **0.44** / 1.25 s | 2.51 s | 0.35 s | 0 | 52% |
+| 100 | 12.6 → **30.7** | **2.17** / 2.79 s | 6.35 s | 1.94 s | 0 | 46% |
+| 200 | 9.8 → **28.2** | **5.72** / 7.26 s | 17.1 s | 5.45 s | 0 | 39% |
+
+  - **Result.** The ceiling rose from about 14 to about 30 req/s, more than twice as high, and stays there up to 200 Players (step 1 fell to 9.8). A save at 20 Players takes 0.05 s, and at 200 Players 5.7 s instead of 17 s. API memory stayed at about 400 MB with 215 ledgers cached. CPU is still 40–50% idle, so the single GIL is still the limit above about 30 req/s. Litestream now used 25–38% CPU during runs and 54% after (problem 12).
 
 ### 12. Litestream CPU grows with the number of ledgers
 
