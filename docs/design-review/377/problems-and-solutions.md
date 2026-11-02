@@ -25,7 +25,7 @@ throughout; `api.mayos.online` answered 200 at every check.
 | 13 | The test suite can't run from a fresh clone | Git-ignored `db/catalog.db`, file-handle leak, no `git` in the image | #580 | ⏳ open |
 | 14 | Two tests already failing on master | A clock-dependent test; `.conn` use in `service/injuries.py` | #581, merged in `3ea1a0b7` | ✅ |
 | 15 | Long jobs ran without time limits or start checks | Orchestration mistakes | Process change | ✅ |
-| 16 | The server hard-rebooted 6 times on 2026-11-01, then froze for about 80 minutes that evening and for about 6.5 hours overnight | Contabo host (patching per support; the freeze left no trace in the guest) | Stack restarts by itself; UptimeRobot and Sentry in place; go/no-go rule in #602 | ⏳ watching |
+| 16 | The server hard-rebooted 6 times on 2026-11-01, then froze for about 80 minutes that evening, about 6.5 hours overnight, and about 19 minutes on 2026-11-02 | Contabo host (patching per support; the freeze left no trace in the guest) | Stack restarts by itself; UptimeRobot and Sentry in place; go/no-go rule in #602 | ⏳ watching |
 
 ## Server setup
 
@@ -261,5 +261,14 @@ throughout; `api.mayos.online` answered 200 at every check.
     nothing else happens.
   - The owner decided not to ask Contabo for another host node: Contabo is a temporary host
     until Hetzner or OVH have stock, so the incidents are logged and watched, not escalated.
+- **Fourth incident: a silent stop at the start of a test run (2026-11-02, afternoon).**
+  - The journal stops at 15:01:41 CET, 7 seconds after three test containers were started
+    (`--cpus 1 --memory 2g` each). The memory was not used yet, and there are no
+    out-of-memory, hung-task or soft-lockup messages.
+  - Staging returned Cloudflare 530 and SSH timed out until the next boot at 15:20 CET
+    (about 19 minutes). The stack came back by itself.
+  - It matches the earlier silent freezes. This time it started under load, but the 21:51
+    freeze on 2026-11-01 happened while idle, so the test run is not a proven cause.
+  - The #602 window restarts again: the earliest it can close is 2026-11-09 15:20 CET.
 - **What now holds.** The monitoring works: UptimeRobot caught the freeze within minutes,
   and Sentry is set up in the EU region (#592).
