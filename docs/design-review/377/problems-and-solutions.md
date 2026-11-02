@@ -157,6 +157,21 @@ throughout; `api.mayos.online` answered 200 at every check.
 | 200 | 9.8 → **28.2** | **5.72** / 7.26 s | 17.1 s | 5.45 s | 0 | 39% |
 
   - **Result.** The ceiling rose from about 14 to about 30 req/s, more than twice as high, and stays there up to 200 Players (step 1 fell to 9.8). A save at 20 Players takes 0.05 s, and at 200 Players 5.7 s instead of 17 s. API memory stayed at about 400 MB with 215 ledgers cached. CPU is still 40–50% idle, so the single GIL is still the limit above about 30 req/s. Litestream now used 25–38% CPU during runs and 54% after (problem 12).
+  - **What it means for monthly Players (estimate, 2026-11-02).** The trial measurement is unchanged (rehearsal copy of 2026-10-31):
+    - The owner works out every 2.1 days, about 12 sets each.
+    - Other trial Players average about 1 workout a week.
+    - A training Player sends about 0.5 requests a minute.
+    - Workout length is not measurable yet; #599 records it from now on.
+
+    The model scales with the usable ceiling, about 2.2× #582's:
+
+| Estimate | After #582 | After #583 |
+| :--- | ---: | ---: |
+| Players training at the same moment | about 1,200 | **about 2,600** |
+| Monthly Players, all training like the owner | 6k–17k | **about 13k–37k** |
+| Monthly Players, trial mix | 15k–40k | **about 33k–88k** |
+
+  - **The ceiling is now backups, not requests.** These are request-capacity figures only. Litestream watches every ledger separately (problem 12). It already used 65% of a CPU idle at about 750 ledgers, so at a few thousand Players it would saturate the server long before the API does. #600 now sets the real monthly-Player ceiling and is the next capacity step. Above about 30 requests a second, the API's single worker (one GIL, CPU 40–50% idle) is the limit again.
 
 ### 12. Litestream CPU grows with the number of ledgers
 
