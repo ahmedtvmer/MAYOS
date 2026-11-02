@@ -48,6 +48,12 @@ def test_api_event_scrubs_request_and_keeps_only_anonymous_id(monkeypatch):
         assert client.get("/missing-route?should-not-report=1").status_code == 404
     assert response.status_code == 502
     assert len(transport.events) == 1
+    failure_counts = [
+        row for row in app.state.request_metrics.snapshot()["since_start"]
+        if row["route"] == "/privacy-probe/{user_name}" and row["status_class"] == "5xx"
+    ]
+    assert len(failure_counts) == 1
+    assert failure_counts[0]["count"] == 1
     event = transport.events[0]
     serialized = json.dumps(event)
     for secret in (

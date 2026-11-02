@@ -80,6 +80,7 @@ _ADMIN_HOME_SECTIONS = (
     ("Invites", "/admin/invites", "Issue and manage coach invites."),
     ("Usage", "/admin/usage", "Review model usage, limits, and spend."),
     ("Audit log", "/admin/audit", "Review owner actions and sign-ins."),
+    ("API requests", "/admin#api-request-metrics", "Review route counts and latency."),
 )
 
 
@@ -169,6 +170,7 @@ async def admin_home(request: Request):
         _admin_nav(session.csrf_token, security.login_alert_failed, "home")
         + "<main><h1>Owner dashboard</h1>"
         + health_panel
+        + _request_metrics_panel(request.app.state.request_metrics.snapshot())
         + _admin_home_sections()
         + "</main>"
     )
@@ -824,6 +826,34 @@ def _admin_home_sections() -> str:
         for title, href, description in _ADMIN_HOME_SECTIONS
     )
     return f'<section class="dashboard-grid" aria-label="Owner dashboard sections">{cards}</section>'
+
+
+def _request_metrics_panel(snapshot: dict[str, Any]) -> str:
+    headers = "<th>Traffic</th><th>Method</th><th>Route template</th><th>Status</th><th>Requests</th><th>Latency buckets (ms)</th>"
+    return (
+        '<section class="health-panel usage-panel" id="api-request-metrics" data-api-request-metrics>'
+        '<h2>API requests and latency</h2>'
+        f'<p>{html.escape(snapshot["persistence"])} Latency buckets count requests in the first matching upper bound.</p>'
+        '<h3>Since process start</h3><div class="table-scroll"><table class="usage-table"><thead><tr>'
+        + headers + '</tr></thead><tbody>' + _request_metrics_rows(snapshot["since_start"])
+        + '</tbody></table></div><h3>Hourly, last 7 days (UTC)</h3>'
+        '<div class="table-scroll"><table class="usage-table"><thead><tr><th>Hour UTC</th>'
+        + headers + '</tr></thead><tbody>' + _request_metrics_rows(snapshot["hourly_last_7_days"])
+        + '</tbody></table></div></section>'
+    )
+
+
+def _request_metrics_rows(rows: list[dict[str, Any]]) -> str:
+    if not rows:
+        return '<tr><td>No requests recorded yet.</td></tr>'
+    return "".join(
+        "<tr>"
+        + (f'<td>{html.escape(row["hour_utc"])}</td>' if "hour_utc" in row else "")
+        + f'<td>{html.escape(row["traffic"])}</td><td>{html.escape(row["method"])}</td>'
+        + f'<td>{html.escape(row["route"])}</td><td>{html.escape(row["status_class"])}</td>'
+        + f'<td>{row["count"]:,}</td><td>{html.escape(str(row["latency_buckets"]))}</td></tr>'
+        for row in rows
+    )
 
 
 def _invites_page(invites: list[dict[str, Any]], view: _InvitesPageView) -> str:

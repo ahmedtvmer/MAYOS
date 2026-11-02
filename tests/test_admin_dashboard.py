@@ -31,6 +31,7 @@ from service.periodic_status import (
 from svc.app import create_app
 from svc.dependencies import get_db
 from svc.rate_limit import client_ip, limiter
+from svc.request_metrics import RequestMetrics
 
 ADMIN_PASSWORD = "owner-password-27"
 ADMIN_USERNAME = "owner"
@@ -184,6 +185,55 @@ def test_unconfigured_and_partially_configured_admin_routes_are_not_found(monkey
     client.close()
 
 
+def test_request_metrics_count_templated_routes_privately_and_are_owner_only(admin_api):
+    client, _db, now, _sent_emails = admin_api
+    metrics = client.app.state.request_metrics
+    client.request(
+        "GET",
+        "/dashboard/exercises/private-exercise-781/history?email=secret@example.com&username=private-user",
+        headers={"X-Forwarded-For": "198.51.100.42"},
+        json={"account_id": "private-account", "notes": "private request body"},
+    )
+    client.get("/healthz")
+    snapshot = metrics.snapshot()
+    rows = snapshot["since_start"]
+    history = [row for row in rows if row["route"] == "/dashboard/exercises/{exercise_id}/history"]
+    assert len(history) == 1
+    assert history[0]["count"] == 1
+    assert history[0]["status_class"] == "4xx"
+    assert sum(history[0]["latency_buckets"].values()) == history[0]["count"]
+    hourly_history = [
+        row for row in snapshot["hourly_last_7_days"]
+        if row["route"] == "/dashboard/exercises/{exercise_id}/history"
+    ]
+    assert len(hourly_history) == 1 and hourly_history[0]["count"] == 1
+    assert any(row["route"] == "/healthz" and row["traffic"] == "system" for row in rows)
+    serialized = json.dumps(snapshot)
+    for forbidden in (
+        "private-exercise-781", "secret@example.com", "198.51.100.42", "private-user",
+        "private-account", "private request body",
+    ):
+        assert forbidden not in serialized
+    assert client.get("/admin").status_code == 404
+    assert _login(client, now[0]).status_code == 303
+    page = client.get("/admin")
+    assert page.status_code == 200
+    assert "API requests and latency" in page.text
+    assert "In-memory only; counters reset when the API process restarts." in page.text
+
+
+def test_request_metrics_prune_expired_hours_when_hour_advances():
+    metrics = RequestMetrics()
+    current_hour = datetime(2026, 11, 2, 12, tzinfo=UTC)
+    metrics.record("/route", "GET", 200, 12, current_hour - timedelta(days=7, hours=1))
+    metrics.record("/route", "GET", 200, 14, current_hour)
+
+    hourly = metrics.snapshot()["hourly_last_7_days"]
+    assert len(hourly) == 1
+    assert hourly[0]["hour_utc"] == current_hour.isoformat()
+    assert hourly[0]["count"] == 1
+
+
 @pytest.mark.parametrize(
     ("key", "value"),
     [
@@ -290,7 +340,8 @@ def test_admin_pages_reference_brand_assets_with_strict_self_only_csp(admin_api)
     assert home.headers["content-security-policy"] == expected_csp
     assert 'class="brand-link" href="/admin" aria-label="MAYOS owner dashboard" aria-current="page"' in home.text
     assert "The owner dashboard is ready" not in home.text
-    assert home.text.count('class="dashboard-card"') == 4
+    assert home.text.count('class="dashboard-card"') == 5
+    assert "Review route counts and latency." in home.text
     assert "Review accounts, plans, and activity." in home.text
     assert "Review model usage, limits, and spend." in home.text
     assert "Review owner actions and sign-ins." in home.text

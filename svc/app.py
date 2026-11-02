@@ -41,6 +41,7 @@ from service.periodic_status import (
 )
 from svc.dependencies import AccountDeletedError
 from svc.error_tracking import ServerErrorCaptureMiddleware, initialize_sentry
+from svc.request_metrics import RequestMetrics, RequestMetricsMiddleware, summary_loop
 from svc.rate_limit import limiter
 from svc.routers import (
     admin,
@@ -272,6 +273,7 @@ async def lifespan(app: FastAPI):
     _ready.update(model=False, catalog=False, storage=False, draining=False)
     sweep_task: asyncio.Task[None] | None = None
     backup_task: asyncio.Task[None] | None = None
+    metrics_task: asyncio.Task[None] | None = None
     unit_test_mode = os.getenv("SKIP_LLM_LOAD") == "true"
     # Coach AI is opt-in: with COACH_AI_ENABLED on, a recorded passing privacy
     # and evaluation report for the current prompt version is required, or the
@@ -374,6 +376,9 @@ async def lifespan(app: FastAPI):
         )
         logger.info("Daily backup loop started (every %ss).", backup_interval)
 
+    metrics_task = asyncio.create_task(summary_loop(app.state.request_metrics))
+    logger.info("Request metrics summary loop started (hourly; process-local counters).")
+
     logger.info(
         "Lifespan startup complete (model=%s catalog=%s storage=%s).",
         _ready["model"],
@@ -384,6 +389,7 @@ async def lifespan(app: FastAPI):
     _ready["draining"] = True
     await _cancel_loop(sweep_task, ALERT_SWEEP_JOB)
     await _cancel_loop(backup_task, DAILY_BACKUP_JOB)
+    await _cancel_loop(metrics_task, "request metrics summary")
     from svc.llm import unload_all
 
     await asyncio.to_thread(unload_all)
@@ -395,6 +401,7 @@ def create_app(*, sentry_transport=None) -> FastAPI:
     app = FastAPI(title="Mayos Training Engine", version="2.0.0", lifespan=lifespan)
     app.state.limiter = limiter
     app.state.db = None
+    app.state.request_metrics = RequestMetrics()
     app.state.admin_security = AdminSecurity()
     if partial_secret_configuration():
         logger.warning("Owner admin secrets are partially configured; /admin stays disabled.")
@@ -527,6 +534,7 @@ def create_app(*, sentry_transport=None) -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(ServerErrorCaptureMiddleware)
+    app.add_middleware(RequestMetricsMiddleware, metrics=app.state.request_metrics)
 
     @app.exception_handler(Exception)
     async def unhandled_handler(request: Request, exc: Exception):
