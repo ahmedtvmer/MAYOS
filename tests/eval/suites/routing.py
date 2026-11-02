@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import shutil
 import tempfile
@@ -532,12 +533,33 @@ def _observe_ledger_writes(ledger: Any, executed_actions: list[dict[str, Any]]) 
     ledger.set_deload_choice = set_deload_choice
 
 
+def _hermetic_embedding(_model: Any, text: str) -> list[float]:
+    digest = hashlib.shake_256(text.encode("utf-8")).digest(384)
+    return [(component - 127.5) / 127.5 for component in digest]
+
+
 def _observe_case(
     case: dict[str, Any],
     root: Path,
     scripted_classification: dict[str, Any] | None = None,
     *,
     hermetic: bool = False,
+) -> dict[str, Any]:
+    if not hermetic:
+        return _observe_case_with_catalog(case, root, scripted_classification, hermetic=False)
+
+    from core.embeddings import OnnxEmbeddings
+
+    with patch.object(OnnxEmbeddings, "embed_query", _hermetic_embedding):
+        return _observe_case_with_catalog(case, root, scripted_classification, hermetic=True)
+
+
+def _observe_case_with_catalog(
+    case: dict[str, Any],
+    root: Path,
+    scripted_classification: dict[str, Any] | None,
+    *,
+    hermetic: bool,
 ) -> dict[str, Any]:
     from utils.logger import MayosLogger
 
