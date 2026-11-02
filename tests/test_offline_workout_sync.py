@@ -779,6 +779,9 @@ def test_first_commit_returns_201_and_records_sync_fields(api):
     headers, version = _prepare_player(client, db)
 
     payload = _sync_body(version=version)
+    payload["client_session_id"] = CLIENT_ID
+    payload["performed_date"] = "2026-09-26"
+    payload["performed_timezone"] = "UTC"
     payload["started_at"] = "2026-09-26T12:30:00+02:00"
     resp = client.post("/workouts/sessions", headers=headers, json=payload)
     assert resp.status_code == 201, resp.text
@@ -823,6 +826,9 @@ def test_implausible_client_workout_times_fall_back_to_upload_time(api, field, v
     client, db = api
     headers, version = _prepare_player(client, db)
     payload = _sync_body(version=version)
+    payload["client_session_id"] = CLIENT_ID
+    payload["performed_date"] = "2026-09-26"
+    payload["performed_timezone"] = "UTC"
     payload[field] = value
     response = client.post("/workouts/sessions", headers=headers, json=payload)
     assert response.status_code == 201, response.text
@@ -854,6 +860,26 @@ def test_old_client_without_workout_timing_keeps_upload_time_behavior(api):
     ).fetchone()
     assert row["started_at"] == row["completed_at"] == row["uploaded_at"] == FIXED_NOW.isoformat()
     assert row["duration_seconds"] is None
+
+
+def test_legacy_request_with_started_at_is_rejected_without_writing(api):
+    client, db = api
+    headers, _version = _prepare_player(client, db)
+    db.switch_user("p1")
+    before = db.conn.execute("SELECT COUNT(*) FROM workout_sessions").fetchone()[0]
+    response = client.post(
+        "/workouts/sessions",
+        headers=headers,
+        json={
+            "day_order": 1,
+            "readiness": 4,
+            "sets": _sets_body(),
+            "started_at": "2026-09-26T10:30:00+00:00",
+            "duration_seconds": 3600,
+        },
+    )
+    assert response.status_code == 422, response.text
+    assert db.conn.execute("SELECT COUNT(*) FROM workout_sessions").fetchone()[0] == before
 
 
 def test_old_client_keeps_duration_above_new_six_hour_limit(api):

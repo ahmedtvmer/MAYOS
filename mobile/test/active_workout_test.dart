@@ -2183,6 +2183,8 @@ void main() {
         dayOrder: 2,
         dayName: 'Upper A',
         capturedAt: now.toUtc().toIso8601String(),
+        startedAt: workout.startedAt,
+        durationSeconds: now.difference(workout.startedAtClock).inSeconds,
         exercises: <DraftExercise>[
           DraftExercise(
             exercise: _plannedExerciseJson,
