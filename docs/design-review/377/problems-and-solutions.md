@@ -25,7 +25,7 @@ throughout; `api.mayos.online` answered 200 at every check.
 | 13 | The test suite can't run from a fresh clone | Git-ignored `db/catalog.db`, file-handle leak, no `git` in the image | #580 | ⏳ open |
 | 14 | Two tests already failing on master | A clock-dependent test; `.conn` use in `service/injuries.py` | #581, merged in `3ea1a0b7` | ✅ |
 | 15 | Long jobs ran without time limits or start checks | Orchestration mistakes | Process change | ✅ |
-| 16 | The server hard-rebooted 6 times and then froze for about 80 minutes on 2026-11-01 | Contabo host (patching per support; the freeze left no trace in the guest) | Stack restarts by itself; UptimeRobot and Sentry in place; go/no-go rule in #602 | ⏳ watching |
+| 16 | The server hard-rebooted 6 times on 2026-11-01, then froze for about 80 minutes that evening and for about 6.5 hours overnight | Contabo host (patching per support; the freeze left no trace in the guest) | Stack restarts by itself; UptimeRobot and Sentry in place; go/no-go rule in #602 | ⏳ watching |
 
 ## Server setup
 
@@ -235,5 +235,16 @@ throughout; `api.mayos.online` answered 200 at every check.
   - **Decision needed before move day:** #602 records a go/no-go rule (7 consecutive days
     without an unplanned restart or freeze), the evidence to collect per incident, and
     the escalation order (another Contabo node, then a provider change).
+- **Third incident: a longer silent freeze (night of 2026-11-01 to 11-02).**
+  - The journal of the boot that started at 23:14 CET stops at 01:51:33 CET. The last
+    lines are an SSH session logging out normally, with no system shutdown, out-of-memory,
+    hung-task or soft-lockup messages after them.
+  - The next boot was at 08:26 CET (`uptime -s`), so the VPS was down or frozen for about
+    6.5 hours. Who restarted it (the owner, or Contabo) is still to be confirmed.
+  - The server was idle: the #583 test containers had exited by about 00:46 CET, and no
+    job was running.
+  - The stack came back by itself again, and the finished test results survived on disk.
+  - This restarts #602's 7-day window: the earliest date it can close is 2026-11-09, if
+    nothing else happens.
 - **What now holds.** The monitoring works: UptimeRobot caught the freeze within minutes,
   and Sentry is set up in the EU region (#592).
