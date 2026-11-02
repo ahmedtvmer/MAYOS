@@ -30,7 +30,7 @@ class ExerciseSeedingMixin:
 
         # The catalog schema only: any per-ledger schema is created by
         # ``open_ledger`` when a handle is actually opened (ADR 041).
-        self.create_catalog_schema()
+        self.create_catalog_schema(curation_path)
         try:
             df = pd.read_csv(csv_path)
         except FileNotFoundError:

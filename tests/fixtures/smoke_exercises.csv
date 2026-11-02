@@ -9,6 +9,8 @@ lats,body weight,ci-smoke-07,pull-up,lats,biceps,upper back,,,,,images/mock_7.jp
 lats,cable,ci-smoke-08,lat pulldown,lats,biceps,upper back,,,,,images/mock_8.jpg,videos/mock_8.gif,Pull the bar to the upper chest while keeping the torso upright.
 lats,cable,ci-smoke-09,seated cable row,lats,upper back,biceps,,,,,images/mock_9.jpg,videos/mock_9.gif,Row the handle to the abdomen keeping the spine neutral.
 upper back,barbell,ci-smoke-10,barbell row,upper back,lats,biceps,,,,,images/mock_10.jpg,videos/mock_10.gif,Hinge to forty-five degrees and row the bar to the lower ribs.
+chest,barbell,ci-smoke-routing-incline-bench,incline barbell bench press,pectorals,front delts,triceps,,,,,images/mock_routing_incline_bench.jpg,videos/mock_routing_incline_bench.gif,Press the bar from an inclined bench with controlled movement.
+legs,leverage machine,ci-smoke-routing-leg-press,leg press,quads,glutes,hamstrings,,,,,images/mock_routing_leg_press.jpg,videos/mock_routing_leg_press.gif,Press the platform through a comfortable range of motion.
 upper back,leverage machine,ci-smoke-11,chest supported machine row,upper back,lats,biceps,,,,,images/mock_11.jpg,videos/mock_11.gif,Row the handles while the chest pad removes lower back fatigue.
 shoulders,dumbbell,ci-smoke-12,dumbbell lateral raise,delts,traps,,,,,,images/mock_12.jpg,videos/mock_12.gif,Raise the dumbbells to shoulder height with a slight elbow bend.
 shoulders,cable,ci-smoke-13,cable lateral raise,delts,traps,,,,,,images/mock_13.jpg,videos/mock_13.gif,Raise the cable handle laterally to shoulder height.

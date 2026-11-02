@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -98,17 +99,17 @@ def _evaluation_history_messages(history: list[dict[str, Any]]) -> list[Any]:
     return messages
 
 
-def _generate_reply(case: dict[str, Any]) -> tuple[str, float]:
+def _generate_reply(case: dict[str, Any], run_number: int = 1) -> tuple[str, float]:
     from utils.text_scrubber import scrub_coach_output
 
-    state = _evaluation_case_state(case)
+    state = _evaluation_case_state(case, run_number)
     started = time.perf_counter()
     graph_output = _invoke_assistant_graph(state)
     reply = scrub_coach_output(graph_output.get("response_content", ""))
     return reply, time.perf_counter() - started
 
 
-def _evaluation_case_state(case: dict[str, Any]) -> dict[str, Any]:
+def _evaluation_case_state(case: dict[str, Any], run_number: int = 1) -> dict[str, Any]:
     from langchain_core.messages import HumanMessage
 
     history = case.get("history", [])
@@ -119,7 +120,9 @@ def _evaluation_case_state(case: dict[str, Any]) -> dict[str, Any]:
             *_evaluation_history_messages(history),
             HumanMessage(content=case["query"]),
         ],
-        "trainee_id": "eval_user",
+        # Each case/run gets its own ledger. History needed for multi-turn cases
+        # is supplied in messages above, so state from another case must not leak.
+        "trainee_id": f"eval_{uuid.uuid4().hex}_{run_number}_{case['id']}",
         "coach_tone": "Direct, grounded, and pragmatic",
         "custom_instructions": "",
         "telemetry_context": case.get("telemetry", ""),
@@ -231,7 +234,7 @@ def _run_suite_round(
     for index, case in enumerate(cases, start=1):
         started = time.perf_counter()
         try:
-            reply, generation_seconds = _generate_reply(case)
+            reply, generation_seconds = _generate_reply(case, run_number)
         except Exception as error:
             generation_seconds = time.perf_counter() - started
             result = _failed_generation_case(case, judges, error, generation_seconds)

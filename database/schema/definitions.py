@@ -40,7 +40,7 @@ EMBEDDING_DIM = 384
 
 
 class SchemaMixin:
-    def _ensure_exercise_name_schema(self) -> None:
+    def _ensure_exercise_name_schema(self, curation_path=None) -> None:
         with self._catalog_lock, self.catalog_conn:
             self.catalog_conn.execute("""
                 CREATE TABLE IF NOT EXISTS exercise_display_names (
@@ -87,9 +87,12 @@ class SchemaMixin:
                 "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'exercises'"
             ).fetchone()
             if exercise_table_exists is not None:
-                apply_exercise_curation(self.catalog_conn.cursor())
+                apply_exercise_curation(
+                    self.catalog_conn.cursor(),
+                    self.curation_path if curation_path is None else curation_path,
+                )
 
-    def create_catalog_schema(self) -> None:
+    def create_catalog_schema(self, curation_path=None) -> None:
         with self._catalog_lock:
             cursor = self.catalog_conn.cursor()
             cursor.executescript(f"""
@@ -130,7 +133,7 @@ class SchemaMixin:
             ).fetchone():
                 ensure_food_search_schema(self.catalog_conn)
             self.catalog_conn.commit()
-        self._ensure_exercise_name_schema()
+        self._ensure_exercise_name_schema(curation_path)
         # Outside the lock block: ensure_account_schema acquires _catalog_lock itself.
         self.ensure_account_schema()
         ensure_revision_schema(

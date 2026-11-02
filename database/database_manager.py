@@ -15,6 +15,7 @@ sys.path.append(str(BASE_DIR))
 
 from database.storage import configured_data_root, resolve_data_root, validate_data_root
 from database.sqlite_connection import connect_api_sqlite
+from database.exercise_library.curation import DEFAULT_CURATION_CSV_PATH
 
 #: Catalog, ledgers and backups all hang off one data root (``MAYOS_DATA_DIR``).
 _DATA_ROOT = resolve_data_root()
@@ -89,6 +90,7 @@ class DatabaseManager(
         backups_dir=None,
         default_ledger_id: str | None = None,
         deletions_path=None,
+        curation_path=None,
     ):
         if configured_data_root() is not None:
             root = validate_data_root()
@@ -97,6 +99,7 @@ class DatabaseManager(
         self.catalog_path = Path(catalog_path) if catalog_path is not None else root / "catalog.db"
         self.ledgers_dir = Path(ledgers_dir) if ledgers_dir is not None else root / "users"
         self.backups_dir = Path(backups_dir) if backups_dir is not None else root / "backups"
+        self.curation_path = Path(curation_path or DEFAULT_CURATION_CSV_PATH)
         # The API and operational scripts inject the configured off-site store.
         # Keeping the default unset preserves hermetic local-only/test stores.
         self.offsite_backup = None

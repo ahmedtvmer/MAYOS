@@ -262,7 +262,7 @@ def test_player_generation_exception_is_written_as_a_failed_report(tmp_path, mon
     monkeypatch.setattr(
         run_evaluation,
         "_generate_reply",
-        lambda _case: (_ for _ in ()).throw(RuntimeError("player backend timed out")),
+        lambda _case, _run_number: (_ for _ in ()).throw(RuntimeError("player backend timed out")),
     )
     monkeypatch.setattr(model_downloader, "model_identity", lambda _role: ("test/player", "openai"))
     report_path = tmp_path / "report.json"
@@ -276,3 +276,45 @@ def test_player_generation_exception_is_written_as_a_failed_report(tmp_path, mon
     assert recorded_case["judges"]["judge_1"]["error"] == "Player generation failed: player backend timed out"
     assert report["gate"]["passed"] is False
     assert "Report written:" in capsys.readouterr().out
+
+
+def test_injury_saved_by_clinical_case_is_not_visible_to_next_case(monkeypatch):
+    from types import SimpleNamespace
+
+    from agent import assistant_graph as graph_module
+    from database import database_manager
+    from tests.eval import run_evaluation
+
+    ledger_state = {}
+
+    class Ledger:
+        def __init__(self, trainee_id):
+            self.injuries = ledger_state.setdefault(trainee_id, [])
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_exc_info):
+            return False
+
+    class Database:
+        catalog_conn = SimpleNamespace(close=lambda: None)
+
+        def open_ledger(self, trainee_id):
+            return Ledger(trainee_id)
+
+    def invoke(state, config):
+        ledger = config["configurable"]["ledger"]
+        if state["messages"][-1].content == "clinical injury":
+            ledger.injuries.append("unknown body area")
+        else:
+            assert ledger.injuries == []
+        return {"response_content": "Recorded."}
+
+    monkeypatch.setattr(database_manager, "DatabaseManager", Database)
+    monkeypatch.setattr(graph_module, "assistant_graph", SimpleNamespace(invoke=invoke))
+
+    run_evaluation._generate_reply({"id": "clinical", "query": "clinical injury"})
+    run_evaluation._generate_reply({"id": "stateless-follow-up", "query": "unrelated question"})
+
+    assert sorted(ledger_state.values(), key=len) == [[], ["unknown body area"]]

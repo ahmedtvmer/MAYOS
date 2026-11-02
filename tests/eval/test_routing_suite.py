@@ -19,6 +19,27 @@ from tests.eval.suites.routing import (
 )
 
 
+def test_hermetic_routing_bootstraps_catalog_before_ci_initialization(tmp_path, monkeypatch):
+    from database import database_manager
+
+    monkeypatch.setattr(database_manager, "DEFAULT_CATALOG_PATH", tmp_path / "empty-data" / "catalog.db")
+    monkeypatch.setattr(
+        database_manager,
+        "DEFAULT_CURATION_CSV_PATH",
+        tmp_path / "empty-data" / "exercise_curation.csv",
+    )
+
+    record = RoutingSuite().run_hermetic(None)
+
+    runner_errors = {
+        case["case_id"]: case["runner_error"]
+        for case in record["cases"]
+        if case.get("runner_error")
+    }
+    assert not runner_errors, runner_errors
+    assert record["score"] >= record["bar"]["value"], record["failure_reasons"]
+
+
 def test_routing_dataset_has_required_language_mix_and_composite_action():
     cases = _load_routing_cases()
     arabic = [case for case in cases if case["language"] == "arabic"]
