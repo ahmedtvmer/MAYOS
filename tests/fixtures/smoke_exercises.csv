@@ -1,0 +1,40 @@
+bodyPart,equipment,id,name,target,secondaryMuscles/0,secondaryMuscles/1,secondaryMuscles/2,secondaryMuscles/3,secondaryMuscles/4,secondaryMuscles/5,image_path,gif_path,instructions
+waist,body weight,ci-smoke-01,3/4 sit-up,abs,hip flexors,lower back,,,,,images/mock_1.jpg,videos/mock_1.gif,Lie flat on your back with your knees bent. Curl the torso up toward the knees under control.
+chest,leverage machine,ci-smoke-02,machine chest press,pectorals,triceps,front delts,,,,,images/mock_2.jpg,videos/mock_2.gif,Press the handles forward until the arms are extended then return under control.
+chest,barbell,ci-smoke-03,barbell bench press,pectorals,triceps,front delts,,,,,images/mock_3.jpg,videos/mock_3.gif,Lower the bar to mid-chest and press back to lockout keeping the elbows at forty-five degrees.
+chest,dumbbell,ci-smoke-04,dumbbell bench press,pectorals,triceps,front delts,,,,,images/mock_4.jpg,videos/mock_4.gif,Press two dumbbells from chest level to full extension while keeping the scapula retracted.
+chest,dumbbell,ci-smoke-05,dumbbell press,pectorals,triceps,front delts,,,,,images/mock_5.jpg,videos/mock_5.gif,Press dumbbells from shoulder level to lockout controlling the eccentric.
+chest,dumbbell,ci-smoke-06,incline dumbbell press,pectorals,front delts,triceps,,,,,images/mock_6.jpg,videos/mock_6.gif,Press dumbbells on an incline bench to bias the upper chest.
+lats,body weight,ci-smoke-07,pull-up,lats,biceps,upper back,,,,,images/mock_7.jpg,videos/mock_7.gif,Hang from a bar and pull the chest toward it by driving the elbows down.
+lats,cable,ci-smoke-08,lat pulldown,lats,biceps,upper back,,,,,images/mock_8.jpg,videos/mock_8.gif,Pull the bar to the upper chest while keeping the torso upright.
+lats,cable,ci-smoke-09,seated cable row,lats,upper back,biceps,,,,,images/mock_9.jpg,videos/mock_9.gif,Row the handle to the abdomen keeping the spine neutral.
+upper back,barbell,ci-smoke-10,barbell row,upper back,lats,biceps,,,,,images/mock_10.jpg,videos/mock_10.gif,Hinge to forty-five degrees and row the bar to the lower ribs.
+upper back,leverage machine,ci-smoke-11,chest supported machine row,upper back,lats,biceps,,,,,images/mock_11.jpg,videos/mock_11.gif,Row the handles while the chest pad removes lower back fatigue.
+shoulders,dumbbell,ci-smoke-12,dumbbell lateral raise,delts,traps,,,,,,images/mock_12.jpg,videos/mock_12.gif,Raise the dumbbells to shoulder height with a slight elbow bend.
+shoulders,cable,ci-smoke-13,cable lateral raise,delts,traps,,,,,,images/mock_13.jpg,videos/mock_13.gif,Raise the cable handle laterally to shoulder height.
+shoulders,cable,ci-smoke-14,face pull,delts,upper back,traps,,,,,images/mock_14.jpg,videos/mock_14.gif,Pull the rope toward the face spreading the hands apart.
+shoulders,dumbbell,ci-smoke-15,seated dumbbell shoulder press,delts,triceps,,,,,,images/mock_15.jpg,videos/mock_15.gif,Press the dumbbells overhead from shoulder height without arching the lower back.
+upper arms,cable,ci-smoke-16,triceps pushdown,triceps,forearms,,,,,,images/mock_16.jpg,videos/mock_16.gif,Extend the elbows fully against cable resistance keeping the upper arms pinned.
+upper arms,dumbbell,ci-smoke-17,overhead triceps extension,triceps,forearms,,,,,,images/mock_17.jpg,videos/mock_17.gif,Extend a dumbbell overhead by straightening the elbows.
+upper arms,barbell,ci-smoke-18,barbell curl,biceps,forearms,,,,,,images/mock_18.jpg,videos/mock_18.gif,Curl the bar without swinging the torso.
+upper arms,dumbbell,ci-smoke-19,dumbbell hammer curl,biceps,forearms,,,,,,images/mock_19.jpg,videos/mock_19.gif,Curl neutral-grip dumbbells while keeping the elbows pinned to the sides.
+upper legs,barbell,ci-smoke-20,barbell squat,quads,glutes,hamstrings,,,,,images/mock_20.jpg,videos/mock_20.gif,Squat to depth keeping the bar over the mid-foot.
+upper legs,leverage machine,ci-smoke-21,leg press,quads,glutes,hamstrings,,,,,images/mock_21.jpg,videos/mock_21.gif,Press the platform away without locking the knees.
+upper legs,smith machine,ci-smoke-22,hack squat,quads,glutes,,,,,,images/mock_22.jpg,videos/mock_22.gif,Descend under control on the hack squat sled and drive back up.
+upper legs,leverage machine,ci-smoke-23,lying leg curl,hamstrings,calves,,,,,,images/mock_23.jpg,videos/mock_23.gif,Curl the pad toward the glutes keeping the hips down.
+upper legs,leverage machine,ci-smoke-24,seated leg curl,hamstrings,calves,,,,,,images/mock_30.jpg,videos/mock_30.gif,Curl the pad down and under the seat keeping the hips pinned.
+upper legs,barbell,ci-smoke-25,barbell hip thrust,glutes,hamstrings,,,,,,images/mock_25.jpg,videos/mock_25.gif,Drive the bar upward by extending the hips at the top.
+upper legs,leverage machine,ci-smoke-26,machine hip thrust,glutes,hamstrings,,,,,,images/mock_26.jpg,videos/mock_26.gif,Extend the hips against the machine pad and squeeze at the top.
+upper legs,barbell,ci-smoke-27,barbell romanian deadlift,glutes,hamstrings,lower back,,,,,images/mock_85.jpg,videos/mock_85.gif,Hinge at the hips lowering the bar along the legs with a neutral spine until the hamstrings stretch.
+upper legs,dumbbell,ci-smoke-28,dumbbell romanian deadlift,glutes,hamstrings,lower back,,,,,images/mock_1459.jpg,videos/mock_1459.gif,Hinge at the hips lowering the dumbbells along the legs with a neutral spine until the hamstrings stretch.
+upper legs,leverage machine,ci-smoke-29,machine seated good morning,glutes,hamstrings,lower back,,,,,images/mock_3759.jpg,videos/mock_3759.gif,Hinge forward from the hips against the machine pad keeping the spine neutral.
+lower legs,leverage machine,ci-smoke-30,standing calf raise,calves,,,,,,,images/mock_27.jpg,videos/mock_27.gif,Rise onto the toes then lower the heels under control.
+lower legs,leverage machine,ci-smoke-31,seated calf raise,calves,,,,,,,images/mock_28.jpg,videos/mock_28.gif,Press through the balls of the feet from a seated position.
+waist,cable,ci-smoke-32,cable crunch,abs,,,,,,,images/mock_29.jpg,videos/mock_29.gif,Crunch the torso down against cable resistance.
+upper legs,barbell,ci-smoke-extra-01,CI smoke barbell hip thrust,glutes,,,,,,,,,
+upper legs,leverage machine,ci-smoke-extra-02,CI smoke leg press,quads,,,,,,,,,
+lats,cable,ci-smoke-extra-03,CI smoke lat pulldown,lats,,,,,,,,,
+upper legs,leverage machine,ci-smoke-extra-04,CI smoke seated leg curl,hamstrings,,,,,,,,,
+chest,leverage machine,ci-smoke-extra-05,CI smoke machine chest press,pectorals,,,,,,,,,
+upper back,leverage machine,ci-smoke-extra-06,CI smoke chest supported row,upper back,,,,,,,,,
+shoulders,dumbbell,ci-smoke-extra-07,CI smoke dumbbell lateral raise,delts,,,,,,,,,

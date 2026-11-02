@@ -1,0 +1,8 @@
+id,source_name,display_name,aliases,primary_action,secondary_actions,primary_muscle,load_type,hidden,duplicate_of
+ci-smoke-extra-01,CI smoke barbell hip thrust,,,Hip Extension,,Glutes,,false,
+ci-smoke-extra-02,CI smoke leg press,,,Knee Extension,,Quads,,false,
+ci-smoke-extra-03,CI smoke lat pulldown,,,Shoulder Adduction,,Lats,,false,
+ci-smoke-extra-04,CI smoke seated leg curl,,,Knee Flexion,,Hamstrings,,false,
+ci-smoke-extra-05,CI smoke machine chest press,,,Shoulder Horizontal Adduction,,Chest,,false,
+ci-smoke-extra-06,CI smoke chest supported row,,,Shoulder Extension,,Upper Back,,false,
+ci-smoke-extra-07,CI smoke dumbbell lateral raise,,,Shoulder Abduction,,Side Delts,,false,
