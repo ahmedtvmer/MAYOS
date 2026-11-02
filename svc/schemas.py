@@ -1935,6 +1935,7 @@ class CardioIn(BaseModel):
 
 class SessionCommitIn(BaseModel):
     duration_seconds: int | None = None
+    started_at: str | None = Field(default=None, max_length=64)
     day_order: int = Field(ge=1, le=5)
     week_order: int = Field(default=1, ge=1, le=MAX_PROGRAM_WEEKS)
     readiness: int = Field(ge=1, le=5)
@@ -1979,14 +1980,15 @@ class SessionCommitIn(BaseModel):
     @model_validator(mode="after")
     def _sync_fields_require_client_session_id(self) -> "SessionCommitIn":
         if self.client_session_id is None and (
-            self.performed_date is not None
+            self.started_at is not None
+            or self.performed_date is not None
             or self.performed_timezone is not None
             or self.program_version is not None
             or self.captured_at is not None
             or self.captured_offline
         ):
             raise ValueError(
-                "performed_date/performed_timezone/program_version/captured_at/captured_offline require client_session_id."
+                "workout timing and sync fields require client_session_id."
             )
         return self
 

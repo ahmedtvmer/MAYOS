@@ -3863,6 +3863,7 @@ class WorkoutDraft {
     this.weekOrder = 1,
     required this.dayName,
     required this.capturedAt,
+    this.startedAt,
     required this.exercises,
     this.warmupMovements = const <WarmupMovementDraft>[],
     this.cardio = const <WorkoutCardio>[],
@@ -3891,6 +3892,7 @@ class WorkoutDraft {
         weekOrder: (json['week_order'] as num?)?.toInt() ?? 1,
         dayName: json['day_name'] as String? ?? 'Day',
         capturedAt: json['captured_at'] as String,
+        startedAt: json['started_at'] as String?,
         exercises: (json['exercises'] as List<dynamic>? ?? const <dynamic>[])
             .map((dynamic e) =>
                 DraftExercise.fromJson(e as Map<String, dynamic>))
@@ -3927,6 +3929,7 @@ class WorkoutDraft {
   final int weekOrder;
   final String dayName;
   final String capturedAt;
+  final String? startedAt;
   final List<DraftExercise> exercises;
   final List<WarmupMovementDraft> warmupMovements;
   final List<WorkoutCardio> cardio;
@@ -4028,6 +4031,7 @@ class WorkoutDraft {
         weekOrder: weekOrder,
         dayName: dayName,
         capturedAt: capturedAt,
+        startedAt: startedAt,
         exercises: exercises,
         warmupMovements: warmupMovements,
         cardio: cardio,
@@ -4085,6 +4089,11 @@ class WorkoutDraft {
         'performed_timezone': performedTimezone,
         'program_version': programVersion,
         'captured_at': capturedAt,
+        if (startedAt != null || durationSeconds != null)
+          'started_at': startedAt ??
+              DateTime.parse(capturedAt)
+                  .subtract(Duration(seconds: durationSeconds ?? 0))
+                  .toIso8601String(),
         'captured_offline': capturedOffline,
         if (durationSeconds != null) 'duration_seconds': durationSeconds,
       };
@@ -4099,6 +4108,7 @@ class WorkoutDraft {
         'week_order': weekOrder,
         'day_name': dayName,
         'captured_at': capturedAt,
+        if (startedAt != null) 'started_at': startedAt,
         'exercises': <Map<String, dynamic>>[
           for (final DraftExercise exercise in exercises) exercise.toJson(),
         ],
