@@ -2090,7 +2090,21 @@ void main() {
         durationSeconds: workoutElapsed(workout, now: now).inSeconds,
       )!;
       expect(direct['sets'], hasLength(1));
+      expect(direct['started_at'], workout.startedAt);
       expect(direct['duration_seconds'], workoutElapsed(workout, now: now).inSeconds);
+      final String tenHoursAgo = now
+          .subtract(const Duration(hours: 10))
+          .toUtc()
+          .toIso8601String();
+      final ActiveWorkout longWorkout = ActiveWorkout.fromJson(
+        <String, dynamic>{...workout.toJson(), 'started_at': tenHoursAgo},
+      ).copyWith(clientSessionId: 'long-session');
+      final Map<String, dynamic> longBody = longWorkout.buildCommitBody(
+        timezone: 'UTC',
+        now: now,
+      )!;
+      expect(longBody['started_at'], tenHoursAgo);
+      expect(longBody['duration_seconds'], 36000);
       expect(currentSetOf(workout), (exerciseIndex: 0, setIndex: 1));
       expect(workoutProgressOf(workout).setsTotal, 2);
       expect(workoutProgressOf(workout).setsTicked, 1);
@@ -2115,6 +2129,16 @@ void main() {
         clientSessionId: 'fixed-session',
         now: now,
       )!;
+      expect(draft.toCommitBody()['started_at'], workout.startedAt);
+      expect(draft.toCommitBody()['duration_seconds'],
+          workoutElapsed(workout, now: now).inSeconds);
+      final WorkoutDraft longDraft = longWorkout.buildWorkoutDraft(
+        timezone: 'UTC',
+        clientSessionId: 'long-session',
+        now: now,
+      )!;
+      expect(longDraft.toCommitBody()['started_at'], tenHoursAgo);
+      expect(longDraft.toCommitBody()['duration_seconds'], 36000);
       expect(draft.toCommitBody()['warmup_movements'], direct['warmup_movements']);
       final WorkoutDraft restored = WorkoutDraft.fromJson(draft.toJson());
       expect(restored.warmupMovements, hasLength(2));
@@ -2159,6 +2183,8 @@ void main() {
         dayOrder: 2,
         dayName: 'Upper A',
         capturedAt: now.toUtc().toIso8601String(),
+        startedAt: workout.startedAt,
+        durationSeconds: now.difference(workout.startedAtClock).inSeconds,
         exercises: <DraftExercise>[
           DraftExercise(
             exercise: _plannedExerciseJson,

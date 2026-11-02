@@ -46,6 +46,7 @@ WorkoutDraft _draft({
       dayOrder: 1,
       dayName: 'Upper 1',
       capturedAt: capturedAt,
+      startedAt: '2026-09-26T10:00:00.000Z',
       exercises: <DraftExercise>[
         DraftExercise(
           exercise: <String, dynamic>{
@@ -163,8 +164,10 @@ void main() {
       final WorkoutDraft draft = _draft(accountId: _accountA, durationSeconds: 3472);
       final WorkoutDraft restored = WorkoutDraft.fromJson(draft.toJson());
       expect(restored.toCommitBody()['duration_seconds'], 3472);
+      expect(restored.toCommitBody()['started_at'], '2026-09-26T10:00:00.000Z');
       final Map<String, dynamic> legacyJson = Map<String, dynamic>.of(draft.toJson())
-        ..remove('duration_seconds');
+        ..remove('duration_seconds')
+        ..remove('started_at');
       expect(WorkoutDraft.fromJson(legacyJson).toCommitBody().containsKey('duration_seconds'), isFalse);
     });
     test('Cardio state persists and only ticked Cardio reaches commit', () {

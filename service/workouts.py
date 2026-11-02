@@ -45,6 +45,8 @@ MAX_BACKDATE_DAYS = 3
 
 #: Device clocks drift; a capture timestamp within this window of "now" is fine.
 CLOCK_SKEW = timedelta(minutes=10)
+WORKOUT_CLOCK_SKEW = timedelta(minutes=5)
+MAX_WORKOUT_DURATION_SECONDS = 6 * 60 * 60
 
 DELOAD_STATE_APPLIED = "applied"
 DELOAD_STATE_SUGGESTED = "suggested"
@@ -94,6 +96,64 @@ class SyncMetadata:
     captured_at: str | None = None
     captured_offline: bool = False
     duration_seconds: int | None = None
+    started_at: str | None = None
+
+
+def _session_times(sync: SyncMetadata, uploaded_at: str) -> tuple[str, str, int | None]:
+    """Resolve client workout times, retaining upload-time behavior for legacy/bad input."""
+    if sync.started_at is None:
+        if sync.duration_seconds is None:
+            return uploaded_at, uploaded_at, None
+        try:
+            legacy_duration = int(sync.duration_seconds)
+        except (TypeError, ValueError, OverflowError):
+            legacy_duration = -1
+        if 1 <= legacy_duration <= 86400:
+            # Pre-start-time clients (including v53 clients) historically sent
+            # duration independently; keep that contract while timestamps stay
+            # at upload time.
+            return uploaded_at, uploaded_at, legacy_duration
+        return uploaded_at, uploaded_at, None
+    rule: str | None = None
+    started: datetime | None = None
+    if sync.duration_seconds is None:
+        rule = "incomplete_workout_timing"
+    else:
+        try:
+            started = datetime.fromisoformat(sync.started_at.replace("Z", "+00:00"))
+            if started.tzinfo is None:
+                rule = "start_missing_timezone"
+        except (TypeError, ValueError):
+            rule = "invalid_start"
+        try:
+            duration = int(sync.duration_seconds)
+        except (TypeError, ValueError, OverflowError):
+            duration = -1
+        if rule is None and (duration < 1 or duration > MAX_WORKOUT_DURATION_SECONDS):
+            rule = "duration_out_of_bounds"
+        if rule is None and started is not None:
+            now = datetime.fromisoformat(uploaded_at.replace("Z", "+00:00"))
+            if started.astimezone(UTC) > now.astimezone(UTC) + WORKOUT_CLOCK_SKEW:
+                rule = "start_in_future"
+            else:
+                try:
+                    timezone = ZoneInfo(sync.performed_timezone or "UTC")
+                    performed = parse_iso_date(sync.performed_date or "", "performed_date")
+                    started_date = started.astimezone(timezone).date()
+                    if (
+                        started_date < performed - timedelta(days=MAX_BACKDATE_DAYS)
+                        or started_date > performed
+                    ):
+                        rule = "start_outside_correction_window"
+                except (ValueError, ZoneInfoNotFoundError):
+                    rule = "start_outside_correction_window"
+    if rule is not None:
+        logger.warning("Workout client timing fell back to upload time: rule=%s", rule)
+        return uploaded_at, uploaded_at, None
+    assert started is not None
+    normalized_start = started.astimezone(UTC).isoformat()
+    completed = (started.astimezone(UTC) + timedelta(seconds=duration)).isoformat()
+    return normalized_start, completed, duration
 
 
 def day_plan_from(program: Any, day_order: int, week_order: int = 1) -> Any:
@@ -577,12 +637,13 @@ def _persist_session(
     """
     profile = ledger.get_player_profile() or {}
 
+    started_at, completed_at, duration_seconds = _session_times(sync, now_iso)
     ledger.log_workout_session(
         session_id=session_id,
         session_date=today_date,
         split_name=day_plan.day_name,
-        started_at=now_iso,
-        completed_at=now_iso,
+        started_at=started_at,
+        completed_at=completed_at,
         readiness_score=readiness,
         notes=session_notes,
         client_session_id=sync.client_session_id,
@@ -593,7 +654,7 @@ def _persist_session(
         program_day_order=int(day_plan.day_order),
         captured_at=sync.captured_at,
         uploaded_at=now_iso,
-        duration_seconds=sync.duration_seconds,
+        duration_seconds=duration_seconds,
     )
 
     total_tonnage_kg = 0.0

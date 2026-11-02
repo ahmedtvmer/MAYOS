@@ -294,6 +294,8 @@ def _sync_body(*, client_session_id=CLIENT_ID, version, day_order=1, performed_d
         "program_version": version,
         "captured_at": captured_at,
         "captured_offline": captured_offline,
+        "started_at": "2026-09-26T10:30:00+00:00",
+        "duration_seconds": 3600,
     }
 
 
@@ -776,7 +778,12 @@ def test_first_commit_returns_201_and_records_sync_fields(api):
     client, db = api
     headers, version = _prepare_player(client, db)
 
-    resp = client.post("/workouts/sessions", headers=headers, json=_sync_body(version=version))
+    payload = _sync_body(version=version)
+    payload["client_session_id"] = CLIENT_ID
+    payload["performed_date"] = "2026-09-26"
+    payload["performed_timezone"] = "UTC"
+    payload["started_at"] = "2026-09-26T12:30:00+02:00"
+    resp = client.post("/workouts/sessions", headers=headers, json=payload)
     assert resp.status_code == 201, resp.text
     body = resp.json()
     assert body["session_id"]
@@ -789,7 +796,7 @@ def test_first_commit_returns_201_and_records_sync_fields(api):
     db.switch_user("p1")
     row = db.conn.execute(
         "SELECT client_session_id, session_date, performed_timezone, program_version,"
-        " active_program_version_at_sync, captured_at, uploaded_at"
+        " active_program_version_at_sync, captured_at, uploaded_at, started_at, completed_at, duration_seconds"
         " FROM workout_sessions WHERE id = ?",
         (body["session_id"],),
     ).fetchone()
@@ -800,6 +807,124 @@ def test_first_commit_returns_201_and_records_sync_fields(api):
     assert row["active_program_version_at_sync"] == version
     assert row["captured_at"] == "2026-09-26T11:30:00+00:00"
     assert row["uploaded_at"] == FIXED_NOW.isoformat()
+    assert row["started_at"] == "2026-09-26T10:30:00+00:00"
+    assert row["completed_at"] == "2026-09-26T11:30:00+00:00"
+    assert row["duration_seconds"] == 3600
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("started_at", "2026-09-26T12:06:00+00:00"),
+        ("started_at", "2026-09-22T10:30:00+00:00"),
+        ("duration_seconds", 21601),
+        ("duration_seconds", 36000),
+        ("duration_seconds", -1),
+    ],
+)
+def test_implausible_client_workout_times_fall_back_to_upload_time(api, field, value):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    payload = _sync_body(version=version)
+    payload["client_session_id"] = CLIENT_ID
+    payload["performed_date"] = "2026-09-26"
+    payload["performed_timezone"] = "UTC"
+    payload[field] = value
+    response = client.post("/workouts/sessions", headers=headers, json=payload)
+    assert response.status_code == 201, response.text
+    db.switch_user("p1")
+    row = db.conn.execute(
+        "SELECT started_at, completed_at, uploaded_at, duration_seconds "
+        "FROM workout_sessions WHERE client_session_id = ?",
+        (CLIENT_ID,),
+    ).fetchone()
+    assert row["started_at"] == FIXED_NOW.isoformat()
+    assert row["completed_at"] == FIXED_NOW.isoformat()
+    assert row["uploaded_at"] == FIXED_NOW.isoformat()
+    assert row["duration_seconds"] is None
+
+
+def test_old_client_without_workout_timing_keeps_upload_time_behavior(api):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    payload = _sync_body(version=version)
+    payload.pop("started_at")
+    payload.pop("duration_seconds")
+    response = client.post("/workouts/sessions", headers=headers, json=payload)
+    assert response.status_code == 201, response.text
+    db.switch_user("p1")
+    row = db.conn.execute(
+        "SELECT started_at, completed_at, uploaded_at, duration_seconds "
+        "FROM workout_sessions WHERE client_session_id = ?",
+        (CLIENT_ID,),
+    ).fetchone()
+    assert row["started_at"] == row["completed_at"] == row["uploaded_at"] == FIXED_NOW.isoformat()
+    assert row["duration_seconds"] is None
+
+
+def test_legacy_request_with_started_at_is_rejected_without_writing(api):
+    client, db = api
+    headers, _version = _prepare_player(client, db)
+    db.switch_user("p1")
+    before = db.conn.execute("SELECT COUNT(*) FROM workout_sessions").fetchone()[0]
+    response = client.post(
+        "/workouts/sessions",
+        headers=headers,
+        json={
+            "day_order": 1,
+            "readiness": 4,
+            "sets": _sets_body(),
+            "started_at": "2026-09-26T10:30:00+00:00",
+            "duration_seconds": 3600,
+        },
+    )
+    assert response.status_code == 422, response.text
+    assert db.conn.execute("SELECT COUNT(*) FROM workout_sessions").fetchone()[0] == before
+
+
+def test_old_client_keeps_duration_above_new_six_hour_limit(api):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    payload = _sync_body(version=version)
+    payload.pop("started_at")
+    payload["duration_seconds"] = 30000
+    response = client.post("/workouts/sessions", headers=headers, json=payload)
+    assert response.status_code == 201, response.text
+    db.switch_user("p1")
+    row = db.conn.execute(
+        "SELECT started_at, completed_at, uploaded_at, duration_seconds "
+        "FROM workout_sessions WHERE client_session_id = ?", (CLIENT_ID,)
+    ).fetchone()
+    assert row["started_at"] == row["completed_at"] == row["uploaded_at"] == FIXED_NOW.isoformat()
+    assert row["duration_seconds"] == 30000
+
+
+def test_utc_start_format_preserves_latest_order_after_late_sync(api):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    recent_body = _sync_body(version=version, client_session_id="22222222-2222-4222-8222-222222222222")
+    recent_body["started_at"] = "2026-09-26T11:00:00Z"
+    recent = client.post("/workouts/sessions", headers=headers, json=recent_body)
+    assert recent.status_code == 201, recent.text
+
+    delayed_body = _sync_body(version=version, client_session_id="33333333-3333-4333-8333-333333333333")
+    delayed_body["started_at"] = "2026-09-26T10:00:00+00:00"
+    delayed = client.post("/workouts/sessions", headers=headers, json=delayed_body)
+    assert delayed.status_code == 201, delayed.text
+
+    db.switch_user("p1")
+    rows = db.conn.execute(
+        "SELECT started_at, completed_at FROM workout_sessions "
+        "WHERE client_session_id IN (?, ?) ORDER BY started_at",
+        (recent_body["client_session_id"], delayed_body["client_session_id"]),
+    ).fetchall()
+    assert [row["started_at"] for row in rows] == [
+        "2026-09-26T10:00:00+00:00", "2026-09-26T11:00:00+00:00"
+    ]
+    assert rows[1]["completed_at"] == "2026-09-26T12:00:00+00:00"
+    latest = client.get("/workouts/sessions/latest", headers=headers)
+    assert latest.status_code == 200, latest.text
+    assert latest.json()["session_id"] == recent.json()["session_id"]
 
 
 def test_display_language_saves_future_summaries_and_replays_original(api):
@@ -1086,12 +1211,23 @@ def test_commit_status_is_stored_and_replayed_at_commit_time(api, monkeypatch):
     }
 
     db.switch_user("p1")
+    first_times = tuple(db.conn.execute(
+        "SELECT started_at, completed_at, uploaded_at, duration_seconds "
+        "FROM workout_sessions WHERE client_session_id = ?", (CLIENT_ID,)
+    ).fetchone())
     db.ledger.conn.execute("UPDATE training_programs SET weekly_frequency = 1 WHERE is_active = 1")
     db.ledger.conn.commit()
 
-    replay = client.post("/workouts/sessions", headers=headers, json=payload)
+    replay_payload = dict(payload, started_at="2026-09-26T11:00:00+00:00", duration_seconds=10)
+    replay = client.post("/workouts/sessions", headers=headers, json=replay_payload)
     assert replay.status_code == 200, replay.text
     assert replay.json()["training_status"] == stored_status
+    db.switch_user("p1")
+    replay_times = tuple(db.conn.execute(
+        "SELECT started_at, completed_at, uploaded_at, duration_seconds "
+        "FROM workout_sessions WHERE client_session_id = ?", (CLIENT_ID,)
+    ).fetchone())
+    assert replay_times == first_times
     current_status = client.get("/dashboard/training-status", headers=headers).json()
     assert current_status["weekly_streak"] == 1
     assert current_status["week_done"] == 1
@@ -1151,6 +1287,7 @@ def test_commit_reads_import_count_before_ledger_transaction(
             "performed_timezone",
             "program_version",
             "captured_at",
+            "started_at",
         ):
             payload.pop(field)
 
@@ -1284,7 +1421,7 @@ def test_legacy_online_commit_includes_training_status(api, monkeypatch):
     _freeze_training_status_now(monkeypatch, FIXED_NOW)
     headers, _ = _prepare_player(client, db)
     body = _sync_body(version=1)
-    for field in ("client_session_id", "performed_date", "performed_timezone", "program_version", "captured_at"):
+    for field in ("client_session_id", "performed_date", "performed_timezone", "program_version", "captured_at", "started_at"):
         body.pop(field)
 
     committed = client.post("/workouts/sessions", headers=headers, json=body)
@@ -2265,6 +2402,7 @@ def test_checkpoint_review_is_created_once_when_commit_reaches_ten(api, legacy):
             "performed_timezone",
             "program_version",
             "captured_at",
+            "started_at",
         ):
             payload.pop(field)
 

@@ -10,6 +10,11 @@ import 'rest_length.dart';
 import 'secure_store.dart';
 import 'workout_equipment.dart';
 
+int _elapsedSecondsForCommit(DateTime startedAt, DateTime now) {
+  final int seconds = now.difference(startedAt).inSeconds;
+  return seconds < 1 ? 1 : seconds;
+}
+
 int _setSequence = 0;
 int _exerciseSequence = 0;
 
@@ -1032,7 +1037,9 @@ class ActiveWorkout {
       'week_order': weekOrder,
       'readiness': readiness,
       'session_notes': notes,
-      if (durationSeconds != null) 'duration_seconds': durationSeconds,
+      'started_at': startedAt,
+      'duration_seconds': durationSeconds ??
+          _elapsedSecondsForCommit(startedAtClock, now),
       'sets': loggedExercises,
       if (loggedWarmupMovements.isNotEmpty)
         'warmup_movements': <Map<String, dynamic>>[
@@ -1096,6 +1103,7 @@ class ActiveWorkout {
       weekOrder: weekOrder,
       dayName: dayName,
       capturedAt: iso,
+      startedAt: startedAt,
       exercises: <DraftExercise>[
         for (final ActiveWorkoutExercise exercise in exercises)
           _draftExercise(exercise),
@@ -1104,7 +1112,8 @@ class ActiveWorkout {
       cardio: cardio,
       readiness: readiness,
       notes: notes,
-      durationSeconds: durationSeconds,
+      durationSeconds: durationSeconds ??
+          _elapsedSecondsForCommit(startedAtClock, now),
       status: DraftStatus.pending,
       updatedAt: iso,
     );

@@ -255,6 +255,7 @@ async def commit_session(
                 sync=workouts_service.SyncMetadata(
                     program_version=program.version if program is not None else None,
                     duration_seconds=body.duration_seconds,
+                    started_at=body.started_at,
                 ),
                 warmup_movements=_warmup_movements_payload(db, body),
                 cardio=[entry.model_dump() for entry in body.cardio] if body.cardio is not None else None,
@@ -288,6 +289,7 @@ async def commit_session(
             captured_at=body.captured_at,
             captured_offline=body.captured_offline,
             duration_seconds=body.duration_seconds,
+            started_at=body.started_at,
         )
         return workouts_service.commit_logged_session(
             db,
