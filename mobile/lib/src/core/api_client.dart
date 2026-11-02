@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
+
+import 'error_reporting.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 
@@ -155,12 +158,30 @@ class ApiClient {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: _attachToken,
+        onResponse: (Response<dynamic> response, ResponseInterceptorHandler handler) {
+          _addHttpBreadcrumb(response.requestOptions, response.statusCode);
+          handler.next(response);
+        },
         onError: _handleError,
       ),
     );
   }
 
   static const String _skipAuth = 'skipAuth';
+
+  void _addHttpBreadcrumb(RequestOptions request, int? status) {
+    if (status == null) return;
+    final String route = sentryRouteTemplate(request.path);
+    Sentry.addBreadcrumb(Breadcrumb(
+      category: 'http',
+      type: 'http',
+      data: <String, dynamic>{
+        'method': request.method,
+        'route': route,
+        'status': status,
+      },
+    ));
+  }
   static const String _invalidCoachHistory =
       'The service returned invalid coach history data.';
   static const String _invalidAlerts =
@@ -281,6 +302,8 @@ class ApiClient {
       '$platform/$version';
 
   void _handleError(DioException error, ErrorInterceptorHandler handler) {
+    final int? status = error.response?.statusCode;
+    if (status != null) _addHttpBreadcrumb(error.requestOptions, status);
     final dynamic responseBody = error.response?.data;
     if (error.response?.statusCode == 426 &&
         responseBody is Map &&

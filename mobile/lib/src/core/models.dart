@@ -299,6 +299,7 @@ class Account {
     this.productEmailsOptedIn = false,
     this.lifterAiAllowance,
     this.coachAiAllowance,
+    this.anonymousAccountId,
   });
 
   factory Account.fromJson(Map<String, dynamic> json) {
@@ -337,6 +338,7 @@ class Account {
       coachAiAllowance: json['coach_ai_allowance'] is Map<String, dynamic>
           ? AiAllowance.fromJson(json['coach_ai_allowance'] as Map<String, dynamic>)
           : null,
+      anonymousAccountId: json['anonymous_account_id'] as String?,
     );
   }
 
@@ -381,6 +383,7 @@ class Account {
 
   /// Current durable Coach request/resource state, refreshed with the account.
   final AiAllowance? coachAiAllowance;
+  final String? anonymousAccountId;
 
   Account copyWith({
     String? accountId,
@@ -402,6 +405,7 @@ class Account {
     bool? productEmailsOptedIn,
     AiAllowance? lifterAiAllowance,
     AiAllowance? coachAiAllowance,
+    String? anonymousAccountId,
   }) =>
       Account(
         accountId: accountId ?? this.accountId,
@@ -427,6 +431,7 @@ class Account {
             productEmailsOptedIn ?? this.productEmailsOptedIn,
         lifterAiAllowance: lifterAiAllowance ?? this.lifterAiAllowance,
         coachAiAllowance: coachAiAllowance ?? this.coachAiAllowance,
+        anonymousAccountId: anonymousAccountId ?? this.anonymousAccountId,
       );
 
   bool get isCoach => capabilities.coach;

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/app_mode.dart';
+import 'core/error_reporting.dart';
 import 'core/api_client.dart';
 import 'core/display_language/assignment_copy.dart';
 import 'core/display_language/catalog.dart';
@@ -357,6 +358,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   ref.onDispose(refresh.dispose);
 
   return GoRouter(
+    observers: <NavigatorObserver>[SentryScreenObserver()],
     initialLocation: splashPath,
     refreshListenable: refresh,
     redirect: (BuildContext context, GoRouterState state) {
@@ -581,6 +583,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         },
       ),
       ShellRoute(
+        observers: <NavigatorObserver>[SentryScreenObserver()],
         builder: (BuildContext context, GoRouterState state, Widget child) =>
             _withRecoveryEmailReminder(
               state,

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/analytics_client.dart';
+import 'core/error_reporting.dart';
 import 'core/app_display_mode.dart';
 import 'core/app_mode.dart';
 import 'core/connectivity.dart';
@@ -257,6 +258,7 @@ class _MayosAppState extends ConsumerState<MayosApp>
 
   void _syncAnalyticsIdentity(AuthState state) {
     final Account? account = state.session?.account;
+    unawaited(setSentryAnonymousAccountId(account?.anonymousAccountId));
     final String? accountId = account?.accountId;
     final String? role = account == null
         ? null
