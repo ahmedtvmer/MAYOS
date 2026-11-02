@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch MAYOS production deploy request queue
+
+[Path]
+PathExistsGlob=/opt/mayos/deploy-queue/requests/*.request
+Unit=mayos-deploy-queue.service
+
+[Install]
+WantedBy=multi-user.target

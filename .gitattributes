@@ -7,3 +7,4 @@ Dockerfile* text eol=lf
 *.conf text eol=lf
 *.env.example text eol=lf
 .env.example text eol=lf
+deploy/systemd/* text eol=lf

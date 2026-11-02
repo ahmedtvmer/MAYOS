@@ -1642,3 +1642,46 @@ building. The build runs locally on the server and uses the same readiness,
 history, companion-service, schema guard and automatic rollback flow as the
 workstation deploy. The workstation `deploy`, `rollback`, and `status`
 commands remain available as before.
+
+### Factory deploy queue (#607, ADR 098)
+
+The factory bot can request a deploy without access to the `deploy` account,
+Docker, sudo, or any other deploy files. The server runs the queue consumer as
+`deploy`; it invokes the checked-out `deploy/deploy_server.sh pull <sha>` and
+stores a bounded output tail with the result. The factory writes a request as
+two UTF-8 text lines: a request id of 1–64 ASCII letters, digits, `_` or `-`,
+then exactly one lowercase 40-character commit SHA. The filename must be
+`<request-id>.request`. Invalid requests produce a refusal result and never
+invoke the deploy script. Results are `<request-id>.result`, containing the
+request id, commit, outcome and up to 20 trailing output lines.
+
+Install once as the owner (the `factory` group and user must already exist):
+
+```bash
+sudo install -d -o deploy -g factory -m 2770 /opt/mayos/deploy-queue/requests
+sudo install -d -o deploy -g factory -m 2750 /opt/mayos/deploy-queue/results
+sudo -u deploy git clone https://github.com/ahmedtvmer/MYOS.git /opt/mayos/src
+sudo install -D -o root -g root -m 0755 deploy/deploy_queue_runner.sh /usr/local/libexec/mayos/deploy_queue_runner.sh
+sudo install -o root -g root -m 0644 deploy/systemd/mayos-deploy-queue.path /etc/systemd/system/
+sudo install -o root -g root -m 0644 deploy/systemd/mayos-deploy-queue.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now mayos-deploy-queue.path
+```
+
+Clone the checkout before enabling the path unit: it supplies the pull script
+the queue runner invokes, and does not exist until the first clone. The runner
+itself lives under `/usr/local/libexec`, outside the checkout that pull updates,
+and is changed only by the owner. The pull script uses `sudo docker` as required
+by ADR 072 and #590, so the service allows setuid and keeps `/usr` and `/etc`
+protected while leaving the deployment tree writable.
+
+The setgid request directory creates files in the `factory` group; the factory
+can create requests there but cannot list or read deploy-owned files elsewhere.
+The results directory grants the group read and traversal only. The service
+serializes processing, runs one request per activation as `deploy`, and writes
+the refusal as a result. Once a result is written, the service exits successfully
+for every outcome so repeated refusals cannot exhaust systemd's start limit.
+Point
+`MAYOS_DEPLOY_SCRIPT` in the service if the checkout path differs from
+`/opt/mayos/src/deploy/deploy_server.sh`; update the unit's `ExecStart` and
+queue environment paths if the installation root differs.

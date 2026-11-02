@@ -281,3 +281,69 @@ def test_pull_deploy_uses_shared_image_env_and_status_reads_deployed_tag(tmp_pat
     )
     assert status.returncode == 0, status.stderr
     assert f"Current API image: {tag_line.split('=', 1)[1]}" in status.stdout
+
+
+def _run_queue_request(tmp_path, contents, deploy_body=None):
+    queue = tmp_path / "queue"
+    requests = queue / "requests"
+    results = queue / "results"
+    requests.mkdir(parents=True)
+    results.mkdir()
+    (requests / "req_1.request").write_text(contents, encoding="utf-8")
+    deploy_script = tmp_path / "deploy_stub.sh"
+    if deploy_body is not None:
+        deploy_script.write_text(deploy_body, encoding="utf-8")
+        deploy_script.chmod(0o755)
+    env = os.environ.copy()
+    env.update({
+        "MAYOS_DEPLOY_QUEUE_ROOT": str(queue),
+        "MAYOS_DEPLOY_REQUESTS_DIR": str(requests),
+        "MAYOS_DEPLOY_RESULTS_DIR": str(results),
+        "MAYOS_DEPLOY_SCRIPT": str(deploy_script),
+        "MAYOS_DEPLOY_QUEUE_WORK_DIR": str(tmp_path / "work"),
+    })
+    runner = Path(__file__).parents[1] / "deploy" / "deploy_queue_runner.sh"
+    result = subprocess.run(["bash", str(runner)], text=True, capture_output=True, env=env, check=False)
+    return result, (results / "req_1.result").read_text(encoding="utf-8")
+
+
+def test_deploy_queue_runs_one_valid_request(tmp_path):
+    sha = "a" * 40
+    result, output = _run_queue_request(
+        tmp_path, f"req_1\n{sha}\n", "#!/usr/bin/env bash\nprintf 'Deployment result: ready (%s)\\n' \"$2\"\n",
+    )
+    assert result.returncode == 0, result.stderr
+    assert f"commit: {sha}" in output
+    assert "outcome: ready" in output
+
+
+def test_deploy_queue_rejects_malformed_request_without_running_deploy(tmp_path):
+    marker = tmp_path / "ran"
+    result, output = _run_queue_request(
+        tmp_path, "req_1\nABC\nextra\n",
+        f"#!/usr/bin/env bash\ntouch '{marker}'\nexit 0\n",
+    )
+    assert result.returncode == 0
+    assert "outcome: refused:" in output
+    assert "exactly two lines" in output
+    assert not marker.exists()
+
+
+def test_deploy_queue_records_refused_deploy(tmp_path):
+    sha = "b" * 40
+    result, output = _run_queue_request(
+        tmp_path, f"req_1\n{sha}\n",
+        "#!/usr/bin/env bash\nprintf 'Deployment refused: checks are not green\\n'\nexit 1\n",
+    )
+    assert result.returncode == 0
+    assert f"commit: {sha}" in output
+    assert "outcome: refused: checks are not green" in output
+    assert "checks are not green" in output
+
+
+def test_deploy_queue_records_missing_deploy_script(tmp_path):
+    sha = "c" * 40
+    result, output = _run_queue_request(tmp_path, f"req_1\n{sha}\n")
+    assert result.returncode == 0
+    assert f"commit: {sha}" in output
+    assert "outcome: refused: deploy script not found at" in output
