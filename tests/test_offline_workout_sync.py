@@ -1287,6 +1287,7 @@ def test_commit_reads_import_count_before_ledger_transaction(
             "performed_timezone",
             "program_version",
             "captured_at",
+            "started_at",
         ):
             payload.pop(field)
 
@@ -1420,7 +1421,7 @@ def test_legacy_online_commit_includes_training_status(api, monkeypatch):
     _freeze_training_status_now(monkeypatch, FIXED_NOW)
     headers, _ = _prepare_player(client, db)
     body = _sync_body(version=1)
-    for field in ("client_session_id", "performed_date", "performed_timezone", "program_version", "captured_at"):
+    for field in ("client_session_id", "performed_date", "performed_timezone", "program_version", "captured_at", "started_at"):
         body.pop(field)
 
     committed = client.post("/workouts/sessions", headers=headers, json=body)
@@ -2401,6 +2402,7 @@ def test_checkpoint_review_is_created_once_when_commit_reaches_ten(api, legacy):
             "performed_timezone",
             "program_version",
             "captured_at",
+            "started_at",
         ):
             payload.pop(field)
 
