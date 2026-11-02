@@ -191,7 +191,7 @@ def _status_for_ledger(
 ) -> TrainingStatus:
     versions = ledger.list_training_schedules(ledger_id)
     performed_dates = ledger.list_performed_dates()
-    program = active_program if active_program is not None else ledger.get_active_program()
+    program = active_program if active_program is not None else ledger.get_active_program_view()
     timezone = timezone_for_versions(versions, "UTC")
     facts = TrainingStatusFacts(
         versions=versions,

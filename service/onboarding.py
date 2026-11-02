@@ -82,7 +82,7 @@ def _resolve_onboarding_program(
     from agent.program_generator import generate_program_pipeline
     from service.programs import COACH_CONTROLLED_ERROR, ensure_active_program, player_controls_program
 
-    had_program = ledger.get_active_program() is not None
+    had_program = ledger.get_active_program_view() is not None
     program = ensure_active_program(
         db,
         ledger.ledger_id,

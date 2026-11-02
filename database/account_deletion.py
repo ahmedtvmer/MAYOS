@@ -12,6 +12,7 @@ from typing import Any
 from database.backup import remove_ledger_from_daily_backups
 from database.sqlite_connection import connect_api_sqlite
 from database.program_drafts import discard_assignment_program_draft
+from database.program_cache import evict as evict_program_cache
 from database.registry.assignments import EndedAssignmentSnapshot
 from utils.logger import MayosLogger
 
@@ -461,6 +462,7 @@ class AccountDeletionMixin:
         deferred or failed remote cleanup returns ``False`` so replay retries it.
         """
         raw = "" if ledger_id is None else str(ledger_id)
+        evict_program_cache(raw)
         if not raw.strip():
             logger.warning("Refusing to remove ledger files for an empty ledger id.")
             return True

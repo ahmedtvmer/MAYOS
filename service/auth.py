@@ -237,7 +237,7 @@ def login_player(db: Any, username: str, password: str) -> dict[str, Any]:
             "display_language": account.get("display_language", "en"),
             "has_profile": bool(profile),
             "profile": profile,
-            "active_program": ledger.get_active_program() if profile else None,
+            "active_program": ledger.get_active_program_view() if profile else None,
         }
 
 

@@ -310,7 +310,7 @@ def choose_clearance_candidate(candidates: list[dict[str, Any]], reply: str) -> 
 def matching_program_exercise(ledger: Any, store: Any, injury: dict[str, Any]) -> dict[str, Any] | None:
     area = normalize_body_area(injury.get("body_area"))
     body_parts = {part.casefold() for part in injury_body_parts(area)}
-    program = ledger.get_active_program()
+    program = ledger.get_active_program_view()
     if program is None or not body_parts:
         return None
     cleared = {

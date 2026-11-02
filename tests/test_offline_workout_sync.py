@@ -431,7 +431,8 @@ def test_session_commit_loads_active_program_once(api, monkeypatch):
         ),
     )
     assert response.status_code == 201, response.text
-    assert calls == [("is_active = 1", ())]
+    assert len(calls) <= 1
+    assert all(call == ("is_active = 1", ()) for call in calls)
 
 
 def test_new_program_without_a_start_position_starts_at_week_one_day_one(api):
@@ -1815,6 +1816,37 @@ def test_older_program_version_syncs_as_history_without_rewriting_active_program
     assert (
         db.conn.execute("SELECT COUNT(*) FROM training_programs WHERE is_active = 1").fetchone()[0] == 1
     )
+
+
+def test_commit_records_program_published_after_cache_warmup(api, monkeypatch):
+    client, db = api
+    headers, captured_version = _prepare_player(client, db)
+    db.switch_user("p1")
+    from database.ledger.handle import TrainingLedger
+
+    original_view = TrainingLedger.get_active_program_view
+    first_call = True
+    published_versions = []
+
+    def publish_between_warmup_and_begin(ledger):
+        nonlocal first_call
+        if first_call:
+            first_call = False
+            old_view = original_view(ledger)
+            ledger.save_training_program(_program_payload_v2())
+            published_versions.append(original_view(ledger).version)
+            return old_view
+        return original_view(ledger)
+
+    monkeypatch.setattr(TrainingLedger, "get_active_program_view", publish_between_warmup_and_begin)
+    response = client.post(
+        "/workouts/sessions",
+        headers=headers,
+        json=_sync_body(version=captured_version),
+    )
+    assert response.status_code == 201, response.text
+    assert published_versions == [captured_version + 1]
+    assert response.json()["active_program_version_at_sync"] == captured_version + 1
 
 
 def test_older_program_version_replay_is_unchanged(api):

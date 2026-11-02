@@ -48,7 +48,7 @@ def active_program(db: Any, coach_account_id: str, assignment_id: Any) -> dict[s
         return None
     ledger, context = authorized
     with ledger:
-        program = ledger.get_active_program()
+        program = ledger.get_active_program_view()
         has_draft = ledger.get_program_draft(str(assignment_id)) is not None
         profile = ledger.get_player_profile() or {}
     response = _active_program_response(
@@ -71,7 +71,7 @@ def volume_review(
         return None
     ledger, context = authorized
     with ledger:
-        program = ledger.get_active_program()
+        program = ledger.get_active_program_view()
         if not programs.coach_controls_program(context["assignment"], program):
             return {"review": None}
         row = ledger.latest_volume_review_record(int(program.version))

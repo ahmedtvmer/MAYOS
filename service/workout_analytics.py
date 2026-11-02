@@ -126,7 +126,7 @@ def capture_workout_completed(
     try:
         program = observation.program
         if program is None:
-            program = ledger.get_active_program()
+            program = ledger.get_active_program_view()
         facts = _WorkoutAnalyticsFacts(
             account_id=observation.account_id,
             session_id=observation.session_id,

@@ -46,7 +46,7 @@ def player_controls_program(
     if assignment is None:
         return True
     if active_program is _PROGRAM_NOT_LOADED:
-        active_program = ledger.get_active_program()
+        active_program = ledger.get_active_program_view()
     return not coach_controls_program(assignment, active_program)
 
 

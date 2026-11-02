@@ -682,7 +682,7 @@ def save_program_as_template(
             current_revision = str(record["updated_at"])
             source_program = record["draft"]
         else:
-            program = ledger.get_active_program()
+            program = ledger.get_active_program_view()
             if program is None:
                 raise ActiveProgramNotFound("No active program to copy.")
             current_revision = _active_program_revision(program)

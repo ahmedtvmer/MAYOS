@@ -36,7 +36,7 @@ EXPORT_MEDIA_TYPES = {"csv": "text/csv", "json": "application/json"}
 
 
 def _day_plan(ledger: Any, day_order: int, week_order: int = 1, program: Any = None) -> Any:
-    program = program if program is not None else ledger.get_active_program()
+    program = program if program is not None else ledger.get_active_program_view()
     if program is None:
         raise message_http_exception(
             status.HTTP_404_NOT_FOUND,
@@ -56,11 +56,11 @@ def _prescribed_exercise_ids(
         prescribed_ids = ledger.get_program_exercise_ids_by_version(program_version)
         if prescribed_ids is not None:
             return prescribed_ids
-        current_program = active_program if active_program is not None else ledger.get_active_program()
+        current_program = active_program if active_program is not None else ledger.get_active_program_view()
         raise workouts_service.ProgramVersionMismatchError(
             current_program.version if current_program is not None else None
         )
-    program = active_program if active_program is not None else ledger.get_active_program()
+    program = active_program if active_program is not None else ledger.get_active_program_view()
     return {str(exercise.exercise_id) for day in program.days for exercise in day.exercises} if program else set()
 
 
@@ -247,7 +247,7 @@ async def commit_session(
     def _run() -> workouts_service.CommitOutcome:
         if body.client_session_id is None:
             # Legacy online-only contract, unchanged.
-            program = ledger.get_active_program()
+            program = ledger.get_active_program_view()
             day_plan = _day_plan(ledger, body.day_order, body.week_order, program)
             return workouts_service.commit_session(
                 db, str(player), day_plan, body.readiness, body.session_notes,

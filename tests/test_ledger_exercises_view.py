@@ -48,3 +48,18 @@ def test_ledger_exercises_view_uses_display_name_then_catalog_name(fresh_store):
 
     assert names[display_id] == "Preferred display"
     assert names[fallback_id] == "Catalog fallback"
+
+
+def test_raw_catalog_write_advances_program_cache_revision(fresh_store):
+    catalog = fresh_store.catalog_conn
+    before = catalog.execute(
+        "SELECT counter FROM program_revision WHERE id=1"
+    ).fetchone()[0]
+    exercise_id = catalog.execute("SELECT id FROM exercises ORDER BY id LIMIT 1").fetchone()[0]
+    catalog.execute("UPDATE exercises SET name=name WHERE id=?", (exercise_id,))
+    catalog.commit()
+
+    after = catalog.execute(
+        "SELECT counter FROM program_revision WHERE id=1"
+    ).fetchone()[0]
+    assert after == before + 1
