@@ -25,7 +25,7 @@ throughout; `api.mayos.online` answered 200 at every check.
 | 13 | The test suite can't run from a fresh clone | Git-ignored `db/catalog.db`, file-handle leak, no `git` in the image | #580 | ⏳ open |
 | 14 | Two tests already failing on master | A clock-dependent test; `.conn` use in `service/injuries.py` | #581, merged in `3ea1a0b7` | ✅ |
 | 15 | Long jobs ran without time limits or start checks | Orchestration mistakes | Process change | ✅ |
-| 16 | The server hard-rebooted 6 times on 2026-11-01, then froze for about 80 minutes that evening, about 6.5 hours overnight, and about 19 minutes on 2026-11-02 | Contabo host (patching per support; the freeze left no trace in the guest) | Stack restarts by itself; UptimeRobot and Sentry in place; go/no-go rule in #602 | ⏳ watching |
+| 16 | The server hard-rebooted 6 times on 2026-11-01, then froze for about 80 minutes that evening, about 6.5 hours overnight, about 19 minutes and about 53 minutes on 2026-11-02 | Contabo host (patching per support; the freeze left no trace in the guest) | Stack restarts by itself; UptimeRobot and Sentry in place; go/no-go rule in #602 | ⏳ watching |
 
 ## Server setup
 
@@ -298,5 +298,14 @@ Earlier 1-second idle readings were 1.7% CPU (27 MiB) at 15 ledgers and
   - It matches the earlier silent freezes. This time it started under load, but the 21:51
     freeze on 2026-11-01 happened while idle, so the test run is not a proven cause.
   - The #602 window restarts again: the earliest it can close is 2026-11-09 15:20 CET.
+- **Fifth incident: another stop at the start of a test run (2026-11-02, evening).**
+  - The journal stops at 18:55:07 CET, about a minute after the first of three test
+    containers started (the #517 full suite). There are no out-of-memory, hung-task or
+    soft-lockup messages. The next boot was at 19:47 CET (about 53 minutes).
+  - The last two incidents both began within a minute of starting three test containers
+    at once, while earlier freezes happened while idle. The host is unstable either way,
+    but a burst of container start-ups seems to trigger it. From now on, server test runs
+    use one container at a time.
+  - The #602 window restarts: the earliest it can close is 2026-11-09 19:47 CET.
 - **What now holds.** The monitoring works: UptimeRobot caught the freeze within minutes,
   and Sentry is set up in the EU region (#592).
