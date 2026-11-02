@@ -1604,3 +1604,41 @@ refuses the rollback. It then checks `/readyz`:
 ```bash
 ./deploy/deploy_server.sh rollback COMMIT_SHA
 ```
+
+### Server-pulled deploy (#590, ADR 098)
+
+The server can fetch a public commit and deploy it without SSH or a GitHub
+credential leaving the server. One-time setup on the server:
+
+```bash
+sudo install -d -o deploy -g deploy -m 0750 /opt/mayos/inputs
+sudo install -d -o deploy -g deploy -m 0750 /opt/mayos/src
+```
+
+Copy `processed_exercises.csv`, `food_library.csv`, and `food_portions.csv`
+once from the workstation into `/opt/mayos/inputs/`, owned by `deploy` and
+readable only to the deploy account. Keep these licensed inputs out of Git.
+They are copied only into the checked-out commit's `data/` build context. The
+checkout is created automatically at `/opt/mayos/src` on the first pull. Docker
+and the existing `/opt/mayos/.env`, state directory, Compose stack, and deploy
+account setup remain prerequisites.
+
+Run this on the server as `deploy`:
+
+```bash
+/opt/mayos/src/deploy/deploy_server.sh pull COMMIT_SHA
+```
+
+The command fetches `origin/master`, verifies that the exact requested commit
+is reachable from it, and checks the two named GitHub Actions check runs on
+that SHA through the unauthenticated public REST API. Both must be completed
+successfully; if GitHub lists multiple attempts for a check name, only the
+latest run is considered. The API request asks for up to 100 runs. Set
+`MAYOS_REQUIRED_CHECKS` to a pipe-separated list to configure different exact
+check-run names. A nonblocking lock at `/opt/mayos/state/deploy.lock` prevents
+overlapping deploys. It refuses an unknown/non-master commit,
+missing or non-green check, API error, or missing protected input before
+building. The build runs locally on the server and uses the same readiness,
+history, companion-service, schema guard and automatic rollback flow as the
+workstation deploy. The workstation `deploy`, `rollback`, and `status`
+commands remain available as before.
