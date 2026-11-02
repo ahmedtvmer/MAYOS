@@ -1,0 +1,13 @@
+[Unit]
+Description=Process one MAYOS production deploy request
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+UMask=0027
+Environment=MAYOS_DEPLOY_QUEUE_ROOT=/opt/mayos/deploy-queue
+ExecStart=/usr/local/libexec/mayos/deploy_queue_runner.sh
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/mayos/deploy-queue /opt/mayos/state /opt/mayos/app /opt/mayos/src
