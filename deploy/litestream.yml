@@ -25,8 +25,10 @@ dbs:
   - dir: /data/users
     pattern: "*.db"
     watch: true
+    monitor-interval: 10s
     replica:
       type: s3
+      sync-interval: 10s
       bucket: ${R2_BUCKET}
       path: ${LITESTREAM_R2_PREFIX}/users
       endpoint: ${R2_ENDPOINT}

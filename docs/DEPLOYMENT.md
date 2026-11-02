@@ -1445,6 +1445,22 @@ account id); the old and new files therefore have different replica prefixes.
 The restore script restores each exact ledger path and the full deletion replay
 removes any restored prefix whose Account was deleted.
 
+Player ledgers use a 10-second `monitor-interval` and replica `sync-interval`;
+Litestream therefore checks and uploads their changes every 10 seconds rather
+than every second. `watch: true` remains enabled so a newly created ledger is
+picked up without a restart. `catalog.db` and `deletions.db` keep Litestream's
+1-second defaults. The staging rehearsal measured idle CPU at 750 ledgers of
+58.0% average / 118.6% maximum at 1 second, 23.1% / 59.2% at 10 seconds, and
+17.0% / 32.3% at 30 seconds. At 200-Player load, Litestream CPU was 28.2%,
+20.1%, and 19.4%, respectively, with API throughput of 23.3, 24.8, and 22.9
+requests/second. Ten seconds was selected to cut idle CPU while retaining a
+short recovery window. About 10–20 seconds of a Player's newest writes can be
+lost if the server dies, compared with about 1–2 seconds before; catalog and
+deletion records are unchanged. An unsynced workout remains on the phone as an
+offline draft and the app retries syncing it on reconnect.
+At 1 second, earlier idle readings were 1.7% CPU and 27 MiB at 15 ledgers,
+then 13.8% and 184 MiB at 215 ledgers.
+
 ### Litestream disaster restore
 
 ### Read-only restore drill (#586)
@@ -1539,9 +1555,12 @@ long-syntax bind disables host-path creation, so the containers fail to start
 if the bootstrap-created data directory is absent.
 
 Durability rests on the local disk and Litestream's continuous replication to
-R2, which bounds loss on server loss to about one second; daily R2 snapshots
-remain the second backup layer. The server is ordered in Contabo's panel and
-prepared by the provider-neutral `deploy/setup_vps.sh` bootstrap. Follow the
+R2. Player ledgers use a 10-second monitor and sync interval, so about 10–20
+seconds of a Player's newest writes can be lost if the server dies (previously
+about 1–2 seconds). Catalog and deletion records retain their 1-second
+defaults. Daily R2 snapshots remain the second backup layer. The server is
+ordered in Contabo's panel and prepared by the provider-neutral
+`deploy/setup_vps.sh` bootstrap. Follow the
 [server setup checklist](SERVER_SETUP.md#3-provision-the-server) for
 provisioning, UFW and Docker port guidance, SSH hardening, secret migration,
 first deployment, restore/copy rehearsal, and verification. The Fly.io runbook
