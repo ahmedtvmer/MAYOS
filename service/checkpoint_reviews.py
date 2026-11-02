@@ -275,7 +275,7 @@ def create_checkpoint_review(
     period, previous_period = _review_periods(workouts, checkpoint)
     set_rows = ledger.list_checkpoint_working_sets()
     pr_rows = ledger.list_checkpoint_personal_records()
-    program = ledger.get_active_program()
+    program = ledger.get_active_program_view()
     facts = compute_checkpoint_facts(
         CheckpointFactsInput(
             workouts=period,

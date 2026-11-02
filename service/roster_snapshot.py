@@ -216,7 +216,7 @@ def _ledger_signals(
             ledger, assignment, player["ledger_id"], context.now
         )
         local_today = attendance_today or local_today
-        program = ledger.get_active_program()
+        program = ledger.get_active_program_view()
         weeks_without_record = _weeks_without_personal_record(ledger, program, local_today)
         bodyweight_trend = _bodyweight_trend(
             context.db, ledger, str(player["ledger_id"]), local_today

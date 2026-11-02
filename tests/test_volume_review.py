@@ -9,7 +9,7 @@ from agent.ProgramState import (
     ProgramSetGroupSchema,
 )
 from service.volume_review import accept_review, dismiss_review, evaluate_review, list_pending, review_facts
-from service.workouts import commit_session
+from service.workouts import SyncMetadata, commit_logged_session, commit_session
 
 
 def _seed_review(fresh_store, trend: str, *, weekly_frequency: int = 1, with_rationale: bool = False, target_muscle: str | None = None):
@@ -600,6 +600,44 @@ def test_workout_commit_triggers_volume_review(fresh_store):
     reviews = list_pending(ledger, int(program.version))
     assert outcome.created is True
     assert reviews and reviews[0]["status"] == "pending"
+
+
+def test_sync_commit_with_warm_program_cache_persists_volume_review(fresh_store):
+    ledger, seeded_program, _, today, _ = _seed_review(fresh_store, "stalled")
+    ledger.conn.execute(
+        "UPDATE training_programs SET created_at=? WHERE version=?",
+        (seeded_program.created_at, seeded_program.version),
+    )
+    ledger.commit_ledger()
+    program = ledger.get_active_program_view()
+    exercise = program.days[0].exercises[0]
+
+    outcome = commit_logged_session(
+        fresh_store,
+        ledger.ledger_id,
+        day_order=1,
+        readiness=4,
+        session_notes="",
+        sets_by_exercise=[{
+            "exercise": exercise,
+            "sets": [{"weight_kg": 40, "reps": 8, "rpe": 8}],
+            "previous_perf": [],
+        }],
+        sync=SyncMetadata(
+            client_session_id="22222222-2222-4222-8222-222222222222",
+            performed_date=today.isoformat(),
+            performed_timezone="UTC",
+            program_version=program.version,
+            captured_at=datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc).isoformat(),
+        ),
+        now_iso=datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc).isoformat(),
+        ledger=ledger,
+    )
+
+    review_row = ledger.get_volume_review(program.version, today.isoformat())
+    assert outcome.created is True
+    assert review_row is not None
+    assert review_row["status"] == "pending"
 
 
 def test_accept_creates_a_new_version_and_resets_the_window(fresh_store):

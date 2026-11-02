@@ -49,7 +49,7 @@ def _current_final_week_state(
     if not db.is_live_account(account) or not db.ledger_exists(account["ledger_id"]):
         return None
     with db.open_ledger(account["ledger_id"]) as ledger:
-        program = ledger.get_active_program()
+        program = ledger.get_active_program_view()
         if not _is_coach_multiweek_program(program, assignment["coach_account_id"]):
             return None
         return _final_week_state(ledger, program)

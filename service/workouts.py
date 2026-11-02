@@ -941,7 +941,10 @@ def commit_session(
         display_language = checkpoint_reviews_service.resolve_display_language(
             db, account_id
         )
+        # Warm the cache before BEGIN; resolve again under the write lock.
+        ledger.get_active_program_view()
         with ledger.ledger_transaction():
+            active_program = ledger.get_active_program_view()
             body = _persist_session(
                 db,
                 ledger_id,
@@ -1046,6 +1049,8 @@ def commit_logged_session(
         display_language = checkpoint_reviews_service.resolve_display_language(
             db, account_id
         )
+        # Warm outside the write transaction so a cache miss can be stored.
+        ledger.get_active_program_view()
         committed_program = None
         try:
             with ledger.ledger_transaction():
@@ -1053,7 +1058,9 @@ def commit_logged_session(
                 if replayed is not None:
                     return replayed
 
-                program = ledger.get_active_program()
+                # The prefetch warms a miss. Re-read after BEGIN so a publish
+                # committed in between is the version recorded for this sync.
+                program = ledger.get_active_program_view()
                 if program is None:
                     raise DayPlanNotFoundError(day_order)
                 active_version = program.version
@@ -1137,7 +1144,7 @@ def _evaluate_volume_review(
     try:
         from service.volume_review import evaluate_review
 
-        program = program if program is not None else ledger.get_active_program()
+        program = program if program is not None else ledger.get_active_program_view()
         profile = ledger.get_player_profile() or {}
         if program is not None:
             review_date = date.fromisoformat(performed_date[:10])

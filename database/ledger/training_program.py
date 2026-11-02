@@ -21,6 +21,7 @@ from agent.program_weeks import (
 )
 from database.exercise_resolution import EXERCISE_DISPLAY_EQUIPMENT_SQL
 from database.exercise_resolution import exercise_display_join, exercise_display_name_sql
+from database.program_cache import active_program
 
 from utils.logger import MayosLogger
 
@@ -638,7 +639,22 @@ class LedgerTrainingProgramMixin:
         return str(row[0]) if row and row[0] else None
 
     def get_active_program(self) -> PersistedProgramSchema | None:
+        """Load a fresh mutable active program for mutation workflows."""
         return self._load_program("is_active = 1")
+
+    def active_program_cache_state(self) -> tuple[tuple[str, int, str, int], bool]:
+        """Read both cache revisions and transaction state through this ledger handle."""
+        row = self.conn.execute(
+            "SELECT l.generation, l.counter, c.generation, c.counter "
+            "FROM main.program_revision l CROSS JOIN catalog.program_revision c "
+            "WHERE l.id=1 AND c.id=1"
+        ).fetchone()
+        revision = (str(row[0]), int(row[1]), str(row[2]), int(row[3]))
+        return revision, self.conn.in_transaction
+
+    def get_active_program_view(self) -> PersistedProgramSchema | None:
+        """Read the active program through the revision-backed read-only cache."""
+        return active_program(self, lambda: self._load_program("is_active = 1"))
 
     def get_program_by_version(self, version: int) -> PersistedProgramSchema | None:
         """The player's program with this stable version, active or historical (ADR 034).

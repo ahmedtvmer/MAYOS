@@ -32,6 +32,7 @@ from database.migration_manager import SESSION_WARMUP_SETS_DDL
 from database.migration_manager import WEIGHT_HISTORY_DDL
 from database.migration_manager import get_ledger_schema_version
 from database.migration_manager import set_ledger_schema_version
+from database.program_cache import ensure_revision_schema
 
 EMBEDDING_DIM = 384
 
@@ -126,6 +127,10 @@ class SchemaMixin:
         self._ensure_exercise_name_schema()
         # Outside the lock block: ensure_account_schema acquires _catalog_lock itself.
         self.ensure_account_schema()
+        ensure_revision_schema(
+            self.catalog_conn, "", ("exercises", "exercise_display_names", "coach_exercises")
+        )
+        self.catalog_conn.commit()
 
     def _create_ledger_schema_on(self, conn) -> None:
         cursor = conn.cursor()
@@ -419,6 +424,11 @@ class SchemaMixin:
                 *PROGRAM_DESIGN_OFFER_DDL,
             )
         ))
+        ensure_revision_schema(
+            conn,
+            "main",
+            ("training_programs", "program_weeks", "program_days", "program_exercises", "program_version_positions"),
+        )
         if get_ledger_schema_version(conn) < CURRENT_LEDGER_SCHEMA_VERSION:
             set_ledger_schema_version(conn, CURRENT_LEDGER_SCHEMA_VERSION)
         conn.commit()

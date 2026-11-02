@@ -23,7 +23,7 @@ def get_history(
             )
         pending = ledger.get_pending_chat_program_edit()
         if pending is not None:
-            active = ledger.get_active_program()
+            active = ledger.get_active_program_view()
             from service.programs import player_controls_program
             if (active is None or active.version != pending["proposal"].get("expected_version")
                     or not player_controls_program(db, ledger, player_account_id or ledger_id)):

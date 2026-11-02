@@ -104,7 +104,7 @@ def recount_assignment(db: Any, assignment: dict[str, Any]) -> tuple[int, str | 
         logger.warning("Skipping stall-length recount for account %s; no ledger exists.", assignment["player_account_id"])
         return 0, None
     with db.open_ledger(account["ledger_id"]) as ledger:
-        program = ledger.get_active_program()
+        program = ledger.get_active_program_view()
         if program is None or program.version is None:
             length, window_start = 0, None
         else:

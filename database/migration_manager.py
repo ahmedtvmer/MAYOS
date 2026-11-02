@@ -1277,6 +1277,17 @@ def restore_atomic_backup(
     finally:
         src_conn.close()
 
+    # Restored counters can collide with process-cache entries for different
+    # content. Give this restored database a fresh revision generation.
+    has_revision = target_conn.execute(
+        "SELECT 1 FROM main.sqlite_master WHERE type='table' AND name='program_revision'"
+    ).fetchone()
+    if has_revision:
+        from database.program_cache import rotate_revision
+
+        rotate_revision(target_conn, "main")
+        target_conn.commit()
+
     logger.warning(f"Database successfully restored from snapshot: {backup_path.name}")
 
 

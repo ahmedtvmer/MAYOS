@@ -1040,7 +1040,7 @@ def gather_player_context(
     with ledger:
         ledger_id = context["player"]["ledger_id"]
         preferred_name = ledger.get_assistant_memory().get("preferred_name")
-        program = ledger.get_active_program()
+        program = ledger.get_active_program_view()
         injuries, program_flags = _injury_context(db, program, ledger)
         schedule, pauses = coach_history_service.schedule_and_pauses(db, ledger, ledger_id)
         sessions, session_totals = _session_facts(

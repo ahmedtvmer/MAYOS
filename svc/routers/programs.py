@@ -59,7 +59,7 @@ async def list_volume_reviews(
     """Returns pending proposals only while the player holds Program authority."""
     if not programs_service.player_controls_program(db, ledger, account_id_of(player)):
         return []
-    program = ledger.get_active_program()
+    program = ledger.get_active_program_view()
     if program is None:
         return []
     return await asyncio.to_thread(volume_review.list_pending, ledger, int(program.version))
@@ -268,7 +268,7 @@ async def read_active_program(
         account_id = account_id_of(player)
         # Reads of a missing program can synthesize model output. Keep that
         # path metered without putting it in the Lifter chat request allowance.
-        saved = ledger.get_active_program()
+        saved = ledger.get_active_program_view()
         needs_generation = saved is None and bool(ledger.get_player_profile()) and programs_service.player_controls_program(
             db, ledger, account_id, saved
         )

@@ -36,7 +36,27 @@ MIN_PROGRAM_LOAD_PCT_E1RM = 1.0
 MAX_PROGRAM_LOAD_PCT_E1RM = 100.0
 
 
-class CardioPrescriptionSchema(BaseModel):
+class _ProgramStateModel(BaseModel):
+    """Pydantic base that can make individual cached instances read-only."""
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if self.__dict__.get("_program_cache_readonly"):
+            raise TypeError("Cached program data is read-only.")
+        super().__setattr__(name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if self.__dict__.get("_program_cache_readonly"):
+            raise TypeError("Cached program data is read-only.")
+        super().__delattr__(name)
+
+    def __deepcopy__(self, memo: dict[int, Any] | None = None):
+        memo = {} if memo is None else memo
+        copied = super().__deepcopy__(memo)
+        object.__setattr__(copied, "_program_cache_readonly", False)
+        return copied
+
+
+class CardioPrescriptionSchema(_ProgramStateModel):
     """Structured cardio prescription attached to a Training day."""
 
     model_config = {"extra": "forbid"}
@@ -72,7 +92,7 @@ def validate_set_group_loads(groups: list[Any]) -> None:
         raise ValueError("pct_of_first_group is valid only after the first group")
 
 
-class ProgramLoadSchema(BaseModel):
+class ProgramLoadSchema(_ProgramStateModel):
     """Optional coach-authored fixed or e1RM-relative exercise load."""
 
     model_config = {"extra": "forbid"}
@@ -92,7 +112,7 @@ class ProgramLoadSchema(BaseModel):
         return self
 
 
-class ProgramSetGroupSchema(BaseModel):
+class ProgramSetGroupSchema(_ProgramStateModel):
     """One consecutive prescription for a number of working sets."""
 
     model_config = {"extra": "forbid"}
@@ -107,12 +127,12 @@ class ProgramSetGroupSchema(BaseModel):
 # --- Pydantic Output Contracts ---
 
 
-class SuggestedSubstitute(BaseModel):
+class SuggestedSubstitute(_ProgramStateModel):
     exercise_id: str
     exercise_name: str
 
 
-class ProgramExerciseSchema(BaseModel):
+class ProgramExerciseSchema(_ProgramStateModel):
     exercise_id: str = Field(description="Exact ID matching candidate from the database")
     exercise_name: str = Field(description="Exact name of the exercise")
     body_part: str | None = Field(default=None, description="Optional Coach exercise body-part tag")
@@ -185,7 +205,7 @@ class ProgramExerciseSchema(BaseModel):
         return program_exercise_working_sets(self)
 
 
-class WarmupExerciseSchema(BaseModel):
+class WarmupExerciseSchema(_ProgramStateModel):
     exercise_id: str | None = Field(default=None, description="Catalog ID when resolvable")
     equipment: str | None = Field(default=None, description="Exercise library equipment")
     exercise_name: str = Field(description="Warm-up movement name")
@@ -205,7 +225,7 @@ class WarmupExerciseSchema(BaseModel):
     gif_path: str | None = Field(default=None)
 
 
-class ProgramDaySchema(BaseModel):
+class ProgramDaySchema(_ProgramStateModel):
     day_name: str = Field(description="e.g., 'Upper 1', 'Lower 1'")
     day_order: int = Field(ge=1, le=MAX_PROGRAM_DAYS)
     week_order: int = Field(default=1, ge=1, le=MAX_PROGRAM_WEEKS)
@@ -220,7 +240,7 @@ class ProgramDaySchema(BaseModel):
     cardio: CardioPrescriptionSchema | str | None = Field(default=None, description="Optional structured cardio prescription or legacy note")
 
 
-class ProgramSchema(BaseModel):
+class ProgramSchema(_ProgramStateModel):
     program_name: str = Field(description="Display title of the generated split")
     weekly_frequency: int = Field(ge=1, le=MAX_PROGRAM_DAYS, description="Number of training days per week")
     split_type: str = Field(default="custom", description="Split categorization, e.g., 'Upper/Lower', 'PPL'")
@@ -231,7 +251,7 @@ class ProgramSchema(BaseModel):
     )
 
 
-class GeneratedProgramSchema(BaseModel):
+class GeneratedProgramSchema(_ProgramStateModel):
     program_name: str = Field(description="Descriptive title of the program")
     split_type: str = Field(description="Resolved split architecture")
     weekly_frequency: int = Field(ge=1, le=MAX_PROGRAM_DAYS)
@@ -271,7 +291,7 @@ class PersistedProgramExerciseSchema(ProgramExerciseSchema):
     target_rpe: float = Field(default=8.5, ge=5.0, le=10.0, description="Proximity to failure")
 
 
-class PersistedProgramDaySchema(BaseModel):
+class PersistedProgramDaySchema(_ProgramStateModel):
     day_name: str = Field(description="e.g., 'Upper 1', 'Lower 1'")
     day_order: int = Field(ge=1, le=MAX_PROGRAM_DAYS)
     week_order: int = Field(default=1, ge=1, le=MAX_PROGRAM_WEEKS)
@@ -282,7 +302,7 @@ class PersistedProgramDaySchema(BaseModel):
     cardio: CardioPrescriptionSchema | str | None = None
 
 
-class PersistedProgramWeekSchema(BaseModel):
+class PersistedProgramWeekSchema(_ProgramStateModel):
     week_name: str = Field(min_length=1, max_length=100)
     week_order: int = Field(ge=1, le=MAX_PROGRAM_WEEKS)
     days: list[PersistedProgramDaySchema] = Field(
@@ -319,7 +339,7 @@ class ProgramState(TypedDict):
     error: str | None
 
 
-class CustomDayPlan(BaseModel):
+class CustomDayPlan(_ProgramStateModel):
     day_order: int = Field(ge=1, le=MAX_PROGRAM_DAYS)
     day_name: str = Field(description="e.g., 'Chest & Back', 'Upper', 'Arms & Delts'")
     target_slots: list[str] = Field(
@@ -356,7 +376,7 @@ class CustomDayPlan(BaseModel):
     cardio: CardioPrescriptionSchema | str | None = Field(default=None, description="Optional structured cardio prescription or legacy note")
 
 
-class DynamicSplitPlan(BaseModel):
+class DynamicSplitPlan(_ProgramStateModel):
     split_name: str = Field(description="Clean descriptive title for this split")
     day_order_reason_code: str = DAY_ORDER_TEMPLATE
     split_reason_code: str = SPLIT_FREQUENCY_DEFAULT

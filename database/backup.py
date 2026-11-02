@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from database.migration_manager import restore_atomic_backup
+from database.program_cache import ensure_revision_schema, evict as evict_program_cache
 from utils.logger import MayosLogger
 
 logger = MayosLogger().get_logger(__name__)
@@ -433,6 +434,9 @@ def restore_daily_backup(snapshot: Path, *, db: Any) -> dict[str, Any]:
     snapshot_catalog = _require_catalog_snapshot(snapshot)
 
     restore_atomic_backup(snapshot_catalog, db.catalog_conn)
+    db.create_catalog_schema()
+    ensure_revision_schema(db.catalog_conn, "", ("exercises", "exercise_display_names", "coach_exercises"))
+    db.catalog_conn.commit()
     restored_ledgers: list[str] = []
     ledger_dir = snapshot / LEDGERS_SUBDIR
     if ledger_dir.is_dir():
@@ -440,6 +444,7 @@ def restore_daily_backup(snapshot: Path, *, db: Any) -> dict[str, Any]:
             if not re.match(r"^[a-z0-9][a-z0-9_-]*\.db$", entry.name):
                 continue
             _restore_ledger_file(entry, Path(db.ledgers_dir) / entry.name)
+            evict_program_cache(entry.stem)
             restored_ledgers.append(entry.stem)
 
     applied, deletion_facts = db._reapply_deletions_with_facts()
