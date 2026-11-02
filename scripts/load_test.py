@@ -12,7 +12,11 @@ import time
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
+
+if TYPE_CHECKING:
+    import httpx
 
 INTAKE = {
     "gender": "female", "proportions": "balanced", "age": 29,
