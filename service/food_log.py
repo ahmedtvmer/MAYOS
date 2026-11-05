@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from core.food_search import food_match_rank, normalize_food_query
 from service import nutrition
+from service.food_log_adherence import recompute_day
 from service.schedule import timezone_for_versions
 
 NUTRIENT_KEYS = ("energy_kcal", "protein_g", "carbohydrate_g", "fat_g")
@@ -70,6 +71,7 @@ def add_entry(db, ledger, body, today, local_time):
     }, {**body, "logged_time": body["logged_time"] or local_time})
     with ledger.ledger_transaction():
         ledger.insert_food_log_entry(entry)
+        recompute_day(ledger, entry_date, today)
     return entry
 
 
@@ -83,6 +85,7 @@ def edit_entry(ledger, entry_id, body, today):
             raise ValueError("Use the Quick add editor for this entry.")
         updated = _apply_amount(entry, {**body, "logged_time": body["logged_time"] or entry["logged_time"]})
         ledger.update_food_log_entry(updated)
+        recompute_day(ledger, date.fromisoformat(entry["entry_date"]), today)
     return updated
 
 
@@ -93,6 +96,7 @@ def delete_entry(ledger, entry_id, today):
             raise FoodLogNotFound("Food log entry not found.")
         require_write_day(date.fromisoformat(entry["entry_date"]), today)
         ledger.delete_food_log_entry(entry_id)
+        recompute_day(ledger, date.fromisoformat(entry["entry_date"]), today)
 
 
 def local_time(ledger, player_id):

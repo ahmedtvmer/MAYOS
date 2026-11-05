@@ -74,6 +74,22 @@ class LedgerNutritionMixin:
         self._commit_ledger()
         return updated_at
 
+    def replace_computed_nutrition_adherence(self, entry_date, verdict):
+        if verdict is None:
+            self.conn.execute(
+                "DELETE FROM nutrition_adherence WHERE entry_date=? AND source='computed'",
+                (str(entry_date),),
+            )
+        else:
+            self.conn.execute(
+                "INSERT INTO nutrition_adherence(entry_date, value, source, created_at) "
+                "VALUES(?, ?, 'computed', ?) ON CONFLICT(entry_date) DO UPDATE SET "
+                "value=excluded.value, created_at=excluded.created_at "
+                "WHERE nutrition_adherence.source='computed' AND nutrition_adherence.value<>excluded.value",
+                (str(entry_date), verdict, datetime.now(UTC).isoformat(timespec="microseconds")),
+            )
+        self._commit_ledger()
+
     def list_nutrition_adherence(self, start_date, end_date):
         rows = self.conn.execute(
             "SELECT entry_date, value, source FROM nutrition_adherence "

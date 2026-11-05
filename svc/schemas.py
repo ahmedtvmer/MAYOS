@@ -1136,6 +1136,7 @@ class NutritionActivityIn(BaseModel):
 class NutritionAdherenceIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     value: Literal["on_target", "roughly", "off"]
+    entry_date: date | None = None
 
 
 class FoodLogAmountIn(BaseModel):

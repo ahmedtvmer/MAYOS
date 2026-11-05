@@ -13,6 +13,35 @@ import 'support/fake_mayos_api.dart';
 import 'support/fake_api_adapter.dart';
 
 void main() {
+  for (final String language in <String>['en', 'ar']) {
+    testWidgets('yesterday computed adherence can be answered in $language', (WidgetTester tester) async {
+      final FakeMayosApi fake = _fake()..nutritionState = <String, dynamic>{
+        'state': 'ready', 'goal': 'maintain',
+        'targets': <String, dynamic>{'calories': 2000, 'protein_g': 100, 'carbs_g': 250, 'fat_g': 67},
+        'adherence_days': <Map<String, dynamic>>[
+          <String, dynamic>{'date': '2026-11-03', 'value': 'off', 'source': 'computed'},
+          <String, dynamic>{'date': '2026-11-04', 'value': 'off', 'source': 'computed'},
+          <String, dynamic>{'date': '2026-11-05', 'value': null, 'source': null},
+        ],
+      };
+      await tester.pumpWidget(_app(fake, language, ThemeData.light(), home: const NutritionTab(targetsOnly: true)));
+      await tester.pumpAndSettle();
+      final String off = language == 'ar' ? 'بعيد عن الهدف' : 'Off';
+      final Finder yesterday = find.byTooltip('2026-11-04: $off');
+      await tester.scrollUntilVisible(yesterday, 300, scrollable: find.byType(Scrollable).first);
+      await tester.tap(yesterday);
+      await tester.pumpAndSettle();
+      expect(find.byType(SimpleDialog), findsOneWidget);
+      final String onTarget = language == 'ar' ? 'على الهدف' : 'On target';
+      await tester.tap(find.descendant(of: find.byType(SimpleDialog), matching: find.text(onTarget)));
+      await tester.pumpAndSettle();
+      final FakeRequest written = fake.adapter.requests.lastWhere((FakeRequest request) => request.path == '/nutrition/adherence');
+      expect(written.body, <String, dynamic>{'entry_date': '2026-11-04', 'value': 'on_target'});
+      expect(fake.nutritionState['today_adherence'], isNull);
+      expect(find.byTooltip('2026-11-04: $onTarget'), findsOneWidget);
+    });
+  }
+
   testWidgets('setup saves activity and shows plate targets', (WidgetTester tester) async {
     final FakeMayosApi fake = _fake()
       ..nutritionState = <String, dynamic>{'state': 'not_started', 'targets': null,

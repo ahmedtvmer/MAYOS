@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -14,9 +15,15 @@ OFF_KIND = "nutrition_off_streak"
 UNLOGGED_KIND = "nutrition_unlogged"
 
 
+@dataclass(frozen=True)
+class AdherenceHistory:
+    verdicts: dict[date, str]
+    food_days: set[date]
+
+
 def _read_adherence(
     db: Any, ledger_id: str, now: datetime
-) -> tuple[date, date, date, bool, dict[date, str]]:
+) -> tuple[date, date, date, bool, AdherenceHistory]:
     with db.open_ledger(ledger_id) as ledger:
         versions = ledger.list_training_schedules(ledger_id)
         timezone = timezone_for_versions(versions) if versions else "UTC"
@@ -32,25 +39,28 @@ def _read_adherence(
         completed_through = today - timedelta(days=1)
         entries = {date.fromisoformat(row["date"]): row["value"] for row in
                    ledger.list_nutrition_adherence(start.isoformat(), today.isoformat())}
-    return today, start, completed_through, has_targets, entries
+        food_days = {date.fromisoformat(day) for day in ledger.list_food_log_dates(start, today)}
+    return today, start, completed_through, has_targets, AdherenceHistory(entries, food_days)
 
 
-def _is_signal_day(kind: str, day: date, entries: dict[date, str]) -> bool:
-    return entries.get(day) == "off" if kind == OFF_KIND else day not in entries
+def _is_signal_day(kind: str, day: date, history: AdherenceHistory) -> bool:
+    if kind == OFF_KIND:
+        return history.verdicts.get(day) == "off"
+    return day not in history.verdicts and day not in history.food_days
 
 
 def _qualifying_episodes(
     today: date, start: date, completed_through: date,
-    entries: dict[date, str], has_targets: bool
+    history: AdherenceHistory, has_targets: bool
 ) -> dict[str, date]:
     qualifying: dict[str, date] = {}
     if not has_targets:
         return qualifying
-    off_through = today if today in entries else completed_through
+    off_through = today if today in history.verdicts else completed_through
     for kind, through in ((OFF_KIND, off_through), (UNLOGGED_KIND, completed_through)):
         run_start = through
         run_length = 0
-        while run_start >= start and _is_signal_day(kind, run_start, entries):
+        while run_start >= start and _is_signal_day(kind, run_start, history):
             run_length += 1
             run_start -= timedelta(days=1)
         if run_length >= 3:
@@ -82,21 +92,23 @@ def _active_episode(
 
 
 def _has_good_day_after(
-    episode: dict[str, Any], entries: dict[date, str]
+    episode: dict[str, Any], history: AdherenceHistory
 ) -> bool:
     start = date.fromisoformat(episode["details"]["episode_start_date"])
+    if episode["kind"] == UNLOGGED_KIND and any(day > start for day in history.food_days):
+        return True
     return any(day > start and value in ("on_target", "roughly")
-               for day, value in entries.items())
+               for day, value in history.verdicts.items())
 
 
 def _apply_kind(
     db: Any, assignment: dict[str, Any], kind: str, now_iso: str,
-    alerts: list[dict[str, Any]], entries: dict[date, str],
+    alerts: list[dict[str, Any]], history: AdherenceHistory,
     qualifying: dict[str, date]
 ) -> tuple[int, int]:
     episode = _active_episode(alerts, assignment["assignment_id"], kind)
     if episode is not None:
-        if _has_good_day_after(episode, entries):
+        if _has_good_day_after(episode, history):
             resolved = db.resolve_open_coach_alerts_for_assignment(
                 assignment["assignment_id"], now_iso, kind
             )
@@ -111,7 +123,7 @@ def _apply_kind(
 
 def _apply_episodes(
     db: Any, assignment: dict[str, Any], now: datetime,
-    entries: dict[date, str], qualifying: dict[str, date], has_targets: bool,
+    history: AdherenceHistory, qualifying: dict[str, date], has_targets: bool,
     open_alerts: list[dict[str, Any]] | None = None,
 ) -> dict[str, int]:
     created = resolved = 0
@@ -127,7 +139,7 @@ def _apply_episodes(
             )
         for kind in (OFF_KIND, UNLOGGED_KIND):
             episode_created, episode_resolved = _apply_kind(
-                db, assignment, kind, now_iso, open_alerts, entries, qualifying
+                db, assignment, kind, now_iso, open_alerts, history, qualifying
             )
             created += episode_created
             resolved += episode_resolved
@@ -141,10 +153,10 @@ def evaluate_assignment(
     account = db.get_account(assignment["player_account_id"])
     if not db.is_live_account(account) or not db.ledger_exists(account["ledger_id"]):
         return {"alerts_created": 0, "alerts_resolved": 0}
-    today, start, completed_through, has_targets, entries = _read_adherence(
+    today, start, completed_through, has_targets, history = _read_adherence(
         db, account["ledger_id"], now
     )
     qualifying = _qualifying_episodes(
-        today, start, completed_through, entries, has_targets
+        today, start, completed_through, history, has_targets
     )
-    return _apply_episodes(db, assignment, now, entries, qualifying, has_targets, open_alerts)
+    return _apply_episodes(db, assignment, now, history, qualifying, has_targets, open_alerts)

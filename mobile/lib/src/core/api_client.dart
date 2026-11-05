@@ -2240,9 +2240,10 @@ class ApiClient {
         'The service returned invalid Nutrition data.');
   }
 
-  Future<NutritionPlanState> logNutritionAdherence(String value) async {
+  Future<NutritionPlanState> logNutritionAdherence(String value, {String? entryDate}) async {
     final response = await _send(() => _dio.put<dynamic>('/nutrition/adherence', data: {
       'value': value,
+      if (entryDate != null) 'entry_date': entryDate,
     }));
     return _parseBody(response.data, NutritionPlanState.fromJson,
         'The service returned invalid Nutrition data.');

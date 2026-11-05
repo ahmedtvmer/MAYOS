@@ -42,6 +42,18 @@ class LedgerFoodLogMixin:
             (str(entry_date),),
         ).fetchall()]
 
+    def list_food_log_nutrients(self, entry_date):
+        return [json.loads(row[0]) for row in self.conn.execute(
+            "SELECT nutrients_json FROM food_log_entries WHERE entry_date=?",
+            (str(entry_date),),
+        ).fetchall()]
+
+    def list_food_log_dates(self, start_date, end_date):
+        return {str(row[0]) for row in self.conn.execute(
+            "SELECT DISTINCT entry_date FROM food_log_entries WHERE entry_date BETWEEN ? AND ?",
+            (str(start_date), str(end_date)),
+        ).fetchall()}
+
     def get_food_log_entry(self, entry_id):
         return _entry(self.conn.execute(
             "SELECT * FROM food_log_entries WHERE id=?", (entry_id,),
