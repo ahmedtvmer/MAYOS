@@ -32,7 +32,7 @@ void main() {
       expect(find.text('Staple'), findsOneWidget);
       expect(find.text('100 kcal / 100 g'), findsOneWidget);
       expect(find.textContaining('20 g protein per 100 g'), findsOneWidget);
-      await tester.tap(find.text('Egg'));
+      await tester.tap(_resultNamed('Egg'));
       await tester.pumpAndSettle();
       expect(find.text('1900 kcal left after adding'), findsOneWidget);
       await tester.enterText(find.byType(TextField), '200');
@@ -124,7 +124,7 @@ void main() {
         lessThan(tester.getTopLeft(find.text('Late egg')).dy),
       );
       expect(
-        tester.widget<IconButton>(find.byTooltip('Next day')).onPressed,
+        _nextDayButton(tester).onPressed,
         isNull,
       );
       await tester.tap(find.byTooltip('Previous day'));
@@ -143,7 +143,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('1800'), findsOneWidget);
       expect(
-        tester.widget<IconButton>(find.byTooltip('Next day')).onPressed,
+        _nextDayButton(tester).onPressed,
         isNull,
       );
     },
@@ -451,7 +451,7 @@ void main() {
             language == 'ar' ? 'بيضة' : 'Egg',
           );
           await tester.pumpAndSettle(const Duration(milliseconds: 300));
-          await tester.tap(find.text(language == 'ar' ? 'بيضة' : 'Egg'));
+          await tester.tap(_resultNamed(language == 'ar' ? 'بيضة' : 'Egg'));
           await tester.pumpAndSettle();
           expect(find.text('1800 ${copy.afterAdding}'), findsOneWidget);
           if (language == 'ar') {
@@ -501,11 +501,18 @@ void _resumeApp(WidgetTester tester) {
   }
 }
 
+// The search field also holds the typed text, so match the result row only.
+Finder _resultNamed(String name) => find.descendant(
+  of: find.byType(ListTile), matching: find.text(name));
+
+IconButton _nextDayButton(WidgetTester tester) => tester.widget<IconButton>(find.ancestor(
+  of: find.byTooltip('Next day'), matching: find.byType(IconButton)));
+
 void _expectToday(WidgetTester tester, DateTime date) {
   final MaterialLocalizations copy = MaterialLocalizations.of(
     tester.element(find.byType(NutritionTab)));
   expect(find.text('Today, ${copy.formatMediumDate(date)}'), findsOneWidget);
-  expect(tester.widget<IconButton>(find.byTooltip('Next day')).onPressed, isNull);
+  expect(_nextDayButton(tester).onPressed, isNull);
 }
 
 Map<String, dynamic> _food() => <String, dynamic>{

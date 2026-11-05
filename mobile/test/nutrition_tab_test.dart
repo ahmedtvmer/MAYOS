@@ -313,6 +313,7 @@ void main() {
     };
     await tester.pumpWidget(_app(fake, 'ar', ThemeData.light()));
     await tester.pumpAndSettle();
+    await _showWaterLog(tester, '+ كوب');
     expect(find.text('سجل الماء: أكواب اليوم 1'), findsOneWidget);
     expect(find.text('+ كوب'), findsOneWidget);
     expect(tester.widgetList<Directionality>(find.byType(Directionality))
@@ -342,7 +343,7 @@ void main() {
     };
     await tester.pumpWidget(_app(fake, 'en', ThemeData.light()));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('+1 glass'));
+    await _showWaterLog(tester, '+1 glass');
     await tester.pumpAndSettle();
     await tester.tap(find.text('+1 glass'));
     await tester.pump(const Duration(milliseconds: 20));
@@ -361,7 +362,7 @@ void main() {
     };
     await tester.pumpWidget(_app(fake, 'en', ThemeData.light()));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('+1 glass'));
+    await _showWaterLog(tester, '+1 glass');
     final TextButton addButton = tester.widget(find.ancestor(
       of: find.text('+1 glass'), matching: find.byType(TextButton)));
     expect(addButton.onPressed, isNull);
@@ -378,7 +379,7 @@ void main() {
       };
     await tester.pumpWidget(_app(fake, 'en', ThemeData.light()));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('+1 glass'));
+    await _showWaterLog(tester, '+1 glass');
     await tester.pumpAndSettle();
     await tester.tap(find.text('+1 glass'));
     await tester.pumpAndSettle();
@@ -422,7 +423,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.drag(find.byType(ListView), const Offset(0, -1200));
       await tester.pumpAndSettle();
-      final List<Tooltip> adherenceTooltips = tester.widgetList<Tooltip>(find.byType(Tooltip)).toList();
+      final List<Tooltip> adherenceTooltips = tester.widgetList<Tooltip>(find.byType(Tooltip))
+          .where((Tooltip tooltip) => tooltip.message?.startsWith('2026-10-') ?? false).toList();
       expect(adherenceTooltips, hasLength(7));
       expect(adherenceTooltips.map((Tooltip tooltip) => tooltip.message), contains('2026-10-24: On target'));
       expect(adherenceTooltips.map((Tooltip tooltip) => tooltip.message), contains('2026-10-21: Unlogged'));
@@ -657,6 +659,12 @@ void main() {
 
 Finder _coachField(WidgetTester tester, String label) => find.byWidgetPredicate(
     (Widget widget) => widget is TextField && widget.decoration?.labelText == label);
+
+// The Food log bars leave less room, so the lazy list may not have built the Water log yet.
+Future<void> _showWaterLog(WidgetTester tester, String addGlass) async {
+  await tester.dragUntilVisible(find.text(addGlass), find.byType(ListView), const Offset(0, -200));
+  await tester.pumpAndSettle();
+}
 
 FakeMayosApi _fake() => FakeMayosApi()
   ..issuedToken = 'nutrition-token'
