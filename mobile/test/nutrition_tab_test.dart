@@ -447,14 +447,29 @@ void main() {
       await tester.ensureVisible(find.text('Off'));
       await tester.tap(find.text('Off'));
       await tester.pumpAndSettle();
+      expect(fake.nutritionAdherenceValues, <String>['off']);
+      await tester.scrollUntilVisible(find.widgetWithText(ChoiceChip, 'Off'), 200,
+        scrollable: find.descendant(of: find.byType(ListView),
+          matching: find.byType(Scrollable)).first);
+      await tester.pumpAndSettle();
       expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Off')).selected, isTrue);
+      await tester.ensureVisible(find.widgetWithText(ChoiceChip, 'On target'));
       await tester.tap(find.text('On target'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.widgetWithText(ChoiceChip, 'On target'), 200,
+        scrollable: find.descendant(of: find.byType(ListView),
+          matching: find.byType(Scrollable)).first);
       await tester.pumpAndSettle();
       expect(fake.nutritionAdherenceValues, <String>['off', 'on_target']);
       expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'On target')).selected, isTrue);
+      expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Off')).selected, isFalse);
       expect(find.text('Your coach sees your Nutrition adherence.'), findsNothing);
       expect(find.textContaining('Set to '), findsNothing);
       expect(find.textContaining('You chose '), findsNothing);
+      await tester.scrollUntilVisible(find.textContaining('70.5'), 200,
+        scrollable: find.descendant(of: find.byType(ListView),
+          matching: find.byType(Scrollable)).first);
+      await tester.pumpAndSettle();
       expect(find.textContaining('70.5'), findsOneWidget);
       expect(find.textContaining('65'), findsOneWidget);
     });

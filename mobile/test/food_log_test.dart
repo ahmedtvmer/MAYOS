@@ -437,6 +437,8 @@ void main() {
           await tester.pumpAndSettle();
           expect(find.text('1900'), findsOneWidget);
           expect(find.text(copy.macroLeft(copy.protein)), findsOneWidget);
+          expect(tester.takeException(), isNull,
+            reason: 'The Food log day view must fit the phone.');
           expect(
             tester
                 .widget<Directionality>(find.byType(Directionality).last)
@@ -451,12 +453,23 @@ void main() {
             language == 'ar' ? 'بيضة' : 'Egg',
           );
           await tester.pumpAndSettle(const Duration(milliseconds: 300));
+          expect(tester.takeException(), isNull,
+            reason: 'Food search results must fit the phone.');
           await tester.tap(_resultNamed(language == 'ar' ? 'بيضة' : 'Egg'));
           await tester.pumpAndSettle();
           expect(find.text('1800 ${copy.afterAdding}'), findsOneWidget);
+          expect(tester.takeException(), isNull,
+            reason: 'The amount screen must fit before editing the amount.');
           if (language == 'ar') {
             await tester.enterText(find.byType(TextField), '١٥٠');
             await tester.pump();
+            expect(find.text('1750 ${copy.afterAdding}'), findsOneWidget);
+            await tester.tap(find.byType(DropdownButtonFormField<String>).last);
+            await tester.pumpAndSettle();
+            await tester.tap(find.text('large egg (50.0 ${copy.grams})').last);
+            await tester.pumpAndSettle();
+            expect(tester.widget<TextField>(find.byType(TextField)).controller!.text,
+              '3.00');
             expect(find.text('1750 ${copy.afterAdding}'), findsOneWidget);
           }
           expect(
