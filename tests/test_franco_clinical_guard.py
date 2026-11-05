@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from langchain_core.messages import HumanMessage
 
 from agent import assistant_graph as graph
@@ -117,6 +118,16 @@ def test_two_common_franco_words_provide_corroborating_evidence():
     route = graph.router_node(_state("ana leh"))
     assert route["intent"] == "clinical_intercept"
     assert route["intent_metadata"]["franco"] is True
+
+
+@pytest.mark.parametrize("query", [
+    "yes 11111111-1111-4111-8111-111111111111 sharp pain in my knee",
+    "no 11111111-1111-4111-8111-111111111111 ana 3ayez",
+])
+def test_offer_decision_with_added_symptoms_or_franco_still_intercepts(query):
+    route = graph.router_node(_state(query))
+
+    assert route["intent"] == "clinical_intercept"
 
 
 def test_ordinary_english_gym_and_digit_ending_words_are_not_intercepted():

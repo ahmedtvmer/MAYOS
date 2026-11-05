@@ -753,13 +753,27 @@ def test_injury_offer_decline_and_unrelated_turn_never_save_restrictions(fresh_s
     assert ledger.get_player_profile()["movement_restrictions"] == []
 
 
-def test_superseded_restriction_offer_id_cannot_clear_or_confirm_current_offer(fresh_store):
+@pytest.mark.parametrize(
+    ("current_offer_id", "stale_id"),
+    [
+        ("11111111-1111-4111-8111-111111111111", "00000000-0000-0000-0000-000000000000"),
+        ("11111111-7abc-4111-8111-111111111111", "00000000-0000-0000-0000-000000000000"),
+        ("11111111-a3bc-4111-8111-111111111111", "00000000-0000-0000-0000-000000000000"),
+        ("11111111-1111-4111-8111-111111111111", "22222222-7abc-4222-8222-222222222222"),
+    ],
+    ids=["plain-uuid", "leading-digit-uuid", "embedded-digit-uuid", "stale-franco-like-uuid"],
+)
+def test_superseded_restriction_offer_id_cannot_clear_or_confirm_current_offer(
+    fresh_store, current_offer_id, stale_id
+):
+    from uuid import UUID
     from langchain_core.messages import AIMessage, HumanMessage
     from agent.assistant_graph import stream_assistant_turn
 
     ledger = fresh_store.ledger
-    offer_id = ledger.set_pending_movement_restriction_offer(["Knee flexion"], "Should I keep these out?")
-    stale_id = "00000000-0000-0000-0000-000000000000"
+    # Regression #569: random UUID groups such as 7abc/a3bc triggered the Franco-Arabic refusal.
+    with patch("database.ledger.chat.uuid.uuid4", return_value=UUID(current_offer_id)):
+        offer_id = ledger.set_pending_movement_restriction_offer(["Knee flexion"], "Should I keep these out?")
     state = {"messages": [AIMessage(content="Should I keep these out?\n<!--movement-offer:current-->"),
                           HumanMessage(content=f"yes {stale_id}")],
              "trainee_id": "test_user", "player_account_id": None,
