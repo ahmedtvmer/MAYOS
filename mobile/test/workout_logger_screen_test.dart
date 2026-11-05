@@ -1208,7 +1208,7 @@ void main() {
       sharedCard = card;
       return true;
     }, startedAt: '2026-09-28T08:00:00.000Z',
-       clock: () => DateTime(2026, 9, 28, 8, 10));
+       clock: () => DateTime.utc(2026, 9, 28, 8, 10));
     await tester.tap(_tick(0, 0));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Finish workout'));
@@ -1218,16 +1218,8 @@ void main() {
       await tester.tap(discard);
       await tester.pumpAndSettle();
     }
-    final Finder keepDuration = find.widgetWithText(FilledButton, 'Keep');
-    if (keepDuration.evaluate().isNotEmpty) {
-      await tester.tap(keepDuration);
-      await tester.pumpAndSettle();
-    } else {
-      await tester.tap(find.text('Edit'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Confirm'));
-      await tester.pumpAndSettle();
-    }
+    // This ten-minute workout goes straight to the summary without a duration prompt.
+    expect(find.text('Workout summary'), findsOneWidget);
     await tester.tap(find.widgetWithText(FilledButton, 'Save workout'));
     await tester.pumpAndSettle();
     final int writesAfterSave = drafts.writes;

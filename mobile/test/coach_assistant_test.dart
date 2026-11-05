@@ -222,7 +222,7 @@ void main() {
 
   test('roster disclosure names Cardio minutes and calories in English and Arabic', () {
     expect(const CoachCopy('en').rosterAssistantPrivacyNote, contains('Cardio minutes and calories'));
-    expect(const CoachCopy('ar').rosterAssistantPrivacyNote, contains('دقائق تمارين القلب وسعراتها'));
+    expect(const CoachCopy('ar').rosterAssistantPrivacyNote, contains('دقائق الكارديو وسعراته'));
   });
 
   testWidgets('the Ask assistant entry is hidden while the feature is off',
