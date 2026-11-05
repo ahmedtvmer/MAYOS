@@ -9,7 +9,7 @@ sees the correction history through the existing gate-first reads.
 """
 
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -234,6 +234,92 @@ def test_in_window_correction_records_edit_and_correction_row(api):
     assert [(row["previous_date"], row["corrected_date"]) for row in rows] == [
         ("2026-09-26", "2026-09-25")
     ]
+
+
+@pytest.mark.parametrize("corrected_date, estimated", [
+    ("2026-09-25", False), ("2026-09-23", True),
+])
+def test_date_correction_refreshes_cardio_and_nutrition_without_rewriting_history(
+    api, monkeypatch, corrected_date, estimated,
+):
+    client, db = api
+    headers, version = _prepare_player(client, db)
+    db.ledger.upsert_player_profile({
+        "current_goal": "Strength", "gender": "male", "age": 30,
+        "height_cm": 175, "weight_kg": 90,
+    })
+    db.ledger.upsert_weight_history_entry("2026-09-25", 60)
+    db.ledger.upsert_weight_history_entry("2026-09-26", 90)
+    viewed_day = "2026-09-26"
+    monkeypatch.setattr(
+        "svc.routers.nutrition.player_local_date",
+        lambda *_: date.fromisoformat(viewed_day),
+    )
+    setup = client.post("/nutrition/setup", headers=headers, json={
+        "sex": "male", "sex_confirmed": True, "daily_activity": "mostly_sitting",
+        "screening": {"pregnant_or_breastfeeding": False,
+                      "medical_condition": False, "eating_disorder": False},
+    })
+    assert setup.status_code == 200, setup.text
+    baseline_targets = setup.json()["targets"]
+    sync_body = {**_sync_body(version=version), "cardio": [
+        {"machine": "bike", "minutes": 30, "level": 5},
+        {"machine": "treadmill", "minutes": 30, "speed_kmh": 5, "incline_pct": 0},
+    ]}
+    committed = client.post("/workouts/sessions", headers=headers, json=sync_body)
+    assert committed.status_code == 201, committed.text
+    original = committed.json()
+    session_id = original["session_id"]
+    assert [entry["calories_kcal"] for entry in original["cardio"]] == [261, 113]
+    before_nutrition = client.get("/nutrition", headers=headers).json()
+    assert before_nutrition["cardio_burned_kcal"] == 374
+    assert before_nutrition["cardio_adjustment_kcal"] == 187
+
+    corrected = client.patch(
+        f"/workouts/sessions/{session_id}/performed-date", headers=headers,
+        json={"performed_date": corrected_date},
+    )
+    assert corrected.status_code == 200, corrected.text
+    found = client.get(f"/workouts/sessions/by-client-id/{CLIENT_ID}", headers=headers)
+    assert found.status_code == 200, found.text
+    entries = found.json()["cardio"]
+    assert [entry["calories_kcal"] for entry in entries] == [174, 75]
+    assert [bool(entry["calories_are_estimate"]) for entry in entries] == [estimated, estimated]
+    assert found.json()["cardio_calories_kcal"] == 249
+    latest = client.get("/workouts/sessions/latest", headers=headers)
+    assert latest.status_code == 200, latest.text
+    assert latest.json()["cardio"] == entries
+
+    old_day = client.get("/nutrition", headers=headers).json()
+    assert old_day["cardio_burned_kcal"] == 0
+    assert old_day["cardio_adjustment_kcal"] == 0
+    viewed_day = corrected_date
+    new_day = client.get("/nutrition", headers=headers).json()
+    assert new_day["cardio_burned_kcal"] == 249
+    assert new_day["cardio_adjustment_kcal"] == 124
+    assert new_day["targets"]["calories"] == baseline_targets["calories"] + 124
+
+    # Later weight edits and a no-op date correction must keep these snapshots.
+    monkeypatch.setattr(
+        "service.weight_history.player_local_date",
+        lambda *_: date.fromisoformat(corrected_date),
+    )
+    weight = client.post("/profile/weight", headers=headers, json={"weight_kg": 110})
+    assert weight.status_code == 200, weight.text
+    after_weight = client.get(f"/workouts/sessions/by-client-id/{CLIENT_ID}", headers=headers)
+    assert after_weight.json() == found.json()
+    unchanged = client.patch(
+        f"/workouts/sessions/{session_id}/performed-date", headers=headers,
+        json={"performed_date": corrected_date},
+    )
+    assert unchanged.status_code == 200, unchanged.text
+    assert unchanged.json()["changed"] is False
+    assert unchanged.json()["corrections"] == corrected.json()["corrections"]
+    after = client.get(f"/workouts/sessions/by-client-id/{CLIENT_ID}", headers=headers)
+    assert after.json() == found.json()
+    replayed = client.post("/workouts/sessions", headers=headers, json=sync_body)
+    assert replayed.status_code == 200, replayed.text
+    assert replayed.json() == original
 
 
 def test_performed_date_event_follows_a_changed_correction_only(api, recording_analytics, monkeypatch):

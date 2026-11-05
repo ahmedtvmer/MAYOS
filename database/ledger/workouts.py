@@ -338,6 +338,22 @@ class LedgerWorkoutsMixin:
             return None
         return [dict(row) for row in rows]
 
+    def update_session_cardio_calories(
+        self, session_id: str, cardio: list[dict[str, Any]]
+    ) -> None:
+        """Refresh only calorie snapshots after a performed-date correction."""
+        entry_ids = self.conn.execute(
+            "SELECT id FROM session_cardio_entries WHERE session_id = ? ORDER BY id",
+            (session_id,),
+        ).fetchall()
+        self.conn.executemany(
+            "UPDATE session_cardio_entries SET calories_kcal = ?, calories_are_estimate = ?"
+            " WHERE id = ? AND session_id = ?",
+            [(entry["calories_kcal"], int(entry["calories_are_estimate"]), row[0], session_id)
+             for row, entry in zip(entry_ids, cardio, strict=True)],
+        )
+        self._commit_ledger()
+
     def get_cardio_day_records(self, session_date: str) -> tuple[list[Any], int]:
         sessions = self.conn.execute(
             "SELECT id, program_version, program_week_order, program_day_order "

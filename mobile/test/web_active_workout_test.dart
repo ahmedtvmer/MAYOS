@@ -322,10 +322,12 @@ void main() {
             ],
           ),
         ],
-        cardio: const <WorkoutCardio>[WorkoutCardio(
-          machine: 'bike',
-          minutes: 25,
-        )],
+        cardio: const <WorkoutCardio>[
+          WorkoutCardio(machine: 'bike', minutes: 25,
+            level: 6, watts: 125, distanceM: 8000),
+          WorkoutCardio(machine: 'treadmill', minutes: 15,
+            speedKmh: 5, inclinePct: 10),
+        ],
       ),
     );
 
@@ -335,9 +337,16 @@ void main() {
     expect(restored?.clientSessionId, _sessionId);
     expect(restored!.warmupMovements.single.sets.first.ticked, isTrue);
     expect(restored.warmupMovements.single.sets[1].ticked, isFalse);
-    expect(restored.cardio.single.machine, 'bike');
-    expect(restored.cardio.single.minutes, 25);
-    expect(restored.cardio.single.ticked, isFalse);
+    expect(restored.cardio, hasLength(2));
+    expect(restored.cardio.first.machine, 'bike');
+    expect(restored.cardio.first.minutes, 25);
+    expect(restored.cardio.first.level, 6);
+    expect(restored.cardio.first.watts, 125);
+    expect(restored.cardio.first.distanceM, 8000);
+    expect(restored.cardio.first.ticked, isFalse);
+    expect(restored.cardio.last.machine, 'treadmill');
+    expect(restored.cardio.last.speedKmh, 5);
+    expect(restored.cardio.last.inclinePct, 10);
     expect(await afterReload.read('account-bob'), isNull);
   });
 
@@ -357,7 +366,10 @@ void main() {
           ],
         ),
       ],
-      cardio: const <WorkoutCardio>[WorkoutCardio(machine: 'bike')],
+      cardio: const <WorkoutCardio>[
+        WorkoutCardio(machine: 'bike'),
+        WorkoutCardio(machine: 'treadmill', minutes: 15, speedKmh: 5, inclinePct: 10),
+      ],
     );
     await _pumpWebApp(
       tester,
@@ -377,7 +389,17 @@ void main() {
       '30',
     );
     await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('logger.cardio.level.0')), '6');
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('logger.cardio.watts.0')), '125');
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('logger.cardio.distance.0')), '8000');
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey<String>('logger.cardio.tick')));
+    await tester.tap(find.byKey(const ValueKey<String>('logger.cardio.tick.1')));
     await tester.pumpAndSettle();
     await _finishToSummary(tester);
     await tester.tap(find.text('Save workout'));
@@ -397,7 +419,10 @@ void main() {
       },
     ]);
     expect(sent['cardio'], <Map<String, dynamic>>[
-      <String, dynamic>{'machine': 'bike', 'minutes': 30},
+      <String, dynamic>{'machine': 'bike', 'minutes': 30,
+        'level': 6.0, 'watts': 125.0, 'distance_m': 8000.0},
+      <String, dynamic>{'machine': 'treadmill', 'minutes': 15,
+        'speed_kmh': 5.0, 'incline_pct': 10.0},
     ]);
     expect(sent['duration_seconds'], greaterThan(0));
   });

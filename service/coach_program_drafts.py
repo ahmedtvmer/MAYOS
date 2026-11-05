@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from agent.program_rationale import CHANGE_COACH_EDIT
 from agent.ProgramState import (
+    CardioPrescriptionSchema,
     MAX_PROGRAM_LOAD_KG,
     MAX_PROGRAM_LOAD_PCT_E1RM,
     MIN_PROGRAM_LOAD_KG,
@@ -632,6 +633,16 @@ def _published_day(
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     exercises = []
     issues = []
+    if isinstance(day.get("cardio"), dict):
+        try:
+            CardioPrescriptionSchema.model_validate(day["cardio"])
+        except ValidationError as error:
+            for issue in error.errors():
+                issues.append(_pydantic_issue({
+                    **issue,
+                    "loc": ("weeks", position.week_index, "days", position.day_index,
+                            "cardio", *issue["loc"]),
+                }))
     for exercise_index, exercise in enumerate(day.get("exercises", [])):
         published, issue = _published_exercise(
             exercise, position, exercise_index, context

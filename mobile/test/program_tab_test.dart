@@ -369,6 +369,40 @@ void main() {
     expect(day.cardio!.inclinePct, 10);
   });
 
+  for (final String languageCode in <String>['en', 'ar']) {
+    for (final String machine in <String>['treadmill', 'bike']) {
+      testWidgets('stored structured $machine prescription is visible in $languageCode',
+          (tester) async {
+        final bool treadmill = machine == 'treadmill';
+        final FakeMayosApi fake = _signedInFake()
+          ..programDaysOverride = <Map<String, dynamic>>[
+            <String, dynamic>{
+              'day_name': 'Upper 1', 'day_order': 1,
+              'warmup_exercises': <dynamic>[], 'exercises': <dynamic>[],
+              'cardio': <String, dynamic>{
+                'machine': machine, 'minutes': 25, 'minutes_max': 30,
+                // Older programs keep their original values visible (#505).
+                if (treadmill) ...<String, dynamic>{'speed_kmh': 5, 'incline_pct': 45}
+                else ...<String, dynamic>{'level': 6, 'watts': 125, 'distance_m': 8000},
+              },
+            },
+          ];
+        await _pumpProgram(tester, fake, languageCode: languageCode);
+        final String expected = languageCode == 'ar'
+            ? treadmill
+                ? 'جهاز المشي, 25–30 دقيقة, 5.0 كم/ساعة, 45.0% ميل'
+                : 'دراجة, 25–30 دقيقة, المستوى 6, 125 واط, 8000 م'
+            : treadmill
+                ? 'Treadmill, 25–30 min, 5.0 km/h, 45.0% incline'
+                : 'Bike, 25–30 min, level 6, 125 W, 8000 m';
+        expect(find.byWidgetPredicate((Widget widget) => widget is Text &&
+          (widget.data ?? '').replaceAll(RegExp('[\u2066-\u2069]'), '') == expected),
+          findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   testWidgets('volume review can be accepted or dismissed in Arabic on phone',
       (tester) async {
     final FakeMayosApi fake = _signedInFake();

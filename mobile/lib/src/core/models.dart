@@ -3201,15 +3201,17 @@ class WorkoutCardio {
         entryId: 'cardio-${DateTime.now().microsecondsSinceEpoch}',
         machine: prescription.machine,
         minutes: prescription.minutes,
-        speedKmh: prescription.speedKmh,
-        inclinePct: prescription.inclinePct,
+        // Keep the stored prescription visible in Program, but leave unsupported
+        // defaults blank in the logger so the Player can still tick and save.
+        speedKmh: _supportedDefault(prescription.speedKmh, 0.1, 40),
+        inclinePct: _supportedDefault(prescription.inclinePct, -10, 40),
         level: prescription.level?.toDouble(),
         watts: prescription.watts?.toDouble(),
         distanceM: prescription.distanceM?.toDouble(),
       );
     }
     if (prescription is Map<String, dynamic>) {
-      return WorkoutCardio.fromJson(prescription);
+      return WorkoutCardio.fromPrescription(ProgramCardio.fromJson(prescription));
     }
     final String text = prescription?.toString() ?? '';
     final RegExpMatch? minutesMatch = RegExp(r'(\d+)\s*(?:-|–)?\s*(?:\d+\s*)?(?:min|minute)', caseSensitive: false).firstMatch(text);
@@ -3218,10 +3220,13 @@ class WorkoutCardio {
     return WorkoutCardio(
       machine: 'treadmill',
       minutes: int.tryParse(minutesMatch?.group(1) ?? ''),
-      speedKmh: double.tryParse(speedMatch?.group(1) ?? ''),
-      inclinePct: double.tryParse(inclineMatch?.group(1) ?? ''),
+      speedKmh: _supportedDefault(double.tryParse(speedMatch?.group(1) ?? ''), 0.1, 40),
+      inclinePct: _supportedDefault(double.tryParse(inclineMatch?.group(1) ?? ''), -10, 40),
     );
   }
+
+  static double? _supportedDefault(double? value, double minimum, double maximum) =>
+      value != null && value >= minimum && value <= maximum ? value : null;
 
   final String machine;
   final String? entryId;
