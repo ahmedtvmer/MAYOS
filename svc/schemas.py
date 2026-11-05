@@ -18,6 +18,7 @@ from utils.preferred_name import validate_preferred_name
 from agent.ProgramState import (
     CardioPrescriptionSchema,
     GeneratedProgramSchema,
+    PersistedCardioPrescriptionSchema,
     PersistedProgramDaySchema,
     PersistedProgramExerciseSchema,
     PersistedProgramSchema,
@@ -1465,9 +1466,26 @@ class CoachProgramPublicationOut(PersistedProgramSchema):
     resolved_request_ids: list[str] = Field(default_factory=list)
 
 
+class StoredProgramDraftDayOut(ProgramDraftDayIn):
+    cardio: PersistedCardioPrescriptionSchema | str | None = None
+
+
+class StoredProgramDraftWeekOut(ProgramDraftWeekIn):
+    days: list[StoredProgramDraftDayOut] = Field(default_factory=list, max_length=MAX_PROGRAM_DAYS)
+
+
+class StoredProgramDraftOut(CoachProgramDraftIn):
+    """Read saved drafts and templates without applying new-write Cardio limits."""
+
+    days: list[StoredProgramDraftDayOut] = Field(
+        default_factory=list, max_length=MAX_PROGRAM_DAYS * MAX_PROGRAM_WEEKS,
+    )
+    weeks: list[StoredProgramDraftWeekOut] = Field(default_factory=list, max_length=MAX_PROGRAM_WEEKS)
+
+
 class CoachProgramDraftOut(BaseModel):
     assignment_id: str
-    draft: CoachProgramDraftIn
+    draft: StoredProgramDraftOut
     source_template_id: str | None = None
     source_template_name: str | None = None
     created_at: str
@@ -1515,7 +1533,7 @@ class ProgramTemplateOut(BaseModel):
     template_id: str
     name: str
     description: str | None = None
-    program: CoachProgramDraftIn
+    program: StoredProgramDraftOut
     archived_at: str | None = None
     created_at: str
     updated_at: str

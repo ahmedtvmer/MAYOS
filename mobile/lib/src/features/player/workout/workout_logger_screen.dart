@@ -332,9 +332,10 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
   bool _prCelebrationStep = false;
 
   /// The celebration and the stats, computed once on the device when Finish
-  /// opens the summary and never recomputed after that (#124: a summary
-  /// already shown is never rewritten after a sync).
+  /// opens the summary. Only server-calculated Cardio calories are filled in
+  /// after a successful sync; the device's records and lifting stats stay frozen.
   WorkoutSummary? _summary;
+  String? _summaryDraftId;
   int? _checkpointNumber;
   CheckpointReview? _checkpointReview;
   bool _saving = false;
@@ -1377,6 +1378,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         });
         return;
       }
+      _summaryDraftId = draft.clientSessionId;
       await sync.saveDraft(draft);
       // Saving ends the Active workout (CONTEXT.md): the draft now owns it.
       // The controller waits for every pending store write before deleting, so
@@ -1457,20 +1459,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       setState(() {
         if (result.status == WebWorkoutCommitStatus.committed &&
             result.response != null) {
-          final dynamic cardioBody = result.response!['cardio'];
-          if (cardioBody is List<dynamic>) {
-            final List<WorkoutCardio> entries = cardioBody
-                .whereType<Map<String, dynamic>>()
-                .map(WorkoutCardio.fromJson)
-                .toList(growable: false);
-            final WorkoutSummary? summary = _summary;
-            if (summary != null) {
-              _summary = summary.withStats(
-                summary.stats.withCardioEntries(entries),
-              );
-              ref.read(loggerSummaryProvider.notifier).state = _summary;
-            }
-          }
+          _applySyncedCardio(result.response!);
         }
         _checkpointNumber = reachedCheckpoint ?? _checkpointNumber;
         _checkpointReview = checkpointReview;
@@ -1602,6 +1591,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     setState(() {
       _summaryStep = false;
       _summary = null;
+      _summaryDraftId = null;
       _checkpointNumber = null;
       _checkpointReview = null;
       _error = null;
@@ -1614,9 +1604,35 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
 
   // ---- build --------------------------------------------------------------
 
+  void _applySyncedCardio(Map<String, dynamic> response) {
+    final dynamic cardioBody = response['cardio'];
+    final WorkoutSummary? summary = _summary;
+    if (summary == null || cardioBody is! List<dynamic>) return;
+    final List<WorkoutCardio> entries = cardioBody
+        .whereType<Map<String, dynamic>>()
+        .map(WorkoutCardio.fromJson)
+        .toList(growable: false);
+    _summary = summary.withStats(summary.stats.withCardioEntries(entries));
+    ref.read(loggerSummaryProvider.notifier).state = _summary;
+    _summaryDraftId = null;
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.watch(displayLanguageProvider);
+    if (!ref.watch(webDirectWorkoutCommitEnabledProvider)) {
+      ref.listen<DraftSyncService>(draftSyncServiceProvider, (_, sync) {
+        final String? draftId = _summaryDraftId;
+        if (draftId == null || _summary == null) return;
+        for (final WorkoutDraft draft in sync.drafts) {
+          if (draft.clientSessionId == draftId && draft.isSynced &&
+              draft.serverResponse != null) {
+            setState(() => _applySyncedCardio(draft.serverResponse!));
+            break;
+          }
+        }
+      });
+    }
     final ActiveWorkoutState active = ref.watch(
       activeWorkoutControllerProvider,
     );

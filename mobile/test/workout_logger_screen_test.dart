@@ -1294,34 +1294,83 @@ void main() {
     expect(find.byKey(const ValueKey<String>('logger.save')), findsOneWidget);
   });
 
-  testWidgets('saved bike calories appear in the finished Player summary',
+  for (final bool webDirectCommit in <bool>[false, true]) {
+    for (final bool initialSyncFails in <bool>[false, true]) {
+      if (webDirectCommit && initialSyncFails) continue;
+      testWidgets(
+          'several Cardio calories reach the ${webDirectCommit ? 'web' : 'Android'} summary'
+          '${initialSyncFails ? ' after a later sync' : ' on save'}',
+          (WidgetTester tester) async {
+        final FakeMayosApi fake = _signedInFake()
+          ..cardioCaloriesKcalByEntryOnCommit = <int>[120, 200]
+          ..programVersion = 3
+          ..commitFails = initialSyncFails;
+        final InMemoryDraftStore drafts = InMemoryDraftStore();
+        await _openLogger(tester, day: _cardioDay, fakeApi: fake,
+          webDirectCommit: webDirectCommit, drafts: drafts);
+        final ProviderContainer container = ProviderScope.containerOf(
+          tester.element(find.byType(WorkoutLoggerScreen)));
+        if (!webDirectCommit) {
+          expect(container.read(offlineWorkoutDraftsEnabledProvider), isTrue);
+        }
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('logger.cardio.minutes')), '30');
+        await tester.tap(find.text('Treadmill').last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Bike').last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey<String>('logger.cardio.tick')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey<String>('logger.cardio.add')));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('logger.cardio.minutes.1')), '15');
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey<String>('logger.cardio.tick.1')));
+        await tester.tap(_tick(0, 0));
+        await tester.pumpAndSettle();
+        await _finishAndOpenSummary(tester);
+        expect(find.text('Calories appear once the workout is saved'), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey<String>('logger.save')));
+        await tester.pumpAndSettle();
+        if (initialSyncFails) {
+          expect(find.text('Calories appear once the workout is saved'), findsOneWidget);
+          expect(find.byKey(const ValueKey<String>('logger.summary.cardioCalories')), findsNothing);
+          final WorkoutDraft pending = (await drafts.read(_account)).single;
+          expect(pending.isSynced, isFalse);
+          fake.commitFails = false;
+          final Future<void> retry = container.read(draftSyncServiceProvider)
+              .retryDraft(pending.clientSessionId);
+          await _pumpUntilFound(tester, find.text('~320 kcal'));
+          await retry;
+        }
+        expect(fake.commitRequests, initialSyncFails ? 2 : 1);
+        expect(find.text('Bike · ~120 kcal'), findsOneWidget);
+        expect(find.text('Treadmill · ~200 kcal'), findsOneWidget);
+        expect(find.text('~320 kcal'), findsOneWidget);
+        expect(find.text('Calories appear once the workout is saved'), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  testWidgets('stored defaults above the logger limit stay blank and can be logged',
       (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
-    fake.cardioCaloriesKcalOnCommit = 200;
-    fake.programVersion = 3;
-    await _openLogger(
-      tester,
-      day: _cardioDay,
-      fakeApi: fake,
-      webDirectCommit: true,
-    );
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('logger.cardio.minutes')),
-      '30',
-    );
-    await tester.tap(find.text('Treadmill').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Bike').last);
-    await tester.pumpAndSettle();
+    final InMemoryActiveWorkoutStore store = await _openLogger(tester,
+      day: ProgramDay(dayName: 'Legacy cardio', dayOrder: 1,
+        exercises: _day.exercises,
+        cardio: ProgramCardio(machine: 'treadmill', minutes: 25,
+          speedKmh: 45, inclinePct: 45)));
+    for (final String setting in <String>['speed', 'incline']) {
+      final TextFormField field = tester.widget<TextFormField>(find.byKey(
+        ValueKey<String>('logger.cardio.$setting.0')));
+      expect(field.initialValue, isEmpty);
+    }
     await tester.tap(find.byKey(const ValueKey<String>('logger.cardio.tick')));
-    await tester.tap(_tick(0, 0));
     await tester.pumpAndSettle();
-    await _finishAndOpenSummary(tester);
-    expect(find.text('Calories appear once the workout is saved'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey<String>('logger.save')));
-    await tester.pumpAndSettle();
-    expect(fake.commitRequests, 1);
-    expect(find.text('~200 kcal'), findsOneWidget);
+    final WorkoutCardio entry = (await store.read(_account))!.cardio.single;
+    expect(entry.isCommitted, isTrue);
+    expect(entry.toCommitJson(), <String, dynamic>{'machine': 'treadmill', 'minutes': 25});
   });
 
   testWidgets('Cardio supports multiple machines in Arabic at 360dp',

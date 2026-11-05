@@ -307,30 +307,42 @@ void main() {
       'minutes': 25,
       'speed_kmh': null,
       'incline_pct': null,
-      'level': null,
-      'watts': null,
-      'distance_m': null,
+      'level': 6,
+      'watts': 125,
+      'distance_m': 8000,
       'calories_kcal': 200,
       'calories_are_estimate': true,
     };
     (fake.coachPlayerSummary['latest_session'] as Map<String, dynamic>)[
         'cardio'] = <Map<String, dynamic>>[
       Map<String, dynamic>.of(cardioEntry),
+      <String, dynamic>{
+        'machine': 'treadmill', 'minutes': 15, 'speed_kmh': 5,
+        'incline_pct': 10, 'calories_kcal': 120, 'calories_are_estimate': false,
+      },
     ];
     (fake.coachPlayerSummary['recent_sessions'] as List<Map<String, dynamic>>)
         .first['cardio'] = <Map<String, dynamic>>[
       Map<String, dynamic>.of(cardioEntry),
+      <String, dynamic>{
+        'machine': 'treadmill', 'minutes': 15, 'speed_kmh': 5,
+        'incline_pct': 10, 'calories_kcal': 120, 'calories_are_estimate': false,
+      },
     ];
     await _pumpApp(tester, fake);
 
     await _openRosterEntry(tester);
     await _pumpUntilFound(tester, find.text('Weekly volume'));
 
-    expect(find.text('Bike · Cardio: 25 min · ~200 kcal'), findsOneWidget);
-    expect(find.text('Total Cardio calories: ~200 kcal'), findsOneWidget);
+    const String bike = 'Bike · Cardio: 25 min · Level: 6.0 · 125.0 W · 8000.0 m · ~200 kcal';
+    const String treadmill = 'Treadmill · Cardio: 15 min · 5.0 km/h · 10.0% incline · 120 kcal';
+    expect(find.text(bike), findsOneWidget);
+    expect(find.text(treadmill), findsOneWidget);
+    expect(find.text('Total Cardio calories: ~320 kcal'), findsOneWidget);
     await _expandHistorySection(tester, 'recentSessions');
-    expect(find.text('Bike · Cardio: 25 min · ~200 kcal'), findsNWidgets(2));
-    expect(find.text('Total Cardio calories: ~200 kcal'), findsNWidgets(2));
+    expect(find.text(bike), findsNWidgets(2));
+    expect(find.text(treadmill), findsNWidgets(2));
+    expect(find.text('Total Cardio calories: ~320 kcal'), findsNWidgets(2));
   });
 
   testWidgets('player segments separate Program from History and keep alerts',

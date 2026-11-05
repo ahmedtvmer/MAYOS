@@ -776,27 +776,7 @@ def _persist_session(
     warmup_movements = warmup_movements or []
     ledger.log_session_warmup_movements(session_id, warmup_movements, now_iso)
     if cardio is not None:
-        weight_rows = ledger.list_weight_history("0001-01-01", today_date)
-        weight_estimate = False
-        if weight_rows:
-            weight = weight_rows[-1]["weight_kg"]
-        else:
-            later_weights = ledger.list_weight_history(today_date, "9999-12-31")
-            if later_weights:
-                weight = later_weights[0]["weight_kg"]
-                weight_estimate = True
-            else:
-                weight = profile.get("weight_kg")
-        estimated_cardio = []
-        for entry in cardio:
-            result = estimate_cardio_calories(entry, None if weight is None else float(weight))
-            result["estimate"] = result["estimate"] or weight_estimate
-            estimated_cardio.append({
-                **entry,
-                "calories_kcal": result["kcal"],
-                "calories_are_estimate": result["estimate"],
-            })
-        cardio = estimated_cardio
+        cardio = _estimate_session_cardio(ledger, cardio, today_date, profile)
     ledger.log_session_cardio(session_id, cardio, now_iso)
 
     prescribed_ids = {str(ex.exercise_id) for ex in day_plan.exercises}
@@ -946,7 +926,7 @@ def session_state(db: Any, ledger_id: str, session_id: Any, body: dict[str, Any]
     """The stored commit body overlaid with the live session's corrected state (ADR 035).
 
     The idempotency record is immutable, so the reconciliation read overlays the
-    session's current ``session_date``, ``edited_at``, and ``corrections``
+    session's current Cardio calories, ``session_date``, ``edited_at``, and ``corrections``
     history (the same key the coach responses use). A body whose session is
     absent from this ledger is returned unchanged.
     """
@@ -954,11 +934,15 @@ def session_state(db: Any, ledger_id: str, session_id: Any, body: dict[str, Any]
         session = ledger.get_workout_session(session_id) if isinstance(session_id, str) else None
         if session is None:
             return body
+        cardio = ledger.get_session_cardio(session_id)
         return {
             **body,
             "session_date": session["session_date"],
             "edited_at": session["edited_at"],
             "corrections": ledger.list_performed_date_corrections(session["session_id"]),
+            **({"cardio": cardio,
+                "cardio_calories_kcal": sum(entry["calories_kcal"] or 0 for entry in cardio)}
+               if cardio is not None else {}),
         }
 
 
@@ -1221,6 +1205,36 @@ def _evaluate_volume_review(
         logger.exception("Volume review evaluation failed after workout commit")
 
 
+def _cardio_weight_at(
+    ledger: Any, performed_date: str,
+    profile: dict[str, Any],
+) -> tuple[float | None, bool]:
+    weight_rows = ledger.list_weight_history("0001-01-01", performed_date)
+    if weight_rows:
+        return float(weight_rows[-1]["weight_kg"]), False
+    later_weights = ledger.list_weight_history(performed_date, "9999-12-31")
+    if later_weights:
+        return float(later_weights[0]["weight_kg"]), True
+    weight = profile.get("weight_kg")
+    return None if weight is None else float(weight), False
+
+
+def _estimate_session_cardio(
+    ledger: Any, cardio: list[dict[str, Any]], performed_date: str,
+    profile: dict[str, Any],
+) -> list[dict[str, Any]]:
+    weight, weight_estimate = _cardio_weight_at(ledger, performed_date, profile)
+    estimated = []
+    for entry in cardio:
+        estimate = estimate_cardio_calories(entry, weight)
+        estimated.append({
+            **entry,
+            "calories_kcal": estimate["kcal"],
+            "calories_are_estimate": estimate["estimate"] or weight_estimate,
+        })
+    return estimated
+
+
 def correct_performed_date(
     db: Any,
     ledger_id: str,
@@ -1243,7 +1257,8 @@ def correct_performed_date(
     idempotent no-op checked before the recency/window validation, so an old
     session corrected to its own date returns unchanged. Otherwise the session's
     ``session_date`` is rewritten and ``edited_at`` is stamped, with an immutable
-    correction row appended; ``uploaded_at`` and ``captured_at`` stay untouched.
+    correction row appended and Cardio calories recomputed at the corrected
+    date's bodyweight; ``uploaded_at`` and ``captured_at`` stay untouched.
     The stored idempotent commit response is never rewritten — the by-client-id
     read reflects the live session — and only the missed-day attendance hook
     re-runs, after the transaction exits, so a correction can resolve or open a
@@ -1285,6 +1300,12 @@ def correct_performed_date(
 
             corrected_date = performed.isoformat()
             ledger.update_session_performed_date(session_id, corrected_date, now_iso)
+            cardio = ledger.get_session_cardio(session_id)
+            if cardio:
+                estimated = _estimate_session_cardio(
+                    ledger, cardio, corrected_date, ledger.get_player_profile() or {}
+                )
+                ledger.update_session_cardio_calories(session_id, estimated)
             ledger.record_performed_date_correction(
                 session_id, previous.isoformat(), corrected_date, now_iso
             )

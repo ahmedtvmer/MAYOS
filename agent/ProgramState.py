@@ -63,8 +63,8 @@ class CardioPrescriptionSchema(_ProgramStateModel):
     machine: Literal["treadmill", "stairmaster", "bike", "elliptical", "rower", "outdoor_walk_run", "outdoor", "other"]
     minutes: int = Field(ge=1, le=600)
     minutes_max: int | None = Field(default=None, ge=1, le=600)
-    speed_kmh: float | None = Field(default=None, gt=0, le=50)
-    incline_pct: float | None = Field(default=None, ge=0, le=50)
+    speed_kmh: float | None = Field(default=None, gt=0, le=40)
+    incline_pct: float | None = Field(default=None, ge=0, le=40)
     level: int | None = Field(default=None, ge=1, le=100)
     watts: int | None = Field(default=None, ge=1, le=2000)
     distance_m: int | None = Field(default=None, ge=1, le=100000)
@@ -74,6 +74,13 @@ class CardioPrescriptionSchema(_ProgramStateModel):
         if self.minutes_max is not None and self.minutes_max < self.minutes:
             raise ValueError("minutes_max must be at least minutes.")
         return self
+
+
+class PersistedCardioPrescriptionSchema(CardioPrescriptionSchema):
+    """Read existing prescriptions written before the logger limits aligned."""
+
+    speed_kmh: float | None = Field(default=None, gt=0, le=50)
+    incline_pct: float | None = Field(default=None, ge=0, le=50)
 
 
 def program_exercise_working_sets(exercise: Any) -> int:
@@ -299,7 +306,7 @@ class PersistedProgramDaySchema(_ProgramStateModel):
     exercises: list[PersistedProgramExerciseSchema] = Field(
         min_length=1, max_length=MAX_EXERCISES_PER_DAY
     )
-    cardio: CardioPrescriptionSchema | str | None = None
+    cardio: PersistedCardioPrescriptionSchema | str | None = None
 
 
 class PersistedProgramWeekSchema(_ProgramStateModel):

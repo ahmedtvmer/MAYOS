@@ -466,6 +466,7 @@ class FakeMayosApi {
   bool commitFails = false;
   bool commitResponseLost = false;
   int? cardioCaloriesKcalOnCommit;
+  List<int>? cardioCaloriesKcalByEntryOnCommit;
   Map<String, dynamic>? checkpointOnCommit;
   int? commitRefusalStatusCode;
   String commitRefusalMessage = 'The workout could not be recorded.';
@@ -5591,17 +5592,20 @@ class FakeMayosApi {
       'divergences': <dynamic>[],
       'warmup_movements': body['warmup_movements'] ?? <dynamic>[],
       if (body['cardio'] is List<dynamic>)
-        'cardio': (body['cardio'] as List<dynamic>).map((dynamic entry) {
+        'cardio': (body['cardio'] as List<dynamic>).asMap().entries.map((entry) {
           final Map<String, dynamic> cardio =
-              Map<String, dynamic>.from(entry as Map<String, dynamic>);
+              Map<String, dynamic>.from(entry.value as Map<String, dynamic>);
           return <String, dynamic>{
             ...cardio,
-            'calories_kcal': cardioCaloriesKcalOnCommit,
+            'calories_kcal': cardioCaloriesKcalByEntryOnCommit?[entry.key] ??
+                cardioCaloriesKcalOnCommit,
             'calories_are_estimate': true,
           };
         }).toList(),
-      if (cardioCaloriesKcalOnCommit != null)
-        'cardio_calories_kcal': cardioCaloriesKcalOnCommit,
+      if (cardioCaloriesKcalByEntryOnCommit != null || cardioCaloriesKcalOnCommit != null)
+        'cardio_calories_kcal': cardioCaloriesKcalByEntryOnCommit?.fold<int>(
+            0, (total, kcal) => total + kcal) ??
+            cardioCaloriesKcalOnCommit! * (body['cardio'] as List<dynamic>? ?? <dynamic>[]).length,
       'program_version': requested,
       'active_program_version_at_sync': active,
       'is_historical_program': requested > 0 && requested < active,
