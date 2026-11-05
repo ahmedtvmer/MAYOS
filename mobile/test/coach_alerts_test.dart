@@ -13,6 +13,7 @@ import 'package:mayos_mobile/src/providers.dart';
 import 'support/fake_mayos_api.dart';
 import 'support/fake_api_adapter.dart';
 import 'support/coach_layout_harness.dart';
+import 'support/coach_roster_clock.dart';
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
     {int attempts = 40}) async {
@@ -28,7 +29,8 @@ Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
 }
 
 Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake,
-    {Size logicalSize = const Size(540, 1200)}) async {
+    {Size logicalSize = const Size(540, 1200),
+    List<Override> providerOverrides = const <Override>[]}) async {
   tester.view.physicalSize = Size(logicalSize.width * 2, logicalSize.height * 2);
   tester.view.devicePixelRatio = 2.0;
   addTearDown(tester.view.resetPhysicalSize);
@@ -39,6 +41,7 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake,
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
+        ...providerOverrides,
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
         apiClientProvider.overrideWith((ref) {
@@ -560,13 +563,8 @@ void main() {
 
   testWidgets('desktop roster keeps missed and follow-up urgency chips',
       (tester) async {
-    final String today = DateTime.now().toIso8601String().substring(0, 10);
-    final String yesterday = DateTime.now()
-        .subtract(const Duration(days: 1))
-        .toIso8601String()
-        .substring(0, 10);
     final FakeMayosApi fake = _coachFake()
-      ..assignments[0]['next_follow_up_on'] = yesterday
+      ..assignments[0]['next_follow_up_on'] = coachRosterYesterday
       ..assignments.add(<String, dynamic>{
         'assignment_id': 'assignment-today',
         'player_username': 'today_player',
@@ -575,9 +573,14 @@ void main() {
         'current_missed_streak': 0,
         'alerts_new': 0,
         'pending_requests': 0,
-        'next_follow_up_on': today,
+        'next_follow_up_on': coachRosterToday,
       });
-    await _pumpApp(tester, fake, logicalSize: const Size(1440, 960));
+    await _pumpApp(
+      tester,
+      fake,
+      logicalSize: const Size(1440, 960),
+      providerOverrides: <Override>[coachRosterClockOverride],
+    );
     await _openRoster(tester);
     expect(find.text('Missed 3d'), findsOneWidget);
     expect(find.text('Follow-up overdue'), findsOneWidget);

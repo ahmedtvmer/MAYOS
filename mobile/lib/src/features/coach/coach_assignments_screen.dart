@@ -336,7 +336,7 @@ class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
   String? _followUpStatus(BuildContext context, CoachRosterEntry entry) {
     final String? dueOn = entry.nextFollowUpOn;
     if (dueOn == null) return null;
-    final String today = isoDateOf(DateTime.now());
+    final String today = isoDateOf(ref.watch(clockProvider)());
     if (dueOn.compareTo(today) > 0) return null;
     final CoachCopy copy = coachCopyOf(context);
     return dueOn == today ? copy.followUpToday : copy.followUpOverdue;

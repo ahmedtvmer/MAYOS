@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/core/display_language/coach_copy.dart';
@@ -13,6 +14,7 @@ import 'package:mayos_mobile/src/features/coach/coach_history_segment.dart';
 import 'package:mayos_mobile/src/features/coach/coach_player_history_screen.dart';
 
 import 'support/auth_harness.dart';
+import 'support/coach_roster_clock.dart';
 import 'support/fake_mayos_api.dart';
 
 Future<void> _pumpUntilFound(
@@ -82,6 +84,7 @@ Future<void> _pumpApp(
   FakeMayosApi fake, {
   Size logicalSize = const Size(540, 1200),
   double devicePixelRatio = 2,
+  List<Override> providerOverrides = const <Override>[],
 }) async {
   tester.view.physicalSize = Size(
     logicalSize.width * devicePixelRatio,
@@ -93,7 +96,9 @@ Future<void> _pumpApp(
 
   final InMemoryTokenStore tokens = InMemoryTokenStore();
   await tokens.save(fake.issuedToken!);
-  await tester.pumpWidget(authApp(fake, tokens));
+  await tester.pumpWidget(
+    authApp(fake, tokens, extraOverrides: providerOverrides),
+  );
   await _pumpUntilFound(tester, find.text('علاقات التدريب النشطة'));
 }
 
@@ -345,13 +350,8 @@ void main() {
 
   testWidgets('Arabic desktop roster retains urgency chips and split',
       (WidgetTester tester) async {
-    final String today = DateTime.now().toIso8601String().substring(0, 10);
-    final String yesterday = DateTime.now()
-        .subtract(const Duration(days: 1))
-        .toIso8601String()
-        .substring(0, 10);
     final FakeMayosApi fake = _coachFake()
-      ..assignments[0]['next_follow_up_on'] = yesterday
+      ..assignments[0]['next_follow_up_on'] = coachRosterYesterday
       ..assignments.add(<String, dynamic>{
         'assignment_id': 'assignment-ar-today',
         'player_username': 'player_ar_today',
@@ -360,12 +360,13 @@ void main() {
         'current_missed_streak': 0,
         'alerts_new': 0,
         'pending_requests': 0,
-        'next_follow_up_on': today,
+        'next_follow_up_on': coachRosterToday,
       });
     await _pumpApp(
       tester,
       fake,
       logicalSize: const Size(1440, 960),
+      providerOverrides: <Override>[coachRosterClockOverride],
     );
 
     expect(find.text('\u20663\u2069 أيام فائتة'), findsOneWidget);

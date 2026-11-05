@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mayos_mobile/src/core/models.dart';
 
 import 'support/coach_layout_harness.dart';
+import 'support/coach_roster_clock.dart';
 import 'support/fake_mayos_api.dart';
 
 void main() {
   testWidgets('roster card opens Player and restores scroll after back',
       (WidgetTester tester) async {
-    final String today = isoDateOf(DateTime.now());
+    final String today = coachRosterToday;
     final List<Map<String, dynamic>> assignments = <Map<String, dynamic>>[
       for (int index = 0; index < 12; index++)
         <String, dynamic>{
@@ -29,6 +29,7 @@ void main() {
     await expectCoachPhoneLayout(
       tester,
       configureFake: (FakeMayosApi fake) => fake.assignments.addAll(assignments),
+      providerOverrides: [coachRosterClockOverride],
       ready: (_) => find.byKey(const Key('coach_roster_list_screen')),
       pageScrollable: (_) => find.descendant(
         of: find.byKey(const Key('coach_roster_list_screen')),
@@ -141,10 +142,6 @@ void main() {
 
   testWidgets('desktop roster keeps its master and player panes',
       (WidgetTester tester) async {
-    final String today = isoDateOf(DateTime.now());
-    final String yesterday = isoDateOf(DateTime.now().subtract(
-      const Duration(days: 1),
-    ));
     await pumpCoachDesktopLayout(
       tester,
       configureFake: (FakeMayosApi fake) => fake.assignments.addAll(
@@ -158,7 +155,7 @@ void main() {
           'stall_length': 0,
           'alerts_new': 0,
           'pending_requests': 0,
-          'next_follow_up_on': yesterday,
+          'next_follow_up_on': coachRosterYesterday,
           'last_workout_on': null,
           },
           <String, dynamic>{
@@ -170,13 +167,14 @@ void main() {
             'stall_length': 0,
             'alerts_new': 0,
             'pending_requests': 0,
-            'next_follow_up_on': today,
+            'next_follow_up_on': coachRosterToday,
             'last_workout_on': null,
           },
         ],
       ),
       ready: find.byKey(const Key('coach_roster_list_screen')),
       logicalSize: const Size(1440, 960),
+      providerOverrides: [coachRosterClockOverride],
     );
     expect(find.text('Missed 3d'), findsOneWidget);
     expect(find.text('Follow-up overdue'), findsOneWidget);

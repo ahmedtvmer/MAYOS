@@ -9,6 +9,7 @@ import 'package:mayos_mobile/src/features/coach/coach_player_history_screen.dart
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
+import 'support/coach_roster_clock.dart';
 
 /// Widget tests for the roster rows and the player page (#120).
 
@@ -31,6 +32,7 @@ Future<void> _pumpApp(
   InMemoryAppModeStore modeStore, {
   Size logicalSize = const Size(540, 1200),
   double devicePixelRatio = 2.0,
+  List<Override> providerOverrides = const <Override>[],
 }) async {
   tester.view.physicalSize = Size(
     logicalSize.width * devicePixelRatio,
@@ -45,6 +47,7 @@ Future<void> _pumpApp(
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
+        ...providerOverrides,
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(modeStore),
         apiClientProvider.overrideWith((ref) {
@@ -267,6 +270,8 @@ void main() {
 
   testWidgets('roster rows keep the server order and show each urgency chip',
       (WidgetTester tester) async {
+    final String overdueOn =
+        _iso(coachRosterNow.subtract(const Duration(days: 2)));
     final FakeMayosApi fake = _coachFake();
     // Server order as returned: the calm, never-trained player first.
     fake.assignments.add(_assignment('assignment-dev', 'dev'));
@@ -276,17 +281,22 @@ void main() {
       alertsNew: 1,
       pendingRequests: 2,
       missedStreak: 3,
-      nextFollowUpOn: _daysFromToday(-2),
+      nextFollowUpOn: overdueOn,
       lastWorkoutOn: '2026-09-20',
       programName: 'Upper/Lower',
     ));
     fake.assignments.add(_assignment(
       'assignment-2',
       'cara',
-      nextFollowUpOn: _today(),
+      nextFollowUpOn: coachRosterToday,
       lastWorkoutOn: '2026-09-26',
     ));
-    await _pumpApp(tester, fake, InMemoryAppModeStore());
+    await _pumpApp(
+      tester,
+      fake,
+      InMemoryAppModeStore(),
+      providerOverrides: <Override>[coachRosterClockOverride],
+    );
     await _pumpUntilFound(tester, find.text('Active assignments'));
 
     // Server order wins: dev is painted above bob, bob above cara.
@@ -303,14 +313,14 @@ void main() {
     expect(find.text('3 missed days'), findsOneWidget);
     expect(find.text('Follow-up overdue'), findsOneWidget);
     expect(find.text('Next follow-up'), findsWidgets);
-    expect(find.text(_daysFromToday(-2)), findsOneWidget);
+    expect(find.text(overdueOn), findsOneWidget);
     expect(_rosterChip('1 alert'), findsOneWidget);
     expect(find.text('2 requests'), findsOneWidget);
     expect(find.text('Last workout 2026-09-20 · Upper/Lower'),
         findsOneWidget);
 
     // Cara: the follow-up date is shown once, without a duplicate badge.
-    expect(find.text(_today()), findsOneWidget);
+    expect(find.text(coachRosterToday), findsOneWidget);
     expect(find.text('Last workout 2026-09-26'), findsOneWidget);
     expect(find.text('Missed 1d'), findsNothing);
 
@@ -325,18 +335,19 @@ void main() {
         'assignment-1',
         'bob',
         missedStreak: 3,
-        nextFollowUpOn: _daysFromToday(-1),
+        nextFollowUpOn: coachRosterYesterday,
       ))
       ..assignments.add(_assignment(
         'assignment-today',
         'today_player',
-        nextFollowUpOn: _today(),
+        nextFollowUpOn: coachRosterToday,
       ));
     await _pumpApp(
       tester,
       fake,
       InMemoryAppModeStore(),
       logicalSize: const Size(1440, 960),
+      providerOverrides: <Override>[coachRosterClockOverride],
     );
 
     expect(find.text('Missed 3d'), findsOneWidget);
@@ -351,19 +362,26 @@ void main() {
 
   /// A calm roster row has no alert badges (#120).
   testWidgets('a calm roster row carries no chip', (WidgetTester tester) async {
+    final String followUpOn =
+        _iso(coachRosterNow.add(const Duration(days: 3)));
     final FakeMayosApi fake = _coachFake();
     fake.assignments.add(_assignment(
       'assignment-1',
       'bob',
-      nextFollowUpOn: _daysFromToday(3),
+      nextFollowUpOn: followUpOn,
       lastWorkoutOn: '2026-09-26',
     ));
-    await _pumpApp(tester, fake, InMemoryAppModeStore());
+    await _pumpApp(
+      tester,
+      fake,
+      InMemoryAppModeStore(),
+      providerOverrides: <Override>[coachRosterClockOverride],
+    );
     await _pumpUntilFound(tester, find.text('Active assignments'));
 
     expect(find.byKey(const Key('roster_row_assignment-1')), findsOneWidget);
     expect(find.text('Last workout 2026-09-26'), findsOneWidget);
-    expect(find.text(_daysFromToday(3)), findsOneWidget);
+    expect(find.text(followUpOn), findsOneWidget);
     for (final String label in <String>[
       '0 alerts',
       '0 requests',
