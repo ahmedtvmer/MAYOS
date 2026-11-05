@@ -190,6 +190,22 @@ REMOTE
 start_companion_services() {
   remote_bash <<'REMOTE'
 "${compose[@]}" up -d --no-build cloudflared litestream
+container="$("${compose[@]}" ps -q litestream)"
+# Compare against the file the container is mounted from (app dir or, in pull mode, the server checkout).
+config_source="$(sudo docker inspect -f '{{range .Mounts}}{{if eq .Destination "/etc/litestream.yml"}}{{.Source}}{{end}}{{end}}' "$container")"
+if [[ -z "$config_source" || ! -f "$config_source" || ! -r "$config_source" ]]; then
+  restart_reason='config mount source is missing or unreadable'
+else
+  host_config_sha="$(sha256sum "$config_source" | awk '{ print $1 }')"
+  container_config_sha="$(sudo docker exec "$container" sha256sum /etc/litestream.yml | awk '{ print $1 }')"
+  if [[ "$host_config_sha" == "$container_config_sha" ]]; then
+    printf 'Litestream config unchanged\n'
+    exit 0
+  fi
+  restart_reason='config changed'
+fi
+"${compose[@]}" up -d --no-build --force-recreate --no-deps litestream
+printf 'Litestream %s; restarted litestream\n' "$restart_reason"
 REMOTE
 }
 
