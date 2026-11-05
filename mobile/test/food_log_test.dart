@@ -53,7 +53,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Lunch').last);
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.widgetWithText(FilledButton, 'Add'));
+      await _scrollAmountTo(tester, find.widgetWithText(FilledButton, 'Add'));
       await tester.tap(find.widgetWithText(FilledButton, 'Add'));
       await tester.pumpAndSettle();
       expect(find.byType(FoodSearchScreen), findsNothing);
@@ -313,7 +313,7 @@ void main() {
       await tester.enterText(find.byType(TextField), '50');
       await tester.pump();
       expect(find.text('1950 kcal left after saving'), findsOneWidget);
-      await tester.ensureVisible(find.widgetWithText(FilledButton, 'Save'));
+      await _scrollAmountTo(tester, find.widgetWithText(FilledButton, 'Save'));
       await tester.tap(find.widgetWithText(FilledButton, 'Save'));
       await tester.pumpAndSettle();
       expect(find.text('1950'), findsOneWidget);
@@ -347,18 +347,23 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), '0');
       await tester.pump();
+      await _scrollAmountTo(tester, find.widgetWithText(FilledButton, 'Add'));
       expect(
         tester
             .widget<FilledButton>(find.widgetWithText(FilledButton, 'Add'))
             .onPressed,
         isNull,
       );
+      await _scrollAmountTo(tester, find.byType(TextField), delta: -200);
       await tester.enterText(find.byType(TextField), '150');
       await tester.pump();
-      await tester.ensureVisible(find.widgetWithText(FilledButton, 'Add'));
+      await _scrollAmountTo(tester, find.widgetWithText(FilledButton, 'Add'));
+      expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Add'))
+        .onPressed, isNotNull);
       await tester.tap(find.widgetWithText(FilledButton, 'Add'));
       await tester.pumpAndSettle();
       expect(find.byType(FoodAmountScreen), findsOneWidget);
+      await _scrollAmountTo(tester, find.byType(TextField), delta: -200);
       expect(
         tester.widget<TextField>(find.byType(TextField)).controller!.text,
         '150',
@@ -496,6 +501,14 @@ void main() {
       expect(find.text('Add to $expectedMeal'), findsOneWidget);
     });
   }
+}
+
+Future<void> _scrollAmountTo(WidgetTester tester, Finder target, {double delta = 200}) async {
+  final Finder list = find.descendant(
+    of: find.byType(FoodAmountScreen), matching: find.byType(ListView));
+  await tester.scrollUntilVisible(target, delta,
+    scrollable: find.descendant(of: list, matching: find.byType(Scrollable)).first);
+  await tester.pumpAndSettle();
 }
 
 void _pauseApp(WidgetTester tester) {
