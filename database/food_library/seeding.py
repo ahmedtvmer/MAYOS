@@ -26,6 +26,20 @@ def _create_food_table(connection):
         reviewed INTEGER NOT NULL, portion_label TEXT, portion_grams REAL,
         ingredients_json TEXT
     )""")
+    ensure_food_search_schema(connection)
+
+
+def ensure_food_search_schema(connection):
+    connection.execute("""CREATE TABLE IF NOT EXISTS food_search_revision (
+        id INTEGER PRIMARY KEY CHECK(id=1), counter INTEGER NOT NULL DEFAULT 0
+    )""")
+    connection.execute("INSERT OR IGNORE INTO food_search_revision(id, counter) VALUES(1, 0)")
+    for operation in ("INSERT", "UPDATE", "DELETE"):
+        connection.execute(
+            f"CREATE TRIGGER IF NOT EXISTS food_search_revision_{operation.lower()} "
+            f"AFTER {operation} ON foods BEGIN "
+            "UPDATE food_search_revision SET counter=counter+1 WHERE id=1; END"
+        )
 
 
 def _storage_row(row):

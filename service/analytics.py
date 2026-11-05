@@ -336,6 +336,8 @@ PROPERTY_TYPES: dict[str, PropertyType] = {
     "blocked": _boolean(),
     "goal": _enum({"lose", "maintain", "gain"}),
     "water_glasses": _bounded_int(30),
+    "food_kind": _enum({"library_food", "personal_food", "quick_add"}),
+    "meal_label": _enum({"breakfast", "lunch", "dinner", "snack"}),
     "intensity": _enum({"light", "moderate", "aggressive", "none"}),
     "floor_applied": _boolean(),
     "proposal_decision": _enum(frozenset({"accepted", "kept"})),
@@ -369,6 +371,10 @@ EVENT_CATALOGUE: dict[str, EventContract] = {
     ),
     "water_log_changed": EventContract(
         "server", {**_COMMON_PROPERTIES, "water_glasses": PROPERTY_TYPES["water_glasses"]}
+    ),
+    "food_logged": EventContract(
+        "server", {**_COMMON_PROPERTIES, "food_kind": PROPERTY_TYPES["food_kind"],
+                   "meal_label": PROPERTY_TYPES["meal_label"]}
     ),
     "nutrition_goal_saved": EventContract(
         "server", {**_COMMON_PROPERTIES, "goal": PROPERTY_TYPES["goal"],

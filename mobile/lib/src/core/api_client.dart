@@ -15,6 +15,7 @@ import 'chat_models.dart';
 import 'chat_stream_fetch.dart';
 import 'client_dimensions.dart';
 import 'models.dart';
+import 'food_log_models.dart';
 import 'sse.dart';
 import 'token_store.dart';
 
@@ -2148,6 +2149,43 @@ class ApiClient {
       _invalidProfile,
       failureMessage: _invalidProfileFailure,
     );
+  }
+
+  Future<List<FoodLibraryItem>> searchFoods(String query) async {
+    final response = await _send(() => _dio.get<dynamic>('/nutrition/foods',
+      queryParameters: <String, dynamic>{'q': query}));
+    return _parseBody(response.data, (Map<String, dynamic> data) =>
+      _parseBodyList(data['foods'], FoodLibraryItem.fromJson,
+        'The service returned invalid Food library data.'),
+      'The service returned invalid Food library data.');
+  }
+
+  Future<FoodLogDay> foodLogDay({String? day}) async {
+    final response = await _send(() => _dio.get<dynamic>('/nutrition/food-log',
+      queryParameters: <String, dynamic>{if (day != null) 'day': day}));
+    return _parseBody(response.data, FoodLogDay.fromJson,
+      'The service returned invalid Food log data.');
+  }
+
+  Future<FoodLogEntry> addFoodLogEntry({required String foodId, required String day,
+    required double quantity, required String unit, required String mealLabel}) async {
+    final response = await _send(() => _dio.post<dynamic>('/nutrition/food-log',
+      data: <String, dynamic>{'food_id': foodId, 'entry_date': day,
+        'quantity': quantity, 'unit': unit, 'meal_label': mealLabel}));
+    return _parseBody(response.data, FoodLogEntry.fromJson,
+      'The service returned invalid Food log data.');
+  }
+
+  Future<FoodLogEntry> editFoodLogEntry(String entryId, {required double quantity,
+    required String unit, required String mealLabel}) async {
+    final response = await _send(() => _dio.put<dynamic>('/nutrition/food-log/$entryId',
+      data: <String, dynamic>{'quantity': quantity, 'unit': unit, 'meal_label': mealLabel}));
+    return _parseBody(response.data, FoodLogEntry.fromJson,
+      'The service returned invalid Food log data.');
+  }
+
+  Future<void> deleteFoodLogEntry(String entryId) async {
+    await _send(() => _dio.delete<dynamic>('/nutrition/food-log/$entryId'));
   }
 
   Future<NutritionPlanState> nutrition() async {

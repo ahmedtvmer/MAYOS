@@ -81,9 +81,21 @@ void main() {
       (FeatureEntry entry) => entry.id == 'duration_check',
     );
     expect(entry.release, kReleaseDurationCheck);
-    expect(currentFeatureRelease, kReleaseDurationCheck);
+    expect(currentFeatureRelease, greaterThanOrEqualTo(kReleaseDurationCheck));
     expect(entry.audience, 'lifter');
     expect(entry.target, 'home');
+  });
+
+  test('Food log has bilingual copy and a Nutrition target in the current release', () {
+    final FeatureEntry entry = featureList.singleWhere((FeatureEntry entry) => entry.id == 'food_log');
+    expect(entry.release, currentFeatureRelease);
+    expect(entry.titleEn, 'Food log');
+    expect(entry.titleAr, 'سجل الطعام');
+    expect(entry.sentenceEn, isNotEmpty);
+    expect(entry.sentenceAr, isNotEmpty);
+    expect(entry.target, 'food_log');
+    expect(entry.location, const TourShellTabLocation(tabIndex: 2));
+    expect(entry.audience, 'lifter');
   });
 
   test('Feature list copy, targets, and Tour stop ids are valid', () {

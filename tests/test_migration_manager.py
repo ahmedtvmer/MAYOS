@@ -71,6 +71,52 @@ def test_fresh_ledger_schema_has_nullable_duration(temp_db_env):
     ).fetchone()[0] is None
 
 
+def test_v54_lazy_migration_adds_empty_food_log_and_preserves_existing_sessions(tmp_path):
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE workout_sessions (id TEXT PRIMARY KEY)")
+    conn.execute("INSERT INTO workout_sessions VALUES ('existing')")
+    set_ledger_schema_version(conn, 53)
+    conn.commit()
+    apply_lazy_migrations(conn, "food-log", tmp_path / "users", tmp_path / "backups")
+    apply_lazy_migrations(conn, "food-log", tmp_path / "users", tmp_path / "backups")
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
+    assert conn.execute("SELECT * FROM food_log_entries").fetchall() == []
+    assert conn.execute("SELECT id FROM workout_sessions").fetchall() == [("existing",)]
+    conn.execute(
+        "INSERT INTO food_log_entries(id,entry_date,logged_time,meal_label,kind,name,nutrients_json,created_at) "
+        "VALUES('quick','2026-11-05','12:00','lunch','quick_add','Quick add','{\"energy_kcal\":300}','now')"
+    )
+    assert conn.execute(
+        "SELECT name,food_id,grams,unit,quantity,nutrients_per_100g_json FROM food_log_entries WHERE id='quick'"
+    ).fetchone() == ("Quick add", None, None, None, None, None)
+
+
+@pytest.mark.parametrize("kind", ["library_food", "personal_food"])
+@pytest.mark.parametrize("missing", [None, "food_id", "grams", "unit", "quantity", "nutrients_per_100g_json"])
+def test_v54_food_backed_rows_require_the_food_reference_and_amount_snapshot(kind, missing):
+    conn = sqlite3.connect(":memory:")
+    MIGRATION_REGISTRY[53](conn)
+    row = {"id": "food", "entry_date": "2026-11-05", "logged_time": "12:00", "meal_label": "lunch",
+           "kind": kind, "name": "Food label", "food_id": "food-id", "grams": 100, "unit": "grams",
+           "quantity": 100, "nutrients_per_100g_json": "{}", "nutrients_json": "{}", "created_at": "now"}
+    if missing is not None:
+        row[missing] = None
+    statement = f"INSERT INTO food_log_entries({','.join(row)}) VALUES({','.join('?' for _ in row)})"
+    if missing is None:
+        conn.execute(statement, tuple(row.values()))
+        assert conn.execute("SELECT kind,name FROM food_log_entries").fetchone() == (kind, "Food label")
+    else:
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(statement, tuple(row.values()))
+
+
+def test_fresh_ledger_has_food_log_snapshot_columns(temp_db_env):
+    db, _, _ = temp_db_env
+    columns = {row[1] for row in db.conn.execute("PRAGMA table_info(food_log_entries)")}
+    assert {"entry_date", "meal_label", "logged_time", "food_id", "grams", "unit",
+            "nutrients_json", "nutrients_per_100g_json", "name", "arabic_name"} <= columns
+
+
 def test_v47_scopes_existing_regeneration_decisions_to_design_v2():
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE program_design_offer (id INTEGER PRIMARY KEY, decision TEXT, reason TEXT)")

@@ -49,6 +49,7 @@ from database.exercise_library.schema import (
 from database.exercise_library.similarity import ExerciseSimilarityMixin
 from database.exercise_library.seeding import ExerciseSeedingMixin
 from database.ledger.handle import TrainingLedger
+from database.food_library.lookup import FoodLookupMixin
 
 logger = MayosLogger().get_logger(__name__)
 
@@ -77,6 +78,7 @@ class DatabaseManager(
     ExerciseLookupMixin,
     ExerciseSimilarityMixin,
     ExerciseSeedingMixin,
+    FoodLookupMixin,
 ):
     EMBEDDING_DIM = CATALOG_EMBEDDING_DIM
 
@@ -109,6 +111,8 @@ class DatabaseManager(
         # stable id to open explicitly; the store itself mounts nothing (ADR 041).
         self.default_ledger_id = self._sanitize_username(default_ledger_id) if default_ledger_id else "default"
         self._catalog_lock = threading.RLock()
+        self._food_search_lock = threading.Lock()
+        self._food_search_cache = None
         # Catalog transaction depth is per-instance and per-thread. There is no
         # mounted-ledger state on the store: ledgers live on explicit handles.
         self._local = threading.local()
