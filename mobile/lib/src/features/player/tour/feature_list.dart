@@ -6,7 +6,7 @@ import 'tour_targets.dart';
 
 /// The shared Feature list used by the Tour and later discovery surfaces.
 const int tourCurrentVersion = 1;
-const int currentFeatureRelease = 4;
+const int currentFeatureRelease = 5;
 const int kReleaseShareCard = 3;
 const int kReleasePrCelebration = 3;
 const int kReleaseDurationCheck = 4;
@@ -105,6 +105,17 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     target: 'nutrition',
     location: TourShellTabLocation(tabIndex: 2),
     release: 0,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
+    id: 'food_log',
+    titleEn: 'Food log',
+    sentenceEn: 'Search foods, log grams or local portions, and see what is left against your Nutrition targets.',
+    titleAr: 'سجل الطعام',
+    sentenceAr: 'ابحث عن الأطعمة وسجّلها بالجرام أو بالحصة المحلية وتابع المتبقي من أهدافك الغذائية.',
+    target: 'food_log',
+    location: TourShellTabLocation(tabIndex: 2),
+    release: 5,
     audience: 'lifter',
   ),
   FeatureEntry(

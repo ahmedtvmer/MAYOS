@@ -35,7 +35,8 @@ void main() {
     expect(find.text('Protein'), findsOneWidget);
     await tester.drag(find.byType(ListView), const Offset(0, -1200));
     await tester.pumpAndSettle();
-    expect(tester.widgetList<Tooltip>(find.byType(Tooltip)), hasLength(7));
+    expect(tester.widgetList<Tooltip>(find.byType(Tooltip))
+      .where((Tooltip tooltip) => tooltip.message?.startsWith('2026-10-') ?? false), hasLength(7));
     expect(find.text('Your coach sees your Nutrition adherence.'), findsNothing);
     expect(find.textContaining('Set to '), findsNothing);
     expect(find.textContaining('70.0'), findsOneWidget);

@@ -18,7 +18,23 @@ from utils.equipment_access import (
 logger = MayosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 53
+CURRENT_LEDGER_SCHEMA_VERSION: int = 54
+
+FOOD_LOG_DDL: tuple[str, ...] = (
+    "CREATE TABLE IF NOT EXISTS food_log_entries ("
+    " id TEXT PRIMARY KEY, entry_date TEXT NOT NULL, logged_time TEXT NOT NULL,"
+    " meal_label TEXT NOT NULL CHECK(meal_label IN ('breakfast','lunch','dinner','snack')),"
+    " kind TEXT NOT NULL CHECK(kind IN ('library_food','personal_food','quick_add')), food_id TEXT,"
+    " name TEXT NOT NULL, arabic_name TEXT, grams REAL CHECK(grams > 0),"
+    " unit TEXT CHECK(unit IN ('grams','portion')),"
+    " quantity REAL CHECK(quantity > 0), portion_label TEXT,"
+    " portion_grams REAL, nutrients_per_100g_json TEXT,"
+    " nutrients_json TEXT NOT NULL, created_at TEXT NOT NULL,"
+    " CHECK(kind='quick_add' OR (food_id IS NOT NULL AND grams IS NOT NULL "
+    "AND unit IS NOT NULL AND quantity IS NOT NULL AND nutrients_per_100g_json IS NOT NULL))"
+    ")",
+    "CREATE INDEX IF NOT EXISTS idx_food_log_day ON food_log_entries(entry_date, logged_time, id)",
+)
 
 VOLUME_REVIEWS_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS volume_reviews ("
@@ -1230,6 +1246,11 @@ def _migrate_v52_to_v53(conn: sqlite3.Connection) -> None:
         )
 
 
+def _migrate_v53_to_v54(conn: sqlite3.Connection) -> None:
+    for statement in FOOD_LOG_DDL:
+        conn.execute(statement)
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -1379,6 +1400,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     50: _migrate_v50_to_v51,
     51: _migrate_v51_to_v52,
     52: _migrate_v52_to_v53,
+    53: _migrate_v53_to_v54,
 }
 
 

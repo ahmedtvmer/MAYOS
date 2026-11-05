@@ -1005,11 +1005,11 @@ This document records the architectural, algorithmic, and heuristic decisions im
 
 ### ADR 089: The Food library is USDA FoodData Central plus a curation file and recipe-built Egyptian rows
 
-* **Status**: Proposed (2026-10-24); implementation #471 landed the builder (code references: `database/food_library/builder.py`, `database/food_library/seeding.py`, `database/exercise_library/seeding.py`).
+* **Status**: Accepted (2026-11-05); #471 landed the builder and #474 the Player search and Food log.
 * **Decision**: The Food library is seeded from USDA FoodData Central (SR Legacy, FNDDS and Foundation rows, nutrients per 100 g, with their portions), which is public domain. Source rows are never edited. A tracked curation file keyed by FDC id holds display names, Arabic names, aliases (including Egyptian everyday names), Hidden and Staple food marks, following the exercise curation pattern (ADR 053, ADR 070). Baby foods, branded and fast-food rows, pork and alcohol, and the "NS as to fat" variant rows are Hidden by default; the owner can unhide any row. Egyptian dishes absent from USDA are MAYOS-authored rows defined by a tracked recipe of library ingredients in grams, and their nutrients are computed from those ingredients at build time; plain Egyptian ingredients with a USDA equivalent are aliases of that row, not new rows. Arabic names and aliases are drafted by a model and reviewed by the owner before they are shown. Quantities are grams first, plus at most one curated local portion per food.
 * **Context**: The repo holds USDA data (13,576 foods) with no Arabic and no Egyptian staples. The Egyptian National Nutrition Institute tables (1985, 1996) appear only as catalog entries with no digital dataset or published licence.
 * **Rationale**: Public-domain source data avoids licensing risk; recipe-built rows make every Egyptian dish's numbers inspectable and reproducible instead of estimated; a curation file beside unchanged source rows is the pattern the exercise library already proved.
-* **Code References**: none yet.
+* **Code References**: `database/food_library/builder.py`, `database/food_library/seeding.py`, `database/exercise_library/seeding.py`, `database/food_library/lookup.py`, `service/food_log.py`, `database/ledger/food_log.py`, `svc/routers/food_log.py`.
 
 ---
 

@@ -9,9 +9,11 @@ import '../../../providers.dart';
 import '../../nutrition/pace_proposal_card.dart';
 import '../tour/tour_targets.dart';
 import 'nutrition_pace_dial.dart';
+import 'food_log_day_view.dart';
 
 class NutritionTab extends ConsumerStatefulWidget {
-  const NutritionTab({super.key});
+  const NutritionTab({this.targetsOnly = false, super.key});
+  final bool targetsOnly;
 
   @override
   ConsumerState<NutritionTab> createState() => _NutritionTabState();
@@ -198,9 +200,10 @@ class _NutritionTabState extends ConsumerState<NutritionTab> {
       title: Text(copy.eatingDisorder)),
   ]);
 
-  Widget _setupButton(NutritionCopy copy) => FilledButton(
+  Widget _setupButton(NutritionCopy copy) => TourTarget(id: 'food_log', child: FilledButton(
+    key: const Key('food_log_entry_point'),
     onPressed: _saving ? null : _save,
-    child: Text(_saving ? copy.saving : copy.showTargets));
+    child: Text(_saving ? copy.saving : copy.showTargets)));
 
   Widget _blocked(BuildContext context, NutritionCopy copy) => Center(
         child: Padding(
@@ -211,6 +214,28 @@ class _NutritionTabState extends ConsumerState<NutritionTab> {
       );
 
   Widget _targets(BuildContext context, NutritionCopy copy, ColorScheme colors, TextTheme text) {
+    if (widget.targetsOnly) return _targetDetails(context, copy, colors, text);
+    return FoodLogDayView(targets: _plan!.targets,
+      targetsView: _targetDetails(context, copy, colors, text), adherence: _adherenceControl(copy),
+      onShowTargets: () async {
+        await Navigator.of(context).push<void>(MaterialPageRoute<void>(builder: (_) =>
+          Scaffold(appBar: AppBar(title: Text(copy.tab)), body: const NutritionTab(targetsOnly: true))));
+        if (mounted) await _load();
+      });
+  }
+
+  Widget _adherenceControl(NutritionCopy copy) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+      Text(copy.howTodayWent, style: Theme.of(context).textTheme.titleMedium),
+      const SizedBox(height: 8),
+      Wrap(spacing: 8, children: <Widget>[
+        _adherenceButton(copy.onTarget, 'on_target', copy),
+        _adherenceButton(copy.roughly, 'roughly', copy),
+        _adherenceButton(copy.off, 'off', copy),
+      ]),
+    ]);
+
+  Widget _targetDetails(BuildContext context, NutritionCopy copy, ColorScheme colors, TextTheme text) {
     final Map<String, dynamic> targets = _plan!.targets ?? <String, dynamic>{};
     final List<(String, String, Color)> macroCards = <(String, String, Color)>[
       (copy.protein, 'protein_g', colors.primary),
@@ -262,13 +287,7 @@ class _NutritionTabState extends ConsumerState<NutritionTab> {
         const SizedBox(height: 8),
         _fiberWaterCards(targets, copy),
         const SizedBox(height: 12),
-        Text(copy.howTodayWent, style: text.titleMedium),
-        const SizedBox(height: 8),
-        Wrap(spacing: 8, children: <Widget>[
-          _adherenceButton(copy.onTarget, 'on_target', copy),
-          _adherenceButton(copy.roughly, 'roughly', copy),
-          _adherenceButton(copy.off, 'off', copy),
-        ]),
+        _adherenceControl(copy),
         const SizedBox(height: 16),
         Text(copy.lastSevenDays, style: text.titleMedium),
         const SizedBox(height: 8),

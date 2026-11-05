@@ -6,28 +6,13 @@ import threading
 import numpy as np
 from core.embeddings import get_arabic_embedding_model, get_embedding_model
 from core.injuries import INJURY_BODY_AREA_LABELS
+from core.arabic import normalize_arabic_text
 
 # ONNX Runtime is CPU-only; MODEL_DEVICE remains accepted as a config no-op.
 EMBED_MODEL = get_embedding_model()
 
 ARABIC_SCRIPT_RE = re.compile(r"[\u0600-\u06ff]")
 _ARABIC_LETTERS = "\u0621-\u064a"
-_ARABIC_TRANSLATION = str.maketrans(
-    {
-        "أ": "ا",
-        "إ": "ا",
-        "آ": "ا",
-        "ى": "ي",
-        "ة": "ه",
-        **{chr(codepoint): None for codepoint in (*range(0x064B, 0x0660), 0x0670, 0x0640)},
-    }
-)
-
-
-def normalize_arabic_text(text: str) -> str:
-    return text.translate(_ARABIC_TRANSLATION)
-
-
 # Arabic lexical Tier-0 guard: normalized stems with optional attached clitics
 # (و/ف conjunction, ب/ل prepositions, ال definite article, pronoun suffixes).
 ARABIC_CLINICAL_STEMS = {

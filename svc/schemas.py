@@ -1,5 +1,6 @@
 """Pydantic request/response contracts for the FastAPI service."""
 
+from datetime import date
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
@@ -1134,6 +1135,19 @@ class NutritionActivityIn(BaseModel):
 class NutritionAdherenceIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     value: Literal["on_target", "roughly", "off"]
+
+
+class FoodLogAmountIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    quantity: float = Field(gt=0, le=10000, allow_inf_nan=False)
+    unit: Literal["grams", "portion"] = "grams"
+    meal_label: Literal["breakfast", "lunch", "dinner", "snack"]
+    logged_time: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+
+
+class FoodLogEntryIn(FoodLogAmountIn):
+    entry_date: date
+    food_id: str = Field(min_length=1, max_length=100)
 
 class NutritionPaceIn(BaseModel):
     goal: Literal["lose", "maintain", "gain"]

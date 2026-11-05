@@ -241,6 +241,10 @@
       "kind": "method",
       "signature": "(self, exercise_id: str) -> dict[str, typing.Any] | None"
     },
+    "get_food_library_food": {
+      "kind": "method",
+      "signature": "(self, food_id)"
+    },
     "get_first_touch_acquisition": {
       "kind": "method",
       "signature": "(self, account_id: str) -> dict[str, str | None] | None"
@@ -564,6 +568,10 @@
     "search_similar_exercises": {
       "kind": "method",
       "signature": "(self, query_vector: list[float], limit: int = 5) -> list[dict[str, typing.Any]]"
+    },
+    "search_food_library": {
+      "kind": "method",
+      "signature": "(self, query, usage=None, limit=50)"
     },
     "set_account_analytics_allowed": {
       "kind": "method",
