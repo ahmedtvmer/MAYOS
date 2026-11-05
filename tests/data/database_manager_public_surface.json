@@ -83,7 +83,7 @@
     },
     "create_catalog_schema": {
       "kind": "method",
-      "signature": "(self) -> None"
+      "signature": "(self, curation_path=None) -> None"
     },
     "create_check_in": {
       "kind": "method",
