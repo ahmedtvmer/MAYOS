@@ -328,6 +328,8 @@ def test_privacy_page_is_public_and_cacheable(api):
     assert "MAYOS Privacy Policy" in response.text
     assert f"Effective date: {POLICY_EFFECTIVE_DATE}" in response.text
     assert f"Policy version {POLICY_VERSION}" in response.text
+    assert "Germany (Contabo)" in response.text
+    assert "fly.io" not in response.text.lower()
     assert "the app build you last used" in response.text
 
 
@@ -445,12 +447,11 @@ def test_policy_source_file_exists_and_every_section_is_served(api):
     # with whitespace and emphasis markers normalised away, because the prose
     # wraps across lines and bolds its lead-ins.
     flat = " ".join(source.split()).replace("**", "")
-    from service import privacy_policy
-    assert privacy_policy.POLICY_VERSION == "1.9"
-    assert privacy_policy.POLICY_EFFECTIVE_DATE == "2026-10-27"
-    assert "Effective date: 2026-10-27 — Policy version 1.9" in body
+    assert POLICY_VERSION == "1.10"
+    assert f"Effective date: {POLICY_EFFECTIVE_DATE} — Policy version {POLICY_VERSION}" in body
     assert "This is the only email sent to you." not in flat
     for phrase in (
+        "The service runs on a single server in Germany (Contabo) and is served over https from the address of this page.",
         "assignment you explicitly accept",
         "Free text you type can contain identifying information",
         "at most 30 days",

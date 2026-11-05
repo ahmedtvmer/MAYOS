@@ -11,8 +11,8 @@ invitation-only closed trial; nothing is sold during the trial.
 Questions about this policy, your data, or your account: contact
 {{PRIVACY_CONTACT}}.
 
-The service runs on a single server in Frankfurt, Germany (Fly.io) and is
-served over https from the address of this page.
+The service runs on a single server in Germany (Contabo) and is served over
+https from the address of this page.
 
 ## What we collect
 
