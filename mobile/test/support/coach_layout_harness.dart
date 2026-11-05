@@ -198,10 +198,16 @@ Future<void> pumpCoachDesktopLayout(
   required CoachFakeSetup configureFake,
   required Finder ready,
   Size logicalSize = const Size(1280, 900),
+  List<Override> providerOverrides = const <Override>[],
 }) async {
   final FakeMayosApi fake = createCoachFake();
   configureFake(fake);
-  await pumpCoachApp(tester, fake, logicalSize: logicalSize);
+  await pumpCoachApp(
+    tester,
+    fake,
+    logicalSize: logicalSize,
+    providerOverrides: providerOverrides,
+  );
   for (int attempt = 0; attempt < 60 && ready.evaluate().isEmpty; attempt++) {
     await tester.pump(const Duration(milliseconds: 100));
   }
