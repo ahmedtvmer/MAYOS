@@ -1413,6 +1413,10 @@ the checked-in `.env.example` has a commented example. Litestream expands an
 unset variable to an empty string, so the Compose environment must pass this
 value explicitly; deletion and restore code default to `litestream` when it is
 unset.
+A changed `litestream.yml` takes effect on the next deploy, which restarts
+Litestream automatically.
+Deploy also recreates Litestream if its config mount source is missing or
+unreadable.
 Configure the production Compose API service with `MAYOS_LITESTREAM=true` only
 while its Litestream replicator is running. Never enable this setting without
 Litestream: the API then leaves automatic WAL checkpoints disabled.

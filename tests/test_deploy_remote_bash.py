@@ -3,6 +3,8 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 SCRIPT = Path(__file__).parents[1] / "deploy" / "deploy_server.sh"
 
@@ -78,6 +80,81 @@ def test_companion_services_do_not_start_when_readiness_fails(tmp_path):
     assert "start_companion_services" not in calls
 
 
+def _run_litestream_config_check(tmp_path, deployed_sha, running_sha, config_source=None):
+    mounted_config = tmp_path / "mounted config.yml"
+    mounted_config.write_text("dbs: []\n", encoding="utf-8")
+    if config_source is None:
+        config_source = _bash_path(mounted_config)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    docker = bin_dir / "docker"
+    docker.write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == compose && \" $* \" == *' ps -q litestream '* ]]; then printf 'litestream-container\\n'; exit 0; fi\n"
+        "if [[ \"$1\" == compose ]]; then printf '%s\\n' \"$*\" >> \"$DOCKER_LOG\"; exit 0; fi\n"
+        "if [[ \"$1\" == inspect && \"$2\" == -f ]]; then printf '%s\\n' \"$CONFIG_SOURCE\"; exit 0; fi\n"
+        "if [[ \"$1\" == exec ]]; then printf '%s  /etc/litestream.yml\\n' \"$RUNNING_SHA\"; exit 0; fi\n"
+        "exit 2\n",
+        encoding="utf-8",
+    )
+    docker.chmod(0o755)
+    sudo = bin_dir / "sudo"
+    sudo.write_text("#!/usr/bin/env bash\nexec \"$@\"\n", encoding="utf-8")
+    sudo.chmod(0o755)
+    sha256sum = bin_dir / "sha256sum"
+    sha256sum.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$1\" >> \"$SHA256_LOG\"\n"
+        "printf '%s  %s\\n' \"$DEPLOYED_SHA\" \"$1\"\n",
+        encoding="utf-8",
+    )
+    sha256sum.chmod(0o755)
+    log = tmp_path / "docker.log"
+    env = os.environ.copy()
+    env.update({
+        "PATH": f"{bin_dir}{os.pathsep}{env.get('PATH', '')}",
+        "DEPLOYED_SHA": deployed_sha,
+        "RUNNING_SHA": running_sha,
+        "DOCKER_LOG": str(log),
+        "CONFIG_SOURCE": config_source,
+        "SHA256_LOG": str(tmp_path / "sha256.log"),
+    })
+    return subprocess.run(
+        ["bash", "-c", 'source "$1"; server_pull_mode=1; start_companion_services', "test", str(SCRIPT)],
+        text=True, capture_output=True, env=env, check=False,
+    ), log
+
+
+def test_litestream_config_unchanged_does_not_recreate(tmp_path):
+    result, log = _run_litestream_config_check(tmp_path, "same", "same")
+    assert result.returncode == 0, result.stderr
+    assert "Litestream config unchanged" in result.stdout
+    assert "--force-recreate" not in log.read_text(encoding="utf-8")
+
+
+def test_litestream_config_change_recreates_container_and_prints_message(tmp_path):
+    result, log = _run_litestream_config_check(tmp_path, "deployed", "running")
+    assert result.returncode == 0, result.stderr
+    assert "Litestream config changed; restarted litestream" in result.stdout
+    assert "--force-recreate" in log.read_text(encoding="utf-8")
+    assert (tmp_path / "sha256.log").read_text(encoding="utf-8").splitlines() == [
+        _bash_path(tmp_path / "mounted config.yml")
+    ]
+
+
+@pytest.mark.parametrize("mount_source", ["", "missing", "directory"])
+def test_litestream_missing_or_unreadable_config_mount_recreates_container(tmp_path, mount_source):
+    # Regression #600: an absent mount or non-file must not abort deploy under set -e.
+    config_source = "" if not mount_source else _bash_path(tmp_path / mount_source)
+    if mount_source == "directory":
+        (tmp_path / mount_source).mkdir()
+    result, log = _run_litestream_config_check(tmp_path, "same", "same", config_source)
+    assert result.returncode == 0, result.stderr
+    assert "config mount source is missing or unreadable; restarted litestream" in result.stdout
+    assert "--force-recreate" in log.read_text(encoding="utf-8")
+    assert not (tmp_path / "sha256.log").exists()
+
+
 def _verify_checks(tmp_path, payload, required="First|Second", curl_fails=False):
     curl = tmp_path / "curl"
     curl.write_text("#!/usr/bin/env bash\n" + ("exit 22\n" if curl_fails else f"printf '%s' '{payload}'\n"), encoding="utf-8")
@@ -142,6 +219,7 @@ def _pull_fixture(tmp_path, *, inputs=True, checks=None):
     (work / "data" / ".gitkeep").write_text("\n", encoding="utf-8")
     (work / "deploy").mkdir()
     (work / "deploy" / "compose.server.yaml").write_text("services: {}\n", encoding="utf-8")
+    (work / "deploy" / "litestream.yml").write_text("dbs: []\n", encoding="utf-8")
     (work / "deploy" / "deploy_server.sh").write_bytes(SCRIPT.read_bytes())
     guard = SCRIPT.parent / "rollback_guard.py"
     (work / "deploy" / "rollback_guard.py").write_bytes(guard.read_bytes())
@@ -178,9 +256,10 @@ def _pull_fixture(tmp_path, *, inputs=True, checks=None):
     (bin_dir / "sudo").write_text("#!/usr/bin/env bash\nexec \"$@\"\n", encoding="utf-8")
     (bin_dir / "docker").write_text(
         "#!/usr/bin/env bash\n"
-        "if [[ \"$1\" == compose ]]; then printf '%s\\n' \"$*\" >> \"$MAYOS_SERVER_ROOT/docker.log\"; exit 0; fi\n"
+        "if [[ \"$1\" == compose ]]; then printf '%s\\n' \"$*\" >> \"$MAYOS_SERVER_ROOT/docker.log\"; if [[ \" $* \" == *' ps -q litestream '* ]]; then printf 'litestream-container\\n'; fi; exit 0; fi\n"
         "if [[ \"$1\" == ps ]]; then if [[ -s \"$MAYOS_SERVER_ROOT/app/deploy/.image.env\" ]]; then printf 'container\\n'; fi; exit 0; fi\n"
         "if [[ \"$1\" == inspect && \"$2\" == --format ]]; then tag=$(sed -n 's/^MAYOS_IMAGE_TAG=//p' \"$MAYOS_SERVER_ROOT/app/deploy/.image.env\"); printf 'mayos-api:%s\\n' \"$tag\"; exit 0; fi\n"
+        "if [[ \"$1\" == inspect && \"$2\" == -f ]]; then printf '%s/src/deploy/litestream.yml\\n' \"$MAYOS_SERVER_ROOT\"; exit 0; fi\n"
         "if [[ \"$1\" == image && \"$2\" == inspect ]]; then exit 1; fi\n"
         "exit 0\n",
         encoding="utf-8",
