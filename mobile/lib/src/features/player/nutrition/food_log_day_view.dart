@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -41,7 +42,7 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
   void initState() {
     super.initState();
     _lifecycle = AppLifecycleListener(onResume: () {
-      if (mounted) _load();
+      if (mounted) _load(background: true);
     });
     _load();
   }
@@ -55,19 +56,22 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
   @override
   void didUpdateWidget(FoodLogDayView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.targets != oldWidget.targets) _load();
+    // Every Nutrition response builds a new map, so only real changes reload.
+    if (!mapEquals(widget.targets, oldWidget.targets)) _load(background: true);
   }
 
   String _dateKey(DateTime date) => date.toIso8601String().substring(0, 10);
 
-  Future<bool> _load() async {
+  /// A background load keeps the current view and scroll position on screen.
+  Future<bool> _load({bool background = false}) async {
     final int request = ++_request;
     // A read spanning device midnight must still refresh before opening search.
     final DateTime deviceDate = DateUtils.dateOnly(ref.read(clockProvider)());
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (!background)
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
     try {
       final FoodLogDay day = await ref
           .read(apiClientProvider)

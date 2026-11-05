@@ -127,6 +127,7 @@ class _FoodAmountScreenState extends ConsumerState<FoodAmountScreen> {
               ),
               const SizedBox(height: 20),
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 initialValue: _meal,
                 decoration: InputDecoration(labelText: copy.meal),
                 items: <String>['breakfast', 'lunch', 'dinner', 'snack']
@@ -145,6 +146,7 @@ class _FoodAmountScreenState extends ConsumerState<FoodAmountScreen> {
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
+                isExpanded: true,
                 initialValue: _unit,
                 decoration: InputDecoration(labelText: copy.unit),
                 items: <DropdownMenuItem<String>>[
@@ -155,6 +157,7 @@ class _FoodAmountScreenState extends ConsumerState<FoodAmountScreen> {
                       value: 'portion',
                       child: Text(
                         '${widget.food.portionLabel} (${widget.food.portionGrams} ${copy.grams})',
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                 ],
