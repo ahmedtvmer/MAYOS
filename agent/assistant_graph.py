@@ -187,6 +187,7 @@ FRANCO_ARABIC_RE = re.compile(
     re.IGNORECASE,
 )
 FRANCO_WORD_RE = re.compile(r"[A-Za-z0-9]+")
+RE_MOVEMENT_RESTRICTION_DECISION = re.compile(r"\s*(yes|no)\s+([0-9a-f-]{36})\s*", re.IGNORECASE)
 FRANCO_COMMON_WORDS = frozenset(
     {
         "ana", "enta", "enty", "3ayez", "keda", "delwa2ty",
@@ -1552,6 +1553,9 @@ def arabic_swap_clarification_node(
 
 
 def _clinical_turn_metadata(query: str, sub_intents=()) -> dict[str, Any] | None:
+    # Offer IDs are opaque: UUID groups can resemble Franco-Arabic words.
+    if RE_MOVEMENT_RESTRICTION_DECISION.fullmatch(query):
+        return None
     franco_detected = is_franco_arabic(query)
     franco_clinical_check = (
         is_franco_clinical_franco_message if franco_detected else is_franco_clinical
@@ -1982,7 +1986,7 @@ def _offer_goal_weak_points(
 
 def _movement_restriction_chat_intent(query: str, ledger: Any, store: Any, state: AssistantState) -> dict[str, Any] | None:
     language = _tool_reply_language({"messages": [HumanMessage(content=query)]})
-    offer_decision = re.fullmatch(r"\s*(yes|no)\s+([0-9a-f-]{36})\s*", query, re.IGNORECASE)
+    offer_decision = RE_MOVEMENT_RESTRICTION_DECISION.fullmatch(query)
     pending = ledger.get_pending_movement_restriction_offer()
     if pending:
         if offer_decision and offer_decision.group(2) != pending["offer_id"]:
