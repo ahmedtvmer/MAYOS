@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import shutil
 import tempfile
@@ -532,25 +533,65 @@ def _observe_ledger_writes(ledger: Any, executed_actions: list[dict[str, Any]]) 
     ledger.set_deload_choice = set_deload_choice
 
 
+def _hermetic_embedding(_model: Any, text: str) -> list[float]:
+    digest = hashlib.shake_256(text.encode("utf-8")).digest(384)
+    return [(component - 127.5) / 127.5 for component in digest]
+
+
 def _observe_case(
-    case: dict[str, Any], root: Path, scripted_classification: dict[str, Any] | None = None
+    case: dict[str, Any],
+    root: Path,
+    scripted_classification: dict[str, Any] | None = None,
+    *,
+    hermetic: bool = False,
+) -> dict[str, Any]:
+    if not hermetic:
+        return _observe_case_with_catalog(case, root, scripted_classification, hermetic=False)
+
+    from core.embeddings import OnnxEmbeddings
+
+    with patch.object(OnnxEmbeddings, "embed_query", _hermetic_embedding):
+        return _observe_case_with_catalog(case, root, scripted_classification, hermetic=True)
+
+
+def _observe_case_with_catalog(
+    case: dict[str, Any],
+    root: Path,
+    scripted_classification: dict[str, Any] | None,
+    *,
+    hermetic: bool,
 ) -> dict[str, Any]:
     from utils.logger import MayosLogger
 
     MayosLogger(log_file=str(root / "logs" / "routing.log"))
     from agent import assistant_graph as graph
-    from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
+    from database.database_manager import (
+        DEFAULT_CATALOG_PATH,
+        DEFAULT_CURATION_CSV_PATH,
+        DatabaseManager,
+    )
     from langchain_core.messages import HumanMessage
     from tests.fakes.chat_model import ScriptedChatModel
 
     case_root = root / case["id"]
     case_root.mkdir(parents=True, exist_ok=True)
     catalog_path = case_root / "catalog.db"
-    shutil.copyfile(DEFAULT_CATALOG_PATH, catalog_path)
+    hermetic_catalog = root / "hermetic-catalog.db"
+    curation_path = DEFAULT_CURATION_CSV_PATH
+    if DEFAULT_CATALOG_PATH.is_file() and not hermetic:
+        shutil.copyfile(DEFAULT_CATALOG_PATH, catalog_path)
+    else:
+        # The CI hermetic gate runs before the database initialization step.
+        # Build one local catalog from checked-in smoke data for graph cases.
+        if not hermetic_catalog.is_file():
+            _seed_hermetic_catalog(hermetic_catalog, root)
+        shutil.copyfile(hermetic_catalog, catalog_path)
+        curation_path = Path(__file__).resolve().parents[2] / "fixtures" / "smoke_exercise_curation.csv"
     store = DatabaseManager(
         catalog_path=catalog_path,
         ledgers_dir=case_root / "users",
         backups_dir=case_root / "backups",
+        curation_path=curation_path,
     )
     executed_actions: list[dict[str, Any]] = []
     ledger_id = "routing_" + case["id"].replace("-", "_")
@@ -587,6 +628,54 @@ def _observe_case(
         }
     finally:
         store.catalog_conn.close()
+
+
+def _seed_hermetic_catalog(catalog_path: Path, root: Path) -> None:
+    from database.database_manager import DatabaseManager
+    from database.exercise_library import seeding
+
+    fixtures = Path(__file__).resolve().parents[2] / "fixtures"
+    smoke_exercises = fixtures / "smoke_exercises.csv"
+    smoke_curation = fixtures / "smoke_exercise_curation.csv"
+    smoke_foods = fixtures / "smoke_food_library.csv"
+    smoke_portions = fixtures / "smoke_food_portions.csv"
+    if not all(path.is_file() for path in (smoke_exercises, smoke_curation, smoke_foods, smoke_portions)):
+        raise FileNotFoundError("Hermetic routing catalog fixtures are missing.")
+
+    # Routing only needs relational exercise lookups. Avoid loading an embedding
+    # model while bootstrapping this throwaway catalog.
+    catalog = DatabaseManager(
+        catalog_path=catalog_path,
+        ledgers_dir=root / "users",
+        backups_dir=root / "backups",
+        curation_path=smoke_curation,
+    )
+    try:
+        with patch.object(seeding, "sync_exercise_embeddings", lambda _cursor, _rows: None):
+            food_curation = root / "empty-food-curation.csv"
+            food_curation.write_text(
+                "id,display_name,arabic_name,aliases_en,aliases_ar,hidden,staple_roles,"
+                "portion_label,portion_grams,reviewed\n",
+                encoding="utf-8",
+            )
+            recipes = root / "empty-food-recipes.csv"
+            recipes.write_text(
+                "id,display_name,arabic_name,ingredient_fdc_id,grams,cooked_yield_g,reviewed\n",
+                encoding="utf-8",
+            )
+            catalog.initialize_and_seed(
+                csv_path=smoke_exercises,
+                curation_path=smoke_curation,
+                food_path=smoke_foods,
+                portion_path=smoke_portions,
+                food_curation_path=food_curation,
+                recipe_path=recipes,
+            )
+            checkpoint = catalog.catalog_conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+            if checkpoint[0] != 0:
+                raise RuntimeError("Hermetic routing catalog could not be checkpointed before copying.")
+    finally:
+        catalog.catalog_conn.close()
 
 
 def _run_cases(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -698,7 +787,12 @@ class RoutingSuite:
                 ):
                     try:
                         observations.append(
-                            _observe_case(case, root, _hermetic_arabic_swap_classification(case))
+                            _observe_case(
+                                case,
+                                root,
+                                _hermetic_arabic_swap_classification(case),
+                                hermetic=True,
+                            )
                         )
                     except Exception as error:
                         observations.append(

@@ -20,7 +20,7 @@ def _csv(path, fields, rows):
 
 
 @pytest.fixture
-def food_api(api, tmp_path):
+def food_api(api, tmp_path):  # noqa: F811
     client, db = api
     names = {
         "staple": "Chicken thigh", "exact": "Chicken", "prefix": "Chicken breast",

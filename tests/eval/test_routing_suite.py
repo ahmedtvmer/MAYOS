@@ -19,6 +19,51 @@ from tests.eval.suites.routing import (
 )
 
 
+def test_hermetic_routing_bootstraps_catalog_before_ci_initialization(tmp_path, monkeypatch):
+    from database import database_manager
+
+    monkeypatch.setattr(database_manager, "DEFAULT_CATALOG_PATH", tmp_path / "empty-data" / "catalog.db")
+    monkeypatch.setattr(
+        database_manager,
+        "DEFAULT_CURATION_CSV_PATH",
+        tmp_path / "empty-data" / "exercise_curation.csv",
+    )
+
+    record = RoutingSuite().run_hermetic(None)
+
+    runner_errors = {
+        case["case_id"]: case["runner_error"]
+        for case in record["cases"]
+        if case.get("runner_error")
+    }
+    assert not runner_errors, runner_errors
+    assert record["score"] >= record["bar"]["value"], record["failure_reasons"]
+
+
+def test_hermetic_routing_never_loads_embedding_models(tmp_path, monkeypatch):
+    from core import embeddings
+
+    hf_home = tmp_path / "empty-hf-home"
+    hf_home.mkdir()
+    monkeypatch.setenv("HF_HOME", str(hf_home))
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+
+    def reject_model_lookup(*_args, **_kwargs):
+        raise AssertionError("hermetic routing attempted to load an embedding model")
+
+    monkeypatch.setattr(embeddings, "_local_model_paths", reject_model_lookup)
+
+    record = RoutingSuite().run_hermetic(None)
+
+    runner_errors = {
+        case["case_id"]: case["runner_error"]
+        for case in record["cases"]
+        if case.get("runner_error")
+    }
+    assert not runner_errors, runner_errors
+    assert record["score"] == 40, record["failure_reasons"]
+
+
 def test_routing_dataset_has_required_language_mix_and_composite_action():
     cases = _load_routing_cases()
     arabic = [case for case in cases if case["language"] == "arabic"]

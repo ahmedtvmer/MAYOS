@@ -1,7 +1,6 @@
 """In-process coverage for the standalone remote load-test runner."""
 
 import asyncio
-from pathlib import Path
 
 import httpx
 import pytest
@@ -48,7 +47,6 @@ def test_setup_retries_register_rate_limit_and_all_players_become_ready(fresh_st
     db = fresh_store
     app = create_app()
     app.dependency_overrides[get_db] = lambda: db
-    original = app.router
     retry_count = {"remaining": 2}
     from starlette.middleware.base import BaseHTTPMiddleware
 

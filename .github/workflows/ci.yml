@@ -52,6 +52,14 @@ jobs:
       - name: Verify Player Model Gate Hermetically
         run: python tests/eval/run_evaluation.py --hermetic --report /tmp/player-gate-ci.json
 
+      - name: Upload player gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: player-gate-report
+          path: /tmp/player-gate-ci.json
+          if-no-files-found: ignore
+
       - name: Lint with Ruff
         run: |
           ruff check --select E,F,W --ignore E402,E501,EXE002,W291,W292,W293 .

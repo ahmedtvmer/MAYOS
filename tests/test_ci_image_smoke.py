@@ -19,6 +19,7 @@ def smoke_store(tmp_path):
         catalog_path=tmp_path / "catalog.db",
         ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
+        curation_path=fixtures / "smoke_exercise_curation.csv",
     )
     database.initialize_and_seed(
         csv_path=fixtures / "smoke_exercises.csv",

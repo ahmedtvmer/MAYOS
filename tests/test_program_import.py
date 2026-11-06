@@ -3808,6 +3808,8 @@ def test_text_gate_requires_its_own_prompt_bound_report(api, monkeypatch, tmp_pa
 def test_text_report_validator_uses_lines_and_skips_tab_selection(monkeypatch, tmp_path):
     from service import program_import_ai
     report = _valid_text_evaluation_report()
+    # Evaluation evidence is bound to the configured model, which can vary in CI.
+    report["model"], report["backend"] = program_import_ai.coach_model_identity()
 
     assert program_import_ai.validate_report(report) == (True, [])
     report_path = tmp_path / "text-report.json"
