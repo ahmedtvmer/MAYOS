@@ -2188,6 +2188,32 @@ class ApiClient {
     await _send(() => _dio.delete<dynamic>('/nutrition/food-log/$entryId'));
   }
 
+  Future<FoodLogEntry> saveQuickAdd(Map<String, dynamic> body, {String? entryId}) async {
+    final response = await _send(() => entryId == null
+        ? _dio.post<dynamic>('/nutrition/food-log/quick-add', data: body)
+        : _dio.put<dynamic>('/nutrition/food-log/quick-add/$entryId', data: body));
+    return _parseBody(response.data, FoodLogEntry.fromJson,
+      'The service returned invalid Food log data.');
+  }
+
+  Future<FoodLibraryItem> createPersonalFood(Map<String, dynamic> body) async {
+    final response = await _send(() => _dio.post<dynamic>('/nutrition/personal-foods', data: body));
+    return _parseBody(response.data, FoodLibraryItem.fromJson,
+      'The service returned invalid Food library data.');
+  }
+
+  Future<List<String>> yesterdayFoodMeals(String day) async {
+    final response = await _send(() => _dio.get<dynamic>('/nutrition/food-log/yesterday-meals'));
+    return _parseBody(response.data, (Map<String, dynamic> data) =>
+      (data['today'] as String) == day ? (data['meal_labels'] as List<dynamic>).cast<String>() : <String>[],
+      'The service returned invalid Food log data.');
+  }
+
+  Future<void> copyFoodMeal(String mealLabel) async {
+    await _send(() => _dio.post<dynamic>('/nutrition/food-log/copy-meal',
+      data: <String, dynamic>{'meal_label': mealLabel}));
+  }
+
   Future<NutritionPlanState> nutrition() async {
     final response = await _send(() => _dio.get<dynamic>('/nutrition'));
     return _parseBody(response.data, NutritionPlanState.fromJson,

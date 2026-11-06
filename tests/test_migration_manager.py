@@ -117,6 +117,34 @@ def test_fresh_ledger_has_food_log_snapshot_columns(temp_db_env):
             "nutrients_json", "nutrients_per_100g_json", "name", "arabic_name"} <= columns
 
 
+def test_v55_lazy_migration_keeps_food_snapshots_and_is_idempotent(tmp_path):
+    conn = sqlite3.connect(":memory:")
+    MIGRATION_REGISTRY[53](conn)
+    conn.execute(
+        "INSERT INTO food_log_entries(id,entry_date,logged_time,meal_label,kind,name,nutrients_json,created_at) "
+        "VALUES('old','2026-11-05','12:00','lunch','quick_add','quick_add','{\"energy_kcal\":300}','now')"
+    )
+    set_ledger_schema_version(conn, 54)
+    conn.commit()
+    apply_lazy_migrations(conn, "personal-food", tmp_path / "users", tmp_path / "backups")
+    conn.execute("INSERT INTO personal_foods VALUES('personal:test','Bowl','{}','bowl',200,'now')")
+    conn.commit()
+    apply_lazy_migrations(conn, "personal-food", tmp_path / "users", tmp_path / "backups")
+    assert get_ledger_schema_version(conn) == CURRENT_LEDGER_SCHEMA_VERSION
+    assert conn.execute("SELECT id,name FROM personal_foods").fetchall() == [("personal:test", "Bowl")]
+    assert conn.execute("SELECT id,nutrients_json FROM food_log_entries").fetchall() == [
+        ("old", '{"energy_kcal":300}')]
+
+
+def test_fresh_ledger_has_private_personal_food_storage(temp_db_env):
+    db, _, _ = temp_db_env
+    assert {row[1] for row in db.conn.execute("PRAGMA table_info(personal_foods)")} == {
+        "id", "name", "nutrients_json", "portion_label", "portion_grams", "created_at"}
+    assert db.catalog_conn.execute(
+        "SELECT name FROM sqlite_master WHERE name='personal_foods'"
+    ).fetchone() is None
+
+
 def test_v47_scopes_existing_regeneration_decisions_to_design_v2():
     conn = sqlite3.connect(":memory:")
     conn.execute("CREATE TABLE program_design_offer (id INTEGER PRIMARY KEY, decision TEXT, reason TEXT)")

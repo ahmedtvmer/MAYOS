@@ -10,6 +10,8 @@ import '../../../providers.dart';
 import '../tour/tour_targets.dart';
 import 'food_amount_screen.dart';
 import 'food_search_screen.dart';
+import 'copy_food_meal_button.dart';
+import 'quick_add_screen.dart';
 
 class FoodLogDayView extends ConsumerStatefulWidget {
   const FoodLogDayView({
@@ -101,29 +103,44 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
     _load();
   }
 
-  Future<void> _search() async {
-    if (_loading || _deleting || _error != null || _day == null) return;
+  Future<bool> _readyToAdd() async {
+    if (_loading || _deleting || _error != null || _day == null) return false;
     while (_selected == null &&
         _lastLoadedDeviceDate != DateUtils.dateOnly(ref.read(clockProvider)())) {
       final bool loaded = await _load();
-      if (!mounted || !loaded) return;
+      if (!mounted || !loaded) return false;
     }
-    final FoodLogDay day = _day!;
+    return _day!.editable;
+  }
+
+  String get _defaultMeal {
     final int hour = ref.read(clockProvider)().hour;
-    final String meal = hour < 11
+    return hour < 11
         ? 'breakfast'
         : hour < 16
         ? 'lunch'
         : hour < 22
         ? 'dinner'
         : 'snack';
+  }
+
+  Future<void> _quickAdd() async {
+    if (!await _readyToAdd() || !mounted) return;
+    final bool? added = await Navigator.of(context).push<bool>(MaterialPageRoute<bool>(
+      builder: (_) => QuickAddScreen(day: _dateKey(_day!.date), mealLabel: _defaultMeal)));
+    if (added == true && mounted) await _load();
+  }
+
+  Future<void> _search() async {
+    if (!await _readyToAdd() || !mounted) return;
+    final FoodLogDay day = _day!;
     final bool? added = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         fullscreenDialog: true,
         builder: (_) => FoodSearchScreen(
           day: _dateKey(day.date),
           kcalLeft: day.remaining?.kcal,
-          mealLabel: meal,
+          mealLabel: _defaultMeal,
         ),
       ),
     );
@@ -133,7 +150,9 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
   Future<void> _edit(FoodLogEntry entry) async {
     final bool? edited = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
-        builder: (_) => FoodAmountScreen(
+        builder: (_) => entry.kind == 'quick_add'
+            ? QuickAddScreen(day: _dateKey(_day!.date), mealLabel: entry.mealLabel, entry: entry)
+            : FoodAmountScreen(
           food: entry.food,
           day: _dateKey(_day!.date),
           kcalLeft: _day!.remaining?.kcal,
@@ -150,7 +169,7 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
       context: context,
       builder: (BuildContext context) => AlertDialog(
         title: Text(copy.deleteTitle),
-        content: Text(entry.food.displayName(copy.isArabic)),
+        content: Text(entry.kind == 'quick_add' ? copy.quickAdd : entry.food.displayName(copy.isArabic)),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -189,6 +208,10 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
           else
             TourTarget(id: 'food_log', child: _navigation(day, copy)),
         Expanded(child: _body(copy)),
+        if (day != null && day.date == day.today)
+          CopyFoodMealButton(key: ValueKey<String>('copy_${_dateKey(day.date)}'),
+            day: _dateKey(day.date), revision: _request,
+            enabled: !_loading && !_deleting && _error == null, onCopied: _load),
         if (day != null && day.editable)
           SafeArea(
             top: false,
@@ -196,7 +219,8 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
               padding: const EdgeInsets.all(12),
               child: TourTarget(
                 id: 'food_log',
-                child: TextField(
+                child: Row(children: <Widget>[
+                  Expanded(child: TextField(
                   key: const Key('food_log_entry_point'),
                   readOnly: true,
                   enabled: !_loading && !_deleting && _error == null,
@@ -207,7 +231,11 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
                     filled: true,
                     border: const OutlineInputBorder(),
                   ),
-                ),
+                  )),
+                  const SizedBox(width: 8),
+                  OutlinedButton(onPressed: _loading || _deleting || _error != null ? null : _quickAdd,
+                    child: Text(copy.quickAdd)),
+                ]),
               ),
             ),
           ),
@@ -322,10 +350,10 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
           Card(
             child: ListTile(
               leading: Text(entry.loggedTime),
-              title: Text(entry.food.displayName(copy.isArabic)),
-              subtitle: Text(
-                '${copy.amountLabel(entry.quantity, entry.unit, entry.food.portionLabel)} · ${copy.mealLabel(entry.mealLabel)}',
-              ),
+              title: Text(entry.kind == 'quick_add' ? copy.quickAdd : entry.food.displayName(copy.isArabic)),
+              subtitle: Text(entry.kind == 'quick_add'
+                  ? '${copy.mealLabel(entry.mealLabel)}\n${_quickMacros(entry, copy)}'
+                  : '${copy.amountLabel(entry.quantity, entry.unit, entry.food.portionLabel)} · ${copy.mealLabel(entry.mealLabel)}'),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
@@ -360,6 +388,14 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
       ],
     );
   }
+
+  String _quickMacros(FoodLogEntry entry, FoodLogCopy copy) => <String>[
+    for (final (String key, String label, double value) in <(String, String, double)>[
+      ('protein_g', copy.protein, entry.nutrients.protein),
+      ('carbohydrate_g', copy.carbs, entry.nutrients.carbs),
+      ('fat_g', copy.fat, entry.nutrients.fat),
+    ]) '$label: ${entry.blankMacros.contains(key) ? '' : '${value.toStringAsFixed(1)} ${copy.grams}'}',
+  ].join(' · ');
 
   Widget _macro(String label, double value, Color color, FoodLogCopy copy) =>
       Expanded(

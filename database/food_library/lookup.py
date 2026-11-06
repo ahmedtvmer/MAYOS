@@ -4,12 +4,7 @@ import json
 import sqlite3
 from dataclasses import dataclass
 
-from core.arabic import normalize_arabic_text
-from database.shared import _normalize_exercise_name
-
-
-def _normalized(text):
-    return normalize_arabic_text(_normalize_exercise_name(text or ""))
+from core.food_search import food_match_rank, normalize_food_query as _normalized
 
 
 def _food(row):
@@ -45,15 +40,7 @@ def _index_food(row):
 
 
 def _match_rank(food, query):
-    if query in food.names:
-        return 0
-    if any(name.startswith(query) for name in food.names):
-        return 1
-    if any(query in alias for alias in food.aliases):
-        return 2
-    if any(query in name for name in food.names):
-        return 3
-    return None
+    return food_match_rank(food.names, food.aliases, query)
 
 
 def _recent_food_ids(index, usage, limit):

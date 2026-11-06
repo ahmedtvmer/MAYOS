@@ -4,6 +4,21 @@ class FoodLogCopy extends NutritionCopy {
   const FoodLogCopy(super.languageCode);
 
   String get foodLog => isArabic ? 'سجل الطعام' : 'Food log';
+  String get quickAdd => isArabic ? 'إضافة سريعة' : 'Quick add';
+  String get createPersonal => isArabic ? 'إنشاء طعام خاص' : 'Create a Personal food';
+  String get cantFind => isArabic ? 'لم تجد ما تبحث عنه؟' : "Can't find it?";
+  String get foodName => isArabic ? 'اسم الطعام' : 'Food name';
+  String get nutrientBasis => isArabic ? 'القيم الغذائية لكل' : 'Nutrients per';
+  String get hundredGrams => isArabic ? '١٠٠ جرام' : '100 g';
+  String get portion => isArabic ? 'حصة' : 'Portion';
+  String get portionName => isArabic ? 'اسم الحصة' : 'Portion name';
+  String get portionWeight => isArabic ? 'وزن الحصة بالجرام' : 'Portion grams';
+  String get optionalMacros => isArabic ? 'المغذيات الكبرى (اختياري)' : 'Macros (optional)';
+  String get invalidNutrients => isArabic
+      ? 'أدخل قيمًا صحيحة غير سالبة وأكمل الحقول المطلوبة.'
+      : 'Enter valid nonnegative values and complete the required fields.';
+  String get copyMeal => isArabic ? 'نسخ وجبة من أمس' : 'Copy a meal from yesterday';
+  String get copying => isArabic ? 'جارٍ النسخ…' : 'Copying…';
   String get searchFoods => isArabic ? 'ابحث عن طعام' : 'Search foods';
   String get addFood =>
       isArabic ? 'أضف طعامًا، مثل «فول»' : 'Add food, e.g. “فول”';
