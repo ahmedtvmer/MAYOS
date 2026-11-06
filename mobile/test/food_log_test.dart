@@ -45,6 +45,8 @@ void main() {
         expect(nutrients['protein_g'], isNull);
         expect(nutrients['carbohydrate_g'], isNull);
         expect(nutrients['fat_g'], 0);
+        await tester.ensureVisible(find.widgetWithText(ListTile, copy.quickAdd));
+        await tester.pumpAndSettle();
         await tester.tap(find.widgetWithText(ListTile, copy.quickAdd));
         await tester.pumpAndSettle();
         expect(tester.widget<TextField>(find.byKey(const Key('food_protein_g'))).controller!.text, isEmpty);
@@ -55,8 +57,10 @@ void main() {
         await tester.tap(find.text(copy.mealLabel('snack')).last);
         await tester.pumpAndSettle();
         await tester.ensureVisible(find.widgetWithText(FilledButton, copy.save));
+        await tester.pumpAndSettle();
         await tester.tap(find.widgetWithText(FilledButton, copy.save));
         await tester.pumpAndSettle();
+        _dumpTexts('personal');
         expect(find.text('1600'), findsOneWidget);
         expect(fake.foodLogEntries[fake.foodLogToday]!.single['meal_label'], 'snack');
         expect(tester.takeException(), isNull);
@@ -98,8 +102,10 @@ void main() {
           await tester.enterText(find.byKey(Key('food_$key')), value);
         }
         await tester.ensureVisible(find.widgetWithText(FilledButton, copy.save));
+        await tester.pumpAndSettle();
         await tester.tap(find.widgetWithText(FilledButton, copy.save));
         await tester.pumpAndSettle();
+        _dumpTexts('personal');
         expect(find.byType(FoodAmountScreen), findsOneWidget);
         expect(find.text('My bowl'), findsOneWidget);
         await tester.ensureVisible(find.widgetWithText(FilledButton, copy.add));
@@ -165,8 +171,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('food_energy_kcal')), '250');
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Add'));
+    await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Add'));
     await tester.pumpAndSettle();
+    _dumpTexts('quick');
     expect(find.byType(QuickAddScreen), findsOneWidget);
     expect(find.text('Could not save food.'), findsOneWidget);
     expect(tester.widget<TextField>(find.byKey(const Key('food_energy_kcal'))).controller!.text, '250');
@@ -698,6 +706,8 @@ void _resumeApp(WidgetTester tester) {
     tester.binding.handleAppLifecycleStateChanged(state);
   }
 }
+
+void _dumpTexts(String label) => debugPrint('DUMP $label: ${find.byType(Text).evaluate().map((Element e) => (e.widget as Text).data).join(' | ')}');
 
 // The search field also holds the typed text, so match the result row only.
 Finder _resultNamed(String name) => find.descendant(
