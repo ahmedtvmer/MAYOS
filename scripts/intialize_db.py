@@ -16,6 +16,7 @@ from database.database_manager import (  # noqa: E402
     DEFAULT_LEDGERS_DIR,
     DatabaseManager,
 )
+from database.exercise_library.curation import DEFAULT_CURATION_CSV_PATH  # noqa: E402
 from utils.logger import MayosLogger  # noqa: E402
 
 DEFAULT_PROCESSED_PATH = BASE_DIR / "data" / "processed_exercises.csv"
@@ -32,6 +33,12 @@ def resolve_csv_path() -> Path:
     """
     override = os.getenv("SEED_CSV_PATH", "").strip()
     return Path(override) if override else DEFAULT_PROCESSED_PATH
+
+
+def resolve_curation_path() -> Path:
+    """Keep real curation unless SEED_CURATION_PATH deliberately overrides it."""
+    override = os.getenv("SEED_CURATION_PATH", "").strip()
+    return Path(override) if override else DEFAULT_CURATION_CSV_PATH
 
 
 def require_csv_path() -> Path:
@@ -54,13 +61,15 @@ def seed_only(csv_path: Path) -> None:
     ``DEFAULT_*`` paths) and writes no test ledgers or throwaway rows.
     """
     logger.info("Seeding catalog on data root '%s' from '%s'...", DEFAULT_CATALOG_PATH.parent, csv_path)
+    curation_path = resolve_curation_path()
     db = DatabaseManager(
         catalog_path=DEFAULT_CATALOG_PATH,
         ledgers_dir=DEFAULT_LEDGERS_DIR,
         backups_dir=DEFAULT_BACKUPS_DIR,
+        curation_path=curation_path,
     )
     try:
-        db.initialize_and_seed(csv_path=csv_path)
+        db.initialize_and_seed(csv_path=csv_path, curation_path=curation_path)
         exercise_count = db.catalog_conn.execute("SELECT COUNT(*) FROM exercises").fetchone()[0]
         muscles_count = db.catalog_conn.execute("SELECT COUNT(*) FROM exercise_secondary_muscles").fetchone()[0]
         if exercise_count <= 0:
@@ -73,7 +82,12 @@ def seed_only(csv_path: Path) -> None:
 
 def run_tests(csv_path: Path) -> None:
     logger.info("Initializing DatabaseManager...")
-    db = DatabaseManager(catalog_path=DEFAULT_CATALOG_PATH, ledgers_dir=DEFAULT_LEDGERS_DIR)
+    curation_path = resolve_curation_path()
+    db = DatabaseManager(
+        catalog_path=DEFAULT_CATALOG_PATH,
+        ledgers_dir=DEFAULT_LEDGERS_DIR,
+        curation_path=curation_path,
+    )
 
     cat_cursor = db.catalog_conn.cursor()
 
@@ -83,7 +97,7 @@ def run_tests(csv_path: Path) -> None:
 
     # 2. Run schema initialization and dataset seeding
     logger.info("Running initialize_and_seed()...")
-    db.initialize_and_seed(csv_path=csv_path)
+    db.initialize_and_seed(csv_path=csv_path, curation_path=curation_path)
 
     # 3. Verify row counts in catalog tables
     cat_cursor.execute("SELECT COUNT(*) FROM exercises")
