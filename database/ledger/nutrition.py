@@ -112,6 +112,17 @@ class LedgerNutritionMixin:
             "SELECT * FROM nutrition_plan_versions ORDER BY id DESC LIMIT 1"
         ).fetchone()
 
+    def get_nutrition_plan_before(self, ends_at):
+        # Parse instants so offsets and microseconds at local midnight stay exact.
+        eligible = []
+        for plan in self.conn.execute("SELECT * FROM nutrition_plan_versions").fetchall():
+            created_at = datetime.fromisoformat(plan["created_at"])
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=UTC)
+            if created_at < ends_at:
+                eligible.append((created_at, int(plan["id"]), plan))
+        return max(eligible, key=lambda candidate: candidate[:2])[2] if eligible else None
+
     def get_nutrition_goal_offer_dismissal(self):
         return self.conn.execute(
             "SELECT offer_key FROM nutrition_goal_offer_dismissals WHERE id=1"

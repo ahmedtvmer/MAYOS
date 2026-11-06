@@ -2,6 +2,7 @@
 
 import json
 from datetime import UTC, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -9,7 +10,7 @@ from database.ledger.nutrition import NutritionPlanVersion
 from service.alert_sweep import run_sweep
 from tests.test_food_log_api import _add, food_api  # noqa: F401
 from tests.test_missed_day_alerts import _make_coach
-from tests.test_nutrition_api import api  # noqa: F401
+from tests.test_nutrition_api import _backdate_active_nutrition_plan, _seed_profile, api  # noqa: F401
 
 
 @pytest.fixture
@@ -17,6 +18,7 @@ def adherence_api(food_api, monkeypatch):
     client, db, headers, today = food_api
     clock = [datetime.combine(today, time(12), tzinfo=UTC)]
     from service import weight_history
+    from svc.routers import nutrition as nutrition_router
 
     class FrozenDatetime(datetime):
         @classmethod
@@ -24,13 +26,16 @@ def adherence_api(food_api, monkeypatch):
             return clock[0].astimezone(tz)
 
     monkeypatch.setattr(weight_history, "datetime", FrozenDatetime)
+    monkeypatch.setattr(nutrition_router, "datetime", FrozenDatetime)
     account = db.get_active_account_by_username("food-player")
-    with db.open_ledger(account["ledger_id"]) as ledger, ledger.ledger_transaction():
-        ledger.save_nutrition_plan(NutritionPlanVersion(
-            "maintain", {"code": "default"}, None, "mostly_sitting",
-            {"calories": 2000, "protein_g": 100, "carbs_g": 250, "fat_g": 67},
-            created_at=(today - timedelta(days=10)).isoformat() + "T00:00:00+00:00",
-        ))
+    with db.open_ledger(account["ledger_id"]) as ledger:
+        _backdate_active_nutrition_plan(ledger, today - timedelta(days=11))
+        with ledger.ledger_transaction():
+            ledger.save_nutrition_plan(NutritionPlanVersion(
+                "maintain", {"code": "default"}, None, "mostly_sitting",
+                {"calories": 2000, "protein_g": 100, "carbs_g": 250, "fat_g": 67},
+                created_at=(today - timedelta(days=10)).isoformat() + "T00:00:00+00:00",
+            ))
     return client, db, headers, clock, account["ledger_id"]
 
 
@@ -181,6 +186,7 @@ def test_missing_or_zero_targets_leave_no_computed_value(adherence_api, targets)
     with db.open_ledger(ledger_id) as ledger, ledger.ledger_transaction():
         ledger.save_nutrition_plan(NutritionPlanVersion(
             "maintain", {"code": "default"}, None, "mostly_sitting", targets,
+            created_at=yesterday.isoformat() + "T00:00:00+00:00",
         ))
     assert _add(client, headers, yesterday).status_code == 201
     assert run_sweep(db, now=clock[0])["errors"] == 0
@@ -190,20 +196,117 @@ def test_missing_or_zero_targets_leave_no_computed_value(adherence_api, targets)
 def test_recompute_uses_logged_days_targets_including_training_day_selection(adherence_api):
     client, db, headers, clock, ledger_id = adherence_api
     yesterday = clock[0].date() - timedelta(days=1)
-    with db.open_ledger(ledger_id) as ledger, ledger.ledger_transaction():
+    with db.open_ledger(ledger_id) as ledger:
         ledger.append_training_schedule(ledger_id, [yesterday.isoweekday()], "UTC",
                                         (yesterday - timedelta(days=1)).isoformat(), clock[0].isoformat())
-        ledger.save_nutrition_plan(NutritionPlanVersion(
-            "maintain", {"code": "default"}, None, "mostly_sitting", {
-                "training_day": {"calories": 2200, "protein_g": 150, "carbs_g": 250, "fat_g": 67},
-                "rest_day": {"calories": 1800, "protein_g": 80, "carbs_g": 250, "fat_g": 67},
-            },
-        ))
+        with ledger.ledger_transaction():
+            ledger.save_nutrition_plan(NutritionPlanVersion(
+                "maintain", {"code": "default"}, None, "mostly_sitting", {
+                    "training_day": {"calories": 2200, "protein_g": 150, "carbs_g": 250, "fat_g": 67},
+                    "rest_day": {"calories": 1800, "protein_g": 80, "carbs_g": 250, "fat_g": 67},
+                }, created_at=yesterday.isoformat() + "T00:00:00+00:00",
+            ))
     _food_density(db, 2200, 150)
     assert _add(client, headers, yesterday).status_code == 201
     assert _day(client, headers, yesterday)["value"] == "on_target"
     assert run_sweep(db, now=clock[0])["errors"] == 0
     assert _day(client, headers, yesterday)["value"] == "on_target"
+
+
+@pytest.mark.parametrize("timezone", ["UTC", "Pacific/Kiritimati", "Pacific/Honolulu"])
+@pytest.mark.parametrize(("microseconds_from_midnight", "expected_calories", "expected_verdict", "edited_verdict"), [
+    (-1, 2600, "off", "on_target"),
+    (0, 2000, "on_target", "roughly"),
+    (1, 2000, "on_target", "roughly"),
+])
+def test_scoring_uses_the_latest_plan_before_local_day_end(
+    adherence_api, timezone, microseconds_from_midnight, expected_calories, expected_verdict, edited_verdict,
+):
+    client, db, headers, clock, ledger_id = adherence_api
+    utc_day = clock[0].date()
+    clock[0] = datetime.combine(utc_day, time(9), tzinfo=UTC)
+    with db.open_ledger(ledger_id) as ledger:
+        ledger.append_training_schedule(ledger_id, [1], timezone,
+                                        (utc_day - timedelta(days=30)).isoformat(), clock[0].isoformat())
+    logged_day = datetime.fromisoformat(client.get("/nutrition/food-log", headers=headers).json()["today"]).date()
+    _food_density(db, 2000, 100)
+    added = _add(client, headers, logged_day)
+    assert added.status_code == 201, added.text
+    # UTC+14 and UTC-10 both close this local day at 10:00 UTC on utc_day.
+    boundary = (datetime.combine(utc_day + timedelta(days=1), time.min, tzinfo=UTC) if timezone == "UTC"
+                else datetime.combine(utc_day, time(10), tzinfo=UTC))
+    created_at = (boundary + timedelta(microseconds=microseconds_from_midnight)).astimezone(ZoneInfo("Asia/Kolkata"))
+    with db.open_ledger(ledger_id) as ledger, ledger.ledger_transaction():
+        ledger.save_nutrition_plan(NutritionPlanVersion(
+            "maintain", {"code": "default"}, None, "mostly_sitting",
+            {"calories": 2600, "protein_g": 100, "carbs_g": 400, "fat_g": 67}, created_at=created_at.isoformat(),
+        ))
+    clock[0] = boundary + timedelta(hours=2)
+    assert run_sweep(db, now=clock[0])["errors"] == 0
+    assert _day(client, headers, logged_day)["value"] == expected_verdict
+    past = client.get("/nutrition/food-log", headers=headers, params={"day": logged_day.isoformat()})
+    assert past.status_code == 200, past.text
+    assert past.json()["targets"]["calories"] == expected_calories
+    assert client.get("/nutrition", headers=headers).json()["targets"]["calories"] == 2600
+    edited = client.put(f"/nutrition/food-log/{added.json()['id']}", headers=headers, json={
+        "quantity": 120, "unit": "grams", "meal_label": "dinner",
+    })
+    assert edited.status_code == 200, edited.text
+    assert _day(client, headers, logged_day)["value"] == edited_verdict
+    assert client.get("/nutrition", headers=headers).json()["targets"]["calories"] == 2600
+
+
+def test_historical_scoring_keeps_the_timezone_effective_on_the_logged_day(adherence_api):
+    client, db, headers, clock, ledger_id = adherence_api
+    logged_day = clock[0].date()
+    clock[0] = datetime.combine(logged_day, time(9), tzinfo=UTC)
+    with db.open_ledger(ledger_id) as ledger:
+        ledger.append_training_schedule(ledger_id, [logged_day.isoweekday()], "Pacific/Kiritimati",
+                                        (logged_day - timedelta(days=30)).isoformat(), clock[0].isoformat())
+        with ledger.ledger_transaction():
+            ledger.save_nutrition_plan(NutritionPlanVersion(
+                "maintain", {"code": "default"}, None, "mostly_sitting",
+                {"calories": 2600, "protein_g": 100, "carbs_g": 400, "fat_g": 67},
+                created_at=datetime.combine(logged_day, time(11), tzinfo=UTC).isoformat(),
+            ))
+    _food_density(db, 2000, 100)
+    assert _add(client, headers, logged_day).status_code == 201
+    clock[0] = datetime.combine(logged_day + timedelta(days=1), time(12), tzinfo=UTC)
+    with db.open_ledger(ledger_id) as ledger:
+        ledger.append_training_schedule(ledger_id, [1], "UTC", clock[0].date().isoformat(), clock[0].isoformat())
+    assert run_sweep(db, now=clock[0])["errors"] == 0
+    assert _day(client, headers, logged_day)["value"] == "on_target"
+    past = client.get("/nutrition/food-log", headers=headers, params={"day": logged_day.isoformat()})
+    assert past.status_code == 200, past.text
+    assert past.json()["targets"]["calories"] == 2000
+    assert client.get("/nutrition", headers=headers).json()["targets"]["calories"] == 2600
+
+
+def test_targets_created_after_a_logged_day_do_not_retroactively_score_it(adherence_api):
+    client, db, _headers, clock, _ledger_id = adherence_api
+    registered = client.post("/auth/register", json={
+        "trainee_id": "late-targets-player", "password": "correct-horse-1",
+    })
+    assert registered.status_code == 201, registered.text
+    headers = {"Authorization": f"Bearer {registered.json()['access_token']}"}
+    _seed_profile(db, "late-targets-player", age=30, target=None)
+    logged_day = clock[0].date()
+    assert _add(client, headers, logged_day).status_code == 201
+    clock[0] += timedelta(days=1)
+    account = db.get_active_account_by_username("late-targets-player")
+    with db.open_ledger(account["ledger_id"]) as ledger, ledger.ledger_transaction():
+        ledger.save_nutrition_plan(NutritionPlanVersion(
+            "maintain", {"code": "default"}, None, "mostly_sitting",
+            {"calories": 2000, "protein_g": 100, "carbs_g": 250, "fat_g": 67}, created_at=clock[0].isoformat(),
+        ))
+    assert client.get("/nutrition", headers=headers).json()["targets"]["calories"] == 2000
+    assert run_sweep(db, now=clock[0])["errors"] == 0
+    assert _day(client, headers, logged_day)["value"] is None
+    past = client.get("/nutrition/food-log", headers=headers, params={"day": logged_day.isoformat()})
+    assert past.status_code == 200, past.text
+    assert past.json()["targets"] is None
+    assert run_sweep(db, now=clock[0])["errors"] == 0
+    assert _day(client, headers, logged_day)["value"] is None
 
 
 @pytest.mark.parametrize("timezone", ["Pacific/Kiritimati", "Pacific/Honolulu"])
@@ -227,13 +330,49 @@ def test_sweep_waits_for_player_local_midnight_and_catches_up_later(adherence_ap
     assert _day(client, headers, logged_day)["source"] == "computed"
 
 
-def test_sweep_does_not_compute_days_outside_the_write_window(adherence_api):
-    client, db, headers, clock, _ledger_id = adherence_api
-    logged_day = clock[0].date()
-    assert _add(client, headers, logged_day).status_code == 201
-    clock[0] += timedelta(days=2)
+def test_sweep_recovers_a_multi_day_outage_without_replacing_finished_days(adherence_api):
+    client, db, headers, clock, ledger_id = adherence_api
+    coach_headers = _coach_for_player(client, db, headers)
+    first_day = clock[0].date()
+    first_entry = _add(client, headers, first_day)
+    assert first_entry.status_code == 201
+    clock[0] += timedelta(days=1)
     assert run_sweep(db, now=clock[0])["errors"] == 0
-    assert _day(client, headers, logged_day)["value"] is None
+    assert _day(client, headers, first_day)["source"] == "computed"
+    for offset in range(1, 4):
+        clock[0] = datetime.combine(first_day + timedelta(days=offset), time(12), tzinfo=UTC)
+        assert _add(client, headers, clock[0].date()).status_code == 201
+        if offset == 2:
+            _answer(client, headers, clock[0].date(), "off")
+    with db.open_ledger(ledger_id) as ledger:
+        finished_before = {row["entry_date"]: tuple(row) for row in ledger.conn.execute(
+            "SELECT * FROM nutrition_adherence ORDER BY entry_date").fetchall()}
+    clock[0] += timedelta(days=1)
+    assert _add(client, headers, clock[0].date()).status_code == 201
+    assert _day(client, headers, first_day + timedelta(days=1))["value"] is None
+    assert _day(client, headers, first_day + timedelta(days=3))["value"] is None
+    assert run_sweep(db, now=clock[0])["errors"] == 0
+    for offset in range(4):
+        day = first_day + timedelta(days=offset)
+        assert _day(client, headers, day) == {
+            "date": day.isoformat(), "value": "off", "source": "answered" if offset == 2 else "computed",
+        }
+    assert _day(client, headers, clock[0].date())["value"] is None
+    assert [alert["kind"] for alert in _nutrition_alerts(client, coach_headers)] == ["nutrition_off_streak"]
+    with db.open_ledger(ledger_id) as ledger:
+        finished_after = {row["entry_date"]: tuple(row) for row in ledger.conn.execute(
+            "SELECT * FROM nutrition_adherence ORDER BY entry_date").fetchall()}
+    assert all(finished_after[day] == row for day, row in finished_before.items())
+    assert run_sweep(db, now=clock[0])["errors"] == 0
+    with db.open_ledger(ledger_id) as ledger:
+        assert {row["entry_date"]: tuple(row) for row in ledger.conn.execute(
+            "SELECT * FROM nutrition_adherence ORDER BY entry_date").fetchall()} == finished_after
+    assert client.put(f"/nutrition/food-log/{first_entry.json()['id']}", headers=headers, json={
+        "quantity": 120, "unit": "grams", "meal_label": "dinner",
+    }).status_code == 403
+    assert client.put("/nutrition/adherence", headers=headers, json={
+        "entry_date": first_day.isoformat(), "value": "on_target",
+    }).status_code == 409
 
 
 def _coach_for_player(client, db, headers):
@@ -269,7 +408,7 @@ def test_mixed_answered_and_computed_off_days_create_only_the_off_streak_alert(a
 
 
 @pytest.mark.parametrize("kind", ["library_food", "personal_food", "quick_add"])
-def test_any_food_entry_prevents_unlogged_alert_without_a_stored_verdict(adherence_api, kind):
+def test_any_food_entry_prevents_unlogged_alert_even_before_finalization(adherence_api, kind):
     client, db, headers, clock, ledger_id = adherence_api
     coach_headers = _coach_for_player(client, db, headers)
     today = clock[0].date()
@@ -283,8 +422,11 @@ def test_any_food_entry_prevents_unlogged_alert_without_a_stored_verdict(adheren
                 "energy_kcal": 2000, "protein_g": None, "carbohydrate_g": None, "fat_g": None,
             }), added.json()["id"]),
         )
-    assert run_sweep(db, now=clock[0])["errors"] == 0
     assert _day(client, headers, today - timedelta(days=2))["value"] is None
+    _answer(client, headers, today, "off")
+    assert _nutrition_alerts(client, coach_headers) == []
+    assert run_sweep(db, now=clock[0])["errors"] == 0
+    assert _day(client, headers, today - timedelta(days=2))["source"] == "computed"
     assert _nutrition_alerts(client, coach_headers) == []
 
 

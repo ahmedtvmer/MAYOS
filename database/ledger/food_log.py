@@ -48,6 +48,15 @@ class LedgerFoodLogMixin:
             (str(entry_date),),
         ).fetchall()]
 
+    def list_pending_food_log_dates(self, today):
+        return [str(row[0]) for row in self.conn.execute(
+            "SELECT DISTINCT food.entry_date FROM food_log_entries AS food "
+            "WHERE food.entry_date < ? AND NOT EXISTS ("
+            "SELECT 1 FROM nutrition_adherence AS adherence WHERE adherence.entry_date=food.entry_date) "
+            "ORDER BY food.entry_date",
+            (str(today),),
+        ).fetchall()]
+
     def list_food_log_dates(self, start_date, end_date):
         return {str(row[0]) for row in self.conn.execute(
             "SELECT DISTINCT entry_date FROM food_log_entries WHERE entry_date BETWEEN ? AND ?",

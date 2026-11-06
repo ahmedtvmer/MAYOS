@@ -8,7 +8,7 @@ evaluation. One player's failure is logged and never stops the sweep.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 from service import account_deletion as account_deletion_service
@@ -126,12 +126,12 @@ def run_sweep(db: Any, now: datetime | None = None) -> dict[str, int]:
 
 def _evaluate_nutrition_day(db: Any, account: dict[str, Any], now: datetime) -> None:
     from service import nutrition as nutrition_service
-    from service.food_log_adherence import recompute_day
+    from service.food_log_adherence import finalize_pending_days
     from service.weight_history import player_local_date
 
     with db.open_ledger(account["ledger_id"]) as ledger:
         local_today = player_local_date(ledger, account["ledger_id"], now)
-        recompute_day(ledger, local_today - timedelta(days=1), local_today)
+        finalize_pending_days(ledger, local_today)
         if ledger.get_active_nutrition_plan() is None:
             return
         nutrition_service.evaluate_pace_check(ledger, local_today)

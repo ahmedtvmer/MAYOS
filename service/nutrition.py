@@ -3,8 +3,9 @@
 import json
 import math
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from agent.program_blueprints import classify_goal
 from core.nutrition_targets import (ACTIVITY_FACTORS, NutritionCalculationInput, NutritionTargets,
@@ -747,6 +748,26 @@ def _read_without_plan(ledger: Any, answers: dict[str, bool] | None,
             "sex": training_profile.get("gender") if training_profile else None,
             "daily_activity": training_profile.get("daily_activity") if training_profile else None,
             "message": message}
+
+
+def targets_for_day(ledger: Any, entry_date: date) -> dict[str, Any] | None:
+    screening = ledger.get_nutrition_screening()
+    if screening and any(json.loads(screening[0]).values()):
+        return None
+    plan = ledger.get_nutrition_plan_before(_nutrition_day_end(ledger, entry_date))
+    if plan is None:
+        return None
+    state = _read_active_plan(plan, None, _is_training_day(ledger, entry_date))
+    _apply_cardio_day_adjustment(ledger, state, entry_date)
+    return state["targets"]
+
+
+def _nutrition_day_end(ledger: Any, entry_date: date) -> datetime:
+    schedule = ledger.get_schedule_effective_on(ledger.ledger_id, entry_date.isoformat())
+    timezone = schedule["timezone"] if schedule else "UTC"
+    # A version created exactly at the next midnight belongs to the next day.
+    return datetime.combine(entry_date + timedelta(days=1), time.min,
+                            tzinfo=ZoneInfo(timezone)).astimezone(UTC)
 
 
 def _read_active_plan(active_plan: Any, answers: dict[str, bool] | None,

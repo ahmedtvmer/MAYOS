@@ -32,7 +32,8 @@ def read_day(ledger, entry_date, today):
     entries = ledger.list_food_log_entries(entry_date)
     totals = {key: round(sum(entry["nutrients"].get(key) or 0 for entry in entries), 2) for key in NUTRIENT_KEYS}
     nutrition_state = nutrition.read(ledger, today=entry_date)
-    targets = nutrition_state.get("targets")
+    targets = (nutrition.targets_for_day(ledger, entry_date) if entry_date < today
+               else nutrition_state.get("targets"))
     remaining = {key: round(float(targets[TARGET_KEYS[key]]) - totals[key], 2)
                  for key in NUTRIENT_KEYS} if targets else None
     return {"date": entry_date.isoformat(), "today": today.isoformat(),
