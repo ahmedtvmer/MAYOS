@@ -134,6 +134,9 @@ _Avoid_: Invite code, redeem coach invite
 
 **Owner dashboard**:
 The owner-only, phone-first web surface served by the API at `/admin`, protected by a separate password and TOTP identity. It exposes account metadata and owner operations, never training content.
+
+**Monitoring page**:
+The Owner dashboard page that shows how the service is running: response times, error rates, database and inference timings, server resources, open Sentry issues and uptime. It never shows Player content.
 _Avoid_: Dashboard (without a qualifier; that usually means the player dashboard)
 
 **Audit log**:
