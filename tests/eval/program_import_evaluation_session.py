@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -40,7 +39,7 @@ def _clear_catalog_registry_rows(connection: Any) -> None:
 
 
 class ProgramImportEvaluationSession:
-    """Owns a temporary catalog copy, empty ledgers, and a real TestClient seam."""
+    """Owns a synthetic catalog, empty ledgers, and a real TestClient seam."""
 
     _ENV = {
         "SKIP_LLM_LOAD": "true",
@@ -81,22 +80,15 @@ class ProgramImportEvaluationSession:
         self._previous_cwd = os.getcwd()
         os.chdir(self._temporary.name)
         try:
-            from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
+            from tests.catalog import create_catalog_store
             from fastapi.testclient import TestClient
             from service import coach as coach_service
             from svc.app import create_app
             from svc.dependencies import get_db
             from svc.rate_limit import limiter
 
-            catalog_path = Path(self._temporary.name) / "catalog.db"
-            source_catalog = Path(DEFAULT_CATALOG_PATH)
-            if not source_catalog.is_file():
-                raise RuntimeError(f"seeded Exercise library is unavailable: {source_catalog}")
-            shutil.copyfile(source_catalog, catalog_path)
-            self.db = DatabaseManager(
-                catalog_path=catalog_path,
-                ledgers_dir=Path(self._temporary.name) / "users",
-                backups_dir=Path(self._temporary.name) / "backups",
+            self.db = create_catalog_store(
+                Path(self._temporary.name),
                 default_ledger_id="program-import-evaluation",
             )
             _clear_catalog_registry_rows(self.db.catalog_conn)
@@ -186,7 +178,9 @@ class ProgramImportEvaluationSession:
                 self.client.__exit__(exc_type, exc, traceback)
                 self.client = None
             if self.db is not None:
-                self.db.catalog_conn.close()
+                from tests.catalog import close_catalog_store
+
+                close_catalog_store(self.db)
                 self.db = None
         finally:
             from utils import model_downloader

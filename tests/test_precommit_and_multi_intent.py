@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import random
-import shutil
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
@@ -31,18 +30,9 @@ stream_assistant_turn = _real_handler("stream_assistant_turn")
 
 
 @pytest.fixture
-def db_fixture(tmp_path, monkeypatch):
+def db_fixture(fresh_store, monkeypatch):
     from agent import program_generator
-    from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
-
-    catalog_path = tmp_path / "catalog.db"
-    shutil.copyfile(DEFAULT_CATALOG_PATH, catalog_path)
-    db = DatabaseManager(
-        catalog_path=catalog_path,
-        ledgers_dir=tmp_path / "users",
-        backups_dir=tmp_path / "backups",
-        default_ledger_id="default",
-    )
+    db = fresh_store
     try:
         profile = {
             "gender": "male",

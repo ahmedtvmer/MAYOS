@@ -566,8 +566,6 @@ def _observe_case_with_catalog(
     MayosLogger(log_file=str(root / "logs" / "routing.log"))
     from agent import assistant_graph as graph
     from database.database_manager import (
-        DEFAULT_CATALOG_PATH,
-        DEFAULT_CURATION_CSV_PATH,
         DatabaseManager,
     )
     from langchain_core.messages import HumanMessage
@@ -577,16 +575,11 @@ def _observe_case_with_catalog(
     case_root.mkdir(parents=True, exist_ok=True)
     catalog_path = case_root / "catalog.db"
     hermetic_catalog = root / "hermetic-catalog.db"
-    curation_path = DEFAULT_CURATION_CSV_PATH
-    if DEFAULT_CATALOG_PATH.is_file() and not hermetic:
-        shutil.copyfile(DEFAULT_CATALOG_PATH, catalog_path)
-    else:
-        # The CI hermetic gate runs before the database initialization step.
-        # Build one local catalog from checked-in smoke data for graph cases.
-        if not hermetic_catalog.is_file():
-            _seed_hermetic_catalog(hermetic_catalog, root)
-        shutil.copyfile(hermetic_catalog, catalog_path)
-        curation_path = Path(__file__).resolve().parents[2] / "fixtures" / "smoke_exercise_curation.csv"
+    # Both live-model and scripted routing use the same synthetic catalog.
+    if not hermetic_catalog.is_file():
+        _seed_hermetic_catalog(hermetic_catalog, root)
+    shutil.copyfile(hermetic_catalog, catalog_path)
+    curation_path = Path(__file__).resolve().parents[2] / "fixtures" / "smoke_exercise_curation.csv"
     store = DatabaseManager(
         catalog_path=catalog_path,
         ledgers_dir=case_root / "users",
@@ -627,7 +620,9 @@ def _observe_case_with_catalog(
             "scripted_classifier_used": scripted_classification is not None,
         }
     finally:
-        store.catalog_conn.close()
+        from tests.catalog import close_catalog_store
+
+        close_catalog_store(store)
 
 
 def _seed_hermetic_catalog(catalog_path: Path, root: Path) -> None:
@@ -675,7 +670,9 @@ def _seed_hermetic_catalog(catalog_path: Path, root: Path) -> None:
             if checkpoint[0] != 0:
                 raise RuntimeError("Hermetic routing catalog could not be checkpointed before copying.")
     finally:
-        catalog.catalog_conn.close()
+        from tests.catalog import close_catalog_store
+
+        close_catalog_store(catalog)
 
 
 def _run_cases(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:

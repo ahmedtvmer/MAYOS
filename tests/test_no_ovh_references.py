@@ -1,4 +1,5 @@
 import re
+import os
 import subprocess
 from pathlib import Path
 
@@ -22,14 +23,17 @@ def _tracked_text_files(repo_root):
         if path.as_posix().startswith("docs/design-review/") and path.suffix == ".patch":
             continue
         try:
-            content = (repo_root / path).read_text(encoding="utf-8")
+            full_path = repo_root / path
+            # Git tracks a symlink's target text, not the target's contents.
+            # Owner-local tool links can legitimately dangle on a CI runner.
+            content = os.readlink(full_path) if full_path.is_symlink() else full_path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
         yield relative_path, content
 
 
-def test_tracked_text_has_no_legacy_provider_reference():
-    repo_root = Path(__file__).resolve().parents[1]
+def test_tracked_text_has_no_legacy_provider_reference(git_checkout):
+    repo_root = git_checkout
     matches = []
     for relative_path, content in _tracked_text_files(repo_root):
         for line_number, line in enumerate(content.splitlines(), start=1):

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -76,18 +75,12 @@ def empty_suite_summary(
 
 @contextmanager
 def isolated_catalog_store():
-    from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
+    from tests.catalog import close_catalog_store, create_catalog_store
 
     with tempfile.TemporaryDirectory(prefix="mayos-player-eval-") as temp_root:
         root = Path(temp_root)
-        catalog_path = root / "catalog.db"
-        shutil.copyfile(DEFAULT_CATALOG_PATH, catalog_path)
-        store = DatabaseManager(
-            catalog_path=catalog_path,
-            ledgers_dir=root / "users",
-            backups_dir=root / "backups",
-        )
+        store = create_catalog_store(root)
         try:
             yield store
         finally:
-            store.catalog_conn.close()
+            close_catalog_store(store)

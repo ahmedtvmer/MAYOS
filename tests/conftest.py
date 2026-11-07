@@ -7,6 +7,9 @@ values that are already present in the process environment.
 import csv
 import os
 import re
+from contextlib import ExitStack
+from functools import wraps
+from pathlib import Path
 
 import pytest
 
@@ -107,14 +110,29 @@ def _test_ledger_facade(monkeypatch):
     and keeps ``switch_user`` as "reopen ``db.ledger`` for this id". The ledger
     operations themselves are still called explicitly on the handle object.
     """
+    from database import account_deletion, database_manager
     from database.database_manager import DatabaseManager
 
     handles: list = []
+    connections: list = []
     original_init = DatabaseManager.__init__
+    original_open_ledger = DatabaseManager.open_ledger
+    original_connect = database_manager.connect_api_sqlite
+
+    def tracked_connect(database, **kwargs):
+        connection = original_connect(database, **kwargs)
+        # Track at open time, including ledger initialization that raises
+        # before a TrainingLedger is returned to its caller.
+        connections.append(connection)
+        return connection
+
+    def tracked_open_ledger(self, *args, **kwargs):
+        handle = original_open_ledger(self, *args, **kwargs)
+        handles.append(handle)
+        return handle
 
     def _bind(self):
         self.ledger = self.open_ledger(self.default_ledger_id)
-        handles.append(self.ledger)
         self.conn = self.ledger.conn
         self.ledger_conn = self.ledger.conn
         self._test_ledger_id = self.ledger.ledger_id
@@ -123,7 +141,6 @@ def _test_ledger_facade(monkeypatch):
         if self.ledger is not None:
             self.ledger.close()
         self.ledger = self.open_ledger(self._sanitize_username(username))
-        handles.append(self.ledger)
         self.conn = self.ledger.conn
         self.ledger_conn = self.ledger.conn
         self._test_ledger_id = self.ledger.ledger_id
@@ -132,8 +149,8 @@ def _test_ledger_facade(monkeypatch):
     def _create_ledger_schema(self):
         return None
 
-    # ``__init__`` only (private, invisible to the public-surface snapshot), so no
-    # public class attributes are added for tests to trip over.
+    # Convenience methods stay on instances. The open_ledger wrapper retains
+    # the production signature for the public-surface snapshot.
     def wrapped_init(self, *args, **kwargs):
         original_init(self, *args, **kwargs)
         _bind(self)
@@ -141,37 +158,147 @@ def _test_ledger_facade(monkeypatch):
         self.create_ledger_schema = _create_ledger_schema.__get__(self)
 
     monkeypatch.setattr(DatabaseManager, "__init__", wrapped_init)
-    yield
-    for handle in handles:
-        try:
-            handle.close()
-        except Exception:
-            pass
+    monkeypatch.setattr(DatabaseManager, "open_ledger", wraps(original_open_ledger)(tracked_open_ledger))
+    monkeypatch.setattr(database_manager, "connect_api_sqlite", tracked_connect)
+    monkeypatch.setattr(account_deletion, "connect_api_sqlite", tracked_connect)
+    try:
+        yield
+    finally:
+        # ExitStack attempts every close even if one resource raises; teardown
+        # failures remain visible instead of being swallowed.
+        with ExitStack() as cleanup:
+            for connection in connections:
+                cleanup.callback(connection.close)
+            for handle in handles:
+                cleanup.callback(handle.close)
+
+
+@pytest.fixture(scope="session")
+def synthetic_exercise_seed(tmp_path_factory):
+    from tests.catalog import write_exercise_seed
+
+    return write_exercise_seed(tmp_path_factory.mktemp("exercise-seed"))
+
+
+@pytest.fixture(scope="session")
+def synthetic_exercise_curation(tmp_path_factory):
+    from tests.catalog import write_exercise_curation
+
+    return write_exercise_curation(tmp_path_factory.mktemp("exercise-curation"))
+
+
+@pytest.fixture(autouse=True)
+def _test_seed_defaults(monkeypatch, synthetic_exercise_seed):
+    """Default seeding never reads developer data; explicit test paths win."""
+    from database.exercise_library.seeding import ExerciseSeedingMixin
+    from tests.catalog import FIXTURES
+
+    original = ExerciseSeedingMixin.initialize_and_seed
+
+    @wraps(original)
+    def initialize(self, *args, **kwargs):
+        if not args and "csv_path" not in kwargs:
+            kwargs["csv_path"] = synthetic_exercise_seed
+        if len(args) < 2 and "curation_path" not in kwargs:
+            kwargs["curation_path"] = self.curation_path
+        if kwargs.get("food_path") is None:
+            kwargs["food_path"] = FIXTURES / "smoke_food_library.csv"
+        if kwargs.get("portion_path") is None:
+            kwargs["portion_path"] = FIXTURES / "smoke_food_portions.csv"
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(ExerciseSeedingMixin, "initialize_and_seed", initialize)
+
+
+@pytest.fixture(scope="session")
+def seeded_catalog(tmp_path_factory):
+    """Build once from tracked seeds; copies contain no accounts or ledgers."""
+    from tests.catalog import close_catalog_store, create_catalog_store
+
+    store = create_catalog_store(tmp_path_factory.mktemp("catalog-seed"))
+    try:
+        # Copying an SQLite WAL database before checkpointing loses seed rows.
+        checkpoint = store.catalog_conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+        assert checkpoint[0] == 0, "Synthetic catalog checkpoint was blocked"
+        path = store.catalog_path
+    finally:
+        close_catalog_store(store)
+    return path
 
 
 @pytest.fixture
-def fresh_store(tmp_path):
+def fresh_store(tmp_path, seeded_catalog, synthetic_exercise_curation):
     """A fresh, isolated store bound to temporary registry + ledger paths (ADR 041).
 
-    Copies the shipped exercise library so agent/program tests have a real
-    exercise library. The autouse ``_test_ledger_facade`` fixture exposes an
+    Copies a catalog built from tracked synthetic seeds. The autouse
+    ``_test_ledger_facade`` fixture exposes an
     explicit ``db.ledger`` handle on it.
     """
     import shutil
 
-    from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
+    from database.database_manager import DatabaseManager
 
     catalog_path = tmp_path / "catalog.db"
-    shutil.copyfile(DEFAULT_CATALOG_PATH, catalog_path)
+    shutil.copyfile(seeded_catalog, catalog_path)
     db = DatabaseManager(
         catalog_path=catalog_path,
         ledgers_dir=tmp_path / "users",
         backups_dir=tmp_path / "backups",
+        curation_path=synthetic_exercise_curation,
     )
     try:
         yield db
     finally:
         db.catalog_conn.close()
+
+
+@pytest.fixture
+def editable_catalog_rows(fresh_store):
+    """Visible exercises allowed by the default Commercial gym profile."""
+    from database.exercise_library.schema import exercise_library_visible_sql
+    from utils.equipment_access import COMMERCIAL_GYM, equipment_access_sql
+
+    with fresh_store.catalog_locked() as conn:
+        return conn.execute(
+            "SELECT e.id, e.name FROM exercises e WHERE "
+            + exercise_library_visible_sql("e.id")
+            + " AND " + equipment_access_sql(COMMERCIAL_GYM, "e.equipment")
+            + " ORDER BY e.id LIMIT 3"
+        ).fetchall()
+
+
+@pytest.fixture
+def real_library_store(tmp_path):
+    """Optional full-library contracts whose names/relationships are not tracked."""
+    from database.database_manager import DatabaseManager
+    from tests.catalog import ROOT, close_catalog_store, seed_catalog
+
+    real_exercises = ROOT / "data" / "processed_exercises.csv"
+    if not real_exercises.is_file():
+        pytest.skip("Full-library contract requires optional licensed data/processed_exercises.csv; tracked sources do not supply its complete names/relationships")
+    store = DatabaseManager(
+        catalog_path=tmp_path / "real-library.db",
+        ledgers_dir=tmp_path / "users",
+        backups_dir=tmp_path / "backups",
+    )
+    try:
+        seed_catalog(store, csv_path=real_exercises)
+        yield store
+    finally:
+        close_catalog_store(store)
+
+
+@pytest.fixture
+def git_checkout():
+    """Git-index assertions cannot run in a production image/source archive."""
+    import shutil
+
+    root = Path(__file__).resolve().parents[1]
+    if shutil.which("git") is None:
+        pytest.skip("Git-index check requires git; the production API image does not include it")
+    if not (root / ".git").exists():
+        pytest.skip("Git-index check requires .git metadata; source archives/images omit it")
+    return root
 
 
 @pytest.fixture
@@ -187,6 +314,16 @@ def seed_exercise_curation(tmp_path, monkeypatch):
     monkeypatch.setattr(embeddings, "_load_embedding_model", lambda: LocalEmbeddingStub())
 
     def apply(store, records):
+        from tests.catalog import invented_exercise_curation
+
+        # These define the synthetic support catalog, not the real rows a test
+        # is curating. Keep them eligible while replacing real-row curation.
+        support = {
+            row["id"]: {key: value for key, value in row.items() if key != "id"}
+            for row in invented_exercise_curation()
+            if store.get_exercise_library_entry(row["id"]) is not None
+        }
+        records = {**support, **records}
         seed_path = tmp_path / "curation-seed.csv"
         with seed_path.open("w", newline="", encoding="utf-8") as seed_file:
             writer = csv.writer(seed_file)

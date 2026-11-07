@@ -1,9 +1,8 @@
 import subprocess
-from pathlib import Path
 
 
-def test_deploy_shell_scripts_are_executable_and_have_lf_attributes():
-    repo_root = Path(__file__).resolve().parents[1]
+def test_deploy_shell_scripts_are_executable_and_have_lf_attributes(git_checkout):
+    repo_root = git_checkout
     result = subprocess.run(
         ["git", "ls-files", "-s", "--", "deploy/*.sh"],
         cwd=repo_root,

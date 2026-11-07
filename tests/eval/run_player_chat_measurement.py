@@ -57,7 +57,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import statistics
 import subprocess
 import sys
@@ -1073,21 +1072,11 @@ def render_json(report: dict[str, Any]) -> str:
 
 
 def _build_store() -> Any:
-    """A throwaway store that seeds from the configured catalog when one exists."""
-    from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
+    """A throwaway store seeded entirely from tracked synthetic data."""
+    from tests.catalog import create_catalog_store
 
     tmp = Path(tempfile.mkdtemp(prefix="player-chat-measurement-"))
-    catalog_path = tmp / "catalog.db"
-    try:
-        if DEFAULT_CATALOG_PATH.is_file():
-            shutil.copyfile(DEFAULT_CATALOG_PATH, catalog_path)
-    except OSError:
-        pass
-    return DatabaseManager(
-        catalog_path=catalog_path,
-        ledgers_dir=tmp / "users",
-        backups_dir=tmp / "backups",
-    )
+    return create_catalog_store(tmp)
 
 
 def run_live_measurement(
@@ -1114,7 +1103,9 @@ def run_live_measurement(
                 retry_backoff_seconds=LIVE_RETRY_BACKOFF_SECONDS,
             )
     finally:
-        store.catalog_conn.close()
+        from tests.catalog import close_catalog_store
+
+        close_catalog_store(store)
     return build_report(
         session,
         provider=_provider_name(api_base),

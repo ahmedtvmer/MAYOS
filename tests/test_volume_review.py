@@ -193,7 +193,9 @@ def test_volume_limits_have_distinct_no_change_verdicts(fresh_store, trend, sets
 def test_focus_volume_limits_come_from_reviewed_program_version(
     fresh_store, trend, sets, focus, expected_verdict, expected_delta, minimum_sets
 ):
-    ledger, program, profile, today, muscle = _seed_review(fresh_store, trend)
+    # Use a supported Weak point key, not the catalog's first muscle label
+    # (for example, "Lats" is a review muscle but the Weak point key is "back").
+    ledger, program, profile, today, muscle = _seed_review(fresh_store, trend, target_muscle="Quads")
     program.days[0].exercises[0].set_groups[0].sets = sets
     profile["training_age_years"] = 3
     # The reviewed version, rather than a profile setting, carries Focus muscles.

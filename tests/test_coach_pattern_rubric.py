@@ -100,7 +100,6 @@ def _generate_matrix_program(db, *, experience, days, equipment):
 @pytest.fixture
 def seed_bodyweight_curation(tmp_path, monkeypatch):
     from database.exercise_library import embeddings
-    from database.exercise_library.curation import DEFAULT_CURATION_CSV_PATH
     from database.schema.definitions import EMBEDDING_DIM
 
     class LocalEmbeddingStub:
@@ -115,7 +114,7 @@ def seed_bodyweight_curation(tmp_path, monkeypatch):
             "id,name,bodyPart,target,equipment,image_path,gif_path,instructions\n",
             encoding="utf-8",
         )
-        db.initialize_and_seed(seed_path, DEFAULT_CURATION_CSV_PATH)
+        db.initialize_and_seed(seed_path, db.curation_path)
 
     return apply
 
@@ -140,7 +139,8 @@ def _program_snapshot(program):
     }
 
 
-def test_commercial_and_home_program_outputs_match_baseline_snapshot(fresh_store):
+def test_commercial_and_home_program_outputs_match_baseline_snapshot(real_library_store):
+    fresh_store = real_library_store
     snapshot_path = Path(__file__).parent / "fixtures" / "coach_pattern_program_baseline.json"
     expected = json.loads(snapshot_path.read_text())
     actual = {}
@@ -159,7 +159,10 @@ def test_commercial_and_home_program_outputs_match_baseline_snapshot(fresh_store
 
 
 @pytest.mark.parametrize("days", [3, 4, 5])
-def test_bodyweight_only_does_not_relabel_ham_curl_as_ham_hinge(fresh_store, days):
+def test_bodyweight_only_does_not_relabel_ham_curl_as_ham_hinge(real_library_store, days):
+    # The assertion names library id 1766, whose name/relationship is not
+    # supplied by the permitted fixture sources.
+    fresh_store = real_library_store
     program = _generate_matrix_program(
         fresh_store,
         experience="beginner",
@@ -666,9 +669,13 @@ def test_bodyweight_quad_isolation_uses_curated_sissy_squat(
 @pytest.mark.parametrize("days", [3, 4, 5])
 @pytest.mark.parametrize("equipment", ["Commercial gym", "Home gym", "Bodyweight only"])
 def test_generated_programs_pass_the_coach_pattern_rubric(
-    fresh_store, seed_bodyweight_curation, experience, days, equipment
+    fresh_store, seed_bodyweight_curation, experience, days, equipment, request
 ):
     db = fresh_store
+    if equipment != "Commercial gym":
+        # This rubric requires exact library staples for home/bodyweight access,
+        # including ids without a tracked id/name relationship.
+        db = request.getfixturevalue("real_library_store")
     if equipment == "Bodyweight only":
         seed_bodyweight_curation(db)
     program = _generate_matrix_program(
