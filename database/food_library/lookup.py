@@ -1,10 +1,13 @@
 """Visible Food library lookup; usage is supplied by the service, never read here."""
 
 import json
+import logging
 import sqlite3
 from dataclasses import dataclass
 
 from core.food_search import food_match_rank, normalize_food_query as _normalized
+
+logger = logging.getLogger(__name__)
 
 
 def _food(row):
@@ -67,7 +70,18 @@ def _named_rows(connection, sql, parameters=()):
 
 
 def _revision(connection):
+    # Unseeded catalogs have neither foods nor its revision table. Check the
+    # source table even when a revision table remains from an earlier catalog.
+    if not connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='foods'"
+    ).fetchone():
+        return None
     return connection.execute("SELECT counter FROM food_search_revision WHERE id=1").fetchone()[0]
+
+
+def warm_food_search(db):
+    """Shares the request builder so startup and revision refresh cannot build twice."""
+    db._get_food_search_index()
 
 
 class FoodLookupMixin:
@@ -78,6 +92,12 @@ class FoodLookupMixin:
             while True:
                 with self._catalog_lock:
                     revision = _revision(self.catalog_conn)
+                    if revision is None:
+                        if not self._food_search_unseeded_warned:
+                            logger.warning("Food library is not seeded; food search returns no library foods.")
+                            self._food_search_unseeded_warned = True
+                        self._food_search_cache = (None, {})
+                        return self._food_search_cache
                     cached = self._food_search_cache
                     if cached is not None and cached[0] == revision:
                         return cached

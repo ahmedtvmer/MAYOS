@@ -277,6 +277,7 @@ async def lifespan(app: FastAPI):
     _ready.update(model=False, catalog=False, storage=False, draining=False)
     sweep_task: asyncio.Task[None] | None = None
     backup_task: asyncio.Task[None] | None = None
+    food_search_task: asyncio.Task[None] | None = None
     metrics_task: asyncio.Task[None] | None = None
     metrics_flush_task: asyncio.Task[None] | None = None
     unit_test_mode = os.getenv("SKIP_LLM_LOAD") == "true"
@@ -359,6 +360,15 @@ async def lifespan(app: FastAPI):
             logger.exception("LLM warmup failed during lifespan startup")
 
     loops_enabled = _ready["catalog"] and _ready["storage"] and not unit_test_mode
+    if loops_enabled:
+        from database.food_library.lookup import warm_food_search
+
+        # The first iteration warms immediately off the event loop; later ones
+        # pick up reseeds by other processes without waiting for a search.
+        food_search_task = asyncio.create_task(
+            _periodic_loop(app.state.db, 60.0, warm_food_search, "Food search")
+        )
+
     # The alert sweep runs in-process; its evaluations are idempotent and due-ness
     # is per player-local day, so an hourly cadence is sufficient (ADR 030/031).
     sweep_interval = configured_interval_seconds(ALERT_SWEEP_JOB)
@@ -397,6 +407,7 @@ async def lifespan(app: FastAPI):
     _ready["draining"] = True
     await _cancel_loop(sweep_task, ALERT_SWEEP_JOB)
     await _cancel_loop(backup_task, DAILY_BACKUP_JOB)
+    await _cancel_loop(food_search_task, "Food search")
     await _cancel_loop(metrics_task, "request metrics summary")
     await _cancel_loop(metrics_flush_task, "monitoring flush")
     if app.state.monitoring.store is not None:
