@@ -244,7 +244,7 @@ class FakeMayosApi {
   String? activeAssignmentId;
   String? activeCoachDisplayName;
   String? activeCoachSpecialization;
-  String? rosterAiDisclosureVersion = '2';
+  String? rosterAiDisclosureVersion = '3';
   int rosterAiDisclosureRequests = 0;
   int rosterAiDisclosureFailuresRemaining = 0;
   bool myAssignmentFails = false;
@@ -1755,7 +1755,7 @@ class FakeMayosApi {
       return const FakeResponse(
           503, <String, dynamic>{'detail': 'The service is unavailable.'});
     }
-    rosterAiDisclosureVersion = '2';
+    rosterAiDisclosureVersion = '3';
     return FakeResponse(200, <String, dynamic>{
       'roster_ai_disclosure_version': rosterAiDisclosureVersion,
       'roster_ai_disclosed_at': '2026-10-11T10:00:00Z',

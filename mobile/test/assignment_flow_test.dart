@@ -96,7 +96,7 @@ void main() {
     expect(arabic.rosterAiDisclosure, contains('التزامك الغذائي'));
     expect(arabic.rosterAiDisclosure, contains('دقائق تمارين القلب وسعراتها'));
     expect(arabic.rosterAiDisclosure, contains('إجابات الفحص الصحي'));
-    expect(rosterAiDisclosureVersion, '2');
+    expect(rosterAiDisclosureVersion, '3');
   });
 
   testWidgets('player notice reader re-renders cached metadata and keeps legacy text',
@@ -421,7 +421,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(fake.rosterAiDisclosureRequests, 1);
-    expect(fake.rosterAiDisclosureVersion, '2');
+    expect(fake.rosterAiDisclosureVersion, rosterAiDisclosureVersion);
     for (int attempt = 0;
         attempt < 40 && find.text(disclosure).evaluate().isNotEmpty;
         attempt++) {
@@ -451,7 +451,7 @@ void main() {
     }
 
     expect(fake.rosterAiDisclosureRequests, 1);
-    expect(fake.rosterAiDisclosureVersion, '2');
+    expect(fake.rosterAiDisclosureVersion, rosterAiDisclosureVersion);
   });
 
   testWidgets('legacy assignment notice shows ack failure and retries',
@@ -480,7 +480,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
     expect(fake.rosterAiDisclosureRequests, 2);
-    expect(fake.rosterAiDisclosureVersion, '2');
+    expect(fake.rosterAiDisclosureVersion, rosterAiDisclosureVersion);
     for (int attempt = 0;
         attempt < 40 && find.text(disclosure).evaluate().isNotEmpty;
         attempt++) {

@@ -140,7 +140,7 @@ def _account_id(db, username):
 
 def test_prompt_version_hash_is_bound_to_name_aware_context():
     assert coach_ai.prompt_version_hash() == (
-        "7876d2d4f56b69f8552b171469820f3cc8f46fb3549026fc5c163d6be23103a4"
+        "348cadd152c5a3773ac37aafc0eec002f2c84e04efbdd81bad2c81968060ef6c"
     )
 
 
@@ -1180,7 +1180,7 @@ def test_history_exercise_enrichment_does_not_enter_coach_ai_context(
         "images/private-coach-ai.jpg",
     ):
         assert label not in rendered
-    assert coach_ai.CONTEXT_VERSION == "coach-context-v13"
+    assert coach_ai.CONTEXT_VERSION == "coach-context-v14"
 
 
 def test_gathered_context_includes_active_injuries_clearances_and_program_markers(api):
@@ -1603,7 +1603,7 @@ def test_system_prompt_forbids_computation_and_medical_advice():
     assert "never instructions" in coach_ai.SYSTEM_PROMPT
     assert "about 150 words" in coach_ai.SYSTEM_PROMPT
     assert "neutral, no pleasantries" not in coach_ai.SYSTEM_PROMPT
-    assert coach_ai.CONTEXT_VERSION == "coach-context-v13"
+    assert coach_ai.CONTEXT_VERSION == "coach-context-v14"
 
 
 def test_coach_api_uses_message_language_and_display_fallback(api, monkeypatch, tmp_path):

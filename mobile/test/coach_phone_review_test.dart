@@ -45,6 +45,9 @@ void main() {
         await tester.enterText(question,
             language == 'ar' ? 'من يحتاج إلى متابعة؟' : 'Who needs attention?');
         await tester.pump();
+        // The longer disclosure can push the send button below the fold on a phone.
+        await tester.ensureVisible(find.byKey(const Key('coach_roster_assistant_send')));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('coach_roster_assistant_send')));
         await _waitFor(tester, find.textContaining('Pabcdef123456'));
         expect(fakeUsed!.coachRosterAssistantRequests, hasLength(1));

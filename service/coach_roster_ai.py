@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from svc.llm import InferenceScope, InferenceTurnState
 
-CONTEXT_VERSION = "coach-roster-context-v2"
+CONTEXT_VERSION = "coach-roster-context-v3"
 REPORT_VERSION = 1
 ROSTER_SNAPSHOT_TOKEN_BUDGET = 2500
 PLAYER_ALIAS_PREFIX = "P"
@@ -85,6 +85,7 @@ _SIGNAL_FIELDS = (
     "days_since_last_check_in",
     "bodyweight_trend",
     "nutrition_adherence_7d",
+    "food_log_days_7d",
     "cardio_minutes_7d",
     "cardio_calories_kcal_7d",
     "coaching_subscription_end",
@@ -97,6 +98,9 @@ _URGENCY_INPUT_FIELDS = (
     "follow_up_overdue_days",
     "days_since_last_workout",
     "stall_length_sessions",
+)
+_FOOD_LOG_DAY_FIELDS = (
+    "date", "energy_kcal", "protein_g", "adherence", "adherence_source",
 )
 
 CANONICAL_SNAPSHOT: dict[str, Any] = {
@@ -119,6 +123,10 @@ CANONICAL_SNAPSHOT: dict[str, Any] = {
             "missed_expected_days_14d": 4,
             "adherence_pct_28d": 72.0,
             "nutrition_adherence_7d": {"on_target": 4, "roughly": 2, "off": 1},
+            "food_log_days_7d": [
+                {"date": "2026-10-10", "energy_kcal": 2150, "protein_g": 155,
+                 "adherence": "on_target", "adherence_source": "computed"},
+            ],
             "weeks_without_personal_record": 1,
             "stall_threshold_met": False,
             "effort_rising_same_load_main_lift": False,
@@ -162,6 +170,11 @@ def player_alias(source_id: str) -> str:
 
 def _allowlisted_signal(signal: dict[str, Any]) -> dict[str, Any]:
     allowed = {field: signal.get(field) for field in _SIGNAL_FIELDS}
+    food_days = signal.get("food_log_days_7d")
+    allowed["food_log_days_7d"] = None if food_days is None else [
+        {field: day.get(field) for field in _FOOD_LOG_DAY_FIELDS}
+        for day in food_days
+    ]
     urgency_inputs = signal.get("urgency_inputs") or {}
     allowed["urgency_inputs"] = {
         field: urgency_inputs.get(field) for field in _URGENCY_INPUT_FIELDS
@@ -269,6 +282,7 @@ def prompt_version_hash() -> str:
         {
             "signal_fields": _SIGNAL_FIELDS,
             "urgency_input_fields": _URGENCY_INPUT_FIELDS,
+            "food_log_day_fields": _FOOD_LOG_DAY_FIELDS,
             "player_alias_prefix": PLAYER_ALIAS_PREFIX,
             "player_alias_hex_length": PLAYER_ALIAS_HEX_LENGTH,
         },
