@@ -41,10 +41,13 @@ from service.periodic_status import (
 )
 from svc.dependencies import AccountDeletedError
 from svc.error_tracking import ServerErrorCaptureMiddleware, initialize_sentry
+from svc.monitoring.runtime import Monitoring, flush_loop
+from svc.monitoring.store import MetricsStore
 from svc.request_metrics import RequestMetrics, RequestMetricsMiddleware, summary_loop
 from svc.rate_limit import limiter
 from svc.routers import (
     admin,
+    admin_monitoring,
     alerts,
     assignments,
     auth,
@@ -275,6 +278,7 @@ async def lifespan(app: FastAPI):
     sweep_task: asyncio.Task[None] | None = None
     backup_task: asyncio.Task[None] | None = None
     metrics_task: asyncio.Task[None] | None = None
+    metrics_flush_task: asyncio.Task[None] | None = None
     unit_test_mode = os.getenv("SKIP_LLM_LOAD") == "true"
     # Coach AI is opt-in: with COACH_AI_ENABLED on, a recorded passing privacy
     # and evaluation report for the current prompt version is required, or the
@@ -379,6 +383,9 @@ async def lifespan(app: FastAPI):
 
     metrics_task = asyncio.create_task(summary_loop(app.state.request_metrics))
     logger.info("Request metrics summary loop started (hourly; process-local counters).")
+    if _ready["storage"] and app.state.db is not None:
+        app.state.monitoring.store = MetricsStore(app.state.db.catalog_path)
+        metrics_flush_task = asyncio.create_task(flush_loop(app.state.monitoring))
 
     logger.info(
         "Lifespan startup complete (model=%s catalog=%s storage=%s).",
@@ -391,6 +398,9 @@ async def lifespan(app: FastAPI):
     await _cancel_loop(sweep_task, ALERT_SWEEP_JOB)
     await _cancel_loop(backup_task, DAILY_BACKUP_JOB)
     await _cancel_loop(metrics_task, "request metrics summary")
+    await _cancel_loop(metrics_flush_task, "monitoring flush")
+    if app.state.monitoring.store is not None:
+        await asyncio.to_thread(app.state.monitoring.flush)
     from svc.llm import unload_all
 
     await asyncio.to_thread(unload_all)
@@ -403,6 +413,7 @@ def create_app(*, sentry_transport=None) -> FastAPI:
     app.state.limiter = limiter
     app.state.db = None
     app.state.request_metrics = RequestMetrics()
+    app.state.monitoring = Monitoring(app)
     app.state.admin_security = AdminSecurity()
     if partial_secret_configuration():
         logger.warning("Owner admin secrets are partially configured; /admin stays disabled.")
@@ -548,6 +559,7 @@ def create_app(*, sentry_transport=None) -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(admin.router)
+    app.include_router(admin_monitoring.router)
     app.include_router(recovery.router)
     app.include_router(public_pages.router)
     app.include_router(coach.router)

@@ -9,9 +9,11 @@ from datetime import UTC, datetime
 from threading import Lock
 from typing import Any
 
+from svc.monitoring.measurements import HourlyMeasurements, LATENCY_BUCKETS_MS
+
 logger = logging.getLogger(__name__)
-LATENCY_BUCKETS_MS = (5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000)
 _SYSTEM_TEMPLATES = frozenset({"/healthz", "/readyz"})
+_STREAMING_TEMPLATES = frozenset({"/chat/messages", "/coach/assignments/{assignment_id}/assistant"})
 _HTTP_METHODS = frozenset({"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
 
 
@@ -22,8 +24,7 @@ class RequestMetrics:
         self.started_at = datetime.now(UTC)
         self._lock = Lock()
         self._since_start: dict[tuple[str, str, str, str], dict[str, Any]] = {}
-        self._hourly: dict[tuple[datetime, str, str, str, str], dict[str, Any]] = {}
-        self._last_pruned_hour: datetime | None = None
+        self.measurements = HourlyMeasurements()
 
     @staticmethod
     def _new_count() -> dict[str, Any]:
@@ -40,24 +41,17 @@ class RequestMetrics:
     def record(self, route: str, method: str, status: int, elapsed_ms: float, at: datetime | None = None) -> None:
         if not route.startswith("/"):
             route = "<unmatched>"
-        traffic = "system" if route in _SYSTEM_TEMPLATES else "api"
+        traffic = "system" if route in _SYSTEM_TEMPLATES else "streaming" if route in _STREAMING_TEMPLATES else "api"
         status_class = f"{status // 100}xx"
         safe_method = method if method in _HTTP_METHODS else "OTHER"
         key = (traffic, route, safe_method, status_class)
         instant = at or datetime.now(UTC)
-        hour = instant.replace(minute=0, second=0, microsecond=0)
         with self._lock:
             self._add(self._since_start, key, elapsed_ms)
-            self._add(self._hourly, (hour, *key), elapsed_ms)
-            if self._last_pruned_hour is None or hour > self._last_pruned_hour:
-                self._prune_hourly(hour)
-                self._last_pruned_hour = hour
-
-    def _prune_hourly(self, current_hour: datetime) -> None:
-        cutoff = current_hour.timestamp() - 7 * 24 * 3600
-        for old_key in tuple(self._hourly):
-            if old_key[0].timestamp() < cutoff:
-                del self._hourly[old_key]
+            self.measurements.observe(
+                "requests", elapsed_ms,
+                {"traffic": traffic, "route": route, "method": safe_method, "status_class": status_class}, at=instant,
+            )
 
     def _add(self, target: dict, key: tuple, elapsed_ms: float) -> None:
         count = target.setdefault(key, self._new_count())
@@ -67,30 +61,29 @@ class RequestMetrics:
     def snapshot(self) -> dict[str, Any]:
         with self._lock:
             return {
-                "persistence": "In-memory only; counters reset when the API process restarts.",
+                "persistence": "Hourly totals persist for 30 days; flushed about once a minute. Since-start totals reset on restart.",
                 "started_at": self.started_at.isoformat(),
                 "since_start": self._serialize(self._since_start),
-                "hourly_last_7_days": self._serialize(self._hourly),
+                "hourly_last_7_days": [
+                    {"hour_utc": row["hour_utc"], **row["dimensions"], "count": row["count"],
+                     "latency_buckets": row["buckets"]}
+                    for row in self.measurements.snapshot()
+                ],
             }
 
     @staticmethod
     def _serialize(source: dict) -> list[dict[str, Any]]:
         rows = []
         for key, value in sorted(source.items(), key=lambda item: tuple(str(part) for part in item[0])):
-            if isinstance(key[0], datetime):
-                hour, traffic, route, method, status_class = key
-                row = {"hour_utc": hour.isoformat(), "traffic": traffic, "route": route,
-                       "method": method, "status_class": status_class}
-            else:
-                traffic, route, method, status_class = key
-                row = {"traffic": traffic, "route": route, "method": method,
-                       "status_class": status_class}
-            rows.append({**row, **value})
+            traffic, route, method, status_class = key
+            rows.append({"traffic": traffic, "route": route, "method": method,
+                         "status_class": status_class, "count": value["count"],
+                         "latency_buckets": dict(value["latency_buckets"])})
         return rows
 
     def log_summary(self) -> None:
         rows = self.snapshot()["since_start"]
-        api_requests = sum(row["count"] for row in rows if row["traffic"] == "api")
+        api_requests = sum(row["count"] for row in rows if row["traffic"] != "system")
         system_requests = sum(row["count"] for row in rows if row["traffic"] == "system")
         logger.info(
             "API request metrics summary since process start: api=%s system=%s route_groups=%s",
@@ -123,14 +116,18 @@ class RequestMetricsMiddleware:
         try:
             await self.app(scope, receive, capture)
         finally:
-            route_obj = scope.get("route")
-            route = getattr(route_obj, "path", "<unmatched>")
-            self.metrics.record(
-                route,
-                scope.get("method", "UNKNOWN"),
-                status,
-                (time.perf_counter() - started) * 1000,
-            )
+            # Monitoring must never replace a response or the application's error.
+            try:
+                route_obj = scope.get("route")
+                route = getattr(route_obj, "path", "<unmatched>")
+                self.metrics.record(
+                    route,
+                    scope.get("method", "UNKNOWN"),
+                    status,
+                    (time.perf_counter() - started) * 1000,
+                )
+            except Exception:
+                logger.exception("Request measurement failed")
 
 
 async def summary_loop(metrics: RequestMetrics) -> None:
@@ -139,4 +136,7 @@ async def summary_loop(metrics: RequestMetrics) -> None:
         now = datetime.now(UTC)
         delay = max(1, 3600 - (now.minute * 60 + now.second))
         await asyncio.sleep(delay)
-        metrics.log_summary()
+        try:
+            metrics.log_summary()
+        except Exception:
+            logger.exception("Request metrics summary failed")

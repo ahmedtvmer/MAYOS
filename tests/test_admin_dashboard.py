@@ -172,6 +172,7 @@ def test_unconfigured_and_partially_configured_admin_routes_are_not_found(monkey
     app = create_app()
     client = TestClient(app, base_url="https://testserver")
     assert client.get("/admin").status_code == 404
+    assert client.get("/admin/monitoring").status_code == 404
     assert client.get("/admin/login").status_code == 404
     assert client.post("/admin/login").status_code == 404
     assert client.get("/admin/assets/admin.css").status_code == 404
@@ -209,17 +210,33 @@ def test_request_metrics_count_templated_routes_privately_and_are_owner_only(adm
     assert len(hourly_history) == 1 and hourly_history[0]["count"] == 1
     assert any(row["route"] == "/healthz" and row["traffic"] == "system" for row in rows)
     serialized = json.dumps(snapshot)
+    from svc.monitoring.store import MetricsStore
+
+    monitoring = client.app.state.monitoring
+    monitoring.store = MetricsStore(_db.catalog_path)
+    monitoring.flush()
+    with sqlite3.connect(monitoring.store.path) as connection:
+        persisted = connection.execute("SELECT * FROM hourly_metrics").fetchall()
+    serialized += json.dumps(persisted)
+    assert any("/dashboard/exercises/{exercise_id}/history" in str(row) for row in persisted)
     for forbidden in (
         "private-exercise-781", "secret@example.com", "198.51.100.42", "private-user",
         "private-account", "private request body",
     ):
         assert forbidden not in serialized
     assert client.get("/admin").status_code == 404
+    assert client.get("/admin/monitoring").status_code == 404
     assert _login(client, now[0]).status_code == 303
-    page = client.get("/admin")
+    home = client.get("/admin")
+    assert "API requests and latency" not in home.text
+    assert 'class="dashboard-card" href="/admin/monitoring"' in home.text
+    page = client.get("/admin/monitoring")
     assert page.status_code == 200
     assert "API requests and latency" in page.text
-    assert "In-memory only; counters reset when the API process restarts." in page.text
+    assert "Hourly totals persist for 30 days; flushed about once a minute." in page.text
+    assert "/dashboard/exercises/{exercise_id}/history" in page.text
+    for forbidden in ("private-exercise-781", "secret@example.com", "private-user", "private-account"):
+        assert forbidden not in page.text
 
 
 def test_request_metrics_prune_expired_hours_when_hour_advances():
@@ -232,6 +249,41 @@ def test_request_metrics_prune_expired_hours_when_hour_advances():
     assert len(hourly) == 1
     assert hourly[0]["hour_utc"] == current_hour.isoformat()
     assert hourly[0]["count"] == 1
+
+
+@pytest.mark.parametrize("hours", (1, 24, 168))
+def test_monitoring_windows_use_owner_shell_and_inline_trends(admin_api, hours):
+    client, _, now, _ = admin_api
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(f"/admin/monitoring?hours={hours}")
+    assert page.status_code == 200
+    assert f'href="/admin/monitoring?hours={hours}" aria-current="page"' in page.text
+    assert '<svg class="monitoring-trend"' in page.text
+    assert "p50 estimate" in page.text and "p95 estimate" in page.text and "p99 estimate" in page.text
+    assert "Streaming chat response time" in page.text and "Error rate" in page.text
+    assert '<meta name="viewport" content="width=device-width, initial-scale=1">' in page.text
+    assert "https://" not in page.text and "<script" not in page.text
+    assert "/admin/monitoring" not in str(client.get("/openapi.json").json().get("paths", {}))
+
+
+def test_monitoring_measurement_and_storage_failures_leave_requests_and_readiness_unchanged(admin_api, monkeypatch):
+    from svc.monitoring.store import MetricsStore
+
+    client, db, _, _ = admin_api
+    _prepare_healthy_readiness(monkeypatch)
+    monitoring = client.app.state.monitoring
+    monitoring.store = MetricsStore(db.catalog_path.parent / "missing" / "catalog.db")
+    assert client.get("/healthz").status_code == 200
+    monitoring.flush()
+    assert client.get("/healthz").status_code == 200
+    assert client.get("/readyz").json()["status"] == "ready"
+
+    def failed_measurement(*args, **kwargs):
+        raise RuntimeError("measurement unavailable")
+
+    monkeypatch.setattr(client.app.state.request_metrics.measurements, "observe", failed_measurement)
+    assert client.get("/healthz").status_code == 200
+    assert client.get("/readyz").json()["status"] == "ready"
 
 
 @pytest.mark.parametrize(
@@ -341,7 +393,7 @@ def test_admin_pages_reference_brand_assets_with_strict_self_only_csp(admin_api)
     assert 'class="brand-link" href="/admin" aria-label="MAYOS owner dashboard" aria-current="page"' in home.text
     assert "The owner dashboard is ready" not in home.text
     assert home.text.count('class="dashboard-card"') == 5
-    assert "Review route counts and latency." in home.text
+    assert "Review service response times and errors." in home.text
     assert "Review accounts, plans, and activity." in home.text
     assert "Review model usage, limits, and spend." in home.text
     assert "Review owner actions and sign-ins." in home.text
@@ -351,6 +403,8 @@ def test_admin_pages_reference_brand_assets_with_strict_self_only_csp(admin_api)
     assert 'class="nav-link" href="/admin/accounts" aria-current="page">Accounts</a>' in accounts.text
     usage = client.get("/admin/usage")
     assert 'class="nav-link" href="/admin/usage" aria-current="page">Usage</a>' in usage.text
+    monitoring = client.get("/admin/monitoring")
+    assert 'class="nav-link" href="/admin/monitoring" aria-current="page">Monitoring</a>' in monitoring.text
     audit = client.get("/admin/audit")
     assert 'class="nav-link" href="/admin/audit" aria-current="page">Audit log</a>' in audit.text
 
@@ -759,6 +813,7 @@ def test_admin_responses_include_noindex_and_security_headers(admin_api):
         login,
         client.get("/admin"),
         client.get("/admin/usage"),
+        client.get("/admin/monitoring"),
         client.get("/admin/audit"),
     ):
         assert response.headers["x-robots-tag"] == "noindex, nofollow"
