@@ -52,6 +52,9 @@ async def read_yesterday_meals(player: Player, ledger: Ledger):
 @router.post("/food-log/copy-meal", status_code=201)
 async def copy_food_meal(request: Request, body: CopyMealIn, player: Player, ledger: Ledger):
     today = player_local_date(ledger, str(player))
+    if body.entry_date != today:
+        # The client chose this meal for a day that has since ended.
+        raise HTTPException(status_code=409, detail="The day has changed. Check the meal and try again.")
     try:
         entries = await asyncio.to_thread(food_log.copy_meal, ledger, body.meal_label, today,
                                           food_log.local_time(ledger, str(player)))

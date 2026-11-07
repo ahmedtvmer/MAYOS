@@ -2209,9 +2209,9 @@ class ApiClient {
       'The service returned invalid Food log data.');
   }
 
-  Future<void> copyFoodMeal(String mealLabel) async {
+  Future<void> copyFoodMeal(String mealLabel, String day) async {
     await _send(() => _dio.post<dynamic>('/nutrition/food-log/copy-meal',
-      data: <String, dynamic>{'meal_label': mealLabel}));
+      data: <String, dynamic>{'meal_label': mealLabel, 'entry_date': day}));
   }
 
   Future<NutritionPlanState> nutrition() async {

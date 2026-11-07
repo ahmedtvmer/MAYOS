@@ -8,9 +8,10 @@ import '../../../providers.dart';
 
 class CopyFoodMealButton extends ConsumerStatefulWidget {
   const CopyFoodMealButton({required this.day, required this.onCopied,
-    this.revision = 0, this.enabled = true, super.key});
+    this.onStale, this.revision = 0, this.enabled = true, super.key});
   final String day;
   final VoidCallback onCopied;
+  final VoidCallback? onStale;
   final int revision;
   final bool enabled;
 
@@ -49,9 +50,24 @@ class _CopyFoodMealButtonState extends ConsumerState<CopyFoodMealButton> {
   Future<void> _copy() async {
     if (_busy) return;
     setState(() => _busy = true);
+    // The picker can outlive the Player's day, so its choices are read fresh.
+    final List<String> meals;
+    try {
+      meals = await ref.read(apiClientProvider).yesterdayFoodMeals(widget.day);
+    } on ApiException catch (error) {
+      if (mounted) setState(() { _busy = false; _error = error.message; });
+      return;
+    }
+    if (!mounted) return;
+    if (meals.isEmpty) {
+      setState(() { _busy = false; _meals = meals; });
+      widget.onStale?.call();
+      return;
+    }
+    setState(() => _meals = meals);
     final bool? copied = await showModalBottomSheet<bool>(context: context,
       isDismissible: false, enableDrag: false,
-      builder: (_) => _CopyMealSheet(meals: _meals));
+      builder: (_) => _CopyMealSheet(day: widget.day, meals: meals));
     if (!mounted) return;
     setState(() => _busy = false);
     if (copied == true) widget.onCopied();
@@ -72,7 +88,8 @@ class _CopyFoodMealButtonState extends ConsumerState<CopyFoodMealButton> {
 }
 
 class _CopyMealSheet extends ConsumerStatefulWidget {
-  const _CopyMealSheet({required this.meals});
+  const _CopyMealSheet({required this.day, required this.meals});
+  final String day;
   final List<String> meals;
 
   @override
@@ -87,7 +104,7 @@ class _CopyMealSheetState extends ConsumerState<_CopyMealSheet> {
     if (_saving) return;
     setState(() { _saving = true; _error = null; });
     try {
-      await ref.read(apiClientProvider).copyFoodMeal(meal);
+      await ref.read(apiClientProvider).copyFoodMeal(meal, widget.day);
       if (mounted) {
         setState(() => _saving = false);
         Navigator.of(context).pop(true);

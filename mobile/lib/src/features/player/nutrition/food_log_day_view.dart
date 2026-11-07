@@ -33,7 +33,7 @@ class FoodLogDayView extends ConsumerStatefulWidget {
 class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
   FoodLogDay? _day;
   DateTime? _selected;
-  DateTime? _lastLoadedDeviceDate;
+  bool _opening = false;
   late final AppLifecycleListener _lifecycle;
   bool _loading = true;
   bool _deleting = false;
@@ -67,8 +67,6 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
   /// A background load keeps the current view and scroll position on screen.
   Future<bool> _load({bool background = false}) async {
     final int request = ++_request;
-    // A read spanning device midnight must still refresh before opening search.
-    final DateTime deviceDate = DateUtils.dateOnly(ref.read(clockProvider)());
     if (!background)
       setState(() {
         _loading = true;
@@ -81,7 +79,6 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
       if (!mounted || request != _request) return false;
       setState(() {
         _day = day;
-        _lastLoadedDeviceDate = deviceDate;
         _loading = false;
       });
       return true;
@@ -103,14 +100,17 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
     _load();
   }
 
+  /// The Player's day can change without the device's date changing, so every
+  /// add asks the server which day it is before using it.
   Future<bool> _readyToAdd() async {
-    if (_loading || _deleting || _error != null || _day == null) return false;
-    while (_selected == null &&
-        _lastLoadedDeviceDate != DateUtils.dateOnly(ref.read(clockProvider)())) {
-      final bool loaded = await _load();
-      if (!mounted || !loaded) return false;
+    if (_opening || _loading || _deleting || _error != null || _day == null) return false;
+    _opening = true;
+    try {
+      if (_selected == null && !await _load(background: true)) return false;
+      return mounted && _day!.editable;
+    } finally {
+      _opening = false;
     }
-    return _day!.editable;
   }
 
   String get _defaultMeal {
@@ -211,7 +211,7 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
         if (day != null && day.date == day.today)
           CopyFoodMealButton(key: ValueKey<String>('copy_${_dateKey(day.date)}'),
             day: _dateKey(day.date), revision: _request,
-            enabled: !_loading && !_deleting && _error == null, onCopied: _load),
+            enabled: !_loading && !_deleting && _error == null, onCopied: _load, onStale: () => _load(background: true)),
         if (day != null && day.editable)
           SafeArea(
             top: false,

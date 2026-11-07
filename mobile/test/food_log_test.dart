@@ -60,7 +60,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.widgetWithText(FilledButton, copy.save));
         await tester.pumpAndSettle();
-        _dumpTexts('personal');
+        await tester.dragUntilVisible(find.text('1600'), find.byType(ListView), const Offset(0, 200));
         expect(find.text('1600'), findsOneWidget);
         expect(fake.foodLogEntries[fake.foodLogToday]!.single['meal_label'], 'snack');
         expect(tester.takeException(), isNull);
@@ -105,7 +105,6 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.widgetWithText(FilledButton, copy.save));
         await tester.pumpAndSettle();
-        _dumpTexts('personal');
         expect(find.byType(FoodAmountScreen), findsOneWidget);
         expect(find.text('My bowl'), findsOneWidget);
         await tester.ensureVisible(find.widgetWithText(FilledButton, copy.add));
@@ -174,7 +173,6 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Add'));
     await tester.pumpAndSettle();
-    _dumpTexts('quick');
     expect(find.byType(QuickAddScreen), findsOneWidget);
     expect(find.text('Could not save food.'), findsOneWidget);
     expect(tester.widget<TextField>(find.byKey(const Key('food_energy_kcal'))).controller!.text, '250');
@@ -394,6 +392,34 @@ void main() {
     final request = fake.adapter.requests.lastWhere(
       (request) => request.path == '/nutrition/food-log');
     expect(request.query['day'], isNull);
+  });
+
+  testWidgets('Quick add asks the server for the day even when the device date has not changed', (
+    WidgetTester tester,
+  ) async {
+    final FakeMayosApi fake = _fake();
+    await tester.pumpWidget(_app(fake));
+    await tester.pumpAndSettle();
+    fake.foodLogToday = '2026-11-06';
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Quick add'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<QuickAddScreen>(find.byType(QuickAddScreen)).day, '2026-11-06');
+  });
+
+  testWidgets('the meal picker reads yesterday fresh after the day changes', (
+    WidgetTester tester,
+  ) async {
+    final FakeMayosApi fake = _fake();
+    fake.foodLogEntries['2026-11-04'] = <Map<String, dynamic>>[_entry('one')];
+    await tester.pumpWidget(_app(fake));
+    await tester.pumpAndSettle();
+    fake.foodLogEntries['2026-11-04'] = <Map<String, dynamic>>[
+      <String, dynamic>{..._entry('other'), 'meal_label': 'dinner'},
+    ];
+    await tester.tap(find.byKey(const Key('copy_food_meal')));
+    await tester.pumpAndSettle();
+    expect(find.text('Dinner'), findsOneWidget);
+    expect(find.text('Breakfast'), findsNothing);
   });
 
   testWidgets('a failed midnight refresh shows Retry without opening search', (
@@ -706,8 +732,6 @@ void _resumeApp(WidgetTester tester) {
     tester.binding.handleAppLifecycleStateChanged(state);
   }
 }
-
-void _dumpTexts(String label) => debugPrint('DUMP $label: ${find.byType(Text).evaluate().map((Element e) => (e.widget as Text).data).join(' | ')}');
 
 // The search field also holds the typed text, so match the result row only.
 Finder _resultNamed(String name) => find.descendant(

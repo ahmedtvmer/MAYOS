@@ -444,7 +444,7 @@ def test_copy_meal_copies_all_kinds_as_new_snapshots_without_catalog_reads(food_
         db.catalog_conn.execute("UPDATE foods SET hidden=1 WHERE id='egg'")
     meals = client.get("/nutrition/food-log/yesterday-meals", headers=headers).json()
     assert meals == {"today": today.isoformat(), "meal_labels": ["breakfast", "lunch"]}
-    response = client.post("/nutrition/food-log/copy-meal", headers=headers, json={"meal_label": "breakfast"})
+    response = client.post("/nutrition/food-log/copy-meal", headers=headers, json={"meal_label": "breakfast", "entry_date": today.isoformat()})
     assert response.status_code == 201, response.text
     copied = response.json()["entries"]
     assert len(copied) == 3
@@ -467,7 +467,7 @@ def test_copy_meal_copies_all_kinds_as_new_snapshots_without_catalog_reads(food_
     assert all(set(event["properties"]) == {
         "role", "platform", "app_version", "env", "food_kind", "meal_label"} for event in events)
     assert client.post("/nutrition/food-log/copy-meal", headers=headers,
-                       json={"meal_label": "snack"}).status_code == 400
+                       json={"meal_label": "snack", "entry_date": today.isoformat()}).status_code == 400
 
 
 def test_copy_meal_rolls_back_every_insert_on_failure_and_cannot_read_another_player(food_api, recording_analytics):
@@ -480,7 +480,7 @@ def test_copy_meal_rolls_back_every_insert_on_failure_and_cannot_read_another_pl
     other = {"Authorization": f"Bearer {registered['access_token']}"}
     assert client.get("/nutrition/food-log/yesterday-meals", headers=other).json()["meal_labels"] == []
     assert client.post("/nutrition/food-log/copy-meal", headers=other,
-                       json={"meal_label": "breakfast"}).status_code == 400
+                       json={"meal_label": "breakfast", "entry_date": today.isoformat()}).status_code == 400
     account = db.get_active_account_by_username("food-player")
     with db.open_ledger(account["ledger_id"]) as ledger, ledger.ledger_transaction():
         # Fail the second destination write, after the first has already succeeded.
@@ -493,7 +493,16 @@ def test_copy_meal_rolls_back_every_insert_on_failure_and_cannot_read_another_pl
     import sqlite3
 
     with pytest.raises(sqlite3.IntegrityError, match="copy interrupted"):
-        client.post("/nutrition/food-log/copy-meal", headers=headers, json={"meal_label": "breakfast"})
+        client.post("/nutrition/food-log/copy-meal", headers=headers, json={"meal_label": "breakfast", "entry_date": today.isoformat()})
     assert client.get("/nutrition/food-log", headers=headers).json()["entries"] == []
     events = [event for event in recording_analytics.events if event["event"] == "food_logged"]
     assert len(events) == 2
+
+
+def test_copy_meal_refuses_a_choice_made_for_a_day_that_has_ended(food_api):
+    client, _db, headers, today = food_api
+    assert _add(client, headers, today - timedelta(days=1)).status_code == 201
+    response = client.post("/nutrition/food-log/copy-meal", headers=headers, json={
+        "meal_label": "breakfast", "entry_date": (today - timedelta(days=1)).isoformat()})
+    assert response.status_code == 409
+    assert client.get("/nutrition/food-log", headers=headers).json()["entries"] == []

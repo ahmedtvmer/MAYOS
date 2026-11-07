@@ -1194,6 +1194,7 @@ class PersonalFoodIn(BaseModel):
 class CopyMealIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     meal_label: Literal["breakfast", "lunch", "dinner", "snack"]
+    entry_date: date
 
 
 class NutritionPaceIn(BaseModel):
