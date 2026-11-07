@@ -13,6 +13,12 @@ services:
       ANONYMOUS_ID_SECRET: "${ANONYMOUS_ID_SECRET:-${JWT_SECRET}}"
       SENTRY_DSN: "${SENTRY_DSN:-}"
       SENTRY_ENVIRONMENT: "${SENTRY_ENVIRONMENT:-production}"
+      SENTRY_READ_TOKEN: "${SENTRY_READ_TOKEN:-}"
+      SENTRY_ORG: "${SENTRY_ORG:-mayos}"
+      SENTRY_PROJECTS: "${SENTRY_PROJECTS:-mayos-api,mayos-app}"
+      SENTRY_API_BASE_URL: "${SENTRY_API_BASE_URL:-https://de.sentry.io}"
+      UPTIMEROBOT_READ_KEY: "${UPTIMEROBOT_READ_KEY:-}"
+      POSTHOG_PROJECT_URL: "${POSTHOG_PROJECT_URL:-}"
       LLM_API_KEY: "${LLM_API_KEY:?set LLM_API_KEY in /opt/mayos/.env}"
       MAYOS_DATA_DIR: /data
       MAYOS_REQUIRE_PERSISTENT_DATA: "true"
