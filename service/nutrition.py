@@ -132,6 +132,19 @@ def coach_read(ledger: Any, today: date, assignment_id: str, days: int = 14) -> 
     return state
 
 
+def coach_food_log_day(ledger: Any, entry_date: date, today: date) -> dict[str, Any]:
+    from service.food_log import read_day
+
+    day = read_day(ledger, entry_date, today)
+    adherence = ledger.list_nutrition_adherence(entry_date.isoformat(), entry_date.isoformat())
+    return {
+        "date": day["date"], "today": day["today"],
+        "entries": day["entries"], "totals": day["totals"], "targets": day["targets"],
+        "adherence": ({"value": adherence[0]["value"], "source": adherence[0]["source"]}
+                      if adherence else None),
+    }
+
+
 def _coach_water_log(ledger: Any, today: date, days: int) -> dict[str, Any]:
     water_days = ledger.get_water_log_days(today - timedelta(days=days - 1), today)
     return {

@@ -14,6 +14,7 @@ selects an account, and no raw invite code is ever logged.
 """
 
 import asyncio
+from datetime import date
 from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
@@ -346,6 +347,26 @@ async def read_assigned_player_nutrition(
         from service import nutrition as nutrition_service
         today = player_local_date(ledger, context["player"]["ledger_id"])
         return await asyncio.to_thread(nutrition_service.coach_read, ledger, today, assignment_id, days)
+
+
+@coach_router.get("/{assignment_id}/nutrition/food-log")
+async def read_assigned_player_food_log(
+    assignment_id: str,
+    coach: Annotated[VerifiedPlayer, Depends(get_current_coach)],
+    db: Annotated[Any, Depends(get_db)],
+    day: date | None = None,
+):
+    authorized = coach_history_service.authorized_player_ledger(db, coach.account_id, assignment_id)
+    if authorized is None:
+        raise _no_active_assignment()
+    ledger, context = authorized
+    with ledger:
+        from service import nutrition as nutrition_service
+        today = player_local_date(ledger, context["player"]["ledger_id"])
+        try:
+            return await asyncio.to_thread(nutrition_service.coach_food_log_day, ledger, day or today, today)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
 
 
 @coach_router.put("/{assignment_id}/nutrition")

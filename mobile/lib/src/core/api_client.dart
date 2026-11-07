@@ -15,6 +15,7 @@ import 'chat_models.dart';
 import 'chat_stream_fetch.dart';
 import 'client_dimensions.dart';
 import 'models.dart';
+import 'coach_food_log_models.dart';
 import 'food_log_models.dart';
 import 'sse.dart';
 import 'token_store.dart';
@@ -888,6 +889,14 @@ class ApiClient {
     ));
     return _parseBody(response.data, CoachNutritionState.fromJson,
         _invalidCoachHistory);
+  }
+
+  Future<CoachFoodLogDay> coachPlayerFoodLog(String assignmentId, {String? day}) async {
+    final response = await _send(() => _dio.get<dynamic>(
+      '/coach/assignments/$assignmentId/nutrition/food-log',
+      queryParameters: <String, dynamic>{if (day != null) 'day': day},
+    ));
+    return _parseBody(response.data, CoachFoodLogDay.fromJson, _invalidCoachHistory);
   }
 
   Future<CoachNutritionState> saveCoachPlayerNutrition(String assignmentId, {
