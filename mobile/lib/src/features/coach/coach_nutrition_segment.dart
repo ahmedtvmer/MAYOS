@@ -5,8 +5,10 @@ import '../../core/api_client.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/copy_context.dart';
 import '../../core/display_language/nutrition_copy.dart';
+import '../../core/display_language/coach_food_log_copy.dart';
 import '../../core/models.dart';
 import '../../providers.dart';
+import 'coach_food_log_view.dart';
 
 class CoachNutritionSegment extends ConsumerStatefulWidget {
   const CoachNutritionSegment({super.key, required this.assignmentId});
@@ -39,6 +41,7 @@ class _CoachNutritionSegmentState extends ConsumerState<CoachNutritionSegment> {
   bool _separateDayTargets = false;
   bool _busy = false;
   String? _error;
+  bool _foodLog = false;
 
   @override
   void initState() {
@@ -165,6 +168,26 @@ class _CoachNutritionSegmentState extends ConsumerState<CoachNutritionSegment> {
   @override
   Widget build(BuildContext context) {
     final NutritionCopy copy = displayCopyOf(context).nutrition;
+    final CoachFoodLogCopy logCopy = CoachFoodLogCopy(copy.languageCode);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Wrap(spacing: 8, runSpacing: 8, children: <Widget>[
+          ChoiceChip(label: Text(logCopy.targetsView), selected: !_foodLog,
+            onSelected: (_) => setState(() => _foodLog = false)),
+          ChoiceChip(label: Text(logCopy.foodLog), selected: _foodLog,
+            onSelected: (_) => setState(() => _foodLog = true)),
+        ]),
+        const SizedBox(height: 12),
+        if (_foodLog)
+          CoachFoodLogView(assignmentId: widget.assignmentId)
+        else
+          _targetsContent(copy),
+      ],
+    );
+  }
+
+  Widget _targetsContent(NutritionCopy copy) {
     if (_error != null && _state == null) return Text(_error!);
     if (_state == null) return const Center(child: CircularProgressIndicator());
     return _nutritionContent(copy);
