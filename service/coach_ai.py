@@ -16,6 +16,8 @@ Privacy boundary (ADR 016):
   reasons/responses. The preferred name is the only saved assistant preference
   included. It receives only the coach-authored notes from the five most recent
   check-ins, capped at 300 characters each.
+  Food log facts are daily calorie/protein totals and recorded adherence only;
+  food names, ids, entry details and Personal food records are never selected.
 * The service persists **nothing** about an exchange: no transcript table, no
   logging of question/answer content. Only the ADR 038 model-usage metering
   rows are written, attributed to the coach's account with role ``coach``.
@@ -60,6 +62,7 @@ from service import dashboard as dashboard_service
 from service import program_requests as program_requests_service
 from service import nutrition as nutrition_service
 from service.exercise_context import describe_exercises
+from service.food_log_context import recent_daily_totals
 from agent.program_weeks import normalize_program_weeks
 from service.assignments import authorized_player_ledger
 from service.evaluation_report_gate import EvaluationReportConfig, GateStatus, evaluate_gate
@@ -79,7 +82,7 @@ COACH_PROGRAM_RATIONALE_MAX_BYTES = 4 * 1024
 
 #: Bumped whenever the prompt or the context shape changes; the eval report's
 #: ``prompt_hash`` must match :func:`prompt_version_hash` for the flag to enable.
-CONTEXT_VERSION = "coach-context-v13"
+CONTEXT_VERSION = "coach-context-v14"
 
 BODYWEIGHT_TREND_WEEKS = 8
 E1RM_TREND_WEEKS = 12
@@ -375,6 +378,12 @@ CANONICAL_FIXTURE: dict[str, Any] = {
         "goal": "lose",
         "intensity": "moderate",
         "adherence_counts": {"on_target": 8, "roughly": 3, "off": 3},
+        "food_log_days": [
+            {"date": "2026-09-27", "energy_kcal": 2150, "protein_g": 155,
+             "adherence": "on_target", "adherence_source": "computed"},
+            {"date": "2026-09-28", "energy_kcal": None, "protein_g": None,
+             "adherence": None, "adherence_source": None},
+        ],
         "pace_proposal": {"suggested_calories": 2100},
     },
     "schedule": {"weekdays": [1, 3, 5], "timezone": "Europe/Berlin"},
@@ -1078,6 +1087,7 @@ def gather_player_context(
             if day.get("value") in adherence_counts:
                 adherence_counts[day["value"]] += 1
         nutrition_facts["adherence_counts"] = adherence_counts
+        nutrition_facts["food_log_days"] = recent_daily_totals(ledger, nutrition_today, 14)
         cardio_days = []
         cardio_rows = ledger.list_session_cardio_by_session()
         for offset in range(13, -1, -1):
@@ -1505,6 +1515,7 @@ def _render_nutrition(facts: dict[str, Any]) -> list[str]:
     else:
         lines.append("  no active Nutrition targets")
     lines.append(_nutrition_adherence_line(nutrition))
+    lines.extend(_render_food_log_days(nutrition.get("food_log_days", [])))
     for day in nutrition.get("cardio_days", []):
         lines.append("  cardio " + str(day.get("date")) + ": "
                      f"{day.get('minutes', 0)} minutes, machines "
@@ -1519,6 +1530,22 @@ def _render_nutrition(facts: dict[str, Any]) -> list[str]:
     proposal = nutrition.get("pace_proposal")
     if proposal:
         lines.append("  pending_pace_proposal: " + json.dumps(proposal, ensure_ascii=False, sort_keys=True))
+    return lines
+
+
+def _render_food_log_days(days: list[dict[str, Any]]) -> list[str]:
+    lines = []
+    for day in days:
+        totals = (
+            "no Food log entries"
+            if day.get("energy_kcal") is None else
+            f"{format_number(day['energy_kcal'])} kcal, {format_number(day['protein_g'])} g protein"
+        )
+        lines.append(
+            f"  food log {day['date']}: {totals}, "
+            f"adherence {day.get('adherence') or 'not recorded'}, "
+            f"source {day.get('adherence_source') or 'not recorded'}"
+        )
     return lines
 
 

@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from core.food_search import food_match_rank, normalize_food_query
 from service import nutrition
 from service.food_log_adherence import recompute_day
+from service.food_log_context import nutrient_totals
 from service.schedule import timezone_for_versions
 
 NUTRIENT_KEYS = ("energy_kcal", "protein_g", "carbohydrate_g", "fat_g")
@@ -30,7 +31,7 @@ def read_day(ledger, entry_date, today):
     if entry_date > today:
         raise ValueError("Future Food log days are not available.")
     entries = ledger.list_food_log_entries(entry_date)
-    totals = {key: round(sum(entry["nutrients"].get(key) or 0 for entry in entries), 2) for key in NUTRIENT_KEYS}
+    totals = nutrient_totals([entry["nutrients"] for entry in entries], NUTRIENT_KEYS)
     nutrition_state = nutrition.read(ledger, today=entry_date)
     targets = (nutrition.targets_for_day(ledger, entry_date) if entry_date < today
                else nutrition_state.get("targets"))

@@ -88,9 +88,9 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'assistant',
     titleEn: 'Assistant',
-    sentenceEn: 'Ask about your training, including changes to your program.',
+    sentenceEn: 'Ask about your training, changes to your program, or what you ate on a recent day.',
     titleAr: 'المساعد',
-    sentenceAr: 'اسأل عن تدريبك، بما في ذلك تغييرات برنامجك التدريبي.',
+    sentenceAr: 'اسأل عن تدريبك أو تغييرات برنامجك التدريبي أو ما أكلته في يوم قريب.',
     target: 'assistant',
     location: TourShellTabLocation(tabIndex: 0),
     release: 0,

@@ -16,6 +16,7 @@ from service import stalling
 from service import weight_history
 from service.coach_settings import DEFAULT_STALL_THRESHOLD_WEEKS
 from service.schedule import local_date_in
+from service.food_log_context import recent_daily_totals
 
 
 @dataclass(frozen=True)
@@ -199,6 +200,7 @@ def _empty_ledger_signals() -> dict[str, Any]:
         "effort_rising_same_load_main_lift": False,
         "bodyweight_trend": None,
         "nutrition_adherence_7d": None,
+        "food_log_days_7d": None,
         "cardio_minutes_7d": None,
         "cardio_calories_kcal_7d": None,
     }
@@ -226,6 +228,7 @@ def _ledger_signals(
             ledger, local_today, str(assignment["assignment_id"]), days=7
         )
         nutrition_counts = {value: 0 for value in ("on_target", "roughly", "off")}
+        food_log_days = recent_daily_totals(ledger, local_today, 7)
         for day in nutrition_state.get("adherence_days", []):
             value = day.get("value")
             if value in nutrition_counts:
@@ -251,6 +254,7 @@ def _ledger_signals(
         ),
         "bodyweight_trend": bodyweight_trend,
         "nutrition_adherence_7d": nutrition_counts,
+        "food_log_days_7d": food_log_days,
         "cardio_minutes_7d": cardio_minutes,
         "cardio_calories_kcal_7d": cardio_kcal,
     }, local_today, str(preferred_name).strip() if preferred_name else None

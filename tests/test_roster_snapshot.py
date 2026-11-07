@@ -366,7 +366,7 @@ def test_version_one_disclosure_with_timestamp_requires_new_acknowledgement(api)
         "/assignments/me/roster-ai-disclosure", headers=player["headers"]
     )
     assert recorded.status_code == 200, recorded.text
-    assert recorded.json()["roster_ai_disclosure_version"] == "2"
+    assert recorded.json()["roster_ai_disclosure_version"] == assignment_service.ROSTER_AI_DISCLOSURE_VERSION
     assert recorded.json()["roster_ai_disclosed_at"] != old_ack
     after = client.get("/coach/roster/snapshot", headers=coach_headers)
     assert len(after.json()["snapshot"]["players"]) == 1

@@ -304,8 +304,8 @@ class MayosCopy {
       ? 'وافق على الإفصاح لبدء المحادثة.'
       : 'Accept the disclosure to start chatting.';
   String get hostedChatDisclosure => isArabic
-      ? 'يستخدم المساعد نموذج ذكاء اصطناعي مستضاف. تُرسل رسالتك وآخر 10 رسائل واسمك المفضل وإعدادات المساعد إلى مزوده. تُرسل أيضًا تفاصيل الملف أو البرنامج وتفضيلات المساعد وتفاصيل التغذية التي يبحث عنها في هذه الرسالة للإجابة. قد يكشف النص الحر هويتك؛ تجنب كتابة ما لا ترغب في معالجته هناك.'
-      : 'Chat uses a hosted AI model. It receives your message, last 10 chat messages, preferred name and assistant settings. Profile or program details, saved preferences and Nutrition details it looks up for this turn are sent too. Free text can identify you; avoid details you do not want processed there.';
+      ? 'يستخدم المساعد نموذج ذكاء اصطناعي مستضاف. تُرسل رسالتك وآخر 10 رسائل واسمك المفضل وإعدادات المساعد إلى مزوده. تُرسل أيضًا تفاصيل الملف أو البرنامج وتفضيلات المساعد وتفاصيل التغذية وسجل الطعام، بما فيها أسماء أطعمتك الخاصة، التي يبحث عنها في هذه الرسالة للإجابة. قد يكشف النص الحر هويتك؛ تجنب كتابة ما لا ترغب في معالجته هناك.'
+      : 'Chat uses a hosted AI model. It receives your message, last 10 chat messages, preferred name and assistant settings. Profile or program details, saved preferences, Nutrition details and Food log entries, including your Personal food names, it looks up for this turn are sent too. Free text can identify you; avoid details you do not want processed there.';
   String get acceptDisclosureToEnableChat => isArabic
       ? 'وافق على الإفصاح أعلاه لتفعيل المحادثة.'
       : 'Accept the disclosure above to enable chat.';

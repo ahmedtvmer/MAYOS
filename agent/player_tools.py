@@ -9,17 +9,20 @@ import time
 from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass
+from datetime import date, timedelta
 from typing import Any
 
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import StructuredTool
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from core.movement_restriction_suggestions import suggest_movement_restrictions
 
 from database.ledger.profile import PLAYER_PROFILE_STORAGE_DEFAULTS
 from agent.focus_muscles import FOCUS_REVIEW_MUSCLES
 from service.injuries import render_public_injury_record
 from service.nutrition import assistant_projection
+from service.food_log import NUTRIENT_KEYS
+from service.food_log_context import nutrient_totals
 from service.player_weight_context import render_player_weight_context
 from service.weight_history import WeightTrendQuery, get_weight_trend, player_local_date
 from agent.player_prompt import (
@@ -44,6 +47,13 @@ _INJURY_CLEARANCE_TOOL_FIELDS = (
 
 class EmptyToolArgs(BaseModel):
     """Schema for a read tool that takes no arguments."""
+
+
+class FoodLogArgs(BaseModel):
+    """One recent Player-local day, paginated within the hosted result cap."""
+
+    day: str | None = None
+    offset: int = Field(default=0, ge=0)
 
 
 class ProgramRationaleArgs(BaseModel):
@@ -217,6 +227,57 @@ def _read_player_nutrition(ledger: Any) -> dict[str, Any]:
     """Returns a privacy-safe projection of active targets and recent adherence."""
     today = player_local_date(ledger, ledger.ledger_id)
     return assistant_projection(ledger, today)
+
+
+def _food_log_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    quick_add = entry["kind"] == "quick_add"
+    name = "Quick add" if quick_add else entry["name"]
+    arabic_name = None if quick_add else entry.get("arabic_name")
+    return {
+        "name": name[:200],
+        **({"name_truncated": True} if len(name) > 200 else {}),
+        **({"arabic_name": arabic_name[:200]} if arabic_name else {}),
+        **({"arabic_name_truncated": True} if arabic_name and len(arabic_name) > 200 else {}),
+        "time": entry["logged_time"], "meal": entry["meal_label"],
+        **({"grams": entry["grams"]} if not quick_add else {}),
+        "nutrients": {key: entry["nutrients"].get(key) for key in NUTRIENT_KEYS},
+    }
+
+
+def _food_log_page(entries, summary, offset):
+    # Empty / one / many / multibyte names: every page must fit and make progress.
+    response = {**summary, "entries": []}
+    for index in range(offset, len(entries)):
+        response["entries"].append(_food_log_entry(entries[index]))
+        encoded = json.dumps(response, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+        if len(encoded.encode("utf-8")) > MAX_TOOL_RESULT_BYTES - 128:
+            response["entries"].pop()
+            response["next_offset"] = index
+            return response
+    response["next_offset"] = None
+    return response
+
+
+def _read_player_food_log(ledger: Any, args: FoodLogArgs) -> dict[str, Any]:
+    today = player_local_date(ledger, ledger.ledger_id)
+    start = today - timedelta(days=13)
+    requested = args.day or "today"
+    try:
+        day = {"today": today, "yesterday": today - timedelta(days=1)}.get(requested)
+        if day is None:
+            day = date.fromisoformat(requested)
+        if not start <= day <= today:
+            raise ValueError("Outside the recent Food log window")
+    except ValueError:
+        return {"status": "invalid_date", "earliest_date": start.isoformat(),
+                "today": today.isoformat()}
+    entries = ledger.list_food_log_entries(day)
+    response = {
+        "status": "ok", "date": day.isoformat(), "today": today.isoformat(),
+        "totals": nutrient_totals([entry["nutrients"] for entry in entries], NUTRIENT_KEYS),
+        "entry_count": len(entries),
+    }
+    return _food_log_page(entries, response, args.offset)
 
 
 def _read_active_program(ledger: Any, args: ActiveProgramArgs | None = None, store: Any = None, player_account_id: str | None = None) -> dict[str, Any]:
@@ -453,6 +514,23 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
         reader=_read_player_nutrition,
         status_en="Checking your Nutrition targets…",
         status_ar="ببص على أهداف التغذية بتاعتك…",
+    ),
+    PlayerReadTool(
+        name="get_player_food_log",
+        description=(
+            "Read what the current player ate on one Player-local day and its whole-day "
+            "calorie and Macro totals. day defaults to today; accepts today, yesterday, "
+            "or YYYY-MM-DD within the last 14 days including today. Personal food names "
+            "are the player's own data. Null nutrients are unknown and count as zero in "
+            "totals. Names longer than 200 characters are marked truncated. "
+            "If next_offset is set, call again with that offset and the returned "
+            "date to read remaining entries; totals always cover the whole day. Read-only."
+        ),
+        args_schema=FoodLogArgs,
+        reader=lambda ledger: _read_player_food_log(ledger, FoodLogArgs()),
+        args_reader=_read_player_food_log,
+        status_en="Checking your Food log…",
+        status_ar="ببص على سجل الطعام بتاعك…",
     ),
     PlayerReadTool(
         name="get_player_injuries",
