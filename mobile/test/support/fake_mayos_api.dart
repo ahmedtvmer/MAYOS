@@ -1042,6 +1042,18 @@ class FakeMayosApi {
         return FakeResponse(200, nutritionState);
       case '/nutrition/adherence':
         nutritionAdherenceValues.add(request.body['value'] as String);
+        if (request.body['entry_date'] != null) {
+          nutritionState = <String, dynamic>{...nutritionState,
+            'adherence_days': <Map<String, dynamic>>[
+              for (final Map<String, dynamic> day in
+                  (nutritionState['adherence_days'] as List<dynamic>).cast<Map<String, dynamic>>())
+                if (day['date'] == request.body['entry_date'])
+                  <String, dynamic>{...day, 'value': request.body['value'], 'source': 'answered'}
+                else day,
+            ],
+          };
+          return FakeResponse(200, nutritionState);
+        }
         nutritionState = <String, dynamic>{...nutritionState,
           'today_adherence': request.body['value'],
           'adherence_days': <Map<String, dynamic>>[

@@ -117,7 +117,7 @@ async def log_adherence(
     today, assignment, _language = _player_context(player, ledger, db, request)
     try:
         state, updated_at = await asyncio.to_thread(
-            nutrition_service.log_adherence, ledger, body.value, today
+            nutrition_service.log_adherence, ledger, body.value, today, body.entry_date
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
@@ -132,7 +132,7 @@ async def log_adherence(
     _apply_authority_view(state, assignment)
     analytics.capture_for_request(request, analytics.AnalyticsEvent(
         account_id=account_id_of(player), event="nutrition_adherence_logged",
-        domain_key=f"{player}:{today.isoformat()}:{body.value}:{updated_at}", role="player",
+        domain_key=f"{player}:{(body.entry_date or today).isoformat()}:{body.value}:{updated_at}", role="player",
         properties={"value": body.value},
     ))
     return state

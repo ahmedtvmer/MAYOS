@@ -1435,7 +1435,9 @@ def test_adherence_write_uses_real_player_schedule_timezone(api, monkeypatch):
     updated = client.put("/nutrition/adherence", headers=headers, json={"value": "on_target"})
     assert updated.status_code == 200
     assert updated.json()["today_adherence"] == "on_target"
-    assert updated.json()["adherence_days"][-1] == {"date": "2026-10-25", "value": "on_target"}
+    assert updated.json()["adherence_days"][-1] == {
+        "date": "2026-10-25", "value": "on_target", "source": "answered",
+    }
     with db.open_ledger(account["ledger_id"]) as ledger:
         assert ledger.conn.execute("SELECT entry_date FROM nutrition_adherence").fetchone()[0] == "2026-10-25"
 

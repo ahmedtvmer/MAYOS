@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from core.food_search import food_match_rank, normalize_food_query
 from service import nutrition
+from service.food_log_adherence import recompute_day
 from service.schedule import timezone_for_versions
 
 NUTRIENT_KEYS = ("energy_kcal", "protein_g", "carbohydrate_g", "fat_g")
@@ -31,7 +32,8 @@ def read_day(ledger, entry_date, today):
     entries = ledger.list_food_log_entries(entry_date)
     totals = {key: round(sum(entry["nutrients"].get(key) or 0 for entry in entries), 2) for key in NUTRIENT_KEYS}
     nutrition_state = nutrition.read(ledger, today=entry_date)
-    targets = nutrition_state.get("targets")
+    targets = (nutrition.targets_for_day(ledger, entry_date) if entry_date < today
+               else nutrition_state.get("targets"))
     remaining = {key: round(float(targets[TARGET_KEYS[key]]) - totals[key], 2)
                  for key in NUTRIENT_KEYS} if targets else None
     return {"date": entry_date.isoformat(), "today": today.isoformat(),
@@ -70,6 +72,7 @@ def add_entry(db, ledger, body, today, local_time):
     }, {**body, "logged_time": body["logged_time"] or local_time})
     with ledger.ledger_transaction():
         ledger.insert_food_log_entry(entry)
+        recompute_day(ledger, entry_date, today)
     return entry
 
 
@@ -83,6 +86,7 @@ def edit_entry(ledger, entry_id, body, today):
             raise ValueError("Use the Quick add editor for this entry.")
         updated = _apply_amount(entry, {**body, "logged_time": body["logged_time"] or entry["logged_time"]})
         ledger.update_food_log_entry(updated)
+        recompute_day(ledger, date.fromisoformat(entry["entry_date"]), today)
     return updated
 
 
@@ -93,6 +97,7 @@ def delete_entry(ledger, entry_id, today):
             raise FoodLogNotFound("Food log entry not found.")
         require_write_day(date.fromisoformat(entry["entry_date"]), today)
         ledger.delete_food_log_entry(entry_id)
+        recompute_day(ledger, date.fromisoformat(entry["entry_date"]), today)
 
 
 def local_time(ledger, player_id):
@@ -153,6 +158,7 @@ def add_quick_entry(ledger, body, today, current_time):
              "created_at": datetime.now(UTC).isoformat(timespec="microseconds")}
     with ledger.ledger_transaction():
         ledger.insert_food_log_entry(entry)
+        recompute_day(ledger, body["entry_date"], today)
     return entry
 
 
@@ -167,6 +173,7 @@ def edit_quick_entry(ledger, entry_id, body, today):
         updated = {**entry, "nutrients": {key: body[key] for key in NUTRIENT_KEYS},
                    "meal_label": body["meal_label"], "logged_time": body["logged_time"] or entry["logged_time"]}
         ledger.update_food_log_entry(updated)
+        recompute_day(ledger, date.fromisoformat(entry["entry_date"]), today)
     return updated
 
 

@@ -3,8 +3,9 @@
 import json
 import math
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from agent.program_blueprints import classify_goal
 from core.nutrition_targets import (ACTIVITY_FACTORS, NutritionCalculationInput, NutritionTargets,
@@ -171,11 +172,12 @@ def _coach_planned_rate(ledger: Any, profile: dict[str, Any], state: dict[str, A
 
 def _coach_adherence_days(ledger: Any, today: date, days: int) -> list[dict[str, Any]]:
     start = today - timedelta(days=days - 1)
-    entries = {entry["date"]: entry["value"] for entry in ledger.list_nutrition_adherence(
+    entries = {entry["date"]: entry for entry in ledger.list_nutrition_adherence(
         start.isoformat(), today.isoformat())}
     return [
         {"date": (start + timedelta(days=offset)).isoformat(),
-         "value": entries.get((start + timedelta(days=offset)).isoformat())}
+         "value": entries.get((start + timedelta(days=offset)).isoformat(), {}).get("value"),
+         "source": entries.get((start + timedelta(days=offset)).isoformat(), {}).get("source")}
         for offset in range(days)
     ]
 
@@ -607,15 +609,17 @@ def _adherence_counts(entries: list[dict[str, Any]]) -> dict[str, int]:
 
 def _adherence_state(ledger: Any, today: date) -> dict[str, Any]:
     start = today - timedelta(days=6)
-    entries = {entry["date"]: entry["value"] for entry in ledger.list_nutrition_adherence(
+    entries = {entry["date"]: entry for entry in ledger.list_nutrition_adherence(
         start.isoformat(), today.isoformat())}
     profile = ledger.get_nutrition_profile()
     weights = ledger.list_weight_history("0001-01-01", "9999-12-31")
     return {
-        "today_adherence": entries.get(today.isoformat()),
+        "today_adherence": entries.get(today.isoformat(), {}).get("value"),
+        "today_adherence_source": entries.get(today.isoformat(), {}).get("source"),
         "adherence_days": [
             {"date": (start + timedelta(days=offset)).isoformat(),
-             "value": entries.get((start + timedelta(days=offset)).isoformat())}
+             "value": entries.get((start + timedelta(days=offset)).isoformat(), {}).get("value"),
+             "source": entries.get((start + timedelta(days=offset)).isoformat(), {}).get("source")}
             for offset in range(7)
         ],
         "latest_weight": weights[-1]["weight_kg"] if weights else profile.get("weight_kg") if profile else None,
@@ -623,13 +627,17 @@ def _adherence_state(ledger: Any, today: date) -> dict[str, Any]:
     }
 
 
-def log_adherence(ledger: Any, value: str, today: date) -> tuple[dict[str, Any], str]:
+def log_adherence(ledger: Any, value: str, today: date,
+                  entry_date: date | None = None) -> tuple[dict[str, Any], str]:
+    entry_date = entry_date or today
+    if entry_date not in (today, today - timedelta(days=1)):
+        raise ValueError("Nutrition adherence can only be answered for today and yesterday.")
     screening = ledger.get_nutrition_screening()
     if screening is not None and any(json.loads(screening[0]).values()):
         raise ValueError("Nutrition adherence is unavailable while health screening blocks targets.")
     if ledger.get_active_nutrition_plan() is None:
         raise ValueError("An active Nutrition plan is required before recording adherence.")
-    updated_at = ledger.upsert_nutrition_adherence(today.isoformat(), value)
+    updated_at = ledger.upsert_nutrition_adherence(entry_date.isoformat(), value)
     return read(ledger, today=today), updated_at
 
 
@@ -740,6 +748,26 @@ def _read_without_plan(ledger: Any, answers: dict[str, bool] | None,
             "sex": training_profile.get("gender") if training_profile else None,
             "daily_activity": training_profile.get("daily_activity") if training_profile else None,
             "message": message}
+
+
+def targets_for_day(ledger: Any, entry_date: date) -> dict[str, Any] | None:
+    screening = ledger.get_nutrition_screening()
+    if screening and any(json.loads(screening[0]).values()):
+        return None
+    plan = ledger.get_nutrition_plan_before(_nutrition_day_end(ledger, entry_date))
+    if plan is None:
+        return None
+    state = _read_active_plan(plan, None, _is_training_day(ledger, entry_date))
+    _apply_cardio_day_adjustment(ledger, state, entry_date)
+    return state["targets"]
+
+
+def _nutrition_day_end(ledger: Any, entry_date: date) -> datetime:
+    schedule = ledger.get_schedule_effective_on(ledger.ledger_id, entry_date.isoformat())
+    timezone = schedule["timezone"] if schedule else "UTC"
+    # A version created exactly at the next midnight belongs to the next day.
+    return datetime.combine(entry_date + timedelta(days=1), time.min,
+                            tzinfo=ZoneInfo(timezone)).astimezone(UTC)
 
 
 def _read_active_plan(active_plan: Any, answers: dict[str, bool] | None,

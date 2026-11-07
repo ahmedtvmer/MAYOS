@@ -110,9 +110,9 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'food_log',
     titleEn: 'Food log',
-    sentenceEn: 'Search foods, log grams or local portions, Quick add calories and Macros, create a Personal food, or copy a meal from yesterday to track your Nutrition targets.',
+    sentenceEn: 'Search foods, log grams or local portions, Quick add calories and Macros, create a Personal food, or copy a meal from yesterday; your Nutrition adherence is worked out after each day unless you answer yourself.',
     titleAr: 'سجل الطعام',
-    sentenceAr: 'ابحث عن الأطعمة وسجّلها بالجرام أو بالحصة المحلية، أو استخدم الإضافة السريعة للسعرات والمغذيات الكبرى، أو أنشئ طعامًا خاصًا، أو انسخ وجبة من أمس لمتابعة أهدافك الغذائية.',
+    sentenceAr: 'ابحث عن الأطعمة وسجّلها بالجرام أو بالحصة المحلية، أو استخدم الإضافة السريعة، أو أنشئ طعامًا خاصًا، أو انسخ وجبة من أمس، ويُحسب التزامك الغذائي بعد نهاية اليوم ما لم تُجب بنفسك.',
     target: 'food_log',
     location: TourShellTabLocation(tabIndex: 2),
     release: 5,

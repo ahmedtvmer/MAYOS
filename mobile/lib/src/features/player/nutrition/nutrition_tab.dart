@@ -102,10 +102,10 @@ class _NutritionTabState extends ConsumerState<NutritionTab> {
     }
   }
 
-  Future<void> _logAdherence(String value) async {
+  Future<void> _logAdherence(String value, {String? entryDate}) async {
     setState(() { _saving = true; _error = null; });
     try {
-      final NutritionPlanState plan = await ref.read(apiClientProvider).logNutritionAdherence(value);
+      final NutritionPlanState plan = await ref.read(apiClientProvider).logNutritionAdherence(value, entryDate: entryDate);
       if (mounted) setState(() { _plan = plan; _saving = false; });
     } on ApiException catch (error) {
       if (mounted) setState(() { _error = error.message; _saving = false; });
@@ -294,7 +294,11 @@ class _NutritionTabState extends ConsumerState<NutritionTab> {
         Wrap(spacing: 12, children: <Widget>[
           for (final Map<String, dynamic> day in _plan!.adherenceDays)
             Tooltip(message: '${day['date']}: ${copy.adherenceLabel(day['value'] as String?)}',
-              child: _adherenceMark(day['value'] as String?, Theme.of(context).colorScheme)),
+              child: InkWell(
+                onTap: !_saving && _plan!.adherenceDays.length >= 2 &&
+                    day['date'] == _plan!.adherenceDays[_plan!.adherenceDays.length - 2]['date']
+                    ? () => _answerPastDay(day['date'] as String, copy) : null,
+                child: _adherenceMark(day['value'] as String?, Theme.of(context).colorScheme))),
         ]),
         const SizedBox(height: 16),
         Text('${copy.latestWeight}: ${_plan!.latestWeight == null ? '—' : '${_plan!.latestWeight} ${copy.kilograms}'}', style: text.bodyLarge),
@@ -302,6 +306,17 @@ class _NutritionTabState extends ConsumerState<NutritionTab> {
         if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
       ],
     );
+  }
+
+  Future<void> _answerPastDay(String entryDate, NutritionCopy copy) async {
+    final String? answer = await showDialog<String>(context: context,
+      builder: (BuildContext dialogContext) => SimpleDialog(title: Text(entryDate),
+        children: <Widget>[
+          for (final String verdict in <String>['on_target', 'roughly', 'off'])
+            SimpleDialogOption(onPressed: () => Navigator.pop(dialogContext, verdict),
+              child: Text(copy.adherenceLabel(verdict))),
+        ]));
+    if (answer != null && mounted) await _logAdherence(answer, entryDate: entryDate);
   }
 
   Future<void> _decidePaceProposal(String decision) async {
