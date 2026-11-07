@@ -58,6 +58,12 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `JWT_SECRET` | **required** | HS256 token signing/verification; the service refuses to operate without it |
 | `SENTRY_DSN` | unset | Sentry API project DSN; unset disables all Sentry reporting |
 | `SENTRY_ENVIRONMENT` | `production` in server Compose | Sentry environment label (`production` or `staging`) |
+| `SENTRY_READ_TOKEN` | unset | Server-only read-only Sentry token with `event:read` access to the API and app projects; unset disables only the Monitoring Sentry tile |
+| `SENTRY_ORG` | `mayos` | Sentry organisation slug for Monitoring reads and links |
+| `SENTRY_PROJECTS` | `mayos-api,mayos-app` | Comma-separated Sentry project slugs to show on Monitoring |
+| `SENTRY_API_BASE_URL` | `https://de.sentry.io` | HTTPS API origin for Monitoring reads; keep the EU region required by ADR 097 |
+| `UPTIMEROBOT_READ_KEY` | unset | Server-only UptimeRobot read-only API key covering all monitors; unset disables only the uptime tile |
+| `POSTHOG_PROJECT_URL` | unset | Plain HTTPS project link for product analytics on Monitoring; no PostHog read credential required |
 | `ANONYMOUS_ID_SECRET` | falls back to `JWT_SECRET` | Secret for stable, non-reversible Sentry account ids; set a distinct random secret to decouple identifiers |
 | `GIT_COMMIT` | image build argument | Release commit baked into the API image and attached to Sentry events |
 | `ADMIN_USERNAME` | unset | Separate owner identity for `/admin`; all three `ADMIN_*` secrets must be valid or every `/admin` route returns 404 |
@@ -123,6 +129,34 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 Structured, owner-reviewed Coach program requests and free-form imports remain
 metered into Coach resource totals but are excluded from Coach allowance
 admission. Their launch sizing is deferred to #263.
+
+**Monitoring outside services (#639, ADR 100).** After the #592 accounts exist,
+the owner adds `SENTRY_READ_TOKEN` and `UPTIMEROBOT_READ_KEY` to the root-only
+`/opt/mayos/.env` on the server and recreates the API container through the
+normal deployment flow. Use a Sentry token scoped to `event:read` for the
+configured projects and UptimeRobot's **read-only** key, never its full-access
+account key. Set `POSTHOG_PROJECT_URL` to the MAYOS EU project page. Both
+Compose files pass these settings to the API; leave credentials unset locally.
+
+The once-a-minute sampler starts independent background refreshes at most once
+every five minutes per source, with a three-second timeout for each HTTP I/O
+phase and no automatic retries. Rendering reads the in-memory cache only;
+the selected Monitoring history window does not change these current summaries.
+Sentry lists unresolved issues across all pages, showing the newest five per
+project with event counts and links. Only titles, numeric counts and issue ids
+are used, never event bodies, users, breadcrumbs or request details. Counts
+require at most 20 pages per project; larger results show a refresh failure
+instead of a truncated total. The tile does not write Sentry data to the metrics
+database. See the [Sentry issue API](https://docs.sentry.io/api/events/list-a-projects-issues/).
+
+UptimeRobot's [read-only v2 API](https://uptimerobot.com/api/legacy/) supplies
+each monitor's status, 1/7/30-day uptime and up to five recent downtime records
+with UTC start times and durations in seconds. The reader follows pagination
+up to 20 pages; it never changes monitors or alerts. Log retention depends on
+the UptimeRobot plan. Missing credentials show a setup note only on that tile.
+Failures show a generic refresh notice and retain the last successful values,
+marked as possibly stale with their refresh time; retries wait five minutes.
+Credentials and exception text are neither rendered nor logged by the reader.
 
 **Caller IP and rate-limit keying.** Every route limit (`RATE_LIMIT_*`) is keyed
 by caller address — plus a bearer-token suffix for authenticated calls — in
