@@ -132,6 +132,8 @@ def test_default_hidden_rules_and_curated_overrides(tmp_path):
 def test_real_usda_rows_follow_halal_alcohol_fast_food_and_baby_rules(tmp_path):
     from database.food_library.builder import FOOD_PATH, PORTION_PATH
 
+    if not FOOD_PATH.is_file() or not PORTION_PATH.is_file():
+        pytest.skip("Real USDA row coverage requires optional data/food_library.csv and data/food_portions.csv")
     curation = tmp_path / 'curation.csv'
     recipes = tmp_path / 'recipes.csv'
     _csv(curation, ['id','display_name','arabic_name','aliases_en','aliases_ar','hidden','staple_roles','portion_label','portion_grams','reviewed'], [])

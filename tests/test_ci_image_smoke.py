@@ -38,9 +38,12 @@ def smoke_store(tmp_path):
 def test_smoke_scenario_exercises_api_contracts(smoke_store, monkeypatch):
     monkeypatch.delenv("SKIP_LLM_LOAD", raising=False)
     monkeypatch.setenv("JWT_SECRET", "ci-smoke-test-secret-0123456789")
-    monkeypatch.delenv("MAYOS_DATA_DIR", raising=False)
     monkeypatch.delenv("MAYOS_REQUIRE_PERSISTENT_DATA", raising=False)
     db = smoke_store
+    # Lifespan startup and request dependencies must use the same isolated
+    # catalog and curation, not a default catalog left by another test.
+    monkeypatch.setenv("MAYOS_DATA_DIR", str(db.catalog_path.parent))
+    monkeypatch.setattr("database.database_manager.DEFAULT_CURATION_CSV_PATH", db.curation_path)
 
     async def skip_hosted_model_warmup():
         return None

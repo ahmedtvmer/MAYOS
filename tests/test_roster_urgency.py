@@ -228,9 +228,9 @@ def _seed_alert(
     return alert_id
 
 
-def _backdate_start(db, assignment_id, days):
-    """Moves the assignment's start ``days`` into the past to shape its follow-up date."""
-    started_at = (datetime.now(UTC) - timedelta(days=days)).isoformat()
+def _backdate_start(db, assignment_id, days, *, as_of=None):
+    """Move the assignment start relative to the supplied evaluation time or now."""
+    started_at = ((as_of or datetime.now(UTC)) - timedelta(days=days)).isoformat()
     db.catalog_conn.execute(
         "UPDATE assignments SET started_at = ? WHERE assignment_id = ?",
         (started_at, assignment_id),
@@ -400,7 +400,8 @@ def test_snapshot_signal_values_reuse_attendance_stalling_and_regression_alerts(
     coach_headers, coach_id = _make_coach(client, db, "coach", capacity=5)
     player = _assign(api, "signalsplayer", coach_headers)
     _publish_coach_program(api, coach_headers, player, monkeypatch)
-    _backdate_start(db, player["assignment_id"], 34)
+    snapshot_time = datetime(2026, 10, 5, 12, tzinfo=UTC)
+    _backdate_start(db, player["assignment_id"], 34, as_of=snapshot_time)
 
     with db.open_ledger(player["ledger_id"]) as ledger:
         ledger.append_training_schedule(
@@ -450,7 +451,7 @@ def test_snapshot_signal_values_reuse_attendance_stalling_and_regression_alerts(
     )
 
     response = roster_snapshot_service.roster_signal_snapshot(
-        db, coach_id, now=datetime(2026, 10, 5, 12, tzinfo=UTC)
+        db, coach_id, now=snapshot_time
     )
     signal = response["snapshot"]["players"][0]
     assert signal["missed_expected_days_7d"] > 0

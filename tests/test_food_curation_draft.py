@@ -1,9 +1,13 @@
 import csv
 
-from database.food_library.builder import CURATION_PATH, RECIPE_PATH, build_food_library
+import pytest
+
+from database.food_library.builder import CURATION_PATH, FOOD_PATH, PORTION_PATH, RECIPE_PATH, build_food_library
 
 
 def test_owner_food_draft_has_required_arabic_aliases_and_unreviewed_recipes():
+    if not FOOD_PATH.is_file() or not PORTION_PATH.is_file():
+        pytest.skip("Owner draft USDA coverage requires optional data/food_library.csv and data/food_portions.csv")
     rows = build_food_library()
     foods = {row['id']: row for row in rows}
     with CURATION_PATH.open(encoding='utf-8') as stream:

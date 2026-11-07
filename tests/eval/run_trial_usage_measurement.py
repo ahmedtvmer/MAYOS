@@ -12,7 +12,6 @@ import argparse
 import hashlib
 import json
 import os
-import shutil
 import sys
 import tempfile
 from contextlib import contextmanager
@@ -457,14 +456,10 @@ def _verify_models() -> dict[str, Any]:
 
 
 def _synthetic_store(base: Path) -> Any:
-    from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
+    from tests.catalog import create_catalog_store
 
-    catalog = base / "catalog.db"
-    shutil.copyfile(DEFAULT_CATALOG_PATH, catalog)
-    return DatabaseManager(
-        catalog_path=catalog,
-        ledgers_dir=base / "ledgers",
-        backups_dir=base / "backups",
+    return create_catalog_store(
+        base,
         default_ledger_id="trial-measurement-bootstrap",
     )
 
@@ -534,7 +529,9 @@ def _measure_turn(pair: dict[str, Any], language: str, store: Any) -> dict[str, 
 
 
 def _close_store(store: Any) -> None:
-    store.catalog_conn.close()
+    from tests.catalog import close_catalog_store
+
+    close_catalog_store(store)
 
 
 def _replay_profiles(

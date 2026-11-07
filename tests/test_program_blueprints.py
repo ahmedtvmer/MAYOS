@@ -260,7 +260,12 @@ def test_unrecognised_player_split_override_keeps_default_split_behavior():
     ],
     ids=["commercial-gym", "home-gym", "bodyweight-only"],
 )
-def test_generated_upper_and_full_warmups_follow_equipment_access(equipment_access, allowed_equipment):
+def test_generated_upper_and_full_warmups_follow_equipment_access(equipment_access, allowed_equipment, request):
+    global db
+    if equipment_access != COMMERCIAL_GYM:
+        # The assertions require exact library ids 3011/3021; tracked sources
+        # name neither row, so invented warmups cannot stand in for them.
+        db = request.getfixturevalue("real_library_store")
     upper_program = _generate("male", 4, preference="Upper/Lower", equipment_access=equipment_access)
     full_program = _generate("male", 3, preference="Full Body", equipment_access=equipment_access)
     upper_days = [day for day in upper_program.days if "upper" in day.day_name.lower()]

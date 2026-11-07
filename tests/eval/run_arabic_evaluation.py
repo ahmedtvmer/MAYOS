@@ -6,7 +6,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -444,11 +443,9 @@ def _seed_history(store: Any, ledger: Any, scenario: dict[str, Any]) -> dict[str
 
 
 def _synthetic_store(base: Path):
-    from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
+    from tests.catalog import create_catalog_store
 
-    catalog = base / "catalog.db"
-    shutil.copyfile(DEFAULT_CATALOG_PATH, catalog)
-    return DatabaseManager(catalog_path=catalog, ledgers_dir=base / "users", backups_dir=base / "backups")
+    return create_catalog_store(base)
 
 
 def _fake_generation(scenario: dict[str, Any], **kwargs):
@@ -828,7 +825,9 @@ def _run_evaluation() -> int:
                             action_scenario = scenario_data["cases"].get(base_id, smoke_scenario) | smoke_scenario
                             rows.append(_run_one(smoke_case, action_scenario, store, mode="plumbing", coach_authority=smoke_scenario.get("coach_authority", False)))
                 finally:
-                    store.catalog_conn.close()
+                    from tests.catalog import close_catalog_store
+
+                    close_catalog_store(store)
         except Exception as exc:
             runner_exception = True
             safe_error = re.sub(r"(?i)(api[_-]?key|authorization|bearer)(?:\s*[:=]\s*|\s+)[^\s,;]+", r"\1=[REDACTED]", str(exc))

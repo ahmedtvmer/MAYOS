@@ -1,5 +1,6 @@
 import os
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -212,6 +213,8 @@ def _bash_path(path):
 
 
 def _pull_fixture(tmp_path, *, inputs=True, checks=None):
+    if shutil.which("git") is None:
+        pytest.skip("Server pull integration requires git; the production API image does not include it")
     origin = tmp_path / "origin"
     work = tmp_path / "work"
     root = tmp_path / "server"

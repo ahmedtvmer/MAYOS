@@ -270,10 +270,10 @@ def test_program_edit_can_lower_existing_five_sets_but_not_raise_to_six(fresh_st
     assert [group.sets for group in saved.set_groups] == [2, 2]
 
 
-def test_program_edit_added_rationale_records_computed_prescription(fresh_store):
+def test_program_edit_added_rationale_records_computed_prescription(fresh_store, editable_catalog_rows):
     db = fresh_store
     ledger = db.ledger
-    rows = db.catalog_conn.execute("SELECT id, name FROM exercises ORDER BY id LIMIT 2").fetchall()
+    rows = editable_catalog_rows[:2]
     day = PersistedProgramDaySchema(day_name="Edit", day_order=1, exercises=[
         PersistedProgramExerciseSchema(exercise_id=str(rows[0][0]), exercise_name=str(rows[0][1]), target_sets=2, target_reps_min=8, target_reps_max=12)])
     ledger.save_training_program(PersistedProgramSchema(program_name="Edit", split_type="Full Body", weekly_frequency=1, days=[day]).model_dump())
@@ -292,10 +292,10 @@ def test_program_edit_added_rationale_records_computed_prescription(fresh_store)
     assert prescription["rir"]["params"]["experience_level"] == "beginner"
 
 
-def test_program_edit_resolves_rationale_day_without_day_order(fresh_store):
+def test_program_edit_resolves_rationale_day_without_day_order(fresh_store, editable_catalog_rows):
     db = fresh_store
     ledger = db.ledger
-    rows = db.catalog_conn.execute("SELECT id, name FROM exercises ORDER BY id LIMIT 3").fetchall()
+    rows = editable_catalog_rows
     first = PersistedProgramDaySchema(day_name="A", day_order=1, exercises=[
         PersistedProgramExerciseSchema(exercise_id=str(rows[0][0]), exercise_name=str(rows[0][1]), target_sets=2, target_reps_min=8, target_reps_max=12)])
     second = PersistedProgramDaySchema(day_name="B", day_order=2, exercises=[

@@ -1,7 +1,6 @@
 """Swap target resolution: catalog-name-first installs, hallucinated-name refusals, muscle mismatches."""
 
 import re
-import shutil
 from types import SimpleNamespace
 
 import pytest
@@ -9,7 +8,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from agent import assistant_graph
 from agent.assistant_graph import exercise_substitution_node
-from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
+from database.database_manager import DatabaseManager
 from tests.fakes.chat_model import ScriptedChatModel
 from utils.equipment_access import BODYWEIGHT_ONLY, COMMERCIAL_GYM, HOME_GYM
 from utils.player_output_budgets import SUBSTITUTION_RESOLUTION_MAX_OUTPUT_TOKENS
@@ -40,15 +39,8 @@ def _exercise(exercise_id: str) -> dict:
 
 
 @pytest.fixture
-def sub_db(tmp_path, monkeypatch):
-    catalog_path = tmp_path / "catalog.db"
-    shutil.copyfile(DEFAULT_CATALOG_PATH, catalog_path)
-    db = DatabaseManager(
-        catalog_path=catalog_path,
-        ledgers_dir=tmp_path / "users",
-        backups_dir=tmp_path / "backups",
-        default_ledger_id="default",
-    )
+def sub_db(fresh_store, monkeypatch):
+    db = fresh_store
     try:
         db.ledger.save_training_program(
             {
@@ -651,9 +643,13 @@ def test_substitution_model_context_includes_curated_source_and_candidates(
 
 @pytest.mark.parametrize("access", [COMMERCIAL_GYM, HOME_GYM, BODYWEIGHT_ONLY])
 def test_no_staple_suggestions_follow_replace_ranking_and_access(
-    sub_db, seed_exercise_curation, access
+    sub_db, seed_exercise_curation, access, real_library_store
 ):
-    sub_db.initialize_and_seed()
+    # These exact three names and the absence of any home/bodyweight options
+    # describe the full library's ranked inventory, not a synthetic subset.
+    program_data = sub_db.ledger.get_active_program().model_dump()
+    sub_db = real_library_store
+    sub_db.ledger.save_training_program(program_data)
     seed_exercise_curation(
         sub_db,
         {
@@ -961,8 +957,10 @@ def test_unspecified_chat_substitutes_follow_equipment_access(sub_db, monkeypatc
     ],
 )
 def test_near_miss_name_installs_the_real_exercise_never_the_look_alike(
-    sub_db, near_miss_id, target, source_id, allowed_ids
+    sub_db, near_miss_id, target, source_id, allowed_ids, request
 ):
+    if near_miss_id == "329":
+        sub_db = request.getfixturevalue("real_library_store")
     sub_db.initialize_and_seed()
     source_name = sub_db.get_exercise_library_entry(source_id)["name"]
     _save_program_days(sub_db, [("Upper 1", [source_id, CHEST_SLOT, REVERSE_LAT_SLOT])])

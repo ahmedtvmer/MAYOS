@@ -37,10 +37,10 @@ def test_pending_chat_program_edit_round_trips_offer_and_expires(fresh_store):
     assert ledger.get_pending_chat_program_edit() is None
 
 
-def test_chat_edit_preview_and_multi_day_confirmation_create_one_version(fresh_store):
+def test_chat_edit_preview_and_multi_day_confirmation_create_one_version(fresh_store, editable_catalog_rows):
     db = fresh_store
     ledger = db.ledger
-    rows = db.catalog_conn.execute("SELECT id, name FROM exercises ORDER BY id LIMIT 3").fetchall()
+    rows = editable_catalog_rows
     ids = [str(row[0]) for row in rows]
     days = [
         PersistedProgramDaySchema(day_name=f"Leg {index}", day_order=index,
@@ -335,7 +335,7 @@ def test_concurrent_confirmations_publish_exactly_one_version(fresh_store):
     db = fresh_store
     ledger = db.ledger
     squat = db.find_exercises_by_name("barbell squat", limit=1)[0]
-    curl = db.find_exercises_by_name("biceps curl", limit=1)[0]
+    curl = db.find_exercises_by_name("barbell curl", limit=1)[0]
     day = PersistedProgramDaySchema(day_name="Leg A", day_order=1, exercises=[
         PersistedProgramExerciseSchema(exercise_id=str(squat["id"]), exercise_name=squat["name"],
             target_sets=3, target_reps_min=8, target_reps_max=12)])

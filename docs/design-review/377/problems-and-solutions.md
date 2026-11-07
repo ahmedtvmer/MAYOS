@@ -288,7 +288,7 @@ Earlier 1-second idle readings were 1.7% CPU (27 MiB) at 15 ledgers and
   - This restarts #602's 7-day window: the earliest date it can close is 2026-11-09, if
     nothing else happens.
   - The owner decided not to ask Contabo for another host node: Contabo is a temporary host
-    until Hetzner or OVH have stock, so the incidents are logged and watched, not escalated.
+    until a preferred EU host has stock, so the incidents are logged and watched, not escalated.
 - **Fourth incident: a silent stop at the start of a test run (2026-11-02, afternoon).**
   - The journal stops at 15:01:41 CET, 7 seconds after three test containers were started
     (`--cpus 1 --memory 2g` each). The memory was not used yet, and there are no

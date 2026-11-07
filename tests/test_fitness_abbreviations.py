@@ -72,19 +72,9 @@ def test_resolve_unknown_abbreviation_with_llm_scripted_model(monkeypatch):
 
 
 @pytest.fixture
-def _good_morning_db(tmp_path):
+def _good_morning_db(fresh_store):
     """Builds an isolated store with a good morning in the first program slot."""
-    import shutil
-
-    from database.database_manager import DEFAULT_CATALOG_PATH, DatabaseManager
-
-    catalog_path = tmp_path / "catalog.db"
-    shutil.copyfile(DEFAULT_CATALOG_PATH, catalog_path)
-    db = DatabaseManager(
-        catalog_path=catalog_path,
-        ledgers_dir=tmp_path / "users",
-        backups_dir=tmp_path / "backups",
-    )
+    db = fresh_store
     ledger = db.open_ledger("default")
     db.ledger = ledger
     profile = {

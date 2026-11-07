@@ -596,7 +596,11 @@ def test_equipment_access_filters_name_tier_before_limit(fresh_store):
 
 
 @pytest.mark.parametrize("query", ["pendulum squat", "kelso shrug", "bayesian curl"])
-def test_near_miss_names_do_not_resolve(fresh_store, query):
+def test_near_miss_names_do_not_resolve(fresh_store, query, request):
+    if query == "kelso shrug":
+        # Preserve the real look-alike row 329 rather than passing because the
+        # licensed candidate is absent from the synthetic catalog.
+        fresh_store = request.getfixturevalue("real_library_store")
     fresh_store.initialize_and_seed()
 
     assert all(
@@ -817,6 +821,8 @@ def test_every_curation_file_id_exists_in_the_exercise_library():
     from database.exercise_library.curation import load_exercise_curation
     from database.shared import DEFAULT_CSV_PATH
 
+    if not Path(DEFAULT_CSV_PATH).is_file():
+        pytest.skip("Full curation coverage requires optional licensed data/processed_exercises.csv")
     with open(DEFAULT_CSV_PATH, newline="", encoding="utf-8") as seed_file:
         library_ids = {row["id"] for row in csv.DictReader(seed_file)}
     library_ids |= {exercise["id"] for exercise in MAYOS_AUTHORED_EXERCISES}

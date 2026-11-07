@@ -247,7 +247,8 @@ def test_signature_match_precedes_uncurated_pattern_and_rejects_mismatch(
     )
     flat_press = next(
         exercise
-        for exercise in program.days[0].exercises
+        for day in program.days
+        for exercise in day.exercises
         if exercise.slot_key == "flat_press"
     )
 
@@ -492,6 +493,13 @@ def test_replace_signature_rank_precedes_slot_equipment_preference(
     }
     seed_exercise_curation(fresh_store, curation)
     with fresh_store.catalog_conn:
+        # Isolate the four ranked candidates from the synthetic support rows,
+        # just as the real-library Staples below are excluded from Home gym.
+        fresh_store.catalog_conn.execute(
+            "UPDATE exercises SET equipment = 'cable' WHERE id LIKE 'fixture-%' "
+            "AND id IN (SELECT exercise_id FROM exercise_curated_fields "
+            "WHERE primary_muscle IN ('Glutes', 'Abductors'))"
+        )
         fresh_store.catalog_conn.executemany(
             "UPDATE exercises SET equipment = 'cable' WHERE id = ?",
             [(staple_id,) for staple_id in SLOT_STAPLES["glute_iso"]],
@@ -521,9 +529,10 @@ def test_replace_signature_rank_precedes_slot_equipment_preference(
 
 
 def test_empty_curation_programs_match_coach_pattern_snapshot(
-    fresh_store, seed_exercise_curation
+    real_library_store, seed_exercise_curation
 ):
     """Empty curation keeps current coach-pattern output deterministic."""
+    fresh_store = real_library_store
     seed_exercise_curation(fresh_store, {})
     snapshot_path = (
         Path(__file__).parent
