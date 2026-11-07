@@ -880,6 +880,11 @@ RE_HISTORY_INDICATOR = re.compile(
     r"\b(?:how\s+did\s+(?:my|i)|what\s+did\s+i|history|logged|last\s+(?:session|workout)|"
     r"previous\s+(?:session|workout)|compare|comparison|progress\s+on)\b", re.IGNORECASE
 )
+RE_FOOD_LOG_QUERY = re.compile(
+    r"\b(?:eat|ate|eaten|food\s+log|meals?)\b|"
+    r"\b(?:أكلت|اكلت|كلت|تناولت|وجباتي|طعامي)\b|سجل\s+(?:الطعام|الأكل|الاكل)",
+    re.IGNORECASE,
+)
 RE_FOLLOWUP_EXERCISE = re.compile(r"^\s*(?:what\s+(?:about|of)|how\s+about)\s+(.+?)[?!.]*\s*$", re.IGNORECASE)
 RE_HISTORY_SCOPE = re.compile(
     r"\b(?:compar\w*|versus|vs|since|between|before|after|over\s+time|trend\w*|progress\w*|"
@@ -897,6 +902,10 @@ RE_PROGRESS_COMPARISON = re.compile(
     r"كام\s+(?:زاد|تحسن|اتحسن|اتقدم|تقدم|فرق))"
 )
 AUTHORIZATION_RESPONSE = "Routine changes require an explicit directive, such as 'switch routine to 3 days' or 'swap bench press for incline press'."
+
+
+def _is_food_log_query(query: str) -> bool:
+    return bool(RE_FOOD_LOG_QUERY.search(RE_ARABIC_DIACRITICS.sub("", query)))
 
 
 def _extract_frequency(text: str) -> int | None:
@@ -997,6 +1006,10 @@ def _classify_single_clause(clause: str, telemetry: str = "", messages: Sequence
 
     if RE_BANNED_MOVEMENT.search(c):
         return {"intent": "banned_movement", "intent_metadata": {"raw_query": c}, "query": c}
+
+    # Food recall shares history phrasing and dates, but needs the Food log tool.
+    if _is_food_log_query(c):
+        return {"intent": "coaching_qa", "intent_metadata": {}, "query": c}
 
     if _whole_session_query(c) or RE_EXERCISE_PERFORMANCE_QUERY.search(c) or RE_HISTORY_INDICATOR.search(c):
         return {"intent": "exercise_history", "intent_metadata": {"raw_query": c}, "query": c}
@@ -1520,6 +1533,8 @@ def _classify_arabic_swap(
 
 
 def _classify_arabic_intent(query: str, config: dict[str, Any] | None) -> dict[str, Any]:
+    if _is_food_log_query(query):
+        return {"intent": "coaching_qa", "intent_metadata": {}}
     ledger, store = _graph_context(config)
     program = ledger.get_active_program() if ledger is not None else None
     try:
@@ -1588,6 +1603,8 @@ def _redundant_veto_followup(query: str) -> bool:
 def _last_history_exchange(messages: Sequence[BaseMessage]) -> str | None:
     if not messages:
         return None
+    if _is_food_log_query(_get_message_text(messages[-1])):
+        return None
     followup = RE_FOLLOWUP_EXERCISE.fullmatch(_get_message_text(messages[-1]))
     if not followup:
         return None
@@ -1595,6 +1612,8 @@ def _last_history_exchange(messages: Sequence[BaseMessage]) -> str | None:
         if _message_role(message) != "user":
             continue
         prior = _get_message_text(message)
+        if _is_food_log_query(prior):
+            return None
         if RE_FOLLOWUP_EXERCISE.fullmatch(prior):
             continue
         if not (_whole_session_query(prior) or RE_EXERCISE_PERFORMANCE_QUERY.search(prior) or RE_HISTORY_INDICATOR.search(prior)):
