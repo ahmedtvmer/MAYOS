@@ -17,6 +17,7 @@ from database.database_manager import (  # noqa: E402
     DatabaseManager,
 )
 from database.exercise_library.curation import DEFAULT_CURATION_CSV_PATH  # noqa: E402
+from database.food_library.seeding import FoodLibraryPaths  # noqa: E402
 from utils.logger import MayosLogger  # noqa: E402
 
 DEFAULT_PROCESSED_PATH = BASE_DIR / "data" / "processed_exercises.csv"
@@ -41,6 +42,16 @@ def resolve_curation_path() -> Path:
     return Path(override) if override else DEFAULT_CURATION_CSV_PATH
 
 
+def resolve_food_paths() -> FoodLibraryPaths:
+    """Keep real food sources unless deliberate seed overrides select others."""
+    food_override = os.getenv("SEED_FOOD_CSV_PATH", "").strip()
+    portion_override = os.getenv("SEED_FOOD_PORTIONS_CSV_PATH", "").strip()
+    return FoodLibraryPaths(
+        foods=Path(food_override) if food_override else FoodLibraryPaths.foods,
+        portions=Path(portion_override) if portion_override else FoodLibraryPaths.portions,
+    )
+
+
 def require_csv_path() -> Path:
     """Resolve the seed CSV and fail clearly before any database work."""
     csv_path = resolve_csv_path()
@@ -62,6 +73,7 @@ def seed_only(csv_path: Path) -> None:
     """
     logger.info("Seeding catalog on data root '%s' from '%s'...", DEFAULT_CATALOG_PATH.parent, csv_path)
     curation_path = resolve_curation_path()
+    food_paths = resolve_food_paths()
     db = DatabaseManager(
         catalog_path=DEFAULT_CATALOG_PATH,
         ledgers_dir=DEFAULT_LEDGERS_DIR,
@@ -69,7 +81,12 @@ def seed_only(csv_path: Path) -> None:
         curation_path=curation_path,
     )
     try:
-        db.initialize_and_seed(csv_path=csv_path, curation_path=curation_path)
+        db.initialize_and_seed(
+            csv_path=csv_path,
+            curation_path=curation_path,
+            food_path=food_paths.foods,
+            portion_path=food_paths.portions,
+        )
         exercise_count = db.catalog_conn.execute("SELECT COUNT(*) FROM exercises").fetchone()[0]
         muscles_count = db.catalog_conn.execute("SELECT COUNT(*) FROM exercise_secondary_muscles").fetchone()[0]
         if exercise_count <= 0:
@@ -83,6 +100,7 @@ def seed_only(csv_path: Path) -> None:
 def run_tests(csv_path: Path) -> None:
     logger.info("Initializing DatabaseManager...")
     curation_path = resolve_curation_path()
+    food_paths = resolve_food_paths()
     db = DatabaseManager(
         catalog_path=DEFAULT_CATALOG_PATH,
         ledgers_dir=DEFAULT_LEDGERS_DIR,
@@ -97,7 +115,12 @@ def run_tests(csv_path: Path) -> None:
 
     # 2. Run schema initialization and dataset seeding
     logger.info("Running initialize_and_seed()...")
-    db.initialize_and_seed(csv_path=csv_path, curation_path=curation_path)
+    db.initialize_and_seed(
+        csv_path=csv_path,
+        curation_path=curation_path,
+        food_path=food_paths.foods,
+        portion_path=food_paths.portions,
+    )
 
     # 3. Verify row counts in catalog tables
     cat_cursor.execute("SELECT COUNT(*) FROM exercises")
