@@ -80,16 +80,18 @@ class FoodLogEntry {
     required this.unit,
     required this.mealLabel,
     required this.loggedTime,
+    this.kind = 'library_food',
+    this.blankMacros = const <String>{},
   });
 
   factory FoodLogEntry.fromJson(Map<String, dynamic> json) => FoodLogEntry(
     id: json['id'] as String,
     food: FoodLibraryItem(
-      id: json['food_id'] as String,
+      id: json['food_id'] as String? ?? '',
       name: json['name'] as String,
       arabicName: json['arabic_name'] as String?,
       nutrients: FoodNutrients.fromJson(
-        json['nutrients_per_100g'] as Map<String, dynamic>,
+        json['nutrients_per_100g'] as Map<String, dynamic>? ?? <String, dynamic>{},
       ),
       portionLabel: json['portion_label'] as String?,
       portionGrams: (json['portion_grams'] as num?)?.toDouble(),
@@ -97,11 +99,16 @@ class FoodLogEntry {
     nutrients: FoodNutrients.fromJson(
       json['nutrients'] as Map<String, dynamic>,
     ),
-    grams: (json['grams'] as num).toDouble(),
-    quantity: (json['quantity'] as num).toDouble(),
-    unit: json['unit'] as String,
+    grams: (json['grams'] as num? ?? 0).toDouble(),
+    quantity: (json['quantity'] as num? ?? 0).toDouble(),
+    unit: json['unit'] as String? ?? 'grams',
     mealLabel: json['meal_label'] as String,
     loggedTime: json['logged_time'] as String,
+    kind: json['kind'] as String? ?? 'library_food',
+    blankMacros: <String>{
+      for (final String key in <String>['protein_g', 'carbohydrate_g', 'fat_g'])
+        if ((json['nutrients'] as Map<String, dynamic>)[key] == null) key,
+    },
   );
 
   final String id;
@@ -112,6 +119,8 @@ class FoodLogEntry {
   final String unit;
   final String mealLabel;
   final String loggedTime;
+  final String kind;
+  final Set<String> blankMacros;
 }
 
 class FoodLogDay {

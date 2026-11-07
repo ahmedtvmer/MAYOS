@@ -10,12 +10,188 @@ import 'package:mayos_mobile/src/core/food_log_models.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/features/player/nutrition/food_amount_screen.dart';
 import 'package:mayos_mobile/src/features/player/nutrition/food_search_screen.dart';
+import 'package:mayos_mobile/src/features/player/nutrition/personal_food_screen.dart';
+import 'package:mayos_mobile/src/features/player/nutrition/quick_add_screen.dart';
 import 'package:mayos_mobile/src/features/player/nutrition/nutrition_tab.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
 
 void main() {
+  for (final String language in <String>['en', 'ar']) {
+    for (final Brightness brightness in Brightness.values) {
+      testWidgets('$language Quick add keeps optional Macros blank in $brightness', (WidgetTester tester) async {
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final FakeMayosApi fake = _fake();
+        final FoodLogCopy copy = FoodLogCopy(language);
+        await tester.pumpWidget(_app(fake, language: language, brightness: brightness));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('copy_food_meal')), findsNothing);
+        await tester.tap(find.widgetWithText(OutlinedButton, copy.quickAdd));
+        await tester.pumpAndSettle();
+        expect(find.byType(QuickAddScreen), findsOneWidget);
+        expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, copy.add)).onPressed, isNull);
+        await tester.enterText(find.byKey(const Key('food_energy_kcal')), language == 'ar' ? '٣٠٠' : '300');
+        await tester.enterText(find.byKey(const Key('food_fat_g')), '0');
+        await tester.ensureVisible(find.widgetWithText(FilledButton, copy.add));
+        await tester.tap(find.widgetWithText(FilledButton, copy.add));
+        await tester.pumpAndSettle();
+        expect(find.text('1700'), findsOneWidget);
+        expect(find.textContaining('${copy.protein}:  ·'), findsOneWidget);
+        final Map<String, dynamic> nutrients = fake.foodLogEntries[fake.foodLogToday]!.single['nutrients'] as Map<String, dynamic>;
+        expect(nutrients['protein_g'], isNull);
+        expect(nutrients['carbohydrate_g'], isNull);
+        expect(nutrients['fat_g'], 0);
+        await tester.ensureVisible(find.widgetWithText(ListTile, copy.quickAdd));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(ListTile, copy.quickAdd));
+        await tester.pumpAndSettle();
+        expect(tester.widget<TextField>(find.byKey(const Key('food_protein_g'))).controller!.text, isEmpty);
+        await tester.enterText(find.byKey(const Key('food_energy_kcal')), '400');
+        await tester.enterText(find.byKey(const Key('food_protein_g')), '20');
+        await tester.tap(find.byType(DropdownButtonFormField<String>));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(copy.mealLabel('snack')).last);
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.widgetWithText(FilledButton, copy.save));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(FilledButton, copy.save));
+        await tester.pumpAndSettle();
+        await tester.dragUntilVisible(find.text('1600'), find.byType(ListView), const Offset(0, 200));
+        expect(find.text('1600'), findsOneWidget);
+        expect(fake.foodLogEntries[fake.foodLogToday]!.single['meal_label'], 'snack');
+        expect(tester.takeException(), isNull);
+      });
+    }
+    for (final String basis in <String>['100g', 'portion']) {
+      testWidgets('$language creates a Personal food per $basis and logs it', (WidgetTester tester) async {
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final FakeMayosApi fake = _fake();
+        final FoodLogCopy copy = FoodLogCopy(language);
+        await tester.pumpWidget(_app(fake, language: language,
+          brightness: basis == 'portion' ? Brightness.dark : Brightness.light));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('food_log_entry_point')));
+        await tester.pumpAndSettle();
+        expect(find.widgetWithText(TextButton, copy.quickAdd), findsOneWidget);
+        await tester.enterText(find.byType(TextField), 'My bowl');
+        await tester.pumpAndSettle(const Duration(milliseconds: 300));
+        expect(find.text(copy.noResults), findsOneWidget);
+        await tester.tap(find.byKey(const Key('create_personal_food')));
+        await tester.pumpAndSettle();
+        expect(find.byType(PersonalFoodScreen), findsOneWidget);
+        expect(tester.widget<TextField>(find.byKey(const Key('personal_food_name'))).controller!.text, 'My bowl');
+        if (basis == 'portion') {
+          await tester.tap(find.byType(DropdownButtonFormField<String>));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text(copy.portion).last);
+          await tester.pumpAndSettle();
+          await tester.enterText(find.byKey(const Key('personal_portion_name')), 'bowl');
+          await tester.enterText(find.byKey(const Key('personal_portion_grams')), '200');
+        }
+        for (final (String key, String value) in <(String, String)>[
+          ('energy_kcal', '300'), ('protein_g', '30'), ('carbohydrate_g', '20'), ('fat_g', '10'),
+        ]) {
+          await tester.ensureVisible(find.byKey(Key('food_$key')));
+          await tester.enterText(find.byKey(Key('food_$key')), value);
+        }
+        await tester.ensureVisible(find.widgetWithText(FilledButton, copy.save));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(FilledButton, copy.save));
+        await tester.pumpAndSettle();
+        expect(find.byType(FoodAmountScreen), findsOneWidget);
+        expect(find.text('My bowl'), findsOneWidget);
+        await tester.ensureVisible(find.widgetWithText(FilledButton, copy.add));
+        await tester.tap(find.widgetWithText(FilledButton, copy.add));
+        await tester.pumpAndSettle();
+        expect(find.text(basis == 'portion' ? '1850' : '1700'), findsOneWidget);
+        expect(fake.foodLogEntries[fake.foodLogToday]!.single['kind'], 'personal_food');
+        await tester.tap(find.byKey(const Key('food_log_entry_point')));
+        await tester.pumpAndSettle();
+        expect(find.text('My bowl'), findsOneWidget);
+        await tester.ensureVisible(find.byKey(const Key('create_personal_food')));
+        expect(find.byKey(const Key('create_personal_food')), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  for (final String entryPoint in <String>['day', 'search']) {
+    testWidgets('copy a meal from $entryPoint sends one request while busy', (WidgetTester tester) async {
+      final FakeMayosApi fake = _fake();
+      fake.foodLogEntries['2026-11-04'] = <Map<String, dynamic>>[
+        _entry('one'), _entry('two'), <String, dynamic>{..._entry('other'), 'meal_label': 'lunch'},
+      ];
+      final Completer<void> pending = Completer<void>();
+      addTearDown(() { if (!pending.isCompleted) pending.complete(); });
+      fake.adapter.beforeRespond = (request) async {
+        if (request.path == '/nutrition/food-log/copy-meal') await pending.future;
+      };
+      await tester.pumpWidget(_app(fake));
+      await tester.pumpAndSettle();
+      if (entryPoint == 'search') {
+        await tester.tap(find.byKey(const Key('food_log_entry_point')));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.byKey(const Key('copy_food_meal')));
+      await tester.pumpAndSettle();
+      expect(find.text('Breakfast'), findsOneWidget);
+      expect(find.text('Lunch'), findsOneWidget);
+      expect(find.text('Dinner'), findsNothing);
+      await tester.tap(find.text('Breakfast'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextButton>(find.byKey(const Key('copy_food_meal'))).onPressed, isNull);
+      expect(tester.widget<ListTile>(find.widgetWithText(ListTile, 'Breakfast')).onTap, isNull);
+      await tester.tap(find.text('Breakfast'));
+      await tester.pump();
+      expect(fake.adapter.requests.where((request) => request.path == '/nutrition/food-log/copy-meal'), hasLength(1));
+      pending.complete();
+      await tester.pumpAndSettle();
+      expect(find.byType(FoodSearchScreen), findsNothing);
+      expect(find.text('1800'), findsOneWidget);
+      expect(fake.foodLogEntries[fake.foodLogToday], hasLength(2));
+      expect(fake.foodLogEntries['2026-11-04'], hasLength(3));
+    });
+  }
+
+  testWidgets('Quick add from search keeps input after failure and prevents duplicate saves', (WidgetTester tester) async {
+    final FakeMayosApi fake = _fake()..foodWriteFails = true;
+    await tester.pumpWidget(_app(fake));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('food_log_entry_point')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Quick add'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('food_energy_kcal')), '250');
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Add'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
+    await tester.pumpAndSettle();
+    expect(find.byType(QuickAddScreen), findsOneWidget);
+    expect(find.text('Could not save food.'), findsOneWidget);
+    expect(tester.widget<TextField>(find.byKey(const Key('food_energy_kcal'))).controller!.text, '250');
+    fake.foodWriteFails = false;
+    final Completer<void> pending = Completer<void>();
+    addTearDown(() { if (!pending.isCompleted) pending.complete(); });
+    fake.adapter.beforeRespond = (request) async {
+      if (request.path == '/nutrition/food-log/quick-add') await pending.future;
+    };
+    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
+    await tester.pump();
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Saving…')).onPressed, isNull);
+    pending.complete();
+    await tester.pumpAndSettle();
+    expect(find.byType(FoodSearchScreen), findsNothing);
+    expect(find.text('1750'), findsOneWidget);
+    expect(fake.foodLogEntries[fake.foodLogToday], hasLength(1));
+  });
+
   testWidgets(
     'search, amount preview, local portions and meal add update the day',
     (WidgetTester tester) async {
@@ -94,6 +270,8 @@ void main() {
         find.text('Search for a food to start your Food log.'),
         findsOneWidget,
       );
+      expect(find.byKey(const Key('create_personal_food')), findsOneWidget);
+      expect(find.byKey(const Key('copy_food_meal')), findsNothing);
       fake.foodSearchFails = true;
       await tester.enterText(find.byType(TextField), 'unknown');
       await tester.pumpAndSettle(const Duration(milliseconds: 300));
@@ -206,7 +384,6 @@ void main() {
     await tester.tap(find.byKey(const Key('food_log_entry_point')));
     await tester.pump();
     expect(find.byType(FoodSearchScreen), findsNothing);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
     refresh.complete();
     await tester.pumpAndSettle();
     expect(tester.widget<FoodSearchScreen>(find.byType(FoodSearchScreen)).day,
@@ -214,6 +391,34 @@ void main() {
     final request = fake.adapter.requests.lastWhere(
       (request) => request.path == '/nutrition/food-log');
     expect(request.query['day'], isNull);
+  });
+
+  testWidgets('Quick add asks the server for the day even when the device date has not changed', (
+    WidgetTester tester,
+  ) async {
+    final FakeMayosApi fake = _fake();
+    await tester.pumpWidget(_app(fake));
+    await tester.pumpAndSettle();
+    fake.foodLogToday = '2026-11-06';
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Quick add'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<QuickAddScreen>(find.byType(QuickAddScreen)).day, '2026-11-06');
+  });
+
+  testWidgets('the meal picker reads yesterday fresh after the day changes', (
+    WidgetTester tester,
+  ) async {
+    final FakeMayosApi fake = _fake();
+    fake.foodLogEntries['2026-11-04'] = <Map<String, dynamic>>[_entry('one')];
+    await tester.pumpWidget(_app(fake));
+    await tester.pumpAndSettle();
+    fake.foodLogEntries['2026-11-04'] = <Map<String, dynamic>>[
+      <String, dynamic>{..._entry('other'), 'meal_label': 'dinner'},
+    ];
+    await tester.tap(find.byKey(const Key('copy_food_meal')));
+    await tester.pumpAndSettle();
+    expect(find.text('Dinner'), findsOneWidget);
+    expect(find.text('Breakfast'), findsNothing);
   });
 
   testWidgets('a failed midnight refresh shows Retry without opening search', (

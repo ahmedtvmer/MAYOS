@@ -1,6 +1,7 @@
 """Pydantic request/response contracts for the FastAPI service."""
 
 from datetime import date
+from math import isfinite
 from typing import Any, Literal
 from urllib.parse import urlsplit
 
@@ -1148,6 +1149,53 @@ class FoodLogAmountIn(BaseModel):
 class FoodLogEntryIn(FoodLogAmountIn):
     entry_date: date
     food_id: str = Field(min_length=1, max_length=100)
+
+
+class QuickAddIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    energy_kcal: float = Field(ge=0, le=100000, allow_inf_nan=False)
+    protein_g: float | None = Field(default=None, ge=0, le=10000, allow_inf_nan=False)
+    carbohydrate_g: float | None = Field(default=None, ge=0, le=10000, allow_inf_nan=False)
+    fat_g: float | None = Field(default=None, ge=0, le=10000, allow_inf_nan=False)
+    meal_label: Literal["breakfast", "lunch", "dinner", "snack"]
+    logged_time: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+
+
+class QuickAddEntryIn(QuickAddIn):
+    entry_date: date
+
+
+class PersonalFoodIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    name: str = Field(min_length=1, max_length=200)
+    basis: Literal["100g", "portion"] = "100g"
+    energy_kcal: float = Field(ge=0, le=100000, allow_inf_nan=False)
+    protein_g: float = Field(ge=0, le=10000, allow_inf_nan=False)
+    carbohydrate_g: float = Field(ge=0, le=10000, allow_inf_nan=False)
+    fat_g: float = Field(ge=0, le=10000, allow_inf_nan=False)
+    portion_label: str | None = Field(default=None, min_length=1, max_length=100)
+    portion_grams: float | None = Field(default=None, gt=0, le=10000, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def require_portion(self):
+        if (self.portion_label is None) != (self.portion_grams is None):
+            raise ValueError("Provide both the portion name and its grams.")
+        if self.basis == "portion" and self.portion_grams is None:
+            raise ValueError("Nutrients per portion need a portion name and its grams.")
+        if self.basis == "portion":
+            for key, maximum in (("energy_kcal", 100000), ("protein_g", 10000),
+                                 ("carbohydrate_g", 10000), ("fat_g", 10000)):
+                density = getattr(self, key) / self.portion_grams * 100
+                if not isfinite(density) or density > maximum:
+                    raise ValueError("Nutrients per 100 g exceed the supported range.")
+        return self
+
+
+class CopyMealIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    meal_label: Literal["breakfast", "lunch", "dinner", "snack"]
+    entry_date: date
+
 
 class NutritionPaceIn(BaseModel):
     goal: Literal["lose", "maintain", "gain"]

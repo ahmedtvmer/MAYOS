@@ -274,3 +274,235 @@ def test_logged_day_returns_cardio_burned_from_the_selected_days_nutrition(food_
     yesterday = client.get("/nutrition/food-log", headers=localized,
                            params={"day": (today - timedelta(days=1)).isoformat()}).json()
     assert yesterday["cardio_burned_kcal"] == 1200
+
+
+def _personal(client, headers, **changes):
+    return client.post("/nutrition/personal-foods", headers=headers, json={
+        "name": "Chicken bowl", "basis": "100g", "energy_kcal": 300,
+        "protein_g": 30, "carbohydrate_g": 20, "fat_g": 10, **changes,
+    })
+
+
+def _quick(client, headers, day, **changes):
+    return client.post("/nutrition/food-log/quick-add", headers=headers, json={
+        "entry_date": day.isoformat(), "energy_kcal": 300, "meal_label": "breakfast", **changes,
+    })
+
+
+@pytest.mark.parametrize("basis", ["100g", "portion"])
+def test_personal_food_is_owner_only_searchable_and_logs_a_density_snapshot(food_api, basis):
+    client, db, headers, today = food_api
+    options = {"basis": basis}
+    if basis == "portion":
+        options.update(portion_label="bowl", portion_grams=200)
+    response = _personal(client, headers, **options)
+    assert response.status_code == 201, response.text
+    food = response.json()
+    assert food["id"].startswith("personal:")
+    expected_kcal = 300 if basis == "100g" else 150
+    assert food["nutrients"]["energy_kcal"] == expected_kcal
+    foods = client.get("/nutrition/foods?q=CHICKEN", headers=headers).json()["foods"]
+    assert foods[0]["id"] == food["id"]
+    assert foods[0]["kind"] == "personal_food"
+    logged = _add(client, headers, today, food["id"]).json()
+    assert logged["kind"] == "personal_food"
+    assert logged["nutrients"]["energy_kcal"] == expected_kcal
+    if basis == "portion":
+        portion = _add(client, headers, today, food["id"], quantity=2, unit="portion").json()
+        assert portion["grams"] == 400
+        assert portion["nutrients"]["energy_kcal"] == 600
+    assert client.get("/nutrition/foods", headers=headers).json()["foods"][0]["id"] == food["id"]
+    registered = client.post("/auth/register", json={
+        "trainee_id": "personal-food-outsider", "password": "correct-horse-1",
+    }).json()
+    other = {"Authorization": f"Bearer {registered['access_token']}"}
+    others_foods = client.get("/nutrition/foods?q=CHICKEN", headers=other).json()["foods"]
+    assert others_foods and all(item["id"] != food["id"] for item in others_foods)
+    assert _add(client, other, today, food["id"]).status_code == 404
+    assert client.get("/nutrition/foods", headers=other).json()["foods"] == []
+    account = db.get_active_account_by_username("food-player")
+    with db.open_ledger(account["ledger_id"]) as ledger, ledger.ledger_transaction():
+        ledger.conn.execute("UPDATE personal_foods SET nutrients_json=? WHERE id=?",
+                            (json.dumps(dict.fromkeys(NUTRIENTS, 999)), food["id"]))
+    edited = client.put(f"/nutrition/food-log/{logged['id']}", headers=headers, json={
+        "quantity": 200, "unit": "grams", "meal_label": "lunch",
+    })
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["nutrients"]["energy_kcal"] == expected_kcal * 2
+    assert client.delete(f"/nutrition/food-log/{logged['id']}", headers=headers).status_code == 204
+
+
+def test_personal_food_search_uses_the_library_arabic_normalization(food_api):
+    client, _db, headers, _today = food_api
+    food = _personal(client, headers, name="أَرْز خاص").json()
+    found = client.get("/nutrition/foods", headers=headers, params={"q": "ارز خاص"}).json()["foods"]
+    assert [item["id"] for item in found] == [food["id"]]
+
+
+@pytest.mark.parametrize("portion", [
+    {"portion_label": "bowl"}, {"portion_grams": 200},
+    {"portion_label": "bowl", "portion_grams": 1e-320},
+    {"portion_label": "bowl", "portion_grams": 1e-300},
+])
+def test_personal_portions_require_a_complete_finite_density(food_api, portion):
+    client, _db, headers, _today = food_api
+    response = _personal(client, headers, basis="portion", **portion)
+    assert response.status_code == 422, response.text
+    assert client.get("/nutrition/foods?q=Chicken%20bowl", headers=headers).json()["foods"] == []
+
+
+def test_personal_matches_rank_first_and_usage_does_not_collide_with_library(food_api):
+    client, _db, headers, today = food_api
+    personal = [_personal(client, headers, name=name).json() for name in (
+        "Roast chicken", "Chicken bowl", "Chicken",
+    )]
+    matches = client.get("/nutrition/foods?q=chicken", headers=headers).json()["foods"]
+    assert [food["id"] for food in matches[:4]] == [
+        personal[2]["id"], personal[1]["id"], personal[0]["id"], "staple",
+    ]
+    egg = _personal(client, headers, name="Egg").json()
+    for index in range(3):
+        assert _add(client, headers, today, egg["id"], logged_time=f"09:0{index}").status_code == 201
+    assert _add(client, headers, today, "egg", logged_time="10:00").status_code == 201
+    recent = client.get("/nutrition/foods", headers=headers).json()["foods"]
+    assert [(food["id"], food["logged_count"]) for food in recent] == [("egg", 1), (egg["id"], 3)]
+
+
+def test_quick_add_keeps_blank_macros_null_and_counts_towards_totals(food_api, recording_analytics):
+    client, _db, headers, today = food_api
+    assert _add(client, headers, today).status_code == 201
+    response = _quick(client, headers, today, fat_g=0)
+    assert response.status_code == 201, response.text
+    entry = response.json()
+    assert entry["kind"] == "quick_add" and entry["name"] == "quick_add"
+    assert entry["food_id"] is None and entry["nutrients_per_100g"] is None
+    expected = {"energy_kcal": 300, "protein_g": None, "carbohydrate_g": None, "fat_g": 0}
+    assert entry["nutrients"] == expected
+    day = client.get("/nutrition/food-log", headers=headers).json()
+    assert next(item for item in day["entries"] if item["id"] == entry["id"])["nutrients"] == expected
+    assert day["totals"] == {"energy_kcal": 500, "protein_g": 20, "carbohydrate_g": 10, "fat_g": 5}
+    assert day["remaining"]["energy_kcal"] == day["targets"]["calories"] - 500
+    edited = client.put(f"/nutrition/food-log/quick-add/{entry['id']}", headers=headers, json={
+        "energy_kcal": 400, "protein_g": 15, "meal_label": "dinner",
+    })
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["nutrients"]["fat_g"] is None
+    assert edited.json()["meal_label"] == "dinner"
+    totals = client.get("/nutrition/food-log", headers=headers).json()["totals"]
+    assert totals == {"energy_kcal": 600, "protein_g": 35, "carbohydrate_g": 10, "fat_g": 5}
+    events = [event for event in recording_analytics.events if event["event"] == "food_logged"]
+    assert len(events) == 2
+    assert events[-1]["properties"]["food_kind"] == "quick_add"
+    assert client.delete(f"/nutrition/food-log/{entry['id']}", headers=headers).status_code == 204
+
+
+@pytest.mark.parametrize("kind", ["quick_add", "personal_food"])
+def test_new_entry_kinds_share_the_write_window_and_private_mutations(food_api, kind):
+    client, db, headers, today = food_api
+    food_id = _personal(client, headers).json()["id"] if kind == "personal_food" else None
+    add = (lambda day: _quick(client, headers, day)) if kind == "quick_add" else (
+        lambda day: _add(client, headers, day, food_id))
+    assert add(today - timedelta(days=2)).status_code == 403
+    assert add(today + timedelta(days=1)).status_code == 403
+    entry = add(today - timedelta(days=1)).json()
+    path = f"/nutrition/food-log/{'quick-add/' if kind == 'quick_add' else ''}{entry['id']}"
+    body = ({"energy_kcal": 200, "meal_label": "lunch"} if kind == "quick_add" else
+            {"quantity": 200, "unit": "grams", "meal_label": "lunch"})
+    assert client.put(path, headers=headers, json=body).status_code == 200
+    registered = client.post("/auth/register", json={
+        "trainee_id": "new-kind-outsider", "password": "correct-horse-1",
+    }).json()
+    other = {"Authorization": f"Bearer {registered['access_token']}"}
+    assert client.put(path, headers=other, json=body).status_code == 404
+    assert client.delete(f"/nutrition/food-log/{entry['id']}", headers=other).status_code == 404
+    account = db.get_active_account_by_username("food-player")
+    with db.open_ledger(account["ledger_id"]) as ledger, ledger.ledger_transaction():
+        ledger.conn.execute("UPDATE food_log_entries SET entry_date=? WHERE id=?",
+                            ((today - timedelta(days=2)).isoformat(), entry["id"]))
+    assert client.put(path, headers=headers, json=body).status_code == 403
+    assert client.delete(f"/nutrition/food-log/{entry['id']}", headers=headers).status_code == 403
+
+
+def test_copy_meal_copies_all_kinds_as_new_snapshots_without_catalog_reads(food_api, recording_analytics, monkeypatch):
+    client, db, headers, today = food_api
+    from service import food_log
+
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(today.year, today.month, today.day, 17, 41, tzinfo=UTC).astimezone(tz)
+
+    monkeypatch.setattr(food_log, "datetime", FrozenDatetime)
+    yesterday = today - timedelta(days=1)
+    food = _personal(client, headers).json()
+    originals = [_add(client, headers, yesterday).json(),
+                 _add(client, headers, yesterday, food["id"], logged_time="09:10").json(),
+                 _quick(client, headers, yesterday).json()]
+    assert _add(client, headers, yesterday, "rice", meal_label="lunch").status_code == 201
+    assert _add(client, headers, today, "rice", meal_label="dinner").status_code == 201
+    with db.catalog_transaction():
+        db.catalog_conn.execute("UPDATE foods SET hidden=1 WHERE id='egg'")
+    meals = client.get("/nutrition/food-log/yesterday-meals", headers=headers).json()
+    assert meals == {"today": today.isoformat(), "meal_labels": ["breakfast", "lunch"]}
+    response = client.post("/nutrition/food-log/copy-meal", headers=headers, json={"meal_label": "breakfast", "entry_date": today.isoformat()})
+    assert response.status_code == 201, response.text
+    copied = response.json()["entries"]
+    assert len(copied) == 3
+    assert {entry["id"] for entry in copied}.isdisjoint(entry["id"] for entry in originals)
+    for original, new in zip(originals, copied):
+        assert new["entry_date"] == today.isoformat()
+        assert new["logged_time"] == "17:41"
+        assert new["meal_label"] == "breakfast"
+        for key in ("kind", "name", "food_id", "nutrients", "nutrients_per_100g", "grams", "quantity", "unit"):
+            assert new[key] == original[key]
+    day = client.get("/nutrition/food-log", headers=headers).json()
+    assert len(day["entries"]) == 4
+    assert day["totals"]["energy_kcal"] == 1000
+    assert len(client.get("/nutrition/food-log", headers=headers,
+                          params={"day": yesterday.isoformat()}).json()["entries"]) == 4
+    events = [event for event in recording_analytics.events if event["event"] == "food_logged"]
+    assert len(events) == 8
+    assert {event["properties"]["food_kind"] for event in events[-3:]} == {
+        "library_food", "personal_food", "quick_add"}
+    assert all(set(event["properties"]) == {
+        "role", "platform", "app_version", "env", "food_kind", "meal_label"} for event in events)
+    assert client.post("/nutrition/food-log/copy-meal", headers=headers,
+                       json={"meal_label": "snack", "entry_date": today.isoformat()}).status_code == 400
+
+
+def test_copy_meal_rolls_back_every_insert_on_failure_and_cannot_read_another_player(food_api, recording_analytics):
+    client, db, headers, today = food_api
+    assert _add(client, headers, today - timedelta(days=1)).status_code == 201
+    assert _add(client, headers, today - timedelta(days=1), "rice").status_code == 201
+    registered = client.post("/auth/register", json={
+        "trainee_id": "copy-outsider", "password": "correct-horse-1",
+    }).json()
+    other = {"Authorization": f"Bearer {registered['access_token']}"}
+    assert client.get("/nutrition/food-log/yesterday-meals", headers=other).json()["meal_labels"] == []
+    assert client.post("/nutrition/food-log/copy-meal", headers=other,
+                       json={"meal_label": "breakfast", "entry_date": today.isoformat()}).status_code == 400
+    account = db.get_active_account_by_username("food-player")
+    with db.open_ledger(account["ledger_id"]) as ledger, ledger.ledger_transaction():
+        # Fail the second destination write, after the first has already succeeded.
+        ledger.conn.execute(
+            "CREATE TRIGGER reject_second_copy BEFORE INSERT ON food_log_entries "
+            f"WHEN NEW.entry_date='{today.isoformat()}' AND "
+            "EXISTS(SELECT 1 FROM food_log_entries WHERE entry_date=NEW.entry_date) "
+            "BEGIN SELECT RAISE(ABORT,'copy interrupted'); END"
+        )
+    import sqlite3
+
+    with pytest.raises(sqlite3.IntegrityError, match="copy interrupted"):
+        client.post("/nutrition/food-log/copy-meal", headers=headers, json={"meal_label": "breakfast", "entry_date": today.isoformat()})
+    assert client.get("/nutrition/food-log", headers=headers).json()["entries"] == []
+    events = [event for event in recording_analytics.events if event["event"] == "food_logged"]
+    assert len(events) == 2
+
+
+def test_copy_meal_refuses_a_choice_made_for_a_day_that_has_ended(food_api):
+    client, _db, headers, today = food_api
+    assert _add(client, headers, today - timedelta(days=1)).status_code == 201
+    response = client.post("/nutrition/food-log/copy-meal", headers=headers, json={
+        "meal_label": "breakfast", "entry_date": (today - timedelta(days=1)).isoformat()})
+    assert response.status_code == 409
+    assert client.get("/nutrition/food-log", headers=headers).json()["entries"] == []

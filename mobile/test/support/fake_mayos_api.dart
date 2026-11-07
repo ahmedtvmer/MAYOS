@@ -606,6 +606,12 @@ class FakeMayosApi {
 
   FakeResponse _handle(FakeRequest request) {
     final String path = request.path;
+    if (path == '/nutrition/food-log/yesterday-meals') {
+      return FakeResponse(200, <String, dynamic>{'today': foodLogToday,
+        'meal_labels': _yesterdayFoodEntries.map((Map<String, dynamic> entry) => entry['meal_label']).toSet().toList()});
+    }
+    if (path == '/nutrition/food-log/copy-meal') return _copyFoodMeal(request);
+    if (path == '/nutrition/food-log/quick-add') return _quickAdd(request);
     if (path.startsWith('/nutrition/food-log/')) return _changeFoodEntry(request);
     if (path.startsWith('/coach/assignments/') &&
         path.contains('/nutrition/pace-proposals/')) {
@@ -991,6 +997,20 @@ class FakeMayosApi {
         final String query = '${request.query['q'] ?? ''}'.toLowerCase();
         return FakeResponse(200, <String, dynamic>{'foods': foodSearchResults.where((Map<String, dynamic> food) =>
           query.isEmpty || '${food['name']} ${food['arabic_name']}'.toLowerCase().contains(query)).toList()});
+      case '/nutrition/personal-foods':
+        if (foodWriteFails) return const FakeResponse(503, <String, dynamic>{'detail': 'Could not save food.'});
+        final double scale = request.body['basis'] == 'portion' ? 100 / (request.body['portion_grams'] as num) : 1;
+        final Map<String, dynamic> food = <String, dynamic>{
+          'id': 'personal:${++_foodEntryId}', 'kind': 'personal_food', 'reviewed': true,
+          'name': request.body['name'], 'portion_label': request.body['portion_label'],
+          'portion_grams': request.body['portion_grams'],
+          'nutrients': <String, dynamic>{
+            for (final String key in <String>['energy_kcal', 'protein_g', 'carbohydrate_g', 'fat_g'])
+              key: (request.body[key] as num) * scale,
+          },
+        };
+        foodSearchResults.add(food);
+        return FakeResponse(201, food);
       case '/nutrition/food-log':
         return _foodLog(request);
       case '/nutrition/water':
@@ -5939,7 +5959,7 @@ class FakeMayosApi {
       final Map<String, dynamic> food = foodSearchResults.firstWhere(
         (Map<String, dynamic> food) => food['id'] == request.body['food_id']);
       final Map<String, dynamic> entry = <String, dynamic>{
-        'id': 'food-${++_foodEntryId}', 'food_id': food['id'], 'kind': 'library_food',
+        'id': 'food-${++_foodEntryId}', 'food_id': food['id'], 'kind': food['kind'] ?? 'library_food',
         'name': food['name'], 'arabic_name': food['arabic_name'],
         'portion_label': food['portion_label'], 'portion_grams': food['portion_grams'],
         'nutrients_per_100g': food['nutrients'], 'entry_date': request.body['entry_date'],
@@ -5957,7 +5977,7 @@ class FakeMayosApi {
     final Map<String, dynamic> totals = <String, dynamic>{
       for (final String key in <String>['energy_kcal', 'protein_g', 'carbohydrate_g', 'fat_g'])
         key: entries.fold<double>(0, (double total, Map<String, dynamic> entry) =>
-          total + (entry['nutrients'][key] as num).toDouble()),
+          total + (entry['nutrients'][key] as num? ?? 0).toDouble()),
     };
     final Map<String, dynamic>? targets = nutritionState['targets'] as Map<String, dynamic>?;
     final Map<String, String> targetKeys = <String, String>{'energy_kcal': 'calories',
@@ -5995,11 +6015,51 @@ class FakeMayosApi {
           entries.remove(entry);
           return const FakeResponse(204);
         }
-        _setFoodAmount(entry, request.body);
+        if (entry['kind'] == 'quick_add') {
+          entry['meal_label'] = request.body['meal_label'];
+          entry['nutrients'] = <String, dynamic>{
+            for (final String key in <String>['energy_kcal', 'protein_g', 'carbohydrate_g', 'fat_g'])
+              key: request.body[key],
+          };
+        } else {
+          _setFoodAmount(entry, request.body);
+        }
         return FakeResponse(200, entry);
       }
     }
     return const FakeResponse(404, <String, dynamic>{'detail': 'Food not found.'});
+  }
+
+  List<Map<String, dynamic>> get _yesterdayFoodEntries {
+    final DateTime today = DateTime.parse(foodLogToday);
+    final String yesterday = DateTime(today.year, today.month, today.day - 1).toIso8601String().substring(0, 10);
+    return foodLogEntries[yesterday] ?? <Map<String, dynamic>>[];
+  }
+
+  FakeResponse _copyFoodMeal(FakeRequest request) {
+    if (foodWriteFails) return const FakeResponse(503, <String, dynamic>{'detail': 'Could not copy meal.'});
+    final List<Map<String, dynamic>> copied = <Map<String, dynamic>>[
+      for (final Map<String, dynamic> entry in _yesterdayFoodEntries)
+        if (entry['meal_label'] == request.body['meal_label']) <String, dynamic>{...entry,
+          'id': 'food-${++_foodEntryId}', 'entry_date': foodLogToday, 'logged_time': '12:30'},
+    ];
+    foodLogEntries.putIfAbsent(foodLogToday, () => <Map<String, dynamic>>[]).addAll(copied);
+    return FakeResponse(201, <String, dynamic>{'entries': copied});
+  }
+
+  FakeResponse _quickAdd(FakeRequest request) {
+    if (foodWriteFails) return const FakeResponse(503, <String, dynamic>{'detail': 'Could not save food.'});
+    final Map<String, dynamic> entry = <String, dynamic>{
+      'id': 'food-${++_foodEntryId}', 'food_id': null, 'kind': 'quick_add', 'name': 'quick_add',
+      'quantity': null, 'grams': null, 'unit': null, 'nutrients_per_100g': null,
+      'entry_date': request.body['entry_date'], 'meal_label': request.body['meal_label'],
+      'logged_time': '12:30', 'nutrients': <String, dynamic>{
+        for (final String key in <String>['energy_kcal', 'protein_g', 'carbohydrate_g', 'fat_g'])
+          key: request.body[key],
+      },
+    };
+    foodLogEntries.putIfAbsent(entry['entry_date'] as String, () => <Map<String, dynamic>>[]).add(entry);
+    return FakeResponse(201, entry);
   }
 
   bool _authorized(FakeRequest request) {

@@ -9,6 +9,9 @@ import '../../../core/display_language/food_log_copy.dart';
 import '../../../core/food_log_models.dart';
 import '../../../providers.dart';
 import 'food_amount_screen.dart';
+import 'copy_food_meal_button.dart';
+import 'personal_food_screen.dart';
+import 'quick_add_screen.dart';
 
 class FoodSearchScreen extends ConsumerStatefulWidget {
   const FoodSearchScreen({
@@ -91,7 +94,24 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
         ),
       ),
     );
+    if (added == true && mounted) {
+      Navigator.of(context).pop(true);
+    } else if (mounted) {
+      await _search();
+    }
+  }
+
+  Future<void> _quickAdd() async {
+    final bool? added = await Navigator.of(context).push<bool>(MaterialPageRoute<bool>(
+      builder: (_) => QuickAddScreen(day: widget.day, mealLabel: widget.mealLabel)));
     if (added == true && mounted) Navigator.of(context).pop(true);
+  }
+
+  Future<void> _createPersonal() async {
+    final FoodLibraryItem? food = await Navigator.of(context).push<FoodLibraryItem>(
+      MaterialPageRoute<FoodLibraryItem>(builder: (_) => PersonalFoodScreen(initialName: _query.text.trim())));
+    if (!mounted || food == null) return;
+    await _open(food);
   }
 
   @override
@@ -107,6 +127,7 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
             onPressed: () => Navigator.of(context).pop(),
           ),
           title: Text(copy.addTo(widget.mealLabel)),
+          actions: <Widget>[TextButton(onPressed: _quickAdd, child: Text(copy.quickAdd))],
         ),
         body: Column(
           children: <Widget>[
@@ -128,6 +149,9 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
                 padding: const EdgeInsets.all(8),
                 child: Text(copy.recentFoods),
               ),
+            if (_query.text.trim().isEmpty)
+              CopyFoodMealButton(day: widget.day,
+                onCopied: () => Navigator.of(context).pop(true)),
             Expanded(child: _results(copy)),
           ],
         ),
@@ -147,19 +171,18 @@ class _FoodSearchScreenState extends ConsumerState<FoodSearchScreen> {
           ],
         ),
       );
-    if (_foods.isEmpty)
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            _query.text.trim().isEmpty ? copy.noRecent : copy.noResults,
-          ),
-        ),
-      );
     return ListView.builder(
       padding: const EdgeInsets.all(12),
-      itemCount: _foods.length,
+      itemCount: _foods.length + (_foods.isEmpty ? 2 : 1),
       itemBuilder: (BuildContext context, int index) {
+        if (_foods.isEmpty && index == 0) return Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(_query.text.trim().isEmpty ? copy.noRecent : copy.noResults));
+        if (index >= _foods.length) return Card(child: ListTile(
+          key: const Key('create_personal_food'),
+          title: Text(copy.cantFind), subtitle: Text(copy.createPersonal),
+          onTap: _createPersonal,
+        ));
         final FoodLibraryItem food = _foods[index];
         final String detail = <String>[
           if (food.recipe) copy.recipe,
