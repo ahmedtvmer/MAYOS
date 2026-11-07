@@ -475,7 +475,7 @@ def test_policy_source_file_exists_and_every_section_is_served(api):
         "Personal foods: the names, nutrient values and optional portions",
         "Each Coach read requires an active Assignment belonging to that Coach",
         "Your health-screening answers are not shared with your Coach",
-        "Your Coach can also read your **Food log**, one day at a time",
+        "one day at a time: each entry with its food name",
         "one day within the last 14 Player-local days",
         "including today, and can include Personal food names",
         "each of the last 14 Player-local days' logged calorie and protein totals",

@@ -56,6 +56,9 @@ Rules:
   the comparison against Target only when a Target weight is supplied; if it is
   missing, say that no Target weight is recorded. Describe the change in plain
   coaching language and never subtract or otherwise compute a new figure.
+- For a Cardio question, give both the Cardio minutes and the Cardio calories
+  burned for each player you mention, whenever those figures are supplied.
+  Say so plainly when one of them is missing.
 - Never quote internal field names or machine values such as
   `missed_expected_days_7d`, `stall_threshold_met`, `bodyweight_trend`,
   `target_weight_kg`, `latest_minus_target_kg`, `snapshot`, or `null`.

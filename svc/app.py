@@ -587,11 +587,11 @@ def create_app(*, sentry_transport=None) -> FastAPI:
         """Returns the Android minimum build and store link without authentication."""
         return {"min_build": minimum_android_build(), "store_url": android_store_url()}
 
-    @app.get("/healthz", response_model=HealthOut, tags=["ops"])
+    @app.api_route("/healthz", methods=["GET", "HEAD"], response_model=HealthOut, tags=["ops"])
     async def healthz():
         return {"status": "ok" if not _ready["draining"] else "draining", "details": dict(_ready)}
 
-    @app.get("/readyz", response_model=HealthOut, tags=["ops"])
+    @app.api_route("/readyz", methods=["GET", "HEAD"], response_model=HealthOut, tags=["ops"])
     async def readyz():
         status, details = readiness_snapshot()
         if status != "ready":

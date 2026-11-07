@@ -208,7 +208,9 @@ class OutsideProvider:
         self._org = os.getenv("SENTRY_ORG", "mayos").strip()
         self._projects = os.getenv("SENTRY_PROJECTS", "mayos-api,mayos-app").split(",")
         self._sentry_host = os.getenv("SENTRY_API_BASE_URL", "https://de.sentry.io").strip()
-        self._posthog_url = os.getenv("POSTHOG_PROJECT_URL", "").strip()
+        project_id = os.getenv("POSTHOG_PROJECT_ID", "").strip()
+        self._posthog_url = os.getenv("POSTHOG_PROJECT_URL", "").strip() or (
+            f"https://eu.posthog.com/project/{project_id}" if project_id else "")
         self._sentry = _CachedSource(self._sentry_summary if self._sentry_token else None,
                                      "Waiting for first refresh." if self._sentry_token
                                      else "Not configured: set SENTRY_READ_TOKEN on the server.")
