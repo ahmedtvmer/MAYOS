@@ -64,6 +64,9 @@ jobs:
         run: |
           ruff check --select E,F,W --ignore E402,E501,EXE002,W291,W292,W293 .
 
+      - name: Download Embedding Models
+        run: python -c "from core.embeddings import download_model_files, download_arabic_model_files; download_model_files(); download_arabic_model_files()"
+
       - name: Run Schema Initialization & Vector Seeding
         env:
           SEED_CSV_PATH: "tests/fixtures/mock_exercises.csv"
