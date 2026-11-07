@@ -133,3 +133,18 @@ def test_missing_template_parameter_is_usage_error_before_database_open(capsys):
 
     assert exc_info.value.code == 2
     assert "--move-date is required" in capsys.readouterr().err
+
+
+def test_maintenance_notice_dry_run_needs_no_dates_and_previews_both_languages(tmp_path, monkeypatch, capsys):
+    catalog_path, _account_ids = _build_catalog(tmp_path)
+    monkeypatch.setenv("SMTP_HOST", "")
+
+    exit_code = announce_move.main(
+        _catalog_args(catalog_path, tmp_path) + ["--template", "maintenance-notice", "--dry-run"]
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Recipients: 2" in output
+    assert "MAYOS maintenance on Monday 16 November" in output
+    assert "صيانة MAYOS يوم الاثنين 16 نوفمبر" in output
