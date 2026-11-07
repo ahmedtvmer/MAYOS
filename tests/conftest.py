@@ -21,6 +21,9 @@ os.environ["LLM_ENABLE_THINKING"] = ""
 # ``load_dotenv()`` does not override these already-present environment keys.
 os.environ["POSTHOG_API_KEY"] = ""
 
+# Tests must not post Sentry alerts using a developer/server webhook from .env.
+os.environ["DISCORD_ALERT_WEBHOOK_URL"] = ""
+
 # Same for outbound email: a developer `.env` with real SMTP settings must not
 # make tests send mail. ``service/email_sender._deliver`` treats an empty
 # SMTP_HOST as its console backend, so pinning it empty makes delivery hermetic.

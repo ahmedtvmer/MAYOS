@@ -30,6 +30,7 @@ services:
       - SENTRY_DSN=${SENTRY_DSN:-}
       - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-${MAYOS_ENV:-production}}
       - SENTRY_READ_TOKEN=${SENTRY_READ_TOKEN:-}
+      - DISCORD_ALERT_WEBHOOK_URL=${DISCORD_ALERT_WEBHOOK_URL:-}
       - SENTRY_ORG=${SENTRY_ORG:-mayos}
       - SENTRY_PROJECTS=${SENTRY_PROJECTS:-mayos-api,mayos-app}
       - SENTRY_API_BASE_URL=${SENTRY_API_BASE_URL:-https://de.sentry.io}
