@@ -2,10 +2,10 @@
   "report_version": 1,
   "suite": "coach_roster_assistant",
   "mode": "live",
-  "generated_at": "2026-10-28T16:43:26.930742+00:00",
+  "generated_at": "2026-11-07T05:42:49.545183+00:00",
   "dataset": "coach_roster_assistant_cases.json",
-  "prompt_hash": "344a15abc1478cfb638ec62791f215d37a2d80d42111861bee2f0a7db495127f",
-  "context_version": "coach-roster-context-v2",
+  "prompt_hash": "cc660d99f95b0065205a2d6df06783daf28f9f45810ad3b57832c40e0ccf8c4f",
+  "context_version": "coach-roster-context-v3",
   "model": "deepseek-ai/DeepSeek-V4-Flash",
   "backend": "openai",
   "gates": {
@@ -31,7 +31,7 @@
     {
       "case_id": "attention_en",
       "question": "Who needs my attention today?",
-      "answer": "Based on the current roster signals, two players need your attention today, in urgency order:\n\n1. **P0123456789ab** – This player has a new Coach alert, missed 3 of the expected training days in the last 7 days, has a 72% adherence over the last 28 days, and hasn't checked in for 9 days.\n\n2. **Pabcdef987654** – This player has met the stall threshold, meaning 4 weeks without a Personal record, and has 7 sessions with no progress on the main lift despite rising effort.",
+      "answer": "Based on the current roster signals, two players need your attention today:\n\n1. **P0123456789ab** (urgency rank 1) – This player has missed 3 of the expected training days in the last 7 days, has a missed-day streak of 3, and has not worked out in 5 days. Their 28-day adherence is 72.0%, and they have a new Coach alert flagged.\n\n2. **Pabcdef987654** (urgency rank 2) – This player has met the stall threshold, meaning they have gone 4 weeks without a Personal record. Their effort is rising with the same load on the main lift, which may also need review.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -71,12 +71,12 @@
         }
       },
       "passed": true,
-      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 72.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 9, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 4, \"missed_expected_days_7d\": 3, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 5, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 3, \"new_lapsing_alerts\": 1, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}, {\"adherence_pct_28d\": 100.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": true, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"Pabcdef987654\", \"stall_threshold_met\": true, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 7}, \"urgency_rank\": 2, \"weeks_without_personal_record\": 4}], \"stall_threshold_weeks\": 3}"
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 72.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 9, \"effort_rising_same_load_main_lift\": false, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 4, \"missed_expected_days_7d\": 3, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 5, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 3, \"new_lapsing_alerts\": 1, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}, {\"adherence_pct_28d\": 100.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": true, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"Pabcdef987654\", \"stall_threshold_met\": true, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 7}, \"urgency_rank\": 2, \"weeks_without_personal_record\": 4}], \"stall_threshold_weeks\": 3}"
     },
     {
       "case_id": "attention_ar",
       "question": "مين محتاج متابعة النهارده؟",
-      "answer": "بناءً على بيانات اليوم (11 أكتوبر 2026)، يحتاج اللاعبان التاليان إلى متابعة:\n\n1. **P0123456789ab** (الأكثر إلحاحاً): لديه 3 أيام متتالية من التمارين الفائتة، وغاب عن 3 من أيام التمرين المتوقعة في آخر 7 أيام، ونسبة الالتزام 72% في آخر 28 يوماً، ولم يسجل وزناً جديداً منذ 9 أيام.\n\n2. **Pabcdef987654** (ثاني الأكثر إلحاحاً): استوفى حد الركود (4 أسابيع بدون رقم شخصي جديد)، رغم أن التزامه بالتمارين 100% في آخر 28 يوماً ولم يغب عن أي يوم.",
+      "answer": "بناءً على إشارات القائمة الحالية، اللاعبون التاليون يحتاجون إلى متابعة:\n\n1.  **P0123456789ab** (الترتيب حسب الأولوية: 1) – لديه 3 أيام تدريب متوقعة فائتة في آخر 7 أيام، و72.0% التزام في آخر 28 يومًا، وآخر تمرين له منذ 5 أيام، ولم يسجل وزناً منذ 9 أيام.\n2.  **Pabcdef987654** (الترتيب حسب الأولوية: 2) – استوفى حد الركود (4 أسابيع بدون رقم شخصي جديد).",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -116,12 +116,12 @@
         }
       },
       "passed": true,
-      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 72.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 9, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 4, \"missed_expected_days_7d\": 3, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 5, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 3, \"new_lapsing_alerts\": 1, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}, {\"adherence_pct_28d\": 100.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": true, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"Pabcdef987654\", \"stall_threshold_met\": true, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 7}, \"urgency_rank\": 2, \"weeks_without_personal_record\": 4}], \"stall_threshold_weeks\": 3}"
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 72.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 9, \"effort_rising_same_load_main_lift\": false, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 4, \"missed_expected_days_7d\": 3, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 5, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 3, \"new_lapsing_alerts\": 1, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}, {\"adherence_pct_28d\": 100.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": true, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"Pabcdef987654\", \"stall_threshold_met\": true, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 7}, \"urgency_rank\": 2, \"weeks_without_personal_record\": 4}], \"stall_threshold_weeks\": 3}"
     },
     {
       "case_id": "stalled_en",
       "question": "Who has stalled?",
-      "answer": "The player with label **Pabcdef987654** has stalled. They have gone 4 weeks without a Personal record, which meets the stall threshold of 3 weeks.",
+      "answer": "Based on the current roster signals, the player who has stalled is **Pabcdef987654**. They have gone 4 weeks without a Personal record, which exceeds the 3-week stall threshold.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -159,12 +159,12 @@
         }
       },
       "passed": true,
-      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 72.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 9, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 4, \"missed_expected_days_7d\": 3, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 5, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 3, \"new_lapsing_alerts\": 1, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}, {\"adherence_pct_28d\": 100.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": true, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"Pabcdef987654\", \"stall_threshold_met\": true, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 7}, \"urgency_rank\": 2, \"weeks_without_personal_record\": 4}], \"stall_threshold_weeks\": 3}"
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 72.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 9, \"effort_rising_same_load_main_lift\": false, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 4, \"missed_expected_days_7d\": 3, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 5, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 3, \"new_lapsing_alerts\": 1, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}, {\"adherence_pct_28d\": 100.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": true, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"Pabcdef987654\", \"stall_threshold_met\": true, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 7}, \"urgency_rank\": 2, \"weeks_without_personal_record\": 4}], \"stall_threshold_weeks\": 3}"
     },
     {
       "case_id": "stalled_ar",
       "question": "مين متوقف عن تحقيق رقم قياسي شخصي؟",
-      "answer": "اللاعب ذو التصنيف Pabcdef987654 متوقف عن تحقيق رقم قياسي شخصي منذ 4 أسابيع.",
+      "answer": "اللاعب ذو التصنيف Pabcdef987654 متوقف عن تحقيق رقم قياسي شخصي منذ 4 أسابيع، وقد تجاوز حد التوقف (3 أسابيع).",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -202,7 +202,7 @@
         }
       },
       "passed": true,
-      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 72.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 9, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 4, \"missed_expected_days_7d\": 3, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 5, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 3, \"new_lapsing_alerts\": 1, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}, {\"adherence_pct_28d\": 100.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": true, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"Pabcdef987654\", \"stall_threshold_met\": true, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 7}, \"urgency_rank\": 2, \"weeks_without_personal_record\": 4}], \"stall_threshold_weeks\": 3}"
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 72.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 9, \"effort_rising_same_load_main_lift\": false, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 4, \"missed_expected_days_7d\": 3, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 5, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 3, \"new_lapsing_alerts\": 1, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}, {\"adherence_pct_28d\": 100.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": true, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"Pabcdef987654\", \"stall_threshold_met\": true, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 7}, \"urgency_rank\": 2, \"weeks_without_personal_record\": 4}], \"stall_threshold_weeks\": 3}"
     },
     {
       "case_id": "adherence_en",
@@ -245,12 +245,12 @@
         }
       },
       "passed": true,
-      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 84.6, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 2, \"missed_expected_days_7d\": 1, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 2, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 1, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}], \"stall_threshold_weeks\": 3}"
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 84.6, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": false, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 2, \"missed_expected_days_7d\": 1, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 2, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 1, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}], \"stall_threshold_weeks\": 3}"
     },
     {
       "case_id": "adherence_ar",
       "question": "إيه نسبة الالتزام بالتدريب خلال 28 يوم؟",
-      "answer": "بناءً على البيانات المتاحة، نسبة الالتزام بالتدريب خلال آخر 28 يوم للاعب `P0123456789ab` هي 84.6%.",
+      "answer": "نسبة الالتزام بالتدريب خلال 28 يوم للاعب P0123456789ab هي 84.6.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -288,12 +288,12 @@
         }
       },
       "passed": true,
-      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 84.6, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 2, \"missed_expected_days_7d\": 1, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 2, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 1, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}], \"stall_threshold_weeks\": 3}"
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 84.6, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": false, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 2, \"missed_expected_days_7d\": 1, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 2, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 1, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}], \"stall_threshold_weeks\": 3}"
     },
     {
       "case_id": "insufficient_en",
       "question": "How many expected days did P0123456789ab miss?",
-      "answer": "P0123456789ab has no data on missed expected training days.",
+      "answer": "The roster signals show no data on missed expected training days for P0123456789ab.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -331,12 +331,12 @@
         }
       },
       "passed": true,
-      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": null, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": null, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": null, \"missed_expected_days_7d\": null, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": null, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": null}], \"stall_threshold_weeks\": 3}"
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": null, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": null, \"effort_rising_same_load_main_lift\": false, \"food_log_days_7d\": null, \"missed_expected_days_14d\": null, \"missed_expected_days_7d\": null, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": null, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": null}], \"stall_threshold_weeks\": 3}"
     },
     {
       "case_id": "insufficient_ar",
       "question": "كام يوم تدريب متوقع P0123456789ab فاته؟",
-      "answer": "لا توجد بيانات عن الأيام التدريبية المتوقعة التي فاتها اللاعب P0123456789ab.",
+      "answer": "لا توجد بيانات عن الأيام المتوقعة التي فاتها اللاعب P0123456789ab.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -374,7 +374,7 @@
         }
       },
       "passed": true,
-      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": null, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": null, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": null, \"missed_expected_days_7d\": null, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": null, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": null}], \"stall_threshold_weeks\": 3}"
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": null, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": null, \"effort_rising_same_load_main_lift\": false, \"food_log_days_7d\": null, \"missed_expected_days_14d\": null, \"missed_expected_days_7d\": null, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": null, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": null}], \"stall_threshold_weeks\": 3}"
     },
     {
       "case_id": "name_request_en",
@@ -419,12 +419,12 @@
         }
       },
       "passed": true,
-      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 72.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 9, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 4, \"missed_expected_days_7d\": 3, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 5, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 3, \"new_lapsing_alerts\": 1, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}, {\"adherence_pct_28d\": 100.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": true, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"Pabcdef987654\", \"stall_threshold_met\": true, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 7}, \"urgency_rank\": 2, \"weeks_without_personal_record\": 4}], \"stall_threshold_weeks\": 3}"
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 72.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 9, \"effort_rising_same_load_main_lift\": false, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 4, \"missed_expected_days_7d\": 3, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 5, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 3, \"new_lapsing_alerts\": 1, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}, {\"adherence_pct_28d\": 100.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": true, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"Pabcdef987654\", \"stall_threshold_met\": true, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 7}, \"urgency_rank\": 2, \"weeks_without_personal_record\": 4}], \"stall_threshold_weeks\": 3}"
     },
     {
       "case_id": "name_request_ar",
       "question": "ما اسم اللاعب P0123456789ab؟",
-      "answer": "أنا لا أستطيع رؤية أسماء اللاعبين. تطبيق MAYOS يمكنه إظهار أي لاعب يشير إليه هذا الملصق. الملصق الدقيق للاعب هو P0123456789ab.",
+      "answer": "أسماء اللاعبين غير مرئية بالنسبة لي. تطبيق MAYOS يمكنه إظهار اللاعب الذي يشير إليه هذا الملصق. الملصق الدقيق للاعب هو: P0123456789ab.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -464,12 +464,12 @@
         }
       },
       "passed": true,
-      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 72.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 9, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 4, \"missed_expected_days_7d\": 3, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 5, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 3, \"new_lapsing_alerts\": 1, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}, {\"adherence_pct_28d\": 100.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": true, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"Pabcdef987654\", \"stall_threshold_met\": true, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 7}, \"urgency_rank\": 2, \"weeks_without_personal_record\": 4}], \"stall_threshold_weeks\": 3}"
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 72.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 9, \"effort_rising_same_load_main_lift\": false, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 4, \"missed_expected_days_7d\": 3, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 5, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 3, \"new_lapsing_alerts\": 1, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}, {\"adherence_pct_28d\": 100.0, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": true, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"Pabcdef987654\", \"stall_threshold_met\": true, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 7}, \"urgency_rank\": 2, \"weeks_without_personal_record\": 4}], \"stall_threshold_weeks\": 3}"
     },
     {
       "case_id": "weight_en",
       "question": "How is P0123456789ab's weight trending?",
-      "answer": "P0123456789ab's weight has gone from 82.0 kg on 13 Sep 2026 to 81.0 kg on 27 Sep 2026 to 80.5 kg on 11 Oct 2026, an overall decrease of 1.5 kg. The target weight is 78.0 kg, and the latest reading is 2.5 kg above that target.",
+      "answer": "P0123456789ab's weight has gone from 82.0 kg on 13 September 2026 to 81.0 kg on 27 September 2026, and then to 80.5 kg on 11 October 2026. The overall change is a loss of 1.5 kg. The target weight is 78.0 kg, and the latest reading is 2.5 kg above that target.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -507,12 +507,12 @@
         }
       },
       "passed": true,
-      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 90.0, \"bodyweight_trend\": {\"change_kg\": -1.5, \"latest_minus_target_kg\": 2.5, \"points\": [{\"date\": \"2026-09-13\", \"weight_kg\": 82.0}, {\"date\": \"2026-09-27\", \"weight_kg\": 81.0}, {\"date\": \"2026-10-11\", \"weight_kg\": 80.5}], \"target_weight_kg\": 78.0}, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 1, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 0}], \"stall_threshold_weeks\": 3}"
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 90.0, \"bodyweight_trend\": {\"change_kg\": -1.5, \"latest_minus_target_kg\": 2.5, \"points\": [{\"date\": \"2026-09-13\", \"weight_kg\": 82.0}, {\"date\": \"2026-09-27\", \"weight_kg\": 81.0}, {\"date\": \"2026-10-11\", \"weight_kg\": 80.5}], \"target_weight_kg\": 78.0}, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 1, \"effort_rising_same_load_main_lift\": false, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 0}], \"stall_threshold_weeks\": 3}"
     },
     {
       "case_id": "weight_ar",
       "question": "إيه اتجاه وزن P0123456789ab؟",
-      "answer": "وزن P0123456789ab نزل من 82.0 كجم في 13 سبتمبر 2026 إلى 80.5 كجم في 11 أكتوبر 2026، بفرق كلي ناقص 1.5 كجم. الوزن المستهدف مسجل 78.0 كجم، والفرق بين آخر وزن والهدف هو 2.5 كجم.",
+      "answer": "وزن P0123456789ab نزل من 82.0 كجم في 13 سبتمبر 2026 إلى 80.5 كجم في 11 أكتوبر 2026، يعني نزول إجمالي 1.5 كجم. الوزن المستهدف هو 78.0 كجم، والفرق بين آخر وزن والهدف هو 2.5 كجم.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -550,7 +550,7 @@
         }
       },
       "passed": true,
-      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 90.0, \"bodyweight_trend\": {\"change_kg\": -1.5, \"latest_minus_target_kg\": 2.5, \"points\": [{\"date\": \"2026-09-13\", \"weight_kg\": 82.0}, {\"date\": \"2026-09-27\", \"weight_kg\": 81.0}, {\"date\": \"2026-10-11\", \"weight_kg\": 80.5}], \"target_weight_kg\": 78.0}, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 1, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 0}], \"stall_threshold_weeks\": 3}"
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 90.0, \"bodyweight_trend\": {\"change_kg\": -1.5, \"latest_minus_target_kg\": 2.5, \"points\": [{\"date\": \"2026-09-13\", \"weight_kg\": 82.0}, {\"date\": \"2026-09-27\", \"weight_kg\": 81.0}, {\"date\": \"2026-10-11\", \"weight_kg\": 80.5}], \"target_weight_kg\": 78.0}, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 1, \"effort_rising_same_load_main_lift\": false, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 0}], \"stall_threshold_weeks\": 3}"
     },
     {
       "case_id": "weight_target_en",
@@ -593,12 +593,12 @@
         }
       },
       "passed": true,
-      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 90.0, \"bodyweight_trend\": {\"change_kg\": -1.5, \"latest_minus_target_kg\": 2.5, \"points\": [{\"date\": \"2026-09-13\", \"weight_kg\": 82.0}, {\"date\": \"2026-09-27\", \"weight_kg\": 81.0}, {\"date\": \"2026-10-11\", \"weight_kg\": 80.5}], \"target_weight_kg\": 78.0}, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 1, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 0}], \"stall_threshold_weeks\": 3}"
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 90.0, \"bodyweight_trend\": {\"change_kg\": -1.5, \"latest_minus_target_kg\": 2.5, \"points\": [{\"date\": \"2026-09-13\", \"weight_kg\": 82.0}, {\"date\": \"2026-09-27\", \"weight_kg\": 81.0}, {\"date\": \"2026-10-11\", \"weight_kg\": 80.5}], \"target_weight_kg\": 78.0}, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 1, \"effort_rising_same_load_main_lift\": false, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 0}], \"stall_threshold_weeks\": 3}"
     },
     {
       "case_id": "weight_target_ar",
       "question": "قد إيه P0123456789ab بعيد عن الوزن المستهدف؟",
-      "answer": "بناءً على البيانات المتوفرة، الوزن الحالي للاعب P0123456789ab هو 80.5 كجم، والوزن المستهدف هو 78.0 كجم. الفرق بين الوزن الحالي والوزن المستهدف هو 2.5 كجم.",
+      "answer": "P0123456789ab عنده 2.5 كجم زيادة عن الوزن المستهدف (الوزن المستهدف 78.0 كجم). الوزن نزل من 82.0 كجم في 13 سبتمبر إلى 80.5 كجم في 11 أكتوبر، يعني نزل 1.5 كجم.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -636,12 +636,12 @@
         }
       },
       "passed": true,
-      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 90.0, \"bodyweight_trend\": {\"change_kg\": -1.5, \"latest_minus_target_kg\": 2.5, \"points\": [{\"date\": \"2026-09-13\", \"weight_kg\": 82.0}, {\"date\": \"2026-09-27\", \"weight_kg\": 81.0}, {\"date\": \"2026-10-11\", \"weight_kg\": 80.5}], \"target_weight_kg\": 78.0}, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 1, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 0}], \"stall_threshold_weeks\": 3}"
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 90.0, \"bodyweight_trend\": {\"change_kg\": -1.5, \"latest_minus_target_kg\": 2.5, \"points\": [{\"date\": \"2026-09-13\", \"weight_kg\": 82.0}, {\"date\": \"2026-09-27\", \"weight_kg\": 81.0}, {\"date\": \"2026-10-11\", \"weight_kg\": 80.5}], \"target_weight_kg\": 78.0}, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 1, \"effort_rising_same_load_main_lift\": false, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 0}], \"stall_threshold_weeks\": 3}"
     },
     {
       "case_id": "weight_no_target_en",
       "question": "How far is P0123456789ab from the Target weight?",
-      "answer": "No Target weight is recorded for P0123456789ab, so I cannot state how far they are from a Target.",
+      "answer": "No Target weight is recorded for P0123456789ab, so I cannot state a comparison against a Target.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -679,12 +679,12 @@
         }
       },
       "passed": true,
-      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 90.0, \"bodyweight_trend\": {\"change_kg\": -1.5, \"latest_minus_target_kg\": null, \"points\": [{\"date\": \"2026-09-13\", \"weight_kg\": 82.0}, {\"date\": \"2026-10-11\", \"weight_kg\": 80.5}], \"target_weight_kg\": null}, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 1, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 0}], \"stall_threshold_weeks\": 3}"
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 90.0, \"bodyweight_trend\": {\"change_kg\": -1.5, \"latest_minus_target_kg\": null, \"points\": [{\"date\": \"2026-09-13\", \"weight_kg\": 82.0}, {\"date\": \"2026-10-11\", \"weight_kg\": 80.5}], \"target_weight_kg\": null}, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 1, \"effort_rising_same_load_main_lift\": false, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 0, \"missed_expected_days_7d\": 0, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 1, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 0, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 0}], \"stall_threshold_weeks\": 3}"
     },
     {
       "case_id": "weight_no_history_en",
       "question": "How is P0123456789ab's weight trending?",
-      "answer": "No body weight data is recorded for P0123456789ab, so there is no trend to report.",
+      "answer": "There is no body weight data recorded for P0123456789ab, so I cannot describe any trend. No Target weight is recorded either.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -722,12 +722,12 @@
         }
       },
       "passed": true,
-      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 84.6, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 2, \"missed_expected_days_7d\": 1, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 2, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 1, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}], \"stall_threshold_weeks\": 3}"
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 84.6, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": null, \"cardio_minutes_7d\": null, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": false, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 2, \"missed_expected_days_7d\": 1, \"nutrition_adherence_7d\": null, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 2, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 1, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}], \"stall_threshold_weeks\": 3}"
     },
     {
       "case_id": "nutrition_adherence_en",
       "question": "Which player has the most off Nutrition adherence days in the last 7 days, and how much Cardio did they log?",
-      "answer": "Player P0123456789ab has 2 off Nutrition adherence days in the last 7 days. They logged 90 minutes of Cardio and 640 kcal of Cardio in the last 7 days.",
+      "answer": "The only player in the roster is **P0123456789ab**. In the last 7 days they had 2 off Nutrition adherence days, and they logged 90 Cardio minutes and 640 Cardio calories burned.",
       "checks": {
         "correct_player_ids": {
           "passed": true,
@@ -765,7 +765,7 @@
         }
       },
       "passed": true,
-      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 84.6, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": 640, \"cardio_minutes_7d\": 90, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": false, \"missed_expected_days_14d\": 2, \"missed_expected_days_7d\": 1, \"nutrition_adherence_7d\": {\"off\": 2, \"on_target\": 2, \"roughly\": 3}, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 2, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 1, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}], \"stall_threshold_weeks\": 3}"
+      "context": "{\"as_of\": \"2026-10-11\", \"players\": [{\"adherence_pct_28d\": 84.6, \"bodyweight_trend\": null, \"cardio_calories_kcal_7d\": 640, \"cardio_minutes_7d\": 90, \"coaching_subscription_end\": null, \"days_since_last_check_in\": 2, \"effort_rising_same_load_main_lift\": false, \"food_log_days_7d\": null, \"missed_expected_days_14d\": 2, \"missed_expected_days_7d\": 1, \"nutrition_adherence_7d\": {\"off\": 2, \"on_target\": 2, \"roughly\": 3}, \"player_id\": \"P0123456789ab\", \"stall_threshold_met\": false, \"urgency_inputs\": {\"days_since_last_workout\": 2, \"follow_up_overdue_days\": 0, \"missed_day_streak\": 1, \"new_lapsing_alerts\": 0, \"other_new_coach_alerts\": 0, \"pending_program_requests\": 0, \"stall_length_sessions\": 0}, \"urgency_rank\": 1, \"weeks_without_personal_record\": 1}], \"stall_threshold_weeks\": 3}"
     }
   ],
   "pass": true
