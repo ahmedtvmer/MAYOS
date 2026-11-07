@@ -12,6 +12,7 @@ from database.database_manager import DatabaseManager
 from database.exercise_library.embeddings import sync_exercise_embeddings
 from database.exercise_library.schema import EXERCISE_COLUMNS
 from database.schema.definitions import EMBEDDING_DIM
+from scripts.intialize_db import resolve_curation_path
 
 # pyrefly: ignore [missing-import]
 from utils.logger import MayosLogger
@@ -20,7 +21,7 @@ logger = MayosLogger().get_logger(__name__)
 
 
 def seed_exercise_embeddings():
-    db = DatabaseManager()
+    db = DatabaseManager(curation_path=resolve_curation_path())
     cursor = db.catalog_conn.cursor()
 
     cursor.execute(
