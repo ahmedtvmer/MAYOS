@@ -1059,6 +1059,7 @@ def test_yielded_text_before_tool_call_is_not_retracted(api, monkeypatch):
 
 
 def test_http_stream_emits_before_model_requests_final_chunk(api, monkeypatch):
+    import asyncio
     from threading import Event
 
     from langchain_core.messages import AIMessageChunk
@@ -1092,12 +1093,16 @@ def test_http_stream_emits_before_model_requests_final_chunk(api, monkeypatch):
 
         def stream(self, _messages):
             yield AIMessageChunk(content="First sentence. ")
-            self.second_chunk_requested_after_first_token = first_token_sent.is_set()
+            self.second_chunk_requested_after_first_token = first_token_sent.wait(timeout=5.0)
             yield AIMessageChunk(content="Second sentence.")
 
         async def astream(self, _messages):
             yield AIMessageChunk(content="First sentence. ")
-            self.second_chunk_requested_after_first_token = first_token_sent.is_set()
+            # Wait for the ASGI send, not just the model-queue acknowledgement (#630).
+            # The event is a threading.Event; keep its wait off the model's event loop.
+            self.second_chunk_requested_after_first_token = await asyncio.to_thread(
+                first_token_sent.wait, timeout=5.0
+            )
             yield AIMessageChunk(content="Second sentence.")
 
     model = IncrementalModel()
