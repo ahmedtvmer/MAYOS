@@ -48,6 +48,28 @@ TEMPLATES = {
             ),
         },
     },
+    "maintenance-notice": {
+        "en": {
+            "subject": "MAYOS maintenance on Monday 16 November",
+            "body": (
+                "Hello,\n\n"
+                "MAYOS is moving to a new server on Monday 16 November, between 08:00 and 10:00 Cairo time.\n\n"
+                "MAYOS will be unavailable for part of that window. Your account and your training data move "
+                "with it, and you don't need to do anything. After the move, just open MAYOS as usual.\n\n"
+                "Thank you,\nThe MAYOS team"
+            ),
+        },
+        "ar": {
+            "subject": "صيانة MAYOS يوم الاثنين 16 نوفمبر",
+            "body": (
+                "أهلاً،\n\n"
+                "MAYOS هيتنقل على سيرفر جديد يوم الاثنين 16 نوفمبر، بين الساعة 8 و10 الصبح بتوقيت القاهرة.\n\n"
+                "MAYOS هيبقى متوقف جزء من الوقت ده. حسابك وبيانات تدريبك هيتنقلوا معاه، ومش محتاج تعمل أي حاجة. "
+                "بعد النقل افتح MAYOS عادي.\n\n"
+                "شكرًا،\nفريق MAYOS"
+            ),
+        },
+    },
     "move-day": {
         "en": {
             "subject": "MAYOS move-day service notice",
