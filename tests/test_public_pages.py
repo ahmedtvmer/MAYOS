@@ -446,9 +446,9 @@ def test_policy_source_file_exists_and_every_section_is_served(api):
     # wraps across lines and bolds its lead-ins.
     flat = " ".join(source.split()).replace("**", "")
     from service import privacy_policy
-    assert privacy_policy.POLICY_VERSION == "1.9"
-    assert privacy_policy.POLICY_EFFECTIVE_DATE == "2026-10-27"
-    assert "Effective date: 2026-10-27 — Policy version 1.9" in body
+    assert privacy_policy.POLICY_VERSION == "1.10"
+    assert privacy_policy.POLICY_EFFECTIVE_DATE == "2026-11-07"
+    assert "Effective date: 2026-11-07 — Policy version 1.10" in body
     assert "This is the only email sent to you." not in flat
     for phrase in (
         "assignment you explicitly accept",
@@ -470,6 +470,19 @@ def test_policy_source_file_exists_and_every_section_is_served(api):
         "may be sent only to a verified address on an account that explicitly opts in",
         "product announcements may go to your verified contact address only while you have opted in",
         "Addresses are never used to link or merge accounts",
+        "Nutrition health-screening answers",
+        "Nutrition data can reveal health information",
+        "Personal foods: the names, nutrient values and optional portions",
+        "Each Coach read requires an active Assignment belonging to that Coach",
+        "Your health-screening answers are not shared with your Coach",
+        "Your Coach can also read your **Food log**, one day at a time",
+        "one day within the last 14 Player-local days",
+        "including today, and can include Personal food names",
+        "each of the last 14 Player-local days' logged calorie and protein totals",
+        "last 7 Player-local days",
+        "never food names, food ids, entry details or Personal food records",
+        "Nutrition setup, health-screening answers, target versions, pace proposals, adherence, Water log, Food log entries, Personal foods",
+        "copies of your ledger are removed separately; failed cleanup is retried",
     ):
         assert phrase in flat, f"missing from {POLICY_PATH.name}: {phrase!r}"
     assert "This is the only email sent to you." not in flat

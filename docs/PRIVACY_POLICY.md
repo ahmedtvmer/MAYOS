@@ -64,6 +64,22 @@ Your training record is stored privately for your account and includes:
   limitations, the assistant's tone and any custom instructions or preferred
   name you wrote, and your **IANA time zone**.
 - **Onboarding answers** you give while setting up.
+- Your **Nutrition setup and targets**: confirmed sex, Daily activity, Nutrition
+  goal and pace, calorie, Macro, fiber and water targets, saved target versions
+  and who set them, proposed pace changes, and decisions you or your Coach make
+  on those proposals.
+- Your **Nutrition health-screening answers** about pregnancy or breastfeeding,
+  medical conditions and eating disorders, with the time you answered.
+- **Nutrition adherence** for each recorded day: on target, roughly, or off,
+  including whether you answered it yourself or MAYOS computed it from your
+  Food log.
+- Your **Water log**: the number of 250 ml glasses you record for each day.
+- Your **Food log entries**: foods, amounts, portions, meal labels, logged times
+  and nutrient values, including Quick add entries of calories and optional
+  Macros without a food name.
+- Your **Personal foods**: the names, nutrient values and optional portions you
+  enter for foods missing from the Food library. They belong to your account,
+  not the shared Food library.
 - Your **training program(s)**, including versions and whether a coach
   published them.
 - **Workouts**: sessions, sets, weights, reps, effort ratings (RIR/RPE),
@@ -76,6 +92,11 @@ Your training record is stored privately for your account and includes:
 - Your **training schedule** and any schedule pauses.
 - Your **assistant chat** (your messages and the assistant's replies).
 - **Offline workout drafts** held on your device until they sync.
+
+Nutrition data can reveal health information. This includes health-screening
+answers and anything you write about allergies, food restrictions or medical
+conditions in food names or assistant chat. The shared Food library itself
+holds no personal data.
 
 ### Coaching data (shared only while an assignment is active)
 
@@ -182,6 +203,11 @@ While the assignment is **active**, your coach sees:
   per-exercise progression (weight, reps, RIR, estimated one-rep max);
 - your **schedule**: expected training weekdays, your **time zone**, and your
   schedule pauses;
+- your **Nutrition targets**, who set them, Nutrition goal and pace, proposed
+  pace changes, daily **Nutrition adherence** and whether it was answered or
+  computed, and your **Water log**. Each Coach read requires an active Assignment
+  belonging to that Coach. Your health-screening answers are not shared with
+  your Coach. Your Coach can also read your **Food log**, one day at a time: each entry with its food name, amount, meal label, nutrient values and whether it was a Personal food or Quick add, plus daily totals. A Personal food reaches your Coach only as part of an entry you logged, never as a list;
 - your **check-ins** (date, channel, note);
 - **coach alerts** — missed-day streaks, due follow-ups, and deload or
   regression alerts together with the training evidence behind them — plus their
@@ -208,8 +234,12 @@ configured, the following is sent to it:
   session pointers), your preferred name if set, and your Assistant style and
   custom instructions. If relevant, the assistant can retrieve saved Assistant
   preferences and selected profile, training-history, active-program, or
-  body-weight trend details from your Player ledger and send those results to
-  the hosted model. These facts are retrieved only when relevant; they are not
+  body-weight trend details, Nutrition targets and adherence, or one recent
+  Food log day from your Player ledger and send those results to the hosted
+  model. A Food log lookup covers one day within the last 14 Player-local days,
+  including today, and can include Personal food names, amounts, meal labels,
+  logged times, nutrient values and daily totals. Health-screening answers are
+  not included. These facts are retrieved only when relevant; they are not
   injected into every turn. It does **not**
   include your username, recovery email, your coach's name or contact details, your
   coach's private notes, or anything a coach wrote about you.
@@ -270,7 +300,14 @@ When it is enabled, each question sends to the model:
   at 300 characters). It also receives your current goal, Experience level,
   Equipment access, your dated bodyweight trend for the last 8 weeks, and the
   weekly best e1RM trend for the main lifts in your active Training program
-  for the last 12 weeks; and
+  for the last 12 weeks;
+- Nutrition targets and who set them, Nutrition goal and pace, any pending pace
+  proposal, 14-day adherence counts, and each of the last 14 Player-local days'
+  logged calorie and protein totals with recorded Nutrition adherence and
+  whether it was answered or computed. Days without Food log entries are marked
+  as missing, not zero. The Food log context contains only these daily totals
+  and adherence, never food names, food ids, entry details or Personal food
+  records. Health-screening answers are excluded; and
 - your active injuries — the fixed body area, status, reported date, and your
   description (capped at 300 characters) — together with the physician-reported
   exercise clearances linked to them (the matched exercise or your own wording,
@@ -307,7 +344,13 @@ model usage records described above, attributed to your coach's account.
 Your coach may ask a hosted AI a question about the Roster. The model receives
 the coach's question and a bounded set of deterministic training and coaching
 figures for eligible Players, such as the Roster urgency order, missed-day and
-adherence figures, Stalling measures, and current coaching signals. Each Player
+adherence figures, Stalling measures, and current coaching signals. Nutrition
+figures include 7-day adherence counts and daily logged calorie and protein
+totals with Nutrition adherence and whether it was answered or computed for the
+last 7 Player-local days. Days without Food log entries are marked as missing,
+not zero. The Food log context contains only these daily totals and adherence,
+never food names, food ids, entry details or Personal food records.
+Health-screening answers are excluded. Each Player
 is represented by a random id created for that request; the model does not
 receive your name, username, account id, contact details, raw training history,
 or free text about you. The service keeps the mapping to your Assignment so the
@@ -315,8 +358,8 @@ app can show the answer beside the right Player, and the model cannot choose or
 rank Players from information outside the supplied figures.
 
 Accepting an Assignment after seeing the in-app disclosure records consent to
-this use. If your Assignment began before this disclosure was added, you see a
-one-time in-app notice; your figures are left out of roster questions until you
+this use. If your Assignment has an older disclosure, you see an updated
+in-app notice; your figures are left out of roster questions until you
 tap “OK”. Ending the Assignment or deleting your account removes your
 eligibility. Roster questions are stateless: no conversation transcript is
 stored, and the request is covered by the Coach's model-usage record described
@@ -327,15 +370,18 @@ above.
 - **Live data is kept while your account exists**, and is deleted when you
   delete your account.
 - **On deletion** we remove your training ledger (profile, program, workouts,
-  schedule, chat, drafts' server-side state), your recovery email and reset
-  tokens, your invites, and the relationships that existed only to serve you;
-  every session is invalidated, and any active assignment ends immediately.
-  Your account's copies in the daily backups are removed too.
+  schedule, Nutrition setup, health-screening answers, target versions, pace
+  proposals, adherence, Water log, Food log entries, Personal foods, chat and
+  drafts' server-side state), your recovery email and reset tokens, your invites,
+  and the relationships that existed only to serve you; every session is
+  invalidated, and any active assignment ends immediately. Your account's local
+  backup copies are removed too. When off-site backups are configured, their
+  copies of your ledger are removed separately; failed cleanup is retried.
 - **Restricted recovery backups**: whole-catalog snapshots exist for disaster
   recovery and are retained for at most **30 days**. A deleted row may briefly
-  survive in one of those restricted snapshots until it ages out; that is the
-  only place deleted data can linger, and it is never restored to a live
-  account — every restore reapplies the deletion record first.
+  survive in one of those restricted snapshots until it ages out. Every restore
+  reapplies the deletion record first, so neither these snapshots nor ledger
+  copies awaiting off-site cleanup can restore your deleted account to live use.
 - **A deletion record** (an internal account id, the ledger id, and the
   deletion time) is kept outside the snapshots precisely so a restored backup
   cannot bring you back.
