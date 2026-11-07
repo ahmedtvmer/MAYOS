@@ -95,6 +95,7 @@ from agent.telemetry_reconciler import (
 )
 from database.exercise_library.schema import exercise_library_visible_sql
 from service.exercise_context import describe_exercise, describe_exercises
+from service.inference_metrics import record_failure, record_first_token
 from database.exercise_library.names import near_miss_exercise_ids
 from service import programs as programs_service
 from service.program_requests import MAX_REASON_CHARS
@@ -4698,6 +4699,7 @@ class _PlayerModelStream:
     def accept(self, chunk: Any) -> None:
         if self.ttft_seconds == 0:
             self.ttft_seconds = time.perf_counter() - self.started_at
+            record_first_token(self.ttft_seconds * 1000.0)
         self.limited = self.limited or _finish_limited(chunk)
         tool_chunks = getattr(chunk, "tool_call_chunks", None) or getattr(chunk, "tool_calls", None)
         self.tool_mode = self.tool_mode or bool(tool_chunks)
@@ -5557,7 +5559,7 @@ def stream_assistant_turn(
         raise
     except PromptBudgetError as exc:
         result = _response(str(exc))
-    except Exception:
+    except Exception as exc:
         if tool_metrics and not telemetry_recorded:
             _record_telemetry_event(
                 intent,
@@ -5565,6 +5567,7 @@ def stream_assistant_turn(
                 user_id=state.get("trainee_id", "default"),
                 tool_metrics=tool_metrics,
             )
+        record_failure(exc)
         logger.exception("Assistant turn failed")
         if stream_output.scrubber is not None:
             cleaned = stream_output.scrubber.finish()

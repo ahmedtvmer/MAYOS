@@ -8,6 +8,7 @@ from typing import Any
 import uuid
 
 from service import analytics
+from service.inference_metrics import record_turn
 from service.model_limits import daily_token_limit, request_limit_per_minute, utc_day_start_iso
 from utils.model_downloader import configured_model_ids
 
@@ -24,6 +25,8 @@ class AIRequestContext:
     latency_ms: int
     outcome: str
     finish_reason: str | None
+    ttft_ms: float | None = None
+    monitoring_outcome: str | None = None
 
 
 @dataclass(frozen=True)
@@ -157,6 +160,10 @@ def _completed_event(context: AIRequestContext, snapshot: _UsageSnapshot) -> ana
 
 def capture_ai_request_completed(context: AIRequestContext) -> None:
     """Emits one event whose token and cost values are read from persisted rows."""
+    record_turn(
+        context.purpose, context.monitoring_outcome or context.outcome,
+        context.latency_ms, context.ttft_ms,
+    )
     snapshot = _read_usage_snapshot(context)
     if snapshot is None:
         return
