@@ -6,10 +6,13 @@ from datetime import UTC, date, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+from langchain_core.messages import HumanMessage
 
+from agent import assistant_graph
 from agent.player_tools import MAX_TOOL_RESULT_BYTES, build_player_read_tools
 from service import coach_ai, coach_roster_ai, food_log, roster_snapshot, weight_history
 from service.assignments import record_roster_ai_disclosure
+from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 from tests.test_roster_snapshot import api, _assign, _make_coach  # noqa: F401
 
 
@@ -74,6 +77,79 @@ def assigned_food_player(api, monkeypatch):  # noqa: F811
 def _tool(ledger):
     tools, _definitions = build_player_read_tools(ledger)
     return next(tool for tool in tools if tool.name == "get_player_food_log")
+
+
+@pytest.mark.parametrize("mode", ["stream", "graph"])
+@pytest.mark.parametrize(("query", "day", "expected_kcal"), [
+    ("What did I eat today?", "today", 1000),
+    ("What did I eat today? List it briefly.", "today", 1000),
+    ("what did I eat yesterday", "yesterday", 250),
+    ("أنا أكلت إيه النهارده؟", "today", 1000),
+    ("أنا أكلت إيه امبارح؟", "yesterday", 250),
+    ("ماذا أكلت اليوم؟", "today", 1000),
+    ("ماذا تناولت أمس؟", "yesterday", 250),
+])
+def test_food_recall_pipeline_skips_exercise_history_655(
+    assigned_food_player, monkeypatch, mode, query, day, expected_kcal
+):
+    db, _coach_id, player = assigned_food_player
+    answer = "Here is your Food log." if query.isascii() else "ده سجل أكلك."
+    model = ScriptedChatModel([
+        ToolCallsTurn(calls=[{
+            "name": "get_player_food_log", "args": {"day": day}, "id": "food-recall",
+        }]),
+        answer,
+    ])
+    monkeypatch.setattr(assistant_graph, "llm", model)
+    state = {"messages": [HumanMessage(content=query)],
+             "display_language": "en" if query.isascii() else "ar"}
+
+    with db.open_ledger(player["ledger_id"]) as ledger:
+        if mode == "stream":
+            output = "".join(assistant_graph.stream_assistant_turn(state, ledger=ledger, store=db))
+        else:
+            state = assistant_graph.assistant_graph.invoke(
+                state, config={"configurable": {"ledger": ledger, "store": db}}
+            )
+            output = state["response_content"]
+
+    assert state["intent"] == "coaching_qa"
+    assert output == state["response_content"] == answer
+    tool_reply = next(
+        message for message in model.calls[-1]["messages"] if message.type == "tool"
+    )
+    logged_day = json.loads(tool_reply.content)
+    expected_date = TODAY if day == "today" else TODAY - timedelta(days=1)
+    assert logged_day["date"] == expected_date.isoformat()
+    assert logged_day["totals"]["energy_kcal"] == expected_kcal
+    assert LIBRARY_NAME in {entry["name"] for entry in logged_day["entries"]}
+
+
+@pytest.mark.parametrize("mode", ["stream", "graph"])
+def test_exercise_history_pipeline_keeps_logged_comparison_655(fresh_store, mode):
+    ledger = fresh_store.ledger
+    for day, weight in [("2026-11-05", 75), ("2026-11-07", 80)]:
+        ledger.log_workout_session(
+            day, day, "Upper", f"{day}T10:00:00+00:00", f"{day}T11:00:00+00:00"
+        )
+        ledger.log_workout_set(f"set-{day}", day, "25", 1, weight, 8, 8)
+    state = {"messages": [HumanMessage(content="how did I do on bench press last session?")]}
+
+    if mode == "stream":
+        output = "".join(assistant_graph.stream_assistant_turn(
+            state, ledger=ledger, store=fresh_store
+        ))
+    else:
+        state = assistant_graph.assistant_graph.invoke(
+            state, config={"configurable": {"ledger": ledger, "store": fresh_store}}
+        )
+        output = state["response_content"]
+
+    assert state["intent"] == "exercise_history"
+    assert "80 kg × 8 reps @ RIR 2" in output
+    assert "Baseline: 2026-11-05" in output
+    assert "best load +5 kg" in output
+    assert "requested time period is unavailable" not in output
 
 
 def test_player_reads_own_day_and_personal_names_without_writing(assigned_food_player):
