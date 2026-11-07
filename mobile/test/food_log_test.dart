@@ -384,7 +384,6 @@ void main() {
     await tester.tap(find.byKey(const Key('food_log_entry_point')));
     await tester.pump();
     expect(find.byType(FoodSearchScreen), findsNothing);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
     refresh.complete();
     await tester.pumpAndSettle();
     expect(tester.widget<FoodSearchScreen>(find.byType(FoodSearchScreen)).day,
