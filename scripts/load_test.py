@@ -10,6 +10,7 @@ import random
 import statistics
 import time
 from collections import Counter, defaultdict
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import TYPE_CHECKING
@@ -36,7 +37,10 @@ async def run(client: httpx.AsyncClient, *, base_url: str, players: int = 20,
               chat_share: float = 0.0, think_time: tuple[float, float] = (0.05, 0.25),
               allow_production: bool = False, setup_timeout: float = 600,
               setup_concurrency: int = 5, ramp_up: float = 0,
-              reuse_accounts: bool = False) -> dict:
+              reuse_accounts: bool = False,
+              monotonic: Callable[[], float] = time.monotonic,
+              perf_counter: Callable[[], float] = time.perf_counter,
+              sleep: Callable[[float], Awaitable[None]] = asyncio.sleep) -> dict:
     """Run a load rehearsal through an injected httpx client."""
     if is_production_url(base_url) and not allow_production:
         raise ValueError("Refusing to load test a production host without --allow-production.")
@@ -54,11 +58,11 @@ async def run(client: httpx.AsyncClient, *, base_url: str, players: int = 20,
     setup_semaphore = asyncio.Semaphore(setup_concurrency)
     totals = 0
     lock = asyncio.Lock()
-    setup_deadline = time.monotonic() + setup_timeout
+    setup_deadline = monotonic() + setup_timeout
 
     async def measured_request(kind: str, method: str, path: str, **kwargs) -> httpx.Response:
         nonlocal totals
-        started = time.perf_counter()
+        started = perf_counter()
         measured = started >= measured_start
         try:
             response = await client.request(method, base_url + path, **kwargs)
@@ -66,7 +70,7 @@ async def run(client: httpx.AsyncClient, *, base_url: str, players: int = 20,
         except httpx.RequestError:
             response = None
             code = "network_error"
-        elapsed = (time.perf_counter() - started) * 1000
+        elapsed = (perf_counter() - started) * 1000
         if measured:
             async with lock:
                 totals += 1
@@ -77,7 +81,7 @@ async def run(client: httpx.AsyncClient, *, base_url: str, players: int = 20,
         return response
 
     async def setup_request(method: str, path: str, *, expected_statuses: frozenset[int] = frozenset(), **kwargs) -> httpx.Response | None:
-        while time.monotonic() < setup_deadline:
+        while monotonic() < setup_deadline:
             try:
                 response = await client.request(method, base_url + path, **kwargs)
             except httpx.RequestError:
@@ -99,7 +103,7 @@ async def run(client: httpx.AsyncClient, *, base_url: str, players: int = 20,
                     wait_seconds = max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
                 except (TypeError, ValueError, OverflowError):
                     wait_seconds = 0.5
-            await asyncio.sleep(min(wait_seconds, max(0.0, setup_deadline - time.monotonic())))
+            await sleep(min(wait_seconds, max(0.0, setup_deadline - monotonic())))
         setup_errors["setup_timeout"] += 1
         return None
 
@@ -150,22 +154,22 @@ async def run(client: httpx.AsyncClient, *, base_url: str, players: int = 20,
             return None
         return {"headers": headers, "program": program}
 
-    setup_started = time.monotonic()
+    setup_started = monotonic()
     setups = await asyncio.gather(*(player_setup(i) for i in range(players)))
-    setup_seconds = round(time.monotonic() - setup_started, 3)
+    setup_seconds = round(monotonic() - setup_started, 3)
     ready_players = [setup for setup in setups if setup is not None]
-    ready_at = time.monotonic()
+    ready_at = monotonic()
     ramp_interval = ramp_up / max(len(ready_players) - 1, 1)
     measured_start = ready_at + ramp_up
     end_at = measured_start + duration
 
     async def player_task(index: int, setup: dict) -> None:
-        await asyncio.sleep(ramp_interval * index)
+        await sleep(ramp_interval * index)
         headers = setup["headers"]
         program = setup["program"]
         days = program.get("days") or []
         day = days[0]
-        while time.monotonic() < end_at:
+        while monotonic() < end_at:
             roll = random.random()
             if roll < chat_share:
                 await measured_request("chat", "POST", "/chat/messages", headers=headers, json={"content": "How should I approach my next workout?"})
@@ -177,10 +181,10 @@ async def run(client: httpx.AsyncClient, *, base_url: str, players: int = 20,
                 await measured_request("workout_save", "POST", "/workouts/sessions", headers=headers,
                                        json={"day_order": day["day_order"], "week_order": day.get("week_order", 1),
                                              "readiness": 3, "session_notes": "", "sets": sets})
-            await asyncio.sleep(random.uniform(*think_time))
+            await sleep(random.uniform(*think_time))
 
     await asyncio.gather(*(player_task(index, setup) for index, setup in enumerate(ready_players)))
-    elapsed = max(time.monotonic() - measured_start, 0.000001)
+    elapsed = max(monotonic() - measured_start, 0.000001)
 
     def percentile(values: list[float], fraction: float) -> float | None:
         if not values:

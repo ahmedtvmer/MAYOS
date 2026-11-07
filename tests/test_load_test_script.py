@@ -102,39 +102,68 @@ def test_setup_concurrency_caps_players_in_flight(fresh_store, monkeypatch):
     assert state["maximum"] <= 2
 
 
-def test_ramp_up_staggers_measured_requests_and_is_reported(fresh_store, monkeypatch):
-    monkeypatch.setenv("JWT_SECRET", "test-secret-key-0123456789abcdef")
-    db = fresh_store
-    app = create_app()
-    app.dependency_overrides[get_db] = lambda: db
-    inner = httpx.ASGITransport(app=app)
+def test_ramp_up_staggers_measured_requests_and_is_reported(monkeypatch):
+    # #622: neither HTTP processing nor CPU contention should consume the ramp window.
+    class VirtualClock:
+        def __init__(self):
+            self.now = 0.0
+            self.sleepers = []
+
+        def __call__(self):
+            return self.now
+
+        async def sleep(self, delay):
+            future = asyncio.get_running_loop().create_future()
+            self.sleepers.append((self.now + delay, future))
+            if len(self.sleepers) == 1:
+                asyncio.get_running_loop().call_soon(self.advance)
+            await future
+
+        def advance(self):
+            self.now = min(deadline for deadline, _ in self.sleepers)
+            due = [future for deadline, future in self.sleepers if deadline <= self.now]
+            self.sleepers = [(deadline, future) for deadline, future in self.sleepers
+                             if deadline > self.now]
+            for future in due:
+                future.set_result(None)
+            if self.sleepers:
+                asyncio.get_running_loop().call_soon(self.advance)
+
+    clock = VirtualClock()
     measured_starts = {}
+    tokens = iter(range(3))
     monkeypatch.setattr(load_test.random, "random", lambda: 0.5)
 
     class RecordingTransport(httpx.AsyncBaseTransport):
         async def handle_async_request(self, request):
-            if request.url.path == "/workouts/sessions":
-                started = asyncio.get_running_loop().time()
-                measured_starts.setdefault(request.headers["authorization"], []).append(started)
-            return await inner.handle_async_request(request)
+            if request.url.path == "/auth/register":
+                return httpx.Response(200, json={"access_token": str(next(tokens))})
+            if request.url.path == "/programs/active":
+                return httpx.Response(200, json={"days": [{"day_order": 1, "exercises": ["squat"]}]})
+            assert request.url.path == "/workouts/sessions"
+            measured_starts.setdefault(request.headers["authorization"], []).append(clock())
+            return httpx.Response(200, json={})
 
     async def exercise():
         async with httpx.AsyncClient(transport=RecordingTransport(), base_url="http://testserver") as client:
             return await load_test.run(client, base_url="http://testserver", players=3,
                                        duration=0.05, ramp_up=0.08,
-                                       account_prefix="loadtest-ramp-", think_time=(0.001, 0.002))
+                                       account_prefix="loadtest-ramp-", think_time=(0.01, 0.01),
+                                       monotonic=clock, perf_counter=clock, sleep=clock.sleep)
 
     summary = asyncio.run(exercise())
     assert summary["ramp_up_seconds"] == 0.08
     first_starts = [starts[0] for starts in measured_starts.values()]
     assert len(first_starts) == 3
     assert max(first_starts) - min(first_starts) >= 0.07
+    assert sorted(first_starts) == pytest.approx([0, 0.04, 0.08])
     measured_boundary = max(first_starts)
     expected_measured_requests = sum(
         started >= measured_boundary
         for starts in measured_starts.values()
         for started in starts
     )
+    assert 0 < expected_measured_requests < sum(map(len, measured_starts.values()))
     assert summary["total_requests"] == expected_measured_requests
 
 
