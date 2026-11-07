@@ -116,6 +116,7 @@ class DatabaseManager(
         self._catalog_lock = threading.RLock()
         self._food_search_lock = threading.Lock()
         self._food_search_cache = None
+        self._food_search_unseeded_warned = False
         # Catalog transaction depth is per-instance and per-thread. There is no
         # mounted-ledger state on the store: ledgers live on explicit handles.
         self._local = threading.local()
