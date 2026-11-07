@@ -158,6 +158,7 @@ def add_quick_entry(ledger, body, today, current_time):
              "created_at": datetime.now(UTC).isoformat(timespec="microseconds")}
     with ledger.ledger_transaction():
         ledger.insert_food_log_entry(entry)
+        recompute_day(ledger, body["entry_date"], today)
     return entry
 
 
@@ -172,6 +173,7 @@ def edit_quick_entry(ledger, entry_id, body, today):
         updated = {**entry, "nutrients": {key: body[key] for key in NUTRIENT_KEYS},
                    "meal_label": body["meal_label"], "logged_time": body["logged_time"] or entry["logged_time"]}
         ledger.update_food_log_entry(updated)
+        recompute_day(ledger, date.fromisoformat(entry["entry_date"]), today)
     return updated
 
 

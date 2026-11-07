@@ -14,7 +14,7 @@ from tests.test_nutrition_api import _backdate_active_nutrition_plan, _seed_prof
 
 
 @pytest.fixture
-def adherence_api(food_api, monkeypatch):
+def adherence_api(food_api, monkeypatch):  # noqa: F811
     client, db, headers, today = food_api
     clock = [datetime.combine(today, time(12), tzinfo=UTC)]
     from service import weight_history
@@ -122,6 +122,21 @@ def test_yesterday_add_edit_and_last_delete_recompute_without_waiting_for_sweep(
     assert _day(client, headers, yesterday)["source"] is None
     assert run_sweep(db, now=clock[0])["errors"] == 0
     assert _day(client, headers, yesterday)["value"] is None
+
+
+def test_quick_add_for_yesterday_recomputes_and_edits_recompute(adherence_api):
+    client, _db, headers, clock, _ledger_id = adherence_api
+    yesterday = clock[0].date() - timedelta(days=1)
+    added = client.post("/nutrition/food-log/quick-add", headers=headers, json={
+        "entry_date": yesterday.isoformat(), "energy_kcal": 2000, "protein_g": 100, "meal_label": "dinner",
+    })
+    assert added.status_code == 201, added.text
+    assert _day(client, headers, yesterday)["value"] == "on_target"
+    edited = client.put(f"/nutrition/food-log/quick-add/{added.json()['id']}", headers=headers, json={
+        "energy_kcal": 1000, "protein_g": None, "meal_label": "dinner",
+    })
+    assert edited.status_code == 200, edited.text
+    assert _day(client, headers, yesterday)["value"] == "off"
 
 
 def test_editing_yesterday_before_its_first_sweep_creates_adherence(adherence_api):
