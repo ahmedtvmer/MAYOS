@@ -124,7 +124,7 @@ class DatabaseManager(
         os.makedirs(self.ledgers_dir, exist_ok=True)
         os.makedirs(self.backups_dir, exist_ok=True)
 
-        self.catalog_conn = connect_api_sqlite(self.catalog_path)
+        self.catalog_conn = connect_api_sqlite(self.catalog_path, store_kind="catalog")
         self.catalog_conn.execute("PRAGMA foreign_keys = ON;")
         self.catalog_conn.execute("PRAGMA journal_mode = WAL;")
         self.catalog_conn.execute("PRAGMA synchronous = NORMAL;")
@@ -150,7 +150,7 @@ class DatabaseManager(
         wraps the result in a :class:`~database.ledger.handle.TrainingLedger`.
         """
         ledger_db_path = self.ledgers_dir / f"{sanitized}.db"
-        new_conn = connect_api_sqlite(ledger_db_path)
+        new_conn = connect_api_sqlite(ledger_db_path, store_kind="ledger")
         new_conn.row_factory = sqlite3.Row
         new_conn.execute("PRAGMA foreign_keys = ON;")
         new_conn.execute("PRAGMA journal_mode = WAL;")

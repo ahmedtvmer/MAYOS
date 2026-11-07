@@ -26,7 +26,7 @@ class AccountDeletionMixin:
         """Opens the external deletion ledger and ensures its schema exists."""
         os.makedirs(self.deletions_path.parent, exist_ok=True)
         self._deletions_lock = threading.Lock()
-        self.deletions_conn = connect_api_sqlite(self.deletions_path)
+        self.deletions_conn = connect_api_sqlite(self.deletions_path, store_kind="catalog")
         self.deletions_conn.execute("PRAGMA journal_mode = WAL;")
         with self._deletions_lock:
             self.deletions_conn.execute(
