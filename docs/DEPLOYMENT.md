@@ -135,7 +135,7 @@ the owner adds `SENTRY_READ_TOKEN` and `UPTIMEROBOT_READ_KEY` to the root-only
 `/opt/mayos/.env` on the server and recreates the API container through the
 normal deployment flow. Use a Sentry token scoped to `event:read` for the
 configured projects and UptimeRobot's **read-only** key, never its full-access
-account key. Set `POSTHOG_PROJECT_URL` to the MAYOS EU project page. Both
+account key. `POSTHOG_PROJECT_URL` overrides the MAYOS EU project page, which otherwise comes from `POSTHOG_PROJECT_ID`. Both
 Compose files pass these settings to the API; leave credentials unset locally.
 
 The once-a-minute sampler starts independent background refreshes at most once

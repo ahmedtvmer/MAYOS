@@ -19,7 +19,7 @@ VIEW = MonitoringView(24, datetime(2026, 11, 7, 12, tzinfo=UTC), [])
 @pytest.fixture
 def outside_environment(monkeypatch):
     for name in ("SENTRY_READ_TOKEN", "SENTRY_ORG", "SENTRY_PROJECTS", "SENTRY_API_BASE_URL",
-                 "UPTIMEROBOT_READ_KEY", "POSTHOG_PROJECT_URL"):
+                 "UPTIMEROBOT_READ_KEY", "POSTHOG_PROJECT_URL", "POSTHOG_PROJECT_ID"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("SENTRY_READ_TOKEN", "sentry-secret-token")
     monkeypatch.setenv("UPTIMEROBOT_READ_KEY", "uptimerobot-secret-key")
@@ -290,3 +290,8 @@ def test_current_downtime_and_missing_uptime_are_not_misreported(
         assert "ongoing" not in page
     else:
         assert all(ratio in page for ratio in ("100.000%", "99.000%", "98.000%"))
+
+
+def test_posthog_link_falls_back_to_the_existing_project_id(outside_environment, monkeypatch):
+    monkeypatch.setenv("POSTHOG_PROJECT_ID", "42")
+    assert "https://eu.posthog.com/project/42" in outside.create_provider(None).render(VIEW)
