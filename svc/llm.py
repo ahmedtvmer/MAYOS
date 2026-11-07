@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator
 
 from service.analytics import ClientContext, UNKNOWN_CLIENT
+from service.inference_metrics import record_failure
 from utils.model_metering import UsageContext
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,8 @@ class InferenceTurnState:
     finish_reason: str | None = None
     _has_truncation: bool = field(default=False, init=False, repr=False)
     latency_ms: int = 0
+    ttft_ms: float | None = None
+    monitoring_outcome: str | None = None
     _emitted: bool = field(default=False, init=False, repr=False)
     _completion_suppressed: bool = field(default=False, init=False, repr=False)
     _allowance_finalized: bool = field(default=False, init=False, repr=False)
@@ -211,6 +214,8 @@ class InferenceTurnState:
                     latency_ms=self.latency_ms,
                     outcome=self.outcome,
                     finish_reason=self.finish_reason,
+                    ttft_ms=self.ttft_ms,
+                    monitoring_outcome=self.monitoring_outcome,
                 )
             )
         except Exception:
@@ -482,6 +487,8 @@ def _track_inference_scope(turn: InferenceTurnState | None) -> Iterator[None]:
     except BaseException as exc:
         interrupted = (asyncio.CancelledError, GeneratorExit, InterruptedError)
         outcome = "interrupted" if isinstance(exc, interrupted) else "error"
+        if outcome == "error":
+            record_failure(exc)
         raise
     finally:
         elapsed_ms = int((time.perf_counter() - started) * 1000)

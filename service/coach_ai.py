@@ -29,6 +29,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -51,6 +52,7 @@ from core.reply_language import (
     resolve_reply_language,
 )
 from service import analytics, evaluation_report_gate
+from service.inference_metrics import record_first_token
 from service import attendance as attendance_service
 from service import check_ins as check_ins_service
 from service import coach_history as coach_history_service
@@ -1796,8 +1798,13 @@ def stream_answer(messages: list[Any]) -> Iterator[tuple[str, str]]:
     raw_pieces: list[str] = []
     scrubber = CoachOutputScrubber()
     visible = False
+    started_at = time.perf_counter()
+    first_chunk = True
     try:
         for chunk in model_downloader.get_coach_llm().stream(messages):
+            if first_chunk:
+                first_chunk = False
+                record_first_token((time.perf_counter() - started_at) * 1000.0)
             piece = chunk.content if hasattr(chunk, "content") else str(chunk)
             text = piece if isinstance(piece, str) else str(piece)
             raw_pieces.append(text)
