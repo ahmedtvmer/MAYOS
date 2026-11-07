@@ -58,10 +58,11 @@ export JWT_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 | `JWT_SECRET` | **required** | HS256 token signing/verification; the service refuses to operate without it |
 | `SENTRY_DSN` | unset | Sentry API project DSN; unset disables all Sentry reporting |
 | `SENTRY_ENVIRONMENT` | `production` in server Compose | Sentry environment label (`production` or `staging`) |
-| `SENTRY_READ_TOKEN` | unset | Server-only read-only Sentry token with `event:read` access to the API and app projects; unset disables only the Monitoring Sentry tile |
-| `SENTRY_ORG` | `mayos` | Sentry organisation slug for Monitoring reads and links |
-| `SENTRY_PROJECTS` | `mayos-api,mayos-app` | Comma-separated Sentry project slugs to show on Monitoring |
-| `SENTRY_API_BASE_URL` | `https://de.sentry.io` | HTTPS API origin for Monitoring reads; keep the EU region required by ADR 097 |
+| `SENTRY_READ_TOKEN` | unset | Server-only read-only Sentry token with `event:read` access to the API and app projects; unset disables the Monitoring Sentry tile and Discord issue alerts |
+| `DISCORD_ALERT_WEBHOOK_URL` | unset | Server-only Discord webhook for Sentry issue alerts; disabled unless this and `SENTRY_READ_TOKEN` are set |
+| `SENTRY_ORG` | `mayos` | Sentry organisation slug for Monitoring and Discord issue alerts |
+| `SENTRY_PROJECTS` | `mayos-api,mayos-app` | Comma-separated Sentry project slugs for Monitoring and Discord issue alerts |
+| `SENTRY_API_BASE_URL` | `https://de.sentry.io` | HTTPS API origin for Monitoring and Discord issue reads; keep the EU region required by ADR 097 |
 | `UPTIMEROBOT_READ_KEY` | unset | Server-only UptimeRobot read-only API key covering all monitors; unset disables only the uptime tile |
 | `POSTHOG_PROJECT_URL` | unset | Plain HTTPS project link for product analytics on Monitoring; no PostHog read credential required |
 | `ANONYMOUS_ID_SECRET` | falls back to `JWT_SECRET` | Secret for stable, non-reversible Sentry account ids; set a distinct random secret to decouple identifiers |
@@ -157,6 +158,40 @@ the UptimeRobot plan. Missing credentials show a setup note only on that tile.
 Failures show a generic refresh notice and retain the last successful values,
 marked as possibly stale with their refresh time; retries wait five minutes.
 Credentials and exception text are neither rendered nor logged by the reader.
+
+**Sentry issue alerts to Discord.** Set `DISCORD_ALERT_WEBHOOK_URL` in the
+root-only `/opt/mayos/.env` and recreate the API container through the normal
+deployment flow. Both Compose files pass it to the API. Only webhook URLs of
+the form `https://discord.com/api/webhooks/ID/TOKEN` or
+`https://discordapp.com/api/webhooks/ID/TOKEN` are accepted, without query
+parameters or redirects. Keep this URL secret; its path grants posting access.
+The alerter also needs `SENTRY_READ_TOKEN` and a deployment environment:
+`SENTRY_ENVIRONMENT`, falling back to `MAYOS_ENV`. Without an environment it
+does not query Sentry or post alerts.
+
+An independent background refresh checks the configured projects every five
+minutes, filtered to that environment. Newly first-seen issues and regressions
+send a short plain-text title, project, event count and Sentry link, with
+mentions disabled. Regression dates come from Sentry issue activity, rather
+than the issue's last event time. Each refresh sends at most five individual
+issue messages, then one `and N more` message; those additional issues are
+remembered as covered by that summary. A later distinct regression of an issue
+can alert again. The provider renders nothing on the Monitoring page.
+
+The `sentry_discord_alerts` table in `monitoring.db`, beside the catalog, keeps
+only issue ids, alert kinds and timestamps, including the original startup
+cutoff and any Discord retry deadline. Initial startup excludes older first
+appearances and regressions, and subsequent restarts keep that cutoff and
+delivery history. If this disposable, unreplicated database is lost, a restarted
+API begins with a new cutoff. Delivery claims are committed before posting so a
+restart cannot repeat an alert. This is best-effort, at-most-once delivery:
+an interrupted or ambiguous network request may lose a notification. An
+explicit HTTP rejection releases its claim for a later refresh. A Discord 429
+stops the batch and retries on a later five-minute refresh, respecting the
+longer of its `Retry-After` header and JSON `retry_after` delay, including across
+restarts. Failures cannot affect requests or page rendering, and webhook URLs,
+credentials, response bodies and exception text are never logged by the alerter.
+UptimeRobot continues to handle downtime alerts outside the API.
 
 **Caller IP and rate-limit keying.** Every route limit (`RATE_LIMIT_*`) is keyed
 by caller address — plus a bearer-token suffix for authenticated calls — in
