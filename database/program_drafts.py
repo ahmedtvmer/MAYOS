@@ -1,7 +1,9 @@
-"""Cleanup helpers for assignment-keyed Program drafts."""
+"""Cleanup for assignment-keyed Program and Nutrition drafts on revocation."""
 
 import logging
 from typing import Any
+
+from database.nutrition_drafts import discard_draft
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +25,8 @@ def discard_assignment_program_draft(
             return
         with db.open_ledger(ledger_id) as ledger:
             ledger.discard_program_draft(assignment_id)
+            discard_draft(ledger, assignment_id)
     except Exception:
-        logger.exception("Could not discard Program draft for ended assignment %s", assignment_id)
+        logger.exception("Could not discard drafts for ended assignment %s", assignment_id)
         if not best_effort:
             raise

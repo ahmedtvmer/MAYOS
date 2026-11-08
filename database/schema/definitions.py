@@ -35,6 +35,7 @@ from database.migration_manager import WEIGHT_HISTORY_DDL
 from database.migration_manager import get_ledger_schema_version
 from database.migration_manager import set_ledger_schema_version
 from database.program_cache import ensure_revision_schema
+from database.nutrition_drafts import NUTRITION_DRAFTS_DDL
 
 EMBEDDING_DIM = 384
 
@@ -430,6 +431,7 @@ class SchemaMixin:
                 *FOOD_LOG_DDL,
                 *PERSONAL_FOODS_DDL,
                 *MEAL_SETUP_DDL,
+                NUTRITION_DRAFTS_DDL,
                 *EQUIPMENT_ACCESS_DDL,
                 *ASSISTANT_PREFERENCES_DDL,
                 *ASSISTANT_GOAL_WEAK_POINT_PENDING_DDL,

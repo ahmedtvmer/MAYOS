@@ -11,6 +11,8 @@ class PlannedMealsCopy {
     ? 'الوجبات غير متاحة بعد. نحتاج إلى أطعمة أساسية معتمدة تناسب قيودك الغذائية وأهدافك.'
     : "Meals aren't available yet. We need reviewed Staple foods that fit your restrictions and targets.";
   String get targetsNeeded => arabic ? 'أعدّ الأهداف الغذائية أولًا.' : 'Set up Nutrition targets first.';
+  String get coachTargetsOnly => arabic ? 'حدد مدربك الأهداف فقط؛ لا توجد وجبات في هذه الخطة.'
+    : 'Your coach set targets only; this plan has no meals.';
   String get log => arabic ? 'تسجيل هذه الوجبة' : 'Log this meal';
   String get logged => arabic ? 'أُضيفت الوجبة إلى سجل الطعام.' : 'Meal added to your Food log.';
   String get coach => arabic ? 'حددها مدربك' : 'Set by your coach';
@@ -25,7 +27,8 @@ class PlannedMealsCopy {
     'morning_snack' => arabic ? 'وجبة خفيفة صباحًا' : 'Morning snack',
     'lunch' => arabic ? 'الغداء' : 'Lunch',
     'afternoon_snack' => arabic ? 'وجبة خفيفة عصرًا' : 'Afternoon snack',
-    _ => arabic ? 'العشاء' : 'Dinner',
+    'dinner' => arabic ? 'العشاء' : 'Dinner',
+    _ => arabic ? 'وجبة' : 'Meal',
   };
   String amount(double grams) => '${grams.toStringAsFixed(grams == grams.roundToDouble() ? 0 : 1)} ${arabic ? 'غ' : 'g'}';
   String calories(double calories) => '${calories.round()} ${arabic ? 'سعرة' : 'kcal'}';

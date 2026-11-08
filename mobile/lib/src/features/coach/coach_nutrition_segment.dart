@@ -9,6 +9,8 @@ import '../../core/display_language/coach_food_log_copy.dart';
 import '../../core/models.dart';
 import '../../providers.dart';
 import 'coach_food_log_view.dart';
+import 'coach_nutrition_draft_screen.dart';
+import '../../core/display_language/nutrition_draft_copy.dart';
 
 class CoachNutritionSegment extends ConsumerStatefulWidget {
   const CoachNutritionSegment({super.key, required this.assignmentId});
@@ -172,6 +174,11 @@ class _CoachNutritionSegmentState extends ConsumerState<CoachNutritionSegment> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
+        OutlinedButton(onPressed: () async {
+          await Navigator.of(context).push<bool>(MaterialPageRoute<bool>(builder: (_) =>
+            CoachNutritionDraftScreen(assignmentId: widget.assignmentId)));
+          if (mounted) await _load();
+        }, child: Text(NutritionDraftCopy(copy.languageCode).open)),
         Wrap(spacing: 8, runSpacing: 8, children: <Widget>[
           ChoiceChip(label: Text(logCopy.targetsView), selected: !_foodLog,
             onSelected: (_) => setState(() => _foodLog = false)),

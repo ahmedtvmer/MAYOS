@@ -20,7 +20,9 @@ def read(ledger, today):
     payload = json.loads(active["meals_json"]) if active["meals_json"] else None
     context = {"date": today.isoformat(), "plan_version_id": active["id"], "author": active["author"],
                "day_type": state["target_day_type"], "enabled": bool(payload and payload["enabled"])}
-    if not payload:
+    if not payload or not payload.get("enabled"):
+        if active["author"] == "Coach":
+            return {**context, "status": "unavailable", "reason": "coach", "meals": []}
         available = generate_variants(ledger, json.loads(active["targets_json"]), {})
         variant = available["variants"][state["target_day_type"]]
         return {**variant, **context, "status": "disabled" if variant["status"] == "ready" else "unavailable", "meals": []}
@@ -73,7 +75,8 @@ class LogMealCommand:
 
 
 def _entry(food, meal, today):
-    minutes = SLOT_MINUTES[meal["slot"]]
+    label = meal.get("log_label") or ("snack" if meal["slot"].endswith("_snack") else meal["slot"])
+    minutes = SLOT_MINUTES.get(meal["slot"], SLOT_MINUTES.get(label, 16 * 60 if label == "snack" else 13 * 60))
     return {"id": str(uuid4()), "entry_date": today.isoformat(), "kind": "library_food",
             "food_id": food["id"], "name": food["name"], "arabic_name": food["arabic_name"],
             "grams": food["grams"], "quantity": food["grams"], "unit": "grams",
@@ -81,7 +84,7 @@ def _entry(food, meal, today):
             "nutrients_per_100g": food["nutrients_per_100g"],
             "nutrients": {key: round(amount * food["grams"] / 100, 2)
                           for key, amount in food["nutrients_per_100g"].items()},
-            "meal_label": "snack" if meal["slot"].endswith("_snack") else meal["slot"],
+            "meal_label": label,
             # Snack times retain the chosen slot when the Food log groups it.
             "logged_time": f"{minutes // 60:02d}:{minutes % 60:02d}",
             "created_at": datetime.now(UTC).isoformat(timespec="microseconds")}

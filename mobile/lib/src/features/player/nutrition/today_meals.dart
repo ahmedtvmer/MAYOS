@@ -89,7 +89,8 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
     return <Widget>[
       if (plan.author == 'Coach') Text(copy.coach),
       if (plan.targetsChanged) Text(copy.targetsChanged),
-      if (plan.status == 'unavailable') Text(plan.reason == 'targets' ? copy.targetsNeeded : copy.unavailable),
+      if (plan.status == 'unavailable') Text(plan.reason == 'targets' ? copy.targetsNeeded
+        : plan.reason == 'coach' ? copy.coachTargetsOnly : copy.unavailable),
       if (plan.status == 'disabled') ...<Widget>[
         Text(copy.introduction),
         if (plan.canEnable) FilledButton(key: const Key('enable_meals'),
@@ -106,8 +107,9 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
   Widget _meal(PlannedMeal meal, PlannedMealsCopy copy) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 8),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
-      Text('${copy.slot(meal.slot)} · ${copy.calories(meal.calories)}',
+      Text('${meal.name.isEmpty ? copy.slot(meal.slot) : meal.name} · ${copy.calories(meal.calories)}',
         style: Theme.of(context).textTheme.titleMedium),
+      if (meal.note.isNotEmpty) Text(meal.note),
       for (final PlannedFood food in meal.foods)
         Text('${copy.arabic ? food.arabicName ?? food.name : food.name} · ${copy.amount(food.grams)}'
           '${food.portionGrams == null ? '' : ' (${(food.grams / food.portionGrams!).toStringAsFixed(1)} ${food.portionLabel})'}'),

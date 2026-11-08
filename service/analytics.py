@@ -273,6 +273,7 @@ PROPERTY_TYPES: dict[str, PropertyType] = {
     "env": _enum(_ENVIRONMENTS),
     "signup_phase": _enum(_PHASES),
     "invite_used": _boolean(),
+    "with_meals": _boolean(),
     "duration_seconds": _bounded_int(3_155_760_000),
     "time_since_invite_seconds": _bounded_int(31_557_600),
     "prefilled_fields_count": _bounded_int(100),
@@ -367,6 +368,9 @@ EVENT_CATALOGUE: dict[str, EventContract] = {
         "server", {**_COMMON_PROPERTIES, "blocked": PROPERTY_TYPES["blocked"]}
     ),
     "nutrition_meals_turned_on": EventContract("server", dict(_COMMON_PROPERTIES)),
+    "coach_nutrition_plan_published": EventContract(
+        "server", {**_COMMON_PROPERTIES, "with_meals": PROPERTY_TYPES["with_meals"]},
+    ),
     "nutrition_adherence_logged": EventContract(
         "server", {**_COMMON_PROPERTIES, "value": PROPERTY_TYPES["value"]}
     ),
