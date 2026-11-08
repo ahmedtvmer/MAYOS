@@ -13,6 +13,7 @@ import 'package:mayos_mobile/src/features/player/nutrition/today_meals.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_api_adapter.dart';
+import 'support/scroll_to_control.dart';
 
 void main() {
   for (final String language in <String>['en', 'ar']) {
@@ -72,7 +73,7 @@ void main() {
     final _SwapApi api = _SwapApi()..replacementCalories = 650;
     await _open(tester, api, 'en');
     expect(find.text(const FoodSwapCopy('en').staysWithin('Breakfast', 150)), findsOneWidget);
-    await tester.ensureVisible(find.byKey(const Key('food_swap_staple_alternative')));
+    await _showSwapControl(tester, find.byKey(const Key('food_swap_staple_alternative')));
     await tester.tap(find.byKey(const Key('food_swap_staple_alternative')));
     await tester.pump();
     expect(tester.widget<FilledButton>(find.byKey(const Key('save_food_swap'))).onPressed, isNotNull);
@@ -81,11 +82,14 @@ void main() {
   testWidgets('search shows restriction warning and blocks selection', (WidgetTester tester) async {
     final _SwapApi api = _SwapApi();
     await _open(tester, api, 'en');
+    await _showSwapControl(tester, find.byKey(const Key('food_swap_search')));
     await tester.enterText(find.byKey(const Key('food_swap_search')), 'Milk');
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
-    expect(find.text('Restricted food: Milk'), findsOneWidget);
+    await _showSwapControl(tester, find.text('Next Staple foods'));
     expect(find.text('Next Staple foods'), findsOneWidget);
+    await _showSwapControl(tester, find.byKey(const Key('food_swap_search_milk')));
+    expect(find.text('Restricted food: Milk'), findsOneWidget);
     final ListTile blocked = tester.widget<ListTile>(find.byKey(const Key('food_swap_search_milk')));
     expect(blocked.onTap, isNull);
     expect(tester.widget<FilledButton>(find.byKey(const Key('save_food_swap'))).onPressed, isNull);
@@ -95,10 +99,11 @@ void main() {
   testWidgets('search selection saves the searched food and refreshes the meal', (WidgetTester tester) async {
     final _SwapApi api = _SwapApi();
     await _open(tester, api, 'en');
+    await _showSwapControl(tester, find.byKey(const Key('food_swap_search')));
     await tester.enterText(find.byKey(const Key('food_swap_search')), 'new');
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const Key('food_swap_search_new')));
+    await _showSwapControl(tester, find.byKey(const Key('food_swap_search_new')));
     await tester.tap(find.byKey(const Key('food_swap_search_new')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('save_food_swap')));
@@ -112,12 +117,12 @@ void main() {
       (WidgetTester tester) async {
     final _SwapApi api = _SwapApi()..failSave = true;
     await _open(tester, api, 'en');
-    await tester
-        .ensureVisible(find.byKey(const Key('food_swap_staple_alternative')));
+    await _showSwapControl(tester, find.byKey(const Key('food_swap_staple_alternative')));
     await tester.tap(find.byKey(const Key('food_swap_staple_alternative')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('save_food_swap')));
     await tester.pumpAndSettle();
+    await _showSwapControl(tester, find.text('Could not save Food swap.'));
     expect(find.text('Could not save Food swap.'), findsOneWidget);
     expect(api.version, 2);
     api.failSave = false;
@@ -130,16 +135,19 @@ void main() {
   testWidgets('an older search cannot replace the latest results', (WidgetTester tester) async {
     final _SwapApi api = _SwapApi();
     final Completer<void> oldSearch = Completer<void>();
+    addTearDown(() { if (!oldSearch.isCompleted) oldSearch.complete(); });
     api.adapter.beforeRespond = (FakeRequest request) async {
       if (request.query['q'] == 'old') await oldSearch.future;
     };
     await _open(tester, api, 'en');
+    await _showSwapControl(tester, find.byKey(const Key('food_swap_search')));
     await tester.enterText(find.byKey(const Key('food_swap_search')), 'old');
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump();
     await tester.enterText(find.byKey(const Key('food_swap_search')), 'new');
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
+    await _showSwapControl(tester, find.byKey(const Key('food_swap_search_new')));
     expect(find.byKey(const Key('food_swap_search_new')), findsOneWidget);
     oldSearch.complete();
     await tester.pumpAndSettle();
@@ -161,6 +169,39 @@ void main() {
             .every((FakeRequest request) => request.method == 'GET'),
         isTrue);
   });
+
+  testWidgets('keyboard leaves swap options reachable above the pinned actions', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(360, 600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetViewInsets);
+    final _SwapApi api = _SwapApi();
+    await _open(tester, api, 'en');
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await tester.pumpAndSettle();
+    await _showSwapControl(tester, find.byKey(const Key('food_swap_search')));
+    await tester.enterText(find.byKey(const Key('food_swap_search')), 'new');
+    await tester.pumpAndSettle(const Duration(milliseconds: 300));
+    await _showSwapControl(tester, find.byKey(const Key('food_swap_search_new')));
+    final Rect optionsViewport = tester.getRect(find.byKey(const Key('food_swap_options')));
+    final Rect searchedOption = tester.getRect(find.byKey(const Key('food_swap_search_new')));
+    expect(searchedOption.top, greaterThanOrEqualTo(optionsViewport.top));
+    expect(searchedOption.bottom, lessThanOrEqualTo(optionsViewport.bottom));
+    await tester.tap(find.byKey(const Key('food_swap_search_new')));
+    await tester.pump();
+    expect(tester.getBottomRight(find.byKey(const Key('save_food_swap'))).dy, lessThanOrEqualTo(300));
+    await tester.tap(find.byKey(const Key('save_food_swap')));
+    await tester.pumpAndSettle();
+    expect(api.selectedId, 'new');
+    expect(tester.takeException(), isNull);
+  });
+}
+
+Future<void> _showSwapControl(WidgetTester tester, Finder control) async {
+  await scrollToControl(tester, control,
+    list: find.byKey(const Key('food_swap_options')), delta: 120);
+  expect(control.hitTestable(), findsOneWidget);
 }
 
 Future<void> _open(WidgetTester tester, _SwapApi api, String language,

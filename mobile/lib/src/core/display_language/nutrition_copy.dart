@@ -3,6 +3,7 @@ class NutritionCopy {
   final String languageCode;
   bool get isArabic => languageCode == 'ar';
   String get tab => isArabic ? 'التغذية' : 'Nutrition';
+  String get targetsTitle => isArabic ? 'الأهداف الغذائية' : 'Nutrition targets';
   String get setup => isArabic ? 'إعداد الأهداف الغذائية' : 'Set up Nutrition targets';
   String get confirmSex => isArabic ? 'اختر الجنس لحساب الأهداف الغذائية.' : 'Choose your sex for Nutrition targets.';
   String get male => isArabic ? 'ذكر' : 'Male';

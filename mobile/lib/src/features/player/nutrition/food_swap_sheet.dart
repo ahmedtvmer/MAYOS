@@ -124,6 +124,10 @@ class _FoodSwapSheetState extends ConsumerState<FoodSwapSheet> {
     final String name =
         copy.isArabic ? _food.arabicName ?? _food.name : _food.name;
     final PlannedMealsCopy mealsCopy = PlannedMealsCopy(copy.languageCode);
+    final double screenHeight = MediaQuery.sizeOf(context).height;
+    final double keyboardHeight = MediaQuery.viewInsetsOf(context).bottom;
+    final double availableHeight =
+        (screenHeight - keyboardHeight).clamp(0.0, screenHeight).toDouble();
     return PopScope(
         canPop: !_saving,
         child: Directionality(
@@ -131,12 +135,10 @@ class _FoodSwapSheetState extends ConsumerState<FoodSwapSheet> {
                 copy.isArabic ? TextDirection.rtl : TextDirection.ltr,
             child: SafeArea(
                 child: Padding(
-                    padding: EdgeInsets.only(
-                        bottom: MediaQuery.viewInsetsOf(context).bottom),
+                    padding: EdgeInsets.only(bottom: keyboardHeight),
                     child: SizedBox(
-                        height: (MediaQuery.sizeOf(context).height * .85 -
-                                MediaQuery.viewInsetsOf(context).bottom)
-                            .clamp(0.0, double.infinity)
+                        height: (screenHeight * .85)
+                            .clamp(0.0, availableHeight)
                             .toDouble(),
                         child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -157,6 +159,7 @@ class _FoodSwapSheetState extends ConsumerState<FoodSwapSheet> {
                                                     candidate.food.id == id));
                                       },
                                       child: ListView(
+                                          key: const Key('food_swap_options'),
                                           padding: const EdgeInsets.symmetric(
                                               horizontal: 16),
                                           children: <Widget>[

@@ -377,7 +377,7 @@ class _NutritionTabState extends ConsumerState<NutritionTab> {
             textDirection:
                 copy.isArabic ? TextDirection.rtl : TextDirection.ltr,
             child: Scaffold(
-                appBar: AppBar(title: Text(copy.coachTargets)),
+                appBar: AppBar(title: Text(copy.targetsTitle)),
                 body: const NutritionTab(targetsOnly: true)))));
     if (mounted) await _load();
   }

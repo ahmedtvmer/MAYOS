@@ -63,8 +63,6 @@ class FoodLogCopy extends NutritionCopy {
       isArabic ? 'السعرات المتبقية بعد الإضافة' : 'kcal left after adding';
   String get afterSaving =>
       isArabic ? 'السعرات المتبقية بعد الحفظ' : 'kcal left after saving';
-  String get targetsTitle =>
-      isArabic ? 'الأهداف الغذائية' : 'Nutrition targets';
   String mealLabel(String value) => switch (value) {
         'breakfast' => isArabic ? 'الإفطار' : 'Breakfast',
         'lunch' => isArabic ? 'الغداء' : 'Lunch',

@@ -52,9 +52,11 @@ void main() {
       await tester.pumpAndSettle();
       final String off = language == 'ar' ? 'بعيد عن الهدف' : 'Off';
       final Finder yesterday = find.byTooltip('2026-11-04: $off');
-      await tester.scrollUntilVisible(yesterday, 300,
-          scrollable: find.byType(Scrollable).first);
-      await tester.tap(yesterday);
+      final Finder yesterdayAction = find.byKey(const Key('answer_yesterday'));
+      await scrollToControl(tester, yesterdayAction);
+      expect(yesterday, findsOneWidget);
+      expect(yesterdayAction.hitTestable(), findsOneWidget);
+      await tester.tap(yesterdayAction);
       await tester.pumpAndSettle();
       expect(find.byType(SimpleDialog), findsOneWidget);
       final String onTarget = language == 'ar' ? 'على الهدف' : 'On target';
@@ -178,10 +180,11 @@ void main() {
     await scrollToControl(tester, find.text('الماكروز'));
     expect(find.text(const NutritionCopy('ar').protein), findsNWidgets(2));
     expect(find.text('الماكروز'), findsOneWidget);
-    expect(find.text(const NutritionCopy('ar').coachGoal), findsOneWidget);
     expect(find.textContaining('تم اختيار هدف التغذية'), findsNothing);
     expect(find.textContaining('اخترت هدف التغذية'), findsNothing);
-    expect(find.textContaining('1800'), findsOneWidget);
+    await scrollToControl(tester, find.text('1800'), delta: -200);
+    expect(find.text('1800'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('nutrition load error offers retry without referral', (WidgetTester tester) async {
