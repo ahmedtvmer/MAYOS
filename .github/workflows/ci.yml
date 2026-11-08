@@ -92,6 +92,8 @@ jobs:
           python scripts/check_engine_health.py
 
       - name: Run WAL Concurrency Stress Test
+        env:
+          SEED_CURATION_PATH: "tests/fixtures/mock_exercise_curation.csv"
         run: |
           python tests/benchmark_wal_concurrency.py
 

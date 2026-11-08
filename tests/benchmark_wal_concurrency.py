@@ -1,3 +1,4 @@
+import os
 import concurrent.futures
 import sys
 import uuid
@@ -11,7 +12,8 @@ from database.database_manager import DatabaseManager
 
 
 def simulate_player_session(user_id: int):
-    db = DatabaseManager()
+    # CI seeds a mock catalog, so it names the curation that matches it.
+    db = DatabaseManager(curation_path=os.getenv("SEED_CURATION_PATH") or None)
     username = f"stress_user_{user_id}"
 
     with db.open_ledger(username) as ledger:
