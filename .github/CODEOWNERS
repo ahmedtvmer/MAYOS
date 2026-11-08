@@ -1,0 +1,11 @@
+# Owner review for the paths excluded from factory implementation (ADR 098).
+/.github/** @ahmedtvmer
+/deploy/** @ahmedtvmer
+/AGENTS.md @ahmedtvmer
+/CLAUDE.md @ahmedtvmer
+/.claude/** @ahmedtvmer
+/DECISIONS.md @ahmedtvmer
+/docs/agents/** @ahmedtvmer
+/database/migration_manager.py @ahmedtvmer
+/database/schema/** @ahmedtvmer
+/data/** @ahmedtvmer
