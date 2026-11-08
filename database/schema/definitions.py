@@ -180,6 +180,7 @@ class SchemaMixin:
                 daily_activity TEXT NOT NULL,
                 targets_json TEXT NOT NULL,
                 authority_assignment_id TEXT,
+                meals_json TEXT,
                 created_at TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS nutrition_screening (

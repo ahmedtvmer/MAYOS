@@ -12,6 +12,7 @@ import 'food_amount_screen.dart';
 import 'food_search_screen.dart';
 import 'copy_food_meal_button.dart';
 import 'quick_add_screen.dart';
+import 'today_meals.dart';
 
 class FoodLogDayView extends ConsumerStatefulWidget {
   const FoodLogDayView({
@@ -19,12 +20,14 @@ class FoodLogDayView extends ConsumerStatefulWidget {
     required this.adherence,
     required this.targets,
     required this.onShowTargets,
+    this.emptyDayBuilder,
     super.key,
   });
   final Widget targetsView;
   final Widget adherence;
   final Map<String, dynamic>? targets;
   final VoidCallback onShowTargets;
+  final Widget Function(Widget meals)? emptyDayBuilder;
 
   @override
   ConsumerState<FoodLogDayView> createState() => _FoodLogDayViewState();
@@ -292,10 +295,12 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
         ),
       );
     final FoodLogDay day = _day!;
-    if (day.date == day.today && day.entries.isEmpty) return widget.targetsView;
+    final Widget meals = TodayMeals(revision: _request, onLogged: () => _load(background: true));
+    if (day.date == day.today && day.entries.isEmpty) return widget.emptyDayBuilder?.call(meals) ?? widget.targetsView;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: <Widget>[
+        if (day.date == day.today) meals,
         if (day.remaining != null) ...<Widget>[
           TourTarget(
             id: 'nutrition',

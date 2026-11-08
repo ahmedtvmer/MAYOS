@@ -18,7 +18,7 @@ from utils.equipment_access import (
 logger = MayosLogger().get_logger(__name__)
 
 # Current target schema version for all user ledgers
-CURRENT_LEDGER_SCHEMA_VERSION: int = 56
+CURRENT_LEDGER_SCHEMA_VERSION: int = 57
 
 MEAL_SETUP_DDL: tuple[str, ...] = (
     "CREATE TABLE IF NOT EXISTS meal_setup ("
@@ -1279,6 +1279,13 @@ def _migrate_v55_to_v56(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
+def _migrate_v56_to_v57(conn: sqlite3.Connection) -> None:
+    if _ledger_table_exists(conn, "nutrition_plan_versions"):
+        columns = {column[1] for column in conn.execute("PRAGMA table_info(nutrition_plan_versions)")}
+        if "meals_json" not in columns:
+            conn.execute("ALTER TABLE nutrition_plan_versions ADD COLUMN meals_json TEXT")
+
+
 def get_ledger_schema_version(conn: sqlite3.Connection) -> int:
     """Reads the current user_version PRAGMA from the SQLite connection."""
     cursor = conn.cursor()
@@ -1431,6 +1438,7 @@ MIGRATION_REGISTRY: dict[int, MigrationCallable] = {
     53: _migrate_v53_to_v54,
     54: _migrate_v54_to_v55,
     55: _migrate_v55_to_v56,
+    56: _migrate_v56_to_v57,
 }
 
 

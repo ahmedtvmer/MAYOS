@@ -1,6 +1,7 @@
 """Player-owned Meal setup; does not change Nutrition authority or targets."""
 
 from core.meal_setup import MEAL_LAYOUTS
+from service.meals import refresh_setup
 
 
 def read(db, ledger):
@@ -24,5 +25,8 @@ def save(db, ledger, setup):
         if food is None:
             raise ValueError("Choose disliked foods from the Food library or your Personal foods.")
     with ledger.ledger_transaction():
+        previous = ledger.get_meal_setup()
         ledger.save_meal_setup(setup)
+        if previous != setup:
+            refresh_setup(ledger)
     return read(db, ledger)

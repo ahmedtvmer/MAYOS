@@ -94,9 +94,10 @@ class CoachNutritionState {
     this.weightTrend = const <Map<String, dynamic>>[], this.waterDays = const <Map<String, dynamic>>[],
     this.todayWaterGlasses = 0, this.fiberEatenDays, this.targetWeight, this.nextPaceCheck,
     this.plannedWeeklyRatePct, this.paceProposal, this.cardioBurnedKcal = 0,
-    this.cardioAdjustmentKcal = 0});
+    this.cardioAdjustmentKcal = 0, this.mealsTargetsChanged = false});
 
   factory CoachNutritionState.fromJson(Map<String, dynamic> json) => CoachNutritionState(
+    mealsTargetsChanged: json['meals_targets_changed'] as bool? ?? false,
     authority: json['authority'] as String? ?? 'player',
     goal: json['goal'] as String?,
     dailyActivity: json['daily_activity'] as String?,
@@ -121,6 +122,7 @@ class CoachNutritionState {
     cardioAdjustmentKcal: (json['cardio_adjustment_kcal'] as num?)?.toInt() ?? 0,
   );
 
+  final bool mealsTargetsChanged;
   final String authority;
   final String? goal;
   final String? dailyActivity;

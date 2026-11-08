@@ -203,7 +203,9 @@ def build_food_library(
                                    for part in recipe["ingredients"])
     built_rows = sorted([*rows, *recipes.values()], key=lambda row: row["id"])
     annotations = _allergen_annotations(allergen_path)
+    staple_order = {row["id"]: index for index, row in enumerate(curation_rows)}
     for row in built_rows:
+        row["staple_order"] = staple_order.get(row["id"], len(curation_rows))
         row.update(annotations.get(row["id"], {"allergens": [], "allergens_reviewed": False}))
     return built_rows
 

@@ -229,6 +229,9 @@ class _CoachNutritionSegmentState extends ConsumerState<CoachNutritionSegment> {
 
   Widget _targetsEditor(NutritionCopy copy) =>
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+        if (_state!.mealsTargetsChanged) Text(copy.isArabic
+          ? 'تغيّرت الأهداف. حدّث وجبات خطة التغذية لتناسبها.'
+          : 'Targets changed. Update the Nutrition plan meals to match.'),
         _goalSelector(copy),
         _activitySelector(copy),
         Text(

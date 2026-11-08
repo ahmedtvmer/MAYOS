@@ -219,6 +219,7 @@ class _NutritionTabState extends ConsumerState<NutritionTab> {
     if (widget.targetsOnly) return _targetDetails(context, copy, colors, text);
     return FoodLogDayView(targets: _plan!.targets,
       targetsView: _targetDetails(context, copy, colors, text), adherence: _adherenceControl(copy),
+      emptyDayBuilder: (Widget meals) => _targetDetails(context, copy, colors, text, meals: meals),
       onShowTargets: () async {
         await Navigator.of(context).push<void>(MaterialPageRoute<void>(builder: (_) =>
           Scaffold(appBar: AppBar(title: Text(copy.tab)), body: const NutritionTab(targetsOnly: true))));
@@ -237,7 +238,7 @@ class _NutritionTabState extends ConsumerState<NutritionTab> {
       ]),
     ]);
 
-  Widget _targetDetails(BuildContext context, NutritionCopy copy, ColorScheme colors, TextTheme text) {
+  Widget _targetDetails(BuildContext context, NutritionCopy copy, ColorScheme colors, TextTheme text, {Widget? meals}) {
     final Map<String, dynamic> targets = _plan!.targets ?? <String, dynamic>{};
     final List<(String, String, Color)> macroCards = <(String, String, Color)>[
       (copy.protein, 'protein_g', colors.primary),
@@ -273,6 +274,7 @@ class _NutritionTabState extends ConsumerState<NutritionTab> {
           }, icon: const Icon(Icons.tune), label: Text(copy.adjust))),
         _activityRow(copy),
         const MealSetupEntry(),
+        if (meals != null) meals,
         if (_plan!.cardioBurnedKcal > 0)
           Padding(padding: const EdgeInsets.only(top: 8),
             child: Text(copy.cardioBurned(_plan!.cardioBurnedKcal), style: text.bodyMedium)),

@@ -18,6 +18,7 @@ import 'models.dart';
 import 'coach_food_log_models.dart';
 import 'food_log_models.dart';
 import 'meal_setup_models.dart';
+import 'planned_meals_models.dart';
 import 'sse.dart';
 import 'token_store.dart';
 
@@ -2165,6 +2166,20 @@ class ApiClient {
     final response = await _send(() => _dio.get<dynamic>('/nutrition/meal-setup'));
     return _parseBody(response.data, MealSetupState.fromJson,
       'The service returned invalid Meal setup data.');
+  }
+
+  Future<PlannedMeals> plannedMeals({bool enable = false}) async {
+    final response = await _send(() => enable
+      ? _dio.post<dynamic>('/nutrition/meals/enable')
+      : _dio.get<dynamic>('/nutrition/meals'));
+    return _parseBody(response.data, PlannedMeals.fromJson,
+      'The service returned invalid Nutrition meals.');
+  }
+
+  Future<void> logPlannedMeal(PlannedMeals plan, String slot) async {
+    await _send(() => _dio.post<dynamic>('/nutrition/meals/log', data: <String, dynamic>{
+      'slot': slot, 'entry_date': plan.date, 'plan_version_id': plan.planVersionId,
+    }));
   }
 
   Future<MealSetupState> saveMealSetup(MealSetupState setup) async {

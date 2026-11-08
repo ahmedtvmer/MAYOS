@@ -13,6 +13,7 @@ from core.nutrition_targets import (ACTIVITY_FACTORS, NutritionCalculationInput,
 from core.cardio_calories import estimate_cardio_calories
 from core.cardio_prescriptions import parse_legacy_cardio_prescription
 from database.ledger.nutrition import NutritionPlanVersion, NutritionSetup
+from database.nutrition_meals import meals_still_allowed
 from service import nutrition_pace_check
 
 
@@ -435,6 +436,8 @@ def read(
                 nutrition_state["pending_goal"] = resolved
                 nutrition_state["pending_goal_reason"] = reason
     nutrition_state.update(_adherence_state(ledger, today))
+    if nutrition_state.get("meals") and not meals_still_allowed(ledger, nutrition_state["meals"]):
+        nutrition_state["meals"] = []
     if nutrition_state.get("state") == "ready":
         _apply_cardio_day_adjustment(ledger, nutrition_state, today)
     proposal = ledger.get_nutrition_pace_proposal()
@@ -609,6 +612,10 @@ def assistant_projection(ledger: Any, today: date) -> dict[str, Any]:
         "adherence": _adherence_counts(adherence),
         "cardio_burned_kcal": nutrition_state.get("cardio_burned_kcal", 0),
         "cardio_adjustment_kcal": nutrition_state.get("cardio_adjustment_kcal", 0),
+        # Keep the entire day's foods within the Player tool's 4 KB result cap.
+        "meals": [{"slot": meal["slot"], "foods": [
+            {"name": food["name"][:80], "grams": food["grams"]} for food in meal["foods"]
+        ]} for meal in nutrition_state.get("meals", [])],
     }
 
 
@@ -795,7 +802,12 @@ def _read_active_plan(active_plan: Any, answers: dict[str, bool] | None,
         if is_day_target_map else targets
     )
     target_options = targets if is_day_target_map else {"daily": targets}
+    meal_payload = json.loads(active_plan["meals_json"]) if active_plan["meals_json"] else {}
+    meal_variant = meal_payload.get("variants", {}).get(day_type, {})
     return {"state": "ready", "goal": active_plan["goal"],
+            "meals": meal_variant.get("meals", []),
+            "meals_enabled": meal_payload.get("enabled", False),
+            "meals_targets_changed": meal_payload.get("targets_changed", False),
             "goal_reason": reason,
             "intensity": active_plan["intensity"], "daily_activity": active_plan["daily_activity"],
             "targets": selected_targets, "target_options": target_options, "target_day_type": day_type,

@@ -37,6 +37,7 @@ def ensure_food_search_schema(connection):
         ("vegetarian", "INTEGER NOT NULL DEFAULT 1"),
         ("allergens_json", "TEXT NOT NULL DEFAULT '[]'"),
         ("allergens_reviewed", "INTEGER NOT NULL DEFAULT 0"),
+        ("staple_order", "INTEGER NOT NULL DEFAULT 0"),
     ):
         if name not in columns:
             connection.execute(f"ALTER TABLE foods ADD COLUMN {name} {definition}")
@@ -70,10 +71,10 @@ def _upsert_food_rows(connection, rows):
     connection.executemany("""INSERT INTO foods
         (id,name,source_name,arabic_name,nutrients_json,portions_json,aliases_en_json,
          aliases_ar_json,staple_roles_json,hidden,reviewed,portion_label,portion_grams,ingredients_json,
-         category,vegetarian,allergens_json,allergens_reviewed)
+         category,vegetarian,allergens_json,allergens_reviewed,staple_order)
         VALUES (:id,:name,:source_name,:arabic_name,:nutrients_json,:portions_json,:aliases_en_json,
          :aliases_ar_json,:staple_roles_json,:hidden,:reviewed,:portion_label,:portion_grams,:ingredients_json,
-         :category,:vegetarian,:allergens_json,:allergens_reviewed)
+         :category,:vegetarian,:allergens_json,:allergens_reviewed,:staple_order)
         ON CONFLICT(id) DO UPDATE SET name=excluded.name, source_name=excluded.source_name,
          arabic_name=excluded.arabic_name,nutrients_json=excluded.nutrients_json,
          portions_json=excluded.portions_json,aliases_en_json=excluded.aliases_en_json,
@@ -81,7 +82,8 @@ def _upsert_food_rows(connection, rows):
          hidden=excluded.hidden,reviewed=excluded.reviewed,portion_label=excluded.portion_label,
          portion_grams=excluded.portion_grams,ingredients_json=excluded.ingredients_json,
          category=excluded.category,vegetarian=excluded.vegetarian,
-         allergens_json=excluded.allergens_json,allergens_reviewed=excluded.allergens_reviewed""",
+         allergens_json=excluded.allergens_json,allergens_reviewed=excluded.allergens_reviewed,
+         staple_order=excluded.staple_order""",
         [_storage_row(row) for row in rows])
 
 

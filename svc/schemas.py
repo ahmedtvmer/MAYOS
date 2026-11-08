@@ -1221,6 +1221,13 @@ class CopyMealIn(BaseModel):
     entry_date: date
 
 
+class LogPlannedMealIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    slot: Literal["breakfast", "morning_snack", "lunch", "afternoon_snack", "dinner"]
+    entry_date: date
+    plan_version_id: int = Field(ge=1)
+
+
 class NutritionPaceIn(BaseModel):
     goal: Literal["lose", "maintain", "gain"]
     intensity: Literal["light", "moderate", "aggressive"]

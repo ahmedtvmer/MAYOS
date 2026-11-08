@@ -128,6 +128,11 @@ class FakeMayosApi {
   bool foodLogFails = false;
   bool foodWriteFails = false;
   bool mealSetupSaveFails = false;
+  Map<String, dynamic> plannedMealsState = <String, dynamic>{
+    'status': 'unavailable', 'reason': 'staples', 'enabled': false, 'meals': <dynamic>[],
+  };
+  List<Map<String, dynamic>> generatedMeals = <Map<String, dynamic>>[];
+  Map<String, dynamic>? lastPlannedMealLog;
   Map<String, dynamic> mealSetupState = <String, dynamic>{
     'meal_count': 3, 'training_time': 'evening',
     'restrictions': <String, dynamic>{'allergies': <String>[], 'dislikes': <String>[], 'vegetarian': false},
@@ -1011,6 +1016,33 @@ class FakeMayosApi {
               (request.body['restrictions']['dislikes'] as List<dynamic>).contains(food['id'])).toList()};
         }
         return FakeResponse(200, mealSetupState);
+      case '/nutrition/meals':
+        return FakeResponse(200, <String, dynamic>{'date': foodLogToday, ...plannedMealsState});
+      case '/nutrition/meals/enable':
+        plannedMealsState = <String, dynamic>{...plannedMealsState, 'status': 'ready',
+          'date': foodLogToday, 'enabled': true, 'plan_version_id': 2, 'meals': generatedMeals};
+        return FakeResponse(200, plannedMealsState);
+      case '/nutrition/meals/log':
+        if (foodWriteFails) return const FakeResponse(503, <String, dynamic>{'detail': 'Could not save food.'});
+        if (request.body['entry_date'] != foodLogToday ||
+            request.body['plan_version_id'] != plannedMealsState['plan_version_id']) {
+          return const FakeResponse(409, <String, dynamic>{'detail': 'The day or Nutrition plan changed. Refresh meals and try again.'});
+        }
+        lastPlannedMealLog = Map<String, dynamic>.from(request.body);
+        final Map<String, dynamic> meal = (plannedMealsState['meals'] as List<dynamic>)
+          .cast<Map<String, dynamic>>().firstWhere((Map<String, dynamic> meal) => meal['slot'] == request.body['slot']);
+        final List<Map<String, dynamic>> copied = <Map<String, dynamic>>[
+          for (final Map<String, dynamic> food in (meal['foods'] as List<dynamic>).cast<Map<String, dynamic>>())
+            <String, dynamic>{...food, 'id': 'food-${++_foodEntryId}', 'food_id': food['id'],
+              'kind': 'library_food', 'entry_date': foodLogToday, 'quantity': food['grams'],
+              'unit': 'grams', 'meal_label': meal['slot'], 'logged_time': '08:00',
+              'nutrients': <String, dynamic>{
+                for (final String key in <String>['energy_kcal', 'protein_g', 'carbohydrate_g', 'fat_g'])
+                  key: (food['nutrients_per_100g'][key] as num) * (food['grams'] as num) / 100,
+              }},
+        ];
+        foodLogEntries.putIfAbsent(foodLogToday, () => <Map<String, dynamic>>[]).addAll(copied);
+        return FakeResponse(201, <String, dynamic>{'entries': copied});
       case '/nutrition/personal-foods':
         if (foodWriteFails) return const FakeResponse(503, <String, dynamic>{'detail': 'Could not save food.'});
         final double scale = request.body['basis'] == 'portion' ? 100 / (request.body['portion_grams'] as num) : 1;
