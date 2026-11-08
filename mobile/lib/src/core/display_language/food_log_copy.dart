@@ -32,6 +32,9 @@ class FoodLogCopy extends NutritionCopy {
   String get noEntries => isArabic
       ? 'لا يوجد طعام مسجل لهذا اليوم.'
       : 'No food logged for this day.';
+  String get startDay => isArabic
+      ? 'ابدأ يومك بتسجيل أول وجبة.'
+      : 'Start your day with your first meal.';
   String get recentFoods =>
       isArabic ? 'أطعمتك الأخيرة والمتكررة' : 'Recent and frequent foods';
   String get noRecent => isArabic

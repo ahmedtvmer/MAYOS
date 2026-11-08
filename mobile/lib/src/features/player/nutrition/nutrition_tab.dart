@@ -216,10 +216,17 @@ class _NutritionTabState extends ConsumerState<NutritionTab> {
   Widget _targets(BuildContext context, NutritionCopy copy, ColorScheme colors, TextTheme text) {
     if (widget.targetsOnly) return _targetDetails(context, copy, colors, text);
     return FoodLogDayView(targets: _plan!.targets,
-      targetsView: _targetDetails(context, copy, colors, text), adherence: _adherenceControl(copy),
+      dailyControls: Column(crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          _adherenceControl(copy),
+          const SizedBox(height: 12),
+          _waterLog(_plan!.targets ?? <String, dynamic>{}, copy),
+          const SizedBox(height: 12),
+          _recentAdherence(copy),
+        ]),
       onShowTargets: () async {
         await Navigator.of(context).push<void>(MaterialPageRoute<void>(builder: (_) =>
-          Scaffold(appBar: AppBar(title: Text(copy.tab)), body: const NutritionTab(targetsOnly: true))));
+          Scaffold(appBar: AppBar(title: Text(copy.coachTargets)), body: const NutritionTab(targetsOnly: true))));
         if (mounted) await _load();
       });
   }
@@ -246,18 +253,27 @@ class _NutritionTabState extends ConsumerState<NutritionTab> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       children: <Widget>[
         Text(copy.tab, style: text.headlineMedium),
+        if (_plan!.goal != null) ...<Widget>[
+          Text(_plan!.intensity == null ? copy.goal(_plan!.goal!)
+              : copy.stop(_plan!.goal!, _plan!.intensity!), style: text.titleMedium),
+          if (_plan!.goalReason != null)
+            Text(copy.goalReason(_plan!.goalReason!)),
+        ],
         if (_plan!.authority == 'coach')
           Align(alignment: AlignmentDirectional.centerStart,
             child: Chip(label: Text(copy.setByCoach))),
-        if (_plan!.pendingGoal != null && _plan!.authority != 'coach') Card(child: ListTile(
-          title: Text(copy.updateOffer),
-          trailing: Wrap(children: <Widget>[
+        if (_plan!.pendingGoal != null && _plan!.authority != 'coach') Card(child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
+          Text(copy.updateOffer),
+          Wrap(spacing: 8, children: <Widget>[
             TextButton(onPressed: _saving ? null : _dismissGoalOffer, child: Text(copy.dismiss)),
             FilledButton(onPressed: _saving ? null : () async {
               final NutritionPlanState? saved = await Navigator.of(context).push<NutritionPlanState>(
                 MaterialPageRoute<NutritionPlanState>(builder: (_) => NutritionPaceDial(plan: _plan!, initialGoal: _plan!.pendingGoal)));
               if (saved != null && mounted) setState(() => _plan = saved);
             }, child: Text(copy.accept)),
+          ]),
           ]),
         )),
         if (_plan!.paceProposal != null) PaceProposalCard(proposal: _plan!.paceProposal!,
@@ -289,6 +305,15 @@ class _NutritionTabState extends ConsumerState<NutritionTab> {
         const SizedBox(height: 12),
         _adherenceControl(copy),
         const SizedBox(height: 16),
+        _recentAdherence(copy),
+        if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+      ],
+    );
+  }
+
+  Widget _recentAdherence(NutritionCopy copy) {
+    final TextTheme text = Theme.of(context).textTheme;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
         Text(copy.lastSevenDays, style: text.titleMedium),
         const SizedBox(height: 8),
         Wrap(spacing: 12, children: <Widget>[
@@ -303,9 +328,7 @@ class _NutritionTabState extends ConsumerState<NutritionTab> {
         const SizedBox(height: 16),
         Text('${copy.latestWeight}: ${_plan!.latestWeight == null ? '—' : '${_plan!.latestWeight} ${copy.kilograms}'}', style: text.bodyLarge),
         Text('${copy.targetWeight}: ${_plan!.targetWeight == null ? '—' : '${_plan!.targetWeight} ${copy.kilograms}'}', style: text.bodyMedium),
-        if (_error != null) Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-      ],
-    );
+    ]);
   }
 
   Future<void> _answerPastDay(String entryDate, NutritionCopy copy) async {
@@ -418,7 +441,11 @@ class _NutritionTabState extends ConsumerState<NutritionTab> {
           ]),
         ))),
         const SizedBox(width: 8),
-        Expanded(child: Card(child: Padding(
+        Expanded(child: _waterLog(targets, copy)),
+      ]);
+
+  Widget _waterLog(Map<String, dynamic> targets, NutritionCopy copy) =>
+      Card(child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           child: Column(children: <Widget>[
             Text(copy.waterTarget, textAlign: TextAlign.center, maxLines: 2,
@@ -436,8 +463,7 @@ class _NutritionTabState extends ConsumerState<NutritionTab> {
                   ? null : () => _changeWater(true, copy), child: Text(copy.undoGlass)),
             ]),
           ]),
-        ))),
-      ]);
+      ));
 
   Widget _loadError(BuildContext context, NutritionCopy copy) => Center(child: Padding(
     padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: <Widget>[

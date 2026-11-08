@@ -59,6 +59,18 @@ class NutritionCopy {
   String get cancel => isArabic ? 'إلغاء' : 'Cancel';
   String get updateTargets => isArabic ? 'تحديث الأهداف الغذائية' : 'Update Nutrition targets';
   String get adjust => isArabic ? 'تعديل' : 'Adjust';
+  String goalReason(Map<String, dynamic> reason) => switch (reason['code']) {
+    'current_goal' => isArabic ? 'بناءً على هدفك: ${reason['goal_text']}'
+        : 'Based on your goal: ${reason['goal_text']}',
+    'target_weight' => isArabic ? 'بناءً على وزنك المستهدف: ${reason['target_weight_kg']} كجم'
+        : 'Based on your Target weight: ${reason['target_weight_kg']} kg',
+    'default' => isArabic ? 'الحفاظ على الوزن هو نقطة البداية الافتراضية.'
+        : 'Maintaining weight is the default starting point.',
+    'player_choice' => isArabic ? 'اخترت هذا الهدف لخطة التغذية.'
+        : 'You chose this goal for your Nutrition plan.',
+    _ => isArabic ? 'تم تحديد هذا الهدف في خطة التغذية.'
+        : 'This goal was set in your Nutrition plan.',
+  };
   String get saveGoal => isArabic ? 'حفظ هدف التغذية' : 'Save Nutrition goal';
   String get weeklyChange => isArabic ? 'التغير الأسبوعي' : 'Weekly change';
   String weeklyRate(double value) {

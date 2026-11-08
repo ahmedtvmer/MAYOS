@@ -20,6 +20,65 @@ import 'support/fake_mayos_api.dart';
 void main() {
   for (final String language in <String>['en', 'ar']) {
     for (final Brightness brightness in Brightness.values) {
+      for (final bool logged in <bool>[false, true]) {
+        testWidgets('$language $brightness day layout at 360 dp with logged=$logged (#659)', (WidgetTester tester) async {
+          tester.view.physicalSize = const Size(360, 800);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final FakeMayosApi fake = _fake();
+          if (logged) fake.foodLogEntries[fake.foodLogToday] = <Map<String, dynamic>>[_entry('breakfast')];
+          final FoodLogCopy copy = FoodLogCopy(language);
+          await tester.pumpWidget(_app(fake, language: language, brightness: brightness));
+          await tester.pumpAndSettle();
+          expect(find.text(logged ? '1900' : '2000'), findsOneWidget);
+          expect(find.text(copy.leftOf(2000)), findsOneWidget);
+          for (final String macro in <String>[copy.protein, copy.carbs, copy.fat]) {
+            expect(find.text(copy.macroLeft(macro)), findsOneWidget);
+          }
+          expect(find.text(copy.macrosTitle), findsNothing);
+          expect(find.text(copy.adjust), findsNothing);
+          expect(find.byKey(const Key('food_log_entry_point')), findsOneWidget);
+          expect(find.widgetWithText(OutlinedButton, copy.quickAdd), findsOneWidget);
+          if (logged) {
+            expect(find.text(language == 'ar' ? 'بيضة' : 'Egg'), findsOneWidget);
+            expect(find.text(copy.startDay), findsNothing);
+          } else {
+            expect(find.text(copy.startDay), findsOneWidget);
+            await tester.tap(find.byKey(const Key('empty_day_search')));
+            await tester.pumpAndSettle();
+            expect(find.byType(FoodSearchScreen), findsOneWidget);
+            await tester.pageBack();
+            await tester.pumpAndSettle();
+            await tester.tap(find.widgetWithText(TextButton, copy.quickAdd));
+            await tester.pumpAndSettle();
+            expect(find.byType(QuickAddScreen), findsOneWidget);
+            await tester.pageBack();
+            await tester.pumpAndSettle();
+          }
+          await tester.scrollUntilVisible(find.text(copy.howTodayWent), 150,
+            scrollable: find.byType(Scrollable).first);
+          expect(find.widgetWithText(ChoiceChip, copy.onTarget), findsOneWidget);
+          await tester.scrollUntilVisible(find.text(copy.lastSevenDays), 150,
+            scrollable: find.byType(Scrollable).first);
+          expect(find.textContaining(copy.waterLog), findsOneWidget);
+          await tester.scrollUntilVisible(find.byKey(const Key('nutrition_targets')), 150,
+            scrollable: find.byType(Scrollable).first);
+          expect(find.text(copy.targetsTitle), findsOneWidget);
+          expect(tester.widgetList<Directionality>(find.byType(Directionality))
+            .map((Directionality direction) => direction.textDirection),
+            contains(language == 'ar' ? TextDirection.rtl : TextDirection.ltr));
+          await tester.tap(find.byKey(const Key('nutrition_targets')));
+          await tester.pumpAndSettle();
+          expect(find.text(copy.goal('maintain')), findsOneWidget);
+          expect(find.text(copy.adjust), findsOneWidget);
+          await tester.scrollUntilVisible(find.text(copy.macrosTitle), 150,
+            scrollable: find.byType(Scrollable).first);
+          expect(find.text(copy.protein), findsOneWidget);
+          expect(find.text(copy.fat), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        });
+      }
       testWidgets('$language Quick add keeps optional Macros blank in $brightness', (WidgetTester tester) async {
         tester.view.physicalSize = const Size(390, 844);
         tester.view.devicePixelRatio = 1;
@@ -198,7 +257,8 @@ void main() {
       final FakeMayosApi fake = _fake();
       await tester.pumpWidget(_app(fake));
       await tester.pumpAndSettle();
-      expect(find.text('Macros'), findsOneWidget);
+      expect(find.text('2000'), findsOneWidget);
+      expect(find.text('Protein left'), findsOneWidget);
       await tester.tap(find.byType(TextField));
       await tester.pumpAndSettle();
       expect(find.byType(FoodSearchScreen), findsOneWidget);
@@ -504,7 +564,7 @@ void main() {
   });
 
   testWidgets(
-    'editing uses snapshot density and deleting the last entry restores targets',
+    'editing uses snapshot density and deleting the last entry keeps the day layout',
     (WidgetTester tester) async {
       final FakeMayosApi fake = _fake();
       fake.foodLogEntries[fake.foodLogToday] = <Map<String, dynamic>>[
@@ -529,7 +589,8 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
       await tester.pumpAndSettle();
       expect(fake.foodLogEntries[fake.foodLogToday], isEmpty);
-      expect(find.text('Macros'), findsOneWidget);
+      expect(find.text('Protein left'), findsOneWidget);
+      expect(find.text('Start your day with your first meal.'), findsOneWidget);
       expect(find.text('2000'), findsOneWidget);
     },
   );
