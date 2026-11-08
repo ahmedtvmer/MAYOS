@@ -121,9 +121,9 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'meal_setup',
     titleEn: 'Meals and Food restrictions',
-    sentenceEn: 'Choose Meal slots, training time and Food restrictions, turn on meals from reviewed Staple foods, and log a planned meal with one tap.',
+    sentenceEn: 'Choose Meal slots, training time and Food restrictions, turn on meals from reviewed Staple foods, swap foods permanently in your own plan, and log a planned meal with one tap.',
     titleAr: 'الوجبات والقيود الغذائية',
-    sentenceAr: 'اختر وجباتك ووقت تدريبك وقيودك الغذائية، وفعّل وجبات من أطعمة أساسية معتمدة وسجّل الوجبة المخططة بلمسة واحدة.',
+    sentenceAr: 'اختر وجباتك ووقت تدريبك وقيودك الغذائية، وفعّل وجبات من أطعمة أساسية معتمدة وبدّل الأطعمة بشكل دائم في خطتك وسجّل الوجبة المخططة بلمسة واحدة.',
     target: 'meal_setup',
     location: TourShellTabLocation(tabIndex: 2),
     release: 6,

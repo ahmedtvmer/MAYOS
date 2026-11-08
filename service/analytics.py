@@ -367,6 +367,7 @@ EVENT_CATALOGUE: dict[str, EventContract] = {
         "server", {**_COMMON_PROPERTIES, "blocked": PROPERTY_TYPES["blocked"]}
     ),
     "nutrition_meals_turned_on": EventContract("server", dict(_COMMON_PROPERTIES)),
+    "nutrition_food_swapped": EventContract("server", dict(_COMMON_PROPERTIES)),
     "nutrition_adherence_logged": EventContract(
         "server", {**_COMMON_PROPERTIES, "value": PROPERTY_TYPES["value"]}
     ),

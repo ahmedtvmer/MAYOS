@@ -1,4 +1,4 @@
-"""Deterministic meals from ordered, reviewed Staples; no I/O or clock.
+"""Deterministic meals from reviewed Staples and explicit Food swaps; no I/O or clock.
 
 Missing roles and infeasible practical portions produce an unavailable result,
 never an approximate prescription or a fallback to another unreviewed food.
@@ -24,6 +24,7 @@ class MealGenerationInput:
     training_day: bool
     staples: list[dict]
     swaps: dict = field(default_factory=dict)
+    swap_foods: dict = field(default_factory=dict)
 
 
 def _carb_weights(request):
@@ -52,7 +53,7 @@ def slot_targets(request):
     } for slot in slots}
 
 
-def _role_matches(food, slot, role):
+def role_matches(food, slot, role):
     meal_type = "breakfast" if slot == "breakfast" else "snack" if slot.endswith("_snack") else "main"
     return bool({role, f"{meal_type}_{role}"} & set(food["staple_roles"]))
 
@@ -62,10 +63,14 @@ def _selected_foods(request, slot):
     for role in ROLES:
         allowed = [food for food in request.staples
                       if food["reviewed"] and not food.get("hidden", False)
-                      and _role_matches(food, slot, role)
+                      and role_matches(food, slot, role)
                       and not set(restriction_reasons(food, request.setup["restrictions"])) - {"disliked"}]
         swap_id = request.swaps.get(slot, {}).get(role)
         swap = next((food for food in allowed if food["id"] == swap_id), None)
+        if swap is None:
+            explicit = request.swap_foods.get(swap_id)
+            if explicit and not set(restriction_reasons(explicit, request.setup["restrictions"])) - {"disliked"}:
+                swap = explicit
         candidates = [food for food in allowed if food["id"] not in request.setup["restrictions"]["dislikes"]]
         if swap is None and not candidates:
             return None
@@ -193,7 +198,8 @@ def generate_meals(request):
     """Return ready meals or a reason; all four nutrients meet ±5%, or no meals.
 
     Boundary cases: empty/missing roles; blocked foods; zero targets; no feasible
-    positive portions. Selection never skips the first allowed food to fit numbers.
+    positive portions. Without a swap, selection never skips the first allowed
+    Staple food to fit numbers.
     """
     if any(not isfinite(request.targets[key]) or request.targets[key] < 0 for key in TARGET_KEYS):
         raise ValueError("Meal targets must be finite and non-negative.")
