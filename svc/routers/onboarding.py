@@ -11,7 +11,7 @@ from service import analytics as analytics_service
 from service import intake as intake_service
 from service import onboarding as onboarding_service
 from service.messages import MessageMetadata, http_error_message
-from svc.dependencies import account_id_of, get_db, get_ledger, get_verified_player
+from svc.dependencies import VerifiedPlayerLedger, account_id_of, get_db, get_verified_player_ledger
 from svc.rate_limit import ONBOARDING_LIMIT, limiter
 from svc.schemas import (
     IntakeAnswerIn,
@@ -82,25 +82,25 @@ def _capture_onboarding_completed(
 
 @router.get("/intake", response_model=IntakeOut)
 async def read_intake(
-    player: Annotated[Any, Depends(get_verified_player)],
-    ledger: Annotated[Any, Depends(get_ledger)],
+    player_ledger: Annotated[VerifiedPlayerLedger, Depends(get_verified_player_ledger)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """The named intake contract, saved answers, legacy prefill markers, and progress."""
+    player, ledger = player_ledger
     return await asyncio.to_thread(intake_service.build_view, db, str(player), ledger)
 
 
 @router.post("/intake/disclosure", response_model=IntakeOut)
 async def acknowledge_intake_disclosure(
     request: Request,
-    player: Annotated[Any, Depends(get_verified_player)],
-    ledger: Annotated[Any, Depends(get_ledger)],
+    player_ledger: Annotated[VerifiedPlayerLedger, Depends(get_verified_player_ledger)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Records acknowledgment of the onboarding privacy notice before answers are accepted."""
+    player, ledger = player_ledger
     result = await asyncio.to_thread(intake_service.acknowledge_disclosure, db, str(player), ledger)
     if result["status"] == intake_service.STATUS_IN_PROGRESS:
-        _record_onboarding_started(request, account_id_of(player), ledger)
+        await asyncio.to_thread(_record_onboarding_started, request, account_id_of(player), ledger)
     return result
 
 
@@ -110,11 +110,11 @@ async def save_intake_answer(
     request: Request,
     field: str,
     body: IntakeAnswerIn,
-    player: Annotated[Any, Depends(get_verified_player)],
-    ledger: Annotated[Any, Depends(get_ledger)],
+    player_ledger: Annotated[VerifiedPlayerLedger, Depends(get_verified_player_ledger)],
     db: Annotated[Any, Depends(get_db)],
 ):
     """Validates and saves one named answer; idempotent until confirmed (ADR 021)."""
+    player, ledger = player_ledger
 
     def _run():
         try:
@@ -136,7 +136,7 @@ async def save_intake_answer(
 
     result = await asyncio.to_thread(_run)
     if result["status"] == intake_service.STATUS_IN_PROGRESS:
-        _record_onboarding_started(request, account_id_of(player), ledger)
+        await asyncio.to_thread(_record_onboarding_started, request, account_id_of(player), ledger)
     return result
 
 
@@ -144,12 +144,12 @@ async def save_intake_answer(
 @limiter.limit(ONBOARDING_LIMIT)
 async def confirm_intake(
     request: Request,
-    player: Annotated[Any, Depends(get_verified_player)],
-    ledger: Annotated[Any, Depends(get_ledger)],
+    player_ledger: Annotated[VerifiedPlayerLedger, Depends(get_verified_player_ledger)],
     db: Annotated[Any, Depends(get_db)],
     body: IntakeConfirmIn = Body(default=IntakeConfirmIn()),
 ):
     """Writes the confirmed profile and creates the first program exactly once (ADR 021)."""
+    player, ledger = player_ledger
 
     def _run():
         answers = ledger.load_intake_answers()

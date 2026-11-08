@@ -1,5 +1,6 @@
 """FastAPI dependencies: database handle, verified player identity, Google ID-token seam."""
 
+import asyncio
 import logging
 import os
 import threading
@@ -67,6 +68,11 @@ class VerifiedPlayer(_VerifiedIdentityMarker):
 
 class VerifiedAccount(_VerifiedIdentityMarker):
     """Ledger id carrying a verified Account without requiring Player capability."""
+
+
+class VerifiedPlayerLedger(NamedTuple):
+    player: VerifiedPlayer
+    ledger: Any
 
 
 _VerifiedIdentity = TypeVar("_VerifiedIdentity", VerifiedPlayer, VerifiedAccount)
@@ -185,8 +191,12 @@ def _reject_revoked_token(db: Any, player: VerifiedPlayer | VerifiedAccount) -> 
     logged-out token, not only the routes that open a request-scoped ledger.
     """
     with db.open_ledger(str(player)) as ledger:
-        if ledger.is_token_revoked(player.jti):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked.")
+        _reject_revoked_jti(ledger, player.jti)
+
+
+def _reject_revoked_jti(ledger: Any, jti: str) -> None:
+    if ledger.is_token_revoked(jti):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked.")
 
 
 def _utc_day() -> str:
@@ -296,6 +306,32 @@ async def get_ledger(
     """
     with db.open_ledger(str(player)) as ledger:
         yield ledger
+
+
+async def _get_registry_player(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    db: Annotated[Any, Depends(get_db)],
+) -> VerifiedPlayer:
+    identity = await asyncio.to_thread(_resolve_registry_identity, credentials, db)
+    return _verified_player(identity)
+
+
+def get_verified_player_ledger(
+    player: Annotated[VerifiedPlayer, Depends(_get_registry_player)],
+    db: Annotated[Any, Depends(get_db)],
+    request: Request,
+):
+    """Authenticate and reuse one ledger for routes that need it throughout.
+
+    The registry gate runs before mounting; revocation is checked on this same
+    handle before yielding to the handler. A synchronous generator keeps mount,
+    migrations, backup pruning and close in FastAPI's worker pool. Auth-only
+    routes retain their short-lived handle so deletion can unlink closed files.
+    """
+    with db.open_ledger(str(player)) as ledger:
+        _reject_revoked_jti(ledger, player.jti)
+        _record_last_seen(db, player.account_id, _request_build(request))
+        yield VerifiedPlayerLedger(player, ledger)
 
 
 async def get_current_player(
