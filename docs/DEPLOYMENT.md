@@ -212,10 +212,16 @@ addresses remain per-address. Admin audit entries retain the full caller IP.
 
 Set `MIN_ANDROID_BUILD` to the lowest Android `versionCode` that may use the
 API. The default `0` disables the policy; malformed or negative values also
-disable it. Android requests with a lower `X-MAYOS-Build` receive HTTP 426 and
+disable it.
+Android requests with a lower `X-MAYOS-Build` receive HTTP 426 and
 the configured `ANDROID_STORE_URL`. Health and readiness checks, public account
 pages, `assetlinks.json`, `/app/version-policy`, and `/admin` are exempt.
 Requests without that build header and web clients are not rejected by this policy.
+
+Per-set RIR hints (#532) need Android build 2. The code default stays `0` so
+a deploy can never lock out installed apps: publish build 2 first, then the
+owner sets `MIN_ANDROID_BUILD=2` in `/opt/mayos/.env`. Deploy the web client
+with the API change.
 
 ---
 

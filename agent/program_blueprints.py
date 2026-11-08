@@ -45,16 +45,16 @@ LIGHT_WARMUP_SET_RANGE = (0, 0)
 MEDIUM_WARMUP_SET_RANGE = (1, 2)
 HEAVY_WARMUP_SET_RANGE = (2, 4)
 
-BEGINNER_HEAVY_COMPOUND_RIR = 1.5
-BEGINNER_MEDIUM_COMPOUND_RIR = 1.5
-BEGINNER_ISOLATION_RIR = 0.5
-BEGINNER_CALF_ABS_RIR = 0.5
-INTERMEDIATE_HEAVY_COMPOUND_RIR = 0.5
-INTERMEDIATE_MEDIUM_COMPOUND_RIR = 0.5
+BEGINNER_HEAVY_COMPOUND_RIR = 2.0
+BEGINNER_MEDIUM_COMPOUND_RIR = 2.0
+BEGINNER_ISOLATION_RIR = 1.0
+BEGINNER_CALF_ABS_RIR = 1.0
+INTERMEDIATE_HEAVY_COMPOUND_RIR = 1.0
+INTERMEDIATE_MEDIUM_COMPOUND_RIR = 1.0
 INTERMEDIATE_ISOLATION_RIR = 0.0
 INTERMEDIATE_CALF_ABS_RIR = 0.0
-ADVANCED_HEAVY_COMPOUND_RIR = 0.5
-ADVANCED_MEDIUM_COMPOUND_RIR = 0.5
+ADVANCED_HEAVY_COMPOUND_RIR = 1.0
+ADVANCED_MEDIUM_COMPOUND_RIR = 1.0
 ADVANCED_ISOLATION_RIR = 0.0
 ADVANCED_CALF_ABS_RIR = 0.0
 
@@ -177,6 +177,10 @@ def prescription_class(spec: SlotSpec) -> PrescriptionClass:
 def target_rpe_for_experience(spec: SlotSpec, experience_level: ExperienceLevel) -> float:
     target_rir = TARGET_RIR_BY_EXPERIENCE_AND_CLASS[(experience_level, prescription_class(spec))]
     return 10.0 - target_rir
+
+
+def test_set_rir_for_experience(experience_level: ExperienceLevel) -> float:
+    return 3.0 if experience_level == "beginner" else 2.0
 
 
 def warmup_sets_for_load_class(spec: SlotSpec) -> int:

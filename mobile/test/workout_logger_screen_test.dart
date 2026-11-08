@@ -781,6 +781,50 @@ Future<void> _assertNoOverflowAt360(
 }
 
 void main() {
+  for (final String language in <String>['en', 'ar']) {
+    for (final bool deload in <bool>[false, true]) {
+      testWidgets('each set row shows its target RIR in $language (deload: $deload)',
+          (WidgetTester tester) async {
+        const ProgramDay day = ProgramDay(
+          dayName: 'Upper A',
+          dayOrder: 1,
+          exercises: <ProgramExercise>[
+            ProgramExercise(
+              exerciseId: 'bench_press',
+              exerciseName: 'Bench Press',
+              targetSets: 1,
+              targetRepsMin: 5,
+              targetRepsMax: 8,
+              targetRpe: 8,
+              setGroups: <Map<String, dynamic>>[
+                <String, dynamic>{'sets': 1, 'reps_min': 5, 'reps_max': 8, 'target_rir': 2},
+                <String, dynamic>{'sets': 3, 'reps_min': 5, 'reps_max': 8, 'target_rir': 1},
+              ],
+            ),
+          ],
+        );
+        final FakeMayosApi fake = _signedInFake();
+        fake.prescriptionEffectiveSets['bench_press'] = deload ? 2 : 4;
+        fake.prescriptionTargetRpe['bench_press'] = deload ? 7 : 8;
+        if (deload) {
+          fake.prescriptionDeload = <String, dynamic>{
+            'state': 'applied', 'volume_multiplier': 0.5, 'intensity_cap_rpe': 7,
+          };
+        }
+        await _openLogger(tester, day: day, fakeApi: fake, languageCode: language,
+            roundTripStoredWorkout: true);
+        for (int index = 0; index < (deload ? 2 : 4); index++) {
+          expect(
+            find.descendant(of: _cell(0, index, 'rir'),
+                matching: find.text('≥ ${deload ? 3 : index == 0 ? 2 : 1}')),
+            findsOneWidget,
+          );
+        }
+        expect(find.textContaining('Test set'), findsNothing);
+      });
+    }
+  }
+
   testWidgets('logger header shows the workout week in a multi-week plan',
       (WidgetTester tester) async {
     const ProgramDay weekTwoDay = ProgramDay(
@@ -1625,7 +1669,7 @@ void main() {
     expect(find.text('Last: 100kg × 5 · 95kg × 6'), findsOneWidget);
     expect(find.text('Last: 40kg × 10'), findsOneWidget);
 
-    // …and it is matched set by set as the faded hint in every empty cell:
+    // Weight and reps match history; effort always shows the current target.
     // bench's first working set…
     expect(_textColor(tester, _cell(0, 0, 'kg')), c.textDisabled);
     expect(
@@ -1637,7 +1681,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.descendant(of: _cell(0, 0, 'rir'), matching: find.text('1')),
+      find.descendant(of: _cell(0, 0, 'rir'), matching: find.text('≥ 2')),
       findsOneWidget,
     );
     // …its second…
@@ -1650,7 +1694,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.descendant(of: _cell(0, 1, 'rir'), matching: find.text('2')),
+      find.descendant(of: _cell(0, 1, 'rir'), matching: find.text('≥ 2')),
       findsOneWidget,
     );
     // …and the third bench set has no previous working set, so its hint is
@@ -1744,7 +1788,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.descendant(of: _cell(0, 2, 'rir'), matching: find.text('2')),
+      find.descendant(of: _cell(0, 2, 'rir'), matching: find.text('≥ 2')),
       findsOneWidget,
     );
 
@@ -2125,14 +2169,14 @@ void main() {
     // The chip sets the value AND walks on to the next set's kg (#123 item 10).
     expect(find.text('Bench Press · set 2 · Weight (kg)'), findsOneWidget);
 
-    // Unrated clears the effort back to the previous-value hint, and also
+    // Unrated clears the effort back to the prescription hint, and also
     // advances.
     await tester.tap(_cell(0, 0, 'rir'));
     await tester.pump(const Duration(milliseconds: 100));
     await tester.tap(find.byKey(const ValueKey<String>('logger.rir.unrated')));
     await tester.pump(const Duration(milliseconds: 100));
     expect(
-      find.descendant(of: _cell(0, 0, 'rir'), matching: find.text('1')),
+      find.descendant(of: _cell(0, 0, 'rir'), matching: find.text('≥ 2')),
       findsOneWidget,
     );
     expect(_textColor(tester, _cell(0, 0, 'rir')),

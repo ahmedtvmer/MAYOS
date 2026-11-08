@@ -129,7 +129,7 @@ def _program_snapshot(program):
                     {
                         "exercise_id": exercise.exercise_id,
                         "slot_key": exercise.slot_key,
-                        "target_sets": exercise.target_sets,
+                        "target_sets": exercise.working_sets,
                     }
                     for exercise in day.exercises
                 ],
@@ -211,7 +211,7 @@ def test_focus_chest_adds_a_new_variant_first_on_lightest_training_day(fresh_sto
     assert reason["prescription"]["sets"]["code"] == "sets.focus_multiplier"
     set_params = reason["prescription"]["sets"]["params"]
     actual_weekly_sets = sum(
-        exercise.target_sets for day in program.days for exercise in day.exercises
+        exercise.working_sets for day in program.days for exercise in day.exercises
         if exercise.slot_key in {"incline_press", "flat_press", "chest_fly"}
     )
     assert set_params["actual_weekly_sets"] == actual_weekly_sets
@@ -354,7 +354,7 @@ def test_focus_chest_generation_supports_every_frequency_and_equipment(
             if record["exercise_id"] == focus["exercise_id"]
         )
         actual_weekly_sets = sum(
-            exercise.target_sets for candidate_day in program.days for exercise in candidate_day.exercises
+            exercise.working_sets for candidate_day in program.days for exercise in candidate_day.exercises
             if exercise.slot_key in {"incline_press", "flat_press", "chest_fly"}
         )
         assert actual_weekly_sets >= set_reason["target_weekly_sets"]
@@ -436,7 +436,6 @@ def test_every_focus_extra_keeps_its_own_day_choice_reason(fresh_store, monkeypa
     def baseline_ten(profile, request, split_plan, ledger):
         days, rationale = original_generate_days(profile, request, split_plan, ledger)
         back_exercises = [ex for day in days for ex in day.exercises if ex.slot_key in FOCUS_MUSCLE_SLOTS["back"]]
-        back_exercises[0].target_sets += 2
         back_exercises[0].set_groups[-1].sets += 2
         return days, rationale
 
@@ -465,7 +464,7 @@ def test_every_focus_extra_keeps_its_own_day_choice_reason(fresh_store, monkeypa
         )
         if choice["code"] == "focus.new_weekly_exposure":
             expected_exposures += 1
-    assert sum(ex.target_sets for day in program.days for ex in day.exercises
+    assert sum(ex.working_sets for day in program.days for ex in day.exercises
                if ex.slot_key in FOCUS_MUSCLE_SLOTS["back"]) == 14
 
 
@@ -504,7 +503,7 @@ def _focus_extra_records(program):
 
 def _weekly_slot_sets(program, slots):
     return sum(
-        exercise.target_sets
+        exercise.working_sets
         for day in program.days
         for exercise in day.exercises
         if exercise.slot_key in slots
@@ -546,11 +545,11 @@ def test_focus_dose_reaches_rounded_targets_with_multiple_extras(
             exercise for day in days for exercise in day.exercises
             if exercise.slot_key in back
         ]
-        current = sum(exercise.target_sets for exercise in back_exercises)
+        current = sum(exercise.working_sets for exercise in back_exercises)
         delta = 10 - current
         first = back_exercises[0]
-        first.target_sets += delta
-        assert first.target_sets >= 1
+        first.set_groups[-1].sets += delta
+        assert first.working_sets >= 1
         return days, rationale
 
     monkeypatch.setattr(generator, "_generate_program_days", baseline_ten)
@@ -726,7 +725,7 @@ def test_generated_programs_pass_the_coach_pattern_rubric(
             for day in program.days
         ]
         exercises = [exercise for day in exercises_by_day for exercise in day]
-        weekly_sets = sum(exercise.target_sets for exercise in exercises)
+        weekly_sets = sum(exercise.working_sets for exercise in exercises)
         frequency = sum(bool(day) for day in exercises_by_day)
         if equipment == "Bodyweight only" and muscle in BODYWEIGHT_RUBRIC_EXCEPTIONS:
             expected_sets, expected_frequency, _reason = BODYWEIGHT_RUBRIC_EXCEPTIONS[muscle]
@@ -747,7 +746,7 @@ def test_generated_programs_pass_the_coach_pattern_rubric(
                 exercise for exercise in exercises if exercise.slot_key == slot
             ]
             assert (
-                sum(exercise.target_sets for exercise in selected),
+                sum(exercise.working_sets for exercise in selected),
                 sum(any(exercise.slot_key == slot for exercise in day.exercises) for day in program.days),
             ) == expected, f"{slot}: expected {expected} sets/days"
 
@@ -857,5 +856,5 @@ def test_coach_pattern_rubric_accepts_missing_adductors_and_ham_curl_when_restri
     for muscle, slots in MUSCLE_GROUPS.items():
         if muscle in {"hamstrings", "adductors"}:
             continue
-        count = sum(ex.target_sets for ex in exercises if ex.slot_key in slots)
+        count = sum(ex.working_sets for ex in exercises if ex.slot_key in slots)
         assert 4 <= count <= 6, f"{muscle}: {count} sets"

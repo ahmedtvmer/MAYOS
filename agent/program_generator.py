@@ -33,6 +33,7 @@ from agent.program_blueprints import (
     resolve_sets_family,
     slot_working_sets,
     target_rpe_for_experience,
+    test_set_rir_for_experience,
     warmup_sets_for_load_class,
 )
 from agent.program_rules import (
@@ -78,6 +79,7 @@ from agent.ProgramState import (
     GeneratedProgramSchema,
     ProgramDaySchema,
     ProgramExerciseSchema,
+    ProgramSetGroupSchema,
     SuggestedSubstitute,
     WarmupExerciseSchema,
 )
@@ -87,7 +89,7 @@ from utils.logger import MayosLogger
 load_dotenv()
 logger = MayosLogger().get_logger("program_generator")
 
-PROGRAM_DESIGN_VERSION = 3
+PROGRAM_DESIGN_VERSION = 4
 
 MECHANIC_CUES = {
     "compound_press": "Control the 2-3s eccentric, pause briefly at full stretch, drive without locking out aggressively.",
@@ -381,6 +383,7 @@ def _build_program_exercise(
         slot_key=prescription.movement_slot,
         warmup_sets=warmup_sets_for_load_class(spec),
         target_sets=prescription.working_sets,
+        set_groups=_generated_set_groups(prescription),
         target_reps_min=rep_min,
         target_reps_max=rep_max,
         target_rpe=target_rpe_for_experience(spec, prescription.experience_level),
@@ -390,6 +393,22 @@ def _build_program_exercise(
         gif_path=candidate.get("gif_path"),
         suggested_substitutes=suggested_substitutes or [],
     )
+
+
+def _generated_set_groups(prescription: ExercisePrescription) -> list[ProgramSetGroupSchema]:
+    rep_min, rep_max = apply_rep_preference(prescription.spec.reps, prescription.rep_preference)
+    working_rir = 10 - target_rpe_for_experience(prescription.spec, prescription.experience_level)
+    # One set uses working effort; two or more include one calibration set.
+    counts_and_rir = [(prescription.working_sets, working_rir)]
+    if prescription.working_sets > 1:
+        counts_and_rir = [
+            (1, test_set_rir_for_experience(prescription.experience_level)),
+            (prescription.working_sets - 1, working_rir),
+        ]
+    return [
+        ProgramSetGroupSchema(sets=count, reps_min=rep_min, reps_max=rep_max, target_rir=rir)
+        for count, rir in counts_and_rir
+    ]
 
 
 def format_rest(seconds: int) -> str:
@@ -850,7 +869,7 @@ def render_program_markdown(program: GeneratedProgramSchema) -> str:
             # its equivalent *minimum* RIR, a whole number rounded up.
             minimum = min_rir_from_rpe(ex.target_rpe)
             lines.append(
-                f"| {idx} | **{ex.exercise_name}** | {warmup} | {ex.target_sets} | "
+                f"| {idx} | **{ex.exercise_name}** | {warmup} | {ex.working_sets} | "
                 f"{ex.target_reps_min}~{ex.target_reps_max} | {minimum if minimum is not None else ''} | {rest} |"
             )
         if day.cardio:
@@ -1002,7 +1021,7 @@ def _apply_focus_muscles(program, focus_muscles, profile, ledger, day_families):
 
 def _focus_baseline_sets(muscle_slots, baseline_exercises):
     return sum(
-        exercise.target_sets
+        exercise.working_sets
         for exercises in baseline_exercises.values()
         for exercise in exercises
         if exercise.slot_key in muscle_slots
@@ -1025,7 +1044,7 @@ def _insert_focus_extras(program, plan, ledger):
             )
             break
         target_day, new_exercise, day_choice = addition
-        actual += new_exercise.target_sets
+        actual += new_exercise.working_sets
         focus_reason["extra_exercise_ids"].append(new_exercise.exercise_id)
         day_choices.append(day_choice)
         focus_reason["extras"].append({
@@ -1060,7 +1079,7 @@ def _insert_next_focus_extra(program, plan, opened_days, ledger):
     if day is None:
         return None
     actual = sum(
-        exercise.target_sets
+        exercise.working_sets
         for training_day in program.days
         for exercise in training_day.exercises
         if exercise.slot_key in plan.muscle_slots
@@ -1153,10 +1172,10 @@ def _focus_extra_rationale(candidate, prescription, exercise, placement):
 
 def _focus_sets_rationale(exercise, plan, actual):
     return {"code": SETS_FOCUS_MULTIPLIER, "params": {
-        "count": exercise.target_sets,
+        "count": exercise.working_sets,
         "baseline_weekly_sets": plan.baseline,
         "target_weekly_sets": plan.target,
-        "actual_weekly_sets": actual + exercise.target_sets,
+        "actual_weekly_sets": actual + exercise.working_sets,
         "multiplier": FOCUS_MULTIPLIER,
     }}
 
@@ -1347,7 +1366,7 @@ def _focus_day_trains_region(day, home):
 
 def _lightest_focus_day(days, baseline_exercises):
     return min(days, key=lambda day: (
-        sum(ex.target_sets for ex in baseline_exercises[day.day_order]), day.day_order
+        sum(ex.working_sets for ex in baseline_exercises[day.day_order]), day.day_order
     ))
 
 
