@@ -5,6 +5,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from core.food_search import food_match_rank, normalize_food_query
+from core.meal_setup import MEAL_LAYOUTS, meal_slot, restriction_reasons
 from service import nutrition
 from service.food_log_adherence import recompute_day
 from service.food_log_context import nutrient_totals
@@ -31,6 +32,9 @@ def read_day(ledger, entry_date, today):
     if entry_date > today:
         raise ValueError("Future Food log days are not available.")
     entries = ledger.list_food_log_entries(entry_date)
+    setup = ledger.get_meal_setup()
+    entries = [{**entry, "meal_slot": meal_slot(entry["meal_label"], entry["logged_time"], setup["meal_count"])}
+               for entry in entries]
     totals = nutrient_totals([entry["nutrients"] for entry in entries], NUTRIENT_KEYS)
     nutrition_state = nutrition.read(ledger, today=entry_date)
     targets = (nutrition.targets_for_day(ledger, entry_date) if entry_date < today
@@ -39,7 +43,8 @@ def read_day(ledger, entry_date, today):
                  for key in NUTRIENT_KEYS} if targets else None
     return {"date": entry_date.isoformat(), "today": today.isoformat(),
             "editable": entry_date in (today, today - timedelta(days=1)),
-            "entries": entries, "totals": totals, "targets": targets, "remaining": remaining,
+            "entries": entries, "meal_slots": list(MEAL_LAYOUTS[setup["meal_count"]]),
+            "totals": totals, "targets": targets, "remaining": remaining,
             "cardio_burned_kcal": nutrition_state.get("cardio_burned_kcal", 0)}
 
 
@@ -125,6 +130,12 @@ def _recent_foods(foods, usage):
 
 
 def search_foods(db, ledger, query):
+    restrictions = ledger.get_meal_setup()["restrictions"]
+    return [{**food, "restriction_reasons": restriction_reasons(food, restrictions)}
+            for food in _search_foods(db, ledger, query)]
+
+
+def _search_foods(db, ledger, query):
     usage = ledger.food_log_usage()
     personal = ledger.list_personal_foods()
     normalized = normalize_food_query(query)

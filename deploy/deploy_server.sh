@@ -362,7 +362,8 @@ upload_build_input() {
     --filter='+ /data/' --filter='+ /data/processed_exercises.csv' \
     --filter='+ /data/exercise_curation.csv' \
     --filter='+ /data/food_library.csv' --filter='+ /data/food_portions.csv' \
-    --filter='+ /data/food_curation.csv' --filter='+ /data/food_recipes.csv' --filter='- /data/***' \
+    --filter='+ /data/food_curation.csv' --filter='+ /data/food_recipes.csv' \
+    --filter='+ /data/food_allergens.csv' --filter='- /data/***' \
     "$repo_root/" "$ssh_target:/opt/mayos/app/"
 }
 

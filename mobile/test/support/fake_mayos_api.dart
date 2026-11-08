@@ -127,6 +127,12 @@ class FakeMayosApi {
   bool foodSearchFails = false;
   bool foodLogFails = false;
   bool foodWriteFails = false;
+  bool mealSetupSaveFails = false;
+  Map<String, dynamic> mealSetupState = <String, dynamic>{
+    'meal_count': 3, 'training_time': 'evening',
+    'restrictions': <String, dynamic>{'allergies': <String>[], 'dislikes': <String>[], 'vegetarian': false},
+    'disliked_foods': <Map<String, dynamic>>[],
+  };
   int _foodEntryId = 0;
   final List<Map<String, dynamic>> injuries = <Map<String, dynamic>>[];
   int _injuryId = 0;
@@ -997,6 +1003,14 @@ class FakeMayosApi {
         final String query = '${request.query['q'] ?? ''}'.toLowerCase();
         return FakeResponse(200, <String, dynamic>{'foods': foodSearchResults.where((Map<String, dynamic> food) =>
           query.isEmpty || '${food['name']} ${food['arabic_name']}'.toLowerCase().contains(query)).toList()});
+      case '/nutrition/meal-setup':
+        if (request.method == 'PUT') {
+          if (mealSetupSaveFails) return const FakeResponse(503, <String, dynamic>{'detail': 'Could not save Meal setup.'});
+          mealSetupState = <String, dynamic>{...request.body,
+            'disliked_foods': foodSearchResults.where((Map<String, dynamic> food) =>
+              (request.body['restrictions']['dislikes'] as List<dynamic>).contains(food['id'])).toList()};
+        }
+        return FakeResponse(200, mealSetupState);
       case '/nutrition/personal-foods':
         if (foodWriteFails) return const FakeResponse(503, <String, dynamic>{'detail': 'Could not save food.'});
         final double scale = request.body['basis'] == 'portion' ? 100 / (request.body['portion_grams'] as num) : 1;

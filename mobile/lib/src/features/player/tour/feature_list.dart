@@ -6,7 +6,7 @@ import 'tour_targets.dart';
 
 /// The shared Feature list used by the Tour and later discovery surfaces.
 const int tourCurrentVersion = 1;
-const int currentFeatureRelease = 5;
+const int currentFeatureRelease = 6;
 const int kReleaseShareCard = 3;
 const int kReleasePrCelebration = 3;
 const int kReleaseDurationCheck = 4;
@@ -116,6 +116,17 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     target: 'food_log',
     location: TourShellTabLocation(tabIndex: 2),
     release: 5,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
+    id: 'meal_setup',
+    titleEn: 'Meal setup and Food restrictions',
+    sentenceEn: 'Choose your Meal slots, usual training time and Food restrictions from Nutrition targets, and see warnings on restricted foods in search.',
+    titleAr: 'إعداد الوجبات والقيود الغذائية',
+    sentenceAr: 'اختر وجباتك ووقت تدريبك المعتاد وقيودك الغذائية من الأهداف الغذائية، وشاهد تنبيهات الأطعمة المقيّدة في البحث.',
+    target: 'meal_setup',
+    location: TourShellTabLocation(tabIndex: 2),
+    release: 6,
     audience: 'lifter',
   ),
   FeatureEntry(

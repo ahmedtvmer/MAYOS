@@ -4,12 +4,14 @@ import csv
 import re
 from pathlib import Path
 
+from core.meal_setup import ALLERGENS, vegetarian_category
 from database.shared import BASE_DIR
 
 FOOD_PATH = BASE_DIR / "data" / "food_library.csv"
 PORTION_PATH = BASE_DIR / "data" / "food_portions.csv"
 CURATION_PATH = BASE_DIR / "data" / "food_curation.csv"
 RECIPE_PATH = BASE_DIR / "data" / "food_recipes.csv"
+ALLERGEN_PATH = BASE_DIR / "data" / "food_allergens.csv"
 NUTRIENTS = (
     "energy_kcal", "protein_g", "carbohydrate_g", "fat_g", "fiber_g",
     "sugars_g", "saturated_fat_g", "sodium_mg",
@@ -86,6 +88,8 @@ def _curated_food(source, curation, portions):
     hidden = hidden_value == "true" if hidden_value else _default_hidden(source)
     row = {
         "id": food_id,
+        "category": _text(source.get("category")),
+        "vegetarian": vegetarian_category(source.get("category")),
         "source_name": source["name"],
         "name": _text(fields.get("display_name")) or source["name"],
         "arabic_name": _text(fields.get("arabic_name")) or None,
@@ -105,6 +109,7 @@ def _curated_food(source, curation, portions):
 def _new_recipe(source, key):
     return {
         "id": f"mayos:{key}",
+        "category": "MAYOS recipe",
         "source_name": _text(source.get("display_name")),
         "name": _text(source.get("display_name")),
         "arabic_name": _text(source.get("arabic_name")) or None,
@@ -170,6 +175,7 @@ def build_food_library(
     portion_path=PORTION_PATH,
     curation_path=CURATION_PATH,
     recipe_path=RECIPE_PATH,
+    allergen_path=ALLERGEN_PATH,
 ):
     foods, portions, curation_rows, recipe_rows = map(
         _rows, (food_path, portion_path, curation_path, recipe_path)
@@ -193,4 +199,27 @@ def build_food_library(
             if food_id not in source_by_id:
                 raise ValueError(f"Recipe {recipe['id']!r} references unknown FDC id {food_id!r}")
         _recipe_nutrients(recipe, source_by_id)
-    return sorted([*rows, *recipes.values()], key=lambda row: row["id"])
+        recipe["vegetarian"] = all(source_by_id[part["food_id"]]["vegetarian"]
+                                   for part in recipe["ingredients"])
+    built_rows = sorted([*rows, *recipes.values()], key=lambda row: row["id"])
+    annotations = _allergen_annotations(allergen_path)
+    for row in built_rows:
+        row.update(annotations.get(row["id"], {"allergens": [], "allergens_reviewed": False}))
+    return built_rows
+
+
+def _allergen_annotations(path):
+    annotations = {}
+    for source in _rows(path):
+        food_id = _text(source["id"])
+        tags = _list(source.get("allergens"))
+        reviewed = _text(source.get("reviewed")).casefold()
+        if not food_id or food_id in annotations:
+            raise ValueError(f"Empty or duplicate food allergen id {food_id!r}")
+        if set(tags) - set(ALLERGENS):
+            raise ValueError(f"Food {food_id!r} has unknown allergen tags")
+        if reviewed not in {"", "true", "false"}:
+            raise ValueError(f"Food {food_id!r} has invalid allergen reviewed flag")
+        annotations[food_id] = {"allergens": list(dict.fromkeys(tags)),
+                                "allergens_reviewed": reviewed == "true"}
+    return annotations

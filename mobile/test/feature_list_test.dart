@@ -86,14 +86,27 @@ void main() {
     expect(entry.target, 'home');
   });
 
-  test('Food log has bilingual copy and a Nutrition target in the current release', () {
+  test('Food log keeps its release 5 entry', () {
     final FeatureEntry entry = featureList.singleWhere((FeatureEntry entry) => entry.id == 'food_log');
-    expect(entry.release, currentFeatureRelease);
+    expect(entry.release, 5);
     expect(entry.titleEn, 'Food log');
     expect(entry.titleAr, 'سجل الطعام');
     expect(entry.sentenceEn, isNotEmpty);
     expect(entry.sentenceAr, isNotEmpty);
     expect(entry.target, 'food_log');
+    expect(entry.location, const TourShellTabLocation(tabIndex: 2));
+    expect(entry.audience, 'lifter');
+  });
+
+  test('Meal setup has bilingual discovery copy in release 6', () {
+    final FeatureEntry entry = featureList.singleWhere((FeatureEntry entry) => entry.id == 'meal_setup');
+    expect(entry.release, 6);
+    expect(currentFeatureRelease, greaterThanOrEqualTo(6));
+    expect(entry.titleEn, 'Meal setup and Food restrictions');
+    expect(entry.titleAr, 'إعداد الوجبات والقيود الغذائية');
+    expect(entry.sentenceEn, isNotEmpty);
+    expect(entry.sentenceAr, isNotEmpty);
+    expect(entry.target, 'meal_setup');
     expect(entry.location, const TourShellTabLocation(tabIndex: 2));
     expect(entry.audience, 'lifter');
   });

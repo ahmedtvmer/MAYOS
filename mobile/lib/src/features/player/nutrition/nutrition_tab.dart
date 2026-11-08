@@ -10,6 +10,7 @@ import '../../nutrition/pace_proposal_card.dart';
 import '../tour/tour_targets.dart';
 import 'nutrition_pace_dial.dart';
 import 'food_log_day_view.dart';
+import 'meal_setup_screen.dart';
 
 class NutritionTab extends ConsumerStatefulWidget {
   const NutritionTab({this.targetsOnly = false, super.key});
@@ -158,6 +159,7 @@ class _NutritionTabState extends ConsumerState<NutritionTab> {
             child: Text(copy.setup,
                 style: Theme.of(context).textTheme.headlineMedium),
           ),
+          const MealSetupEntry(),
           const SizedBox(height: 16),
           _sexConfirmation(copy),
           const SizedBox(height: 16),
@@ -270,6 +272,7 @@ class _NutritionTabState extends ConsumerState<NutritionTab> {
             if (saved != null && mounted) setState(() => _plan = saved);
           }, icon: const Icon(Icons.tune), label: Text(copy.adjust))),
         _activityRow(copy),
+        const MealSetupEntry(),
         if (_plan!.cardioBurnedKcal > 0)
           Padding(padding: const EdgeInsets.only(top: 8),
             child: Text(copy.cardioBurned(_plan!.cardioBurnedKcal), style: text.bodyMedium)),

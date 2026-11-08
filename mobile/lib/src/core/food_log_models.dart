@@ -37,6 +37,7 @@ class FoodLibraryItem {
     this.staple = false,
     this.recipe = false,
     this.loggedCount = 0,
+    this.restrictionReasons = const <String>[],
   });
 
   factory FoodLibraryItem.fromJson(
@@ -55,6 +56,7 @@ class FoodLibraryItem {
     staple: (json['staple_roles'] as List<dynamic>? ?? <dynamic>[]).isNotEmpty,
     recipe: (json['ingredients'] as List<dynamic>? ?? <dynamic>[]).isNotEmpty,
     loggedCount: (json['logged_count'] as num? ?? 0).toInt(),
+    restrictionReasons: (json['restriction_reasons'] as List<dynamic>? ?? <dynamic>[]).cast<String>(),
   );
 
   final String id;
@@ -66,6 +68,7 @@ class FoodLibraryItem {
   final bool staple;
   final bool recipe;
   final int loggedCount;
+  final List<String> restrictionReasons;
 
   String displayName(bool arabic) => arabic ? arabicName ?? name : name;
 }
@@ -80,6 +83,7 @@ class FoodLogEntry {
     required this.unit,
     required this.mealLabel,
     required this.loggedTime,
+    this.mealSlot,
     this.kind = 'library_food',
     this.blankMacros = const <String>{},
   });
@@ -104,6 +108,7 @@ class FoodLogEntry {
     unit: json['unit'] as String? ?? 'grams',
     mealLabel: json['meal_label'] as String,
     loggedTime: json['logged_time'] as String,
+    mealSlot: json['meal_slot'] as String?,
     kind: json['kind'] as String? ?? 'library_food',
     blankMacros: <String>{
       for (final String key in <String>['protein_g', 'carbohydrate_g', 'fat_g'])
@@ -119,6 +124,7 @@ class FoodLogEntry {
   final String unit;
   final String mealLabel;
   final String loggedTime;
+  final String? mealSlot;
   final String kind;
   final Set<String> blankMacros;
 }

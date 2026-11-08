@@ -352,8 +352,8 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
               leading: Text(entry.loggedTime),
               title: Text(entry.kind == 'quick_add' ? copy.quickAdd : entry.food.displayName(copy.isArabic)),
               subtitle: Text(entry.kind == 'quick_add'
-                  ? '${copy.mealLabel(entry.mealLabel)}\n${_quickMacros(entry, copy)}'
-                  : '${copy.amountLabel(entry.quantity, entry.unit, entry.food.portionLabel)} · ${copy.mealLabel(entry.mealLabel)}'),
+                  ? '${copy.mealLabel(entry.mealSlot ?? entry.mealLabel)}\n${_quickMacros(entry, copy)}'
+                  : '${copy.amountLabel(entry.quantity, entry.unit, entry.food.portionLabel)} · ${copy.mealLabel(entry.mealSlot ?? entry.mealLabel)}'),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
@@ -381,10 +381,10 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
           const SizedBox(height: 16),
           widget.adherence,
         ],
-        TextButton(
+        TourTarget(id: 'meal_setup', child: TextButton(
           onPressed: widget.onShowTargets,
           child: Text(copy.targetsTitle),
-        ),
+        )),
       ],
     );
   }

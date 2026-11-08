@@ -1139,6 +1139,29 @@ class NutritionAdherenceIn(BaseModel):
     entry_date: date | None = None
 
 
+class FoodRestrictionsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    allergies: list[Literal["milk", "eggs", "wheat_gluten", "peanuts", "tree_nuts",
+                            "fish", "shellfish", "sesame", "soy"]] = Field(default_factory=list, max_length=9)
+    dislikes: list[str] = Field(default_factory=list, max_length=200)
+    vegetarian: bool = False
+
+    @model_validator(mode="after")
+    def normalize_restrictions(self):
+        if any(not food_id or len(food_id) > 100 for food_id in self.dislikes):
+            raise ValueError("Each disliked food must have a Food library or Personal food id.")
+        self.allergies = list(dict.fromkeys(self.allergies))
+        self.dislikes = list(dict.fromkeys(self.dislikes))
+        return self
+
+
+class MealSetupIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    meal_count: Literal[3, 4, 5]
+    training_time: Literal["morning", "afternoon", "evening"]
+    restrictions: FoodRestrictionsIn
+
+
 class FoodLogAmountIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     quantity: float = Field(gt=0, le=10000, allow_inf_nan=False)
