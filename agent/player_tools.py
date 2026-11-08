@@ -671,12 +671,14 @@ def run_player_tool_calls(
     language: str,
     status_callback: Callable[[str], None] | None = None,
 ) -> tuple[list[ToolMessage], list[tuple[str, float]]]:
-    """Runs one parallel tool round; reader failures become unavailable results."""
+    """Runs one tool round in order; reader failures become unavailable results."""
     tools_by_name = {tool.name: tool for tool in tools}
     futures = []
     started_at = []
     names = []
-    executor = ThreadPoolExecutor(max_workers=max(1, min(len(tool_calls), 4)))
+    # Readers share one ledger connection, and sqlite3 rows race across threads on it.
+    # One worker keeps each timeout without two reads meeting on that connection.
+    executor = ThreadPoolExecutor(max_workers=1)
     try:
         for index, call in enumerate(tool_calls):
             name = str(call.get("name", ""))
