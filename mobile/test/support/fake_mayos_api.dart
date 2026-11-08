@@ -122,6 +122,8 @@ class FakeMayosApi {
     'state': 'not_started', 'targets': null,
   };
   int waterGlasses = 0;
+  final Map<String, int> waterGlassesByDay = <String, int>{};
+  final Map<String, Map<String, dynamic>> foodLogPlannedMeals = <String, Map<String, dynamic>>{};
   bool waterChangeFails = false;
   String foodLogToday = '2026-11-05';
   final Map<String, List<Map<String, dynamic>>> foodLogEntries = <String, List<Map<String, dynamic>>>{};
@@ -1073,6 +1075,7 @@ class FakeMayosApi {
           return const FakeResponse(409, <String, dynamic>{'detail': 'Water glass count limit.'});
         }
         waterGlasses += request.method == 'DELETE' ? -1 : 1;
+        nutritionState['today_water_glasses'] = waterGlasses;
         return FakeResponse(200, <String, dynamic>{'today_water_glasses': waterGlasses});
       case '/nutrition/setup':
         if (!_authorized(request)) {
@@ -1098,24 +1101,48 @@ class FakeMayosApi {
       case '/nutrition/adherence':
         nutritionAdherenceValues.add(request.body['value'] as String);
         if (request.body['entry_date'] != null) {
-          nutritionState = <String, dynamic>{...nutritionState,
+          nutritionState = <String, dynamic>{
+            ...nutritionState,
             'adherence_days': <Map<String, dynamic>>[
-              for (final Map<String, dynamic> day in
-                  (nutritionState['adherence_days'] as List<dynamic>).cast<Map<String, dynamic>>())
+              for (final Map<String, dynamic> day
+                  in (nutritionState['adherence_days'] as List<dynamic>)
+                      .cast<Map<String, dynamic>>())
                 if (day['date'] == request.body['entry_date'])
-                  <String, dynamic>{...day, 'value': request.body['value'], 'source': 'answered'}
-                else day,
+                  <String, dynamic>{
+                    ...day,
+                    'value': request.body['value'],
+                    'source': 'answered'
+                  }
+                else
+                  day,
             ],
           };
           return FakeResponse(200, nutritionState);
         }
-        nutritionState = <String, dynamic>{...nutritionState,
+        nutritionState = <String, dynamic>{
+          ...nutritionState,
           'today_adherence': request.body['value'],
           'adherence_days': <Map<String, dynamic>>[
-            <String, dynamic>{'date': '2026-10-24', 'value': request.body['value']},
-            ...List<Map<String, dynamic>>.generate(6, (int index) => <String, dynamic>{
-              'date': '2026-10-${23 - index}', 'value': index == 0 ? 'roughly' : null,
-            }),
+            for (int offset = 6; offset >= 0; offset--)
+              <String, dynamic>{
+                'date': DateTime.parse(foodLogToday)
+                    .subtract(Duration(days: offset))
+                    .toIso8601String()
+                    .substring(0, 10),
+                'value': offset == 0
+                    ? request.body['value']
+                    : (nutritionState['adherence_days'] as List<dynamic>? ??
+                            <dynamic>[])
+                        .cast<Map<String, dynamic>>()
+                        .where((Map<String, dynamic> day) =>
+                            day['date'] ==
+                            DateTime.parse(foodLogToday)
+                                .subtract(Duration(days: offset))
+                                .toIso8601String()
+                                .substring(0, 10))
+                        .map((Map<String, dynamic> day) => day['value'])
+                        .firstOrNull,
+              },
           ],
         };
         return FakeResponse(200, nutritionState);
@@ -6054,6 +6081,11 @@ class FakeMayosApi {
     return FakeResponse(200, <String, dynamic>{'date': date, 'today': foodLogToday,
       'editable': selected == today || selected == DateTime(today.year, today.month, today.day - 1),
       'entries': entries, 'totals': totals, 'targets': targets,
+      'water_glasses': date == foodLogToday ? waterGlasses : waterGlassesByDay[date] ?? 0,
+      'planned_meals': foodLogPlannedMeals[date],
+      'adherence': (nutritionState['adherence_days'] as List<dynamic>? ?? <dynamic>[])
+        .cast<Map<String, dynamic>>().where((Map<String, dynamic> entry) => entry['date'] == date)
+        .map((Map<String, dynamic> entry) => entry['value']).firstOrNull,
       'cardio_burned_kcal': selected == today ? nutritionState['cardio_burned_kcal'] ?? 0 : 0,
       'remaining': targets == null ? null : <String, dynamic>{
         for (final String key in targetKeys.keys)

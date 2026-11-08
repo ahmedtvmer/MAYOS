@@ -6,6 +6,8 @@ import '../../../core/api_client.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/food_log_copy.dart';
 import '../../../core/food_log_models.dart';
+import '../../../core/theme/mayos_spacing.dart';
+import '../../../core/theme/mayos_theme.dart';
 import '../../../providers.dart';
 import '../tour/tour_targets.dart';
 import 'food_amount_screen.dart';
@@ -13,21 +15,21 @@ import 'food_search_screen.dart';
 import 'copy_food_meal_button.dart';
 import 'quick_add_screen.dart';
 import 'today_meals.dart';
+import 'nutrition_summary_card.dart';
+import 'nutrition_tile.dart';
 
 class FoodLogDayView extends ConsumerStatefulWidget {
   const FoodLogDayView({
-    required this.targetsView,
-    required this.adherence,
+    required this.checkInBuilder,
+    required this.onTodayWaterLoaded,
     required this.targets,
     required this.onShowTargets,
-    this.emptyDayBuilder,
     super.key,
   });
-  final Widget targetsView;
-  final Widget adherence;
+  final Widget Function(FoodLogDay day) checkInBuilder;
+  final ValueChanged<int> onTodayWaterLoaded;
   final Map<String, dynamic>? targets;
-  final VoidCallback onShowTargets;
-  final Widget Function(Widget meals)? emptyDayBuilder;
+  final Future<void> Function() onShowTargets;
 
   @override
   ConsumerState<FoodLogDayView> createState() => _FoodLogDayViewState();
@@ -84,6 +86,9 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
         _day = day;
         _loading = false;
       });
+      if (day.date == day.today && day.waterGlasses != null) {
+        widget.onTodayWaterLoaded(day.waterGlasses!);
+      }
       return true;
     } on ApiException catch (error) {
       if (mounted && request == _request)
@@ -106,7 +111,8 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
   /// The Player's day can change without the device's date changing, so every
   /// add asks the server which day it is before using it.
   Future<bool> _readyToAdd() async {
-    if (_opening || _loading || _deleting || _error != null || _day == null) return false;
+    if (_opening || _loading || _deleting || _error != null || _day == null)
+      return false;
     _opening = true;
     try {
       if (_selected == null && !await _load(background: true)) return false;
@@ -121,16 +127,18 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
     return hour < 11
         ? 'breakfast'
         : hour < 16
-        ? 'lunch'
-        : hour < 22
-        ? 'dinner'
-        : 'snack';
+            ? 'lunch'
+            : hour < 22
+                ? 'dinner'
+                : 'snack';
   }
 
   Future<void> _quickAdd() async {
     if (!await _readyToAdd() || !mounted) return;
-    final bool? added = await Navigator.of(context).push<bool>(MaterialPageRoute<bool>(
-      builder: (_) => QuickAddScreen(day: _dateKey(_day!.date), mealLabel: _defaultMeal)));
+    final bool? added = await Navigator.of(context).push<bool>(
+        MaterialPageRoute<bool>(
+            builder: (_) => QuickAddScreen(
+                day: _dateKey(_day!.date), mealLabel: _defaultMeal)));
     if (added == true && mounted) await _load();
   }
 
@@ -154,14 +162,17 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
     final bool? edited = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
         builder: (_) => entry.kind == 'quick_add'
-            ? QuickAddScreen(day: _dateKey(_day!.date), mealLabel: entry.mealLabel, entry: entry)
+            ? QuickAddScreen(
+                day: _dateKey(_day!.date),
+                mealLabel: entry.mealLabel,
+                entry: entry)
             : FoodAmountScreen(
-          food: entry.food,
-          day: _dateKey(_day!.date),
-          kcalLeft: _day!.remaining?.kcal,
-          mealLabel: entry.mealLabel,
-          entry: entry,
-        ),
+                food: entry.food,
+                day: _dateKey(_day!.date),
+                kcalLeft: _day!.remaining?.kcal,
+                mealLabel: entry.mealLabel,
+                entry: entry,
+              ),
       ),
     );
     if (edited == true && mounted) await _load();
@@ -172,7 +183,9 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
       context: context,
       builder: (BuildContext context) => AlertDialog(
         title: Text(copy.deleteTitle),
-        content: Text(entry.kind == 'quick_add' ? copy.quickAdd : entry.food.displayName(copy.isArabic)),
+        content: Text(entry.kind == 'quick_add'
+            ? copy.quickAdd
+            : entry.food.displayName(copy.isArabic)),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -211,10 +224,6 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
           else
             TourTarget(id: 'food_log', child: _navigation(day, copy)),
         Expanded(child: _body(copy)),
-        if (day != null && day.date == day.today)
-          CopyFoodMealButton(key: ValueKey<String>('copy_${_dateKey(day.date)}'),
-            day: _dateKey(day.date), revision: _request,
-            enabled: !_loading && !_deleting && _error == null, onCopied: _load, onStale: () => _load(background: true)),
         if (day != null && day.editable)
           SafeArea(
             top: false,
@@ -223,21 +232,25 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
               child: TourTarget(
                 id: 'food_log',
                 child: Row(children: <Widget>[
-                  Expanded(child: TextField(
-                  key: const Key('food_log_entry_point'),
-                  readOnly: true,
-                  enabled: !_loading && !_deleting && _error == null,
-                  onTap: _search,
-                  decoration: InputDecoration(
-                    hintText: copy.addFood,
-                    prefixIcon: const Icon(Icons.search),
-                    filled: true,
-                    border: const OutlineInputBorder(),
-                  ),
+                  Expanded(
+                      child: TextField(
+                    key: const Key('food_log_entry_point'),
+                    readOnly: true,
+                    enabled: !_loading && !_deleting && _error == null,
+                    onTap: _search,
+                    decoration: InputDecoration(
+                      hintText: copy.addFood,
+                      prefixIcon: const Icon(Icons.search),
+                      filled: true,
+                      border: const OutlineInputBorder(),
+                    ),
                   )),
                   const SizedBox(width: 8),
-                  OutlinedButton(onPressed: _loading || _deleting || _error != null ? null : _quickAdd,
-                    child: Text(copy.quickAdd)),
+                  OutlinedButton(
+                      onPressed: _loading || _deleting || _error != null
+                          ? null
+                          : _quickAdd,
+                      child: Text(copy.quickAdd)),
                 ]),
               ),
             ),
@@ -254,9 +267,9 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
     final String label = day.date == day.today
         ? '${copy.today}, $date'
         : day.date ==
-              DateTime(day.today.year, day.today.month, day.today.day - 1)
-        ? '${copy.yesterday}, $date'
-        : date;
+                DateTime(day.today.year, day.today.month, day.today.day - 1)
+            ? '${copy.yesterday}, $date'
+            : date;
     return Row(
       children: <Widget>[
         IconButton(
@@ -278,6 +291,18 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
               : () => _move(1),
           icon: Icon(copy.isArabic ? Icons.chevron_left : Icons.chevron_right),
         ),
+        TourTarget(
+            id: 'meal_setup',
+            child: IconButton(
+              key: const Key('nutrition_targets'),
+              tooltip: copy.targetsTitle,
+              onPressed: () async {
+                await widget.onShowTargets();
+                if (mounted) await _load(background: true);
+              },
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              icon: const Icon(Icons.tune),
+            )),
       ],
     );
   }
@@ -295,132 +320,121 @@ class _FoodLogDayViewState extends ConsumerState<FoodLogDayView> {
         ),
       );
     final FoodLogDay day = _day!;
-    final Widget meals = TodayMeals(revision: _request, onLogged: () => _load(background: true));
-    if (day.date == day.today && day.entries.isEmpty) return widget.emptyDayBuilder?.call(meals) ?? widget.targetsView;
     return ListView(
-      padding: const EdgeInsets.all(16),
+      key: const Key('nutrition_day_list'),
+      padding: const EdgeInsets.all(MayosSpacing.md),
+      // The Feature guide can focus a card even after it has scrolled away.
       children: <Widget>[
-        if (day.date == day.today) meals,
-        if (day.remaining != null) ...<Widget>[
-          TourTarget(
-            id: 'nutrition',
-            child: Column(
-              children: <Widget>[
-                Text(
-                  '${day.remaining!.kcal.round()}',
-                  style: Theme.of(context).textTheme.displayLarge,
-                ),
-                Text(copy.leftOf(day.targets?['calories'] as num? ?? 0)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              _macro(
-                copy.macroLeft(copy.protein),
-                day.remaining!.protein,
-                Theme.of(context).colorScheme.primary,
-                copy,
-              ),
-              _macro(
-                copy.macroLeft(copy.carbs),
-                day.remaining!.carbs,
-                Theme.of(context).colorScheme.tertiary,
-                copy,
-              ),
-              _macro(
-                copy.macroLeft(copy.fat),
-                day.remaining!.fat,
-                Theme.of(context).colorScheme.secondary,
-                copy,
-              ),
-            ],
-          ),
-        ],
-        const SizedBox(height: 16),
-        if (day.date == day.today && day.cardioBurnedKcal > 0)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(copy.cardioBurned(day.cardioBurnedKcal)),
-          ),
-        if (!day.editable) Text(copy.readOnly, textAlign: TextAlign.center),
-        if (day.entries.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Text(copy.noEntries),
-          ),
-        for (final FoodLogEntry entry in day.entries)
-          Card(
-            child: ListTile(
-              leading: Text(entry.loggedTime),
-              title: Text(entry.kind == 'quick_add' ? copy.quickAdd : entry.food.displayName(copy.isArabic)),
-              subtitle: Text(entry.kind == 'quick_add'
-                  ? '${copy.mealLabel(entry.mealSlot ?? entry.mealLabel)}\n${_quickMacros(entry, copy)}'
-                  : '${copy.amountLabel(entry.quantity, entry.unit, entry.food.portionLabel)} · ${copy.mealLabel(entry.mealSlot ?? entry.mealLabel)}'),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text('${entry.nutrients.kcal.round()} ${copy.calories}'),
-                  if (day.editable)
-                    PopupMenuButton<String>(
-                      enabled: !_deleting,
-                      onSelected: (String action) => action == 'edit'
-                          ? _edit(entry)
-                          : _delete(entry, copy),
-                      itemBuilder: (_) => <PopupMenuEntry<String>>[
-                        PopupMenuItem(value: 'edit', child: Text(copy.edit)),
-                        PopupMenuItem(
-                          value: 'delete',
-                          child: Text(copy.delete),
-                        ),
-                      ],
-                    ),
-                ],
-              ),
-              onTap: day.editable && !_deleting ? () => _edit(entry) : null,
-            ),
-          ),
-        if (day.date == day.today) ...<Widget>[
-          const SizedBox(height: 16),
-          widget.adherence,
-        ],
-        TourTarget(id: 'meal_setup', child: TextButton(
-          onPressed: widget.onShowTargets,
-          child: Text(copy.targetsTitle),
-        )),
+              TourTarget(
+                  id: 'nutrition',
+                  child: NutritionSummaryCard(day: day, copy: copy)),
+              const SizedBox(height: MayosSpacing.md),
+              if (day.date == day.today ||
+                  day.plannedMeals != null) ...<Widget>[
+                TodayMeals(
+                    key: ValueKey<String>(_dateKey(day.date)),
+                    pastPlan: day.plannedMeals,
+                    revision: _request,
+                    loggedEntries: day.entries,
+                    onLogged: () => _load(background: true)),
+              ],
+              _foodLogCard(day, copy),
+              const SizedBox(height: MayosSpacing.md),
+              widget.checkInBuilder(day),
+            ])
       ],
     );
   }
 
-  String _quickMacros(FoodLogEntry entry, FoodLogCopy copy) => <String>[
-    for (final (String key, String label, double value) in <(String, String, double)>[
-      ('protein_g', copy.protein, entry.nutrients.protein),
-      ('carbohydrate_g', copy.carbs, entry.nutrients.carbs),
-      ('fat_g', copy.fat, entry.nutrients.fat),
-    ]) '$label: ${entry.blankMacros.contains(key) ? '' : '${value.toStringAsFixed(1)} ${copy.grams}'}',
-  ].join(' · ');
+  Widget _foodLogCard(FoodLogDay day, FoodLogCopy copy) {
+    final Map<String, List<FoodLogEntry>> meals =
+        <String, List<FoodLogEntry>>{};
+    for (final FoodLogEntry entry in day.entries) {
+      (meals[entry.mealSlot ?? entry.mealLabel] ??= <FoodLogEntry>[])
+          .add(entry);
+    }
+    return NutritionCard(
+        key: const Key('nutrition_food_log'),
+        child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Row(children: <Widget>[
+                Expanded(
+                    child: Text(copy.foodLog,
+                        style: Theme.of(context).textTheme.titleMedium)),
+                if (day.date == day.today)
+                  Flexible(
+                      child: CopyFoodMealButton(
+                          key: ValueKey<String>('copy_${_dateKey(day.date)}'),
+                          day: _dateKey(day.date),
+                          revision: _request,
+                          showInHeader: true,
+                          enabled: !_loading && !_deleting && _error == null,
+                          onCopied: _load,
+                          onStale: () => _load(background: true))),
+              ]),
+              if (!day.editable)
+                Text(copy.readOnly,
+                    style: Theme.of(context).textTheme.bodySmall),
+              if (day.entries.isEmpty)
+                Padding(
+                    padding:
+                        const EdgeInsets.symmetric(vertical: MayosSpacing.sm),
+                    child: Text(copy.nothingLogged,
+                        style: TextStyle(
+                            color: MayosTheme.of(context).textMuted))),
+              for (final MapEntry<String, List<FoodLogEntry>> meal
+                  in meals.entries) ...<Widget>[
+                const SizedBox(height: MayosSpacing.sm),
+                Text(copy.mealLabel(meal.key),
+                    style: Theme.of(context).textTheme.labelLarge),
+                for (final FoodLogEntry entry in meal.value)
+                  _entryRow(entry, day, copy),
+              ],
+            ]));
+  }
 
-  Widget _macro(String label, double value, Color color, FoodLogCopy copy) =>
-      Expanded(
-        child: Card(
-          child: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: color, width: 4)),
-            ),
-            child: Column(
-              children: <Widget>[
-                Text(label, textAlign: TextAlign.center),
-                const SizedBox(height: 4),
-                Text(
-                  '${value.round()} ${copy.grams}',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
+  Widget _entryRow(FoodLogEntry entry, FoodLogDay day, FoodLogCopy copy) =>
+      ListTile(
+        contentPadding: EdgeInsets.zero,
+        minLeadingWidth: 0,
+        leading: Text(entry.loggedTime,
+            style: Theme.of(context).textTheme.bodySmall),
+        title: Text(entry.kind == 'quick_add'
+            ? copy.quickAdd
+            : entry.food.displayName(copy.isArabic)),
+        subtitle: Text(entry.kind == 'quick_add'
+            ? _quickMacros(entry, copy)
+            : copy.amountLabel(
+                entry.quantity, entry.unit, entry.food.portionLabel)),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: <Widget>[
+          Text('${entry.nutrients.kcal.round()} ${copy.calories}',
+              style: Theme.of(context).textTheme.bodySmall),
+          if (day.editable)
+            PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert),
+              enabled: !_deleting,
+              onSelected: (String action) =>
+                  action == 'edit' ? _edit(entry) : _delete(entry, copy),
+              itemBuilder: (_) => <PopupMenuEntry<String>>[
+                PopupMenuItem(value: 'edit', child: Text(copy.edit)),
+                PopupMenuItem(value: 'delete', child: Text(copy.delete)),
               ],
             ),
-          ),
-        ),
+        ]),
+        onTap: day.editable && !_deleting ? () => _edit(entry) : null,
       );
+
+  String _quickMacros(FoodLogEntry entry, FoodLogCopy copy) => <String>[
+        for (final (String key, String label, double value)
+            in <(String, String, double)>[
+          ('protein_g', copy.protein, entry.nutrients.protein),
+          ('carbohydrate_g', copy.carbs, entry.nutrients.carbs),
+          ('fat_g', copy.fat, entry.nutrients.fat),
+        ])
+          '$label: ${entry.blankMacros.contains(key) ? '' : '${value.toStringAsFixed(1)} ${copy.grams}'}',
+      ].join(' · ');
 }

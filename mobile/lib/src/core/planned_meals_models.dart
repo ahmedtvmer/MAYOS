@@ -1,7 +1,7 @@
 class PlannedMeals {
   const PlannedMeals({required this.status, required this.meals,
     this.reason, this.date, this.planVersionId, this.author,
-    this.canEnable = false, this.canSwap = false, this.canRequestSwap = false,
+    this.enabled = false, this.canEnable = false, this.canSwap = false, this.canRequestSwap = false,
     this.targetsChanged = false, this.dayType});
 
   factory PlannedMeals.fromJson(Map<String, dynamic> json) => PlannedMeals(
@@ -10,6 +10,7 @@ class PlannedMeals {
     date: json['date'] as String?,
     planVersionId: (json['plan_version_id'] as num?)?.toInt(),
     author: json['author'] as String?,
+    enabled: json['enabled'] == true,
     canEnable: json['can_enable'] as bool? ?? false,
     canSwap: json['can_swap'] as bool? ?? false,
     canRequestSwap: json['can_request_swap'] as bool? ?? false,
@@ -24,6 +25,7 @@ class PlannedMeals {
   final String? date;
   final int? planVersionId;
   final String? author;
+  final bool enabled;
   final bool canEnable;
   final bool canSwap;
   final bool canRequestSwap;

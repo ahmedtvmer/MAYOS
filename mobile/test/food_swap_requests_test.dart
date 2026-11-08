@@ -9,6 +9,7 @@ import 'package:mayos_mobile/src/features/coach/coach_requests_screen.dart';
 import 'package:mayos_mobile/src/features/coach/program_publish_confirmation.dart';
 import 'package:mayos_mobile/src/features/player/nutrition/today_meals.dart';
 import 'package:mayos_mobile/src/features/player/nutrition/nutrition_tab.dart';
+import 'package:mayos_mobile/src/features/player/nutrition/food_swap_requests.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
@@ -40,14 +41,16 @@ void main() {
   });
 
   for (final String language in <String>['en', 'ar']) {
-    testWidgets('request history remains reachable before Nutrition setup in $language', (WidgetTester tester) async {
+    testWidgets('swap history leaves first-time setup and remains available in its own screen in $language', (WidgetTester tester) async {
       final FakeMayosApi fake = _fake()
         ..nutritionState = <String, dynamic>{'state': 'not_started', 'targets': null};
       fake.programRequests.add(_request());
       final FoodSwapRequestCopy copy = FoodSwapRequestCopy(language);
       await tester.pumpWidget(_app(fake, language, const NutritionTab()));
       await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('food_swap_requests_entry')));
+      expect(find.byKey(const Key('food_swap_requests_entry')), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(_app(fake, language, const FoodSwapRequestsScreen()));
       await tester.pumpAndSettle();
       expect(find.text(copy.status('pending')), findsOneWidget);
       expect(Directionality.of(tester.element(find.byKey(const Key('food_swap_request_food-1')))),
@@ -73,6 +76,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(fake.programRequests.single['reason'], '');
       expect(fake.programRequests.single['food_swap']['food_id'], 'protein');
+      await tester.tap(find.byKey(const Key('food_swap_requests_entry')));
+      await tester.pumpAndSettle();
       expect(find.text(copy.status('pending')), findsOneWidget);
       fake.programRequests.single.addAll(<String, dynamic>{'status': 'declined', 'response': 'Keep this food today.'});
       await tester.ensureVisible(find.text(copy.refresh));

@@ -769,6 +769,11 @@ def _read_without_plan(ledger: Any, answers: dict[str, bool] | None,
 
 
 def targets_for_day(ledger: Any, entry_date: date) -> dict[str, Any] | None:
+    state = state_for_day(ledger, entry_date)
+    return state["targets"] if state else None
+
+
+def state_for_day(ledger: Any, entry_date: date) -> dict[str, Any] | None:
     screening = ledger.get_nutrition_screening()
     if screening and any(json.loads(screening[0]).values()):
         return None
@@ -777,7 +782,7 @@ def targets_for_day(ledger: Any, entry_date: date) -> dict[str, Any] | None:
         return None
     state = _read_active_plan(plan, None, _is_training_day(ledger, entry_date))
     _apply_cardio_day_adjustment(ledger, state, entry_date)
-    return state["targets"]
+    return state
 
 
 def _nutrition_day_end(ledger: Any, entry_date: date) -> datetime:

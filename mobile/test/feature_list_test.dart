@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mayos_mobile/src/features/player/tour/feature_list.dart';
 import 'package:mayos_mobile/src/features/player/tour/tour_targets.dart';
+import 'package:mayos_mobile/src/router.dart';
 
 Set<String> _registeredTargetIds() {
   final Directory lib = Directory('lib');
@@ -125,7 +126,8 @@ void main() {
       expect(entry.sentenceEn, contains('coach'));
       expect(entry.sentenceAr, isNotEmpty);
       expect(entry.target, feature.value);
-      expect(entry.location, TourShellTabLocation(tabIndex: feature.key == 'assistant_meals' ? 0 : 2));
+      expect(entry.location, feature.key == 'assistant_meals'
+        ? const TourShellTabLocation(tabIndex: 0) : const TourRouteLocation(foodSwapRequestsPath));
       expect(entry.audience, 'lifter');
     }
   });

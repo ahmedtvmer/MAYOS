@@ -37,15 +37,27 @@ def read_day(ledger, entry_date, today):
                for entry in entries]
     totals = nutrient_totals([entry["nutrients"] for entry in entries], NUTRIENT_KEYS)
     nutrition_state = nutrition.read(ledger, today=entry_date)
-    targets = (nutrition.targets_for_day(ledger, entry_date) if entry_date < today
-               else nutrition_state.get("targets"))
+    day_plan = ((nutrition.state_for_day(ledger, entry_date) or {}) if entry_date < today
+                else nutrition_state)
+    targets = day_plan.get("targets")
     remaining = {key: round(float(targets[TARGET_KEYS[key]]) - totals[key], 2)
                  for key in NUTRIENT_KEYS} if targets else None
     return {"date": entry_date.isoformat(), "today": today.isoformat(),
             "editable": entry_date in (today, today - timedelta(days=1)),
             "entries": entries, "meal_slots": list(MEAL_LAYOUTS[setup["meal_count"]]),
             "totals": totals, "targets": targets, "remaining": remaining,
+            "water_glasses": ledger.get_water_glasses(entry_date),
+            "adherence": next((entry["value"] for entry in ledger.list_nutrition_adherence(
+                entry_date.isoformat(), entry_date.isoformat())), None),
+            "planned_meals": _past_meals(day_plan, entry_date) if entry_date < today else None,
             "cardio_burned_kcal": nutrition_state.get("cardio_burned_kcal", 0)}
+
+
+def _past_meals(state, entry_date):
+    if not state.get("meals_enabled") or not state.get("meals"):
+        return None
+    return {"status": "ready", "date": entry_date.isoformat(), "author": state.get("author"),
+            "day_type": state["target_day_type"], "meals": state["meals"]}
 
 
 def _apply_amount(entry, body):
