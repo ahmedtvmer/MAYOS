@@ -18,6 +18,9 @@ class OnboardingAnalyticsStart:
 class LedgerOnboardingMixin:
     def start_onboarding_analytics(self, started_at: str) -> OnboardingAnalyticsStart:
         """Persists the first start time once for duration and retry-safe events."""
+        existing_start = self.get_onboarding_analytics_started_at()
+        if existing_start is not None:
+            return OnboardingAnalyticsStart(existing_start, False)
         cursor = self.conn.cursor()
         cursor.execute(
             "INSERT OR IGNORE INTO onboarding_analytics (id, started_at) VALUES (1, ?)",

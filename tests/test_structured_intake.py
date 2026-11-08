@@ -6,6 +6,7 @@ prefill, confirmation (once, idempotent), and the unchanged program rules
 (proportions are coaching context; specialization keeps its split effect).
 """
 
+import asyncio
 import sqlite3
 import threading
 from datetime import UTC, datetime, timedelta
@@ -110,6 +111,88 @@ def _register(client: TestClient, username: str) -> dict[str, str]:
     )
     assert resp.status_code == 201, resp.text
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+
+@pytest.mark.parametrize("answer, expected_status", [(30, 200), ("invalid-age", 400)])
+def test_answer_save_mounts_once_off_event_loop_and_closes_on_success_or_error(api, monkeypatch, answer, expected_status):
+    client, db, _ = api
+    headers = _register(client, "single-mount-intake")
+    client.post("/onboarding/intake/disclosure", headers=headers).raise_for_status()
+    opened = []
+    real_open = db.open_ledger
+
+    def open_in_worker(ledger_id):
+        with pytest.raises(RuntimeError, match="no running event loop"):
+            asyncio.get_running_loop()
+        ledger = real_open(ledger_id)
+        opened.append(ledger)
+        return ledger
+
+    monkeypatch.setattr(db, "open_ledger", open_in_worker)
+    response = client.put("/onboarding/intake/answers/age", headers=headers, json={"value": answer})
+    assert response.status_code == expected_status, response.text
+    assert len(opened) == 1
+    with pytest.raises(RuntimeError, match="closed"):
+        _ = opened[0].conn
+    with real_open("single-mount-intake") as ledger:
+        saved = ledger.load_intake_answers()
+        assert saved.get("age", {}).get("value") == (30 if expected_status == 200 else None)
+
+
+@pytest.mark.parametrize("denial", ["revoked", "stale_epoch", "deleted", "not_player"])
+def test_shared_intake_ledger_keeps_authentication_gates(api, monkeypatch, denial):
+    from svc.auth import token_claims
+
+    client, db, _ = api
+    headers = _register(client, "gated-intake")
+    client.post("/onboarding/intake/disclosure", headers=headers).raise_for_status()
+    claims = token_claims(headers["Authorization"].removeprefix("Bearer "))
+    with db.open_ledger("gated-intake") as ledger:
+        if denial == "revoked":
+            ledger.revoke_token(claims["jti"], datetime.fromtimestamp(claims["exp"], UTC).isoformat())
+    if denial == "stale_epoch":
+        db.bump_account_session_epoch(claims["sub"])
+    elif denial == "deleted":
+        db.record_account_deletion(claims["sub"], "gated-intake")
+    elif denial == "not_player":
+        with db.catalog_transaction():
+            db.catalog_conn.execute("UPDATE accounts SET is_player = 0 WHERE account_id = ?", (claims["sub"],))
+
+    opened = []
+    real_open = db.open_ledger
+
+    def track_open(ledger_id):
+        ledger = real_open(ledger_id)
+        opened.append(ledger)
+        return ledger
+
+    monkeypatch.setattr(db, "open_ledger", track_open)
+    response = client.put("/onboarding/intake/answers/age", headers=headers, json={"value": 30})
+    assert response.status_code == 401, response.text
+    assert len(opened) == (1 if denial == "revoked" else 0)
+    for ledger in opened:
+        with pytest.raises(RuntimeError, match="closed"):
+            _ = ledger.conn
+    with sqlite3.connect(db.ledgers_dir / "gated-intake.db") as connection:
+        assert connection.execute("SELECT COUNT(*) FROM intake_answers WHERE field = 'age'").fetchone()[0] == 0
+
+
+def test_repeated_onboarding_start_needs_no_ledger_write(api):
+    _, db, _ = api
+    with db.open_ledger("read-only-start") as ledger:
+        started = ledger.start_onboarding_analytics("2026-11-08T10:00:00+00:00")
+
+        def deny_writes(action, _table, _column, _database, _trigger):
+            return sqlite3.SQLITE_DENY if action == sqlite3.SQLITE_INSERT else sqlite3.SQLITE_OK
+
+        ledger.conn.set_authorizer(deny_writes)
+        try:
+            repeated = ledger.start_onboarding_analytics("2026-11-08T10:01:00+00:00")
+        finally:
+            ledger.conn.set_authorizer(None)
+        assert started.first_write is True
+        assert repeated.first_write is False
+        assert repeated.started_at == started.started_at
 
 
 def test_weak_points_profile_round_trip_and_validation(api):
