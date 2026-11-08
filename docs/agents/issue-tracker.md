@@ -2,6 +2,10 @@
 
 Specs and tickets live as GitHub issues in this repo. Use `gh` from the repo root.
 
+For implementation branches, pull requests, CI and merges to master, follow
+[the pull request flow](pull-requests.md). Master ruleset activation requires
+Thomas's explicit yes in chat; it is separate from implementing the ticket.
+
 ## Player-visible changes
 
 Every ticket that changes what a Player can see must add or update an entry in `mobile/lib/src/features/player/tour/feature_list.dart`: id, English and Arabic title and one-sentence copy, a target registered by a `TourTarget` on the real widget, location, `audience: 'lifter'`, and release. For a new feature, use `currentFeatureRelease + 1` and bump `currentFeatureRelease` and server `CURRENT_FEATURE_RELEASE` together; keep unshipped entries above the current release. The Feature list check in `mobile/test/feature_list_test.dart` validates entries.
