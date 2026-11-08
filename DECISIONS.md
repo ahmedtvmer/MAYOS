@@ -1105,3 +1105,40 @@ This document records the architectural, algorithmic, and heuristic decisions im
 * **Context**: The owner wants to monitor everything from one place. API timing existed only as a raw table that reset on restart, inference latency only in PostHog, errors only in Sentry, and database timing and resource use nowhere. ADR 040 had kept server errors and latency in logs.
 * **Rationale**: In-process totals cost almost nothing on a 2-core server, while a Prometheus and Grafana stack would compete with the API for memory and add a second place to look. Sentry performance tracing would send more data out and bill by volume for numbers a few counters already give. A separate file keeps measurement writes away from Player data and out of replication. Keeping the downtime check outside is the only way it can see the API fail.
 * **Code References**: `svc/request_metrics.py`, `svc/routers/admin.py`, `database/sqlite_connection.py`, `service/ai_usage_analytics.py`, `svc/error_tracking.py`.
+
+---
+
+### ADR 104: Player chat receives query-scoped Context pieces (amends ADR 002 and 078)
+
+* **Status**: Accepted (#523). Profile sections implemented by #525; the Context router and history changes remain for the other #523 implementation tickets.
+* **Decision**: Player chat retrieves only the facts a question needs. `get_player_profile` advertises a required `sections` list of Body (gender, age, height, weight, target weight), Goals (current, long-term), Training setup (weekly frequency, equipment access, rep preference, training age), Limitations (injury text, injury records with Exercise clearances, confirmed Movement restrictions), Focus (Weak points), and Recovery (stress and sleep). Omitted or empty sections return only section names and one-line descriptions, with no personal values. The existing `not set` and storage-default evidence rules remain. Limitations replaces `get_player_injuries`; suggestions inferred from injury text are not confirmed Movement restrictions.
+* **Parent retrieval design**: A deterministic Context router will select Context pieces before the hosted model runs, after the unchanged safety and write-intent paths. Pieces use simulated assistant tool calls and tool results; scoped read tools remain available in the existing three-round loop. Player data stays out of the fixed system core. Each result stays within 4 KB; router pieces together stay within 8 KB and the hosted prompt ceiling, dropping lower-priority pieces first (safety, Limitations, Program, rationale, other). Coach AI is outside this decision's scope.
+* **Question → Context piece table** (the routing implementation follows in #527):
+
+  | Topic | Context pieces |
+  |---|---|
+  | Pain / hurts / injury, after the safety gate | Limitations + Program Exercises loading that body area |
+  | Program what/how many | Program scoped to named day/Exercise/muscle; none named → overview |
+  | Program why | Program rationale scoped the same way |
+  | Progress / weights lifted | Exercise history for the named Exercise |
+  | Weight / body | Body + weight trend |
+  | Nutrition | Nutrition |
+  | Generic coaching | Training setup + Goals |
+  | Rebuild / Program edit | No model context; deterministic paths unchanged |
+
+* **Body area → joint actions table**: Routing reuses the Movement restriction action vocabulary and curated Primary and Secondary actions.
+
+  | Body area | Joint actions |
+  |---|---|
+  | Knee | Knee Flexion, Knee Extension |
+  | Hip | Hip Flexion, Hip Extension, Hip Adduction, Hip Abduction |
+  | Lower back | Spinal Flexion, Spinal Extension, plus hinges |
+  | Shoulder | Shoulder Flexion, Shoulder Abduction, Shoulder Horizontal Adduction |
+  | Elbow | Elbow Flexion, Elbow Extension |
+  | Wrist | Wrist Flexion, Wrist Extension |
+  | Ankle | Plantar Flexion |
+  | Neck | Neck Flexion, Neck Extension |
+
+* **Parent history and telemetry design**: Keep the last six messages in full and trim older assistant replies within the ten-message window to 600 characters, excluding session pointers. Log router topics, piece names and whether the model fetched more, never matched names, arguments or results. A recognised name without a topic inherits the previous user turn's topic one turn deep; new names replace the old scope. Exercise matching prefers the active Program before the library, muscles include English and Arabic aliases, and region day words expand to all matching Program days.
+* **Rationale**: Section scope avoids disclosing injuries and Weak points for a body-fact question. Bringing injury text, records and clearances together removes the need to choose between two injury readers. Deterministic routing in the parent work reduces missed or oversized reads while keeping the existing tools as a fallback.
+* **Code References** (Profile sections): `agent/player_tools.py`, `agent/player_prompt.py`, `tests/test_player_chat_privacy.py`.
