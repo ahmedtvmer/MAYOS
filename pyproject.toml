@@ -61,3 +61,7 @@ ignore = [
     "W291",    # Trailing whitespace
     "W293",    # Blank line contains whitespace
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests import pytest fixtures by name; using one as a parameter is not a redefinition.
+"tests/**" = ["F811"]
