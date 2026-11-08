@@ -2,9 +2,9 @@
 
 import json
 
-from database import nutrition_drafts as storage
+from database.ledger import nutrition_drafts as storage
 from database.ledger.nutrition import NutritionPlanVersion
-from database.nutrition_meals import generate_variants, reviewed_staples
+from database.ledger.nutrition_meals import generate_variants, reviewed_staples
 from core.meal_setup import MEAL_LAYOUTS
 from service import nutrition
 from service.assignments import authorized_player_ledger

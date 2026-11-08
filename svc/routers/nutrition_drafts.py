@@ -6,7 +6,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 
-from database.nutrition_drafts import discard_draft
+from database.ledger.nutrition_drafts import discard_draft
 from service import analytics, coach_nutrition_drafts as drafts
 from svc.dependencies import VerifiedPlayer, get_current_coach, get_db
 from svc.nutrition_draft_schemas import (

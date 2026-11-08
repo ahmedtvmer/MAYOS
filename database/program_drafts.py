@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from database.nutrition_drafts import discard_draft
+from database.ledger.nutrition_drafts import discard_draft
 
 logger = logging.getLogger(__name__)
 

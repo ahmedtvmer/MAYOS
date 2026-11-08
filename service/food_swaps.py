@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from core.food_swap import swap_meal
 from core.meal_generator import role_matches
 from core.meal_setup import restriction_reasons
-from database.nutrition_meals import _swaps, meals_still_allowed, reviewed_staples
-from database.nutrition_swap_foods import library_food, swap_allowed
+from database.ledger.nutrition_meals import _swaps, meals_still_allowed, reviewed_staples
+from database.ledger.nutrition_swap_foods import library_food, swap_allowed
 from service.meals import _save_player_meals
 
 

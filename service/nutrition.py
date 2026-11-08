@@ -13,7 +13,7 @@ from core.nutrition_targets import (ACTIVITY_FACTORS, NutritionCalculationInput,
 from core.cardio_calories import estimate_cardio_calories
 from core.cardio_prescriptions import parse_legacy_cardio_prescription
 from database.ledger.nutrition import NutritionPlanVersion, NutritionSetup
-from database.nutrition_meals import meals_still_allowed
+from database.ledger.nutrition_meals import meals_still_allowed
 from service import nutrition_pace_check
 from service.nutrition_assistant_meals import meal_context
 

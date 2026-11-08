@@ -9,6 +9,7 @@ import 'package:mayos_mobile/src/core/token_store.dart';
 import 'package:mayos_mobile/src/features/coach/coach_nutrition_draft_screen.dart';
 import 'package:mayos_mobile/src/features/coach/coach_nutrition_templates_screen.dart';
 import 'package:mayos_mobile/src/features/coach/nutrition_template_actions.dart';
+import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_api_adapter.dart';
 

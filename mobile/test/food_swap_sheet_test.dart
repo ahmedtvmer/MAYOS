@@ -108,7 +108,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Set by your coach'), findsOneWidget);
     expect(find.byKey(const Key('swap_breakfast_protein')), findsNothing);
-    expect(api.adapter.requests.where((FakeRequest request) => request.path.contains('swap')), isEmpty);
+    expect(api.adapter.requests.map((FakeRequest request) => request.path),
+      unorderedEquals(<String>['/nutrition/meals', '/nutrition/food-swap-requests']));
+    expect(api.adapter.requests.every((FakeRequest request) => request.method == 'GET'), isTrue);
   });
 }
 
@@ -141,6 +143,8 @@ class _SwapApi {
 
   FakeResponse _respond(FakeRequest request) {
     switch (request.path) {
+      case '/nutrition/food-swap-requests':
+        return const FakeResponse(200, <String, dynamic>{'requests': <dynamic>[]});
       case '/nutrition/meals':
         return FakeResponse(200, <String, dynamic>{
           'status': 'ready', 'date': '2026-11-08', 'day_type': 'rest_day', 'enabled': true,

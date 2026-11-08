@@ -1,14 +1,20 @@
 """Version-pinned meal snapshots and catalog inputs for the pure generator."""
 
+from __future__ import annotations
+
 import json
+from typing import TYPE_CHECKING
 
 from core.meal_generator import MealGenerationInput, generate_meals
 from core.meal_setup import restriction_reasons
 from database.food_library.lookup import _food
-from database.nutrition_swap_foods import library_food, swap_allowed
+from database.ledger.nutrition_swap_foods import library_food, swap_allowed
+
+if TYPE_CHECKING:
+    from database.ledger.handle import TrainingLedger
 
 
-def reviewed_staples(ledger):
+def reviewed_staples(ledger: TrainingLedger):
     # An unseeded catalog is a supported deployment state, not an error fallback.
     if not ledger.conn.execute(
         "SELECT 1 FROM catalog.sqlite_master WHERE type='table' AND name='foods'"

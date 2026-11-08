@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from core.meal_setup import SLOT_MINUTES
 from database.ledger.nutrition import NutritionPlanVersion
-from database.nutrition_meals import generate_variants
+from database.ledger.nutrition_meals import generate_variants
 from service import nutrition
 from service.food_log_adherence import recompute_day
 

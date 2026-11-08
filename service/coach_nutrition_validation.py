@@ -4,7 +4,7 @@ from math import isfinite
 
 from core.meal_generator import NUTRIENT_KEYS, TARGET_KEYS, meal_target_deviation, meal_totals
 from core.meal_setup import ALLERGENS, restriction_reasons
-from database.nutrition_meals import reviewed_staples
+from database.ledger.nutrition_meals import reviewed_staples
 from service import nutrition
 
 

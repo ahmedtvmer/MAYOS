@@ -215,7 +215,7 @@ class LedgerNutritionMixin:
             ))
 
     def save_nutrition_plan(self, plan: NutritionPlanVersion):
-        from database.nutrition_meals import meals_for_version
+        from database.ledger.nutrition_meals import meals_for_version
 
         meals = meals_for_version(self, plan)
         self.conn.execute("UPDATE nutrition_pace_proposals SET status='stale' "

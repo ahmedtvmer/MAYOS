@@ -331,6 +331,7 @@ those definitions.
 | `referring_coach_id` | Immutable Account UUID | Opaque Account id of the Coach whose Assignment invite the account redeemed first; set once after account creation. |
 | `invite_used` | Boolean | Whether registration consumed a new-account Coach invite. No invite code is sent. |
 | `with_meals` | Boolean | Whether the published Coach Nutrition plan includes Meal slots and foods. |
+| `request_status` | `pending`, `applied`, or `declined` | Food swap request status at creation or a Coach decision; no request reason or reply is sent. |
 | `duration_seconds` | Bounded nonnegative integer | For onboarding, elapsed whole seconds from the first persisted start to completion; for an Assignment, elapsed whole seconds from its committed start to end. |
 | `coach_id` | Immutable Account UUID | Opaque id of the Coach on an `assignment_started` event. |
 | `time_since_invite_seconds` | Bounded nonnegative integer | Elapsed whole seconds from Assignment invite creation to committed redemption. |

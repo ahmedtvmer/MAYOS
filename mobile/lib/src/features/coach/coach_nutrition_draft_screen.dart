@@ -446,7 +446,9 @@ class _CoachNutritionDraftScreenState extends ConsumerState<CoachNutritionDraftS
 
   Widget _portion(Map meal, Map<String, dynamic> portion) {
     final Map<String, dynamic>? food = _foods[portion['id']];
-    final String name = (copy.arabic ? food?['arabic_name'] ?? food?['name'] : food?['name']) as String? ?? '${portion['id']}';
+    final String? englishName = food?['name'] as String?;
+    final String? arabicName = food?['arabic_name'] as String?;
+    final String name = (copy.arabic ? arabicName : null) ?? englishName ?? '${portion['id']}';
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
       Text(name),
       if ((food?['restriction_reasons'] as List? ?? <dynamic>[]).isNotEmpty)

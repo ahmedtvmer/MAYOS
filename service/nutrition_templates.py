@@ -3,8 +3,8 @@
 from copy import deepcopy
 
 from core.nutrition_template_scaling import rescale_meals
-from database import nutrition_drafts
-from database.nutrition_meals import reviewed_staples
+from database.ledger import nutrition_drafts
+from database.ledger.nutrition_meals import reviewed_staples
 from database.registry import nutrition_templates as storage
 from service import coach_nutrition_drafts as drafts
 from service.coach_nutrition_validation import food_snapshot

@@ -1287,7 +1287,7 @@ def _migrate_v56_to_v57(conn: sqlite3.Connection) -> None:
 
 
 def _migrate_v57_to_v58(conn: sqlite3.Connection) -> None:
-    from database.nutrition_drafts import NUTRITION_DRAFTS_DDL
+    from database.ledger.nutrition_drafts import NUTRITION_DRAFTS_DDL
 
     conn.execute(NUTRITION_DRAFTS_DDL)
 

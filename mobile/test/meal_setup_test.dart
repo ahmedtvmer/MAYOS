@@ -29,6 +29,7 @@ void main() {
         expect(Directionality.of(tester.element(find.byType(ListView))),
           language == 'ar' ? TextDirection.rtl : TextDirection.ltr);
         await tester.tap(find.byKey(const Key('meal_count_5')));
+        await tester.pump();
         expect(find.text(copy.slotLayout(5)), findsOneWidget);
         await tester.tap(find.byKey(const Key('meal_training_time')));
         await tester.pumpAndSettle();
@@ -36,15 +37,15 @@ void main() {
         await tester.pumpAndSettle();
         await tester.ensureVisible(find.byKey(const Key('allergy_eggs')));
         await tester.tap(find.byKey(const Key('allergy_eggs')));
-        await tester.ensureVisible(find.byKey(const Key('meal_vegetarian')));
+        await tester.scrollUntilVisible(find.byKey(const Key('meal_vegetarian')), 200);
         await tester.tap(find.byKey(const Key('meal_vegetarian')));
-        await tester.ensureVisible(find.byKey(const Key('add_disliked_food')));
+        await tester.scrollUntilVisible(find.byKey(const Key('add_disliked_food')), 200);
         await tester.tap(find.byKey(const Key('add_disliked_food')));
         await tester.pumpAndSettle();
         await tester.tap(find.text(language == 'ar' ? 'بيضة' : 'Egg'));
         await tester.pumpAndSettle();
         expect(find.byType(MealSetupScreen), findsOneWidget);
-        await tester.ensureVisible(find.byKey(const Key('save_meal_setup')));
+        await tester.scrollUntilVisible(find.byKey(const Key('save_meal_setup')), 200);
         await tester.tap(find.byKey(const Key('save_meal_setup')));
         await tester.pumpAndSettle();
         expect(find.byType(MealSetupScreen), findsNothing);
@@ -85,13 +86,14 @@ void main() {
     await tester.tap(find.byKey(const Key('meal_setup_entry')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('meal_count_4')));
-    await tester.ensureVisible(find.byKey(const Key('save_meal_setup')));
+    await tester.pump();
+    await tester.scrollUntilVisible(find.byKey(const Key('save_meal_setup')), 200);
     await tester.tap(find.byKey(const Key('save_meal_setup')));
     await tester.pumpAndSettle();
     expect(find.byType(MealSetupScreen), findsOneWidget);
     expect(find.text('Could not save Meal setup.'), findsOneWidget);
     fake.mealSetupSaveFails = false;
-    await tester.ensureVisible(find.byKey(const Key('save_meal_setup')));
+    await tester.scrollUntilVisible(find.byKey(const Key('save_meal_setup')), 200);
     await tester.tap(find.byKey(const Key('save_meal_setup')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('meal_setup_entry')));
