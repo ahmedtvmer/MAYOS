@@ -12,7 +12,6 @@ import 'meal_setup_screen.dart';
 import 'food_swap_sheet.dart';
 import 'food_swap_requests.dart';
 import '../../../core/display_language/food_swap_request_copy.dart';
-import '../tour/tour_targets.dart';
 
 class TodayMeals extends ConsumerStatefulWidget {
   const TodayMeals({required this.onLogged, this.revision = 0, super.key});
@@ -108,8 +107,8 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
             TextButton(onPressed: _busy ? null : _load, child: Text(copy.retry)),
           ],
           if (_plan != null) ..._contents(copy),
-          TourTarget(id: 'food_swap_requests', child: PlayerFoodSwapRequests(
-            revision: _swapRequestsRevision + widget.revision, onRefresh: () => _load())),
+          PlayerFoodSwapRequests(
+            revision: _swapRequestsRevision + widget.revision, onRefresh: () => _load()),
         ]))));
   }
 
