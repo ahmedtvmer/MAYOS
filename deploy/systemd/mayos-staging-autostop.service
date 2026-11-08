@@ -1,0 +1,14 @@
+[Unit]
+Description=Stop MAYOS staging after its time to live
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+UMask=0027
+ExecStart=/bin/bash /usr/local/libexec/mayos/staging_server.bash autostop
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/mayos/state
