@@ -15,6 +15,7 @@ from core.cardio_prescriptions import parse_legacy_cardio_prescription
 from database.ledger.nutrition import NutritionPlanVersion, NutritionSetup
 from database.nutrition_meals import meals_still_allowed
 from service import nutrition_pace_check
+from service.nutrition_assistant_meals import meal_context
 
 
 SCREENING_KEYS = (
@@ -612,10 +613,7 @@ def assistant_projection(ledger: Any, today: date) -> dict[str, Any]:
         "adherence": _adherence_counts(adherence),
         "cardio_burned_kcal": nutrition_state.get("cardio_burned_kcal", 0),
         "cardio_adjustment_kcal": nutrition_state.get("cardio_adjustment_kcal", 0),
-        # Keep the entire day's foods within the Player tool's 4 KB result cap.
-        "meals": [{"slot": meal["slot"], "foods": [
-            {"name": food["name"][:80], "grams": food["grams"]} for food in meal["foods"]
-        ]} for meal in nutrition_state.get("meals", [])],
+        **meal_context(nutrition_state),
     }
 
 

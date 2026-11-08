@@ -32,7 +32,9 @@ class _NutritionDraftFoodPickerState extends ConsumerState<NutritionDraftFoodPic
     final int request = ++_request;
     setState(() { _loading = true; _error = null; });
     try {
-      final List<Map<String, dynamic>> foods = await ref.read(apiClientProvider).nutritionDraftFoods(widget.assignmentId, query);
+      final ApiClient api = ref.read(apiClientProvider);
+      final List<Map<String, dynamic>> foods = widget.assignmentId.isEmpty
+        ? await api.nutritionTemplateFoods(query) : await api.nutritionDraftFoods(widget.assignmentId, query);
       if (mounted && request == _request) setState(() => _foods = foods);
     } on ApiException catch (error) {
       if (mounted && request == _request) setState(() => _error = error.message);

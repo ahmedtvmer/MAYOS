@@ -1223,7 +1223,7 @@ class CopyMealIn(BaseModel):
 
 class LogPlannedMealIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    slot: Literal["breakfast", "morning_snack", "lunch", "afternoon_snack", "dinner"]
+    slot: str = Field(min_length=1, max_length=80)
     entry_date: date
     plan_version_id: int = Field(ge=1)
 

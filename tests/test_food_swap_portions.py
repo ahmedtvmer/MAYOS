@@ -15,10 +15,13 @@ def test_replacement_uses_closest_practical_portion(name, grams, portion, expect
     nutrients = {"energy_kcal": 120, "protein_g": 30, "carbohydrate_g": 0, "fat_g": 0}
     original = {"id": "before", "role": "protein", "grams": grams, "nutrients_per_100g": nutrients}
     replacement = {"id": "after", "name": name, "nutrients": nutrients, **portion}
-    meal = {"slot": "breakfast", "foods": [original]}
+    meal = {"slot": "breakfast", "foods": [original], "targets": {"calories": 180, "protein_g": 45},
+            "target_deviation": {"calories": 999, "protein_g": 999}}
     swapped = swap_meal(meal, "protein", replacement)
     assert swapped["foods"][0]["grams"] == expected
     assert swapped["foods"][0]["swapped"]
+    assert swapped["target_deviation"] == {"calories": pytest.approx(expected * 1.2 - 180),
+                                          "protein_g": pytest.approx(expected * .3 - 45)}
     assert meal["foods"] == [original]
 
 

@@ -2,7 +2,7 @@
 
 from math import ceil, floor, isfinite
 
-from core.meal_generator import NUTRIENT_KEYS, _meal_food, meal_totals, portion_step
+from core.meal_generator import NUTRIENT_KEYS, _meal_food, meal_target_deviation, meal_totals, portion_step
 
 
 def replacement_portion(meal, role, replacement):
@@ -42,4 +42,6 @@ def _closest_units(nutrients, step, targets, consumed):
 def swap_meal(meal, role, replacement):
     portion = replacement_portion(meal, role, replacement)
     foods = [portion if food["role"] == role else food for food in meal["foods"]]
-    return {**meal, "foods": foods, "totals": meal_totals(foods)}
+    totals = meal_totals(foods)
+    return {**meal, "foods": foods, "totals": totals,
+            "target_deviation": meal_target_deviation(totals, meal.get("targets", {}))}

@@ -139,6 +139,7 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
       Text('${meal.name.isEmpty ? copy.slot(meal.slot) : meal.name} · ${copy.calories(meal.calories)}',
         style: Theme.of(context).textTheme.titleMedium),
       if (meal.note.isNotEmpty) Text(meal.note),
+      if (meal.targetDeviation.isNotEmpty) Text(copy.deviation(meal.targetDeviation)),
       for (final (int index, PlannedFood food) in meal.foods.indexed)
         Row(children: <Widget>[
           Expanded(child: Text('${copy.arabic ? food.arabicName ?? food.name : food.name} · ${copy.amount(food.grams)}'

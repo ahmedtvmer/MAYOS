@@ -1,13 +1,13 @@
 """Deterministic meals from reviewed Staples and explicit Food swaps; no I/O or clock.
 
-Missing roles and infeasible practical portions produce an unavailable result,
-never an approximate prescription or a fallback to another unreviewed food.
+Try allowed Staples in curation order before returning the closest practical
+portions with a per-slot deviation. Missing reviewed roles remain unavailable.
 """
 
 import re
 from dataclasses import dataclass, field
 from itertools import product
-from math import ceil, floor, isfinite
+from math import ceil, floor, isfinite, sqrt
 
 from core.meal_setup import MEAL_LAYOUTS, SLOT_MINUTES, restriction_reasons
 
@@ -58,25 +58,27 @@ def role_matches(food, slot, role):
     return bool({role, f"{meal_type}_{role}"} & set(food["staple_roles"]))
 
 
-def _selected_foods(request, slot):
-    foods = []
-    for role in ROLES:
-        allowed = [food for food in request.staples
-                      if food["reviewed"] and not food.get("hidden", False)
-                      and role_matches(food, slot, role)
-                      and not set(restriction_reasons(food, request.setup["restrictions"])) - {"disliked"}]
-        swap_id = request.swaps.get(slot, {}).get(role)
-        swap = next((food for food in allowed if food["id"] == swap_id), None)
-        if swap is None:
-            explicit = request.swap_foods.get(swap_id)
-            if explicit and not set(restriction_reasons(explicit, request.setup["restrictions"])) - {"disliked"}:
-                swap = explicit
-        candidates = [food for food in allowed if food["id"] not in request.setup["restrictions"]["dislikes"]]
-        if swap is None and not candidates:
-            return None
-        selected = swap if swap is not None else candidates[0]
-        foods.append({**selected, "role": role, "swapped": selected["id"] == swap_id})
-    return foods
+def _food_allowed(food, restrictions):
+    return (food["reviewed"] and not food.get("hidden", False)
+            and not set(restriction_reasons(food, restrictions)) - {"disliked"})
+
+
+def _role_candidates(request, slot, role):
+    restrictions = request.setup["restrictions"]
+    allowed = [food for food in request.staples
+               if role_matches(food, slot, role) and _food_allowed(food, restrictions)]
+    swap_id = request.swaps.get(slot, {}).get(role)
+    swap = next((food for food in allowed if food["id"] == swap_id), None)
+    explicit = request.swap_foods.get(swap_id)
+    if swap is None and explicit and _food_allowed(explicit, restrictions):
+        swap = explicit
+    selected = [swap] if swap is not None else [food for food in allowed if food["id"] not in restrictions["dislikes"]]
+    return [{**food, "role": role, "swapped": food["id"] == swap_id} for food in selected]
+
+
+def _candidate_foods(request, slot):
+    choices = [_role_candidates(request, slot, role) for role in ROLES]
+    return choices if all(choices) else None
 
 
 def portion_step(food):
@@ -96,14 +98,8 @@ def _nutrient_vector(food):
                  for key in NUTRIENT_KEYS)
 
 
-def _unit_limit(vector, targets, step):
-    limits = [target * 1.05 / (amount * step / 100)
-              for amount, target in zip(vector, targets) if amount > 0]
-    return max(0, floor(min([10000 / step, *limits]) + 1e-9))
-
-
 def _last_unit_interval(partial, vector, bounds):
-    lower, upper = 1, 10000
+    lower, upper = 1, float("inf")
     for consumed, amount, target in zip(partial, vector, bounds):
         if amount == 0:
             if not target * .95 - 1e-9 <= consumed <= target * 1.05 + 1e-9:
@@ -123,7 +119,7 @@ def _best_last_units(partial, vector, targets, interval):
     return sorted({max(lower, min(upper, floor(ideal))), max(lower, min(upper, ceil(ideal)))})
 
 
-def _rounded_portions(foods, share):
+def _rounded_portions(foods, share, search):
     targets = tuple(share[key] for key in TARGET_KEYS)
     steps = [portion_step(food) for food in foods]
     vectors = [_nutrient_vector(food) for food in foods]
@@ -131,12 +127,17 @@ def _rounded_portions(foods, share):
         return None
     if any(not isfinite(amount) or amount < 0 for vector in vectors for amount in vector):
         return None
-    limits = [_unit_limit(vector, targets, step) for vector, step in zip(vectors, steps)]
-    if not all(limits) or any(not any(vector) for vector in vectors):
+    if any(not any(vector) for vector in vectors):
         return None
+    return _portion_solution(steps, vectors, targets, search)
+
+
+def _portion_solution(steps, vectors, targets, search):
+    unit_vectors = [tuple(amount * step / 100 for amount in vector) for vector, step in zip(vectors, steps)]
+    caps = [floor(10000 / step) for step in steps]
+    limits = _bounded_units(unit_vectors, [target * 1.05 for target in targets], caps)
     order = sorted(range(3), key=lambda index: (limits[index], index))
-    unit_vectors = [tuple(amount * steps[index] / 100 for amount in vectors[index]) for index in order]
-    units = _search_portions(unit_vectors, [limits[index] for index in order], targets)
+    units = search([unit_vectors[index] for index in order], [caps[index] for index in order], targets)
     if units is None:
         return None
     grams = [0., 0., 0.]
@@ -160,16 +161,50 @@ def _feasible_units(vectors, limits, targets):
             yield first, second, last
 
 
-def _search_portions(vectors, limits, targets):
+def _portion_error(totals, targets):
+    return sum(((amount - target) / max(target, 1)) ** 2 for amount, target in zip(totals, targets))
+
+
+def _best_units(vectors, targets, candidates):
     best = None
-    for units in _feasible_units(vectors, limits, targets):
+    for units in candidates:
         totals = tuple(sum(vector[index] * count for vector, count in zip(vectors, units))
                        for index in range(len(targets)))
-        error = sum(((amount - target) / max(target, 1)) ** 2 for amount, target in zip(totals, targets))
+        error = _portion_error(totals, targets)
         candidate = (error, *units)
         if best is None or candidate < best:
             best = candidate
     return best[1:] if best else None
+
+
+def _bounded_units(vectors, ceilings, caps):
+    return [min(cap, max(0, floor(min(
+        ceiling / amount for amount, ceiling in zip(vector, ceilings) if amount > 0
+    ) + 1e-9))) for vector, cap in zip(vectors, caps)]
+
+
+def _search_portions(vectors, limits, targets):
+    limits = _bounded_units(vectors, [target * 1.05 for target in targets], limits)
+    return _best_units(vectors, targets, _feasible_units(vectors, limits, targets))
+
+
+def _closest_units(vectors, limits, targets):
+    for first, second in product(range(1, limits[0] + 1), range(1, limits[1] + 1)):
+        partial = tuple(a * first + b * second for a, b in zip(vectors[0], vectors[1]))
+        for last in _best_last_units(partial, vectors[2], targets, (1, limits[2])):
+            yield first, second, last
+
+
+def _search_closest_portions(vectors, limits, targets):
+    if not all(limits):
+        return None
+    baseline = tuple(sum(vector[index] for vector in vectors) for index in range(len(targets)))
+    radius = sqrt(_portion_error(baseline, targets))
+    # Nonnegative nutrients cannot improve on the one-unit baseline outside
+    # these bounds, so the closest search stays finite without losing optima.
+    ceilings = [target + radius * max(target, 1) for target in targets]
+    limits = _bounded_units(vectors, ceilings, limits)
+    return _best_units(vectors, targets, _closest_units(vectors, limits, targets))
 
 
 def _meal_food(food, grams):
@@ -183,23 +218,48 @@ def meal_totals(foods):
             for target, nutrient in zip(TARGET_KEYS, NUTRIENT_KEYS)}
 
 
-def _generated_meal(request, slot, share):
-    foods = _selected_foods(request, slot)
-    if foods is None:
-        return {"status": "unavailable", "reason": "staples", "meals": []}
-    grams = _rounded_portions(foods, share)
-    if grams is None:
-        return {"status": "unavailable", "reason": "portions", "meals": []}
+def meal_target_deviation(totals, targets):
+    return {key: totals[key] - target for key, target in targets.items()}
+
+
+def _portioned_meal(slot, share, foods, grams):
     portions = [_meal_food(food, amount) for food, amount in zip(foods, grams)]
-    return {"slot": slot, "targets": share, "foods": portions, "totals": meal_totals(portions)}
+    totals = meal_totals(portions)
+    return {"slot": slot, "targets": share, "foods": portions, "totals": totals,
+            "target_deviation": meal_target_deviation(totals, share)}
+
+
+def _closest_meal(choices, slot, share):
+    closest = None
+    for foods in product(*choices):
+        grams = _rounded_portions(foods, share, _search_closest_portions)
+        if grams is None:
+            continue
+        meal = _portioned_meal(slot, share, foods, grams)
+        error = _portion_error(tuple(meal["totals"][key] for key in TARGET_KEYS), tuple(share[key] for key in TARGET_KEYS))
+        if closest is None or error < closest[0]:
+            closest = (error, meal)
+    if closest is None:
+        return {"status": "unavailable", "reason": "portions", "meals": []}
+    return closest[1]
+
+
+def _generated_meal(request, slot, share):
+    choices = _candidate_foods(request, slot)
+    if choices is None:
+        return {"status": "unavailable", "reason": "staples", "meals": []}
+    for foods in product(*choices):
+        grams = _rounded_portions(foods, share, _search_portions)
+        if grams is not None:
+            return _portioned_meal(slot, share, foods, grams)
+    return _closest_meal(choices, slot, share)
 
 
 def generate_meals(request):
-    """Return ready meals or a reason; all four nutrients meet ±5%, or no meals.
+    """Prefer meals within ±5%; otherwise return the closest practical portions.
 
     Boundary cases: empty/missing roles; blocked foods; zero targets; no feasible
-    positive portions. Without a swap, selection never skips the first allowed
-    Staple food to fit numbers.
+    positive portions. Allowed explicit swaps stay pinned during regeneration.
     """
     if any(not isfinite(request.targets[key]) or request.targets[key] < 0 for key in TARGET_KEYS):
         raise ValueError("Meal targets must be finite and non-negative.")

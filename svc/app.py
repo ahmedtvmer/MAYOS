@@ -61,6 +61,7 @@ from svc.routers import (
     media,
     nutrition,
     nutrition_drafts,
+    nutrition_templates,
     food_log,
     food_swaps,
     food_swap_requests,
@@ -589,6 +590,7 @@ def create_app(*, sentry_transport=None) -> FastAPI:
     app.include_router(profile.router)
     app.include_router(nutrition.router)
     app.include_router(nutrition_drafts.router)
+    app.include_router(nutrition_templates.router)
     app.include_router(food_log.router)
     app.include_router(food_swaps.router)
     app.include_router(food_swap_requests.router)

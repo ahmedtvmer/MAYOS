@@ -25,6 +25,8 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.textContaining(language == 'ar' ? 'جبن قريش' : 'Areesh'), findsOneWidget);
         expect(find.textContaining('150 g'), language == 'ar' ? findsNothing : findsOneWidget);
+        expect(find.textContaining(language == 'ar' ? 'السعرات -20.0 سعرة' : 'Calories -20.0 kcal'), findsOneWidget);
+        expect(find.textContaining(language == 'ar' ? 'البروتين +5.0 غ' : 'protein +5.0 g'), findsOneWidget);
         expect(Directionality.of(tester.element(find.text(copy.title))),
           language == 'ar' ? TextDirection.rtl : TextDirection.ltr);
         await tester.tap(find.byKey(const Key('log_planned_breakfast')));
@@ -97,6 +99,7 @@ FakeMayosApi _fake() => FakeMayosApi()
   ..plannedMealsState = <String, dynamic>{'status': 'disabled', 'can_enable': true, 'author': 'Player'}
   ..generatedMeals = <Map<String, dynamic>>[<String, dynamic>{
     'slot': 'breakfast', 'totals': <String, dynamic>{'calories': 180},
+    'target_deviation': <String, dynamic>{'calories': -20, 'protein_g': 5, 'carbs_g': 0, 'fat_g': -1},
     'foods': <Map<String, dynamic>>[<String, dynamic>{
       'id': 'areesh', 'name': 'Areesh', 'arabic_name': 'جبن قريش', 'grams': 150,
       'portion_label': null, 'portion_grams': null,

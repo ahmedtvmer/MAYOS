@@ -2,7 +2,7 @@
 
 from math import isfinite
 
-from core.meal_generator import NUTRIENT_KEYS, TARGET_KEYS, meal_totals
+from core.meal_generator import NUTRIENT_KEYS, TARGET_KEYS, meal_target_deviation, meal_totals
 from core.meal_setup import ALLERGENS, restriction_reasons
 from database.nutrition_meals import reviewed_staples
 from service import nutrition
@@ -65,7 +65,8 @@ def _meal_comparisons(snapshots, target):
     if not snapshots:
         return snapshots
     share = {key: target[key] / len(snapshots) for key in TARGET_KEYS}
-    return [{**meal, "targets": share, "deviations": _deviations(meal["totals"], share)}
+    return [{**meal, "targets": share, "deviations": _deviations(meal["totals"], share),
+             "target_deviation": meal_target_deviation(meal["totals"], share)}
             for meal in snapshots]
 
 

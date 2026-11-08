@@ -114,8 +114,8 @@ def test_selection_uses_order_and_restrictions_with_reviewed_allergens_only(rest
     assert {meal["foods"][0]["id"] for meal in generated["meals"]} == {expected}
 
 
-@pytest.mark.parametrize("case", ["empty", "unreviewed", "missing_role", "infeasible", "zero", "unknown_nutrient"])
-def test_missing_reviewed_roles_or_infeasible_portions_never_return_partial_meals(case):
+@pytest.mark.parametrize("case", ["empty", "unreviewed", "missing_role", "zero", "unknown_nutrient"])
+def test_missing_reviewed_roles_or_invalid_portions_never_return_partial_meals(case):
     request = _request()
     if case == "empty":
         request.staples.clear()
@@ -124,8 +124,6 @@ def test_missing_reviewed_roles_or_infeasible_portions_never_return_partial_meal
             food["reviewed"] = False
     elif case == "missing_role":
         request.staples.pop()
-    elif case == "infeasible":
-        request.staples[0]["nutrients"]["fat_g"] = 100
     elif case == "unknown_nutrient":
         request.staples[0]["nutrients"]["fat_g"] = None
     else:
@@ -133,6 +131,69 @@ def test_missing_reviewed_roles_or_infeasible_portions_never_return_partial_meal
     generated = generate_meals(request)
     assert generated["status"] == "unavailable"
     assert generated["meals"] == []
+
+
+@pytest.mark.parametrize("role_index", [0, 1, 2])
+def test_impractical_first_staple_tries_the_next_allowed_food_in_role_order(role_index):
+    request = _request()
+    original = request.staples[role_index]
+    request.staples[role_index:role_index + 1] = [
+        {**original, "id": "too_large", "portion_grams": 10000},
+        {**original, "id": "unreviewed", "reviewed": False},
+        {**original, "id": "hidden", "hidden": True},
+        {**original, "id": "allergic", "allergens": ["milk"]},
+        {**original, "id": "meat", "vegetarian": False},
+        {**original, "id": "disliked"},
+        {**original, "id": "next_allowed"},
+        {**original, "id": "later_allowed"},
+    ]
+    request.setup["restrictions"].update(allergies=["milk"], vegetarian=True, dislikes=["disliked"])
+    generated = generate_meals(request)
+    assert generated["status"] == "ready"
+    assert {meal["foods"][role_index]["id"] for meal in generated["meals"]} == {"next_allowed"}
+    for meal in generated["meals"]:
+        for key, target in meal["targets"].items():
+            assert target * .95 <= meal["totals"][key] <= target * 1.05
+
+
+def test_small_portion_units_do_not_skip_a_feasible_first_staple():
+    request = _request()
+    request.staples[-1]["portion_grams"] = .001
+    request.staples.append(_food("later_fat", "vegetable_fat", fat=100, portion_grams=1))
+    generated = generate_meals(request)
+    assert generated["status"] == "ready"
+    for meal in generated["meals"]:
+        assert meal["foods"][2]["id"] == "fat"
+        assert 28.5 <= meal["foods"][2]["grams"] <= 31.5
+
+
+def test_no_combination_fits_returns_the_closest_meal_with_each_slots_deviation():
+    request = _request()
+    request.staples[0]["portion_grams"] = 100
+    request.staples.insert(1, _food("closer", "protein", protein=27.5, portion_grams=100))
+    generated = generate_meals(request)
+    assert generated["status"] == "ready"
+    assert generate_meals(request) == generated
+    for meal in generated["meals"]:
+        assert meal["foods"][0]["id"] == "closer"
+        assert meal["foods"][0]["grams"] == 200
+        assert meal["totals"]["protein_g"] == 55
+        assert meal["target_deviation"]["protein_g"] == 5
+        for key, target in meal["targets"].items():
+            assert meal["target_deviation"][key] == pytest.approx(meal["totals"][key] - target)
+
+
+@pytest.mark.parametrize("revoked", [False, True])
+def test_explicit_swap_stays_pinned_for_approximation_unless_its_review_is_revoked(revoked):
+    request = _request()
+    request.swap_foods["chosen"] = {**request.staples[0], "id": "chosen",
+                                     "reviewed": not revoked, "portion_grams": 100}
+    request.swaps["breakfast"] = {"protein": "chosen"}
+    generated = generate_meals(request)
+    breakfast = generated["meals"][0]
+    assert breakfast["foods"][0]["id"] == ("protein" if revoked else "chosen")
+    if not revoked:
+        assert abs(breakfast["target_deviation"]["protein_g"]) > breakfast["targets"]["protein_g"] * .05
 
 
 @pytest.mark.parametrize(("restriction", "expected"), [

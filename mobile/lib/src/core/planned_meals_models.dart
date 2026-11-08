@@ -33,11 +33,14 @@ class PlannedMeals {
 }
 
 class PlannedMeal {
-  const PlannedMeal({required this.slot, required this.foods, required this.calories, this.name = '', this.note = ''});
+  const PlannedMeal({required this.slot, required this.foods, required this.calories,
+    this.name = '', this.note = '', this.targetDeviation = const <String, double>{}});
   factory PlannedMeal.fromJson(Map<String, dynamic> json) => PlannedMeal(
     slot: json['slot'] as String,
     name: json['name'] as String? ?? '',
     note: json['note'] as String? ?? '',
+    targetDeviation: (json['target_deviation'] as Map<String, dynamic>? ?? <String, dynamic>{})
+      .map((String key, dynamic amount) => MapEntry<String, double>(key, (amount as num).toDouble())),
     foods: (json['foods'] as List<dynamic>)
       .map((dynamic food) => PlannedFood.fromJson(food as Map<String, dynamic>)).toList(),
     calories: (json['totals']['calories'] as num).toDouble(),
@@ -45,6 +48,7 @@ class PlannedMeal {
   final String slot;
   final String name;
   final String note;
+  final Map<String, double> targetDeviation;
   final List<PlannedFood> foods;
   final double calories;
 }

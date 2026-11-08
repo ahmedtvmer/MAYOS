@@ -1035,11 +1035,16 @@ class FakeMayosApi {
         lastPlannedMealLog = Map<String, dynamic>.from(request.body);
         final Map<String, dynamic> meal = (plannedMealsState['meals'] as List<dynamic>)
           .cast<Map<String, dynamic>>().firstWhere((Map<String, dynamic> meal) => meal['slot'] == request.body['slot']);
+          final String slot = meal['slot'] as String;
+          final String label = meal['log_label'] as String? ?? (slot.endsWith('_snack') ? 'snack' : slot);
+          final String time = <String, String>{'breakfast': '08:00', 'morning_snack': '10:00',
+            'lunch': '13:00', 'afternoon_snack': '16:00', 'dinner': '20:00'}[slot]
+            ?? <String, String>{'breakfast': '08:00', 'lunch': '13:00', 'dinner': '20:00', 'snack': '16:00'}[label]!;
         final List<Map<String, dynamic>> copied = <Map<String, dynamic>>[
           for (final Map<String, dynamic> food in (meal['foods'] as List<dynamic>).cast<Map<String, dynamic>>())
             <String, dynamic>{...food, 'id': 'food-${++_foodEntryId}', 'food_id': food['id'],
               'kind': 'library_food', 'entry_date': foodLogToday, 'quantity': food['grams'],
-              'unit': 'grams', 'meal_label': meal['slot'], 'logged_time': '08:00',
+              'unit': 'grams', 'meal_label': label, 'logged_time': time,
               'nutrients': <String, dynamic>{
                 for (final String key in <String>['energy_kcal', 'protein_g', 'carbohydrate_g', 'fat_g'])
                   key: (food['nutrients_per_100g'][key] as num) * (food['grams'] as num) / 100,

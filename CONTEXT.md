@@ -473,7 +473,7 @@ A named place in a Player's eating day, such as Breakfast, Lunch, Dinner or Snac
 _Arabic_: وجبة
 
 **Staple food**:
-A food MAYOS curates as a default choice for a meal role, such as eggs or ful for a breakfast protein. Each role has an ordered list; the first one the Player's Food restrictions allow is suggested and the next ones are its swaps. It is the food counterpart of a Staple exercise.
+A food MAYOS curates as a default choice for a meal role, such as eggs or ful for a breakfast protein. Each role has an ordered list; meal generation tries reviewed foods the Player's Food restrictions allow in that order until practical portions fit within ±5% of the slot's calories and Macros. If none fit, it returns the closest allowed meal with each slot's difference from its targets. Later foods are also offered as swaps. It is the food counterpart of a Staple exercise.
 _Arabic_: طعام أساسي
 
 **Food restriction**:

@@ -136,7 +136,9 @@ def test_player_assistant_receives_meals_within_the_tool_result_cap(meals_api):
     with db.open_ledger(_ledger_id(db)) as ledger:
         projection = nutrition.assistant_projection(ledger, today)
     assert projection["meals"][0] == {"slot": "breakfast", "foods": [
-        {"name": food["name"], "grams": food["grams"]} for food in plan["meals"][0]["foods"]]}
+        {"name": food["name"], "grams": food["grams"],
+         **({"arabic_name": food["arabic_name"]} if food["arabic_name"] else {})}
+        for food in plan["meals"][0]["foods"]]}
     assert len(json.dumps(projection, ensure_ascii=False).encode("utf8")) < MAX_TOOL_RESULT_BYTES
 
 

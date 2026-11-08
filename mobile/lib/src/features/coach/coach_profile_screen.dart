@@ -22,6 +22,7 @@ import '../../core/ui/first_strong_direction.dart';
 import '../../core/ui/is_desktop_layout.dart';
 import '../../providers.dart';
 import 'coach_program_templates_screen.dart';
+import 'coach_nutrition_templates_screen.dart';
 
 /// Coach profile tab of the Coach mode shell (#119): display name, bio,
 /// specialization, capacity, the player invite, assignment notices, and the
@@ -399,6 +400,13 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen> {
             variant: MayosButtonVariant.secondary,
             icon: Icons.library_books_outlined,
             onPressed: _openProgramTemplates,
+          ),
+          MayosButton(
+            label: ref.watch(displayLanguageProvider) == 'ar' ? 'قوالب خطط التغذية' : 'Nutrition templates',
+            variant: MayosButtonVariant.secondary,
+            icon: Icons.restaurant_outlined,
+            onPressed: () => Navigator.of(context).push<void>(MaterialPageRoute<void>(
+              builder: (_) => const CoachNutritionTemplatesScreen())),
           ),
         ],
       ),
