@@ -33,6 +33,7 @@ async def read_meals(request: Request,
     today, assignment, _language = _player_context(player, ledger, db, request)
     state = await asyncio.to_thread(meals.read, ledger, today)
     state["can_enable"] = not _coach_holds_authority(ledger.get_active_nutrition_plan(), assignment)
+    state["can_request_swap"] = not state["can_enable"] and state["status"] == "ready"
     return state
 
 

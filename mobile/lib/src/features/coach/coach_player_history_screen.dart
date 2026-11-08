@@ -1002,7 +1002,8 @@ class _CoachPlayerHistoryScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        MayosSectionHeader(title: copy.programRequests),
+        MayosSectionHeader(title: _programRequests.any((ProgramRequest request) => request.isFoodSwap)
+            ? copy.requests : copy.programRequests),
         if (_requestError != null) ...<Widget>[
           Text(
             displayCopyOf(context).failureMessage(_requestError!),

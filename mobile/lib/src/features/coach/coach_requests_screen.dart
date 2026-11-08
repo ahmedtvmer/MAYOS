@@ -21,7 +21,7 @@ import '../../router.dart';
 import 'coach_request_sheet.dart';
 import 'coach_shared.dart';
 
-/// The Requests tab of the Coach mode shell (#121): every program request
+/// The Requests tab of the Coach mode shell (#121): every Assignment request
 /// across the roster from `GET /coach/program-requests`, pending first, then
 /// **Answered**. On desktop a request opens in the URL-backed detail pane; on
 /// phones a pending row keeps the existing resolve sheet. The tab publishes
@@ -383,7 +383,7 @@ class _CoachRequestDetailPaneState extends State<CoachRequestDetailPane> {
             ],
           ),
         ),
-        if (request.isPending && widget.isPhone) ...<Widget>[
+        if (request.isPending && (widget.isPhone || request.isFoodSwap)) ...<Widget>[
           const SizedBox(height: MayosSpacing.md),
           MayosButton(
             key: const Key('request_resolve_button'),

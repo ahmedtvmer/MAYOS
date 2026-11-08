@@ -1958,12 +1958,13 @@ class PlayerProgramRequestIn(BaseModel):
 
 
 class ProgramRequestOut(BaseModel):
-    """A program request's pinned target and its current resolution state."""
+    """An Assignment request; Food swaps pin their Nutrition target in food_swap."""
 
     request_id: str
     assignment_id: str
     kind: str
-    program_version: int
+    program_version: int | None = None
+    food_swap: dict[str, Any] | None = None
     day_name: str | None = None
     week_order: int | None = Field(default=None, ge=1, le=MAX_PROGRAM_WEEKS)
     day_order: int | None = None

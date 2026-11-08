@@ -5,8 +5,14 @@ import '../../../core/api_client.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/planned_meals_copy.dart';
 import '../../../core/planned_meals_models.dart';
+import '../../../core/food_swap_models.dart';
+import '../../../core/display_language/food_swap_copy.dart';
 import '../../../providers.dart';
 import 'meal_setup_screen.dart';
+import 'food_swap_sheet.dart';
+import 'food_swap_requests.dart';
+import '../../../core/display_language/food_swap_request_copy.dart';
+import '../tour/tour_targets.dart';
 
 class TodayMeals extends ConsumerStatefulWidget {
   const TodayMeals({required this.onLogged, this.revision = 0, super.key});
@@ -22,6 +28,7 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
   String? _error;
   bool _busy = false;
   int _request = 0;
+  int _swapRequestsRevision = 0;
 
   @override
   void initState() {
@@ -68,6 +75,26 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
     if (mounted) await _load();
   }
 
+  Future<void> _swap(PlannedMeal meal, PlannedFood food) async {
+    final FoodSwapCopy copy = FoodSwapCopy(ref.read(displayLanguageProvider));
+    final FoodSwapTarget target = FoodSwapTarget(plan: _plan!, slot: meal.slot, role: food.role);
+    final bool? saved = await showModalBottomSheet<bool>(context: context,
+      isScrollControlled: true, isDismissible: false, enableDrag: false,
+      builder: (_) => FoodSwapSheet(target: target));
+    if (!mounted) return;
+    if (saved == true) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(copy.saved)));
+    await _load();
+  }
+
+  Future<void> _requestSwap(PlannedMeal meal, int foodIndex) async {
+    final bool? sent = await showDialog<bool>(context: context, barrierDismissible: false,
+      builder: (_) => RequestFoodSwapDialog(plan: _plan!, meal: meal, foodIndex: foodIndex));
+    if (!mounted || sent != true) return;
+    setState(() => _swapRequestsRevision++);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+      FoodSwapRequestCopy(ref.read(displayLanguageProvider)).sent)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final PlannedMealsCopy copy = PlannedMealsCopy(ref.watch(displayLanguageProvider));
@@ -81,6 +108,8 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
             TextButton(onPressed: _busy ? null : _load, child: Text(copy.retry)),
           ],
           if (_plan != null) ..._contents(copy),
+          TourTarget(id: 'food_swap_requests', child: PlayerFoodSwapRequests(
+            revision: _swapRequestsRevision + widget.revision, onRefresh: () => _load())),
         ]))));
   }
 
@@ -110,9 +139,19 @@ class _TodayMealsState extends ConsumerState<TodayMeals> {
       Text('${meal.name.isEmpty ? copy.slot(meal.slot) : meal.name} · ${copy.calories(meal.calories)}',
         style: Theme.of(context).textTheme.titleMedium),
       if (meal.note.isNotEmpty) Text(meal.note),
-      for (final PlannedFood food in meal.foods)
-        Text('${copy.arabic ? food.arabicName ?? food.name : food.name} · ${copy.amount(food.grams)}'
-          '${food.portionGrams == null ? '' : ' (${(food.grams / food.portionGrams!).toStringAsFixed(1)} ${food.portionLabel})'}'),
+      for (final (int index, PlannedFood food) in meal.foods.indexed)
+        Row(children: <Widget>[
+          Expanded(child: Text('${copy.arabic ? food.arabicName ?? food.name : food.name} · ${copy.amount(food.grams)}'
+            '${food.portionGrams == null ? '' : ' (${(food.grams / food.portionGrams!).toStringAsFixed(1)} ${food.portionLabel})'}')),
+          if (_plan!.canSwap && _plan!.author == 'Player' && food.role.isNotEmpty)
+            IconButton(key: Key('swap_${meal.slot}_${food.role}'),
+              tooltip: FoodSwapCopy(copy.language).swap,
+              onPressed: _busy ? null : () => _swap(meal, food), icon: const Icon(Icons.swap_horiz)),
+          if (_plan!.canRequestSwap)
+            IconButton(key: Key('request_swap_${meal.slot}_$index'),
+              tooltip: FoodSwapRequestCopy(copy.language).request,
+              onPressed: _busy ? null : () => _requestSwap(meal, index), icon: const Icon(Icons.question_answer_outlined)),
+        ]),
       OutlinedButton(key: Key('log_planned_${meal.slot}'),
         onPressed: _busy ? null : () => _log(meal.slot, copy), child: Text(copy.log)),
     ]),

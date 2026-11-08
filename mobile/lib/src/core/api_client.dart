@@ -19,10 +19,12 @@ import 'coach_food_log_models.dart';
 import 'food_log_models.dart';
 import 'meal_setup_models.dart';
 import 'planned_meals_models.dart';
+import 'food_swap_models.dart';
 import 'sse.dart';
 import 'token_store.dart';
 
 part 'nutrition_draft_api.dart';
+part 'food_swap_request_api.dart';
 
 /// Raised for any failed service call, carrying the HTTP status when there was
 /// a response and a human-readable message from the service `detail` field.
@@ -2182,6 +2184,18 @@ class ApiClient {
     await _send(() => _dio.post<dynamic>('/nutrition/meals/log', data: <String, dynamic>{
       'slot': slot, 'entry_date': plan.date, 'plan_version_id': plan.planVersionId,
     }));
+  }
+
+  Future<FoodSwapCandidates> foodSwapCandidates(FoodSwapTarget target, String query) async {
+    final response = await _send(() => _dio.get<dynamic>('/nutrition/meals/swap-candidates',
+      queryParameters: <String, dynamic>{...target.toJson(), 'q': query}));
+    return _parseBody(response.data, FoodSwapCandidates.fromJson,
+      'The service returned invalid Food swap candidates.');
+  }
+
+  Future<void> swapPlannedFood(FoodSwapTarget target, String foodId) async {
+    await _send(() => _dio.post<dynamic>('/nutrition/meals/swap',
+      data: <String, dynamic>{...target.toJson(), 'food_id': foodId}));
   }
 
   Future<MealSetupState> saveMealSetup(MealSetupState setup) async {

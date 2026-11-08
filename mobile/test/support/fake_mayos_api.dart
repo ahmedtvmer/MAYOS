@@ -4,6 +4,8 @@ import 'package:mayos_mobile/src/core/models.dart';
 
 import 'fake_api_adapter.dart';
 
+part 'fake_food_swap_requests.dart';
+
 String _equipmentCategoryForFake(Object? equipment) {
   switch ('$equipment'.trim().toLowerCase()) {
     case 'barbell':
@@ -617,6 +619,8 @@ class FakeMayosApi {
 
   FakeResponse _handle(FakeRequest request) {
     final String path = request.path;
+    if (path.contains('/food-swap-requests')) return _foodSwapRequests(request);
+    if (path.endsWith('/nutrition/draft/foods')) return _foodSwapRequestFoods(request);
     if (path == '/nutrition/food-log/yesterday-meals') {
       return FakeResponse(200, <String, dynamic>{'today': foodLogToday,
         'meal_labels': _yesterdayFoodEntries.map((Map<String, dynamic> entry) => entry['meal_label']).toSet().toList()});

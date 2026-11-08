@@ -36,6 +36,7 @@ from database.migration_manager import get_ledger_schema_version
 from database.migration_manager import set_ledger_schema_version
 from database.program_cache import ensure_revision_schema
 from database.nutrition_drafts import NUTRITION_DRAFTS_DDL
+from database.food_swap_requests import ensure_schema as ensure_food_swap_request_schema
 
 EMBEDDING_DIM = 384
 
@@ -953,6 +954,7 @@ class SchemaMixin:
             self._ensure_linked_sign_in_account_provider()
             self._ensure_google_email_and_product_contact()
             self._ensure_program_request_week_columns()
+            ensure_food_swap_request_schema(self.catalog_conn)
             self._ensure_coach_invites_revoked_at()
             self.catalog_conn.execute("DROP TRIGGER IF EXISTS first_touch_acquisition_no_update")
             self.catalog_conn.execute(

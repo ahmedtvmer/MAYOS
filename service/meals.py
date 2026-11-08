@@ -19,7 +19,8 @@ def read(ledger, today):
     active = ledger.get_active_nutrition_plan()
     payload = json.loads(active["meals_json"]) if active["meals_json"] else None
     context = {"date": today.isoformat(), "plan_version_id": active["id"], "author": active["author"],
-               "day_type": state["target_day_type"], "enabled": bool(payload and payload["enabled"])}
+               "day_type": state["target_day_type"], "enabled": bool(payload and payload["enabled"]),
+               "can_swap": active["author"] == "Player"}
     if not payload or not payload.get("enabled"):
         if active["author"] == "Coach":
             return {**context, "status": "unavailable", "reason": "coach", "meals": []}

@@ -16,6 +16,9 @@ import '../../core/ui/mayos_text_field.dart';
 import '../../core/ui/first_strong_direction.dart';
 import '../../providers.dart';
 import 'coach_shared.dart';
+import 'coach_food_swap_request_editor.dart';
+import '../../core/display_language/copy_context.dart';
+import '../../core/display_language/food_swap_request_copy.dart';
 
 /// What [showCoachRequestResolveSheet] reports back: the updated request when
 /// the coaching action landed, the readable service refusal otherwise, or
@@ -125,10 +128,11 @@ class _CoachRequestDecisionControlsState
   }
 }
 
-/// The swap as the coach reads it: **old → new exercise**, or the new split
-/// for a split-change request (#121).
+/// The requested Exercise or Food swap, or the new Training program split.
 String coachRequestTitle(BuildContext context, ProgramRequest request) =>
-    coachCopyOf(context).programRequestTitle(
+    request.isFoodSwap
+    ? FoodSwapRequestCopy(displayCopyOf(context).languageCode).target(request.foodSwap!)
+    : coachCopyOf(context).programRequestTitle(
       isSubstitution: request.isExerciseSubstitution,
       exerciseName: request.exerciseName,
       day: request.dayName,
@@ -152,7 +156,8 @@ Widget coachRequestStatusChip(BuildContext context, ProgramRequest request) {
   );
 }
 
-/// The resolve sheet (#121): the player, the swap or the new split, the
+/// Food swaps open a replacement/grams editor; applying may include a reply.
+/// Training program requests use the resolve sheet (#121): the player, the swap or the new split, the
 /// player's reason, and the two coaching actions — **Apply swap** (or **Apply
 /// (rebuilds program)** for a split change), which never sends a reply, and
 /// **Decline**, which requires the player-visible reason below it (ADR 027,
@@ -164,6 +169,12 @@ Future<CoachRequestResolution> showCoachRequestResolveSheet(
   required ProgramRequest request,
   String? playerUsername,
 }) {
+  if (request.isFoodSwap) {
+    return showDialog<CoachRequestResolution>(context: context, barrierDismissible: false,
+      builder: (BuildContext dialogContext) => CoachFoodSwapRequestEditor(request: request,
+        onResolved: (ProgramRequest updated) => Navigator.pop(dialogContext, CoachRequestResolution.resolved(updated))))
+      .then((CoachRequestResolution? result) => result ?? const CoachRequestResolution.dismissed());
+  }
   if (!isDesktopLayout(context)) {
     return _showPhoneCoachRequestResolveSheet(
       context,

@@ -343,6 +343,7 @@ PROPERTY_TYPES: dict[str, PropertyType] = {
     "floor_applied": _boolean(),
     "proposal_decision": _enum(frozenset({"accepted", "kept"})),
     "decision_actor": _enum(frozenset({"player", "coach"})),
+    "request_status": _enum(frozenset({"pending", "applied", "declined"})),
     "value": _enum({"on_target", "roughly", "off"}),
     "latency_ms": _bounded_int(31_557_600),
     "finish_reason": _enum(AI_FINISH_REASONS),
@@ -370,6 +371,13 @@ EVENT_CATALOGUE: dict[str, EventContract] = {
     "nutrition_meals_turned_on": EventContract("server", dict(_COMMON_PROPERTIES)),
     "coach_nutrition_plan_published": EventContract(
         "server", {**_COMMON_PROPERTIES, "with_meals": PROPERTY_TYPES["with_meals"]},
+    ),
+    "nutrition_food_swapped": EventContract("server", dict(_COMMON_PROPERTIES)),
+    "nutrition_food_swap_request_created": EventContract(
+        "server", {**_COMMON_PROPERTIES, "request_status": PROPERTY_TYPES["request_status"]},
+    ),
+    "nutrition_food_swap_request_decided": EventContract(
+        "server", {**_COMMON_PROPERTIES, "request_status": PROPERTY_TYPES["request_status"]},
     ),
     "nutrition_adherence_logged": EventContract(
         "server", {**_COMMON_PROPERTIES, "value": PROPERTY_TYPES["value"]}

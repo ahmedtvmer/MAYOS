@@ -5,6 +5,7 @@ import json
 from core.meal_generator import MealGenerationInput, generate_meals
 from core.meal_setup import restriction_reasons
 from database.food_library.lookup import _food
+from database.nutrition_swap_foods import library_food, swap_allowed
 
 
 def reviewed_staples(ledger):
@@ -28,9 +29,22 @@ def _swaps(variant):
 def meals_still_allowed(ledger, meals):
     current = {food["id"]: food for food in reviewed_staples(ledger)}
     restrictions = ledger.get_meal_setup()["restrictions"]
-    return all(food["id"] in current and not (
-        set(restriction_reasons(current[food["id"]], restrictions)) - {"disliked"})
-        for meal in meals for food in meal["foods"])
+    return all(swap_allowed(library_food(ledger, food["id"]), restrictions) if food.get("swapped")
+               else food["id"] in current and not (
+                   set(restriction_reasons(current[food["id"]], restrictions)) - {"disliked"})
+               for meal in meals for food in meal["foods"])
+
+
+def _allowed_swaps(ledger, previous, day_type):
+    variant = previous.get("variants", {}).get(day_type, {})
+    saved = (_swaps(variant) if variant.get("meals")
+             else previous.get("swaps", {}).get(day_type, {}))
+    restrictions = ledger.get_meal_setup()["restrictions"]
+    foods = {food_id: library_food(ledger, food_id)
+             for roles in saved.values() for food_id in roles.values()}
+    allowed = {food_id: food for food_id, food in foods.items() if swap_allowed(food, restrictions)}
+    return {slot: {role: food_id for role, food_id in roles.items() if food_id in allowed}
+            for slot, roles in saved.items()}, allowed
 
 
 def generate_variants(ledger, targets, previous):
@@ -38,13 +52,15 @@ def generate_variants(ledger, targets, previous):
     staples = reviewed_staples(ledger)
     options = targets if any(key in targets for key in ("daily", "training_day", "rest_day")) else {"daily": targets}
     variants = {}
+    swaps = {}
     for day_type in ("training_day", "rest_day"):
         selected = options.get(day_type) or options.get("daily") or options.get("training_day") or options.get("rest_day")
+        swaps[day_type], swap_foods = _allowed_swaps(ledger, previous, day_type)
         variants[day_type] = generate_meals(MealGenerationInput(
             targets=selected, setup=setup, training_day=day_type == "training_day", staples=staples,
-            swaps=_swaps(previous.get("variants", {}).get(day_type, {})),
+            swaps=swaps[day_type], swap_foods=swap_foods,
         ))
-    return {"enabled": True, "variants": variants, "targets_changed": False}
+    return {"enabled": True, "variants": variants, "swaps": swaps, "targets_changed": False}
 
 
 def meals_for_version(ledger, plan):
