@@ -11,6 +11,7 @@ import '../tour/tour_targets.dart';
 import 'nutrition_pace_dial.dart';
 import 'food_log_day_view.dart';
 import 'meal_setup_screen.dart';
+import 'food_swap_requests.dart';
 
 class NutritionTab extends ConsumerStatefulWidget {
   const NutritionTab({this.targetsOnly = false, super.key});
@@ -159,7 +160,10 @@ class _NutritionTabState extends ConsumerState<NutritionTab> {
             child: Text(copy.setup,
                 style: Theme.of(context).textTheme.headlineMedium),
           ),
-          const MealSetupEntry(),
+          const Row(children: <Widget>[
+            Expanded(child: MealSetupEntry()),
+            FoodSwapRequestsEntry(),
+          ]),
           const SizedBox(height: 16),
           _sexConfirmation(copy),
           const SizedBox(height: 16),

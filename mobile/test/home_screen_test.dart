@@ -320,7 +320,6 @@ void main() {
       await tester.tap(find.text(listLabel));
       await tester.pumpAndSettle();
       expect(container.read(routerProvider).routerDelegate.state.uri.path, whatsNewPath);
-      expect(find.text(language == 'ar' ? 'أكتوبر 2026' : 'October 2026'), findsOneWidget);
       for (final FeatureEntry entry in featureList.where((FeatureEntry item) => item.release == currentFeatureRelease)) {
         await tester.scrollUntilVisible(
           find.text(language == 'ar' ? entry.titleAr : entry.titleEn),
@@ -329,6 +328,10 @@ void main() {
         );
         expect(find.text(language == 'ar' ? entry.titleAr : entry.titleEn), findsOneWidget, reason: entry.id);
       }
+      await tester.scrollUntilVisible(
+        find.text(language == 'ar' ? 'أكتوبر 2026' : 'October 2026'), 180,
+        scrollable: find.byType(Scrollable).first);
+      expect(find.text(language == 'ar' ? 'أكتوبر 2026' : 'October 2026'), findsOneWidget);
       expect(find.text(language == 'ar' ? 'أرني' : 'Show me'), findsWidgets);
       expect(analytics.events.any((Map<String, Object> event) =>
           event['event'] == 'whats_new_opened' &&
@@ -1491,6 +1494,8 @@ void main() {
           'workout_share_card' || 'duration_check' => find.text('Log workout'),
           'food_log' => find.byKey(const Key('food_log_entry_point')),
           'meal_setup' => find.byKey(const Key('meal_setup_entry')),
+          'food_swap_requests' => find.byKey(const Key('food_swap_requests_entry')),
+          'assistant_meals' => find.byTooltip('Assistant'),
           _ => find.text(entry.titleEn),
         };
         expect(realControl, findsOneWidget, reason: entry.id);

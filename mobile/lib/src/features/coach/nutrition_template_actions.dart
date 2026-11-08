@@ -26,8 +26,10 @@ class _NutritionTemplateActionsState extends ConsumerState<NutritionTemplateActi
     try {
       final Map<String, dynamic> source = await api.nutritionTemplateSource(widget.assignmentId);
       if (!mounted) return;
+      setState(() => _busy = false);
       final Map<String, dynamic>? metadata = await nutritionTemplateSaveDialog(context, copy);
       if (metadata == null || !mounted) return;
+      setState(() => _busy = true);
       await api.saveNutritionTemplate(widget.assignmentId, <String, dynamic>{
         ...metadata, 'source': 'current', 'plan_version_id': source['plan_version_id'],
       });

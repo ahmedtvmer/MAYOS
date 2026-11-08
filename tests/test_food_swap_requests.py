@@ -139,7 +139,10 @@ def test_foreign_coach_cannot_list_or_decide_or_read_player_requests(swap_queue)
     stranger = {'Authorization': f'Bearer {registered["access_token"]}'}
     token = coach_service.issue_coach_invite(db, 'foreign-swap-coach', actor='cli')['token']
     assert client.post('/coach/invite/redeem', headers=stranger, json={'token': token}).status_code == 200
-    assert client.get(f'/coach/assignments/{assignment_id}/program-requests', headers=stranger).status_code == 404
+    refused = client.get(f'/coach/assignments/{assignment_id}/program-requests', headers=stranger)
+    unknown = client.get('/coach/assignments/unknown/program-requests', headers=stranger)
+    assert refused.status_code == unknown.status_code == 403
+    assert refused.json() == unknown.json()
     assert client.post(_decision_path(swap_queue, record, 'decline'), headers=stranger,
                        json={'response': 'No'}).status_code == 404
     assert client.get('/nutrition/food-swap-requests', headers=stranger).json()['requests'] == []
@@ -202,14 +205,19 @@ def test_account_soft_deletion_removes_food_request_content(swap_queue):
         assert connection.execute('SELECT COUNT(*) FROM food_swap_requests').fetchone()[0] == 0
 
 
-def test_request_analytics_respect_each_actors_opt_out(swap_queue, recording_analytics):
+@pytest.mark.parametrize('player_allowed,coach_allowed', [(False, False), (False, True), (True, False), (True, True)])
+def test_request_analytics_respect_each_actors_opt_out(swap_queue, recording_analytics, player_allowed, coach_allowed):
     client, _db, coach, player, _assignment_id, _target, _plan = swap_queue
-    for headers in (player, coach):
-        saved = client.put('/auth/analytics-preference', headers=headers, json={'analytics_allowed': False})
+    for headers, allowed in ((player, player_allowed), (coach, coach_allowed)):
+        saved = client.put('/auth/analytics-preference', headers=headers, json={'analytics_allowed': allowed})
         assert saved.status_code == 200, saved.text
     record = _create(swap_queue)
     response = client.post(_decision_path(swap_queue, record, 'decline'), headers=coach,
                            json={'response': 'Keep this food for now.'})
     assert response.status_code == 200, response.text
-    assert not [event for event in recording_analytics.events
-                if event['event'] in ('nutrition_food_swap_request_created', 'nutrition_food_swap_request_decided')]
+    events = [event for event in recording_analytics.events
+              if event['event'] in ('nutrition_food_swap_request_created', 'nutrition_food_swap_request_decided')]
+    assert [(event['event'], event['distinct_id']) for event in events] == [
+        *([('nutrition_food_swap_request_created', record['player_account_id'])] if player_allowed else []),
+        *([('nutrition_food_swap_request_decided', record['coach_account_id'])] if coach_allowed else []),
+    ]

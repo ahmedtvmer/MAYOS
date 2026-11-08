@@ -12,18 +12,20 @@ import 'package:mayos_mobile/src/features/coach/nutrition_template_actions.dart'
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_api_adapter.dart';
+import 'support/scroll_to_control.dart';
 
 void main() {
   testWidgets('saving a template flushes edits and pins the resulting draft revision', (WidgetTester tester) async {
     final _TemplateServer server = _TemplateServer();
     await tester.pumpWidget(_app(server, const CoachNutritionDraftScreen(assignmentId: 'assignment')));
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const Key('target_daily_calories')));
+    await scrollToControl(tester, find.byKey(const Key('target_daily_calories')));
     await tester.enterText(find.byKey(const Key('target_daily_calories')), '2400');
-    await tester.ensureVisible(find.byKey(const Key('save_nutrition_template')));
+    await scrollToControl(tester, find.byKey(const Key('save_nutrition_template')), delta: -200);
     await tester.tap(find.byKey(const Key('save_nutrition_template')));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('nutrition_template_name')), 'Weekly meals');
+    await tester.pump();
     await tester.tap(find.byKey(const Key('confirm_save_nutrition_template')));
     await tester.pumpAndSettle();
     final FakeRequest saved = server.adapter.requests.singleWhere((FakeRequest request) => request.path.endsWith('/save-template'));
@@ -40,7 +42,9 @@ void main() {
     await tester.tap(find.text('Save current plan as Nutrition template'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('nutrition_template_name')), 'Published meals');
+    await tester.pump();
     await tester.tap(find.widgetWithText(SwitchListTile, 'Include targets'));
+    await tester.pump();
     await tester.tap(find.byKey(const Key('confirm_save_nutrition_template')));
     await tester.pumpAndSettle();
     final Map<String, dynamic> saved = server.adapter.requests
@@ -58,7 +62,7 @@ void main() {
     await _chooseTemplate(tester);
     expect(server.adapter.requests.singleWhere((FakeRequest request) => request.path.endsWith('/apply')).body,
       <String, dynamic>{'assignment_id': 'assignment'});
-    await tester.scrollUntilVisible(find.byKey(const ValueKey<String>('breakfast_protein')), 200);
+    await scrollToControl(tester, find.byKey(const ValueKey<String>('breakfast_protein')));
     expect(tester.widget<TextFormField>(find.byKey(const ValueKey<String>('breakfast_protein'))).initialValue, '250');
     expect(server.adapter.requests.where((FakeRequest request) => request.path.endsWith('/publish')), isEmpty);
     expect(tester.takeException(), isNull);

@@ -132,9 +132,9 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'food_swap_requests',
     titleEn: 'Food swap requests',
-    sentenceEn: 'Ask your coach to swap a food in your Nutrition plan and see each request’s status and reply.',
+    sentenceEn: 'Ask your coach to swap a food in your Nutrition plan, and open your request history from Nutrition to see each status and reply.',
     titleAr: 'طلبات تبديل الطعام',
-    sentenceAr: 'اطلب من مدربك تبديل طعام في خطة التغذية وتابع حالة كل طلب ورد المدرب.',
+    sentenceAr: 'اطلب من مدربك تبديل طعام في خطة التغذية، وافتح سجل طلباتك من التغذية لمتابعة حالة كل طلب ورد المدرب.',
     target: 'food_swap_requests',
     location: TourShellTabLocation(tabIndex: 2),
     release: 6,

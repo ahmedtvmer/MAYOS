@@ -32,8 +32,7 @@ async def read_meals(request: Request,
                      db: Annotated[Any, Depends(get_db)]):
     today, assignment, _language = _player_context(player, ledger, db, request)
     state = await asyncio.to_thread(meals.read, ledger, today)
-    state["can_enable"] = not _coach_holds_authority(ledger.get_active_nutrition_plan(), assignment)
-    state["can_request_swap"] = not state["can_enable"] and state["status"] == "ready"
+    _apply_meal_permissions(state, ledger, assignment)
     return state
 
 
@@ -54,8 +53,13 @@ async def enable_meals(request: Request,
             account_id=account_id_of(player), event="nutrition_meals_turned_on",
             domain_key=f"{player}:meals:{state['plan_version_id']}", role="player", properties={},
         ))
-    state["can_enable"] = True
+    _apply_meal_permissions(state, ledger, assignment)
     return state
+
+
+def _apply_meal_permissions(state, ledger, assignment):
+    state["can_enable"] = not _coach_holds_authority(ledger.get_active_nutrition_plan(), assignment)
+    state["can_request_swap"] = not state["can_enable"] and state["status"] == "ready"
 
 
 @router.post("/meals/log", status_code=201)

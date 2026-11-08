@@ -15,6 +15,7 @@ import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_media_http.dart';
 import 'support/fake_mayos_api.dart';
+import 'support/scroll_to_control.dart';
 
 /// Pumps finite frames until [finder] matches, then a few more so transitions
 /// settle without depending on `pumpAndSettle` (indeterminate spinners never settle).
@@ -149,7 +150,8 @@ void main() {
     expect(find.text('Cardio target adjustment +150 kcal'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    await tester.ensureVisible(find.text('Save targets'));
+    await scrollToControl(tester, find.text('Save targets'),
+      list: find.byKey(const Key('coach_player_history_scroll')));
     await tester.tap(find.text('Save targets'));
     await tester.pumpAndSettle();
     expect(find.text('Take over Nutrition targets'), findsOneWidget);
@@ -158,19 +160,22 @@ void main() {
     expect(fake.coachNutritionSaveRequests.single['confirm_takeover'], isTrue);
     expect(fake.coachNutritionSaveRequests.single['targets']['calories'], 1980);
 
-    await tester.ensureVisible(find.text('Save targets'));
+    await scrollToControl(tester, find.text('Save targets'),
+      list: find.byKey(const Key('coach_player_history_scroll')));
     await tester.tap(find.text('Save targets'));
     await tester.pumpAndSettle();
     expect(find.text('Take over Nutrition targets'), findsNothing);
     expect(fake.coachNutritionSaveRequests, hasLength(2));
     expect(fake.coachNutritionSaveRequests.last['confirm_takeover'], isFalse);
 
-    await tester.ensureVisible(find.text('Separate training-day and rest-day targets'));
+    await scrollToControl(tester, find.text('Separate training-day and rest-day targets'), delta: -200,
+      list: find.byKey(const Key('coach_player_history_scroll')));
     await tester.tap(find.text('Separate training-day and rest-day targets'));
     await tester.pumpAndSettle();
     expect(find.text('Training day'), findsOneWidget);
     expect(find.text('Rest day'), findsOneWidget);
-    await tester.ensureVisible(find.text('Save targets'));
+    await scrollToControl(tester, find.text('Save targets'),
+      list: find.byKey(const Key('coach_player_history_scroll')));
     await tester.tap(find.text('Save targets'));
     await tester.pumpAndSettle();
     expect(fake.coachNutritionSaveRequests.last['training_day_targets'], isNotNull);

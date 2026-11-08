@@ -11,6 +11,7 @@ import 'package:mayos_mobile/src/features/coach/coach_nutrition_draft_screen.dar
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_api_adapter.dart';
+import 'support/scroll_to_control.dart';
 
 void main() {
   for (final String language in <String>['en', 'ar']) {
@@ -22,14 +23,14 @@ void main() {
         await tester.pumpAndSettle();
         final Finder editor = find.byType(CoachNutritionDraftScreen);
         final Finder target = find.byKey(const Key('target_daily_calories'));
-        await tester.ensureVisible(target);
+        await scrollToControl(tester, target);
         await tester.enterText(target, '2300');
         await tester.pump(const Duration(milliseconds: 650));
         await tester.pumpAndSettle();
         expect(server.saves.single['draft']['targets']['daily']['calories'], 2300);
         expect(server.saves.single['revision'], 1);
         final Finder grams = find.byKey(const ValueKey<String>('breakfast_protein'));
-        await tester.ensureVisible(grams);
+        await scrollToControl(tester, grams);
         await tester.enterText(grams, '300');
         await tester.pump(const Duration(milliseconds: 650));
         await tester.pumpAndSettle();
@@ -72,10 +73,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 650));
     await tester.pumpAndSettle();
     expect(find.text('Could not save draft.'), findsOneWidget);
-    await tester.scrollUntilVisible(find.byKey(const Key('publish_nutrition_draft')), 250);
+    await scrollToControl(tester, find.byKey(const Key('publish_nutrition_draft')));
     expect(tester.widget<FilledButton>(find.byKey(const Key('publish_nutrition_draft'))).onPressed, isNull);
     server.failSave = false;
-    await tester.scrollUntilVisible(find.text('Retry save'), -250);
+    await scrollToControl(tester, find.text('Retry save'), delta: -200);
     await tester.tap(find.text('Retry save'));
     await tester.pumpAndSettle();
     expect(find.text('All changes saved'), findsOneWidget);
@@ -94,8 +95,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(server.draft['targets']['training_day']['calories'], 2500);
     expect(server.draft['targets']['rest_day']['calories'], 2000);
-    final Finder grams = find.byKey(const ValueKey<String>('breakfast_protein')).first;
-    await tester.ensureVisible(grams);
+    final Finder grams = find.descendant(
+      of: find.byKey(const ValueKey<String>('training_day_breakfast')),
+      matching: find.byKey(const ValueKey<String>('breakfast_protein')));
+    await scrollToControl(tester, grams);
     await tester.enterText(grams, '150');
     await tester.pump(const Duration(milliseconds: 650));
     await tester.pumpAndSettle();
@@ -108,7 +111,7 @@ void main() {
     final _DraftServer server = _DraftServer()..publishable = false;
     await tester.pumpWidget(_app(server, 'en'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.byKey(const Key('publish_nutrition_draft')), 250);
+    await scrollToControl(tester, find.byKey(const Key('publish_nutrition_draft')));
     expect(find.textContaining('totals must be within 15%'), findsOneWidget);
     expect(tester.widget<FilledButton>(find.byKey(const Key('publish_nutrition_draft'))).onPressed, isNull);
     expect(server.publications, isEmpty);
@@ -118,7 +121,7 @@ void main() {
     final _DraftServer server = _DraftServer();
     await tester.pumpWidget(_app(server, 'en'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.byKey(const Key('publish_nutrition_draft')), 250);
+    await scrollToControl(tester, find.byKey(const Key('publish_nutrition_draft')));
     await tester.tap(find.byKey(const Key('publish_nutrition_draft')));
     await tester.pumpAndSettle();
     expect(find.textContaining('gives you Nutrition authority'), findsOneWidget);
@@ -132,7 +135,7 @@ void main() {
     final _DraftServer server = _DraftServer();
     await tester.pumpWidget(_app(server, 'en'));
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(find.text('Add Staple food'), 250);
+    await scrollToControl(tester, find.text('Add Staple food'));
     await tester.tap(find.text('Add Staple food'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Food restriction: milk'), findsOneWidget);

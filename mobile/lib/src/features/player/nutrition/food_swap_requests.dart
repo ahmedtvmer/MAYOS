@@ -9,6 +9,24 @@ import '../../../core/display_language/food_swap_request_copy.dart';
 import '../../../core/models.dart';
 import '../../../core/planned_meals_models.dart';
 import '../../../providers.dart';
+import '../tour/tour_targets.dart';
+
+class FoodSwapRequestsEntry extends ConsumerWidget {
+  const FoodSwapRequestsEntry({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final FoodSwapRequestCopy copy = FoodSwapRequestCopy(ref.watch(displayLanguageProvider));
+    return TourTarget(id: 'food_swap_requests', child: IconButton(
+      key: const Key('food_swap_requests_entry'), tooltip: copy.title,
+      icon: const Icon(Icons.question_answer_outlined),
+      onPressed: () => Navigator.of(context).push<void>(MaterialPageRoute<void>(
+        builder: (_) => Directionality(textDirection: copy.arabic ? TextDirection.rtl : TextDirection.ltr,
+          child: Scaffold(appBar: AppBar(title: Text(copy.title)),
+            body: const SingleChildScrollView(padding: EdgeInsets.all(16), child: PlayerFoodSwapRequests()))))),
+    ));
+  }
+}
 
 class RequestFoodSwapDialog extends ConsumerStatefulWidget {
   const RequestFoodSwapDialog({super.key, required this.plan, required this.meal, required this.foodIndex});

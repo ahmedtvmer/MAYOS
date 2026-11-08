@@ -21,7 +21,7 @@ def _error(error):
     return HTTPException(status, str(error))
 
 
-def _capture(request, account_id, record):
+def _capture(request, db, account_id, record):
     created = record["status"] == "pending"
     analytics.capture_for_request(request, analytics.AnalyticsEvent(
         account_id=account_id,
@@ -29,7 +29,7 @@ def _capture(request, account_id, record):
         role="player" if created else "coach",
         domain_key=f"food-swap-request:{record['request_id']}:{record['status']}",
         properties={"request_status": record["status"]},
-    ))
+    ), preference_reader=db.analytics_preference_allows)
 
 
 @router.get("/nutrition/food-swap-requests")
@@ -44,7 +44,7 @@ async def create_request(request: Request, body: FoodSwapRequestIn, player: Play
     except (ValueError, PermissionError) as error:
         raise _error(error) from None
     if created:
-        _capture(request, account_id_of(player), record)
+        _capture(request, db, account_id_of(player), record)
     return record
 
 
@@ -67,5 +67,5 @@ async def _decide(request, db, command):
         record = await asyncio.to_thread(requests.decide, db, command)
     except (ValueError, PermissionError) as error:
         raise _error(error) from None
-    _capture(request, command.coach_id, record)
+    _capture(request, db, command.coach_id, record)
     return record

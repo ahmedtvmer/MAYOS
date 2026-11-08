@@ -12,6 +12,7 @@ import 'package:mayos_mobile/src/features/player/nutrition/meal_setup_screen.dar
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
+import 'support/scroll_to_control.dart';
 
 void main() {
   for (final String language in <String>['en', 'ar']) {
@@ -35,17 +36,17 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text(copy.timeLabel('afternoon')).last);
         await tester.pumpAndSettle();
-        await tester.ensureVisible(find.byKey(const Key('allergy_eggs')));
+        await scrollToControl(tester, find.byKey(const Key('allergy_eggs')));
         await tester.tap(find.byKey(const Key('allergy_eggs')));
-        await tester.scrollUntilVisible(find.byKey(const Key('meal_vegetarian')), 200);
+        await scrollToControl(tester, find.byKey(const Key('meal_vegetarian')));
         await tester.tap(find.byKey(const Key('meal_vegetarian')));
-        await tester.scrollUntilVisible(find.byKey(const Key('add_disliked_food')), 200);
+        await scrollToControl(tester, find.byKey(const Key('add_disliked_food')));
         await tester.tap(find.byKey(const Key('add_disliked_food')));
         await tester.pumpAndSettle();
         await tester.tap(find.text(language == 'ar' ? 'بيضة' : 'Egg'));
         await tester.pumpAndSettle();
         expect(find.byType(MealSetupScreen), findsOneWidget);
-        await tester.scrollUntilVisible(find.byKey(const Key('save_meal_setup')), 200);
+        await scrollToControl(tester, find.byKey(const Key('save_meal_setup')));
         await tester.tap(find.byKey(const Key('save_meal_setup')));
         await tester.pumpAndSettle();
         expect(find.byType(MealSetupScreen), findsNothing);
@@ -54,7 +55,9 @@ void main() {
         expect(tester.widget<ChoiceChip>(find.byKey(const Key('meal_count_5'))).selected, isTrue);
         expect(find.text(copy.timeLabel('afternoon')), findsOneWidget);
         expect(tester.widget<FilterChip>(find.byKey(const Key('allergy_eggs'))).selected, isTrue);
+        await scrollToControl(tester, find.byKey(const Key('meal_vegetarian')));
         expect(tester.widget<SwitchListTile>(find.byKey(const Key('meal_vegetarian'))).value, isTrue);
+        await scrollToControl(tester, find.text(language == 'ar' ? 'بيضة' : 'Egg'));
         expect(find.text(language == 'ar' ? 'بيضة' : 'Egg'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
@@ -87,13 +90,13 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('meal_count_4')));
     await tester.pump();
-    await tester.scrollUntilVisible(find.byKey(const Key('save_meal_setup')), 200);
+    await scrollToControl(tester, find.byKey(const Key('save_meal_setup')));
     await tester.tap(find.byKey(const Key('save_meal_setup')));
     await tester.pumpAndSettle();
     expect(find.byType(MealSetupScreen), findsOneWidget);
     expect(find.text('Could not save Meal setup.'), findsOneWidget);
     fake.mealSetupSaveFails = false;
-    await tester.scrollUntilVisible(find.byKey(const Key('save_meal_setup')), 200);
+    await scrollToControl(tester, find.byKey(const Key('save_meal_setup')));
     await tester.tap(find.byKey(const Key('save_meal_setup')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('meal_setup_entry')));

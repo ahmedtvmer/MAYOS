@@ -16,6 +16,7 @@ import 'package:mayos_mobile/src/features/player/nutrition/nutrition_tab.dart';
 import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_mayos_api.dart';
+import 'support/scroll_to_control.dart';
 
 void main() {
   for (final String language in <String>['en', 'ar']) {
@@ -541,6 +542,7 @@ void main() {
       expect(fake.foodLogEntries[fake.foodLogToday], isEmpty);
       await _scrollNutritionTo(tester, find.text('Macros'));
       expect(find.text('Macros'), findsOneWidget);
+      await _scrollNutritionTo(tester, find.text('2000'), delta: -200);
       expect(find.text('2000'), findsOneWidget);
     },
   );
@@ -721,9 +723,8 @@ void main() {
 }
 
 Future<void> _scrollNutritionTo(WidgetTester tester, Finder target, {double delta = 200}) async {
-  await tester.scrollUntilVisible(target, delta, scrollable: find.descendant(
-    of: find.byType(NutritionTab), matching: find.byType(Scrollable)).first);
-  await tester.pumpAndSettle();
+  await scrollToControl(tester, target, delta: delta,
+    list: find.descendant(of: find.byType(NutritionTab), matching: find.byType(ListView)).first);
 }
 
 Future<void> _scrollAmountTo(WidgetTester tester, Finder target, {double delta = 200}) async {

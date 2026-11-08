@@ -902,8 +902,10 @@ def override_analytics_preference_reader(reader: Callable[[str], bool] | None) -
     _preference_reader_is_override = reader is not None
 
 
-def _account_allows_analytics(account_id: str) -> bool:
-    reader = _analytics_preference_reader
+def _account_allows_analytics(
+    account_id: str, reader: Callable[[str], bool] | None = None,
+) -> bool:
+    reader = reader if reader is not None else _analytics_preference_reader
     if reader is None:
         return False
     try:
@@ -962,8 +964,13 @@ def capture(event: AnalyticsEvent, client: ClientContext = UNKNOWN_CLIENT) -> No
     )
 
 
-def capture_for_request(request: Request, event: AnalyticsEvent) -> None:
-    """Captures using the safe client dimensions carried by this request."""
+def capture_for_request(
+    request: Request, event: AnalyticsEvent, *,
+    preference_reader: Callable[[str], bool] | None = None,
+) -> None:
+    """Use request dimensions and, when supplied, its store's live consent gate."""
+    if preference_reader is not None and not _account_allows_analytics(event.account_id, preference_reader):
+        return
     capture(event, client_context(request))
 
 

@@ -17,7 +17,7 @@ from tests.test_nutrition_api import api, _player_today, _seed_profile  # noqa: 
 
 
 @pytest.fixture
-def meals_api(api, tmp_path):  # noqa: F811
+def meals_api(api, tmp_path):
     client, db = api
     paths = FoodLibraryPaths(*(tmp_path / name for name in ("meal_foods.csv", "meal_portions.csv", "meal_curation.csv", "meal_recipes.csv", "meal_allergens.csv")))
     sources = [
