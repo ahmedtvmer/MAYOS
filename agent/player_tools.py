@@ -402,7 +402,13 @@ def _read_active_program(ledger: Any, args: ActiveProgramArgs | None = None, sto
                     ]
             else:
                 row = {"n": name, "s": sets, "r": reps_min, "R": reps_max, "m": muscle or "not set"}
-                if groups_differ:
+                if groups_differ and all(
+                    (group.reps_min, group.reps_max, group.load, group.amrap_last_set)
+                    == (reps_min, reps_max, None, False)
+                    for group in groups
+                ):
+                    row["i"] = [[group.sets, group.target_rir] for group in groups]
+                elif groups_differ:
                     row["g"] = [
                         {
                             "s": group.sets, "r": group.reps_min, "R": group.reps_max,
@@ -463,13 +469,13 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
         name="get_active_program",
         description=(
-            "Read the current player's active Training program, including its training days "
-            "and weekly sets by muscle for the current Program week. Pass week_order to read "
-            "another week, day_name to read a day, or exercise_name/exercise_id to narrow "
-            "prescription details. Compact keys: d=day, e=exercises, n=name, s=sets, "
-            "r/R=reps min/max, m=muscle, g=set groups. Multi-week compact days use w for week_order; "
-            "detailed day results include week_order. "
-            "Weak point groups can overlap. Use this before program questions."
+            "Read the current player's active Training program and weekly muscle sets for "
+            "the current Program week. Pass week_order for another week, day_name for a day, "
+            "or exercise_name/exercise_id for prescription details. Compact keys: d=day, "
+            "e=exercises, n=name, s=sets, r/R=reps min/max, m=muscle, i=[sets,RIR] groups, "
+            "g=set groups. exercise_columns defines array-row order. "
+            "w=week_order; detailed days include week_order. "
+            "Muscle groups overlap. Read before program questions."
         ),
         args_schema=ActiveProgramArgs,
         reader=_read_active_program,
@@ -557,6 +563,23 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
 )
 
 
+def _program_exercise_table(result: dict[str, Any]) -> dict[str, Any]:
+    days = result.get("days", [])
+    if not days or "e" not in days[0]:
+        return result
+    columns = list(dict.fromkeys(
+        key for day in days for exercise in day["e"] for key in exercise
+    ))
+    return {
+        **result,
+        "exercise_columns": columns,
+        "days": [
+            {**day, "e": [[exercise.get(key) for key in columns] for exercise in day["e"]]}
+            for day in days
+        ],
+    }
+
+
 def _encode_tool_result(tool_result: Any) -> str:
     rendered = tool_result if isinstance(tool_result, str) else json.dumps(
         tool_result, ensure_ascii=False, separators=(",", ":"), allow_nan=False
@@ -573,6 +596,12 @@ def _encode_tool_result(tool_result: Any) -> str:
         )
         if len(compact_days_rendered.encode("utf-8")) <= MAX_TOOL_RESULT_BYTES:
             return compact_days_rendered
+        table_rendered = json.dumps(
+            _program_exercise_table(compact_days),
+            ensure_ascii=False, separators=(",", ":"), allow_nan=False,
+        )
+        if len(table_rendered.encode("utf-8")) <= MAX_TOOL_RESULT_BYTES:
+            return table_rendered
         compact = {
             "status": "summary_only",
             "auth": "coach" if tool_result.get("program_authority") == "coach" else "player",

@@ -1321,6 +1321,10 @@ def test_active_program_tool_returns_weekly_muscle_totals_and_scoped_day():
     result = tool.args_reader(ledger, player_tools.ActiveProgramArgs())
     assert result["weekly_sets_by_muscle"]["biceps"] == 4
     assert result["weekly_sets_by_muscle"]["triceps"] == 3
+    assert result["days"][0]["e"][0]["g"] == [
+        {"s": 2, "r": 8, "R": 10, "i": 2.0},
+        {"s": 2, "r": 6, "R": 8, "i": 1.0},
+    ]
     assert result["message"]
     assert "day_name" in result["message"]
     scoped = tool.args_reader(ledger, player_tools.ActiveProgramArgs(day_name="pull"))
@@ -1337,6 +1341,42 @@ def test_active_program_tool_returns_weekly_muscle_totals_and_scoped_day():
     encoded = player_tools._encode_tool_result({**result, "days": result["days"] * 100})
     assert len(encoded.encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES
     assert json.loads(encoded)["status"] == "summary_only"
+
+
+def test_active_program_overflow_keeps_complete_prescriptions_as_column_rows():
+    program = GeneratedProgramSchema(
+        program_name="Large overview", split_type="Upper/Lower", weekly_frequency=5,
+        days=[
+            ProgramDaySchema(day_order=day, day_name=f"Day {day}", exercises=[
+                ProgramExerciseSchema(
+                    exercise_id=f"press-{day}-{index}",
+                    exercise_name=f"Bench Press Long Variant {day}-{index}",
+                    target_sets=2, target_reps_min=6, target_reps_max=10,
+                    set_groups=[
+                        ProgramSetGroupSchema(sets=1, reps_min=6, reps_max=10, target_rir=2),
+                        ProgramSetGroupSchema(sets=1, reps_min=6, reps_max=10, target_rir=1),
+                    ],
+                ) for index in range(9)
+            ]) for day in range(1, 6)
+        ],
+    )
+    ledger = SimpleNamespace(
+        get_active_program=lambda: program,
+        volume_review_exercise_targets=lambda ids: dict.fromkeys(ids, "Chest"),
+    )
+    tool = next(item for item in player_tools.PLAYER_READ_TOOL_REGISTRY if item.name == "get_active_program")
+    overview = tool.args_reader(ledger, player_tools.ActiveProgramArgs())
+    assert len(json.dumps(overview, separators=(",", ":")).encode()) > player_tools.MAX_TOOL_RESULT_BYTES
+
+    encoded = player_tools._encode_tool_result(overview)
+
+    assert len(encoded.encode()) <= player_tools.MAX_TOOL_RESULT_BYTES - 256
+    decoded = json.loads(encoded)
+    assert decoded["status"] == "ok"
+    assert decoded["weekly_sets_by_muscle"] == overview["weekly_sets_by_muscle"]
+    for original, compact in zip(overview["days"], decoded["days"], strict=True):
+        assert compact["d"] == original["d"]
+        assert [dict(zip(decoded["exercise_columns"], row, strict=True)) for row in compact["e"]] == original["e"]
 
 
 def test_active_program_totals_default_to_current_week_and_allow_explicit_week():
@@ -1452,6 +1492,16 @@ def test_generated_programs_fit_active_program_tool_cap_and_report_arm_sets(
     decoded = json.loads(encoded)
     assert decoded["status"] == "ok"
     assert set(WEAK_POINT_MUSCLES).issubset(decoded["weekly_sets_by_muscle"])
+    if frequency == 5 and split_id == "upper_lower":
+        assert len(encoded.encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES - 256
+    for day, compact_day in zip(program.days, decoded["days"], strict=True):
+        for exercise, row in zip(day.exercises, compact_day["e"], strict=True):
+            if "exercise_columns" in decoded:
+                row = dict(zip(decoded["exercise_columns"], row, strict=True))
+            if len(exercise.set_groups) > 1:
+                assert row["i"] == [
+                    [group.sets, group.target_rir] for group in exercise.set_groups
+                ]
 
     exercise_ids = sorted({exercise.exercise_id for day in program.days for exercise in day.exercises})
     targets = fresh_store.ledger.volume_review_exercise_targets(exercise_ids)

@@ -880,7 +880,14 @@ def test_generated_rationale_distinguishes_used_and_equipment_skipped_staples(fr
     )
     assert equipment_reason == "selection.equipment_access_staple"
     prescription = second_press["rationale"]["prescription"]
-    assert set(prescription["rir"]["params"]) == {"experience_level", "target_rir"}
+    assert prescription["rir"] == {
+        "code": "rir.test_set_rule",
+        "params": {
+            "experience_level": "intermediate", "target_rir": 1.0,
+            "test_set_rir": 2.0, "test_set_count": 1,
+            "test_set_counts_toward_weekly_sets": True,
+        },
+    }
     assert set(prescription["reps"]["params"]) == {"slot", "preference", "rep_min", "rep_max", "movement_class"}
     assert {"count"} <= set(prescription["sets"]["params"])
     assert {"slot", "movement_class", "rest_seconds"} <= set(prescription["rest"]["params"])
