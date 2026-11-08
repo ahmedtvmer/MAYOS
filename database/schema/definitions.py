@@ -36,6 +36,7 @@ from database.migration_manager import get_ledger_schema_version
 from database.migration_manager import set_ledger_schema_version
 from database.program_cache import ensure_revision_schema
 from database.nutrition_drafts import NUTRITION_DRAFTS_DDL
+from database.registry.nutrition_templates import NUTRITION_TEMPLATES_DDL
 
 EMBEDDING_DIM = 384
 
@@ -657,6 +658,8 @@ class SchemaMixin:
                 );
                 CREATE INDEX IF NOT EXISTS idx_program_templates_owner
                     ON program_templates(coach_account_id, archived_at, created_at);
+
+                {NUTRITION_TEMPLATES_DDL}
 
                 -- Coach-issued player assignment invites (ADR 014, ticket #24). The code
                 -- is a bearer code, not recipient bound: only the SHA-256 hash is stored,

@@ -9,6 +9,8 @@ import '../../core/display_language/controller.dart';
 import '../../core/display_language/nutrition_draft_copy.dart';
 import '../../providers.dart';
 import 'nutrition_draft_food_picker.dart';
+import 'coach_nutrition_templates_screen.dart';
+import 'nutrition_template_save_dialog.dart';
 
 const List<String> _nutrients = <String>['calories', 'protein_g', 'carbs_g', 'fat_g'];
 const Map<String, String> _foodNutrients = <String, String>{
@@ -16,8 +18,11 @@ const Map<String, String> _foodNutrients = <String, String>{
 };
 
 class CoachNutritionDraftScreen extends ConsumerStatefulWidget {
-  const CoachNutritionDraftScreen({required this.assignmentId, super.key});
+  const CoachNutritionDraftScreen({required this.assignmentId, super.key}) : templateId = null;
+  const CoachNutritionDraftScreen.template({required String templateId, super.key})
+      : templateId = templateId, assignmentId = '';
   final String assignmentId;
+  final String? templateId;
   @override
   ConsumerState<CoachNutritionDraftScreen> createState() => _CoachNutritionDraftScreenState();
 }
@@ -38,6 +43,9 @@ class _CoachNutritionDraftScreenState extends ConsumerState<CoachNutritionDraftS
   String? _error;
   Timer? _timer;
   Future<bool>? _saving;
+  String _templateName = '';
+  String? _templateDescription;
+  bool _includeTemplateTargets = false;
 
   NutritionDraftCopy get copy => NutritionDraftCopy(ref.read(displayLanguageProvider));
   ApiClient get api => ref.read(apiClientProvider);
@@ -69,15 +77,42 @@ class _CoachNutritionDraftScreenState extends ConsumerState<CoachNutritionDraftS
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; _draft = null; _foods.clear(); _editorGeneration++; });
     try {
+      if (widget.templateId != null) {
+        final Map<String, dynamic> template = await api.nutritionTemplate(widget.templateId!);
+        if (mounted) setState(() => _acceptTemplate(template));
+        return;
+      }
       final Map<String, dynamic> record = await api.coachNutritionDraft(widget.assignmentId);
       if (!mounted) return;
       setState(() { _draft = Map<String, dynamic>.from(record['draft'] as Map); _accept(record); });
     } on ApiException catch (error) {
-      if (mounted && error.statusCode != 404) setState(() => _error = error.message);
+      if (mounted && (error.statusCode != 404 || widget.templateId != null)) setState(() => _error = error.message);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
+
+  void _acceptTemplate(Map<String, dynamic> template) {
+    _templateName = template['name'] as String;
+    _templateDescription = template['description'] as String?;
+    _draft = Map<String, dynamic>.from(template['nutrition'] as Map);
+    for (final dynamic food in template['foods'] as List? ?? <dynamic>[]) {
+      _foods[food['id'] as String] = Map<String, dynamic>.from(food as Map);
+    }
+    _includeTemplateTargets = (_draft!['targets'] as Map).isNotEmpty;
+    if (!_includeTemplateTargets) {
+      final Map variants = _draft!['variants'] as Map;
+      _draft!['targets'] = <String, dynamic>{for (final String day in variants.keys.cast<String>()) day:
+        <String, dynamic>{for (final String key in _nutrients) key:
+          (variants[day] as List).fold<double>(0, (double sum, dynamic meal) => sum + _mealTotals(meal as Map)[key]!)}};
+    }
+    _evaluation = <String, dynamic>{'errors': <String>[], 'variants': <String, dynamic>{}};
+  }
+
+  Map<String, dynamic> _templateBody(Map<String, dynamic> snapshot) => <String, dynamic>{
+    'name': _templateName, 'description': _templateDescription,
+    'nutrition': <String, dynamic>{...snapshot, if (!_includeTemplateTargets) 'targets': <String, dynamic>{}},
+  };
 
   Future<void> _start(String source) async {
     setState(() { _loading = true; _error = null; });
@@ -117,15 +152,66 @@ class _CoachNutritionDraftScreenState extends ConsumerState<CoachNutritionDraftS
       final Map<String, dynamic> snapshot = jsonDecode(jsonEncode(_draft)) as Map<String, dynamic>;
       setState(() {});
       try {
-        final Map<String, dynamic> record = await api.saveNutritionDraft(widget.assignmentId, snapshot, _revision);
+        final Map<String, dynamic> record = widget.templateId == null
+          ? await api.saveNutritionDraft(widget.assignmentId, snapshot, _revision)
+          : await api.updateNutritionTemplate(widget.templateId!, _templateBody(snapshot));
         if (!mounted) return false;
-        setState(() { _accept(record); _error = null; });
+        setState(() { if (widget.templateId == null) _accept(record); _error = null; });
       } on ApiException catch (error) {
         if (mounted) setState(() { _dirty = true; _error = error.message; _conflict = error.statusCode == 409; });
         return false;
       }
     }
     return true;
+  }
+
+  Future<void> _saveAsTemplate() async {
+    if (!await _save() || !mounted) return;
+    final Map<String, dynamic>? metadata = await nutritionTemplateSaveDialog(context, copy);
+    if (metadata == null || !mounted || !await _save() || !mounted) return;
+    setState(() => _publishing = true);
+    try {
+      await api.saveNutritionTemplate(widget.assignmentId, <String, dynamic>{
+        ...metadata, 'source': 'draft', 'revision': _revision,
+      });
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:
+        Text(copy.text('Nutrition template saved', 'تم حفظ قالب خطة التغذية'))));
+    } on ApiException catch (error) {
+      if (mounted) setState(() { _error = error.message; _conflict = error.statusCode == 409; });
+    } finally {
+      if (mounted) setState(() => _publishing = false);
+    }
+  }
+
+  Future<void> _applyTemplate() async {
+    if (!await _save() || !mounted) return;
+    final String? templateId = await Navigator.push<String>(context, MaterialPageRoute<String>(
+      builder: (_) => const CoachNutritionTemplatesScreen(selectForDraft: true)));
+    if (templateId == null || !mounted) return;
+    if (_draft != null) {
+      final bool replace = await showDialog<bool>(context: context, builder: (BuildContext context) => AlertDialog(
+        title: Text(copy.text('Replace this draft?', 'استبدال هذه المسودة؟')),
+        content: Text(copy.text('The template fills this draft. Review it before publishing.', 'يملأ القالب هذه المسودة. راجعها قبل النشر.')),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(copy.text('Cancel', 'إلغاء'))),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(copy.text('Replace draft', 'استبدال المسودة'))),
+        ])) ?? false;
+      if (!replace || !mounted) return;
+    }
+    setState(() => _publishing = true);
+    try {
+      final Map<String, dynamic> record = await api.applyNutritionTemplate(templateId, widget.assignmentId,
+        revision: _draft == null ? null : _revision);
+      if (!mounted) return;
+      setState(() {
+        _draft = Map<String, dynamic>.from(record['draft'] as Map);
+        _foods.clear(); _accept(record); _dirty = false; _error = null; _editorGeneration++;
+      });
+    } on ApiException catch (error) {
+      if (mounted) setState(() { _error = error.message; _conflict = error.statusCode == 409; });
+    } finally {
+      if (mounted) setState(() => _publishing = false);
+    }
   }
 
   Future<void> _leave() async {
@@ -191,7 +277,8 @@ class _CoachNutritionDraftScreenState extends ConsumerState<CoachNutritionDraftS
       child: PopScope<Object?>(canPop: _allowPop || (!_dirty && _saving == null && !_publishing),
         onPopInvokedWithResult: (bool didPop, Object? result) { if (!didPop) _leave(); },
         child: Scaffold(
-        appBar: AppBar(title: Text(copy.title), leading: BackButton(onPressed: _leave)),
+        appBar: AppBar(title: Text(widget.templateId == null ? copy.title : copy.text('Edit Nutrition template', 'تعديل قالب خطة تغذية')),
+          leading: BackButton(onPressed: _leave)),
         body: _loading ? const Center(child: CircularProgressIndicator()) : Center(
           child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 1000),
             child: AbsorbPointer(absorbing: _publishing, child: ListView(key: ValueKey<int>(_editorGeneration), padding: const EdgeInsets.all(16),
@@ -204,7 +291,13 @@ class _CoachNutritionDraftScreenState extends ConsumerState<CoachNutritionDraftS
                   else if (_draft != null) TextButton(onPressed: _save, child: Text(copy.retry))
                   else TextButton(onPressed: _load, child: Text(copy.text('Retry', 'إعادة المحاولة'))),
                 ],
-                if (_draft == null) _starts() else ..._editor(),
+                if (widget.templateId == null) Wrap(spacing: 12, children: <Widget>[
+                  OutlinedButton(key: const Key('apply_nutrition_template'), onPressed: _applyTemplate,
+                    child: Text(copy.text('Apply Nutrition template', 'تطبيق قالب خطة تغذية'))),
+                  if (_draft != null) TextButton(key: const Key('save_nutrition_template'), onPressed: _saveAsTemplate,
+                    child: Text(copy.text('Save as Nutrition template', 'حفظ كقالب خطة تغذية'))),
+                ]),
+                if (_draft == null && widget.templateId == null) _starts() else if (_draft != null) ..._editor(),
               ])))),
       )));
   }
@@ -224,6 +317,18 @@ class _CoachNutritionDraftScreenState extends ConsumerState<CoachNutritionDraftS
     final Map<String, dynamic> variants = _draft!['variants'] as Map<String, dynamic>;
     return <Widget>[
       Text(_saving != null || _dirty ? copy.saving : copy.saved),
+      if (widget.templateId != null) ...<Widget>[
+        TextFormField(initialValue: _templateName, maxLength: 120,
+          decoration: InputDecoration(labelText: copy.text('Template name', 'اسم القالب')),
+          onChanged: (String name) => _changed(() => _templateName = name)),
+        TextFormField(initialValue: _templateDescription, maxLength: 2000, maxLines: 3,
+          decoration: InputDecoration(labelText: copy.text('Description (optional)', 'الوصف (اختياري)')),
+          onChanged: (String description) => _changed(() => _templateDescription = description)),
+        SwitchListTile(contentPadding: EdgeInsets.zero, value: _includeTemplateTargets,
+          title: Text(copy.text('Include targets', 'تضمين الأهداف')),
+          onChanged: (bool enabled) => _changed(() => _includeTemplateTargets = enabled)),
+        Text(copy.text('Editing this template never changes a Player’s plan or draft.', 'تعديل القالب لا يغيّر خطط اللاعبين أو مسوداتهم.')),
+      ],
       if (_targetsChanged) Text(copy.text('The Player’s targets changed since this draft started. Review targets and meals.',
         'تغيّرت أهداف اللاعب منذ بدء المسودة. راجع الأهداف والوجبات.')),
       DropdownButtonFormField<String>(value: _draft!['goal'] as String,
@@ -241,14 +346,14 @@ class _CoachNutritionDraftScreenState extends ConsumerState<CoachNutritionDraftS
         })),
       for (final String day in targets.keys) ...<Widget>[
         const SizedBox(height: 16), Text(copy.day(day), style: Theme.of(context).textTheme.titleLarge),
-        Wrap(spacing: 12, runSpacing: 12, children: <Widget>[
+        if (widget.templateId == null || _includeTemplateTargets) Wrap(spacing: 12, runSpacing: 12, children: <Widget>[
           for (final String key in _nutrients) SizedBox(width: 190, child: TextFormField(
             key: ValueKey<String>('target_${day}_$key'), initialValue: '${targets[day][key] ?? ''}',
             decoration: InputDecoration(labelText: copy.nutrient(key)), keyboardType: TextInputType.number,
             onChanged: (String amount) => _changed(() => targets[day][key] = int.tryParse(amount) ?? -1))),
         ]),
         if (variants.containsKey(day)) ...<Widget>[
-          _totals(day, variants[day] as List, targets[day] as Map),
+          if (widget.templateId == null || _includeTemplateTargets) _totals(day, variants[day] as List, targets[day] as Map),
           for (final Map<String, dynamic> meal in (variants[day] as List).cast<Map<String, dynamic>>())
             _meal(day, meal, variants[day] as List, targets[day] as Map),
           TextButton.icon(key: Key('add_meal_$day'), onPressed: (variants[day] as List).length >= 12 ? null : () => _changed(() {
@@ -260,9 +365,13 @@ class _CoachNutritionDraftScreenState extends ConsumerState<CoachNutritionDraftS
       for (final dynamic issue in _evaluation['errors'] as List? ?? <dynamic>[])
         Text(copy.issue('$issue'), style: TextStyle(color: Theme.of(context).colorScheme.error)),
       Wrap(spacing: 12, children: <Widget>[
+        if (widget.templateId != null) TextButton(onPressed: _save,
+          child: Text(copy.text('Save template', 'حفظ القالب')))
+        else ...<Widget>[
         FilledButton(key: const Key('publish_nutrition_draft'), onPressed: _dirty || _saving != null || _evaluation['can_publish'] != true || _conflict
           ? null : _publish, child: Text(copy.publish)),
         TextButton(onPressed: _discard, child: Text(copy.text('Discard draft', 'حذف المسودة'))),
+        ],
       ]),
     ];
   }
@@ -307,6 +416,7 @@ class _CoachNutritionDraftScreenState extends ConsumerState<CoachNutritionDraftS
 
   Widget _meal(String day, Map<String, dynamic> meal, List meals, Map targets) {
     final Map<String, double> totals = _mealTotals(meal);
+    final bool compareTargets = widget.templateId == null || _includeTemplateTargets;
     return Card(key: ValueKey<String>('${day}_${meal['slot']}'), child: Padding(padding: const EdgeInsets.all(12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: <Widget>[
         TextFormField(initialValue: meal['name'] as String? ?? '',
@@ -319,12 +429,12 @@ class _CoachNutritionDraftScreenState extends ConsumerState<CoachNutritionDraftS
           for (final String key in _nutrients)
             Builder(builder: (BuildContext context) {
               final double share = (targets[key] as num? ?? 0) / meals.length;
-              final bool warning = (totals[key]! - share).abs() > share.abs() * .05 + .000001;
-              return Text('${copy.nutrient(key)}: ${totals[key]!.round()} / ${share.round()}${warning ? ' ⚠' : ''}',
+              final bool warning = compareTargets && (totals[key]! - share).abs() > share.abs() * .05 + .000001;
+              return Text('${copy.nutrient(key)}: ${totals[key]!.round()}${compareTargets ? ' / ${share.round()}' : ''}${warning ? ' ⚠' : ''}',
                 style: TextStyle(color: warning ? Theme.of(context).colorScheme.error : null));
             }),
         ]),
-        Text(copy.text('Meal totals / equal share of daily targets', 'إجمالي الوجبة / حصة متساوية من الأهداف اليومية')),
+        if (compareTargets) Text(copy.text('Meal totals / equal share of daily targets', 'إجمالي الوجبة / حصة متساوية من الأهداف اليومية')),
         for (final Map<String, dynamic> portion in (meal['foods'] as List).cast<Map<String, dynamic>>())
           _portion(meal, portion),
         Wrap(spacing: 8, children: <Widget>[

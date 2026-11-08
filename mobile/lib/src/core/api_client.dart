@@ -23,6 +23,7 @@ import 'sse.dart';
 import 'token_store.dart';
 
 part 'nutrition_draft_api.dart';
+part 'nutrition_template_api.dart';
 
 /// Raised for any failed service call, carrying the HTTP status when there was
 /// a response and a human-readable message from the service `detail` field.

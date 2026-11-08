@@ -10,6 +10,7 @@ import '../../core/models.dart';
 import '../../providers.dart';
 import 'coach_food_log_view.dart';
 import 'coach_nutrition_draft_screen.dart';
+import 'nutrition_template_actions.dart';
 import '../../core/display_language/nutrition_draft_copy.dart';
 
 class CoachNutritionSegment extends ConsumerStatefulWidget {
@@ -179,6 +180,7 @@ class _CoachNutritionSegmentState extends ConsumerState<CoachNutritionSegment> {
             CoachNutritionDraftScreen(assignmentId: widget.assignmentId)));
           if (mounted) await _load();
         }, child: Text(NutritionDraftCopy(copy.languageCode).open)),
+        NutritionTemplateActions(assignmentId: widget.assignmentId),
         Wrap(spacing: 8, runSpacing: 8, children: <Widget>[
           ChoiceChip(label: Text(logCopy.targetsView), selected: !_foodLog,
             onSelected: (_) => setState(() => _foodLog = false)),
