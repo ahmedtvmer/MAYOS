@@ -43,6 +43,7 @@ class MayosCopy {
   String get whatsNewTitle => isArabic ? 'ما الجديد' : "What's new";
   String whatsNewRelease(int release) => switch (release) {
         1 || 4 => isArabic ? 'أكتوبر 2026' : 'October 2026',
+        6 => isArabic ? 'نوفمبر 2026' : 'November 2026',
         _ => isArabic ? 'إصدار $release' : 'Release $release',
       };
   String get whatsNewProfile => whatsNewTitle;

@@ -246,6 +246,9 @@ _Avoid_: Priority muscle, emphasis muscle
 The recorded reason for a Training program's Split, its day order, and each exercise's selection, position and prescription, written when generation or a later change makes that decision. The assistant explains a program from it and never invents a reason, including for a Coach's choices.
 _Avoid_: Explanation, reasoning trace
 
+**Test set**:
+The first working set of an exercise in a generated Training program, prescribed at a higher RIR than the following working sets. It counts toward weekly working sets. An exercise with only one set uses the working RIR, and deloads use the deload RIR on every set. This is an internal term, never labelled to the Player.
+
 **Program week**:
 An ordered group of Training program days. A Coach-authored Training program may contain multiple Program weeks; each week has its own ordered days. The Player advances to the next Program week only after committing every day in the current week on the active program version. Calendar dates, missed days, and Schedule pauses do not move the Player between weeks. When a new program version is published, the Player's current `(week_order, day_order)` carries forward and clamps to an existing week/day if edits removed its position. An automatic Training program has one repeating Program week.
 _Arabic_: أسبوع البرنامج

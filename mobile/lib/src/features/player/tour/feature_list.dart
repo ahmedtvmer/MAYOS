@@ -6,7 +6,7 @@ import 'tour_targets.dart';
 
 /// The shared Feature list used by the Tour and later discovery surfaces.
 const int tourCurrentVersion = 1;
-const int currentFeatureRelease = 5;
+const int currentFeatureRelease = 6;
 const int kReleaseShareCard = 3;
 const int kReleasePrCelebration = 3;
 const int kReleaseDurationCheck = 4;
@@ -63,6 +63,18 @@ List<String> validateFeatureEntries(
 }
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
+  FeatureEntry(
+    id: 'set_effort',
+    titleEn: 'Ease into each exercise',
+    sentenceEn: 'New generated programs start each exercise with more reps in reserve when it has multiple sets; follow the RIR on each row.',
+    titleAr: 'ابدأ كل تمرين بجهد أخف',
+    sentenceAr: 'تبدأ البرامج التدريبية الجديدة كل تمرين بتكرارات أكثر في الاحتياط عند وجود عدة مجموعات؛ اتبع RIR في كل صف.',
+    target: 'program',
+    location: TourShellTabLocation(tabIndex: 1),
+    release: 6,
+    audience: 'lifter',
+    requiresProgramControl: true,
+  ),
   FeatureEntry(
     id: 'home',
     titleEn: 'Home',
