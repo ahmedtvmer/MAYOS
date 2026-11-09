@@ -25,6 +25,7 @@ from fastapi.testclient import TestClient
 from agent import assistant_graph
 from agent import player_prompt
 from agent import player_tools
+from agent.chat_markers import SessionPointerFacts, format_session_pointer
 from agent.ProgramState import (
     GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema,
     ProgramSetGroupSchema, PersistedProgramSchema, PersistedProgramDaySchema,
@@ -32,7 +33,9 @@ from agent.ProgramState import (
 )
 from agent import program_generator, program_rules
 from agent.focus_muscles import FOCUS_REVIEW_MUSCLES
+from agent.program_prescription import MAX_PROGRAM_WEEKS
 from core.weak_points import WEAK_POINT_MUSCLES
+from core.movement_restrictions import MOVEMENT_RESTRICTIONS
 from database.database_manager import DatabaseManager
 from service import coach as coach_service
 from service import workouts as workouts_service
@@ -645,6 +648,75 @@ def test_player_model_input_excludes_identifying_fields(api, monkeypatch):
     assert "secretpineapple" not in rendered
 
 
+@pytest.mark.parametrize("message_count", [5, 6, 7, 10, 12])
+@pytest.mark.parametrize(
+    ("language", "filler", "question"),
+    [
+        ("en", "x", "How should I cue my bench?"),
+        ("ar", "ش", "إزاي أظبط تكنيك البنش؟"),
+    ],
+)
+def test_chat_turn_keeps_recent_six_full_and_trims_only_older_assistant_replies(
+    api, monkeypatch, message_count, language, filler, question
+):
+    # Cover short history, the 6/7 boundary, and the 10-message window; old
+    # replies below/at/above 600 characters must count characters, not bytes.
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "history-trimming"
+    headers = _authed(_register(client, username)["access_token"])
+    short_reply = "Short: " + filler * 592
+    exact_reply = "Exact: " + filler * 593
+    long_reply = "Older: " + filler * 900
+    old_user = "Old user: " + filler * 900
+    recent_reply = "Recent: " + filler * 900
+    recent_user = "Recent user: " + filler * 900
+    # Each entry supplies saved text and the independently expected model text.
+    history = [
+        ("user", "Outside user", "Outside user"),
+        ("assistant", "Outside answer", "Outside answer"),
+        ("assistant", short_reply, short_reply),
+        ("user", old_user, old_user),
+        ("assistant", exact_reply, exact_reply),
+        ("assistant", long_reply, long_reply[:600]),
+        ("assistant", recent_reply, recent_reply),
+        ("user", recent_user, recent_user),
+        ("assistant", recent_reply + " second", recent_reply + " second"),
+        ("user", recent_user + " second", recent_user + " second"),
+        ("assistant", recent_reply + " third", recent_reply + " third"),
+    ][-(message_count - 1):]
+    pointer = format_session_pointer(SessionPointerFacts(
+        display_language=language, day_name="Full A", performed_date="2026-11-01",
+        total_working_sets=3, total_tonnage_kg=150.0, readiness=4,
+    ))
+    with db.open_ledger(username) as ledger:
+        for role, saved_text, _expected in history:
+            ledger.add_chat_message(role, saved_text)
+        ledger.add_chat_message("assistant", pointer)
+    model = ScriptedChatModel(["Keep your movement controlled."])
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": question}
+    ) as response:
+        response.read()
+        assert response.status_code == 200
+
+    messages = model.calls[-1]["messages"]
+    expected = [(role, expected_text) for role, _saved, expected_text in history]
+    expected.append(("user", question))
+    assert [
+        (player_prompt.message_role(message), message.content)
+        for message in messages[1:]
+    ] == expected[-10:]
+    assert pointer not in "\n".join(str(message.content) for message in messages)
+    saved_history = client.get("/chat/history", headers=headers).json()
+    assert [(row["role"], row["content"]) for row in saved_history[:-2]] == [
+        *((role, saved_text) for role, saved_text, _expected in history),
+        ("assistant", pointer),
+    ]
+
+
 def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
     api, monkeypatch, caplog
 ):
@@ -701,7 +773,7 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
                     {"name": "get_active_program", "args": {}, "id": "program-call"},
                 ]
             ),
-            "Your goal and training age are recorded. Leg Day includes Squat.",
+            "Your goal and training age are recorded. Leg Day trains quads.",
         ],
         chunk_size=14,
     )
@@ -716,7 +788,7 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
         body = response.read().decode("utf-8")
         assert response.status_code == 200
 
-    assert _done_content(body) == "Your goal and training age are recorded. Leg Day includes Squat."
+    assert _done_content(body) == "Your goal and training age are recorded. Leg Day trains quads."
     assert [name for name in model.calls[0]["tools"]] == [
         "get_player_profile",
         "get_active_program",
@@ -742,7 +814,8 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
     assert "PROFILE_LONG_GOAL_PRIVATE" in combined_results
     assert "PROFILE_LIMITATION_PRIVATE" in combined_results
     assert "PROFILE_STRESS_PRIVATE" in combined_results
-    assert "Leg Day" in combined_results and "Squat" in combined_results
+    assert "Leg Day" in combined_results and "quads" in combined_results
+    assert "Squat" not in combined_results
     for private_value in (
         username,
         email,
@@ -1266,8 +1339,12 @@ def test_tool_result_keeps_followup_payload_under_the_prompt_ceiling(api, monkey
     username = "prompt-ceiling-tool"
     headers = _authed(_register(client, username)["access_token"])
     with db.open_ledger(username) as ledger:
-        for _ in range(9):
+        for _ in range(4):
             ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 2_900)
+        # #524 trims the first four replies to 600 chars. Enlarging the five
+        # recent replies keeps the initial prompt within 4 bytes of its old size.
+        for _ in range(5):
+            ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 4_752)
         ledger.upsert_player_profile(
             {"injuries_or_limitations": "PLAYER_LIMITATION " + "knee pain " * 260}
         )
@@ -1296,6 +1373,7 @@ def test_tool_result_keeps_followup_payload_under_the_prompt_ceiling(api, monkey
 
 
 def test_active_program_tool_returns_weekly_muscle_totals_and_scoped_day():
+    # #526 production regression: an unscoped read must answer weekly bi/tri sets.
     exercises = [
         ProgramExerciseSchema(exercise_id="curl", exercise_name="Curl", target_sets=4,
                               target_reps_min=8, target_reps_max=12, target_rpe=8,
@@ -1316,9 +1394,10 @@ def test_active_program_tool_returns_weekly_muscle_totals_and_scoped_day():
         get_active_program=lambda: program,
         volume_review_exercise_targets=lambda _ids: {"curl": "Biceps", "pushdown": "Triceps"},
     )
-    tool = next(item for item in player_tools.PLAYER_READ_TOOL_REGISTRY
+    tools, _ = player_tools.build_player_read_tools(ledger)
+    tool = next(item for item in tools
                 if item.name == "get_active_program")
-    result = tool.args_reader(ledger, player_tools.ActiveProgramArgs())
+    result = json.loads(tool.invoke({}))
     assert result["weekly_sets_by_muscle"]["biceps"] == 4
     assert result["weekly_sets_by_muscle"]["triceps"] == 3
     assert result["days"][0]["e"][0]["g"] == [
@@ -1327,7 +1406,9 @@ def test_active_program_tool_returns_weekly_muscle_totals_and_scoped_day():
     ]
     assert result["message"]
     assert "day_name" in result["message"]
-    scoped = tool.args_reader(ledger, player_tools.ActiveProgramArgs(day_name="pull"))
+    assert result["days"] == [{"day": "Pull", "muscles": ["biceps", "triceps", "not set"]}]
+    assert "Curl" not in json.dumps(result)
+    scoped = json.loads(tool.invoke({"day_name": "pull"}))
     assert scoped["days"][0]["day"] == "Pull"
     assert "weekly_sets_by_muscle" not in scoped
     for exercise in scoped["days"][0]["exercises"]:
@@ -1338,45 +1419,6 @@ def test_active_program_tool_returns_weekly_muscle_totals_and_scoped_day():
         {"sets": 2, "reps_min": 6, "reps_max": 8, "rir": 1.0},
     ]
     assert scoped["days"][0]["exercises"][0]["rest_seconds"] == 90
-    encoded = player_tools._encode_tool_result({**result, "days": result["days"] * 100})
-    assert len(encoded.encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES
-    assert json.loads(encoded)["status"] == "summary_only"
-
-
-def test_active_program_overflow_keeps_complete_prescriptions_as_column_rows():
-    program = GeneratedProgramSchema(
-        program_name="Large overview", split_type="Upper/Lower", weekly_frequency=5,
-        days=[
-            ProgramDaySchema(day_order=day, day_name=f"Day {day}", exercises=[
-                ProgramExerciseSchema(
-                    exercise_id=f"press-{day}-{index}",
-                    exercise_name=f"Bench Press Long Variant {day}-{index}",
-                    target_sets=2, target_reps_min=6, target_reps_max=10,
-                    set_groups=[
-                        ProgramSetGroupSchema(sets=1, reps_min=6, reps_max=10, target_rir=2),
-                        ProgramSetGroupSchema(sets=1, reps_min=6, reps_max=10, target_rir=1),
-                    ],
-                ) for index in range(9)
-            ]) for day in range(1, 6)
-        ],
-    )
-    ledger = SimpleNamespace(
-        get_active_program=lambda: program,
-        volume_review_exercise_targets=lambda ids: dict.fromkeys(ids, "Chest"),
-    )
-    tool = next(item for item in player_tools.PLAYER_READ_TOOL_REGISTRY if item.name == "get_active_program")
-    overview = tool.args_reader(ledger, player_tools.ActiveProgramArgs())
-    assert len(json.dumps(overview, separators=(",", ":")).encode()) > player_tools.MAX_TOOL_RESULT_BYTES
-
-    encoded = player_tools._encode_tool_result(overview)
-
-    assert len(encoded.encode()) <= player_tools.MAX_TOOL_RESULT_BYTES - 256
-    decoded = json.loads(encoded)
-    assert decoded["status"] == "ok"
-    assert decoded["weekly_sets_by_muscle"] == overview["weekly_sets_by_muscle"]
-    for original, compact in zip(overview["days"], decoded["days"], strict=True):
-        assert compact["d"] == original["d"]
-        assert [dict(zip(decoded["exercise_columns"], row, strict=True)) for row in compact["e"]] == original["e"]
 
 
 def test_active_program_totals_default_to_current_week_and_allow_explicit_week():
@@ -1407,10 +1449,10 @@ def test_active_program_totals_default_to_current_week_and_allow_explicit_week()
 
     current = tool.args_reader(ledger, player_tools.ActiveProgramArgs())
     assert current["weekly_sets_by_muscle"]["biceps"] == 4
-    assert current["days"][0]["w"] == 2
+    assert current["week_order"] == 2
     explicit = tool.args_reader(ledger, player_tools.ActiveProgramArgs(week_order=1))
     assert explicit["weekly_sets_by_muscle"]["biceps"] == 2
-    assert explicit["days"][0]["w"] == 1
+    assert explicit["week_order"] == 1
 
 
 def test_active_program_day_can_be_narrowed_to_one_complete_exercise():
@@ -1437,7 +1479,120 @@ def test_active_program_day_can_be_narrowed_to_one_complete_exercise():
     assert len(scoped["days"][0]["exercises"][0]["set_groups"]) == 3
 
 
-def test_active_program_summary_fallback_preserves_unmapped_muscle_totals():
+@pytest.mark.parametrize("scope,expected", [
+    ({"day_name": " pull "}, {"Pull": ["Curl", "Row", "Rear Fly"]}),
+    ({"exercise_name": " curl "}, {"Pull": ["Curl"], "Arms": ["Curl"]}),
+    ({"exercise_id": "curl-2"}, {"Arms": ["Curl"]}),
+    ({"muscle": " BICEPS "}, {"Pull": ["Curl"], "Arms": ["Curl"]}),
+    ({"muscle": "back"}, {"Pull": ["Row"]}),
+    ({"muscle": "upper back"}, {"Pull": ["Row"]}),
+    ({"muscle": "shoulders"}, {"Pull": ["Rear Fly"], "Arms": ["Lateral Raise"]}),
+    ({"muscle": "side_delts"}, {"Arms": ["Lateral Raise"]}),
+    ({"day_name": "Arms", "muscle": "biceps"}, {"Arms": ["Curl"]}),
+    ({"day_name": "Pull", "exercise_id": "curl-2"}, {}),
+    ({"muscle": "glutes"}, {}),
+    ({"exercise_name": "Not in this program"}, {}),
+])
+def test_active_program_scope_returns_only_matching_prescriptions(scope, expected):
+    program = PersistedProgramSchema(
+        program_name="Plan", split_type="Custom", weekly_frequency=2,
+        days=[
+            PersistedProgramDaySchema(day_order=order, day_name=name, exercises=[
+                PersistedProgramExerciseSchema(exercise_id=eid, exercise_name=ename, target_reps_min=8, target_reps_max=12)
+                for eid, ename in exercises
+            ])
+            for order, name, exercises in [
+                (2, "Arms", [("curl-2", "Curl"), ("pushdown", "Pushdown"), ("lateral", "Lateral Raise")]),
+                (1, "Pull", [("curl-1", "Curl"), ("row", "Row"), ("rear", "Rear Fly")]),
+            ]
+        ],
+    )
+    ledger = SimpleNamespace(
+        get_active_program=lambda: program,
+        volume_review_exercise_targets=lambda _ids: {
+            "curl-1": "Biceps", "curl-2": "Biceps", "pushdown": "Triceps",
+            "row": "Upper Back", "rear": "Rear Delts", "lateral": "Side Delts",
+        },
+    )
+    tools, _ = player_tools.build_player_read_tools(ledger)
+    tool = next(tool for tool in tools if tool.name == "get_active_program")
+
+    decoded = json.loads(tool.invoke(scope))
+
+    assert {day["day"]: [ex["name"] for ex in day["exercises"]] for day in decoded["days"]} == expected
+    assert all("sets" in ex and "rest_seconds" in ex for day in decoded["days"] for ex in day["exercises"])
+    assert "weekly_sets_by_muscle" not in decoded
+    assert [day["day"] for day in decoded["days"]] == list(expected)
+
+
+def test_active_program_overview_bounds_repeated_restriction_skips_to_selected_week():
+    skips = [
+        {"restriction": restriction, "slot": slot}
+        for restriction, rule in MOVEMENT_RESTRICTIONS.items() for slot in sorted(rule["slots"])
+    ]
+    program = PersistedProgramSchema(
+        program_name="Twelve weeks", split_type="Custom", weekly_frequency=5,
+        days=[
+            PersistedProgramDaySchema(day_order=order, week_order=week, day_name=f"Day {order}",
+                                      exercises=[PersistedProgramExerciseSchema(exercise_id="curl", exercise_name="Curl", target_reps_min=8, target_reps_max=12)])
+            for week in range(1, MAX_PROGRAM_WEEKS + 1) for order in range(5, 0, -1)
+        ],
+        program_rationale={"days": [
+            {"week_order": week, "day_order": order,
+             "skipped": skips + ([{"restriction": "Wrist loading", "slot": "first-week-only"}] if week == 1 else [])}
+            for week in range(1, MAX_PROGRAM_WEEKS + 1) for order in range(1, 6)
+        ]},
+    )
+    ledger = SimpleNamespace(
+        get_active_program=lambda: program,
+        get_program_position=lambda _program: SimpleNamespace(current_week=MAX_PROGRAM_WEEKS),
+        get_player_profile=lambda: {"movement_restrictions": list(MOVEMENT_RESTRICTIONS)},
+        volume_review_exercise_targets=lambda _ids: {"curl": "Biceps"},
+    )
+    tools, _ = player_tools.build_player_read_tools(ledger)
+    tool = next(tool for tool in tools if tool.name == "get_active_program")
+
+    encoded = tool.invoke({})
+    decoded = json.loads(encoded)
+
+    assert len(encoded.encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES
+    assert decoded["status"] == "ok"
+    assert [day["day"] for day in decoded["days"]] == [f"Day {order}" for order in range(1, 6)]
+    assert decoded["movement_restrictions"] == list(MOVEMENT_RESTRICTIONS)
+    assert decoded["skipped_restricted_slots"] == {
+        restriction: sorted(rule["slots"])
+        for restriction, rule in MOVEMENT_RESTRICTIONS.items() if rule["slots"]
+    }
+    first_week = json.loads(tool.invoke({"week_order": 1}))
+    assert "first-week-only" in first_week["skipped_restricted_slots"]["Wrist loading"]
+
+
+def test_active_program_overview_and_scopes_preserve_coach_authority_fields(api):
+    _client, db = api
+    _assigned_player(api, "overview-coach-player")
+    coach_id = db.get_active_account_by_username("coach")["account_id"]
+    player_id = db.get_active_account_by_username("overview-coach-player")["account_id"]
+    with db.open_ledger("overview-coach-player") as ledger:
+        ledger.save_training_program({
+            "program_name": "Coach plan", "split_type": "Full Body", "weekly_frequency": 1,
+            "days": [_day_plan().model_dump()],
+        }, published_by_coach_account_id=coach_id)
+        tools, _ = player_tools.build_player_read_tools(ledger, db, player_id)
+        tool = next(tool for tool in tools if tool.name == "get_active_program")
+        for scope in ({}, {"day_name": "Full A"}, {"exercise_id": "sq"}, {"muscle": "quads"}):
+            decoded = json.loads(tool.invoke(scope))
+            assert decoded["program_authority"] == "coach"
+            assert decoded["coach"] == COACH_USERNAME
+            assert "auth" not in decoded
+        # The generic oversized fallback must preserve the authority field too.
+        oversized = player_tools._encode_tool_result({
+            **json.loads(tool.invoke({})), "days": [{"day": "x" * 5000}],
+        })
+        assert json.loads(oversized)["program_authority"] == "coach"
+        assert json.loads(oversized)["coach"] == COACH_USERNAME
+
+
+def test_active_program_overview_preserves_days_and_unmapped_muscles_with_long_exercise_names():
     exercises = [
         ProgramExerciseSchema(
             exercise_id=f"exercise-{index}", exercise_name=f"Exercise {index} " + "x" * 1000,
@@ -1458,8 +1613,10 @@ def test_active_program_summary_fallback_preserves_unmapped_muscle_totals():
     active_program_tool = next(tool for tool in tools if tool.name == "get_active_program")
 
     decoded = json.loads(active_program_tool.invoke({}))
-    assert decoded["status"] == "summary_only"
+    assert decoded["status"] == "ok"
     assert decoded["other_muscles"] == {"Traps": 2, "Lower Back": 2}
+    assert decoded["days"] == [{"day": "Pull", "muscles": ["Traps", "Lower Back", "not set"]}]
+    assert "Exercise 0" not in json.dumps(decoded)
 
 
 @pytest.mark.parametrize("frequency,split_id,include_focus", PROGRAM_TOOL_CASES)
@@ -1486,22 +1643,15 @@ def test_generated_programs_fit_active_program_tool_cap_and_report_arm_sets(
 
     tool = next(item for item in player_tools.PLAYER_READ_TOOL_REGISTRY
                 if item.name == "get_active_program")
-    tool_result = tool.args_reader(fresh_store.ledger, player_tools.ActiveProgramArgs())
-    encoded = player_tools._encode_tool_result(tool_result)
-    assert len(encoded.encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES
-    decoded = json.loads(encoded)
-    assert decoded["status"] == "ok"
-    assert set(WEAK_POINT_MUSCLES).issubset(decoded["weekly_sets_by_muscle"])
-    if frequency == 5 and split_id == "upper_lower":
-        assert len(encoded.encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES - 256
-    for day, compact_day in zip(program.days, decoded["days"], strict=True):
-        for exercise, row in zip(day.exercises, compact_day["e"], strict=True):
-            if "exercise_columns" in decoded:
-                row = dict(zip(decoded["exercise_columns"], row, strict=True))
-            if len(exercise.set_groups) > 1:
-                assert row["i"] == [
-                    [group.sets, group.target_rir] for group in exercise.set_groups
-                ]
+    first_day = program.days[0]
+    scoped = json.loads(player_tools._encode_tool_result(tool.args_reader(
+        fresh_store.ledger, player_tools.ActiveProgramArgs(day_name=first_day.day_name))))
+    assert scoped["status"] == "ok"
+    for exercise, row in zip(first_day.exercises, scoped["days"][0]["exercises"], strict=True):
+        if len({group.target_rir for group in exercise.set_groups}) > 1:
+            assert [group["rir"] for group in row["set_groups"]] == [
+                group.target_rir for group in exercise.set_groups
+            ]
 
     exercise_ids = sorted({exercise.exercise_id for day in program.days for exercise in day.exercises})
     targets = fresh_store.ledger.volume_review_exercise_targets(exercise_ids)
@@ -1518,11 +1668,44 @@ def test_generated_programs_fit_active_program_tool_cap_and_report_arm_sets(
                 target = expected_sets if groups else expected_other
                 for key in groups or [muscle]:
                     target[key] = target.get(key, 0) + program_exercise_working_sets(exercise)
-    for muscle, sets in expected_sets.items():
-        assert decoded["weekly_sets_by_muscle"][muscle] == sets
-    assert decoded["other_muscles"] == expected_other
-    assert decoded["weekly_sets_by_muscle"]["biceps"] == expected_sets["biceps"]
-    assert decoded["weekly_sets_by_muscle"]["triceps"] == expected_sets["triceps"]
+    for week_count in range(1, MAX_PROGRAM_WEEKS + 1):
+        multiweek = PersistedProgramSchema(**{
+            **program.model_dump(),
+            "days": [
+                {**day.model_dump(), "week_order": week}
+                for week in range(1, week_count + 1) for day in program.days
+            ],
+        })
+        ledger = SimpleNamespace(
+            get_active_program=lambda: multiweek,
+            get_program_position=lambda _program: SimpleNamespace(current_week=week_count),
+            volume_review_exercise_targets=fresh_store.ledger.volume_review_exercise_targets,
+            get_player_profile=fresh_store.ledger.get_player_profile,
+        )
+        tools, _ = player_tools.build_player_read_tools(ledger)
+        tool = next(tool for tool in tools if tool.name == "get_active_program")
+        for scope in ({}, {"week_order": 1}):
+            encoded = tool.invoke(scope)
+            assert len(encoded.encode("utf-8")) <= player_tools.MAX_TOOL_RESULT_BYTES
+            decoded = json.loads(encoded)
+            assert decoded["status"] == "ok"
+            assert decoded["week_order"] == scope.get("week_order", week_count)
+            assert [day["day"] for day in decoded["days"]] == [day.day_name for day in program.days]
+            assert all(set(day) == {"day", "muscles"} for day in decoded["days"])
+            for day, stored_day in zip(decoded["days"], program.days):
+                expected_muscles = set()
+                for exercise in stored_day.exercises:
+                    muscle = targets.get(exercise.exercise_id)
+                    groups = [group for group, names in FOCUS_REVIEW_MUSCLES.items()
+                              if (muscle or "").casefold() in {name.casefold() for name in names}]
+                    expected_muscles.update(groups or [muscle or "not set"])
+                assert set(day["muscles"]) == expected_muscles
+            assert set(WEAK_POINT_MUSCLES).issubset(decoded["weekly_sets_by_muscle"])
+            for muscle, sets in expected_sets.items():
+                assert decoded["weekly_sets_by_muscle"][muscle] == sets
+            assert decoded["other_muscles"] == expected_other
+            assert decoded["weekly_sets_by_muscle"]["biceps"] == expected_sets["biceps"]
+            assert decoded["weekly_sets_by_muscle"]["triceps"] == expected_sets["triceps"]
     if include_focus:
         assert expected_sets["biceps"] > 0
         assert expected_sets["triceps"] > 0

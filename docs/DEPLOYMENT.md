@@ -1653,6 +1653,9 @@ The deploy script writes the required image tag to the deploy-owned
 ### Deploy (#376)
 
 Run the deploy command from the main checkout, never from a linked git worktree.
+It fetches `origin/master` and refuses unless HEAD equals that exact commit;
+merge a branch through a PR before deploying it to production. `rollback` and
+the server-side `pull` keep their existing commit rules.
 Set `MAYOS_DEPLOY_HOST` in the owner machine's environment or the checkout's
 ignored `.env` file:
 
@@ -1702,6 +1705,72 @@ refuses the rollback. It then checks `/readyz`:
 ```bash
 ./deploy/deploy_server.sh rollback COMMIT_SHA
 ```
+
+### Staging (#672, ADR 101)
+
+Use the same `MAYOS_DEPLOY_HOST` as production, from any checkout branch
+(linked worktrees are allowed):
+
+```bash
+./deploy/deploy_server.sh staging up
+./deploy/deploy_server.sh staging status
+./deploy/deploy_server.sh staging down
+```
+
+`up` uploads this checkout to `/opt/mayos/state/staging`, builds on the server,
+and waits up to three minutes for `/readyz`. It warns about uncommitted files,
+which are included in the build. Staging uses its own `mayos-staging` Compose
+project, `mayos-api-staging` images (last two kept), lock and history. It does
+not change production containers, `/opt/mayos/app/deploy/.image.env`, production
+history or rollback state. Its API and temporary BuildKit builder are each
+capped at 1536 MB; its builder is removed after building, without pruning the
+production build cache.
+Protected data files missing from the checkout are taken from `/opt/mayos/inputs`.
+
+`status` shows whether the API is running, its commit, container start time and
+auto-stop deadline. `down` stops and removes only the staging API. A systemd
+timer stops it at the first check after four hours (checks every 15 minutes).
+Set a positive whole number `MAYOS_STAGING_TTL_HOURS` in `staging.env` before
+`up` to change that lifetime; each new `up` restarts the clock. Container
+restart is disabled. A failed readiness check leaves staging available for
+inspection until `down` or the timer stops it.
+
+Staging is at `https://staging.mayos.online`. Configure the existing Cloudflare
+tunnel route for that hostname to `http://api-staging:8000`. The production
+project is invoked with `-p mayos` and creates `mayos_default`; staging joins
+that external network with the `api-staging` alias. When staging is off, the
+hostname shows a tunnel error page. No new host port is published.
+
+One-time server setup, run by the owner after merge (not by deploy):
+
+```bash
+sudo install -d -o root -g root -m 0755 /mnt/mayos-data/staging
+if ! sudo test -e /opt/mayos/staging.env; then
+  sudo install -o root -g root -m 0600 /dev/null /opt/mayos/staging.env
+fi
+sudoedit /opt/mayos/staging.env
+```
+
+Set independent
+`JWT_SECRET` and `ANONYMOUS_ID_SECRET`, plus
+`MAYOS_STAGING_HOSTNAME=staging.mayos.online` and any API settings needed for
+the review, such as `LLM_API_KEY`. Do not copy production sign-in secrets.
+The script refuses `up` with a missing settings file or data folder; create
+them using the steps above. Preparing or copying the old staging data from
+`/mnt/mayos-data/staging-data-202611081327` is a separate owner operation.
+
+Compose fixes the staging environment, disables Litestream and Discord
+alerts, and clears `SMTP_HOST` regardless of settings-file values. Emails
+appear in `docker logs` instead of being sent:
+
+```bash
+sudo docker logs mayos-staging-api-1
+```
+
+Install the auto-stop helper and units using the shared unit installation
+steps below. Enable the timer before starting staging; no staging API is
+started by enabling it. If the queue is already installed, run just the new
+staging install lines, `daemon-reload` and the timer enable command.
 
 ### Server-pulled deploy (#590, ADR 098)
 
@@ -1760,10 +1829,14 @@ sudo install -d -o deploy -g factory -m 2770 /opt/mayos/deploy-queue/requests
 sudo install -d -o deploy -g factory -m 2750 /opt/mayos/deploy-queue/results
 sudo -u deploy git clone https://github.com/ahmedtvmer/MYOS.git /opt/mayos/src
 sudo install -D -o root -g root -m 0755 deploy/deploy_queue_runner.sh /usr/local/libexec/mayos/deploy_queue_runner.sh
+sudo install -D -o root -g root -m 0644 deploy/staging_server.bash /usr/local/libexec/mayos/staging_server.bash
 sudo install -o root -g root -m 0644 deploy/systemd/mayos-deploy-queue.path /etc/systemd/system/
 sudo install -o root -g root -m 0644 deploy/systemd/mayos-deploy-queue.service /etc/systemd/system/
+sudo install -o root -g root -m 0644 deploy/systemd/mayos-staging-autostop.timer /etc/systemd/system/
+sudo install -o root -g root -m 0644 deploy/systemd/mayos-staging-autostop.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now mayos-deploy-queue.path
+sudo systemctl enable --now mayos-staging-autostop.timer
 ```
 
 Clone the checkout before enabling the path unit: it supplies the pull script
