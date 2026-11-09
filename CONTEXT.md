@@ -220,6 +220,13 @@ _Avoid_: User database, user DB
 The player's current structured selection of training days and exercises.
 _Arabic_: برنامج تدريبي
 
+**Program overview**:
+The active Training program's selected Program week as ordered day names, the
+muscles each day trains, weekly working sets by muscle, Program authority and
+Movement restriction skips. It contains no Exercise prescriptions; those require
+a named day, Exercise or muscle scope. The selected week defaults to the Player's
+current Program week.
+
 **Split**:
 The named arrangement of a Training program's training days across the week, such as Upper/Lower, Anterior/Posterior or PPL × UL, for a given number of training days. Every split includes a leg day.
 _Arabic_: تقسيمة

@@ -1,0 +1,62 @@
+name: mayos-staging
+
+services:
+  api:
+    image: "mayos-api-staging:${MAYOS_STAGING_IMAGE_TAG:?set staging image tag}"
+    build:
+      context: ..
+      dockerfile: Dockerfile.fly
+      args:
+        GIT_COMMIT: "${MAYOS_STAGING_COMMIT:?set staging commit}"
+    env_file:
+      - /opt/mayos/staging.env
+    environment:
+      JWT_SECRET: "${JWT_SECRET:?set JWT_SECRET in /opt/mayos/staging.env}"
+      ANONYMOUS_ID_SECRET: "${ANONYMOUS_ID_SECRET:?set ANONYMOUS_ID_SECRET in /opt/mayos/staging.env}"
+      MAYOS_ENV: staging
+      SENTRY_ENVIRONMENT: staging
+      MAYOS_LITESTREAM: "false"
+      DISCORD_ALERT_WEBHOOK_URL: ""
+      SMTP_HOST: ""
+      MAYOS_DATA_DIR: /data
+      MAYOS_REQUIRE_PERSISTENT_DATA: "true"
+      MAYOS_CLIENT_IP_HEADER: cf-connecting-ip
+      RESET_LINK_BASE_URL: "https://${MAYOS_STAGING_HOSTNAME:?set MAYOS_STAGING_HOSTNAME in /opt/mayos/staging.env}"
+    labels:
+      online.mayos.staging.commit: "${MAYOS_STAGING_COMMIT:?set staging commit}"
+      online.mayos.staging.ttl-hours: "${MAYOS_STAGING_TTL_HOURS:-4}"
+    expose:
+      - "8000"
+    volumes:
+      - type: bind
+        source: /mnt/mayos-data/staging
+        target: /data
+        bind:
+          create_host_path: false
+    networks:
+      production:
+        aliases:
+          - api-staging
+    mem_limit: 1536m
+    restart: "no"
+    command:
+      - uvicorn
+      - svc.app:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --workers
+      - "1"
+    stop_grace_period: 60s
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/readyz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+
+networks:
+  production:
+    external: true
+    name: mayos_default
