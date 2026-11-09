@@ -52,29 +52,37 @@ void main() {
     expect(analytics.events.where((event) => event['event'] == 'app_launched'), isEmpty);
   });
 
-  testWidgets('opted-out web startup does not record an app launch', (tester) async {
-    final FakeMayosApi api = FakeMayosApi()
-      ..currentUsername = 'alice'
-      ..issuedToken = 'token-alice'
-      ..analyticsAllowed = false
-      ..profileExists = true;
-    final InMemoryTokenStore tokens = InMemoryTokenStore();
-    await tokens.save('token-alice');
-    final FakeAnalyticsClient analytics = FakeAnalyticsClient();
-    await tester.pumpWidget(authApp(
-      api,
-      tokens,
-      analytics: analytics,
-      extraOverrides: <Override>[
-        appDisplayModeProvider.overrideWithValue('browser'),
-      ],
-    ));
-    for (int attempt = 0; attempt < 30; attempt++) {
-      await tester.pump(const Duration(milliseconds: 50));
-    }
-    await tester.pump(const Duration(seconds: 60));
-    expect(analytics.events.where((event) => event['event'] == 'app_launched'), isEmpty);
-  });
+  for (final bool allowed in <bool>[true, false]) {
+    testWidgets('authenticated web startup respects stored analytics=$allowed', (tester) async {
+      final FakeMayosApi api = FakeMayosApi()
+        ..currentUsername = 'alice'
+        ..issuedToken = 'token-alice'
+        ..analyticsAllowed = allowed
+        ..profileExists = true;
+      final InMemoryTokenStore tokens = InMemoryTokenStore();
+      await tokens.save('token-alice');
+      final FakeAnalyticsClient analytics = FakeAnalyticsClient();
+      await tester.pumpWidget(authApp(
+        api,
+        tokens,
+        analytics: analytics,
+        extraOverrides: <Override>[
+          appDisplayModeProvider.overrideWithValue('browser'),
+        ],
+      ));
+      for (int attempt = 0; attempt < 30; attempt++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      await tester.pump(const Duration(seconds: 60));
+      expect(analytics.enabled, allowed);
+      expect(analytics.events.where((event) => event['event'] == 'app_launched'),
+          hasLength(allowed ? 1 : 0));
+      if (!allowed) {
+        expect(analytics.identifiedAccountIds, isEmpty);
+        expect(analytics.events, isEmpty);
+      }
+    });
+  }
 
   test('fake analytics records calls while disabled', () {
     final FakeAnalyticsClient analytics = FakeAnalyticsClient()
@@ -184,7 +192,7 @@ void main() {
     expect(analytics.resetAccountIds, <String>['account-alice']);
   });
 
-  testWidgets('Settings preference gates analytics and survives sign-in',
+  testWidgets('existing opt-out survives Settings and signing in again',
       (WidgetTester tester) async {
     final FakeMayosApi api = FakeMayosApi()
       ..currentUsername = 'alice'
@@ -223,40 +231,11 @@ void main() {
     container.read(routerProvider).go(settingsPath);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
-    final Finder preferenceSwitch = find.descendant(
-      of: find.byKey(const Key('analytics_preference_switch')),
-      matching: find.byType(Switch),
-    );
-    await tester.scrollUntilVisible(
-      preferenceSwitch,
-      250,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.ensureVisible(preferenceSwitch);
-    await tester.pump();
-    expect(tester.widget<Switch>(preferenceSwitch).value, isFalse);
-
-    await tester.tap(preferenceSwitch);
-    for (int attempt = 0; attempt < 30 && !api.analyticsAllowed; attempt++) {
-      await tester.pump(const Duration(milliseconds: 50));
-    }
-    expect(api.analyticsAllowed, isTrue);
-    expect(analytics.enabled, isTrue);
-    expect(analytics.identifiedAccountIds, <String>['account-alice']);
-
-    await tester.tap(preferenceSwitch);
-    for (int attempt = 0; attempt < 30 && api.analyticsAllowed; attempt++) {
-      await tester.pump(const Duration(milliseconds: 50));
-    }
+    expect(find.byKey(const Key('analytics_preference_switch')), findsNothing);
     expect(api.analyticsAllowed, isFalse);
-    expect(analytics.enabled, isFalse);
-    expect(analytics.identifiedAccountIds, <String>['account-alice']);
-    expect(analytics.events, isEmpty);
     expect(
-      api.adapter.requests
-          .where((request) => request.path == '/auth/analytics-preference')
-          .map((request) => request.body['analytics_allowed']),
-      <Object?>[true, false],
+      api.adapter.requests.where((request) => request.path == '/auth/analytics-preference'),
+      isEmpty,
     );
 
     final Future<void> logout =
@@ -282,7 +261,7 @@ void main() {
     }
     expect(api.analyticsAllowed, isFalse);
     expect(analytics.enabled, isFalse);
-    expect(analytics.identifiedAccountIds, <String>['account-alice']);
+    expect(analytics.identifiedAccountIds, isEmpty);
     expect(analytics.events, isEmpty);
     container.read(draftSyncServiceProvider).stop();
   });

@@ -217,6 +217,19 @@ the configured `ANDROID_STORE_URL`. Health and readiness checks, public account
 pages, `assetlinks.json`, `/app/version-policy`, and `/admin` are exempt.
 Requests without that build header and web clients are not rejected by this policy.
 
+**Legacy analytics preference writes (#445).** Keep `PUT /auth/analytics-preference`
+only for installed older apps while Android build 1 is still supported, so their
+old Settings switch continues to work. New Android and web builds have no switch
+and never call this endpoint. After `MIN_ANDROID_BUILD` reaches `2`, remove the
+route and `AnalyticsPreferenceIn`, along with the endpoint's compatibility tests. Until
+then, retain the committed-preference `analytics_opted_out` person-property
+update from the ADR 040 amendment of 2026-10-04. Keep the stored preference,
+`/auth/me` read path, server/client gates, and account-deletion behavior when
+removing that compatibility code. Retain the registry preference writer and
+`record_opt_out_change`: the owner's **Turn off analytics** action uses them to
+record objections received at the privacy contact address even after older
+Android builds are retired.
+
 ---
 
 ## 4. Hosted Model Roles & Evaluation
@@ -1418,9 +1431,9 @@ ADR 040; event contracts in [ANALYTICS.md](ANALYTICS.md). Analytics stays off
 everywhere until these keys are set, so this can be done at any time.
 
 **Privacy policy.** The live policy (`docs/PRIVACY_POLICY.md`, served at
-`/privacy`, version 1.2) names PostHog and the opt-out; keep it in step with
-ANALYTICS.md whenever what is sent changes. The served page updates with the
-next `fly deploy`.
+`/privacy`, version 1.12) names PostHog and the preserved historical opt-outs;
+keep it in step with ANALYTICS.md whenever what is sent changes. The served
+page updates with the next `fly deploy`.
 
 **1. PostHog project settings** (EU Cloud, project MAYOS):
 - Project settings → **Discard client IP data: ON**.

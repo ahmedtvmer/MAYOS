@@ -279,6 +279,7 @@ class RegistryAccountsMixin:
             ).fetchall()
         return [str(row[0]) for row in rows]
 
+    # Also used for owner-recorded objections; retain after the legacy API is removed (#445).
     def set_account_analytics_allowed(
         self,
         account_id: str,
