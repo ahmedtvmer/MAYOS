@@ -26,8 +26,8 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 #: Bumped whenever the policy text changes; rendered at the top of the page.
-POLICY_VERSION = "1.11"
-POLICY_EFFECTIVE_DATE = "2026-11-08"
+POLICY_VERSION = "1.12"
+POLICY_EFFECTIVE_DATE = "2026-11-09"
 
 POLICY_PATH = Path(__file__).resolve().parent.parent / "docs" / "PRIVACY_POLICY.md"
 

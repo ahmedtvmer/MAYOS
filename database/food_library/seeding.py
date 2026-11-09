@@ -24,9 +24,17 @@ def _create_food_table(connection):
         aliases_en_json TEXT NOT NULL, aliases_ar_json TEXT NOT NULL,
         staple_roles_json TEXT NOT NULL, hidden INTEGER NOT NULL,
         reviewed INTEGER NOT NULL, portion_label TEXT, portion_grams REAL,
-        ingredients_json TEXT
+        ingredients_json TEXT, min_grams REAL, max_grams REAL
     )""")
+    ensure_food_meal_limits_schema(connection)
     ensure_food_search_schema(connection)
+
+
+def ensure_food_meal_limits_schema(connection):
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(foods)")}
+    for column in ("min_grams", "max_grams"):
+        if column not in columns:
+            connection.execute(f"ALTER TABLE foods ADD COLUMN {column} REAL")
 
 
 def ensure_food_search_schema(connection):
@@ -58,15 +66,18 @@ def _upsert_food_rows(connection, rows):
     connection.execute("DELETE FROM foods")
     connection.executemany("""INSERT INTO foods
         (id,name,source_name,arabic_name,nutrients_json,portions_json,aliases_en_json,
-         aliases_ar_json,staple_roles_json,hidden,reviewed,portion_label,portion_grams,ingredients_json)
+         aliases_ar_json,staple_roles_json,hidden,reviewed,portion_label,portion_grams,ingredients_json,
+         min_grams,max_grams)
         VALUES (:id,:name,:source_name,:arabic_name,:nutrients_json,:portions_json,:aliases_en_json,
-         :aliases_ar_json,:staple_roles_json,:hidden,:reviewed,:portion_label,:portion_grams,:ingredients_json)
+         :aliases_ar_json,:staple_roles_json,:hidden,:reviewed,:portion_label,:portion_grams,:ingredients_json,
+         :min_grams,:max_grams)
         ON CONFLICT(id) DO UPDATE SET name=excluded.name, source_name=excluded.source_name,
          arabic_name=excluded.arabic_name,nutrients_json=excluded.nutrients_json,
          portions_json=excluded.portions_json,aliases_en_json=excluded.aliases_en_json,
          aliases_ar_json=excluded.aliases_ar_json,staple_roles_json=excluded.staple_roles_json,
          hidden=excluded.hidden,reviewed=excluded.reviewed,portion_label=excluded.portion_label,
-         portion_grams=excluded.portion_grams,ingredients_json=excluded.ingredients_json""",
+         portion_grams=excluded.portion_grams,ingredients_json=excluded.ingredients_json,
+         min_grams=excluded.min_grams,max_grams=excluded.max_grams""",
         [_storage_row(row) for row in rows])
 
 
