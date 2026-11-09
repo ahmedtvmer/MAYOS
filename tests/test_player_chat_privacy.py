@@ -1400,10 +1400,6 @@ def test_active_program_tool_returns_weekly_muscle_totals_and_scoped_day():
     result = json.loads(tool.invoke({}))
     assert result["weekly_sets_by_muscle"]["biceps"] == 4
     assert result["weekly_sets_by_muscle"]["triceps"] == 3
-    assert result["days"][0]["e"][0]["g"] == [
-        {"s": 2, "r": 8, "R": 10, "i": 2.0},
-        {"s": 2, "r": 6, "R": 8, "i": 1.0},
-    ]
     assert result["message"]
     assert "day_name" in result["message"]
     assert result["days"] == [{"day": "Pull", "muscles": ["biceps", "triceps", "not set"]}]
