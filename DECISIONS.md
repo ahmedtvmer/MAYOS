@@ -1110,6 +1110,29 @@ This document records the architectural, algorithmic, and heuristic decisions im
 
 ---
 
+### ADR 101: Staging is a separate, on-demand API on the production server
+* **Status**: Accepted (2026-11-08, #672).
+* **Decision**: Staging is its own Compose project, `mayos-staging`, with one `api` service on the production server. It starts only when the owner runs `deploy/deploy_server.sh staging up`, and stops on `staging down` or automatically after four hours, checked every 15 minutes. It shares nothing writable with production: its data is `/mnt/mayos-data/staging`, its settings are `/opt/mayos/staging.env` with independent sign-in secrets, and it has no Litestream backup, SMTP delivery or Discord alerts. Emails are logged. `MAYOS_ENV` and `SENTRY_ENVIRONMENT` are fixed to `staging`. The existing tunnel reaches it at `staging.mayos.online` through the `api-staging` network alias; when staging is off, that address shows a tunnel error page. The API and its separate image builder each have a 1536 MB memory cap. Production deploys from a checkout accept only the current `origin/master` after a fetch, so a branch reaches production through a merged PR. This supersedes only ADR 098's sentence about the CI image smoke test replacing the staging server; the rest stands.
+* **Context**: Production moved to the former staging Contabo server on 2026-11-08 (#378). The one 8 GB server has an API using about 1 GB at idle, and Thomas releases to staging before production.
+* **Rationale**: A second server costs money and an always-on staging costs about 1 GB permanently. An on-demand container gives a real staging for reviews at no idle cost, with separate storage and bounded memory to protect production.
+* **Code References**: `deploy/compose.staging.yaml`, `deploy/deploy_server.sh`, `deploy/staging_server.bash`, `deploy/systemd/mayos-staging-autostop.service`, `deploy/systemd/mayos-staging-autostop.timer`, `docs/DEPLOYMENT.md`.
+
+### ADR 102: Generated exercises start with a Test set
+
+* **Status**: Accepted (2026-11-08, #532; parent #531). This records the parent's proposed ADR 095 under 102 because 095 is already assigned.
+* **Decision**: Generated Training program exercises with two or more working sets use one Test set as their first set group, followed by a group containing the remaining working sets. One-set exercises use only the working RIR. The Test set counts toward weekly working sets, including Focus muscle dosing. Deload prescriptions use the deload RIR for every set. The Player sees each row's own RIR, with no Test set label.
+
+  | Experience | Test set RIR | Working compounds RIR | Working isolation, calves, abs RIR |
+  |---|---|---|---|
+  | Beginner | 3 | 2 | 1 |
+  | Intermediate | 2 | 1 | 0 |
+  | Advanced | 2 | 1 | 0 |
+
+* **Compatibility**: ADR 085 is unchanged: flat fields mirror the first group and working-set counts sum all groups. Generated programs use design version 4 and the existing consented rebuild offer. Existing Coach-authored, imported and template-derived programs retain their prescriptions and remain excluded from the offer through their publication/template provenance. The app build becomes 2. The server's default minimum build stays unchanged; after build 2 is published, the owner raises `MIN_ANDROID_BUILD` to 2 through the existing force-update policy.
+* **Program rationale**: Each generated exercise records `rir.test_set_rule` with its Experience level, working RIR, Test set RIR, whether it has a Test set, and that the Test set counts toward weekly sets. The assistant reads the recorded rule through ADR 091; no fixed assistant prompt text is added.
+* **Rationale**: A first set with more reps in reserve lets the Player feel the load before the harder work. Compounds keep at least 1 RIR and beginners keep at least 1 RIR on every working set. Coach and imported prescriptions remain their authors' choices.
+* **Code References**: `agent/program_blueprints.py`, `agent/program_generator.py`, `agent/program_rationale.py`, `service/programs.py`, `service/workouts.py`, `mobile/lib/src/features/player/workout/workout_logger_screen.dart`, `mobile/lib/src/features/player/workout/logger_card_widgets.dart`.
+
 ### ADR 103: Unscoped Player program reads return a Program overview (amends ADR 078)
 
 * **Status**: Accepted (2026-11-08, #526; program-view portion of #523).
@@ -1117,9 +1140,3 @@ This document records the architectural, algorithmic, and heuristic decisions im
 * **Context**: An unscoped read previously included compact Exercise prescriptions. Large programs could lose the day list at the result cap, and the production weekly-biceps-and-triceps question needed totals without those prescriptions.
 * **Rationale**: A single-week overview has bounded structural size across supported Splits, frequencies and week counts. Matching prescriptions remain available through explicit scopes, while repeated restriction skips do not consume space once per day or Program week.
 * **Code References**: `agent/player_tools.py`, `tests/test_player_chat_privacy.py`, `tests/test_player_program_rationale_tool.py`.
-### ADR 101: Staging is a separate, on-demand API on the production server
-* **Status**: Accepted (2026-11-08, #672).
-* **Decision**: Staging is its own Compose project, `mayos-staging`, with one `api` service on the production server. It starts only when the owner runs `deploy/deploy_server.sh staging up`, and stops on `staging down` or automatically after four hours, checked every 15 minutes. It shares nothing writable with production: its data is `/mnt/mayos-data/staging`, its settings are `/opt/mayos/staging.env` with independent sign-in secrets, and it has no Litestream backup, SMTP delivery or Discord alerts. Emails are logged. `MAYOS_ENV` and `SENTRY_ENVIRONMENT` are fixed to `staging`. The existing tunnel reaches it at `staging.mayos.online` through the `api-staging` network alias; when staging is off, that address shows a tunnel error page. The API and its separate image builder each have a 1536 MB memory cap. Production deploys from a checkout accept only the current `origin/master` after a fetch, so a branch reaches production through a merged PR. This supersedes only ADR 098's sentence about the CI image smoke test replacing the staging server; the rest stands.
-* **Context**: Production moved to the former staging Contabo server on 2026-11-08 (#378). The one 8 GB server has an API using about 1 GB at idle, and Thomas releases to staging before production.
-* **Rationale**: A second server costs money and an always-on staging costs about 1 GB permanently. An on-demand container gives a real staging for reviews at no idle cost, with separate storage and bounded memory to protect production.
-* **Code References**: `deploy/compose.staging.yaml`, `deploy/deploy_server.sh`, `deploy/staging_server.bash`, `deploy/systemd/mayos-staging-autostop.service`, `deploy/systemd/mayos-staging-autostop.timer`, `docs/DEPLOYMENT.md`.
