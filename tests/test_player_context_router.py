@@ -257,8 +257,9 @@ def test_router_drops_pieces_that_do_not_fit_prompt_reserve(router_player, monke
     client, db, headers = router_player
     _force_free_form_coaching_intent(monkeypatch)
     with db.open_ledger("router-player") as ledger:
+        # History trimming (#524) keeps the latest replies whole, so those carry the prompt pressure.
         for _ in range(9):
-            ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 2_900)
+            ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 4_800)
     model = ScriptedChatModel(["Please narrow the question."])
     monkeypatch.setattr(assistant_graph, "llm", model)
     with caplog.at_level(logging.INFO):
