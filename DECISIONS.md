@@ -1110,7 +1110,7 @@ This document records the architectural, algorithmic, and heuristic decisions im
 
 ### ADR 102: Generated exercises start with a Test set
 
-* **Status**: Accepted (2026-11-08, #532; parent #531). This records the parent's proposed ADR 095 under 102 because 095 is already assigned; 099 and 101 remain reserved.
+* **Status**: Accepted (2026-11-08, #532; parent #531). This records the parent's proposed ADR 095 under 102 because 095 is already assigned.
 * **Decision**: Generated Training program exercises with two or more working sets use one Test set as their first set group, followed by a group containing the remaining working sets. One-set exercises use only the working RIR. The Test set counts toward weekly working sets, including Focus muscle dosing. Deload prescriptions use the deload RIR for every set. The Player sees each row's own RIR, with no Test set label.
 
   | Experience | Test set RIR | Working compounds RIR | Working isolation, calves, abs RIR |
@@ -1119,7 +1119,7 @@ This document records the architectural, algorithmic, and heuristic decisions im
   | Intermediate | 2 | 1 | 0 |
   | Advanced | 2 | 1 | 0 |
 
-* **Compatibility**: ADR 085 is unchanged: flat fields mirror the first group and working-set counts sum all groups. Generated programs use design version 4 and the existing consented rebuild offer. Existing Coach-authored, imported and template-derived programs retain their prescriptions and remain excluded from the offer through their publication/template provenance. Android's default minimum build and the app build become 2 through the existing force-update policy; configured minimum-build overrides must be raised to the release build at deployment.
+* **Compatibility**: ADR 085 is unchanged: flat fields mirror the first group and working-set counts sum all groups. Generated programs use design version 4 and the existing consented rebuild offer. Existing Coach-authored, imported and template-derived programs retain their prescriptions and remain excluded from the offer through their publication/template provenance. The app build becomes 2. The server's default minimum build stays unchanged; after build 2 is published, the owner raises `MIN_ANDROID_BUILD` to 2 through the existing force-update policy.
 * **Program rationale**: Each generated exercise records `rir.test_set_rule` with its Experience level, working RIR, Test set RIR, whether it has a Test set, and that the Test set counts toward weekly sets. The assistant reads the recorded rule through ADR 091; no fixed assistant prompt text is added.
 * **Rationale**: A first set with more reps in reserve lets the Player feel the load before the harder work. Compounds keep at least 1 RIR and beginners keep at least 1 RIR on every working set. Coach and imported prescriptions remain their authors' choices.
-* **Code References**: `agent/program_blueprints.py`, `agent/program_generator.py`, `agent/program_rationale.py`, `service/programs.py`, `service/workouts.py`, `service/app_version.py`, `mobile/lib/src/features/player/workout/workout_logger_screen.dart`, `mobile/lib/src/features/player/workout/logger_card_widgets.dart`.
+* **Code References**: `agent/program_blueprints.py`, `agent/program_generator.py`, `agent/program_rationale.py`, `service/programs.py`, `service/workouts.py`, `mobile/lib/src/features/player/workout/workout_logger_screen.dart`, `mobile/lib/src/features/player/workout/logger_card_widgets.dart`.
