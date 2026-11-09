@@ -1110,21 +1110,10 @@ This document records the architectural, algorithmic, and heuristic decisions im
 
 ### ADR 104: Player chat receives query-scoped Context pieces (amends ADR 002 and 078)
 
-* **Status**: Accepted (#523). Profile sections implemented by #525; the Context router and history changes remain for the other #523 implementation tickets.
+* **Status**: Accepted (#523). Profile sections implemented by #525. The Context router is recorded in ADR 105 (#527) and history trimming in the ADR 078 amendment (#524).
 * **Decision**: Player chat retrieves only the facts a question needs. `get_player_profile` advertises a required `sections` list of Body (gender, age, height, weight, target weight), Goals (current, long-term), Training setup (weekly frequency, equipment access, rep preference, training age), Limitations (injury text, injury records with Exercise clearances, confirmed Movement restrictions), Focus (Weak points), and Recovery (stress and sleep). Omitted or empty sections return only section names and one-line descriptions, with no personal values. The existing `not set` and storage-default evidence rules remain. Limitations replaces `get_player_injuries`; suggestions inferred from injury text are not confirmed Movement restrictions.
 * **Parent retrieval design**: A deterministic Context router will select Context pieces before the hosted model runs, after the unchanged safety and write-intent paths. Pieces use simulated assistant tool calls and tool results; scoped read tools remain available in the existing three-round loop. Player data stays out of the fixed system core. Each result stays within 4 KB; router pieces together stay within 8 KB and the hosted prompt ceiling, dropping lower-priority pieces first (safety, Limitations, Program, rationale, other). Coach AI is outside this decision's scope.
-* **Question → Context piece table** (the routing implementation follows in #527):
-
-  | Topic | Context pieces |
-  |---|---|
-  | Pain / hurts / injury, after the safety gate | Limitations + Program Exercises loading that body area |
-  | Program what/how many | Program scoped to named day/Exercise/muscle; none named → overview |
-  | Program why | Program rationale scoped the same way |
-  | Progress / weights lifted | Exercise history for the named Exercise |
-  | Weight / body | Body + weight trend |
-  | Nutrition | Nutrition |
-  | Generic coaching | Training setup + Goals |
-  | Rebuild / Program edit | No model context; deterministic paths unchanged |
+* **Question → Context piece table**: see ADR 105, which holds the owner-reviewable routing contract.
 
 * **Body area → joint actions table**: Routing reuses the Movement restriction action vocabulary and curated Primary and Secondary actions.
 
