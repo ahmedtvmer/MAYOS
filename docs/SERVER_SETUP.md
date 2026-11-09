@@ -257,8 +257,8 @@ keeps that file out of the image build context as well.
 
 ### 6. Deploy and verify
 
-From the main checkout, run `./deploy/deploy_server.sh`. The script refuses
-linked worktrees and warns if
+From the main checkout, run `./deploy/deploy_server.sh`. The script fetches
+`origin/master` and refuses unless HEAD equals it. It refuses linked worktrees and warns if
 the checkout has uncommitted changes. See the [deployment runbook](DEPLOYMENT.md)
 for deploy, status, and rollback commands. Compose builds
 `mayos-api:${MAYOS_IMAGE_TAG}` on the server from the rsynced checkout using

@@ -19,9 +19,10 @@ from core.reply_language import (
 )
 from utils.preferred_name import is_valid_preferred_name
 
-#: Chosen from the #195 live sweep (reports/player_memory_sweep_195.md); None disables the earlier-reply cut.
+#: Preserve recent exchanges while bounding stale assistant answers (#524).
 TAIL_WINDOW_SIZE = 10
-ASSISTANT_HISTORY_REPLY_MAX_CHARS: int | None = None
+UNTRUNCATED_HISTORY_MESSAGE_COUNT = 6
+ASSISTANT_HISTORY_REPLY_MAX_CHARS: int | None = 600
 
 
 @dataclass(frozen=True)
@@ -244,11 +245,18 @@ def _history_tail(state: dict[str, Any]) -> list[BaseMessage]:
         if message_role(message) in {"user", "assistant"}
         and not _is_session_pointer(message)
     ]
+    messages = messages[-settings.window_size :]
     tail = []
-    for message in messages[-settings.window_size :]:
+    for index, message in enumerate(messages):
         role = message_role(message)
         content = message.get("content", "") if isinstance(message, dict) else getattr(message, "content", str(message))
         text = str(content)
+        if (
+            role == "assistant"
+            and index < len(messages) - UNTRUNCATED_HISTORY_MESSAGE_COUNT
+            and settings.assistant_reply_max_chars is not None
+        ):
+            text = text[:settings.assistant_reply_max_chars]
         tail.append(AIMessage(content=text) if role == "assistant" else HumanMessage(content=text))
     return tail
 

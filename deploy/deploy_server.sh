@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deploy from the main checkout or restart one of the last three kept images.
-# Usage: deploy/deploy_server.sh [deploy|rollback <commit>|status|pull <commit>]
+# Usage: deploy/deploy_server.sh [deploy|rollback <commit>|status|pull <commit>|staging up|down|status]
 set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,10 +14,20 @@ Usage:
   deploy/deploy_server.sh rollback <commit>
   deploy/deploy_server.sh status
   deploy/deploy_server.sh pull <commit>
+  deploy/deploy_server.sh staging up|down|status
 
 MAYOS_DEPLOY_HOST may be set in the environment or in the checkout's .env.
-Run from the main checkout; a linked git worktree is refused.
+Production deploy requires HEAD to equal origin/master after a fetch.
+Run production commands from the main checkout; a linked git worktree is refused.
 On the server, pull <commit> fetches and verifies a public master commit before building.
+Staging up builds this checkout's HEAD on any branch (worktrees allowed), warns
+about dirty files included in the build, and waits up to 3 minutes for /readyz.
+It requires /opt/mayos/staging.env and /mnt/mayos-data/staging on the server.
+Staging has its own project, images (last 2 kept), lock and state under
+/opt/mayos/state/staging; production containers, image env and history are untouched.
+Staging down stops/removes only its API; status shows running state, commit,
+start and auto-stop times. The server timer checks expiry every 15 minutes:
+4 hours by default, configurable with MAYOS_STAGING_TTL_HOURS in staging.env.
 USAGE
 }
 
@@ -58,7 +68,9 @@ remote_bash() {
   local pull_root="${server_root:-${MAYOS_SERVER_ROOT:-/opt/mayos}}"
   local pull_checkout="${server_checkout:-${MAYOS_SERVER_CHECKOUT:-$pull_root/src}}"
   local arg
-  if [[ "${server_pull_mode:-0}" == 1 ]]; then
+  if [[ "${staging_mode:-0}" == 1 ]]; then
+    preamble=$'set -euo pipefail\n'
+  elif [[ "${server_pull_mode:-0}" == 1 ]]; then
     preamble="set -euo pipefail
 readonly IMAGE_TAG_RE='^[0-9a-f]{7,64}(-[0-9]{14}-[0-9]{1,5})?$'
 compose=(sudo docker compose -f $pull_checkout/deploy/compose.server.yaml --env-file $pull_root/.env --env-file $pull_root/app/deploy/.image.env -p mayos)
@@ -348,6 +360,7 @@ REMOTE
 }
 
 upload_build_input() {
+  local destination="${1:-/opt/mayos/app}"
   [[ "${server_pull_mode:-0}" == 1 ]] && return 0
   rsync -az --delete --delete-excluded -e ssh \
     --exclude='/.git/' --exclude='/.venv/' --exclude='/venv/' \
@@ -364,8 +377,32 @@ upload_build_input() {
     --filter='+ /data/food_library.csv' --filter='+ /data/food_portions.csv' \
     --filter='+ /data/food_curation.csv' --filter='+ /data/food_recipes.csv' \
     --filter='+ /data/food_allergens.csv' --filter='- /data/***' \
-    "$repo_root/" "$ssh_target:/opt/mayos/app/"
+    "$repo_root/" "$ssh_target:$destination/"
 }
+
+verify_local_deploy_commit() {
+  git -C "$repo_root" fetch --force --no-tags origin +refs/heads/master:refs/remotes/origin/master >&2 ||
+    die "production deploy refused: could not fetch origin/master"
+  [[ "$(git -C "$repo_root" rev-parse HEAD)" == "$(git -C "$repo_root" rev-parse --verify origin/master)" ]] ||
+    die "production deploy refused: HEAD must equal current origin/master; merge the branch through a PR first (use staging up to review a branch)"
+}
+
+staging_remote() {
+  { cat "$script_dir/staging_server.bash"; printf '\nstaging_main "$@"\n'; } | remote_bash "$@"
+}
+
+staging_command() (
+  local action="$1" upload_dir full_commit tag
+  staging_mode=1
+  if [[ "$action" != up ]]; then staging_remote "$action"; return; fi
+  warn_if_dirty
+  full_commit="$(git -C "$repo_root" rev-parse HEAD)"
+  tag="$(git -C "$repo_root" rev-parse --short=12 HEAD)-$(date -u +%Y%m%d%H%M%S)-$RANDOM"
+  upload_dir="$(staging_remote prepare)"
+  trap 'staging_remote cleanup "$upload_dir"' EXIT
+  upload_build_input "$upload_dir"
+  staging_remote up "$upload_dir" "$tag" "$full_commit"
+)
 
 resolve_history_commit() {
   local requested="$1"
@@ -517,18 +554,26 @@ main() {
     deploy|status) [[ $# -le 1 ]] || { usage >&2; exit 2; } ;;
     rollback) [[ $# -eq 2 ]] || { usage >&2; exit 2; } ;;
     pull) [[ $# -eq 2 ]] || { usage >&2; exit 2; } ;;
+    staging) [[ $# -eq 2 && "${2:-}" =~ ^(up|down|status)$ ]] || { usage >&2; exit 2; } ;;
     -h|--help|help) usage; return 0 ;;
     *) usage >&2; exit 2 ;;
   esac
 
   if [[ "$command_name" == pull ]]; then pull_deploy "$2"; return; fi
   repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || die "run this script inside the MAYOS checkout"
+  if [[ "$command_name" == staging ]]; then
+    ssh_host="$(resolve_host)"
+    ssh_target="deploy@$ssh_host"
+    staging_command "$2"
+    return
+  fi
   git_dir="$(git -C "$repo_root" rev-parse --path-format=absolute --git-dir)"
   common_dir="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir)"
   if [[ -f "$repo_root/.git" || "$git_dir" != "$common_dir" ]]; then
     die "refusing to deploy from a git worktree; run from the main checkout"
   fi
 
+  if [[ "$command_name" == deploy ]]; then verify_local_deploy_commit; fi
   ssh_host="$(resolve_host)"
   ssh_target="deploy@$ssh_host"
   if [[ "$command_name" != status ]]; then warn_if_dirty; fi
