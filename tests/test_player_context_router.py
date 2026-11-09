@@ -15,7 +15,7 @@ from agent.ProgramState import (
 )
 from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
 from tests.test_player_chat_privacy import (
-    api, _assigned_player, _authed, _done_content, _force_free_form_coaching_intent, _register,
+    _assigned_player, _authed, _done_content, _force_free_form_coaching_intent, _register,
 )
 
 

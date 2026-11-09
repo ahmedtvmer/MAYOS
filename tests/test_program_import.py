@@ -264,6 +264,19 @@ def test_csv_import_creates_only_program_draft_and_replacement_requires_confirma
         json={"program_name": "again", "rows": _confirmed_rows(result["rows"])},
     ).status_code == 409
 
+    published = client.post(
+        f"/coach/assignments/{assignment_id}/program-draft/publish", headers=coach_headers,
+    )
+    assert published.status_code == 200, published.text
+    active = client.get("/programs/active", headers=player_headers).json()
+    assert active["offer_design_regeneration"] is False
+    assert active["days"][0]["exercises"][0]["set_groups"][0]["target_rir"] == 2
+    assert client.post("/assignments/me/end", headers=player_headers).status_code == 200
+    independent = client.get("/programs/active", headers=player_headers).json()
+    assert independent["player_controls_program"] is True
+    assert independent["offer_design_regeneration"] is False
+    assert independent["days"] == active["days"]
+
 
 def test_template_percent_load_becomes_program_load(api):
     client, db = api
