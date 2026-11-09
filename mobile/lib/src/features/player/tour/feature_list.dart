@@ -64,6 +64,18 @@ List<String> validateFeatureEntries(
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
+    id: 'set_effort',
+    titleEn: 'Ease into each exercise',
+    sentenceEn: 'New generated programs start each exercise with more reps in reserve when it has multiple sets; follow the RIR on each row.',
+    titleAr: 'ابدأ كل تمرين بجهد أخف',
+    sentenceAr: 'تبدأ البرامج التدريبية الجديدة كل تمرين بتكرارات أكثر في الاحتياط عند وجود عدة مجموعات؛ اتبع RIR في كل صف.',
+    target: 'program',
+    location: TourShellTabLocation(tabIndex: 1),
+    release: 6,
+    audience: 'lifter',
+    requiresProgramControl: true,
+  ),
+  FeatureEntry(
     id: 'home',
     titleEn: 'Home',
     sentenceEn: 'See your next workout and start training.',

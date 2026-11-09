@@ -136,6 +136,11 @@ The service, and release builds of the Android and web app, send
 **pseudonymous events** tied to your immutable internal account id, never to
 your username or email.
 
+The legal basis for product analytics is MAYOS's legitimate interest in
+understanding how the app is used so we can improve it (GDPR Art. 6(1)(f)).
+You can object at any time by writing to our privacy contact at
+{{PRIVACY_CONTACT}}. We will then turn analytics off for your account permanently.
+
 - Events carry only allowlisted facts: the event name, your capability
   (player or coach), the app platform and version, counts, durations, and
   similar coded values. They never contain free text, chat messages, onboarding
@@ -150,11 +155,13 @@ your username or email.
   (never the full address), the Android install referrer's campaign labels, and
   the coach whose invite you first redeemed. This record is never changed
   afterwards.
-- **You can turn product analytics off** in Settings. When it is off, MAYOS
-  stops sending events about your account from both the service and the app;
-  the choice is stored with your account and applies on every device you sign
-  in on. A coach's own events (for example, that their roster grew) are subject
-  to the coach's choice and never identify you.
+- Product analytics is on for all accounts, except accounts that turned it
+  off before the product-analytics setting was removed or have objected through
+  our privacy contact. Those accounts stay off permanently: MAYOS sends no
+  events about them from either the service
+  or the app, on every device they sign in on. The product-analytics setting
+  is no longer in the app. A coach's own events (for example, that their roster
+  grew) follow the coach's stored preference and never identify you.
 
 ### Model usage records
 

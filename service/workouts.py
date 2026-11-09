@@ -457,7 +457,11 @@ def _build_prescription(db: Any, ledger: Any, day_plan: Any, assignment: dict[st
         target_rpe_cap = ex.target_rpe or 8.5
         if deload_state["state"] == DELOAD_STATE_APPLIED:
             effective_sets = max(1, round(effective_sets * fatigue_info["volume_multiplier"]))
-            target_rpe_cap = min(target_rpe_cap, fatigue_info["intensity_cap_rpe"] or 10.0)
+            target_rpe_cap = fatigue_info["intensity_cap_rpe"] or target_rpe_cap
+            groups = [
+                group.model_copy(update={"target_rir": 10 - target_rpe_cap})
+                for group in groups
+            ]
         last_perf = ledger.get_last_performance(ex.exercise_id)
         entry: dict[str, Any] = {
             "exercise_id": str(ex.exercise_id),

@@ -2987,6 +2987,87 @@ def test_admin_invites_issue_errors_retain_username_and_write_nothing(
     assert after_audit.text.count("<strong>Action:</strong> coach_invite_issued") == before_issued_rows
 
 
+def test_admin_analytics_objection_is_audited_idempotent_and_suppresses_events(
+    admin_api, recording_analytics
+):
+    client, db, now, _ = admin_api
+    account, headers = _register_account(client, db, "analytics-objection")
+    account_id = account["account_id"]
+    path = f"/admin/accounts/{account_id}"
+    assert _login(client, now[0]).status_code == 303
+    page = client.get(path)
+    assert "Analytics: On" in page.text
+    assert "<summary>Turn off analytics</summary>" in page.text
+    assert 'name="confirmation" value="turn_off" required' in page.text
+    fields = {"csrf_token": _csrf(page.text), "confirmation": "turn_off"}
+    recording_analytics.events.clear()
+    recording_analytics.people_updates.clear()
+
+    response = client.post(f"{path}/analytics-off", data=fields, follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == path
+    assert db.get_account(account_id)["analytics_allowed"] is False
+    assert client.get("/auth/me", headers=headers).json()["analytics_allowed"] is False
+    assert recording_analytics.people_updates == [
+        {"distinct_id": account_id, "properties": {"analytics_opted_out": True}, "operation": "set"}
+    ]
+    page = client.get(path)
+    assert "Analytics: Off" in page.text
+    assert "Turn off analytics" not in page.text
+    assert "Turn on analytics" not in page.text
+
+    assert client.post(f"{path}/analytics-off", data=fields, follow_redirects=False).status_code == 303
+    assert len(recording_analytics.people_updates) == 1
+    audit = client.get(f"/admin/audit?action=account_analytics_turned_off&account_id={account_id}")
+    assert audit.text.count("<strong>Action:</strong> account_analytics_turned_off") == 1
+    assert f"<strong>Actor:</strong> {ADMIN_USERNAME}" in audit.text
+    assert account_id in audit.text
+    assert "Product analytics objection" in audit.text
+
+    assert client.post("/onboarding/intake/disclosure", headers=headers).status_code == 200
+    answered = client.put("/onboarding/intake/answers/gender", headers=headers, json={"value": "female"})
+    assert answered.status_code == 200, answered.text
+    assert recording_analytics.events == []
+    assert len(recording_analytics.people_updates) == 1
+
+
+def test_admin_analytics_objection_requires_login_csrf_and_confirmation(admin_api):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "analytics-security")
+    path = f"/admin/accounts/{account['account_id']}"
+    assert client.post(f"{path}/analytics-off", data={"confirmation": "turn_off"}).status_code == 404
+    assert _login(client, now[0]).status_code == 303
+    for csrf in (None, "bad"):
+        fields = {"confirmation": "turn_off"}
+        if csrf is not None:
+            fields["csrf_token"] = csrf
+        assert client.post(f"{path}/analytics-off", data=fields).status_code == 403
+    csrf = _csrf(client.get(path).text)
+    assert client.post(f"{path}/analytics-off", data={"csrf_token": csrf}).status_code == 400
+    assert db.get_account(account["account_id"])["analytics_allowed"] is True
+    audit = client.get(f"/admin/audit?action=account_analytics_turned_off&account_id={account['account_id']}")
+    assert "<strong>Action:</strong> account_analytics_turned_off" not in audit.text
+
+
+def test_admin_analytics_objection_rolls_back_if_audit_cannot_be_written(admin_api, recording_analytics):
+    client, db, now, _ = admin_api
+    account, _ = _register_account(client, db, "analytics-audit-failure")
+    path = f"/admin/accounts/{account['account_id']}"
+    assert _login(client, now[0]).status_code == 303
+    csrf = _csrf(client.get(path).text)
+    with db.catalog_transaction(immediate=True):
+        db.catalog_conn.execute(
+            "CREATE TRIGGER reject_analytics_audit BEFORE INSERT ON audit_log "
+            "WHEN NEW.action = 'account_analytics_turned_off' "
+            "BEGIN SELECT RAISE(ABORT, 'audit unavailable'); END"
+        )
+    recording_analytics.people_updates.clear()
+    with pytest.raises(sqlite3.IntegrityError, match="audit unavailable"):
+        client.post(f"{path}/analytics-off", data={"csrf_token": csrf, "confirmation": "turn_off"})
+    assert db.get_account(account["account_id"])["analytics_allowed"] is True
+    assert recording_analytics.people_updates == []
+
+
 def test_admin_invites_issue_requires_login_and_csrf(admin_api):
     client, _, now, _ = admin_api
     fields = {"username": "invitecsrf", "ttl_minutes": "1440"}

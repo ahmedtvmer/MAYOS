@@ -981,6 +981,7 @@ def set_person(account_id: str, properties: dict[str, Any]) -> None:
     _observe(lambda: _sink.set_person(account_id, properties), "person update")
 
 
+# Also used for owner-recorded objections; retain after the legacy API is removed (#445).
 def record_opt_out_change(account_id: str, opted_out: bool) -> None:
     """Records the committed analytics choice through the opt-out gate once."""
     _observe(

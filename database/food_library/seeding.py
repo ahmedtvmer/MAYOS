@@ -25,9 +25,17 @@ def _create_food_table(connection):
         aliases_en_json TEXT NOT NULL, aliases_ar_json TEXT NOT NULL,
         staple_roles_json TEXT NOT NULL, hidden INTEGER NOT NULL,
         reviewed INTEGER NOT NULL, portion_label TEXT, portion_grams REAL,
-        ingredients_json TEXT
+        ingredients_json TEXT, min_grams REAL, max_grams REAL
     )""")
+    ensure_food_meal_limits_schema(connection)
     ensure_food_search_schema(connection)
+
+
+def ensure_food_meal_limits_schema(connection):
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(foods)")}
+    for column in ("min_grams", "max_grams"):
+        if column not in columns:
+            connection.execute(f"ALTER TABLE foods ADD COLUMN {column} REAL")
 
 
 def ensure_food_search_schema(connection):
@@ -71,10 +79,10 @@ def _upsert_food_rows(connection, rows):
     connection.executemany("""INSERT INTO foods
         (id,name,source_name,arabic_name,nutrients_json,portions_json,aliases_en_json,
          aliases_ar_json,staple_roles_json,hidden,reviewed,portion_label,portion_grams,ingredients_json,
-         category,vegetarian,allergens_json,allergens_reviewed,staple_order)
+         category,vegetarian,allergens_json,allergens_reviewed,staple_order,min_grams,max_grams)
         VALUES (:id,:name,:source_name,:arabic_name,:nutrients_json,:portions_json,:aliases_en_json,
          :aliases_ar_json,:staple_roles_json,:hidden,:reviewed,:portion_label,:portion_grams,:ingredients_json,
-         :category,:vegetarian,:allergens_json,:allergens_reviewed,:staple_order)
+         :category,:vegetarian,:allergens_json,:allergens_reviewed,:staple_order,:min_grams,:max_grams)
         ON CONFLICT(id) DO UPDATE SET name=excluded.name, source_name=excluded.source_name,
          arabic_name=excluded.arabic_name,nutrients_json=excluded.nutrients_json,
          portions_json=excluded.portions_json,aliases_en_json=excluded.aliases_en_json,
@@ -83,7 +91,8 @@ def _upsert_food_rows(connection, rows):
          portion_grams=excluded.portion_grams,ingredients_json=excluded.ingredients_json,
          category=excluded.category,vegetarian=excluded.vegetarian,
          allergens_json=excluded.allergens_json,allergens_reviewed=excluded.allergens_reviewed,
-         staple_order=excluded.staple_order""",
+         staple_order=excluded.staple_order,
+         min_grams=excluded.min_grams,max_grams=excluded.max_grams""",
         [_storage_row(row) for row in rows])
 
 

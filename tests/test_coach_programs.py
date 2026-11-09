@@ -1095,7 +1095,7 @@ def test_generate_draft_preserves_active_program_profile_and_authority(api, monk
         assert ledger.get_player_profile() == original_profile
         assert ledger.get_program_draft(assignment_id)["draft"]["weekly_frequency"] == 2
         assert db.get_active_assignment_for_player(player_account_id)["coach_account_id"] == coach_account_id
-        assert ledger.get_program_draft(assignment_id)["draft"]["days"][0]["exercises"][0]["target_rir"] == 0.5
+        assert ledger.get_program_draft(assignment_id)["draft"]["days"][0]["exercises"][0]["target_rir"] == 1.0
 
 
 def test_generate_draft_rejects_cardio_days_above_training_frequency(api):

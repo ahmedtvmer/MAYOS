@@ -672,13 +672,6 @@ class ApiClient {
         ));
   }
 
-  Future<void> updateAnalyticsAllowed(bool allowed) async {
-    await _send(() => _dio.put<dynamic>(
-          '/auth/analytics-preference',
-          data: <String, dynamic>{'analytics_allowed': allowed},
-        ));
-  }
-
   Future<int> markTourSeen(int version) async {
     final response = await _send(() => _dio.put<dynamic>(
           '/auth/tour-seen',
