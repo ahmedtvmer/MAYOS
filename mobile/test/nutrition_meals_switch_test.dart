@@ -27,14 +27,14 @@ void main() {
         await _pumpTargets(tester, fake, language, brightness);
         expect(_switch(tester).value, isFalse);
         expect(find.text(copy.mealsOff), findsOneWidget);
-        await tester.tap(find.byKey(const Key('meals_switch')));
+        await _tapMealsSwitch(tester);
         await tester.pumpAndSettle();
         expect(_switch(tester).value, isTrue);
         expect(find.text(copy.mealsOn), findsOneWidget);
         expect(fake.plannedMealsState['enabled'], isTrue);
         expect(find.byType(MealSetupScreen), findsNothing);
 
-        await tester.tap(find.byKey(const Key('meals_switch')));
+        await _tapMealsSwitch(tester);
         await tester.pumpAndSettle();
         expect(_switch(tester).value, isFalse);
         expect(find.text(copy.mealsOff), findsOneWidget);
@@ -44,8 +44,7 @@ void main() {
         expect(find.byType(MealSetupScreen), findsOneWidget);
         await scrollToControl(tester, find.byKey(const Key('save_meal_setup')));
         expect(find.byKey(const Key('enable_meals')), findsNothing);
-        await tester.pageBack();
-        await tester.pumpAndSettle();
+        await _leaveMealSetup(tester);
         expect(_switch(tester).value, isFalse);
         expect(
             fake.adapter.requests
@@ -104,8 +103,7 @@ void main() {
         'status': 'unavailable',
         'reason': 'staples'
       };
-      await tester.pageBack();
-      await tester.pumpAndSettle();
+      await _leaveMealSetup(tester);
       await scrollToControl(tester, find.byKey(const Key('meals_switch')));
       expect(_switch(tester).onChanged, isNull);
       expect(find.text(copy.mealsUnavailable('staples')), findsOneWidget);
@@ -152,8 +150,16 @@ void main() {
         };
         await _pumpTargets(tester, fake, language,
             initiallyEnabled ? Brightness.dark : Brightness.light);
-        await tester.tap(find.byKey(const Key('meals_switch')));
+        await _tapMealsSwitch(tester);
         await tester.pump();
+        // Let Dio dispatch while keeping the response held for the busy checks.
+        for (int frame = 0;
+            frame < 100 &&
+                !fake.adapter.requests
+                    .any((request) => request.path == endpoint);
+            frame++) {
+          await tester.pump(const Duration(milliseconds: 10));
+        }
         expect(_switch(tester).value, !initiallyEnabled);
         expect(_switch(tester).onChanged, isNull);
         expect(find.text(NutritionCopy(language).saving), findsOneWidget);
@@ -172,7 +178,7 @@ void main() {
         expect(find.text('Could not update meals.'), findsOneWidget);
         expect(fake.plannedMealsState['enabled'], initiallyEnabled);
         fake.foodWriteFails = false;
-        await tester.tap(find.byKey(const Key('meals_switch')));
+        await _tapMealsSwitch(tester);
         await tester.pumpAndSettle();
         expect(_switch(tester).value, !initiallyEnabled);
         expect(tester.takeException(), isNull);
@@ -183,6 +189,23 @@ void main() {
 
 Switch _switch(WidgetTester tester) =>
     tester.widget<Switch>(find.byKey(const Key('meals_switch')));
+
+Future<void> _tapMealsSwitch(WidgetTester tester) async {
+  final Finder toggle = find.byKey(const Key('meals_switch'));
+  await scrollToControl(tester, toggle,
+      list: find.byKey(const Key('nutrition_targets_list')));
+  expect(toggle.hitTestable(), findsOneWidget);
+  await tester.tap(toggle);
+}
+
+Future<void> _leaveMealSetup(WidgetTester tester) async {
+  final Finder back = find.descendant(
+      of: find.byType(MealSetupScreen), matching: find.byType(BackButton));
+  expect(back.hitTestable(), findsOneWidget);
+  await tester.tap(back);
+  await tester.pumpAndSettle();
+  expect(find.byType(MealSetupScreen), findsNothing);
+}
 
 Future<void> _pumpTargets(WidgetTester tester, FakeMayosApi fake,
     String language, Brightness brightness) async {
