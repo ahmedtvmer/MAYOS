@@ -119,6 +119,33 @@ Future<void> _pumpApp(
 }
 
 void main() {
+  for (final AppMode mode in <AppMode>[AppMode.player, AppMode.coach]) {
+    for (final String language in <String>['en', 'ar']) {
+      testWidgets('Settings has no product analytics section in $mode/$language',
+          (WidgetTester tester) async {
+        final FakeMayosApi fake = FakeMayosApi()..analyticsAllowed = false;
+        await _pumpApp(tester,
+            mode: mode,
+            size: const Size(390, 844),
+            displayLanguage: language,
+            fakeApi: fake);
+        final Finder scrollable = find.byType(Scrollable).first;
+        for (int step = 0; step < 20; step++) {
+          expect(find.byKey(const Key('analytics_preference_switch')), findsNothing);
+          expect(find.text('Product analytics'), findsNothing);
+          expect(find.text('تحليلات المنتج'), findsNothing);
+          expect(find.text('Allow product analytics'), findsNothing);
+          expect(find.text('السماح بتحليلات المنتج'), findsNothing);
+          await tester.drag(scrollable, const Offset(0, -300));
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+        expect(fake.analyticsAllowed, isFalse);
+        expect(fake.adapter.requests.where((FakeRequest request) =>
+            request.path == '/auth/analytics-preference'), isEmpty);
+      });
+    }
+  }
+
   testWidgets('Settings shows linked Google email and product opt-in in English',
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi()

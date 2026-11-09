@@ -335,9 +335,6 @@ class AuthRepository {
   Future<void> updateDisplayLanguage(String language) =>
       _api.updateDisplayLanguage(language);
 
-  Future<void> updateAnalyticsAllowed(bool allowed) =>
-      _api.updateAnalyticsAllowed(allowed);
-
   Future<void> clearToken() => _tokens.clear();
 
   /// Ends the session and drops the account's cached chat history.

@@ -192,18 +192,19 @@ referrer once per install and sends only parsed UTM labels during registration.
 | **Health and fitness — body data**: weight, height, age, gender, body proportions, injuries/limitations free text | Yes | Optional — you choose what to enter | App functionality (training) | No one |
 | **Health and fitness — exercise history**: workouts, sets, weights, reps, effort (RIR/RPE), readiness, personal records, training schedule and pauses, check-ins | Yes | Optional — you choose what to log | App functionality (training and coaching) | No one |
 | **User content**: onboarding answers, assistant chat, program-request text | Yes | Optional | App functionality (onboarding uses deterministic rules; AI features use the hosted model provider) | No one |
+| **App activity — app interactions; identifiers — user IDs**: pseudonymous feature events keyed by immutable Account id | Yes | Automatic unless the Account's analytics is off, including preserved opt-outs and objections sent to the privacy contact | Analytics (feature use and product improvement) | PostHog (EU), service provider only |
 | **App activity / logs**: operational server logs (IP, path, time) and per-account model-usage records | Yes | Collected automatically (required for operation and security) | Security, app functionality (cost/limits) | No one |
 
 **Questions:**
 
 | Play question | Answer |
 | :--- | :--- |
-| Data collected | The types in the table above: username, recovery email, health/fitness data, user content, and logs. Nothing else — no contacts, no location, no device identifiers, no advertising IDs |
-| Data shared | **No data sold, no data shared for advertising, no tracking.** Data *is* processed by service providers: the hosted model provider (AI features) and the SMTP provider (emails) |
+| Data collected | The types in the table above: username, recovery email, health/fitness data, user content, logs, pseudonymous app interactions, and internal Account ids. No contacts, no location, no device identifiers, no advertising IDs |
+| Data shared | **No data sold, no data shared for advertising, no tracking.** Data *is* processed by service providers: the hosted model provider (AI features), the SMTP provider (emails), and PostHog EU (product analytics) |
 | Data processed securely | Yes — encrypted **in transit** (https/TLS) |
 | Data deletion available | **Yes**, both in-app (Settings → Profile → Delete account) and on the website (`https://api.mayos.online/account/delete-request`) |
-| Required or optional | **Username and recovery email are required**; training, health, and AI content are optional; logs are collected automatically |
-| Purpose | App functionality, account management, security, and AI features — not analytics, not advertising, not product improvement by third parties |
+| Required or optional | **Username and recovery email are required**; training, health, and AI content are optional; logs and analytics are collected automatically (existing analytics opt-outs remain off permanently) |
+| Purpose | App functionality, account management, security, AI features, and product analytics (PostHog EU); no advertising or third-party product improvement |
 | Independent verification | No |
 
 Keep this table and `docs/PRIVACY_POLICY.md` in sync: Play rejects a Data

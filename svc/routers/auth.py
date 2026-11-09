@@ -548,6 +548,7 @@ async def update_display_language(
     return {"display_language": body.display_language}
 
 
+# Compatibility for installed build-1 apps only; remove after MIN_ANDROID_BUILD reaches 2 (#445).
 @router.put("/analytics-preference")
 @limiter.limit(PASSWORD_LIMIT)
 async def update_analytics_preference(

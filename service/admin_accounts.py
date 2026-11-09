@@ -1,13 +1,36 @@
-"""Account metadata views for the owner dashboard (ADR 051, #208)."""
+"""Owner account metadata and analytics objections (ADR 051/040)."""
 
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-from service import model_metering, password_reset, plans as plans_service
+from service import analytics, audit_log, model_metering, password_reset, plans as plans_service
 
 ACCOUNT_PAGE_SIZE = 50
+
+
+def turn_off_analytics(db: Any, account_id: str, actor: str, source_ip: str | None) -> bool | None:
+    """Atomically records an objection and its audit entry; sends only after commit.
+
+    Returns None for a non-live Account, False if already off, or True on change.
+    """
+    with db.catalog_transaction(immediate=True):
+        changed = db.set_account_analytics_allowed(account_id, False)
+        if changed:
+            audit_log.write_audit_entry(
+                db,
+                audit_log.AuditEvent(
+                    actor=actor,
+                    action="account_analytics_turned_off",
+                    target_account_id=account_id,
+                    source_ip=source_ip,
+                    reason="Product analytics objection",
+                ),
+            )
+    if changed:
+        analytics.record_opt_out_change(account_id, True)
+    return changed
 
 
 class AccountListQuery(BaseModel):
