@@ -80,7 +80,6 @@ class FakeMayosApi {
   bool tokenValid = true;
   bool loginNetworkFails = false;
   bool displayLanguageUpdateFails = false;
-  bool analyticsPreferenceUpdateFails = false;
   bool analyticsAllowed = true;
   int tourSeenVersion = 1;
   int whatsNewSeenRelease = 1;
@@ -918,8 +917,6 @@ class FakeMayosApi {
         return FakeResponse(200, <String, dynamic>{'tour_seen_version': tourSeenVersion});
       case '/auth/display-language':
         return _updateDisplayLanguage(request);
-      case '/auth/analytics-preference':
-        return _updateAnalyticsPreference(request);
       case '/auth/product-email-consent':
         return _updateProductEmailConsent(request);
       case '/auth/email':
@@ -1411,19 +1408,6 @@ class FakeMayosApi {
     displayLanguage = language as String;
     return FakeResponse(
         200, <String, dynamic>{'display_language': displayLanguage});
-  }
-
-  FakeResponse _updateAnalyticsPreference(FakeRequest request) {
-    if (!_authorized(request)) {
-      return const FakeResponse(
-          401, <String, dynamic>{'detail': 'Token has been revoked.'});
-    }
-    if (analyticsPreferenceUpdateFails) {
-      return const FakeResponse(503, <String, dynamic>{'detail': 'offline'});
-    }
-    analyticsAllowed = request.body['analytics_allowed'] as bool;
-    return FakeResponse(
-        200, <String, dynamic>{'analytics_allowed': analyticsAllowed});
   }
 
   FakeResponse _updateProductEmailConsent(FakeRequest request) {

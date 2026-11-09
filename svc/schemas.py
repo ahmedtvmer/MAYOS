@@ -244,6 +244,7 @@ class DisplayLanguageIn(BaseModel):
     display_language: DisplayLanguage
 
 
+# Legacy app compatibility; remove with the route after MIN_ANDROID_BUILD reaches 2 (#445).
 class AnalyticsPreferenceIn(BaseModel):
     analytics_allowed: bool
 
