@@ -12,7 +12,6 @@ sys.path.append(str(BASE_DIR))
 from agent import program_generator
 from agent.movement_signatures import matches_movement_signature
 from agent.ProgramState import CustomDayPlan, DynamicSplitPlan
-from core.effort import rir_from_rpe
 from agent.program_blueprints import (
     ANTERIOR_POSTERIOR_DAYS,
     ARNOLD_DAYS,
@@ -107,18 +106,18 @@ EXPECTED_PRESCRIPTION_RANGES = {
 }
 
 EXPECTED_RIR_RANGES = {
-    ("beginner", "calf_abs"): (0, 1),
-    ("beginner", "isolation"): (0, 1),
-    ("beginner", "medium_compound"): (1, 2),
-    ("beginner", "heavy_compound"): (1, 2),
+    ("beginner", "calf_abs"): (1, 1),
+    ("beginner", "isolation"): (1, 1),
+    ("beginner", "medium_compound"): (2, 2),
+    ("beginner", "heavy_compound"): (2, 2),
     ("intermediate", "calf_abs"): (0, 0),
     ("intermediate", "isolation"): (0, 0),
-    ("intermediate", "medium_compound"): (0, 1),
-    ("intermediate", "heavy_compound"): (0, 1),
+    ("intermediate", "medium_compound"): (1, 1),
+    ("intermediate", "heavy_compound"): (1, 1),
     ("advanced", "calf_abs"): (0, 0),
     ("advanced", "isolation"): (0, 0),
-    ("advanced", "medium_compound"): (0, 1),
-    ("advanced", "heavy_compound"): (0, 1),
+    ("advanced", "medium_compound"): (1, 1),
+    ("advanced", "heavy_compound"): (1, 1),
 }
 
 
@@ -541,7 +540,7 @@ def test_prescriptions_follow_reference_scheme():
     for day in program.days:
         for exercise in day.exercises:
             assert 0 <= exercise.warmup_sets <= 4
-            assert 1 <= exercise.target_sets <= 2
+            assert 1 <= exercise.working_sets <= 2
             assert exercise.target_reps_min >= 4
             assert exercise.target_reps_max <= 30
             spec = SLOT_SPECS[exercise.slot_key]
@@ -573,8 +572,12 @@ def test_generation_prescribes_effort_by_experience(training_age_years, expected
         for exercise in day.exercises:
             exercise_class = prescription_class(SLOT_SPECS[exercise.slot_key])
             minimum_rir, maximum_rir = EXPECTED_RIR_RANGES[(expected_experience, exercise_class)]
-            actual_rir = rir_from_rpe(exercise.target_rpe)
+            actual_rir = exercise.set_groups[-1].target_rir
             assert minimum_rir <= actual_rir <= maximum_rir, (day.day_name, exercise.slot_key)
+            assert exercise.target_rpe == 10 - exercise.set_groups[0].target_rir
+            reason_day = next(item for item in program.program_rationale["days"] if item["day_order"] == day.day_order)
+            reason = next(item["rationale"] for item in reason_day["exercises"] if item["exercise_id"] == exercise.exercise_id)
+            assert reason["prescription"]["rir"]["code"] == "rir.test_set_rule"
 
 
 @pytest.mark.parametrize(
@@ -602,7 +605,7 @@ def test_default_templates_keep_weekly_working_set_totals_low():
     }
     for (gender, frequency), (low, high) in expected_ranges.items():
         program = _generate(gender, frequency)
-        totals = [sum(exercise.target_sets for exercise in day.exercises) for day in program.days]
+        totals = [sum(exercise.working_sets for exercise in day.exercises) for day in program.days]
         for total, day in zip(totals, program.days, strict=True):
             assert low <= total <= high, f"{gender} {frequency}d {day.day_name}: {total} working sets"
         weekly = sum(totals)
@@ -620,7 +623,7 @@ def test_coach_pattern_days_apply_two_sets_per_slot():
         assert plan.sets_family == "coach"
         assert len(plan.double_slots) <= 2
         for exercise in day.exercises:
-            assert exercise.target_sets == 2, f"{day.day_name}/{exercise.slot_key} should carry 2 sets"
+            assert exercise.working_sets == 2, f"{day.day_name}/{exercise.slot_key} should carry 2 sets"
 
 
 def test_anterior_posterior_split_preset_exists():
@@ -685,9 +688,9 @@ def test_five_day_ppl_upper_lower_has_balanced_volume():
         [exercise for exercise in day.exercises if exercise.slot_key in {"incline_press", "flat_press", "chest_fly"}]
         for day in program.days
     ]
-    assert sum(exercise.target_sets for day in chest_days for exercise in day) == 6
+    assert sum(exercise.working_sets for day in chest_days for exercise in day) == 6
     assert sum(bool(day) for day in chest_days) == 2
-    totals = [sum(exercise.target_sets for exercise in day.exercises) for day in program.days]
+    totals = [sum(exercise.working_sets for exercise in day.exercises) for day in program.days]
     assert all(10 <= total <= 15 for total in totals), totals
     assert totals == [10, 12, 12, 10, 12]
     assert sum(totals) == 56
@@ -1010,11 +1013,11 @@ def test_goal_changes_only_the_cardio_layer():
     assert [day.day_name for day in fat_loss.days] == [day.day_name for day in hypertrophy.days]
     for fl_day, hy_day in zip(fat_loss.days, hypertrophy.days, strict=True):
         fl_shape = [
-            (ex.slot_key, ex.target_sets, ex.warmup_sets, ex.target_reps_min, ex.target_reps_max, ex.rest_seconds)
+            (ex.slot_key, ex.working_sets, ex.warmup_sets, ex.target_reps_min, ex.target_reps_max, ex.rest_seconds)
             for ex in fl_day.exercises
         ]
         hy_shape = [
-            (ex.slot_key, ex.target_sets, ex.warmup_sets, ex.target_reps_min, ex.target_reps_max, ex.rest_seconds)
+            (ex.slot_key, ex.working_sets, ex.warmup_sets, ex.target_reps_min, ex.target_reps_max, ex.rest_seconds)
             for ex in hy_day.exercises
         ]
         assert fl_shape == hy_shape, f"Lifting program changed for {fl_day.day_name}"
@@ -1055,14 +1058,14 @@ def test_poor_recovery_cuts_escalated_sets_only():
         assert [e.slot_key for e in n_day.exercises] == [e.slot_key for e in p_day.exercises]
         cuts = 0
         for n_ex, p_ex in zip(n_day.exercises, p_day.exercises, strict=True):
-            if n_ex.target_sets != p_ex.target_sets:
-                assert p_ex.target_sets == 1, f"{p_day.day_name}/{p_ex.slot_key} dropped below 1 set"
+            if n_ex.working_sets != p_ex.working_sets:
+                assert p_ex.working_sets == 1, f"{p_day.day_name}/{p_ex.slot_key} dropped below 1 set"
                 cuts += 1
             if n_ex.slot_key in compound_slots or n_ex.slot_key == "calf":
-                assert p_ex.target_sets == n_ex.target_sets, f"{p_day.day_name}/{p_ex.slot_key} lost a set"
+                assert p_ex.working_sets == n_ex.working_sets, f"{p_day.day_name}/{p_ex.slot_key} lost a set"
         assert cuts <= MAX_RECOVERY_CUTS_PER_DAY, f"{p_day.day_name} cut {cuts} sets"
-    normal_weekly = sum(e.target_sets for d in normal.days for e in d.exercises)
-    poor_weekly = sum(e.target_sets for d in poor.days for e in d.exercises)
+    normal_weekly = sum(e.working_sets for d in normal.days for e in d.exercises)
+    poor_weekly = sum(e.working_sets for d in poor.days for e in d.exercises)
     reduction = (normal_weekly - poor_weekly) / normal_weekly
     assert 0.10 <= reduction <= 0.19, f"Recovery cut {reduction:.0%} outside the designed dose"
 
@@ -1070,9 +1073,9 @@ def test_poor_recovery_cuts_escalated_sets_only():
 def test_recovery_cut_composes_with_fat_loss_goal():
     program = _generate("male", 4, goal="fat loss", recovery="poor sleep")
     normal_weekly = sum(
-        e.target_sets for d in _generate("male", 4).days for e in d.exercises
+        e.working_sets for d in _generate("male", 4).days for e in d.exercises
     )
-    weekly = sum(e.target_sets for d in program.days for e in d.exercises)
+    weekly = sum(e.working_sets for d in program.days for e in d.exercises)
     assert weekly < normal_weekly
     for day in program.days:
         assert day.cardio.model_dump(exclude_none=True) == FAT_LOSS_CARDIO_NOTE
@@ -1101,11 +1104,11 @@ def test_mobility_limitations_leave_program_unchanged():
     mobility = _generate("male", 4, limitations="shoulder lack of flexibility, lower body stiffness")
     for b_day, m_day in zip(baseline.days, mobility.days, strict=True):
         b_shape = [
-            (ex.slot_key, ex.target_sets, ex.warmup_sets, ex.target_reps_min, ex.target_reps_max, ex.rest_seconds)
+            (ex.slot_key, ex.working_sets, ex.warmup_sets, ex.target_reps_min, ex.target_reps_max, ex.rest_seconds)
             for ex in b_day.exercises
         ]
         m_shape = [
-            (ex.slot_key, ex.target_sets, ex.warmup_sets, ex.target_reps_min, ex.target_reps_max, ex.rest_seconds)
+            (ex.slot_key, ex.working_sets, ex.warmup_sets, ex.target_reps_min, ex.target_reps_max, ex.rest_seconds)
             for ex in m_day.exercises
         ]
         assert b_shape == m_shape, f"Mobility limitation changed the lifting plan for {b_day.day_name}"

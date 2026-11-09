@@ -26,6 +26,7 @@ from agent.ProgramState import (
     ProgramDaySchema,
     ProgramExerciseSchema,
 )
+from agent.program_generator import PROGRAM_DESIGN_VERSION
 from database.database_manager import DatabaseManager
 from service import coach as coach_service
 from service import onboarding as onboarding_service
@@ -522,7 +523,7 @@ def test_profile_rebuild_allowed_before_publication(api, monkeypatch):
     assert body["program_message"] is None
     assert calls["n"] == 1
     assert _active(db).program_name == "Player Plan"
-    assert _active(db).design_version == 3
+    assert _active(db).design_version == PROGRAM_DESIGN_VERSION
 
 
 def test_profile_rebuild_generates_from_the_edited_profile(api, monkeypatch):
@@ -1635,7 +1636,7 @@ def test_program_design_offer_is_only_for_unstamped_player_controlled_programs(a
     legacy = client.get("/programs/active", headers=headers).json()
     assert legacy["offer_design_regeneration"] is True
 
-    db.ledger.save_training_program({**_program("Current design").model_dump(), "design_version": 3})
+    db.ledger.save_training_program({**_program("Current design").model_dump(), "design_version": PROGRAM_DESIGN_VERSION})
     current = client.get("/programs/active", headers=headers).json()
     assert current["offer_design_regeneration"] is False
 
@@ -1732,7 +1733,7 @@ def test_design_offer_routes_conflict_when_no_offer_exists(api):
     headers = _authed(player["access_token"])
     db.switch_user("no_design_offer")
     db.ledger.save_training_program(
-        {**_program("Current design").model_dump(), "design_version": 3}
+        {**_program("Current design").model_dump(), "design_version": PROGRAM_DESIGN_VERSION}
     )
     accepted = client.post("/programs/design-offer/accept", headers=headers)
     dismissed = client.post("/programs/design-offer/dismiss", headers=headers)
@@ -1891,13 +1892,14 @@ def test_dismissing_program_design_offer_is_permanent(api, unstamped_program_gen
     assert client.get("/programs/active", headers=headers).json()["offer_design_regeneration"] is False
 
 
-def test_v2_offer_decision_does_not_hide_v3_offer(api):
+@pytest.mark.parametrize("old_version", [2, 3])
+def test_previous_design_offer_decision_does_not_hide_current_offer(api, old_version):
     client, db, _ = api
     player = _register(client, "offer_version_scope")
     headers = _authed(player["access_token"])
     db.switch_user("offer_version_scope")
-    db.ledger.save_training_program({**_program("Design v2").model_dump(), "design_version": 2})
-    db.ledger.record_program_design_offer_decision("accepted", 2, "design_version")
+    db.ledger.save_training_program({**_program("Previous design").model_dump(), "design_version": old_version})
+    db.ledger.record_program_design_offer_decision("accepted", old_version, "design_version")
 
     active = client.get("/programs/active", headers=headers)
 

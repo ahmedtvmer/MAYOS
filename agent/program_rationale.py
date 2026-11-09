@@ -6,7 +6,7 @@ selection.equipment_access_staple, selection.already_used_today, selection.hidde
 selection.signature_match, selection.limitation_substitute, selection.fallback; position.small_muscle_opener,
 position.heavy_compound, position.medium_compound, position.isolation,
 position.pre_exhaust; sets.coach_dose, sets.recovery_cut; reps.movement_class,
-reps.rep_preference; rir.experience_level; rest.movement_class; warmup.template;
+reps.rep_preference; rir.experience_level, rir.test_set_rule; rest.movement_class; warmup.template;
 sets.player_edit;
 cardio.fat_loss_finisher, cardio.coach_option; day_order.full_body_distributed,
 day_order.full_body_glute_priority,
@@ -58,7 +58,7 @@ SETS_RECOVERY_CUT = "sets.recovery_cut"
 SETS_PLAYER_EDIT = "sets.player_edit"
 REPS_MOVEMENT_CLASS = "reps.movement_class"
 REPS_PREFERENCE = "reps.rep_preference"
-RIR_EXPERIENCE_LEVEL = "rir.experience_level"
+RIR_TEST_SET_RULE = "rir.test_set_rule"
 REST_MOVEMENT_CLASS = "rest.movement_class"
 WARMUP_TEMPLATE = "warmup.template"
 CARDIO_FAT_LOSS_FINISHER = "cardio.fat_loss_finisher"
@@ -130,7 +130,9 @@ def _position_code(slot_key: str, day_slots: tuple[str, ...]) -> str:
 def exercise_rationale(
     candidate: dict[str, Any], prescription: Any, options: ExerciseRationaleOptions
 ) -> dict[str, Any]:
-    from agent.program_blueprints import rest_seconds_for_exercise_class, target_rpe_for_experience
+    from agent.program_blueprints import (
+        rest_seconds_for_exercise_class, target_rpe_for_experience, test_set_rir_for_experience,
+    )
     from agent.program_rules import apply_rep_preference
     slot_key = prescription.movement_slot
     selection_params = {"slot": slot_key, "exercise_id": str(candidate["id"]), **(options.selection_params or {})}
@@ -161,10 +163,13 @@ def exercise_rationale(
                 },
             },
             "rir": {
-                "code": RIR_EXPERIENCE_LEVEL,
+                "code": RIR_TEST_SET_RULE,
                 "params": {
                     "experience_level": options.experience_level,
                     "target_rir": 10 - target_rpe_for_experience(prescription.spec, options.experience_level),
+                    "test_set_rir": test_set_rir_for_experience(options.experience_level),
+                    "test_set_count": 1 if prescription.working_sets > 1 else 0,
+                    "test_set_counts_toward_weekly_sets": True,
                 },
             },
             "rest": {

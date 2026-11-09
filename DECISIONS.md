@@ -909,6 +909,7 @@ This document records the architectural, algorithmic, and heuristic decisions im
 * **Amendment (2026-10-17, #422)**: The first clean player-chat output is released at the first clause boundary (`,`, `;`, `:`, `—`, `،`, or `؛`) or at a word boundary near 40 characters; later output remains sentence-buffered. `CoachOutputScrubber` continues to hold possible banned leads and partial unsafe medical patterns. If a length-limited reply already displayed a partial sentence, that visible prefix remains, complete sentences still held in the buffer are retained, any unfinished continuation is discarded, and the limit notice follows. The saved assistant response remains identical to the displayed text. The stream can expose text before a later tool-call chunk, as tested by `tests/test_player_chat_privacy.py::test_yielded_text_before_tool_call_is_not_retracted`; this differs from the #269 review-follow-up statement above and needs a separate resolution.
 * **Amendment (2026-10-17, #422 correction)**: ASCII comma, semicolon, and colon count as clause boundaries only when followed by whitespace and outside a digit pair. The delimiter remains buffered after the first prefix is released; if the reply is length-limited, dangling clause punctuation and whitespace are discarded before the limit notice. The first-prefix word-boundary target remains near 40 characters.
 * **Amendment (2026-10-27, #515)**: The active-program tool result includes `program_authority: player|coach` and the Coach's display name when applicable. The fixed prompt names the app tabs and directs the assistant to mention a Coach or Program request only when the tool reports coach authority. Low-fatigue upper isolations on lower days are an accepted MAYOS pattern, and recorded Program rationale takes precedence over general model opinions.
+* **Amendment (2026-11-08, #524)**: Player chat keeps the existing 10-message history window after excluding session pointers. The last 6 chat messages, including the current user message, are sent in full. Older assistant replies inside that window are limited to their first 600 characters in English and Arabic, with no added truncation marker; older user messages remain unchanged. This replaces the untruncated-history rule above. Stored chat and the fixed system prompt are unchanged.
 
 ---
 
@@ -1107,12 +1108,38 @@ This document records the architectural, algorithmic, and heuristic decisions im
 * **Rationale**: In-process totals cost almost nothing on a 2-core server, while a Prometheus and Grafana stack would compete with the API for memory and add a second place to look. Sentry performance tracing would send more data out and bill by volume for numbers a few counters already give. A separate file keeps measurement writes away from Player data and out of replication. Keeping the downtime check outside is the only way it can see the API fail.
 * **Code References**: `svc/request_metrics.py`, `svc/routers/admin.py`, `database/sqlite_connection.py`, `service/ai_usage_analytics.py`, `svc/error_tracking.py`.
 
+---
+
 ### ADR 101: Staging is a separate, on-demand API on the production server
 * **Status**: Accepted (2026-11-08, #672).
 * **Decision**: Staging is its own Compose project, `mayos-staging`, with one `api` service on the production server. It starts only when the owner runs `deploy/deploy_server.sh staging up`, and stops on `staging down` or automatically after four hours, checked every 15 minutes. It shares nothing writable with production: its data is `/mnt/mayos-data/staging`, its settings are `/opt/mayos/staging.env` with independent sign-in secrets, and it has no Litestream backup, SMTP delivery or Discord alerts. Emails are logged. `MAYOS_ENV` and `SENTRY_ENVIRONMENT` are fixed to `staging`. The existing tunnel reaches it at `staging.mayos.online` through the `api-staging` network alias; when staging is off, that address shows a tunnel error page. The API and its separate image builder each have a 1536 MB memory cap. Production deploys from a checkout accept only the current `origin/master` after a fetch, so a branch reaches production through a merged PR. This supersedes only ADR 098's sentence about the CI image smoke test replacing the staging server; the rest stands.
 * **Context**: Production moved to the former staging Contabo server on 2026-11-08 (#378). The one 8 GB server has an API using about 1 GB at idle, and Thomas releases to staging before production.
 * **Rationale**: A second server costs money and an always-on staging costs about 1 GB permanently. An on-demand container gives a real staging for reviews at no idle cost, with separate storage and bounded memory to protect production.
 * **Code References**: `deploy/compose.staging.yaml`, `deploy/deploy_server.sh`, `deploy/staging_server.bash`, `deploy/systemd/mayos-staging-autostop.service`, `deploy/systemd/mayos-staging-autostop.timer`, `docs/DEPLOYMENT.md`.
+
+### ADR 102: Generated exercises start with a Test set
+
+* **Status**: Accepted (2026-11-08, #532; parent #531). This records the parent's proposed ADR 095 under 102 because 095 is already assigned.
+* **Decision**: Generated Training program exercises with two or more working sets use one Test set as their first set group, followed by a group containing the remaining working sets. One-set exercises use only the working RIR. The Test set counts toward weekly working sets, including Focus muscle dosing. Deload prescriptions use the deload RIR for every set. The Player sees each row's own RIR, with no Test set label.
+
+  | Experience | Test set RIR | Working compounds RIR | Working isolation, calves, abs RIR |
+  |---|---|---|---|
+  | Beginner | 3 | 2 | 1 |
+  | Intermediate | 2 | 1 | 0 |
+  | Advanced | 2 | 1 | 0 |
+
+* **Compatibility**: ADR 085 is unchanged: flat fields mirror the first group and working-set counts sum all groups. Generated programs use design version 4 and the existing consented rebuild offer. Existing Coach-authored, imported and template-derived programs retain their prescriptions and remain excluded from the offer through their publication/template provenance. The app build becomes 2. The server's default minimum build stays unchanged; after build 2 is published, the owner raises `MIN_ANDROID_BUILD` to 2 through the existing force-update policy.
+* **Program rationale**: Each generated exercise records `rir.test_set_rule` with its Experience level, working RIR, Test set RIR, whether it has a Test set, and that the Test set counts toward weekly sets. The assistant reads the recorded rule through ADR 091; no fixed assistant prompt text is added.
+* **Rationale**: A first set with more reps in reserve lets the Player feel the load before the harder work. Compounds keep at least 1 RIR and beginners keep at least 1 RIR on every working set. Coach and imported prescriptions remain their authors' choices.
+* **Code References**: `agent/program_blueprints.py`, `agent/program_generator.py`, `agent/program_rationale.py`, `service/programs.py`, `service/workouts.py`, `mobile/lib/src/features/player/workout/workout_logger_screen.dart`, `mobile/lib/src/features/player/workout/logger_card_widgets.dart`.
+
+### ADR 103: Unscoped Player program reads return a Program overview (amends ADR 078)
+
+* **Status**: Accepted (2026-11-08, #526; program-view portion of #523).
+* **Decision**: The Player assistant's `get_active_program` returns a Program overview when no day, Exercise or muscle scope is supplied: day names in order, each day's muscles, weekly working sets by muscle, Program authority and Movement restriction skips. It reads only the current Program week unless `week_order` selects another; adding weeks never multiplies the overview. Weekly totals retain the Volume review muscle grouping, including overlapping Weak point groups, unmapped muscles and zero totals. A `day_name`, `exercise_name`, `exercise_id` or `muscle` scope returns only matching prescriptions, including heterogeneous set groups. Combined scopes intersect. Muscle scope accepts a Weak point group or an exact Exercise target muscle, case-insensitively. Restriction skips are limited to the selected week/days and grouped as restriction labels mapped to unique slot names. The `program_authority` and optional `coach` fields retain their meaning and spelling, including the oversized-summary fallback. The existing 4 KB result cap and fixed system prompt remain unchanged. This decision covers program reads only; the Context router and other #523 work remain separate tickets.
+* **Context**: An unscoped read previously included compact Exercise prescriptions. Large programs could lose the day list at the result cap, and the production weekly-biceps-and-triceps question needed totals without those prescriptions.
+* **Rationale**: A single-week overview has bounded structural size across supported Splits, frequencies and week counts. Matching prescriptions remain available through explicit scopes, while repeated restriction skips do not consume space once per day or Program week.
+* **Code References**: `agent/player_tools.py`, `tests/test_player_chat_privacy.py`, `tests/test_player_program_rationale_tool.py`.
 
 ### ADR 106: Staple choices define cooked meal weights and per-food limits
 * **Status**: Accepted (owner review, 2026-11-09, #681).
