@@ -484,6 +484,7 @@ _Arabic_: وجبة
 
 **Staple food**:
 A food MAYOS curates as a default choice for a meal role, such as eggs or ful for a breakfast protein. Each role has an ordered list; the first one the Player's Food restrictions allow is suggested and the next ones are its swaps. It is the food counterpart of a Staple exercise.
+Optional per-food minimum and maximum grams per meal override the meal generator's per-category defaults (#682).
 _Arabic_: طعام أساسي
 
 **Food restriction**:

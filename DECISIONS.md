@@ -1142,3 +1142,9 @@ This document records the architectural, algorithmic, and heuristic decisions im
 * **Context**: An unscoped read previously included compact Exercise prescriptions. Large programs could lose the day list at the result cap, and the production weekly-biceps-and-triceps question needed totals without those prescriptions.
 * **Rationale**: A single-week overview has bounded structural size across supported Splits, frequencies and week counts. Matching prescriptions remain available through explicit scopes, while repeated restriction skips do not consume space once per day or Program week.
 * **Code References**: `agent/player_tools.py`, `tests/test_player_chat_privacy.py`, `tests/test_player_program_rationale_tool.py`.
+
+### ADR 106: Staple choices define cooked meal weights and per-food limits
+* **Status**: Accepted (owner review, 2026-11-09, #681).
+* **Decision**: Meals are weighed cooked through the curated Staple choice: raw rows keep no Staple role, following the owner's review in #683, so no separate `cooked_only` flag is needed. Optional `min_grams` and `max_grams` on Staple foods specify per-meal amount limits; each supplied bound overrides its per-category default in the meal generator (#682). Empty bounds leave the corresponding category defaults in effect.
+* **Rationale**: Choosing the cooked Food library row keeps its nutrient values consistent with the weighed meal. Per-food overrides allow exceptions while retaining category defaults for ordinary choices.
+* **Code References**: `data/food_curation.csv`, `database/food_library/builder.py`, `database/food_library/seeding.py`.
