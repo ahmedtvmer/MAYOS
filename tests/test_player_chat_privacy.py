@@ -25,6 +25,7 @@ from fastapi.testclient import TestClient
 from agent import assistant_graph
 from agent import player_prompt
 from agent import player_tools
+from agent.chat_markers import SessionPointerFacts, format_session_pointer
 from agent.ProgramState import (
     GeneratedProgramSchema, ProgramDaySchema, ProgramExerciseSchema,
     ProgramSetGroupSchema, PersistedProgramSchema, PersistedProgramDaySchema,
@@ -643,6 +644,75 @@ def test_player_model_input_excludes_identifying_fields(api, monkeypatch):
     assert username not in rendered
     assert email not in rendered
     assert "secretpineapple" not in rendered
+
+
+@pytest.mark.parametrize("message_count", [5, 6, 7, 10, 12])
+@pytest.mark.parametrize(
+    ("language", "filler", "question"),
+    [
+        ("en", "x", "How should I cue my bench?"),
+        ("ar", "ش", "إزاي أظبط تكنيك البنش؟"),
+    ],
+)
+def test_chat_turn_keeps_recent_six_full_and_trims_only_older_assistant_replies(
+    api, monkeypatch, message_count, language, filler, question
+):
+    # Cover short history, the 6/7 boundary, and the 10-message window; old
+    # replies below/at/above 600 characters must count characters, not bytes.
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "history-trimming"
+    headers = _authed(_register(client, username)["access_token"])
+    short_reply = "Short: " + filler * 592
+    exact_reply = "Exact: " + filler * 593
+    long_reply = "Older: " + filler * 900
+    old_user = "Old user: " + filler * 900
+    recent_reply = "Recent: " + filler * 900
+    recent_user = "Recent user: " + filler * 900
+    # Each entry supplies saved text and the independently expected model text.
+    history = [
+        ("user", "Outside user", "Outside user"),
+        ("assistant", "Outside answer", "Outside answer"),
+        ("assistant", short_reply, short_reply),
+        ("user", old_user, old_user),
+        ("assistant", exact_reply, exact_reply),
+        ("assistant", long_reply, long_reply[:600]),
+        ("assistant", recent_reply, recent_reply),
+        ("user", recent_user, recent_user),
+        ("assistant", recent_reply + " second", recent_reply + " second"),
+        ("user", recent_user + " second", recent_user + " second"),
+        ("assistant", recent_reply + " third", recent_reply + " third"),
+    ][-(message_count - 1):]
+    pointer = format_session_pointer(SessionPointerFacts(
+        display_language=language, day_name="Full A", performed_date="2026-11-01",
+        total_working_sets=3, total_tonnage_kg=150.0, readiness=4,
+    ))
+    with db.open_ledger(username) as ledger:
+        for role, saved_text, _expected in history:
+            ledger.add_chat_message(role, saved_text)
+        ledger.add_chat_message("assistant", pointer)
+    model = ScriptedChatModel(["Keep your movement controlled."])
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers, json={"content": question}
+    ) as response:
+        response.read()
+        assert response.status_code == 200
+
+    messages = model.calls[-1]["messages"]
+    expected = [(role, expected_text) for role, _saved, expected_text in history]
+    expected.append(("user", question))
+    assert [
+        (player_prompt.message_role(message), message.content)
+        for message in messages[1:]
+    ] == expected[-10:]
+    assert pointer not in "\n".join(str(message.content) for message in messages)
+    saved_history = client.get("/chat/history", headers=headers).json()
+    assert [(row["role"], row["content"]) for row in saved_history[:-2]] == [
+        *((role, saved_text) for role, saved_text, _expected in history),
+        ("assistant", pointer),
+    ]
 
 
 def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
@@ -1266,8 +1336,12 @@ def test_tool_result_keeps_followup_payload_under_the_prompt_ceiling(api, monkey
     username = "prompt-ceiling-tool"
     headers = _authed(_register(client, username)["access_token"])
     with db.open_ledger(username) as ledger:
-        for _ in range(9):
+        for _ in range(4):
             ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 2_900)
+        # #524 trims the first four replies to 600 chars. Enlarging the five
+        # recent replies keeps the initial prompt within 4 bytes of its old size.
+        for _ in range(5):
+            ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 4_752)
         ledger.upsert_player_profile(
             {"injuries_or_limitations": "PLAYER_LIMITATION " + "knee pain " * 260}
         )

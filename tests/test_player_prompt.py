@@ -147,7 +147,7 @@ def test_player_prompt_contains_only_fixed_context_and_conversation_in_order():
     ]
 
 
-def test_fixed_prompt_keeps_last_ten_messages_untruncated():
+def test_fixed_prompt_keeps_last_ten_messages_with_recent_reply_untruncated():
     state = {
         "messages": [HumanMessage(content=f"Message {index}") for index in range(11)]
         + [AIMessage(content="Earlier assistant reply " + "x" * 600)],
@@ -273,19 +273,19 @@ def test_output_limit_response_keeps_its_original_literal():
     )
 
 
-def test_earlier_assistant_replies_are_not_truncated_by_default():
+def test_recent_assistant_replies_are_not_truncated_by_default():
     payload = build_player_chat_prompt(
         {
             "messages": [
                 HumanMessage(content="Earlier question"),
-                AIMessage(content="A" * 600),
+                AIMessage(content="A" * 900),
                 HumanMessage(content="Current question"),
             ]
         },
         prompt_budget=lambda: 100_000,
     )
 
-    assert payload[2].content == "A" * 600
+    assert payload[2].content == "A" * 900
 
 
 def test_prompt_history_defaults_and_scoped_window_keeps_messages_untruncated():
@@ -373,7 +373,7 @@ def test_eval_qa_payloads_match_the_offline_prompt_capture(
     assert capsys.readouterr().out == ""
 
 
-def test_last_ten_message_arabic_history_is_kept_untruncated():
+def test_last_ten_message_arabic_history_stays_within_token_ceiling():
     messages = []
     for index in range(8):
         messages.append(HumanMessage(content="سؤال عن التمرين رقم %d وكيف أنظم الأحمال والراحة بين المجموعات" % index))
