@@ -713,7 +713,7 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
         "POST",
         "/chat/messages",
         headers=headers,
-        json={"content": "What do you know about my profile and program?"},
+        json={"content": "What do you know about my profile?"},
     ) as response:
         body = response.read().decode("utf-8")
         assert response.status_code == 200
