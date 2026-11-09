@@ -1,212 +1,222 @@
 id,display_name,arabic_name,aliases_en,aliases_ar,hidden,staple_roles,portion_label,portion_grams,reviewed
-2707152,"Whole egg, raw",بيض كامل نيء,,بيض,,breakfast_protein|main_protein,,,false
-2707154,Boiled egg,بيض مسلوق,,بيض مسلوق,,breakfast_protein|main_protein,large egg,50,false
-173424,Hard-boiled egg,بيض مسلوق,,بيض,,breakfast_protein|main_protein,large egg,50,false
-172183,Raw egg white,بياض بيض نيء,,,,breakfast_protein|main_protein,,,false
-172186,Poached egg,بيض مسلوق بدون قشر,,,,breakfast_protein|main_protein,,,false
-172187,Scrambled eggs,بيض مخفوق,,,,breakfast_protein|main_protein,,,false
-2707156,"Fried egg, no added fat",بيض مقلي بدون دهون مضافة,,,,breakfast_protein|main_protein,,,false
-175205,Dried fava beans,فول جاف,,فول|فول مدمس,,breakfast_protein|main_protein,,,false
-173798,Boiled fava beans,فول مدمس,,فول|فول مدمس,,breakfast_protein|main_protein,,,false
-173753,"Boiled fava beans, unsalted",فول مدمس بدون ملح,,فول|فول مدمس,,breakfast_protein|main_protein,,,false
-2707367,Cooked fava beans,فول مطبوخ,,فول|فول مدمس,,breakfast_protein|main_protein,,,false
-172420,Raw lentils,عدس نيء,,عدس,,breakfast_protein|main_protein,,,false
-2707425,"Cooked lentils, no added fat",عدس مطبوخ بدون دهون مضافة,,عدس,,breakfast_protein|main_protein,,,false
-2707426,Canned lentils,عدس معلب,,عدس,,breakfast_protein|main_protein,,,false
-2644282,Dry chickpeas,حمص جاف,,حمص,,breakfast_protein|main_protein,,,false
-173756,"Boiled chickpeas, unsalted",حمص مسلوق بدون ملح,,حمص,,breakfast_protein|main_protein,,,false
-2707418,"Cooked chickpeas, no added fat",حمص مطبوخ بدون دهون مضافة,,حمص,,breakfast_protein|main_protein,,,false
-2707355,"Cooked white beans, no added fat",فاصوليا بيضاء مطبوخة بدون دهون مضافة,,فاصوليا بيضاء,,breakfast_protein|main_protein,,,false
-173746,"Boiled navy beans, unsalted",فاصوليا بيضاء مسلوقة,,فاصوليا بيضاء,,breakfast_protein|main_protein,,,false
-2707361,"Cooked black beans, no added fat",فاصوليا سوداء مطبوخة بدون دهون مضافة,,,,breakfast_protein|main_protein,,,false
-175237,Boiled black beans,فاصوليا سوداء مسلوقة,,,,breakfast_protein|main_protein,,,false
-2707381,"Cooked kidney beans, no added fat",فاصوليا حمراء مطبوخة بدون دهون مضافة,,,,breakfast_protein|main_protein,,,false
-2707420,"Cooked split peas, no added fat",بازلاء مطبوخة بدون دهون مضافة,,بازلاء,,breakfast_protein|main_protein,,,false
-173784,Boiled split peas,بازلاء مسلوقة,,بازلاء,,breakfast_protein|main_protein,,,false
-168877,"White rice, raw",أرز أبيض نيء,,رز,,carb,,,false
-169753,"White rice, cooked",أرز أبيض مطبوخ,,رز,,carb,,,false
-169756,"White rice, raw, unenriched",أرز أبيض نيء,,رز,,carb,,,false
-168935,"White rice, cooked, unenriched",أرز أبيض مطبوخ,,رز,,carb,,,false
-168879,"Medium-grain white rice, raw",أرز أبيض متوسط الحبة نيء,,رز,,carb,,,false
-168930,"Medium-grain white rice, cooked",أرز أبيض متوسط الحبة مطبوخ,,رز,,carb,,,false
-169704,"Brown rice, cooked",أرز بني مطبوخ,,,,carb,,,false
-169705,"Brown rice, raw",أرز بني نيء,,,,carb,,,false
-2708489,Raw oats,شوفان نيء,,شوفان,,carb,,,false
-2346396,Rolled oats,شوفان ملفوف,,شوفان,,carb,,,false
-2346397,Steel-cut oats,شوفان مقطع,,شوفان,,carb,,,false
-169736,Dry pasta,مكرونة جافة,vermicelli,مكرونة|شعرية,,carb,,,false
-2708357,Cooked pasta,مكرونة مطبوخة,,مكرونة,,carb,,,false
-168927,"Dry pasta, unenriched",مكرونة جافة,,مكرونة,,carb,,,false
-168910,Cooked whole-wheat pasta,مكرونة قمح كامل مطبوخة,,مكرونة قمح كامل,,carb,,,false
-168915,Dry whole-grain pasta,مكرونة حبوب كاملة جافة,,مكرونة قمح كامل,,carb,,,false
-2710820,Raw bulgur,برغل نيء,,برغل,,carb,,,false
-170287,Cooked bulgur,برغل مطبوخ,,برغل,,carb,,,false
-2708441,Cooked couscous,كسكس مطبوخ,,,,carb,,,false
-170284,Raw pearl barley,شعير لؤلؤي نيء,,,,carb,,,false
-170285,Cooked pearl barley,شعير لؤلؤي مطبوخ,,,,carb,,,false
-169697,Whole-grain yellow cornmeal,دقيق ذرة أصفر كامل الحبة,,,,carb,,,false
-2707730,Whole-wheat pita,خبز بيتا من القمح الكامل,baladi bread|whole-wheat pita,عيش بلدي,,carb,loaf,90,false
-174915,White pita bread,خبز بيتا أبيض,pita bread,عيش بلدي,,carb,,,false
-2707616,Pita bread,خبز بيتا,pita bread,عيش,,carb,,,false
-172688,Whole-wheat bread,خبز قمح كامل,,عيش قمح كامل,,carb,,,false
-335240,Whole-wheat bread,خبز قمح كامل,,عيش قمح كامل,,carb,,,false
-2707598,White bread,خبز أبيض,,عيش أبيض,,carb,,,false
-2707709,Whole-wheat bread,خبز قمح كامل,,عيش قمح كامل,,carb,,,false
-168013,Multigrain bread,خبز متعدد الحبوب,,عيش حبوب كاملة,,carb,,,false
-172690,Homemade whole-wheat bread,خبز قمح كامل منزلي,,عيش قمح كامل,,carb,,,false
-170111,Baked potato with skin,بطاطس مشوية بالقشر,,بطاطس,,carb,,,false
-170093,"Baked potato, no salt",بطاطس مشوية بدون ملح,,بطاطس,,carb,,,false
-170112,Baked potato flesh,لب بطاطس مشوية,,بطاطس,,carb,,,false
-170114,Boiled potato with skin,بطاطس مسلوقة بالقشر,,بطاطس,,carb,,,false
-170438,"Boiled potato, no salt",بطاطس مسلوقة بدون ملح,,بطاطس,,carb,,,false
-170520,"Boiled potato, peeled",بطاطس مسلوقة مقشرة,,بطاطس,,carb,,,false
-170032,Raw potato,بطاطس نيئة,,بطاطس,,carb,,,false
-2646170,"Raw chicken breast, skinless",صدر دجاج نيء بدون جلد,,فراخ|صدر فراخ,,main_protein,,,false
-2727569,Raw chicken breast with skin,صدر دجاج نيء بالجلد,,فراخ,,main_protein,,,false
-2646171,"Raw chicken thigh, skinless",ورك دجاج نيء بدون جلد,,فراخ,,main_protein,,,false
-2727567,Raw chicken thigh with skin,ورك دجاج نيء بالجلد,,فراخ,,main_protein,,,false
-2727566,Raw chicken drumstick,ساق دجاج نيئة,,فراخ,,main_protein,,,false
-2705956,"Roasted chicken breast, no skin",صدر دجاج مشوي بدون جلد,,فراخ|صدر فراخ,,main_protein,,,false
-2705955,Roasted chicken breast with skin,صدر دجاج مشوي بالجلد,,فراخ,,main_protein,,,false
-2706029,Roasted chicken thigh with skin,ورك دجاج مشوي بالجلد,,فراخ,,main_protein,,,false
-2706030,"Roasted chicken thigh, no skin",ورك دجاج مشوي بدون جلد,,فراخ,,main_protein,,,false
-2706003,"Roasted chicken drumstick, no skin",ساق دجاج مشوية بدون جلد,,فراخ,,main_protein,,,false
-2705853,Raw ground beef,لحم بقري مفروم نيء,,لحم مفروم,,main_protein,,,false
-2514744,"Raw ground beef, 80% lean",لحم بقري مفروم نيء قليل الدهن,,لحم مفروم,,main_protein,,,false
-2514743,"Raw ground beef, 90% lean",لحم بقري مفروم قليل الدهن نيء,,لحم مفروم,,main_protein,,,false
-2705833,Sirloin steak,شريحة لحم بقري من الخاصرة,,لحم بقري,,main_protein,,,false
-2705827,Flank steak,شريحة لحم بقري من الخاصرة الجانبية,,لحم بقري,,main_protein,,,false
-2705847,Roast beef,لحم بقري مشوي,,لحم بقري,,main_protein,,,false
-2706153,Beef liver,كبدة بقري,,كبدة,,main_protein,,,false
-2706154,Chicken liver,كبدة دجاج,,كبدة فراخ,,main_protein,,,false
-174754,Cooked ground beef,لحم بقري مفروم مطبوخ,,لحم مفروم,,main_protein,,,false
-169500,Roasted beef ribs,ضلوع بقري مشوية,,لحم بقري,,main_protein,,,false
-168679,"Roasted beef ribs, prime",ضلوع بقري مشوية,,لحم بقري,,main_protein,,,false
-2706311,Canned tuna,تونة معلبة,,تونة,,main_protein,,,false
-334194,Canned light tuna in water,تونة خفيفة معلبة بالماء,,تونة,,main_protein,,,false
-2706310,Cooked tuna,تونة مطبوخة,,تونة,,main_protein,,,false
-2706293,Canned sardines,سردين معلب,,سردين,,main_protein,,,false
-175139,Atlantic sardines in oil,سردين أطلسي محفوظ بالزيت,,سردين,,main_protein,,,false
-175140,Sardines in tomato sauce,سردين بصلصة الطماطم,,سردين,,main_protein,,,false
-2706286,Baked salmon,سلمون مشوي,,سلمون,,main_protein,,,false
-2706287,Grilled salmon,سلمون مشوي,,سلمون,,main_protein,,,false
-2706291,Canned salmon,سلمون معلب,,سلمون,,main_protein,,,false
-2706319,Baked tilapia,بلطي مشوي,,سمك بلطي,,main_protein,,,false
-2706320,Grilled tilapia,بلطي مشوي,,سمك بلطي,,main_protein,,,false
-175123,Raw striped mullet,بوري نيء,,سمك بوري,,main_protein,,,false
-175124,Cooked striped mullet,بوري مطبوخ,,سمك بوري,,main_protein,,,false
-175142,Raw sea bass,قاروص نيء,,سمك قاروص,,main_protein,,,false
-173694,Cooked sea bass,قاروص مطبوخ,,سمك قاروص,,main_protein,,,false
-2706241,Baked cod,سمك القد المشوي,,سمك,,main_protein,,,false
-2706268,Canned mackerel,ماكريل معلب,,سمك ماكريل,,main_protein,,,false
-2706264,Baked mackerel,ماكريل مشوي,,سمك ماكريل,,main_protein,,,false
-2706322,Fried tilapia,بلطي مقلي,,سمك بلطي,,main_protein,,,false
-2705385,Whole milk,حليب كامل الدسم,,لبن,,breakfast_protein,,,false
-2705387,Low-fat milk,حليب قليل الدسم,,لبن,,breakfast_protein,,,false
-171263,Skim milk,حليب خالي الدسم,,لبن خالي الدسم,,breakfast_protein,,,false
-170886,Low-fat plain yogurt,زبادي سادة قليل الدسم,,زبادي,,breakfast_protein,,,false
-2259793,Whole-milk plain yogurt,زبادي سادة كامل الدسم,,زبادي,,breakfast_protein,,,false
-170887,Skim-milk plain yogurt,زبادي سادة خالي الدسم,,زبادي,,breakfast_protein,,,false
-2705423,"Plain Greek yogurt, low fat",زبادي يوناني سادة قليل الدسم,,زبادي يوناني,,breakfast_protein,,,false
-330137,Plain nonfat Greek yogurt,زبادي يوناني سادة خالي الدسم,,زبادي يوناني,,breakfast_protein,,,false
-173417,"Low-fat cottage cheese, 1% fat",جبن قريش قليل الدسم,areesh,جبنة قريش|جبن قريش,,breakfast_protein|main_protein,,,false
-328841,"Low-fat cottage cheese, 2% fat",جبن قريش قليل الدسم,areesh,جبنة قريش,,breakfast_protein|main_protein,,,false
-2705714,Feta cheese,جبن فيتا,,جبنة فيتا,,breakfast_protein,,,false
-2705709,Cheddar cheese,جبن شيدر,,جبنة شيدر,,breakfast_protein,,,false
-328637,Cheddar cheese,جبن شيدر,,جبنة رومي,,breakfast_protein,,,false
-2705723,Part-skim mozzarella,جبن موزاريلا قليل الدسم,,جبنة موزاريلا,,breakfast_protein,,,false
-2705728,Grated Parmesan cheese,جبن بارميزان مبشور,,جبنة بارميزان,,breakfast_protein,,,false
-173418,Cream cheese,جبن كريمي,,جبنة كريمي,,breakfast_protein,,,false
-323444,Ricotta cheese,جبن ريكوتا,,,,breakfast_protein,,,false
-2709719,Raw tomatoes,طماطم طازجة,,طماطم,,vegetable_fat,,,false
-170000,Raw onions,بصل طازج,,بصل,,vegetable_fat,,,false
-2709784,Raw cucumber,خيار طازج,,خيار,,vegetable_fat,,,false
-169248,Raw iceberg lettuce,خس آيسبرغ طازج,,خس,,vegetable_fat,,,false
-168462,Raw spinach,سبانخ طازجة,,سبانخ,,vegetable_fat,,,false
-169228,Raw eggplant,باذنجان طازج,,باذنجان,,vegetable_fat,,,false
-2709785,Raw eggplant,باذنجان طازج,,باذنجان,,vegetable_fat,,,false
-170393,Raw carrots,جزر طازج,,جزر,,vegetable_fat,,,false
-170379,Raw broccoli,بروكلي طازج,,بروكلي,,vegetable_fat,,,false
-169975,Raw cabbage,كرنب طازج,,كرنب,,vegetable_fat,,,false
-2709769,Raw green beans,فاصوليا خضراء طازجة,,فاصوليا خضراء,,vegetable_fat,,,false
-170098,Boiled okra,بامية مسلوقة,,بامية,,vegetable_fat,,,false
-2709944,"Cooked okra, no added fat",بامية مطبوخة بدون دهون مضافة,,بامية,,vegetable_fat,,,false
-169354,Cooked molokhia leaves,ملوخية مطبوخة,,ملوخية,,vegetable_fat,,,false
-2685568,Raw zucchini,كوسة طازجة,,كوسة,,vegetable_fat,,,false
-2258588,Raw green bell pepper,فلفل أخضر حلو طازج,,فلفل أخضر,,vegetable_fat,,,false
-2258590,Raw red bell pepper,فلفل أحمر حلو طازج,,فلفل أحمر,,vegetable_fat,,,false
-2709647,Raw cauliflower,قرنبيط طازج,,قرنبيط,,vegetable_fat,,,false
-2709872,"Cooked beets, no added fat",بنجر مطبوخ بدون دهون مضافة,,بنجر,,vegetable_fat,,,false
-2709834,"Cooked asparagus, no added fat",هليون مطبوخ بدون دهون مضافة,,هليون,,vegetable_fat,,,false
-2709937,"Cooked mushrooms, no added fat",مشروم مطبوخ بدون دهون مضافة,,مشروم,,vegetable_fat,,,false
-2709897,"Cooked cauliflower, no added fat",قرنبيط مطبوخ بدون دهون مضافة,,قرنبيط,,vegetable_fat,,,false
-2709881,"Cooked Brussels sprouts, no added fat",كرنب بروكسل مطبوخ,,كرنب بروكسل,,vegetable_fat,,,false
-2710010,Cooked peppers and onions,فلفل وبصل مطبوخان,,فلفل وبصل,,vegetable_fat,,,false
-171688,Apple with skin,تفاح بقشره,,تفاح,,snack,,,false
-2709196,Dried apples,تفاح مجفف,,تفاح مجفف,,snack,,,false
-173944,Banana,موز,,موز,,snack,,,false
-2709171,Orange,برتقال,,برتقال,,snack,,,false
-168191,Medjool dates,تمر مجدول,,تمر,,snack,,,false
-171726,Deglet Noor dates,تمر دقلة نور,,تمر,,snack,,,false
-2709237,Grapes,عنب,,عنب,,snack,,,false
-2709242,Mango,مانجو,,مانجو,,snack,,,false
-2709270,Watermelon,بطيخ,,بطيخ,,snack,,,false
-2709283,Strawberries,فراولة,,فراولة,,snack,,,false
-746773,Bartlett pear,كمثرى بارتليت,,كمثرى,,snack,,,false
-171697,Apricots,مشمش,,مشمش,,snack,,,false
-2710815,Fresh apricot,مشمش طازج,,مشمش,,snack,,,false
-2710824,Fresh avocado,أفوكادو طازج,,أفوكادو,,snack,,,false
-173946,Peach,خوخ,,خوخ,,snack,,,false
-2346393,Raw almonds,لوز نيء,,لوز,,snack,,,false
-170158,"Dry-roasted almonds, unsalted",لوز محمص جاف بدون ملح,,لوز,,snack,,,false
-2707518,"Dry-roasted peanuts, lightly salted",فول سوداني محمص خفيف الملح,,فول سوداني,,snack,,,false
-2707519,"Dry-roasted peanuts, unsalted",فول سوداني محمص بدون ملح,,فول سوداني,,snack,,,false
-169421,Dry-roasted cashews,كاجو محمص جاف,,كاجو,,snack,,,false
-170571,"Dry-roasted cashews, unsalted",كاجو محمص جاف بدون ملح,,كاجو,,snack,,,false
-170188,"Roasted pumpkin seeds, unsalted",بذور قرع محمصة بدون ملح,,لب أبيض,,snack,,,false
-168601,"Roasted pumpkin seeds, salted",بذور قرع محمصة بالملح,,لب أبيض,,snack,,,false
-170151,Roasted sesame seeds,سمسم محمص,,سمسم,,snack,,,false
-2707582,"Sunflower seeds, unsalted",بذور دوار الشمس بدون ملح,,لب سوري,,snack,,,false
-2707583,"Sunflower seeds, salted",بذور دوار الشمس بالملح,,لب سوري,,snack,,,false
-2707587,Tahini,طحينة,,طحينة,,vegetable_fat,,,false
-169410,"Tahini, raw sesame",طحينة سمسم,,طحينة,,vegetable_fat,,,false
-170189,"Tahini, roasted sesame",طحينة سمسم محمص,,طحينة,,vegetable_fat,,,false
-2710186,Olive oil,زيت زيتون,,زيت زيتون,,vegetable_fat,,,false
-2710188,Canola oil,زيت كانولا,,زيت نباتي,,vegetable_fat,,,false
-2710183,Corn oil,زيت ذرة,,زيت ذرة,,vegetable_fat,,,false
-2710168,Ghee,سمن,,سمن بلدي,,vegetable_fat,,,false
-171314,Clarified butter (ghee),سمن مصفى,,سمن بلدي,,vegetable_fat,,,false
-2710281,Honey,عسل,,عسل نحل,,snack,,,false
-2708045,Basbousa,بسبوسة,,بسبوسة,,snack,,,false
+2707152,"Whole egg, raw",بيض كامل ني,,بيض,,,,,true
+2707154,Boiled egg,بيض مسلوق,,بيض مسلوق,,breakfast_protein|main_protein,large egg,50,true
+173424,Hard-boiled egg,بيض مسلوق,,بيض,,,large egg,50,false
+172183,Raw egg white,بياض بيض نيء,,,,,,,false
+172186,Poached egg,بيض مسلوق بدون قشر,,,,,,,false
+172187,Scrambled eggs,بيض اومليت,,,,breakfast_protein|main_protein,,,true
+2707156,"Fried egg, no added fat",بيض مقلي بدون دهون مضافة,,,,breakfast_protein|main_protein,,,true
+175205,Dried fava beans,فول جاف,,فول|فول مدمس,,breakfast_protein|main_protein,,,true
+173798,Boiled fava beans,فول مدمس,,فول|فول مدمس,,breakfast_protein|main_protein,,,true
+173753,"Boiled fava beans, unsalted",فول مدمس بدون ملح,,فول|فول مدمس,,breakfast_protein|main_protein,,,true
+2707367,Cooked fava beans,فول مطبوخ,,فول|فول مدمس,,breakfast_protein|main_protein,,,true
+172420,Raw lentils,عدس ني,,عدس,,,,,true
+2707425,"Cooked lentils, no added fat",عدس مطبوخ بدون دهون مضافة,,عدس,,breakfast_protein|main_protein,,,true
+2707426,Canned lentils,عدس معلب,,عدس,,breakfast_protein|main_protein,,,true
+2644282,Dry chickpeas,حمص جاف,,حمص,,breakfast_protein|main_protein,,,true
+173756,"Boiled chickpeas, unsalted",حمص مسلوق بدون ملح,,حمص,,breakfast_protein|main_protein,,,true
+2707418,"Cooked chickpeas, no added fat",حمص مطبوخ بدون دهون مضافة,,حمص,,breakfast_protein|main_protein,,,true
+2707355,"Cooked white beans, no added fat",فاصوليا بيضاء مطبوخة بدون دهون مضافة,,فاصوليا بيضاء,,breakfast_protein|main_protein,,,true
+173746,"Boiled navy beans, unsalted",فاصوليا بيضاء مسلوقة,,فاصوليا بيضاء,,breakfast_protein|main_protein,,,true
+2707361,"Cooked black beans, no added fat",فاصوليا سوداء مطبوخة بدون دهون مضافة,,,,breakfast_protein|main_protein,,,true
+175237,Boiled black beans,فاصوليا سوداء مسلوقة,,,,breakfast_protein|main_protein,,,true
+2707381,"Cooked kidney beans, no added fat",فاصوليا حمراء مطبوخة بدون دهون مضافة,,,,breakfast_protein|main_protein,,,true
+2707420,"Cooked split peas, no added fat",بازلاء مطبوخة بدون دهون مضافة,,بازلاء|بسلة,,breakfast_protein|main_protein,,,true
+173784,Boiled split peas,بازلاء مسلوقة,,بازلاء|بسلة,,breakfast_protein|main_protein,,,true
+168877,"White rice, raw",أرز أبيض ني,,رز,,,,,true
+169753,"White rice, cooked",أرز أبيض مطبوخ,,رز,,carb,,,true
+169756,"White rice, raw, unenriched",أرز أبيض نيء,,رز,,,,,false
+168935,"White rice, cooked, unenriched",أرز أبيض مطبوخ,,رز,,,,,false
+168879,"Medium-grain white rice, raw",أرز أبيض متوسط الحبة نيء,,رز,,,,,true
+168930,"Medium-grain white rice, cooked",أرز أبيض متوسط الحبة مطبوخ,,رز,,carb,,,true
+169704,"Brown rice, cooked",أرز بني مطبوخ,,,,carb,,,true
+169705,"Brown rice, raw",أرز بني نيء,,,,,,,false
+2708489,Raw oats,شوفان نيء,,شوفان,,,,,true
+2346396,Rolled oats,شوفان ملفوف,,شوفان,,carb,,,true
+2346397,Steel-cut oats,شوفان مقطع,,شوفان,,carb,,,true
+169736,Dry pasta,مكرونة جافة,vermicelli,مكرونة|شعرية,,,,,false
+2708357,Cooked pasta,مكرونة مطبوخة,,مكرونة,,carb,,,true
+168927,"Dry pasta, unenriched",مكرونة جافة,,مكرونة,,,,,false
+168910,Cooked whole-wheat pasta,مكرونة قمح كامل مطبوخة,,مكرونة قمح كامل,,carb,,,true
+168915,Dry whole-grain pasta,مكرونة حبوب كاملة جافة,,مكرونة قمح كامل,,,,,false
+2710820,Raw bulgur,برغل نيء,,برغل,,,,,true
+170287,Cooked bulgur,برغل مطبوخ,,برغل,,carb,,,true
+2708441,Cooked couscous,كسكس مطبوخ,,كسكسي,,carb,,,true
+170284,Raw pearl barley,شعير لؤلؤي نيء,,,,,,,true
+170285,Cooked pearl barley,شعير لؤلؤي مطبوخ,,,,carb,,,true
+169697,Whole-grain yellow cornmeal,دقيق ذرة أصفر كامل الحبة,,,,carb,,,true
+2707730,Whole-wheat pita,خبز من القمح الكامل,baladi bread|whole-wheat pita,عيش بلدي,,carb,loaf,100,true
+174915,White pita bread,خبز أبيض,pita bread,عيش بلدي,,carb,loaf,90,true
+2707616,Pita bread,خبز,pita bread,عيش,,,,,false
+172688,Whole-wheat bread,خبز قمح كامل,,عيش قمح كامل,,carb,,,true
+335240,Whole-wheat bread,خبز قمح كامل,,عيش قمح كامل,,,,,false
+2707598,White bread,خبز أبيض,,عيش أبيض,,carb,,,true
+2707709,Whole-wheat bread,خبز قمح كامل,,عيش قمح كامل,,carb,,,true
+168013,Multigrain bread,خبز متعدد الحبوب,,عيش حبوب كاملة,,carb,,,true
+172690,Homemade whole-wheat bread,خبز قمح كامل منزلي,,عيش قمح كامل,,carb,,,true
+170111,Baked potato with skin,بطاطس مشوية بالقشر,,بطاطس,,carb,,,true
+170093,"Baked potato, no salt",بطاطس مشوية بدون ملح,,بطاطس,,carb,,,true
+170112,Baked potato flesh,لب بطاطس مشوية,,بطاطس,,carb,,,true
+170114,Boiled potato with skin,بطاطس مسلوقة بالقشر,,بطاطس,,carb,,,true
+170438,"Boiled potato, no salt",بطاطس مسلوقة بدون ملح,,بطاطس,,carb,,,true
+170520,"Boiled potato, peeled",بطاطس مسلوقة مقشرة,,بطاطس,,carb,,,true
+170032,Raw potato,بطاطس نيئة,,بطاطس,,,,,true
+2646170,"Raw chicken breast, skinless",صدر دجاج نيء بدون جلد,,فراخ|صدر فراخ,,,,,true
+2727569,Raw chicken breast with skin,صدر دجاج نيء بالجلد,,فراخ,,,,,true
+2646171,"Raw chicken thigh, skinless",ورك دجاج نيء بدون جلد,,فراخ,,,,,true
+2727567,Raw chicken thigh with skin,ورك دجاج نيء بالجلد,,فراخ,,,,,true
+2727566,Raw chicken drumstick,ساق دجاج نيئة,,فراخ,,,,,true
+2705956,"Roasted chicken breast, no skin",صدر دجاج مشوي بدون جلد,,فراخ|صدر فراخ,,main_protein,,,true
+2705955,Roasted chicken breast with skin,صدر دجاج مشوي بالجلد,,فراخ,,main_protein,,,true
+2706029,Roasted chicken thigh with skin,ورك دجاج مشوي بالجلد,,فراخ,,main_protein,,,true
+2706030,"Roasted chicken thigh, no skin",ورك دجاج مشوي بدون جلد,,فراخ,,main_protein,,,true
+2706003,"Roasted chicken drumstick, no skin",ساق دجاج مشوية بدون جلد,,فراخ,,main_protein,,,true
+2705853,Raw ground beef,لحم بقري مفروم نيء,,لحم مفروم,,,,,true
+2514744,"Raw ground beef, 80% lean",لحم بقري مفروم نيء قليل الدهن,,لحم مفروم,,,,,true
+2514743,"Raw ground beef, 90% lean",لحم بقري مفروم قليل الدهن نيء,,لحم مفروم,,,,,true
+2705833,Sirloin steak,شريحة لحم بقري من الخاصرة,,لحم بقري,,main_protein,,,true
+2705827,Flank steak,شريحة لحم بقري من الخاصرة الجانبية,,لحم بقري,,main_protein,,,true
+2705847,Roast beef,لحم بقري مشوي,,لحم بقري,,main_protein,,,true
+2706153,Beef liver,كبدة بقري,,كبدة,,main_protein,,,true
+2706154,Chicken liver,كبدة دجاج,,كبدة فراخ,,main_protein,,,true
+174754,Cooked ground beef,لحم بقري مفروم مطبوخ,,لحم مفروم,,main_protein,,,true
+169500,Roasted beef ribs,ريش بقري مشوية,,لحم بقري,,main_protein,,,true
+168679,"Roasted beef ribs, prime",ريش بقري مشوية,,لحم بقري,,main_protein,,,true
+2706311,Canned tuna,تونة معلبة,,تونة,,main_protein,,,true
+334194,Canned light tuna in water,تونة خفيفة معلبة بالماء,,تونة,,main_protein,,,true
+2706310,Cooked tuna,تونة مطبوخة,,تونة,,main_protein,,,true
+2706293,Canned sardines,سردين معلب,,سردين,,main_protein,,,true
+175139,Atlantic sardines in oil,سردين أطلسي محفوظ بالزيت,,سردين,,main_protein,,,true
+175140,Sardines in tomato sauce,سردين بصلصة الطماطم,,سردين,,main_protein,,,true
+2706286,Baked salmon,سلمون مشوي,,سلمون,,,,,false
+2706287,Grilled salmon,سلمون مشوي,,سلمون,,main_protein,,,true
+2706291,Canned salmon,سلمون معلب,,سلمون,,main_protein,,,true
+2706319,Baked tilapia,بلطي مشوي,,سمك بلطي,,main_protein,,,true
+2706320,Grilled tilapia,بلطي مشوي,,سمك بلطي,,main_protein,,,true
+175123,Raw striped mullet,بوري نيء,,سمك بوري,,,,,true
+175124,Cooked striped mullet,بوري مطبوخ,,سمك بوري,,main_protein,,,true
+175142,Raw sea bass,قاروص نيء,,سمك قاروص,,,,,true
+173694,Cooked sea bass,قاروص مطبوخ,,سمك قاروص,,main_protein,,,true
+2706241,Baked cod,سمك القد المشوي,,سمك,,main_protein,,,true
+2706268,Canned mackerel,ماكريل معلب,,سمك ماكريل,,main_protein,,,true
+2706264,Baked mackerel,ماكريل مشوي,,سمك ماكريل,,main_protein,,,true
+2706322,Fried tilapia,بلطي مقلي,,سمك بلطي,,main_protein,,,true
+2705385,Whole milk,حليب كامل الدسم,,لبن,,breakfast_protein,,,true
+2705387,Low-fat milk,حليب قليل الدسم,,لبن,,breakfast_protein,,,true
+171263,Skim milk,حليب خالي الدسم,,لبن خالي الدسم,,breakfast_protein,,,true
+170886,Low-fat plain yogurt,زبادي سادة قليل الدسم,,زبادي,,breakfast_protein,,,true
+2259793,Whole-milk plain yogurt,زبادي سادة كامل الدسم,,زبادي,,breakfast_protein,,,true
+170887,Skim-milk plain yogurt,زبادي سادة خالي الدسم,,زبادي,,breakfast_protein,,,true
+2705423,"Plain Greek yogurt, low fat",زبادي يوناني سادة قليل الدسم,,زبادي يوناني,,breakfast_protein,,,true
+330137,Plain nonfat Greek yogurt,زبادي يوناني سادة خالي الدسم,,زبادي يوناني,,breakfast_protein,,,true
+173417,"Low-fat cottage cheese, 1% fat",جبن قريش قليل الدسم,areesh,جبنة قريش|جبن قريش,,breakfast_protein|main_protein,,,true
+328841,"Low-fat cottage cheese, 2% fat",جبن قريش قليل الدسم,areesh,جبنة قريش,,breakfast_protein|main_protein,,,true
+2705714,Feta cheese,جبن فيتا,,جبنة فيتا,,breakfast_protein,,,true
+2705709,Cheddar cheese,جبن شيدر,,جبنة شيدر,,breakfast_protein,,,true
+328637,Cheddar cheese,جبن شيدر,,جبنة رومي,,,,,false
+2705723,Part-skim mozzarella,جبن موزاريلا قليل الدسم,,جبنة موزاريلا,,breakfast_protein,,,true
+2705728,Grated Parmesan cheese,جبن بارميزان مبشور,,جبنة بارميزان,,breakfast_protein,,,true
+173418,Cream cheese,جبن كريمي,,جبنة كريمي,,breakfast_protein,,,true
+323444,Ricotta cheese,جبن ريكوتا,,,,breakfast_protein,,,true
+2709719,Raw tomatoes,طماطم طازجة,,طماطم,,vegetable_fat,,,true
+170000,Raw onions,بصل طازج,,بصل,,vegetable_fat,,,true
+2709784,Raw cucumber,خيار طازج,,خيار,,vegetable_fat,,,true
+169248,Raw iceberg lettuce,خس طازج,,خس,,vegetable_fat,,,true
+168462,Raw spinach,سبانخ طازجة,,سبانخ,,vegetable_fat,,,true
+169228,Raw eggplant,باذنجان طازج,,باذنجان,,vegetable_fat,,,true
+2709785,Raw eggplant,باذنجان طازج,,باذنجان,,,,,false
+170393,Raw carrots,جزر طازج,,جزر,,vegetable_fat,,,true
+170379,Raw broccoli,بروكلي طازج,,بروكلي,,vegetable_fat,,,true
+169975,Raw cabbage,كرنب طازج,,كرنب,,vegetable_fat,,,true
+2709769,Raw green beans,فاصوليا خضراء طازجة,,فاصوليا خضراء,,vegetable_fat,,,true
+170098,Boiled okra,بامية مسلوقة,,بامية,,vegetable_fat,,,true
+2709944,"Cooked okra, no added fat",بامية مطبوخة بدون دهون مضافة,,بامية,,vegetable_fat,,,true
+169354,Cooked molokhia leaves,ملوخية مطبوخة,,ملوخية,,vegetable_fat,,,true
+2685568,Raw zucchini,كوسة طازجة,,كوسة,,vegetable_fat,,,true
+2258588,Raw green bell pepper,فلفل أخضر حلو طازج,,فلفل أخضر,,vegetable_fat,,,true
+2258590,Raw red bell pepper,فلفل أحمر حلو طازج,,فلفل أحمر,,vegetable_fat,,,true
+2709647,Raw cauliflower,قرنبيط طازج,,قرنبيط,,vegetable_fat,,,true
+2709872,"Cooked beets, no added fat",بنجر مطبوخ بدون دهون مضافة,,بنجر,,vegetable_fat,,,true
+2709834,"Cooked asparagus, no added fat",هليون مطبوخ بدون دهون مضافة,,هليون,,vegetable_fat,,,true
+2709937,"Cooked mushrooms, no added fat",مشروم مطبوخ بدون دهون مضافة,,مشروم,,vegetable_fat,,,true
+2709897,"Cooked cauliflower, no added fat",قرنبيط مطبوخ بدون دهون مضافة,,قرنبيط,,vegetable_fat,,,true
+2709881,"Cooked Brussels sprouts, no added fat",كرنب بروكسل مطبوخ,,كرنب بروكسل,,vegetable_fat,,,true
+2710010,Cooked peppers and onions,فلفل وبصل مطبوخان,,فلفل وبصل,,vegetable_fat,,,true
+171688,Apple with skin,تفاح بقشره,,تفاح,,snack,,,true
+2709196,Dried apples,تفاح مجفف,,تفاح مجفف,,snack,,,true
+173944,Banana,موز,,موز,,snack,,,true
+2709171,Orange,برتقال,,برتقال,,snack,,,true
+168191,Medjool dates,تمر مجدول,,تمر,,snack,,,true
+171726,Deglet Noor dates,تمر,,تمر,,,,,false
+2709237,Grapes,عنب,,عنب,,snack,,,true
+2709242,Mango,مانجو,,مانجو,,snack,,,true
+2709270,Watermelon,بطيخ,,بطيخ,,snack,,,true
+2709283,Strawberries,فراولة,,فراولة,,snack,,,true
+746773,Bartlett pear,كمثرى بارتليت,,كمثرى,,snack,,,true
+171697,Apricots,مشمش,,مشمش,,snack,,,true
+2710815,Fresh apricot,مشمش طازج,,مشمش,,snack,,,true
+2710824,Fresh avocado,أفوكادو طازج,,أفوكادو,,snack,,,true
+173946,Peach,خوخ,,خوخ,,snack,,,true
+2346393,Raw almonds,لوز نيء,,لوز,,snack,,,true
+170158,"Dry-roasted almonds, unsalted",لوز محمص جاف بدون ملح,,لوز,,snack,,,true
+2707518,"Dry-roasted peanuts, lightly salted",فول سوداني محمص خفيف الملح,,فول سوداني,,snack,,,true
+2707519,"Dry-roasted peanuts, unsalted",فول سوداني محمص بدون ملح,,فول سوداني,,snack,,,true
+169421,Dry-roasted cashews,كاجو محمص جاف,,كاجو,,snack,,,true
+170571,"Dry-roasted cashews, unsalted",كاجو محمص جاف بدون ملح,,كاجو,,snack,,,true
+170188,"Roasted pumpkin seeds, unsalted",بذور قرع محمصة بدون ملح,,لب أبيض,,snack,,,true
+168601,"Roasted pumpkin seeds, salted",بذور قرع محمصة بالملح,,لب أبيض,,snack,,,true
+170151,Roasted sesame seeds,سمسم محمص,,سمسم,,snack,,,true
+2707582,"Sunflower seeds, unsalted",بذور دوار الشمس بدون ملح,,لب سوري,,snack,,,true
+2707583,"Sunflower seeds, salted",بذور دوار الشمس بالملح,,لب سوري,,snack,,,true
+2707587,Tahini,طحينة,,طحينة,,vegetable_fat,,,true
+169410,"Tahini, raw sesame",طحينة سمسم,,طحينة,,vegetable_fat,,,true
+170189,"Tahini, roasted sesame",طحينة سمسم محمص,,طحينة,,vegetable_fat,,,true
+2710186,Olive oil,زيت زيتون,,زيت زيتون,,vegetable_fat,,,true
+2710188,Canola oil,زيت كانولا,,زيت نباتي,,vegetable_fat,,,true
+2710183,Corn oil,زيت ذرة,,زيت ذرة,,vegetable_fat,,,true
+2710168,Ghee,سمن,,سمن بلدي,,vegetable_fat,,,true
+171314,Clarified butter (ghee),سمن مصفى,,سمن بلدي,,vegetable_fat,,,true
+2710281,Honey,عسل,,عسل نحل,,snack,,,true
+2708045,Basbousa,بسبوسة,,بسبوسة,,snack,,,true
 169655,Granulated sugar,سكر حبيبات,,,,,,,false
-169715,Semolina,سميد,,سميد,,carb,,,false
-2003589,Fine semolina,سميد ناعم,,سميد,,carb,,,false
-172455,Falafel,فلافل,,طعمية,,breakfast_protein|main_protein,,,false
-2644288,"Canned chickpeas, drained",حمص معلب ومصفى,,حمص,,breakfast_protein|main_protein,,,false
-2707354,"Cooked white beans, with added fat",فاصوليا بيضاء مطبوخة مع دهون مضافة,,فاصوليا بيضاء,,breakfast_protein|main_protein,,,false
-2707372,"Cooked pinto beans, with added fat",فاصوليا بينتو مطبوخة مع دهون مضافة,,فاصوليا,,breakfast_protein|main_protein,,,false
-2707380,"Cooked kidney beans, with added fat",فاصوليا حمراء مطبوخة مع دهون مضافة,,فاصوليا حمراء,,breakfast_protein|main_protein,,,false
-169383,Raw yellow bell pepper,فلفل أصفر حلو طازج,,فلفل أصفر,,vegetable_fat,,,false
-2709661,Raw carrot salad,سلطة جزر طازج,,جزر,,vegetable_fat,,,false
-2709775,Raw red cabbage,كرنب أحمر طازج,,كرنب أحمر,,vegetable_fat,,,false
-2685573,Raw cauliflower,قرنبيط طازج,,قرنبيط,,vegetable_fat,,,false
-2709793,Raw mushrooms,مشروم طازج,,مشروم,,vegetable_fat,,,false
-170105,Boiled green peas,بازلاء خضراء مسلوقة,,بازلاء,,vegetable_fat,,,false
-170017,"Boiled green peas, unsalted",بازلاء خضراء مسلوقة بدون ملح,,بازلاء,,vegetable_fat,,,false
-2263891,Green seedless grapes,عنب أخضر بدون بذور,,عنب,,snack,,,false
-2263890,Red seedless grapes,عنب أحمر بدون بذور,,عنب,,snack,,,false
-321359,"Reduced-fat milk, 2%",حليب قليل الدسم بنسبة ٢٪,,لبن,,breakfast_protein,,,false
-2259794,Plain whole-milk Greek yogurt,زبادي يوناني سادة كامل الدسم,,زبادي يوناني,,breakfast_protein,,,false
-2705724,Reduced-sodium mozzarella,جبن موزاريلا قليل الصوديوم,,جبنة موزاريلا,,breakfast_protein,,,false
-172179,Creamed cottage cheese,جبن قريش كامل الدسم,areesh,جبنة قريش,,breakfast_protein|main_protein,,,false
-2705386,"Reduced-fat milk, 2%",حليب قليل الدسم بنسبة ٢٪,,لبن,,breakfast_protein,,,false
+169715,Semolina,سميد,,سميد,,carb,,,true
+2003589,Fine semolina,سميد ناعم,,سميد,,carb,,,true
+172455,Falafel,فلافل,,طعمية,,breakfast_protein|main_protein,,,true
+2644288,"Canned chickpeas, drained",حمص معلب ومصفى,,حمص,,breakfast_protein|main_protein,,,true
+2707354,"Cooked white beans, with added fat",فاصوليا بيضاء مطبوخة مع دهون مضافة,,فاصوليا بيضاء,,breakfast_protein|main_protein,,,true
+2707372,"Cooked pinto beans, with added fat",فاصوليا بينتو مطبوخة مع دهون مضافة,,فاصوليا,,breakfast_protein|main_protein,,,true
+2707380,"Cooked kidney beans, with added fat",فاصوليا حمراء مطبوخة مع دهون مضافة,,فاصوليا حمراء,,breakfast_protein|main_protein,,,true
+169383,Raw yellow bell pepper,فلفل أصفر حلو طازج,,فلفل أصفر,,vegetable_fat,,,true
+2709661,Raw carrot salad,سلطة جزر طازج,,جزر,,vegetable_fat,,,true
+2709775,Raw red cabbage,كرنب أحمر طازج,,كرنب أحمر,,vegetable_fat,,,true
+2685573,Raw cauliflower,قرنبيط طازج,,قرنبيط,,vegetable_fat,,,true
+2709793,Raw mushrooms,مشروم طازج,,مشروم,,,,,true
+170105,Boiled green peas,بازلاء خضراء مسلوقة,,بازلاء,,vegetable_fat,,,true
+170017,"Boiled green peas, unsalted",بازلاء خضراء مسلوقة بدون ملح,,بازلاء,,vegetable_fat,,,true
+2263891,Green seedless grapes,عنب أخضر بدون بذور,,عنب,,snack,,,true
+2263890,Red seedless grapes,عنب أحمر بدون بذور,,عنب,,snack,,,true
+321359,"Reduced-fat milk, 2%",حليب قليل الدسم بنسبة ٢٪,,لبن,,breakfast_protein,,,true
+2259794,Plain whole-milk Greek yogurt,زبادي يوناني سادة كامل الدسم,,زبادي يوناني,,breakfast_protein,,,true
+2705724,Reduced-sodium mozzarella,جبن موزاريلا قليل الصوديوم,,جبنة موزاريلا,,breakfast_protein,,,true
+172179,Creamed cottage cheese,جبن قريش كامل الدسم,areesh,جبنة قريش,,breakfast_protein|main_protein,,,true
+2705386,"Reduced-fat milk, 2%",حليب قليل الدسم بنسبة ٢٪,,لبن,,breakfast_protein,,,true
 174158,Bottled water,ماء معبأ,,,,,,,false
-174903,Prepared plain biscuit,بسكويت سادة,,بسكويت,,snack,,,false
-170034,"Boiled potato, peeled",بطاطس مسلوقة مقشرة,,بطاطس,,carb,,,false
+174903,Prepared plain biscuit,بسكويت سادة,,بسكويت,,snack,,,true
+170034,"Boiled potato, peeled",بطاطس مسلوقة مقشرة,,بطاطس,,carb,,,true
 1104647,Raw garlic,ثوم طازج,,ثوم,,,,,false
 2709181,Fresh lemon juice,عصير ليمون طازج,,ليمون,,,,,false
 170054,Canned tomato sauce,صلصة طماطم معلبة,,صلصة طماطم,,,,,false
-789951,All-purpose wheat flour,دقيق قمح لجميع الاستخدامات,,دقيق,,carb,,,false
-174928,Plain dry breadcrumbs,فتات خبز جاف سادة,,بقسماط,,carb,,,false
-2709777,Raw cauliflower,قرنبيط طازج,,قرنبيط,,vegetable_fat,,,false
-170015,"Canned green peas, drained",بازلاء خضراء معلبة ومصفاة,,بازلاء,,vegetable_fat,,,false
+789951,All-purpose wheat flour,دقيق قمح لجميع الاستخدامات,,دقيق,,carb,,,true
+174928,Plain dry breadcrumbs,بقسماط جاف سادة,,بقسماط,,carb,,,true
+2709777,Raw cauliflower,قرنبيط طازج,,قرنبيط,,vegetable_fat,,,true
+170015,"Canned green peas, drained",بازلاء خضراء معلبة ومصفاة,,بازلاء,,vegetable_fat,,,true
+172421,Boiled lentils,عدس مسلوق,,عدس,,breakfast_protein|main_protein,,,true
+173905,"Oatmeal, cooked with water",شوفان مطبوخ بالماء,,شوفان,,carb,,,true
+171477,"Roasted chicken breast, skinless",صدر دجاج مشوي بدون جلد,,صدور فراخ,,main_protein,,,true
+171075,Roasted chicken breast with skin,صدر دجاج مشوي بالجلد,,صدور فراخ,,main_protein,,,true
+172388,"Roasted chicken thigh, skinless",ورك دجاج مشوي بدون جلد,,ورك فراخ,,main_protein,,,true
+173625,Roasted chicken thigh with skin,ورك دجاج مشوي بالجلد,,ورك فراخ,,main_protein,,,true
+172376,Roasted chicken drumstick,دبوس دجاج مشوي,,دبوس فراخ,,main_protein,,,true
+171800,"Cooked ground beef, 80% lean",لحم بقري مفروم مطبوخ 80% صافي,,لحمة مفرومة,,main_protein,,,true
+171795,"Cooked ground beef, 90% lean",لحم بقري مفروم مطبوخ 90% صافي,,لحمة مفرومة,,main_protein,,,true
+169252,Boiled white mushrooms,فطر أبيض مسلوق,,مشروم,,vegetable_fat,,,true
