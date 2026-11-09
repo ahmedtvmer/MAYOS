@@ -14,6 +14,7 @@ from agent.ProgramState import (
     PersistedProgramDaySchema, PersistedProgramExerciseSchema, PersistedProgramSchema,
 )
 from tests.fakes.chat_model import ScriptedChatModel, ToolCallsTurn
+from tests.test_player_chat_privacy import api  # noqa: F401  (pytest fixture)
 from tests.test_player_chat_privacy import (
     _assigned_player, _authed, _done_content, _force_free_form_coaching_intent, _register,
 )
