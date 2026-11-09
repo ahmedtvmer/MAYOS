@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../core/display_language/nutrition_copy.dart';
 import '../../../core/models.dart';
 import '../../../core/theme/mayos_spacing.dart';
-import 'food_swap_requests.dart';
+import 'nutrition_meal_settings_rows.dart';
 import 'meal_setup_screen.dart';
 import 'nutrition_tile.dart';
 
@@ -145,8 +145,10 @@ class NutritionTargetsView extends StatelessWidget {
     ]));
   }
 
-  void _mealSetup(BuildContext context) => Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(builder: (_) => const MealSetupScreen()));
+  Future<void> _mealSetup(BuildContext context) async {
+    await Navigator.of(context).push<bool>(
+        MaterialPageRoute<bool>(builder: (_) => const MealSetupScreen()));
+  }
 
   Widget _settings(BuildContext context) => NutritionCard(
           child: Column(children: <Widget>[
@@ -160,27 +162,8 @@ class NutritionTargetsView extends StatelessWidget {
                 : const Icon(Icons.edit_outlined),
             onTap: onActivity),
         const Divider(),
-        Row(children: <Widget>[
-          Expanded(
-              child: ListTile(
-                  key: const Key('meal_setup_entry'),
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.restaurant_menu),
-                  title: Text(copy.meals),
-                  onTap: () => _mealSetup(context),
-                  trailing: Icon(copy.isArabic
-                      ? Icons.chevron_left
-                      : Icons.chevron_right))),
-          const FoodSwapRequestsEntry(),
-        ]),
-        const Divider(),
-        ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.no_food_outlined),
-            title: Text(copy.foodRestrictions),
-            onTap: () => _mealSetup(context),
-            trailing:
-                Icon(copy.isArabic ? Icons.chevron_left : Icons.chevron_right)),
+        NutritionMealSettingsRows(
+            key: ObjectKey(plan), onOpenSetup: () => _mealSetup(context)),
       ]));
 
   Widget _weight(BuildContext context) => NutritionCard(

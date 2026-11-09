@@ -1025,8 +1025,24 @@ class FakeMayosApi {
       case '/nutrition/meals':
         return FakeResponse(200, <String, dynamic>{'date': foodLogToday, ...plannedMealsState});
       case '/nutrition/meals/enable':
+        if (foodWriteFails) return const FakeResponse(503, <String, dynamic>{'detail': 'Could not update meals.'});
+        if (plannedMealsState['author'] == 'Coach') return const FakeResponse(403,
+          <String, dynamic>{'detail': 'Your Coach sets your meals.'});
+        if (plannedMealsState['enabled'] == true) return FakeResponse(200, plannedMealsState);
         plannedMealsState = <String, dynamic>{...plannedMealsState, 'status': 'ready',
-          'date': foodLogToday, 'enabled': true, 'plan_version_id': 2, 'meals': generatedMeals};
+          'date': foodLogToday, 'enabled': true,
+          'plan_version_id': (plannedMealsState['plan_version_id'] as num? ?? 1).toInt() + 1,
+          'meals': generatedMeals};
+        return FakeResponse(200, plannedMealsState);
+      case '/nutrition/meals/disable':
+        if (foodWriteFails) return const FakeResponse(503, <String, dynamic>{'detail': 'Could not update meals.'});
+        if (plannedMealsState['author'] == 'Coach') return const FakeResponse(403,
+          <String, dynamic>{'detail': 'Your Coach sets your meals.'});
+        if (plannedMealsState['enabled'] != true) return FakeResponse(200, plannedMealsState);
+        plannedMealsState = <String, dynamic>{...plannedMealsState, 'status': 'disabled',
+          'enabled': false,
+          'plan_version_id': (plannedMealsState['plan_version_id'] as num).toInt() + 1,
+          'meals': <dynamic>[]};
         return FakeResponse(200, plannedMealsState);
       case '/nutrition/meals/log':
         if (foodWriteFails) return const FakeResponse(503, <String, dynamic>{'detail': 'Could not save food.'});

@@ -124,7 +124,7 @@ void main() {
   });
 
   testWidgets(
-      'meal setup under Targets enables meals and refreshes Today on return',
+      'Meals switch under Targets enables meals and refreshes Today on return',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _fake()
       ..nutritionState = <String, dynamic>{
@@ -143,17 +143,27 @@ void main() {
     expect(find.byKey(const Key('enable_meals')), findsNothing);
     await tester.tap(find.byKey(const Key('nutrition_targets')));
     await tester.pumpAndSettle();
-    await scrollToControl(tester, find.byKey(const Key('meal_setup_entry')));
-    await tester.tap(find.byKey(const Key('meal_setup_entry')));
-    await tester.pumpAndSettle();
-    await scrollToControl(tester, find.byKey(const Key('enable_meals')));
-    await tester.tap(find.byKey(const Key('enable_meals')));
+    await scrollToControl(tester, find.byKey(const Key('meals_switch')));
+    await tester.tap(find.byKey(const Key('meals_switch')));
     await tester.pumpAndSettle();
     await tester.pageBack();
     await tester.pumpAndSettle();
     await scrollToControl(
         tester, find.byKey(const Key('log_planned_breakfast')));
     expect(find.text('Areesh · 150 g'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('log_planned_breakfast')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('nutrition_targets')));
+    await tester.pumpAndSettle();
+    await scrollToControl(tester, find.byKey(const Key('meals_switch')));
+    await tester.tap(find.byKey(const Key('meals_switch')));
+    await tester.pumpAndSettle();
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('log_planned_breakfast')), findsNothing);
+    await scrollToControl(tester, find.widgetWithText(ListTile, 'Areesh'));
+    expect(find.widgetWithText(ListTile, 'Areesh'), findsOneWidget);
+    expect(fake.foodLogEntries[fake.foodLogToday], hasLength(1));
     expect(tester.takeException(), isNull);
   });
 

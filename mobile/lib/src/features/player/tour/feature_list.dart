@@ -124,10 +124,10 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     id: 'meal_setup',
     titleEn: 'Meal setup and Food restrictions',
     sentenceEn:
-        'Open Targets beside the date, then Meals or Food restrictions to choose Meal slots and training time, swap foods in your own plan or follow your coach, and log a planned meal with one tap.',
+        'Open Targets beside the date to switch meals on or off, open Meals or Food restrictions to choose Meal slots and training time, swap foods in your own plan or follow your coach, and log a planned meal with one tap.',
     titleAr: 'إعداد الوجبات والقيود الغذائية',
     sentenceAr:
-        'افتح الأهداف بجانب التاريخ، ثم الوجبات أو القيود الغذائية لاختيار وجباتك ووقت تدريبك، وبدّل الأطعمة في خطتك أو اتبع مدربك، وسجّل الوجبة المخططة بلمسة واحدة.',
+        'افتح الأهداف بجانب التاريخ لتفعيل الوجبات أو إيقافها، وافتح الوجبات أو القيود الغذائية لاختيار وجباتك ووقت تدريبك، وبدّل الأطعمة في خطتك أو اتبع مدربك، وسجّل الوجبة المخططة بلمسة واحدة.',
     target: 'meal_setup',
     location: TourShellTabLocation(tabIndex: 2),
     release: 6,

@@ -80,6 +80,15 @@ class NutritionCopy {
             : 'Maintain is the default starting point.',
       };
   String get meals => isArabic ? 'الوجبات' : 'Meals';
+  String get mealsOn => isArabic ? 'مفعّلة' : 'On';
+  String get mealsOff => isArabic ? 'متوقفة' : 'Off';
+  String get loadingMeals => isArabic ? 'جارٍ تحميل الوجبات…' : 'Loading meals…';
+  String mealsUnavailable(String? reason) => switch (reason) {
+    'staples' => isArabic ? 'تحتاج إلى أطعمة أساسية معتمدة' : 'Needs reviewed Staple foods',
+    'coach' => isArabic ? 'مدربك يحدد وجباتك' : 'Your Coach sets your meals',
+    'targets' => isArabic ? 'حدّد أهدافك أولًا' : 'Set your targets first',
+    _ => isArabic ? 'الوجبات غير متاحة بعد' : 'Meals are not available yet',
+  };
   String get foodRestrictions => isArabic ? 'القيود الغذائية' : 'Food restrictions';
   String get weight => isArabic ? 'الوزن' : 'Weight';
   String get latest => isArabic ? 'الأحدث' : 'Latest';

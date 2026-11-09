@@ -4,8 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api_client.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/meal_setup_copy.dart';
-import '../../../core/display_language/planned_meals_copy.dart';
-import '../../../core/planned_meals_models.dart';
 import '../../../core/food_log_models.dart';
 import '../../../core/meal_setup_models.dart';
 import '../../../providers.dart';
@@ -43,7 +41,6 @@ class _MealSetupScreenState extends ConsumerState<MealSetupScreen> {
   bool _loading = true;
   bool _hasSetup = false;
   bool _saving = false;
-  bool _canEnableMeals = false;
   String? _error;
   int _count = 3;
   String _trainingTime = 'evening';
@@ -66,11 +63,8 @@ class _MealSetupScreenState extends ConsumerState<MealSetupScreen> {
     try {
       final MealSetupState setup =
           await ref.read(apiClientProvider).mealSetup();
-      final PlannedMeals meals =
-          await ref.read(apiClientProvider).plannedMeals();
       if (!mounted) return;
       setState(() {
-        _canEnableMeals = meals.canEnable && meals.status == 'disabled';
         _count = setup.mealCount;
         _trainingTime = setup.trainingTime;
         _allergies
@@ -92,7 +86,7 @@ class _MealSetupScreenState extends ConsumerState<MealSetupScreen> {
     }
   }
 
-  Future<void> _save({Future<void> Function()? afterSave}) async {
+  Future<void> _save() async {
     setState(() {
       _saving = true;
       _error = null;
@@ -104,7 +98,6 @@ class _MealSetupScreenState extends ConsumerState<MealSetupScreen> {
           allergies: _allergies,
           vegetarian: _vegetarian,
           dislikes: _dislikes));
-      if (afterSave != null) await afterSave();
       if (mounted) Navigator.of(context).pop(true);
     } on ApiException catch (error) {
       if (mounted)
@@ -213,17 +206,6 @@ class _MealSetupScreenState extends ConsumerState<MealSetupScreen> {
           Text(_error!,
               style: TextStyle(color: Theme.of(context).colorScheme.error)),
         const SizedBox(height: 16),
-        if (_canEnableMeals)
-          FilledButton(
-              key: const Key('enable_meals'),
-              onPressed: _saving
-                  ? null
-                  : () => _save(afterSave: () async {
-                        await ref
-                            .read(apiClientProvider)
-                            .plannedMeals(enable: true);
-                      }),
-              child: Text(PlannedMealsCopy(copy.languageCode).turnOn)),
         FilledButton(
             key: const Key('save_meal_setup'),
             onPressed: _saving ? null : _save,

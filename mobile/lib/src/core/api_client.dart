@@ -2187,6 +2187,12 @@ class ApiClient {
     }));
   }
 
+  Future<PlannedMeals> disablePlannedMeals() async {
+    final response = await _send(() => _dio.post<dynamic>('/nutrition/meals/disable'));
+    return _parseBody(response.data, PlannedMeals.fromJson,
+      'The service returned invalid Nutrition meals.');
+  }
+
   Future<FoodSwapCandidates> foodSwapCandidates(FoodSwapTarget target, String query) async {
     final response = await _send(() => _dio.get<dynamic>('/nutrition/meals/swap-candidates',
       queryParameters: <String, dynamic>{...target.toJson(), 'q': query}));

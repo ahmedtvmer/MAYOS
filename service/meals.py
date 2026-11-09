@@ -58,11 +58,25 @@ def enable(ledger, today):
     return read(ledger, today)
 
 
+def disable(ledger, today):
+    with ledger.ledger_transaction(immediate=True):
+        active = ledger.get_active_nutrition_plan()
+        if active is not None and active["author"] != "Player":
+            raise ValueError("Your Coach sets your meals.")
+        state = read(ledger, today)
+        if not state.get("enabled"):
+            return state
+        _save_player_meals(ledger, active, {"enabled": False})
+    return read(ledger, today)
+
+
 def refresh_setup(ledger):
     active = ledger.get_active_nutrition_plan()
     if active is None or active["author"] != "Player" or not active["meals_json"]:
         return
     previous = json.loads(active["meals_json"])
+    if not previous.get("enabled"):
+        return
     payload = generate_variants(ledger, json.loads(active["targets_json"]), previous)
     _save_player_meals(ledger, active, payload)
 
