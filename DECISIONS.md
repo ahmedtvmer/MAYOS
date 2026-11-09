@@ -1113,3 +1113,9 @@ This document records the architectural, algorithmic, and heuristic decisions im
 * **Context**: Production moved to the former staging Contabo server on 2026-11-08 (#378). The one 8 GB server has an API using about 1 GB at idle, and Thomas releases to staging before production.
 * **Rationale**: A second server costs money and an always-on staging costs about 1 GB permanently. An on-demand container gives a real staging for reviews at no idle cost, with separate storage and bounded memory to protect production.
 * **Code References**: `deploy/compose.staging.yaml`, `deploy/deploy_server.sh`, `deploy/staging_server.bash`, `deploy/systemd/mayos-staging-autostop.service`, `deploy/systemd/mayos-staging-autostop.timer`, `docs/DEPLOYMENT.md`.
+
+### ADR 106: Staple choices define cooked meal weights and per-food limits
+* **Status**: Accepted (owner review, 2026-11-09, #681).
+* **Decision**: Meals are weighed cooked through the curated Staple choice: raw rows keep no Staple role, following the owner's review in #683, so no separate `cooked_only` flag is needed. Optional `min_grams` and `max_grams` on Staple foods specify per-meal amount limits; each supplied bound overrides its per-category default in the meal generator (#682). Empty bounds leave the corresponding category defaults in effect.
+* **Rationale**: Choosing the cooked Food library row keeps its nutrient values consistent with the weighed meal. Per-food overrides allow exceptions while retaining category defaults for ordinary choices.
+* **Code References**: `data/food_curation.csv`, `database/food_library/builder.py`, `database/food_library/seeding.py`.
