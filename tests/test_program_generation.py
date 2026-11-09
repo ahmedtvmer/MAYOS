@@ -76,6 +76,42 @@ from agent.ProgramState import (
 from agent.UserState import PlayerProfileSchema
 
 
+@pytest.mark.parametrize("experience,test_rir,compound_rir,isolation_rir", [
+    ("beginner", 3, 2, 1), ("intermediate", 2, 1, 0), ("advanced", 2, 1, 0),
+])
+@pytest.mark.parametrize("slot", ["quad_compound", "flat_press", "side_delts", "calf", "abs"])
+@pytest.mark.parametrize("set_count", [1, 2, 3, 4])
+def test_generated_exercise_groups_follow_test_set_rule(
+    experience, test_rir, compound_rir, isolation_rir, slot, set_count,
+):
+    from agent.program_blueprints import SLOT_SPECS
+    from agent.program_rationale import ExerciseRationaleOptions, exercise_rationale
+
+    spec = SLOT_SPECS[slot]
+    prescription = program_generator.ExercisePrescription(
+        movement_slot=slot, spec=spec, working_sets=set_count,
+        rep_preference="balanced", experience_level=experience,
+    )
+    candidate = {"id": "example", "name": "Example Exercise"}
+    exercise = program_generator._build_program_exercise(candidate, prescription)
+    working_rir = compound_rir if "compound" in spec.archetype else isolation_rir
+    expected = [(1, working_rir)] if set_count == 1 else [(1, test_rir), (set_count - 1, working_rir)]
+    assert [(group.sets, group.target_rir) for group in exercise.set_groups] == expected
+    assert exercise.working_sets == set_count
+    assert exercise.target_sets == expected[0][0]
+    assert exercise.target_rpe == 10 - expected[0][1]
+    assert all((group.reps_min, group.reps_max) == spec.reps for group in exercise.set_groups)
+    reason = exercise_rationale(candidate, prescription, ExerciseRationaleOptions(experience_level=experience))
+    assert reason["prescription"]["rir"] == {
+        "code": "rir.test_set_rule",
+        "params": {
+            "experience_level": experience, "target_rir": working_rir,
+            "test_set_rir": test_rir, "test_set_count": int(set_count > 1),
+            "test_set_counts_toward_weekly_sets": True,
+        },
+    }
+
+
 @pytest.mark.parametrize("text,expected", [
     ("switch to 0 days", 0), ("six days", 6), ("seven-day split", 7),
     ("12 days", 12), ("zero days", 0), ("twenty-one days", 21),

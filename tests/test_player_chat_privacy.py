@@ -1637,6 +1637,18 @@ def test_generated_programs_fit_active_program_tool_cap_and_report_arm_sets(
         ledger=fresh_store.ledger,
     )
 
+    tool = next(item for item in player_tools.PLAYER_READ_TOOL_REGISTRY
+                if item.name == "get_active_program")
+    first_day = program.days[0]
+    scoped = json.loads(player_tools._encode_tool_result(tool.args_reader(
+        fresh_store.ledger, player_tools.ActiveProgramArgs(day_name=first_day.day_name))))
+    assert scoped["status"] == "ok"
+    for exercise, row in zip(first_day.exercises, scoped["days"][0]["exercises"], strict=True):
+        if len({group.target_rir for group in exercise.set_groups}) > 1:
+            assert [group["rir"] for group in row["set_groups"]] == [
+                group.target_rir for group in exercise.set_groups
+            ]
+
     exercise_ids = sorted({exercise.exercise_id for day in program.days for exercise in day.exercises})
     targets = fresh_store.ledger.volume_review_exercise_targets(exercise_ids)
     expected_sets = {}

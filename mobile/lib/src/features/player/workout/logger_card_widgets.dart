@@ -125,7 +125,7 @@ class LoggerCellState {
       fromPrescription = targetRir == null ? null : formatMinRir(targetRir);
       return (
         value: row.set.rir == null ? null : formatRir(row.set.rir!),
-        hint: fromPrevious ?? fromPrescription,
+        hint: fromPrescription ?? fromPrevious,
       );
   }
 }

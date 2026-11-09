@@ -798,6 +798,30 @@ def test_solo_player_gets_applied_deload_in_prescription(api):
     assert all(target["target_rpe_cap"] == 7.0 for target in body["targets"])
 
 
+def test_deload_uses_deload_rir_for_test_and_working_groups_without_rewriting_program(api):
+    client, db = api
+    headers, _ = _prepare_player(client, db)
+    program = db.ledger.get_active_program().model_dump()
+    for exercise in program["days"][0]["exercises"]:
+        exercise["set_groups"] = [
+            {"sets": 1, "reps_min": 5, "reps_max": 8, "target_rir": 2},
+            {"sets": 3, "reps_min": 5, "reps_max": 8, "target_rir": 1},
+        ]
+    # Persisted weeks are authoritative when both representations are present.
+    program.pop("weeks", None)
+    db.ledger.save_training_program(program)
+    _seed_acute_readiness_floor(db)
+
+    response = client.get("/workouts/prescription", params={"day_order": 1}, headers=headers)
+
+    assert response.status_code == 200, response.text
+    targets = response.json()["targets"]
+    assert all(target["effective_sets"] == 2 for target in targets)
+    assert all(target["target_rpe_cap"] == 7 for target in targets)
+    assert all(group["target_rir"] == 3 for target in targets for group in target["set_groups"])
+    assert [group.target_rir for group in db.ledger.get_active_program().days[0].exercises[0].set_groups] == [2, 1]
+
+
 def test_workout_restriction_annotations_classify_exercises_outside_current_program(api, seed_exercise_curation):
     client, db = api
     headers, _ = _prepare_player(client, db)

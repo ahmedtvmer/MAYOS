@@ -2522,6 +2522,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
     final List<dynamic> groups =
         exercise.exercise['set_groups'] as List<dynamic>? ?? <dynamic>[];
     String? groupPrescription;
+    PrescriptionHint? setHint = exercise.prescriptionHint;
     int groupEnd = 0;
     for (final dynamic rawGroup in groups) {
       if (rawGroup is! Map<String, dynamic>) continue;
@@ -2530,7 +2531,18 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       if (setIndex < groupEnd) {
         final bool isAmrapSet =
             rawGroup['amrap_last_set'] == true && setIndex == groupEnd - 1;
-        groupPrescription = _copy.groupPrescription(rawGroup, amrap: isAmrapSet);
+        setHint = PrescriptionHint(
+          weightKg: setHint?.weightKg,
+          reps: setHint?.reps,
+          rir: workout.deload?.isApplied == true &&
+                  workout.deload?.intensityCapRpe != null
+              ? 10 - workout.deload!.intensityCapRpe!
+              : (rawGroup['target_rir'] as num?)?.toDouble() ?? setHint?.rir,
+        );
+        groupPrescription = _copy.groupPrescription(
+          <String, dynamic>{...rawGroup, 'target_rir': setHint.rir},
+          amrap: isAmrapSet,
+        );
         break;
       }
     }
@@ -2541,7 +2553,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
       set: set,
       equipment: exercise.equipment,
       previous: previousSetFor(exercise, setIndex, workout.baselines),
-      prescriptionHint: exercise.prescriptionHint,
+      prescriptionHint: setHint,
       badges: badges[set.id] ?? const SetRecordBadges(),
       focus: _focus,
       isCurrent: isCurrent,
