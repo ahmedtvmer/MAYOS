@@ -25,8 +25,8 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.textContaining(language == 'ar' ? 'جبن قريش' : 'Areesh'), findsOneWidget);
         expect(find.textContaining('150 g'), language == 'ar' ? findsNothing : findsOneWidget);
-        expect(find.textContaining(language == 'ar' ? 'السعرات -20.0 سعرة' : 'Calories -20.0 kcal'), findsOneWidget);
-        expect(find.textContaining(language == 'ar' ? 'البروتين +5.0 غ' : 'protein +5.0 g'), findsOneWidget);
+        expect(find.text(language == 'ar' ? 'كل الأوزان مطبوخة، ما عدا خضار السلطة والفاكهة' : 'All weights are cooked, except salad vegetables and fruit'), findsOneWidget);
+        expect(find.textContaining(language == 'ar' ? 'فرق الحصص العملية' : 'Practical portions compared'), findsNothing);
         expect(Directionality.of(tester.element(find.text(copy.title))),
           language == 'ar' ? TextDirection.rtl : TextDirection.ltr);
         await tester.tap(find.byKey(const Key('log_planned_breakfast')));
@@ -39,6 +39,45 @@ void main() {
         expect(tester.takeException(), isNull);
       });
     }
+  }
+
+  for (final String language in <String>['en', 'ar']) {
+    testWidgets('$language shows the day gap once and cooked weights once per Player meal', (WidgetTester tester) async {
+      final FakeMayosApi fake = _fake();
+      final Map<String, String> gap = <String, String>{
+        'en': 'About 120 kcal and 15 g protein under. Add a snack or a bigger portion.',
+        'ar': 'تقريبًا: نقص 120 سعرة و15 غ بروتين. أضف وجبة خفيفة أو حصة أكبر.',
+      };
+      fake.plannedMealsState = <String, dynamic>{...fake.plannedMealsState,
+        'status': 'ready', 'plan_version_id': 2, 'gap_note': gap,
+        'meals': <Map<String, dynamic>>[...fake.generatedMeals,
+          <String, dynamic>{...fake.generatedMeals.single, 'slot': 'lunch'}]};
+      await tester.pumpWidget(_app(fake, language, Brightness.light,
+        SingleChildScrollView(child: TodayMeals(onLogged: () {}))));
+      await tester.pumpAndSettle();
+      expect(find.text(gap[language]!), findsOneWidget);
+      expect(find.text(gap[language == 'en' ? 'ar' : 'en']!), findsNothing);
+      expect(find.text(language == 'ar' ? 'كل الأوزان مطبوخة، ما عدا خضار السلطة والفاكهة' : 'All weights are cooked, except salad vegetables and fruit'), findsNWidgets(2));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('$language keeps Coach grams and notes without generated-meal claims', (WidgetTester tester) async {
+      final FakeMayosApi fake = _fake();
+      fake.plannedMealsState = <String, dynamic>{...fake.plannedMealsState,
+        'status': 'ready', 'author': 'Coach', 'plan_version_id': 2,
+        'meals': <Map<String, dynamic>>[<String, dynamic>{...fake.generatedMeals.single,
+          'note': language == 'ar' ? 'وجبة حددها المدرب' : 'Coach meal',
+          'totals': <String, dynamic>{'calories': 15.6}, 'target_deviation': <String, double>{},
+          'foods': <Map<String, dynamic>>[<String, dynamic>{
+            ...(fake.generatedMeals.single['foods'] as List<Map<String, dynamic>>).single, 'grams': 13}]}]};
+      await tester.pumpWidget(_app(fake, language, Brightness.light,
+        SingleChildScrollView(child: TodayMeals(onLogged: () {}))));
+      await tester.pumpAndSettle();
+      expect(find.textContaining(language == 'ar' ? '13 غ' : '13 g'), findsOneWidget);
+      expect(find.text(language == 'ar' ? 'وجبة حددها المدرب' : 'Coach meal'), findsOneWidget);
+      expect(find.text(language == 'ar' ? 'كل الأوزان مطبوخة، ما عدا خضار السلطة والفاكهة' : 'All weights are cooked, except salad vegetables and fruit'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
   }
 
   testWidgets('unreviewed Staples show plain unavailable copy with no enable', (WidgetTester tester) async {

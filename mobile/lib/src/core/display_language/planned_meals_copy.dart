@@ -5,8 +5,9 @@ class PlannedMealsCopy {
   String get title => arabic ? 'وجبات اليوم' : "Today's meals";
   String get turnOn => arabic ? 'تفعيل الوجبات' : 'Turn on meals';
   String get introduction => arabic
-    ? 'وجبات من أطعمة أساسية بحصص عملية تراعي قيودك الغذائية؛ إذا تعذر الاقتراب من الأهداف ضمن ٥٪، نعرض أقرب وجبة والفرق عن هدف كل وجبة.'
-    : 'Staple foods in practical portions that respect your Food restrictions; if no meal fits within 5%, we show the closest meal and its difference from each slot target.';
+    ? 'وجبات من أطعمة أساسية بحصص واقعية تراعي قيودك الغذائية. نقارن مجموع اليوم بالأهداف: ٥٪ للسعرات والبروتين و١٠٪ للكربوهيدرات والدهون، ونوضح أي فرق خارج هذا النطاق.'
+    : 'Staple foods in realistic portions that respect your Food restrictions. We check the day against targets: 5% for calories and protein, 10% for carbs and fat, and explain any gap outside those ranges.';
+  String get cookedWeights => arabic ? 'كل الأوزان مطبوخة، ما عدا خضار السلطة والفاكهة' : 'All weights are cooked, except salad vegetables and fruit';
   String get unavailable => arabic
     ? 'الوجبات غير متاحة بعد. نحتاج إلى أطعمة أساسية معتمدة ذات بيانات غذائية كاملة تسمح بها قيودك الغذائية.'
     : "Meals aren't available yet. We need reviewed Staple foods with complete nutrients that your Food restrictions allow.";
