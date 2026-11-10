@@ -7,6 +7,7 @@ import '../../../core/display_language/catalog.dart';
 import '../../../core/display_language/copy_context.dart';
 import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/api_client.dart';
+import '../../../core/refetch_on_reconnect.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/effort.dart';
 import '../../../core/config.dart';
@@ -69,7 +70,11 @@ class _DetailData {
   final FailureMessage? partialError;
 }
 
-class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen> {
+class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen>
+    with RefetchOnReconnect<ExerciseDetailScreen> {
+  @override
+  Future<void> refreshAfterReconnect() => _retry();
+
   late Future<_DetailData> _future;
   late String _tab;
 

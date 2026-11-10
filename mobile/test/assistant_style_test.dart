@@ -47,6 +47,7 @@ Future<void> _openSettings(
             tokens: ref.watch(tokenStoreProvider),
             baseUrl: 'http://test.local',
             adapter: fake.adapter,
+            retryDelay: (_) async {},
           );
           client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
           return client;

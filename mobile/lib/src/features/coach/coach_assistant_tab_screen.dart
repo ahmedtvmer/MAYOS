@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/app_failure.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/coach_copy.dart';
@@ -30,26 +31,18 @@ class CoachAssistantTabScreen extends ConsumerStatefulWidget {
 }
 
 class _CoachAssistantTabScreenState
-    extends ConsumerState<CoachAssistantTabScreen> with WidgetsBindingObserver {
+    extends ConsumerState<CoachAssistantTabScreen>
+    with RefetchOnReconnect<CoachAssistantTabScreen> {
+  @override
+  Future<void> refreshAfterReconnect() => _refreshAssignments();
+
   String? _selectedAssignmentId;
   FailureMessage? _error;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _loadAssignments();
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _refreshAssignments();
   }
 
   Future<void> _loadAssignments() => _requestRoster(

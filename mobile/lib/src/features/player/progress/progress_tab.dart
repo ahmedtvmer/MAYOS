@@ -6,6 +6,7 @@ import '../../../core/display_language/copy_context.dart';
 import '../../../core/display_language/feature_copy_context.dart';
 import '../../../core/display_language/catalog.dart';
 import '../../../core/api_client.dart';
+import '../../../core/refetch_on_reconnect.dart';
 import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
 import '../../../core/effort.dart';
@@ -43,7 +44,11 @@ class ProgressTab extends ConsumerStatefulWidget {
   ConsumerState<ProgressTab> createState() => _ProgressTabState();
 }
 
-class _ProgressTabState extends ConsumerState<ProgressTab> {
+class _ProgressTabState extends ConsumerState<ProgressTab>
+    with RefetchOnReconnect<ProgressTab> {
+  @override
+  Future<void> refreshAfterReconnect() => _load();
+
   static const List<int> _volumePeriods = <int>[7, 28, 90];
 
   bool _loading = true;

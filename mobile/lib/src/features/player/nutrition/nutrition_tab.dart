@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api_client.dart';
+import '../../../core/refetch_on_reconnect.dart';
 import '../../../core/display_language/controller.dart';
 import '../../../core/display_language/nutrition_copy.dart';
 import '../../../core/models.dart';
@@ -19,7 +20,13 @@ class NutritionTab extends ConsumerStatefulWidget {
   ConsumerState<NutritionTab> createState() => _NutritionTabState();
 }
 
-class _NutritionTabState extends ConsumerState<NutritionTab> {
+class _NutritionTabState extends ConsumerState<NutritionTab>
+    with RefetchOnReconnect<NutritionTab> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    if (!_saving && !_waterSaving) await _load();
+  }
+
   NutritionPlanState? _plan;
   String _sex = 'male';
   String _activity = 'mostly_sitting';

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +8,7 @@ import 'package:mayos_mobile/src/app.dart';
 import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
+import 'package:mayos_mobile/src/core/connectivity.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
@@ -50,6 +53,7 @@ Future<void> _pumpDetail(
   bool showHistory = true,
   Size size = const Size(1080, 2400),
   String languageCode = 'en',
+  Stream<bool> connectivityEvents = const Stream<bool>.empty(),
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -61,6 +65,7 @@ Future<void> _pumpDetail(
   await tester.pumpWidget(
     ProviderScope(
       overrides: <Override>[
+        browserConnectivityEventsProvider.overrideWithValue(connectivityEvents),
         tokenStoreProvider.overrideWithValue(tokens),
         appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
         systemDisplayLanguageProvider.overrideWithValue(languageCode),
@@ -74,6 +79,7 @@ Future<void> _pumpDetail(
             tokens: ref.watch(tokenStoreProvider),
             baseUrl: 'http://test.local',
             adapter: fake.adapter,
+            retryDelay: (_) async {},
           );
           client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
           return client;
@@ -135,6 +141,79 @@ Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
 }
 
 void main() {
+  for (final String recovery in <String>['browser reconnect', 'app resume']) {
+    testWidgets('visible exercise detail refetches after $recovery',
+        (WidgetTester tester) async {
+      const String path = '/workouts/exercises/bench_press';
+      const String offline =
+          "You're offline. We'll retry when you're back online.";
+      final FakeMayosApi fake = _signedInFake()..failOffline('GET', path);
+      final StreamController<bool> events = StreamController<bool>.broadcast();
+      addTearDown(events.close);
+      await _pumpDetail(tester, fake, 'bench_press',
+          showProgram: false,
+          showHistory: false,
+          connectivityEvents: events.stream);
+      await _pumpUntilFound(tester, find.text(offline));
+      expect(find.text(offline), findsOneWidget);
+      final int failedReads = fake.adapter.requests
+          .where((request) => request.path == path)
+          .length;
+      expect(failedReads, 4);
+
+      // Browser online/offline and app resume enter through real platform
+      // seams. The Android banner flag remains false throughout this test.
+      events.add(false);
+      await tester.pump();
+      fake.offlineRequests.clear();
+      if (recovery == 'browser reconnect') {
+        events.add(true);
+      } else {
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      }
+      await _pumpUntilFound(tester, find.text('Bench Press'));
+
+      expect(find.text('Bench Press'), findsOneWidget);
+      expect(find.text(offline), findsNothing);
+      expect(fake.adapter.requests.where((request) => request.path == path),
+          hasLength(failedReads + 1));
+      await tester.pump(const Duration(seconds: 1));
+      expect(fake.adapter.requests.where((request) => request.path == path),
+          hasLength(failedReads + 1));
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
+  testWidgets('covered exercise detail does not refetch on reconnect',
+      (WidgetTester tester) async {
+    const String path = '/workouts/exercises/bench_press';
+    final FakeMayosApi fake = _signedInFake();
+    final StreamController<bool> events = StreamController<bool>.broadcast();
+    addTearDown(events.close);
+    await _pumpDetail(tester, fake, 'bench_press',
+        showProgram: false,
+        showHistory: false,
+        connectivityEvents: events.stream);
+    final NavigatorState navigator = Navigator.of(
+        tester.element(find.byType(ExerciseDetailScreen)));
+    unawaited(navigator.push<void>(MaterialPageRoute<void>(
+      builder: (_) => const Scaffold(body: Text('Another screen')),
+    )));
+    await tester.pumpAndSettle();
+    final int reads = fake.adapter.requests
+        .where((request) => request.path == path)
+        .length;
+    events.add(false);
+    await tester.pump();
+    events.add(true);
+    await tester.pump();
+    await tester.pump();
+    expect(fake.adapter.requests.where((request) => request.path == path),
+        hasLength(reads));
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('coach detail omits account prescription and history',
       (tester) async {
     final FakeMayosApi fake = _signedInFake();

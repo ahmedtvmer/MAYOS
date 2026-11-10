@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api_client.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/app_failure.dart';
 import '../../core/connectivity.dart';
 import '../../core/connectivity_message.dart';
@@ -549,7 +550,11 @@ class _GenerateDraftDialogState extends State<_GenerateDraftDialog> {
 }
 
 class _CoachPlayerHistoryScreenState
-    extends ConsumerState<CoachPlayerHistoryScreen> {
+    extends ConsumerState<CoachPlayerHistoryScreen>
+    with RefetchOnReconnect<CoachPlayerHistoryScreen> {
+  @override
+  Future<void> refreshAfterReconnect() => _load();
+
   late CoachRosterEntry _entry;
   bool _loading = true;
   FailureMessage? _error;
