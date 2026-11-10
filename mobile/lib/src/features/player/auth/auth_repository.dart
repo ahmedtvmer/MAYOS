@@ -87,13 +87,14 @@ class AuthRepository {
     return session;
   }
 
-  void _saveSessionBestEffort(AccountSession session) {
-    // A confirmed server session must route even if local cache storage stalls.
+  Future<void> saveSession(AccountSession session) async {
     final SavedPlayerDataStore? savedData = _savedData;
     if (savedData == null) return;
-    unawaited(savedData.saveSession(session).catchError((Object _) {
+    try {
+      await savedData.saveSession(session);
+    } on Object {
       // A local snapshot failure cannot undo a server-confirmed session.
-    }));
+    }
   }
 
   Future<Map<String, String>?> _registrationFirstTouch() async {
@@ -211,7 +212,7 @@ class AuthRepository {
       final AccountSession session = await _currentSession();
       if (await _tokens.read() != token) return null;
       await _saveAccountId(session.account.accountId);
-      _saveSessionBestEffort(session);
+      unawaited(saveSession(session));
       _savedData?.confirmSession();
       return session;
     } on ApiException catch (error) {
@@ -436,7 +437,7 @@ class AuthRepository {
     await _tokens.save(auth.accessToken);
     final AccountSession session = await _currentSession();
     await _saveAccountId(session.account.accountId);
-    _saveSessionBestEffort(session);
+    unawaited(saveSession(session));
     _savedData?.confirmSession();
     return session;
   }
