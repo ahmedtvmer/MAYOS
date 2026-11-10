@@ -200,8 +200,7 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
   List<SuggestedSubstitute> get _visibleSuggestions =>
       widget.suggestedSubstitutes
           .where((SuggestedSubstitute item) =>
-              !widget.excludeExerciseIds.contains(item.exerciseId) &&
-              _results.any((ExerciseCatalogEntry entry) => entry.id == item.exerciseId))
+              !widget.excludeExerciseIds.contains(item.exerciseId))
           .toList(growable: false);
 
   /// Toggle the source target muscle while preserving any curated filters.

@@ -1,12 +1,10 @@
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
-
-from service.exercise_clearances import ExerciseClearancePolicy
 
 from agent.program_blueprints import (
     DEFAULT_SPLIT_BY_FREQUENCY,
@@ -49,6 +47,10 @@ from utils.equipment_access import (
 from utils.env_flags import env_flag
 from utils.model_downloader import llm, structured_output_model
 from utils import player_output_budgets
+
+if TYPE_CHECKING:
+    from service.exercise_clearances import ExerciseClearancePolicy
+
 from core.movement_restrictions import (
     is_movement_restricted,
     restriction_for_candidate,
@@ -735,11 +737,18 @@ def _slot_candidate_source(candidate: dict[str, Any], spec: SlotSpec) -> str | N
     return SLOT_CANDIDATE_STAPLE if source_rank == SLOT_CANDIDATE_STAPLE_RANK else SLOT_CANDIDATE_NAME
 
 
+def _clearance_policy(ledger: Any) -> "ExerciseClearancePolicy":
+    # The service package imports agent.program_generator, which imports this module.
+    from service.exercise_clearances import ExerciseClearancePolicy
+
+    return ExerciseClearancePolicy(ledger)
+
+
 @dataclass(frozen=True)
 class CandidateCriteria:
     slot_spec: SlotSpec | None
     restrictions: tuple[str, ...]
-    clearance_policy: ExerciseClearancePolicy
+    clearance_policy: "ExerciseClearancePolicy"
 
 
 def _candidate_rows(cursor, limit: int, criteria: CandidateCriteria) -> list[dict[str, Any]]:
@@ -821,7 +830,7 @@ def _fetch_by_sql(
         ORDER BY {_name_rank_sql(name_rank)}{rank_sql} ASC, id ASC
     """
     cursor.execute(query)
-    criteria = CandidateCriteria(None, (), ExerciseClearancePolicy(ledger))
+    criteria = CandidateCriteria(None, (), _clearance_policy(ledger))
     return _candidate_rows(cursor, limit, criteria)
 
 
@@ -846,7 +855,7 @@ def fetch_slot_candidates(
     criteria = CandidateCriteria(
         spec,
         validate_movement_restrictions(restrictions),
-        ExerciseClearancePolicy(ledger),
+        _clearance_policy(ledger),
     )
     candidates = _candidate_rows(cursor, limit, criteria)
     if slot_key == "quad_iso" and map_equipment_access(equipment_access) == BODYWEIGHT_ONLY:
@@ -880,7 +889,7 @@ def restricted_candidate_reasons(
     cursor.execute(query, params)
     columns = [column[0] for column in cursor.description]
     reasons = set()
-    clearance_policy = ExerciseClearancePolicy(ledger)
+    clearance_policy = _clearance_policy(ledger)
     for row in cursor.fetchall():
         candidate = dict(zip(columns, row))
         if not clearance_policy.allows(candidate):
@@ -989,7 +998,7 @@ def fetch_filtered_candidates(
     cols = [col[0] for col in cursor.description]
     candidates = []
 
-    clearance_policy = ExerciseClearancePolicy(ledger)
+    clearance_policy = _clearance_policy(ledger)
     for row in rows:
         item = dict(zip(cols, row))
         if not clearance_policy.allows(item):
