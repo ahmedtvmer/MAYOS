@@ -1887,9 +1887,30 @@ class ProgramEditIn(BaseModel):
     exercises: list[ProgramEditExerciseIn] = Field(max_length=MAX_EXERCISES_PER_DAY + 1)
 
 
+class ActiveProgramExerciseOut(PersistedProgramExerciseSchema):
+    """A Player prescription plus read-time labels; never stored (#534)."""
+
+    notes_are_technique: bool = Field(
+        default=False, description="Notes equal the catalog technique; the logger card hides them"
+    )
+
+
+class ActiveProgramDayOut(PersistedProgramDaySchema):
+    exercises: list[ActiveProgramExerciseOut] = Field(
+        min_length=1,
+        max_length=MAX_EXERCISES_PER_DAY,
+    )
+
+
+class ActiveProgramWeekOut(PersistedProgramWeekSchema):
+    days: list[ActiveProgramDayOut]
+
+
 class ActiveProgramOut(PersistedProgramSchema):
     """An active program plus the server's current Program-authority decision."""
 
+    days: list[ActiveProgramDayOut]
+    weeks: list[ActiveProgramWeekOut] = Field(default_factory=list, max_length=MAX_PROGRAM_WEEKS)
     player_controls_program: bool
     offer_design_regeneration: bool = False
     regeneration_offer_reason: str | None = None

@@ -80,6 +80,12 @@ def with_library_equipment(program: Any, db: Any) -> dict[str, Any]:
                 )
                 if entry is not None:
                     exercise["equipment"] = entry.get("equipment")
+                # Keep legacy notes intact: only the logger hides copied technique.
+                notes = exercise.get("notes") or ""
+                technique = (entry or {}).get("instructions") or ""
+                exercise["notes_are_technique"] = bool(
+                    technique.strip() and notes.strip() == technique.strip()
+                )
     payload["weeks"] = weeks
     payload["days"] = flatten_program_days(weeks)
     source_template_id = payload.get("source_template_id")
