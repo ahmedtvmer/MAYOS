@@ -694,6 +694,7 @@ def _persist_session(
     today_date: str,
     sync: SyncMetadata,
     ledger: Any,
+    progression_program: Any | None = None,
     warmup_movements: list[dict[str, Any]] | None = None,
     cardio: list[dict[str, Any]] | None = None,
     active_program_version_at_sync: int | None = None,
@@ -738,11 +739,12 @@ def _persist_session(
     prescribed_exercises = {
         str(exercise.exercise_id): exercise for exercise in day_plan.exercises
     }
-    progression_program = (
-        ledger.get_program_by_version(sync.program_version)
-        if sync.program_version is not None
-        else ledger.get_active_program()
-    )
+    if progression_program is None:
+        progression_program = (
+            ledger.get_program_by_version(sync.program_version)
+            if sync.program_version is not None
+            else ledger.get_active_program()
+        )
 
     for item in sets_by_exercise:
         ex_obj = item["exercise"]
@@ -1235,6 +1237,7 @@ def commit_logged_session(
                     today_date=sync.performed_date,
                     sync=sync,
                     ledger=ledger,
+                    progression_program=committed_program,
                     warmup_movements=warmup_movements,
                     cardio=cardio,
                     active_program_version_at_sync=active_version,
