@@ -238,13 +238,9 @@ def build_player_chat_prompt(
 
 def _history_tail(state: dict[str, Any]) -> list[BaseMessage]:
     settings = player_prompt_history_settings()
-    messages = [
-        message
-        for message in state.get("messages", [])
-        if message_role(message) in {"user", "assistant"}
-        and not _is_session_pointer(message)
-    ]
-    messages = messages[-settings.window_size :]
+    messages = recent_history_messages(
+        state.get("messages", []), window_size=settings.window_size
+    )
     tail = []
     for index, message in enumerate(messages):
         role = message_role(message)
@@ -258,6 +254,24 @@ def _history_tail(state: dict[str, Any]) -> list[BaseMessage]:
             text = text[:settings.assistant_reply_max_chars]
         tail.append(AIMessage(content=text) if role == "assistant" else HumanMessage(content=text))
     return tail
+
+
+def recent_history_messages(
+    messages: Sequence[Any], *, window_size: int | None = None
+) -> list[Any]:
+    """Selects the same recent user and assistant messages sent in the prompt."""
+    active_window_size = (
+        player_prompt_history_settings().window_size
+        if window_size is None
+        else window_size
+    )
+    eligible_messages = [
+        message
+        for message in messages
+        if message_role(message) in {"user", "assistant"}
+        and not _is_session_pointer(message)
+    ]
+    return eligible_messages[-active_window_size:]
 
 
 def _system_core(state: dict[str, Any]) -> str:

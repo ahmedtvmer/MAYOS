@@ -17,6 +17,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field, model_validator
 
 from database.ledger.profile import PLAYER_PROFILE_STORAGE_DEFAULTS
+from database.ledger.chat import MAX_CHAT_HISTORY_SEARCH_RESULTS
 from agent.focus_muscles import FOCUS_REVIEW_MUSCLES
 from service.injuries import render_public_injury_record
 from service.nutrition import assistant_projection
@@ -27,11 +28,13 @@ from service.weight_history import WeightTrendQuery, get_weight_trend, player_lo
 from agent.player_prompt import (
     HOSTED_PROMPT_MAX_BYTES,
     HOSTED_PROMPT_TOOL_RESULT_RESERVE_BYTES,
+    player_prompt_history_settings,
 )
 
 logger = logging.getLogger(__name__)
 
 MAX_TOOL_RESULT_BYTES = 4 * 1024
+CHAT_SEARCH_MATCH_MAX_CHARS = 300
 TOOL_TIMEOUT_SECONDS = 5.0
 _TRUNCATED_PROMPT_RESULT = '{"status":"truncated"}'
 _INJURY_CLEARANCE_TOOL_FIELDS = (
@@ -68,6 +71,19 @@ class FoodLogArgs(BaseModel):
 
     day: str | None = None
     offset: int = Field(default=0, ge=0)
+
+
+class ChatHistorySearchArgs(BaseModel):
+    """Keyword search and optional UTC date bounds for older chat messages."""
+
+    query: str = Field(min_length=1, max_length=300)
+    start_date: date | None = None
+    end_date: date | None = None
+    limit: int = Field(
+        default=MAX_CHAT_HISTORY_SEARCH_RESULTS,
+        ge=1,
+        le=MAX_CHAT_HISTORY_SEARCH_RESULTS,
+    )
 
 
 class ProgramRationaleArgs(BaseModel):
@@ -237,6 +253,52 @@ def _read_assistant_preferences(ledger: Any) -> dict[str, Any]:
             preference["text"] for preference in ledger.list_assistant_preferences()
         ],
     }
+
+
+def _chat_search_match(message: dict[str, Any]) -> dict[str, Any]:
+    content = message["content"]
+    match: dict[str, Any] = {
+        "role": message["role"],
+        "date": message["created_at"][:10],
+        "content": content[:CHAT_SEARCH_MATCH_MAX_CHARS],
+    }
+    if len(content) > CHAT_SEARCH_MATCH_MAX_CHARS:
+        match["content_truncated"] = True
+    return match
+
+
+def _chat_history_search_result(matches: list[dict[str, Any]]) -> dict[str, Any]:
+    response: dict[str, Any] = {"status": "ok", "matches": [], "has_more": False}
+    for message in matches:
+        response["matches"].append(_chat_search_match(message))
+        rendered = json.dumps(response, ensure_ascii=False, separators=(",", ":"))
+        if len(rendered.encode("utf-8")) > MAX_TOOL_RESULT_BYTES:
+            response["matches"].pop()
+            response["has_more"] = True
+            break
+    if len(response["matches"]) < len(matches):
+        response["has_more"] = True
+    return response
+
+
+def _read_chat_history_search(
+    ledger: Any,
+    args: ChatHistorySearchArgs,
+    *,
+    recent_window_size: int | None = None,
+) -> dict[str, Any]:
+    if args.start_date is not None and args.end_date is not None and args.start_date > args.end_date:
+        return {"status": "invalid_date_range", "matches": [], "has_more": False}
+    matches = ledger.search_chat_history(
+        args.query,
+        start_date=args.start_date,
+        end_date=args.end_date,
+        limit=args.limit,
+        recent_window_size=recent_window_size,
+    )
+    if not matches:
+        return {"status": "no_matches", "matches": [], "has_more": False}
+    return _chat_history_search_result(matches)
 
 
 def _read_player_nutrition(ledger: Any) -> dict[str, Any]:
@@ -556,6 +618,21 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
         status_en="Checking your saved preferences…",
         status_ar="ببص على تفضيلاتك المحفوظة…",
     ),
+    PlayerReadTool(
+        name="search_chat_history",
+        description=(
+            "Search the current player's own older chat messages by English or Arabic keywords. "
+            "Use when the player refers to something from an older conversation that is outside "
+            "the recent chat window. start_date and end_date are inclusive UTC dates in YYYY-MM-DD "
+            "format. limit is 1 to 10. Recent-window messages and session-pointer debriefs are "
+            "excluded. A no_matches status means nothing older matched."
+        ),
+        args_schema=ChatHistorySearchArgs,
+        reader=_read_chat_history_search,
+        args_reader=_read_chat_history_search,
+        status_en="Searching your older chats…",
+        status_ar="بدور في محادثاتك القديمة…",
+    ),
 )
 
 
@@ -629,6 +706,7 @@ def cap_tool_results_for_prompt(
 def build_player_read_tools(ledger: Any, store: Any = None, player_account_id: str | None = None) -> tuple[list[StructuredTool], dict[str, PlayerReadTool]]:
     """Builds this turn's tools; their readers close over only its own ledger."""
     tools: list[StructuredTool] = []
+    recent_window_size = player_prompt_history_settings().window_size
     definitions = {definition.name: definition for definition in PLAYER_READ_TOOL_REGISTRY}
     for definition in PLAYER_READ_TOOL_REGISTRY:
         if definition.args_reader is not None:
@@ -636,6 +714,12 @@ def build_player_read_tools(ledger: Any, store: Any = None, player_account_id: s
                 args = _definition.args_schema(**kwargs)
                 if _definition.name == "get_active_program":
                     return _encode_tool_result(_read_active_program(ledger, args, store, player_account_id))
+                if _definition.name == "search_chat_history":
+                    return _encode_tool_result(
+                        _read_chat_history_search(
+                            ledger, args, recent_window_size=recent_window_size
+                        )
+                    )
                 return _encode_tool_result(_definition.args_reader(ledger, args))
         else:
             def reader(_definition=definition) -> str:
