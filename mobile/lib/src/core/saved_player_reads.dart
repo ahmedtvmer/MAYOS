@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 
 import 'saved_player_data.dart';
@@ -49,9 +51,11 @@ class SavedPlayerReads extends Interceptor {
     if (token == null || token.isEmpty || !_hasMatchingToken(request, token)) {
       return null;
     }
-    final String? accountId = await _accountIdFor(token);
+    final String? accountId = request.path == '/auth/me'
+        ? unverifiedTokenSubject(token)
+        : await _accountIdFor(token);
     final _SavedReadContext context = _SavedReadContext(
-      token, accountId, accountId == null ? 0 : _store.generation(accountId),
+      token, accountId, _store.generation,
     );
     request.extra[_contextKey] = context;
     return context;
@@ -72,10 +76,14 @@ class SavedPlayerReads extends Interceptor {
     final String? accountId = _responseAccountId(request, context, response.data);
     if (accountId != null &&
         (context.accountId == null || context.accountId == accountId)) {
-      await _store.write(accountId, _resource(request), <String, dynamic>{
-        'body': response.data,
-        'day': _today(),
-      }, context.generation);
+      unawaited(_store
+          .write(accountId, _resource(request), <String, dynamic>{
+            'body': response.data,
+            'day': _today(),
+          }, context.generation)
+          .catchError((Object _) {
+            // Saving a snapshot must not delay a live API response.
+          }));
     }
     handler.next(response);
   }
@@ -115,7 +123,8 @@ class SavedPlayerReads extends Interceptor {
       response.extra[cachedResponse] != true &&
       response.statusCode != null &&
       response.statusCode! < 300 &&
-      await _tokens.read() == context.token;
+      await _tokens.read() == context.token &&
+      _store.generation == context.generation;
 
   static String? _responseAccountId(
       RequestOptions request, _SavedReadContext context, Object? body) {
@@ -150,7 +159,7 @@ class SavedPlayerReads extends Interceptor {
     final String? accountId = context.accountId;
     return accountId != null &&
         await _tokens.read() == context.token &&
-        _store.generation(accountId) == context.generation;
+        _store.generation == context.generation;
   }
 
   static bool _isStaleDaily(String path, Map<String, dynamic> snapshot) =>

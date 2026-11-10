@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -19,8 +20,8 @@ import 'theme/mayos_typography.dart';
 final Provider<bool> offlineBannerEnabledProvider =
     Provider<bool>((ref) => true);
 
-/// Browser online/offline events. Tests can override this stream to exercise
-/// the web connectivity source without a browser runtime.
+/// Platform network hints. The historical provider name is retained so existing
+/// browser tests can inject their event stream without a browser runtime.
 final Provider<Stream<bool>> browserConnectivityEventsProvider =
     Provider<Stream<bool>>((ref) => browserConnectivityEvents());
 
@@ -146,6 +147,18 @@ class OfflineBannerSlot extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final bool enabled = ref.watch(offlineBannerEnabledProvider);
+    if (enabled && !kIsWeb) {
+      ref.listen<bool>(
+        connectivityControllerProvider,
+        (bool? previous, bool online) {
+          if (online && previous == false) {
+            unawaited(
+              ref.read(authControllerProvider.notifier).retrySavedSession(),
+            );
+          }
+        },
+      );
+    }
     final bool saved = ref.watch(authControllerProvider).isOffline;
     final bool online =
         enabled ? ref.watch(connectivityControllerProvider) : true;

@@ -44,6 +44,9 @@ FakeMayosApi _signedInFake() {
 ProviderContainer _container(FakeApiAdapter adapter) {
   final ProviderContainer container = ProviderContainer(
     overrides: <Override>[
+      browserConnectivityEventsProvider.overrideWithValue(
+        const Stream<bool>.empty(),
+      ),
       tokenStoreProvider.overrideWithValue(InMemoryTokenStore()),
       apiClientProvider.overrideWith((ref) => ApiClient(
             tokens: ref.watch(tokenStoreProvider),

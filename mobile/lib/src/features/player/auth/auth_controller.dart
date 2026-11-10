@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -225,10 +225,10 @@ class AuthController extends StateNotifier<AuthState> {
   void useSavedData() {
     final AccountSession? session = state.session;
     if (session == null) return;
+    _needsSessionConfirmation = true;
     if (!state.isOffline) {
       state = AuthState.authenticated(session, offline: true);
     }
-    _needsSessionConfirmation = true;
     _scheduleRestore();
   }
 
@@ -308,10 +308,10 @@ class AuthController extends StateNotifier<AuthState> {
     final AccountSession? saved = await _repository.savedSession();
     if (!_isCurrentRestore(revision)) return _isUnauthenticated();
     // Older installs without a saved Account stay on splash until online.
+    _needsSessionConfirmation = true;
     state = saved == null
         ? const AuthState.loading()
         : AuthState.authenticated(saved, offline: true);
-    _needsSessionConfirmation = true;
     _scheduleRestore();
     return false;
   }
@@ -321,6 +321,15 @@ class AuthController extends StateNotifier<AuthState> {
 
   bool _isUnauthenticated() =>
       mounted && state.status == AuthStatus.unauthenticated;
+
+  void _applySession(AccountSession session, {String? notice}) {
+    state = AuthState.authenticated(
+      session,
+      notice: notice,
+      offline: _needsSessionConfirmation,
+    );
+    if (!_needsSessionConfirmation) unawaited(_repository.saveSession(session));
+  }
 
   Future<void> register({
     required String username,
@@ -337,7 +346,7 @@ class AuthController extends StateNotifier<AuthState> {
       coachInviteCode: coachInviteCode,
       displayLanguage: displayLanguage,
     );
-    state = AuthState.authenticated(session);
+    _applySession(session);
   }
 
   Future<void> login({
@@ -351,7 +360,7 @@ class AuthController extends StateNotifier<AuthState> {
       password: password,
       rememberMe: rememberMe,
     );
-    state = AuthState.authenticated(session);
+    _applySession(session);
   }
 
   Future<void> logout() async {
@@ -376,7 +385,7 @@ class AuthController extends StateNotifier<AuthState> {
       return false;
     }
     _displayLanguageRevision++;
-    state = AuthState.authenticated(
+    _applySession(
       AccountSession(
         account: session.account.withDisplayLanguage(language),
         onboarded: session.onboarded,
@@ -393,7 +402,7 @@ class AuthController extends StateNotifier<AuthState> {
     if (session == null || !ownsAccount(accountId) || release < 0) {
       return false;
     }
-    state = AuthState.authenticated(
+    _applySession(
       AccountSession(
         account: session.account.copyWith(
           whatsNewSeenRelease: release > session.account.whatsNewSeenRelease
@@ -415,7 +424,7 @@ class AuthController extends StateNotifier<AuthState> {
     if (session == null || !ownsAccount(accountId) || version < 0) {
       return false;
     }
-    state = AuthState.authenticated(
+    _applySession(
       AccountSession(
         account: session.account.copyWith(tourSeenVersion: version),
         onboarded: session.onboarded,
@@ -431,7 +440,7 @@ class AuthController extends StateNotifier<AuthState> {
   void updateLifterAiAllowance(String accountId, AiAllowance allowance) {
     final AccountSession? session = state.session;
     if (session == null || !ownsAccount(accountId)) return;
-    state = AuthState.authenticated(
+    _applySession(
       AccountSession(
         account: session.account.copyWith(lifterAiAllowance: allowance),
         onboarded: session.onboarded,
@@ -446,7 +455,7 @@ class AuthController extends StateNotifier<AuthState> {
   void updateCoachAiAllowance(String accountId, AiAllowance allowance) {
     final AccountSession? session = state.session;
     if (session == null || !ownsAccount(accountId)) return;
-    state = AuthState.authenticated(
+    _applySession(
       AccountSession(
         account: session.account.copyWith(coachAiAllowance: allowance),
         onboarded: session.onboarded,
@@ -481,11 +490,12 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<ContinueWithGoogleResult> _continueWithGoogleToken(
       String idToken) async {
+    _cancelRestore();
     try {
       final GoogleSignInFlowResult result =
           await _repository.signInWithGoogle(idToken: idToken);
       if (result case GoogleAccountReady(:final session)) {
-        state = AuthState.authenticated(session);
+        _applySession(session);
         return const GoogleSignInDone();
       }
       final GoogleUsernameRequired required = result as GoogleUsernameRequired;
@@ -520,6 +530,7 @@ class AuthController extends StateNotifier<AuthState> {
   /// Picks the username and creates the account behind the pending ticket.
   Future<CompleteGoogleSignupResult> completeGoogleSignup(
       {required String username, String displayLanguage = 'en'}) async {
+    _cancelRestore();
     final PendingGoogleSignup? pending = _pendingSignup;
     if (pending == null) {
       return const GoogleSignupTicketExpired();
@@ -532,7 +543,7 @@ class AuthController extends StateNotifier<AuthState> {
         displayLanguage: displayLanguage,
       );
       _pendingSignup = null;
-      state = AuthState.authenticated(session);
+      _applySession(session);
       return const GoogleSignupDone();
     } on ApiException catch (error) {
       if (error.statusCode == 401) {
@@ -586,6 +597,7 @@ class AuthController extends StateNotifier<AuthState> {
   /// protected data. The state moves to login with a confirmation (ADR 039).
   Future<void> deleteAccount(String password) async {
     await _repository.deleteAccount(password);
+    _cancelRestore();
     state = const AuthState.unauthenticated(
         'Your account was deleted. Create a new account or sign in.');
   }
@@ -617,6 +629,7 @@ class AuthController extends StateNotifier<AuthState> {
       String googleIdToken) async {
     try {
       await _repository.deleteAccountWithGoogle(googleIdToken: googleIdToken);
+      _cancelRestore();
     } on ApiException catch (error) {
       final FailureMessage failure = mutationFailureMessage(error);
       return DeleteWithGoogleRefused(
@@ -698,6 +711,7 @@ class AuthController extends StateNotifier<AuthState> {
       currentPassword: currentPassword,
       newPassword: newPassword,
     );
+    _cancelRestore();
     state = const AuthState.unauthenticated(
         'Password changed. Please sign in again.');
   }
@@ -723,6 +737,7 @@ class AuthController extends StateNotifier<AuthState> {
       newPassword: newPassword,
       accountId: accountId,
     );
+    _cancelRestore();
     state = const AuthState.unauthenticated();
   }
 
@@ -741,7 +756,7 @@ class AuthController extends StateNotifier<AuthState> {
         state.session?.account.accountId != current.account.accountId) {
       return;
     }
-    state = AuthState.authenticated(
+    _applySession(
       AccountSession(
         account: account,
         onboarded: current.onboarded,
@@ -778,7 +793,7 @@ class AuthController extends StateNotifier<AuthState> {
               : account.copyWith(
                   displayLanguage: state.session!.account.displayLanguage,
                 );
-      state = AuthState.authenticated(
+      _applySession(
         AccountSession(
           account: refreshedAccount,
           onboarded: current.onboarded,
@@ -796,7 +811,7 @@ class AuthController extends StateNotifier<AuthState> {
     final AccountSession? current = state.session;
     if (!state.isAuthenticated || current == null) return;
     final Account account = current.account;
-    state = AuthState.authenticated(
+    _applySession(
       AccountSession(
         account: account.copyWith(
           capabilities: Capabilities(
@@ -821,7 +836,7 @@ class AuthController extends StateNotifier<AuthState> {
     if (latest == null || latest.account.accountId != current.account.accountId) {
       return confirmed;
     }
-    state = AuthState.authenticated(
+    _applySession(
       AccountSession(
         account: latest.account.copyWith(productEmailsOptedIn: confirmed),
         onboarded: current.onboarded,
@@ -841,7 +856,7 @@ class AuthController extends StateNotifier<AuthState> {
     if (state.isAuthenticated &&
         before != null &&
         session?.account.accountId == before.account.accountId) {
-      state = AuthState.authenticated(
+      _applySession(
         AccountSession(
           account: session!.account.copyWith(
             recoveryEmailVerified: saved.verified,
@@ -868,7 +883,7 @@ class AuthController extends StateNotifier<AuthState> {
     if (state.isAuthenticated &&
         before != null &&
         session?.account.accountId == before.account.accountId) {
-      state = AuthState.authenticated(
+      _applySession(
         AccountSession(
           account: session!.account.copyWith(recoveryEmailVerified: true),
           onboarded: session.onboarded,
@@ -883,7 +898,7 @@ class AuthController extends StateNotifier<AuthState> {
   void recoveryEmailChanged(String email) {
     final AccountSession? session = state.session;
     if (!state.isAuthenticated || session == null) return;
-    state = AuthState.authenticated(
+    _applySession(
       AccountSession(
         account: session.account.copyWith(
           recoveryEmailVerified: true,
@@ -899,7 +914,7 @@ class AuthController extends StateNotifier<AuthState> {
   void markOnboarded() {
     final AccountSession? session = state.session;
     if (state.isAuthenticated && session != null) {
-      state = AuthState.authenticated(
+      _applySession(
         AccountSession(
           account: session.account,
           onboarded: true,

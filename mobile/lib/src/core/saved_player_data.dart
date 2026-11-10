@@ -17,21 +17,22 @@ class SavedPlayerDataStore extends ChangeNotifier {
 
   final BrowserKeyValueStore? _browser;
   final SecureStore? _secure;
-  final Map<String, int> _generations = <String, int>{};
+  int _generation = 0;
   Future<void> _storageQueue = Future<void>.value();
   bool _offline = false;
+  bool _disposed = false;
 
   bool get offline => _offline;
-  int generation(String accountId) => _generations[accountId] ?? 0;
+  int get generation => _generation;
 
   void useSavedData() {
-    if (_offline) return;
+    if (_offline || _disposed) return;
     _offline = true;
     notifyListeners();
   }
 
   void confirmSession() {
-    if (!_offline) return;
+    if (!_offline || _disposed) return;
     _offline = false;
     notifyListeners();
   }
@@ -73,7 +74,7 @@ class SavedPlayerDataStore extends ChangeNotifier {
   Future<void> write(String accountId, String resource,
       Map<String, dynamic> snapshot, int expectedGeneration) =>
       _serialized(() async {
-        if (generation(accountId) != expectedGeneration) return;
+        if (generation != expectedGeneration) return;
         final Map<String, dynamic> snapshots = await _readAccount(accountId);
         snapshots[resource] = snapshot;
         try {
@@ -91,7 +92,7 @@ class SavedPlayerDataStore extends ChangeNotifier {
   /// Invalidate outstanding reads before erasure so a late response cannot
   /// recreate an account's saved data after logout or deletion.
   Future<void> clearAccount(String accountId) {
-    _generations[accountId] = generation(accountId) + 1;
+    _generation++;
     return _serialized(() async {
       try {
         final BrowserKeyValueStore? browser = _browser;
@@ -108,7 +109,7 @@ class SavedPlayerDataStore extends ChangeNotifier {
 
   Future<void> saveSession(AccountSession session) async {
     final String accountId = session.account.accountId;
-    final int revision = generation(accountId);
+    final int revision = generation;
     final Map<String, dynamic>? account = await read(accountId, '/auth/me');
     if (account == null) return;
     await write(accountId, 'session', <String, dynamic>{
@@ -136,5 +137,11 @@ class SavedPlayerDataStore extends ChangeNotifier {
       // A corrupt or older snapshot must never select an account.
       return null;
     }
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }

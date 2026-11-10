@@ -23,6 +23,7 @@ ProviderContainer authContainerFor(
   FakeAnalyticsClient? analytics,
   FakeGoogleAuthGateway? google,
   BrowserKeyValueStore? savedPlayerDataBrowser,
+  List<Override> extraOverrides = const <Override>[],
 }) {
   final FakeAnalyticsClient fakeAnalytics = analytics ?? FakeAnalyticsClient();
   return ProviderContainer(
@@ -61,6 +62,7 @@ ProviderContainer authContainerFor(
         };
         return client;
       }),
+      ...extraOverrides,
     ],
   );
 }

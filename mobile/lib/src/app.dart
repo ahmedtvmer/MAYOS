@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -47,6 +48,7 @@ class _MayosAppState extends ConsumerState<MayosApp>
   bool _analyticsAllowed = true;
   bool _analyticsLaunchTracked = false;
   late final ProviderSubscription<AuthState> _analyticsAuthSubscription;
+  ProviderSubscription<bool>? _connectivitySubscription;
   StreamSubscription<SharedProgramText>? _sharedTextSubscription;
 
   @override
@@ -69,10 +71,19 @@ class _MayosAppState extends ConsumerState<MayosApp>
     // The release policy is public and best-effort. Build its controller
     // before auth or draft traffic can receive a 426 response.
     unawaited(ref.read(appUpdateRequiredProvider.notifier).checkPolicy());
-    // Keep API and browser signals alive during splash and auth startup, before
-    // either shared screen frame has mounted its banner slot.
-    if (ref.read(offlineBannerEnabledProvider)) {
-      ref.read(connectivityControllerProvider);
+    // Browser events must be observed during splash, before a screen banner
+    // mounts. Android screens attach the API observer through their banner.
+    if (kIsWeb && ref.read(offlineBannerEnabledProvider)) {
+      _connectivitySubscription = ref.listenManual<bool>(
+        connectivityControllerProvider,
+        (bool? previous, bool online) {
+          if (online && previous == false) {
+            unawaited(
+              ref.read(authControllerProvider.notifier).retrySavedSession(),
+            );
+          }
+        },
+      );
     }
     // Construct the source before auth navigation can replace the initial URL;
     // startup reads it only after authentication confirms this device is signed out.
@@ -156,6 +167,7 @@ class _MayosAppState extends ConsumerState<MayosApp>
   void dispose() {
     _safeAreaInsetsSource.dispose();
     _analyticsAuthSubscription.close();
+    _connectivitySubscription?.close();
     _sharedTextSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();

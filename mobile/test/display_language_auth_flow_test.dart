@@ -334,7 +334,7 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('offline session restoration reads only that account cache',
+  testWidgets('offline restore without a saved account keeps its language on splash',
       (WidgetTester tester) async {
     final FakeMayosApi fake = FakeMayosApi()..meFails = true;
     final InMemoryTokenStore tokens = InMemoryTokenStore();
@@ -349,10 +349,18 @@ void main() {
       displayLanguageStoreProvider.overrideWithValue(languageStore),
       systemDisplayLanguageProvider.overrideWithValue('en'),
     ]));
-    await tester.pumpAndSettle();
-    expect(find.text('العربية'), findsOneWidget);
-    expect(find.text('الإنجليزية'), findsNothing);
-    expect(find.text('إنشاء حساب'), findsOneWidget);
+    for (int frame = 0; frame < 20; frame++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    final ProviderContainer container = ProviderScope.containerOf(
+      tester.element(find.byType(MayosApp)),
+      listen: false,
+    );
+    expect(container.read(displayLanguageProvider), 'ar');
+    expect(container.read(routerProvider).routeInformationProvider.value.uri.path,
+        splashPath);
+    expect(find.byKey(const Key('login_username')), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets(

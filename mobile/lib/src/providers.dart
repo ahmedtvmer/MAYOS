@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, kReleaseMode, TargetPlatform;
 import 'package:flutter/material.dart'
@@ -20,7 +18,6 @@ import 'core/browser_key_value_store.dart';
 import 'core/chat_storage.dart';
 import 'core/client_dimensions.dart';
 import 'core/config.dart';
-import 'core/connectivity.dart';
 import 'core/display_language/controller.dart';
 import 'core/display_language/store.dart';
 import 'core/models.dart';
@@ -195,14 +192,6 @@ final StateNotifierProvider<AuthController, AuthState> authControllerProvider =
   }
   saved.addListener(onSavedData);
   ref.onDispose(() => saved.removeListener(onSavedData));
-  ref.listen<bool>(
-    connectivityControllerProvider,
-    (bool? previous, bool online) {
-      if (online && previous == false) {
-        unawaited(controller.retrySavedSession());
-      }
-    },
-  );
   return controller;
 });
 
@@ -308,9 +297,9 @@ final StateNotifierProvider<CoachRosterAssistantController,
 
 /// Whether this client captures protected offline workout drafts (ADR 020).
 ///
-/// Offline Workout drafts remain Android-only (ADR 022). On web, only the
-/// account-scoped Active workout and its first-start notice use browser storage;
-/// every other protected store stays in memory.
+/// Offline Workout drafts remain Android-only (ADR 022). On web the Active
+/// workout, first-start notice and saved Player reads (ADR 112) persist in
+/// browser storage; this flag continues to control only the draft-era stores.
 final Provider<bool> offlineWorkoutDraftsEnabledProvider = Provider<bool>(
   (ref) => !kIsWeb,
 );

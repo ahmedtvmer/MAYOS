@@ -68,6 +68,15 @@ class AuthRepository {
 
   /// Only used after a failed online restore, never to choose another account.
   Future<AccountSession?> savedSession() async {
+    try {
+      return await _readSavedSession();
+    } on Object {
+      // The bearer may be readable later even when its storage is unavailable now.
+      return null;
+    }
+  }
+
+  Future<AccountSession?> _readSavedSession() async {
     final String? token = await _tokens.read();
     if (token == null || token.isEmpty) return null;
     final String? accountId = await _localAccountId();
@@ -78,8 +87,13 @@ class AuthRepository {
     return session;
   }
 
-  Future<void> saveSession(AccountSession session) async {
-    await _savedData?.saveSession(session);
+  void _saveSessionBestEffort(AccountSession session) {
+    // A confirmed server session must route even if local cache storage stalls.
+    final SavedPlayerDataStore? savedData = _savedData;
+    if (savedData == null) return;
+    unawaited(savedData.saveSession(session).catchError((Object _) {
+      // A local snapshot failure cannot undo a server-confirmed session.
+    }));
   }
 
   Future<Map<String, String>?> _registrationFirstTouch() async {
@@ -197,7 +211,7 @@ class AuthRepository {
       final AccountSession session = await _currentSession();
       if (await _tokens.read() != token) return null;
       await _saveAccountId(session.account.accountId);
-      await saveSession(session);
+      _saveSessionBestEffort(session);
       _savedData?.confirmSession();
       return session;
     } on ApiException catch (error) {
@@ -277,8 +291,9 @@ class AuthRepository {
     if (accountId == null || accountId.isEmpty) {
       return;
     }
-    await _eraser.erase(accountId);
     await _savedData?.clearAccount(accountId);
+    _savedData?.confirmSession();
+    await _eraser.erase(accountId);
   }
 
   /// Language-cache cleanup is non-critical and must not hold up session teardown.
@@ -374,7 +389,7 @@ class AuthRepository {
     } on ApiException {
       // Local session is cleared regardless; the server revokes on best effort.
     }
-    await _clearChatCache(accountId);
+    await _clearReadCaches(accountId);
     await _tokens.clear();
   }
 
@@ -382,12 +397,21 @@ class AuthRepository {
   /// invalid, e.g. after a 401): clears the account's cached chat history and
   /// the persisted token.
   Future<void> clearSession({String? accountId}) async {
-    await _clearChatCache(accountId);
+    await _clearReadCaches(accountId);
     await _tokens.clear();
   }
 
-  Future<void> _clearChatCache(String? accountId) async {
-    final String? localAccountId = accountId ?? await _localAccountId();
+  Future<String?> _bestEffortLocalAccountId() async {
+    try {
+      return await _localAccountId();
+    } on Object {
+      // Cache lookup failure must not prevent dropping the bearer on logout.
+      return null;
+    }
+  }
+
+  Future<void> _clearReadCaches(String? accountId) async {
+    final String? localAccountId = accountId ?? await _bestEffortLocalAccountId();
     if (localAccountId != null) {
       await _savedData?.clearAccount(localAccountId);
     }
@@ -412,7 +436,7 @@ class AuthRepository {
     await _tokens.save(auth.accessToken);
     final AccountSession session = await _currentSession();
     await _saveAccountId(session.account.accountId);
-    await saveSession(session);
+    _saveSessionBestEffort(session);
     _savedData?.confirmSession();
     return session;
   }
