@@ -1,5 +1,6 @@
 """FastAPI route tests: isolated DB, bypassed JWT subject, mocked LLM-bound calls."""
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -75,6 +76,125 @@ def test_register_login_roundtrip(client):
     assert ghost.json()["detail"] == "Invalid credentials."
     assert ghost.json()["message_code"] == "auth.invalid_credentials.v1"
     assert wrong.json()["message_fallback"] == "Invalid credentials."
+
+
+def test_connection_failure_batch_is_authenticated_bounded_and_route_only(client):
+    registration = client.post(
+        "/auth/register",
+        json={"trainee_id": "failure-report", "password": "correct-horse-1"},
+    )
+    headers = {"Authorization": f"Bearer {registration.json()['access_token']}"}
+    event = {
+        "occurred_at": datetime.now(UTC).isoformat(),
+        "failure_type": "dns",
+        "offline_reported": True,
+        "platform": "web",
+        "app_build": "1.2.3",
+        "route_template": "/profile/injuries/private-injury-912",
+    }
+    events = [
+        event,
+        {
+            **event,
+            "route_template": (
+                "/profile/injuries/private-injury-913/clearances/private-clearance-914"
+            ),
+        },
+        {
+            **event,
+            "route_template": "/profile/injuries/private-query-59?private-query-60",
+        },
+        {
+            **event,
+            "route_template": (
+                "/profile/injuries/private-injury-915/wrong-segment/private-clearance-916"
+            ),
+        },
+        {**event, "route_template": "/profile"},
+    ]
+    assert client.post(
+        "/client/connection-failures", json={"failures": [event]}
+    ).status_code == 401
+
+    accepted = client.post(
+        "/client/connection-failures", json={"failures": events}, headers=headers
+    )
+
+    assert accepted.status_code == 202
+    assert accepted.json() == {"accepted": 5}
+    rows = client.app.state.connection_failure_metrics.measurements.snapshot()
+    route_counts = {row["dimensions"]["route"]: row["count"] for row in rows}
+    assert route_counts == {
+        "/profile/injuries/{id}": 1,
+        "/profile/injuries/{id}/clearances/{id}": 1,
+        "/unknown": 2,
+        "/profile": 1,
+    }
+    stored = str(rows)
+    private_values = (
+        "private-injury-912",
+        "private-injury-913",
+        "private-clearance-914",
+        "private-query-59",
+        "private-query-60",
+        "private-injury-915",
+        "private-clearance-916",
+    )
+    for private_value in private_values:
+        assert private_value not in stored
+    assert "failure-report" not in stored
+    from svc.monitoring.store import MetricsStore
+
+    metrics = client.app.state.connection_failure_metrics.measurements
+    persisted_store = MetricsStore(client.app.state.test_db.catalog_path)
+    persisted_store.write(
+        "connection-failure-test",
+        "client_connection_failures",
+        metrics.pending(),
+        datetime.now(UTC),
+    )
+    persisted = persisted_store.history(
+        "another-process", datetime.now(UTC) - timedelta(hours=1)
+    )
+    assert len(persisted) == 4
+    for private_value in private_values:
+        assert private_value not in str(persisted)
+    assert "failure-report" not in str(persisted)
+
+    body = {"failures": [{**event, "body": "private-body-31"}]}
+    assert client.post("/client/connection-failures", json=body, headers=headers).status_code == 422
+    oversized = {"failures": [event] * 201}
+    assert client.post(
+        "/client/connection-failures", json=oversized, headers=headers
+    ).status_code == 422
+
+
+def test_connection_failure_upload_is_rate_limited_per_authenticated_account(client):
+    client.app.state.db = client.app.state.test_db
+    registration = client.post(
+        "/auth/register",
+        json={"trainee_id": "failure-rate", "password": "correct-horse-1"},
+    )
+    headers = {"Authorization": f"Bearer {registration.json()['access_token']}"}
+    payload = {
+        "failures": [
+            {
+                "occurred_at": datetime.now(UTC).isoformat(),
+                "failure_type": "other",
+                "offline_reported": False,
+                "platform": "android",
+                "app_build": "2",
+                "route_template": "/profile",
+            }
+        ]
+    }
+
+    responses = [
+        client.post("/client/connection-failures", json=payload, headers=headers)
+        for _ in range(11)
+    ]
+
+    assert [response.status_code for response in responses] == [202] * 10 + [429]
 
 
 def test_http_error_messages_are_additive_and_validation_values_are_allowlisted(client):

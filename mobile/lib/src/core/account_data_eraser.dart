@@ -1,6 +1,7 @@
 import 'active_workout.dart';
 import 'baselines.dart';
 import 'chat_storage.dart';
+import 'connection_failures.dart';
 import 'workout_start_notice_store.dart';
 import 'workout_storage.dart';
 
@@ -18,12 +19,14 @@ class AccountDataEraser {
     required BaselineCacheStore baselines,
     required ActiveWorkoutStore activeWorkout,
     required WorkoutStartNoticeStore workoutStartNotice,
+    ConnectionFailureStore? connectionFailures,
   })  : _drafts = drafts,
         _workoutCache = workoutCache,
         _chatCache = chatCache,
         _baselines = baselines,
         _activeWorkout = activeWorkout,
-        _workoutStartNotice = workoutStartNotice;
+        _workoutStartNotice = workoutStartNotice,
+        _connectionFailures = connectionFailures;
 
   final DraftStore _drafts;
   final WorkoutCacheStore _workoutCache;
@@ -31,6 +34,7 @@ class AccountDataEraser {
   final BaselineCacheStore _baselines;
   final ActiveWorkoutStore _activeWorkout;
   final WorkoutStartNoticeStore _workoutStartNotice;
+  final ConnectionFailureStore? _connectionFailures;
 
   Future<void> erase(String accountId) async {
     await _bestEffort(() => _drafts.deleteForAccount(accountId));
@@ -41,6 +45,10 @@ class AccountDataEraser {
     await _bestEffort(
       () => _workoutStartNotice.clearWorkoutStartNotice(accountId),
     );
+    final ConnectionFailureStore? connectionFailures = _connectionFailures;
+    if (connectionFailures != null) {
+      await _bestEffort(() => connectionFailures.deleteForAccount(accountId));
+    }
   }
 
   Future<void> _bestEffort(Future<void> Function() action) async {

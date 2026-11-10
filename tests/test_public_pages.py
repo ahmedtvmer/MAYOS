@@ -462,9 +462,9 @@ def test_policy_source_file_exists_and_every_section_is_served(api):
     # wraps across lines and bolds its lead-ins.
     flat = " ".join(source.split()).replace("**", "")
     from service import privacy_policy
-    assert privacy_policy.POLICY_VERSION == "1.12"
-    assert privacy_policy.POLICY_EFFECTIVE_DATE == "2026-11-09"
-    assert "Effective date: 2026-11-09 — Policy version 1.12" in body
+    assert privacy_policy.POLICY_VERSION == "1.13"
+    assert privacy_policy.POLICY_EFFECTIVE_DATE == "2026-11-10"
+    assert "Effective date: 2026-11-10 — Policy version 1.13" in body
     assert "Germany (Contabo)" in flat and "fly.io" not in flat.lower()
     assert "This is the only email sent to you." not in flat
     for phrase in (

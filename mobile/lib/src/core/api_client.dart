@@ -14,6 +14,7 @@ import 'baselines.dart';
 import 'chat_models.dart';
 import 'chat_stream_fetch.dart';
 import 'client_dimensions.dart';
+import 'connection_failures.dart';
 import 'models.dart';
 import 'coach_food_log_models.dart';
 import 'food_log_models.dart';
@@ -141,6 +142,7 @@ class ApiClient {
     String Function()? clientHeaderLoader,
     String? Function()? buildHeaderLoader,
     String Function()? displayLanguageLoader,
+    ConnectionFailureOptions? connectionFailureOptions,
   })  : _tokens = tokens,
         _baseUrl = baseUrl,
         _chatStreamFetch = chatStreamFetch ?? createChatStreamFetch(),
@@ -157,6 +159,14 @@ class ApiClient {
       ),
     );
     _dio.httpClientAdapter = adapter ?? _dio.httpClientAdapter;
+    final ConnectionFailureOptions failureOptions =
+        connectionFailureOptions ?? const ConnectionFailureOptions();
+    _connectionFailureReporter = PersistedConnectionFailureReporter(
+      tokens: _tokens,
+      dio: _dio,
+      store: failureOptions.store,
+      offlineStatusLoader: failureOptions.offlineStatusLoader,
+    );
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: _attachToken,
@@ -247,6 +257,7 @@ class ApiClient {
   final String? _buildHeader;
   final String Function() _displayLanguageLoader;
   late final Dio _dio;
+  late final PersistedConnectionFailureReporter _connectionFailureReporter;
 
   /// Invoked when an authenticated request fails with 401.
   void Function()? onUnauthorized;
@@ -331,9 +342,22 @@ class ApiClient {
   Future<Response<dynamic>> _send(
       Future<Response<dynamic>> Function() run) async {
     try {
-      return await run();
+      final Response<dynamic> response = await run();
+      _connectionFailureReporter
+          .flushAfterSuccessfulRequest(response.requestOptions);
+      return response;
     } on DioException catch (error) {
+      await _recordConnectionFailure(error);
       throw _toApiException(error);
+    }
+  }
+
+  Future<void> _recordConnectionFailure(DioException error) async {
+    if (error.response != null || error.type == DioExceptionType.cancel) return;
+    try {
+      await _connectionFailureReporter.record(error);
+    } on Object {
+      // Operational telemetry must not replace the request's actual failure.
     }
   }
 
@@ -3288,8 +3312,13 @@ class ApiClient {
       if (errorBody is ResponseBody && errorStatus != null) {
         throw _errorFromResponse(errorStatus, await _readStream(errorBody.stream));
       }
+      await _recordConnectionFailure(error);
       throw _toApiException(error);
     }
+
+    _connectionFailureReporter.flushAfterSuccessfulRequest(
+      response.requestOptions,
+    );
 
     final dynamic body = response.data;
     final Stream<Uint8List>? bytes = body is ResponseBody ? body.stream : null;
@@ -3363,7 +3392,39 @@ class ApiClient {
       body: jsonEncode(body),
     );
     events.onCancel = request.abort;
-    await _pipeFetchSseResponse(request, parseDone, events);
+    final ChatStreamFetchResponse response;
+    try {
+      response = await request.response;
+    } on ChatStreamTransportException catch (error) {
+      await _recordFetchConnectionFailure(path, headers, error);
+      rethrow;
+    }
+    _connectionFailureReporter.flushAfterSuccessfulRequest(
+      RequestOptions(path: path, method: 'POST', headers: headers),
+    );
+    await _pipeFetchSseResponse(response, parseDone, events);
+  }
+
+  Future<void> _recordFetchConnectionFailure(
+    String path,
+    Map<String, String> headers,
+    ChatStreamTransportException error,
+  ) async {
+    try {
+      await _connectionFailureReporter.record(
+        DioException(
+          requestOptions: RequestOptions(
+            path: path,
+            method: 'POST',
+            headers: headers,
+          ),
+          type: DioExceptionType.connectionError,
+          error: error,
+        ),
+      );
+    } on Object {
+      // Reporting a dropped chat connection must not replace its error state.
+    }
   }
 
   void _forwardFetchFailure(
@@ -3403,11 +3464,10 @@ class ApiClient {
   }
 
   Future<void> _pipeFetchSseResponse(
-    ChatStreamFetchRequest request,
+    ChatStreamFetchResponse response,
     _AssistantDoneParser parseDone,
     MultiStreamController<ChatStreamEvent> events,
   ) async {
-    final ChatStreamFetchResponse response = await request.response;
     if (events.isClosed) return;
     if (response.statusCode < 200 || response.statusCode >= 300) {
       await _throwFetchResponseFailure(response);

@@ -266,6 +266,42 @@ def test_monitoring_windows_use_owner_shell_and_inline_trends(admin_api, hours):
     assert "/admin/monitoring" not in str(client.get("/openapi.json").json().get("paths", {}))
 
 
+def test_connection_failure_hourly_tile_is_owner_only_and_uses_seven_day_window(admin_api):
+    client, db, now, _ = admin_api
+    account, headers = _register_account(client, db, "monitor-connection-failure")
+    uploaded = client.post(
+        "/client/connection-failures",
+        headers=headers,
+        json={
+            "failures": [
+                {
+                    "occurred_at": datetime.now(UTC).isoformat(),
+                    "failure_type": "connection_reset",
+                    "offline_reported": False,
+                    "platform": "android",
+                    "app_build": "2",
+                    "route_template": "/dashboard/exercises/private-exercise-83/history",
+                }
+            ]
+        },
+    )
+    assert uploaded.status_code == 202
+    assert client.get("/admin/monitoring").status_code == 404
+    assert _login(client, now[0]).status_code == 303
+
+    page = client.get("/admin/monitoring")
+
+    assert page.status_code == 200
+    assert 'href="/admin/monitoring?hours=168" aria-current="page"' in page.text
+    assert "Client connection failures" in page.text
+    assert "Connection reset" in page.text
+    assert "Android" in page.text
+    assert '<tr><td>Connection reset</td><td>Android</td><td>1</td>' in page.text
+    serialized = str(client.app.state.connection_failure_metrics.measurements.snapshot())
+    assert account["account_id"] not in serialized
+    assert "private-exercise-83" not in serialized
+
+
 def test_monitoring_measurement_and_storage_failures_leave_requests_and_readiness_unchanged(admin_api, monkeypatch):
     from svc.monitoring.store import MetricsStore
 

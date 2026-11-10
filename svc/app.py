@@ -39,6 +39,7 @@ from service.periodic_status import (
     configured_interval_seconds,
     record_run,
 )
+from svc.connection_failures import ConnectionFailureMetrics, registered_route_templates
 from svc.dependencies import AccountDeletedError
 from svc.error_tracking import ServerErrorCaptureMiddleware, initialize_sentry
 from svc.monitoring.runtime import Monitoring, flush_loop
@@ -48,6 +49,7 @@ from svc.rate_limit import limiter
 from svc.routers import (
     admin,
     admin_monitoring,
+    client_connection_failures,
     alerts,
     assignments,
     auth,
@@ -424,6 +426,7 @@ def create_app(*, sentry_transport=None) -> FastAPI:
     app.state.limiter = limiter
     app.state.db = None
     app.state.request_metrics = RequestMetrics()
+    app.state.connection_failure_metrics = ConnectionFailureMetrics()
     app.state.monitoring = Monitoring(app)
     app.state.admin_security = AdminSecurity()
     if partial_secret_configuration():
@@ -571,6 +574,7 @@ def create_app(*, sentry_transport=None) -> FastAPI:
     app.include_router(auth.router)
     app.include_router(admin.router)
     app.include_router(admin_monitoring.router)
+    app.include_router(client_connection_failures.router)
     app.include_router(recovery.router)
     app.include_router(public_pages.router)
     app.include_router(coach.router)
@@ -609,6 +613,7 @@ def create_app(*, sentry_transport=None) -> FastAPI:
             return JSONResponse(status_code=503, content={"status": status, "details": details})
         return {"status": status, "details": details}
 
+    app.state.connection_failure_route_templates = registered_route_templates(app)
     return app
 
 

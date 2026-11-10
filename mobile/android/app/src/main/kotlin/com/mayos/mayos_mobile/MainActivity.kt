@@ -1,6 +1,7 @@
 package com.mayos.mayos_mobile
 
 import android.content.Intent
+import android.net.ConnectivityManager
 import android.net.Uri
 import android.provider.OpenableColumns
 import io.flutter.embedding.android.FlutterActivity
@@ -42,6 +43,20 @@ class MainActivity : FlutterActivity() {
                 }
                 else -> result.notImplemented()
             }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "com.mayos/connectivity"
+        ).setMethodCallHandler { call, result ->
+            if (call.method != "hasInternetConnection") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+            @Suppress("DEPRECATION")
+            val connected =
+                (getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager)
+                    .activeNetworkInfo?.isConnected == true
+            result.success(connected)
         }
         processShareIntent(intent, initial = true)
     }

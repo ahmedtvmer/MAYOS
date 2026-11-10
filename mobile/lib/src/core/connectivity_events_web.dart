@@ -18,3 +18,5 @@ Stream<bool> browserConnectivityEvents() {
     events.add(web.window.navigator.onLine);
   });
 }
+
+bool browserReportedOffline() => !web.window.navigator.onLine;

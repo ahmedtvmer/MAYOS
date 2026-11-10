@@ -1437,7 +1437,8 @@ ADR 040; event contracts in [ANALYTICS.md](ANALYTICS.md). Analytics stays off
 everywhere until these keys are set, so this can be done at any time.
 
 **Privacy policy.** The live policy (`docs/PRIVACY_POLICY.md`, served at
-`/privacy`, version 1.12) names PostHog and the preserved historical opt-outs;
+`/privacy`, version 1.13) names PostHog, the preserved historical opt-outs, and
+the operational client connection-failure data;
 keep it in step with ANALYTICS.md whenever what is sent changes. The served
 page updates with the next `fly deploy`.
 

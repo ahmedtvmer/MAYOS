@@ -17,7 +17,7 @@ async def admin_monitoring_page(request: Request):
     session = security.get_session(request.cookies.get(SESSION_COOKIE))
     if session is None:
         return not_found_response()
-    selected = request.query_params.get("hours", "24")
+    selected = request.query_params.get("hours", "168")
     hours = next((hours for hours in WINDOWS if str(hours) == selected), 24)
     links = "".join(
         f'<a class="nav-link" href="/admin/monitoring?hours={window}"'
