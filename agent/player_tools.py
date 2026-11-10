@@ -10,12 +10,11 @@ from collections.abc import Callable, Sequence
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import StructuredTool
-from pydantic import BaseModel, Field
-from core.movement_restriction_suggestions import suggest_movement_restrictions
+from pydantic import BaseModel, Field, model_validator
 
 from database.ledger.profile import PLAYER_PROFILE_STORAGE_DEFAULTS
 from agent.focus_muscles import FOCUS_REVIEW_MUSCLES
@@ -47,6 +46,21 @@ _INJURY_CLEARANCE_TOOL_FIELDS = (
 
 class EmptyToolArgs(BaseModel):
     """Schema for a read tool that takes no arguments."""
+
+
+ProfileSection = Literal["Body", "Goals", "Training setup", "Limitations", "Focus", "Recovery"]
+
+
+class ProfileArgs(BaseModel):
+    sections: list[ProfileSection]
+
+    @model_validator(mode="before")
+    @classmethod
+    def missing_sections_list_available_sections(cls, arguments: Any) -> Any:
+        # Advertise a required scope, but keep legacy unscoped calls value-free.
+        if isinstance(arguments, dict) and "sections" not in arguments:
+            return {**arguments, "sections": []}
+        return arguments
 
 
 class FoodLogArgs(BaseModel):
@@ -104,25 +118,24 @@ def _not_set(profile_value: Any) -> Any:
     return profile_value
 
 
-_PROFILE_FIELDS = (
-    ("gender", "gender"),
-    ("proportions", "proportions"),
-    ("age", "age"),
-    ("height_cm", "height_cm"),
-    ("weight_kg", "weight_kg"),
-    ("target_weight_kg", "target_weight_kg"),
-    ("current_goal", "current_goal"),
-    ("long_term_goal", "long_term_goal"),
-    ("training_age_years", "training_age_years"),
-    ("rep_preference", "rep_preference"),
-    ("equipment_access", "equipment_access"),
-    # Backward-compatible projection maintained by the injury-record writer.
-    ("injuries_or_limitations", "injuries_or_limitations"),
-    ("weekly_frequency", "weekly_frequency"),
-    ("stress_and_sleep", "stress_and_sleep"),
-    ("weak_points", "weak_points"),
-    ("movement_restrictions", "movement_restrictions"),
-)
+_PROFILE_SECTION_FIELDS = {
+    "Body": ("gender", "age", "height_cm", "weight_kg", "target_weight_kg"),
+    "Goals": ("current_goal", "long_term_goal"),
+    "Training setup": (
+        "weekly_frequency", "equipment_access", "rep_preference", "training_age_years",
+    ),
+    "Limitations": ("injuries_or_limitations", "movement_restrictions"),
+    "Focus": ("weak_points",),
+    "Recovery": ("stress_and_sleep",),
+}
+_PROFILE_SECTION_DESCRIPTIONS = {
+    "Body": "Gender, age, height, weight and target weight.",
+    "Goals": "Current and long-term goals.",
+    "Training setup": "Weekly frequency, equipment access, rep preference and training age.",
+    "Limitations": "Injury text, injury records with Exercise clearances and confirmed Movement restrictions.",
+    "Focus": "Weak points.",
+    "Recovery": "Stress and sleep.",
+}
 
 
 def _is_storage_default(key: str, stored_value: Any) -> bool:
@@ -152,32 +165,34 @@ def _player_profile(ledger: Any) -> dict[str, Any]:
     return (getter() or {}) if callable(getter) else {}
 
 
-def _read_profile(ledger: Any) -> dict[str, Any]:
+def _profile_field_value(
+    key: str, profile: dict[str, Any], answers: dict[str, Any], completed: bool,
+) -> Any:
+    if key in answers:
+        answer = answers[key]
+        stored_value = answer.get("value")
+        if answer.get("prefilled") and not completed and _is_storage_default(key, stored_value):
+            stored_value = None
+    else:
+        stored_value = profile.get(key)
+        if not completed and _is_storage_default(key, stored_value):
+            stored_value = None
+    return _not_set(stored_value)
+
+
+def _read_profile(ledger: Any, args: ProfileArgs) -> dict[str, Any]:
+    if not args.sections:
+        return {"status": "ok", "sections": dict(_PROFILE_SECTION_DESCRIPTIONS)}
     profile = _player_profile(ledger)
     answers = ledger.load_intake_answers()
-    onboarding_completed = _profile_has_completion_evidence(ledger)
-    profile_fields = {}
-    for label, key in _PROFILE_FIELDS:
-        if key in answers:
-            answer = answers[key]
-            value = answer.get("value")
-            if (
-                answer.get("prefilled")
-                and not onboarding_completed
-                and _is_storage_default(key, value)
-            ):
-                value = None
-        else:
-            value = profile.get(key)
-            if not onboarding_completed and _is_storage_default(key, value):
-                value = None
-        profile_fields[label] = _not_set(value)
+    completed = _profile_has_completion_evidence(ledger)
+    profile_fields = {
+        key: _profile_field_value(key, profile, answers, completed)
+        for section in args.sections for key in _PROFILE_SECTION_FIELDS[section]
+    }
     return {
-        "status": "ok",
-        "profile": profile_fields,
-        "suggested_movement_restrictions": suggest_movement_restrictions(
-            profile.get("injuries_or_limitations", "")
-        ),
+        "status": "ok", "profile": profile_fields,
+        **({"injuries": _read_injury_records(ledger)} if "Limitations" in args.sections else {}),
     }
 
 
@@ -198,7 +213,7 @@ def _read_weight_trend(ledger: Any) -> dict[str, Any]:
     }
 
 
-def _read_player_injuries(ledger: Any) -> dict[str, Any]:
+def _read_injury_records(ledger: Any) -> list[dict[str, Any]]:
     records = []
     for record in ledger.list_injury_records():
         rendered = render_public_injury_record(record)
@@ -212,7 +227,7 @@ def _read_player_injuries(ledger: Any) -> dict[str, Any]:
             for clearance in ledger.list_exercise_clearances(str(record["id"]))
         ]
         records.append(rendered)
-    return {"status": "ok", "injuries": records}
+    return records
 
 
 def _read_assistant_preferences(ledger: Any) -> dict[str, Any]:
@@ -450,11 +465,13 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
     PlayerReadTool(
         name="get_player_profile",
         description=(
-            "Read the current player's saved profile facts. Use this before answering "
-            "questions about the player's own profile. Empty fields are returned as 'not set'."
+            "Read only requested Profile sections. No sections: names only. "
+            "Limitations includes injuries, Exercise clearances and Movement restrictions. "
+            "Empty fields: 'not set'."
         ),
-        args_schema=EmptyToolArgs,
+        args_schema=ProfileArgs,
         reader=_read_profile,
+        args_reader=_read_profile,
         status_en="Checking your profile…",
         status_ar="ببص على بياناتك…",
     ),
@@ -527,17 +544,6 @@ PLAYER_READ_TOOL_REGISTRY: tuple[PlayerReadTool, ...] = (
         args_reader=_read_player_food_log,
         status_en="Checking your Food log…",
         status_ar="ببص على سجل الطعام بتاعك…",
-    ),
-    PlayerReadTool(
-        name="get_player_injuries",
-        description=(
-            "Read the current player's injury records, body areas, descriptions, and statuses. "
-            "Use this before answering questions about injuries or physician follow-up."
-        ),
-        args_schema=EmptyToolArgs,
-        reader=_read_player_injuries,
-        status_en="Checking your injury records…",
-        status_ar="ببص على سجلات إصاباتك…",
     ),
     PlayerReadTool(
         name="get_assistant_preferences",

@@ -100,9 +100,9 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'assistant',
     titleEn: 'Assistant',
-    sentenceEn: 'Ask about your Program days, Exercises and working sets, changes to your program, or what you ate on a recent day.',
+    sentenceEn: 'Ask about your Program days, Exercises and working sets, program changes or recent food; profile answers use only the facts your question needs.',
     titleAr: 'المساعد',
-    sentenceAr: 'اسأل عن أيام برنامجك التدريبي وتمارينه ومجموعاته، أو تغييرات البرنامج، أو ما أكلته في يوم قريب.',
+    sentenceAr: 'اسأل عن أيام برنامجك التدريبي وتمارينه ومجموعاته، أو تغييرات برنامجك، أو طعامك مؤخرًا؛ وتستخدم إجابات الملف الشخصي البيانات المطلوبة لسؤالك فقط.',
     target: 'assistant',
     location: TourShellTabLocation(tabIndex: 0),
     release: 0,
