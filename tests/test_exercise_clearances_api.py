@@ -170,8 +170,9 @@ def test_cleared_with_limits_remains_eligible_and_assistant_reads_the_note(api):
     # This is the same existing read tool exposed to assistant chat, not a new tool.
     from agent.player_tools import build_player_read_tools
     tools, _ = build_player_read_tools(db.ledger, db)
-    injuries_tool = next(tool for tool in tools if tool.name == "get_player_injuries")
-    facts = json.loads(injuries_tool.invoke({}))
+    # Injuries and clearances are the Limitations Profile section (ADR 104).
+    profile_tool = next(tool for tool in tools if tool.name == "get_player_profile")
+    facts = json.loads(profile_tool.invoke({"sections": ["Limitations"]}))
     reported = [row for record in facts["injuries"] for row in record["clearances"]]
     assert any(
         row["exercise_name"] == "Overhead Press"
