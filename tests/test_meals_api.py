@@ -21,8 +21,10 @@ def meals_api(api, tmp_path):
     client, db = api
     paths = FoodLibraryPaths(*(tmp_path / name for name in ("meal_foods.csv", "meal_portions.csv", "meal_curation.csv", "meal_recipes.csv", "meal_allergens.csv")))
     sources = [
-        {"id": "protein", "name": "Areesh", "protein_g": 30, "energy_kcal": 120},
-        {"id": "alternative", "name": "Alternative protein", "protein_g": 30, "energy_kcal": 120},
+        # Protein staples include fat so the fixture can meet its daily target
+        # without exceeding ADR 107's per-meal oil range.
+        {"id": "protein", "name": "Areesh", "protein_g": 18.5, "fat_g": 6, "energy_kcal": 128},
+        {"id": "alternative", "name": "Alternative protein", "protein_g": 18.5, "fat_g": 6, "energy_kcal": 128},
         {"id": "carb", "name": "Rice", "carbohydrate_g": 50, "energy_kcal": 200},
         {"id": "fat", "name": "Olive oil", "fat_g": 100, "energy_kcal": 900},
     ]
