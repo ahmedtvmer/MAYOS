@@ -953,7 +953,7 @@ class SchemaMixin:
             self._ensure_coach_invites_revoked_at()
             self.catalog_conn.execute("DROP TRIGGER IF EXISTS first_touch_acquisition_no_update")
             self.catalog_conn.execute(
-                "CREATE TRIGGER first_touch_acquisition_no_update "
+                "CREATE TRIGGER IF NOT EXISTS first_touch_acquisition_no_update "
                 "BEFORE UPDATE ON first_touch_acquisition "
                 "WHEN NOT ("
                 " OLD.referring_coach_id IS NULL"
