@@ -91,6 +91,9 @@ _Arabic_: تفضيل للمساعد
 A derived or general-knowledge figure the assistant labels with ≈ or “estimated” and explains with its basis in one clause. Player facts and the inputs to any Player-specific estimate must come from tool results; missing Player data is never estimated. Tool-computed set counts are exact under the returned counting rule.
 _Arabic_: تقدير؛ تُوسم الأرقام التقريبية بلفظ «تقديريًا» أو ≈ مع أساس الحساب.
 
+**Profile section**:
+A named subset of the Player's saved profile facts: Body, Goals, Training setup, Limitations, Focus or Recovery. Limitations brings injury text, injury records with Exercise clearances and confirmed Movement restrictions together. The player assistant reads only requested sections; an unscoped read lists sections without personal values.
+
 **Active account**:
 An account that completed a workout or recorded a coaching action in the previous 30 days. A login alone does not make an account active.
 

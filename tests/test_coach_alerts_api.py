@@ -781,8 +781,8 @@ def test_delete_injury_is_player_scoped_cascades_clearances_and_alerts(api):
         from agent.player_tools import build_player_read_tools
 
         tools, _ = build_player_read_tools(ledger)
-        injury_tool = next(tool for tool in tools if tool.name == "get_player_injuries")
-        assert json.loads(injury_tool.invoke({})) == {"status": "ok", "injuries": []}
+        profile_tool = next(tool for tool in tools if tool.name == "get_player_profile")
+        assert json.loads(profile_tool.invoke({"sections": ["Limitations"]}))["injuries"] == []
     alerts = _profile_alerts(client, coach_headers)
     assert any(
         (alert.get("injury_changes") or {}).get(injury_id, {}).get("change") == "deleted"
