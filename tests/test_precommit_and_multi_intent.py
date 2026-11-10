@@ -348,7 +348,9 @@ def test_isolated_veto_preserves_unrelated_question_and_context(graph, mode):
     text = "\n".join(message.content for message in payload)
     assert query in text
     assert "VETO:" in text
-    assert payload[-1].content == "How many reps should I use for squats"
+    # The Context router (#527) adds its Program read after the question.
+    human = [message for message in payload if isinstance(message, HumanMessage)]
+    assert human[-1].content == "How many reps should I use for squats"
     assert result["program_updated"] is False
 
 
