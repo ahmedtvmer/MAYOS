@@ -128,6 +128,7 @@ Future<void> _pumpProgress(
   Size size = const Size(1080, 2400),
   double textScale = 1.0,
   String languageCode = 'en',
+  Finder? ready,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -157,7 +158,7 @@ Future<void> _pumpProgress(
   );
   await _pumpUntilFound(
       tester,
-      find.text(languageCode == 'ar'
+      ready ?? find.text(languageCode == 'ar'
           ? 'الحد الأقصى التقديري لتكرار واحد'
           : 'Estimated 1RM'));
 }
