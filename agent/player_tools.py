@@ -20,6 +20,7 @@ from core.movement_restriction_suggestions import suggest_movement_restrictions
 from database.ledger.profile import PLAYER_PROFILE_STORAGE_DEFAULTS
 from agent.focus_muscles import FOCUS_REVIEW_MUSCLES
 from service.injuries import render_public_injury_record
+from service.exercise_clearances import assistant_program_clearances
 from service.nutrition import assistant_projection
 from service.food_log import NUTRIENT_KEYS
 from service.food_log_context import nutrient_totals
@@ -205,9 +206,12 @@ def _read_player_injuries(ledger: Any) -> dict[str, Any]:
         rendered.pop("id", None)
         rendered["clearances"] = [
             {
-                key: clearance[key]
-                for key in _INJURY_CLEARANCE_TOOL_FIELDS
-                if key in clearance
+                **{
+                    key: clearance[key]
+                    for key in _INJURY_CLEARANCE_TOOL_FIELDS
+                    if key in clearance
+                },
+                "catalog_matched": clearance.get("exercise_id") is not None,
             }
             for clearance in ledger.list_exercise_clearances(str(record["id"]))
         ]
@@ -306,6 +310,7 @@ def _program_exercise_prescription(exercise: Any, muscle: str | None) -> dict[st
     sets = program_exercise_working_sets(exercise)
     rir = 10 - float(exercise.target_rpe)
     row = {
+        "exercise_id": str(exercise.exercise_id),
         "name": exercise.exercise_name, "sets": sets,
         "reps_min": exercise.target_reps_min, "reps_max": exercise.target_reps_max,
         "rir": rir, "muscle": muscle or "not set",
@@ -429,6 +434,7 @@ def _read_active_program(ledger: Any, args: ActiveProgramArgs | None = None, sto
         "week_order": selected_week, "days": days,
         "movement_restrictions": _player_profile(ledger).get("movement_restrictions", []),
         "skipped_restricted_slots": _program_restriction_skips(program, all_days),
+        "exercise_clearance_flags": assistant_program_clearances(store, ledger, all_days),
         "program_authority": authority,
         **({"coach": coach_name} if coach_name else {}),
         **({} if detailed_scope else {
@@ -574,6 +580,7 @@ def _encode_tool_result(tool_result: Any) -> str:
             "weekly_sets_by_muscle": tool_result["weekly_sets_by_muscle"],
             "other_muscles": tool_result.get("other_muscles", {}),
             "message": "Scope by day_name, exercise_name/exercise_id or muscle for prescriptions.",
+            "exercise_clearance_flags": tool_result.get("exercise_clearance_flags"),
         }
         compact_rendered = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
         if len(compact_rendered.encode("utf-8")) <= MAX_TOOL_RESULT_BYTES:
@@ -620,11 +627,21 @@ def cap_tool_results_for_prompt(
     return capped_messages
 
 
-def build_player_read_tools(ledger: Any, store: Any = None, player_account_id: str | None = None) -> tuple[list[StructuredTool], dict[str, PlayerReadTool]]:
-    """Builds this turn's tools; their readers close over only its own ledger."""
+def build_player_read_tools(
+    ledger: Any,
+    store: Any = None,
+    player_account_id: str | None = None,
+    registry_override: Sequence[PlayerReadTool] | None = None,
+) -> tuple[list[StructuredTool], dict[str, PlayerReadTool]]:
+    """Build this turn's tools from its ledger and selected tool registry."""
     tools: list[StructuredTool] = []
-    definitions = {definition.name: definition for definition in PLAYER_READ_TOOL_REGISTRY}
-    for definition in PLAYER_READ_TOOL_REGISTRY:
+    tool_registry = (
+        PLAYER_READ_TOOL_REGISTRY
+        if registry_override is None
+        else registry_override
+    )
+    definitions = {definition.name: definition for definition in tool_registry}
+    for definition in tool_registry:
         if definition.args_reader is not None:
             def reader(_definition=definition, **kwargs: Any) -> str:
                 args = _definition.args_schema(**kwargs)

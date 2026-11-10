@@ -1,9 +1,12 @@
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any, Callable
 
 from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, SystemMessage
+
+from service.exercise_clearances import ExerciseClearancePolicy
 
 from agent.program_blueprints import (
     DEFAULT_SPLIT_BY_FREQUENCY,
@@ -732,23 +735,34 @@ def _slot_candidate_source(candidate: dict[str, Any], spec: SlotSpec) -> str | N
     return SLOT_CANDIDATE_STAPLE if source_rank == SLOT_CANDIDATE_STAPLE_RANK else SLOT_CANDIDATE_NAME
 
 
-def _candidate_rows(
-    cursor, limit: int, slot_spec: SlotSpec | None = None, restrictions=()
-) -> list[dict[str, Any]]:
+@dataclass(frozen=True)
+class CandidateCriteria:
+    slot_spec: SlotSpec | None
+    restrictions: tuple[str, ...]
+    clearance_policy: ExerciseClearancePolicy
+
+
+def _candidate_rows(cursor, limit: int, criteria: CandidateCriteria) -> list[dict[str, Any]]:
+    if limit <= 0:
+        return []
     columns = [column[0] for column in cursor.description]
     rank_columns = [name for name in columns if name.startswith("rank_")]
     candidates = []
     for row in cursor.fetchall():
         candidate = dict(zip(columns, row))
+        if not criteria.clearance_policy.allows(candidate):
+            continue
         source_name = candidate.pop("source_name")
         if _is_excluded(source_name):
             continue
         candidate["secondary_actions"] = split_curation_values(candidate["secondary_actions"])
-        if slot_spec is not None and is_movement_restricted(candidate, slot_spec.key, restrictions):
+        if criteria.slot_spec and is_movement_restricted(
+            candidate, criteria.slot_spec.key, criteria.restrictions
+        ):
             continue
         candidate["mechanic"] = exercise_mechanic(candidate)
-        if slot_spec is not None:
-            candidate_source = _slot_candidate_source(candidate, slot_spec)
+        if criteria.slot_spec:
+            candidate_source = _slot_candidate_source(candidate, criteria.slot_spec)
             if candidate_source is None:
                 continue
             if candidate_source == SLOT_CANDIDATE_SIGNATURE and _is_explosive_signature_substitute(source_name):
@@ -805,10 +819,10 @@ def _fetch_by_sql(
         LEFT JOIN catalog.exercise_curated_fields cf ON cf.exercise_id = e.id
         WHERE {' AND '.join(where)}
         ORDER BY {_name_rank_sql(name_rank)}{rank_sql} ASC, id ASC
-        LIMIT ?
     """
-    cursor.execute(query, (limit * 4,))
-    return _candidate_rows(cursor, limit)
+    cursor.execute(query)
+    criteria = CandidateCriteria(None, (), ExerciseClearancePolicy(ledger))
+    return _candidate_rows(cursor, limit, criteria)
 
 
 def fetch_slot_candidates(
@@ -829,7 +843,12 @@ def fetch_slot_candidates(
         spec, equipment_access, limitations, SLOT_STAPLES.get(slot_key, ())
     )
     cursor.execute(query, params)
-    candidates = _candidate_rows(cursor, limit, spec, validate_movement_restrictions(restrictions))
+    criteria = CandidateCriteria(
+        spec,
+        validate_movement_restrictions(restrictions),
+        ExerciseClearancePolicy(ledger),
+    )
+    candidates = _candidate_rows(cursor, limit, criteria)
     if slot_key == "quad_iso" and map_equipment_access(equipment_access) == BODYWEIGHT_ONLY:
         # The curated Sissy Squat is the bodyweight isolation match; keep it ahead of other signature rows.
         candidates.sort(
@@ -861,8 +880,11 @@ def restricted_candidate_reasons(
     cursor.execute(query, params)
     columns = [column[0] for column in cursor.description]
     reasons = set()
+    clearance_policy = ExerciseClearancePolicy(ledger)
     for row in cursor.fetchall():
         candidate = dict(zip(columns, row))
+        if not clearance_policy.allows(candidate):
+            continue
         source_name = candidate.get("source_name") or candidate.get("name") or ""
         if _is_excluded(source_name):
             continue
@@ -921,6 +943,8 @@ def fetch_filtered_candidates(
     *,
     ledger: Any,
 ) -> list[dict[str, Any]]:
+    if limit <= 0:
+        return []
     conn = ledger.conn
     cursor = conn.cursor()
 
@@ -959,15 +983,17 @@ def fetch_filtered_candidates(
             ELSE 2
           END ASC,
           RANDOM()
-        LIMIT ?
     """
-    cursor.execute(query, (limit * 4,))
+    cursor.execute(query)
     rows = cursor.fetchall()
     cols = [col[0] for col in cursor.description]
     candidates = []
 
+    clearance_policy = ExerciseClearancePolicy(ledger)
     for row in rows:
         item = dict(zip(cols, row))
+        if not clearance_policy.allows(item):
+            continue
         if _is_excluded(item["name"]):
             continue
         item["name"] = clean_exercise_name(item["name"], replace_with_machine=True)

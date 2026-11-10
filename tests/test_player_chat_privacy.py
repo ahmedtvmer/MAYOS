@@ -806,7 +806,13 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
     assert "PROFILE_LIMITATION_PRIVATE" not in first_payload
     assert "Squat" not in first_payload
 
-    followup = model.calls[1]["messages"]
+    followups = [
+        call["messages"]
+        for call in model.calls
+        if any(getattr(message, "type", "") == "tool" for message in call["messages"])
+    ]
+    assert followups
+    followup = followups[-1]
     tool_results = [message.content for message in followup if getattr(message, "type", "") == "tool"]
     assert len(tool_results) == 2
     combined_results = "\n".join(tool_results)
@@ -1271,15 +1277,24 @@ def test_tool_timeout_returns_unavailable_and_turn_continues(api, monkeypatch):
         time.sleep(0.05)
         return {"status": "ok"}
 
+    slow_profile_registry = tuple(
+        replace(definition, reader=slow_profile, timeout_seconds=0.005)
+        if definition.name == "get_player_profile"
+        else definition
+        for definition in player_tools.PLAYER_READ_TOOL_REGISTRY
+    )
+    build_read_tools = player_tools.build_player_read_tools
+
+    def build_with_slow_profile(ledger, store=None, player_account_id=None):
+        return build_read_tools(
+            ledger,
+            store,
+            player_account_id,
+            registry_override=slow_profile_registry,
+        )
+
     monkeypatch.setattr(
-        player_tools,
-        "PLAYER_READ_TOOL_REGISTRY",
-        tuple(
-            replace(definition, reader=slow_profile, timeout_seconds=0.005)
-            if definition.name == "get_player_profile"
-            else definition
-            for definition in player_tools.PLAYER_READ_TOOL_REGISTRY
-        ),
+        assistant_graph, "build_player_read_tools", build_with_slow_profile
     )
     model = ScriptedChatModel(
         [
@@ -1341,10 +1356,11 @@ def test_tool_result_keeps_followup_payload_under_the_prompt_ceiling(api, monkey
     with db.open_ledger(username) as ledger:
         for _ in range(4):
             ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 2_900)
-        # #524 trims the first four replies to 600 chars. Enlarging the five
-        # recent replies keeps the initial prompt within 4 bytes of its old size.
+        # #524 trims the first four replies to 600 chars. The clearance policy
+        # adds fixed prompt context, so leave room for it while the profile
+        # result still exceeds the follow-up prompt budget.
         for _ in range(5):
-            ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 4_752)
+            ledger.add_chat_message("assistant", "Earlier answer. " + "x" * 4_400)
         ledger.upsert_player_profile(
             {"injuries_or_limitations": "PLAYER_LIMITATION " + "knee pain " * 260}
         )
@@ -3270,13 +3286,17 @@ def test_player_injury_tool_clearances_hide_internal_ids_but_keep_player_wording
     clearances = result["injuries"][0]["clearances"]
     assert len(clearances) == 2
     expected_fields = {
-        "exercise_name", "original_wording", "verdict", "note", "recorded_at", "source"
+        "exercise_name", "original_wording", "verdict", "note", "recorded_at", "source",
+        "catalog_matched",
     }
     assert all(
         set(row) == expected_fields
         for row in clearances
     )
     assert all(not {"id", "injury_id", "exercise_id"} & set(row) for row in clearances)
+    assert {row["exercise_name"]: row["catalog_matched"] for row in clearances} == {
+        "Squat": True, "fictional glute gliders": False,
+    }
     assert {
         (row["exercise_name"], row["original_wording"], row["verdict"])
         for row in clearances
@@ -3291,6 +3311,8 @@ def test_player_injury_tool_clearances_hide_internal_ids_but_keep_player_wording
     clearance_payload = json.dumps(clearances)
     result_payload = json.dumps(result)
     assert injury["id"] not in result_payload
+    assert linked["id"] not in result_payload
+    assert linked["exercise_id"] not in result_payload
     assert linked["id"] not in clearance_payload
     assert linked["exercise_id"] not in clearance_payload
     assert raw["id"] not in clearance_payload

@@ -35,9 +35,11 @@ class SubstitutionErrorCode(str, Enum):
     RESTORE_VERSION_NOT_FOUND = "restore_version_not_found"
     PROGRAM_CHANGED = "program_changed"
     MOVEMENT_RESTRICTED = "movement_restricted"
+    CLEARANCE_EXCLUDED = "clearance_excluded"
 
 
 SUBSTITUTION_ERRORS = {
+    SubstitutionErrorCode.CLEARANCE_EXCLUDED: "That exercise is not cleared or has no recorded clearance for an active injury. I can't confirm it's safe.",
     SubstitutionErrorCode.DAY_NOT_FOUND: "That day is not part of your current program.",
     SubstitutionErrorCode.SOURCE_NOT_ON_DAY: "That exercise is not in that day of your current program.",
     SubstitutionErrorCode.REPLACEMENT_IS_SOURCE: "Choose a different replacement exercise.",
@@ -50,6 +52,7 @@ SUBSTITUTION_ERRORS = {
     SubstitutionErrorCode.MOVEMENT_RESTRICTED: "That replacement conflicts with a Movement restriction in your profile.",
 }
 SUBSTITUTION_MESSAGE_CODES = {
+    SubstitutionErrorCode.CLEARANCE_EXCLUDED: "program.clearance_excluded.v1",
     SubstitutionErrorCode.DAY_NOT_FOUND: "program.substitution.day_not_found.v1",
     SubstitutionErrorCode.SOURCE_NOT_ON_DAY: "program.substitution.source_not_on_day.v1",
     SubstitutionErrorCode.REPLACEMENT_IS_SOURCE: "program.substitution.replacement_is_source.v1",
@@ -93,6 +96,9 @@ def substitute_program_exercise(
     program_data = prepared["program_data"]
     target_days = prepared["target_days"]
     replacement = prepared["replacement"]
+    from service.exercise_clearances import ExerciseClearancePolicy
+    if not ExerciseClearancePolicy(ledger).allows(replacement):
+        return _failure(SubstitutionErrorCode.CLEARANCE_EXCLUDED)
     restrictions = (ledger.get_player_profile() or {}).get("movement_restrictions", ())
     from core.movement_restrictions import is_movement_restricted
     if any(
@@ -206,6 +212,9 @@ def substitute_active_program_exercise(
     if not substitution["ok"]:
         return substitution
     result = _updated_program_result(ledger, active.version)
+    if "code" not in result:
+        from service.exercise_clearances import annotate_program
+        annotate_program(db, ledger, result)
     updated = ledger.get_active_program()
     if updated is not None:
         capture_program_exercise_swapped(actor, updated, client=client)
@@ -230,6 +239,14 @@ def undo_active_program_substitution(
     snapshot = ledger.get_program_by_version(request.restore_version)
     if snapshot is None:
         return _failure(SubstitutionErrorCode.RESTORE_VERSION_NOT_FOUND)
+    from service.exercise_clearances import ExerciseClearancePolicy
+    policy = ExerciseClearancePolicy(ledger)
+    for day in flatten_program_days(normalize_program_weeks(snapshot)):
+        for exercise in [*day.get("exercises", []), *day.get("warmup_exercises", [])]:
+            exercise_id = str(exercise.get("exercise_id") or "")
+            candidate = db.get_exercise_library_entry(exercise_id) or {"exercise_id": exercise_id}
+            if not policy.allows(candidate):
+                return _failure(SubstitutionErrorCode.CLEARANCE_EXCLUDED)
     restrictions = (ledger.get_player_profile() or {}).get("movement_restrictions", ())
     movement_conflict = _snapshot_movement_conflict(db, snapshot, restrictions)
     if movement_conflict is not None:
@@ -246,6 +263,9 @@ def undo_active_program_substitution(
         snapshot,
         ledger.get_program_position(active),
     )
+    if "code" not in result:
+        from service.exercise_clearances import annotate_program
+        annotate_program(db, ledger, result)
     updated = ledger.get_active_program()
     if updated is not None:
         capture_program_exercise_swapped(actor, updated, client=client)

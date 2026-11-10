@@ -64,6 +64,17 @@ List<String> validateFeatureEntries(
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
+    id: 'exercise_clearance_flags',
+    titleEn: 'Exercise clearance flags',
+    sentenceEn: 'See exercises needing a clearance review in your Training program while keeping your workout log truthful.',
+    titleAr: 'تنبيهات التصريح الطبي للتمارين',
+    sentenceAr: 'اطّلع على التمارين التي تحتاج إلى مراجعة التصريح الطبي في برنامجك التدريبي مع تسجيل ما أديته فعليًا.',
+    target: 'program',
+    location: TourShellTabLocation(tabIndex: 1),
+    release: 6,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
     id: 'set_effort',
     titleEn: 'Ease into each exercise',
     sentenceEn: 'New generated programs start each exercise with more reps in reserve when it has multiple sets; follow the RIR on each row.',

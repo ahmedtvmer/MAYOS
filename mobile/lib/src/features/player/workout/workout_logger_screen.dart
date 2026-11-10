@@ -2174,6 +2174,7 @@ class _WorkoutLoggerScreenState extends ConsumerState<WorkoutLoggerScreen>
         title: _copy.replaceExercise,
         targetMuscle: muscle,
         replacingExerciseId: exercise.exerciseId,
+        forLogging: true,
         excludeExerciseIds: inWorkout,
         suggestedSubstitutes: <SuggestedSubstitute>[
           for (final dynamic item in (exercise.exercise['suggested_substitutes']

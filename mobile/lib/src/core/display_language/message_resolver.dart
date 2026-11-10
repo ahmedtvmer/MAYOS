@@ -22,7 +22,8 @@ String resolveCoachAlertDescription(
   final MessageCopy copy = MessageCopy(displayLanguage);
   final MessageCopy englishCopy = MessageCopy('en');
   final String? legacyFallback = _legacyAlertFallback(alert, englishCopy);
-  final String? fallback = alert.isProfileChange
+  final String? fallback = alert.isProfileChange &&
+          alert.supportedMessageCode != 'coach_alert.program_clearance.v1'
       ? legacyFallback
       : alert.messageFallback ?? legacyFallback;
   final String description = resolveStructuredMessage(

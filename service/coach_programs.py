@@ -216,6 +216,9 @@ def record_program_publication(
     )
     # Attendance evaluation is not run here, so refresh the roster's cached name.
     db.set_roster_program_name(assignment_id, published.program_name)
+    from service.exercise_clearances import notify_program_exclusions
+    with db.open_ledger(context["player"]["ledger_id"]) as ledger:
+        notify_program_exclusions(db, ledger, player_account_id)
     capture_coach_program_published(
         details.actor,
         str(assignment_id),

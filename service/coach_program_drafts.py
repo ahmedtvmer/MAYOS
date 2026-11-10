@@ -1,6 +1,7 @@
 """Assignment-gated lifecycle for coach-authored Program drafts."""
 
 import logging
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
@@ -168,6 +169,7 @@ def create_program_draft(
         return None
     ledger, _ = authorized
     with ledger:
+        draft = normalize_program_draft(draft)
         created = ledger.create_program_draft(assignment_id, draft)
         if created is None:
             raise ProgramDraftAlreadyExists("A Program draft already exists for this assignment.")
@@ -202,6 +204,7 @@ def replace_program_draft(
         return None
     ledger, _ = authorized
     with ledger:
+        draft = normalize_program_draft(draft)
         existing_record = ledger.get_program_draft(assignment_id)
         if existing_record is not None:
             draft = _carry_generated_rationale_through_edit(existing_record["draft"], draft)
@@ -229,7 +232,6 @@ def _carry_generated_rationale_through_edit(
     previous_draft: dict[str, Any], updated_draft: dict[str, Any]
 ) -> dict[str, Any]:
     """Save draft edits through the shared occurrence carry-over function."""
-    from copy import deepcopy
     from datetime import datetime, timezone
     from service.program_rationale_changes import (
         carry_program_rationale,
@@ -321,6 +323,7 @@ def _draft_exercise_signature(exercise: dict[str, Any]) -> dict[str, Any]:
 
 
 def create_generated_program_draft(ledger: Any, assignment_id: str, draft: dict[str, Any]) -> Any:
+    draft = normalize_program_draft(draft)
     created = ledger.create_program_draft(assignment_id, draft)
     if created is None:
         raise ProgramDraftAlreadyExists("A Program draft already exists for this assignment.")
@@ -328,6 +331,7 @@ def create_generated_program_draft(ledger: Any, assignment_id: str, draft: dict[
 
 
 def replace_generated_program_draft(ledger: Any, assignment_id: str, draft: dict[str, Any]) -> Any:
+    draft = normalize_program_draft(draft)
     # A freshly generated draft has no template origin; clearing any stale stored
     # origin keeps provenance honest when generation replaces a template draft.
     replaced = ledger.replace_program_draft(assignment_id, draft, source_template_id=None)
@@ -488,7 +492,7 @@ def copy_active_program_to_draft(
         program = ledger.get_active_program()
         if program is None:
             raise ActiveProgramNotFound("No active program to copy.")
-        draft = active_program_as_draft(program)
+        draft = normalize_program_draft(active_program_as_draft(program))
         source_template_id = program.source_template_id
 
         if replace:
@@ -514,6 +518,7 @@ def copy_active_program_to_draft(
 def _published_program(
     draft: dict[str, Any], db: Any, coach_account_id: str, ledger: Any | None
 ) -> dict[str, Any]:
+    draft = normalize_program_draft(draft)
     weeks = normalize_program_weeks(draft)
     if not any(week.get("days") for week in weeks):
         raise ProgramDraftValidationError.one(
@@ -537,13 +542,18 @@ def _published_program(
 
 
 def normalize_program_draft(draft: dict[str, Any]) -> dict[str, Any]:
-    """Normalizes a Program draft to the stored multiweek shape (weeks + flat days)."""
-    weeks = normalize_program_weeks(draft)
+    """Normalize draft shape and discard read-only metadata from Program reads."""
+    weeks = deepcopy(normalize_program_weeks(draft))
     for week in weeks:
         for day in week["days"]:
             for exercise in day.get("exercises", []):
+                exercise.pop("clearance_status", None)
+                exercise.pop("clearance_limit_notes", None)
                 if exercise.get("rationale") is None:
                     exercise.pop("rationale", None)
+            for warmup in day.get("warmup_exercises", []):
+                warmup.pop("clearance_status", None)
+                warmup.pop("clearance_limit_notes", None)
     normalized = {
         **draft,
         "weekly_frequency": (

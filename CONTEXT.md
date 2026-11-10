@@ -284,6 +284,14 @@ _Arabic_: إصابة
 A per-Injury record of the Player's report about whether a physician cleared a catalog Exercise, did not clear it, or cleared it with limits. It keeps the Player's original wording, any note, and the time recorded. The assistant never decides or gives an Exercise clearance; an unmatched exercise name is kept as raw text and cannot exclude an Exercise from the Training program.
 _Arabic_: توصية الطبيب بشأن التمرين
 
+An active Injury excludes an Exercise from recommendations when its latest matched
+clearance says not cleared, or when no matched verdict exists and the Exercise
+library body part matches that Injury's body area. A clearance for one Injury does not
+override another active Injury. Resolving an Injury lifts its exclusions; a
+clearance with limits keeps the Exercise eligible with its recorded note.
+Excluded Exercises already in a Training program are flagged for review and can
+still be logged truthfully.
+
 **Weight history**:
 The dated record of a Player's bodyweight in the Training ledger, with at most one entry per Player-local calendar day. A later entry on the same day replaces that day's value; the Training profile shows the latest weight.
 _Arabic_: سجل الوزن

@@ -345,6 +345,51 @@ Future<void> _chooseCableFly(WidgetTester tester) async {
 }
 
 void main() {
+  for (final String language in <String>['en', 'ar']) {
+    for (final String status in <String>['not_cleared', 'unverified']) {
+      testWidgets('program shows $status flags and retains exercises in $language',
+          (WidgetTester tester) async {
+        final FakeMayosApi fake = _signedInFake();
+        fake.programDaysOverride = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'day_name': 'Upper 1',
+            'day_order': 1,
+            'warmup_exercises': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'exercise_id': 'band_pull_apart',
+                'exercise_name': 'Band Pull-Apart',
+                'clearance_status': status,
+              },
+            ],
+            'exercises': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'exercise_id': 'bench_press',
+                'exercise_name': 'Bench Press',
+                'target_sets': 3,
+                'target_reps_min': 5,
+                'target_reps_max': 8,
+                'target_rpe': 8,
+                'clearance_status': status,
+              },
+            ],
+          },
+        ];
+        await _pumpProgram(tester, fake, languageCode: language);
+        final String flag = status == 'not_cleared'
+            ? (language == 'ar'
+                ? 'غير مسموح به حسب التصريح الطبي المسجّل؛ يمكنك تسجيل ما أديته.'
+                : 'Not cleared by recorded physician advice; you can still log what you did.')
+            : (language == 'ar'
+                ? 'لا يوجد تصريح طبي مسجّل لإصابة نشطة؛ لا يمكن تأكيد أمان التمرين. يمكنك تسجيل ما أديته.'
+                : "No recorded clearance for an active injury; we can't confirm it's safe. You can still log what you did.");
+        expect(find.text('Bench Press'), findsOneWidget);
+        expect(find.text('Band Pull-Apart'), findsOneWidget);
+        expect(find.text(flag), findsNWidgets(2));
+        expect(fake.programEditRequests, isEmpty);
+      });
+    }
+  }
+
   test('legacy Cardio remains stored as text but reads as treadmill by default', () {
     final ProgramDay day = ProgramDay.fromJson(<String, dynamic>{
       'day_name': 'Day', 'day_order': 1, 'exercises': <dynamic>[],

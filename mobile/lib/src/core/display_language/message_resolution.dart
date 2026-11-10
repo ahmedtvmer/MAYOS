@@ -82,6 +82,7 @@ const Map<String, Set<String>> _paramKeys = <String, Set<String>>{
     'status_badge',
   },
   'coach_alert.profile_change.v1': <String>{'changed_fields'},
+  'coach_alert.program_clearance.v1': <String>{'exercise_name'},
   'coach_alert.weight_off_target_trend.v1': <String>{
     'distance_change_kg',
     'target_weight_kg',
@@ -241,6 +242,7 @@ const Map<String, Set<String>> _paramKeys = <String, Set<String>>{
   'program.edit.exercise_not_available.v1': <String>{},
   'program.edit.day_limit.v1': <String>{},
   'program.movement_restricted.v1': <String>{},
+  'program.clearance_excluded.v1': <String>{},
   'program.edit.changed.v1': <String>{},
   'program_request.invalid_kind.v1': <String>{},
   'program_request.reason_required.v1': <String>{},
@@ -303,6 +305,8 @@ final Map<String, _MessageTemplate> _templates = <String, _MessageTemplate>{
   'coach_alert.deload_recommended.v1': _deload,
   'coach_alert.performance_regression.v1': _regression,
   'coach_alert.profile_change.v1': _profileChange,
+  'coach_alert.program_clearance.v1': (params, copy) => params['exercise_name'] is String
+      ? copy.programClearance(params['exercise_name'] as String) : null,
   'coach_alert.weight_off_target_trend.v1': _weightOffTargetTrend,
   'coach_alert.program_final_week_started.v1': _programFinalWeekStarted,
   'coach_alert.program_final_week_completed.v1': _programFinalWeekCompleted,

@@ -52,6 +52,7 @@ class ExercisePickerDialog extends ConsumerStatefulWidget {
     this.suggestedSubstitutes = const <SuggestedSubstitute>[],
     this.emptyFilteredMessage,
     this.allowShowAllEquipment = false,
+    this.forLogging = false,
   });
 
   static Future<(ExerciseCatalogEntry, bool)?> show(BuildContext context, {required Set<String> excludeExerciseIds}) =>
@@ -73,6 +74,7 @@ class ExercisePickerDialog extends ConsumerStatefulWidget {
 
   /// The current exercise whose Primary action and muscle rank results.
   final String? replacingExerciseId;
+  final bool forLogging;
 
   /// Exercise ids already in this workout (#162): the Replace search never
   /// offers them, planned or unplanned. Empty for Add exercise, which keeps
@@ -158,6 +160,7 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
             loadTypes: filters.loadTypes,
             equipmentCategories: filters.equipmentCategories,
             replacingExerciseId: widget.replacingExerciseId,
+            forLogging: widget.forLogging,
             filterEquipmentAccess: widget.allowShowAllEquipment,
             showAllEquipment: _showAllEquipment,
             onMessageCode: (String? code) => messageCode = code,
@@ -197,7 +200,8 @@ class _ExercisePickerDialogState extends ConsumerState<ExercisePickerDialog> {
   List<SuggestedSubstitute> get _visibleSuggestions =>
       widget.suggestedSubstitutes
           .where((SuggestedSubstitute item) =>
-              !widget.excludeExerciseIds.contains(item.exerciseId))
+              !widget.excludeExerciseIds.contains(item.exerciseId) &&
+              _results.any((ExerciseCatalogEntry entry) => entry.id == item.exerciseId))
           .toList(growable: false);
 
   /// Toggle the source target muscle while preserving any curated filters.

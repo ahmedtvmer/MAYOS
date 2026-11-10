@@ -216,13 +216,19 @@ def update_profile(
                     client=client,
                 )
                 with inference_turn(inference_scope, background_tasks=background_tasks):
+                    generation_ledger = (
+                        injuries_service.ledger_with_pending_legacy_injury(
+                            ledger, payload["injuries_or_limitations"]
+                        )
+                        if "injuries_or_limitations" in payload else ledger
+                    )
                     program, _ = run_inference_sync(
                         generate_program_draft_pipeline,
                         ProgramGenerationRequest(
                             rep_preference_override=updated.get("rep_preference", "balanced"),
                             frequency_override=int(updated.get("weekly_frequency", 4)),
                         ),
-                        ledger=ledger,
+                        ledger=generation_ledger,
                         profile=updated,
                         scope=inference_scope,
                         gate_already_held=inference_gate_held,

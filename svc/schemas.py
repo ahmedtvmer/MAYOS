@@ -650,6 +650,7 @@ class CoachAlertOut(BaseModel):
     movement_restriction_conflicts: list[dict[str, Any]] | None = None
     injury_changes: dict[str, dict[str, Any]] | None = None
     clearance_changes: list[dict[str, Any]] | None = None
+    clearance_program_exercises: list[dict[str, Any]] | None = None
     weight_points: list[WeightTrendPointOut] | None = None
     target_weight_kg: float | None = None
     distance_change_kg: float | None = None
@@ -1402,6 +1403,8 @@ class ProgramDraftInput(BaseModel):
 
 
 class ProgramDraftExerciseIn(ProgramDraftInput):
+    clearance_status: Any = Field(default=None, exclude=True)
+    clearance_limit_notes: Any = Field(default=None, exclude=True)
     exercise_id: str = Field(min_length=1, max_length=200)
     exercise_name: str = ""
     rationale: dict[str, Any] | None = None
@@ -1455,6 +1458,8 @@ class ProgramDraftExerciseIn(ProgramDraftInput):
 
 
 class ProgramDraftWarmupExerciseIn(ProgramDraftInput):
+    clearance_status: Any = Field(default=None, exclude=True)
+    clearance_limit_notes: Any = Field(default=None, exclude=True)
     exercise_id: str | None = None
     equipment: str | None = None
     exercise_name: str
@@ -1986,8 +1991,13 @@ class WorkoutSetIn(BaseModel):
     is_warmup: bool = False
 
 
+class WorkoutExerciseIn(ProgramExerciseSchema):
+    clearance_status: Any = Field(default=None, exclude=True)
+    clearance_limit_notes: Any = Field(default=None, exclude=True)
+
+
 class ExerciseSetsIn(BaseModel):
-    exercise: ProgramExerciseSchema
+    exercise: WorkoutExerciseIn
     sets: list[WorkoutSetIn] = Field(min_length=1)
 
 
@@ -1999,6 +2009,8 @@ class WarmupMovementSetIn(BaseModel):
 
 
 class WarmupMovementIn(BaseModel):
+    clearance_status: Any = Field(default=None, exclude=True)
+    clearance_limit_notes: Any = Field(default=None, exclude=True)
     exercise_id: str | None = Field(default=None, min_length=1, max_length=64)
     equipment: str | None = Field(default=None, max_length=80)
     exercise_name: str = Field(min_length=1, max_length=120)

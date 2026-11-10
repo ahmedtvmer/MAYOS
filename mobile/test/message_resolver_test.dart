@@ -34,6 +34,20 @@ String _resolveProgramImport(
     ).replaceAll('\u2066', '').replaceAll('\u2069', '');
 
 void main() {
+  test('program clearance alerts identify the exercise in both languages', () {
+    final CoachAlert alert = CoachAlert.fromJson(<String, dynamic>{
+      'alert_id': 'clearance-review',
+      'kind': 'profile_change',
+      'message_code': 'coach_alert.program_clearance.v1',
+      'message_params': <String, dynamic>{'exercise_name': 'Squat'},
+      'message_fallback': 'Review the clearance for Squat in the active Training program. The program has not changed.',
+    });
+    expect(resolveCoachAlertDescription(alert, 'en'),
+        'Review the clearance for Squat in the active Training program. The program has not changed.');
+    expect(resolveCoachAlertDescription(alert, 'ar'),
+        'راجع التصريح الطبي لتمرين Squat في البرنامج التدريبي النشط. لم يتغير البرنامج.');
+  });
+
   test('roster assistant refusals use localized message codes', () {
     for (final (String code, String english, String arabic) in <(String, String, String)>[
       (

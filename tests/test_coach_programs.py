@@ -39,6 +39,23 @@ from svc.schemas import (
 )
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
+READ_TIME_PROGRAM_ANNOTATIONS = ("clearance_status", "clearance_limit_notes")
+
+
+def _without_read_time_program_annotations(program):
+    result = copy.deepcopy(program)
+    program_days = list(result.get("days", []))
+    program_days.extend(
+        day
+        for week in result.get("weeks", [])
+        for day in week.get("days", [])
+    )
+    for day in program_days:
+        for section in ("exercises", "warmup_exercises"):
+            for exercise in day.get(section, []):
+                for annotation in READ_TIME_PROGRAM_ANNOTATIONS:
+                    exercise.pop(annotation, None)
+    return result
 
 
 def test_multiweek_draft_accepts_flat_compatibility_days_beyond_one_week():
@@ -1751,7 +1768,9 @@ def test_copy_active_program_to_draft_preserves_the_complete_program(api):
     )
 
     assert copied.status_code == 200, copied.text
-    expected_draft = _without_coach_program_labels(active)
+    expected_draft = _without_read_time_program_annotations(
+        _without_coach_program_labels(active)
+    )
     for metadata in (
         "version",
         "provenance",
@@ -1771,7 +1790,8 @@ def test_copy_active_program_to_draft_preserves_the_complete_program(api):
             exercise.setdefault("rationale", None)
     expected_draft["generation_options"] = None
     expected_draft.setdefault("program_rationale", None)
-    assert copied.json()["draft"] == expected_draft
+    actual_draft = _without_read_time_program_annotations(copied.json()["draft"])
+    assert actual_draft == expected_draft
     active_after = client.get("/programs/active", headers=player_headers).json()
     assert active_after["version"] == 1
     assert active_after["published_by_coach_account_id"] is None
