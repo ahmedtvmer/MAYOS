@@ -6,6 +6,7 @@ import '../../../core/chat_storage.dart';
 import '../../../core/display_language/store.dart';
 import '../../../core/first_touch.dart';
 import '../../../core/models.dart';
+import '../../../core/saved_player_data.dart';
 import '../../../core/token_store.dart';
 import '../../../core/token_subject.dart';
 
@@ -43,6 +44,7 @@ class AuthRepository {
     required TokenStore tokens,
     required AccountDataEraser eraser,
     ChatCacheStore? chatCache,
+    SavedPlayerDataStore? savedData,
     DisplayLanguageStore? displayLanguageStore,
     Future<FirstTouch?> Function()? readFirstTouch,
     Future<void> Function()? clearFirstTouch,
@@ -50,6 +52,7 @@ class AuthRepository {
         _tokens = tokens,
         _eraser = eraser,
         _chatCache = chatCache,
+        _savedData = savedData,
         _displayLanguageStore = displayLanguageStore,
         _readFirstTouch = readFirstTouch,
         _clearFirstTouch = clearFirstTouch;
@@ -58,9 +61,26 @@ class AuthRepository {
   final TokenStore _tokens;
   final AccountDataEraser _eraser;
   final ChatCacheStore? _chatCache;
+  final SavedPlayerDataStore? _savedData;
   final DisplayLanguageStore? _displayLanguageStore;
   final Future<FirstTouch?> Function()? _readFirstTouch;
   final Future<void> Function()? _clearFirstTouch;
+
+  /// Only used after a failed online restore, never to choose another account.
+  Future<AccountSession?> savedSession() async {
+    final String? token = await _tokens.read();
+    if (token == null || token.isEmpty) return null;
+    final String? accountId = await _localAccountId();
+    if (accountId == null) return null;
+    final AccountSession? session = await _savedData?.session(accountId);
+    if (await _tokens.read() != token) return null;
+    if (session != null) _savedData?.useSavedData();
+    return session;
+  }
+
+  Future<void> saveSession(AccountSession session) async {
+    await _savedData?.saveSession(session);
+  }
 
   Future<Map<String, String>?> _registrationFirstTouch() async {
     final Future<FirstTouch?> Function()? readFirstTouch = _readFirstTouch;
@@ -164,7 +184,7 @@ class AuthRepository {
       _api.usernameAvailable(username, ticket: signupTicket);
 
   /// Restores a persisted session, or returns null when there is no live one.
-  ///  /// A 401 clears the stale token; any other failure (for example, no network)
+  /// A 401 clears the stale token; any other failure (for example, no network)
   /// propagates so the caller can keep the token for a later retry. A 401 that
   /// carries `account_deleted` erases that account's protected local data before
   /// clearing the session (ADR 039).
@@ -175,14 +195,17 @@ class AuthRepository {
     }
     try {
       final AccountSession session = await _currentSession();
+      if (await _tokens.read() != token) return null;
       await _saveAccountId(session.account.accountId);
+      await saveSession(session);
+      _savedData?.confirmSession();
       return session;
     } on ApiException catch (error) {
-      if (error.statusCode == 401) {
+      if (error.statusCode == 401 || error.errorCode == 'account_deleted') {
         if (error.errorCode == 'account_deleted') {
           await handleAccountDeleted();
         } else {
-          await _tokens.clear();
+          await clearSession(accountId: await _localAccountId());
         }
         return null;
       }
@@ -255,6 +278,7 @@ class AuthRepository {
       return;
     }
     await _eraser.erase(accountId);
+    await _savedData?.clearAccount(accountId);
   }
 
   /// Language-cache cleanup is non-critical and must not hold up session teardown.
@@ -267,12 +291,14 @@ class AuthRepository {
     }));
   }
 
-  /// The immutable account id for local-key lookup: the persisted id, or the
-  /// stored token's unverified `sub` claim (a pre-upgrade install stores no id).
+  /// The immutable account id for local-key lookup, from the bearer subject or
+  /// the persisted id when the subject is unavailable.
   ///
   /// The claim is decoded without signature verification and used only to find
   /// this device's account-namespaced keys; it never authorises a request.
   Future<String?> _localAccountId() async {
+    final String? subject = unverifiedTokenSubject(await _tokens.read());
+    if (subject != null && subject.isNotEmpty) return subject;
     final String? stored = await _tokens.readAccountId();
     if (stored != null && stored.isNotEmpty) {
       return stored;
@@ -361,12 +387,17 @@ class AuthRepository {
   }
 
   Future<void> _clearChatCache(String? accountId) async {
+    final String? localAccountId = accountId ?? await _localAccountId();
+    if (localAccountId != null) {
+      await _savedData?.clearAccount(localAccountId);
+    }
+    _savedData?.confirmSession();
     final ChatCacheStore? cache = _chatCache;
-    if (cache == null || accountId == null) {
+    if (cache == null || localAccountId == null) {
       return;
     }
     try {
-      await cache.clearHistory(accountId);
+      await cache.clearHistory(localAccountId);
     } on Object {
       // Best effort: a storage failure must never block logout.
     }
@@ -376,9 +407,13 @@ class AuthRepository {
   Future<AccountSession> _establishSession(
       Future<AuthTokens> Function() authenticate) async {
     final AuthTokens auth = await authenticate();
+    // A new bearer must never inherit the previous account's local key lookup.
+    await _tokens.clear();
     await _tokens.save(auth.accessToken);
     final AccountSession session = await _currentSession();
     await _saveAccountId(session.account.accountId);
+    await saveSession(session);
+    _savedData?.confirmSession();
     return session;
   }
 

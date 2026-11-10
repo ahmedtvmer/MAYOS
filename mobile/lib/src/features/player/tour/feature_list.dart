@@ -64,6 +64,21 @@ List<String> validateFeatureEntries(
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
+    id: 'offline_start',
+    titleEn: 'Open your saved training offline',
+    sentenceEn:
+        'Stay signed in without a connection and view saved Home, Program, '
+        'workout targets and Nutrition data until the connection returns.',
+    titleAr: 'افتح بيانات تدريبك المحفوظة دون اتصال',
+    sentenceAr:
+        'ابقَ مسجّل الدخول دون اتصال واطّلع على بيانات الرئيسية والبرنامج '
+        'التدريبي وأهداف التمرين والتغذية المحفوظة حتى يعود الاتصال.',
+    target: 'home',
+    location: TourShellTabLocation(tabIndex: 0),
+    release: 6,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
     id: 'set_effort',
     titleEn: 'Ease into each exercise',
     sentenceEn: 'New generated programs start each exercise with more reps in reserve when it has multiple sets; follow the RIR on each row.',

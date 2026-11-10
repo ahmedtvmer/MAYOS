@@ -509,6 +509,7 @@ class FakeMayosApi {
   // Exact method+path pairs that fail as a dropped connection (offline
   // program-changing action, spec AC3). Add via ``failOffline('POST', path)``.
   final Set<String> offlineRequests = <String>{};
+  bool allRequestsOffline = false;
 
   /// Test hook: make one method+path fail as a network error.
   void failOffline(String method, String path) {
@@ -516,6 +517,7 @@ class FakeMayosApi {
   }
 
   bool _isOfflineRequest(FakeRequest request) =>
+      allRequestsOffline ||
       offlineRequests.contains('${request.method} ${request.path}');
 
   // Player training schedule and pauses (#30).

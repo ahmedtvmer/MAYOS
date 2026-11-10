@@ -36,7 +36,7 @@ The per-update list of Player features added since the Account last saw it, show
 The single app-owned list of Player features that defines the Tour stops and serves as the source for later discovery surfaces.
 
 **Installed web app**:
-The web app after a person adds it to their phone's or computer's home screen, so it opens in its own window without browser controls. It is the same web app with the same account and data, not a third client beside Android and the browser; anything true of the web app is true of it, and it still needs a connection to work.
+The web app after a person adds it to their phone's or computer's home screen, so it opens in its own window without browser controls. It is the same web app with the same account and data, not a third client beside Android and the browser; anything true of the web app is true of it. A saved session can open saved training data without a connection; server changes still need a connection.
 _Avoid_: PWA (in product copy), native app
 
 **Account**:

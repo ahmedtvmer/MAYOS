@@ -153,7 +153,8 @@ const String kGoogleAlreadyLinkedMessage =
 
 @immutable
 class AuthState {
-  const AuthState._(this.status, this.session, this.notice, this.noticeFailure);
+  const AuthState._(this.status, this.session, this.notice, this.noticeFailure,
+      [this.isOffline = false]);
 
   const AuthState.loading() : this._(AuthStatus.loading, null, null, null);
 
@@ -165,11 +166,13 @@ class AuthState {
     FailureMessage noticeFailure,
   ) : this._(AuthStatus.unauthenticated, null, notice, noticeFailure);
 
-  const AuthState.authenticated(AccountSession session, {String? notice})
-      : this._(AuthStatus.authenticated, session, notice, null);
+  const AuthState.authenticated(AccountSession session,
+      {String? notice, bool offline = false})
+      : this._(AuthStatus.authenticated, session, notice, null, offline);
 
   final AuthStatus status;
   final AccountSession? session;
+  final bool isOffline;
 
   /// A one-shot message to show on the login screen (for example, after account
   /// deletion). It is not a session: [isAuthenticated] ignores it.
@@ -212,6 +215,60 @@ class AuthController extends StateNotifier<AuthState> {
 
   PendingGoogleSignup? _pendingSignup;
   int _displayLanguageRevision = 0;
+  Timer? _restoreRetry;
+  int _restoreDelaySeconds = 2;
+  int _sessionRevision = 0;
+  bool _confirmingSession = false;
+  bool _needsSessionConfirmation = false;
+
+  /// Cached data does not confirm the bearer. Keep retrying the real auth reads.
+  void useSavedData() {
+    final AccountSession? session = state.session;
+    if (session == null) return;
+    if (!state.isOffline) {
+      state = AuthState.authenticated(session, offline: true);
+    }
+    _needsSessionConfirmation = true;
+    _scheduleRestore();
+  }
+
+  void _scheduleRestore() {
+    if (_restoreRetry != null || !_needsSessionConfirmation) return;
+    _restoreRetry = Timer(Duration(seconds: _restoreDelaySeconds), () {
+      _restoreRetry = null;
+      unawaited(retrySavedSession());
+    });
+    _restoreDelaySeconds = (_restoreDelaySeconds * 2).clamp(2, 60).toInt();
+  }
+
+  void _cancelRestore() {
+    _sessionRevision++;
+    _restoreRetry?.cancel();
+    _restoreRetry = null;
+    _needsSessionConfirmation = false;
+    _restoreDelaySeconds = 2;
+  }
+
+  /// Browser online events, an API response, resume, and backoff all enter here.
+  Future<void> retrySavedSession() async {
+    if (!_needsSessionConfirmation || _confirmingSession) return;
+    _confirmingSession = true;
+    _restoreRetry?.cancel();
+    _restoreRetry = null;
+    final int revision = _sessionRevision;
+    try {
+      final AccountSession? session = await _repository.restore();
+      if (!mounted || revision != _sessionRevision) return;
+      _cancelRestore();
+      state = session == null
+          ? AuthState.unauthenticated(state.notice)
+          : AuthState.authenticated(session);
+    } on Object {
+      if (mounted && revision == _sessionRevision) _scheduleRestore();
+    } finally {
+      _confirmingSession = false;
+    }
+  }
 
   /// The sign-up the username picker is completing, or null when none is open.
   PendingGoogleSignup? get pendingSignup => _pendingSignup;
@@ -220,27 +277,50 @@ class AuthController extends StateNotifier<AuthState> {
   /// Returns true when startup definitively has no session; false for an
   /// authenticated restore or a transient failure where the cached token stays.
   Future<bool> initialize() async {
+    _cancelRestore();
+    final int revision = _sessionRevision;
     try {
       final AccountSession? session = await _repository.restore();
-      // Preserve a notice an account-deleted signal may have set mid-restore so
-      // the login screen can explain why the session ended (ADR 039).
-      state = session == null
-          ? state.noticeFailure != null && state.notice != null
-              ? AuthState.unauthenticatedWithFailure(
-                  state.notice!,
-                  state.noticeFailure!,
-                )
-              : AuthState.unauthenticated(state.notice)
-          : AuthState.authenticated(session);
+      if (!_isCurrentRestore(revision)) return _isUnauthenticated();
+      _applyInitialRestore(session);
       return session == null;
     } on Object {
-      // Any transport or non-401 service failure is transient. Keep the token
-      // and account-language cache so the user can retry when connectivity is
-      // restored. AuthRepository converts definitive 401s to a null session.
-      state = const AuthState.unauthenticated();
-      return false;
+      return _restoreSavedSession(revision);
     }
   }
+
+  void _applyInitialRestore(AccountSession? session) {
+    if (session != null) {
+      state = AuthState.authenticated(session);
+      return;
+    }
+    // Preserve a deletion notice that arrived during startup restore (ADR 039).
+    state = state.noticeFailure != null && state.notice != null
+        ? AuthState.unauthenticatedWithFailure(
+            state.notice!,
+            state.noticeFailure!,
+          )
+        : AuthState.unauthenticated(state.notice);
+  }
+
+  Future<bool> _restoreSavedSession(int revision) async {
+    // A non-401 failure is transient; retain the token and retry in background.
+    final AccountSession? saved = await _repository.savedSession();
+    if (!_isCurrentRestore(revision)) return _isUnauthenticated();
+    // Older installs without a saved Account stay on splash until online.
+    state = saved == null
+        ? const AuthState.loading()
+        : AuthState.authenticated(saved, offline: true);
+    _needsSessionConfirmation = true;
+    _scheduleRestore();
+    return false;
+  }
+
+  bool _isCurrentRestore(int revision) =>
+      mounted && revision == _sessionRevision;
+
+  bool _isUnauthenticated() =>
+      mounted && state.status == AuthStatus.unauthenticated;
 
   Future<void> register({
     required String username,
@@ -249,6 +329,7 @@ class AuthController extends StateNotifier<AuthState> {
     String? coachInviteCode,
     String displayLanguage = 'en',
   }) async {
+    _cancelRestore();
     final AccountSession session = await _repository.register(
       username: username,
       password: password,
@@ -264,6 +345,7 @@ class AuthController extends StateNotifier<AuthState> {
     required String password,
     bool rememberMe = false,
   }) async {
+    _cancelRestore();
     final AccountSession session = await _repository.login(
       username: username,
       password: password,
@@ -273,6 +355,7 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
+    _cancelRestore();
     final String? accountId = state.session?.account.accountId;
     await _repository.logout(accountId: accountId);
     // The MAYOS session is over, so the Google SDK's own is too (#115).
@@ -674,6 +757,10 @@ class AuthController extends StateNotifier<AuthState> {
   /// A transient network failure leaves the current session untouched. A 401 is
   /// handled by the auth interceptor's unauthorized event, not here.
   Future<void> refreshAccount() async {
+    if (_needsSessionConfirmation) {
+      await retrySavedSession();
+      return;
+    }
     final AccountSession? current = state.session;
     if (!state.isAuthenticated || current == null) {
       return;
@@ -828,6 +915,7 @@ class AuthController extends StateNotifier<AuthState> {
       return;
     }
     final String? accountId = state.session?.account.accountId;
+    _cancelRestore();
     state = const AuthState.unauthenticated();
     // Fire-and-forget: the in-memory state already reflects the logout. The
     // token is already invalid, so only the local state is dropped here.
@@ -838,6 +926,7 @@ class AuthController extends StateNotifier<AuthState> {
   /// A 401 carrying `account_deleted`: erase the account's protected local data
   /// (no keep/discard prompt) and end the session with an explanation (ADR 039).
   void _onAccountDeleted() {
+    _cancelRestore();
     state = const AuthState.unauthenticated(
         'This account was deleted. Its data was removed from this device.');
     unawaited(_repository.handleAccountDeleted());
@@ -846,6 +935,7 @@ class AuthController extends StateNotifier<AuthState> {
 
   @override
   void dispose() {
+    _cancelRestore();
     _events.removeListener(_onUnauthorized);
     _accountDeletedEvents.removeListener(_onAccountDeleted);
     super.dispose();

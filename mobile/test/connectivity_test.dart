@@ -216,15 +216,19 @@ void main() {
     expect(tester.state<State<EditableText>>(editable), same(fieldState));
   });
 
-  testWidgets('no banner without the web flag, even when offline',
+  testWidgets('banner can be disabled on Android when explicitly requested',
       (WidgetTester tester) async {
     final FakeMayosApi fake = _signedInFake();
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     await tokens.save('token-alice');
 
-    // The flag defaults to `!kIsWeb`, so a test run on the VM keeps the
-    // Android surface: no banner, whatever the connectivity says.
-    await tester.pumpWidget(authApp(fake, tokens));
+    await tester.pumpWidget(authApp(
+      fake,
+      tokens,
+      extraOverrides: <Override>[
+        offlineBannerEnabledProvider.overrideWithValue(false),
+      ],
+    ));
     await _pumpUntilFound(tester, find.text('Home'));
 
     final ProviderContainer container = ProviderScope.containerOf(

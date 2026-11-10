@@ -70,8 +70,7 @@ class _MayosAppState extends ConsumerState<MayosApp>
     // before auth or draft traffic can receive a 426 response.
     unawaited(ref.read(appUpdateRequiredProvider.notifier).checkPolicy());
     // Keep API and browser signals alive during splash and auth startup, before
-    // either shared screen frame has mounted its banner slot. Android remains
-    // outside the provider because the banner flag is false there.
+    // either shared screen frame has mounted its banner slot.
     if (ref.read(offlineBannerEnabledProvider)) {
       ref.read(connectivityControllerProvider);
     }
