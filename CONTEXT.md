@@ -87,6 +87,10 @@ _Avoid_: Persona, coach tone
 A free-text instruction the Player explicitly asks the assistant to remember about how they like to train. The Player can review, edit and delete these private preferences in Settings; the assistant reads them on demand, and a Coach never sees them.
 _Arabic_: تفضيل للمساعد
 
+**Estimate**:
+A derived or general-knowledge figure the assistant labels with ≈ or “estimated” and explains with its basis in one clause. Player facts and the inputs to any Player-specific estimate must come from tool results; missing Player data is never estimated. Tool-computed set counts are exact under the returned counting rule.
+_Arabic_: تقدير؛ تُوسم الأرقام التقريبية بلفظ «تقديريًا» أو ≈ مع أساس الحساب.
+
 **Active account**:
 An account that completed a workout or recorded a coaching action in the previous 30 days. A login alone does not make an account active.
 
