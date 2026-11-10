@@ -1003,3 +1003,30 @@ def test_unchanged_chat_confirm_says_nothing_changed(fresh_store, language, repl
     assert state["program_updated"] is False
     assert expected in state["response_content"].casefold()
     assert ledger.get_active_program().version == before
+
+
+def test_confirmed_chat_rebuild_explains_focus_once_but_preview_does_not_consume_it(fresh_store):
+    from agent.program_generator import generate_program_pipeline
+    from service.chat import build_turn_state
+
+    db, ledger = fresh_store, fresh_store.ledger
+    account_id = "00000000-0000-4000-8000-000000000001"
+    ledger.upsert_player_profile({"gender": "male", "age": 30, "height_cm": 175, "weight_kg": 80,
+        "equipment_access": "Commercial gym", "injuries_or_limitations": "None",
+        "weekly_frequency": 5, "training_age_years": 3, "rep_preference": "balanced",
+        "weak_points": [{"muscle": "chest", "source": "named"}]})
+    generate_program_pipeline(ledger=ledger)
+    for repetition in range(2):
+        state = build_turn_state("player", [HumanMessage(content="rebuild my program and add biceps to leg days")],
+                                 player_account_id=account_id)
+        before = ledger.get_active_program().version
+        list(stream_assistant_turn(state, ledger=ledger, store=db))
+        assert state.get("program_edit_preview"), state.get("response_content")
+        assert ledger.get_active_program().version == before
+        if repetition == 0:
+            assert ledger.conn.execute("SELECT COUNT(*) FROM focus_cross_day_explanation").fetchone()[0] == 0
+        confirmed = build_turn_state("player", [AIMessage(content=state["response_content"]), HumanMessage(content="yes")],
+                                     player_account_id=account_id)
+        list(stream_assistant_turn(confirmed, ledger=ledger, store=db))
+        assert confirmed["program_updated"] is True, confirmed.get("response_content")
+        assert ("to give your weak point more frequency" in confirmed["response_content"]) is (repetition == 0)

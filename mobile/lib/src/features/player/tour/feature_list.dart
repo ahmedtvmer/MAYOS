@@ -64,6 +64,17 @@ List<String> validateFeatureEntries(
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
+    id: 'focus_extra',
+    titleEn: 'See why Focus extras are there',
+    sentenceEn: 'Focus tags in your Program and Workout logger explain extra weekly sessions or extra sets for your weak point; tap a tag to read the reason.',
+    titleAr: 'اعرف سبب تمارين التركيز الإضافية',
+    sentenceAr: 'توضح علامات التركيز في البرنامج التدريبي ومسجل التمرين الجلسات أو المجموعات الإضافية لنقطة ضعفك؛ اضغط على العلامة لقراءة السبب.',
+    target: 'program',
+    location: TourShellTabLocation(tabIndex: 1),
+    release: 6,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
     id: 'set_effort',
     titleEn: 'Ease into each exercise',
     sentenceEn: 'New generated programs start each exercise with more reps in reserve when it has multiple sets; follow the RIR on each row.',

@@ -2055,6 +2055,8 @@ def _movement_restriction_chat_intent(query: str, ledger: Any, store: Any, state
                     reply = "Saved your movement restrictions."
                 if language == "ar":
                     reply = "حفظت قيود الحركة وأعدت إنشاء برنامجك." if result.get("program_rebuilt") else "حفظت قيود الحركة وأبلغت مدربك." if result.get("program_blocked") else "حفظت قيود الحركة."
+                if result.get("focus_cross_day_explanation"):
+                    reply += "\n\n" + result["focus_cross_day_explanation"][language]
                 return _response(
                     reply,
                     program_updated=bool(result.get("program_rebuilt")),
@@ -4218,7 +4220,14 @@ def _run_program_mutation(
         logger.error(f"Mutation failure: {e}")
         failure = "Could not rebuild split with those parameters."
         return {"program_updated": False, "response_content": failure, "messages": [AIMessage(content=failure)]}
-    return _program_mutation_result(prog, query, state)
+    result = _program_mutation_result(prog, query, state)
+    from service.focus_explanation import cross_day_focus_chat_explanation
+    explanation = cross_day_focus_chat_explanation(ledger, prog)
+    if explanation:
+        language = resolve_reply_language(query, state.get("display_language", "en"))
+        response = result["response_content"] + "\n\n" + explanation[language]
+        result.update(response_content=response, messages=[AIMessage(content=response)])
+    return result
 
 
 def _chat_edit_optional_selection(query: str, pending: dict[str, Any]) -> list[str]:
@@ -4380,6 +4389,9 @@ def program_edit_confirmation_node(state: AssistantState, config: dict[str, Any]
     else:
         reply = ("Your Program already matches this. There is nothing to change." if language == "en"
                  else "برنامجك مطابق بالفعل. لا يوجد شيء لتغييره.")
+    explanation = result.get("focus_cross_day_explanation")
+    if explanation:
+        reply += "\n\n" + explanation[language]
     return _response(reply, program_updated=changed,
                      program_change="edited" if changed else None)
 

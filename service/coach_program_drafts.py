@@ -168,7 +168,7 @@ def create_program_draft(
         return None
     ledger, _ = authorized
     with ledger:
-        created = ledger.create_program_draft(assignment_id, draft)
+        created = ledger.create_program_draft(assignment_id, normalize_program_draft(draft))
         if created is None:
             raise ProgramDraftAlreadyExists("A Program draft already exists for this assignment.")
         if not _assignment_still_active(db, coach_account_id, assignment_id):
@@ -202,6 +202,7 @@ def replace_program_draft(
         return None
     ledger, _ = authorized
     with ledger:
+        draft = normalize_program_draft(draft)
         existing_record = ledger.get_program_draft(assignment_id)
         if existing_record is not None:
             draft = _carry_generated_rationale_through_edit(existing_record["draft"], draft)
@@ -542,6 +543,7 @@ def normalize_program_draft(draft: dict[str, Any]) -> dict[str, Any]:
     for week in weeks:
         for day in week["days"]:
             for exercise in day.get("exercises", []):
+                exercise.pop("focus_extra", None)
                 if exercise.get("rationale") is None:
                     exercise.pop("rationale", None)
     normalized = {
@@ -804,6 +806,7 @@ def _program_exercise_payload(
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     published = dict(exercise)
     issues = []
+    published.pop("focus_extra", None)
     published.pop("target_rir", None)
     published["target_rpe"] = 10 - target_rir
     substitutes = []

@@ -123,4 +123,8 @@ def complete_onboarding(
                 "program_message": program_message,
                 "program_generated": False,
             }
-        return {"program": program, "program_generated": program_generated}
+        from service.focus_explanation import cross_day_focus_explanation
+
+        explanation = cross_day_focus_explanation(ledger, program) if program_generated else None
+        return {"program": program, "program_generated": program_generated,
+                "focus_cross_day_explanation": explanation}

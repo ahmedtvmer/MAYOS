@@ -18,6 +18,7 @@ import '../../../core/theme/mayos_typography.dart';
 import '../../../core/ui/mayos_button.dart';
 import '../../../core/ui/mayos_card.dart';
 import '../../../core/workout_equipment.dart';
+import '../program/focus_extra_tag.dart';
 import 'logger_keypad.dart';
 import 'personal_record_badge.dart';
 
@@ -553,6 +554,8 @@ class ExerciseLoggingCard extends StatelessWidget {
                 ),
               ],
             ),
+            if (exercise.exercise['focus_extra'] case final Map<String, dynamic> extra)
+              FocusExtraTag(extra: extra),
             if (exercise.isCoachExercise)
               _CoachExerciseLoggerDetails(exercise: exercise),
             // The picture sits beside the caption lines rather than the title

@@ -18,6 +18,7 @@ import 'package:mayos_mobile/src/features/player/workout/active_workout_controll
 import 'package:mayos_mobile/src/features/player/workout/workout_logger_screen.dart';
 
 import 'support/fake_mayos_api.dart';
+import 'support/focus_extra_fixture.dart';
 import 'support/finish_flow_test_clock.dart';
 
 Future<void> _pumpUntilFound(WidgetTester tester, Finder finder,
@@ -345,6 +346,32 @@ Future<void> _chooseCableFly(WidgetTester tester) async {
 }
 
 void main() {
+  for (final String language in <String>['en', 'ar']) {
+    for (final String kind in <String>['weekly_session', 'sets']) {
+      testWidgets('Program Focus tag opens its saved reason: $language $kind', (tester) async {
+        final FakeMayosApi fake = _signedInFake();
+        fake.programDaysOverride = <Map<String, dynamic>>[
+          <String, dynamic>{
+            'day_name': 'Pull', 'day_order': 1,
+            'exercises': <Map<String, dynamic>>[focusExerciseFixture(kind: kind)],
+          },
+        ];
+        await _pumpProgram(tester, fake, languageCode: language);
+        final String suffix = kind == 'weekly_session'
+            ? (language == 'ar' ? 'جلسة إضافية في الأسبوع' : 'extra weekly session')
+            : (language == 'ar' ? 'مجموعات إضافية' : 'extra sets');
+        expect(find.text(language == 'ar' ? 'تركيز: الصدر · $suffix' : 'Focus: Chest · $suffix'), findsOneWidget);
+        expect(find.byKey(const Key('focus_extra_reason')), findsNothing);
+        await tester.tap(find.byKey(const Key('focus_extra_tag')));
+        await tester.pumpAndSettle();
+        final Map<String, dynamic> extra = focusExerciseFixture(kind: kind)['focus_extra'] as Map<String, dynamic>;
+        final Map<String, String> reason = extra['reason'] as Map<String, String>;
+        expect(find.text(reason[language]!), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   test('legacy Cardio remains stored as text but reads as treadmill by default', () {
     final ProgramDay day = ProgramDay.fromJson(<String, dynamic>{
       'day_name': 'Day', 'day_order': 1, 'exercises': <dynamic>[],

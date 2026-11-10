@@ -15,6 +15,7 @@ from database.migration_manager import (
     ASSISTANT_GOAL_WEAK_POINT_PENDING_DDL,
     ASSISTANT_PREFERENCES_DDL,
     PROGRAM_DESIGN_OFFER_DDL,
+    FOCUS_CROSS_DAY_EXPLANATION_DDL,
 )
 from database.migration_manager import PROGRAM_EXERCISE_LOAD_COLUMN, PROGRAM_EXERCISE_SET_GROUPS_COLUMN
 from database.migration_manager import VOLUME_REVIEWS_DDL
@@ -434,6 +435,7 @@ class SchemaMixin:
                 *ASSISTANT_GOAL_WEAK_POINT_PENDING_DDL,
                 *VOLUME_REVIEWS_DDL,
                 *PROGRAM_DESIGN_OFFER_DDL,
+                *FOCUS_CROSS_DAY_EXPLANATION_DDL,
             )
         ))
         ensure_revision_schema(

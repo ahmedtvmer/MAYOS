@@ -39,6 +39,7 @@ from svc.schemas import (
 )
 
 TEST_JWT_SECRET = "test-secret-key-0123456789abcdef"
+READ_TIME_PROGRAM_ANNOTATIONS = ("focus_extra",)
 
 
 def test_multiweek_draft_accepts_flat_compatibility_days_beyond_one_week():
@@ -1751,7 +1752,9 @@ def test_copy_active_program_to_draft_preserves_the_complete_program(api):
     )
 
     assert copied.status_code == 200, copied.text
-    expected_draft = _without_coach_program_labels(active)
+    expected_draft = _without_read_time_program_annotations(
+        _without_coach_program_labels(active)
+    )
     for metadata in (
         "version",
         "provenance",
@@ -2866,6 +2869,18 @@ def _without_coach_program_labels(program):
         for exercise in day["exercises"]:
             for field in display_fields:
                 exercise.pop(field, None)
+    return stripped
+
+
+def _without_read_time_program_annotations(program):
+    stripped = copy.deepcopy(program)
+    days = stripped["days"] + [
+        day for week in stripped.get("weeks", []) for day in week["days"]
+    ]
+    for day in days:
+        for exercise in day["exercises"]:
+            for annotation in READ_TIME_PROGRAM_ANNOTATIONS:
+                exercise.pop(annotation, None)
     return stripped
 
 

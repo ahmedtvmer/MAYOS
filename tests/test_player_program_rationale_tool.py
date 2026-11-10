@@ -95,6 +95,7 @@ def test_program_rationale_reader_scopes_by_day_or_exercise_and_keeps_unknown_co
     assert exercise["days"][0]["exercises"][0]["rationale"]["selection"]["code"] == "selection.staple"
     assert day["split"]["code"] == "split.new_code"
     assert day["days"][0]["exercises"][0]["rationale"]["day_choice"]["code"] == "focus.new_weekly_exposure"
+    assert day["days"][0]["exercises"][0]["day_choice"]["code"] == "focus.new_weekly_exposure"
     assert day["focus_muscles"][0]["extras"][0]["day_choice_reason"]["code"] == "focus.new_weekly_exposure"
 
 

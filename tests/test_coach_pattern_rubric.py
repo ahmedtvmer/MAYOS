@@ -271,44 +271,38 @@ def test_two_focus_muscles_keep_named_order_when_opening_same_day(fresh_store):
     assert [ex.exercise_id for ex in day.exercises[:2]] == [item["exercise_id"] for item in same_day]
 
 
-def test_barbell_only_chest_extra_candidates_fall_through_to_unavailable(
-    fresh_store, monkeypatch
-):
-    import agent.program_generator as generator
+def test_barbell_only_chest_extra_candidates_fall_through_to_unavailable(fresh_store):
+    from agent.focus_muscles import FOCUS_EXTRA_TABLE
+    from agent.program_rules import fetch_slot_candidates
 
     fresh_store.switch_user("focus_barbell_only_candidates")
     fresh_store.ledger.upsert_player_profile({
         "gender": "male", "proportions": "balanced", "age": 28, "weight_kg": 70.0,
         "height_cm": 175.0, "rep_preference": "balanced", "current_goal": "hypertrophy",
-        "long_term_goal": "progressive overload", "weekly_frequency": 5, "training_age_years": 3.0,
+        "long_term_goal": "progressive overload", "weekly_frequency": 3, "training_age_years": 3.0,
         "equipment_access": "Commercial gym", "injuries_or_limitations": "None", "stress_and_sleep": "normal",
         "weak_points": [{"muscle": "chest", "source": "named"}],
     })
-    original_generate_days = generator._generate_program_days
-    original_fetch = generator._fetch_generation_candidates
-    generation_complete = False
+    candidate_ids = {
+        str(candidate["id"])
+        for slot_key in FOCUS_EXTRA_TABLE["chest"]["candidate_slots"]
+        for candidate in fetch_slot_candidates(
+            slot_key, "Commercial gym", "None", 100, ledger=fresh_store.ledger
+        )
+    }
+    assert candidate_ids
+    with fresh_store.catalog_locked() as conn:
+        conn.executemany(
+            "UPDATE exercises SET equipment = 'barbell' WHERE id = ?",
+            [(exercise_id,) for exercise_id in candidate_ids],
+        )
+        conn.commit()
 
-    def generate_days(*args, **kwargs):
-        nonlocal generation_complete
-        result = original_generate_days(*args, **kwargs)
-        generation_complete = True
-        return result
-
-    def fetch_candidates(slot_key, context, excluded_ids, *, ledger):
-        if generation_complete and slot_key == "flat_press":
-            return ([{
-                "id": "barbell-row-focus-test", "name": "Barbell row signature match",
-                "equipment": "barbell", "_candidate_source": "signature",
-            }], False)
-        return original_fetch(slot_key, context, excluded_ids, ledger=ledger)
-
-    monkeypatch.setattr(generator, "_generate_program_days", generate_days)
-    monkeypatch.setattr(generator, "_fetch_generation_candidates", fetch_candidates)
     program = generate_program_pipeline(ledger=fresh_store.ledger)[0]
 
     focus = program.program_rationale["focus_muscles"][0]
     assert focus["status"] == "unavailable"
-    assert not any(exercise.exercise_id == "barbell-row-focus-test" for day in program.days for exercise in day.exercises)
+    assert _focus_extra_records(program) == []
 
 
 def test_unanswered_weak_points_produce_no_focus_rationale(fresh_store):
@@ -476,12 +470,12 @@ def test_focus_compound_extra_fallback_stays_in_eligible_region(fresh_store):
     assert not ("lower" in day.day_name.casefold() or "leg" in day.day_name.casefold())
 
 
-def _focus_draft(db, split_type, frequency, muscles=()):
+def _focus_draft(db, split_type, frequency, muscles=(), *, equipment="Commercial gym"):
     profile = {
         "gender": "male", "proportions": "balanced", "age": 28, "weight_kg": 70.0,
         "height_cm": 175.0, "rep_preference": "balanced", "current_goal": "hypertrophy",
         "long_term_goal": "progressive overload", "weekly_frequency": frequency,
-        "training_age_years": 3.0, "equipment_access": "Commercial gym",
+        "training_age_years": 3.0, "equipment_access": equipment,
         "injuries_or_limitations": "None", "stress_and_sleep": "normal",
         "weak_points": [{"muscle": muscle, "source": "named"} for muscle in muscles],
     }
@@ -858,3 +852,172 @@ def test_coach_pattern_rubric_accepts_missing_adductors_and_ham_curl_when_restri
             continue
         count = sum(ex.working_sets for ex in exercises if ex.slot_key in slots)
         assert 4 <= count <= 6, f"{muscle}: {count} sets"
+
+
+@pytest.mark.parametrize("equipment", ["Commercial gym", "Home gym", "Bodyweight only"])
+def test_cross_day_focus_matrix_uses_only_isolations_and_keeps_dose(fresh_store, equipment):
+    from math import floor
+    from agent.program_rules import exercise_mechanic
+
+    fresh_store.switch_user("focus_cross_matrix")
+    for frequency, splits in SPLIT_OPTIONS_BY_FREQUENCY.items():
+        for split_type, _ in splits:
+            baseline = _focus_draft(fresh_store, split_type, frequency, equipment=equipment)
+            for muscle in WEAK_POINT_MUSCLES:
+                focused = _focus_draft(fresh_store, split_type, frequency, (muscle,), equipment=equipment)
+                slots = FOCUS_MUSCLE_SLOTS[muscle]
+                baseline_sets = _weekly_slot_sets(baseline, slots)
+                target = max(baseline_sets + 2, floor(baseline_sets * 1.3 / 2 + 0.5) * 2)
+                extras = _focus_extra_records(focused)
+                for day, entry in extras:
+                    exercise = next(ex for ex in day.exercises if ex.exercise_id == entry["exercise_id"])
+                    tag = exercise.focus_extra
+                    assert tag is not None, (split_type, frequency, equipment, muscle)
+                    choice = entry["rationale"]["day_choice"]
+                    assert tag["kind"] == ("weekly_session" if choice["code"] == "focus.new_weekly_exposure" else "sets")
+                    assert tag["reason"]["en"] and tag["reason"]["ar"]
+                    opposite = ((muscle in {"chest", "upper_chest", "triceps"} or exercise.slot_key == "shoulder_press") and day.day_name == "Pull"
+                                or muscle in {"back", "biceps"} and day.day_name == "Push")
+                    if opposite or tag["cross_day"]:
+                        assert exercise_mechanic(fresh_store.get_exercise_library_entry(exercise.exercise_id)) == "isolation"
+                        assert choice["params"]["isolation_only"] is True
+                    dose = entry["rationale"]["prescription"]["sets"]["params"]
+                    assert dose["baseline_weekly_sets"] == baseline_sets
+                    assert dose["target_weekly_sets"] == target
+                    assert dose["multiplier"] == 1.3
+                    assert dose["actual_weekly_sets"] == _weekly_slot_sets(focused, slots)
+                focus = focused.program_rationale["focus_muscles"][0]
+                if focus.get("reason", {}).get("code") != "focus.unavailable":
+                    assert _weekly_slot_sets(focused, slots) >= target
+                else:
+                    assert focus["reason"]["params"]["missing_weekly_sets"] == target - _weekly_slot_sets(focused, slots)
+
+
+def test_no_eligible_chest_isolation_falls_back_to_lightest_chest_day(fresh_store):
+    from agent.focus_muscles import FOCUS_EXTRA_TABLE
+    from agent.program_rules import fetch_slot_candidates
+
+    fresh_store.switch_user("focus_no_isolation")
+    candidates = fetch_slot_candidates("chest_fly", "Commercial gym", "None", 1000, ledger=fresh_store.ledger)
+    assert candidates
+    with fresh_store.catalog_locked() as conn:
+        conn.executemany("UPDATE exercise_curated_fields SET hidden = 1 WHERE exercise_id = ?",
+                         [(str(candidate["id"]),) for candidate in candidates])
+        conn.commit()
+    assert not fetch_slot_candidates(
+        "chest_fly", "Commercial gym", "None", 100, ledger=fresh_store.ledger
+    )
+    baseline = _focus_draft(fresh_store, "ppl_x_ul", 5)
+    baseline_exercise_ids = {
+        exercise.exercise_id for day in baseline.days for exercise in day.exercises
+    }
+
+    # The fallback needs a used flat_press slot with an unused eligible
+    # candidate. Add one after the baseline so its availability is controlled
+    # by this test rather than by the synthetic fixture's catalog contents.
+    synthetic_exercise_id = "synthetic-focus-chest-press"
+    with fresh_store.catalog_locked() as conn:
+        conn.execute(
+            "INSERT INTO exercises (id, name, body_part, target_muscle, equipment) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (synthetic_exercise_id, "Synthetic Chest Press", "Chest", "pectorals", "leverage machine"),
+        )
+        conn.execute(
+            "INSERT INTO exercise_curated_fields "
+            "(exercise_id, primary_muscle, primary_action, secondary_actions, load_type, hidden) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                synthetic_exercise_id,
+                "Chest",
+                "Shoulder Horizontal Adduction",
+                "Elbow Extension",
+                "selectorized",
+                0,
+            ),
+        )
+        conn.commit()
+
+    # The fallback may fill either chest press slot; collect both.
+    chest_press_slots = ("flat_press", "incline_press")
+    candidate_by_id = {
+        str(candidate["id"]): candidate
+        for slot in chest_press_slots
+        for candidate in fetch_slot_candidates(
+            slot, "Commercial gym", "None", 1000, ledger=fresh_store.ledger
+        )
+    }
+    assert synthetic_exercise_id in candidate_by_id
+    synthetic_candidate = candidate_by_id[synthetic_exercise_id]
+    excluded_equipment = {
+        item.casefold() for item in FOCUS_EXTRA_TABLE["chest"]["excluded_equipment"]
+    }
+    assert synthetic_candidate["_candidate_source"] == "signature"
+    assert synthetic_candidate["mechanic"] == "compound"
+    assert synthetic_candidate["equipment"].casefold() not in excluded_equipment
+    eligible_candidate_ids = {
+        exercise_id
+        for exercise_id, candidate in candidate_by_id.items()
+        if exercise_id not in baseline_exercise_ids
+        and candidate["mechanic"] == "compound"
+        and str(candidate.get("equipment") or "").strip().casefold() not in excluded_equipment
+    }
+    assert synthetic_exercise_id in eligible_candidate_ids
+
+    focused = _focus_draft(fresh_store, "ppl_x_ul", 5, ("chest",))
+    focus = focused.program_rationale["focus_muscles"][0]
+    assert focus["status"] == "added"
+    extra_records = _focus_extra_records(focused)
+    assert extra_records
+    first_extra = next(
+        record for _, record in extra_records
+        if record["exercise_id"] == focus["exercise_id"]
+    )
+    assert focus["exercise_id"] in eligible_candidate_ids
+    assert first_extra["rationale"]["selection"]["params"]["slot"] in chest_press_slots
+    assert first_extra["rationale"]["day_choice"]["code"] == "focus.lightest_training_day"
+    # The seeded press can change the generated layout, so compare against a
+    # baseline generated from the same catalog the focused draft used.
+    seeded_baseline = _focus_draft(fresh_store, "ppl_x_ul", 5)
+    baseline_days = {
+        day.day_order: (sum(ex.working_sets for ex in day.exercises), day.day_order)
+        for day in seeded_baseline.days
+        if any(ex.slot_key in FOCUS_MUSCLE_SLOTS["chest"] for ex in day.exercises)
+    }
+    assert focus["day_order"] == min(baseline_days, key=baseline_days.get)
+
+
+def test_curated_compound_fly_cannot_be_placed_on_pull(fresh_store):
+    # #550: the slot name is not proof that the selected catalog row is an isolation.
+    from agent.program_rules import fetch_slot_candidates
+
+    fresh_store.switch_user("focus_curated_compound")
+    candidates = fetch_slot_candidates("chest_fly", "Commercial gym", "None", 100, ledger=fresh_store.ledger)
+    assert candidates
+    with fresh_store.catalog_locked() as conn:
+        conn.executemany("UPDATE exercise_curated_fields SET secondary_actions = ? WHERE exercise_id = ?",
+                         [("Elbow Extension", str(candidate["id"])) for candidate in candidates])
+        conn.commit()
+    focused = _focus_draft(fresh_store, "ppl", 3, ("chest",))
+    extras = _focus_extra_records(focused)
+    assert extras
+    assert all(day.day_name == "Push" for day, _ in extras)
+
+
+def test_existing_focus_day_choice_projects_a_tag_without_rewriting_recorded_rationale(fresh_store):
+    program = _focus_draft(fresh_store, "ppl", 3, ("chest",))
+    payload = program.model_dump()
+    for day in payload["program_rationale"]["days"]:
+        for entry in day["exercises"]:
+            choice = entry["rationale"].get("day_choice")
+            if choice:
+                choice["params"].pop("day_name", None)
+    fresh_store.ledger.save_training_program(payload)
+    loaded = fresh_store.ledger.get_active_program()
+    extras = _focus_extra_records(loaded)
+    assert extras
+    day, entry = extras[0]
+    exercise = next(ex for ex in day.exercises if ex.exercise_id == entry["exercise_id"])
+    assert exercise.focus_extra["kind"] == "weekly_session"
+    assert day.day_name in exercise.focus_extra["reason"]["en"]
+    assert "day_name" not in entry["rationale"]["day_choice"]["params"]
+    assert fresh_store.ledger.conn.execute("SELECT COUNT(*) FROM focus_cross_day_explanation").fetchone()[0] == 0

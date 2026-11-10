@@ -200,6 +200,7 @@ def update_profile(
             ),
         )
         program = None
+        focus_explanation = None
         removed_exercises: list[dict[str, str]] = []
         program_blocked = False
         regeneration_offer_created = False
@@ -242,6 +243,8 @@ def update_profile(
                                 },
                                 starting_position=None,
                             )
+                            from service.focus_explanation import cross_day_focus_explanation
+                            focus_explanation = cross_day_focus_explanation(ledger, program)
             else:
                 program_blocked = True
                 persist_profile()
@@ -283,6 +286,7 @@ def update_profile(
                 ledger, ledger.get_player_profile()
             ),
             "program_rebuilt": program is not None,
+            "focus_cross_day_explanation": focus_explanation,
             "program": program,
             "program_blocked": program_blocked,
             "regeneration_offer_created": regeneration_offer_created,

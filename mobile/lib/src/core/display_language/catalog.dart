@@ -65,6 +65,14 @@ class MayosCopy {
   String get askAssistant => isArabic ? 'اسأل المساعد' : 'Ask the assistant';
   String get weakPoints => isArabic ? 'نقاط الضعف' : 'Weak points';
   String get weakPointsLead => isArabic ? 'اختر حتى نقطتي ضعف لتحسينهما.' : 'Choose up to two Weak points to improve.';
+  String focusExtraTag(String muscle, String kind) {
+    final String name = weakPointMuscle(muscle);
+    final String suffix = kind == 'weekly_session'
+        ? (isArabic ? 'جلسة إضافية في الأسبوع' : 'extra weekly session')
+        : (isArabic ? 'مجموعات إضافية' : 'extra sets');
+    return isArabic ? 'تركيز: $name · $suffix' : 'Focus: $name · $suffix';
+  }
+
   String weakPointMuscle(String key) => switch (key) {
         'chest' => isArabic ? 'الصدر' : 'Chest',
         'upper_chest' => isArabic ? 'أعلى الصدر' : 'Upper chest',

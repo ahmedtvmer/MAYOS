@@ -589,6 +589,10 @@ def _resolve_chat_program_edit_in_transaction(
         baseline_program=active if proposal.get("rebuild_base_program") is not None else None)
     if proposal.get("rebuild_base_program") is not None and "code" not in result and result.get("version") != active.version:
         ledger.update_player_frequency(int(proposal["rebuild_frequency"]))
+        from service.focus_explanation import cross_day_focus_chat_explanation
+        result["focus_cross_day_explanation"] = cross_day_focus_chat_explanation(
+            ledger, ledger.get_active_program()
+        )
     ledger.clear_pending_chat_program_edit()
     result["changed"] = result.get("version") != active.version
     return result

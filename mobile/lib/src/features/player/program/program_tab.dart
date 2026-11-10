@@ -32,6 +32,7 @@ import '../tour/feature_list.dart';
 import '../workout/deload_banner.dart';
 import 'program_authority_recovery.dart';
 import 'program_change_summary_card.dart';
+import 'focus_extra_tag.dart';
 import 'program_day_edit_dialog.dart';
 import 'preparing_program_banner.dart';
 
@@ -430,6 +431,15 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
     }
   }
 
+  void _showFocusExplanation(TrainingProgram program) {
+    final String? explanation = program.focusCrossDayExplanation?[
+      displayCopyOf(context).languageCode
+    ] as String?;
+    if (explanation != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(explanation)));
+    }
+  }
+
   Future<void> _generateNewProgram() async {
     if (_programActionBusy) return;
     setState(() {
@@ -442,6 +452,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       if (!mounted) return;
       setState(() => _programActionBusy = false);
       _updateProgram(updated, _accountId, fromCache: false);
+      _showFocusExplanation(updated);
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -477,6 +488,7 @@ class _ProgramTabState extends ConsumerState<ProgramTab> {
       if (!mounted) return;
       setState(() => _programActionBusy = false);
       _updateProgram(updated, _accountId, fromCache: false);
+      _showFocusExplanation(updated);
     } on ApiException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -1713,6 +1725,8 @@ class _ExerciseRow extends StatelessWidget {
                       color: c.textPrimary,
                     ),
                   ),
+                  if (exercise.focusExtra != null)
+                    FocusExtraTag(extra: exercise.focusExtra!),
                   if (exercise.isCoachExercise)
                     _CoachExerciseDetails(exercise: exercise),
                   const SizedBox(height: 2),

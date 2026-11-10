@@ -148,6 +148,7 @@ class ProgramExerciseSchema(_ProgramStateModel):
     video_url: str | None = Field(default=None, description="Coach exercise HTTPS video link")
     is_coach_exercise: bool = Field(default=False, description="Coach-owned exercise, without Exercise library media")
     slot_key: str | None = Field(default=None, description="Movement slot that produced this exercise")
+    focus_extra: dict[str, Any] | None = None
     warmup_sets: int = Field(
         default=MIN_RAMPED_WARMUP_SETS,
         ge=MIN_RAMPED_WARMUP_SETS,
