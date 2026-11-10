@@ -613,6 +613,74 @@ def baselines(db: Any, ledger_id: str, ledger: Any | None = None) -> dict[str, A
         return {"baselines": _baseline_rows(open_ledger, db)}
 
 
+def _progression_group_index(set_groups: list[Any], progression_set_index: int) -> int:
+    for group_index, group in enumerate(set_groups):
+        if progression_set_index < group.sets:
+            return group_index
+        progression_set_index -= group.sets
+    return len(set_groups) - 1
+
+
+def _test_set_group_index(
+    program: Any, week_order: int, day_order: int, exercise_id: str
+) -> int | None:
+    if program is None:
+        return None
+    rationale_days = (program.program_rationale or {}).get("days", [])
+    selected_day = next(
+        (
+            day for day in rationale_days
+            if day.get("week_order", 1) == week_order and day.get("day_order") == day_order
+        ),
+        {},
+    )
+    exercise_rationale = next(
+        (
+            exercise.get("rationale") or {}
+            for exercise in selected_day.get("exercises", [])
+            if str(exercise.get("exercise_id")) == exercise_id
+        ),
+        {},
+    )
+    rir_rule = (exercise_rationale.get("prescription") or {}).get("rir") or {}
+    has_test_set = (
+        rir_rule.get("code") == "rir.test_set_rule"
+        and (rir_rule.get("params") or {}).get("test_set_count", 0) > 0
+    )
+    return 0 if has_test_set else None
+
+
+def _logged_progression_sets(
+    logged_sets: list[dict[str, Any]],
+    set_groups: list[Any],
+    excluded_group_index: int | None,
+) -> list[tuple[dict[str, Any], Any]]:
+    progression_sets = []
+    progression_set_index = 0
+    for logged_set in logged_sets:
+        if logged_set.get("is_warmup", False):
+            continue
+        group_index = _progression_group_index(set_groups, progression_set_index)
+        if group_index != excluded_group_index:
+            progression_sets.append((logged_set, set_groups[group_index]))
+        progression_set_index += 1
+    return progression_sets
+
+
+def _previous_progression_sets(
+    previous_sets: list[dict[str, Any]],
+    set_groups: list[Any],
+    excluded_group_index: int | None,
+) -> list[dict[str, Any]]:
+    if excluded_group_index is None:
+        return previous_sets
+    return [
+        previous_set
+        for set_order, previous_set in enumerate(previous_sets)
+        if _progression_group_index(set_groups, set_order) != excluded_group_index
+    ]
+
+
 def _persist_session(
     db: Any,
     ledger_id: str,
@@ -667,6 +735,14 @@ def _persist_session(
     all_sets_to_batch: list[dict[str, Any]] = []
     performed: list[dict[str, str]] = []
     performed_ids: set[str] = set()
+    prescribed_exercises = {
+        str(exercise.exercise_id): exercise for exercise in day_plan.exercises
+    }
+    progression_program = (
+        ledger.get_program_by_version(sync.program_version)
+        if sync.program_version is not None
+        else ledger.get_active_program()
+    )
 
     for item in sets_by_exercise:
         ex_obj = item["exercise"]
@@ -699,22 +775,51 @@ def _persist_session(
 
         if not working_sets:
             continue
-        top_set = max(working_sets, key=lambda x: x["weight_kg"])
+        progression_exercise = prescribed_exercises.get(exercise_id, ex_obj)
+        set_groups = progression_exercise.set_groups or ex_obj.set_groups or []
+        excluded_group_index = _test_set_group_index(
+            progression_program,
+            getattr(day_plan, "week_order", 1),
+            day_plan.day_order,
+            exercise_id,
+        )
+        progression_sets = _logged_progression_sets(
+            sets_data, set_groups, excluded_group_index
+        )
+        previous_progression_sets = _previous_progression_sets(
+            prev_perf, set_groups, excluded_group_index
+        )
+        top_set, target_group = max(
+            progression_sets or [(logged_set, set_groups[0]) for logged_set in working_sets],
+            key=lambda entry: entry[0]["weight_kg"],
+        )
+        target_rpe = 10 - target_group.target_rir
         top_rpe: float | None = top_set.get("rpe")
         curr_e1rm = round(set_e1rm(top_set["weight_kg"], top_set["reps"], top_rpe), 2)
 
-        next_proj = project_next_load(
-            last_weight=top_set["weight_kg"],
-            last_reps=top_set["reps"],
-            last_rpe=top_rpe,
-            target_reps_min=ex_obj.target_reps_min,
-            target_reps_max=ex_obj.target_reps_max,
-            target_rpe=ex_obj.target_rpe or 8.5,
-            equipment="barbell" if ("barbell" in ex_obj.exercise_name.lower()) else "other",
+        next_proj = (
+            project_next_load(
+                last_weight=top_set["weight_kg"],
+                last_reps=top_set["reps"],
+                last_rpe=top_rpe,
+                target_reps_min=target_group.reps_min,
+                target_reps_max=target_group.reps_max,
+                target_rpe=target_rpe,
+                equipment="barbell" if ("barbell" in ex_obj.exercise_name.lower()) else "other",
+            )
+            if progression_sets
+            else {
+                "projected_weight": top_set["weight_kg"],
+                "delta_kg": 0.0,
+                "status": "LOAD_MAINTAINED",
+            }
         )
 
-        if prev_perf:
-            prev_top = max(prev_perf, key=lambda x: x["weight_kg"])
+        if not progression_sets:
+            e1rm_delta = load_delta = reps_delta = None
+            status_badge, action = "CONSOLIDATING", "hold"
+        elif previous_progression_sets:
+            prev_top = max(previous_progression_sets, key=lambda x: x["weight_kg"])
             prev_e1rm = round(
                 set_e1rm(prev_top["weight_kg"], prev_top["reps"], prev_top.get("rpe")), 2
             )
@@ -725,16 +830,15 @@ def _persist_session(
             # Effort-dependent badges (#111) need a rating on the set; an
             # unrated top set never reads as 0 and never reads as a default, so
             # it can only earn the load/rep badges, which ignore effort.
-            # `ex_obj.target_rpe` is a required ProgramExerciseSchema field, so
-            # the set's own rating is the only thing that can be missing.
+            # The group's target is prescribed; only this set's rating can be missing.
             rated = top_rpe is not None
             if top_set["weight_kg"] > prev_top["weight_kg"]:
                 status_badge, action = "LOAD INCREASE", "increase"
             elif top_set["reps"] > prev_top["reps"] and top_set["weight_kg"] >= prev_top["weight_kg"]:
                 status_badge, action = "REP OVERLOAD", "increase"
-            elif rated and top_set["reps"] >= ex_obj.target_reps_max and top_rpe <= ex_obj.target_rpe:
+            elif rated and top_set["reps"] >= target_group.reps_max and top_rpe <= target_rpe:
                 status_badge, action = "GRADUATED", "increase"
-            elif rated and top_rpe >= 10.0 and ex_obj.target_rpe <= 8.5:
+            elif rated and top_rpe >= 10.0 and target_rpe <= 8.5:
                 status_badge, action = "OVERSHOOT", "deload"
             else:
                 status_badge, action = "CONSOLIDATING", "hold"
@@ -742,19 +846,21 @@ def _persist_session(
             e1rm_delta = load_delta = reps_delta = None
             status_badge, action = "BASELINE", "hold"
 
-        if next_proj["status"] == "PROGRESSION_UP":
-            target_text = f"Bracket ceiling reached. Advance load to {next_proj['projected_weight']} kg for {ex_obj.target_reps_min}–{ex_obj.target_reps_max} reps."
+        if not progression_sets:
+            target_text = ""
+        elif next_proj["status"] == "PROGRESSION_UP":
+            target_text = f"Bracket ceiling reached. Advance load to {next_proj['projected_weight']} kg for {target_group.reps_min}–{target_group.reps_max} reps."
         elif next_proj["status"] == "DYNAMIC_UPSCALE":
             target_text = f"Velocity surplus detected. Step load up to {next_proj['projected_weight']} kg (+{next_proj['delta_kg']} kg)."
         elif next_proj["status"] == "RPE_OVERSHOOT_DELOAD":
             target_text = f"Exertion threshold exceeded. Deload to {next_proj['projected_weight']} kg to re-establish reserve."
-        elif prev_perf:
+        elif previous_progression_sets:
             target_text = (
                 f"Consolidate at {top_set['weight_kg']} kg. Push for "
-                f"{min(top_set['reps'] + 1, ex_obj.target_reps_max)} reps @ RIR {min_rir_label(ex_obj.target_rpe)}."
+                f"{min(top_set['reps'] + 1, target_group.reps_max)} reps @ RIR {min_rir_label(target_rpe)}."
             )
         else:
-            target_text = f"Baseline logged at {top_set['weight_kg']} kg. Target {ex_obj.target_reps_min}–{ex_obj.target_reps_max} reps next session."
+            target_text = f"Baseline logged at {top_set['weight_kg']} kg. Target {target_group.reps_min}–{target_group.reps_max} reps next session."
 
         exercise_summaries.append(
             {
