@@ -60,7 +60,7 @@ services:
     restart: unless-stopped
 
   litestream:
-    image: litestream/litestream:0.5.17
+    image: litestream/litestream:0.5.18
     environment:
       R2_ENDPOINT: "${R2_ENDPOINT:?set R2_ENDPOINT in /opt/mayos/.env}"
       R2_BUCKET: "${R2_BUCKET:?set R2_BUCKET in /opt/mayos/.env}"

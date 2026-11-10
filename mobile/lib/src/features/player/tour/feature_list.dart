@@ -111,9 +111,9 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'assistant',
     titleEn: 'Assistant',
-    sentenceEn: 'Ask about training, program changes or recent food; profile answers use only the facts your question needs.',
+    sentenceEn: 'Ask about your Program days, Exercises and working sets, program changes or recent food; profile answers use only the facts your question needs.',
     titleAr: 'المساعد',
-    sentenceAr: 'اسأل عن تدريبك أو تغييرات برنامجك التدريبي أو طعامك مؤخرًا؛ وتستخدم إجابات الملف الشخصي البيانات المطلوبة لسؤالك فقط.',
+    sentenceAr: 'اسأل عن أيام برنامجك التدريبي وتمارينه ومجموعاته، أو تغييرات برنامجك، أو طعامك مؤخرًا؛ وتستخدم إجابات الملف الشخصي البيانات المطلوبة لسؤالك فقط.',
     target: 'assistant',
     location: TourShellTabLocation(tabIndex: 0),
     release: 0,
@@ -234,9 +234,9 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
     id: 'assistant_why',
     titleEn: 'Ask the assistant why',
-    sentenceEn: 'Ask why an exercise or training decision is in your program.',
+    sentenceEn: 'Ask why an exercise or training decision is in your program, or bring up something you told the assistant in an older chat.',
     titleAr: 'اسأل المساعد عن السبب',
-    sentenceAr: 'اسأل عن سبب وجود تمرين أو قرار تدريبي في برنامجك.',
+    sentenceAr: 'اسأل عن سبب وجود تمرين أو قرار تدريبي في برنامجك التدريبي، أو اذكر شيئًا قلته للمساعد في محادثة سابقة.',
     target: 'whats_new_assistant_why',
     location: TourRouteLocation(chatPath),
     release: 1,
