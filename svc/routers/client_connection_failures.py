@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request, status
 
 from svc.connection_failures import ConnectionFailureMetrics
 from svc.dependencies import VerifiedAccount, get_verified_account

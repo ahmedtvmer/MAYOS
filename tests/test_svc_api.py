@@ -143,6 +143,9 @@ def test_connection_failure_batch_is_authenticated_bounded_and_route_only(client
     for private_value in private_values:
         assert private_value not in stored
     assert "failure-report" not in stored
+    account = client.app.state.test_db.get_active_account_by_username("failure-report")
+    assert account["account_id"] not in stored
+    assert "app_build" not in stored and "offline_reported" not in stored
     from svc.monitoring.store import MetricsStore
 
     metrics = client.app.state.connection_failure_metrics.measurements
@@ -163,6 +166,9 @@ def test_connection_failure_batch_is_authenticated_bounded_and_route_only(client
 
     body = {"failures": [{**event, "body": "private-body-31"}]}
     assert client.post("/client/connection-failures", json=body, headers=headers).status_code == 422
+    assert client.post(
+        "/client/connection-failures", json={"failures": [event] * 200}, headers=headers
+    ).status_code == 202
     oversized = {"failures": [event] * 201}
     assert client.post(
         "/client/connection-failures", json=oversized, headers=headers
@@ -195,6 +201,49 @@ def test_connection_failure_upload_is_rate_limited_per_authenticated_account(cli
     ]
 
     assert [response.status_code for response in responses] == [202] * 10 + [429]
+    other_registration = client.post(
+        "/auth/register",
+        json={"trainee_id": "failure-other", "password": "correct-horse-1"},
+    )
+    other_headers = {"Authorization": f"Bearer {other_registration.json()['access_token']}"}
+    assert client.post(
+        "/client/connection-failures", json=payload, headers=other_headers
+    ).status_code == 202
+
+
+def test_delayed_connection_failures_keep_event_hour_and_survive_flush(client):
+    from svc.monitoring.store import MetricsStore
+
+    registration = client.post(
+        "/auth/register",
+        json={"trainee_id": "delayed-report", "password": "correct-horse-1"},
+    )
+    headers = {"Authorization": f"Bearer {registration.json()['access_token']}"}
+    now = datetime.now(UTC)
+    event = {
+        "failure_type": "receive_timeout", "offline_reported": False,
+        "platform": "android", "app_build": "42", "route_template": "/profile",
+    }
+    # Older delayed hours must not be pruned before the next monitoring flush.
+    times = [now - timedelta(days=8), now, now - timedelta(days=31), now + timedelta(minutes=10)]
+    response = client.post(
+        "/client/connection-failures", headers=headers,
+        json={"failures": [{**event, "occurred_at": instant.isoformat()} for instant in times]},
+    )
+    assert response.status_code == 202
+    assert response.json() == {"accepted": 2}
+    monitoring = client.app.state.monitoring
+    monitoring.store = MetricsStore(client.app.state.test_db.catalog_path)
+    monitoring.flush()
+    monitoring.flush()
+    persisted = [
+        row for row in monitoring.store.history("another-process", now - timedelta(days=30))
+        if row["provider"] == "client_connection_failures"
+    ]
+    assert {row["hour_utc"]: row["count"] for row in persisted} == {
+        instant.replace(minute=0, second=0, microsecond=0).isoformat(): 1
+        for instant in times[:2]
+    }
 
 
 def test_http_error_messages_are_additive_and_validation_values_are_allowlisted(client):

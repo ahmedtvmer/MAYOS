@@ -179,7 +179,7 @@ class ApiClient {
     );
   }
 
-  static const String _skipAuth = 'skipAuth';
+  static const String _skipAuth = connectionFailureSkipAuthKey;
 
   void _addHttpBreadcrumb(RequestOptions request, int? status) {
     if (status == null) return;
@@ -286,7 +286,9 @@ class ApiClient {
     if (options.extra[_skipAuth] != true) {
       final String? token = await _tokens.read();
       if (token != null && token.isNotEmpty) {
-        options.headers['Authorization'] = 'Bearer $token';
+          options.headers['Authorization'] = 'Bearer $token';
+          options.extra[connectionFailureAccountKey] =
+              await _tokens.readAccountId();
       }
     }
     handler.next(options);
@@ -315,6 +317,11 @@ class ApiClient {
       '$platform/$version';
 
   void _handleError(DioException error, ErrorInterceptorHandler handler) {
+    if (error.requestOptions.path == connectionFailuresEndpoint) {
+      // A stale telemetry upload must not sign out or redirect the Player.
+      handler.next(error);
+      return;
+    }
     final int? status = error.response?.statusCode;
     if (status != null) _addHttpBreadcrumb(error.requestOptions, status);
     final dynamic responseBody = error.response?.data;
@@ -347,17 +354,21 @@ class ApiClient {
           .flushAfterSuccessfulRequest(response.requestOptions);
       return response;
     } on DioException catch (error) {
-      await _recordConnectionFailure(error);
+      _recordConnectionFailure(error);
       throw _toApiException(error);
     }
   }
 
-  Future<void> _recordConnectionFailure(DioException error) async {
+  void _recordConnectionFailure(DioException error) {
     if (error.response != null || error.type == DioExceptionType.cancel) return;
+    unawaited(_recordConnectionFailureSafely(error));
+  }
+
+  Future<void> _recordConnectionFailureSafely(DioException error) async {
     try {
       await _connectionFailureReporter.record(error);
     } on Object {
-      // Operational telemetry must not replace the request's actual failure.
+      // Device telemetry must not delay or replace the request's failure.
     }
   }
 
@@ -3312,7 +3323,7 @@ class ApiClient {
       if (errorBody is ResponseBody && errorStatus != null) {
         throw _errorFromResponse(errorStatus, await _readStream(errorBody.stream));
       }
-      await _recordConnectionFailure(error);
+      _recordConnectionFailure(error);
       throw _toApiException(error);
     }
 
@@ -3382,6 +3393,14 @@ class ApiClient {
     MultiStreamController<ChatStreamEvent> events,
   ) async {
     final Map<String, String> headers = await _chatStreamHeaders();
+    final RequestOptions reportRequest = RequestOptions(
+      path: path,
+      method: 'POST',
+      headers: headers,
+      extra: <String, dynamic>{
+        connectionFailureAccountKey: await _tokens.readAccountId(),
+      },
+    );
     if (events.isClosed) return;
     final ChatStreamFetchRequest request = fetch(
       // Relative resolve against a slash-terminated base keeps any path
@@ -3391,40 +3410,37 @@ class ApiClient {
       headers: headers,
       body: jsonEncode(body),
     );
-    events.onCancel = request.abort;
+    bool cancelled = false;
+    events.onCancel = () {
+      cancelled = true;
+      request.abort();
+    };
     final ChatStreamFetchResponse response;
     try {
       response = await request.response;
     } on ChatStreamTransportException catch (error) {
-      await _recordFetchConnectionFailure(path, headers, error);
+      if (!cancelled) {
+        _recordFetchConnectionFailure(reportRequest, error);
+      }
       rethrow;
     }
-    _connectionFailureReporter.flushAfterSuccessfulRequest(
-      RequestOptions(path: path, method: 'POST', headers: headers),
-    );
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      _connectionFailureReporter.flushAfterSuccessfulRequest(reportRequest);
+    }
     await _pipeFetchSseResponse(response, parseDone, events);
   }
 
-  Future<void> _recordFetchConnectionFailure(
-    String path,
-    Map<String, String> headers,
+  void _recordFetchConnectionFailure(
+    RequestOptions request,
     ChatStreamTransportException error,
-  ) async {
-    try {
-      await _connectionFailureReporter.record(
-        DioException(
-          requestOptions: RequestOptions(
-            path: path,
-            method: 'POST',
-            headers: headers,
-          ),
-          type: DioExceptionType.connectionError,
-          error: error,
-        ),
-      );
-    } on Object {
-      // Reporting a dropped chat connection must not replace its error state.
-    }
+  ) {
+    _recordConnectionFailure(
+      DioException(
+        requestOptions: request,
+        type: DioExceptionType.connectionError,
+        error: error,
+      ),
+    );
   }
 
   void _forwardFetchFailure(

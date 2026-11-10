@@ -73,7 +73,7 @@ class ConnectionFailureMetrics:
     """In-process hourly counts, with no per-event or account data."""
 
     def __init__(self) -> None:
-        self.measurements = HourlyMeasurements()
+        self.measurements = HourlyMeasurements(retention_days=30)
 
     def record(
         self,

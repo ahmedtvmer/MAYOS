@@ -19,6 +19,16 @@ _FAILURE_TYPES = (
 _PLATFORMS = (("web", "Web"), ("android", "Android"))
 
 
+def _hourly_details(hours: list[str], counts: list[int]) -> str:
+    entries = "".join(
+        f'<li><time datetime="{hour}">{hour[:10]} {hour[11:16]} UTC</time>: {count:,}</li>'
+        for hour, count in zip(hours, counts) if count
+    )
+    if not entries:
+        return '<p>No failures in this window.</p>'
+    return '<details><summary>Hourly totals</summary><ul>' + entries + '</ul></details>'
+
+
 class ClientConnectionFailureProvider:
     key = "client_connection_failures"
 
@@ -72,7 +82,7 @@ class ClientConnectionFailureProvider:
         return (
             f"<tr><td>{html.escape(failure_label)}</td>"
             f"<td>{html.escape(platform_label)}</td><td>{total:,}</td>"
-            f"<td>{chart}</td></tr>"
+            f"<td>{chart}{_hourly_details(hours, hourly)}</td></tr>"
         )
 
 

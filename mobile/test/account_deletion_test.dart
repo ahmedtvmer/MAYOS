@@ -14,6 +14,7 @@ import 'package:mayos_mobile/src/core/chat_models.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
 import 'package:mayos_mobile/src/core/display_language.dart';
 import 'package:mayos_mobile/src/core/client_session_id.dart';
+import 'package:mayos_mobile/src/core/connection_failures.dart';
 import 'package:mayos_mobile/src/core/connectivity_message.dart';
 import 'package:mayos_mobile/src/core/device_timezone.dart';
 import 'package:mayos_mobile/src/core/models.dart';
@@ -25,6 +26,7 @@ import 'package:mayos_mobile/src/providers.dart';
 
 import 'support/fake_api_adapter.dart';
 import 'support/fake_mayos_api.dart';
+import 'support/in_memory_connection_failure_store.dart';
 
 const String _accountAlice = 'account-alice';
 
@@ -104,15 +106,6 @@ Future<void> _seedSignedIn(FakeMayosApi fake, InMemoryTokenStore tokens) async {
   fake.passwords['alice'] = 'correct-horse-1';
 }
 
-ApiClient _api(FakeMayosApi fake, TokenStore tokens) {
-  final ApiClient client = ApiClient(
-    tokens: tokens,
-    baseUrl: 'http://test.local',
-    adapter: fake.adapter,
-  );
-  return client;
-}
-
 ProviderContainer _container({
   required FakeMayosApi fake,
   required InMemoryTokenStore tokens,
@@ -121,9 +114,12 @@ ProviderContainer _container({
   required InMemoryChatCacheStore chat,
   DisplayLanguageStore? displayLanguageStore,
 }) {
+  final InMemoryConnectionFailureStore connectionFailures =
+      InMemoryConnectionFailureStore();
   return ProviderContainer(
     overrides: <Override>[
       tokenStoreProvider.overrideWithValue(tokens),
+      connectionFailureStoreProvider.overrideWithValue(connectionFailures),
       appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
       draftStoreProvider.overrideWithValue(drafts),
       workoutCacheStoreProvider.overrideWithValue(cache),
@@ -137,7 +133,15 @@ ProviderContainer _container({
       baselineCacheStoreProvider
           .overrideWithValue(InMemoryBaselineCacheStore()),
       apiClientProvider.overrideWith((ref) {
-        final ApiClient client = _api(fake, ref.watch(tokenStoreProvider));
+        final ApiClient client = ApiClient(
+          tokens: ref.watch(tokenStoreProvider),
+          baseUrl: 'http://test.local',
+          adapter: fake.adapter,
+          connectionFailureOptions: ConnectionFailureOptions(
+            store: connectionFailures,
+            offlineStatusLoader: () async => false,
+          ),
+        );
         client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
         client.onAccountDeleted =
             ref.watch(accountDeletedEventsProvider).signal;
@@ -379,6 +383,8 @@ void main() {
       final InMemoryWorkoutCacheStore cache = InMemoryWorkoutCacheStore();
       final InMemoryChatCacheStore chat = InMemoryChatCacheStore();
       await drafts.write(_accountAlice, <WorkoutDraft>[_draft()]);
+      final InMemoryConnectionFailureStore connectionFailures =
+          InMemoryConnectionFailureStore();
 
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 2.0;
@@ -389,6 +395,8 @@ void main() {
         ProviderScope(
           overrides: <Override>[
             tokenStoreProvider.overrideWithValue(tokens),
+            connectionFailureStoreProvider
+                .overrideWithValue(connectionFailures),
             appModeStoreProvider.overrideWithValue(InMemoryAppModeStore()),
             draftStoreProvider.overrideWithValue(drafts),
             workoutCacheStoreProvider.overrideWithValue(cache),
@@ -400,8 +408,15 @@ void main() {
             deviceTimezoneProvider
                 .overrideWithValue(Future<String>.value('America/New_York')),
             apiClientProvider.overrideWith((ref) {
-              final ApiClient client =
-                  _api(fake, ref.watch(tokenStoreProvider));
+              final ApiClient client = ApiClient(
+                tokens: ref.watch(tokenStoreProvider),
+                baseUrl: 'http://test.local',
+                adapter: fake.adapter,
+                connectionFailureOptions: ConnectionFailureOptions(
+                  store: connectionFailures,
+                  offlineStatusLoader: () async => false,
+                ),
+              );
               client.onUnauthorized =
                   ref.watch(unauthorizedEventsProvider).signal;
               client.onAccountDeleted =

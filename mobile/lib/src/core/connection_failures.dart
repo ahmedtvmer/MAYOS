@@ -3,12 +3,17 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 
 import 'connectivity_events.dart';
-import 'error_reporting.dart';
+import 'connection_route_templates.dart';
 import 'secure_store.dart';
 import 'token_store.dart';
 
+export 'connection_route_templates.dart' show connectionFailureRouteTemplate;
+
 const int maxBufferedConnectionFailures = 200;
 const String connectionFailuresEndpoint = '/client/connection-failures';
+const String connectionFailureAccountKey = 'connectionFailureAccountId';
+const String connectionFailureSkipAuthKey = 'skipAuth';
+const String _anonymousBuffer = 'device-before-sign-in';
 const Set<String> _failureTypes = <String>{
   'dns',
   'connect_timeout',
@@ -168,11 +173,14 @@ class PersistedConnectionFailureReporter {
       <String, List<ClientConnectionFailure>>{};
   final Set<String> _loadedAccounts = <String>{};
   Future<void> _queue = Future<void>.value();
+  bool _uploading = false;
+  DateTime? _retryAfter;
 
   Future<void> record(DioException failure) async {
     if (!_shouldRecord(failure)) return;
-    final String? accountId = await _tokens.readAccountId();
-    if (accountId == null || accountId.isEmpty) return;
+    final String accountId =
+        failure.requestOptions.extra[connectionFailureAccountKey] as String? ??
+            _anonymousBuffer;
     final ClientConnectionFailure? event = await _eventFrom(failure);
     if (event == null) return;
     await _exclusive(() async {
@@ -182,50 +190,82 @@ class PersistedConnectionFailureReporter {
 
   void flushAfterSuccessfulRequest(RequestOptions request) {
     if (!_hasBearer(request) || _isReportingRequest(request)) return;
-    unawaited(_flushSafely());
+    if (_uploading ||
+        (_retryAfter != null && DateTime.now().isBefore(_retryAfter!))) return;
+    _uploading = true;
+    unawaited(_flushSafely(request));
   }
 
-  Future<void> _flushSafely() async {
+  Future<void> _flushSafely(RequestOptions request) async {
     try {
-      await _exclusive(_flushPending);
-    } on Object {
-      // Failure reporting must never change the result of a Player request.
+      await _flushPending(request);
+    } on Exception {
+      // Keep the batch for a later successful request, without a retry storm.
+      _retryAfter = DateTime.now().add(const Duration(minutes: 1));
+    } finally {
+      _uploading = false;
     }
   }
 
-  Future<void> _flushPending() async {
-    final String? accountId = await _tokens.readAccountId();
+  Future<void> _flushPending(RequestOptions request) async {
+    final String? accountId =
+        request.extra[connectionFailureAccountKey] as String?;
     if (accountId == null || accountId.isEmpty) return;
+    if (accountId != await _tokens.readAccountId()) return;
+    final List<ClientConnectionFailure> batch =
+        await _exclusive(() => _batchForAccount(accountId));
+    if (batch.isEmpty) return;
+    // Network I/O stays outside the storage queue so another failure can be
+    // recorded immediately, even while this upload waits for a timeout.
+    await _sendBatch(request, batch);
+    await _exclusive(() async {
+      final List<ClientConnectionFailure> buffer = await _load(accountId);
+      buffer.removeWhere(batch.contains);
+      await _persist(accountId, buffer);
+    });
+  }
+
+  Future<List<ClientConnectionFailure>> _batchForAccount(String accountId) async {
     final List<ClientConnectionFailure> buffer = await _load(accountId);
-    if (buffer.isEmpty) return;
-    await _sendBatch(accountId, buffer);
+    final List<ClientConnectionFailure> anonymous = await _load(_anonymousBuffer);
+    if (anonymous.isNotEmpty) {
+      buffer.addAll(anonymous);
+      buffer.sort((left, right) => left.occurredAt.compareTo(right.occurredAt));
+      if (buffer.length > maxBufferedConnectionFailures) {
+        buffer.removeRange(0, buffer.length - maxBufferedConnectionFailures);
+      }
+      anonymous.clear();
+      await _persist(accountId, buffer);
+      await _persist(_anonymousBuffer, anonymous);
+    }
+    return List<ClientConnectionFailure>.of(buffer);
   }
 
   Future<void> _sendBatch(
-    String accountId,
-    List<ClientConnectionFailure> buffer,
+    RequestOptions request,
+    List<ClientConnectionFailure> batch,
   ) async {
-    final List<ClientConnectionFailure> batch =
-        buffer.take(maxBufferedConnectionFailures).toList();
-    final Response<dynamic> response = await _dio.post<dynamic>(
+    await _dio.post<dynamic>(
       connectionFailuresEndpoint,
+      options: Options(
+        // Pin the original account's authorization across session changes.
+        headers: <String, dynamic>{
+          'Authorization': request.headers['Authorization'],
+        },
+        extra: <String, dynamic>{connectionFailureSkipAuthKey: true},
+      ),
       data: <String, Object>{
         'failures': batch
             .map((ClientConnectionFailure event) => event.toJson())
             .toList(growable: false),
       },
     );
-    final int status = response.statusCode ?? 200;
-    if (status < 200 || status >= 300) return;
-    buffer.removeRange(0, batch.length);
-    await _store.write(accountId, buffer);
   }
 
   bool _shouldRecord(DioException failure) {
     final RequestOptions request = failure.requestOptions;
     return failure.response == null &&
         failure.type != DioExceptionType.cancel &&
-        _hasBearer(request) &&
         !_isReportingRequest(request);
   }
 
@@ -253,25 +293,42 @@ class PersistedConnectionFailureReporter {
     if (buffer.length > maxBufferedConnectionFailures) {
       buffer.removeRange(0, buffer.length - maxBufferedConnectionFailures);
     }
-    await _store.write(accountId, buffer);
+    await _persist(accountId, buffer);
+  }
+
+  Future<void> _persist(
+    String accountId,
+    List<ClientConnectionFailure> buffer,
+  ) async {
+    try {
+      await _store.write(accountId, buffer);
+    } on Exception {
+      // Device storage can be unavailable; keep the bounded in-memory buffer.
+    }
   }
 
   Future<List<ClientConnectionFailure>> _load(String accountId) async {
     if (!_loadedAccounts.contains(accountId)) {
-      final List<ClientConnectionFailure> stored = await _store.read(accountId);
+      List<ClientConnectionFailure> stored;
+      try {
+        stored = await _store.read(accountId);
+      } on Exception {
+        // Reporting still works for this session when device storage fails.
+        stored = <ClientConnectionFailure>[];
+      }
       _buffers[accountId] = stored;
       _loadedAccounts.add(accountId);
     }
     return _buffers.putIfAbsent(accountId, () => <ClientConnectionFailure>[]);
   }
 
-  Future<void> _exclusive(Future<void> Function() action) async {
+  Future<T> _exclusive<T>(Future<T> Function() action) async {
     final Completer<void> next = Completer<void>();
     final Future<void> previous = _queue;
     _queue = next.future;
     await previous;
     try {
-      await action();
+      return await action();
     } finally {
       next.complete();
     }
@@ -307,5 +364,3 @@ class PersistedConnectionFailureReporter {
   }
 }
 
-String connectionFailureRouteTemplate(String path) =>
-    sentryRouteTemplate(path).replaceAll(':id', '{id}');
