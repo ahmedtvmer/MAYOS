@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 
 from core.food_swap import swap_meal
-from core.meal_generator import role_matches
+from core.meal_generator import day_gap_note, role_matches
 from core.meal_setup import restriction_reasons
 from database.ledger.nutrition_meals import _swaps, meals_still_allowed, reviewed_staples
 from database.ledger.nutrition_swap_foods import library_food, swap_allowed
@@ -93,6 +93,9 @@ def _replace_variants(payload, command, replacement):
         variant["meals"] = [updated if other["slot"] == meal["slot"] else other for other in variant["meals"]]
         variant["totals"] = {key: sum(meal["totals"][key] for meal in variant["meals"])
                              for key in updated["totals"]}
+        targets = {key: sum(meal["targets"][key] for meal in variant["meals"])
+                   for key in updated["totals"]}
+        variant["gap_note"] = day_gap_note(variant["totals"], targets)
         payload.setdefault("swaps", {})[day_type] = _swaps(variant)
 
 

@@ -249,3 +249,18 @@ def test_lazy_v57_adds_meals_without_rewriting_existing_versions(tmp_path):
         connection.commit()
         apply_lazy_migrations(connection, "meal-player", tmp_path / "users", tmp_path / "backups")
         assert connection.execute("SELECT targets_json, meals_json FROM nutrition_plan_versions").fetchone() == ('{"calories":2000}', None)
+
+
+def test_day_gap_note_and_limits_survive_enable_and_http_read(meals_api):
+    client, db, headers, _today = meals_api
+    # A fixed, deliberately undersized day has no feasible alternative.
+    with db.catalog_locked() as connection:
+        connection.execute("UPDATE foods SET min_grams=100, max_grams=100 WHERE id IN ('protein','alternative','carb')")
+        connection.execute("UPDATE foods SET min_grams=5, max_grams=5 WHERE id='fat'")
+        connection.commit()
+    plan = _enable(client, headers)
+    assert set(plan["gap_note"]) == {"en", "ar"}
+    assert "under" in plan["gap_note"]["en"]
+    assert "أضف وجبة خفيفة أو حصة أكبر" in plan["gap_note"]["ar"]
+    assert client.get("/nutrition/meals", headers=headers).json()["gap_note"] == plan["gap_note"]
+    assert all([food["grams"] for food in meal["foods"]] == [100, 100, 5] for meal in plan["meals"])

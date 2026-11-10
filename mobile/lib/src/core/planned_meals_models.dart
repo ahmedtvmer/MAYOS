@@ -2,7 +2,7 @@ class PlannedMeals {
   const PlannedMeals({required this.status, required this.meals,
     this.reason, this.date, this.planVersionId, this.author,
     this.canEnable = false, this.canSwap = false, this.canRequestSwap = false,
-    this.targetsChanged = false, this.dayType});
+    this.targetsChanged = false, this.dayType, this.gapNote = const <String, String>{}});
 
   factory PlannedMeals.fromJson(Map<String, dynamic> json) => PlannedMeals(
     status: json['status'] as String,
@@ -15,6 +15,8 @@ class PlannedMeals {
     canRequestSwap: json['can_request_swap'] as bool? ?? false,
     targetsChanged: json['targets_changed'] as bool? ?? false,
     dayType: json['day_type'] as String?,
+    gapNote: (json['gap_note'] as Map<String, dynamic>? ?? <String, dynamic>{})
+      .map((String key, dynamic value) => MapEntry<String, String>(key, value as String)),
     meals: (json['meals'] as List<dynamic>? ?? <dynamic>[])
       .map((dynamic meal) => PlannedMeal.fromJson(meal as Map<String, dynamic>)).toList(),
   );
@@ -30,6 +32,7 @@ class PlannedMeals {
   final bool targetsChanged;
   final String? dayType;
   final List<PlannedMeal> meals;
+  final Map<String, String> gapNote;
 }
 
 class PlannedMeal {
