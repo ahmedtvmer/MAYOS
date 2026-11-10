@@ -87,6 +87,9 @@ _Avoid_: Persona, coach tone
 A free-text instruction the Player explicitly asks the assistant to remember about how they like to train. The Player can review, edit and delete these private preferences in Settings; the assistant reads them on demand, and a Coach never sees them.
 _Arabic_: تفضيل للمساعد
 
+**Profile section**:
+A named subset of the Player's saved profile facts: Body, Goals, Training setup, Limitations, Focus or Recovery. Limitations brings injury text, injury records with Exercise clearances and confirmed Movement restrictions together. The player assistant reads only requested sections; an unscoped read lists sections without personal values.
+
 **Active account**:
 An account that completed a workout or recorded a coaching action in the previous 30 days. A login alone does not make an account active.
 

@@ -53,7 +53,7 @@ services:
       start_period: 120s
 
   cloudflared:
-    image: cloudflare/cloudflared:2026.10.0
+    image: cloudflare/cloudflared:2026.10.7
     environment:
       TUNNEL_TOKEN: "${TUNNEL_TOKEN:?set TUNNEL_TOKEN in /opt/mayos/.env}"
     command: ["tunnel", "--no-autoupdate", "run"]

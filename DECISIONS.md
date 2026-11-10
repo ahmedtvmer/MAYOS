@@ -1143,6 +1143,30 @@ This document records the architectural, algorithmic, and heuristic decisions im
 * **Rationale**: A single-week overview has bounded structural size across supported Splits, frequencies and week counts. Matching prescriptions remain available through explicit scopes, while repeated restriction skips do not consume space once per day or Program week.
 * **Code References**: `agent/player_tools.py`, `tests/test_player_chat_privacy.py`, `tests/test_player_program_rationale_tool.py`.
 
+### ADR 104: Player chat receives query-scoped Context pieces (amends ADR 002 and 078)
+
+* **Status**: Accepted (#523). Profile sections implemented by #525. The Context router is recorded in ADR 105 (#527) and history trimming in the ADR 078 amendment (#524).
+* **Decision**: Player chat retrieves only the facts a question needs. `get_player_profile` advertises a required `sections` list of Body (gender, age, height, weight, target weight), Goals (current, long-term), Training setup (weekly frequency, equipment access, rep preference, training age), Limitations (injury text, injury records with Exercise clearances, confirmed Movement restrictions), Focus (Weak points), and Recovery (stress and sleep). Omitted or empty sections return only section names and one-line descriptions, with no personal values. The existing `not set` and storage-default evidence rules remain. Limitations replaces `get_player_injuries`; suggestions inferred from injury text are not confirmed Movement restrictions.
+* **Parent retrieval design**: A deterministic Context router will select Context pieces before the hosted model runs, after the unchanged safety and write-intent paths. Pieces use simulated assistant tool calls and tool results; scoped read tools remain available in the existing three-round loop. Player data stays out of the fixed system core. Each result stays within 4 KB; router pieces together stay within 8 KB and the hosted prompt ceiling, dropping lower-priority pieces first (safety, Limitations, Program, rationale, other). Coach AI is outside this decision's scope.
+* **Question → Context piece table**: see ADR 105, which holds the owner-reviewable routing contract.
+
+* **Body area → joint actions table**: Routing reuses the Movement restriction action vocabulary and curated Primary and Secondary actions.
+
+  | Body area | Joint actions |
+  |---|---|
+  | Knee | Knee Flexion, Knee Extension |
+  | Hip | Hip Flexion, Hip Extension, Hip Adduction, Hip Abduction |
+  | Lower back | Spinal Flexion, Spinal Extension, plus hinges |
+  | Shoulder | Shoulder Flexion, Shoulder Abduction, Shoulder Horizontal Adduction |
+  | Elbow | Elbow Flexion, Elbow Extension |
+  | Wrist | Wrist Flexion, Wrist Extension |
+  | Ankle | Plantar Flexion |
+  | Neck | Neck Flexion, Neck Extension |
+
+* **Parent history and telemetry design**: Keep the last six messages in full and trim older assistant replies within the ten-message window to 600 characters, excluding session pointers. Log router topics, piece names and whether the model fetched more, never matched names, arguments or results. A recognised name without a topic inherits the previous user turn's topic one turn deep; new names replace the old scope. Exercise matching prefers the active Program before the library, muscles include English and Arabic aliases, and region day words expand to all matching Program days.
+* **Rationale**: Section scope avoids disclosing injuries and Weak points for a body-fact question. Bringing injury text, records and clearances together removes the need to choose between two injury readers. Deterministic routing in the parent work reduces missed or oversized reads while keeping the existing tools as a fallback.
+* **Code References** (Profile sections): `agent/player_tools.py`, `agent/player_prompt.py`, `tests/test_player_chat_privacy.py`.
+
 ### ADR 106: Staple choices define cooked meal weights and per-food limits
 * **Status**: Accepted (owner review, 2026-11-09, #681).
 * **Decision**: Meals are weighed cooked through the curated Staple choice: raw rows keep no Staple role, following the owner's review in #683, so no separate `cooked_only` flag is needed. Optional `min_grams` and `max_grams` on Staple foods specify per-meal amount limits; each supplied bound overrides its per-category default in the meal generator (#682). Empty bounds leave the corresponding category defaults in effect.
