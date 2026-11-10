@@ -152,6 +152,7 @@ void main() {
       tokens,
       extraOverrides: <Override>[
         offlineBannerEnabledProvider.overrideWithValue(true),
+        reconnectProvider.overrideWith((_) => ReconnectController()),
         browserConnectivityEventsProvider.overrideWithValue(
           browserEvents.stream,
         ),

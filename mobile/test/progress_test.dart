@@ -7,7 +7,6 @@ import 'package:mayos_mobile/src/core/app_mode.dart';
 import 'package:mayos_mobile/src/core/display_language/controller.dart';
 import 'package:mayos_mobile/src/core/api_client.dart';
 import 'package:mayos_mobile/src/core/chat_storage.dart';
-import 'package:mayos_mobile/src/core/connectivity_message.dart';
 import 'package:mayos_mobile/src/core/theme/mayos_theme.dart';
 import 'package:mayos_mobile/src/core/theme/theme_mode_store.dart';
 import 'package:mayos_mobile/src/core/token_store.dart';
@@ -115,6 +114,7 @@ Override _apiOverride(FakeMayosApi fake, InMemoryTokenStore tokens) {
       tokens: tokens,
       baseUrl: 'http://test.local',
       adapter: fake.adapter,
+      retryDelay: (_) async {},
     );
     client.onUnauthorized = ref.watch(unauthorizedEventsProvider).signal;
     return client;
@@ -127,7 +127,6 @@ Future<void> _pumpProgress(
   ThemeMode mode = ThemeMode.light,
   Size size = const Size(1080, 2400),
   double textScale = 1.0,
-  Finder? ready,
   String languageCode = 'en',
 }) async {
   tester.view.physicalSize = size;
@@ -158,10 +157,9 @@ Future<void> _pumpProgress(
   );
   await _pumpUntilFound(
       tester,
-      ready ??
-          find.text(languageCode == 'ar'
-              ? 'الحد الأقصى التقديري لتكرار واحد'
-              : 'Estimated 1RM'));
+      find.text(languageCode == 'ar'
+          ? 'الحد الأقصى التقديري لتكرار واحد'
+          : 'Estimated 1RM'));
 }
 
 Future<void> _pumpApp(WidgetTester tester, FakeMayosApi fake) async {
@@ -512,15 +510,28 @@ void main() {
         findsOneWidget);
   });
 
-  testWidgets('offline first load shows the shared connectivity message',
-      (WidgetTester tester) async {
-    final FakeMayosApi fake = _signedInFake();
-    fake.loggedExercisesFails = true;
-    await _pumpProgress(tester, fake, ready: find.text(needsConnectionMessage));
+  for (final String languageCode in <String>['en', 'ar']) {
+    testWidgets('offline first load shows retry guidance ($languageCode)',
+        (WidgetTester tester) async {
+      final FakeMayosApi fake = _signedInFake();
+      fake.loggedExercisesFails = true;
+      final String message = languageCode == 'ar'
+          ? 'أنت غير متصل بالإنترنت. سنعيد المحاولة عند عودة الاتصال.'
+          : "You're offline. We'll retry when you're back online.";
+      await _pumpProgress(
+        tester,
+        fake,
+        languageCode: languageCode,
+        ready: find.text(message),
+      );
 
-    expect(find.text(needsConnectionMessage), findsOneWidget);
-    expect(find.text('Retry'), findsOneWidget);
-  });
+      expect(find.text(message), findsOneWidget);
+      expect(
+        find.text(languageCode == 'ar' ? 'إعادة المحاولة' : 'Retry'),
+        findsOneWidget,
+      );
+    });
+  }
 
   testWidgets('View exercise opens the exercise detail History tab',
       (WidgetTester tester) async {

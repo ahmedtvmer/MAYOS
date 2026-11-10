@@ -41,8 +41,11 @@ class _CoachProfileScreenState extends ConsumerState<CoachProfileScreen>
   @override
   Future<void> refreshAfterReconnect() async {
     // Reloading an open profile form would replace the coach's edits.
-    if (_loadError != null && !_saving) await _load();
-    if (mounted) await _loadExtras();
+    if (_loadError != null && !_saving) {
+      await _load();
+    } else {
+      await _loadExtras();
+    }
   }
 
   static const int _maxDisplayName = 60;

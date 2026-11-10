@@ -46,6 +46,9 @@ class CoachAssignmentsScreen extends ConsumerStatefulWidget {
 class _CoachAssignmentsScreenState extends ConsumerState<CoachAssignmentsScreen>
     with RefetchOnReconnect<CoachAssignmentsScreen> {
   @override
+  bool get refreshWhenHidden => true;
+
+  @override
   Future<void> refreshAfterReconnect() async {
     if (_loading ||
         _disabling ||

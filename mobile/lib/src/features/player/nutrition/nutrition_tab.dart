@@ -24,7 +24,7 @@ class _NutritionTabState extends ConsumerState<NutritionTab>
     with RefetchOnReconnect<NutritionTab> {
   @override
   Future<void> refreshAfterReconnect() async {
-    if (!_saving && !_waterSaving) await _load();
+    if (!_saving && !_waterSaving && _plan?.state != 'not_started') await _load();
   }
 
   NutritionPlanState? _plan;

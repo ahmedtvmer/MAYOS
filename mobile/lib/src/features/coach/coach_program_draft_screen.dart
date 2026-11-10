@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/app_failure.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/coach_copy.dart';
@@ -82,7 +83,24 @@ class CoachProgramDraftScreen extends ConsumerStatefulWidget {
 }
 
 class _CoachProgramDraftScreenState
-    extends ConsumerState<CoachProgramDraftScreen> {
+    extends ConsumerState<CoachProgramDraftScreen>
+    with RefetchOnReconnect<CoachProgramDraftScreen> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    if (_busy || _hasUnsavedChanges || widget.isNewTemplate) return;
+    final ApiClient api = ref.read(apiClientProvider);
+    try {
+      // _loadDraft can create a missing draft. Recovery only reads it.
+      final Map<String, dynamic> envelope = widget.isTemplateMode
+          ? await api.coachReadProgramTemplate(widget.templateId!)
+          : await api.coachReadProgramDraft(widget.assignmentId!);
+      if (mounted) _applyEnvelope(envelope);
+    } on ApiException catch (error) {
+      if (!mounted) return;
+      _setEditorState(() => _failure = apiFailureMessage(error));
+    }
+  }
+
   final List<_DraftWeekEditor> _weeks = <_DraftWeekEditor>[];
   int _selectedWeekIndex = 0;
   Map<String, dynamic>? _draft;

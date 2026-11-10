@@ -43,12 +43,16 @@ class ReconnectController extends StateNotifier<int>
 
 /// Refetches data in place, preserving selections, forms and workout state.
 /// Screens supply their existing read/refresh operation; writes never enter
-/// this path. Hidden tabs and covered routes wait until they are visible.
+/// this path. Hidden tabs and covered routes are skipped unless a screen owns
+/// shared live state that must stay current while another route is open.
 mixin RefetchOnReconnect<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   late final ProviderSubscription<int> _reconnectSubscription;
   bool _refreshingAfterReconnect = false;
+  bool _pendingReconnect = false;
 
   Future<void> refreshAfterReconnect();
+
+  bool get refreshWhenHidden => false;
 
   @override
   void initState() {
@@ -73,7 +77,13 @@ mixin RefetchOnReconnect<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   }
 
   Future<void> _refreshVisibleScreen() async {
-    if (!mounted || _refreshingAfterReconnect || !_visibleForRefresh) return;
+    if (!mounted || (!refreshWhenHidden && !_visibleForRefresh)) {
+      return;
+    }
+    if (_refreshingAfterReconnect) {
+      _pendingReconnect = true;
+      return;
+    }
     _refreshingAfterReconnect = true;
     try {
       await refreshAfterReconnect();
@@ -82,6 +92,12 @@ mixin RefetchOnReconnect<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       // error. A recovery signal is best-effort and must not leak that error.
     } finally {
       _refreshingAfterReconnect = false;
+      // An old request can still fail after the next connection returns.
+      // Preserve that recovery signal without overlapping screen loads.
+      if (_pendingReconnect) {
+        _pendingReconnect = false;
+        unawaited(Future<void>.microtask(_refreshVisibleScreen));
+      }
     }
   }
 

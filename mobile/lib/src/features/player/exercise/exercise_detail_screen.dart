@@ -140,7 +140,9 @@ class _ExerciseDetailScreenState extends ConsumerState<ExerciseDetailScreen>
 
   Future<void> _retry() async {
     final Future<_DetailData> future = _load();
-    setState(() => _future = future);
+    setState(() {
+      _future = future;
+    });
     await future;
   }
 

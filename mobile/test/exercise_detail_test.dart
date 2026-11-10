@@ -185,6 +185,47 @@ void main() {
     });
   }
 
+  testWidgets('a second reconnect waits for the current refresh then refetches',
+      (WidgetTester tester) async {
+    const String path = '/workouts/exercises/bench_press';
+    final FakeMayosApi fake = _signedInFake();
+    final StreamController<bool> events = StreamController<bool>.broadcast();
+    addTearDown(events.close);
+    await _pumpDetail(tester, fake, 'bench_press',
+        showProgram: false,
+        showHistory: false,
+        connectivityEvents: events.stream);
+    final int initialReads = fake.adapter.requests
+        .where((request) => request.path == path)
+        .length;
+    final Completer<void> release = Completer<void>();
+    fake.adapter.beforeRespond = (request) async {
+      if (request.path == path) await release.future;
+    };
+
+    events.add(false);
+    await tester.pump();
+    events.add(true);
+    for (int frame = 0; frame < 10; frame++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(fake.adapter.requests.where((request) => request.path == path),
+        hasLength(initialReads + 1));
+    events.add(false);
+    await tester.pump();
+    events.add(true);
+    await tester.pump();
+    await tester.pump();
+    expect(fake.adapter.requests.where((request) => request.path == path),
+        hasLength(initialReads + 1));
+
+    release.complete();
+    await _pumpUntilFound(tester, find.text('Bench Press'));
+    expect(fake.adapter.requests.where((request) => request.path == path),
+        hasLength(initialReads + 2));
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('covered exercise detail does not refetch on reconnect',
       (WidgetTester tester) async {
     const String path = '/workouts/exercises/bench_press';

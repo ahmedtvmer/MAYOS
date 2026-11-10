@@ -34,6 +34,9 @@ class _CoachAssistantTabScreenState
     extends ConsumerState<CoachAssistantTabScreen>
     with RefetchOnReconnect<CoachAssistantTabScreen> {
   @override
+  bool get refreshWhenHidden => true;
+
+  @override
   Future<void> refreshAfterReconnect() => _refreshAssignments();
 
   String? _selectedAssignmentId;

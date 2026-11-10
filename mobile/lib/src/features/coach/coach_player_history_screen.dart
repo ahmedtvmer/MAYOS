@@ -553,7 +553,7 @@ class _CoachPlayerHistoryScreenState
     extends ConsumerState<CoachPlayerHistoryScreen>
     with RefetchOnReconnect<CoachPlayerHistoryScreen> {
   @override
-  Future<void> refreshAfterReconnect() => _load();
+  Future<void> refreshAfterReconnect() => _load(showLoader: false);
 
   late CoachRosterEntry _entry;
   bool _loading = true;
@@ -615,10 +615,10 @@ class _CoachPlayerHistoryScreenState
       .where((CoachAlert alert) => alert.assignmentId == _entry.assignmentId)
       .toList(growable: false);
 
-  Future<void> _load() async {
+  Future<void> _load({bool showLoader = true}) async {
     final int seq = ++_loadSeq;
     setState(() {
-      _loading = true;
+      if (showLoader) _loading = true;
       _error = null;
     });
     try {
@@ -629,6 +629,13 @@ class _CoachPlayerHistoryScreenState
       if (!mounted || seq != _loadSeq) return;
       _applyPlayerData(playerData);
     } on ApiException catch (error) {
+      // Keep mounted editors and their unsaved fields during a failed
+      // background refresh. Access revocations still replace the page.
+      if (!showLoader &&
+          _summary != null &&
+          (error.statusCode == null || (error.statusCode ?? 0) >= 500)) {
+        return;
+      }
       _showLoadError(error, seq);
     }
   }
