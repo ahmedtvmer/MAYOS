@@ -798,6 +798,7 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
         "get_player_food_log",
         "get_player_injuries",
         "get_assistant_preferences",
+        "search_chat_history",
     ]
     first_payload = "\n".join(
         str(getattr(message, "content", message)) for message in model.calls[0]["messages"]
@@ -852,6 +853,199 @@ def test_tool_bound_chat_fetches_profile_and_program_only_after_parallel_calls(
         if line.startswith("data: ") and '"token"' in line
     ]
     assert len(token_frames) >= 2
+
+
+def test_chat_search_finds_old_english_and_arabic_messages_with_filters(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "chat-history-search"
+    headers = _authed(_register(client, username)["access_token"])
+    with db.open_ledger(username) as ledger:
+        history = [
+            ("user", "I told you my shoulder hurts after overhead press.", "2026-01-05T12:00:00+00:00"),
+            ("assistant", "coachassistantnote: I suggested a lighter shoulder warm-up.", "2026-01-08T12:00:00+00:00"),
+            ("user", "training diary first January entry", "2026-01-10T12:00:00+00:00"),
+            ("user", "training diary second January entry", "2026-01-20T12:00:00+00:00"),
+            ("user", "training diary February entry", "2026-02-20T12:00:00+00:00"),
+            ("user", "أَلَمٌ في الكَتِفِ بعد الضغط", "2026-02-05T12:00:00+00:00"),
+        ]
+        for role, content, created_at in history:
+            message_id = ledger.add_chat_message(role, content)
+            ledger.conn.execute(
+                "UPDATE chat_history SET created_at = ? WHERE id = ?",
+                (created_at, message_id),
+            )
+        for index in range(9):
+            ledger.add_chat_message("user", f"Recent training note {index}")
+        # Newest message, so it sits inside the prompt's recent window (ordered by created_at).
+        ledger.add_chat_message("assistant", "RECENT_WINDOW_SECRET")
+        ledger.add_chat_message(
+            "assistant",
+            format_session_pointer(SessionPointerFacts(
+                display_language="en", day_name="POINTER_ONLY_SECRET",
+                performed_date="2026-10-31", total_working_sets=3,
+                total_tonnage_kg=150.0, readiness=4,
+            )),
+        )
+
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(calls=[
+                {"name": "search_chat_history", "args": {
+                    "query": "shoulder hurts", "start_date": "2026-01-01",
+                    "end_date": "2026-01-31", "limit": 10,
+                }, "id": "search-english"},
+                {"name": "search_chat_history", "args": {
+                    "query": "الم", "start_date": "2026-02-01",
+                    "end_date": "2026-02-28", "limit": 10,
+                }, "id": "search-arabic"},
+                {"name": "search_chat_history", "args": {
+                    "query": "coachassistantnote",
+                }, "id": "search-assistant"},
+                {"name": "search_chat_history", "args": {
+                    "query": "training", "start_date": "2026-01-01",
+                    "end_date": "2026-01-31", "limit": 1,
+                }, "id": "search-limit"},
+                {"name": "search_chat_history", "args": {
+                    "query": "RECENT_WINDOW_SECRET",
+                }, "id": "search-recent"},
+                {"name": "search_chat_history", "args": {
+                    "query": "POINTER_ONLY_SECRET",
+                }, "id": "search-pointer"},
+                {"name": "search_chat_history", "args": {
+                    "query": "never stored search phrase",
+                }, "id": "search-empty"},
+            ]),
+            "لقيت الملاحظات القديمة اللي بتسأل عنها.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "إيه اللي قولتهولك قبل كده عن كتفي؟"},
+    ) as response:
+        body = response.read().decode("utf-8")
+        assert response.status_code == 200
+
+    results = [
+        json.loads(message.content)
+        for message in model.calls[1]["messages"]
+        if getattr(message, "name", None) == "search_chat_history"
+    ]
+    assert len(results) == 7
+    assert "shoulder hurts" in results[0]["matches"][0]["content"]
+    assert results[1]["matches"][0]["content"] == "أَلَمٌ في الكَتِفِ بعد الضغط"
+    assert "coachassistantnote" in results[2]["matches"][0]["content"]
+    assert len(results[3]["matches"]) == 1
+    assert "second January entry" in results[3]["matches"][0]["content"]
+    assert results[4] == {"status": "no_matches", "matches": [], "has_more": False}
+    assert results[5] == {"status": "no_matches", "matches": [], "has_more": False}
+    assert results[6] == {"status": "no_matches", "matches": [], "has_more": False}
+    status_frames = [
+        frame for frame in body.split("\n\n") if frame.startswith("event: status\n")
+    ]
+    assert len(status_frames) == 7
+    assert all(
+        json.loads(frame.splitlines()[1].removeprefix("data: "))["status"]
+        == "بدور في محادثاتك القديمة…"
+        for frame in status_frames
+    )
+
+
+def test_chat_history_search_backfills_legacy_messages_on_first_mount(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "chat-history-migration"
+    headers = _authed(_register(client, username)["access_token"])
+    with db.open_ledger(username) as ledger:
+        ledger.conn.execute("DROP TABLE chat_history_fts")
+        ledger.conn.execute(
+            "INSERT INTO chat_history (id, role, content, created_at) "
+            "VALUES (?, 'user', ?, ?)",
+            ("legacy-search-hit", "Last month I described my shoulder recovery plan.",
+             "2026-01-01T12:00:00+00:00"),
+        )
+        for index in range(12):
+            ledger.conn.execute(
+                "INSERT INTO chat_history (id, role, content, created_at) "
+                "VALUES (?, 'user', ?, ?)",
+                (f"legacy-filler-{index}", f"Old conversation note {index}",
+                 f"2026-02-01T00:00:{index:02d}+00:00"),
+            )
+        ledger.conn.execute("PRAGMA user_version = 55")
+
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(calls=[{
+                "name": "search_chat_history",
+                "args": {"query": "shoulder recovery"},
+                "id": "legacy-search",
+            }]),
+            "I found your earlier note about shoulder recovery.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "What did I tell you about shoulder recovery?"},
+    ) as response:
+        response.read()
+        assert response.status_code == 200
+
+    tool_result = next(
+        json.loads(message.content)
+        for message in model.calls[1]["messages"]
+        if getattr(message, "name", None) == "search_chat_history"
+    )
+    assert tool_result["matches"][0]["content"] == (
+        "Last month I described my shoulder recovery plan."
+    )
+
+
+def test_delete_chat_history_removes_old_messages_from_search(api, monkeypatch):
+    _force_free_form_coaching_intent(monkeypatch)
+    client, db = api
+    username = "chat-history-clear-search"
+    headers = _authed(_register(client, username)["access_token"])
+    with db.open_ledger(username) as ledger:
+        message_id = ledger.add_chat_message(
+            "user", "I described my old shoulder rehabilitation plan."
+        )
+        ledger.conn.execute(
+            "UPDATE chat_history SET created_at = ? WHERE id = ?",
+            ("2026-01-01T12:00:00+00:00", message_id),
+        )
+        for index in range(12):
+            ledger.add_chat_message("user", f"Old filler conversation {index}")
+    assert client.delete("/chat/history", headers=headers).status_code == 204
+
+    model = ScriptedChatModel(
+        [
+            ToolCallsTurn(calls=[{
+                "name": "search_chat_history",
+                "args": {"query": "shoulder rehabilitation"},
+                "id": "cleared-search",
+            }]),
+            "I couldn't find an older message about that.",
+        ]
+    )
+    monkeypatch.setattr(assistant_graph, "llm", model)
+
+    with client.stream(
+        "POST", "/chat/messages", headers=headers,
+        json={"content": "What did I tell you about my shoulder?"},
+    ) as response:
+        response.read()
+        assert response.status_code == 200
+
+    tool_result = next(
+        json.loads(message.content)
+        for message in model.calls[1]["messages"]
+        if getattr(message, "name", None) == "search_chat_history"
+    )
+    assert tool_result == {"status": "no_matches", "matches": [], "has_more": False}
 
 
 def test_arabic_tool_status_uses_fixed_localized_text(api, monkeypatch):
@@ -923,6 +1117,7 @@ def test_turn_without_tool_call_sends_no_profile_telemetry_or_program_data(api, 
         "get_player_food_log",
         "get_player_injuries",
         "get_assistant_preferences",
+        "search_chat_history",
     )
     assert "PROFILE_MUST_STAY_PRIVATE" not in payload
     assert "PROGRAM_MUST_STAY_PRIVATE" not in payload
