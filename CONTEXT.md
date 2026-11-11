@@ -231,6 +231,15 @@ Movement restriction skips. It contains no Exercise prescriptions; those require
 a named day, Exercise or muscle scope. The selected week defaults to the Player's
 current Program week.
 
+**Context router**:
+Deterministic code that selects the Context pieces needed by a Player's chat
+question before the hosted model runs. It follows the safety and write-intent
+paths; read-only tools remain available to fetch anything it misses.
+
+**Context piece**:
+One scoped read result added to a Player chat turn as a simulated assistant tool
+call and its matching tool result. It contains facts, never system instructions.
+
 **Split**:
 The named arrangement of a Training program's training days across the week, such as Upper/Lower, Anterior/Posterior or PPL × UL, for a given number of training days. Every split includes a leg day.
 _Arabic_: تقسيمة
