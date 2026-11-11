@@ -205,7 +205,12 @@ def test_no_program_is_reported_before_model_answers(api, monkeypatch):
     response = client.post("/chat/messages", headers=headers, json={"content": "How's my program?"})
     assert _done_content(response.text) == "You have no active Program."
     _calls, results = _simulated_reads(model)
-    assert results == [{"status": "not_set", "active_program": "not set", "program_authority": "player"}]
+    [result] = results
+    assert {key: result[key] for key in ("status", "active_program", "program_authority")} == {
+        "status": "not_set", "active_program": "not set", "program_authority": "player"}
+    # Logged volume is reported even without a Program (#545).
+    assert set(result["logged_volume_7d"].values()) == {0.0}
+    assert set(result["how_mayos_counts"]) == {"en", "ar"}
 
 
 def test_coach_program_router_retains_authority(router_player, monkeypatch):

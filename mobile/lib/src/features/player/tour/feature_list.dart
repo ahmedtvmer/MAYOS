@@ -79,6 +79,17 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     audience: 'lifter',
   ),
   FeatureEntry(
+    id: 'assistant_volume',
+    titleEn: 'Ask about training volume',
+    sentenceEn: 'Ask about direct and indirect weekly sets, logged volume, and clearly labelled estimates with their basis.',
+    titleAr: 'اسأل عن مجموعات التدريب',
+    sentenceAr: 'اسأل عن المجموعات الأسبوعية المباشرة وغير المباشرة والحجم المسجل والتقديرات المعلّمة بوضوح مع أساس حسابها.',
+    target: 'whats_new_assistant_why',
+    location: TourRouteLocation(chatPath),
+    release: 6,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
     id: 'set_effort',
     titleEn: 'Ease into each exercise',
     sentenceEn: 'New generated programs start each exercise with more reps in reserve when it has multiple sets; follow the RIR on each row.',
