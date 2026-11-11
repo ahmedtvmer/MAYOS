@@ -34,6 +34,9 @@ class MayosCopy {
   AiAllowanceCopy get _allowanceCopy => AiAllowanceCopy(languageCode);
   String get brandName => isArabic ? 'ميوس' : 'MAYOS';
   String get home => isArabic ? 'الرئيسية' : 'Home';
+  String get offlineSavedData => isArabic
+      ? 'أنت غير متصل، نعرض البيانات المحفوظة'
+      : 'Offline, showing saved data';
   String get program => isArabic ? 'البرنامج التدريبي' : 'Program';
   String get progress => isArabic ? 'التقدم' : 'Progress';
   String get nutritionTab => nutrition.tab;

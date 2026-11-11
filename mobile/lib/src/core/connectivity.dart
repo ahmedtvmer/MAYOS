@@ -10,19 +10,22 @@ import 'api_client.dart';
 import 'display_language/copy_context.dart';
 import 'connectivity_events.dart';
 import 'connectivity_message.dart';
+import 'saved_player_reads.dart';
+import '../features/player/auth/auth_controller.dart';
 import 'theme/mayos_spacing.dart';
 import 'theme/mayos_theme.dart';
 import 'theme/mayos_typography.dart';
 
-/// Whether this client may show the offline banner (#127): web only, so the
-/// Android surface stays exactly as it was. Injectable so tests can force it.
+/// Shared connectivity signals and banners on web and Android (ADR 112).
 final Provider<bool> offlineBannerEnabledProvider =
-    Provider<bool>((ref) => kIsWeb);
+    Provider<bool>((ref) => true);
 
-/// Browser online/offline events. Tests can override this stream to exercise
-/// the web connectivity source without a browser runtime.
+/// Platform network hints. The historical provider name is retained so existing
+/// browser tests can inject their event stream without a browser runtime.
 final Provider<Stream<bool>> browserConnectivityEventsProvider =
-    Provider<Stream<bool>>((ref) => browserConnectivityEvents());
+    Provider<Stream<bool>>(
+      (ref) => browserConnectivityEvents().asBroadcastStream(),
+    );
 
 /// Connectivity combines browser events with the API client's transport:
 /// browser events report navigator status, a transport failure means offline,
@@ -53,8 +56,7 @@ bool _isTransportFailure(DioException error) => isNetworkFailure(ApiException(
     ));
 
 /// The app's connectivity flag, fed by browser events and interceptors on the
-/// shared [ApiClient]. Created only when web banner display is enabled, so
-/// Android adds no behavior at all.
+/// shared [ApiClient]. A cached response never proves connectivity.
 final StateNotifierProvider<ConnectivityController, bool>
     connectivityControllerProvider =
     StateNotifierProvider<ConnectivityController, bool>((ref) {
@@ -72,7 +74,9 @@ final StateNotifierProvider<ConnectivityController, bool>
   final InterceptorsWrapper watcher = InterceptorsWrapper(
     onResponse:
         (Response<dynamic> response, ResponseInterceptorHandler handler) {
-      controller.markOnline();
+      if (response.extra[SavedPlayerReads.cachedResponse] != true) {
+        controller.markOnline();
+      }
       handler.next(response);
     },
     onError: (DioException error, ErrorInterceptorHandler handler) {
@@ -96,9 +100,11 @@ final StateNotifierProvider<ConnectivityController, bool>
 });
 
 /// Compact, non-blocking "You're offline" line shown in shared screen frames
-/// when either connectivity source reports offline. Web only; no interaction.
+/// when either connectivity source reports offline.
 class OfflineBanner extends StatelessWidget {
-  const OfflineBanner({super.key});
+  const OfflineBanner({this.showingSavedData = false, super.key});
+
+  final bool showingSavedData;
 
   /// The banner's line, exposed so tests can find it.
   static const String message = "You're offline";
@@ -119,9 +125,13 @@ class OfflineBanner extends StatelessWidget {
             Icon(Icons.cloud_off,
                 size: MayosIconSizes.small, color: c.textSecondary),
             const SizedBox(width: MayosSpacing.xs),
-            Text(
-              displayCopyOf(context).offlineBanner,
-              style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
+            Flexible(
+              child: Text(
+                showingSavedData
+                    ? displayCopyOf(context).offlineSavedData
+                    : displayCopyOf(context).offlineBanner,
+                style: MayosTypography.of(context).body.copyWith(color: c.textPrimary),
+              ),
             ),
           ],
         ),
@@ -139,13 +149,26 @@ class OfflineBannerSlot extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final bool enabled = ref.watch(offlineBannerEnabledProvider);
+    if (enabled && !kIsWeb) {
+      ref.listen<bool>(
+        connectivityControllerProvider,
+        (bool? previous, bool online) {
+          if (online && previous == false) {
+            unawaited(
+              ref.read(authControllerProvider.notifier).retrySavedSession(),
+            );
+          }
+        },
+      );
+    }
+    final bool saved = ref.watch(authControllerProvider).isOffline;
     final bool online =
         enabled ? ref.watch(connectivityControllerProvider) : true;
     return Visibility(
-      visible: enabled && !online,
-      child: const SizedBox(
+      visible: saved || (enabled && !online),
+      child: SizedBox(
         width: double.infinity,
-        child: OfflineBanner(),
+        child: OfflineBanner(showingSavedData: saved),
       ),
     );
   }

@@ -6,7 +6,7 @@ import 'tour_targets.dart';
 
 /// The shared Feature list used by the Tour and later discovery surfaces.
 const int tourCurrentVersion = 1;
-const int currentFeatureRelease = 6;
+const int currentFeatureRelease = 7;
 const int kReleaseShareCard = 3;
 const int kReleasePrCelebration = 3;
 const int kReleaseDurationCheck = 4;
@@ -64,6 +64,21 @@ List<String> validateFeatureEntries(
 
 const List<FeatureEntry> featureList = <FeatureEntry>[
   FeatureEntry(
+    id: 'offline_start',
+    titleEn: 'Open your saved training offline',
+    sentenceEn:
+        'Stay signed in without a connection and view saved Home, Program, '
+        'workout targets and Nutrition data until the connection returns.',
+    titleAr: 'افتح بيانات تدريبك المحفوظة دون اتصال',
+    sentenceAr:
+        'ابقَ مسجّل الدخول دون اتصال واطّلع على بيانات الرئيسية والبرنامج '
+        'التدريبي وأهداف التمرين والتغذية المحفوظة حتى يعود الاتصال.',
+    target: 'home',
+    location: TourShellTabLocation(tabIndex: 0),
+    release: 6,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
     id: 'focus_extra',
     titleEn: 'See why Focus extras are there',
     sentenceEn: 'Focus tags in your Program and Workout logger explain extra weekly sessions or extra sets for your weak point; tap a tag to read the reason.',
@@ -71,7 +86,7 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     sentenceAr: 'توضح علامات التركيز في البرنامج التدريبي ومسجل التمرين الجلسات أو المجموعات الإضافية لنقطة ضعفك؛ اضغط على العلامة لقراءة السبب.',
     target: 'program',
     location: TourShellTabLocation(tabIndex: 1),
-    release: 6,
+    release: 7,
     audience: 'lifter',
   ),
   FeatureEntry(
