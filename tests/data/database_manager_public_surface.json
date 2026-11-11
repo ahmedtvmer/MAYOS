@@ -241,6 +241,10 @@
       "kind": "method",
       "signature": "(self, exercise_id: str) -> dict[str, typing.Any] | None"
     },
+    "get_exercise_name_vocabulary": {
+      "kind": "method",
+      "signature": "(self) -> list[tuple[str, str]]"
+    },
     "get_food_library_food": {
       "kind": "method",
       "signature": "(self, food_id)"
