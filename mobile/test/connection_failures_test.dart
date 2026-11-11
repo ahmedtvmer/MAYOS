@@ -12,12 +12,37 @@ import 'package:mayos_mobile/src/core/token_store.dart';
 
 import 'support/fake_api_adapter.dart';
 
+class _WriteCompletionTracker {
+  final List<Completer<void>> _waiters = <Completer<void>>[];
+  int _writeCount = 0;
+
+  void markWrite() {
+    _writeCount++;
+    final List<Completer<void>> waiters = List<Completer<void>>.of(_waiters);
+    _waiters.clear();
+    for (final Completer<void> waiter in waiters) {
+      if (!waiter.isCompleted) waiter.complete();
+    }
+  }
+
+  Future<void> waitForWrites(int count) async {
+    while (_writeCount < count) {
+      final Completer<void> waiter = Completer<void>();
+      _waiters.add(waiter);
+      try {
+        await waiter.future.timeout(const Duration(seconds: 2));
+      } finally {
+        _waiters.remove(waiter);
+      }
+    }
+  }
+}
+
 class _MemoryConnectionFailureStore implements ConnectionFailureStore {
   final Map<String, List<ClientConnectionFailure>> _failures =
       <String, List<ClientConnectionFailure>>{};
-  final List<Completer<void>> _writeWaiters = <Completer<void>>[];
+  final _WriteCompletionTracker _writes = _WriteCompletionTracker();
   void Function(String, List<ClientConnectionFailure>)? onWrite;
-  int _writeCount = 0;
 
   @override
   Future<List<ClientConnectionFailure>> read(String accountId) async =>
@@ -35,27 +60,9 @@ class _MemoryConnectionFailureStore implements ConnectionFailureStore {
     onWrite?.call(accountId, failures);
   }
 
-  void _markWriteAttempt() {
-    _writeCount++;
-    final List<Completer<void>> waiters =
-        List<Completer<void>>.of(_writeWaiters);
-    _writeWaiters.clear();
-    for (final Completer<void> waiter in waiters) {
-      if (!waiter.isCompleted) waiter.complete();
-    }
-  }
+  void _markWriteAttempt() => _writes.markWrite();
 
-  Future<void> waitForWrites(int count) async {
-    while (_writeCount < count) {
-      final Completer<void> waiter = Completer<void>();
-      _writeWaiters.add(waiter);
-      try {
-        await waiter.future.timeout(const Duration(seconds: 2));
-      } finally {
-        _writeWaiters.remove(waiter);
-      }
-    }
-  }
+  Future<void> waitForWrites(int count) => _writes.waitForWrites(count);
 
   @override
   Future<void> deleteForAccount(String accountId) async {
@@ -105,6 +112,18 @@ class _UnavailableSecureStore extends SecureStore {
   @override
   Future<void> delete(String key) async =>
       throw StateError('Device storage unavailable');
+}
+
+class _TrackingSecureStore extends SecureStore {
+  final _WriteCompletionTracker _writes = _WriteCompletionTracker();
+
+  @override
+  Future<void> writeJson({required String key, required Object value}) async {
+    await super.writeJson(key: key, value: value);
+    _writes.markWrite();
+  }
+
+  Future<void> waitForWrites(int count) => _writes.waitForWrites(count);
 }
 
 Future<InMemoryTokenStore> _signedInTokens() async {
@@ -273,18 +292,18 @@ void main() {
   test('device buffer survives a client restart and clears after an accepted upload', () async {
     FlutterSecureStorage.setMockInitialValues(<String, String>{});
     final InMemoryTokenStore tokens = await _signedInTokens();
-    final ApiClient offline = _client(tokens, SecureConnectionFailureStore(),
-        FakeApiAdapter((_) => const FakeResponse.networkFailure()));
-    await expectLater(offline.deleteInjury(id: 'private-id'), throwsA(isA<ApiException>()));
-    expect(
-      await _waitForFailureCount(
-        () => SecureConnectionFailureStore(),
-        'account-alice',
-        1,
-      ),
-      hasLength(1),
+    final _TrackingSecureStore deviceStore = _TrackingSecureStore();
+    final ApiClient offline = _client(
+      tokens,
+      SecureConnectionFailureStore(store: deviceStore),
+      FakeApiAdapter((_) => const FakeResponse.networkFailure()),
     );
-    final SecureConnectionFailureStore reopened = SecureConnectionFailureStore();
+    await expectLater(offline.deleteInjury(id: 'private-id'), throwsA(isA<ApiException>()));
+    await deviceStore.waitForWrites(1);
+    final _TrackingSecureStore reopenedDeviceStore = _TrackingSecureStore();
+    final SecureConnectionFailureStore reopened =
+        SecureConnectionFailureStore(store: reopenedDeviceStore);
+    expect(await reopened.read('account-alice'), hasLength(1));
     final Completer<FakeRequest> uploaded = Completer<FakeRequest>();
     final ApiClient online = _client(tokens, reopened, FakeApiAdapter((request) {
       if (request.path == connectionFailuresEndpoint) {
@@ -298,9 +317,11 @@ void main() {
     final FakeRequest batch = await uploaded.future.timeout(const Duration(seconds: 2));
     expect(batch.body['failures'], hasLength(1));
     expect(batch.headers['Authorization'], 'Bearer token-alice');
-    // Drain the asynchronous acknowledgement and mocked device-storage write.
-    await Future<void>.delayed(Duration.zero);
-    expect(await reopened.read('account-alice'), isEmpty);
+    await reopenedDeviceStore.waitForWrites(1);
+    expect(
+      await SecureConnectionFailureStore().read('account-alice'),
+      isEmpty,
+    );
   });
 
   test('secure failure buffer falls back to memory when platform storage fails', () async {

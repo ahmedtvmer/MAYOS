@@ -218,10 +218,12 @@ class SecureConnectionFailureStore implements ConnectionFailureStore {
   Future<void> deleteForAccount(String accountId) async {
     await _fallback.deleteForAccount(accountId);
     _memoryAccounts.add(accountId);
+    unawaited(_deletePersistedAccount(accountId));
+  }
+
+  Future<void> _deletePersistedAccount(String accountId) async {
     try {
-      await _store
-          .delete(_key(accountId))
-          .timeout(_connectionFailureStorageTimeout);
+      await _store.delete(_key(accountId));
     } on Object {
       // Device storage can be unavailable while the in-memory copy is cleared.
     }
