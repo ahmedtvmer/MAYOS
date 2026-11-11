@@ -112,10 +112,10 @@ class AuthRepository {
 
   void _invalidateRestores() => _restoreRevision++;
 
-  void _endSession() {
+  Future<void> _endSession() async {
     _invalidateRestores();
     _sessionEnded = true;
-    _api.cancelAuthenticatedRequests();
+    await _api.cancelAuthenticatedRequests();
   }
 
   Future<bool> _canPersistRestore(
@@ -318,7 +318,7 @@ class AuthRepository {
   Future<void> deleteAccount(String password) async {
     final String? accountId = _knownAccountId ?? await _localAccountId();
     await _api.deleteAccount(password);
-    _endSession();
+    await _endSession();
     await _erasePrivateAccountData(accountId);
     if (!_usesPlatformTokenStorage) await _waitForRestoreWrites();
     await _clearPersistedTokens();
@@ -330,7 +330,7 @@ class AuthRepository {
   Future<void> deleteAccountWithGoogle({required String googleIdToken}) async {
     final String? accountId = _knownAccountId ?? await _localAccountId();
     await _api.deleteAccountWithGoogle(googleIdToken: googleIdToken);
-    _endSession();
+    await _endSession();
     await _erasePrivateAccountData(accountId);
     if (!_usesPlatformTokenStorage) await _waitForRestoreWrites();
     await _clearPersistedTokens();
@@ -361,14 +361,13 @@ class AuthRepository {
       currentPassword: currentPassword,
       newPassword: newPassword,
     );
-    _endSession();
     await clearSession(accountId: accountId);
   }
 
   /// Handles a request that reported `account_deleted`: erase the account's
   /// protected local data and clear the local session (ADR 039).
   Future<void> handleAccountDeleted({String? accountId}) async {
-    _endSession();
+    await _endSession();
     final String? localAccountId =
         accountId ?? _knownAccountId ?? await _localAccountIdForCleanup();
     await _erasePrivateAccountData(localAccountId);
@@ -499,7 +498,6 @@ class AuthRepository {
     String? accountId,
   }) async {
     await _api.resetPassword(token: token, newPassword: newPassword);
-    _endSession();
     await clearSession(accountId: accountId);
   }
 
@@ -525,7 +523,7 @@ class AuthRepository {
   /// keeps a private conversation from being readable by whoever holds the
   /// device next (ADR 036). Disclosure acceptance stays per account.
   Future<void> logout({String? accountId}) async {
-    _endSession();
+    await _endSession();
     final int teardownRevision = _restoreRevision;
     final Future<void> readCacheCleanup = _clearReadCaches(accountId);
     try {
@@ -544,7 +542,7 @@ class AuthRepository {
   /// invalid, e.g. after a 401): clears the account's cached chat history and
   /// the persisted token.
   Future<void> clearSession({String? accountId}) async {
-    _endSession();
+    await _endSession();
     await _clearReadCaches(accountId);
     if (!_usesPlatformTokenStorage) await _waitForRestoreWrites();
     await _clearPersistedTokens();

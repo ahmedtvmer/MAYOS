@@ -172,6 +172,8 @@ class ApiClient {
 
   static const String _skipAuth = 'skipAuth';
   static const String _sessionRequestToken = 'sessionRequestToken';
+  static const String _allowRequestAfterSessionEnd =
+      'allowRequestAfterSessionEnd';
 
   void _addHttpBreadcrumb(RequestOptions request, int? status) {
     if (status == null) return;
@@ -250,6 +252,8 @@ class ApiClient {
   final String Function() _displayLanguageLoader;
   late final Dio _dio;
   final Set<CancelToken> _sessionRequestTokens = <CancelToken>{};
+  final Map<CancelToken, Completer<void>> _sessionRequestCompletions =
+      <CancelToken, Completer<void>>{};
 
   /// Invoked when an authenticated request fails with 401.
   void Function()? onUnauthorized;
@@ -271,12 +275,17 @@ class ApiClient {
   Dio get dio => _dio;
 
   /// Cancels requests that belonged to the session that just ended.
-  void cancelAuthenticatedRequests() {
+  Future<void> cancelAuthenticatedRequests() async {
+    final List<Future<void>> completions = <Future<void>>[];
     for (final CancelToken token
         in List<CancelToken>.of(_sessionRequestTokens)) {
+      final Completer<void>? completion = _sessionRequestCompletions[token];
+      if (completion != null) completions.add(completion.future);
       token.cancel('Session ended');
     }
     _sessionRequestTokens.clear();
+    // Let Dio finish the canceled request chains before session cleanup ends.
+    await Future.wait<void>(completions);
   }
 
   Future<void> _attachToken(
@@ -290,20 +299,55 @@ class ApiClient {
     }
     options.headers['Accept-Language'] =
         _displayLanguageLoader() == 'ar' ? 'ar' : 'en';
-    if (options.extra[_skipAuth] != true) {
-      final CancelToken requestToken = options.cancelToken ??= CancelToken();
-      options.extra[_sessionRequestToken] = requestToken;
-      _sessionRequestTokens.add(requestToken);
-      if (requestToken.isCancelled) {
-        handler.next(options);
-        return;
-      }
-      final String? token = await _tokens.read();
-      if (token != null && token.isNotEmpty) {
-        options.headers['Authorization'] = 'Bearer $token';
-      }
+    if (options.extra[_skipAuth] != true &&
+        !await _attachBearer(options, handler)) {
+      return;
     }
     handler.next(options);
+  }
+
+  Future<bool> _attachBearer(
+    RequestOptions options,
+    RequestInterceptorHandler handler,
+  ) async {
+    final CancelToken? sessionToken = _sessionRequestTokenFor(options);
+    if (sessionToken != null && sessionToken.isCancelled) {
+      _rejectCancelledRequest(options, sessionToken, handler);
+      return false;
+    }
+    final String? token = await _tokens.read();
+    if (sessionToken != null && sessionToken.isCancelled) {
+      _rejectCancelledRequest(options, sessionToken, handler);
+      return false;
+    }
+    if (token != null && token.isNotEmpty) {
+      options.headers['Authorization'] = 'Bearer $token';
+    }
+    return true;
+  }
+
+  CancelToken? _sessionRequestTokenFor(RequestOptions options) {
+    if (options.extra[_allowRequestAfterSessionEnd] == true) return null;
+    final CancelToken requestToken = options.cancelToken ??= CancelToken();
+    options.extra[_sessionRequestToken] = requestToken;
+    _sessionRequestTokens.add(requestToken);
+    _sessionRequestCompletions[requestToken] = Completer<void>();
+    return requestToken;
+  }
+
+  void _rejectCancelledRequest(
+    RequestOptions options,
+    CancelToken token,
+    RequestInterceptorHandler handler,
+  ) {
+    handler.reject(
+      DioException(
+        requestOptions: options,
+        type: DioExceptionType.cancel,
+        error: token.cancelError,
+      ),
+      true,
+    );
   }
 
   static String _loadClientHeader() {
@@ -359,7 +403,12 @@ class ApiClient {
 
   void _forgetSessionRequest(RequestOptions request) {
     final Object? token = request.extra.remove(_sessionRequestToken);
-    if (token is CancelToken) _sessionRequestTokens.remove(token);
+    if (token is CancelToken) {
+      _sessionRequestTokens.remove(token);
+      final Completer<void>? completion =
+          _sessionRequestCompletions.remove(token);
+      if (completion != null && !completion.isCompleted) completion.complete();
+    }
   }
 
   Future<void> _waitForHandling(
@@ -721,6 +770,10 @@ class ApiClient {
     await _send(() => _dio.put<dynamic>(
           '/auth/display-language',
           data: <String, dynamic>{'display_language': language},
+          // Settings caches a successful late response to its initiating account.
+          options: Options(extra: <String, dynamic>{
+            _allowRequestAfterSessionEnd: true,
+          }),
         ));
   }
 

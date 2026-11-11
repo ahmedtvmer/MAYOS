@@ -42,7 +42,7 @@ class SavedPlayerReads extends Interceptor {
       handler.next(options);
       return;
     }
-    handler.resolve(saved);
+    handler.resolve(saved, true);
   }
 
   Future<_SavedReadContext?> _attachReadContext(RequestOptions request) async {
@@ -62,36 +62,16 @@ class SavedPlayerReads extends Interceptor {
   }
 
   @override
-  void onResponse(Response<dynamic> response, ResponseInterceptorHandler handler) async {
+  void onResponse(Response<dynamic> response, ResponseInterceptorHandler handler) {
     final RequestOptions request = response.requestOptions;
     final dynamic context = request.extra[_contextKey];
     if (context is! _SavedReadContext) {
       handler.next(response);
       return;
     }
-    if (!await _canSave(response, context)) {
-      handler.next(response);
-      return;
-    }
-    final String? accountId =
-        _responseAccountId(request, context, response.data);
-    if (accountId == null && request.path != '/auth/me') {
-      unawaited(
-        _saveAfterAccountIdResolves(response, context).catchError((Object _) {
-          // Snapshot caching must not hold up a live API response.
-        }),
-      );
-    } else if (accountId != null &&
-        (context.accountId == null || context.accountId == accountId)) {
-      unawaited(_store
-          .write(accountId, _resource(request), <String, dynamic>{
-            'body': response.data,
-            'day': _today(),
-          }, context.generation)
-          .catchError((Object _) {
-            // Saving a snapshot must not delay a live API response.
-          }));
-    }
+    unawaited(_saveResponse(response, context).catchError((Object _) {
+      // Snapshot caching must not hold up a live API response.
+    }));
     handler.next(response);
   }
 
@@ -191,6 +171,41 @@ class SavedPlayerReads extends Interceptor {
       context.generation,
     );
   }
+
+  Future<void> _saveResponse(
+    Response<dynamic> response,
+    _SavedReadContext context,
+  ) async {
+    if (!await _canSave(response, context)) return;
+    final RequestOptions request = response.requestOptions;
+    final String? accountId =
+        _responseAccountId(request, context, response.data);
+    if (accountId == null) {
+      if (request.path != '/auth/me') {
+        await _saveAfterAccountIdResolves(response, context);
+      }
+      return;
+    }
+    if (context.accountId != null && context.accountId != accountId) {
+      return;
+    }
+    await _writeResponseSnapshot(response, context, accountId);
+  }
+
+  Future<void> _writeResponseSnapshot(
+    Response<dynamic> response,
+    _SavedReadContext context,
+    String accountId,
+  ) =>
+      _store.write(
+        accountId,
+        _resource(response.requestOptions),
+        <String, dynamic>{
+          'body': response.data,
+          'day': _today(),
+        },
+        context.generation,
+      );
 
   static bool _isStaleDaily(String path, Map<String, dynamic> snapshot) =>
       _isDaily(path) && snapshot['day'] != _today();
