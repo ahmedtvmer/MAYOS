@@ -222,6 +222,23 @@ def _find_name_rows(cursor, search: _NameSearch):
 
 
 class ExerciseLookupMixin:
+    def get_exercise_name_vocabulary(self) -> list[tuple[str, str]]:
+        """Visible library source/display names and aliases for deterministic mentions."""
+        name_expression, display_join = effective_exercise_name_sql()
+        with self._catalog_lock:
+            rows = self.catalog_conn.execute(
+                f"SELECT e.id, e.name, {name_expression} AS display_name "
+                f"FROM exercises e {display_join} "
+                f"WHERE {exercise_library_visible_sql('e.id')}"
+            ).fetchall()
+            aliases = self.catalog_conn.execute(
+                "SELECT a.exercise_id, a.alias FROM exercise_aliases a "
+                f"WHERE {exercise_library_visible_sql('a.exercise_id')}"
+            ).fetchall()
+        return [
+            (str(row[0]), name) for row in rows for name in (row[1], row[2]) if name
+        ] + [(str(row[0]), row[1]) for row in aliases if row[1]]
+
     def get_exercise_library_entries(
         self,
         exercise_ids: Iterable[str],

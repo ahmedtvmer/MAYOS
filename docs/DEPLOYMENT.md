@@ -559,7 +559,7 @@ services:
       start_period: 120s
 
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2026.10.7
     container_name: mayos_tunnel
     restart: unless-stopped
     command: tunnel --no-autoupdate --url http://mayos-api:8000
@@ -1686,10 +1686,11 @@ input to `/opt/mayos/app`, including `data/processed_exercises.csv` and
 mobile outputs, caches, worktrees, and secrets. It never runs `git pull` on the
 server.
 
-Docker builds `api` on the server and reuses its layer cache. The script then
-runs `compose up -d --no-deps api`, leaving the existing `cloudflared` and
-Litestream services running. It polls the API container's `/readyz` for up to
-three minutes and prints the successful response. The last three image tags
+Docker builds `api` on the server and reuses its layer cache. The script first
+runs `compose up -d --no-deps api` and polls the API container's `/readyz` for
+up to three minutes. After readiness succeeds, it also runs Compose for the
+`cloudflared` and Litestream services, applying any changed image tags. The
+last three API image tags
 are kept in `/opt/mayos/state/deploy-history.tsv`; older `mayos-api` images are
 removed while the running image is retained. After a successful deploy, the
 script also prunes Docker build cache older than 168 hours and prints `df -h /`;
@@ -1707,6 +1708,34 @@ image running and explains that Training ledgers may have migrated.
 ```bash
 ./deploy/deploy_server.sh status
 ```
+
+### Cloudflare Tunnel image upgrade and rollback
+
+The production connector image is pinned in `deploy/compose.server.yaml`.
+Staging's API joins the production network and uses that same connector through
+the `api-staging` alias; `deploy/compose.staging.yaml` does not run a second
+tunnel connector.
+
+To upgrade, change the connector to an exact release tag, merge the change to
+`master`, and deploy it to staging first:
+
+```bash
+./deploy/deploy_server.sh staging up
+```
+
+Check staging readiness and the staging route at `https://staging.mayos.online`.
+Staging validation exercises the API through the currently running production
+connector; it does not start a separate tunnel image. After staging passes,
+deploy the merged `master` checkout to production with the command in §14.
+Once the API is ready, the production deploy recreates `cloudflared` with the
+new pinned image. Keep `TUNNEL_TOKEN` and the Cloudflare tunnel configuration
+unchanged.
+
+To roll back the connector, restore its previous exact image tag in
+`deploy/compose.server.yaml`, merge that change to `master`, then deploy the
+merged checkout to production. The successful production deploy applies the
+previous tag to `cloudflared`; the API image rollback command does not change
+the connector tag.
 
 ### Rollback (#376)
 
