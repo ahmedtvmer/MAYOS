@@ -40,15 +40,16 @@ class AccountDataEraser {
   final WorkoutStartNoticeStore _workoutStartNotice;
 
   Future<void> erase(String accountId) async {
-    final List<Future<void>> awaitForInjectedStores = <Future<void>>[];
+    // Same order as before: injected stores are awaited one at a time, while
+    // platform storage is started without blocking teardown.
     for (final _AccountErase erasure in _erasuresForAccount(accountId)) {
-      _startErase(
-        erasure.erase,
-        erasure.usesPlatformStorage,
-        awaitForInjectedStores,
-      );
+      final Future<void> cleanup = _bestEffort(erasure.erase);
+      if (erasure.usesPlatformStorage) {
+        unawaited(cleanup);
+      } else {
+        await cleanup;
+      }
     }
-    await Future.wait<void>(awaitForInjectedStores);
   }
 
   List<_AccountErase> _erasuresForAccount(String accountId) =>
@@ -78,19 +79,6 @@ class AccountDataEraser {
           usesPlatformStorage: false,
         ),
       ];
-
-  void _startErase(
-    Future<void> Function() action,
-    bool usesPlatformStorage,
-    List<Future<void>> awaitForInjectedStores,
-  ) {
-    final Future<void> cleanup = _bestEffort(action);
-    if (usesPlatformStorage) {
-      unawaited(cleanup);
-    } else {
-      awaitForInjectedStores.add(cleanup);
-    }
-  }
 
   bool _usesPlatformStorage(Object store) => switch (store) {
         SecureDraftStore value => value.usesPlatformStorage,

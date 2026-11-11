@@ -382,18 +382,15 @@ class AuthRepository {
       return;
     }
     final SavedPlayerDataStore? savedData = _savedData;
-    final Future<void>? savedDataCleanup = savedData == null
-        ? null
-        : savedData.clearAccount(accountId);
-    savedData?.confirmSession();
-    final Future<void> privateDataCleanup = _eraser.erase(accountId);
-    if (savedData != null && savedDataCleanup != null) {
+    if (savedData != null) {
+      final Future<void> savedDataCleanup = savedData.clearAccount(accountId);
+      savedData.confirmSession();
       await _completeStorageCleanup(
         savedDataCleanup,
         usesPlatformStorage: savedData.usesPlatformStorage,
       );
     }
-    await privateDataCleanup;
+    await _eraser.erase(accountId);
   }
 
   bool get _usesPlatformTokenStorage => switch (_tokens) {

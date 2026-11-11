@@ -23,6 +23,7 @@ import 'support/fake_mayos_api.dart';
 import 'support/in_memory_browser_key_value_store.dart';
 
 Future<void> _primePlayerCache({
+  WidgetTester? tester,
   required FakeMayosApi fake,
   required InMemoryTokenStore tokens,
   required InMemoryBrowserKeyValueStore storage,
@@ -45,31 +46,38 @@ Future<void> _primePlayerCache({
     },
   };
 
-  final ProviderContainer container = authContainerFor(
-    fake,
-    tokens,
-    savedPlayerDataBrowser: storage,
-    extraOverrides: extraOverrides,
-  );
-  try {
-    await container.read(authControllerProvider.notifier).login(
-          username: 'alice',
-          password: 'password-123',
-        );
-    final ApiClient api = container.read(apiClientProvider);
-    await api.activeProgram();
-    await api.trainingSchedule();
-    await api.volume();
-    await api.personalRecords();
-    await api.checkpointReviews();
-    await api.myAssignment();
-    await api.trainingStatus();
-    await api.prescription(1);
-    await api.nutrition();
-    await api.foodLogDay();
-  } finally {
-    container.dispose();
+  // Real async work outside a pump never completes under testWidgets' fake
+  // clock; the first test in this file paid lazy start-up costs there and hung.
+  Future<void> prime() async {
+    final ProviderContainer container = authContainerFor(
+      fake,
+      tokens,
+      savedPlayerDataBrowser: storage,
+      extraOverrides: extraOverrides,
+    );
+    try {
+      await container.read(authControllerProvider.notifier).login(
+            username: 'alice',
+            password: 'password-123',
+          );
+      final ApiClient api = container.read(apiClientProvider);
+      await api.activeProgram();
+      await api.trainingSchedule();
+      await api.volume();
+      await api.personalRecords();
+      await api.checkpointReviews();
+      await api.myAssignment();
+      await api.trainingStatus();
+      await api.prescription(1);
+      await api.nutrition();
+      await api.foodLogDay();
+    } finally {
+      container.dispose();
+    }
   }
+
+  if (tester == null) return prime();
+  await tester.runAsync(prime);
 }
 String _today() => DateTime.now().toIso8601String().substring(0, 10);
 
@@ -108,6 +116,7 @@ void main() {
             offlineWorkoutDraftsEnabledProvider.overrideWithValue(false),
         ];
         await _primePlayerCache(
+          tester: tester,
           fake: fake,
           tokens: tokens,
           storage: storage,
@@ -135,11 +144,13 @@ void main() {
           listen: false,
         );
         final ApiClient api = container.read(apiClientProvider);
-        expect((await api.volume())['Chest'], 12.5);
-        expect((await api.activeProgram())?.programName, 'Upper/Lower 4x');
-        expect((await api.prescription(1)).targets, isNotEmpty);
-        expect((await api.nutrition()).targets?['calories'], 2345);
-        expect((await api.foodLogDay()).date, DateTime.parse(_today()));
+        await tester.runAsync(() async {
+          expect((await api.volume())['Chest'], 12.5);
+          expect((await api.activeProgram())?.programName, 'Upper/Lower 4x');
+          expect((await api.prescription(1)).targets, isNotEmpty);
+          expect((await api.nutrition()).targets?['calories'], 2345);
+          expect((await api.foodLogDay()).date, DateTime.parse(_today()));
+        });
 
         await tester.tap(find.text(copy.nutritionTab).last);
         await _pumpUntilFound(tester, find.text('2345'));
@@ -173,6 +184,7 @@ void main() {
           StreamController<bool>.broadcast();
       addTearDown(browserEvents.close);
       await _primePlayerCache(
+        tester: tester,
         fake: fake,
         tokens: tokens,
         storage: storage,
@@ -254,6 +266,7 @@ void main() {
         StreamController<bool>.broadcast();
     addTearDown(browserEvents.close);
     await _primePlayerCache(
+      tester: tester,
       fake: fake,
       tokens: tokens,
       storage: storage,
@@ -485,6 +498,7 @@ void main() {
     final InMemoryTokenStore tokens = InMemoryTokenStore();
     final InMemoryBrowserKeyValueStore storage = InMemoryBrowserKeyValueStore();
     await _primePlayerCache(
+      tester: tester,
       fake: fake, tokens: tokens, storage: storage, language: 'en',
     );
     final ProviderContainer container = authContainerFor(
