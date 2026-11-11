@@ -6,7 +6,7 @@ import 'tour_targets.dart';
 
 /// The shared Feature list used by the Tour and later discovery surfaces.
 const int tourCurrentVersion = 1;
-const int currentFeatureRelease = 6;
+const int currentFeatureRelease = 7;
 const int kReleaseShareCard = 3;
 const int kReleasePrCelebration = 3;
 const int kReleaseDurationCheck = 4;
@@ -71,6 +71,17 @@ const List<FeatureEntry> featureList = <FeatureEntry>[
     sentenceAr: 'اطّلع على التمارين التي تحتاج إلى مراجعة التصريح الطبي في برنامجك التدريبي مع تسجيل ما أديته فعليًا.',
     target: 'program',
     location: TourShellTabLocation(tabIndex: 1),
+    release: 7,
+    audience: 'lifter',
+  ),
+  FeatureEntry(
+    id: 'assistant_volume',
+    titleEn: 'Ask about training volume',
+    sentenceEn: 'Ask about direct and indirect weekly sets, logged volume, and clearly labelled estimates with their basis.',
+    titleAr: 'اسأل عن مجموعات التدريب',
+    sentenceAr: 'اسأل عن المجموعات الأسبوعية المباشرة وغير المباشرة والحجم المسجل والتقديرات المعلّمة بوضوح مع أساس حسابها.',
+    target: 'whats_new_assistant_why',
+    location: TourRouteLocation(chatPath),
     release: 6,
     audience: 'lifter',
   ),

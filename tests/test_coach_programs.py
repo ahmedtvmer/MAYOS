@@ -2430,7 +2430,13 @@ def test_multi_day_program_draft_round_trips_every_field_through_publish(api):
 
     active = client.get("/programs/active", headers=player_headers)
     assert active.status_code == 200, active.text
-    assert active.json()["days"] == days
+    active_days = active.json()["days"]
+    for day in active_days:
+        for exercise in day["exercises"]:
+            # This Player-read projection is derived from the catalog and is
+            # not part of the Coach's persisted publication response.
+            exercise.pop("notes_are_technique", None)
+    assert active_days == days
 
 
 def test_ending_assignment_discards_program_draft(api):

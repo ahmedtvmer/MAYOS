@@ -549,6 +549,7 @@ def normalize_program_draft(draft: dict[str, Any]) -> dict[str, Any]:
             for exercise in day.get("exercises", []):
                 exercise.pop("clearance_status", None)
                 exercise.pop("clearance_limit_notes", None)
+                exercise.pop("notes_are_technique", None)
                 if exercise.get("rationale") is None:
                     exercise.pop("rationale", None)
             for warmup in day.get("warmup_exercises", []):

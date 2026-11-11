@@ -388,7 +388,7 @@ def _build_program_exercise(
         target_reps_max=rep_max,
         target_rpe=target_rpe_for_experience(spec, prescription.experience_level),
         rest_seconds=rest_seconds_for_exercise_class(spec),
-        notes=candidate.get("instructions") or None,
+        notes="",
         image_path=candidate.get("image_path"),
         gif_path=candidate.get("gif_path"),
         suggested_substitutes=suggested_substitutes or [],

@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from core.exercise_clearances import exercise_clearance
+from core.injuries import injury_body_parts
 from database.exercise_resolution import resolve_exercise_display_row
 
 logger = logging.getLogger(__name__)
@@ -25,9 +26,10 @@ def exclusion_message(language: str) -> str:
 
 class ExerciseClearancePolicy:
     def __init__(self, ledger: Any):
-        self.injuries = [row for row in ledger.list_injury_records() if row["status"] != "resolved"]
+        self._recorded_injuries = ledger.list_injury_records()
+        self.injuries = [row for row in self._recorded_injuries if row["status"] != "resolved"]
         self.clearances = [
-            record for injury in self.injuries
+            record for injury in self._recorded_injuries
             for record in ledger.list_exercise_clearances(str(injury["id"]))
         ]
 
@@ -37,14 +39,27 @@ class ExerciseClearancePolicy:
     def allows(self, exercise: dict[str, Any]) -> bool:
         return not self.assess(exercise)["excluded"]
 
+    def involves(self, exercise: dict[str, Any]) -> bool:
+        """Include resolved injury history so Player reads can explicitly lift a flag."""
+        exercise_id = exercise.get("id") or exercise.get("exercise_id")
+        body_part = str(exercise.get("body_part") or "").strip().casefold()
+        return any(
+            body_part in injury_body_parts(injury.get("body_area"))
+            for injury in self._recorded_injuries
+        ) or any(
+            record.get("exercise_id") is not None
+            and str(record["exercise_id"]) == str(exercise_id)
+            for record in self.clearances
+        )
+
 
 def assistant_program_clearances(db: Any, ledger: Any, days: Any) -> dict[str, Any]:
     """Supply current safety flags through the existing scoped program read tool."""
+    if db is None:
+        return {"status": "unavailable"}
     policy = ExerciseClearancePolicy(ledger)
     if not policy.injuries:
         return {"status": "ok", "exercises": []}
-    if db is None:
-        return {"status": "unavailable"}
     flags = {}
     for day in days:
         for exercise in day.exercises:
@@ -74,7 +89,7 @@ def _exercise_assessment(
 ) -> dict[str, Any]:
     entry = db.get_exercise_library_entry(str(exercise.get("exercise_id") or ""))
     candidate = entry or {"exercise_id": exercise.get("exercise_id")}
-    return policy.assess(candidate)
+    return {**policy.assess(candidate), "injury_involved": policy.involves(candidate)}
 
 
 def _annotate_exercise(
@@ -83,9 +98,11 @@ def _annotate_exercise(
     exercise: dict[str, Any],
     assessment: dict[str, Any],
 ) -> None:
-    exercise["clearance_status"] = (
-        assessment["status"] if assessment["status"] != "allowed" else None
-    )
+    # No involvement omits the field; active flags survive; resolved/cleared returns null.
+    status = assessment["status"]
+    if status == "allowed" and assessment["injury_involved"]:
+        status = None
+    exercise["clearance_status"] = status
     exercise["clearance_limit_notes"] = assessment["limit_notes"]
     _filter_suggested_substitutes(db, policy, exercise)
 

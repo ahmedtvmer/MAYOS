@@ -1410,6 +1410,7 @@ class ProgramDraftInput(BaseModel):
 class ProgramDraftExerciseIn(ProgramDraftInput):
     clearance_status: Any = Field(default=None, exclude=True)
     clearance_limit_notes: Any = Field(default=None, exclude=True)
+    notes_are_technique: Any = Field(default=None, exclude=True)
     exercise_id: str = Field(min_length=1, max_length=200)
     exercise_name: str = ""
     rationale: dict[str, Any] | None = None
@@ -1898,10 +1899,14 @@ class ProgramEditIn(BaseModel):
 
 
 class PlayerActiveProgramExerciseOut(PersistedProgramExerciseSchema):
-    """A Player program exercise with its current read-only clearance facts."""
+    """A Player prescription plus read-time labels and clearance facts; never stored."""
+
+    notes_are_technique: bool = Field(
+        default=False, description="Notes equal the catalog technique; the logger card hides them"
+    )
 
     clearance_status: str | None = Field(
-        default=None, exclude_if=lambda status: status in (None, "allowed")
+        default="allowed", exclude_if=lambda status: status == "allowed"
     )
     clearance_limit_notes: list[str] = Field(
         default_factory=list, exclude_if=lambda notes: not notes
@@ -1912,7 +1917,7 @@ class PlayerActiveProgramWarmupExerciseOut(WarmupExerciseSchema):
     """A Player warm-up with its current read-only clearance facts."""
 
     clearance_status: str | None = Field(
-        default=None, exclude_if=lambda status: status in (None, "allowed")
+        default="allowed", exclude_if=lambda status: status == "allowed"
     )
     clearance_limit_notes: list[str] = Field(
         default_factory=list, exclude_if=lambda notes: not notes

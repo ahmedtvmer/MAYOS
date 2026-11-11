@@ -463,11 +463,11 @@ class _PlayerShellState extends ConsumerState<PlayerShell> {
       ),
       body: IndexedStack(
             index: index,
-            children: const <Widget>[
-              DashboardTab(),
-              ProgramTab(),
-              NutritionTab(),
-              ProgressTab(),
+            children: <Widget>[
+              TickerMode(enabled: index == 0, child: const DashboardTab()),
+              TickerMode(enabled: index == 1, child: const ProgramTab()),
+              TickerMode(enabled: index == 2, child: const NutritionTab()),
+              TickerMode(enabled: index == 3, child: const ProgressTab()),
             ],
           ),
       bottomBar: MayosBottomNavigation(

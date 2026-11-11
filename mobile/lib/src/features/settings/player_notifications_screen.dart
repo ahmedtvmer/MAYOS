@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api_client.dart';
+import '../../core/refetch_on_reconnect.dart';
 import '../../core/app_failure.dart';
 import '../../core/connectivity_message.dart';
 import '../../core/display_language/assignment_copy.dart';
@@ -28,7 +29,11 @@ class PlayerNotificationsScreen extends ConsumerStatefulWidget {
 }
 
 class _PlayerNotificationsScreenState
-    extends ConsumerState<PlayerNotificationsScreen> {
+    extends ConsumerState<PlayerNotificationsScreen>
+    with RefetchOnReconnect<PlayerNotificationsScreen> {
+  @override
+  Future<void> refreshAfterReconnect() => _refreshInPlace();
+
   bool _loading = true;
   bool _hasLoaded = false;
   bool _markingNoticesRead = false;

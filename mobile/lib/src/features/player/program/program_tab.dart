@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/active_program.dart';
+import '../../../core/refetch_on_reconnect.dart';
 import '../../../core/api_client.dart';
 import '../../../core/app_failure.dart';
 import '../../../core/connectivity_message.dart';
@@ -80,7 +81,24 @@ class ProgramTab extends ConsumerStatefulWidget {
   ConsumerState<ProgramTab> createState() => _ProgramTabState();
 }
 
-class _ProgramTabState extends ConsumerState<ProgramTab> {
+class _ProgramTabState extends ConsumerState<ProgramTab>
+    with RefetchOnReconnect<ProgramTab> {
+  @override
+  Future<void> refreshAfterReconnect() async {
+    if (_loading ||
+        _editingProgramDay ||
+        _substituting ||
+        _requestingProgramChange ||
+        _programActionBusy ||
+        _pickerBusy ||
+        _decidingVolumeReview != null ||
+        _dismissingProgramChange ||
+        _dismissingProgramDesignOffer) {
+      return;
+    }
+    await _load();
+  }
+
   bool _loading = true;
   bool _substituting = false;
   bool _editingProgramDay = false;
