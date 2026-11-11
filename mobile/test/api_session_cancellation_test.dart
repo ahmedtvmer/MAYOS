@@ -15,9 +15,9 @@ Future<void> _completeWithPumps(
     completed = true;
   });
   for (int frame = 0; frame < 20 && !completed; frame++) {
-    await tester.pump();
+    await tester.pump(Duration.zero);
   }
-  expect(completed, isTrue, reason: 'Cancellation did not finish');
+  expect(completed, isTrue, reason: 'The async operation did not complete');
   await operation;
 }
 
@@ -38,17 +38,20 @@ void main() {
     addTearDown(api.dispose);
     final Future<void> failedRead =
         expectLater(api.volume(), throwsA(isA<ApiException>()));
-    await tester.pump();
+    // Dio dispatches through zero-duration timers. A pump without a duration
+    // flushes microtasks but leaves those timers waiting on the fake clock.
+    await tester.pump(Duration.zero);
     expect(adapter.requests, hasLength(1));
 
     await _completeWithPumps(tester, api.cancelAuthenticatedRequests());
     await _completeWithPumps(tester, failedRead);
+    await tester.pump(const Duration(seconds: 10));
+    expect(adapter.requests, hasLength(1));
 
     // A subsequent session can read, without reviving the previous GET.
     offline = false;
-    final Future<Map<String, double>> nextRead = api.volume();
-    await tester.pump();
-    expect(await nextRead, <String, double>{'Chest': 8});
+    await _completeWithPumps(tester,
+        expectLater(api.volume(), completion(<String, double>{'Chest': 8})));
     expect(adapter.requests, hasLength(2));
   });
 
@@ -66,13 +69,13 @@ void main() {
     addTearDown(api.dispose);
     final Future<void> failedRead =
         expectLater(api.volume(), throwsA(isA<ApiException>()));
-    await tester.pump();
+    await tester.pump(Duration.zero);
     expect(adapter.requests, hasLength(1));
 
     await _completeWithPumps(tester, api.cancelAuthenticatedRequests());
     await _completeWithPumps(tester, failedRead);
     releaseResponse.complete();
-    await tester.pump();
+    await tester.pump(Duration.zero);
     expect(adapter.requests, hasLength(1));
   });
 }

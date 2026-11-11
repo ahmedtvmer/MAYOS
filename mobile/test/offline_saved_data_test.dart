@@ -36,6 +36,16 @@ Future<void> _primePlayerCache({
   fake.displayLanguage = language;
   fake.whatsNewSeenRelease = 6;
   fake.foodLogToday = _today();
+  // The fake intentionally returns 503 until a training status is supplied.
+  fake.trainingStatusBody = <String, dynamic>{
+    'weekly_streak': 2,
+    'week_start': _today(),
+    'week_done': 1,
+    'week_target': 3,
+    'mayos_workouts': 9,
+    'next_checkpoint': 10,
+    'workouts_to_next': 1,
+  };
   fake.nutritionState = <String, dynamic>{
     'state': 'ready',
     'goal': 'maintain',
@@ -77,7 +87,12 @@ Future<void> _primePlayerCache({
   }
 
   if (tester == null) return prime();
-  await tester.runAsync(prime);
+  // runAsync reports exceptions to the binding and returns null. Stop here if
+  // priming failed rather than exercising an incomplete snapshot offline.
+  expect(await tester.runAsync(() async {
+    await prime();
+    return true;
+  }), isTrue);
 }
 String _today() => DateTime.now().toIso8601String().substring(0, 10);
 
@@ -102,9 +117,9 @@ Future<T> _waitWithPumps<T>(WidgetTester tester, Future<T> operation) async {
     completed = true;
   });
   for (int attempt = 0; attempt < 120 && !completed; attempt++) {
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(Duration.zero);
   }
-  expect(completed, isTrue, reason: 'The saved Player read did not complete');
+  expect(completed, isTrue, reason: 'The async operation did not complete');
   return operation;
 }
 
@@ -163,6 +178,8 @@ void main() {
         expect((await _waitWithPumps(tester, api.volume()))['Chest'], 12.5);
         expect((await _waitWithPumps(tester, api.activeProgram()))?.programName,
             'Upper/Lower 4x');
+        expect((await _waitWithPumps(tester, api.trainingStatus())).mayosWorkouts,
+            9);
         expect((await _waitWithPumps(tester, api.prescription(1))).targets,
             isNotEmpty);
         expect((await _waitWithPumps(tester, api.nutrition())).targets?['calories'],
@@ -223,7 +240,7 @@ void main() {
       await _pumpUntilFound(tester, find.text(MayosCopy('en').offlineSavedData));
       if (!androidEvents) {
         browserEvents.add(false);
-        await tester.pump();
+        await tester.pump(Duration.zero);
       }
       final int previousVolumeReads = fake.adapter.requests
           .where((FakeRequest request) => request.path == '/dashboard/volume')
@@ -311,15 +328,14 @@ void main() {
 
     expect(find.byKey(const Key('login_username')), findsOneWidget);
     expect(find.text(MayosCopy('en').offlineSavedData), findsNothing);
-    expect(await tokens.read(), isNull);
+    expect(await _waitWithPumps(tester, tokens.read()), isNull);
     final ProviderContainer container = ProviderScope.containerOf(
       tester.element(find.byType(MayosApp)),
       listen: false,
     );
     expect(
-      await container
-          .read(savedPlayerDataStoreProvider)
-          .session('account-alice'),
+      await _waitWithPumps(tester,
+          container.read(savedPlayerDataStoreProvider).session('account-alice')),
       isNull,
     );
 
@@ -531,18 +547,19 @@ void main() {
       int confirmations() => fake.adapter.requests
           .where((FakeRequest request) => request.path == '/auth/me').length;
       final int before = confirmations();
-      await container.read(authControllerProvider.notifier).initialize();
+      await _waitWithPumps(tester,
+          container.read(authControllerProvider.notifier).initialize());
       expect(confirmations(), before + 1);
       await tester.pump(const Duration(seconds: 2));
-      await tester.pump();
+      await tester.pump(Duration.zero);
       expect(confirmations(), before + 2);
       await tester.pump(const Duration(seconds: 3));
       expect(confirmations(), before + 2);
       await tester.pump(const Duration(seconds: 1));
-      await tester.pump();
+      await tester.pump(Duration.zero);
       expect(confirmations(), before + 3);
       expect(container.read(authControllerProvider).isOffline, isTrue);
-      expect(await tokens.read(), isNotNull);
+      expect(await _waitWithPumps(tester, tokens.read()), isNotNull);
     } finally {
       container.dispose();
     }
